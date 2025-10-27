@@ -88,6 +88,38 @@ struct ILModule
 };
 
 /// \brief Adapter that lowers temporary IL structures into Machine IR.
+class LowerILToMIR;
+
+/// \brief Thin façade that exposes MIR construction helpers to lowering rules.
+class MIRBuilder
+{
+  public:
+    MIRBuilder(LowerILToMIR &lower, MBasicBlock &block) noexcept;
+
+    [[nodiscard]] MBasicBlock &block() noexcept;
+    [[nodiscard]] const MBasicBlock &block() const noexcept;
+
+    [[nodiscard]] LowerILToMIR &lower() noexcept;
+    [[nodiscard]] const LowerILToMIR &lower() const noexcept;
+
+    [[nodiscard]] const TargetInfo &target() const noexcept;
+    [[nodiscard]] AsmEmitter::RoDataPool &roData() const noexcept;
+    [[nodiscard]] RegClass regClassFor(ILValue::Kind kind) const noexcept;
+
+    [[nodiscard]] VReg ensureVReg(int id, ILValue::Kind kind);
+    [[nodiscard]] VReg makeTempVReg(RegClass cls);
+    [[nodiscard]] Operand makeOperandForValue(const ILValue &value, RegClass cls);
+    [[nodiscard]] Operand makeLabelOperand(const ILValue &value) const;
+    [[nodiscard]] bool isImmediate(const ILValue &value) const noexcept;
+
+    void append(MInstr instr);
+    void recordCallPlan(CallLoweringPlan plan);
+
+  private:
+    LowerILToMIR *lower_{nullptr};
+    MBasicBlock *block_{nullptr};
+};
+
 class LowerILToMIR
 {
   public:
@@ -98,6 +130,8 @@ class LowerILToMIR
 
     /// \brief Retrieve the collected call lowering plans emitted during lowering.
     [[nodiscard]] const std::vector<CallLoweringPlan> &callPlans() const noexcept;
+
+    friend class MIRBuilder;
 
   private:
     struct BlockInfo
@@ -123,24 +157,6 @@ class LowerILToMIR
     [[nodiscard]] Operand makeLabelOperand(const ILValue &value) const;
     [[nodiscard]] bool isImmediate(const ILValue &value) const noexcept;
 
-    void lowerInstruction(const ILInstr &instr, MBasicBlock &block);
-    void lowerBinary(const ILInstr &instr,
-                     MBasicBlock &block,
-                     MOpcode opcRR,
-                     MOpcode opcRI,
-                     RegClass cls,
-                     bool requireImm32 = false);
-    void lowerCmp(const ILInstr &instr, MBasicBlock &block, RegClass cls, int defaultCond);
-    void lowerSelect(const ILInstr &instr, MBasicBlock &block);
-    void lowerBranch(const ILInstr &instr, MBasicBlock &block);
-    void lowerCondBranch(const ILInstr &instr, MBasicBlock &block);
-    void lowerReturn(const ILInstr &instr, MBasicBlock &block);
-    void lowerCall(const ILInstr &instr, MBasicBlock &block);
-    void lowerLoad(const ILInstr &instr, MBasicBlock &block, RegClass cls);
-    void lowerStore(const ILInstr &instr, MBasicBlock &block);
-    void lowerCast(
-        const ILInstr &instr, MBasicBlock &block, MOpcode opc, RegClass dstCls, RegClass srcCls);
-    void lowerShift(const ILInstr &instr, MBasicBlock &block, MOpcode opcImm, MOpcode opcReg);
     void emitEdgeCopies(const ILBlock &source, MBasicBlock &block);
 };
 
