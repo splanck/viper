@@ -19,6 +19,19 @@
 #include "il/runtime/RuntimeSignatures.hpp"
 #include "il/runtime/RuntimeSignatureParser.hpp"
 #include "il/runtime/RuntimeSignaturesData.hpp"
+#ifndef NDEBUG
+#include "il/runtime/signatures/Registry.hpp"
+#include <cassert>
+#include <cstdio>
+#include <unordered_set>
+namespace il::runtime::signatures
+{
+void register_fileio_signatures();
+void register_string_signatures();
+void register_math_signatures();
+void register_array_signatures();
+} // namespace il::runtime::signatures
+#endif
 
 #include "rt.hpp"
 #include "rt_debug.h"
@@ -1179,6 +1192,198 @@ RuntimeDescriptor buildDescriptor(const DescriptorRow &row)
     return descriptor;
 }
 
+#ifndef NDEBUG
+const char *sigParamKindName(signatures::SigParam::Kind kind)
+{
+    using signatures::SigParam;
+    switch (kind)
+    {
+    case SigParam::Kind::I32:
+        return "i32";
+    case SigParam::Kind::I64:
+        return "i64";
+    case SigParam::Kind::F32:
+        return "f32";
+    case SigParam::Kind::F64:
+        return "f64";
+    case SigParam::Kind::Ptr:
+        return "ptr";
+    }
+    return "unknown";
+}
+
+signatures::SigParam::Kind mapToSigParamKind(il::core::Type::Kind kind)
+{
+    using Kind = il::core::Type::Kind;
+    using signatures::SigParam;
+    switch (kind)
+    {
+    case Kind::I1:
+    case Kind::I16:
+    case Kind::I32:
+        return SigParam::Kind::I32;
+    case Kind::I64:
+        return SigParam::Kind::I64;
+    case Kind::F64:
+        return SigParam::Kind::F64;
+    case Kind::Ptr:
+    case Kind::Str:
+    case Kind::ResumeTok:
+        return SigParam::Kind::Ptr;
+    case Kind::Void:
+        std::fprintf(stderr, "Unexpected void type in parameter list.\n");
+        assert(false && "void type cannot appear in parameter list");
+        return SigParam::Kind::Ptr;
+    case Kind::Error:
+        std::fprintf(stderr, "Unexpected error type in runtime signature.\n");
+        assert(false && "error type cannot appear in runtime signature");
+        return SigParam::Kind::Ptr;
+    }
+    std::fprintf(stderr,
+                 "Unhandled runtime type kind: %s.\n",
+                 il::core::kindToString(kind).c_str());
+    assert(false && "unhandled runtime type kind");
+    return SigParam::Kind::Ptr;
+}
+
+std::vector<signatures::SigParam::Kind> makeParamKinds(const RuntimeSignature &signature)
+{
+    std::vector<signatures::SigParam::Kind> kinds;
+    kinds.reserve(signature.paramTypes.size());
+    for (const auto &param : signature.paramTypes)
+        kinds.push_back(mapToSigParamKind(param.kind));
+    return kinds;
+}
+
+std::vector<signatures::SigParam::Kind> makeReturnKinds(const RuntimeSignature &signature)
+{
+    std::vector<signatures::SigParam::Kind> kinds;
+    if (signature.retType.kind != il::core::Type::Kind::Void)
+        kinds.push_back(mapToSigParamKind(signature.retType.kind));
+    return kinds;
+}
+
+void ensureSignatureWhitelist()
+{
+    static const bool registered = []
+    {
+        signatures::register_fileio_signatures();
+        signatures::register_string_signatures();
+        signatures::register_math_signatures();
+        signatures::register_array_signatures();
+        return true;
+    }();
+    (void)registered;
+}
+
+void validateRuntimeDescriptors(const std::vector<RuntimeDescriptor> &descriptors)
+{
+    ensureSignatureWhitelist();
+    const auto &expected = signatures::all_signatures();
+
+    std::unordered_map<std::string_view, const RuntimeDescriptor *> actual;
+    actual.reserve(descriptors.size());
+    for (const auto &descriptor : descriptors)
+    {
+        auto [it, inserted] = actual.emplace(descriptor.name, &descriptor);
+        if (!inserted)
+        {
+            std::fprintf(stderr,
+                         "Duplicate runtime descriptor registered for symbol '%s'.\n",
+                         descriptor.name.data());
+            assert(false && "duplicate runtime descriptor registration");
+            continue;
+        }
+    }
+
+    std::unordered_set<std::string_view> seen;
+    seen.reserve(expected.size());
+    for (const auto &signature : expected)
+    {
+        if (!seen.insert(signature.name).second)
+        {
+            std::fprintf(stderr,
+                         "Duplicate expected runtime signature entry for '%s'.\n",
+                         signature.name.c_str());
+            assert(false && "duplicate expected runtime signature");
+            continue;
+        }
+
+        auto it = actual.find(signature.name);
+        if (it == actual.end())
+        {
+            std::fprintf(stderr,
+                         "Expected runtime signature '%s' missing from registry.\n",
+                         signature.name.c_str());
+            assert(false && "missing runtime signature");
+            continue;
+        }
+
+        const auto &descriptor = *it->second;
+        const auto params = makeParamKinds(descriptor.signature);
+        const auto returns = makeReturnKinds(descriptor.signature);
+
+        if (params.size() != signature.params.size())
+        {
+            std::fprintf(stderr,
+                         "Runtime signature '%s' parameter count mismatch (expected %zu, got %zu).\n",
+                         signature.name.c_str(),
+                         signature.params.size(),
+                         params.size());
+            assert(false && "runtime signature parameter count mismatch");
+        }
+        else
+        {
+            for (std::size_t index = 0; index < params.size(); ++index)
+            {
+                const auto expectedKind = signature.params[index].kind;
+                const auto actualKind = params[index];
+                if (expectedKind != actualKind)
+                {
+                    std::fprintf(stderr,
+                                 "Runtime signature '%s' parameter %zu type mismatch (expected %s, got %s).\n",
+                                 signature.name.c_str(),
+                                 index,
+                                 sigParamKindName(expectedKind),
+                                 sigParamKindName(actualKind));
+                    assert(false && "runtime signature parameter type mismatch");
+                    break;
+                }
+            }
+        }
+
+        if (returns.size() != signature.rets.size())
+        {
+            std::fprintf(stderr,
+                         "Runtime signature '%s' return count mismatch (expected %zu, got %zu).\n",
+                         signature.name.c_str(),
+                         signature.rets.size(),
+                         returns.size());
+            assert(false && "runtime signature return count mismatch");
+        }
+        else
+        {
+            for (std::size_t index = 0; index < returns.size(); ++index)
+            {
+                const auto expectedKind = signature.rets[index].kind;
+                const auto actualKind = returns[index];
+                if (expectedKind != actualKind)
+                {
+                    std::fprintf(stderr,
+                                 "Runtime signature '%s' return %zu type mismatch (expected %s, got %s).\n",
+                                 signature.name.c_str(),
+                                 index,
+                                 sigParamKindName(expectedKind),
+                                 sigParamKindName(actualKind));
+                    assert(false && "runtime signature return type mismatch");
+                    break;
+                }
+            }
+        }
+    }
+}
+#endif
+
 } // namespace
 
 /// @brief Retrieve the immutable list of runtime descriptors.
@@ -1193,6 +1398,9 @@ const std::vector<RuntimeDescriptor> &runtimeRegistry()
         entries.reserve(kDescriptorRows.size());
         for (const auto &row : kDescriptorRows)
             entries.push_back(buildDescriptor(row));
+#ifndef NDEBUG
+        validateRuntimeDescriptors(entries);
+#endif
         return entries;
     }();
     return registry;
