@@ -85,6 +85,12 @@ target_sources(fe_basic PRIVATE
         ConstFold_String.cpp
         ConstFold_Arith.cpp
         ConstFolder.cpp
+        constfold/Dispatch.cpp
+        constfold/FoldArith.cpp
+        constfold/FoldLogical.cpp
+        constfold/FoldCompare.cpp
+        constfold/FoldStrings.cpp
+        constfold/FoldCasts.cpp
         Intrinsics.cpp
         DiagnosticEmitter.cpp
         BasicCompiler.cpp
