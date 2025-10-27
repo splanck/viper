@@ -20,11 +20,15 @@
 
 #include "il/verify/InstructionChecker.hpp"
 
+#include "il/core/BasicBlock.hpp"
+#include "il/core/Function.hpp"
 #include "il/core/Opcode.hpp"
 #include "il/core/OpcodeInfo.hpp"
 #include "il/verify/DiagSink.hpp"
+#include "il/verify/Diagnostics.hpp"
 #include "il/verify/InstructionCheckUtils.hpp"
 #include "il/verify/InstructionCheckerShared.hpp"
+#include "il/verify/Rules.hpp"
 #include "il/verify/OperandCountChecker.hpp"
 #include "il/verify/OperandTypeChecker.hpp"
 #include "il/verify/ResultTypeChecker.hpp"
@@ -69,6 +73,47 @@ using il::core::Opcode;
 using il::core::Type;
 using il::support::Expected;
 using il::support::makeError;
+
+Expected<void> applyRegisteredRules(const VerifyCtx &ctx)
+{
+    const auto &rules = viper_verifier_rules();
+
+    int blockIndex = -1;
+    for (size_t idx = 0; idx < ctx.fn.blocks.size(); ++idx)
+    {
+        if (&ctx.fn.blocks[idx] == &ctx.block)
+        {
+            blockIndex = static_cast<int>(idx);
+            break;
+        }
+    }
+
+    int instrIndex = -1;
+    for (size_t idx = 0; idx < ctx.block.instructions.size(); ++idx)
+    {
+        if (&ctx.block.instructions[idx] == &ctx.instr)
+        {
+            instrIndex = static_cast<int>(idx);
+            break;
+        }
+    }
+
+    for (const Rule &rule : rules)
+    {
+        if (std::string_view(rule.name).rfind("eh.", 0) == 0)
+            continue;
+
+        std::string message;
+        if (rule.check(ctx.fn, ctx.instr, message))
+            continue;
+
+        const std::string diagMessage =
+            diag_rule_msg(rule.name, message, ctx.fn.name, blockIndex, instrIndex);
+        return Expected<void>(makeError(ctx.instr.loc, diagMessage));
+    }
+
+    return {};
+}
 
 using Instruction = il::core::Instr;
 
@@ -703,6 +748,9 @@ Expected<void> verifyOpcodeSignature_impl(const il::core::Function &fn,
 /// @return Empty success or a diagnostic when verification fails.
 Expected<void> verifyInstruction_impl(const VerifyCtx &ctx)
 {
+    if (auto ruleResult = applyRegisteredRules(ctx); !ruleResult)
+        return ruleResult;
+
     const auto props = lookup(ctx.instr.op);
     if (hasLegacyArithmeticProps(props))
         return checkWithProps(ctx, *props);
