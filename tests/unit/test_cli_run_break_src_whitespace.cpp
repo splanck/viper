@@ -62,5 +62,12 @@ int main()
     assert(rc == 10);
     assert(err.find("[BREAK]") != std::string::npos);
 
+    const std::string specWithLinePadding = ilFile + ":  1";
+
+    err.clear();
+    rc = runWithArgs(ilFile, "--break-src", specWithLinePadding, err);
+    assert(rc == 10);
+    assert(err.find("[BREAK]") != std::string::npos);
+
     return 0;
 }
