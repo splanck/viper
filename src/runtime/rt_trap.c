@@ -1,15 +1,33 @@
-// File: src/runtime/rt_trap.c
-// Purpose: Implements runtime trap helpers for fatal error conditions.
-// Key invariants: Trap helpers always terminate the process after reporting the trap reason.
-// Ownership/Lifetime: No dynamic resources; delegates to C standard library for I/O and exit.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE in the project root for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the BASIC runtime's fatal trap helpers.  These routines print a
+// diagnostic describing the failure before terminating the hosting process.
+// Centralising the logic keeps trap text and exit codes consistent between the
+// VM and native code paths.
+//
+//===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Fatal trap helpers shared by the runtime C ABI.
+/// @details Provides @ref rt_trap_div0, mirroring the VM's behaviour when a
+///          division by zero occurs.  The helper writes a deterministic message
+///          to stderr and terminates the process with exit code 1.
 
 #include <stdio.h>
 #include <stdlib.h>
 
 #include "rt_trap.h"
 
-/// @brief Trap implementation for division by zero errors.
+/// @brief Report a division-by-zero trap and terminate the process.
+/// @details Prints a fixed diagnostic to stderr, flushes the stream to ensure
+///          embedders observe the message, and exits with status code 1.  The
+///          behaviour mirrors the VM trap hook so test suites observe consistent
+///          failure semantics across execution modes.
 void rt_trap_div0(void)
 {
     fprintf(stderr, "Viper runtime trap: division by zero\n");
