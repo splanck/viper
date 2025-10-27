@@ -258,7 +258,6 @@ inline VM::ExecResult handleSwitchI32Impl(VM &vm,
                                           size_t &ip)
 {
     (void)blocks;
-    (void)bb;
     (void)ip;
 
     const Slot scrutineeSlot = VMAccess::eval(vm, fr, switchScrutinee(in));
@@ -334,8 +333,7 @@ inline VM::ExecResult handleSwitchI32Impl(VM &vm,
                             "switch target out of range",
                             in.loc,
                             fr.func ? fr.func->name : std::string(),
-                            fr.func && !fr.func->blocks.empty() ? fr.func->blocks.front().label
-                                                                : "");
+                            bb ? bb->label : std::string());
         return result;
     }
 
