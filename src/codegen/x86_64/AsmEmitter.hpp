@@ -103,7 +103,41 @@ class AsmEmitter
                                                       const TargetInfo &target);
 
     [[nodiscard]] static std::string_view conditionSuffix(std::int64_t code) noexcept;
-    [[nodiscard]] static const char *mnemonicFor(MOpcode opcode) noexcept;
 };
+
+/// \brief Enumerates operand orderings handled by the emitter table.
+enum class OperandOrder
+{
+    NONE,      ///< Instruction does not print operands.
+    DIRECT,    ///< Emit operands exactly as provided.
+    R,         ///< Single register operand.
+    M,         ///< Single memory operand.
+    I,         ///< Single immediate operand.
+    R_R,       ///< Destination register with register source.
+    R_M,       ///< Destination register with memory source.
+    M_R,       ///< Destination memory with register source.
+    R_I,       ///< Destination register with immediate source.
+    M_I,       ///< Destination memory with immediate source.
+    R_R_R,     ///< Three operands following src2, src1, dest ordering.
+    SHIFT,     ///< Shift/rotate with specialised count formatting.
+    MOVZX_RR8, ///< movzbq-like instruction requiring 8-bit source formatting.
+    LEA,       ///< LEA with custom source handling.
+    CALL,      ///< CALL-style operand formatting.
+    JUMP,      ///< JMP-style operand formatting.
+    JCC,       ///< Conditional branch formatting with suffix.
+    SETCC      ///< SETcc formatting with suffix.
+};
+
+/// \brief Descriptor tying an opcode to its textual mnemonic and operand policy.
+struct EmitterSpec
+{
+    MOpcode op;             ///< Opcode handled by this specification.
+    const char *mnem;       ///< Canonical mnemonic without condition suffixes.
+    OperandOrder order;     ///< Operand emission policy for the opcode.
+    std::uint32_t flags;    ///< Reserved for width/sign/predicate metadata.
+};
+
+/// \brief Locate the emitter specification for a given opcode.
+[[nodiscard]] const EmitterSpec *lookup_emitter_spec(MOpcode op) noexcept;
 
 } // namespace viper::codegen::x64
