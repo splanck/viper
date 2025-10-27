@@ -193,7 +193,12 @@ bool parseRunILArgs(int argc, char **argv, RunILConfig &config)
             }
             else
             {
-                config.breakLabels.push_back(std::move(spec));
+                std::string label = trimWhitespace(std::move(spec));
+                while (!label.empty() && label.back() == ':')
+                {
+                    label.pop_back();
+                }
+                config.breakLabels.push_back(std::move(label));
             }
         }
         else if (arg == "--break-src")
