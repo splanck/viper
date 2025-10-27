@@ -133,12 +133,7 @@ int32_t rt_close_err(int32_t channel)
 
     RtError err = RT_ERROR_NONE;
     if (!rt_file_close(&entry->file, &err))
-    {
-        entry->in_use = false;
-        entry->at_eof = false;
-        rt_file_init(&entry->file);
         return (int32_t)err.kind;
-    }
 
     entry->in_use = false;
     entry->at_eof = false;
