@@ -41,7 +41,6 @@ target_sources(fe_basic PRIVATE
         LowerExprNumeric.cpp
         LowerExprBuiltin.cpp
         LowerExpr.cpp
-        LowerStmt.cpp
         LowerStmt_Control.cpp
         LowerStmt_IO.cpp
         LowerStmt_Runtime.cpp
@@ -49,6 +48,9 @@ target_sources(fe_basic PRIVATE
         LowerScan.cpp
         lower/BuiltinCommon.cpp
         lower/BuiltinUtils.cpp
+        lower/Lowerer_Errors.cpp
+        lower/Lowerer_Expr.cpp
+        lower/Lowerer_Stmt.cpp
         lower/Scan_ExprTypes.cpp
         lower/Scan_RuntimeNeeds.cpp
         Lower_OOP_Scan.cpp

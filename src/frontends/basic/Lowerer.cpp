@@ -22,7 +22,6 @@
 ///          individual lowering stages implemented in other translation units.
 
 #include "frontends/basic/Lowerer.hpp"
-#include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/TypeSuffix.hpp"
 #include "frontends/basic/lower/Emitter.hpp"
 #include "il/core/BasicBlock.hpp"
@@ -288,39 +287,6 @@ Module Lowerer::lowerProgram(const Program &prog)
 Module Lowerer::lower(const Program &prog)
 {
     return lowerProgram(prog);
-}
-
-/// @brief Install a diagnostic emitter for use during lowering.
-/// @details Stores the pointer and wires the BASIC type rules subsystem to
-///          forward type errors into the emitter.  Passing nullptr disconnects
-///          the sink entirely.
-/// @param emitter Diagnostic sink owned by the caller.
-void Lowerer::setDiagnosticEmitter(DiagnosticEmitter *emitter) noexcept
-{
-    diagnosticEmitter_ = emitter;
-    if (emitter)
-    {
-        TypeRules::setTypeErrorSink(
-            [emitter](const TypeRules::TypeError &error)
-            {
-                emitter->emit(il::support::Severity::Error,
-                              error.code,
-                              il::support::SourceLoc{},
-                              0,
-                              error.message);
-            });
-    }
-    else
-    {
-        TypeRules::setTypeErrorSink({});
-    }
-}
-
-/// @brief Access the currently installed diagnostic emitter.
-/// @return Pointer previously installed via @ref setDiagnosticEmitter.
-DiagnosticEmitter *Lowerer::diagnosticEmitter() const noexcept
-{
-    return diagnosticEmitter_;
 }
 
 /// @brief Discover variable usage within a statement list.
