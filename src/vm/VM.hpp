@@ -142,6 +142,7 @@ class VM
     friend struct VMTestHook; ///< Unit tests access interpreter internals
     friend VmError *vm_acquire_trap_token();
     friend const VmError *vm_current_trap_token();
+    friend void vm_clear_trap_token();
     friend void vm_store_trap_token_message(std::string_view text);
     friend std::string vm_current_trap_message();
 
