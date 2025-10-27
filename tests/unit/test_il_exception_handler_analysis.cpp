@@ -9,17 +9,19 @@
 #include "il/core/Instr.hpp"
 #include "il/core/Param.hpp"
 #include "il/core/Type.hpp"
+#include "il/verify/EhChecks.hpp"
+#include "il/verify/EhModel.hpp"
 #include "il/verify/ExceptionHandlerAnalysis.hpp"
 
 #include <cassert>
 #include <string>
-#include <unordered_map>
 
 int main()
 {
     using namespace il::core;
     using il::verify::analyzeHandlerBlock;
     using il::verify::checkEhStackBalance;
+    using il::verify::EhModel;
     using il::verify::HandlerSignature;
 
     Function fn;
@@ -81,9 +83,8 @@ int main()
     term.op = Opcode::Ret;
     entryBlock.instructions.push_back(term);
     stackFn.blocks.push_back(entryBlock);
-    std::unordered_map<std::string, const BasicBlock *> blockMap;
-    blockMap[stackFn.blocks.front().label] = &stackFn.blocks.front();
-    auto stackDiag = checkEhStackBalance(stackFn, blockMap);
+    EhModel stackModel(stackFn);
+    auto stackDiag = checkEhStackBalance(stackModel);
     assert(!stackDiag);
     assert(stackDiag.error().message.find("eh.pop without matching") != std::string::npos);
 
@@ -99,10 +100,10 @@ int main()
     balancedEntry.instructions.push_back(popOk);
     balancedEntry.instructions.push_back(term);
     balancedFn.blocks.push_back(balancedEntry);
-    std::unordered_map<std::string, const BasicBlock *> balancedMap;
-    balancedMap[balancedFn.blocks.front().label] = &balancedFn.blocks.front();
-    auto balancedResult = checkEhStackBalance(balancedFn, balancedMap);
+    EhModel balancedModel(balancedFn);
+    auto balancedResult = checkEhStackBalance(balancedModel);
     assert(balancedResult);
 
     return 0;
 }
+
