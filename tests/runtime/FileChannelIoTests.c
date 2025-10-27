@@ -7,6 +7,7 @@
 #include "rt_string.h"
 
 #include <assert.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/types.h>
@@ -112,6 +113,38 @@ int main(void)
 
     int32_t close_random = rt_close_err(6);
     assert(close_random == Err_None);
+
+    int32_t open_fail_close = rt_open_err_vstr(path, RT_F_OUTPUT, 7);
+    assert(open_fail_close == Err_None);
+
+    int failure_fd = -1;
+    int32_t failure_fd_rc = rt_file_channel_fd(7, &failure_fd);
+    assert(failure_fd_rc == Err_None);
+    assert(failure_fd >= 0);
+
+    int manual_close_rc = close(failure_fd);
+    assert(manual_close_rc == 0);
+
+    int32_t close_fail_rc = rt_close_err(7);
+    assert(close_fail_rc == Err_IOError);
+
+    int still_fd = -1;
+    int32_t still_in_use_rc = rt_file_channel_fd(7, &still_fd);
+    assert(still_in_use_rc == Err_None);
+    assert(still_fd == failure_fd);
+
+    int replacement_fd = open(template_path, O_WRONLY);
+    assert(replacement_fd >= 0);
+    if (replacement_fd != failure_fd)
+    {
+        int dup_rc = dup2(replacement_fd, failure_fd);
+        assert(dup_rc == failure_fd);
+        int replacement_close_rc = close(replacement_fd);
+        assert(replacement_close_rc == 0);
+    }
+
+    int32_t close_recovery_rc = rt_close_err(7);
+    assert(close_recovery_rc == Err_None);
 
     remove(template_path);
     rt_string_unref(world);
