@@ -152,6 +152,8 @@ bool SyntaxRuleSet::loadFromFile(const std::string &path)
                 while (true)
                 {
                     p.skipWs();
+                    if (p.i >= data.size())
+                        return false;
                     if (data[p.i] == '}')
                     {
                         ++p.i;
@@ -174,11 +176,15 @@ bool SyntaxRuleSet::loadFromFile(const std::string &path)
                         return false;
                     }
                     p.skipWs();
+                    if (p.i >= data.size())
+                        return false;
                     if (data[p.i] == ',')
                     {
                         ++p.i;
                         continue;
                     }
+                    if (p.i >= data.size())
+                        return false;
                     if (data[p.i] == '}')
                     {
                         ++p.i;
@@ -191,11 +197,15 @@ bool SyntaxRuleSet::loadFromFile(const std::string &path)
                 return false;
             }
             p.skipWs();
+            if (p.i >= data.size())
+                return false;
             if (data[p.i] == ',')
             {
                 ++p.i;
                 continue;
             }
+            if (p.i >= data.size())
+                return false;
             if (data[p.i] == '}')
             {
                 ++p.i;
@@ -207,11 +217,15 @@ bool SyntaxRuleSet::loadFromFile(const std::string &path)
             rules_.push_back(SyntaxRule{std::regex(regexStr), style});
         }
         p.skipWs();
+        if (p.i >= data.size())
+            return false;
         if (data[p.i] == ',')
         {
             ++p.i;
             continue;
         }
+        if (p.i >= data.size())
+            return false;
         if (data[p.i] == ']')
         {
             ++p.i;
