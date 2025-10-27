@@ -242,25 +242,51 @@ void DebugCtrl::onStore(std::string_view name,
                   << " ip=#" << ip << ")\n";
         return;
     }
-    bool changed = !w.hasValue;
+    const bool typeChanged = w.hasValue && w.type != ty;
+    bool changed = !w.hasValue || typeChanged;
+
+    auto isIntegerKind = [](il::core::Type::Kind kind) {
+        return kind == il::core::Type::Kind::I1 || kind == il::core::Type::Kind::I16 ||
+               kind == il::core::Type::Kind::I32 || kind == il::core::Type::Kind::I64;
+    };
+
+    if (!changed)
+    {
+        if (ty == il::core::Type::Kind::F64)
+        {
+            if (w.type == il::core::Type::Kind::F64 && w.f64 != f64)
+                changed = true;
+        }
+        else if (isIntegerKind(ty))
+        {
+            if (isIntegerKind(w.type) && w.i64 != i64)
+                changed = true;
+        }
+    }
+
+    if (changed)
+    {
+        std::cerr << "[WATCH] " << name << "=" << il::core::kindToString(ty) << ":";
+        if (ty == il::core::Type::Kind::F64)
+            std::cerr << f64;
+        else
+            std::cerr << i64;
+        std::cerr << "  (fn=@" << fn << " blk=" << blk << " ip=#" << ip << ")\n";
+    }
+
     if (ty == il::core::Type::Kind::F64)
     {
-        if (w.hasValue && w.f64 != f64)
-            changed = true;
-        if (changed)
-            std::cerr << "[WATCH] " << name << "=" << il::core::kindToString(ty) << ":" << f64
-                      << "  (fn=@" << fn << " blk=" << blk << " ip=#" << ip << ")\n";
+        if (typeChanged)
+            w.i64 = 0;
         w.f64 = f64;
     }
     else
     {
-        if (w.hasValue && w.i64 != i64)
-            changed = true;
-        if (changed)
-            std::cerr << "[WATCH] " << name << "=" << il::core::kindToString(ty) << ":" << i64
-                      << "  (fn=@" << fn << " blk=" << blk << " ip=#" << ip << ")\n";
+        if (typeChanged)
+            w.f64 = 0.0;
         w.i64 = i64;
     }
+
     w.type = ty;
     w.hasValue = true;
 }
