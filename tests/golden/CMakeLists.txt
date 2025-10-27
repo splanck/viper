@@ -390,6 +390,13 @@ function(viper_add_golden_suite_tests)
     -DGOLDEN=${_VIPER_GOLDEN_DIR}/fileio/lowering_open_close.il
     -P ${_VIPER_GOLDEN_DIR}/basic_to_il/check_il.cmake)
 
+  viper_add_ctest(basic_fileio_lowering_print_hash_multi
+    ${CMAKE_COMMAND}
+    -DILC=${BASIC_ILC}
+    -DBAS_FILE=${_VIPER_GOLDEN_DIR}/fileio/lowering_print_hash_multi.bas
+    -DGOLDEN=${_VIPER_GOLDEN_DIR}/fileio/lowering_print_hash_multi.il
+    -P ${_VIPER_GOLDEN_DIR}/basic_to_il/check_il.cmake)
+
   viper_add_ctest(basic_to_il_gosub
     ${CMAKE_COMMAND}
     -DILC=${BASIC_ILC}

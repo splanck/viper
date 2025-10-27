@@ -526,6 +526,7 @@ class Lowerer
         OpenErrVstr,
         CloseErr,
         SeekChErr,
+        WriteChErr,
         PrintlnChErr,
         LineInputChErr,
         EofCh,
@@ -562,6 +563,7 @@ class Lowerer
     void requireOpenErrVstr();
     void requireCloseErr();
     void requireSeekChErr();
+    void requireWriteChErr();
     void requirePrintlnChErr();
     void requireLineInputChErr();
     // --- begin: require declarations ---

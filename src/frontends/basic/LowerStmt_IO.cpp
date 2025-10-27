@@ -19,6 +19,7 @@
 
 #include "frontends/basic/Lowerer.hpp"
 
+#include <algorithm>
 #include <cassert>
 #include <cstdio>
 #include <optional>
@@ -379,18 +380,47 @@ void Lowerer::lowerPrintCh(const PrintChStmt &stmt)
         return;
     }
 
-    for (const auto &arg : stmt.args)
+    for (auto it = stmt.args.begin(); it != stmt.args.end(); ++it)
     {
+        const auto &arg = *it;
         if (!arg)
             continue;
+
         RVal value = lowerExpr(*arg);
         PrintChArgString lowered = lowerPrintChArgToString(*arg, std::move(value), false);
         if (lowered.feature)
             requestHelper(*lowered.feature);
+
+        auto nextIt = it;
+        do
+        {
+            ++nextIt;
+        } while (nextIt != stmt.args.end() && !*nextIt);
+
+        bool hasNext = nextIt != stmt.args.end();
+        const char *helper = "rt_write_ch_err";
+        if (stmt.trailingNewline && !hasNext)
+            helper = "rt_println_ch_err";
+
         curLoc = arg->loc;
-        Value err =
-            emitCallRet(Type(Type::Kind::I32), "rt_println_ch_err", {channel.value, lowered.text});
+        Value err = emitCallRet(Type(Type::Kind::I32), helper, {channel.value, lowered.text});
         emitRuntimeErrCheck(err, arg->loc, "printch", [&](Value code) { emitTrapFromErr(code); });
+    }
+
+    if (stmt.trailingNewline)
+    {
+        auto hasPrintedArg = std::any_of(stmt.args.begin(), stmt.args.end(), [](const auto &expr) {
+            return static_cast<bool>(expr);
+        });
+        if (!hasPrintedArg)
+        {
+            std::string emptyLbl = getStringLabel("");
+            Value empty = emitConstStr(emptyLbl);
+            curLoc = stmt.loc;
+            Value err = emitCallRet(
+                Type(Type::Kind::I32), "rt_println_ch_err", {channel.value, empty});
+            emitRuntimeErrCheck(err, stmt.loc, "printch", [&](Value code) { emitTrapFromErr(code); });
+        }
     }
 }
 
