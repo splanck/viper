@@ -244,6 +244,10 @@ function(viper_add_vm_unit_tests)
   target_link_libraries(test_vm_dispatch_handlers PRIVATE ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
   viper_add_ctest(test_vm_dispatch_handlers test_vm_dispatch_handlers)
 
+  viper_add_test(test_vm_op_schema ${VIPER_TESTS_DIR}/unit/test_vm_op_schema.cpp)
+  target_link_libraries(test_vm_op_schema PRIVATE ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
+  viper_add_ctest(test_vm_op_schema test_vm_op_schema)
+
   viper_add_test(test_vm_opcode_coverage ${_VIPER_VM_DIR}/OpcodeCoverageTests.cpp)
   target_link_libraries(test_vm_opcode_coverage PRIVATE ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
   viper_add_ctest(test_vm_opcode_coverage test_vm_opcode_coverage)

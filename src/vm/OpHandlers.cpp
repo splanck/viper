@@ -19,6 +19,7 @@
 
 #include "il/core/Opcode.hpp"
 #include "il/core/OpcodeInfo.hpp"
+#include "vm/ops/generated/HandlerTable.hpp"
 
 #include <array>
 
@@ -43,88 +44,6 @@ const VM::OpcodeHandlerTable &VM::getOpcodeHandlers()
 
 namespace il::vm::detail
 {
-namespace
-{
-constexpr size_t kNumDispatchKinds = static_cast<size_t>(VMDispatch::Count);
-
-/// @brief Populate an array that maps @ref VMDispatch categories to handler
-///        function pointers.
-/// @details The constexpr builder iterates the IL opcode table and records the
-///          first handler pointer associated with each dispatch category.
-///          Categories marked as @c VMDispatch::None remain @c nullptr so
-///          opcodes can opt out of the VM dispatch entirely.  Because the logic
-///          runs during compilation, the dispatch metadata stays aligned with
-///          Opcode.def whenever the table is regenerated.
-///
-/// @return Array of handler pointers indexed by @ref VMDispatch enumerators.
-constexpr std::array<VM::OpcodeHandler, kNumDispatchKinds> buildDispatchHandlers()
-{
-    std::array<VM::OpcodeHandler, kNumDispatchKinds> handlers{};
-
-#define VM_DISPATCH_IMPL(DISPATCH, HANDLER_EXPR) (VMDispatch::DISPATCH, HANDLER_EXPR)
-#define VM_DISPATCH(NAME) VM_DISPATCH_IMPL(NAME, &handle##NAME)
-#define VM_DISPATCH_ALT(DISPATCH, HANDLER_EXPR) VM_DISPATCH_IMPL(DISPATCH, HANDLER_EXPR)
-#define IL_OPCODE(NAME,                                                                            \
-                  MNEMONIC,                                                                        \
-                  RES_ARITY,                                                                       \
-                  RES_TYPE,                                                                        \
-                  MIN_OPS,                                                                         \
-                  MAX_OPS,                                                                         \
-                  OP0,                                                                             \
-                  OP1,                                                                             \
-                  OP2,                                                                             \
-                  SIDE_EFFECTS,                                                                    \
-                  SUCCESSORS,                                                                      \
-                  TERMINATOR,                                                                      \
-                  DISPATCH,                                                                        \
-                  PARSE0,                                                                          \
-                  PARSE1,                                                                          \
-                  PARSE2,                                                                          \
-                  PARSE3)                                                                          \
-    IL_VM_REGISTER_DISPATCH DISPATCH
-
-#define IL_VM_REGISTER_DISPATCH(DISPATCH_ENUM, HANDLER_EXPR)                                       \
-    if constexpr ((DISPATCH_ENUM) != VMDispatch::None)                                             \
-    {                                                                                              \
-        auto &slot = handlers[static_cast<size_t>(DISPATCH_ENUM)];                                 \
-        if (slot == nullptr)                                                                       \
-        {                                                                                          \
-            slot = HANDLER_EXPR;                                                                   \
-        }                                                                                          \
-    }
-
-#include "il/core/Opcode.def"
-
-#undef IL_VM_REGISTER_DISPATCH
-#undef IL_OPCODE
-#undef VM_DISPATCH_ALT
-#undef VM_DISPATCH
-#undef VM_DISPATCH_IMPL
-
-    return handlers;
-}
-
-constexpr auto kDispatchHandlers = buildDispatchHandlers();
-
-/// @brief Translate a @ref VMDispatch enumerator into an opcode handler.
-/// @details Guarded against out-of-range enumerators to prevent accidental
-///          access past the precomputed table.  Returning @c nullptr on invalid
-///          categories allows the caller to flag metadata mismatches without
-///          dereferencing garbage.  Categories explicitly mapped to
-///          @ref VMDispatch::None also yield @c nullptr to signal that the opcode
-///          bypasses the main dispatcher.
-/// @param dispatch Dispatch category recorded in the opcode metadata.
-/// @return Handler pointer associated with the category, or @c nullptr when the
-///         category encodes @ref VMDispatch::None or lies out of range.
-constexpr VM::OpcodeHandler handlerForDispatch(VMDispatch dispatch)
-{
-    const size_t index = static_cast<size_t>(dispatch);
-    if (index >= kDispatchHandlers.size())
-        return nullptr;
-    return kDispatchHandlers[index];
-}
-} // namespace
-
 namespace memory
 {
 /// @brief Handle load opcodes by delegating to the shared implementation.
@@ -248,43 +167,14 @@ VM::ExecResult handleMul(VM &vm,
 }
 } // namespace integer
 
-/// @brief Build and cache the opcode dispatch table from the declarative IL
-///        opcode list.
-/// @details A function-local static initialises the table exactly once by
-///          iterating the IL_OPCODE definitions in Opcode.def, which must stay
-///          aligned with the @ref il::core::Opcode enumerators. Each metadata
-///          entry contributes its recorded dispatch category, and
-///          @ref handlerForDispatch translates that category to the handler
-///          pointer stored in the lazily initialised table.
+/// @brief Expose the opcode handler table generated from the VM op schema.
+/// @details The generated metadata mirrors @ref il::core::Opcode ordering so the
+///          dispatch table stays consistent with the IL definition without
+///          repeatedly expanding Opcode.def at build time.
 /// @return Reference to the cached opcode handler table.
 const VM::OpcodeHandlerTable &getOpcodeHandlers()
 {
-    static const VM::OpcodeHandlerTable table = []
-    {
-        VM::OpcodeHandlerTable handlers{};
-#define IL_OPCODE(NAME,                                                                            \
-                  MNEMONIC,                                                                        \
-                  RES_ARITY,                                                                       \
-                  RES_TYPE,                                                                        \
-                  MIN_OPS,                                                                         \
-                  MAX_OPS,                                                                         \
-                  OP0,                                                                             \
-                  OP1,                                                                             \
-                  OP2,                                                                             \
-                  SIDE_EFFECTS,                                                                    \
-                  SUCCESSORS,                                                                      \
-                  TERMINATOR,                                                                      \
-                  DISPATCH,                                                                        \
-                  PARSE0,                                                                          \
-                  PARSE1,                                                                          \
-                  PARSE2,                                                                          \
-                  PARSE3)                                                                          \
-    handlers[static_cast<size_t>(Opcode::NAME)] = handlerForDispatch(DISPATCH);
-#include "il/core/Opcode.def"
-#undef IL_OPCODE
-        return handlers;
-    }();
-    return table;
+    return generated::opcodeHandlers();
 }
 
 } // namespace il::vm::detail

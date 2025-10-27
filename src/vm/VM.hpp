@@ -447,27 +447,8 @@ class VM
     /// @return Return value slot.
     Slot runFunctionLoop(ExecState &st);
 
-#define IL_OPCODE(NAME,                                                                            \
-                  MNEMONIC,                                                                        \
-                  RES_ARITY,                                                                       \
-                  RES_TYPE,                                                                        \
-                  MIN_OPS,                                                                         \
-                  MAX_OPS,                                                                         \
-                  OP0,                                                                             \
-                  OP1,                                                                             \
-                  OP2,                                                                             \
-                  SIDE_EFFECTS,                                                                    \
-                  SUCCESSORS,                                                                      \
-                  TERMINATOR,                                                                      \
-                  DISPATCH,                                                                        \
-                  PARSE0,                                                                          \
-                  PARSE1,                                                                          \
-                  PARSE2,                                                                          \
-                  PARSE3)                                                                          \
-    void inline_handle_##NAME(ExecState &st);
-
-#include "il/core/Opcode.def"
-#undef IL_OPCODE
+#include "vm/ops/generated/InlineHandlersDecl.inc"
+#include "vm/ops/generated/SwitchDispatchDecl.inc"
 
   public:
     /// @brief Return executed instruction count.
