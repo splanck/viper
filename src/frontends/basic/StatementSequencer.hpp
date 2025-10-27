@@ -53,7 +53,8 @@ class StatementSequencer
     void skipStatementSeparator();
 
     /// @brief Invoke @p fn with an optional numeric line label.
-    void withOptionalLineNumber(const std::function<void(int, il::support::SourceLoc)> &fn);
+    void withOptionalLineNumber(const std::function<void(int, il::support::SourceLoc)> &fn,
+                                bool allowIdentifierLabel = false);
 
     /// @brief Remember a pending line label for the next statement.
     void stashPendingLine(int line, il::support::SourceLoc loc);

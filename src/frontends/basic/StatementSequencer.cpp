@@ -139,7 +139,8 @@ void StatementSequencer::skipStatementSeparator()
 /// @param fn Callback invoked with the discovered line number (or zero when
 ///           absent) and its source location.
 void StatementSequencer::withOptionalLineNumber(
-    const std::function<void(int, il::support::SourceLoc)> &fn)
+    const std::function<void(int, il::support::SourceLoc)> &fn,
+    bool allowIdentifierLabel)
 {
     int line = 0;
     il::support::SourceLoc loc{};
@@ -154,11 +155,23 @@ void StatementSequencer::withOptionalLineNumber(
         if (parser_.at(TokenKind::Number))
             deferredLineOnly_ = true;
     }
+    else if (allowIdentifierLabel && parser_.at(TokenKind::Identifier) &&
+             parser_.peek(1).kind == TokenKind::Colon)
+    {
+        const Token &tok = parser_.peek();
+        int labelNumber = parser_.ensureLabelNumber(tok.lexeme);
+        parser_.noteNamedLabelDefinition(tok, labelNumber);
+        parser_.consume();
+        parser_.consume();
+        line = labelNumber;
+        loc = tok.loc;
+    }
     else if (parser_.at(TokenKind::Number))
     {
         const Token &tok = parser_.peek();
         line = std::atoi(tok.lexeme.c_str());
         loc = tok.loc;
+        parser_.noteNumericLabelUsage(line);
         parser_.consume();
     }
     fn(line, loc);
@@ -253,12 +266,14 @@ StatementSequencer::TerminatorInfo StatementSequencer::collectStatements(
 
         int line = 0;
         il::support::SourceLoc lineLoc{};
+        bool allowIdentifierLabel = (state.separatorBefore != SeparatorKind::Colon) && !state.hadPendingLine;
         withOptionalLineNumber(
             [&line, &lineLoc](int currentLine, il::support::SourceLoc currentLoc)
             {
                 line = currentLine;
                 lineLoc = currentLoc;
-            });
+            },
+            allowIdentifierLabel);
 
         LineAction action = evaluateLineAction(line, lineLoc, isTerminator, onTerminator, state);
         if (action == LineAction::Terminate || action == LineAction::Defer)
