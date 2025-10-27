@@ -173,7 +173,12 @@ VM::ExecResult handleGEP(VM &vm,
     }
     else
     {
-        resultAddr -= static_cast<std::uintptr_t>(-delta);
+        // Compute the magnitude of the negative offset without applying unary
+        // minus directly to INT64_MIN, which would overflow.  The expression
+        // expands the two's-complement negation manually to stay within the
+        // representable range and then widens to uintptr_t for the subtraction.
+        const uint64_t magnitude = static_cast<uint64_t>(-(delta + 1)) + 1U;
+        resultAddr -= static_cast<std::uintptr_t>(magnitude);
     }
 
     out.ptr = reinterpret_cast<void *>(resultAddr);
