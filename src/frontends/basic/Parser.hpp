@@ -154,6 +154,13 @@ class Parser
         bool emittedDiagnostic = false;                ///< Diagnostics emitted.
     };
 
+    /// @brief Captures inline CASE body statements gathered after a colon.
+    struct SelectInlineBodyResult
+    {
+        std::vector<StmtPtr> body; ///< Statements parsed on the same source line.
+        Token terminator;          ///< End-of-line token that closed the inline body.
+    };
+
     using SelectDiagnoseFn =
         std::function<void(il::support::SourceLoc, uint32_t, std::string_view, std::string_view)>;
 
@@ -182,6 +189,10 @@ class Parser
     /// @brief Collect a CASE/CASE ELSE body until the next arm or END SELECT.
     /// @return Aggregated statements and terminator metadata.
     SelectBodyResult collectSelectBody();
+
+    /// @brief Parse colon-terminated statements that immediately follow a CASE header.
+    /// @return Statements parsed before the end-of-line terminator.
+    SelectInlineBodyResult collectInlineSelectBody();
 
     /// @brief Handle END SELECT terminator encountered while parsing.
     /// @param stmt Statement under construction whose range gets extended.
