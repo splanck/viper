@@ -83,9 +83,12 @@ target_sources(fe_basic PRIVATE
         SemanticAnalyzer.Exprs.cpp
         SemanticAnalyzer.Builtins.cpp
         ScopeTracker.cpp
-        ConstFold_Logic.cpp
-        ConstFold_String.cpp
-        ConstFold_Arith.cpp
+        constfold/Dispatch.cpp
+        constfold/FoldArith.cpp
+        constfold/FoldLogical.cpp
+        constfold/FoldCompare.cpp
+        constfold/FoldStrings.cpp
+        constfold/FoldCasts.cpp
         ConstFolder.cpp
         Intrinsics.cpp
         DiagnosticEmitter.cpp
