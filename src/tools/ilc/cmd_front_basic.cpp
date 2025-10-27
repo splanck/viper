@@ -287,7 +287,7 @@ int cmdFrontBasicWithSourceManager(int argc, char **argv, il::support::SourceMan
     auto source = loadSourceBuffer(config.sourcePath, sm);
     if (!source)
     {
-        std::cerr << source.error().message << "\n";
+        il::support::printDiag(source.error(), std::cerr, &sm);
         return 1;
     }
 

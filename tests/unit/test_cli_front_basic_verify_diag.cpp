@@ -137,9 +137,10 @@ int main()
     std::cerr.rdbuf(oldErr);
 
     const std::string saturatedText = saturatedErr.str();
+    const std::string exhaustionMessage =
+        "error: source manager exhausted file identifier space";
     const bool reportedExhaustion =
-        saturatedText.find("source manager exhausted file identifier space")
-        != std::string::npos;
+        saturatedText.find(exhaustionMessage) != std::string::npos;
 
     assert(saturatedRc != 0);
     assert(reportedExhaustion);
