@@ -35,6 +35,12 @@ endif()
 add_library(viper_testing INTERFACE)
 target_link_libraries(viper_testing INTERFACE viper_common_opts viper::il_full ${_viper_testing_gtest_targets})
 
+add_library(viper_test_common STATIC
+  ${CMAKE_CURRENT_LIST_DIR}/common/CodegenFixture.cpp
+  ${CMAKE_CURRENT_LIST_DIR}/common/VmFixture.cpp)
+target_include_directories(viper_test_common PUBLIC ${CMAKE_CURRENT_LIST_DIR} ${CMAKE_SOURCE_DIR})
+target_link_libraries(viper_test_common PUBLIC viper_testing il_vm)
+
 if(IL_ENABLE_DOCS_LINT)
   find_package(Python3 COMPONENTS Interpreter REQUIRED)
   execute_process(
