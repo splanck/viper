@@ -194,9 +194,24 @@ VM::ExecResult branchToTarget(VM &vm,
         const auto &args = in.brArgs[idx];
         for (size_t i = 0; i < provided; ++i)
         {
-            const auto id = target->params[i].id;
+            const auto &param = target->params[i];
+            const auto id = param.id;
             assert(id < fr.params.size());
-            fr.params[id] = VMAccess::eval(vm, fr, args[i]);
+
+            Slot incoming = VMAccess::eval(vm, fr, args[i]);
+            auto &dest = fr.params[id];
+
+            if (param.type.kind == il::core::Type::Kind::Str)
+            {
+                if (dest)
+                    rt_str_release_maybe(dest->str);
+
+                rt_str_retain_maybe(incoming.str);
+                dest = incoming;
+                continue;
+            }
+
+            dest = incoming;
         }
     }
 
