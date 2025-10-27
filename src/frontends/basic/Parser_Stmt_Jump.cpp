@@ -44,30 +44,30 @@ StmtPtr Parser::parseGotoStatement()
     auto loc = peek().loc;
     consume(); // GOTO
     int target = 0;
-    if (at(TokenKind::Identifier))
+    Token targetTok = peek();
+    if (targetTok.kind == TokenKind::Identifier)
     {
-        Token targetTok = consume();
+        consume();
         target = ensureLabelNumber(targetTok.lexeme);
         noteNamedLabelReference(targetTok, target);
     }
-    else if (at(TokenKind::Number))
+    else if (targetTok.kind == TokenKind::Number)
     {
-        Token targetTok = consume();
+        consume();
         target = std::atoi(targetTok.lexeme.c_str());
         noteNumericLabelUsage(target);
     }
     else
     {
-        Token unexpected = peek();
         if (emitter_)
         {
             std::string msg = "expected label or number after GOTO";
-            uint32_t length = unexpected.lexeme.empty()
+            uint32_t length = targetTok.lexeme.empty()
                                    ? 1u
-                                   : static_cast<uint32_t>(unexpected.lexeme.size());
+                                   : static_cast<uint32_t>(targetTok.lexeme.size());
             emitter_->emit(il::support::Severity::Error,
                            "B0001",
-                           unexpected.loc,
+                           targetTok.loc,
                            length,
                            std::move(msg));
         }
@@ -97,30 +97,30 @@ StmtPtr Parser::parseGosubStatement()
     auto loc = peek().loc;
     consume(); // GOSUB
     int target = 0;
-    if (at(TokenKind::Identifier))
+    Token targetTok = peek();
+    if (targetTok.kind == TokenKind::Identifier)
     {
-        Token targetTok = consume();
+        consume();
         target = ensureLabelNumber(targetTok.lexeme);
         noteNamedLabelReference(targetTok, target);
     }
-    else if (at(TokenKind::Number))
+    else if (targetTok.kind == TokenKind::Number)
     {
-        Token targetTok = consume();
+        consume();
         target = std::atoi(targetTok.lexeme.c_str());
         noteNumericLabelUsage(target);
     }
     else
     {
-        Token unexpected = peek();
         if (emitter_)
         {
             std::string msg = "expected label or number after GOSUB";
-            uint32_t length = unexpected.lexeme.empty()
+            uint32_t length = targetTok.lexeme.empty()
                                    ? 1u
-                                   : static_cast<uint32_t>(unexpected.lexeme.size());
+                                   : static_cast<uint32_t>(targetTok.lexeme.size());
             emitter_->emit(il::support::Severity::Error,
                            "B0001",
-                           unexpected.loc,
+                           targetTok.loc,
                            length,
                            std::move(msg));
         }

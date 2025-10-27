@@ -1,6 +1,6 @@
-// File: tests/frontends/basic/ParseGosubTests.cpp
-// Purpose: Validate parsing and AST printing of BASIC GOSUB statements.
-// Key invariants: GOSUB requires a numeric target line and prints via AstPrinter.
+// File: tests/frontends/basic/ParseGotoTests.cpp
+// Purpose: Validate parsing and AST inspection of BASIC GOTO statements.
+// Key invariants: GOTO accepts numeric and named labels, recording shared line ids.
 // Ownership/Lifetime: Test owns parser, AST, and source manager instances.
 // Links: docs/codemap.md
 
@@ -16,12 +16,12 @@ using namespace il::support;
 
 namespace
 {
-const GosubStmt *findGosub(const Program &program)
+const GotoStmt *findGoto(const Program &program)
 {
     for (const auto &stmt : program.main)
     {
-        if (auto *gosub = dynamic_cast<GosubStmt *>(stmt.get()))
-            return gosub;
+        if (auto *gotoStmt = dynamic_cast<GotoStmt *>(stmt.get()))
+            return gotoStmt;
     }
     return nullptr;
 }
@@ -51,34 +51,34 @@ int main()
 {
     {
         SourceManager sm;
-        uint32_t fid = sm.addFile("gosub_numeric.bas");
-        Parser parser("10 GOSUB 200\n20 END\n", fid);
+        uint32_t fid = sm.addFile("goto_numeric.bas");
+        Parser parser("10 GOTO 200\n20 END\n", fid);
         auto program = parser.parseProgram();
         assert(program);
 
-        auto *gosub = findGosub(*program);
-        assert(gosub);
-        assert(gosub->targetLine == 200);
+        auto *gotoStmt = findGoto(*program);
+        assert(gotoStmt);
+        assert(gotoStmt->target == 200);
     }
 
     {
-        const std::string src = "10 GOSUB Speak\n"
+        const std::string src = "10 GOTO Speak\n"
                                 "20 END\n"
                                 "Speak:\n"
-                                "RETURN\n"
+                                "PRINT 1\n"
                                 "END\n";
         SourceManager sm;
-        uint32_t fid = sm.addFile("gosub_label.bas");
+        uint32_t fid = sm.addFile("goto_label.bas");
         Parser parser(src, fid);
         auto program = parser.parseProgram();
         assert(program);
 
-        auto *gosub = findGosub(*program);
-        assert(gosub);
+        auto *gotoStmt = findGoto(*program);
+        assert(gotoStmt);
 
-        auto *targetStmt = findStmtWithLine(*program, gosub->targetLine);
+        auto *targetStmt = findStmtWithLine(*program, gotoStmt->target);
         assert(targetStmt);
-        assert(targetStmt->line == gosub->targetLine);
+        assert(targetStmt->line == gotoStmt->target);
     }
 
     return 0;
