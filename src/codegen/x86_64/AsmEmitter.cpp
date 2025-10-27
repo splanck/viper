@@ -35,6 +35,53 @@ namespace viper::codegen::x64
 namespace
 {
 
+static const EmitterSpec kEmitterTable[] = {
+    {MOpcode::MOVrr, "movq", OperandOrder::R_R, 0U},
+    {MOpcode::MOVri, "movq", OperandOrder::R_I, 0U},
+    {MOpcode::CMOVNErr, "cmovne", OperandOrder::R_R, 0U},
+    {MOpcode::LEA, "leaq", OperandOrder::LEA, 0U},
+    {MOpcode::ADDrr, "addq", OperandOrder::R_R, 0U},
+    {MOpcode::ADDri, "addq", OperandOrder::R_I, 0U},
+    {MOpcode::ANDrr, "andq", OperandOrder::R_R, 0U},
+    {MOpcode::ANDri, "andq", OperandOrder::R_I, 0U},
+    {MOpcode::ORrr, "orq", OperandOrder::R_R, 0U},
+    {MOpcode::ORri, "orq", OperandOrder::R_I, 0U},
+    {MOpcode::XORrr, "xorq", OperandOrder::R_R, 0U},
+    {MOpcode::XORri, "xorq", OperandOrder::R_I, 0U},
+    {MOpcode::SUBrr, "subq", OperandOrder::R_R, 0U},
+    {MOpcode::SHLri, "shlq", OperandOrder::R_I, 0U},
+    {MOpcode::SHLrc, "shlq", OperandOrder::SHIFT, 0U},
+    {MOpcode::SHRri, "shrq", OperandOrder::R_I, 0U},
+    {MOpcode::SHRrc, "shrq", OperandOrder::SHIFT, 0U},
+    {MOpcode::SARri, "sarq", OperandOrder::R_I, 0U},
+    {MOpcode::SARrc, "sarq", OperandOrder::SHIFT, 0U},
+    {MOpcode::IMULrr, "imulq", OperandOrder::R_R, 0U},
+    {MOpcode::CQO, "cqto", OperandOrder::NONE, 0U},
+    {MOpcode::IDIVrm, "idivq", OperandOrder::DIRECT, 0U},
+    {MOpcode::DIVrm, "divq", OperandOrder::DIRECT, 0U},
+    {MOpcode::XORrr32, "xorl", OperandOrder::R_R, 0U},
+    {MOpcode::CMPrr, "cmpq", OperandOrder::R_R, 0U},
+    {MOpcode::CMPri, "cmpq", OperandOrder::R_I, 0U},
+    {MOpcode::SETcc, "set", OperandOrder::SETCC, 0U},
+    {MOpcode::MOVZXrr32, "movzbq", OperandOrder::MOVZX_RR8, 0U},
+    {MOpcode::TESTrr, "testq", OperandOrder::R_R, 0U},
+    {MOpcode::JMP, "jmp", OperandOrder::JUMP, 0U},
+    {MOpcode::JCC, "j", OperandOrder::JCC, 0U},
+    {MOpcode::CALL, "callq", OperandOrder::CALL, 0U},
+    {MOpcode::UD2, "ud2", OperandOrder::NONE, 0U},
+    {MOpcode::RET, "ret", OperandOrder::NONE, 0U},
+    {MOpcode::FADD, "addsd", OperandOrder::R_R, 0U},
+    {MOpcode::FSUB, "subsd", OperandOrder::R_R, 0U},
+    {MOpcode::FMUL, "mulsd", OperandOrder::R_R, 0U},
+    {MOpcode::FDIV, "divsd", OperandOrder::R_R, 0U},
+    {MOpcode::UCOMIS, "ucomisd", OperandOrder::R_R, 0U},
+    {MOpcode::CVTSI2SD, "cvtsi2sdq", OperandOrder::R_R, 0U},
+    {MOpcode::CVTTSD2SI, "cvttsd2siq", OperandOrder::R_R, 0U},
+    {MOpcode::MOVSDrr, "movsd", OperandOrder::R_R, 0U},
+    {MOpcode::MOVSDrm, "movsd", OperandOrder::R_M, 0U},
+    {MOpcode::MOVSDmr, "movsd", OperandOrder::M_R, 0U},
+};
+
 /// @brief Provide an overload set capable of visiting std::variant operands.
 /// @details Aggregates multiple lambda visitors into a single callable so
 ///          @ref std::visit can dispatch over operand kinds without defining a
@@ -259,72 +306,187 @@ void AsmEmitter::emitBlock(std::ostream &os, const MBasicBlock &block, const Tar
 /// @param target Target lowering information controlling operand formatting.
 void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &instr, const TargetInfo &target)
 {
-    switch (instr.opcode)
+    if (instr.opcode == MOpcode::LABEL)
     {
-        case MOpcode::LABEL:
+        if (instr.operands.empty())
         {
-            if (instr.operands.empty())
-            {
-                os << ".L?\n";
-                return;
-            }
-            const auto *label = std::get_if<OpLabel>(&instr.operands.front());
-            if (!label)
-            {
-                os << "# <invalid label>\n";
-                return;
-            }
-            os << label->name << ":\n";
+            os << ".L?\n";
             return;
         }
-        case MOpcode::PX_COPY:
+        const auto *label = std::get_if<OpLabel>(&instr.operands.front());
+        if (!label)
         {
-            os << "  # px_copy";
-            bool first = true;
-            for (const auto &operand : instr.operands)
-            {
-                if (first)
-                {
-                    os << ' ' << formatOperand(operand, target);
-                    first = false;
-                }
-                else
-                {
-                    os << ", " << formatOperand(operand, target);
-                }
-            }
-            os << '\n';
+            os << "# <invalid label>\n";
             return;
         }
-        case MOpcode::RET:
-            os << "  ret\n";
-            return;
-        case MOpcode::UD2:
-            os << "  ud2\n";
-            return;
-        case MOpcode::JMP:
+        os << label->name << ":\n";
+        return;
+    }
+
+    if (instr.opcode == MOpcode::PX_COPY)
+    {
+        os << "  # px_copy";
+        bool first = true;
+        for (const auto &operand : instr.operands)
         {
-            os << "  jmp ";
-            if (!instr.operands.empty())
+            if (first)
             {
-                const auto &targetOp = instr.operands.front();
-                if (std::holds_alternative<OpLabel>(targetOp))
-                {
-                    os << formatOperand(targetOp, target);
-                }
-                else
-                {
-                    os << '*' << formatOperand(targetOp, target);
-                }
+                os << ' ' << formatOperand(operand, target);
+                first = false;
             }
             else
             {
-                os << "#<missing>";
+                os << ", " << formatOperand(operand, target);
+            }
+        }
+        os << '\n';
+        return;
+    }
+
+    const auto *spec = lookup_emitter_spec(instr.opcode);
+    if (!spec)
+    {
+        os << "  # <unknown opcode>\n";
+        return;
+    }
+
+    const auto emitBinary = [&](auto &&formatSource, auto &&formatDest)
+    {
+        if (instr.operands.size() < 2)
+        {
+            os << " #<missing>\n";
+            return;
+        }
+        os << ' ' << formatSource(instr.operands[1]) << ", "
+           << formatDest(instr.operands[0]);
+        os << '\n';
+    };
+
+    const auto emitUnary = [&](const auto &formatter)
+    {
+        if (instr.operands.empty())
+        {
+            os << " #<missing>\n";
+            return;
+        }
+        os << ' ' << formatter(instr.operands.front()) << '\n';
+    };
+
+    os << "  " << spec->mnem;
+
+    switch (spec->order)
+    {
+        case OperandOrder::NONE:
+            os << '\n';
+            return;
+        case OperandOrder::DIRECT:
+        {
+            if (instr.operands.empty())
+            {
+                os << '\n';
+                return;
+            }
+            os << ' ';
+            bool first = true;
+            for (const auto &operand : instr.operands)
+            {
+                if (!first)
+                {
+                    os << ", ";
+                }
+                os << formatOperand(operand, target);
+                first = false;
             }
             os << '\n';
             return;
         }
-        case MOpcode::JCC:
+        case OperandOrder::R:
+        case OperandOrder::M:
+        case OperandOrder::I:
+            emitUnary([&](const Operand &operand) { return formatOperand(operand, target); });
+            return;
+        case OperandOrder::R_R:
+        case OperandOrder::R_M:
+        case OperandOrder::M_R:
+        case OperandOrder::R_I:
+        case OperandOrder::M_I:
+            emitBinary([&](const Operand &operand) { return formatOperand(operand, target); },
+                       [&](const Operand &operand) { return formatOperand(operand, target); });
+            return;
+        case OperandOrder::R_R_R:
+        {
+            if (instr.operands.size() < 3)
+            {
+                os << " #<missing>\n";
+                return;
+            }
+            os << ' ' << formatOperand(instr.operands[2], target) << ", "
+               << formatOperand(instr.operands[1], target) << ", "
+               << formatOperand(instr.operands[0], target) << '\n';
+            return;
+        }
+        case OperandOrder::SHIFT:
+            emitBinary([&](const Operand &operand) { return formatShiftCount(operand, target); },
+                       [&](const Operand &operand) { return formatOperand(operand, target); });
+            return;
+        case OperandOrder::MOVZX_RR8:
+        {
+            if (instr.operands.size() < 2)
+            {
+                os << " #<missing>\n";
+                return;
+            }
+            const auto *dest = std::get_if<OpReg>(&instr.operands[0]);
+            const auto *src = std::get_if<OpReg>(&instr.operands[1]);
+            if (!dest || !src)
+            {
+                os << " #<invalid>\n";
+                return;
+            }
+            os << ' ' << formatReg8(*src, target) << ", " << formatReg(*dest, target) << '\n';
+            return;
+        }
+        case OperandOrder::LEA:
+        {
+            if (instr.operands.size() < 2)
+            {
+                os << " #<missing>\n";
+                return;
+            }
+            os << ' ' << formatLeaSource(instr.operands[1], target) << ", "
+               << formatOperand(instr.operands[0], target) << '\n';
+            return;
+        }
+        case OperandOrder::CALL:
+        {
+            if (instr.operands.empty())
+            {
+                os << " #<missing>\n";
+                return;
+            }
+            os << ' ' << formatCallTarget(instr.operands.front(), target) << '\n';
+            return;
+        }
+        case OperandOrder::JUMP:
+        {
+            if (instr.operands.empty())
+            {
+                os << " #<missing>\n";
+                return;
+            }
+            os << ' ';
+            const auto &targetOp = instr.operands.front();
+            if (std::holds_alternative<OpLabel>(targetOp))
+            {
+                os << formatOperand(targetOp, target) << '\n';
+            }
+            else
+            {
+                os << '*' << formatOperand(targetOp, target) << '\n';
+            }
+            return;
+        }
+        case OperandOrder::JCC:
         {
             const Operand *branchTarget = nullptr;
             const OpImm *cond = nullptr;
@@ -344,26 +506,25 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &instr, const Ta
                 branchTarget = &instr.operands.back();
             }
             const auto suffix = cond ? conditionSuffix(cond->val) : std::string_view{"e"};
-            os << "  j" << suffix << ' ';
+            os << suffix << ' ';
             if (branchTarget)
             {
                 if (std::holds_alternative<OpLabel>(*branchTarget))
                 {
-                    os << formatOperand(*branchTarget, target);
+                    os << formatOperand(*branchTarget, target) << '\n';
                 }
                 else
                 {
-                    os << '*' << formatOperand(*branchTarget, target);
+                    os << '*' << formatOperand(*branchTarget, target) << '\n';
                 }
             }
             else
             {
-                os << "#<missing>";
+                os << "#<missing>\n";
             }
-            os << '\n';
             return;
         }
-        case MOpcode::SETcc:
+        case OperandOrder::SETCC:
         {
             const Operand *dest = nullptr;
             const OpImm *cond = nullptr;
@@ -380,159 +541,20 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &instr, const Ta
                 }
             }
             const auto suffix = cond ? conditionSuffix(cond->val) : std::string_view{"e"};
-            os << "  set" << suffix << ' ';
+            os << suffix << ' ';
             if (dest)
             {
-                os << formatOperand(*dest, target);
+                os << formatOperand(*dest, target) << '\n';
             }
             else
             {
-                os << "#<missing>";
+                os << "#<missing>\n";
             }
-            os << '\n';
             return;
         }
-        case MOpcode::CALL:
-            os << "  callq ";
-            if (!instr.operands.empty())
-            {
-                os << formatCallTarget(instr.operands.front(), target);
-            }
-            else
-            {
-                os << "#<missing>";
-            }
-            os << '\n';
-            return;
-        case MOpcode::LEA:
-            if (instr.operands.size() < 2)
-            {
-                os << "  leaq #<missing>\n";
-                return;
-            }
-            os << "  leaq " << formatLeaSource(instr.operands[1], target) << ", "
-               << formatOperand(instr.operands[0], target) << '\n';
-            return;
-        default:
-            break;
     }
 
-    const char *mnemonic = mnemonicFor(instr.opcode);
-    if (!mnemonic)
-    {
-        os << "  # <unknown opcode>\n";
-        return;
-    }
-
-    const auto emitBinary = [&](auto &&formatSource)
-    {
-        if (instr.operands.size() < 2)
-        {
-            os << "  " << mnemonic << " #<missing>\n";
-            return;
-        }
-
-        os << "  " << mnemonic << ' ' << formatSource(instr.operands[1]) << ", "
-           << formatOperand(instr.operands[0], target) << '\n';
-    };
-
-    switch (instr.opcode)
-    {
-        case MOpcode::MOVrr:
-        case MOpcode::CMOVNErr:
-        case MOpcode::ADDrr:
-        case MOpcode::ANDrr:
-        case MOpcode::SUBrr:
-        case MOpcode::ORrr:
-        case MOpcode::XORrr:
-        case MOpcode::IMULrr:
-        case MOpcode::XORrr32:
-        case MOpcode::FADD:
-        case MOpcode::FSUB:
-        case MOpcode::FMUL:
-        case MOpcode::FDIV:
-        case MOpcode::UCOMIS:
-        case MOpcode::MOVSDrr:
-        case MOpcode::CVTSI2SD:
-        case MOpcode::CVTTSD2SI:
-        {
-            emitBinary([&](const Operand &operand) { return formatOperand(operand, target); });
-            return;
-        }
-        case MOpcode::MOVri:
-        case MOpcode::ADDri:
-        case MOpcode::ANDri:
-        case MOpcode::CMPri:
-        case MOpcode::SHLri:
-        case MOpcode::SHRri:
-        case MOpcode::SARri:
-        case MOpcode::ORri:
-        case MOpcode::XORri:
-        {
-            emitBinary([&](const Operand &operand) { return formatOperand(operand, target); });
-            return;
-        }
-        case MOpcode::SHLrc:
-        case MOpcode::SHRrc:
-        case MOpcode::SARrc:
-        {
-            emitBinary([&](const Operand &operand) { return formatShiftCount(operand, target); });
-            return;
-        }
-        case MOpcode::CMPrr:
-        case MOpcode::TESTrr:
-        {
-            emitBinary([&](const Operand &operand) { return formatOperand(operand, target); });
-            return;
-        }
-        case MOpcode::MOVZXrr32:
-        {
-            if (instr.operands.size() < 2)
-            {
-                os << "  movzbq #<missing>\n";
-                return;
-            }
-            const auto *dest = std::get_if<OpReg>(&instr.operands[0]);
-            const auto *src = std::get_if<OpReg>(&instr.operands[1]);
-            if (!dest || !src)
-            {
-                os << "  movzbq #<invalid>\n";
-                return;
-            }
-            os << "  movzbq " << formatReg8(*src, target) << ", " << formatReg(*dest, target)
-               << '\n';
-            return;
-        }
-        case MOpcode::MOVSDrm:
-        {
-            emitBinary([&](const Operand &operand) { return formatOperand(operand, target); });
-            return;
-        }
-        case MOpcode::MOVSDmr:
-        {
-            emitBinary([&](const Operand &operand) { return formatOperand(operand, target); });
-            return;
-        }
-        default:
-            break;
-    }
-
-    os << "  " << mnemonic;
-    if (!instr.operands.empty())
-    {
-        os << ' ';
-        bool first = true;
-        for (const auto &operand : instr.operands)
-        {
-            if (!first)
-            {
-                os << ", ";
-            }
-            os << formatOperand(operand, target);
-            first = false;
-        }
-    }
-    os << '\n';
+    os << "\n";
 }
 
 /// @brief Convert a Machine IR operand into its assembly representation.
@@ -705,6 +727,18 @@ std::string AsmEmitter::formatCallTarget(const Operand &operand, const TargetInf
         operand);
 }
 
+const EmitterSpec *lookup_emitter_spec(MOpcode op) noexcept
+{
+    for (const auto &entry : kEmitterTable)
+    {
+        if (entry.op == op)
+        {
+            return &entry;
+        }
+    }
+    return nullptr;
+}
+
 /// @brief Translate a Machine IR condition code into an x86 suffix.
 /// @param code Integer encoding produced by the selector.
 /// @return String view containing the condition suffix, defaulting to "e".
@@ -739,105 +773,6 @@ std::string_view AsmEmitter::conditionSuffix(std::int64_t code) noexcept
         default:
             return "e";
     }
-}
-
-/// @brief Look up the canonical mnemonic for a Machine IR opcode.
-/// @details Opcodes without a direct textual form (such as PX_COPY) yield
-///          @c nullptr so callers can special-case them.
-/// @param opcode Machine opcode to translate.
-/// @return Null-terminated mnemonic or @c nullptr when no mapping exists.
-const char *AsmEmitter::mnemonicFor(MOpcode opcode) noexcept
-{
-    switch (opcode)
-    {
-        case MOpcode::MOVrr:
-        case MOpcode::MOVri:
-            return "movq";
-        case MOpcode::LABEL:
-            return nullptr;
-        case MOpcode::CMOVNErr:
-            return "cmovne";
-        case MOpcode::LEA:
-            return "leaq";
-        case MOpcode::ADDrr:
-        case MOpcode::ADDri:
-            return "addq";
-        case MOpcode::ANDrr:
-        case MOpcode::ANDri:
-            return "andq";
-        case MOpcode::SUBrr:
-            return "subq";
-        case MOpcode::ORrr:
-        case MOpcode::ORri:
-            return "orq";
-        case MOpcode::SHLri:
-        case MOpcode::SHLrc:
-            return "shlq";
-        case MOpcode::SHRri:
-        case MOpcode::SHRrc:
-            return "shrq";
-        case MOpcode::SARri:
-        case MOpcode::SARrc:
-            return "sarq";
-        case MOpcode::IMULrr:
-            return "imulq";
-        case MOpcode::DIVS64rr:
-        case MOpcode::REMS64rr:
-        case MOpcode::DIVU64rr:
-        case MOpcode::REMU64rr:
-            return nullptr;
-        case MOpcode::CQO:
-            return "cqto";
-        case MOpcode::IDIVrm:
-            return "idivq";
-        case MOpcode::DIVrm:
-            return "divq";
-        case MOpcode::XORrr:
-        case MOpcode::XORri:
-            return "xorq";
-        case MOpcode::XORrr32:
-            return "xorl";
-        case MOpcode::CMPrr:
-        case MOpcode::CMPri:
-            return "cmpq";
-        case MOpcode::SETcc:
-            return "set";
-        case MOpcode::MOVZXrr32:
-            return "movl";
-        case MOpcode::TESTrr:
-            return "testq";
-        case MOpcode::JMP:
-            return "jmp";
-        case MOpcode::JCC:
-            return "j";
-        case MOpcode::CALL:
-            return "callq";
-        case MOpcode::UD2:
-            return "ud2";
-        case MOpcode::RET:
-            return "ret";
-        case MOpcode::PX_COPY:
-            return nullptr;
-        case MOpcode::FADD:
-            return "addsd";
-        case MOpcode::FSUB:
-            return "subsd";
-        case MOpcode::FMUL:
-            return "mulsd";
-        case MOpcode::FDIV:
-            return "divsd";
-        case MOpcode::UCOMIS:
-            return "ucomisd";
-        case MOpcode::CVTSI2SD:
-            return "cvtsi2sdq";
-        case MOpcode::CVTTSD2SI:
-            return "cvttsd2siq";
-        case MOpcode::MOVSDrr:
-        case MOpcode::MOVSDrm:
-        case MOpcode::MOVSDmr:
-            return "movsd";
-    }
-    return nullptr;
 }
 
 } // namespace viper::codegen::x64
