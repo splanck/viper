@@ -34,6 +34,18 @@ TEST(RunProcess, PreservesQuotesAndBackslashes)
     EXPECT_EQ(trickyArg, trim_trailing_newlines(result.out));
 }
 
+#ifndef _WIN32
+TEST(RunProcess, EscapesPosixShellExpansions)
+{
+    const std::string trickyArg = "literal $PATH and `uname` markers";
+
+    const RunResult result = run_process({"cmake", "-E", "echo", trickyArg});
+
+    EXPECT_NE(-1, result.exit_code);
+    EXPECT_EQ(trickyArg, trim_trailing_newlines(result.out));
+}
+#endif
+
 TEST(RunProcess, ForwardsEnvironmentVariables)
 {
     const std::string varName = "VIPER_RUN_PROCESS_TEST_VAR";
