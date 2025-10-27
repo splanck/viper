@@ -62,15 +62,15 @@ function(viper_add_vm_unit_tests)
   set(_VIPER_VM_DIR ${CMAKE_CURRENT_FUNCTION_LIST_DIR})
 
   viper_add_test(test_vm_trap_domain_error ${_VIPER_VM_DIR}/TrapDomainErrorTests.cpp)
-  target_link_libraries(test_vm_trap_domain_error PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
+  target_link_libraries(test_vm_trap_domain_error PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
   viper_add_ctest(test_vm_trap_domain_error test_vm_trap_domain_error)
 
   viper_add_test(test_vm_trap_divide_by_zero ${_VIPER_VM_DIR}/TrapDivideByZeroTests.cpp)
-  target_link_libraries(test_vm_trap_divide_by_zero PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
+  target_link_libraries(test_vm_trap_divide_by_zero PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
   viper_add_ctest(test_vm_trap_divide_by_zero test_vm_trap_divide_by_zero)
 
   viper_add_test(test_vm_trap_overflow ${_VIPER_VM_DIR}/TrapOverflowTests.cpp)
-  target_link_libraries(test_vm_trap_overflow PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
+  target_link_libraries(test_vm_trap_overflow PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
   viper_add_ctest(test_vm_trap_overflow test_vm_trap_overflow)
 
   viper_add_test(test_vm_trap_kind ${VIPER_TESTS_DIR}/unit/test_vm_trap_kind.cpp)
@@ -78,7 +78,7 @@ function(viper_add_vm_unit_tests)
   viper_add_ctest(test_vm_trap_kind test_vm_trap_kind)
 
   viper_add_test(test_vm_errors_core ${_VIPER_VM_DIR}/ErrorsCoreTests.cpp)
-  target_link_libraries(test_vm_errors_core PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
+  target_link_libraries(test_vm_errors_core PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
   viper_add_ctest(test_vm_errors_core test_vm_errors_core)
 
   viper_add_test(test_vm_errors_eh ${_VIPER_VM_DIR}/ErrorsEhTests.cpp)
@@ -86,74 +86,74 @@ function(viper_add_vm_unit_tests)
   viper_add_ctest(test_vm_errors_eh test_vm_errors_eh)
 
   viper_add_test(test_vm_idx_chk ${_VIPER_VM_DIR}/IdxChkTests.cpp)
-  target_link_libraries(test_vm_idx_chk PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
+  target_link_libraries(test_vm_idx_chk PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
   viper_add_ctest(test_vm_idx_chk test_vm_idx_chk)
 
   viper_add_test(test_vm_block_param_str_release ${_VIPER_VM_DIR}/BlockParamStringReleaseTests.cpp)
-  target_link_libraries(test_vm_block_param_str_release PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
+  target_link_libraries(test_vm_block_param_str_release PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
   viper_add_ctest(test_vm_block_param_str_release test_vm_block_param_str_release)
 
   viper_add_test(test_vm_entry_param_str_retain ${_VIPER_VM_DIR}/EntryParamStringRetainTests.cpp)
-  target_link_libraries(test_vm_entry_param_str_retain PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
+  target_link_libraries(test_vm_entry_param_str_retain PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
   viper_add_ctest(test_vm_entry_param_str_retain test_vm_entry_param_str_retain)
 
   viper_add_test(test_vm_store_str_release ${_VIPER_VM_DIR}/StoreStringReleaseTests.cpp)
-  target_link_libraries(test_vm_store_str_release PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
+  target_link_libraries(test_vm_store_str_release PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
   viper_add_ctest(test_vm_store_str_release test_vm_store_str_release)
 
   viper_add_test(test_vm_cast_ops ${_VIPER_VM_DIR}/CastOpsTests.cpp)
-  target_link_libraries(test_vm_cast_ops PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
+  target_link_libraries(test_vm_cast_ops PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
   viper_add_ctest(test_vm_cast_ops test_vm_cast_ops)
 
   viper_add_test(test_vm_const_null ${_VIPER_VM_DIR}/ConstNullTests.cpp)
-  target_link_libraries(test_vm_const_null PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
+  target_link_libraries(test_vm_const_null PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
   viper_add_ctest(test_vm_const_null test_vm_const_null)
 
   viper_add_test(test_vm_int_ops ${_VIPER_VM_DIR}/IntOpsTests.cpp)
-  target_link_libraries(test_vm_int_ops PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
+  target_link_libraries(test_vm_int_ops PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
   viper_add_ctest(test_vm_int_ops test_vm_int_ops)
 
   viper_add_test(test_vm_inline_literal_cache ${_VIPER_VM_DIR}/InlineLiteralCacheTests.cpp)
-  target_link_libraries(test_vm_inline_literal_cache PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
+  target_link_libraries(test_vm_inline_literal_cache PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
   viper_add_ctest(test_vm_inline_literal_cache test_vm_inline_literal_cache)
 
   viper_add_test(test_vm_int_unsigned_ops ${_VIPER_VM_DIR}/IntUnsignedOpsTests.cpp)
-  target_link_libraries(test_vm_int_unsigned_ops PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
+  target_link_libraries(test_vm_int_unsigned_ops PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
   viper_add_ctest(test_vm_int_unsigned_ops test_vm_int_unsigned_ops)
 
   viper_add_test(test_vm_pow ${_VIPER_VM_DIR}/PowTests.cpp)
-  target_link_libraries(test_vm_pow PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
+  target_link_libraries(test_vm_pow PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
   viper_add_ctest(test_vm_pow test_vm_pow)
 
   viper_add_test(test_vm_dispatch_host_call ${_VIPER_VM_DIR}/DispatchHostCallTests.cpp)
-  target_link_libraries(test_vm_dispatch_host_call PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
+  target_link_libraries(test_vm_dispatch_host_call PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
   viper_add_ctest(test_vm_dispatch_host_call test_vm_dispatch_host_call)
 
   viper_add_test(
     test_vm_switch
     ${_VIPER_VM_DIR}/SwitchTests.cpp
     TEST_NAME vm_SwitchTests)
-  target_link_libraries(test_vm_switch PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
+  target_link_libraries(test_vm_switch PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
   target_compile_definitions(test_vm_switch PRIVATE TESTS_DIR="${CMAKE_SOURCE_DIR}/tests")
 
   viper_add_test(
     test_vm_switch_dispatch
     ${_VIPER_VM_DIR}/SwitchDispatchTests.cpp
     TEST_NAME vm_SwitchDispatchTests)
-  target_link_libraries(test_vm_switch_dispatch PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
+  target_link_libraries(test_vm_switch_dispatch PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
 
   viper_add_test(test_vm_trap_invalid_cast ${_VIPER_VM_DIR}/TrapInvalidCastTests.cpp)
-  target_link_libraries(test_vm_trap_invalid_cast PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
+  target_link_libraries(test_vm_trap_invalid_cast PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
   viper_add_ctest(test_vm_trap_invalid_cast test_vm_trap_invalid_cast)
 
   viper_add_test(
     test_vm_unknown_opcode
     ${_VIPER_VM_DIR}/UnknownOpcodeTests.cpp
     TEST_NAME vm_UnknownOpcodeTests)
-  target_link_libraries(test_vm_unknown_opcode PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
+  target_link_libraries(test_vm_unknown_opcode PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
 
   viper_add_test(test_vm_branch_arg_mismatch ${_VIPER_VM_DIR}/BranchArgMismatchTests.cpp)
-  target_link_libraries(test_vm_branch_arg_mismatch PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
+  target_link_libraries(test_vm_branch_arg_mismatch PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
   viper_add_ctest(test_vm_branch_arg_mismatch test_vm_branch_arg_mismatch)
 
   viper_add_test(test_vm_trap_loc ${VIPER_TESTS_DIR}/unit/test_vm_trap_loc.cpp)
