@@ -61,12 +61,25 @@ StmtPtr Parser::parseOnErrorGotoStatement()
     expect(TokenKind::KeywordError);
     expect(TokenKind::KeywordGoto);
     Token targetTok = peek();
-    int target = std::atoi(targetTok.lexeme.c_str());
-    expect(TokenKind::Number);
+    int target = 0;
+    bool toZero = false;
+    if (targetTok.kind == TokenKind::Identifier)
+    {
+        target = ensureLabelNumber(targetTok.lexeme);
+        noteNamedLabelReference(targetTok, target);
+        consume();
+    }
+    else
+    {
+        target = std::atoi(targetTok.lexeme.c_str());
+        expect(TokenKind::Number);
+        noteNumericLabelUsage(target);
+        toZero = targetTok.kind == TokenKind::Number && target == 0;
+    }
     auto stmt = std::make_unique<OnErrorGoto>();
     stmt->loc = loc;
     stmt->target = target;
-    stmt->toZero = targetTok.kind == TokenKind::Number && target == 0;
+    stmt->toZero = toZero;
     return stmt;
 }
 
@@ -103,8 +116,19 @@ StmtPtr Parser::parseResumeStatement()
                isStatementStart(peek().kind)))
     {
         Token labelTok = peek();
-        int target = std::atoi(labelTok.lexeme.c_str());
-        expect(TokenKind::Number);
+        int target = 0;
+        if (labelTok.kind == TokenKind::Identifier)
+        {
+            target = ensureLabelNumber(labelTok.lexeme);
+            noteNamedLabelReference(labelTok, target);
+            consume();
+        }
+        else
+        {
+            target = std::atoi(labelTok.lexeme.c_str());
+            expect(TokenKind::Number);
+            noteNumericLabelUsage(target);
+        }
         stmt->mode = Resume::Mode::Label;
         stmt->target = target;
     }
