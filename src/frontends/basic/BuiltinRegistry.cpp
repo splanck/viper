@@ -26,6 +26,8 @@
 #include "frontends/basic/builtins/MathBuiltins.hpp"
 #include <array>
 #include <cstdint>
+#include <string>
+#include <string_view>
 #include <unordered_map>
 
 namespace il::frontends::basic
@@ -57,7 +59,37 @@ constexpr std::size_t idx(B b) noexcept
     return static_cast<std::size_t>(b);
 }
 
-using HandlerMap = std::unordered_map<std::string_view, BuiltinHandler>;
+struct TransparentStringHash
+{
+    using is_transparent = void;
+
+    std::size_t operator()(std::string_view sv) const noexcept
+    {
+        return std::hash<std::string_view>{}(sv);
+    }
+
+    std::size_t operator()(const char *sv) const noexcept
+    {
+        return std::hash<std::string_view>{}(sv);
+    }
+
+    std::size_t operator()(const std::string &s) const noexcept
+    {
+        return std::hash<std::string_view>{}(s);
+    }
+};
+
+struct TransparentStringEqual
+{
+    using is_transparent = void;
+
+    bool operator()(std::string_view lhs, std::string_view rhs) const noexcept
+    {
+        return lhs == rhs;
+    }
+};
+
+using HandlerMap = std::unordered_map<std::string, BuiltinHandler, TransparentStringHash, TransparentStringEqual>;
 
 /// @brief Access the singleton map storing dynamically registered builtins.
 /// @details The registry persists for the lifetime of the process, allowing
@@ -243,9 +275,9 @@ void register_builtin(std::string_view name, BuiltinHandler fn)
 {
     auto &registry = builtinHandlerRegistry();
     if (fn)
-        registry.insert_or_assign(name, fn);
+        registry.insert_or_assign(std::string{name}, fn);
     else
-        registry.erase(name);
+        registry.erase(std::string{name});
 }
 
 /// @brief Locate a dynamically registered builtin handler.
