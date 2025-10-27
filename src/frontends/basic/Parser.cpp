@@ -73,6 +73,19 @@ int Parser::ensureLabelNumber(const std::string &name)
     return labelNumber;
 }
 
+bool Parser::hasLabelName(const std::string &name) const
+{
+    return namedLabels_.find(name) != namedLabels_.end();
+}
+
+std::optional<int> Parser::lookupLabelNumber(const std::string &name) const
+{
+    auto it = namedLabels_.find(name);
+    if (it == namedLabels_.end())
+        return std::nullopt;
+    return it->second.number;
+}
+
 void Parser::noteNamedLabelDefinition(const Token &tok, int labelNumber)
 {
     usedLabelNumbers_.insert(labelNumber);
@@ -107,6 +120,26 @@ void Parser::noteNamedLabelDefinition(const Token &tok, int labelNumber)
     {
         std::fprintf(stderr, "label '%s' already defined\n", tok.lexeme.c_str());
     }
+}
+
+void Parser::noteNamedLabelReference(const Token &tok, int labelNumber)
+{
+    usedLabelNumbers_.insert(labelNumber);
+    auto it = namedLabels_.find(tok.lexeme);
+    if (it == namedLabels_.end())
+    {
+        NamedLabelEntry entry{};
+        entry.number = labelNumber;
+        entry.referenced = true;
+        entry.referenceLoc = tok.loc;
+        namedLabels_.emplace(tok.lexeme, entry);
+        return;
+    }
+
+    auto &entry = it->second;
+    entry.referenced = true;
+    if (!entry.referenceLoc.isValid())
+        entry.referenceLoc = tok.loc;
 }
 
 void Parser::noteNumericLabelUsage(int labelNumber)
@@ -211,6 +244,28 @@ std::unique_ptr<Program> Parser::parseProgram()
             prog->main.push_back(std::move(root));
         }
     }
+    bool hasUndefinedNamedLabel = false;
+    for (const auto &[name, entry] : namedLabels_)
+    {
+        if (!entry.referenced || entry.defined)
+            continue;
+        hasUndefinedNamedLabel = true;
+        if (emitter_)
+        {
+            std::string msg = "Undefined label: " + name;
+            emitter_->emit(il::support::Severity::Error,
+                           "B0002",
+                           entry.referenceLoc,
+                           static_cast<uint32_t>(name.size()),
+                           std::move(msg));
+        }
+        else
+        {
+            std::fprintf(stderr, "Undefined label: %s\n", name.c_str());
+        }
+    }
+    if (hasUndefinedNamedLabel)
+        return nullptr;
     return prog;
 }
 
