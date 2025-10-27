@@ -7,6 +7,8 @@
 
 #include <cassert>
 #include <cstdio>
+#include <filesystem>
+#include <fstream>
 #include <string>
 #include <vector>
 
@@ -39,5 +41,29 @@ int main()
         }
     }
     assert(dump == "1:2+5:00ff00:0\n1:9+4:0000ff:1\n");
+
+    namespace fs = std::filesystem;
+    const fs::path tmpDir = fs::temp_directory_path();
+
+    const fs::path truncatedArrayPath = tmpDir / "viper_syntax_truncated_array.json";
+    {
+        std::ofstream out(truncatedArrayPath);
+        out << "[{\"regex\":\"foo\",\"style\":{\"fg\":\"#ffffff\"}}";
+    }
+    SyntaxRuleSet truncatedArrayRules;
+    bool truncatedArrayOk = truncatedArrayRules.loadFromFile(truncatedArrayPath.string());
+    assert(!truncatedArrayOk);
+    fs::remove(truncatedArrayPath);
+
+    const fs::path truncatedMapPath = tmpDir / "viper_syntax_truncated_map.json";
+    {
+        std::ofstream out(truncatedMapPath);
+        out << "[{\"regex\":\"foo\",\"style\":{\"fg\":\"#ffffff\"}";
+    }
+    SyntaxRuleSet truncatedMapRules;
+    bool truncatedMapOk = truncatedMapRules.loadFromFile(truncatedMapPath.string());
+    assert(!truncatedMapOk);
+    fs::remove(truncatedMapPath);
+
     return 0;
 }
