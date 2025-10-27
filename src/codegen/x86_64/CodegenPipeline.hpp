@@ -8,6 +8,8 @@
 
 #pragma once
 
+#include "codegen/x86_64/passes/PassManager.hpp"
+
 #include <string>
 
 struct PipelineResult
