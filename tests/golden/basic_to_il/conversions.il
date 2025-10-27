@@ -14,7 +14,7 @@ extern @rt_str_empty() -> str
 extern @rt_int_floor(f64) -> f64
 extern @rt_str_retain_maybe(str) -> void
 extern @rt_str_release_maybe(str) -> void
-global const str @.L0 = " "
+global const str @.L0 = "              "
 global const str @.L1 = "\n"
 global const str @.L2 = " 42 "
 func @main() -> i64 {

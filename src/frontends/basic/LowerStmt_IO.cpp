@@ -20,6 +20,39 @@
 #include "frontends/basic/Lowerer.hpp"
 
 #include <cassert>
+#include <cstdio>
+#include <optional>
+#include <string>
+
+namespace
+{
+constexpr std::size_t kPrintZoneWidth = 14;
+
+std::optional<std::size_t> estimatePrintWidth(const il::frontends::basic::Expr &expr)
+{
+    using namespace il::frontends::basic;
+
+    if (const auto *stringExpr = dynamic_cast<const StringExpr *>(&expr))
+        return stringExpr->value.size();
+
+    if (const auto *intExpr = dynamic_cast<const IntExpr *>(&expr))
+        return std::to_string(intExpr->value).size();
+
+    if (const auto *floatExpr = dynamic_cast<const FloatExpr *>(&expr))
+    {
+        char buffer[64];
+        int written = std::snprintf(buffer, sizeof(buffer), "%.15g", floatExpr->value);
+        if (written < 0 || static_cast<std::size_t>(written) >= sizeof(buffer))
+            return std::nullopt;
+        return static_cast<std::size_t>(written);
+    }
+
+    if (const auto *boolExpr = dynamic_cast<const BoolExpr *>(&expr))
+        return boolExpr->value ? std::size_t{2} : std::size_t{1};
+
+    return std::nullopt;
+}
+} // namespace
 
 using namespace il::core;
 
@@ -108,31 +141,65 @@ void Lowerer::lowerSeek(const SeekStmt &stmt)
 /// @param stmt Parsed PRINT statement with expression list.
 void Lowerer::lowerPrint(const PrintStmt &stmt)
 {
+    std::size_t column = 1;
+    bool columnKnown = true;
+
+    auto updateColumn = [&](std::optional<std::size_t> width)
+    {
+        if (!columnKnown)
+            return;
+        if (width)
+            column += *width;
+        else
+            columnKnown = false;
+    };
+
+    auto resetColumn = [&]()
+    {
+        column = 1;
+        columnKnown = true;
+    };
+
     for (const auto &it : stmt.items)
     {
         switch (it.kind)
         {
             case PrintItem::Kind::Expr:
             {
+                std::optional<std::size_t> widthEstimate;
+                if (it.expr)
+                    widthEstimate = estimatePrintWidth(*it.expr);
+
                 RVal value = lowerExpr(*it.expr);
                 curLoc = stmt.loc;
                 if (value.type.kind == Type::Kind::Str)
                 {
                     emitCall("rt_print_str", {value.value});
+                    updateColumn(widthEstimate);
                     break;
                 }
                 if (value.type.kind == Type::Kind::F64)
                 {
                     emitCall("rt_print_f64", {value.value});
+                    updateColumn(widthEstimate);
                     break;
                 }
                 value = lowerScalarExpr(std::move(value), stmt.loc);
                 emitCall("rt_print_i64", {value.value});
+                updateColumn(widthEstimate);
                 break;
             }
             case PrintItem::Kind::Comma:
             {
-                std::string spaceLbl = getStringLabel(" ");
+                std::size_t spaces = kPrintZoneWidth;
+                if (columnKnown)
+                {
+                    std::size_t offset = (column - 1) % kPrintZoneWidth;
+                    spaces = kPrintZoneWidth - offset;
+                    column += spaces;
+                }
+                std::string padding(spaces, ' ');
+                std::string spaceLbl = getStringLabel(padding);
                 Value sp = emitConstStr(spaceLbl);
                 curLoc = stmt.loc;
                 emitCall("rt_print_str", {sp});
@@ -150,6 +217,7 @@ void Lowerer::lowerPrint(const PrintStmt &stmt)
         Value nl = emitConstStr(nlLbl);
         curLoc = stmt.loc;
         emitCall("rt_print_str", {nl});
+        resetColumn();
     }
 }
 

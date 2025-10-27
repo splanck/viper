@@ -415,6 +415,15 @@ function(viper_add_golden_suite_tests)
     "-DEXPECT=${EXPECT_ARRAY_RESIZE_BREAKS_SHARE}"
     -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
 
+  file(READ ${_VIPER_GOLDEN_DIR}/basic/print_commas.stdout EXPECT_BASIC_PRINT_COMMAS)
+  string(STRIP "${EXPECT_BASIC_PRINT_COMMAS}" EXPECT_BASIC_PRINT_COMMAS)
+  viper_add_ctest(basic_print_commas_alignment
+    ${CMAKE_COMMAND}
+    -DILC=${BASIC_ILC}
+    -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic/print_commas.bas
+    "-DEXPECT=${EXPECT_BASIC_PRINT_COMMAS}"
+    -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
+
   file(READ ${_VIPER_GOLDEN_DIR}/quickstart.stdout EXPECT_QUICKSTART)
   string(STRIP "${EXPECT_QUICKSTART}" EXPECT_QUICKSTART)
   viper_add_ctest(il_quickstart_example
