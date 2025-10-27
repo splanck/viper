@@ -21,6 +21,8 @@
 
 #include "LoweringRules.hpp"
 
+#include "LoweringRuleTable.hpp"
+
 #include "CallLowering.hpp"
 #include "LowerILToMIR.hpp"
 
@@ -28,7 +30,6 @@
 #include <array>
 #include <cassert>
 #include <cstdint>
-#include <initializer_list>
 #include <limits>
 #include <optional>
 #include <string_view>
@@ -38,7 +39,7 @@
 namespace viper::codegen::x64
 {
 
-namespace
+namespace lowering
 {
 [[nodiscard]] Operand cloneOperand(const Operand &operand)
 {
@@ -526,6 +527,11 @@ void emitLoad(const ILInstr &instr, MIRBuilder &builder, RegClass cls)
     }
 }
 
+void emitLoadAuto(const ILInstr &instr, MIRBuilder &builder)
+{
+    emitLoad(instr, builder, builder.regClassFor(instr.resultKind));
+}
+
 void emitStore(const ILInstr &instr, MIRBuilder &builder)
 {
     if (instr.ops.size() < 2)
@@ -659,16 +665,6 @@ void emitDivRem(const ILInstr &instr, MIRBuilder &builder, std::string_view opco
                                                      cloneOperand(divisor)}));
 }
 
-bool matchOpcode(const ILInstr &instr, std::string_view opcode)
-{
-    return instr.opcode == opcode;
-}
-
-bool matchOneOf(const ILInstr &instr, std::initializer_list<std::string_view> opcodes)
-{
-    return std::find(opcodes.begin(), opcodes.end(), std::string_view{instr.opcode}) != opcodes.end();
-}
-
 // Rule emitters --------------------------------------------------------------
 
 void emitAdd(const ILInstr &instr, MIRBuilder &builder)
@@ -789,40 +785,36 @@ void emitDivFamily(const ILInstr &instr, MIRBuilder &builder)
     emitDivRem(instr, builder, instr.opcode);
 }
 
-// Registry ------------------------------------------------------------------
+} // namespace lowering
+
+namespace
+{
+
+template <std::size_t Index>
+bool matchRuleThunk(const IL::Instr &instr)
+{
+    return matchesRuleSpec(lowering::kLoweringRuleTable[Index], instr);
+}
+
+template <std::size_t Index>
+void emitRuleThunk(const IL::Instr &instr, MIRBuilder &builder)
+{
+    lowering::kLoweringRuleTable[Index].emit(instr, builder);
+}
+
+template <std::size_t... Indices>
+const std::vector<LoweringRule> &makeRules(std::index_sequence<Indices...>)
+{
+    static const std::vector<LoweringRule> rules{
+        LoweringRule{&matchRuleThunk<Indices>, &emitRuleThunk<Indices>,
+                     lowering::kLoweringRuleTable[Indices].name}...};
+    return rules;
+}
 
 const std::vector<LoweringRule> &buildRules()
 {
-    static const std::vector<LoweringRule> rules{
-        {[](const ILInstr &instr) { return matchOpcode(instr, "add"); }, emitAdd, "add"},
-        {[](const ILInstr &instr) { return matchOpcode(instr, "sub"); }, emitSub, "sub"},
-        {[](const ILInstr &instr) { return matchOpcode(instr, "mul"); }, emitMul, "mul"},
-        {[](const ILInstr &instr) { return matchOpcode(instr, "fdiv"); }, emitFDiv, "fdiv"},
-        {[](const ILInstr &instr) { return matchOpcode(instr, "and"); }, emitAnd, "and"},
-        {[](const ILInstr &instr) { return matchOpcode(instr, "or"); }, emitOr, "or"},
-        {[](const ILInstr &instr) { return matchOpcode(instr, "xor"); }, emitXor, "xor"},
-        {[](const ILInstr &instr) { return instr.opcode.starts_with("icmp_"); }, emitICmp, "icmp"},
-        {[](const ILInstr &instr) { return instr.opcode.starts_with("fcmp_"); }, emitFCmp, "fcmp"},
-        {[](const ILInstr &instr) { return matchOneOf(instr, {"div", "sdiv", "srem", "udiv", "urem", "rem"}); },
-         emitDivFamily,
-         "div-rem"},
-        {[](const ILInstr &instr) { return matchOpcode(instr, "shl"); }, emitShiftLeft, "shl"},
-        {[](const ILInstr &instr) { return matchOpcode(instr, "lshr"); }, emitShiftLshr, "lshr"},
-        {[](const ILInstr &instr) { return matchOpcode(instr, "ashr"); }, emitShiftAshr, "ashr"},
-        {[](const ILInstr &instr) { return matchOpcode(instr, "cmp"); }, emitCmpExplicit, "cmp"},
-        {[](const ILInstr &instr) { return matchOpcode(instr, "select"); }, emitSelect, "select"},
-        {[](const ILInstr &instr) { return matchOpcode(instr, "br"); }, emitBranch, "br"},
-        {[](const ILInstr &instr) { return matchOpcode(instr, "cbr"); }, emitCondBranch, "cbr"},
-        {[](const ILInstr &instr) { return matchOpcode(instr, "ret"); }, emitReturn, "ret"},
-        {[](const ILInstr &instr) { return matchOpcode(instr, "call"); }, emitCall, "call"},
-        {[](const ILInstr &instr) { return matchOpcode(instr, "load"); },
-         [](const ILInstr &ins, MIRBuilder &b) { emitLoad(ins, b, b.regClassFor(ins.resultKind)); },
-         "load"},
-        {[](const ILInstr &instr) { return matchOpcode(instr, "store"); }, emitStore, "store"},
-        {[](const ILInstr &instr) { return matchOneOf(instr, {"zext", "sext", "trunc"}); }, emitZSTrunc, "ext"},
-        {[](const ILInstr &instr) { return matchOpcode(instr, "sitofp"); }, emitSIToFP, "sitofp"},
-        {[](const ILInstr &instr) { return matchOpcode(instr, "fptosi"); }, emitFPToSI, "fptosi"},
-    };
+    static const auto &rules =
+        makeRules(std::make_index_sequence<lowering::kLoweringRuleTable.size()>{});
     return rules;
 }
 
@@ -835,15 +827,15 @@ const std::vector<LoweringRule> &viper_get_lowering_rules()
 
 const LoweringRule *viper_select_rule(const IL::Instr &instr)
 {
-    const auto &rules = buildRules();
-    for (const auto &rule : rules)
+    const auto *spec = lookupRuleSpec(instr);
+    if (!spec)
     {
-        if (rule.match && rule.match(instr))
-        {
-            return &rule;
-        }
+        return nullptr;
     }
-    return nullptr;
+
+    const auto index = static_cast<std::size_t>(spec - lowering::kLoweringRuleTable.data());
+    const auto &rules = buildRules();
+    return index < rules.size() ? &rules[index] : nullptr;
 }
 
 } // namespace viper::codegen::x64
