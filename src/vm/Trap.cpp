@@ -172,6 +172,21 @@ const VmError *vm_current_trap_token()
     return &tlsTrapError;
 }
 
+/// @brief Mark the active trap token as cleared for both VM and thread-local paths.
+///
+/// @details Resets the validity flag on the VM-owned trap token when a VM is
+///          active and clears the thread-local token otherwise.  Callers invoke
+///          this once a trap has been processed so subsequent lookups do not
+///          observe stale diagnostics.
+void vm_clear_trap_token()
+{
+    if (auto *vm = VM::activeInstance())
+        vm->trapToken.valid = false;
+
+    tlsTrapValid = false;
+    tlsTrapMessage.clear();
+}
+
 /// @brief Attach a human-readable message to the active trap token.
 ///
 /// @details Updates the VM-owned token when present, otherwise records the
@@ -203,7 +218,9 @@ std::string vm_current_trap_message()
 {
     if (auto *vm = VM::activeInstance())
         return vm->trapToken.message;
-    return tlsTrapMessage;
+    std::string message = tlsTrapMessage;
+    vm_clear_trap_token();
+    return message;
 }
 
 /// @brief Format a trap error and frame information into a printable string.

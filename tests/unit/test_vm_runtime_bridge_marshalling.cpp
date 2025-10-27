@@ -9,6 +9,7 @@
 #include "vm/RuntimeBridge.hpp"
 #include "vm/Trap.hpp"
 #include "vm/VM.hpp"
+#include "vm/VMContext.hpp"
 #include "VMTestHook.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
@@ -378,6 +379,29 @@ int main()
 
         rt_str_release_maybe(frame.regs[0].str);
         frame.regs[0].str = nullptr;
+    }
+
+    {
+        il::vm::VmError *token = il::vm::vm_acquire_trap_token();
+        token->kind = il::vm::TrapKind::DomainError;
+        token->code = 7;
+        il::vm::vm_store_trap_token_message("tls double-read");
+        assert(il::vm::vm_current_trap_token() != nullptr);
+        const std::string firstMessage = il::vm::vm_current_trap_message();
+        assert(firstMessage == "tls double-read");
+        assert(il::vm::vm_current_trap_token() == nullptr);
+    }
+
+    {
+        il::core::Module module;
+        il::vm::VM vm(module);
+
+        il::vm::ActiveVMGuard guard(&vm);
+        il::vm::VmError *token = il::vm::vm_acquire_trap_token();
+        token->kind = il::vm::TrapKind::RuntimeError;
+        assert(il::vm::vm_current_trap_token() != nullptr);
+        il::vm::vm_clear_trap_token();
+        assert(il::vm::vm_current_trap_token() == nullptr);
     }
 
     for (bool covered : coveredKinds)
