@@ -1,4 +1,11 @@
 add_subdirectory(support)
+
+add_library(viper_common STATIC
+        common/RunProcess.cpp)
+target_include_directories(viper_common PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>)
+
 add_subdirectory(codegen/x86_64)
 
 add_library(viper_il_core STATIC

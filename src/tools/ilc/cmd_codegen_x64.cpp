@@ -6,39 +6,23 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/tools/ilc/cmd_codegen_x64.cpp
-// Purpose: Implement the `ilc codegen x64` subcommand that lowers IL modules
-//          via the experimental x86-64 backend.
-// Key invariants: Command-line parsing always emits actionable diagnostics,
-//                 temporary files are overwritten atomically, and backend
-//                 failures bubble up as non-zero exit codes.
-// Ownership/Lifetime: Borrows parsed IL modules and writes assembly/binaries to
-//                     caller-specified locations.
-// Links: src/codegen/x86_64/Backend.hpp, src/tools/common/module_loader.hpp
+// Purpose: Provide a thin CLI adapter around the x86-64 code-generation pipeline.
+// Key invariants: Command-line parsing emits deterministic diagnostics and defers heavy lifting
+//                 to CodegenPipeline. Ownership/Lifetime: Arguments are borrowed for the duration
+//                 of parsing; compilation artefacts are produced by the pipeline implementation.
+// Links: src/codegen/x86_64/CodegenPipeline.hpp
 //
 //===----------------------------------------------------------------------===//
 
 /// @file
 /// @brief Implements the `ilc codegen x64` command-line entry point.
-/// @details Provides argument parsing, module loading, adapter conversion, and
-///          backend invocation glue required to emit x86-64 assembly (and
-///          optionally link and run) from IL modules.
-
-// TODO(PhaseB): Extend the adapter to cover division, overflow arithmetic, logic,
-//               switches, GEP/addressing, runtime/EH ops, and remaining cast forms.
+/// @details Parses argv-style arguments into pipeline options before delegating to the
+///          reusable pipeline implementation.
 
 #include "cmd_codegen_x64.hpp"
 
-#include "codegen/x86_64/Backend.hpp"
-#include "codegen/x86_64/Unsupported.hpp"
-#include "il/core/Module.hpp"
-#include "tools/common/module_loader.hpp"
+#include "codegen/x86_64/CodegenPipeline.hpp"
 
-#include <cstddef>
-#include <cstdint>
-#include <cstdlib>
-#include <filesystem>
-#include <fstream>
-#include <initializer_list>
 #include <iostream>
 #include <optional>
 #include <sstream>
@@ -47,897 +31,165 @@
 #include <unordered_map>
 #include <utility>
 
-#if !defined(_WIN32)
-#include <sys/wait.h>
-#endif
-
 namespace viper::tools::ilc
 {
 namespace
 {
 
-/// @brief Surface a backend limitation as a fatal diagnostic.
-/// @details Forwards the message to the Phase A unsupported hook so tests and
-///          the CLI observe a consistent failure path.  The helper never
-///          returns; it either aborts or long-jumps via the backend's reporting
-///          infrastructure.
-/// @param detail Human-readable description of the missing feature.
-[[noreturn]] void reportUnsupported(std::string detail)
-{
-    viper::codegen::x64::phaseAUnsupported(detail.c_str());
-}
+constexpr std::string_view kUsage =
+    "usage: ilc codegen x64 <file.il> [-S <file.s>] [-o <a.out>] [-run-native]\n";
 
-/// @brief Configuration derived from the command line.
-struct CodegenConfig
+struct ArgvView
 {
-    std::string inputPath;                       ///< IL file to compile.
-    std::optional<std::string> assemblyPath{};   ///< Optional explicit assembly output path.
-    std::optional<std::string> executablePath{}; ///< Optional explicit executable path.
-    bool runNative{false};                       ///< Request execution of the produced binary.
+    int argc;
+    char **argv;
+
+    [[nodiscard]] bool empty() const
+    {
+        return argc <= 0 || argv == nullptr;
+    }
+
+    [[nodiscard]] std::string_view front() const
+    {
+        return empty() ? std::string_view{} : std::string_view(argv[0]);
+    }
+
+    [[nodiscard]] std::string_view at(int index) const
+    {
+        if (index < 0 || index >= argc || argv == nullptr)
+        {
+            return std::string_view{};
+        }
+        return std::string_view(argv[index]);
+    }
+
+    [[nodiscard]] ArgvView drop_front(int count = 1) const
+    {
+        if (count >= argc)
+        {
+            return ArgvView{0, nullptr};
+        }
+        return ArgvView{argc - count, argv + count};
+    }
 };
 
-/// @brief Print a concise usage hint for the subcommand.
-/// @details Emits a single-line usage synopsis describing the required IL file
-///          argument and optional flags.  Called when parsing fails or when the
-///          user omits mandatory arguments.
-void printUsageHint()
+struct ParseOutcome
 {
-    std::cerr << "usage: ilc codegen x64 <file.il> [-S <file.s>] [-o <a.out>] [-run-native]\n";
-}
+    std::optional<viper::codegen::x64::CodegenPipeline::Options> opts{};
+    std::string diagnostics{};
+};
 
-/// @brief Decode the system() return value into an exit status when possible.
-/// @details Normalises the platform-specific encoding produced by @c system so
-///          the CLI can report consistent exit codes across POSIX and Windows.
-///          Signals -1 when process creation failed and maps signals to
-///          conventional 128+signal values on POSIX platforms.
-/// @param status Raw return value from @c system.
-/// @return Normalised exit status or -1 when process spawning failed.
-int normaliseSystemStatus(int status)
+ParseOutcome parseCompileArgs(const ArgvView &args)
 {
-    if (status == -1)
+    ParseOutcome outcome{};
+    if (args.empty())
     {
-        return -1;
-    }
-#if defined(_WIN32)
-    return status;
-#else
-    if (WIFEXITED(status))
-    {
-        return WEXITSTATUS(status);
-    }
-    if (WIFSIGNALED(status))
-    {
-        return 128 + WTERMSIG(status);
-    }
-    return status;
-#endif
-}
-
-/// @brief Convert the parsed IL module into the temporary adapter structure.
-/// @details Translates IL functions, blocks, and instructions into the
-///          simplified structures expected by the experimental x86-64 backend.
-///          The adapter performs type classification, assigns SSA identifiers,
-///          rewrites operands, and expands control-flow metadata such as
-///          branch edges.
-/// @param module Fully parsed IL module.
-/// @return Adapter module consumable by the Phase A backend; never nullopt but
-///         may terminate via @ref reportUnsupported when encountering
-///         unsupported features.
-viper::codegen::x64::ILModule convertToAdapterModule(const il::core::Module &module)
-{
-    using viper::codegen::x64::ILBlock;
-    using viper::codegen::x64::ILFunction;
-    using viper::codegen::x64::ILModule;
-    using viper::codegen::x64::ILValue;
-
-    const auto typeToKind = [](const il::core::Type &type) -> ILValue::Kind
-    {
-        using il::core::Type;
-        switch (type.kind)
-        {
-            case Type::Kind::I1:
-                return ILValue::Kind::I1;
-            case Type::Kind::I16:
-            case Type::Kind::I32:
-            case Type::Kind::I64:
-                return ILValue::Kind::I64;
-            case Type::Kind::F64:
-                return ILValue::Kind::F64;
-            case Type::Kind::Ptr:
-                return ILValue::Kind::PTR;
-            case Type::Kind::Str:
-                return ILValue::Kind::STR;
-            case Type::Kind::Void:
-                reportUnsupported("void-typed value requested by backend adapter");
-                break;
-            case Type::Kind::Error:
-            case Type::Kind::ResumeTok:
-                reportUnsupported("non-scalar IL type encountered during Phase A lowering");
-                break;
-        }
-        reportUnsupported("unknown IL type kind encountered during Phase A lowering");
-    };
-
-    const auto makeLabelValue = [](std::string name) -> ILValue
-    {
-        ILValue label{};
-        label.kind = ILValue::Kind::LABEL;
-        label.label = std::move(name);
-        label.id = -1;
-        return label;
-    };
-
-    const auto makeCondImmediate = [](int code) -> ILValue
-    {
-        ILValue imm{};
-        imm.kind = ILValue::Kind::I64;
-        imm.i64 = static_cast<long long>(code);
-        imm.id = -1;
-        return imm;
-    };
-
-    const auto condCodeFor = [](il::core::Opcode op) -> int
-    {
-        using il::core::Opcode;
-        switch (op)
-        {
-            case Opcode::ICmpEq:
-            case Opcode::FCmpEQ:
-                return 0; // equal
-            case Opcode::ICmpNe:
-            case Opcode::FCmpNE:
-                return 1; // not equal
-            case Opcode::SCmpLT:
-            case Opcode::FCmpLT:
-                return 2; // less than (signed)
-            case Opcode::SCmpLE:
-            case Opcode::FCmpLE:
-                return 3; // less equal (signed)
-            case Opcode::SCmpGT:
-            case Opcode::FCmpGT:
-                return 4; // greater than (signed)
-            case Opcode::SCmpGE:
-            case Opcode::FCmpGE:
-                return 5; // greater equal (signed)
-            case Opcode::UCmpGT:
-                return 6; // above
-            case Opcode::UCmpGE:
-                return 7; // above or equal
-            case Opcode::UCmpLT:
-                return 8; // below
-            case Opcode::UCmpLE:
-                return 9; // below or equal
-            default:
-                return 0;
-        }
-    };
-
-    ILModule adapted{};
-    adapted.funcs.reserve(module.functions.size());
-
-    for (const auto &func : module.functions)
-    {
-        ILFunction adaptedFunc{};
-        adaptedFunc.name = func.name;
-
-        std::unordered_map<unsigned, ILValue::Kind> valueKinds{};
-        valueKinds.reserve(func.valueNames.size() + func.params.size());
-
-        for (const auto &param : func.params)
-        {
-            valueKinds.emplace(param.id, typeToKind(param.type));
-        }
-
-        for (const auto &block : func.blocks)
-        {
-            ILBlock adaptedBlock{};
-            adaptedBlock.name = block.label;
-
-            for (const auto &param : block.params)
-            {
-                const ILValue::Kind kind = typeToKind(param.type);
-                adaptedBlock.paramIds.push_back(static_cast<int>(param.id));
-                adaptedBlock.paramKinds.push_back(kind);
-                valueKinds[param.id] = kind;
-            }
-
-            const auto convertValue = [&valueKinds](const il::core::Value &value,
-                                                    std::optional<ILValue::Kind> hint) -> ILValue
-            {
-                ILValue converted{};
-                converted.id = -1;
-
-                switch (value.kind)
-                {
-                    case il::core::Value::Kind::Temp:
-                    {
-                        const auto it = valueKinds.find(value.id);
-                        if (it == valueKinds.end())
-                        {
-                            reportUnsupported(
-                                "ssa temp without registered kind in Phase A lowering");
-                        }
-                        converted.kind = it->second;
-                        converted.id = static_cast<int>(value.id);
-                        break;
-                    }
-                    case il::core::Value::Kind::ConstInt:
-                    {
-                        converted.kind =
-                            hint.value_or(value.isBool ? ILValue::Kind::I1 : ILValue::Kind::I64);
-                        converted.i64 = value.i64;
-                        break;
-                    }
-                    case il::core::Value::Kind::ConstFloat:
-                        converted.kind = ILValue::Kind::F64;
-                        converted.f64 = value.f64;
-                        break;
-                    case il::core::Value::Kind::ConstStr:
-                        converted.kind = ILValue::Kind::STR;
-                        converted.str = value.str;
-                        converted.strLen = static_cast<std::uint64_t>(value.str.size());
-                        break;
-                    case il::core::Value::Kind::GlobalAddr:
-                        converted.kind = ILValue::Kind::LABEL;
-                        converted.label = value.str;
-                        break;
-                    case il::core::Value::Kind::NullPtr:
-                        converted.kind = ILValue::Kind::PTR;
-                        converted.i64 = 0;
-                        break;
-                }
-
-                if (hint && value.kind != il::core::Value::Kind::Temp)
-                {
-                    converted.kind = *hint;
-                }
-
-                return converted;
-            };
-
-            const auto convertOperands =
-                [&](const il::core::Instr &instr,
-                    std::initializer_list<std::optional<ILValue::Kind>> hints,
-                    viper::codegen::x64::ILInstr &out)
-            {
-                std::size_t index = 0;
-                for (const auto &operand : instr.operands)
-                {
-                    const std::optional<ILValue::Kind> hint =
-                        index < hints.size() ? *(hints.begin() + static_cast<std::ptrdiff_t>(index))
-                                             : std::optional<ILValue::Kind>{};
-                    out.ops.push_back(convertValue(operand, hint));
-                    ++index;
-                }
-            };
-
-            for (const auto &instr : block.instructions)
-            {
-                viper::codegen::x64::ILInstr adaptedInstr{};
-                adaptedInstr.resultId = -1;
-
-                const auto setResultKind = [&](const il::core::Type &type) -> ILValue::Kind
-                {
-                    const ILValue::Kind kind = typeToKind(type);
-                    if (instr.result)
-                    {
-                        adaptedInstr.resultId = static_cast<int>(*instr.result);
-                        adaptedInstr.resultKind = kind;
-                        valueKinds[*instr.result] = kind;
-                    }
-                    else
-                    {
-                        adaptedInstr.resultKind = kind;
-                    }
-                    return kind;
-                };
-
-                switch (instr.op)
-                {
-                    case il::core::Opcode::Add:
-                    case il::core::Opcode::FAdd:
-                    {
-                        const ILValue::Kind kind = setResultKind(instr.type);
-                        adaptedInstr.opcode = "add";
-                        convertOperands(instr, {kind, kind}, adaptedInstr);
-                        break;
-                    }
-                    case il::core::Opcode::Sub:
-                    case il::core::Opcode::FSub:
-                    {
-                        const ILValue::Kind kind = setResultKind(instr.type);
-                        adaptedInstr.opcode = "sub";
-                        convertOperands(instr, {kind, kind}, adaptedInstr);
-                        break;
-                    }
-                    case il::core::Opcode::Mul:
-                    case il::core::Opcode::FMul:
-                    {
-                        const ILValue::Kind kind = setResultKind(instr.type);
-                        adaptedInstr.opcode = "mul";
-                        convertOperands(instr, {kind, kind}, adaptedInstr);
-                        break;
-                    }
-                    case il::core::Opcode::FDiv:
-                    {
-                        adaptedInstr.opcode = "fdiv";
-                        adaptedInstr.resultKind = ILValue::Kind::F64;
-                        if (instr.result)
-                        {
-                            adaptedInstr.resultId = static_cast<int>(*instr.result);
-                            valueKinds[*instr.result] = ILValue::Kind::F64;
-                        }
-                        convertOperands(
-                            instr, {ILValue::Kind::F64, ILValue::Kind::F64}, adaptedInstr);
-                        break;
-                    }
-                    case il::core::Opcode::SDiv:
-                    case il::core::Opcode::SDivChk0:
-                    {
-                        setResultKind(instr.type);
-                        adaptedInstr.opcode = "sdiv";
-                        convertOperands(
-                            instr, {ILValue::Kind::I64, ILValue::Kind::I64}, adaptedInstr);
-                        break;
-                    }
-                    case il::core::Opcode::SRem:
-                    case il::core::Opcode::SRemChk0:
-                    {
-                        setResultKind(instr.type);
-                        adaptedInstr.opcode = "srem";
-                        convertOperands(
-                            instr, {ILValue::Kind::I64, ILValue::Kind::I64}, adaptedInstr);
-                        break;
-                    }
-                    case il::core::Opcode::UDiv:
-                    case il::core::Opcode::UDivChk0:
-                    {
-                        setResultKind(instr.type);
-                        adaptedInstr.opcode = "udiv";
-                        convertOperands(
-                            instr, {ILValue::Kind::I64, ILValue::Kind::I64}, adaptedInstr);
-                        break;
-                    }
-                    case il::core::Opcode::URem:
-                    case il::core::Opcode::URemChk0:
-                    {
-                        setResultKind(instr.type);
-                        adaptedInstr.opcode = "urem";
-                        convertOperands(
-                            instr, {ILValue::Kind::I64, ILValue::Kind::I64}, adaptedInstr);
-                        break;
-                    }
-                    case il::core::Opcode::Shl:
-                    {
-                        const ILValue::Kind kind = setResultKind(instr.type);
-                        adaptedInstr.opcode = "shl";
-                        convertOperands(instr, {kind, ILValue::Kind::I64}, adaptedInstr);
-                        break;
-                    }
-                    case il::core::Opcode::LShr:
-                    {
-                        const ILValue::Kind kind = setResultKind(instr.type);
-                        adaptedInstr.opcode = "lshr";
-                        convertOperands(instr, {kind, ILValue::Kind::I64}, adaptedInstr);
-                        break;
-                    }
-                    case il::core::Opcode::AShr:
-                    {
-                        const ILValue::Kind kind = setResultKind(instr.type);
-                        adaptedInstr.opcode = "ashr";
-                        convertOperands(instr, {kind, ILValue::Kind::I64}, adaptedInstr);
-                        break;
-                    }
-                    case il::core::Opcode::And:
-                    {
-                        if (instr.result)
-                        {
-                            adaptedInstr.resultId = static_cast<int>(*instr.result);
-                            adaptedInstr.resultKind = ILValue::Kind::I64;
-                            valueKinds[*instr.result] = ILValue::Kind::I64;
-                        }
-                        else
-                        {
-                            adaptedInstr.resultKind = ILValue::Kind::I64;
-                        }
-                        adaptedInstr.opcode = "and";
-                        convertOperands(instr, {ILValue::Kind::I64, ILValue::Kind::I64},
-                                        adaptedInstr);
-                        break;
-                    }
-                    case il::core::Opcode::Or:
-                    {
-                        if (instr.result)
-                        {
-                            adaptedInstr.resultId = static_cast<int>(*instr.result);
-                            adaptedInstr.resultKind = ILValue::Kind::I64;
-                            valueKinds[*instr.result] = ILValue::Kind::I64;
-                        }
-                        else
-                        {
-                            adaptedInstr.resultKind = ILValue::Kind::I64;
-                        }
-                        adaptedInstr.opcode = "or";
-                        convertOperands(instr, {ILValue::Kind::I64, ILValue::Kind::I64},
-                                        adaptedInstr);
-                        break;
-                    }
-                    case il::core::Opcode::Xor:
-                    {
-                        if (instr.result)
-                        {
-                            adaptedInstr.resultId = static_cast<int>(*instr.result);
-                            adaptedInstr.resultKind = ILValue::Kind::I64;
-                            valueKinds[*instr.result] = ILValue::Kind::I64;
-                        }
-                        else
-                        {
-                            adaptedInstr.resultKind = ILValue::Kind::I64;
-                        }
-                        adaptedInstr.opcode = "xor";
-                        convertOperands(instr, {ILValue::Kind::I64, ILValue::Kind::I64},
-                                        adaptedInstr);
-                        break;
-                    }
-                    case il::core::Opcode::ICmpEq:
-                    case il::core::Opcode::ICmpNe:
-                    case il::core::Opcode::SCmpLT:
-                    case il::core::Opcode::SCmpLE:
-                    case il::core::Opcode::SCmpGT:
-                    case il::core::Opcode::SCmpGE:
-                    case il::core::Opcode::UCmpLT:
-                    case il::core::Opcode::UCmpLE:
-                    case il::core::Opcode::UCmpGT:
-                    case il::core::Opcode::UCmpGE:
-                    case il::core::Opcode::FCmpEQ:
-                    case il::core::Opcode::FCmpNE:
-                    case il::core::Opcode::FCmpLT:
-                    case il::core::Opcode::FCmpLE:
-                    case il::core::Opcode::FCmpGT:
-                    case il::core::Opcode::FCmpGE:
-                    {
-                        setResultKind(instr.type);
-                        adaptedInstr.opcode = "cmp";
-                        const bool isFloat = instr.op == il::core::Opcode::FCmpEQ ||
-                                             instr.op == il::core::Opcode::FCmpNE ||
-                                             instr.op == il::core::Opcode::FCmpLT ||
-                                             instr.op == il::core::Opcode::FCmpLE ||
-                                             instr.op == il::core::Opcode::FCmpGT ||
-                                             instr.op == il::core::Opcode::FCmpGE;
-                        const ILValue::Kind operandKind =
-                            isFloat ? ILValue::Kind::F64 : ILValue::Kind::I64;
-                        convertOperands(instr, {operandKind, operandKind}, adaptedInstr);
-                        adaptedInstr.ops.push_back(makeCondImmediate(condCodeFor(instr.op)));
-                        break;
-                    }
-                    case il::core::Opcode::Call:
-                    {
-                        if (instr.result && instr.type.kind != il::core::Type::Kind::Void)
-                        {
-                            setResultKind(instr.type);
-                        }
-                        else if (instr.result)
-                        {
-                            reportUnsupported("void call returning SSA id in Phase A lowering");
-                        }
-                        adaptedInstr.opcode = "call";
-                        adaptedInstr.ops.push_back(makeLabelValue(instr.callee));
-                        for (const auto &operand : instr.operands)
-                        {
-                            adaptedInstr.ops.push_back(convertValue(operand, std::nullopt));
-                        }
-                        break;
-                    }
-                    case il::core::Opcode::Load:
-                    {
-                        const ILValue::Kind resultKind = setResultKind(instr.type);
-                        adaptedInstr.opcode = "load";
-                        convertOperands(
-                            instr, {ILValue::Kind::PTR, ILValue::Kind::I64}, adaptedInstr);
-                        if (adaptedInstr.ops.size() > 2)
-                        {
-                            adaptedInstr.ops.resize(2);
-                        }
-                        (void)resultKind;
-                        break;
-                    }
-                    case il::core::Opcode::Store:
-                    {
-                        adaptedInstr.opcode = "store";
-                        convertOperands(instr,
-                                        {std::nullopt, ILValue::Kind::PTR, ILValue::Kind::I64},
-                                        adaptedInstr);
-                        if (adaptedInstr.ops.size() > 3)
-                        {
-                            adaptedInstr.ops.resize(3);
-                        }
-                        break;
-                    }
-                    case il::core::Opcode::Zext1:
-                    {
-                        const ILValue::Kind kind = setResultKind(instr.type);
-                        adaptedInstr.opcode = "zext";
-                        convertOperands(instr, {ILValue::Kind::I1}, adaptedInstr);
-                        (void)kind;
-                        break;
-                    }
-                    case il::core::Opcode::Trunc1:
-                    {
-                        const ILValue::Kind kind = setResultKind(instr.type);
-                        adaptedInstr.opcode = "trunc";
-                        convertOperands(instr, {ILValue::Kind::I64}, adaptedInstr);
-                        (void)kind;
-                        break;
-                    }
-                    case il::core::Opcode::CastSiToFp:
-                    {
-                        setResultKind(instr.type);
-                        adaptedInstr.opcode = "sitofp";
-                        convertOperands(instr, {ILValue::Kind::I64}, adaptedInstr);
-                        break;
-                    }
-                    case il::core::Opcode::CastFpToSiRteChk:
-                    {
-                        setResultKind(instr.type);
-                        adaptedInstr.opcode = "fptosi";
-                        convertOperands(instr, {ILValue::Kind::F64}, adaptedInstr);
-                        break;
-                    }
-                    case il::core::Opcode::Br:
-                    {
-                        adaptedInstr.opcode = "br";
-                        if (!instr.labels.empty())
-                        {
-                            adaptedInstr.ops.push_back(makeLabelValue(instr.labels.front()));
-                        }
-                        const std::size_t succCount = instr.labels.size();
-                        adaptedBlock.terminatorEdges.reserve(adaptedBlock.terminatorEdges.size() +
-                                                             succCount);
-                        for (std::size_t idx = 0; idx < succCount; ++idx)
-                        {
-                            ILBlock::EdgeArg edge{};
-                            edge.to = instr.labels[idx];
-                            if (idx < instr.brArgs.size())
-                            {
-                                for (const auto &arg : instr.brArgs[idx])
-                                {
-                                    if (arg.kind != il::core::Value::Kind::Temp)
-                                    {
-                                        reportUnsupported(
-                                            "non-SSA block argument in Phase A lowering");
-                                    }
-                                    edge.argIds.push_back(static_cast<int>(arg.id));
-                                }
-                            }
-                            adaptedBlock.terminatorEdges.push_back(std::move(edge));
-                        }
-                        break;
-                    }
-                    case il::core::Opcode::CBr:
-                    {
-                        adaptedInstr.opcode = "cbr";
-                        if (instr.operands.empty())
-                        {
-                            reportUnsupported("conditional branch missing condition operand");
-                        }
-                        adaptedInstr.ops.push_back(
-                            convertValue(instr.operands.front(), ILValue::Kind::I1));
-                        const std::size_t succCount = instr.labels.size();
-                        for (std::size_t idx = 0; idx < succCount; ++idx)
-                        {
-                            adaptedInstr.ops.push_back(makeLabelValue(instr.labels[idx]));
-                        }
-                        adaptedBlock.terminatorEdges.reserve(adaptedBlock.terminatorEdges.size() +
-                                                             succCount);
-                        for (std::size_t idx = 0; idx < succCount; ++idx)
-                        {
-                            ILBlock::EdgeArg edge{};
-                            edge.to = instr.labels[idx];
-                            if (idx < instr.brArgs.size())
-                            {
-                                for (const auto &arg : instr.brArgs[idx])
-                                {
-                                    if (arg.kind != il::core::Value::Kind::Temp)
-                                    {
-                                        reportUnsupported(
-                                            "non-SSA block argument in Phase A lowering");
-                                    }
-                                    edge.argIds.push_back(static_cast<int>(arg.id));
-                                }
-                            }
-                            adaptedBlock.terminatorEdges.push_back(std::move(edge));
-                        }
-                        break;
-                    }
-                    case il::core::Opcode::Ret:
-                    {
-                        adaptedInstr.opcode = "ret";
-                        if (!instr.operands.empty())
-                        {
-                            const auto returnKind =
-                                func.retType.kind == il::core::Type::Kind::Void
-                                    ? std::optional<ILValue::Kind>{}
-                                    : std::optional<ILValue::Kind>{typeToKind(func.retType)};
-                            adaptedInstr.ops.push_back(
-                                convertValue(instr.operands.front(), returnKind));
-                        }
-                        break;
-                    }
-                    default:
-                        reportUnsupported(std::string{"IL opcode '"} +
-                                          il::core::toString(instr.op) +
-                                          "' not supported by x86-64 Phase A");
-                }
-
-                adaptedBlock.instrs.push_back(std::move(adaptedInstr));
-            }
-
-            adaptedFunc.blocks.push_back(std::move(adaptedBlock));
-        }
-
-        adapted.funcs.push_back(std::move(adaptedFunc));
+        outcome.diagnostics = std::string{kUsage};
+        return outcome;
     }
 
-    return adapted;
-}
+    viper::codegen::x64::CodegenPipeline::Options opts{};
+    opts.input_il_path = std::string(args.front());
+    opts.output_obj_path.clear();
+    opts.output_asm_path.clear();
 
-/// @brief Parse command-line flags into @p config.
-/// @details Consumes the raw argv vector for the subcommand, validating option
-///          arity and collecting requested output paths.  Emits diagnostics and
-///          returns @c std::nullopt when parsing fails so callers can surface the
-///          usage message.
-/// @param argc Number of remaining CLI arguments.
-/// @param argv Pointer to argument array (first element is the IL input path).
-/// @return Populated configuration on success; nullopt when parsing fails.
-std::optional<CodegenConfig> parseArgs(int argc, char **argv)
-{
-    if (argc < 1)
+    std::ostringstream diag;
+    for (int index = 1; index < args.argc; ++index)
     {
-        printUsageHint();
-        return std::nullopt;
-    }
-
-    CodegenConfig config{};
-    config.inputPath = argv[0];
-
-    for (int i = 1; i < argc; ++i)
-    {
-        std::string_view arg(argv[i]);
+        const std::string_view arg = args.at(index);
         if (arg == "-S")
         {
-            if (i + 1 >= argc)
+            if (index + 1 >= args.argc)
             {
-                std::cerr << "error: -S requires an output path\n";
-                printUsageHint();
-                return std::nullopt;
+                diag << "error: -S requires an output path\n" << kUsage;
+                outcome.diagnostics = diag.str();
+                return outcome;
             }
-            config.assemblyPath = argv[++i];
+            opts.emit_asm = true;
+            opts.output_asm_path = std::string(args.at(++index));
             continue;
         }
         if (arg == "-o")
         {
-            if (i + 1 >= argc)
+            if (index + 1 >= args.argc)
             {
-                std::cerr << "error: -o requires an output path\n";
-                printUsageHint();
-                return std::nullopt;
+                diag << "error: -o requires an output path\n" << kUsage;
+                outcome.diagnostics = diag.str();
+                return outcome;
             }
-            config.executablePath = argv[++i];
+            opts.output_obj_path = std::string(args.at(++index));
             continue;
         }
         if (arg == "-run-native")
         {
-            config.runNative = true;
+            opts.run_native = true;
             continue;
         }
 
-        std::cerr << "error: unknown flag '" << arg << "'\n";
-        printUsageHint();
-        return std::nullopt;
+        diag << "error: unknown flag '" << arg << "'\n" << kUsage;
+        outcome.diagnostics = diag.str();
+        return outcome;
     }
 
-    return config;
+    outcome.opts = std::move(opts);
+    return outcome;
 }
 
-/// @brief Derive a default assembly output path when the user does not supply one.
-/// @details Mirrors the behaviour of traditional compilers by using the input
-///          file stem suffixed with `.s`.  When the input lacks a meaningful
-///          filename, `out.s` in the current directory is used.
-/// @param config Parsed configuration providing the IL input path.
-/// @return Absolute or relative path where assembly should be written.
-std::filesystem::path deriveAssemblyPath(const CodegenConfig &config)
+int handleCompile(const ArgvView &args)
 {
-    std::filesystem::path assembly = std::filesystem::path(config.inputPath);
-    if (assembly.empty())
+    const ParseOutcome parsed = parseCompileArgs(args);
+    if (!parsed.opts.has_value())
     {
-        return std::filesystem::path("out.s");
+        if (!parsed.diagnostics.empty())
+        {
+            std::cerr << parsed.diagnostics;
+        }
+        return 1;
     }
-    assembly.replace_extension(".s");
-    if (assembly.filename().empty())
+
+    viper::codegen::x64::CodegenPipeline pipeline(*parsed.opts);
+    const PipelineResult result = pipeline.run();
+
+    if (!result.stdout_text.empty())
     {
-        assembly = assembly.parent_path() / "out.s";
+        std::cout << result.stdout_text;
     }
-    return assembly;
+    if (!result.stderr_text.empty())
+    {
+        std::cerr << result.stderr_text;
+    }
+    return result.exit_code;
 }
 
-/// @brief Derive a default executable path when not explicitly requested.
-/// @details Produces `a.out` in the same directory as the input module unless a
-///          specific `-o` flag overrides it.  Handles edge cases where the input
-///          resides in a directory without a filename component.
-/// @param config Parsed configuration.
-/// @return Candidate executable path.
-std::filesystem::path deriveExecutablePath(const CodegenConfig &config)
-{
-    std::filesystem::path exe = std::filesystem::path(config.inputPath);
-    if (exe.empty())
-    {
-        return std::filesystem::path("a.out");
-    }
-    exe.replace_extension("");
-    if (exe.filename().empty() || exe.filename() == ".")
-    {
-        return exe.parent_path() / "a.out";
-    }
-    return exe;
-}
+using Handler = int (*)(const ArgvView &);
 
-/// @brief Write assembly text to disk, overwriting @p path on success.
-/// @details Opens the destination in binary mode to avoid newline translation
-///          surprises, writes the assembly buffer, and verifies the stream
-///          remains healthy.  Emits diagnostics when file creation or writing
-///          fails.
-/// @param path Destination file path.
-/// @param text Assembly text to persist.
-/// @return True on success, false when an error occurred.
-bool writeAssemblyFile(const std::filesystem::path &path, const std::string &text)
-{
-    std::ofstream out(path, std::ios::binary | std::ios::trunc);
-    if (!out)
-    {
-        std::cerr << "error: unable to open '" << path.string() << "' for writing\n";
-        return false;
-    }
-    out << text;
-    if (!out)
-    {
-        std::cerr << "error: failed to write assembly to '" << path.string() << "'\n";
-        return false;
-    }
-    return true;
-}
-
-/// @brief Invoke the system C compiler to assemble and link the module.
-/// @details Shells out to the host C toolchain using @c system, passing the
-///          generated assembly and requested executable output.  Reports errors
-///          when invocation fails or returns a non-zero exit status.
-/// @param asmPath Path to the generated assembly file.
-/// @param exePath Destination executable path.
-/// @return Normalised exit status or -1 on launch failure.
-int invokeLinker(const std::filesystem::path &asmPath, const std::filesystem::path &exePath)
-{
-    std::ostringstream cmd;
-    cmd << "cc \"" << asmPath.string() << "\" -o \"" << exePath.string() << "\"";
-    const std::string command = cmd.str();
-    const int status =
-        std::system(command.c_str()); // TODO: replace with process management that captures output.
-    if (status == -1)
-    {
-        std::cerr << "error: failed to launch system linker command\n";
-        return -1;
-    }
-    const int exitCode = normaliseSystemStatus(status);
-    if (exitCode != 0)
-    {
-        std::cerr << "error: cc exited with status " << exitCode << "\n";
-    }
-    return exitCode;
-}
-
-/// @brief Execute the generated binary when requested.
-/// @details Runs the newly produced executable via @c system so users can
-///          validate codegen output quickly.  Exit codes are normalised across
-///          platforms in the same way as @ref invokeLinker.
-/// @param exePath Executable to run.
-/// @return Normalised exit status or -1 when launching fails.
-int runExecutable(const std::filesystem::path &exePath)
-{
-    std::ostringstream cmd;
-    cmd << "\"" << exePath.string() << "\"";
-    const std::string command = cmd.str();
-    const int status =
-        std::system(command.c_str()); // TODO: replace with process management that captures output.
-    if (status == -1)
-    {
-        std::cerr << "error: failed to execute '" << exePath.string() << "'\n";
-        return -1;
-    }
-    return normaliseSystemStatus(status);
-}
+const std::unordered_map<std::string, Handler> kHandlers = {
+    {"compile", &handleCompile},
+};
 
 } // namespace
 
-/// @brief Entry point for the `ilc codegen x64` command.
-/// @details Parses command-line options, loads and verifies the IL module,
-///          converts it into the backend adapter format, and emits x86-64
-///          assembly.  When requested, it links the assembly into an executable
-///          and optionally runs it, propagating exit statuses along the way.
-/// @param argc Number of subcommand arguments.
-/// @param argv Argument vector beginning with the IL input path.
-/// @return Zero on success or a non-zero diagnostic code on failure.
 int cmd_codegen_x64(int argc, char **argv)
 {
-    auto configOpt = parseArgs(argc, argv);
-    if (!configOpt)
+    const ArgvView args{argc, argv};
+    if (args.empty())
     {
-        return 1;
-    }
-    const CodegenConfig config = *configOpt;
-
-    il::core::Module module;
-    const auto loadResult =
-        il::tools::common::loadModuleFromFile(config.inputPath, module, std::cerr);
-    if (!loadResult.succeeded())
-    {
-        return 1;
-    }
-    if (!il::tools::common::verifyModule(module, std::cerr))
-    {
+        std::cerr << kUsage;
         return 1;
     }
 
-    const viper::codegen::x64::ILModule adapted = convertToAdapterModule(module);
-    const viper::codegen::x64::CodegenResult result =
-        viper::codegen::x64::emitModuleToAssembly(adapted, {});
-    if (!result.errors.empty())
+    const std::string_view token = args.front();
+    if (const auto it = kHandlers.find(std::string(token)); it != kHandlers.end())
     {
-        std::cerr << "error: x64 codegen failed:\n" << result.errors << "\n";
-        return 1;
+        return it->second(args.drop_front());
     }
 
-    const std::filesystem::path asmPath = config.assemblyPath
-                                              ? std::filesystem::path(*config.assemblyPath)
-                                              : deriveAssemblyPath(config);
-    if (!writeAssemblyFile(asmPath, result.asmText))
-    {
-        return 1;
-    }
-
-    const bool needLink = config.executablePath.has_value() || config.runNative;
-    if (!needLink)
-    {
-        return 0;
-    }
-
-    const std::filesystem::path exePath = config.executablePath
-                                              ? std::filesystem::path(*config.executablePath)
-                                              : deriveExecutablePath(config);
-    const int linkExit = invokeLinker(asmPath, exePath);
-    if (linkExit != 0)
-    {
-        return linkExit == -1 ? 1 : linkExit;
-    }
-
-    if (!config.runNative)
-    {
-        return 0;
-    }
-
-    const int runExit = runExecutable(exePath);
-    if (runExit == -1)
-    {
-        return 1;
-    }
-    return runExit;
+    return handleCompile(args);
 }
 
-/// @brief Register the codegen x64 subcommand with the CLI dispatcher.
-/// @details Placeholder hook that will eventually install structured CLI
-///          handlers once the common tooling layer is ready.
-/// @param cli CLI root to augment.
 void register_codegen_x64_commands(CLI &cli)
 {
     (void)cli;
-    // TODO: Integrate with the structured CLI once available.
 }
 
 } // namespace viper::tools::ilc
