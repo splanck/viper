@@ -1,0 +1,2006 @@
+{
+  "ops": [
+    {
+      "opcode": "Add",
+      "mnemonic": "add",
+      "result": {
+        "arity": "One",
+        "type": "I64"
+      },
+      "operands": {
+        "min": 2,
+        "max": 2,
+        "types": [
+          "I64",
+          "I64",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": false,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "Add",
+        "handler": "&il::vm::detail::handleAdd"
+      }
+    },
+    {
+      "opcode": "Sub",
+      "mnemonic": "sub",
+      "result": {
+        "arity": "One",
+        "type": "I64"
+      },
+      "operands": {
+        "min": 2,
+        "max": 2,
+        "types": [
+          "I64",
+          "I64",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": false,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "Sub",
+        "handler": "&il::vm::detail::handleSub"
+      }
+    },
+    {
+      "opcode": "Mul",
+      "mnemonic": "mul",
+      "result": {
+        "arity": "One",
+        "type": "I64"
+      },
+      "operands": {
+        "min": 2,
+        "max": 2,
+        "types": [
+          "I64",
+          "I64",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": false,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "Mul",
+        "handler": "&il::vm::detail::handleMul"
+      }
+    },
+    {
+      "opcode": "IAddOvf",
+      "mnemonic": "iadd.ovf",
+      "result": {
+        "arity": "One",
+        "type": "I64"
+      },
+      "operands": {
+        "min": 2,
+        "max": 2,
+        "types": [
+          "I64",
+          "I64",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": true,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "IAddOvf",
+        "handler": "&il::vm::detail::handleIAddOvf"
+      }
+    },
+    {
+      "opcode": "ISubOvf",
+      "mnemonic": "isub.ovf",
+      "result": {
+        "arity": "One",
+        "type": "I64"
+      },
+      "operands": {
+        "min": 2,
+        "max": 2,
+        "types": [
+          "I64",
+          "I64",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": true,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "ISubOvf",
+        "handler": "&il::vm::detail::handleISubOvf"
+      }
+    },
+    {
+      "opcode": "IMulOvf",
+      "mnemonic": "imul.ovf",
+      "result": {
+        "arity": "One",
+        "type": "I64"
+      },
+      "operands": {
+        "min": 2,
+        "max": 2,
+        "types": [
+          "I64",
+          "I64",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": true,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "IMulOvf",
+        "handler": "&il::vm::detail::handleIMulOvf"
+      }
+    },
+    {
+      "opcode": "SDiv",
+      "mnemonic": "sdiv",
+      "result": {
+        "arity": "One",
+        "type": "I64"
+      },
+      "operands": {
+        "min": 2,
+        "max": 2,
+        "types": [
+          "I64",
+          "I64",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": false,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "SDiv",
+        "handler": "&il::vm::detail::handleSDiv"
+      }
+    },
+    {
+      "opcode": "UDiv",
+      "mnemonic": "udiv",
+      "result": {
+        "arity": "One",
+        "type": "I64"
+      },
+      "operands": {
+        "min": 2,
+        "max": 2,
+        "types": [
+          "I64",
+          "I64",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": false,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "UDiv",
+        "handler": "&il::vm::detail::handleUDiv"
+      }
+    },
+    {
+      "opcode": "SRem",
+      "mnemonic": "srem",
+      "result": {
+        "arity": "One",
+        "type": "I64"
+      },
+      "operands": {
+        "min": 2,
+        "max": 2,
+        "types": [
+          "I64",
+          "I64",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": false,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "SRem",
+        "handler": "&il::vm::detail::handleSRem"
+      }
+    },
+    {
+      "opcode": "URem",
+      "mnemonic": "urem",
+      "result": {
+        "arity": "One",
+        "type": "I64"
+      },
+      "operands": {
+        "min": 2,
+        "max": 2,
+        "types": [
+          "I64",
+          "I64",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": false,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "URem",
+        "handler": "&il::vm::detail::handleURem"
+      }
+    },
+    {
+      "opcode": "SDivChk0",
+      "mnemonic": "sdiv.chk0",
+      "result": {
+        "arity": "One",
+        "type": "I64"
+      },
+      "operands": {
+        "min": 2,
+        "max": 2,
+        "types": [
+          "I64",
+          "I64",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": true,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "SDivChk0",
+        "handler": "&il::vm::detail::handleSDivChk0"
+      }
+    },
+    {
+      "opcode": "UDivChk0",
+      "mnemonic": "udiv.chk0",
+      "result": {
+        "arity": "One",
+        "type": "I64"
+      },
+      "operands": {
+        "min": 2,
+        "max": 2,
+        "types": [
+          "I64",
+          "I64",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": true,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "UDivChk0",
+        "handler": "&il::vm::detail::handleUDivChk0"
+      }
+    },
+    {
+      "opcode": "SRemChk0",
+      "mnemonic": "srem.chk0",
+      "result": {
+        "arity": "One",
+        "type": "I64"
+      },
+      "operands": {
+        "min": 2,
+        "max": 2,
+        "types": [
+          "I64",
+          "I64",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": true,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "SRemChk0",
+        "handler": "&il::vm::detail::handleSRemChk0"
+      }
+    },
+    {
+      "opcode": "URemChk0",
+      "mnemonic": "urem.chk0",
+      "result": {
+        "arity": "One",
+        "type": "I64"
+      },
+      "operands": {
+        "min": 2,
+        "max": 2,
+        "types": [
+          "I64",
+          "I64",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": true,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "URemChk0",
+        "handler": "&il::vm::detail::handleURemChk0"
+      }
+    },
+    {
+      "opcode": "IdxChk",
+      "mnemonic": "idx.chk",
+      "result": {
+        "arity": "One",
+        "type": "InstrType"
+      },
+      "operands": {
+        "min": 3,
+        "max": 3,
+        "types": [
+          "Dynamic",
+          "Dynamic",
+          "Dynamic"
+        ]
+      },
+      "flags": {
+        "side_effects": true,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "IdxChk",
+        "handler": "&il::vm::detail::handleIdxChk"
+      }
+    },
+    {
+      "opcode": "And",
+      "mnemonic": "and",
+      "result": {
+        "arity": "One",
+        "type": "I64"
+      },
+      "operands": {
+        "min": 2,
+        "max": 2,
+        "types": [
+          "I64",
+          "I64",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": false,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "And",
+        "handler": "&il::vm::detail::handleAnd"
+      }
+    },
+    {
+      "opcode": "Or",
+      "mnemonic": "or",
+      "result": {
+        "arity": "One",
+        "type": "I64"
+      },
+      "operands": {
+        "min": 2,
+        "max": 2,
+        "types": [
+          "I64",
+          "I64",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": false,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "Or",
+        "handler": "&il::vm::detail::handleOr"
+      }
+    },
+    {
+      "opcode": "Xor",
+      "mnemonic": "xor",
+      "result": {
+        "arity": "One",
+        "type": "I64"
+      },
+      "operands": {
+        "min": 2,
+        "max": 2,
+        "types": [
+          "I64",
+          "I64",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": false,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "Xor",
+        "handler": "&il::vm::detail::handleXor"
+      }
+    },
+    {
+      "opcode": "Shl",
+      "mnemonic": "shl",
+      "result": {
+        "arity": "One",
+        "type": "I64"
+      },
+      "operands": {
+        "min": 2,
+        "max": 2,
+        "types": [
+          "I64",
+          "I64",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": false,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "Shl",
+        "handler": "&il::vm::detail::handleShl"
+      }
+    },
+    {
+      "opcode": "LShr",
+      "mnemonic": "lshr",
+      "result": {
+        "arity": "One",
+        "type": "I64"
+      },
+      "operands": {
+        "min": 2,
+        "max": 2,
+        "types": [
+          "I64",
+          "I64",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": false,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "LShr",
+        "handler": "&il::vm::detail::handleLShr"
+      }
+    },
+    {
+      "opcode": "AShr",
+      "mnemonic": "ashr",
+      "result": {
+        "arity": "One",
+        "type": "I64"
+      },
+      "operands": {
+        "min": 2,
+        "max": 2,
+        "types": [
+          "I64",
+          "I64",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": false,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "AShr",
+        "handler": "&il::vm::detail::handleAShr"
+      }
+    },
+    {
+      "opcode": "FAdd",
+      "mnemonic": "fadd",
+      "result": {
+        "arity": "One",
+        "type": "F64"
+      },
+      "operands": {
+        "min": 2,
+        "max": 2,
+        "types": [
+          "F64",
+          "F64",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": false,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "FAdd",
+        "handler": "&il::vm::detail::handleFAdd"
+      }
+    },
+    {
+      "opcode": "FSub",
+      "mnemonic": "fsub",
+      "result": {
+        "arity": "One",
+        "type": "F64"
+      },
+      "operands": {
+        "min": 2,
+        "max": 2,
+        "types": [
+          "F64",
+          "F64",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": false,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "FSub",
+        "handler": "&il::vm::detail::handleFSub"
+      }
+    },
+    {
+      "opcode": "FMul",
+      "mnemonic": "fmul",
+      "result": {
+        "arity": "One",
+        "type": "F64"
+      },
+      "operands": {
+        "min": 2,
+        "max": 2,
+        "types": [
+          "F64",
+          "F64",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": false,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "FMul",
+        "handler": "&il::vm::detail::handleFMul"
+      }
+    },
+    {
+      "opcode": "FDiv",
+      "mnemonic": "fdiv",
+      "result": {
+        "arity": "One",
+        "type": "F64"
+      },
+      "operands": {
+        "min": 2,
+        "max": 2,
+        "types": [
+          "F64",
+          "F64",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": false,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "FDiv",
+        "handler": "&il::vm::detail::handleFDiv"
+      }
+    },
+    {
+      "opcode": "ICmpEq",
+      "mnemonic": "icmp_eq",
+      "result": {
+        "arity": "One",
+        "type": "I1"
+      },
+      "operands": {
+        "min": 2,
+        "max": 2,
+        "types": [
+          "I64",
+          "I64",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": false,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "ICmpEq",
+        "handler": "&il::vm::detail::handleICmpEq"
+      }
+    },
+    {
+      "opcode": "ICmpNe",
+      "mnemonic": "icmp_ne",
+      "result": {
+        "arity": "One",
+        "type": "I1"
+      },
+      "operands": {
+        "min": 2,
+        "max": 2,
+        "types": [
+          "I64",
+          "I64",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": false,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "ICmpNe",
+        "handler": "&il::vm::detail::handleICmpNe"
+      }
+    },
+    {
+      "opcode": "SCmpLT",
+      "mnemonic": "scmp_lt",
+      "result": {
+        "arity": "One",
+        "type": "I1"
+      },
+      "operands": {
+        "min": 2,
+        "max": 2,
+        "types": [
+          "I64",
+          "I64",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": false,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "SCmpLT",
+        "handler": "&il::vm::detail::handleSCmpLT"
+      }
+    },
+    {
+      "opcode": "SCmpLE",
+      "mnemonic": "scmp_le",
+      "result": {
+        "arity": "One",
+        "type": "I1"
+      },
+      "operands": {
+        "min": 2,
+        "max": 2,
+        "types": [
+          "I64",
+          "I64",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": false,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "SCmpLE",
+        "handler": "&il::vm::detail::handleSCmpLE"
+      }
+    },
+    {
+      "opcode": "SCmpGT",
+      "mnemonic": "scmp_gt",
+      "result": {
+        "arity": "One",
+        "type": "I1"
+      },
+      "operands": {
+        "min": 2,
+        "max": 2,
+        "types": [
+          "I64",
+          "I64",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": false,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "SCmpGT",
+        "handler": "&il::vm::detail::handleSCmpGT"
+      }
+    },
+    {
+      "opcode": "SCmpGE",
+      "mnemonic": "scmp_ge",
+      "result": {
+        "arity": "One",
+        "type": "I1"
+      },
+      "operands": {
+        "min": 2,
+        "max": 2,
+        "types": [
+          "I64",
+          "I64",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": false,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "SCmpGE",
+        "handler": "&il::vm::detail::handleSCmpGE"
+      }
+    },
+    {
+      "opcode": "UCmpLT",
+      "mnemonic": "ucmp_lt",
+      "result": {
+        "arity": "One",
+        "type": "I1"
+      },
+      "operands": {
+        "min": 2,
+        "max": 2,
+        "types": [
+          "I64",
+          "I64",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": false,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "UCmpLT",
+        "handler": "&il::vm::detail::handleUCmpLT"
+      }
+    },
+    {
+      "opcode": "UCmpLE",
+      "mnemonic": "ucmp_le",
+      "result": {
+        "arity": "One",
+        "type": "I1"
+      },
+      "operands": {
+        "min": 2,
+        "max": 2,
+        "types": [
+          "I64",
+          "I64",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": false,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "UCmpLE",
+        "handler": "&il::vm::detail::handleUCmpLE"
+      }
+    },
+    {
+      "opcode": "UCmpGT",
+      "mnemonic": "ucmp_gt",
+      "result": {
+        "arity": "One",
+        "type": "I1"
+      },
+      "operands": {
+        "min": 2,
+        "max": 2,
+        "types": [
+          "I64",
+          "I64",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": false,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "UCmpGT",
+        "handler": "&il::vm::detail::handleUCmpGT"
+      }
+    },
+    {
+      "opcode": "UCmpGE",
+      "mnemonic": "ucmp_ge",
+      "result": {
+        "arity": "One",
+        "type": "I1"
+      },
+      "operands": {
+        "min": 2,
+        "max": 2,
+        "types": [
+          "I64",
+          "I64",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": false,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "UCmpGE",
+        "handler": "&il::vm::detail::handleUCmpGE"
+      }
+    },
+    {
+      "opcode": "FCmpEQ",
+      "mnemonic": "fcmp_eq",
+      "result": {
+        "arity": "One",
+        "type": "I1"
+      },
+      "operands": {
+        "min": 2,
+        "max": 2,
+        "types": [
+          "F64",
+          "F64",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": false,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "FCmpEQ",
+        "handler": "&il::vm::detail::handleFCmpEQ"
+      }
+    },
+    {
+      "opcode": "FCmpNE",
+      "mnemonic": "fcmp_ne",
+      "result": {
+        "arity": "One",
+        "type": "I1"
+      },
+      "operands": {
+        "min": 2,
+        "max": 2,
+        "types": [
+          "F64",
+          "F64",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": false,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "FCmpNE",
+        "handler": "&il::vm::detail::handleFCmpNE"
+      }
+    },
+    {
+      "opcode": "FCmpLT",
+      "mnemonic": "fcmp_lt",
+      "result": {
+        "arity": "One",
+        "type": "I1"
+      },
+      "operands": {
+        "min": 2,
+        "max": 2,
+        "types": [
+          "F64",
+          "F64",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": false,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "FCmpLT",
+        "handler": "&il::vm::detail::handleFCmpLT"
+      }
+    },
+    {
+      "opcode": "FCmpLE",
+      "mnemonic": "fcmp_le",
+      "result": {
+        "arity": "One",
+        "type": "I1"
+      },
+      "operands": {
+        "min": 2,
+        "max": 2,
+        "types": [
+          "F64",
+          "F64",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": false,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "FCmpLE",
+        "handler": "&il::vm::detail::handleFCmpLE"
+      }
+    },
+    {
+      "opcode": "FCmpGT",
+      "mnemonic": "fcmp_gt",
+      "result": {
+        "arity": "One",
+        "type": "I1"
+      },
+      "operands": {
+        "min": 2,
+        "max": 2,
+        "types": [
+          "F64",
+          "F64",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": false,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "FCmpGT",
+        "handler": "&il::vm::detail::handleFCmpGT"
+      }
+    },
+    {
+      "opcode": "FCmpGE",
+      "mnemonic": "fcmp_ge",
+      "result": {
+        "arity": "One",
+        "type": "I1"
+      },
+      "operands": {
+        "min": 2,
+        "max": 2,
+        "types": [
+          "F64",
+          "F64",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": false,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "FCmpGE",
+        "handler": "&il::vm::detail::handleFCmpGE"
+      }
+    },
+    {
+      "opcode": "Sitofp",
+      "mnemonic": "sitofp",
+      "result": {
+        "arity": "One",
+        "type": "F64"
+      },
+      "operands": {
+        "min": 1,
+        "max": 1,
+        "types": [
+          "I64",
+          "None",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": false,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "Sitofp",
+        "handler": "&il::vm::detail::handleSitofp"
+      }
+    },
+    {
+      "opcode": "Fptosi",
+      "mnemonic": "fptosi",
+      "result": {
+        "arity": "One",
+        "type": "I64"
+      },
+      "operands": {
+        "min": 1,
+        "max": 1,
+        "types": [
+          "F64",
+          "None",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": false,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "Fptosi",
+        "handler": "&il::vm::detail::handleFptosi"
+      }
+    },
+    {
+      "opcode": "CastFpToSiRteChk",
+      "mnemonic": "cast.fp_to_si.rte.chk",
+      "result": {
+        "arity": "One",
+        "type": "I64"
+      },
+      "operands": {
+        "min": 1,
+        "max": 1,
+        "types": [
+          "F64",
+          "None",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": true,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "CastFpToSiRteChk",
+        "handler": "&il::vm::detail::handleCastFpToSiRteChk"
+      }
+    },
+    {
+      "opcode": "CastFpToUiRteChk",
+      "mnemonic": "cast.fp_to_ui.rte.chk",
+      "result": {
+        "arity": "One",
+        "type": "I64"
+      },
+      "operands": {
+        "min": 1,
+        "max": 1,
+        "types": [
+          "F64",
+          "None",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": true,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "CastFpToUiRteChk",
+        "handler": "&il::vm::detail::handleCastFpToUiRteChk"
+      }
+    },
+    {
+      "opcode": "CastSiNarrowChk",
+      "mnemonic": "cast.si_narrow.chk",
+      "result": {
+        "arity": "One",
+        "type": "I64"
+      },
+      "operands": {
+        "min": 1,
+        "max": 1,
+        "types": [
+          "I64",
+          "None",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": true,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "CastSiNarrowChk",
+        "handler": "&il::vm::detail::handleCastSiNarrowChk"
+      }
+    },
+    {
+      "opcode": "CastUiNarrowChk",
+      "mnemonic": "cast.ui_narrow.chk",
+      "result": {
+        "arity": "One",
+        "type": "I64"
+      },
+      "operands": {
+        "min": 1,
+        "max": 1,
+        "types": [
+          "I64",
+          "None",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": true,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "CastUiNarrowChk",
+        "handler": "&il::vm::detail::handleCastUiNarrowChk"
+      }
+    },
+    {
+      "opcode": "CastSiToFp",
+      "mnemonic": "cast.si_to_fp",
+      "result": {
+        "arity": "One",
+        "type": "F64"
+      },
+      "operands": {
+        "min": 1,
+        "max": 1,
+        "types": [
+          "I64",
+          "None",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": false,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "CastSiToFp",
+        "handler": "&il::vm::detail::handleCastSiToFp"
+      }
+    },
+    {
+      "opcode": "CastUiToFp",
+      "mnemonic": "cast.ui_to_fp",
+      "result": {
+        "arity": "One",
+        "type": "F64"
+      },
+      "operands": {
+        "min": 1,
+        "max": 1,
+        "types": [
+          "I64",
+          "None",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": false,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "CastUiToFp",
+        "handler": "&il::vm::detail::handleCastUiToFp"
+      }
+    },
+    {
+      "opcode": "Zext1",
+      "mnemonic": "zext1",
+      "result": {
+        "arity": "One",
+        "type": "I64"
+      },
+      "operands": {
+        "min": 1,
+        "max": 1,
+        "types": [
+          "I1",
+          "None",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": false,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "TruncOrZext1",
+        "handler": "&il::vm::detail::handleTruncOrZext1"
+      }
+    },
+    {
+      "opcode": "Trunc1",
+      "mnemonic": "trunc1",
+      "result": {
+        "arity": "One",
+        "type": "I1"
+      },
+      "operands": {
+        "min": 1,
+        "max": 1,
+        "types": [
+          "I64",
+          "None",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": false,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "TruncOrZext1",
+        "handler": "&il::vm::detail::handleTruncOrZext1"
+      }
+    },
+    {
+      "opcode": "Alloca",
+      "mnemonic": "alloca",
+      "result": {
+        "arity": "One",
+        "type": "Ptr"
+      },
+      "operands": {
+        "min": 1,
+        "max": 1,
+        "types": [
+          "I64",
+          "None",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": true,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "Alloca",
+        "handler": "&il::vm::detail::handleAlloca"
+      }
+    },
+    {
+      "opcode": "GEP",
+      "mnemonic": "gep",
+      "result": {
+        "arity": "One",
+        "type": "Ptr"
+      },
+      "operands": {
+        "min": 2,
+        "max": 2,
+        "types": [
+          "Ptr",
+          "I64",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": false,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "GEP",
+        "handler": "&il::vm::detail::handleGEP"
+      }
+    },
+    {
+      "opcode": "Load",
+      "mnemonic": "load",
+      "result": {
+        "arity": "One",
+        "type": "InstrType"
+      },
+      "operands": {
+        "min": 1,
+        "max": 1,
+        "types": [
+          "Ptr",
+          "None",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": false,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "Load",
+        "handler": "&il::vm::detail::handleLoad"
+      }
+    },
+    {
+      "opcode": "Store",
+      "mnemonic": "store",
+      "result": {
+        "arity": "None",
+        "type": "None"
+      },
+      "operands": {
+        "min": 2,
+        "max": 2,
+        "types": [
+          "Ptr",
+          "InstrType",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": true,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "Store",
+        "handler": "&il::vm::detail::handleStore"
+      }
+    },
+    {
+      "opcode": "AddrOf",
+      "mnemonic": "addr_of",
+      "result": {
+        "arity": "One",
+        "type": "Ptr"
+      },
+      "operands": {
+        "min": 1,
+        "max": 1,
+        "types": [
+          "Ptr",
+          "None",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": false,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "AddrOf",
+        "handler": "&il::vm::detail::handleAddrOf"
+      }
+    },
+    {
+      "opcode": "ConstStr",
+      "mnemonic": "const_str",
+      "result": {
+        "arity": "One",
+        "type": "Str"
+      },
+      "operands": {
+        "min": 1,
+        "max": 1,
+        "types": [
+          "Ptr",
+          "None",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": false,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "ConstStr",
+        "handler": "&il::vm::detail::handleConstStr"
+      }
+    },
+    {
+      "opcode": "ConstNull",
+      "mnemonic": "const_null",
+      "result": {
+        "arity": "One",
+        "type": "Ptr"
+      },
+      "operands": {
+        "min": 0,
+        "max": 0,
+        "types": [
+          "None",
+          "None",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": false,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "ConstNull",
+        "handler": "&il::vm::detail::handleConstNull"
+      }
+    },
+    {
+      "opcode": "Call",
+      "mnemonic": "call",
+      "result": {
+        "arity": "Optional",
+        "type": "Dynamic"
+      },
+      "operands": {
+        "min": 0,
+        "max": "kVariadicOperandCount",
+        "types": [
+          "Any",
+          "Any",
+          "Any"
+        ]
+      },
+      "flags": {
+        "side_effects": true,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "Call",
+        "handler": "&il::vm::detail::handleCall"
+      }
+    },
+    {
+      "opcode": "SwitchI32",
+      "mnemonic": "switch.i32",
+      "result": {
+        "arity": "None",
+        "type": "None"
+      },
+      "operands": {
+        "min": 1,
+        "max": "kVariadicOperandCount",
+        "types": [
+          "I32",
+          "I32",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": true,
+        "successors": "kVariadicOperandCount",
+        "terminator": true
+      },
+      "dispatch": {
+        "enum": "SwitchI32",
+        "handler": "&il::vm::detail::handleSwitchI32"
+      }
+    },
+    {
+      "opcode": "Br",
+      "mnemonic": "br",
+      "result": {
+        "arity": "None",
+        "type": "None"
+      },
+      "operands": {
+        "min": 0,
+        "max": 0,
+        "types": [
+          "None",
+          "None",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": true,
+        "successors": 1,
+        "terminator": true
+      },
+      "dispatch": {
+        "enum": "Br",
+        "handler": "&il::vm::detail::handleBr"
+      }
+    },
+    {
+      "opcode": "CBr",
+      "mnemonic": "cbr",
+      "result": {
+        "arity": "None",
+        "type": "None"
+      },
+      "operands": {
+        "min": 1,
+        "max": 1,
+        "types": [
+          "I1",
+          "None",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": true,
+        "successors": 2,
+        "terminator": true
+      },
+      "dispatch": {
+        "enum": "CBr",
+        "handler": "&il::vm::detail::handleCBr"
+      }
+    },
+    {
+      "opcode": "Ret",
+      "mnemonic": "ret",
+      "result": {
+        "arity": "None",
+        "type": "None"
+      },
+      "operands": {
+        "min": 0,
+        "max": 1,
+        "types": [
+          "Any",
+          "None",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": true,
+        "successors": 0,
+        "terminator": true
+      },
+      "dispatch": {
+        "enum": "Ret",
+        "handler": "&il::vm::detail::handleRet"
+      }
+    },
+    {
+      "opcode": "TrapKind",
+      "mnemonic": "trap.kind",
+      "result": {
+        "arity": "One",
+        "type": "I64"
+      },
+      "operands": {
+        "min": 0,
+        "max": 0,
+        "types": [
+          "None",
+          "None",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": false,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "TrapKindRead",
+        "handler": "&il::vm::detail::handleTrapKind"
+      }
+    },
+    {
+      "opcode": "TrapFromErr",
+      "mnemonic": "trap.from_err",
+      "result": {
+        "arity": "None",
+        "type": "None"
+      },
+      "operands": {
+        "min": 1,
+        "max": 1,
+        "types": [
+          "I32",
+          "None",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": true,
+        "successors": 0,
+        "terminator": true
+      },
+      "dispatch": {
+        "enum": "TrapFromErr",
+        "handler": "&il::vm::detail::handleTrap"
+      }
+    },
+    {
+      "opcode": "TrapErr",
+      "mnemonic": "trap.err",
+      "result": {
+        "arity": "One",
+        "type": "Error"
+      },
+      "operands": {
+        "min": 2,
+        "max": 2,
+        "types": [
+          "I32",
+          "Str",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": false,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "TrapErrMake",
+        "handler": "&il::vm::detail::handleTrapErr"
+      }
+    },
+    {
+      "opcode": "ErrGetKind",
+      "mnemonic": "err.get_kind",
+      "result": {
+        "arity": "One",
+        "type": "I32"
+      },
+      "operands": {
+        "min": 1,
+        "max": 1,
+        "types": [
+          "Error",
+          "None",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": false,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "ErrGet",
+        "handler": "&il::vm::detail::handleErrGet"
+      }
+    },
+    {
+      "opcode": "ErrGetCode",
+      "mnemonic": "err.get_code",
+      "result": {
+        "arity": "One",
+        "type": "I32"
+      },
+      "operands": {
+        "min": 1,
+        "max": 1,
+        "types": [
+          "Error",
+          "None",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": false,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "ErrGet",
+        "handler": "&il::vm::detail::handleErrGet"
+      }
+    },
+    {
+      "opcode": "ErrGetIp",
+      "mnemonic": "err.get_ip",
+      "result": {
+        "arity": "One",
+        "type": "I64"
+      },
+      "operands": {
+        "min": 1,
+        "max": 1,
+        "types": [
+          "Error",
+          "None",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": false,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "ErrGet",
+        "handler": "&il::vm::detail::handleErrGet"
+      }
+    },
+    {
+      "opcode": "ErrGetLine",
+      "mnemonic": "err.get_line",
+      "result": {
+        "arity": "One",
+        "type": "I32"
+      },
+      "operands": {
+        "min": 1,
+        "max": 1,
+        "types": [
+          "Error",
+          "None",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": false,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "ErrGet",
+        "handler": "&il::vm::detail::handleErrGet"
+      }
+    },
+    {
+      "opcode": "EhPush",
+      "mnemonic": "eh.push",
+      "result": {
+        "arity": "None",
+        "type": "None"
+      },
+      "operands": {
+        "min": 0,
+        "max": 0,
+        "types": [
+          "None",
+          "None",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": true,
+        "successors": 1,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "EhPush",
+        "handler": "&il::vm::detail::handleEhPush"
+      }
+    },
+    {
+      "opcode": "EhPop",
+      "mnemonic": "eh.pop",
+      "result": {
+        "arity": "None",
+        "type": "None"
+      },
+      "operands": {
+        "min": 0,
+        "max": 0,
+        "types": [
+          "None",
+          "None",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": true,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "EhPop",
+        "handler": "&il::vm::detail::handleEhPop"
+      }
+    },
+    {
+      "opcode": "ResumeSame",
+      "mnemonic": "resume.same",
+      "result": {
+        "arity": "None",
+        "type": "None"
+      },
+      "operands": {
+        "min": 1,
+        "max": 1,
+        "types": [
+          "ResumeTok",
+          "None",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": true,
+        "successors": 0,
+        "terminator": true
+      },
+      "dispatch": {
+        "enum": "ResumeSame",
+        "handler": "&il::vm::detail::handleResumeSame"
+      }
+    },
+    {
+      "opcode": "ResumeNext",
+      "mnemonic": "resume.next",
+      "result": {
+        "arity": "None",
+        "type": "None"
+      },
+      "operands": {
+        "min": 1,
+        "max": 1,
+        "types": [
+          "ResumeTok",
+          "None",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": true,
+        "successors": 0,
+        "terminator": true
+      },
+      "dispatch": {
+        "enum": "ResumeNext",
+        "handler": "&il::vm::detail::handleResumeNext"
+      }
+    },
+    {
+      "opcode": "ResumeLabel",
+      "mnemonic": "resume.label",
+      "result": {
+        "arity": "None",
+        "type": "None"
+      },
+      "operands": {
+        "min": 1,
+        "max": 1,
+        "types": [
+          "ResumeTok",
+          "None",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": true,
+        "successors": 1,
+        "terminator": true
+      },
+      "dispatch": {
+        "enum": "ResumeLabel",
+        "handler": "&il::vm::detail::handleResumeLabel"
+      }
+    },
+    {
+      "opcode": "EhEntry",
+      "mnemonic": "eh.entry",
+      "result": {
+        "arity": "None",
+        "type": "None"
+      },
+      "operands": {
+        "min": 0,
+        "max": 0,
+        "types": [
+          "None",
+          "None",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": true,
+        "successors": 0,
+        "terminator": false
+      },
+      "dispatch": {
+        "enum": "EhEntry",
+        "handler": "&il::vm::detail::handleEhEntry"
+      }
+    },
+    {
+      "opcode": "Trap",
+      "mnemonic": "trap",
+      "result": {
+        "arity": "None",
+        "type": "None"
+      },
+      "operands": {
+        "min": 0,
+        "max": 0,
+        "types": [
+          "None",
+          "None",
+          "None"
+        ]
+      },
+      "flags": {
+        "side_effects": true,
+        "successors": 0,
+        "terminator": true
+      },
+      "dispatch": {
+        "enum": "Trap",
+        "handler": "&il::vm::detail::handleTrap"
+      }
+    }
+  ]
+}
