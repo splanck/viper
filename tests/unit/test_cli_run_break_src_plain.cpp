@@ -75,6 +75,15 @@ int main()
     assert(breakPos != std::string::npos);
     assert(err.find(":7", breakPos) != std::string::npos);
 
+    err.clear();
+    gUsageCalled = false;
+    rc = runWithArgs(ilPath.string(), "--break", "entry:", err);
+
+    assert(rc == 10);
+    assert(!gUsageCalled);
+    const auto labelBreakPos = err.find("[BREAK] fn=@main blk=entry reason=label");
+    assert(labelBreakPos != std::string::npos);
+
     std::filesystem::remove(ilPath, ec);
     return 0;
 }
