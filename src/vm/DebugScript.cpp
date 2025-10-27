@@ -42,12 +42,11 @@ DebugScript::DebugScript(const std::string &path)
     std::string line;
     while (std::getline(f, line))
     {
-        while (!line.empty() && (line.back() == '\r' || line.back() == '\f' || line.back() == '\v'))
-        {
-            line.pop_back();
-        }
-        if (line.empty())
+        const auto first = line.find_first_not_of(" \t\n\r\f\v");
+        if (first == std::string::npos)
             continue;
+        const auto last = line.find_last_not_of(" \t\n\r\f\v");
+        line = line.substr(first, last - first + 1);
         if (line == "continue")
         {
             actions.push({DebugActionKind::Continue, 0});

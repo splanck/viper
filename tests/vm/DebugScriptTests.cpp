@@ -28,7 +28,7 @@ int main(int argc, char **argv)
     std::string scriptLine;
     while (std::getline(scriptIn, scriptLine))
     {
-        scriptOut << scriptLine << "\r\n";
+        scriptOut << "\t  " << scriptLine << "  \t\r\n";
     }
     scriptOut.close();
     std::string dbgOut = "dbg.out";
