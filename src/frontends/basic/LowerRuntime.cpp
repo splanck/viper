@@ -253,6 +253,12 @@ void Lowerer::requireSeekChErr()
     setManualHelperRequired(ManualRuntimeHelper::SeekChErr);
 }
 
+/// @brief Request the helper that writes to a file channel without newline.
+void Lowerer::requireWriteChErr()
+{
+    setManualHelperRequired(ManualRuntimeHelper::WriteChErr);
+}
+
 /// @brief Request the helper that prints a character with error handling.
 void Lowerer::requirePrintlnChErr()
 {
@@ -343,6 +349,7 @@ void Lowerer::declareRequiredRuntime(build::IRBuilder &b)
         {"rt_open_err_vstr", ManualRuntimeHelper::OpenErrVstr, &Lowerer::requireOpenErrVstr},
         {"rt_close_err", ManualRuntimeHelper::CloseErr, &Lowerer::requireCloseErr},
         {"rt_seek_ch_err", ManualRuntimeHelper::SeekChErr, &Lowerer::requireSeekChErr},
+        {"rt_write_ch_err", ManualRuntimeHelper::WriteChErr, &Lowerer::requireWriteChErr},
         {"rt_println_ch_err", ManualRuntimeHelper::PrintlnChErr, &Lowerer::requirePrintlnChErr},
         {"rt_line_input_ch_err",
          ManualRuntimeHelper::LineInputChErr,

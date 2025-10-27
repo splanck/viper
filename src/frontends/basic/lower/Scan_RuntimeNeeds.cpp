@@ -212,9 +212,26 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
     // Statement hooks ---------------------------------------------------
 
     /// @brief Ensure PRINT# statements request channel-aware runtime helpers.
-    void before(const PrintChStmt &)
+    void before(const PrintChStmt &stmt)
     {
-        lowerer_.requirePrintlnChErr();
+        std::size_t actualArgs = 0;
+        for (const auto &arg : stmt.args)
+        {
+            if (arg)
+                ++actualArgs;
+        }
+
+        if (stmt.mode == PrintChStmt::Mode::Write)
+        {
+            lowerer_.requirePrintlnChErr();
+            return;
+        }
+
+        if (stmt.trailingNewline)
+            lowerer_.requirePrintlnChErr();
+
+        if (actualArgs > 0 && (!stmt.trailingNewline || actualArgs > 1))
+            lowerer_.requireWriteChErr();
     }
 
     /// @brief Analyse PRINT# arguments and request supporting helpers.
