@@ -118,17 +118,25 @@ Expected<Operand> parseImm(Cursor &cursor, ParserState &state)
     const bool hasExponent = (!isHexLiteral) && (token.find('e') != std::string::npos ||
                                                  token.find('E') != std::string::npos);
 
-    if (hasDecimalPoint || hasExponent)
-    {
+    auto parseFloatingToken = [&](const std::string &literal) -> Expected<Operand> {
         double value = 0.0;
-        if (parseFloatLiteral(token, value))
+        if (parseFloatLiteral(literal, value))
         {
             cursor.consumeRest();
             return Operand::constFloat(value);
         }
         std::ostringstream oss;
-        oss << "invalid floating literal '" << token << "'";
+        oss << "invalid floating literal '" << literal << "'";
         return makeSyntaxError<Operand>(state, oss.str());
+    };
+
+    if (hasDecimalPoint || hasExponent)
+        return parseFloatingToken(token);
+
+    if (equalsIgnoreCase(token, "nan") || equalsIgnoreCase(token, "inf") ||
+        equalsIgnoreCase(token, "+inf") || equalsIgnoreCase(token, "-inf"))
+    {
+        return parseFloatingToken(token);
     }
 
     long long value = 0;
