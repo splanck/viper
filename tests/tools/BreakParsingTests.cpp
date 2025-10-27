@@ -25,9 +25,14 @@ int main()
         std::cerr << "dotted file not classified as src-line\n";
         return 1;
     }
-    if (isSrcBreakSpec("L1:2"))
+    if (!isSrcBreakSpec("foo:7"))
     {
-        std::cerr << "label with colon misclassified as src-line\n";
+        std::cerr << "dotless file not classified as src-line\n";
+        return 1;
+    }
+    if (!isSrcBreakSpec("L1:2"))
+    {
+        std::cerr << "label-style token not classified as src-line\n";
         return 1;
     }
     return 0;
