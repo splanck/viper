@@ -78,6 +78,12 @@ add_executable(test_basic_oop_lowering ${CMAKE_CURRENT_SOURCE_DIR}/unit/BasicOOP
 target_link_libraries(test_basic_oop_lowering fe_basic viper_testing)
 add_test(NAME unit_basic_oop_lowering COMMAND test_basic_oop_lowering)
 
+viper_add_test(
+  test_basic_lower_builtin_dispatch
+  ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_basic_lower_builtin_dispatch.cpp)
+target_link_libraries(test_basic_lower_builtin_dispatch PRIVATE fe_basic)
+viper_add_ctest(test_basic_lower_builtin_dispatch test_basic_lower_builtin_dispatch)
+
 viper_add_test(test_run_process_quotes ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_run_process_quotes.cpp)
 target_link_libraries(test_run_process_quotes PRIVATE viper_common)
 viper_add_ctest(test_run_process_quotes test_run_process_quotes)

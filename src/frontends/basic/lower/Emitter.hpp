@@ -5,6 +5,8 @@
 // Links: docs/codemap.md
 #pragma once
 
+#include "frontends/basic/lower/common/CommonLowering.hpp"
+
 #include "il/core/Instr.hpp"
 
 #include <cstdint>
@@ -108,6 +110,7 @@ class Emitter
 
   private:
     Lowerer &lowerer_;
+    common::CommonLowering common_;
 };
 
 } // namespace il::frontends::basic::lower

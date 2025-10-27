@@ -49,6 +49,11 @@ namespace lower
 class Emitter;
 class BuiltinLowerContext;
 
+namespace common
+{
+class CommonLowering;
+} // namespace common
+
 namespace detail
 {
 class ExprTypeScanner;
@@ -110,6 +115,7 @@ class Lowerer
     friend class SelectCaseLowering;
     friend class lower::Emitter;
     friend class lower::BuiltinLowerContext;
+    friend class lower::common::CommonLowering;
 
     using Module = il::core::Module;
     using Function = il::core::Function;
