@@ -24,7 +24,9 @@
 
 #include "frontends/basic/Parser.hpp"
 
+#include <cstdio>
 #include <cstdlib>
+#include <string>
 
 namespace il::frontends::basic
 {
@@ -32,28 +34,49 @@ namespace il::frontends::basic
 /// @brief Parse a `GOTO <line>` statement.
 /// @details The routine expects the current token stream to be positioned at the
 ///          `GOTO` keyword.  It consumes the keyword, parses the trailing line
-///          number token, and materialises a @c GotoStmt containing the numeric
-///          destination together with the originating source location.  Errors
-///          (such as a missing number) are signalled through @ref expect which
-///          emits diagnostics before unwinding via longjmp-style error handling.
+///          label (numeric or named), and materialises a @c GotoStmt containing
+///          the resolved destination together with the originating source
+///          location.  Errors emit diagnostics that describe the missing label or
+///          number before recovering to the next statement boundary.
 /// @return Owned AST node describing the goto statement.
 StmtPtr Parser::parseGotoStatement()
 {
     auto loc = peek().loc;
     consume(); // GOTO
-    Token targetTok = peek();
     int target = 0;
-    if (targetTok.kind == TokenKind::Identifier)
+    if (at(TokenKind::Identifier))
     {
+        Token targetTok = consume();
         target = ensureLabelNumber(targetTok.lexeme);
         noteNamedLabelReference(targetTok, target);
-        consume();
+    }
+    else if (at(TokenKind::Number))
+    {
+        Token targetTok = consume();
+        target = std::atoi(targetTok.lexeme.c_str());
+        noteNumericLabelUsage(target);
     }
     else
     {
-        target = std::atoi(targetTok.lexeme.c_str());
-        expect(TokenKind::Number);
-        noteNumericLabelUsage(target);
+        Token unexpected = peek();
+        if (emitter_)
+        {
+            std::string msg = "expected label or number after GOTO";
+            uint32_t length = unexpected.lexeme.empty()
+                                   ? 1u
+                                   : static_cast<uint32_t>(unexpected.lexeme.size());
+            emitter_->emit(il::support::Severity::Error,
+                           "B0001",
+                           unexpected.loc,
+                           length,
+                           std::move(msg));
+        }
+        else
+        {
+            std::fprintf(stderr, "expected label or number after GOTO\n");
+        }
+        syncToStmtBoundary();
+        return nullptr;
     }
     auto stmt = std::make_unique<GotoStmt>();
     stmt->loc = loc;
@@ -62,30 +85,51 @@ StmtPtr Parser::parseGotoStatement()
 }
 
 /// @brief Parse a `GOSUB <line>` statement.
-/// @details After consuming the `GOSUB` keyword the parser requires a numeric
-///          literal that identifies the subroutine entry line.  The resulting
-///          @c GosubStmt records both the call-site location and the numeric
-///          return address so later passes can emit the appropriate frame setup.
-///          Input validation mirrors @ref parseGotoStatement to guarantee
-///          consistent diagnostics.
+/// @details After consuming the `GOSUB` keyword the parser requires either a
+///          numeric literal or a named label that identifies the subroutine
+///          entry line.  The resulting @c GosubStmt records both the call-site
+///          location and the numeric return address so later passes can emit the
+///          appropriate frame setup. Input validation mirrors
+///          @ref parseGotoStatement to guarantee consistent diagnostics.
 /// @return Owned AST node describing the gosub statement.
 StmtPtr Parser::parseGosubStatement()
 {
     auto loc = peek().loc;
     consume(); // GOSUB
-    Token targetTok = peek();
     int target = 0;
-    if (targetTok.kind == TokenKind::Identifier)
+    if (at(TokenKind::Identifier))
     {
+        Token targetTok = consume();
         target = ensureLabelNumber(targetTok.lexeme);
         noteNamedLabelReference(targetTok, target);
-        consume();
+    }
+    else if (at(TokenKind::Number))
+    {
+        Token targetTok = consume();
+        target = std::atoi(targetTok.lexeme.c_str());
+        noteNumericLabelUsage(target);
     }
     else
     {
-        target = std::atoi(targetTok.lexeme.c_str());
-        expect(TokenKind::Number);
-        noteNumericLabelUsage(target);
+        Token unexpected = peek();
+        if (emitter_)
+        {
+            std::string msg = "expected label or number after GOSUB";
+            uint32_t length = unexpected.lexeme.empty()
+                                   ? 1u
+                                   : static_cast<uint32_t>(unexpected.lexeme.size());
+            emitter_->emit(il::support::Severity::Error,
+                           "B0001",
+                           unexpected.loc,
+                           length,
+                           std::move(msg));
+        }
+        else
+        {
+            std::fprintf(stderr, "expected label or number after GOSUB\n");
+        }
+        syncToStmtBoundary();
+        return nullptr;
     }
     auto stmt = std::make_unique<GosubStmt>();
     stmt->loc = loc;
