@@ -175,6 +175,13 @@ function(viper_add_basic_main_tests)
   viper_add_ctest(
     test_frontends_basic_line_label_diagnostics test_frontends_basic_line_label_diagnostics)
 
+  viper_add_test(
+    test_frontends_basic_parser_named_labels
+    ${VIPER_TESTS_DIR}/frontends/basic/ParserNamedLabelTests.cpp)
+  target_link_libraries(test_frontends_basic_parser_named_labels PRIVATE ${VIPER_BASIC_LIBS})
+  viper_add_ctest(
+    test_frontends_basic_parser_named_labels test_frontends_basic_parser_named_labels)
+
   viper_add_test(test_frontends_basic_lexer_file_io ${VIPER_TESTS_DIR}/frontends/basic/LexerFileIoTests.cpp)
   target_link_libraries(test_frontends_basic_lexer_file_io PRIVATE ${VIPER_BASIC_LIBS})
   viper_add_ctest(test_frontends_basic_lexer_file_io test_frontends_basic_lexer_file_io)

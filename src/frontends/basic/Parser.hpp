@@ -17,6 +17,7 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -64,6 +65,14 @@ class Parser
     DiagnosticEmitter *emitter_ = nullptr;            ///< Diagnostic sink; not owned.
     std::unordered_set<std::string> arrays_;          ///< Names of arrays declared via DIM.
     std::unordered_set<std::string> knownProcedures_; ///< Procedure identifiers seen so far.
+    struct NamedLabelEntry
+    {
+        int number = 0;      ///< Synthetic numeric identifier assigned to the label.
+        bool defined = false; ///< Whether a definition has been encountered.
+    };
+    std::unordered_map<std::string, NamedLabelEntry> namedLabels_; ///< Named label tracking table.
+    std::unordered_set<int> usedLabelNumbers_; ///< Prevents synthetic label collisions.
+    int nextSyntheticLabel_ = 1'000'000;       ///< Counter for synthesised label numbers.
 
     /// @brief Registry that maps statement-leading tokens to parser callbacks.
     class StatementParserRegistry
@@ -101,6 +110,12 @@ class Parser
     StmtPtr parseClassDecl();
     StmtPtr parseTypeDecl();
     StmtPtr parseDeleteStatement();
+
+    /// @brief Remember that numeric label @p value was observed to avoid collisions.
+    void noteNumericLabel(int value);
+
+    /// @brief Ensure @p tok refers to a defined named label and return its numeric surrogate.
+    int ensureNamedLabelNumber(const Token &tok, bool isDefinition);
 
 #include "frontends/basic/Parser_Token.hpp"
 

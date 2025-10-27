@@ -21,6 +21,7 @@
 
 #include "frontends/basic/Parser.hpp"
 #include <array>
+#include <cstdio>
 #include <cstdlib>
 #include <utility>
 
@@ -49,6 +50,63 @@ Parser::Parser(std::string_view src, uint32_t file_id, DiagnosticEmitter *emitte
 StatementSequencer Parser::statementSequencer()
 {
     return StatementSequencer(*this);
+}
+
+/// @brief Track that a numeric label literal was encountered.
+///
+/// @param value Numeric label extracted from the token stream.
+void Parser::noteNumericLabel(int value)
+{
+    if (value <= 0)
+        return;
+    usedLabelNumbers_.insert(value);
+}
+
+/// @brief Assign or retrieve a synthetic numeric identifier for a named label.
+///
+/// @param tok Identifier token introducing the label.
+/// @param isDefinition True when the token represents a definition rather than a reference.
+/// @return Stable numeric surrogate for the label name.
+int Parser::ensureNamedLabelNumber(const Token &tok, bool isDefinition)
+{
+    auto &entry = namedLabels_[tok.lexeme];
+    if (entry.number == 0)
+    {
+        int candidate = nextSyntheticLabel_;
+        while (usedLabelNumbers_.count(candidate) != 0)
+            ++candidate;
+        entry.number = candidate;
+        entry.defined = isDefinition;
+        usedLabelNumbers_.insert(entry.number);
+        nextSyntheticLabel_ = candidate + 1;
+        return entry.number;
+    }
+
+    if (isDefinition)
+    {
+        if (entry.defined)
+        {
+            if (emitter_)
+            {
+                std::string msg = "label '" + tok.lexeme + "' already defined";
+                emitter_->emit(il::support::Severity::Error,
+                               "B0001",
+                               tok.loc,
+                               static_cast<uint32_t>(tok.lexeme.size()),
+                               std::move(msg));
+            }
+            else
+            {
+                std::fprintf(stderr, "label '%s' already defined\n", tok.lexeme.c_str());
+            }
+        }
+        else
+        {
+            entry.defined = true;
+        }
+    }
+
+    return entry.number;
 }
 
 /// @brief Populate the registry of statement parsing callbacks.

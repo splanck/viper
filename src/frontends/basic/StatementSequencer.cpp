@@ -160,6 +160,7 @@ void StatementSequencer::withOptionalLineNumber(
         line = std::atoi(tok.lexeme.c_str());
         loc = tok.loc;
         parser_.consume();
+        parser_.noteNumericLabel(line);
     }
     fn(line, loc);
 }
@@ -259,6 +260,17 @@ StatementSequencer::TerminatorInfo StatementSequencer::collectStatements(
                 line = currentLine;
                 lineLoc = currentLoc;
             });
+
+        const bool atLineStart = (state.separatorBefore != SeparatorKind::Colon) && !state.hadPendingLine;
+        if (atLineStart && line == 0 && parser_.at(TokenKind::Identifier) &&
+            parser_.peek(1).kind == TokenKind::Colon)
+        {
+            const Token &labelTok = parser_.peek();
+            parser_.consume();
+            parser_.consume();
+            line = parser_.ensureNamedLabelNumber(labelTok, true);
+            lineLoc = labelTok.loc;
+        }
 
         LineAction action = evaluateLineAction(line, lineLoc, isTerminator, onTerminator, state);
         if (action == LineAction::Terminate || action == LineAction::Defer)

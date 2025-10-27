@@ -11,6 +11,7 @@
 
 #include "frontends/basic/Parser.hpp"
 
+#include <cstdlib>
 #include <initializer_list>
 #include <utility>
 #include <vector>
@@ -27,11 +28,38 @@ inline void Parser::skipOptionalLineLabelAfterBreak(StatementSequencer &ctx,
     ctx.skipLineBreaks();
 
     if (!at(TokenKind::Number))
+    {
+        if (!at(TokenKind::Identifier) || peek(1).kind != TokenKind::Colon)
+            return;
+
+        const Token labelTok = peek();
+        if (followerKinds.size() > 0)
+        {
+            TokenKind next = peek(2).kind;
+            bool allowed = false;
+            for (auto follower : followerKinds)
+            {
+                if (next == follower)
+                {
+                    allowed = true;
+                    break;
+                }
+            }
+            if (!allowed)
+                return;
+        }
+
+        consume(); // Identifier
+        consume(); // Colon
+        ensureNamedLabelNumber(labelTok, true);
         return;
+    }
 
     if (followerKinds.size() == 0)
     {
+        int numericLabel = std::atoi(peek().lexeme.c_str());
         consume();
+        noteNumericLabel(numericLabel);
         return;
     }
 
@@ -40,7 +68,9 @@ inline void Parser::skipOptionalLineLabelAfterBreak(StatementSequencer &ctx,
     {
         if (next == follower)
         {
+            int numericLabel = std::atoi(peek().lexeme.c_str());
             consume();
+            noteNumericLabel(numericLabel);
             return;
         }
     }
