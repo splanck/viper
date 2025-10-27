@@ -217,6 +217,19 @@ Frame VM::setupFrame(const Function &fn,
         {
             const auto id = params[i].id;
             assert(id < fr.params.size());
+            const bool isStringParam = params[i].type.kind == Type::Kind::Str;
+            if (isStringParam)
+            {
+                auto &dest = fr.params[id];
+                if (dest)
+                    rt_str_release_maybe(dest->str);
+
+                Slot retained = args[i];
+                rt_str_retain_maybe(retained.str);
+                dest = retained;
+                continue;
+            }
+
             fr.params[id] = args[i];
         }
     }
