@@ -23,6 +23,14 @@ if(NOT TARGET test_basic_terminal_scan)
   viper_add_ctest(test_basic_terminal_scan test_basic_terminal_scan)
 endif()
 
+if(NOT TARGET test_codegen_x86_64_passes)
+  viper_add_test(
+    test_codegen_x86_64_passes
+    ${VIPER_TESTS_DIR}/unit/test_codegen_x86_64_passes.cpp)
+  target_link_libraries(test_codegen_x86_64_passes PRIVATE viper_codegen_x86_64)
+  viper_add_ctest(test_codegen_x86_64_passes test_codegen_x86_64_passes)
+endif()
+
 function(viper_add_runtime_tests)
   if(TARGET test_rt_string)
     return()
