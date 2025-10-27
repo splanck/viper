@@ -19,6 +19,8 @@
 ///          error messaging and command expansion.
 #include "vm/DebugScript.hpp"
 
+#include <algorithm>
+#include <cctype>
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -42,9 +44,16 @@ DebugScript::DebugScript(const std::string &path)
     std::string line;
     while (std::getline(f, line))
     {
-        while (!line.empty() && (line.back() == '\r' || line.back() == '\f' || line.back() == '\v'))
+        auto isAsciiSpace = [](unsigned char ch) { return std::isspace(ch); };
+        auto beginIt = std::find_if_not(line.begin(), line.end(), isAsciiSpace);
+        auto endIt = std::find_if_not(line.rbegin(), line.rend(), isAsciiSpace).base();
+        if (beginIt >= endIt)
         {
-            line.pop_back();
+            line.clear();
+        }
+        else
+        {
+            line.assign(beginIt, endIt);
         }
         if (line.empty())
             continue;
