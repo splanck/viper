@@ -22,7 +22,8 @@ int main()
                            BAD_DIR "/block_param_missing_name.il",
                            BAD_DIR "/br_trailing_token.il",
                            BAD_DIR "/switch_trailing_token.il",
-                           BAD_DIR "/global_missing_name.il"};
+                           BAD_DIR "/global_missing_name.il",
+                           BAD_DIR "/duplicate_extern.il"};
     for (const char *path : files)
     {
         std::ifstream in(path);
