@@ -41,8 +41,8 @@ namespace il::verify::detail
 ///
 /// @param ctx Verification context describing the instruction under inspection.
 /// @param info Opcode metadata supplying operand bounds.
-OperandCountChecker::OperandCountChecker(const VerifyCtx &ctx, const il::core::OpcodeInfo &info)
-    : ctx_(ctx), info_(info)
+OperandCountChecker::OperandCountChecker(const VerifyCtx &ctx, const spec::InstructionSpec &spec)
+    : ctx_(ctx), spec_(spec)
 {
 }
 
@@ -60,27 +60,26 @@ Expected<void> OperandCountChecker::run() const
 {
     const auto &instr = ctx_.instr;
     const size_t operandCount = instr.operands.size();
-    const bool variadicOperands = il::core::isVariadicOperandCount(info_.numOperandsMax);
-    if (operandCount < info_.numOperandsMin ||
-        (!variadicOperands && operandCount > info_.numOperandsMax))
+    const bool variadicOperands = il::core::isVariadicOperandCount(spec_.operands.max);
+    if (operandCount < spec_.operands.min ||
+        (!variadicOperands && operandCount > spec_.operands.max))
     {
         std::ostringstream ss;
-        if (info_.numOperandsMin == info_.numOperandsMax && !variadicOperands)
+        if (spec_.operands.min == spec_.operands.max && !variadicOperands)
         {
-            ss << "expected " << static_cast<unsigned>(info_.numOperandsMin) << " operand";
-            if (info_.numOperandsMin != 1)
-                ss << 's';
+            ss << "invalid operand count";
         }
         else if (variadicOperands)
         {
-            ss << "expected at least " << static_cast<unsigned>(info_.numOperandsMin) << " operand";
-            if (info_.numOperandsMin != 1)
+            ss << "expected at least " << static_cast<unsigned>(spec_.operands.min)
+               << " operand";
+            if (spec_.operands.min != 1)
                 ss << 's';
         }
         else
         {
-            ss << "expected between " << static_cast<unsigned>(info_.numOperandsMin) << " and "
-               << static_cast<unsigned>(info_.numOperandsMax) << " operands";
+            ss << "expected between " << static_cast<unsigned>(spec_.operands.min) << " and "
+               << static_cast<unsigned>(spec_.operands.max) << " operands";
         }
         return report(ss.str());
     }

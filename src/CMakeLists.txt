@@ -71,6 +71,7 @@ add_library(viper_il_verify STATIC
         il/verify/OperandCountChecker.cpp
         il/verify/OperandTypeChecker.cpp
         il/verify/ResultTypeChecker.cpp
+        il/verify/SpecTables.cpp
         il/verify/InstructionStrategies.cpp
         il/verify/ExceptionHandlerAnalysis.cpp
         il/verify/BranchVerifier.cpp

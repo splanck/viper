@@ -27,52 +27,6 @@ using il::core::Type;
 using il::core::Value;
 using il::support::Expected;
 
-/// @brief Translate a verifier type class into a concrete IL type kind.
-/// @param typeClass Abstract type class derived from opcode metadata.
-/// @return Matching IL type kind when available; otherwise empty optional.
-std::optional<Type::Kind> kindFromClass(TypeClass typeClass)
-{
-    switch (typeClass)
-    {
-        case TypeClass::Void:
-            return Type::Kind::Void;
-        case TypeClass::I1:
-            return Type::Kind::I1;
-        case TypeClass::I16:
-            return Type::Kind::I16;
-        case TypeClass::I32:
-            return Type::Kind::I32;
-        case TypeClass::I64:
-            return Type::Kind::I64;
-        case TypeClass::F64:
-            return Type::Kind::F64;
-        case TypeClass::Ptr:
-            return Type::Kind::Ptr;
-        case TypeClass::Str:
-            return Type::Kind::Str;
-        case TypeClass::Error:
-            return Type::Kind::Error;
-        case TypeClass::ResumeTok:
-            return Type::Kind::ResumeTok;
-        case TypeClass::None:
-        case TypeClass::InstrType:
-            return std::nullopt;
-    }
-    return std::nullopt;
-}
-
-/// @brief Translate a type class into a full @ref Type when possible.
-/// @param typeClass Class to translate.
-/// @return Concrete type or empty optional for dynamic cases.
-std::optional<Type> typeFromClass(TypeClass typeClass)
-{
-    if (typeClass == TypeClass::InstrType)
-        return std::nullopt;
-    if (auto kind = kindFromClass(typeClass))
-        return Type(*kind);
-    return std::nullopt;
-}
-
 /// @brief Ensure every operand matches the expected type kind.
 /// @details Iterates through operands and reports an error if any operand has a
 ///          mismatched type.

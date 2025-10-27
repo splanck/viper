@@ -29,17 +29,15 @@
 #include "il/verify/OperandTypeChecker.hpp"
 #include "il/verify/ResultTypeChecker.hpp"
 #include "il/verify/TypeInference.hpp"
-#include "il/verify/VerifierTable.hpp"
+#include "il/verify/SpecTables.hpp"
 #include "support/diag_expected.hpp"
 
-#include <algorithm>
+#include <array>
 #include <cassert>
-#include <optional>
+#include <cstddef>
 #include <string>
 #include <string_view>
-#include <type_traits>
 #include <unordered_map>
-#include <utility>
 
 namespace il::verify
 {
@@ -48,7 +46,6 @@ namespace
 
 using checker::checkAddrOf;
 using checker::checkAlloca;
-using checker::checkBinary;
 using checker::checkCall;
 using checker::checkConstNull;
 using checker::checkConstStr;
@@ -60,524 +57,385 @@ using checker::checkStore;
 using checker::checkTrapErr;
 using checker::checkTrapFromErr;
 using checker::checkTrapKind;
-using checker::checkUnary;
-using checker::expectAllOperandType;
 using checker::fail;
-using checker::kindFromClass;
-using checker::typeFromClass;
 using il::core::Opcode;
 using il::core::Type;
 using il::support::Expected;
 using il::support::makeError;
 
-using Instruction = il::core::Instr;
-
-template <typename T> using ErrorOr = Expected<T>;
-
-using VerifierFn = ErrorOr<void> (*)(const Instruction &, const VerifyCtx &);
-
-ErrorOr<void> rejectUnchecked(const VerifyCtx &ctx, std::string_view message)
+Expected<void> rejectUnchecked(const VerifyCtx &ctx, std::string_view message)
 {
     return fail(ctx, std::string(message));
 }
 
-ErrorOr<void> checkBinaryI64ToI64(const VerifyCtx &ctx)
+Expected<void> recordResultFromSpec(const VerifyCtx &ctx, const spec::InstructionSpec &spec)
 {
-    return checkBinary(ctx, Type::Kind::I64, Type(Type::Kind::I64));
+    if (!ctx.instr.result)
+        return {};
+
+    if (spec.result.type == il::core::TypeCategory::InstrType)
+    {
+        ctx.types.recordResult(ctx.instr, ctx.instr.type);
+        return {};
+    }
+
+    if (auto kind = detail::kindFromCategory(spec.result.type))
+        ctx.types.recordResult(ctx.instr, Type(*kind));
+
+    return {};
 }
 
-ErrorOr<void> checkBinaryI64ToI1(const VerifyCtx &ctx)
+Type resolveResultTypeFromSpec(const VerifyCtx &ctx, const spec::InstructionSpec &spec)
 {
-    return checkBinary(ctx, Type::Kind::I64, Type(Type::Kind::I1));
+    if (spec.result.type == il::core::TypeCategory::InstrType)
+        return ctx.instr.type;
+
+    if (auto kind = detail::kindFromCategory(spec.result.type))
+        return Type(*kind);
+
+    return ctx.instr.type;
 }
 
-ErrorOr<void> checkBinaryF64ToI1(const VerifyCtx &ctx)
+Expected<void> applyBinaryFromSpec(const VerifyCtx &ctx, const spec::InstructionSpec &spec)
 {
-    return checkBinary(ctx, Type::Kind::F64, Type(Type::Kind::I1));
+    const auto lhsKind = detail::kindFromCategory(spec.operands.types[0]);
+    const auto rhsKind = detail::kindFromCategory(spec.operands.types[1]);
+    assert(lhsKind && rhsKind && *lhsKind == *rhsKind && "binary spec must provide matching operand kinds");
+    if (!lhsKind || !rhsKind || *lhsKind != *rhsKind)
+        return checker::checkDefault(ctx);
+
+    return checker::checkBinary(ctx, *lhsKind, resolveResultTypeFromSpec(ctx, spec));
 }
 
-ErrorOr<void> checkUnaryI64ToF64(const VerifyCtx &ctx)
+Expected<void> applyUnaryFromSpec(const VerifyCtx &ctx, const spec::InstructionSpec &spec)
 {
-    return checkUnary(ctx, Type::Kind::I64, Type(Type::Kind::F64));
+    const auto operandKind = detail::kindFromCategory(spec.operands.types[0]);
+    assert(operandKind && "unary spec must provide operand kind");
+    if (!operandKind)
+        return checker::checkDefault(ctx);
+
+    return checker::checkUnary(ctx, *operandKind, resolveResultTypeFromSpec(ctx, spec));
 }
 
-ErrorOr<void> checkUnaryF64ToResult(const VerifyCtx &ctx)
-{
-    return checkUnary(ctx, Type::Kind::F64, ctx.instr.type);
-}
-
-ErrorOr<void> checkUnaryI64ToResult(const VerifyCtx &ctx)
-{
-    return checkUnary(ctx, Type::Kind::I64, ctx.instr.type);
-}
-
-ErrorOr<void> verifyAlloca(const Instruction &, const VerifyCtx &ctx)
-{
-    return checkAlloca(ctx);
-}
-
-ErrorOr<void> verifyAdd(const Instruction &, const VerifyCtx &ctx)
-{
-    return rejectUnchecked(ctx, "signed integer add must use iadd.ovf (traps on overflow)");
-}
-
-ErrorOr<void> verifySub(const Instruction &, const VerifyCtx &ctx)
-{
-    return rejectUnchecked(ctx, "signed integer sub must use isub.ovf (traps on overflow)");
-}
-
-ErrorOr<void> verifyMul(const Instruction &, const VerifyCtx &ctx)
-{
-    return rejectUnchecked(ctx, "signed integer mul must use imul.ovf (traps on overflow)");
-}
-
-ErrorOr<void> verifySDiv(const Instruction &, const VerifyCtx &ctx)
-{
-    return rejectUnchecked(
-        ctx, "signed division must use sdiv.chk0 (traps on divide-by-zero and overflow)");
-}
-
-ErrorOr<void> verifyUDiv(const Instruction &, const VerifyCtx &ctx)
-{
-    return rejectUnchecked(ctx, "unsigned division must use udiv.chk0 (traps on divide-by-zero)");
-}
-
-ErrorOr<void> verifySRem(const Instruction &, const VerifyCtx &ctx)
-{
-    return rejectUnchecked(ctx,
-                           "signed remainder must use srem.chk0 (traps on divide-by-zero; matches "
-                           "BASIC MOD semantics)");
-}
-
-ErrorOr<void> verifyURem(const Instruction &, const VerifyCtx &ctx)
-{
-    return rejectUnchecked(ctx,
-                           "unsigned remainder must use urem.chk0 (traps on divide-by-zero; "
-                           "matches BASIC MOD semantics)");
-}
-
-ErrorOr<void> verifyUDivChk0(const Instruction &, const VerifyCtx &ctx)
-{
-    return checkBinaryI64ToI64(ctx);
-}
-
-ErrorOr<void> verifySRemChk0(const Instruction &, const VerifyCtx &ctx)
-{
-    return checkBinaryI64ToI64(ctx);
-}
-
-ErrorOr<void> verifyURemChk0(const Instruction &, const VerifyCtx &ctx)
-{
-    return checkBinaryI64ToI64(ctx);
-}
-
-ErrorOr<void> verifyAnd(const Instruction &, const VerifyCtx &ctx)
-{
-    return checkBinaryI64ToI64(ctx);
-}
-
-ErrorOr<void> verifyOr(const Instruction &, const VerifyCtx &ctx)
-{
-    return checkBinaryI64ToI64(ctx);
-}
-
-ErrorOr<void> verifyXor(const Instruction &, const VerifyCtx &ctx)
-{
-    return checkBinaryI64ToI64(ctx);
-}
-
-ErrorOr<void> verifyShl(const Instruction &, const VerifyCtx &ctx)
-{
-    return checkBinaryI64ToI64(ctx);
-}
-
-ErrorOr<void> verifyLShr(const Instruction &, const VerifyCtx &ctx)
-{
-    return checkBinaryI64ToI64(ctx);
-}
-
-ErrorOr<void> verifyAShr(const Instruction &, const VerifyCtx &ctx)
-{
-    return checkBinaryI64ToI64(ctx);
-}
-
-ErrorOr<void> verifyICmpEq(const Instruction &, const VerifyCtx &ctx)
-{
-    return checkBinaryI64ToI1(ctx);
-}
-
-ErrorOr<void> verifyICmpNe(const Instruction &, const VerifyCtx &ctx)
-{
-    return checkBinaryI64ToI1(ctx);
-}
-
-ErrorOr<void> verifySCmpLT(const Instruction &, const VerifyCtx &ctx)
-{
-    return checkBinaryI64ToI1(ctx);
-}
-
-ErrorOr<void> verifySCmpLE(const Instruction &, const VerifyCtx &ctx)
-{
-    return checkBinaryI64ToI1(ctx);
-}
-
-ErrorOr<void> verifySCmpGT(const Instruction &, const VerifyCtx &ctx)
-{
-    return checkBinaryI64ToI1(ctx);
-}
-
-ErrorOr<void> verifySCmpGE(const Instruction &, const VerifyCtx &ctx)
-{
-    return checkBinaryI64ToI1(ctx);
-}
-
-ErrorOr<void> verifyUCmpLT(const Instruction &, const VerifyCtx &ctx)
-{
-    return checkBinaryI64ToI1(ctx);
-}
-
-ErrorOr<void> verifyUCmpLE(const Instruction &, const VerifyCtx &ctx)
-{
-    return checkBinaryI64ToI1(ctx);
-}
-
-ErrorOr<void> verifyUCmpGT(const Instruction &, const VerifyCtx &ctx)
-{
-    return checkBinaryI64ToI1(ctx);
-}
-
-ErrorOr<void> verifyUCmpGE(const Instruction &, const VerifyCtx &ctx)
-{
-    return checkBinaryI64ToI1(ctx);
-}
-
-ErrorOr<void> verifyFCmpEQ(const Instruction &, const VerifyCtx &ctx)
-{
-    return checkBinaryF64ToI1(ctx);
-}
-
-ErrorOr<void> verifyFCmpNE(const Instruction &, const VerifyCtx &ctx)
-{
-    return checkBinaryF64ToI1(ctx);
-}
-
-ErrorOr<void> verifyFCmpLT(const Instruction &, const VerifyCtx &ctx)
-{
-    return checkBinaryF64ToI1(ctx);
-}
-
-ErrorOr<void> verifyFCmpLE(const Instruction &, const VerifyCtx &ctx)
-{
-    return checkBinaryF64ToI1(ctx);
-}
-
-ErrorOr<void> verifyFCmpGT(const Instruction &, const VerifyCtx &ctx)
-{
-    return checkBinaryF64ToI1(ctx);
-}
-
-ErrorOr<void> verifyFCmpGE(const Instruction &, const VerifyCtx &ctx)
-{
-    return checkBinaryF64ToI1(ctx);
-}
-
-ErrorOr<void> verifySitofp(const Instruction &, const VerifyCtx &ctx)
-{
-    return checkUnaryI64ToF64(ctx);
-}
-
-ErrorOr<void> verifyFptosi(const Instruction &, const VerifyCtx &ctx)
-{
-    return rejectUnchecked(ctx,
-                           "fp to integer narrowing must use cast.fp_to_si.rte.chk (rounds to "
-                           "nearest-even and traps on "
-                           "overflow)");
-}
-
-ErrorOr<void> verifyCastFpToSiRteChk(const Instruction &, const VerifyCtx &ctx)
+Expected<void> applyCastFpToSiRteChk(const VerifyCtx &ctx)
 {
     if (ctx.instr.type.kind != Type::Kind::I16 && ctx.instr.type.kind != Type::Kind::I32 &&
         ctx.instr.type.kind != Type::Kind::I64)
         return fail(ctx, "cast result must be i16, i32, or i64");
-    return checkUnaryF64ToResult(ctx);
+    return checker::checkUnary(ctx, Type::Kind::F64, ctx.instr.type);
 }
 
-ErrorOr<void> verifyCastFpToUiRteChk(const Instruction &, const VerifyCtx &ctx)
+Expected<void> applyCastFpToUiRteChk(const VerifyCtx &ctx)
 {
     if (ctx.instr.type.kind != Type::Kind::I16 && ctx.instr.type.kind != Type::Kind::I32 &&
         ctx.instr.type.kind != Type::Kind::I64)
         return fail(ctx, "cast result must be i16, i32, or i64");
-    return checkUnaryF64ToResult(ctx);
+    return checker::checkUnary(ctx, Type::Kind::F64, ctx.instr.type);
 }
 
-ErrorOr<void> verifyCastSiNarrowChk(const Instruction &, const VerifyCtx &ctx)
+Expected<void> applyCastSiNarrowChk(const VerifyCtx &ctx)
 {
     if (ctx.instr.type.kind != Type::Kind::I16 && ctx.instr.type.kind != Type::Kind::I32)
         return fail(ctx, "narrowing cast result must be i16 or i32");
-    return checkUnaryI64ToResult(ctx);
+    return checker::checkUnary(ctx, Type::Kind::I64, ctx.instr.type);
 }
 
-ErrorOr<void> verifyCastUiNarrowChk(const Instruction &, const VerifyCtx &ctx)
+Expected<void> applyCastUiNarrowChk(const VerifyCtx &ctx)
 {
     if (ctx.instr.type.kind != Type::Kind::I16 && ctx.instr.type.kind != Type::Kind::I32)
         return fail(ctx, "narrowing cast result must be i16 or i32");
-    return checkUnaryI64ToResult(ctx);
+    return checker::checkUnary(ctx, Type::Kind::I64, ctx.instr.type);
 }
 
-ErrorOr<void> verifyIdxChk(const Instruction &, const VerifyCtx &ctx)
+Expected<void> applyIdxChk(const VerifyCtx &ctx)
 {
     return checkIdxChk(ctx);
 }
 
-ErrorOr<void> verifyZext1(const Instruction &, const VerifyCtx &ctx)
+Expected<void> applyAlloca(const VerifyCtx &ctx)
 {
-    return checkUnary(ctx, Type::Kind::I1, Type(Type::Kind::I64));
+    return checkAlloca(ctx);
 }
 
-ErrorOr<void> verifyTrunc1(const Instruction &, const VerifyCtx &ctx)
-{
-    return checkUnary(ctx, Type::Kind::I64, Type(Type::Kind::I1));
-}
-
-ErrorOr<void> verifyGEP(const Instruction &, const VerifyCtx &ctx)
+Expected<void> applyGEP(const VerifyCtx &ctx)
 {
     return checkGEP(ctx);
 }
 
-ErrorOr<void> verifyLoad(const Instruction &, const VerifyCtx &ctx)
+Expected<void> applyLoad(const VerifyCtx &ctx)
 {
     return checkLoad(ctx);
 }
 
-ErrorOr<void> verifyStore(const Instruction &, const VerifyCtx &ctx)
+Expected<void> applyStore(const VerifyCtx &ctx)
 {
     return checkStore(ctx);
 }
 
-ErrorOr<void> verifyAddrOf(const Instruction &, const VerifyCtx &ctx)
+Expected<void> applyAddrOf(const VerifyCtx &ctx)
 {
     return checkAddrOf(ctx);
 }
 
-ErrorOr<void> verifyConstStr(const Instruction &, const VerifyCtx &ctx)
+Expected<void> applyConstStr(const VerifyCtx &ctx)
 {
     return checkConstStr(ctx);
 }
 
-ErrorOr<void> verifyConstNull(const Instruction &, const VerifyCtx &ctx)
+Expected<void> applyConstNull(const VerifyCtx &ctx)
 {
     return checkConstNull(ctx);
 }
 
-ErrorOr<void> verifyCall(const Instruction &, const VerifyCtx &ctx)
+Expected<void> applyCall(const VerifyCtx &ctx)
 {
     return checkCall(ctx);
 }
 
-ErrorOr<void> verifyTrapKind(const Instruction &, const VerifyCtx &ctx)
+Expected<void> applyTrapKind(const VerifyCtx &ctx)
 {
     return checkTrapKind(ctx);
 }
 
-ErrorOr<void> verifyTrapFromErr(const Instruction &, const VerifyCtx &ctx)
+Expected<void> applyTrapFromErr(const VerifyCtx &ctx)
 {
     return checkTrapFromErr(ctx);
 }
 
-ErrorOr<void> verifyTrapErr(const Instruction &, const VerifyCtx &ctx)
+Expected<void> applyTrapErr(const VerifyCtx &ctx)
 {
     return checkTrapErr(ctx);
 }
 
-ErrorOr<void> verifyErrGetKind(const Instruction &, const VerifyCtx &ctx)
+enum class SemanticKind
 {
-    if (auto result = expectAllOperandType(ctx, Type::Kind::Error); !result)
-        return result;
-    ctx.types.recordResult(ctx.instr, Type(Type::Kind::I32));
-    return {};
-}
-
-ErrorOr<void> verifyErrGetCode(const Instruction &, const VerifyCtx &ctx)
-{
-    if (auto result = expectAllOperandType(ctx, Type::Kind::Error); !result)
-        return result;
-    ctx.types.recordResult(ctx.instr, Type(Type::Kind::I32));
-    return {};
-}
-
-ErrorOr<void> verifyErrGetLine(const Instruction &, const VerifyCtx &ctx)
-{
-    if (auto result = expectAllOperandType(ctx, Type::Kind::Error); !result)
-        return result;
-    ctx.types.recordResult(ctx.instr, Type(Type::Kind::I32));
-    return {};
-}
-
-ErrorOr<void> verifyErrGetIp(const Instruction &, const VerifyCtx &ctx)
-{
-    if (auto result = expectAllOperandType(ctx, Type::Kind::Error); !result)
-        return result;
-    ctx.types.recordResult(ctx.instr, Type(Type::Kind::I64));
-    return {};
-}
-
-ErrorOr<void> verifyResumeSame(const Instruction &, const VerifyCtx &ctx)
-{
-    return expectAllOperandType(ctx, Type::Kind::ResumeTok);
-}
-
-ErrorOr<void> verifyResumeNext(const Instruction &, const VerifyCtx &ctx)
-{
-    return expectAllOperandType(ctx, Type::Kind::ResumeTok);
-}
-
-ErrorOr<void> verifyResumeLabel(const Instruction &, const VerifyCtx &ctx)
-{
-    return expectAllOperandType(ctx, Type::Kind::ResumeTok);
-}
-
-static const std::pair<Opcode, VerifierFn> kVerifiers[] = {
-    {Opcode::Add, &verifyAdd},
-    {Opcode::Sub, &verifySub},
-    {Opcode::Mul, &verifyMul},
-    {Opcode::SDiv, &verifySDiv},
-    {Opcode::UDiv, &verifyUDiv},
-    {Opcode::SRem, &verifySRem},
-    {Opcode::URem, &verifyURem},
-    {Opcode::UDivChk0, &verifyUDivChk0},
-    {Opcode::SRemChk0, &verifySRemChk0},
-    {Opcode::URemChk0, &verifyURemChk0},
-    {Opcode::IdxChk, &verifyIdxChk},
-    {Opcode::And, &verifyAnd},
-    {Opcode::Or, &verifyOr},
-    {Opcode::Xor, &verifyXor},
-    {Opcode::Shl, &verifyShl},
-    {Opcode::LShr, &verifyLShr},
-    {Opcode::AShr, &verifyAShr},
-    {Opcode::ICmpEq, &verifyICmpEq},
-    {Opcode::ICmpNe, &verifyICmpNe},
-    {Opcode::SCmpLT, &verifySCmpLT},
-    {Opcode::SCmpLE, &verifySCmpLE},
-    {Opcode::SCmpGT, &verifySCmpGT},
-    {Opcode::SCmpGE, &verifySCmpGE},
-    {Opcode::UCmpLT, &verifyUCmpLT},
-    {Opcode::UCmpLE, &verifyUCmpLE},
-    {Opcode::UCmpGT, &verifyUCmpGT},
-    {Opcode::UCmpGE, &verifyUCmpGE},
-    {Opcode::FCmpEQ, &verifyFCmpEQ},
-    {Opcode::FCmpNE, &verifyFCmpNE},
-    {Opcode::FCmpLT, &verifyFCmpLT},
-    {Opcode::FCmpLE, &verifyFCmpLE},
-    {Opcode::FCmpGT, &verifyFCmpGT},
-    {Opcode::FCmpGE, &verifyFCmpGE},
-    {Opcode::Sitofp, &verifySitofp},
-    {Opcode::Fptosi, &verifyFptosi},
-    {Opcode::CastFpToSiRteChk, &verifyCastFpToSiRteChk},
-    {Opcode::CastFpToUiRteChk, &verifyCastFpToUiRteChk},
-    {Opcode::CastSiNarrowChk, &verifyCastSiNarrowChk},
-    {Opcode::CastUiNarrowChk, &verifyCastUiNarrowChk},
-    {Opcode::Zext1, &verifyZext1},
-    {Opcode::Trunc1, &verifyTrunc1},
-    {Opcode::Alloca, &verifyAlloca},
-    {Opcode::GEP, &verifyGEP},
-    {Opcode::Load, &verifyLoad},
-    {Opcode::Store, &verifyStore},
-    {Opcode::AddrOf, &verifyAddrOf},
-    {Opcode::ConstStr, &verifyConstStr},
-    {Opcode::ConstNull, &verifyConstNull},
-    {Opcode::Call, &verifyCall},
-    {Opcode::TrapKind, &verifyTrapKind},
-    {Opcode::TrapFromErr, &verifyTrapFromErr},
-    {Opcode::TrapErr, &verifyTrapErr},
-    {Opcode::ErrGetKind, &verifyErrGetKind},
-    {Opcode::ErrGetCode, &verifyErrGetCode},
-    {Opcode::ErrGetIp, &verifyErrGetIp},
-    {Opcode::ErrGetLine, &verifyErrGetLine},
-    {Opcode::ResumeSame, &verifyResumeSame},
-    {Opcode::ResumeNext, &verifyResumeNext},
-    {Opcode::ResumeLabel, &verifyResumeLabel},
+    RecordResult,
+    Reject,
+    Alloca,
+    GEP,
+    Load,
+    Store,
+    AddrOf,
+    ConstStr,
+    ConstNull,
+    Call,
+    TrapKind,
+    TrapFromErr,
+    TrapErr,
+    IdxChk,
+    CastFpToSiRteChk,
+    CastFpToUiRteChk,
+    CastSiNarrowChk,
+    CastUiNarrowChk,
+    BinaryFromSpec,
+    UnaryFromSpec,
 };
 
-VerifierFn lookupVerifier(Opcode opcode)
+enum class StructuralPhase
 {
-    const auto begin = std::begin(kVerifiers);
-    const auto end = std::end(kVerifiers);
-    const auto it =
-        std::lower_bound(begin,
-                         end,
-                         opcode,
-                         [](const auto &entry, Opcode value)
-                         {
-                             return static_cast<std::underlying_type_t<Opcode>>(entry.first) <
-                                    static_cast<std::underlying_type_t<Opcode>>(value);
-                         });
-    if (it != end && it->first == opcode)
-        return it->second;
-    return nullptr;
+    None,
+    Before,
+    After,
+};
+
+struct SemanticRule
+{
+    SemanticKind kind = SemanticKind::RecordResult;
+    const char *message = nullptr;
+    StructuralPhase structural = StructuralPhase::Before;
+};
+
+constexpr std::array<SemanticRule, il::core::kNumOpcodes> buildSemanticTable()
+{
+    std::array<SemanticRule, il::core::kNumOpcodes> table{};
+    for (auto &entry : table)
+        entry = {SemanticKind::RecordResult, nullptr, StructuralPhase::Before};
+
+    table[static_cast<std::size_t>(Opcode::Add)] =
+        {SemanticKind::Reject,
+         "signed integer add must use iadd.ovf (traps on overflow)",
+         StructuralPhase::None};
+    table[static_cast<std::size_t>(Opcode::Sub)] =
+        {SemanticKind::Reject,
+         "signed integer sub must use isub.ovf (traps on overflow)",
+         StructuralPhase::None};
+    table[static_cast<std::size_t>(Opcode::Mul)] =
+        {SemanticKind::Reject,
+         "signed integer mul must use imul.ovf (traps on overflow)",
+         StructuralPhase::None};
+    table[static_cast<std::size_t>(Opcode::SDiv)] =
+        {SemanticKind::Reject,
+         "signed division must use sdiv.chk0 (traps on divide-by-zero and overflow)",
+         StructuralPhase::None};
+    table[static_cast<std::size_t>(Opcode::UDiv)] =
+        {SemanticKind::Reject,
+         "unsigned division must use udiv.chk0 (traps on divide-by-zero)",
+         StructuralPhase::None};
+    table[static_cast<std::size_t>(Opcode::SRem)] =
+        {SemanticKind::Reject,
+         "signed remainder must use srem.chk0 (traps on divide-by-zero; matches BASIC MOD semantics)",
+         StructuralPhase::None};
+    table[static_cast<std::size_t>(Opcode::URem)] =
+        {SemanticKind::Reject,
+         "unsigned remainder must use urem.chk0 (traps on divide-by-zero; matches BASIC MOD semantics)",
+         StructuralPhase::None};
+    table[static_cast<std::size_t>(Opcode::Fptosi)] =
+        {SemanticKind::Reject,
+         "fp to integer narrowing must use cast.fp_to_si.rte.chk (rounds to nearest-even and traps on overflow)",
+         StructuralPhase::None};
+
+    const auto setBinary = [&](Opcode op) {
+        table[static_cast<std::size_t>(op)] =
+            {SemanticKind::BinaryFromSpec, nullptr, StructuralPhase::After};
+    };
+    setBinary(Opcode::IAddOvf);
+    setBinary(Opcode::ISubOvf);
+    setBinary(Opcode::IMulOvf);
+    setBinary(Opcode::SDivChk0);
+    setBinary(Opcode::UDivChk0);
+    setBinary(Opcode::SRemChk0);
+    setBinary(Opcode::URemChk0);
+    setBinary(Opcode::And);
+    setBinary(Opcode::Or);
+    setBinary(Opcode::Xor);
+    setBinary(Opcode::Shl);
+    setBinary(Opcode::LShr);
+    setBinary(Opcode::AShr);
+    setBinary(Opcode::FAdd);
+    setBinary(Opcode::FSub);
+    setBinary(Opcode::FMul);
+    setBinary(Opcode::FDiv);
+    setBinary(Opcode::ICmpEq);
+    setBinary(Opcode::ICmpNe);
+    setBinary(Opcode::SCmpLT);
+    setBinary(Opcode::SCmpLE);
+    setBinary(Opcode::SCmpGT);
+    setBinary(Opcode::SCmpGE);
+    setBinary(Opcode::UCmpLT);
+    setBinary(Opcode::UCmpLE);
+    setBinary(Opcode::UCmpGT);
+    setBinary(Opcode::UCmpGE);
+    setBinary(Opcode::FCmpEQ);
+    setBinary(Opcode::FCmpNE);
+    setBinary(Opcode::FCmpLT);
+    setBinary(Opcode::FCmpLE);
+    setBinary(Opcode::FCmpGT);
+    setBinary(Opcode::FCmpGE);
+
+    const auto setUnary = [&](Opcode op) {
+        table[static_cast<std::size_t>(op)] =
+            {SemanticKind::UnaryFromSpec, nullptr, StructuralPhase::After};
+    };
+    setUnary(Opcode::CastSiToFp);
+    setUnary(Opcode::CastUiToFp);
+    setUnary(Opcode::Zext1);
+    setUnary(Opcode::Trunc1);
+    setUnary(Opcode::ErrGetKind);
+    setUnary(Opcode::ErrGetCode);
+    setUnary(Opcode::ErrGetIp);
+    setUnary(Opcode::ErrGetLine);
+
+    table[static_cast<std::size_t>(Opcode::Alloca)] =
+        {SemanticKind::Alloca, nullptr, StructuralPhase::After};
+    table[static_cast<std::size_t>(Opcode::GEP)] =
+        {SemanticKind::GEP, nullptr, StructuralPhase::After};
+    table[static_cast<std::size_t>(Opcode::Load)] =
+        {SemanticKind::Load, nullptr, StructuralPhase::After};
+    table[static_cast<std::size_t>(Opcode::Store)] =
+        {SemanticKind::Store, nullptr, StructuralPhase::After};
+    table[static_cast<std::size_t>(Opcode::AddrOf)] =
+        {SemanticKind::AddrOf, nullptr, StructuralPhase::After};
+    table[static_cast<std::size_t>(Opcode::ConstStr)] =
+        {SemanticKind::ConstStr, nullptr, StructuralPhase::After};
+    table[static_cast<std::size_t>(Opcode::ConstNull)] =
+        {SemanticKind::ConstNull, nullptr, StructuralPhase::After};
+    table[static_cast<std::size_t>(Opcode::Call)] =
+        {SemanticKind::Call, nullptr, StructuralPhase::After};
+    table[static_cast<std::size_t>(Opcode::TrapKind)] =
+        {SemanticKind::TrapKind, nullptr, StructuralPhase::After};
+    table[static_cast<std::size_t>(Opcode::TrapFromErr)] =
+        {SemanticKind::TrapFromErr, nullptr, StructuralPhase::After};
+    table[static_cast<std::size_t>(Opcode::TrapErr)] =
+        {SemanticKind::TrapErr, nullptr, StructuralPhase::After};
+    table[static_cast<std::size_t>(Opcode::IdxChk)] =
+        {SemanticKind::IdxChk, nullptr, StructuralPhase::After};
+    table[static_cast<std::size_t>(Opcode::CastFpToSiRteChk)] =
+        {SemanticKind::CastFpToSiRteChk, nullptr, StructuralPhase::After};
+    table[static_cast<std::size_t>(Opcode::CastFpToUiRteChk)] =
+        {SemanticKind::CastFpToUiRteChk, nullptr, StructuralPhase::After};
+    table[static_cast<std::size_t>(Opcode::CastSiNarrowChk)] =
+        {SemanticKind::CastSiNarrowChk, nullptr, StructuralPhase::After};
+    table[static_cast<std::size_t>(Opcode::CastUiNarrowChk)] =
+        {SemanticKind::CastUiNarrowChk, nullptr, StructuralPhase::After};
+
+    return table;
 }
 
-bool hasLegacyArithmeticProps(const std::optional<OpProps> &props)
+const auto kSemanticTable = buildSemanticTable();
+
+Expected<void> applySemanticRule(const VerifyCtx &ctx,
+                                 const spec::InstructionSpec &spec,
+                                 const SemanticRule &rule)
 {
-    if (!props)
-        return false;
-    if (props->arity == 0 || props->arity > 2)
-        return false;
-    return kindFromClass(props->operands).has_value() && typeFromClass(props->result).has_value();
+    switch (rule.kind)
+    {
+        case SemanticKind::RecordResult:
+            return recordResultFromSpec(ctx, spec);
+        case SemanticKind::Reject:
+            return rejectUnchecked(ctx, rule.message);
+        case SemanticKind::Alloca:
+            return applyAlloca(ctx);
+        case SemanticKind::GEP:
+            return applyGEP(ctx);
+        case SemanticKind::Load:
+            return applyLoad(ctx);
+        case SemanticKind::Store:
+            return applyStore(ctx);
+        case SemanticKind::AddrOf:
+            return applyAddrOf(ctx);
+        case SemanticKind::ConstStr:
+            return applyConstStr(ctx);
+        case SemanticKind::ConstNull:
+            return applyConstNull(ctx);
+        case SemanticKind::Call:
+            return applyCall(ctx);
+        case SemanticKind::TrapKind:
+            return applyTrapKind(ctx);
+        case SemanticKind::TrapFromErr:
+            return applyTrapFromErr(ctx);
+        case SemanticKind::TrapErr:
+            return applyTrapErr(ctx);
+        case SemanticKind::IdxChk:
+            return applyIdxChk(ctx);
+        case SemanticKind::CastFpToSiRteChk:
+            return applyCastFpToSiRteChk(ctx);
+        case SemanticKind::CastFpToUiRteChk:
+            return applyCastFpToUiRteChk(ctx);
+        case SemanticKind::CastSiNarrowChk:
+            return applyCastSiNarrowChk(ctx);
+        case SemanticKind::CastUiNarrowChk:
+            return applyCastUiNarrowChk(ctx);
+        case SemanticKind::BinaryFromSpec:
+            return applyBinaryFromSpec(ctx, spec);
+        case SemanticKind::UnaryFromSpec:
+            return applyUnaryFromSpec(ctx, spec);
+    }
+
+    return {};
 }
 
-/// @brief Validate operands and results using canonical opcode metadata.
-/// @details Runs the operand-count, operand-type, and result-type checkers in
-///          sequence using @ref il::core::OpcodeInfo to describe the opcode.
-///          Any failure propagates immediately through the @ref Expected
-///          channel.
-/// @param ctx Verification context describing the instruction under test.
-/// @param info Opcode metadata record retrieved from the core tables.
-/// @return Empty success or a diagnostic describing the mismatch.
-Expected<void> checkWithInfo(const VerifyCtx &ctx, const il::core::OpcodeInfo &info)
+Expected<void> checkWithSpec(const VerifyCtx &ctx, const spec::InstructionSpec &spec)
 {
-    detail::OperandCountChecker countChecker(ctx, info);
+    detail::OperandCountChecker countChecker(ctx, spec);
     if (auto countResult = countChecker.run(); !countResult)
         return countResult;
 
-    detail::OperandTypeChecker typeChecker(ctx, info);
+    detail::OperandTypeChecker typeChecker(ctx, spec);
     if (auto typeResult = typeChecker.run(); !typeResult)
         return typeResult;
 
-    detail::ResultTypeChecker resultChecker(ctx, info);
+    detail::ResultTypeChecker resultChecker(ctx, spec);
     return resultChecker.run();
-}
-
-/// @brief Validate arithmetic-style opcodes using verifier table properties.
-/// @details Converts the compact verifier table representation into operand and
-///          result kinds understood by the shared arithmetic checkers.  Supports
-///          unary and binary shapes and asserts for unexpected table entries.
-/// @param ctx Verification context describing the instruction under test.
-/// @param props Verifier table metadata for the opcode.
-/// @return Empty success or a diagnostic failure.
-Expected<void> checkWithProps(const VerifyCtx &ctx, const OpProps &props)
-{
-    switch (props.arity)
-    {
-        case 1:
-        {
-            const auto operandKind = kindFromClass(props.operands);
-            const auto resultType = typeFromClass(props.result);
-            assert(operandKind && resultType);
-            return checkUnary(ctx, *operandKind, *resultType);
-        }
-        case 2:
-        {
-            const auto operandKind = kindFromClass(props.operands);
-            const auto resultType = typeFromClass(props.result);
-            assert(operandKind && resultType);
-            return checkBinary(ctx, *operandKind, *resultType);
-        }
-        default:
-            break;
-    }
-
-    assert(false && "unsupported verifier table arity");
-    return {};
 }
 
 /// @brief Check an instruction's structural signature against metadata.
@@ -593,10 +451,10 @@ Expected<void> verifyOpcodeSignature_impl(const il::core::Function &fn,
                                           const il::core::BasicBlock &bb,
                                           const il::core::Instr &instr)
 {
-    const auto &info = il::core::getOpcodeInfo(instr.op);
+    const auto &spec = spec::lookup(instr.op);
 
     const bool hasResult = instr.result.has_value();
-    switch (info.resultArity)
+    switch (spec.result.arity)
     {
         case il::core::ResultArity::None:
             if (hasResult)
@@ -613,34 +471,34 @@ Expected<void> verifyOpcodeSignature_impl(const il::core::Function &fn,
     }
 
     const size_t operandCount = instr.operands.size();
-    const bool variadic = il::core::isVariadicOperandCount(info.numOperandsMax);
-    if (operandCount < info.numOperandsMin || (!variadic && operandCount > info.numOperandsMax))
+    const bool variadic = il::core::isVariadicOperandCount(spec.operands.max);
+    if (operandCount < spec.operands.min || (!variadic && operandCount > spec.operands.max))
     {
         std::string message;
-        if (info.numOperandsMin == info.numOperandsMax)
+        if (spec.operands.min == spec.operands.max)
         {
-            message = "expected " + std::to_string(static_cast<unsigned>(info.numOperandsMin)) +
+            message = "expected " + std::to_string(static_cast<unsigned>(spec.operands.min)) +
                       " operand";
-            if (info.numOperandsMin != 1)
+            if (spec.operands.min != 1)
                 message += 's';
         }
         else if (variadic)
         {
             message = "expected at least " +
-                      std::to_string(static_cast<unsigned>(info.numOperandsMin)) + " operand";
-            if (info.numOperandsMin != 1)
+                      std::to_string(static_cast<unsigned>(spec.operands.min)) + " operand";
+            if (spec.operands.min != 1)
                 message += 's';
         }
         else
         {
             message = "expected between " +
-                      std::to_string(static_cast<unsigned>(info.numOperandsMin)) + " and " +
-                      std::to_string(static_cast<unsigned>(info.numOperandsMax)) + " operands";
+                      std::to_string(static_cast<unsigned>(spec.operands.min)) + " and " +
+                      std::to_string(static_cast<unsigned>(spec.operands.max)) + " operands";
         }
         return Expected<void>(makeError(instr.loc, formatInstrDiag(fn, bb, instr, message)));
     }
 
-    const bool variadicSucc = il::core::isVariadicSuccessorCount(info.numSuccessors);
+    const bool variadicSucc = il::core::isVariadicSuccessorCount(spec.flags.successors);
     if (variadicSucc)
     {
         if (instr.labels.empty())
@@ -649,12 +507,12 @@ Expected<void> verifyOpcodeSignature_impl(const il::core::Function &fn,
     }
     else
     {
-        if (instr.labels.size() != info.numSuccessors)
+        if (instr.labels.size() != spec.flags.successors)
         {
             std::string message = "expected " +
-                                  std::to_string(static_cast<unsigned>(info.numSuccessors)) +
+                                  std::to_string(static_cast<unsigned>(spec.flags.successors)) +
                                   " successor";
-            if (info.numSuccessors != 1)
+            if (spec.flags.successors != 1)
                 message += 's';
             return Expected<void>(makeError(instr.loc, formatInstrDiag(fn, bb, instr, message)));
         }
@@ -670,21 +528,21 @@ Expected<void> verifyOpcodeSignature_impl(const il::core::Function &fn,
     }
     else
     {
-        if (instr.brArgs.size() > info.numSuccessors)
+        if (instr.brArgs.size() > spec.flags.successors)
         {
             std::string message = "expected at most " +
-                                  std::to_string(static_cast<unsigned>(info.numSuccessors)) +
+                                  std::to_string(static_cast<unsigned>(spec.flags.successors)) +
                                   " branch argument bundle";
-            if (info.numSuccessors != 1)
+            if (spec.flags.successors != 1)
                 message += 's';
             return Expected<void>(makeError(instr.loc, formatInstrDiag(fn, bb, instr, message)));
         }
-        if (!instr.brArgs.empty() && instr.brArgs.size() != info.numSuccessors)
+        if (!instr.brArgs.empty() && instr.brArgs.size() != spec.flags.successors)
         {
             std::string message = "expected " +
-                                  std::to_string(static_cast<unsigned>(info.numSuccessors)) +
+                                  std::to_string(static_cast<unsigned>(spec.flags.successors)) +
                                   " branch argument bundle";
-            if (info.numSuccessors != 1)
+            if (spec.flags.successors != 1)
                 message += 's';
             message += ", or none";
             return Expected<void>(makeError(instr.loc, formatInstrDiag(fn, bb, instr, message)));
@@ -703,18 +561,24 @@ Expected<void> verifyOpcodeSignature_impl(const il::core::Function &fn,
 /// @return Empty success or a diagnostic when verification fails.
 Expected<void> verifyInstruction_impl(const VerifyCtx &ctx)
 {
-    const auto props = lookup(ctx.instr.op);
-    if (hasLegacyArithmeticProps(props))
-        return checkWithProps(ctx, *props);
+    const auto &specEntry = spec::lookup(ctx.instr.op);
+    const auto &rule = kSemanticTable[static_cast<std::size_t>(ctx.instr.op)];
+    if (rule.structural == StructuralPhase::Before)
+    {
+        if (auto result = checkWithSpec(ctx, specEntry); !result)
+            return result;
+    }
 
-    const auto &info = il::core::getOpcodeInfo(ctx.instr.op);
-    if (auto result = checkWithInfo(ctx, info); !result)
+    if (auto result = applySemanticRule(ctx, specEntry, rule); !result)
         return result;
 
-    if (const auto verifier = lookupVerifier(ctx.instr.op))
-        return verifier(ctx.instr, ctx);
+    if (rule.structural == StructuralPhase::After)
+    {
+        if (auto result = checkWithSpec(ctx, specEntry); !result)
+            return result;
+    }
 
-    return checkDefault(ctx);
+    return {};
 }
 
 } // namespace

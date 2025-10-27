@@ -8,7 +8,6 @@
 #include "il/core/Instr.hpp"
 #include "il/core/Type.hpp"
 #include "il/verify/DiagFormat.hpp"
-#include "il/verify/VerifierTable.hpp"
 #include "il/verify/VerifyCtx.hpp"
 #include "support/diag_expected.hpp"
 
@@ -54,13 +53,6 @@ template <typename T> inline Expected<T> failWith(const VerifyCtx &ctx, std::str
 /// @brief Translate a verifier table type class into a concrete kind when available.
 /// @param typeClass Classification to translate.
 /// @return Matching kind or std::nullopt when the class is dynamic.
-std::optional<Type::Kind> kindFromClass(TypeClass typeClass);
-
-/// @brief Translate a verifier table type class into a concrete type when available.
-/// @param typeClass Classification to translate.
-/// @return Matching type or std::nullopt when the class depends on instruction metadata.
-std::optional<Type> typeFromClass(TypeClass typeClass);
-
 // Arithmetic helpers.
 Expected<void> expectAllOperandType(const VerifyCtx &ctx, Type::Kind kind);
 Expected<void> checkBinary(const VerifyCtx &ctx, Type::Kind operandKind, Type resultType);
