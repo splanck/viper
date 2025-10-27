@@ -168,6 +168,15 @@ function(viper_add_il_core_tests)
   target_compile_definitions(test_il_parse_negative PRIVATE BAD_DIR="${CMAKE_SOURCE_DIR}/tests/il/parse")
   viper_add_ctest(test_il_parse_negative test_il_parse_negative)
 
+  viper_add_test(
+    test_il_parse_operand_whitespace
+    ${_VIPER_IL_UNIT_DIR}/test_il_parse_operand_whitespace.cpp)
+  target_link_libraries(test_il_parse_operand_whitespace PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
+  target_compile_definitions(
+    test_il_parse_operand_whitespace
+    PRIVATE OPERAND_WS_DIR="${CMAKE_SOURCE_DIR}/tests/il/parse")
+  viper_add_ctest(test_il_parse_operand_whitespace test_il_parse_operand_whitespace)
+
   viper_add_test(test_il_parse_comment ${_VIPER_IL_UNIT_DIR}/test_il_parse_comment.cpp)
   target_link_libraries(test_il_parse_comment PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
   viper_add_ctest(test_il_parse_comment test_il_parse_comment)
