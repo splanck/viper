@@ -1,6 +1,6 @@
-// File: tests/frontends/basic/ParseGosubTests.cpp
-// Purpose: Validate parsing and AST printing of BASIC GOSUB statements.
-// Key invariants: GOSUB requires a numeric target line and prints via AstPrinter.
+// File: tests/frontends/basic/ParseGotoTests.cpp
+// Purpose: Validate parsing and AST printing of BASIC GOTO statements.
+// Key invariants: GOTO statements accept numeric or named targets.
 // Ownership/Lifetime: Test owns parser, AST, and source manager instances.
 // Links: docs/codemap.md
 
@@ -19,7 +19,7 @@ namespace
 std::string dumpProgram(const std::string &src)
 {
     SourceManager sm;
-    uint32_t fid = sm.addFile("gosub.bas");
+    uint32_t fid = sm.addFile("goto.bas");
     Parser parser(src, fid);
     auto prog = parser.parseProgram();
     assert(prog);
@@ -30,10 +30,10 @@ std::string dumpProgram(const std::string &src)
 
 int main()
 {
-    std::string dump = dumpProgram("10 GOSUB 200\n20 END\n");
-    assert(dump == "10: (GOSUB 200)\n20: (END)\n");
+    std::string dump = dumpProgram("10 GOTO 200\n20 END\n");
+    assert(dump == "10: (GOTO 200)\n20: (END)\n");
 
-    std::string labelDump = dumpProgram("10 GOSUB Start\n20 END\nStart:\n30 RETURN\n");
-    assert(labelDump == "10: (GOSUB 1000000)\n20: (END)\n1000000: (LABEL)\n30: (RETURN)\n");
+    std::string labelDump = dumpProgram("10 GOTO Start\n20 END\nStart:\n30 END\n");
+    assert(labelDump == "10: (GOTO 1000000)\n20: (END)\n1000000: (LABEL)\n30: (END)\n");
     return 0;
 }

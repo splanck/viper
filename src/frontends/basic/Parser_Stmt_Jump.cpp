@@ -24,6 +24,7 @@
 
 #include "frontends/basic/Parser.hpp"
 
+#include <cstdio>
 #include <cstdlib>
 
 namespace il::frontends::basic
@@ -41,19 +42,40 @@ StmtPtr Parser::parseGotoStatement()
 {
     auto loc = peek().loc;
     consume(); // GOTO
-    Token targetTok = peek();
-    int target = 0;
-    if (targetTok.kind == TokenKind::Identifier)
+    int target = -1;
+    if (at(TokenKind::Number))
     {
+        Token targetTok = consume();
+        target = std::atoi(targetTok.lexeme.c_str());
+        noteNumericLabelUsage(target);
+    }
+    else if (at(TokenKind::Identifier))
+    {
+        Token targetTok = consume();
         target = ensureLabelNumber(targetTok.lexeme);
         noteNamedLabelReference(targetTok, target);
-        consume();
     }
     else
     {
-        target = std::atoi(targetTok.lexeme.c_str());
-        expect(TokenKind::Number);
-        noteNumericLabelUsage(target);
+        Token unexpected = peek();
+        il::support::SourceLoc diagLoc =
+            unexpected.kind == TokenKind::EndOfFile ? loc : unexpected.loc;
+        uint32_t length =
+            unexpected.lexeme.empty() ? 1u : static_cast<uint32_t>(unexpected.lexeme.size());
+        if (emitter_)
+        {
+            emitter_->emit(il::support::Severity::Error,
+                           "B0001",
+                           diagLoc,
+                           length,
+                           "expected label or number after GOTO");
+        }
+        else
+        {
+            std::fprintf(stderr, "expected label or number after GOTO\n");
+        }
+        syncToStmtBoundary();
+        return nullptr;
     }
     auto stmt = std::make_unique<GotoStmt>();
     stmt->loc = loc;
@@ -73,19 +95,40 @@ StmtPtr Parser::parseGosubStatement()
 {
     auto loc = peek().loc;
     consume(); // GOSUB
-    Token targetTok = peek();
-    int target = 0;
-    if (targetTok.kind == TokenKind::Identifier)
+    int target = -1;
+    if (at(TokenKind::Number))
     {
+        Token targetTok = consume();
+        target = std::atoi(targetTok.lexeme.c_str());
+        noteNumericLabelUsage(target);
+    }
+    else if (at(TokenKind::Identifier))
+    {
+        Token targetTok = consume();
         target = ensureLabelNumber(targetTok.lexeme);
         noteNamedLabelReference(targetTok, target);
-        consume();
     }
     else
     {
-        target = std::atoi(targetTok.lexeme.c_str());
-        expect(TokenKind::Number);
-        noteNumericLabelUsage(target);
+        Token unexpected = peek();
+        il::support::SourceLoc diagLoc =
+            unexpected.kind == TokenKind::EndOfFile ? loc : unexpected.loc;
+        uint32_t length =
+            unexpected.lexeme.empty() ? 1u : static_cast<uint32_t>(unexpected.lexeme.size());
+        if (emitter_)
+        {
+            emitter_->emit(il::support::Severity::Error,
+                           "B0001",
+                           diagLoc,
+                           length,
+                           "expected label or number after GOSUB");
+        }
+        else
+        {
+            std::fprintf(stderr, "expected label or number after GOSUB\n");
+        }
+        syncToStmtBoundary();
+        return nullptr;
     }
     auto stmt = std::make_unique<GosubStmt>();
     stmt->loc = loc;
