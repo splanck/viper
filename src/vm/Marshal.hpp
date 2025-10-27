@@ -23,6 +23,13 @@ namespace il::vm
 using StringRef = std::string_view;
 using ViperString = ::rt_string;
 
+/// @brief Indicates whether a string view is guaranteed to be null-terminated.
+enum class AssumeNullTerminated : bool
+{
+    No = false,
+    Yes = true,
+};
+
 union Slot;
 
 namespace detail
@@ -59,7 +66,8 @@ struct PowTrapOutcome
     std::string message;
 };
 
-ViperString toViperString(StringRef text);
+ViperString toViperString(StringRef text,
+                          AssumeNullTerminated assumeNullTerminated = AssumeNullTerminated::No);
 StringRef fromViperString(const ViperString &str);
 int64_t toI64(const il::core::Value &value);
 double toF64(const il::core::Value &value);

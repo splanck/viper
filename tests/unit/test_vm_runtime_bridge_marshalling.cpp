@@ -189,7 +189,23 @@ int main()
         assert(substrLen == static_cast<int64_t>(trimmed.size()));
         std::string substrRoundTrip(substrHandle->data, static_cast<size_t>(substrLen));
         assert(substrRoundTrip == trimmed);
+        auto *substrImpl = reinterpret_cast<rt_string_impl *>(substrHandle);
+        assert(substrImpl->data != trimmed.data());
         rt_string_unref(substrHandle);
+    }
+
+    {
+        std::array<char, 6> storage{'x', 'a', 'b', 'c', 'd', '\0'};
+        il::vm::StringRef window{storage.data() + 1, 3};
+        il::vm::ViperString windowHandle = il::vm::toViperString(window);
+        assert(windowHandle != nullptr);
+        const int64_t windowLen = rt_len(windowHandle);
+        assert(windowLen == static_cast<int64_t>(window.size()));
+        auto *windowImpl = reinterpret_cast<rt_string_impl *>(windowHandle);
+        assert(windowImpl->data != window.data());
+        std::string windowRoundTrip(windowImpl->data, static_cast<size_t>(windowLen));
+        assert(windowRoundTrip == window);
+        rt_string_unref(windowHandle);
     }
 
     il::vm::StringRef emptyRef{};
