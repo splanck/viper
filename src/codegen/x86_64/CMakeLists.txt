@@ -2,6 +2,7 @@ add_library(viper_codegen_x86_64 STATIC
         TargetX64.cpp
         MachineIR.cpp
         AsmEmitter.cpp
+        asmfmt/Format.cpp
         RegAllocLinear.cpp
         FrameLowering.cpp
         CallLowering.cpp
