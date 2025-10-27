@@ -62,7 +62,7 @@ if(NOT rc EQUAL 0)
   message(FATAL_ERROR "execution print_commas failed")
 endif()
 file(READ run_commas.txt RC)
-if(NOT RC STREQUAL "A 1 B\n")
+if(NOT RC STREQUAL "A             1             B\n")
   message(FATAL_ERROR "unexpected print_commas output: ${RC}")
 endif()
 
