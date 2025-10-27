@@ -50,6 +50,15 @@ function(viper_add_tools_tests)
   target_link_libraries(test_cli_run_invalid_break_line PRIVATE ${VIPER_TOOLS_LIBS})
   viper_add_ctest(test_cli_run_invalid_break_line test_cli_run_invalid_break_line)
 
+  viper_add_test(test_cli_run_break_src_whitespace
+    ${VIPER_TESTS_DIR}/unit/test_cli_run_break_src_whitespace.cpp
+    ${CMAKE_SOURCE_DIR}/src/tools/ilc/cli.cpp
+    ${CMAKE_SOURCE_DIR}/src/tools/ilc/cmd_run_il.cpp
+    ${CMAKE_SOURCE_DIR}/src/tools/ilc/break_spec.cpp)
+  target_include_directories(test_cli_run_break_src_whitespace PRIVATE ${CMAKE_SOURCE_DIR}/src)
+  target_link_libraries(test_cli_run_break_src_whitespace PRIVATE ${VIPER_TOOLS_LIBS})
+  viper_add_ctest(test_cli_run_break_src_whitespace test_cli_run_break_src_whitespace)
+
   viper_add_test(test_cli_front_basic_verify_diag
     ${VIPER_TESTS_DIR}/unit/test_cli_front_basic_verify_diag.cpp
     ${CMAKE_SOURCE_DIR}/src/tools/ilc/cli.cpp)

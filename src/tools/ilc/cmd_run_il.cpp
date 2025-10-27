@@ -69,6 +69,29 @@ struct RunILConfig
     std::unique_ptr<vm::DebugScript> debugScript;
 };
 
+/// @brief Trim leading and trailing ASCII whitespace from a string.
+/// @details Iterates over the input to find the first and last characters that
+///          are not classified as whitespace by @c std::isspace before
+///          returning the inclusive substring.  An all-whitespace input yields
+///          an empty string, making it convenient for downstream validation
+///          logic.
+/// @param text Candidate string containing surrounding padding.
+/// @return Copy of @p text with outer whitespace removed.
+std::string trimWhitespace(std::string text)
+{
+    auto begin = std::find_if_not(text.begin(), text.end(), [](unsigned char ch) {
+        return std::isspace(ch) != 0;
+    });
+    auto end = std::find_if_not(text.rbegin(), text.rend(), [](unsigned char ch) {
+        return std::isspace(ch) != 0;
+    }).base();
+    if (begin >= end)
+    {
+        return std::string();
+    }
+    return std::string(begin, end);
+}
+
 /// @brief Parse a decimal breakpoint line number from a CLI token.
 /// @details Validates that @p token contains only digits before invoking
 ///          @c std::stoi.  Successful conversions must be strictly positive; the
@@ -158,7 +181,7 @@ bool parseRunILArgs(int argc, char **argv, RunILConfig &config)
             if (ilc::isSrcBreakSpec(spec))
             {
                 auto pos = spec.rfind(':');
-                std::string file = spec.substr(0, pos);
+                std::string file = trimWhitespace(spec.substr(0, pos));
                 const std::string lineToken = spec.substr(pos + 1);
                 int line = 0;
                 if (!tryParseLineNumber(lineToken, line))
@@ -184,7 +207,7 @@ bool parseRunILArgs(int argc, char **argv, RunILConfig &config)
             auto pos = spec.rfind(':');
             if (pos != std::string::npos)
             {
-                std::string file = spec.substr(0, pos);
+                std::string file = trimWhitespace(spec.substr(0, pos));
                 const std::string lineToken = spec.substr(pos + 1);
                 if (file.empty())
                 {
