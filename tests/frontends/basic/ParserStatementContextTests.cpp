@@ -177,6 +177,57 @@ int main()
     }
 
     {
+        std::string src = "Speak: PRINT 1\nEND\n";
+        SourceManager sm;
+        uint32_t fid = sm.addFile("named_label.bas");
+        Parser p(src, fid);
+        auto prog = p.parseProgram();
+        assert(prog);
+        assert(prog->main.size() == 2);
+        auto *printStmt = dynamic_cast<PrintStmt *>(prog->main[0].get());
+        assert(printStmt);
+        assert(printStmt->line == 1'000'000);
+        auto *endStmt = dynamic_cast<EndStmt *>(prog->main[1].get());
+        assert(endStmt);
+    }
+
+    {
+        std::string src = "Whisper:\nEND\n";
+        SourceManager sm;
+        uint32_t fid = sm.addFile("named_label_only.bas");
+        Parser p(src, fid);
+        auto prog = p.parseProgram();
+        assert(prog);
+        assert(prog->main.size() == 2);
+        auto *labelStmt = dynamic_cast<LabelStmt *>(prog->main[0].get());
+        assert(labelStmt);
+        assert(labelStmt->line == 1'000'000);
+        auto *endStmt = dynamic_cast<EndStmt *>(prog->main[1].get());
+        assert(endStmt);
+    }
+
+    {
+        std::string src = "Echo:\nEcho:\n";
+        SourceManager sm;
+        uint32_t fid = sm.addFile("named_label_duplicate.bas");
+
+        DiagnosticEngine de;
+        DiagnosticEmitter emitter(de, sm);
+        emitter.addSource(fid, src);
+
+        Parser parser(src, fid, &emitter);
+        auto program = parser.parseProgram();
+        assert(program);
+        assert(emitter.errorCount() == 1);
+
+        std::ostringstream oss;
+        emitter.printAll(oss);
+        std::string output = oss.str();
+        assert(output.find("error[B0001]") != std::string::npos);
+        assert(output.find("label 'ECHO' already defined") != std::string::npos);
+    }
+
+    {
         std::string src = "10 IF FLAG THEN\n"
                           "20 PRINT 1\n"
                           "30 ELSE\n"
