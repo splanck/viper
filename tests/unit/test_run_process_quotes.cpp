@@ -8,7 +8,9 @@
 
 #include "GTestStub.hpp"
 
+#include <filesystem>
 #include <optional>
+#include <system_error>
 #include <string>
 #include <vector>
 
@@ -44,6 +46,39 @@ TEST(RunProcess, ForwardsEnvironmentVariables)
     EXPECT_NE(-1, result.exit_code);
     const std::string expectedLine = varName + "=" + varValue;
     EXPECT_NE(std::string::npos, result.out.find(expectedLine));
+}
+
+TEST(RunProcess, AppliesWorkingDirectory)
+{
+    namespace fs = std::filesystem;
+
+    const fs::path tempDir = fs::temp_directory_path() / fs::path("viper-run-process-cwd-test");
+    std::error_code preCleanupEc;
+    fs::remove_all(tempDir, preCleanupEc);
+    fs::create_directories(tempDir);
+    const struct DirectoryCleanup
+    {
+        fs::path path;
+        ~DirectoryCleanup()
+        {
+            std::error_code ec;
+            fs::remove_all(path, ec);
+        }
+    } cleanup{tempDir};
+
+#if defined(_WIN32)
+    const RunResult result = run_process({"cmd.exe", "/C", "cd"}, tempDir.string());
+#else
+    const RunResult result = run_process({"/bin/pwd"}, tempDir.string());
+#endif
+
+    EXPECT_EQ(0, result.exit_code);
+    const std::string trimmed = trim_trailing_newlines(result.out);
+    const fs::path reported(trimmed);
+    std::error_code ec;
+    const bool equivalent = fs::equivalent(tempDir, reported, ec);
+    EXPECT_FALSE(ec);
+    EXPECT_TRUE(equivalent);
 }
 
 #ifndef _WIN32

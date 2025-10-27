@@ -21,6 +21,7 @@
 
 #include "common/RunProcess.hpp"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdio>
 #include <cstdlib>
@@ -28,6 +29,14 @@
 #include <string>
 #include <utility>
 #include <vector>
+#ifdef _WIN32
+#    define NOMINMAX
+#    include <windows.h>
+#else
+#    include <cerrno>
+#    include <climits>
+#    include <unistd.h>
+#endif
 
 #ifndef _WIN32
 #    include <sys/wait.h>
@@ -178,12 +187,191 @@ private:
     std::string name_;
     std::optional<std::string> previous_;
 };
+
+class ScopedWorkingDirectory
+{
+public:
+    explicit ScopedWorkingDirectory(const std::optional<std::string> &target)
+    {
+        if (!target.has_value())
+        {
+            return;
+        }
+
+        if (!capture_current_directory())
+        {
+            return;
+        }
+
+        if (!apply_new_directory(*target))
+        {
+            previous_.reset();
+            return;
+        }
+
+        active_ = true;
+    }
+
+    ScopedWorkingDirectory(const ScopedWorkingDirectory &) = delete;
+    ScopedWorkingDirectory &operator=(const ScopedWorkingDirectory &) = delete;
+
+    ScopedWorkingDirectory(ScopedWorkingDirectory &&other) noexcept
+        : active_(other.active_)
+        , previous_(std::move(other.previous_))
+    {
+        other.active_ = false;
+    }
+
+    ScopedWorkingDirectory &operator=(ScopedWorkingDirectory &&other) noexcept
+    {
+        if (this == &other)
+        {
+            return *this;
+        }
+
+        if (active_)
+        {
+            restore();
+        }
+
+        active_ = other.active_;
+        previous_ = std::move(other.previous_);
+        other.active_ = false;
+        return *this;
+    }
+
+    ~ScopedWorkingDirectory()
+    {
+        if (active_)
+        {
+            restore();
+        }
+    }
+
+private:
+#ifdef _WIN32
+    using PathBuffer = std::wstring;
+#else
+    using PathBuffer = std::string;
+#endif
+
+    bool capture_current_directory()
+    {
+#ifdef _WIN32
+        const DWORD required = GetCurrentDirectoryW(0, nullptr);
+        if (required == 0)
+        {
+            return false;
+        }
+
+        PathBuffer buffer(required, L'\0');
+        const DWORD written = GetCurrentDirectoryW(required, buffer.data());
+        if (written == 0 || written >= required)
+        {
+            return false;
+        }
+
+        buffer.resize(written);
+        previous_ = std::move(buffer);
+        return true;
+#else
+        std::size_t size = 256;
+#    ifdef PATH_MAX
+        size = std::max<std::size_t>(size, PATH_MAX);
+#    endif
+        PathBuffer buffer(size, '\0');
+
+        while (true)
+        {
+            if (::getcwd(buffer.data(), buffer.size()) != nullptr)
+            {
+                buffer.erase(std::find(buffer.begin(), buffer.end(), '\0'), buffer.end());
+                previous_ = std::move(buffer);
+                return true;
+            }
+
+            if (errno == ERANGE)
+            {
+                size *= 2;
+                buffer.assign(size, '\0');
+                continue;
+            }
+
+            return false;
+        }
+#endif
+    }
+
+#ifdef _WIN32
+    static std::wstring utf8_to_wide(const std::string &utf8)
+    {
+        if (utf8.empty())
+        {
+            return std::wstring();
+        }
+
+        const int required = MultiByteToWideChar(CP_UTF8, 0, utf8.c_str(), -1, nullptr, 0);
+        if (required <= 0)
+        {
+            return std::wstring();
+        }
+
+        std::wstring wide(static_cast<std::size_t>(required - 1), L'\0');
+        if (MultiByteToWideChar(CP_UTF8, 0, utf8.c_str(), -1, wide.data(), required - 1) == 0)
+        {
+            return std::wstring();
+        }
+
+        return wide;
+    }
+#endif
+
+    bool apply_new_directory(const std::string &path)
+    {
+#ifdef _WIN32
+        const std::wstring wide = utf8_to_wide(path);
+        if (wide.empty() && !path.empty())
+        {
+            return false;
+        }
+
+        if (SetCurrentDirectoryW(wide.c_str()) == 0)
+        {
+            return false;
+        }
+#else
+        if (::chdir(path.c_str()) != 0)
+        {
+            return false;
+        }
+#endif
+        return true;
+    }
+
+    void restore()
+    {
+        if (!previous_.has_value())
+        {
+            return;
+        }
+
+#ifdef _WIN32
+        SetCurrentDirectoryW(previous_->c_str());
+#else
+        ::chdir(previous_->c_str());
+#endif
+    }
+
+    bool active_ = false;
+    std::optional<PathBuffer> previous_;
+};
 } // namespace
 
 RunResult run_process(const std::vector<std::string> &argv,
                       std::optional<std::string> cwd,
                       const std::vector<std::pair<std::string, std::string>> &env)
 {
+    ScopedWorkingDirectory scoped_cwd(cwd);
     std::vector<ScopedEnvironmentAssignment> scoped_env;
     scoped_env.reserve(env.size());
     for (const auto &pair : env)
