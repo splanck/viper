@@ -68,6 +68,13 @@ VmError *vm_acquire_trap_token();
 /// @return Pointer to the stored VmError when available, otherwise nullptr.
 const VmError *vm_current_trap_token();
 
+/// @brief Clear the active trap token so future lookups observe no pending trap.
+/// @details Resets both the VM-owned and thread-local trap token validity flags
+///          after a trap has been fully handled. Callers use this helper to
+///          prevent stale trap tokens from persisting beyond their intended
+///          lifetime.
+void vm_clear_trap_token();
+
 /// @brief Store the diagnostic message associated with the current trap token.
 /// @param text Human-readable message text to retain alongside the token.
 void vm_store_trap_token_message(std::string_view text);

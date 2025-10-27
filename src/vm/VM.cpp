@@ -583,6 +583,7 @@ bool VM::prepareTrap(VmError &error)
             st->ip = 0;
             st->skipBreakOnce = false;
 
+            vm_clear_trap_token();
             throwForTrap(st);
             return true; // Unreachable but silences control-path warnings.
         }
