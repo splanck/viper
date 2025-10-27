@@ -20,6 +20,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "AsmEmitter.hpp"
+#include "asmfmt/Format.hpp"
 
 #include <bit>
 #include <cassert>
@@ -45,85 +46,13 @@ template <typename... Ts> struct Overload : Ts...
 
 template <typename... Ts> Overload(Ts...) -> Overload<Ts...>;
 
-/// @brief Determine whether @p ch is printable ASCII suitable for `.ascii`.
-/// @param ch Byte under consideration.
-/// @return True when @p ch falls within the printable ASCII range.
-[[nodiscard]] bool isAsciiPrintable(unsigned char ch) noexcept
+[[nodiscard]] int encodeRegister(const OpReg &reg) noexcept
 {
-    return ch >= 0x20U && ch <= 0x7EU;
-}
-
-/// @brief Escape a run of printable characters for insertion into `.ascii`.
-/// @param chunk Sequence of bytes to escape.
-/// @return Escaped string with quotes and backslashes protected.
-[[nodiscard]] std::string escapeAsciiChunk(std::string_view chunk)
-{
-    std::string escaped{};
-    escaped.reserve(chunk.size());
-    for (const unsigned char ch : chunk)
+    if (reg.isPhys)
     {
-        if (ch == static_cast<unsigned char>('\\') || ch == static_cast<unsigned char>('"'))
-        {
-            escaped.push_back('\\');
-        }
-        escaped.push_back(static_cast<char>(ch));
+        return static_cast<int>(reg.idOrPhys);
     }
-    return escaped;
-}
-
-/// @brief Pretty-print a byte buffer using `.ascii`/`.byte` directives.
-/// @details Groups printable runs into `.ascii` directives for readability and
-///          falls back to `.byte` for non-printable data, emitting up to sixteen
-///          entries per `.byte` line. Empty literals generate a comment marker.
-/// @param bytes Raw literal payload destined for the `.rodata` section.
-/// @return Assembly text representing @p bytes.
-[[nodiscard]] std::string formatBytes(const std::string &bytes)
-{
-    std::ostringstream os;
-    if (bytes.empty())
-    {
-        os << "  # empty literal\n";
-        return os.str();
-    }
-
-    std::size_t index = 0;
-    while (index < bytes.size())
-    {
-        const unsigned char current = static_cast<unsigned char>(bytes[index]);
-        if (isAsciiPrintable(current))
-        {
-            const std::size_t begin = index;
-            while (index < bytes.size() &&
-                   isAsciiPrintable(static_cast<unsigned char>(bytes[index])))
-            {
-                ++index;
-            }
-            const std::string_view view{bytes.data() + begin, index - begin};
-            os << "  .ascii \"" << escapeAsciiChunk(view) << "\"\n";
-            continue;
-        }
-
-        os << "  .byte ";
-        std::size_t emitted = 0;
-        while (index < bytes.size() && emitted < 16U)
-        {
-            const unsigned char byteVal = static_cast<unsigned char>(bytes[index]);
-            if (isAsciiPrintable(byteVal))
-            {
-                break;
-            }
-            if (emitted != 0)
-            {
-                os << ", ";
-            }
-            os << static_cast<unsigned>(byteVal);
-            ++index;
-            ++emitted;
-        }
-        os << '\n';
-    }
-
-    return os.str();
+    return -static_cast<int>(reg.idOrPhys) - 1;
 }
 
 } // namespace
@@ -208,7 +137,7 @@ void AsmEmitter::RoDataPool::emit(std::ostream &os) const
     for (std::size_t i = 0; i < stringLiterals_.size(); ++i)
     {
         os << stringLabel(static_cast<int>(i)) << ":\n";
-        os << formatBytes(stringLiterals_[i]);
+        os << asmfmt::format_rodata_bytes(stringLiterals_[i]);
     }
     if (!f64Literals_.empty())
     {
@@ -632,14 +561,7 @@ std::string AsmEmitter::formatOperand(const Operand &operand, const TargetInfo &
 /// @return Assembly string naming the register.
 std::string AsmEmitter::formatReg(const OpReg &reg, const TargetInfo &)
 {
-    if (reg.isPhys)
-    {
-        const auto phys = static_cast<PhysReg>(reg.idOrPhys);
-        return regName(phys);
-    }
-    std::ostringstream os;
-    os << "%v" << static_cast<unsigned>(reg.idOrPhys);
-    return os.str();
+    return asmfmt::fmt_reg(encodeRegister(reg));
 }
 
 std::string AsmEmitter::formatReg8(const OpReg &reg, const TargetInfo &target)
@@ -696,9 +618,7 @@ std::string AsmEmitter::formatReg8(const OpReg &reg, const TargetInfo &target)
 /// @return Assembly string beginning with '$'.
 std::string AsmEmitter::formatImm(const OpImm &imm)
 {
-    std::ostringstream os;
-    os << '$' << imm.val;
-    return os.str();
+    return asmfmt::format_imm(imm.val);
 }
 
 /// @brief Format a memory operand.
@@ -709,13 +629,11 @@ std::string AsmEmitter::formatImm(const OpImm &imm)
 /// @return Assembly string describing the memory reference.
 std::string AsmEmitter::formatMem(const OpMem &mem, const TargetInfo &target)
 {
-    std::ostringstream os;
-    if (mem.disp != 0)
-    {
-        os << mem.disp;
-    }
-    os << '(' << formatReg(mem.base, target) << ')';
-    return os.str();
+    static_cast<void>(target);
+    asmfmt::MemAddr addr{};
+    addr.base = encodeRegister(mem.base);
+    addr.disp = mem.disp;
+    return asmfmt::format_mem(addr);
 }
 
 /// @brief Format a label operand.
@@ -723,7 +641,7 @@ std::string AsmEmitter::formatMem(const OpMem &mem, const TargetInfo &target)
 /// @return Raw label text.
 std::string AsmEmitter::formatLabel(const OpLabel &label)
 {
-    return label.name;
+    return asmfmt::format_label(label.name);
 }
 
 /// @brief Format a RIP-relative label operand.
@@ -731,9 +649,7 @@ std::string AsmEmitter::formatLabel(const OpLabel &label)
 /// @return Label text suffixed with the RIP-relative addressing mode.
 std::string AsmEmitter::formatRipLabel(const OpRipLabel &label)
 {
-    std::string result = label.name;
-    result += "(%rip)";
-    return result;
+    return asmfmt::format_rip_label(label.name);
 }
 
 /// @brief Format a shift count operand, rewriting RCX to CL when required.
@@ -763,9 +679,7 @@ std::string AsmEmitter::formatLeaSource(const Operand &operand, const TargetInfo
 {
     return std::visit(Overload{[&](const OpLabel &label)
                                {
-                                   std::string result = label.name;
-                                   result += "(%rip)";
-                                   return result;
+                                   return asmfmt::format_rip_label(label.name);
                                },
                                [&](const OpMem &mem) { return formatMem(mem, target); },
                                [&](const OpReg &reg) { return formatReg(reg, target); },
@@ -783,7 +697,7 @@ std::string AsmEmitter::formatLeaSource(const Operand &operand, const TargetInfo
 std::string AsmEmitter::formatCallTarget(const Operand &operand, const TargetInfo &target)
 {
     return std::visit(
-        Overload{[&](const OpLabel &label) { return label.name; },
+        Overload{[&](const OpLabel &label) { return asmfmt::format_label(label.name); },
                  [&](const OpReg &reg) { return std::string{"*"} + formatReg(reg, target); },
                  [&](const OpMem &mem) { return std::string{"*"} + formatMem(mem, target); },
                  [&](const OpImm &imm) { return formatImm(imm); },
