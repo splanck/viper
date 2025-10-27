@@ -28,6 +28,10 @@
 #include <utility>
 #include <vector>
 
+#ifndef _WIN32
+#    include <sys/wait.h>
+#endif
+
 #ifdef _WIN32
 #    define POPEN _popen
 #    define PCLOSE _pclose
@@ -155,8 +159,18 @@ RunResult run_process(const std::vector<std::string> &argv,
         rr.out += buffer;
     }
 
-    rr.exit_code = PCLOSE(pipe);
-#ifndef _WIN32
+    const int status = PCLOSE(pipe);
+#ifdef _WIN32
+    rr.exit_code = status;
+#else
+    if (WIFEXITED(status))
+    {
+        rr.exit_code = WEXITSTATUS(status);
+    }
+    else
+    {
+        rr.exit_code = status;
+    }
     // When stderr is redirected to stdout the captured text lives in `out`.
     rr.err = rr.out;
 #endif
