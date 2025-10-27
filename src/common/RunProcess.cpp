@@ -23,6 +23,7 @@
 
 #include <cstddef>
 #include <cstdio>
+#include <cstdlib>
 #include <optional>
 #include <string>
 #include <utility>
@@ -108,14 +109,87 @@ std::string quote_posix_argument(const std::string &arg)
 /// @brief Launch a subprocess using the host shell and capture its output.
 /// @details Joins the provided @p argv fragments into a quoted command string,
 ///          spawns it via @c popen, and streams stdout into @ref RunResult::output
-///          while recording the exit status when available.  The @p cwd and
-///          @p env parameters are currently ignored, matching the previous
-///          behaviour of the helper.
+///          while recording the exit status when available.  The @p env parameter
+///          is honoured by temporarily adjusting the current process environment
+///          for the duration of the child invocation.  The @p cwd parameter is
+///          presently ignored, matching the previous behaviour of the helper.
+namespace
+{
+class ScopedEnvironmentAssignment
+{
+public:
+    ScopedEnvironmentAssignment(std::string name, std::string value)
+        : name_(std::move(name))
+        , previous_(capture_existing())
+    {
+        apply(std::move(value));
+    }
+
+    ScopedEnvironmentAssignment(const ScopedEnvironmentAssignment &) = delete;
+    ScopedEnvironmentAssignment &operator=(const ScopedEnvironmentAssignment &) = delete;
+
+    ScopedEnvironmentAssignment(ScopedEnvironmentAssignment &&) = default;
+    ScopedEnvironmentAssignment &operator=(ScopedEnvironmentAssignment &&) = default;
+
+    ~ScopedEnvironmentAssignment()
+    {
+        restore();
+    }
+
+private:
+    std::optional<std::string> capture_existing() const
+    {
+        const char *existing = std::getenv(name_.c_str());
+        if (existing == nullptr)
+        {
+            return std::nullopt;
+        }
+        return std::string(existing);
+    }
+
+    void apply(std::string value) const
+    {
+#ifdef _WIN32
+        _putenv_s(name_.c_str(), value.c_str());
+#else
+        setenv(name_.c_str(), value.c_str(), 1);
+#endif
+    }
+
+    void restore() const
+    {
+        if (previous_.has_value())
+        {
+#ifdef _WIN32
+            _putenv_s(name_.c_str(), previous_->c_str());
+#else
+            setenv(name_.c_str(), previous_->c_str(), 1);
+#endif
+            return;
+        }
+
+#ifdef _WIN32
+        _putenv_s(name_.c_str(), "");
+#else
+        unsetenv(name_.c_str());
+#endif
+    }
+
+    std::string name_;
+    std::optional<std::string> previous_;
+};
+} // namespace
+
 RunResult run_process(const std::vector<std::string> &argv,
                       std::optional<std::string> cwd,
                       const std::vector<std::pair<std::string, std::string>> &env)
 {
-    (void)env; // Environment forwarding is not yet implemented.
+    std::vector<ScopedEnvironmentAssignment> scoped_env;
+    scoped_env.reserve(env.size());
+    for (const auto &pair : env)
+    {
+        scoped_env.emplace_back(pair.first, pair.second);
+    }
 
     std::string cmd;
     for (std::size_t i = 0; i < argv.size(); ++i)
