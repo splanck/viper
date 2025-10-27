@@ -33,6 +33,15 @@ TEST(RunProcess, PreservesQuotesAndBackslashes)
     EXPECT_EQ(trickyArg, trim_trailing_newlines(result.out));
 }
 
+#ifndef _WIN32
+TEST(RunProcess, ReportsPosixExitStatus)
+{
+    const RunResult result = run_process({"sh", "-c", "exit 42"});
+
+    EXPECT_EQ(42, result.exit_code);
+}
+#endif
+
 int main(int argc, char **argv)
 {
     ::testing::InitGoogleTest(&argc, argv);
