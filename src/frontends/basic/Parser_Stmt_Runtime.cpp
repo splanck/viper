@@ -120,34 +120,61 @@ StmtPtr Parser::parseDimStatement()
 {
     auto loc = peek().loc;
     consume(); // DIM
-    Token nameTok = expect(TokenKind::Identifier);
-    auto stmt = std::make_unique<DimStmt>();
-    stmt->loc = loc;
-    stmt->name = nameTok.lexeme;
-    stmt->type = typeFromSuffix(nameTok.lexeme);
-    if (at(TokenKind::LParen))
-    {
-        stmt->isArray = true;
-        consume();
-        stmt->size = parseExpression();
-        expect(TokenKind::RParen);
-        if (at(TokenKind::KeywordAs))
+
+    // Parse a single DIM item: <name> [ ( <size> ) ] [ AS <type> ]
+    auto parseOne = [&](Token firstNameTok = Token{}) -> std::unique_ptr<DimStmt> {
+        Token nameTok = firstNameTok.kind == TokenKind::Identifier
+                            ? firstNameTok
+                            : expect(TokenKind::Identifier);
+
+        auto node = std::make_unique<DimStmt>();
+        node->loc = loc;
+        node->name = nameTok.lexeme;
+        node->type = typeFromSuffix(nameTok.lexeme);
+
+        if (at(TokenKind::LParen))
         {
+            node->isArray = true;
             consume();
-            stmt->type = parseTypeKeyword();
+            node->size = parseExpression();
+            expect(TokenKind::RParen);
+            if (at(TokenKind::KeywordAs))
+            {
+                consume();
+                node->type = parseTypeKeyword();
+            }
+            arrays_.insert(node->name);
         }
-        arrays_.insert(stmt->name);
-    }
-    else
-    {
-        stmt->isArray = false;
-        if (at(TokenKind::KeywordAs))
+        else
         {
-            consume();
-            stmt->type = parseTypeKeyword();
+            node->isArray = false;
+            if (at(TokenKind::KeywordAs))
+            {
+                consume();
+                node->type = parseTypeKeyword();
+            }
         }
+        return node;
+    };
+
+    // First declaration (always present)
+    auto first = parseOne();
+
+    // If there are comma-separated continuations, gather them into a StmtList.
+    if (at(TokenKind::Comma))
+    {
+        auto list = std::make_unique<StmtList>();
+        list->loc = loc;
+        list->stmts.push_back(std::move(first));
+        while (at(TokenKind::Comma))
+        {
+            consume(); // ','
+            list->stmts.push_back(parseOne());
+        }
+        return list;
     }
-    return stmt;
+
+    return first;
 }
 
 /// @brief Parse a @c REDIM statement.
