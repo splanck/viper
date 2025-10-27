@@ -20,14 +20,18 @@
 
 #include "il/verify/InstructionChecker.hpp"
 
+#include "il/core/BasicBlock.hpp"
+#include "il/core/Function.hpp"
 #include "il/core/Opcode.hpp"
 #include "il/core/OpcodeInfo.hpp"
+#include "il/verify/Diagnostics.hpp"
 #include "il/verify/DiagSink.hpp"
 #include "il/verify/InstructionCheckUtils.hpp"
 #include "il/verify/InstructionCheckerShared.hpp"
 #include "il/verify/OperandCountChecker.hpp"
 #include "il/verify/OperandTypeChecker.hpp"
 #include "il/verify/ResultTypeChecker.hpp"
+#include "il/verify/Rules.hpp"
 #include "il/verify/TypeInference.hpp"
 #include "il/verify/VerifierTable.hpp"
 #include "support/diag_expected.hpp"
@@ -75,6 +79,34 @@ using Instruction = il::core::Instr;
 template <typename T> using ErrorOr = Expected<T>;
 
 using VerifierFn = ErrorOr<void> (*)(const Instruction &, const VerifyCtx &);
+
+bool decodeRulePayload(const std::string &encoded,
+                       std::string &message,
+                       int &blockIndex,
+                       int &instrIndex)
+{
+    const auto firstSep = encoded.find(kRuleMessageSep);
+    if (firstSep == std::string::npos)
+        return false;
+    const auto secondSep = encoded.find(kRuleMessageSep, firstSep + 1);
+    if (secondSep == std::string::npos)
+        return false;
+
+    const std::string blockStr = encoded.substr(0, firstSep);
+    const std::string instrStr = encoded.substr(firstSep + 1, secondSep - firstSep - 1);
+    message = encoded.substr(secondSep + 1);
+
+    try
+    {
+        blockIndex = std::stoi(blockStr);
+        instrIndex = std::stoi(instrStr);
+    }
+    catch (...)
+    {
+        return false;
+    }
+    return true;
+}
 
 ErrorOr<void> rejectUnchecked(const VerifyCtx &ctx, std::string_view message)
 {
@@ -593,102 +625,27 @@ Expected<void> verifyOpcodeSignature_impl(const il::core::Function &fn,
                                           const il::core::BasicBlock &bb,
                                           const il::core::Instr &instr)
 {
-    const auto &info = il::core::getOpcodeInfo(instr.op);
-
-    const bool hasResult = instr.result.has_value();
-    switch (info.resultArity)
+    (void)bb;
+    const auto &rules = viper_verifier_rules();
+    for (const Rule &rule : rules)
     {
-        case il::core::ResultArity::None:
-            if (hasResult)
-                return Expected<void>(
-                    makeError(instr.loc, formatInstrDiag(fn, bb, instr, "unexpected result")));
-            break;
-        case il::core::ResultArity::One:
-            if (!hasResult)
-                return Expected<void>(
-                    makeError(instr.loc, formatInstrDiag(fn, bb, instr, "missing result")));
-            break;
-        case il::core::ResultArity::Optional:
-            break;
-    }
+        if (!std::string_view(rule.name).starts_with("sig."))
+            continue;
 
-    const size_t operandCount = instr.operands.size();
-    const bool variadic = il::core::isVariadicOperandCount(info.numOperandsMax);
-    if (operandCount < info.numOperandsMin || (!variadic && operandCount > info.numOperandsMax))
-    {
+        std::string encoded;
+        if (rule.check(fn, instr, encoded))
+            continue;
+
         std::string message;
-        if (info.numOperandsMin == info.numOperandsMax)
-        {
-            message = "expected " + std::to_string(static_cast<unsigned>(info.numOperandsMin)) +
-                      " operand";
-            if (info.numOperandsMin != 1)
-                message += 's';
-        }
-        else if (variadic)
-        {
-            message = "expected at least " +
-                      std::to_string(static_cast<unsigned>(info.numOperandsMin)) + " operand";
-            if (info.numOperandsMin != 1)
-                message += 's';
-        }
-        else
-        {
-            message = "expected between " +
-                      std::to_string(static_cast<unsigned>(info.numOperandsMin)) + " and " +
-                      std::to_string(static_cast<unsigned>(info.numOperandsMax)) + " operands";
-        }
-        return Expected<void>(makeError(instr.loc, formatInstrDiag(fn, bb, instr, message)));
-    }
-
-    const bool variadicSucc = il::core::isVariadicSuccessorCount(info.numSuccessors);
-    if (variadicSucc)
-    {
-        if (instr.labels.empty())
-            return Expected<void>(makeError(
-                instr.loc, formatInstrDiag(fn, bb, instr, "expected at least 1 successor")));
-    }
-    else
-    {
-        if (instr.labels.size() != info.numSuccessors)
-        {
-            std::string message = "expected " +
-                                  std::to_string(static_cast<unsigned>(info.numSuccessors)) +
-                                  " successor";
-            if (info.numSuccessors != 1)
-                message += 's';
-            return Expected<void>(makeError(instr.loc, formatInstrDiag(fn, bb, instr, message)));
-        }
-    }
-
-    if (variadicSucc)
-    {
-        if (!instr.brArgs.empty() && instr.brArgs.size() != instr.labels.size())
+        int blockIndex = -1;
+        int instrIndex = -1;
+        if (!decodeRulePayload(encoded, message, blockIndex, instrIndex))
             return Expected<void>(makeError(
                 instr.loc,
-                formatInstrDiag(
-                    fn, bb, instr, "expected branch argument bundle per successor or none")));
-    }
-    else
-    {
-        if (instr.brArgs.size() > info.numSuccessors)
-        {
-            std::string message = "expected at most " +
-                                  std::to_string(static_cast<unsigned>(info.numSuccessors)) +
-                                  " branch argument bundle";
-            if (info.numSuccessors != 1)
-                message += 's';
-            return Expected<void>(makeError(instr.loc, formatInstrDiag(fn, bb, instr, message)));
-        }
-        if (!instr.brArgs.empty() && instr.brArgs.size() != info.numSuccessors)
-        {
-            std::string message = "expected " +
-                                  std::to_string(static_cast<unsigned>(info.numSuccessors)) +
-                                  " branch argument bundle";
-            if (info.numSuccessors != 1)
-                message += 's';
-            message += ", or none";
-            return Expected<void>(makeError(instr.loc, formatInstrDiag(fn, bb, instr, message)));
-        }
+                diag_rule_msg(rule.name, "internal decoding failure", fn.name, 0, 0)));
+
+        const std::string diag = diag_rule_msg(rule.name, message, fn.name, blockIndex, instrIndex);
+        return Expected<void>(makeError(instr.loc, diag));
     }
 
     return {};

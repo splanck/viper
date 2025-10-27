@@ -67,6 +67,7 @@ add_library(viper_il_verify STATIC
         il/verify/InstructionStrategies.cpp
         il/verify/ExceptionHandlerAnalysis.cpp
         il/verify/BranchVerifier.cpp
+        il/verify/Rules.cpp
         il/verify/ControlFlowChecker.cpp
         il/verify/VerifierTable.cpp
         il/verify/TypeInference.cpp)
