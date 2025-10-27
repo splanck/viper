@@ -57,6 +57,13 @@ function(viper_add_tools_tests)
   target_link_libraries(test_cli_front_basic_verify_diag PRIVATE ${VIPER_TOOLS_LIBS})
   viper_add_ctest(test_cli_front_basic_verify_diag test_cli_front_basic_verify_diag)
 
+  viper_add_test(test_cli_front_basic_reject_break
+    ${_VIPER_TOOLS_DIR}/FrontBasicRejectBreakFlagTests.cpp
+    ${CMAKE_SOURCE_DIR}/src/tools/ilc/cli.cpp)
+  target_include_directories(test_cli_front_basic_reject_break PRIVATE ${CMAKE_SOURCE_DIR}/src)
+  target_link_libraries(test_cli_front_basic_reject_break PRIVATE ${VIPER_TOOLS_LIBS})
+  viper_add_ctest(test_cli_front_basic_reject_break test_cli_front_basic_reject_break)
+
   viper_add_test(test_cli_run_invalid_max_steps
     ${VIPER_TESTS_DIR}/unit/test_cli_run_invalid_max_steps.cpp
     ${CMAKE_SOURCE_DIR}/src/tools/ilc/cli.cpp
