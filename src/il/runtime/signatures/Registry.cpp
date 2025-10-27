@@ -24,6 +24,10 @@ namespace il::runtime::signatures
 {
 namespace
 {
+/// @brief Access the global signature registry storage.
+/// @details The registry persists for the life of the process and is lazily
+///          initialised on first use.
+/// @return Mutable vector storing registered signatures.
 std::vector<Signature> &registry()
 {
     static std::vector<Signature> g_signatures;
@@ -31,11 +35,15 @@ std::vector<Signature> &registry()
 }
 } // namespace
 
+/// @brief Register a runtime signature for diagnostic use.
+/// @param signature Signature metadata describing a runtime helper.
 void register_signature(const Signature &signature)
 {
     registry().push_back(signature);
 }
 
+/// @brief Retrieve all registered runtime signatures.
+/// @return Read-only view of the registered signatures in insertion order.
 const std::vector<Signature> &all_signatures()
 {
     return registry();
