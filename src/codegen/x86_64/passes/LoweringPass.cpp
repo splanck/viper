@@ -1,9 +1,26 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: src/codegen/x86_64/passes/LoweringPass.cpp
 // Purpose: Implement the IL lowering pass that adapts front-end IL into the backend's
 //          intermediate representation.
 // Key invariants: Value kinds are inferred deterministically and stored alongside SSA ids.
 // Ownership/Lifetime: Pass mutates the supplied Module in place without owning external state.
 // Links: docs/codemap.md, src/codegen/x86_64/CodegenPipeline.cpp
+//
+//===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Phase A lowering pass translating IL into backend-friendly IR.
+/// @details Contains the bulk of the adapter logic that maps IL types,
+///          opcodes, and SSA values into the simplified structures consumed by
+///          the x86-64 code generator. The helpers emit detailed diagnostics
+///          when unsupported features are encountered so future backend
+///          expansions have a clear starting point.
 
 #include "codegen/x86_64/passes/LoweringPass.hpp"
 
@@ -17,11 +34,23 @@ namespace viper::codegen::x64::passes
 {
 namespace
 {
+/// @brief Emit a backend-unsupported diagnostic and terminate lowering.
+/// @details Centralises the failure path so that every unsupported feature
+///          surfaces via @ref phaseAUnsupported with a consistent message.
+///          The function never returns because Phase A lowering cannot recover
+///          once it encounters an unsupported construct.
 [[noreturn]] void reportUnsupported(std::string detail)
 {
     viper::codegen::x64::phaseAUnsupported(detail.c_str());
 }
 
+/// @brief Translate an IL module into the intermediate adapter representation.
+/// @details Walks each IL function, block, and instruction while mapping types
+///          to backend value kinds. During conversion the helper records
+///          diagnostics for unsupported patterns and ensures label/value IDs
+///          remain consistent for later passes.
+/// @param module IL module produced by the front-end pipeline.
+/// @return Backend adapter module ready for Phase B code generation.
 ILModule convertToAdapterModule(const il::core::Module &module)
 {
     using viper::codegen::x64::ILBlock;
@@ -29,6 +58,10 @@ ILModule convertToAdapterModule(const il::core::Module &module)
     using viper::codegen::x64::ILModule;
     using viper::codegen::x64::ILValue;
 
+    /// @brief Map an IL type to the backend adapter value classification.
+    /// @details Consolidates the lowering decisions that collapse several IL
+    ///          integer sizes onto a single 64-bit kind while rejecting
+    ///          unsupported constructs such as resume tokens.
     const auto typeToKind = [](const il::core::Type &type) -> ILValue::Kind
     {
         using il::core::Type;
@@ -55,6 +88,10 @@ ILModule convertToAdapterModule(const il::core::Module &module)
         reportUnsupported("unknown IL type kind encountered during Phase A lowering");
     };
 
+    /// @brief Construct an adapter value representing a block label.
+    /// @details Assigns the sentinel ID expected by the backend so labels can
+    ///          participate in operand lists without colliding with SSA
+    ///          temporaries.
     const auto makeLabelValue = [](std::string name) -> ILValue
     {
         ILValue label{};
@@ -64,6 +101,10 @@ ILModule convertToAdapterModule(const il::core::Module &module)
         return label;
     };
 
+    /// @brief Create an immediate adapter value storing a condition code.
+    /// @details Wraps raw integers into @ref ILValue objects so branches and
+    ///          selects can share the same operand representation as other
+    ///          instructions.
     const auto makeCondImmediate = [](int code) -> ILValue
     {
         ILValue imm{};
@@ -73,6 +114,10 @@ ILModule convertToAdapterModule(const il::core::Module &module)
         return imm;
     };
 
+    /// @brief Translate IL comparison opcodes into backend condition codes.
+    /// @details The encoding matches the expectations of the backend Phase B
+    ///          lowering logic and groups signed/unsigned comparisons so they
+    ///          can reuse the same adapter opcode.
     const auto condCodeFor = [](il::core::Opcode op) -> int
     {
         using il::core::Opcode;
@@ -138,6 +183,12 @@ ILModule convertToAdapterModule(const il::core::Module &module)
                 valueKinds[param.id] = kind;
             }
 
+            /// @brief Convert an IL operand into the backend adapter value.
+            /// @details Uses recorded kind information when available and falls
+            ///          back to @p hint for immediates so consumers receive
+            ///          strongly typed operands. Unrecognised SSA ids trigger a
+            ///          fatal diagnostic because the adapter would otherwise
+            ///          produce inconsistent code.
             const auto convertValue = [&valueKinds](const il::core::Value &value,
                                                     std::optional<ILValue::Kind> hint) -> ILValue
             {
@@ -192,6 +243,11 @@ ILModule convertToAdapterModule(const il::core::Module &module)
                 return converted;
             };
 
+            /// @brief Append converted operands to an adapter instruction.
+            /// @details Iterates the IL operand list, supplying parallel hints
+            ///          so constants can be forced to the correct type. The
+            ///          helper keeps hint lookup bounds-checked and delegates
+            ///          to @p convertValue for the actual conversion work.
             const auto convertOperands =
                 [&](const il::core::Instr &instr,
                     std::initializer_list<std::optional<ILValue::Kind>> hints,
@@ -213,6 +269,11 @@ ILModule convertToAdapterModule(const il::core::Module &module)
                 viper::codegen::x64::ILInstr adaptedInstr{};
                 adaptedInstr.resultId = -1;
 
+                /// @brief Record the kind associated with the instruction result.
+                /// @details Updates the adapter instruction metadata and caches
+                ///          the mapping in @p valueKinds when the IL instruction
+                ///          yields an SSA identifier. The helper returns the
+                ///          deduced kind so callers can reuse it immediately.
                 const auto setResultKind = [&](const il::core::Type &type) -> ILValue::Kind
                 {
                     const ILValue::Kind kind = typeToKind(type);
@@ -603,6 +664,14 @@ ILModule convertToAdapterModule(const il::core::Module &module)
 
 } // namespace
 
+/// @brief Execute Phase A lowering for the provided pipeline module.
+/// @details Replaces the module's adapter representation with a freshly
+///          constructed one derived from the IL module. Diagnostics are routed
+///          through @ref reportUnsupported which terminates the process when an
+///          unsupported feature is encountered.
+/// @param module Pipeline state containing the IL module to adapt.
+/// @param diags  Unused diagnostics sink (reserved for future richer reporting).
+/// @return @c true when lowering completed successfully.
 bool LoweringPass::run(Module &module, Diagnostics &)
 {
     module.lowered = convertToAdapterModule(module.il);
