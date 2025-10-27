@@ -56,6 +56,8 @@ add_subdirectory(il/io)
 add_library(viper_il_verify STATIC
         il/verify/DiagFormat.cpp
         il/verify/DiagSink.cpp
+        il/verify/EhChecks.cpp
+        il/verify/EhModel.cpp
         il/verify/EhVerifier.cpp
         il/verify/Verifier.cpp
         il/verify/ExternVerifier.cpp
