@@ -21,6 +21,7 @@
 
 #include "common/RunProcess.hpp"
 
+#include <cstddef>
 #include <cstdio>
 #include <optional>
 #include <string>
@@ -34,6 +35,71 @@
 #    define POPEN popen
 #    define PCLOSE pclose
 #endif
+
+namespace
+{
+#if defined(_WIN32)
+std::string quote_windows_argument(const std::string &arg)
+{
+    std::string quoted;
+    quoted.reserve(arg.size() + 2);
+    quoted.push_back('"');
+
+    std::size_t backslashCount = 0;
+    for (const char ch : arg)
+    {
+        if (ch == '\\')
+        {
+            ++backslashCount;
+            continue;
+        }
+
+        if (ch == '"')
+        {
+            quoted.append(backslashCount * 2 + 1, '\\');
+            quoted.push_back('"');
+            backslashCount = 0;
+            continue;
+        }
+
+        if (backslashCount != 0)
+        {
+            quoted.append(backslashCount, '\\');
+            backslashCount = 0;
+        }
+
+        quoted.push_back(ch);
+    }
+
+    if (backslashCount != 0)
+    {
+        quoted.append(backslashCount * 2, '\\');
+    }
+
+    quoted.push_back('"');
+    return quoted;
+}
+#else
+std::string quote_posix_argument(const std::string &arg)
+{
+    std::string quoted;
+    quoted.reserve(arg.size() + 2);
+    quoted.push_back('"');
+
+    for (const char ch : arg)
+    {
+        if (ch == '\\' || ch == '"')
+        {
+            quoted.push_back('\\');
+        }
+        quoted.push_back(ch);
+    }
+
+    quoted.push_back('"');
+    return quoted;
+}
+#endif
+} // namespace
 
 /// @brief Launch a subprocess using the host shell and capture its output.
 /// @details Joins the provided @p argv fragments into a quoted command string,
@@ -54,9 +120,11 @@ RunResult run_process(const std::vector<std::string> &argv,
         {
             cmd += ' ';
         }
-        cmd += '"';
-        cmd += argv[i];
-        cmd += '"';
+#if defined(_WIN32)
+        cmd += quote_windows_argument(argv[i]);
+#else
+        cmd += quote_posix_argument(argv[i]);
+#endif
     }
 #ifndef _WIN32
     cmd += " 2>&1";
