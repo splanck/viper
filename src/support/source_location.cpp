@@ -63,12 +63,15 @@ bool SourceRange::isValid() const
         return false;
     }
 
-    if (begin.line > end.line)
+    const bool have_line_info = begin.line != 0 && end.line != 0;
+    if (have_line_info && begin.line > end.line)
     {
         return false;
     }
 
-    if (begin.line == end.line && begin.column > end.column)
+    const bool have_column_info = have_line_info && begin.line == end.line &&
+                                  begin.column != 0 && end.column != 0;
+    if (have_column_info && begin.column > end.column)
     {
         return false;
     }

@@ -81,6 +81,15 @@ int main()
 
     il::support::SourceRange reversed{partial, loc};
     assert(!reversed.isValid());
+
+    il::support::SourceLoc sameLineBegin{loc.file_id, 4, 7};
+    il::support::SourceLoc missingColumnEnd{loc.file_id, 4, 0};
+    il::support::SourceRange missingColumnRange{sameLineBegin, missingColumnEnd};
+    assert(missingColumnRange.isValid());
+
+    il::support::SourceLoc missingLineEnd{loc.file_id, 0, 0};
+    il::support::SourceRange missingLineRange{sameLineBegin, missingLineEnd};
+    assert(missingLineRange.isValid());
     il::support::Diag partialDiag{il::support::Severity::Error,
                                   "partial coordinates",
                                   partial};
