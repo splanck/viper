@@ -238,8 +238,11 @@ void VMContext::handleInlineResult(VM::ExecState &state, const VM::ExecResult &e
                                      : std::string("<unknown>");
     const std::string blockLabel =
         vmInstance->currentContext.block ? vmInstance->currentContext.block->label : std::string();
+    std::string detail = "unimplemented opcode: " + opcodeMnemonic(opcode);
+    if (!blockLabel.empty())
+        detail += " (block " + blockLabel + ')';
     RuntimeBridge::trap(TrapKind::InvalidOperation,
-                        "unimplemented opcode: " + opcodeMnemonic(opcode),
+                        detail,
                         vmInstance->currentContext.loc,
                         funcName,
                         blockLabel);

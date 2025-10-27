@@ -56,5 +56,8 @@ int main()
     const bool hasMnemonic = diag.find(mnemonic) != std::string::npos;
     assert(hasMnemonic && "expected diagnostic to mention opcode mnemonic");
 
+    const bool hasBlock = diag.find("(block entry)") != std::string::npos;
+    assert(hasBlock && "expected diagnostic to mention source block label");
+
     return 0;
 }
