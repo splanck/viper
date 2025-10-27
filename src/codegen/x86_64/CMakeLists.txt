@@ -4,6 +4,10 @@ add_library(viper_codegen_x86_64 STATIC
         AsmEmitter.cpp
         asmfmt/Format.cpp
         RegAllocLinear.cpp
+        ra/Allocator.cpp
+        ra/Coalescer.cpp
+        ra/LiveIntervals.cpp
+        ra/Spiller.cpp
         FrameLowering.cpp
         CallLowering.cpp
         ISel.cpp

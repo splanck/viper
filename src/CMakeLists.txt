@@ -208,6 +208,10 @@ add_library(il_codegen_x86_64 STATIC
         codegen/x86_64/MachineIR.cpp
         codegen/x86_64/Peephole.cpp
         codegen/x86_64/RegAllocLinear.cpp
+        codegen/x86_64/ra/Allocator.cpp
+        codegen/x86_64/ra/Coalescer.cpp
+        codegen/x86_64/ra/LiveIntervals.cpp
+        codegen/x86_64/ra/Spiller.cpp
         codegen/x86_64/TargetX64.cpp
         codegen/x86_64/placeholder.cpp)
 set_target_properties(il_codegen_x86_64 PROPERTIES LINKER_LANGUAGE CXX)
