@@ -145,7 +145,7 @@ Expected<Operand> parseImm(Cursor &cursor, ParserState &state)
 
 Expected<Operand> parseReg(Cursor &cursor, ParserState &state)
 {
-    const std::string token(cursor.view());
+    const std::string token(cursor.remaining());
     std::string name = token.substr(1);
     auto it = state.tempIds.find(name);
     if (it != state.tempIds.end())
@@ -196,7 +196,7 @@ Expected<Operand> parseMem(Cursor &cursor, ParserState &state)
 
 Expected<Operand> parseSymbolRef(Cursor &cursor, ParserState &state)
 {
-    const std::string token(cursor.view());
+    const std::string token(cursor.remaining());
     std::string name = token.substr(1);
     if (name.empty())
         return makeSyntaxError<Operand>(state, "missing global name");
