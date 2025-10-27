@@ -30,6 +30,11 @@ int main()
         std::cerr << "plain token not classified as src-line\n";
         return 1;
     }
+    if (!isSrcBreakSpec("foo:  7"))
+    {
+        std::cerr << "whitespace-padded line not classified as src-line\n";
+        return 1;
+    }
     if (!isSrcBreakSpec("L1:2"))
     {
         std::cerr << "label-like token with digits not classified as src-line\n";
