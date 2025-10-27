@@ -13,6 +13,11 @@ add_library(viper_codegen_x86_64 STATIC
         Peephole.cpp
         Backend.cpp
         CodegenPipeline.cpp
+        passes/PassManager.cpp
+        passes/LoweringPass.cpp
+        passes/LegalizePass.cpp
+        passes/RegAllocPass.cpp
+        passes/EmitPass.cpp
 )
 
 target_include_directories(viper_codegen_x86_64 PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
