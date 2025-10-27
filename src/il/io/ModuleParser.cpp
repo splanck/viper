@@ -243,6 +243,12 @@ Expected<void> parseModuleHeader_E(std::istream &is, std::string &line, ParserSt
 {
     if (line.rfind("il", 0) == 0)
     {
+        if (st.sawVersion)
+        {
+            std::ostringstream oss;
+            oss << "line " << st.lineNo << ": duplicate 'il' version directive";
+            return Expected<void>{makeError({}, oss.str())};
+        }
         std::istringstream ls(line);
         std::string kw;
         ls >> kw;
