@@ -135,12 +135,14 @@ const KindAccessors &dispatchFor(Type::Kind kind)
 /// @param text Non-owning reference to the source character range.
 /// @return Runtime handle suitable for passing to C helpers; may be null when
 ///         @p text lacks backing storage.
-ViperString toViperString(StringRef text)
+ViperString toViperString(StringRef text, TerminatorPolicy terminator)
 {
     if (text.empty())
     {
         if (text.data() == nullptr)
             return rt_const_cstr("");
+        if (terminator == TerminatorPolicy::NullTerminated)
+            return rt_const_cstr(text.data());
         return rt_string_from_bytes(text.data(), 0);
     }
     if (text.data() == nullptr)
@@ -148,19 +150,10 @@ ViperString toViperString(StringRef text)
     if (text.find('\0') != StringRef::npos)
         return rt_string_from_bytes(text.data(), text.size());
 
-    const char *data = text.data();
-    size_t measuredLength = 0;
-    bool haveMeasuredLength = false;
-    if (data != nullptr)
-    {
-        measuredLength = std::char_traits<char>::length(data);
-        haveMeasuredLength = true;
-    }
+    if (terminator == TerminatorPolicy::NullTerminated)
+        return rt_const_cstr(text.data());
 
-    if (!haveMeasuredLength || measuredLength != text.size())
-        return rt_string_from_bytes(data, text.size());
-
-    return rt_const_cstr(data);
+    return rt_string_from_bytes(text.data(), text.size());
 }
 
 /// @brief Convert a runtime string handle back into the VM's view type.

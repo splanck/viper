@@ -172,7 +172,8 @@ int main()
     rt_arr_i32_release(static_cast<int32_t *>(arrSlot.ptr));
 
     const std::string embeddedLiteral("abc\0def", 7);
-    il::vm::ViperString embedded = il::vm::toViperString(embeddedLiteral);
+    il::vm::ViperString embedded = il::vm::toViperString(
+        embeddedLiteral, il::vm::TerminatorPolicy::NullTerminated);
     assert(embedded != nullptr);
     const int64_t runtimeLen = rt_len(embedded);
     assert(runtimeLen == static_cast<int64_t>(embeddedLiteral.size()));
@@ -222,6 +223,18 @@ int main()
         assert(rt_len(nonLiteralHandle) == 0);
         assert(nonLiteralHandle != emptyString);
         rt_string_unref(nonLiteralHandle);
+    }
+
+    {
+        std::array<char, 4> raw{'s', 'l', 'i', 'c'};
+        il::vm::StringRef nonTerminated{raw.data(), raw.size()};
+        il::vm::ViperString nonTerminatedHandle = il::vm::toViperString(nonTerminated);
+        assert(nonTerminatedHandle != nullptr);
+        const int64_t len = rt_len(nonTerminatedHandle);
+        assert(len == static_cast<int64_t>(nonTerminated.size()));
+        std::string rebuilt(nonTerminatedHandle->data, static_cast<size_t>(len));
+        assert(rebuilt == std::string(nonTerminated.begin(), nonTerminated.end()));
+        rt_string_unref(nonTerminatedHandle);
     }
 
     {

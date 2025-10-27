@@ -59,7 +59,17 @@ struct PowTrapOutcome
     std::string message;
 };
 
-ViperString toViperString(StringRef text);
+/// @brief Control how @ref toViperString treats the terminator of @p text.
+enum class TerminatorPolicy
+{
+    /// @brief Caller cannot guarantee the presence of a terminator.
+    NotGuaranteed,
+    /// @brief Caller promises a trailing NUL byte at @c text.data()[text.size()].
+    NullTerminated,
+};
+
+ViperString toViperString(StringRef text,
+                          TerminatorPolicy terminator = TerminatorPolicy::NotGuaranteed);
 StringRef fromViperString(const ViperString &str);
 int64_t toI64(const il::core::Value &value);
 double toF64(const il::core::Value &value);
