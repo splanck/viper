@@ -11,6 +11,7 @@
 #include "il/core/Value.hpp"
 
 #include <cassert>
+#include <cmath>
 #include <sstream>
 
 int main()
@@ -31,6 +32,9 @@ entry(%flag:i1):
   store i64, %t3, 0x1e
   %fbuf = alloca 8
   store f64, %fbuf, 1e1
+  store f64, %fbuf, NaN
+  store f64, %fbuf, INF
+  store f64, %fbuf, -Inf
   %t4 = load i64, %t3
   %t5 = zext1 %flag
   %t6 = alloca 1
@@ -62,7 +66,7 @@ exit(%v:i64):
     assert(fn.blocks.size() == 4);
 
     const auto &entry = fn.blocks[0];
-    assert(entry.instructions.size() == 17);
+    assert(entry.instructions.size() == 20);
 
     const auto &constNull = entry.instructions[0];
     assert(constNull.op == il::core::Opcode::ConstNull);
@@ -142,25 +146,48 @@ exit(%v:i64):
     assert(storeFloat.operands[1].kind == il::core::Value::Kind::ConstFloat);
     assert(storeFloat.operands[1].f64 == 10.0);
 
-    const auto &loadInstr = entry.instructions[11];
+    const auto &storeNaN = entry.instructions[11];
+    assert(storeNaN.op == il::core::Opcode::Store);
+    assert(storeNaN.type.kind == il::core::Type::Kind::F64);
+    assert(storeNaN.operands.size() == 2);
+    assert(storeNaN.operands[1].kind == il::core::Value::Kind::ConstFloat);
+    assert(std::isnan(storeNaN.operands[1].f64));
+
+    const auto &storeInf = entry.instructions[12];
+    assert(storeInf.op == il::core::Opcode::Store);
+    assert(storeInf.type.kind == il::core::Type::Kind::F64);
+    assert(storeInf.operands.size() == 2);
+    assert(storeInf.operands[1].kind == il::core::Value::Kind::ConstFloat);
+    assert(std::isinf(storeInf.operands[1].f64));
+    assert(!std::signbit(storeInf.operands[1].f64));
+
+    const auto &storeNegInf = entry.instructions[13];
+    assert(storeNegInf.op == il::core::Opcode::Store);
+    assert(storeNegInf.type.kind == il::core::Type::Kind::F64);
+    assert(storeNegInf.operands.size() == 2);
+    assert(storeNegInf.operands[1].kind == il::core::Value::Kind::ConstFloat);
+    assert(std::isinf(storeNegInf.operands[1].f64));
+    assert(std::signbit(storeNegInf.operands[1].f64));
+
+    const auto &loadInstr = entry.instructions[14];
     assert(loadInstr.op == il::core::Opcode::Load);
     assert(loadInstr.type.kind == il::core::Type::Kind::I64);
     assert(loadInstr.operands.size() == 1);
     assert(loadInstr.operands[0].kind == il::core::Value::Kind::Temp);
 
-    const auto &zextInstr = entry.instructions[12];
+    const auto &zextInstr = entry.instructions[15];
     assert(zextInstr.op == il::core::Opcode::Zext1);
     assert(zextInstr.operands.size() == 1);
     assert(zextInstr.operands[0].kind == il::core::Value::Kind::Temp);
     assert(zextInstr.type.kind == il::core::Type::Kind::I64);
 
-    const auto &boolAlloca = entry.instructions[13];
+    const auto &boolAlloca = entry.instructions[16];
     assert(boolAlloca.op == il::core::Opcode::Alloca);
     assert(boolAlloca.operands.size() == 1);
     assert(boolAlloca.operands[0].kind == il::core::Value::Kind::ConstInt);
     assert(boolAlloca.operands[0].i64 == 1);
 
-    const auto &storeBoolTrue = entry.instructions[14];
+    const auto &storeBoolTrue = entry.instructions[17];
     assert(storeBoolTrue.op == il::core::Opcode::Store);
     assert(storeBoolTrue.type.kind == il::core::Type::Kind::I1);
     assert(storeBoolTrue.operands.size() == 2);
@@ -168,7 +195,7 @@ exit(%v:i64):
     assert(storeBoolTrue.operands[1].i64 == 1);
     assert(storeBoolTrue.operands[1].isBool);
 
-    const auto &storeBoolFalse = entry.instructions[15];
+    const auto &storeBoolFalse = entry.instructions[18];
     assert(storeBoolFalse.op == il::core::Opcode::Store);
     assert(storeBoolFalse.type.kind == il::core::Type::Kind::I1);
     assert(storeBoolFalse.operands.size() == 2);
@@ -176,7 +203,7 @@ exit(%v:i64):
     assert(storeBoolFalse.operands[1].i64 == 0);
     assert(storeBoolFalse.operands[1].isBool);
 
-    const auto &cbrInstr = entry.instructions[16];
+    const auto &cbrInstr = entry.instructions[19];
     assert(cbrInstr.op == il::core::Opcode::CBr);
     assert(cbrInstr.operands.size() == 1);
     assert(cbrInstr.operands[0].kind == il::core::Value::Kind::Temp);
