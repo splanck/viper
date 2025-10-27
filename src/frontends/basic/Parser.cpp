@@ -21,6 +21,7 @@
 
 #include "frontends/basic/Parser.hpp"
 #include <array>
+#include <cstdio>
 #include <cstdlib>
 #include <utility>
 
@@ -49,6 +50,68 @@ Parser::Parser(std::string_view src, uint32_t file_id, DiagnosticEmitter *emitte
 StatementSequencer Parser::statementSequencer()
 {
     return StatementSequencer(*this);
+}
+
+int Parser::allocateSyntheticLabelNumber()
+{
+    while (usedLabelNumbers_.count(nextSyntheticLabel_) != 0)
+        ++nextSyntheticLabel_;
+    return nextSyntheticLabel_++;
+}
+
+int Parser::ensureLabelNumber(const std::string &name)
+{
+    auto it = namedLabels_.find(name);
+    if (it != namedLabels_.end())
+        return it->second.number;
+
+    int labelNumber = allocateSyntheticLabelNumber();
+    NamedLabelEntry entry{};
+    entry.number = labelNumber;
+    namedLabels_.emplace(name, entry);
+    usedLabelNumbers_.insert(labelNumber);
+    return labelNumber;
+}
+
+void Parser::noteNamedLabelDefinition(const Token &tok, int labelNumber)
+{
+    usedLabelNumbers_.insert(labelNumber);
+    auto it = namedLabels_.find(tok.lexeme);
+    if (it == namedLabels_.end())
+    {
+        NamedLabelEntry entry{};
+        entry.number = labelNumber;
+        entry.defined = true;
+        entry.definitionLoc = tok.loc;
+        namedLabels_.emplace(tok.lexeme, entry);
+        return;
+    }
+
+    if (!it->second.defined)
+    {
+        it->second.defined = true;
+        it->second.definitionLoc = tok.loc;
+        return;
+    }
+
+    if (emitter_)
+    {
+        std::string msg = "label '" + tok.lexeme + "' already defined";
+        emitter_->emit(il::support::Severity::Error,
+                       "B0001",
+                       tok.loc,
+                       static_cast<uint32_t>(tok.lexeme.size()),
+                       std::move(msg));
+    }
+    else
+    {
+        std::fprintf(stderr, "label '%s' already defined\n", tok.lexeme.c_str());
+    }
+}
+
+void Parser::noteNumericLabelUsage(int labelNumber)
+{
+    usedLabelNumbers_.insert(labelNumber);
 }
 
 /// @brief Populate the registry of statement parsing callbacks.
