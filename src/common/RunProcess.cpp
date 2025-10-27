@@ -140,8 +140,46 @@ public:
     ScopedEnvironmentAssignment(const ScopedEnvironmentAssignment &) = delete;
     ScopedEnvironmentAssignment &operator=(const ScopedEnvironmentAssignment &) = delete;
 
-    ScopedEnvironmentAssignment(ScopedEnvironmentAssignment &&) = default;
-    ScopedEnvironmentAssignment &operator=(ScopedEnvironmentAssignment &&) = default;
+    ScopedEnvironmentAssignment(ScopedEnvironmentAssignment &&other) noexcept
+        : name_(std::move(other.name_))
+        , previous_(std::move(other.previous_))
+    {
+        other.name_.clear();
+        other.previous_.reset();
+    }
+
+    ScopedEnvironmentAssignment &operator=(ScopedEnvironmentAssignment &&other) noexcept
+    {
+        if (this == &other)
+        {
+            return *this;
+        }
+
+        std::optional<std::string> current_value;
+        if (!other.name_.empty())
+        {
+            const char *current_raw = std::getenv(other.name_.c_str());
+            if (current_raw != nullptr)
+            {
+                current_value = std::string(current_raw);
+            }
+        }
+
+        restore();
+
+        name_ = std::move(other.name_);
+        previous_ = std::move(other.previous_);
+
+        other.name_.clear();
+        other.previous_.reset();
+
+        if (current_value.has_value())
+        {
+            apply(*current_value);
+        }
+
+        return *this;
+    }
 
     ~ScopedEnvironmentAssignment()
     {
@@ -170,6 +208,11 @@ private:
 
     void restore() const
     {
+        if (name_.empty())
+        {
+            return;
+        }
+
         if (previous_.has_value())
         {
 #ifdef _WIN32
@@ -191,6 +234,53 @@ private:
     std::optional<std::string> previous_;
 };
 } // namespace
+
+namespace viper::test_support
+{
+struct ScopedEnvironmentAssignmentMoveResult
+{
+    bool value_visible_after_move_ctor;
+    bool value_visible_after_move_assign;
+    bool restored;
+};
+
+ScopedEnvironmentAssignmentMoveResult scoped_environment_assignment_move_preserves(const std::string &name,
+                                                                                   const std::string &value)
+{
+    const char *original_raw = std::getenv(name.c_str());
+    std::optional<std::string> original_value;
+    if (original_raw != nullptr)
+    {
+        original_value = std::string(original_raw);
+    }
+
+    ScopedEnvironmentAssignmentMoveResult result{false, false, false};
+
+    {
+        ScopedEnvironmentAssignment guard(name, value);
+        ScopedEnvironmentAssignment moved(std::move(guard));
+        const char *current = std::getenv(name.c_str());
+        result.value_visible_after_move_ctor = (current != nullptr) && std::string(current) == value;
+
+        ScopedEnvironmentAssignment receiver(name, value);
+        receiver = std::move(moved);
+        current = std::getenv(name.c_str());
+        result.value_visible_after_move_assign = (current != nullptr) && std::string(current) == value;
+    }
+
+    const char *restored_raw = std::getenv(name.c_str());
+    if (original_value.has_value())
+    {
+        result.restored = (restored_raw != nullptr) && std::string(restored_raw) == *original_value;
+    }
+    else
+    {
+        result.restored = (restored_raw == nullptr) || std::string(restored_raw).empty();
+    }
+
+    return result;
+}
+} // namespace viper::test_support
 
 namespace
 {
