@@ -5,6 +5,7 @@
 // Links: docs/codemap.md
 
 #include "vm/Marshal.hpp"
+#include "vm/OpHandlers_Control.hpp"
 #include "vm/RuntimeBridge.hpp"
 #include "vm/Trap.hpp"
 #include "vm/VM.hpp"
@@ -335,6 +336,48 @@ int main()
         il::vm::Slot vmResult = il::vm::VMTestHook::run(vm, module.functions.front(), args);
         const int64_t expectedTrap = static_cast<int64_t>(static_cast<int32_t>(il::vm::TrapKind::DomainError));
         assert(vmResult.i64 == expectedTrap);
+    }
+
+    {
+        constexpr const char kMutatedText[] = "bridge-mutated";
+
+        il::core::Module module;
+        il::core::Function fn;
+        fn.name = "mutate";
+        fn.retType = Type(Type::Kind::Void);
+        fn.valueNames.resize(1);
+        module.functions.push_back(fn);
+
+        il::vm::VM vm(module);
+
+        il::vm::Frame frame{};
+        frame.func = &module.functions.front();
+        frame.regs.resize(1);
+        frame.regs[0].str = nullptr;
+
+        il::core::Instr mutateCall;
+        mutateCall.op = Opcode::Call;
+        mutateCall.type = Type(Type::Kind::Void);
+        mutateCall.callee = "rt_test_bridge_mutate_str";
+        mutateCall.operands.push_back(Value::temp(0));
+
+        il::vm::VM::BlockMap blocks;
+        const il::core::BasicBlock *bbCtx = nullptr;
+        size_t ipCtx = 0;
+
+        il::vm::detail::control::handleCall(vm, frame, mutateCall, blocks, bbCtx, ipCtx);
+
+        assert(frame.regs[0].str != nullptr);
+        const size_t mutatedLen = rt_heap_len(frame.regs[0].str->data);
+        std::string_view mutatedView(frame.regs[0].str->data, mutatedLen);
+        assert(mutatedView == kMutatedText);
+
+        rt_heap_hdr_t *hdr = rt_heap_hdr(frame.regs[0].str->data);
+        assert(hdr != nullptr);
+        assert(hdr->refcnt == 1);
+
+        rt_str_release_maybe(frame.regs[0].str);
+        frame.regs[0].str = nullptr;
     }
 
     for (bool covered : coveredKinds)

@@ -167,6 +167,7 @@ VM::ExecResult handleCall(VM &vm,
 
                 const auto kind = signature->paramTypes[index].kind;
                 const ArgBinding &binding = bindings[index];
+                const bool releaseTempStr = (kind == il::core::Type::Kind::Str);
 
                 auto assignRegister = [&](Slot *destination)
                 {
@@ -187,57 +188,60 @@ VM::ExecResult handleCall(VM &vm,
 
                 assignRegister(binding.reg);
 
-                if (!binding.stackPtr)
-                    continue;
-
-                auto copyWidthForKind = [](il::core::Type::Kind k) -> size_t
+                if (binding.stackPtr)
                 {
-                    switch (k)
+                    auto copyWidthForKind = [](il::core::Type::Kind k) -> size_t
                     {
-                        case il::core::Type::Kind::I1:
-                            return sizeof(uint8_t);
-                        case il::core::Type::Kind::I16:
-                            return sizeof(int16_t);
-                        case il::core::Type::Kind::I32:
-                            return sizeof(int32_t);
-                        case il::core::Type::Kind::I64:
-                            return sizeof(int64_t);
-                        case il::core::Type::Kind::F64:
-                            return sizeof(double);
-                        case il::core::Type::Kind::Ptr:
-                        case il::core::Type::Kind::Error:
-                        case il::core::Type::Kind::ResumeTok:
-                            return sizeof(void *);
-                        case il::core::Type::Kind::Str:
-                            return sizeof(rt_string);
-                        case il::core::Type::Kind::Void:
-                            return 0;
+                        switch (k)
+                        {
+                            case il::core::Type::Kind::I1:
+                                return sizeof(uint8_t);
+                            case il::core::Type::Kind::I16:
+                                return sizeof(int16_t);
+                            case il::core::Type::Kind::I32:
+                                return sizeof(int32_t);
+                            case il::core::Type::Kind::I64:
+                                return sizeof(int64_t);
+                            case il::core::Type::Kind::F64:
+                                return sizeof(double);
+                            case il::core::Type::Kind::Ptr:
+                            case il::core::Type::Kind::Error:
+                            case il::core::Type::Kind::ResumeTok:
+                                return sizeof(void *);
+                            case il::core::Type::Kind::Str:
+                                return sizeof(rt_string);
+                            case il::core::Type::Kind::Void:
+                                return 0;
+                        }
+                        return 0;
+                    };
+
+                    const size_t width = copyWidthForKind(kind);
+                    if (width != 0 && binding.stackPtr >= stackBegin &&
+                        binding.stackPtr + width <= stackEnd)
+                    {
+                        Slot &mutated = args[index];
+                        if (kind == il::core::Type::Kind::Str)
+                        {
+                            auto *slot = reinterpret_cast<rt_string *>(binding.stackPtr);
+                            rt_str_release_maybe(*slot);
+                            rt_string incoming = mutated.str;
+                            rt_str_retain_maybe(incoming);
+                            *slot = incoming;
+                        }
+                        else
+                        {
+                            void *src = il::vm::slotToArgPointer(mutated, kind);
+                            if (src)
+                                std::memcpy(binding.stackPtr, src, width);
+                        }
                     }
-                    return 0;
-                };
-
-                const size_t width = copyWidthForKind(kind);
-                if (width == 0)
-                    continue;
-
-                if (binding.stackPtr < stackBegin || binding.stackPtr + width > stackEnd)
-                    continue;
-
-                Slot &mutated = args[index];
-                if (kind == il::core::Type::Kind::Str)
-                {
-                    auto *slot = reinterpret_cast<rt_string *>(binding.stackPtr);
-                    rt_str_release_maybe(*slot);
-                    rt_string incoming = mutated.str;
-                    rt_str_retain_maybe(incoming);
-                    *slot = incoming;
-                    rt_str_release_maybe(mutated.str);
                 }
-                else
+
+                if (releaseTempStr)
                 {
-                    void *src = il::vm::slotToArgPointer(mutated, kind);
-                    if (src)
-                        std::memcpy(binding.stackPtr, src, width);
+                    rt_str_release_maybe(args[index].str);
+                    args[index].str = nullptr;
                 }
             }
         }
