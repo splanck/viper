@@ -9,6 +9,7 @@ add_library(viper_codegen_x86_64 STATIC
         ISel.cpp
         LowerDiv.cpp
         LowerILToMIR.cpp
+        LoweringRuleTable.cpp
         LoweringRules.cpp
         Peephole.cpp
         Backend.cpp
