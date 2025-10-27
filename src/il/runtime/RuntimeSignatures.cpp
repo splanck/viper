@@ -88,6 +88,20 @@ int32_t rt_loc_ch_i32(int32_t channel)
     return clampRuntimeOffset(rt_loc_ch(channel));
 }
 
+constexpr const char kTestBridgeMutatedText[] = "bridge-mutated";
+
+void testMutateStringNoStack(void **args, void * /*result*/)
+{
+    if (!args)
+        return;
+    auto *slot = reinterpret_cast<rt_string *>(args[0]);
+    if (!slot)
+        return;
+    rt_string updated = rt_string_from_bytes(kTestBridgeMutatedText,
+                                             sizeof(kTestBridgeMutatedText) - 1);
+    *slot = updated;
+}
+
 /// @brief Retrieve the parsed runtime signature for a generated enumerator.
 ///
 /// @details Lazily initialises an array of signatures by parsing the table of
@@ -454,7 +468,7 @@ struct DescriptorRow
     RuntimeTrapClass trapClass;
 };
 
-constexpr std::array<DescriptorRow, 88> kDescriptorRows{{
+constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
     DescriptorRow{"rt_abort",
                   std::nullopt,
                   "void(ptr)",
@@ -1125,6 +1139,14 @@ constexpr std::array<DescriptorRow, 88> kDescriptorRows{{
                   std::nullopt,
                   "void(string)",
                   &DirectHandler<&rt_str_release_maybe, void, rt_string>::invoke,
+                  kManualLowering,
+                  nullptr,
+                  0,
+                  RuntimeTrapClass::None},
+    DescriptorRow{"rt_test_bridge_mutate_str",
+                  std::nullopt,
+                  "void(string)",
+                  &testMutateStringNoStack,
                   kManualLowering,
                   nullptr,
                   0,
