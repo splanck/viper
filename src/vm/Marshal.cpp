@@ -137,14 +137,10 @@ const KindAccessors &dispatchFor(Type::Kind kind)
 ///         @p text lacks backing storage.
 ViperString toViperString(StringRef text)
 {
-    if (text.empty())
-    {
-        if (text.data() == nullptr)
-            return rt_const_cstr("");
-        return rt_string_from_bytes(text.data(), 0);
-    }
     if (text.data() == nullptr)
         return nullptr;
+    if (text.empty())
+        return rt_string_from_bytes(text.data(), 0);
     if (text.find('\0') != StringRef::npos)
         return rt_string_from_bytes(text.data(), text.size());
 
