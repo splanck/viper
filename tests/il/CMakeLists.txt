@@ -116,6 +116,15 @@ function(viper_add_il_core_tests)
   viper_add_ctest(test_il_parse_duplicate_block_param test_il_parse_duplicate_block_param)
 
   viper_add_test(
+    test_il_parse_duplicate_version
+    ${_VIPER_IL_UNIT_DIR}/test_il_parse_duplicate_version.cpp)
+  target_link_libraries(test_il_parse_duplicate_version PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
+  target_compile_definitions(
+    test_il_parse_duplicate_version
+    PRIVATE PARSE_ERROR_DIR="${CMAKE_SOURCE_DIR}/tests/il/parse")
+  viper_add_ctest(test_il_parse_duplicate_version test_il_parse_duplicate_version)
+
+  viper_add_test(
     test_il_parse_invalid_calling_conv
     ${_VIPER_IL_UNIT_DIR}/test_il_parse_invalid_calling_conv.cpp)
   target_link_libraries(test_il_parse_invalid_calling_conv PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
