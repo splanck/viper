@@ -8,6 +8,7 @@
 
 #include "GTestStub.hpp"
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -31,6 +32,18 @@ TEST(RunProcess, PreservesQuotesAndBackslashes)
 
     EXPECT_NE(-1, result.exit_code);
     EXPECT_EQ(trickyArg, trim_trailing_newlines(result.out));
+}
+
+TEST(RunProcess, ForwardsEnvironmentVariables)
+{
+    const std::string varName = "VIPER_RUN_PROCESS_TEST_VAR";
+    const std::string varValue = "viper-test-value";
+    const RunResult result = run_process({"cmake", "-E", "environment"}, std::nullopt,
+                                         {{varName, varValue}});
+
+    EXPECT_NE(-1, result.exit_code);
+    const std::string expectedLine = varName + "=" + varValue;
+    EXPECT_NE(std::string::npos, result.out.find(expectedLine));
 }
 
 #ifndef _WIN32
