@@ -1,8 +1,25 @@
-// File: src/runtime/rt_io.c
-// Purpose: Implements I/O utilities and trap handling for the BASIC runtime.
-// Key invariants: Output routines do not append newlines unless specified.
-// Ownership/Lifetime: Caller manages strings passed to printing routines.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE in the project root for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Hosts the BASIC runtime's low-level I/O utilities, including trap handling,
+// printing, console input, and file-channel bookkeeping helpers.  The
+// translation unit centralises behaviour that must match the VM's semantics so
+// native builds and interpreted execution surface identical diagnostics and
+// boundary conditions.
+//
+//===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief BASIC runtime I/O and trap helpers.
+/// @details Provides trap bridges used by the VM, implements printing helpers
+///          that mirror the runtime's formatting rules, and exposes channel-based
+///          file APIs that wrap the shared @ref RtFile abstractions.  All
+///          routines either abort or raise traps when invariants are violated so
+///          callers never observe partial state.
 
 #include "rt_file.h"
 #include "rt_format.h"
@@ -21,12 +38,13 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-/**
- * Terminate the program immediately due to a fatal runtime error.
- *
- * @param msg Optional message describing the reason for the abort.
- * @return Never returns.
- */
+/// @brief Abort the process immediately after reporting a fatal runtime error.
+/// @details Prints @p msg to @c stderr (falling back to the literal "Trap" when
+///          the caller provides @c NULL) and terminates the process with exit
+///          status @c 1.  The helper is used as the final sink for unrecoverable
+///          runtime traps.
+/// @param msg Optional UTF-8 diagnostic to surface before exiting.
+/// @note This function never returns.
 void rt_abort(const char *msg)
 {
     if (msg && *msg)
@@ -36,33 +54,34 @@ void rt_abort(const char *msg)
     exit(1);
 }
 
-/**
- * Trap handler used by the VM layer. Can be overridden by hosts.
- *
- * @param msg Optional message describing the trap condition.
- * @return Never returns.
- */
+/// @brief Default VM trap hook invoked by @ref rt_trap.
+/// @details Marked @c weak so embedders can override it with custom trap
+///          handling.  The default implementation simply delegates to
+///          @ref rt_abort.
+/// @param msg Diagnostic payload describing the trap condition.
+/// @note This function never returns.
 __attribute__((weak)) void vm_trap(const char *msg)
 {
     rt_abort(msg);
 }
 
-/**
- * Entry point for raising runtime traps from helper routines.
- *
- * @param msg Message describing the trap condition.
- * @return Never returns.
- */
+/// @brief Raise a runtime trap observable by both the VM and native runtimes.
+/// @details Forwards @p msg to @ref vm_trap so embedders can intercept traps.
+///          The helper never returns and should be used by higher-level runtime
+///          code whenever BASIC semantics require a fatal error.
+/// @param msg Diagnostic payload describing the failure.
+/// @note This function never returns.
 void rt_trap(const char *msg)
 {
     vm_trap(msg);
 }
 
-/**
- * Write a runtime string to standard output without a trailing newline.
- *
- * @param s String to print; NULL strings are ignored.
- */
+/// @brief Print a runtime string to @c stdout without a trailing newline.
+/// @details Determines the payload length based on whether @p s references a
+///          literal or heap-backed string and writes the bytes verbatim using
+///          @c fwrite.  Null strings or empty payloads are ignored so callers can
+///          safely forward optional values.
+/// @param s Borrowed runtime string handle; may be @c NULL.
 void rt_print_str(rt_string s)
 {
     if (!s || !s->data)
@@ -70,13 +89,9 @@ void rt_print_str(rt_string s)
 
     size_t len = 0;
     if (s->heap)
-    {
         len = rt_heap_len(s->data);
-    }
     else
-    {
         len = s->literal_len;
-    }
 
     if (len == 0)
         return;
@@ -84,11 +99,12 @@ void rt_print_str(rt_string s)
     (void)fwrite(s->data, 1, len, stdout);
 }
 
-/**
- * Print a 64-bit integer in decimal form to stdout.
- *
- * @param v Value to print.
- */
+/// @brief Print a signed 64-bit integer in decimal form to @c stdout.
+/// @details Attempts to format the value into a small stack buffer and
+///          dynamically grows the buffer when the representation does not fit.
+///          Formatting errors and allocation failures are reported via
+///          @ref rt_trap so callers never observe truncated output.
+/// @param v Integer to print.
 void rt_print_i64(int64_t v)
 {
     char stack_buf[32];
@@ -104,28 +120,24 @@ void rt_print_i64(int64_t v)
     {
         if (cap > SIZE_MAX / 2)
         {
-            if (heap_buf)
-                free(heap_buf);
+            free(heap_buf);
             rt_trap("rt_print_i64: overflow");
         }
         size_t new_cap = cap * 2;
         char *new_buf = (char *)malloc(new_cap);
         if (!new_buf)
         {
-            if (heap_buf)
-                free(heap_buf);
+            free(heap_buf);
             rt_trap("rt_print_i64: alloc");
         }
         size_t new_written = rt_i64_to_cstr(v, new_buf, new_cap);
         if (new_written == 0 && new_buf[0] == '\0')
         {
             free(new_buf);
-            if (heap_buf)
-                free(heap_buf);
+            free(heap_buf);
             rt_trap("rt_print_i64: format");
         }
-        if (heap_buf)
-            free(heap_buf);
+        free(heap_buf);
         heap_buf = new_buf;
         buf = new_buf;
         cap = new_cap;
@@ -133,15 +145,13 @@ void rt_print_i64(int64_t v)
     }
 
     fwrite(buf, 1, written, stdout);
-    if (heap_buf)
-        free(heap_buf);
+    free(heap_buf);
 }
 
-/**
- * Print a double-precision floating-point number to stdout.
- *
- * @param v Value to print.
- */
+/// @brief Print a double-precision value using BASIC formatting rules.
+/// @details Delegates to @ref rt_format_f64 to obtain a locale-independent
+///          string representation and forwards the result to @c fputs.
+/// @param v Floating-point value to print.
 void rt_print_f64(double v)
 {
     char buf[64];
@@ -149,6 +159,14 @@ void rt_print_f64(double v)
     fputs(buf, stdout);
 }
 
+/// @brief Grow an input buffer used by @ref rt_input_line.
+/// @details Reallocates @p *buf to twice the previous capacity, updating both
+///          the pointer and capacity on success.  Overflow or allocation
+///          failures are reported via the @ref rt_input_grow_result enum so the
+///          caller can raise a trap with an informative message.
+/// @param buf Pointer to the input buffer pointer; must be non-null.
+/// @param cap Pointer to the current capacity; must reference a valid size.
+/// @return Result code indicating success, overflow, or allocation failure.
 rt_input_grow_result rt_input_try_grow(char **buf, size_t *cap)
 {
     if (!buf || !cap || !*buf)
@@ -167,12 +185,15 @@ rt_input_grow_result rt_input_try_grow(char **buf, size_t *cap)
     return RT_INPUT_GROW_OK;
 }
 
-/**
- * Read a single line of input from stdin into a runtime string.
- *
- * @return Newly allocated runtime string containing the line without the
- * trailing newline, or NULL on EOF before any characters are read.
- */
+/// @brief Read a single line of console input into a freshly allocated string.
+/// @details Consumes bytes from @c stdin until a newline or EOF is observed,
+///          growing the internal buffer via @ref rt_input_try_grow.  Trailing
+///          carriage returns are stripped to match BASIC semantics.  When EOF is
+///          encountered before any character is read, the function returns
+///          @c NULL so callers can distinguish between end-of-file and empty
+///          lines.
+/// @return Runtime string containing the line contents, or @c NULL on EOF with
+///         no data.
 rt_string rt_input_line(void)
 {
     size_t cap = 1024;
@@ -233,14 +254,17 @@ rt_string rt_input_line(void)
     return s;
 }
 
-/**
- * Split a comma-separated input line into individual fields.
- *
- * @param line       Runtime string containing the raw input line.
- * @param out_fields Destination array receiving up to @p max_fields entries.
- * @param max_fields Maximum number of fields to populate; negative treated as zero.
- * @return Total number of fields present in @p line.
- */
+/// @brief Split a CSV-style BASIC input line into fields.
+/// @details Parses @p line, handling quoted segments and doubled quote escapes.
+///          Up to @p max_fields results are stored into @p out_fields; excess
+///          fields continue to be counted so the caller can detect mismatches.
+///          The function trims leading/trailing whitespace for unquoted fields
+///          and allocates new runtime strings for each stored value.
+/// @param line       Input line to split; may be @c NULL to denote empty.
+/// @param out_fields Destination array that receives up to @p max_fields strings.
+/// @param max_fields Maximum number of elements to write; negative values are
+///                   treated as zero.
+/// @return Total number of fields present in @p line.
 int64_t rt_split_fields(rt_string line, rt_string *out_fields, int64_t max_fields)
 {
     if (max_fields <= 0)
@@ -395,6 +419,14 @@ int64_t rt_split_fields(rt_string line, rt_string *out_fields, int64_t max_field
     return total;
 }
 
+/// @brief Compute BASIC EOF status for a file channel.
+/// @details Consults the cached EOF bit before attempting to @c lseek the file
+///          descriptor associated with @p ch.  On success the EOF cache is
+///          updated and either @c -1 (EOF) or @c 0 (more data) is returned.  On
+///          failure a BASIC error code is surfaced.
+/// @param ch BASIC channel number previously opened via runtime APIs.
+/// @return @c -1 when EOF has been reached, @c 0 when more data is available, or
+///         a positive BASIC error code on failure.
 int rt_eof_ch(int ch)
 {
     int fd = -1;
@@ -439,6 +471,13 @@ int rt_eof_ch(int ch)
     return (int32_t)Err_IOError;
 }
 
+/// @brief Compute the length of the file bound to a BASIC channel.
+/// @details Prefers @c fstat for regular and block devices, falling back to
+///          @c lseek-based probing for seekable descriptors.  Errors are reported
+///          as negative BASIC error codes so callers can propagate diagnostics.
+/// @param ch BASIC channel number.
+/// @return Non-negative file length in bytes on success; otherwise a negative
+///         BASIC error code.
 int64_t rt_lof_ch(int ch)
 {
     int fd = -1;
@@ -482,6 +521,12 @@ int64_t rt_lof_ch(int ch)
     return (int64_t)end;
 }
 
+/// @brief Report the current file position for a BASIC channel.
+/// @details Uses @c lseek to query the descriptor's offset.  For non-seekable
+///          descriptors a BASIC invalid-operation error is returned.
+/// @param ch BASIC channel number.
+/// @return Non-negative byte offset on success; otherwise a negative BASIC
+///         error code.
 int64_t rt_loc_ch(int ch)
 {
     int fd = -1;
@@ -504,6 +549,13 @@ int64_t rt_loc_ch(int ch)
     return (int64_t)cur;
 }
 
+/// @brief Seek to an absolute file position for a BASIC channel.
+/// @details Validates that @p pos is non-negative, converts it to an @c off_t,
+///          and invokes @c lseek.  On success the cached EOF state for the
+///          channel is cleared.
+/// @param ch  BASIC channel number to reposition.
+/// @param pos Desired byte offset from the beginning of the file.
+/// @return @c 0 on success or a BASIC error code on failure.
 int32_t rt_seek_ch_err(int ch, int64_t pos)
 {
     if (pos < 0)
