@@ -18,6 +18,7 @@
 
 #include "break_spec.hpp"
 
+#include <algorithm>
 #include <cctype>
 
 namespace ilc
@@ -42,10 +43,23 @@ bool isSrcBreakSpec(const std::string &spec)
     if (pos == std::string::npos || pos + 1 >= spec.size())
         return false;
 
-    // Ensure all characters after the colon are digits.
-    for (std::string::size_type i = pos + 1; i < spec.size(); ++i)
+    // Trim ASCII whitespace around the line component before validating.
+    auto linePart = spec.substr(pos + 1);
+    auto begin = std::find_if_not(linePart.begin(), linePart.end(), [](unsigned char ch) {
+        return std::isspace(ch) != 0;
+    });
+    auto end = std::find_if_not(linePart.rbegin(), linePart.rend(), [](unsigned char ch) {
+        return std::isspace(ch) != 0;
+    }).base();
+    if (begin >= end)
     {
-        if (!std::isdigit(static_cast<unsigned char>(spec[i])))
+        return false;
+    }
+
+    // Ensure all characters after trimming are digits.
+    for (auto it = begin; it != end; ++it)
+    {
+        if (!std::isdigit(static_cast<unsigned char>(*it)))
             return false;
     }
 
