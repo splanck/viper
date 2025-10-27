@@ -30,33 +30,83 @@
 
 #include "frontends/basic/Parser.hpp"
 #include "frontends/basic/Parser_Stmt_ControlHelpers.hpp"
+#include "frontends/basic/parse/StmtRegistry.hpp"
 
 namespace il::frontends::basic
 {
 
 /// @brief Install the control-flow statement handlers required by BASIC.
 ///
-/// @details The parser populates a `StatementParserRegistry` with mappings from
-///          control-flow keywords to the member functions that understand their
-///          syntax.  When the front end encounters a keyword token it consults
-///          this registry to discover the appropriate parsing routine, keeping
-///          dispatch table-driven and easy to extend.  Each registration stores a
-///          pointer-to-member; ownership of the actual parsing implementations
-///          remains with `Parser`.
+/// @details The parser populates a registry with mappings from control-flow
+///          keywords to lightweight handler lambdas.  When the front end
+///          encounters a keyword token it consults this registry to discover the
+///          appropriate parsing routine, keeping dispatch table-driven and easy
+///          to extend.  Each registration captures the member function that
+///          performs the actual parsing work.
 ///
 /// @param registry Mutable registry that records keyword-to-parser mappings.
-void Parser::registerControlFlowParsers(StatementParserRegistry &registry)
+void Parser::registerControlFlowParsers(parse::StmtRegistry &registry)
 {
-    registry.registerHandler(TokenKind::KeywordIf, &Parser::parseIfStatement);
-    registry.registerHandler(TokenKind::KeywordSelect, &Parser::parseSelectCaseStatement);
-    registry.registerHandler(TokenKind::KeywordWhile, &Parser::parseWhileStatement);
-    registry.registerHandler(TokenKind::KeywordDo, &Parser::parseDoStatement);
-    registry.registerHandler(TokenKind::KeywordFor, &Parser::parseForStatement);
-    registry.registerHandler(TokenKind::KeywordNext, &Parser::parseNextStatement);
-    registry.registerHandler(TokenKind::KeywordExit, &Parser::parseExitStatement);
-    registry.registerHandler(TokenKind::KeywordGoto, &Parser::parseGotoStatement);
-    registry.registerHandler(TokenKind::KeywordGosub, &Parser::parseGosubStatement);
-    registry.registerHandler(TokenKind::KeywordReturn, &Parser::parseReturnStatement);
+    registry.registerHandler(TokenKind::KeywordIf,
+                             [](parse::TokenStream &, parse::ASTBuilder &builder, parse::Diagnostics &)
+                             {
+                                 builder.setStatement(builder.call(&Parser::parseIfStatement));
+                                 return true;
+                             });
+    registry.registerHandler(TokenKind::KeywordSelect,
+                             [](parse::TokenStream &, parse::ASTBuilder &builder, parse::Diagnostics &)
+                             {
+                                 builder.setStatement(builder.call(&Parser::parseSelectCaseStatement));
+                                 return true;
+                             });
+    registry.registerHandler(TokenKind::KeywordWhile,
+                             [](parse::TokenStream &, parse::ASTBuilder &builder, parse::Diagnostics &)
+                             {
+                                 builder.setStatement(builder.call(&Parser::parseWhileStatement));
+                                 return true;
+                             });
+    registry.registerHandler(TokenKind::KeywordDo,
+                             [](parse::TokenStream &, parse::ASTBuilder &builder, parse::Diagnostics &)
+                             {
+                                 builder.setStatement(builder.call(&Parser::parseDoStatement));
+                                 return true;
+                             });
+    registry.registerHandler(TokenKind::KeywordFor,
+                             [](parse::TokenStream &, parse::ASTBuilder &builder, parse::Diagnostics &)
+                             {
+                                 builder.setStatement(builder.call(&Parser::parseForStatement));
+                                 return true;
+                             });
+    registry.registerHandler(TokenKind::KeywordNext,
+                             [](parse::TokenStream &, parse::ASTBuilder &builder, parse::Diagnostics &)
+                             {
+                                 builder.setStatement(builder.call(&Parser::parseNextStatement));
+                                 return true;
+                             });
+    registry.registerHandler(TokenKind::KeywordExit,
+                             [](parse::TokenStream &, parse::ASTBuilder &builder, parse::Diagnostics &)
+                             {
+                                 builder.setStatement(builder.call(&Parser::parseExitStatement));
+                                 return true;
+                             });
+    registry.registerHandler(TokenKind::KeywordGoto,
+                             [](parse::TokenStream &, parse::ASTBuilder &builder, parse::Diagnostics &)
+                             {
+                                 builder.setStatement(builder.call(&Parser::parseGotoStatement));
+                                 return true;
+                             });
+    registry.registerHandler(TokenKind::KeywordGosub,
+                             [](parse::TokenStream &, parse::ASTBuilder &builder, parse::Diagnostics &)
+                             {
+                                 builder.setStatement(builder.call(&Parser::parseGosubStatement));
+                                 return true;
+                             });
+    registry.registerHandler(TokenKind::KeywordReturn,
+                             [](parse::TokenStream &, parse::ASTBuilder &builder, parse::Diagnostics &)
+                             {
+                                 builder.setStatement(builder.call(&Parser::parseReturnStatement));
+                                 return true;
+                             });
 }
 
 } // namespace il::frontends::basic

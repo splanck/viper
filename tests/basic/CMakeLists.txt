@@ -130,6 +130,13 @@ function(viper_add_basic_main_tests)
   viper_add_ctest(test_frontends_basic_parse_call_stmt test_frontends_basic_parse_call_stmt)
 
   viper_add_test(
+    test_frontends_basic_control_constructs
+    ${VIPER_TESTS_DIR}/frontends/basic/ParserControlConstructTests.cpp)
+  target_link_libraries(test_frontends_basic_control_constructs PRIVATE ${VIPER_BASIC_LIBS})
+  viper_add_ctest(
+    test_frontends_basic_control_constructs test_frontends_basic_control_constructs)
+
+  viper_add_test(
     test_frontends_basic_lowerer_select_case
     ${VIPER_TESTS_DIR}/frontends/basic/LowererSelectCaseTests.cpp)
   target_link_libraries(test_frontends_basic_lowerer_select_case PRIVATE ${VIPER_BASIC_LIBS})

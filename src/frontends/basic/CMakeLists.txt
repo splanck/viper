@@ -21,6 +21,7 @@ target_sources(fe_basic PRIVATE
         Parser_Stmt_Jump.cpp
         Parser_Stmt_IO.cpp
         Parser_Stmt_Runtime.cpp
+        parse/StmtRegistry.cpp
         Parser_Expr.cpp
         Parser_Token.cpp
         StatementSequencer.cpp

@@ -20,7 +20,7 @@
 ///          delegated to sibling translation units.
 
 #include "frontends/basic/Parser.hpp"
-#include <array>
+#include "frontends/basic/parse/StmtRegistry.hpp"
 #include <cstdlib>
 #include <utility>
 
@@ -56,9 +56,9 @@ StatementSequencer Parser::statementSequencer()
 ///          control-flow, runtime, and I/O).  The registry is returned by value
 ///          so callers can store it in static storage without exposing
 ///          construction details.
-Parser::StatementParserRegistry Parser::buildStatementRegistry()
+parse::StmtRegistry Parser::buildStatementRegistry()
 {
-    StatementParserRegistry registry;
+    parse::StmtRegistry registry;
     registerCoreParsers(registry);
     registerControlFlowParsers(registry);
     registerRuntimeParsers(registry);
@@ -71,51 +71,10 @@ Parser::StatementParserRegistry Parser::buildStatementRegistry()
 /// @details Initialises the registry on first use by delegating to
 ///          @ref buildStatementRegistry.  Subsequent calls reuse the static
 ///          instance, ensuring parser construction remains inexpensive.
-const Parser::StatementParserRegistry &Parser::statementRegistry()
+const parse::StmtRegistry &Parser::statementRegistry()
 {
-    static StatementParserRegistry registry = buildStatementRegistry();
+    static parse::StmtRegistry registry = buildStatementRegistry();
     return registry;
-}
-
-/// @brief Install a statement handler that does not expect an explicit line number.
-/// @details Stores the callback in the registry entry associated with @p kind.
-///          The registry distinguishes between handlers that consume prefixed
-///          line numbers and those that do not.
-void Parser::StatementParserRegistry::registerHandler(TokenKind kind, NoArgHandler handler)
-{
-    entries_[static_cast<std::size_t>(kind)].first = handler;
-}
-
-/// @brief Install a statement handler that receives the parsed line number.
-/// @details Complements the no-argument registration to support statements that
-///          require awareness of their source line during parsing.
-void Parser::StatementParserRegistry::registerHandler(TokenKind kind, WithLineHandler handler)
-{
-    entries_[static_cast<std::size_t>(kind)].second = handler;
-}
-
-std::pair<Parser::StatementParserRegistry::NoArgHandler,
-          Parser::StatementParserRegistry::WithLineHandler>
-/// @brief Retrieve registered handlers for the given token kind.
-/// @details Returns the pair of callbacks for @p kind, substituting
-///          `{nullptr, nullptr}` when the registry lacks an entry.  The helper
-///          performs bounds checking to keep invalid token kinds from indexing
-///          past the table.
-Parser::StatementParserRegistry::lookup(TokenKind kind) const
-{
-    const auto index = static_cast<std::size_t>(kind);
-    if (index >= entries_.size())
-        return {nullptr, nullptr};
-    return entries_[index];
-}
-
-/// @brief Test whether any handler exists for the token kind.
-/// @details Uses @ref lookup to fetch the callback pair and reports true when at
-///          least one handler is registered.
-bool Parser::StatementParserRegistry::contains(TokenKind kind) const
-{
-    const auto [noArg, withLine] = lookup(kind);
-    return noArg != nullptr || withLine != nullptr;
 }
 
 /// @brief Parse the entire BASIC program.

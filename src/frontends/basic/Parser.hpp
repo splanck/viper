@@ -24,6 +24,14 @@
 namespace il::frontends::basic
 {
 
+namespace parse
+{
+class TokenStream;
+class ASTBuilder;
+class Diagnostics;
+class StmtRegistry;
+} // namespace parse
+
 class Parser
 {
   public:
@@ -41,6 +49,9 @@ class Parser
     template <class T> using ErrorOr = il::support::Expected<T>;
 
     friend class StatementSequencer;
+    friend class parse::TokenStream;
+    friend class parse::ASTBuilder;
+    friend class parse::Diagnostics;
 
     /// @brief Create a statement sequencer bound to this parser instance.
     /// @return StatementSequencer referencing the parser's token stream.
@@ -65,39 +76,13 @@ class Parser
     std::unordered_set<std::string> arrays_;          ///< Names of arrays declared via DIM.
     std::unordered_set<std::string> knownProcedures_; ///< Procedure identifiers seen so far.
 
-    /// @brief Registry that maps statement-leading tokens to parser callbacks.
-    class StatementParserRegistry
-    {
-      public:
-        using NoArgHandler = StmtPtr (Parser::*)();
-        using WithLineHandler = StmtPtr (Parser::*)(int);
-
-        /// @brief Register handler without an explicit line parameter.
-        void registerHandler(TokenKind kind, NoArgHandler handler);
-
-        /// @brief Register handler that requires the originating line number.
-        void registerHandler(TokenKind kind, WithLineHandler handler);
-
-        /// @brief Lookup registered handler for @p kind.
-        /// @return Pointer pair containing callbacks if present.
-        [[nodiscard]] std::pair<NoArgHandler, WithLineHandler> lookup(TokenKind kind) const;
-
-        /// @brief Check whether @p kind begins a statement according to the registry.
-        [[nodiscard]] bool contains(TokenKind kind) const;
-
-      private:
-        std::array<std::pair<NoArgHandler, WithLineHandler>,
-                   static_cast<std::size_t>(TokenKind::Count)>
-            entries_{};
-    };
-
-    static const StatementParserRegistry &statementRegistry();
-    static StatementParserRegistry buildStatementRegistry();
-    static void registerControlFlowParsers(StatementParserRegistry &registry);
-    static void registerRuntimeParsers(StatementParserRegistry &registry);
-    static void registerIoParsers(StatementParserRegistry &registry);
-    static void registerCoreParsers(StatementParserRegistry &registry);
-    static void registerOopParsers(StatementParserRegistry &registry);
+    static const parse::StmtRegistry &statementRegistry();
+    static parse::StmtRegistry buildStatementRegistry();
+    static void registerControlFlowParsers(parse::StmtRegistry &registry);
+    static void registerRuntimeParsers(parse::StmtRegistry &registry);
+    static void registerIoParsers(parse::StmtRegistry &registry);
+    static void registerCoreParsers(parse::StmtRegistry &registry);
+    static void registerOopParsers(parse::StmtRegistry &registry);
     StmtPtr parseClassDecl();
     StmtPtr parseTypeDecl();
     StmtPtr parseDeleteStatement();

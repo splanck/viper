@@ -20,6 +20,7 @@
 
 #include "frontends/basic/BasicDiagnosticMessages.hpp"
 #include "frontends/basic/Parser.hpp"
+#include "frontends/basic/parse/StmtRegistry.hpp"
 
 #include <cstdio>
 #include <cstdlib>
@@ -31,16 +32,51 @@ namespace il::frontends::basic
 /// @details Populates the provided registry so the generic parser dispatch can
 ///          map BASIC keywords (PRINT, OPEN, etc.) to their specialised handler
 ///          methods on @ref Parser.
-/// @param registry Dispatcher that maps tokens to member function pointers.
-void Parser::registerIoParsers(StatementParserRegistry &registry)
+/// @param registry Dispatcher that maps tokens to handler lambdas.
+void Parser::registerIoParsers(parse::StmtRegistry &registry)
 {
-    registry.registerHandler(TokenKind::KeywordPrint, &Parser::parsePrintStatement);
-    registry.registerHandler(TokenKind::KeywordWrite, &Parser::parseWriteStatement);
-    registry.registerHandler(TokenKind::KeywordOpen, &Parser::parseOpenStatement);
-    registry.registerHandler(TokenKind::KeywordClose, &Parser::parseCloseStatement);
-    registry.registerHandler(TokenKind::KeywordSeek, &Parser::parseSeekStatement);
-    registry.registerHandler(TokenKind::KeywordInput, &Parser::parseInputStatement);
-    registry.registerHandler(TokenKind::KeywordLine, &Parser::parseLineInputStatement);
+    registry.registerHandler(TokenKind::KeywordPrint,
+                             [](parse::TokenStream &, parse::ASTBuilder &builder, parse::Diagnostics &)
+                             {
+                                 builder.setStatement(builder.call(&Parser::parsePrintStatement));
+                                 return true;
+                             });
+    registry.registerHandler(TokenKind::KeywordWrite,
+                             [](parse::TokenStream &, parse::ASTBuilder &builder, parse::Diagnostics &)
+                             {
+                                 builder.setStatement(builder.call(&Parser::parseWriteStatement));
+                                 return true;
+                             });
+    registry.registerHandler(TokenKind::KeywordOpen,
+                             [](parse::TokenStream &, parse::ASTBuilder &builder, parse::Diagnostics &)
+                             {
+                                 builder.setStatement(builder.call(&Parser::parseOpenStatement));
+                                 return true;
+                             });
+    registry.registerHandler(TokenKind::KeywordClose,
+                             [](parse::TokenStream &, parse::ASTBuilder &builder, parse::Diagnostics &)
+                             {
+                                 builder.setStatement(builder.call(&Parser::parseCloseStatement));
+                                 return true;
+                             });
+    registry.registerHandler(TokenKind::KeywordSeek,
+                             [](parse::TokenStream &, parse::ASTBuilder &builder, parse::Diagnostics &)
+                             {
+                                 builder.setStatement(builder.call(&Parser::parseSeekStatement));
+                                 return true;
+                             });
+    registry.registerHandler(TokenKind::KeywordInput,
+                             [](parse::TokenStream &, parse::ASTBuilder &builder, parse::Diagnostics &)
+                             {
+                                 builder.setStatement(builder.call(&Parser::parseInputStatement));
+                                 return true;
+                             });
+    registry.registerHandler(TokenKind::KeywordLine,
+                             [](parse::TokenStream &, parse::ASTBuilder &builder, parse::Diagnostics &)
+                             {
+                                 builder.setStatement(builder.call(&Parser::parseLineInputStatement));
+                                 return true;
+                             });
 }
 
 /// @brief Parse the PRINT statement, supporting both console and channel forms.

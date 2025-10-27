@@ -15,6 +15,7 @@
 
 #include "frontends/basic/BasicDiagnosticMessages.hpp"
 #include "frontends/basic/Parser.hpp"
+#include "frontends/basic/parse/StmtRegistry.hpp"
 
 #include <cstdio>
 #include <cstdlib>
@@ -30,22 +31,66 @@
 namespace il::frontends::basic
 {
 /// @brief Register parser callbacks for runtime-related statements.
-/// @details Populates the @ref StatementParserRegistry with handlers for
-///          statements such as DIM, RANDOMIZE, and terminal commands.  The
-///          registry invokes the member functions listed here when the parser
-///          encounters the associated leading token.
+/// @details Populates the registry with handlers for statements such as DIM,
+///          RANDOMIZE, and terminal commands.  Each handler forwards to the
+///          member function that performs the actual parsing work.
 /// @param registry Registry that maps starting tokens to parser member functions.
-void Parser::registerRuntimeParsers(StatementParserRegistry &registry)
+void Parser::registerRuntimeParsers(parse::StmtRegistry &registry)
 {
-    registry.registerHandler(TokenKind::KeywordOn, &Parser::parseOnErrorGotoStatement);
-    registry.registerHandler(TokenKind::KeywordResume, &Parser::parseResumeStatement);
-    registry.registerHandler(TokenKind::KeywordEnd, &Parser::parseEndStatement);
-    registry.registerHandler(TokenKind::KeywordDim, &Parser::parseDimStatement);
-    registry.registerHandler(TokenKind::KeywordRedim, &Parser::parseReDimStatement);
-    registry.registerHandler(TokenKind::KeywordRandomize, &Parser::parseRandomizeStatement);
-    registry.registerHandler(TokenKind::KeywordCls, &Parser::parseClsStatement);
-    registry.registerHandler(TokenKind::KeywordColor, &Parser::parseColorStatement);
-    registry.registerHandler(TokenKind::KeywordLocate, &Parser::parseLocateStatement);
+    registry.registerHandler(TokenKind::KeywordOn,
+                             [](parse::TokenStream &, parse::ASTBuilder &builder, parse::Diagnostics &)
+                             {
+                                 builder.setStatement(builder.call(&Parser::parseOnErrorGotoStatement));
+                                 return true;
+                             });
+    registry.registerHandler(TokenKind::KeywordResume,
+                             [](parse::TokenStream &, parse::ASTBuilder &builder, parse::Diagnostics &)
+                             {
+                                 builder.setStatement(builder.call(&Parser::parseResumeStatement));
+                                 return true;
+                             });
+    registry.registerHandler(TokenKind::KeywordEnd,
+                             [](parse::TokenStream &, parse::ASTBuilder &builder, parse::Diagnostics &)
+                             {
+                                 builder.setStatement(builder.call(&Parser::parseEndStatement));
+                                 return true;
+                             });
+    registry.registerHandler(TokenKind::KeywordDim,
+                             [](parse::TokenStream &, parse::ASTBuilder &builder, parse::Diagnostics &)
+                             {
+                                 builder.setStatement(builder.call(&Parser::parseDimStatement));
+                                 return true;
+                             });
+    registry.registerHandler(TokenKind::KeywordRedim,
+                             [](parse::TokenStream &, parse::ASTBuilder &builder, parse::Diagnostics &)
+                             {
+                                 builder.setStatement(builder.call(&Parser::parseReDimStatement));
+                                 return true;
+                             });
+    registry.registerHandler(TokenKind::KeywordRandomize,
+                             [](parse::TokenStream &, parse::ASTBuilder &builder, parse::Diagnostics &)
+                             {
+                                 builder.setStatement(builder.call(&Parser::parseRandomizeStatement));
+                                 return true;
+                             });
+    registry.registerHandler(TokenKind::KeywordCls,
+                             [](parse::TokenStream &, parse::ASTBuilder &builder, parse::Diagnostics &)
+                             {
+                                 builder.setStatement(builder.call(&Parser::parseClsStatement));
+                                 return true;
+                             });
+    registry.registerHandler(TokenKind::KeywordColor,
+                             [](parse::TokenStream &, parse::ASTBuilder &builder, parse::Diagnostics &)
+                             {
+                                 builder.setStatement(builder.call(&Parser::parseColorStatement));
+                                 return true;
+                             });
+    registry.registerHandler(TokenKind::KeywordLocate,
+                             [](parse::TokenStream &, parse::ASTBuilder &builder, parse::Diagnostics &)
+                             {
+                                 builder.setStatement(builder.call(&Parser::parseLocateStatement));
+                                 return true;
+                             });
 }
 
 /// @brief Parse an @c ON ERROR GOTO statement.

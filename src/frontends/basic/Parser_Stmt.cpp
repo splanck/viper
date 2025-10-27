@@ -18,6 +18,7 @@
 
 #include "frontends/basic/BasicDiagnosticMessages.hpp"
 #include "frontends/basic/Parser.hpp"
+#include "frontends/basic/parse/StmtRegistry.hpp"
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
@@ -31,18 +32,34 @@ namespace il::frontends::basic
 /// @brief Register the minimal statement parsers required for core BASIC.
 ///
 /// @details Installs handlers for assignment statements and procedure
-///          declarations.  The registry keeps pointers-to-member functions so
-///          dispatch remains table-driven.  Centralising the registration here
-///          keeps @ref Parser::parseStatement focused on lookup rather than the
-///          list of supported statements.
+///          declarations.  Each registry entry stores a lightweight lambda that
+///          forwards to the underlying parser routine, keeping dispatch
+///          table-driven.  Centralising the registration here keeps
+///          @ref Parser::parseStatement focused on lookup rather than the list
+///          of supported statements.
 ///
 /// @param registry Dispatcher that maps statement-starting tokens to Parser
 ///        member functions.
-void Parser::registerCoreParsers(StatementParserRegistry &registry)
+void Parser::registerCoreParsers(parse::StmtRegistry &registry)
 {
-    registry.registerHandler(TokenKind::KeywordLet, &Parser::parseLetStatement);
-    registry.registerHandler(TokenKind::KeywordFunction, &Parser::parseFunctionStatement);
-    registry.registerHandler(TokenKind::KeywordSub, &Parser::parseSubStatement);
+    registry.registerHandler(TokenKind::KeywordLet,
+                             [](parse::TokenStream &, parse::ASTBuilder &builder, parse::Diagnostics &)
+                             {
+                                 builder.setStatement(builder.call(&Parser::parseLetStatement));
+                                 return true;
+                             });
+    registry.registerHandler(TokenKind::KeywordFunction,
+                             [](parse::TokenStream &, parse::ASTBuilder &builder, parse::Diagnostics &)
+                             {
+                                 builder.setStatement(builder.call(&Parser::parseFunctionStatement));
+                                 return true;
+                             });
+    registry.registerHandler(TokenKind::KeywordSub,
+                             [](parse::TokenStream &, parse::ASTBuilder &builder, parse::Diagnostics &)
+                             {
+                                 builder.setStatement(builder.call(&Parser::parseSubStatement));
+                                 return true;
+                             });
 }
 
 /// @brief Register object-oriented statement parsers when the feature set is enabled.
@@ -53,11 +70,26 @@ void Parser::registerCoreParsers(StatementParserRegistry &registry)
 ///          keywords are absent.
 ///
 /// @param registry Dispatcher that records keyword-to-handler mappings.
-void Parser::registerOopParsers(StatementParserRegistry &registry)
+void Parser::registerOopParsers(parse::StmtRegistry &registry)
 {
-    registry.registerHandler(TokenKind::KeywordClass, &Parser::parseClassDecl);
-    registry.registerHandler(TokenKind::KeywordType, &Parser::parseTypeDecl);
-    registry.registerHandler(TokenKind::KeywordDelete, &Parser::parseDeleteStatement);
+    registry.registerHandler(TokenKind::KeywordClass,
+                             [](parse::TokenStream &, parse::ASTBuilder &builder, parse::Diagnostics &)
+                             {
+                                 builder.setStatement(builder.call(&Parser::parseClassDecl));
+                                 return true;
+                             });
+    registry.registerHandler(TokenKind::KeywordType,
+                             [](parse::TokenStream &, parse::ASTBuilder &builder, parse::Diagnostics &)
+                             {
+                                 builder.setStatement(builder.call(&Parser::parseTypeDecl));
+                                 return true;
+                             });
+    registry.registerHandler(TokenKind::KeywordDelete,
+                             [](parse::TokenStream &, parse::ASTBuilder &builder, parse::Diagnostics &)
+                             {
+                                 builder.setStatement(builder.call(&Parser::parseDeleteStatement));
+                                 return true;
+                             });
 }
 
 /// @brief Remember that a procedure with @p name was encountered.
@@ -96,41 +128,32 @@ bool Parser::isKnownProcedureName(const std::string &name) const
 /// @return Owned AST node on success; @c nullptr when recovery is required.
 StmtPtr Parser::parseStatement(int line)
 {
-    const Token &tok = peek();
-    std::string tokLexeme = tok.lexeme;
-    auto tokLoc = tok.loc;
+    parse::TokenStream stream(*this);
+    parse::ASTBuilder builder(*this);
+    parse::Diagnostics diags(*this);
+
+    builder.setCurrentLine(line);
+
+    const Token &tok = stream.peek();
     if (tok.kind == TokenKind::Number)
     {
-        if (emitter_)
-        {
-            emitter_->emit(il::support::Severity::Error,
-                           "B0001",
-                           tok.loc,
-                           static_cast<uint32_t>(tok.lexeme.size()),
-                           "unexpected line number");
-        }
-        else
-        {
-            std::fprintf(stderr, "unexpected line number '%s'\n", tok.lexeme.c_str());
-        }
-
-        while (!at(TokenKind::EndOfFile) && !at(TokenKind::EndOfLine))
-        {
-            consume();
-        }
+        diags.unexpectedLineNumber(tok);
+        while (!stream.at(TokenKind::EndOfFile) && !stream.at(TokenKind::EndOfLine))
+            stream.consume();
         return nullptr;
     }
 
-    const auto kind = tok.kind;
-    const auto [noArg, withLine] = statementRegistry().lookup(kind);
-    if (noArg)
-        return (this->*noArg)();
-    if (withLine)
-        return (this->*withLine)(line);
-    if (tok.kind == TokenKind::Identifier && peek(1).kind == TokenKind::LParen)
+    if (statementRegistry().tryParse(stream, builder, diags))
     {
-        std::string ident = tokLexeme;
-        auto identLoc = tokLoc;
+        if (builder.hasStatement())
+            return builder.takeStatement();
+        return nullptr;
+    }
+
+    if (tok.kind == TokenKind::Identifier && stream.at(TokenKind::LParen, 1))
+    {
+        std::string ident = tok.lexeme;
+        auto identLoc = tok.loc;
         auto expr = parseArrayOrVar();
         if (auto *callExpr = dynamic_cast<CallExpr *>(expr.get()))
         {
@@ -139,65 +162,25 @@ StmtPtr Parser::parseStatement(int line)
             stmt->call.reset(static_cast<CallExpr *>(expr.release()));
             return stmt;
         }
-        if (emitter_)
-        {
-            std::string msg = std::string("unknown statement '") + ident + "'";
-            emitter_->emit(il::support::Severity::Error,
-                           "B0001",
-                           identLoc,
-                           static_cast<uint32_t>(ident.size()),
-                           std::move(msg));
-        }
-        else
-        {
-            std::fprintf(stderr, "unknown statement '%s'\n", ident.c_str());
-        }
-        while (!at(TokenKind::EndOfFile) && !at(TokenKind::EndOfLine))
-        {
-            consume();
-        }
+        diags.unknownStatement(tok, ident);
+        while (!stream.at(TokenKind::EndOfFile) && !stream.at(TokenKind::EndOfLine))
+            stream.consume();
         return nullptr;
-    }
-    if (tok.kind == TokenKind::Identifier && isKnownProcedureName(tokLexeme) &&
-        peek(1).kind != TokenKind::LParen)
-    {
-        std::string ident = tokLexeme;
-        auto nextTok = peek(1);
-        auto diagLoc = (nextTok.loc.hasLine() ? nextTok.loc : tokLoc);
-        uint32_t length = 1;
-        if (emitter_)
-        {
-            std::string msg = "expected '(' after procedure name '" + ident + "'";
-            emitter_->emit(il::support::Severity::Error, "B0001", diagLoc, length, std::move(msg));
-        }
-        else
-        {
-            std::fprintf(stderr, "expected '(' after procedure name '%s'\n", ident.c_str());
-        }
-        while (!at(TokenKind::EndOfFile) && !at(TokenKind::EndOfLine))
-        {
-            consume();
-        }
-        return nullptr;
-    }
-    if (emitter_)
-    {
-        std::string msg = std::string("unknown statement '") + tokLexeme + "'";
-        emitter_->emit(il::support::Severity::Error,
-                       "B0001",
-                       tokLoc,
-                       static_cast<uint32_t>(tokLexeme.size()),
-                       std::move(msg));
-    }
-    else
-    {
-        std::fprintf(stderr, "unknown statement '%s'\n", tok.lexeme.c_str());
     }
 
-    while (!at(TokenKind::EndOfFile) && !at(TokenKind::EndOfLine))
+    if (tok.kind == TokenKind::Identifier && isKnownProcedureName(tok.lexeme) &&
+        !stream.at(TokenKind::LParen, 1))
     {
-        consume();
+        Token nextTok = stream.peek(1);
+        diags.expectedProcedureCallParen(tok, nextTok);
+        while (!stream.at(TokenKind::EndOfFile) && !stream.at(TokenKind::EndOfLine))
+            stream.consume();
+        return nullptr;
     }
+
+    diags.unknownStatement(tok, tok.lexeme);
+    while (!stream.at(TokenKind::EndOfFile) && !stream.at(TokenKind::EndOfLine))
+        stream.consume();
 
     return nullptr;
 }
