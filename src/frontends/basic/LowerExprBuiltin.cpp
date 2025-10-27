@@ -23,7 +23,7 @@
 #include "frontends/basic/LowerExprBuiltin.hpp"
 
 #include "frontends/basic/DiagnosticEmitter.hpp"
-#include "frontends/basic/lower/BuiltinUtils.hpp"
+#include "frontends/basic/lower/common/BuiltinUtils.hpp"
 
 #include <algorithm>
 #include <array>
@@ -113,7 +113,7 @@ Lowerer::RVal BuiltinExprLowering::lower(const BuiltinCallExpr &expr)
 Lowerer::RVal BuiltinExprLowering::emitRuleDrivenBuiltin(Lowerer &lowerer,
                                                          const BuiltinCallExpr &call)
 {
-    return lower::lowerBuiltinCall(lowerer, call);
+    return lower::common::lowerBuiltinCall(lowerer, call);
 }
 
 /// @brief Lower the LOF builtin, handling runtime error propagation.

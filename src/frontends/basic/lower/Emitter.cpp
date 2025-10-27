@@ -37,7 +37,7 @@ namespace il::frontends::basic::lower
 ///          utilities, and the monotonic temporary identifier generator.
 ///          Construction performs no additional work, keeping emitter creation
 ///          cheap for transient helpers.
-Emitter::Emitter(Lowerer &lowerer) noexcept : lowerer_(lowerer) {}
+Emitter::Emitter(Lowerer &lowerer) noexcept : lowerer_(lowerer), common_(lowerer) {}
 
 /// @brief Produce the canonical IL boolean type used by BASIC lowering.
 ///
@@ -45,10 +45,7 @@ Emitter::Emitter(Lowerer &lowerer) noexcept : lowerer_(lowerer) {}
 ///          @c i1 slots.  This accessor centralises the construction of the
 ///          @ref il::core::Type instance so all call sites agree on the
 ///          representation and avoid repeating the `Type::Kind::I1` literal.
-Emitter::Type Emitter::ilBoolTy() const
-{
-    return Type(Type::Kind::I1);
-}
+Emitter::Type Emitter::ilBoolTy() const { return common_.ilBoolTy(); }
 
 /// @brief Emit a boolean constant in the current function.
 ///
@@ -58,10 +55,7 @@ Emitter::Type Emitter::ilBoolTy() const
 ///
 /// @param v Whether the emitted literal should be @c true.
 /// @return SSA value representing the boolean constant.
-Emitter::Value Emitter::emitBoolConst(bool v)
-{
-    return emitUnary(Opcode::Trunc1, ilBoolTy(), Value::constInt(v ? 1 : 0));
-}
+Emitter::Value Emitter::emitBoolConst(bool v) { return common_.emitBoolConst(v); }
 
 /// @brief Materialise a control-flow diamond that collapses to a boolean value.
 ///
@@ -84,39 +78,8 @@ Emitter::Value Emitter::emitBoolFromBranches(const std::function<void(Value)> &e
                                              std::string_view elseLabelBase,
                                              std::string_view joinLabelBase)
 {
-    auto &ctx = lowerer_.context();
-    Value slot = emitAlloca(1);
-
-    auto labelFor = [&](std::string_view base)
-    {
-        std::string hint(base);
-        if (auto *blockNamer = ctx.blockNames().namer())
-            return blockNamer->generic(hint);
-        return lowerer_.mangler.block(hint);
-    };
-
-    std::string thenLbl = labelFor(thenLabelBase);
-    std::string elseLbl = labelFor(elseLabelBase);
-    std::string joinLbl = labelFor(joinLabelBase);
-
-    Function *func = ctx.function();
-    assert(func && "emitBoolFromBranches requires an active function");
-    BasicBlock *thenBlk = &lowerer_.builder->addBlock(*func, thenLbl);
-    BasicBlock *elseBlk = &lowerer_.builder->addBlock(*func, elseLbl);
-    BasicBlock *joinBlk = &lowerer_.builder->addBlock(*func, joinLbl);
-
-    ctx.setCurrent(thenBlk);
-    emitThen(slot);
-    if (ctx.current() && !ctx.current()->terminated)
-        emitBr(joinBlk);
-
-    ctx.setCurrent(elseBlk);
-    emitElse(slot);
-    if (ctx.current() && !ctx.current()->terminated)
-        emitBr(joinBlk);
-
-    ctx.setCurrent(joinBlk);
-    return emitLoad(ilBoolTy(), slot);
+    return common_.emitBoolFromBranches(
+        emitThen, emitElse, thenLabelBase, elseLabelBase, joinLabelBase);
 }
 
 /// @brief Allocate stack storage in the active block.
@@ -130,17 +93,7 @@ Emitter::Value Emitter::emitBoolFromBranches(const std::function<void(Value)> &e
 /// @return SSA pointer referencing the allocated storage.
 Emitter::Value Emitter::emitAlloca(int bytes)
 {
-    unsigned id = lowerer_.nextTempId();
-    Instr in;
-    in.result = id;
-    in.op = Opcode::Alloca;
-    in.type = Type(Type::Kind::Ptr);
-    in.operands.push_back(Value::constInt(bytes));
-    in.loc = lowerer_.curLoc;
-    BasicBlock *block = lowerer_.context().current();
-    assert(block && "emitAlloca requires an active block");
-    block->instructions.push_back(in);
-    return Value::temp(id);
+    return common_.emitAlloca(bytes);
 }
 
 /// @brief Load a value of the given type from the supplied address.
@@ -155,17 +108,7 @@ Emitter::Value Emitter::emitAlloca(int bytes)
 /// @return SSA value representing the loaded result.
 Emitter::Value Emitter::emitLoad(Type ty, Value addr)
 {
-    unsigned id = lowerer_.nextTempId();
-    Instr in;
-    in.result = id;
-    in.op = Opcode::Load;
-    in.type = ty;
-    in.operands.push_back(addr);
-    in.loc = lowerer_.curLoc;
-    BasicBlock *block = lowerer_.context().current();
-    assert(block && "emitLoad requires an active block");
-    block->instructions.push_back(in);
-    return Value::temp(id);
+    return common_.emitLoad(ty, addr);
 }
 
 /// @brief Store a value to memory within the active block.
@@ -179,14 +122,7 @@ Emitter::Value Emitter::emitLoad(Type ty, Value addr)
 /// @param val Value to write to memory.
 void Emitter::emitStore(Type ty, Value addr, Value val)
 {
-    Instr in;
-    in.op = Opcode::Store;
-    in.type = ty;
-    in.operands = {addr, val};
-    in.loc = lowerer_.curLoc;
-    BasicBlock *block = lowerer_.context().current();
-    assert(block && "emitStore requires an active block");
-    block->instructions.push_back(in);
+    common_.emitStore(ty, addr, val);
 }
 
 /// @brief Emit a binary SSA instruction.
@@ -203,17 +139,7 @@ void Emitter::emitStore(Type ty, Value addr, Value val)
 /// @return SSA value produced by the emitted instruction.
 Emitter::Value Emitter::emitBinary(Opcode op, Type ty, Value lhs, Value rhs)
 {
-    unsigned id = lowerer_.nextTempId();
-    Instr in;
-    in.result = id;
-    in.op = op;
-    in.type = ty;
-    in.operands = {lhs, rhs};
-    in.loc = lowerer_.curLoc;
-    BasicBlock *block = lowerer_.context().current();
-    assert(block && "emitBinary requires an active block");
-    block->instructions.push_back(in);
-    return Value::temp(id);
+    return common_.emitBinary(op, ty, lhs, rhs);
 }
 
 /// @brief Emit a unary SSA instruction.
@@ -228,17 +154,7 @@ Emitter::Value Emitter::emitBinary(Opcode op, Type ty, Value lhs, Value rhs)
 /// @return SSA value representing the instruction result.
 Emitter::Value Emitter::emitUnary(Opcode op, Type ty, Value val)
 {
-    unsigned id = lowerer_.nextTempId();
-    Instr in;
-    in.result = id;
-    in.op = op;
-    in.type = ty;
-    in.operands = {val};
-    in.loc = lowerer_.curLoc;
-    BasicBlock *block = lowerer_.context().current();
-    assert(block && "emitUnary requires an active block");
-    block->instructions.push_back(in);
-    return Value::temp(id);
+    return common_.emitUnary(op, ty, val);
 }
 
 /// @brief Create an IL constant representing a signed 64-bit integer.
@@ -248,10 +164,7 @@ Emitter::Value Emitter::emitUnary(Opcode op, Type ty, Value val)
 ///
 /// @param v Literal value to encode.
 /// @return SSA value referring to the constant literal.
-Emitter::Value Emitter::emitConstI64(std::int64_t v)
-{
-    return Value::constInt(v);
-}
+Emitter::Value Emitter::emitConstI64(std::int64_t v) { return common_.emitConstI64(v); }
 
 /// @brief Zero-extend a boolean into a 64-bit integer slot.
 ///
@@ -260,10 +173,7 @@ Emitter::Value Emitter::emitConstI64(std::int64_t v)
 ///
 /// @param val Boolean SSA value to extend.
 /// @return 64-bit integer SSA value.
-Emitter::Value Emitter::emitZext1ToI64(Value val)
-{
-    return emitUnary(Opcode::Zext1, Type(Type::Kind::I64), val);
-}
+Emitter::Value Emitter::emitZext1ToI64(Value val) { return common_.emitZext1ToI64(val); }
 
 /// @brief Emit a checked integer subtraction.
 ///
@@ -273,10 +183,7 @@ Emitter::Value Emitter::emitZext1ToI64(Value val)
 /// @param lhs Left operand.
 /// @param rhs Right operand.
 /// @return SSA value with the subtraction result.
-Emitter::Value Emitter::emitISub(Value lhs, Value rhs)
-{
-    return emitBinary(Opcode::ISubOvf, Type(Type::Kind::I64), lhs, rhs);
-}
+Emitter::Value Emitter::emitISub(Value lhs, Value rhs) { return common_.emitISub(lhs, rhs); }
 
 /// @brief Normalise a BASIC logical value to an @c i64 mask.
 ///
@@ -290,15 +197,7 @@ Emitter::Value Emitter::emitISub(Value lhs, Value rhs)
 /// @return 64-bit integer representing the logical mask.
 Emitter::Value Emitter::emitBasicLogicalI64(Value b1)
 {
-    if (lowerer_.context().current() == nullptr)
-    {
-        if (b1.kind == Value::Kind::ConstInt)
-            return Value::constInt(b1.i64 != 0 ? -1 : 0);
-        return Value::constInt(0);
-    }
-    Value i64zero = emitConstI64(0);
-    Value zext = emitZext1ToI64(b1);
-    return emitISub(i64zero, zext);
+    return common_.emitBasicLogicalI64(b1);
 }
 
 /// @brief Emit a checked unary negation for the provided type.
@@ -312,7 +211,7 @@ Emitter::Value Emitter::emitBasicLogicalI64(Value b1)
 /// @return SSA value representing the negation result.
 Emitter::Value Emitter::emitCheckedNeg(Type ty, Value val)
 {
-    return emitBinary(Opcode::ISubOvf, ty, Value::constInt(0), val);
+    return common_.emitCheckedNeg(ty, val);
 }
 
 /// @brief Emit an unconditional branch to the specified block.
@@ -325,21 +224,7 @@ Emitter::Value Emitter::emitCheckedNeg(Type ty, Value val)
 /// @param target Destination block that becomes the active successor.
 void Emitter::emitBr(BasicBlock *target)
 {
-    BasicBlock *block = lowerer_.context().current();
-    assert(block && "emitBr requires an active block");
-
-    if (block == target)
-        return;
-
-    Instr in;
-    in.op = Opcode::Br;
-    in.type = Type(Type::Kind::Void);
-    if (target->label.empty())
-        target->label = lowerer_.nextFallbackBlockLabel();
-    in.labels.push_back(target->label);
-    in.loc = lowerer_.curLoc;
-    block->instructions.push_back(in);
-    block->terminated = true;
+    common_.emitBr(target);
 }
 
 /// @brief Emit a conditional branch based on the supplied predicate.
@@ -353,17 +238,7 @@ void Emitter::emitBr(BasicBlock *target)
 /// @param f Block executed when @p cond evaluates to false.
 void Emitter::emitCBr(Value cond, BasicBlock *t, BasicBlock *f)
 {
-    Instr in;
-    in.op = Opcode::CBr;
-    in.type = Type(Type::Kind::Void);
-    in.operands.push_back(cond);
-    in.labels.push_back(t->label);
-    in.labels.push_back(f->label);
-    in.loc = lowerer_.curLoc;
-    BasicBlock *block = lowerer_.context().current();
-    assert(block && "emitCBr requires an active block");
-    block->instructions.push_back(in);
-    block->terminated = true;
+    common_.emitCBr(cond, t, f);
 }
 
 /// @brief Emit a call that produces a return value.
@@ -381,18 +256,7 @@ Emitter::Value Emitter::emitCallRet(Type ty,
                                     const std::string &callee,
                                     const std::vector<Value> &args)
 {
-    unsigned id = lowerer_.nextTempId();
-    Instr in;
-    in.result = id;
-    in.op = Opcode::Call;
-    in.type = ty;
-    in.callee = callee;
-    in.operands = args;
-    in.loc = lowerer_.curLoc;
-    BasicBlock *block = lowerer_.context().current();
-    assert(block && "emitCallRet requires an active block");
-    block->instructions.push_back(in);
-    return Value::temp(id);
+    return common_.emitCallRet(ty, callee, args);
 }
 
 /// @brief Emit a call whose result is discarded.
@@ -405,15 +269,7 @@ Emitter::Value Emitter::emitCallRet(Type ty,
 /// @param args Argument list forwarded to the callee.
 void Emitter::emitCall(const std::string &callee, const std::vector<Value> &args)
 {
-    Instr in;
-    in.op = Opcode::Call;
-    in.type = Type(Type::Kind::Void);
-    in.callee = callee;
-    in.operands = args;
-    in.loc = lowerer_.curLoc;
-    BasicBlock *block = lowerer_.context().current();
-    assert(block && "emitCall requires an active block");
-    block->instructions.push_back(in);
+    common_.emitCall(callee, args);
 }
 
 /// @brief Materialise a constant string handle from a global symbol.
@@ -426,17 +282,7 @@ void Emitter::emitCall(const std::string &callee, const std::vector<Value> &args
 /// @return SSA value representing the runtime handle.
 Emitter::Value Emitter::emitConstStr(const std::string &globalName)
 {
-    unsigned id = lowerer_.nextTempId();
-    Instr in;
-    in.result = id;
-    in.op = Opcode::ConstStr;
-    in.type = Type(Type::Kind::Str);
-    in.operands.push_back(Value::global(globalName));
-    in.loc = lowerer_.curLoc;
-    BasicBlock *block = lowerer_.context().current();
-    assert(block && "emitConstStr requires an active block");
-    block->instructions.push_back(in);
-    return Value::temp(id);
+    return common_.emitConstStr(globalName);
 }
 
 /// @brief Store an array handle while maintaining runtime reference counts.
