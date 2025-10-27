@@ -93,6 +93,10 @@ function(viper_add_vm_unit_tests)
   target_link_libraries(test_vm_block_param_str_release PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
   viper_add_ctest(test_vm_block_param_str_release test_vm_block_param_str_release)
 
+  viper_add_test(test_vm_branch_param_str_retain ${_VIPER_VM_DIR}/BranchParamStringRetainTests.cpp)
+  target_link_libraries(test_vm_branch_param_str_retain PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
+  viper_add_ctest(test_vm_branch_param_str_retain test_vm_branch_param_str_retain)
+
   viper_add_test(test_vm_entry_param_str_retain ${_VIPER_VM_DIR}/EntryParamStringRetainTests.cpp)
   target_link_libraries(test_vm_entry_param_str_retain PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
   viper_add_ctest(test_vm_entry_param_str_retain test_vm_entry_param_str_retain)
