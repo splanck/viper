@@ -6,8 +6,8 @@
 //===----------------------------------------------------------------------===//
 //
 // Implements the helper that cross-checks instruction operand types against the
-// metadata published by @ref il::core::OpcodeInfo.  The checker feeds the
-// verifier diagnostic sink when mismatches are detected.
+// metadata emitted from the opcode schema. The checker feeds the verifier
+// diagnostic sink when mismatches are detected.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -27,11 +27,9 @@
 #include <sstream>
 
 using il::core::kindToString;
-using il::core::TypeCategory;
 using il::support::Expected;
 using il::support::makeError;
 using il::verify::detail::fitsInIntegerKind;
-using il::verify::detail::kindFromCategory;
 
 namespace il::verify::detail
 {
@@ -42,8 +40,8 @@ namespace il::verify::detail
 ///          lookups.
 /// @param ctx Verification context for the instruction under inspection.
 /// @param info Opcode metadata describing operand expectations.
-OperandTypeChecker::OperandTypeChecker(const VerifyCtx &ctx, const il::core::OpcodeInfo &info)
-    : ctx_(ctx), info_(info)
+OperandTypeChecker::OperandTypeChecker(const VerifyCtx &ctx, const SignatureSpec &signature)
+    : ctx_(ctx), signature_(signature)
 {
 }
 
@@ -58,16 +56,15 @@ Expected<void> OperandTypeChecker::run() const
 {
     const auto &instr = ctx_.instr;
 
-    for (size_t index = 0; index < instr.operands.size() && index < info_.operandTypes.size();
+    for (size_t index = 0; index < instr.operands.size() && index < signature_.operandTypes.size();
          ++index)
     {
-        const TypeCategory category = info_.operandTypes[index];
-        if (category == TypeCategory::None || category == TypeCategory::Any ||
-            category == TypeCategory::Dynamic)
+        const TypeClass typeClass = signature_.operandTypes[index];
+        if (typeClass == TypeClass::None)
             continue;
 
         il::core::Type::Kind expectedKind;
-        if (category == TypeCategory::InstrType)
+        if (typeClass == TypeClass::InstrType)
         {
             if (instr.type.kind == il::core::Type::Kind::Void)
             {
@@ -75,7 +72,7 @@ Expected<void> OperandTypeChecker::run() const
             }
             expectedKind = instr.type.kind;
         }
-        else if (auto mapped = kindFromCategory(category))
+        else if (auto mapped = kindFromTypeClass(typeClass))
         {
             expectedKind = *mapped;
         }

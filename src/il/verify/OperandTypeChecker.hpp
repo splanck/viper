@@ -5,8 +5,8 @@
 // Links: docs/il-guide.md#reference
 #pragma once
 
-#include "il/core/OpcodeInfo.hpp"
 #include "il/verify/VerifyCtx.hpp"
+#include "il/verify/SpecTables.hpp"
 
 #include "support/diag_expected.hpp"
 
@@ -19,7 +19,7 @@ namespace il::verify::detail
 class OperandTypeChecker
 {
   public:
-    OperandTypeChecker(const VerifyCtx &ctx, const il::core::OpcodeInfo &info);
+    OperandTypeChecker(const VerifyCtx &ctx, const SignatureSpec &signature);
 
     /// @brief Validates operand types described by opcode metadata.
     /// @return Empty on success or a populated diagnostic on failure.
@@ -29,7 +29,7 @@ class OperandTypeChecker
     il::support::Expected<void> report(std::string_view message) const;
 
     const VerifyCtx &ctx_;
-    const il::core::OpcodeInfo &info_;
+    const SignatureSpec &signature_;
 };
 
 } // namespace il::verify::detail

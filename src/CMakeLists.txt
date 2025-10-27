@@ -75,7 +75,7 @@ add_library(viper_il_verify STATIC
         il/verify/ExceptionHandlerAnalysis.cpp
         il/verify/BranchVerifier.cpp
         il/verify/ControlFlowChecker.cpp
-        il/verify/VerifierTable.cpp
+        il/verify/SpecTables.cpp
         il/verify/TypeInference.cpp)
 target_link_libraries(viper_il_verify PRIVATE viper_il_core il_runtime)
 target_include_directories(viper_il_verify PUBLIC
