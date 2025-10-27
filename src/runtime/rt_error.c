@@ -1,8 +1,25 @@
-// File: src/runtime/rt_error.c
-// Purpose: Provides shared constants for the runtime error model.
-// Key invariants: Exposes RT_ERROR_NONE as canonical success value.
-// Ownership/Lifetime: None; values are static storage duration.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// This file is part of the Viper project and is licensed under the MIT
+// License. Refer to the LICENSE file at the root of the repository for the
+// complete text.
+//
+//===----------------------------------------------------------------------===//
+//
+// Declares the canonical success sentinel used by the runtime error reporting
+// infrastructure.  Centralising the definition ensures both the VM and native
+// runtimes share a single representation, avoiding discrepancies when checking
+// for the absence of errors.  The constants in this translation unit live in
+// static storage and therefore never require explicit initialisation by
+// embedding applications.
+//
+//===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Provides the canonical success @ref RtError instance.
+/// @details Runtime subsystems treat @ref RT_ERROR_NONE as a universal "no
+///          error" token.  Defining it out-of-line guarantees a single storage
+///          location even when multiple components include @ref rt_error.h.
 
 #include "rt_error.h"
 
@@ -11,7 +28,11 @@ extern "C"
 {
 #endif
 
-    /// @brief Canonical success error record.
+    /// @brief Canonical success error record shared across the runtime.
+    /// @details Initialises the discriminant to @ref Err_None and clears the
+    ///          auxiliary payload.  Because the object resides in static
+    ///          storage, every consumer observes the same address when checking
+    ///          for pointer identity or performing atomic replacements.
     const RtError RT_ERROR_NONE = {Err_None, 0};
 
 #ifdef __cplusplus
