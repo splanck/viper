@@ -211,6 +211,50 @@ Parser::SelectBodyResult Parser::collectSelectBody()
     return result;
 }
 
+Parser::SelectInlineBodyResult Parser::collectInlineSelectBody()
+{
+    SelectInlineBodyResult result;
+    auto inlineCtx = statementSequencer();
+
+    while (!at(TokenKind::EndOfFile))
+    {
+        if (at(TokenKind::EndOfLine))
+            break;
+
+        if (at(TokenKind::KeywordCase) ||
+            (at(TokenKind::KeywordEnd) && peek(1).kind == TokenKind::KeywordSelect))
+        {
+            break;
+        }
+
+        int line = 0;
+        inlineCtx.withOptionalLineNumber([&](int currentLine, il::support::SourceLoc)
+                                         { line = currentLine; });
+
+        if (!at(TokenKind::EndOfLine) && !at(TokenKind::Colon))
+        {
+            auto stmt = parseStatement(line);
+            if (stmt)
+            {
+                stmt->line = line;
+                result.body.push_back(std::move(stmt));
+            }
+        }
+
+        if (at(TokenKind::Colon))
+        {
+            consume();
+            continue;
+        }
+
+        break;
+    }
+
+    Token eolTok = expect(TokenKind::EndOfLine);
+    result.terminator = eolTok;
+    return result;
+}
+
 /// @brief Handle the `END SELECT` directive when encountered.
 ///
 /// @details Validates that at least one `CASE` arm was present, updates the
@@ -289,13 +333,30 @@ Parser::SelectHandlerResult Parser::consumeCaseElse(SelectCaseStmt &stmt,
         result.emittedDiagnostic = true;
     }
 
-    Token elseEol = expect(TokenKind::EndOfLine);
+    std::vector<StmtPtr> inlineBody;
+    Token elseTerminator;
+    if (at(TokenKind::Colon))
+    {
+        consume();
+        auto inlineResult = collectInlineSelectBody();
+        inlineBody = std::move(inlineResult.body);
+        elseTerminator = inlineResult.terminator;
+    }
+    else
+    {
+        elseTerminator = expect(TokenKind::EndOfLine);
+    }
     auto bodyResult = collectSelectBody();
     result.emittedDiagnostic = result.emittedDiagnostic || bodyResult.emittedDiagnostic;
     if (!sawCaseElse)
     {
-        stmt.elseBody = std::move(bodyResult.body);
-        stmt.range.end = elseEol.loc;
+        auto combinedBody = std::move(inlineBody);
+        for (auto &stmtPtr : bodyResult.body)
+        {
+            combinedBody.push_back(std::move(stmtPtr));
+        }
+        stmt.elseBody = std::move(combinedBody);
+        stmt.range.end = elseTerminator.loc;
     }
     sawCaseElse = true;
     return result;
@@ -331,6 +392,7 @@ struct Parser::Cursor
 
     Token caseTok;
     Token caseEol;
+    bool hasInlineBody = false;
     std::vector<Token> stringLabels;
     std::vector<Token> numericLabels;
     std::vector<std::pair<Token, Token>> ranges;
@@ -348,6 +410,7 @@ il::support::Expected<Parser::CaseArmSyntax> Parser::parseCaseArmSyntax(Cursor &
     cursor.numericLabels.clear();
     cursor.ranges.clear();
     cursor.relations.clear();
+    cursor.hasInlineBody = false;
 
     cursor.caseTok = expect(TokenKind::KeywordCase);
 
@@ -502,7 +565,16 @@ il::support::Expected<Parser::CaseArmSyntax> Parser::parseCaseArmSyntax(Cursor &
         break;
     }
 
-    cursor.caseEol = expect(TokenKind::EndOfLine);
+    if (at(TokenKind::Colon))
+    {
+        cursor.caseEol = peek();
+        cursor.hasInlineBody = true;
+        consume();
+    }
+    else
+    {
+        cursor.caseEol = expect(TokenKind::EndOfLine);
+    }
 
     CaseArmSyntax syntax;
     syntax.cursor = &cursor;
@@ -608,6 +680,14 @@ CaseArm Parser::parseCaseArm()
         return {};
     }
 
+    std::vector<StmtPtr> inlineBody;
+    if (cursor.hasInlineBody)
+    {
+        auto inlineResult = collectInlineSelectBody();
+        inlineBody = std::move(inlineResult.body);
+        cursor.caseEol = inlineResult.terminator;
+    }
+
     auto lowered = lowerCaseArm(syntax.value());
     if (!lowered)
     {
@@ -619,7 +699,18 @@ CaseArm Parser::parseCaseArm()
     (void)validateCaseArm(arm);
 
     auto bodyResult = collectSelectBody();
-    arm.body = std::move(bodyResult.body);
+    if (!inlineBody.empty())
+    {
+        for (auto &stmt : bodyResult.body)
+        {
+            inlineBody.push_back(std::move(stmt));
+        }
+        arm.body = std::move(inlineBody);
+    }
+    else
+    {
+        arm.body = std::move(bodyResult.body);
+    }
 
     return arm;
 }
