@@ -1,19 +1,39 @@
-// File: src/runtime/rt_object.c
-// Purpose: Implements runtime-managed object allocation and retain/release helpers.
-// Key invariants: Allocations are tagged as RT_HEAP_OBJECT and reference counts never underflow.
-// Ownership/Lifetime: Callers receive zero-initialized payloads managed by the shared heap.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE in the project root for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the BASIC runtime's object allocation façade.  The helpers bridge
+// the public C ABI to the shared heap so runtime clients can request
+// zero-initialised payloads, participate in reference counting, and release
+// objects without needing direct knowledge of the heap metadata layout.  Keeping
+// the wrappers here guarantees that both VM and native backends observe
+// identical retain/release semantics.
+//
+//===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Object allocation and lifetime management utilities for the runtime.
+/// @details Defines the ABI-surface functions that allocate tagged payloads on
+///          the shared heap, increment or decrement reference counts, and expose
+///          BASIC-compatible retain/release helpers.
 
 #include "rt_object.h"
 #include "rt_heap.h"
 
 #include <stddef.h>
 
-/**
- * @brief Allocate a payload-sized block tagged as an object on the runtime heap.
- * @param bytes Number of payload bytes requested.
- * @return Pointer to the zeroed payload on success, otherwise NULL.
- */
+/// @brief Allocate a zeroed payload tagged as a heap object.
+/// @details Requests storage from @ref rt_heap_alloc with the
+///          @ref RT_HEAP_OBJECT tag so that reference counting and deallocation
+///          semantics match other heap-managed entities.  The helper preserves
+///          the caller-supplied payload size without introducing additional
+///          metadata.
+/// @param bytes Number of payload bytes to allocate.
+/// @return Pointer to the freshly zeroed payload, or @c NULL when the heap
+///         cannot satisfy the request.
 static inline void *alloc_payload(size_t bytes)
 {
     size_t len = bytes;
@@ -21,33 +41,38 @@ static inline void *alloc_payload(size_t bytes)
     return rt_heap_alloc(RT_HEAP_OBJECT, RT_ELEM_NONE, 1, len, cap);
 }
 
-/**
- * @brief Allocate a new object payload with zeroed memory.
- * @param class_id Runtime class identifier supplied by the caller.
- * @param byte_size Total number of bytes to allocate for the object payload.
- * @return Pointer to the zeroed payload or NULL on allocation failure.
- */
+/// @brief Allocate a new object payload with runtime heap bookkeeping.
+/// @details Ignores the BASIC class identifier (reserved for future use) and
+///          delegates to @ref alloc_payload so the resulting pointer participates
+///          in the shared retain/release discipline.
+/// @param class_id Runtime class identifier supplied by the caller (unused).
+/// @param byte_size Requested payload size in bytes.
+/// @return Pointer to zeroed storage when successful; otherwise @c NULL.
 void *rt_obj_new_i64(int64_t class_id, int64_t byte_size)
 {
     (void)class_id;
     return alloc_payload((size_t)byte_size);
 }
 
-/**
- * @brief Retain the provided runtime-managed object pointer when non-null.
- * @param p Pointer to the object payload; NULL pointers are ignored.
- */
+/// @brief Increment the reference count for a runtime-managed object.
+/// @details Defensively ignores null pointers so callers can unconditionally
+///          forward potential object references.  Non-null payloads delegate to
+///          @ref rt_heap_retain, keeping the retain logic centralised in the
+///          heap subsystem.
+/// @param p Object payload pointer returned by @ref rt_obj_new_i64 or another
+///          heap-managed API.
 void rt_obj_retain_maybe(void *p)
 {
     if (p)
         rt_heap_retain(p);
 }
 
-/**
- * @brief Release the provided object and report whether the refcount reached zero.
- * @param p Pointer to the object payload; NULL pointers are ignored.
- * @return Non-zero when the reference count becomes zero after release, else zero.
- */
+/// @brief Decrement the reference count and report last-user semantics.
+/// @details Mirrors BASIC string behaviour by returning non-zero when the
+///          underlying retain count reaches zero.  Null payloads are ignored to
+///          simplify call sites that blindly forward optional objects.
+/// @param p Object payload pointer managed by the runtime heap.
+/// @return Non-zero when the retain count dropped to zero; otherwise zero.
 int32_t rt_obj_release_check0(void *p)
 {
     if (!p)
@@ -55,10 +80,11 @@ int32_t rt_obj_release_check0(void *p)
     return (int32_t)(rt_heap_release(p) == 0);
 }
 
-/**
- * @brief Explicit free helper mirroring string semantics; actual free handled by heap.
- * @param p Pointer to the object payload; NULL pointers are ignored.
- */
+/// @brief Compatibility shim matching the string free entry point.
+/// @details The runtime heap frees storage once the retain count reaches zero.
+///          This function exists to mirror the BASIC string API and therefore
+///          intentionally performs no action beyond null checking.
+/// @param p Object payload pointer; ignored when @c NULL.
 void rt_obj_free(void *p)
 {
     if (!p)
