@@ -322,7 +322,20 @@ PowTrapOutcome classifyPowTrap(const il::runtime::RuntimeDescriptor &desc,
     if (desc.trapClass != il::runtime::RuntimeTrapClass::PowDomainOverflow || !powStatus.active)
         return outcome;
 
-    if (!powStatus.ok)
+    bool okStatus = powStatus.ok;
+    if (powStatus.ptr)
+    {
+        if (powStatus.ptr == &powStatus.ok)
+        {
+            okStatus = powStatus.ok;
+        }
+        else
+        {
+            okStatus = *powStatus.ptr;
+        }
+    }
+
+    if (!okStatus)
     {
         const double base = !args.empty() ? args[0].f64 : 0.0;
         const double exp = (args.size() > 1) ? args[1].f64 : 0.0;
