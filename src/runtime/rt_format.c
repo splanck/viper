@@ -1,8 +1,25 @@
-// File: src/runtime/rt_format.c
-// Purpose: Implements deterministic numeric formatting helpers for the BASIC runtime.
-// Key invariants: Output uses '.' as the decimal separator and normalizes special values.
-// Ownership/Lifetime: Callers supply buffers; this module does not manage memory.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// This file is part of the Viper project and is released under the MIT
+// License. See the LICENSE file accompanying this source for the full terms.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements numeric and CSV formatting helpers that mirror the BASIC runtime
+// semantics.  The routines encapsulate locale-sensitive behaviour, handle
+// special floating-point values deterministically, and generate quoted CSV
+// strings without leaking heap ownership conventions across the runtime.
+// Centralising the logic keeps formatting decisions consistent between the VM
+// and native backends.
+//
+//===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Floating-point and CSV formatting utilities for the runtime.
+/// @details Provides deterministic double formatting with consistent decimal
+///          separators and exposes an allocator that quotes runtime strings for
+///          CSV emission.  Helpers trap on invalid buffer parameters so that
+///          misuse fails fast during runtime development.
 
 #include "rt_format.h"
 #include "rt_internal.h"
@@ -13,6 +30,13 @@
 #include <stdlib.h>
 #include <string.h>
 
+/// @brief Copy formatted text into a caller-provided buffer.
+/// @details Validates buffer arguments, traps on truncation, and performs a
+///          full copy including the null terminator.  Keeping the check in a
+///          helper avoids repeating guard logic across the formatting functions.
+/// @param text Null-terminated string to write.
+/// @param buffer Destination buffer supplied by the caller.
+/// @param capacity Size of the destination buffer in bytes.
 static void rt_format_write(const char *text, char *buffer, size_t capacity)
 {
     if (!buffer || capacity == 0)
@@ -23,6 +47,13 @@ static void rt_format_write(const char *text, char *buffer, size_t capacity)
     memcpy(buffer, text, len + 1);
 }
 
+/// @brief Replace locale-specific decimal separators with '.'.
+/// @details Scans the formatted buffer for the locale's decimal separator and
+///          rewrites it to a period so BASIC output remains deterministic across
+///          environments.  Multi-character separators are collapsed to a single
+///          '.' by shifting the trailing substring.
+/// @param buffer Mutable buffer containing the formatted number.
+/// @param decimal_point Locale-specific decimal separator string.
 static void rt_format_normalize_decimal(char *buffer, const char *decimal_point)
 {
     if (!buffer || !decimal_point)
@@ -45,6 +76,14 @@ static void rt_format_normalize_decimal(char *buffer, const char *decimal_point)
     }
 }
 
+/// @brief Format a double according to BASIC runtime rules.
+/// @details Handles NaN and infinity explicitly, otherwise emits up to 15
+///          significant digits using `snprintf`.  After formatting, the locale
+///          decimal separator is normalised to a period via
+///          @ref rt_format_normalize_decimal.
+/// @param value Floating-point value to format.
+/// @param buffer Destination buffer supplied by the caller.
+/// @param capacity Size of the destination buffer in bytes.
 void rt_format_f64(double value, char *buffer, size_t capacity)
 {
     if (!buffer || capacity == 0)
@@ -76,6 +115,13 @@ void rt_format_f64(double value, char *buffer, size_t capacity)
         rt_format_normalize_decimal(buffer, decimal_point);
 }
 
+/// @brief Allocate a freshly quoted CSV string from a runtime string handle.
+/// @details Duplicates the incoming text, doubles embedded quotes, wraps the
+///          content in leading and trailing quotes, and returns a new
+///          @ref rt_string that owns the allocated buffer.  The function traps
+///          on allocation failure to match runtime expectations.
+/// @param value Runtime string handle to quote. May be null for an empty string.
+/// @return A newly allocated runtime string containing the CSV-safe text.
 rt_string rt_csv_quote_alloc(rt_string value)
 {
     const char *data = "";
