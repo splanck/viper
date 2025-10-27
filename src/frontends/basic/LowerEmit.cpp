@@ -149,6 +149,11 @@ void Lowerer::emitMainBodyAndEpilogue(ProgramEmitContext &state)
         lowerStatementSequence(state.mainStmts,
                                /*stopOnTerminated=*/false,
                                [&](const Stmt &stmt) { curLoc = stmt.loc; });
+
+        // Ensure fallthrough to the exit block is explicit. The verifier
+        // requires every basic block to end with a terminator.
+        if (ctx.current() && !ctx.current()->terminated)
+            emitBr(&state.function->blocks[ctx.exitIndex()]);
     }
 
     ctx.setCurrent(&state.function->blocks[ctx.exitIndex()]);
