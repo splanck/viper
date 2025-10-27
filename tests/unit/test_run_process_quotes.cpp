@@ -9,6 +9,7 @@
 #include "GTestStub.hpp"
 
 #include <chrono>
+#include <cstdlib>
 #include <filesystem>
 #include <optional>
 #include <system_error>
@@ -26,6 +27,19 @@ std::string trim_trailing_newlines(std::string text)
     return text;
 }
 } // namespace
+
+namespace viper::test_support
+{
+struct ScopedEnvironmentAssignmentMoveResult
+{
+    bool value_visible_after_move_ctor;
+    bool value_visible_after_move_assign;
+    bool restored;
+};
+
+ScopedEnvironmentAssignmentMoveResult scoped_environment_assignment_move_preserves(const std::string &name,
+                                                                                   const std::string &value);
+}
 
 TEST(RunProcess, PreservesQuotesAndBackslashes)
 {
@@ -59,6 +73,18 @@ TEST(RunProcess, ForwardsEnvironmentVariables)
     EXPECT_NE(-1, result.exit_code);
     const std::string expectedLine = varName + "=" + varValue;
     EXPECT_NE(std::string::npos, result.out.find(expectedLine));
+}
+
+TEST(RunProcess, ScopedEnvironmentAssignmentSurvivesMove)
+{
+    const std::string varName = "VIPER_SCOPED_ENV_MOVE_TEST";
+    const std::string varValue = "scoped-env-move-value";
+
+    const auto result = viper::test_support::scoped_environment_assignment_move_preserves(varName, varValue);
+
+    EXPECT_TRUE(result.value_visible_after_move_ctor);
+    EXPECT_TRUE(result.value_visible_after_move_assign);
+    EXPECT_TRUE(result.restored);
 }
 
 TEST(RunProcess, AppliesWorkingDirectory)
