@@ -26,6 +26,7 @@
 #include "support/diag_expected.hpp"
 #include "viper/parse/Cursor.h"
 
+#include <algorithm>
 #include <iomanip>
 #include <sstream>
 #include <utility>
@@ -124,6 +125,16 @@ Expected<void> parseExtern_E(const std::string &line, ParserState &st)
         oss << "line " << st.lineNo << ": unknown type '" << retStr << "'";
         return Expected<void>{makeError({}, oss.str())};
     }
+    auto hasDuplicate = std::any_of(st.m.externs.begin(), st.m.externs.end(), [&](const il::core::Extern &ext) {
+        return ext.name == name;
+    });
+    if (hasDuplicate)
+    {
+        std::ostringstream oss;
+        oss << "line " << st.lineNo << ": duplicate extern '" << name << "'";
+        return Expected<void>{makeError({}, oss.str())};
+    }
+
     st.m.externs.push_back({name, retTy, params});
     return {};
 }
