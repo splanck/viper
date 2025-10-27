@@ -21,6 +21,7 @@
 #include "vm/OpHandlerUtils.hpp"
 #include "vm/RuntimeBridge.hpp"
 #include <cstddef>
+#include <cstdint>
 #include <cstring>
 #include <limits>
 #include <string>
@@ -151,8 +152,31 @@ VM::ExecResult handleGEP(VM &vm,
     (void)ip;
     Slot base = VMAccess::eval(vm, fr, in.operands[0]);
     Slot offset = VMAccess::eval(vm, fr, in.operands[1]);
+
     Slot out{};
-    out.ptr = static_cast<char *>(base.ptr) + offset.i64;
+    if (base.ptr == nullptr)
+    {
+        if (offset.i64 == 0)
+        {
+            out.ptr = nullptr;
+            ops::storeResult(fr, in, out);
+            return {};
+        }
+    }
+
+    const std::uintptr_t baseAddr = reinterpret_cast<std::uintptr_t>(base.ptr);
+    const int64_t delta = offset.i64;
+    std::uintptr_t resultAddr = baseAddr;
+    if (delta >= 0)
+    {
+        resultAddr += static_cast<std::uintptr_t>(delta);
+    }
+    else
+    {
+        resultAddr -= static_cast<std::uintptr_t>(-delta);
+    }
+
+    out.ptr = reinterpret_cast<void *>(resultAddr);
     ops::storeResult(fr, in, out);
     return {};
 }
