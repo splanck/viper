@@ -26,6 +26,11 @@ struct VMTestHook
         return vm.prepareExecution(fn, {});
     }
 
+    static State prepare(VM &vm, const il::core::Function &fn, const std::vector<Slot> &args)
+    {
+        return vm.prepareExecution(fn, args);
+    }
+
     static State clone(const State &st)
     {
         return st;
