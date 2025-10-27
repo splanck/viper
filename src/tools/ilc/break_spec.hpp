@@ -14,7 +14,7 @@ namespace ilc
 /// @brief Determine whether a --break argument refers to a source line.
 ///
 /// A source break specification is written as `<file>:<line>` where the left
-/// side resembles a path (contains `/`, `\\`, or `.`) and the right side is a
+/// side contains at least one non-whitespace character and the right side is a
 /// decimal line number.
 /// @param spec Single token supplied to the `--break` flag.
 /// @returns `true` when the token matches the source break format; `false`
