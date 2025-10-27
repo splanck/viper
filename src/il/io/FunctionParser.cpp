@@ -361,7 +361,7 @@ Expected<PrototypeParseResult> parsePrototype(Cursor &cur)
     return PrototypeParseResult{Prototype{retTy, std::move(params)}, ccSegment};
 }
 
-Expected<CallingConv> parseCallingConv(std::string_view segment)
+Expected<CallingConv> parseCallingConv(std::string_view segment, unsigned lineNo)
 {
     segment = trimView(segment);
     if (segment.empty())
@@ -377,7 +377,9 @@ Expected<CallingConv> parseCallingConv(std::string_view segment)
             return entry.second;
     }
 
-    return CallingConv::Default;
+    std::ostringstream oss;
+    oss << "unknown calling convention '" << segment << "'";
+    return lineError<CallingConv>(lineNo, oss.str());
 }
 
 Expected<Attrs> parseAttributes(Cursor &cur)
@@ -583,7 +585,7 @@ Expected<void> parseFunctionHeader(const std::string &header, ParserState &st)
             return Expected<void>{proto.error()};
         auto parsedProto = std::move(proto.value());
         fh.proto = std::move(parsedProto.proto);
-        auto cc = parseCallingConv(parsedProto.callingConvSegment);
+        auto cc = parseCallingConv(parsedProto.callingConvSegment, st.lineNo);
         if (!cc)
             return Expected<void>{cc.error()};
         fh.cc = cc.value();
