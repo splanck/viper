@@ -41,8 +41,20 @@ StmtPtr Parser::parseGotoStatement()
 {
     auto loc = peek().loc;
     consume(); // GOTO
-    int target = std::atoi(peek().lexeme.c_str());
-    expect(TokenKind::Number);
+    Token targetTok = peek();
+    int target = 0;
+    if (targetTok.kind == TokenKind::Identifier)
+    {
+        target = ensureLabelNumber(targetTok.lexeme);
+        noteNamedLabelReference(targetTok, target);
+        consume();
+    }
+    else
+    {
+        target = std::atoi(targetTok.lexeme.c_str());
+        expect(TokenKind::Number);
+        noteNumericLabelUsage(target);
+    }
     auto stmt = std::make_unique<GotoStmt>();
     stmt->loc = loc;
     stmt->target = target;
@@ -61,8 +73,20 @@ StmtPtr Parser::parseGosubStatement()
 {
     auto loc = peek().loc;
     consume(); // GOSUB
-    int target = std::atoi(peek().lexeme.c_str());
-    expect(TokenKind::Number);
+    Token targetTok = peek();
+    int target = 0;
+    if (targetTok.kind == TokenKind::Identifier)
+    {
+        target = ensureLabelNumber(targetTok.lexeme);
+        noteNamedLabelReference(targetTok, target);
+        consume();
+    }
+    else
+    {
+        target = std::atoi(targetTok.lexeme.c_str());
+        expect(TokenKind::Number);
+        noteNumericLabelUsage(target);
+    }
     auto stmt = std::make_unique<GosubStmt>();
     stmt->loc = loc;
     stmt->targetLine = target;
