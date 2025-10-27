@@ -3,46 +3,17 @@
 // License: MIT License. See LICENSE in project root for details.
 
 #include "il/build/IRBuilder.hpp"
-#include "vm/VM.hpp"
+#include "tests/common/VmFixture.hpp"
 
 #include <cassert>
 #include <cstdint>
 #include <limits>
 #include <string>
-#include <sys/wait.h>
-#include <unistd.h>
 
 using namespace il::core;
 
 namespace
 {
-std::string captureTrap(Module &module)
-{
-    int fds[2];
-    assert(pipe(fds) == 0);
-    pid_t pid = fork();
-    assert(pid >= 0);
-    if (pid == 0)
-    {
-        close(fds[0]);
-        dup2(fds[1], 2);
-        il::vm::VM vm(module);
-        vm.run();
-        _exit(0);
-    }
-    close(fds[1]);
-    char buffer[512];
-    ssize_t n = read(fds[0], buffer, sizeof(buffer) - 1);
-    if (n < 0)
-        n = 0;
-    buffer[n] = '\0';
-    close(fds[0]);
-    int status = 0;
-    waitpid(pid, &status, 0);
-    assert(WIFEXITED(status) && WEXITSTATUS(status) == 1);
-    return std::string(buffer);
-}
-
 void buildBinaryFunction(Module &module,
                          Opcode op,
                          Type::Kind type,
@@ -99,8 +70,8 @@ bool runUnsignedCompare(Opcode op, int64_t lhs, int64_t rhs)
 {
     Module module;
     buildComparisonFunction(module, op, lhs, rhs);
-    il::vm::VM vm(module);
-    const int64_t raw = vm.run();
+    viper::tests::VmFixture fixture;
+    const int64_t raw = fixture.run(module);
     assert(raw == 0 || raw == 1);
     return raw == 1;
 }
@@ -109,25 +80,30 @@ void expectDivideByZeroTrap(Opcode op)
 {
     Module module;
     buildBinaryFunction(module, op, Type::Kind::I64, 1, 0);
-    const std::string out = captureTrap(module);
+    viper::tests::VmFixture fixture;
+    const std::string out = fixture.captureTrap(module);
     assert(out.find("DivideByZero (code=0)") != std::string::npos);
 }
 } // namespace
 
 int main()
 {
+    using viper::tests::VmFixture;
+
+    VmFixture fixture;
+
     {
         Module module;
         buildBinaryFunction(module, Opcode::SDiv, Type::Kind::I64, -9, 4);
-        il::vm::VM vm(module);
-        assert(vm.run() == -2);
+        const int64_t value = fixture.run(module);
+        assert(value == -2);
     }
 
     {
         Module module;
         buildBinaryFunction(module, Opcode::SRem, Type::Kind::I64, -9, 4);
-        il::vm::VM vm(module);
-        assert(vm.run() == -1);
+        const int64_t value = fixture.run(module);
+        assert(value == -1);
     }
 
     {
@@ -135,10 +111,9 @@ int main()
         const int64_t lhs = -9;
         const int64_t rhs = 4;
         buildBinaryFunction(module, Opcode::UDiv, Type::Kind::I64, lhs, rhs);
-        il::vm::VM vm(module);
         const int64_t expected = static_cast<int64_t>(static_cast<uint64_t>(lhs) /
                                                        static_cast<uint64_t>(rhs));
-        assert(vm.run() == expected);
+        assert(fixture.run(module) == expected);
     }
 
     {
@@ -146,10 +121,9 @@ int main()
         const int64_t lhs = -3;
         const int64_t rhs = 5;
         buildBinaryFunction(module, Opcode::URem, Type::Kind::I64, lhs, rhs);
-        il::vm::VM vm(module);
         const int64_t expected = static_cast<int64_t>(static_cast<uint64_t>(lhs) %
                                                        static_cast<uint64_t>(rhs));
-        assert(vm.run() == expected);
+        assert(fixture.run(module) == expected);
     }
 
     {
@@ -157,8 +131,7 @@ int main()
         const int64_t lhs = -5;
         const int64_t rhs = 12;
         buildBinaryFunction(module, Opcode::And, Type::Kind::I64, lhs, rhs);
-        il::vm::VM vm(module);
-        assert(vm.run() == (lhs & rhs));
+        assert(fixture.run(module) == (lhs & rhs));
     }
 
     {
@@ -166,8 +139,7 @@ int main()
         const int64_t lhs = -5;
         const int64_t rhs = 12;
         buildBinaryFunction(module, Opcode::Or, Type::Kind::I64, lhs, rhs);
-        il::vm::VM vm(module);
-        assert(vm.run() == (lhs | rhs));
+        assert(fixture.run(module) == (lhs | rhs));
     }
 
     {
@@ -175,10 +147,9 @@ int main()
         const int64_t lhs = -8;
         const int64_t rhs = 1;
         buildBinaryFunction(module, Opcode::LShr, Type::Kind::I64, lhs, rhs);
-        il::vm::VM vm(module);
         const uint64_t shift = static_cast<uint64_t>(rhs) & 63U;
         const int64_t expected = static_cast<int64_t>(static_cast<uint64_t>(lhs) >> shift);
-        assert(vm.run() == expected);
+        assert(fixture.run(module) == expected);
     }
 
     {
@@ -186,8 +157,7 @@ int main()
         const int64_t lhs = -8;
         const int64_t rhs = 1;
         buildBinaryFunction(module, Opcode::AShr, Type::Kind::I64, lhs, rhs);
-        il::vm::VM vm(module);
-        const int64_t result = vm.run();
+        const int64_t result = fixture.run(module);
         const uint64_t shift = static_cast<uint64_t>(rhs) & 63U;
         uint64_t bits = static_cast<uint64_t>(lhs);
         uint64_t shifted = bits >> shift;
