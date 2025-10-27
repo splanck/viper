@@ -193,6 +193,10 @@ function(viper_add_il_core_tests)
   target_link_libraries(test_il_parse_missing_version PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
   viper_add_ctest(test_il_parse_missing_version test_il_parse_missing_version)
 
+  viper_add_test(test_il_parse_bom ${_VIPER_IL_UNIT_DIR}/test_il_parse_bom.cpp)
+  target_link_libraries(test_il_parse_bom PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
+  viper_add_ctest(test_il_parse_bom test_il_parse_bom)
+
   viper_add_test(test_il_parse_first_error ${_VIPER_IL_UNIT_DIR}/test_il_parse_first_error.cpp)
   target_link_libraries(test_il_parse_first_error PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
   viper_add_ctest(test_il_parse_first_error test_il_parse_first_error)
