@@ -68,6 +68,15 @@ union Slot
 /// @invariant Stack pointer @c sp never exceeds @c stack size.
 struct Frame
 {
+    Frame() = default;
+    Frame(const Frame &other);
+    Frame &operator=(const Frame &other);
+    Frame(Frame &&other) noexcept;
+    Frame &operator=(Frame &&other) noexcept;
+    ~Frame();
+
+    void clear();
+
     struct HandlerRecord
     {
         const il::core::BasicBlock *handler = nullptr;
@@ -88,11 +97,14 @@ struct Frame
     /// @brief Executing function.
     /// @ownership Non-owning; function resides in the module.
     /// @invariant Never null for a valid frame.
-    const il::core::Function *func;
+    const il::core::Function *func = nullptr;
 
     /// @brief Register file for SSA values.
     /// @ownership Owned by the frame; sized to the function's register count.
     std::vector<Slot> regs;
+
+    /// @brief Tracks which registers currently own string handles.
+    std::vector<bool> regIsString;
 
     /// @brief Operand stack storage.
     /// @ownership Owned by the frame; fixed capacity of 1024 bytes.
@@ -105,6 +117,9 @@ struct Frame
     /// @brief Pending block parameter values indexed by SSA id.
     /// @ownership Owned by the frame; sized to the register file and reset on use.
     std::vector<std::optional<Slot>> params;
+
+    /// @brief Tracks which pending parameters own string handles.
+    std::vector<bool> paramIsString;
 
     /// @brief Active exception handlers in this frame.
     std::vector<HandlerRecord> ehStack;
@@ -157,6 +172,9 @@ class VM
 
         /// @brief Return value when @c returned is true.
         Slot value{};
+
+        /// @brief Whether callers should retain returned string values.
+        bool retainReturnedString = true;
     };
 
     /// @brief Block lookup table keyed by label.
@@ -374,6 +392,7 @@ class VM
         il::support::SourceLoc callSiteLoc{}; ///< Source location of the call site
         viper::vm::SwitchCache switchCache{}; ///< Memoized switch dispatch data for this frame
         std::optional<Slot> pendingResult{};  ///< Result staged by threaded interpreter
+        bool pendingResultRetain = false;     ///< Whether pending result needs a retain
         const il::core::Instr *currentInstr =
             nullptr;                ///< Instruction under execution for inline dispatch
         bool exitRequested = false; ///< Whether the active loop should exit

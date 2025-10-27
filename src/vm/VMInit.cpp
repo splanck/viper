@@ -195,7 +195,9 @@ Frame VM::setupFrame(const Function &fn,
     // incremental growth during execution.
     fr.regs.resize(fn.valueNames.size());
     assert(fr.regs.size() == fn.valueNames.size());
+    fr.regIsString.assign(fr.regs.size(), false);
     fr.params.assign(fr.regs.size(), std::nullopt);
+    fr.paramIsString.assign(fr.params.size(), false);
     fr.ehStack.clear();
     fr.activeError = {};
     fr.resumeState = {};
@@ -217,20 +219,24 @@ Frame VM::setupFrame(const Function &fn,
         {
             const auto id = params[i].id;
             assert(id < fr.params.size());
+            if (fr.paramIsString.size() < fr.params.size())
+                fr.paramIsString.resize(fr.params.size(), false);
             const bool isStringParam = params[i].type.kind == Type::Kind::Str;
+            auto &dest = fr.params[id];
+            if (dest && fr.paramIsString[id] && dest->str)
+                rt_str_release_maybe(dest->str);
+
             if (isStringParam)
             {
-                auto &dest = fr.params[id];
-                if (dest)
-                    rt_str_release_maybe(dest->str);
-
                 Slot retained = args[i];
                 rt_str_retain_maybe(retained.str);
                 dest = retained;
+                fr.paramIsString[id] = retained.str != nullptr;
                 continue;
             }
 
             fr.params[id] = args[i];
+            fr.paramIsString[id] = false;
         }
     }
     return fr;

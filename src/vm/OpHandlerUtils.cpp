@@ -54,19 +54,32 @@ void storeResult(Frame &fr, const il::core::Instr &in, const Slot &val)
     const size_t destIndex = *in.result;
     const bool hadRegister = destIndex < fr.regs.size();
     if (!hadRegister)
+    {
         fr.regs.resize(destIndex + 1);
+        fr.regIsString.resize(fr.regs.size(), false);
+    }
+    else if (fr.regIsString.size() < fr.regs.size())
+    {
+        fr.regIsString.resize(fr.regs.size(), false);
+    }
 
     if (in.type.kind == il::core::Type::Kind::Str)
     {
-        if (hadRegister)
+        if (destIndex < fr.regIsString.size() && fr.regIsString[destIndex] && hadRegister)
             rt_str_release_maybe(fr.regs[destIndex].str);
 
         Slot stored = val;
         rt_str_retain_maybe(stored.str);
         fr.regs[destIndex] = stored;
+        fr.regIsString[destIndex] = stored.str != nullptr;
         return;
     }
 
+    if (destIndex < fr.regIsString.size() && fr.regIsString[destIndex])
+    {
+        rt_str_release_maybe(fr.regs[destIndex].str);
+        fr.regIsString[destIndex] = false;
+    }
     fr.regs[destIndex] = val;
 }
 } // namespace ops

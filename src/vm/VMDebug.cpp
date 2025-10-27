@@ -48,6 +48,8 @@ void VM::transferBlockParams(Frame &fr, const BasicBlock &bb)
             continue;
         if (fr.regs.size() <= p.id)
             fr.regs.resize(p.id + 1);
+        if (fr.paramIsString.size() < fr.params.size())
+            fr.paramIsString.resize(fr.params.size(), false);
 
         Instr pseudo;
         pseudo.result = p.id;
@@ -58,6 +60,7 @@ void VM::transferBlockParams(Frame &fr, const BasicBlock &bb)
         if (p.type.kind == Type::Kind::Str)
             rt_str_release_maybe(pending->str);
         pending.reset();
+        fr.paramIsString[p.id] = false;
     }
 }
 

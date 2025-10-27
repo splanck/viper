@@ -63,7 +63,32 @@ VM::ExecResult handleRet(VM &vm,
     (void)ip;
     VM::ExecResult result{};
     if (!in.operands.empty())
-        result.value = VMAccess::eval(vm, fr, in.operands[0]);
+    {
+        const auto &operand = in.operands[0];
+        Slot value = VMAccess::eval(vm, fr, operand);
+
+        if (operand.kind == il::core::Value::Kind::Temp)
+        {
+            const size_t regIndex = operand.id;
+            if (fr.regIsString.size() < fr.regs.size())
+                fr.regIsString.resize(fr.regs.size(), false);
+
+            if (regIndex < fr.regs.size())
+            {
+                if (regIndex < fr.regIsString.size() && fr.regIsString[regIndex] &&
+                    fr.regs[regIndex].str)
+                {
+                    rt_str_release_maybe(fr.regs[regIndex].str);
+                    result.retainReturnedString = false;
+                }
+
+                fr.regIsString[regIndex] = false;
+                fr.regs[regIndex] = Slot{};
+            }
+        }
+
+        result.value = value;
+    }
     result.returned = true;
     return result;
 }
@@ -244,6 +269,23 @@ VM::ExecResult handleCall(VM &vm,
                     args[index].str = nullptr;
                 }
             }
+        }
+    }
+
+    if (in.callee == "rt_str_release_maybe")
+    {
+        for (size_t index = 0; index < in.operands.size() && index < bindings.size(); ++index)
+        {
+            const auto &op = in.operands[index];
+            if (op.kind != il::core::Value::Kind::Temp)
+                continue;
+            Slot *regPtr = bindings[index].reg;
+            if (!regPtr)
+                continue;
+            const size_t regIndex = op.id;
+            if (regIndex < fr.regIsString.size())
+                fr.regIsString[regIndex] = false;
+            regPtr->str = nullptr;
         }
     }
     if (!in.result && in.type.kind == il::core::Type::Kind::Str && out.str)

@@ -34,6 +34,7 @@
 #include <algorithm>
 #include <iostream>
 #include <string>
+#include <utility>
 
 namespace il::vm
 {
@@ -44,6 +45,130 @@ using il::core::Function;
 using il::core::Instr;
 using il::core::Opcode;
 using il::core::Value;
+
+Frame::Frame(const Frame &other)
+    : func(other.func),
+      regs(other.regs),
+      regIsString(other.regIsString),
+      stack(other.stack),
+      sp(other.sp),
+      params(other.params),
+      paramIsString(other.paramIsString),
+      ehStack(other.ehStack),
+      activeError(other.activeError),
+      resumeState(other.resumeState)
+{
+    for (size_t i = 0; i < regs.size() && i < regIsString.size(); ++i)
+        if (regIsString[i] && regs[i].str)
+            rt_str_retain_maybe(regs[i].str);
+
+    for (size_t i = 0; i < params.size() && i < paramIsString.size(); ++i)
+        if (params[i] && paramIsString[i] && params[i]->str)
+            rt_str_retain_maybe(params[i]->str);
+}
+
+Frame &Frame::operator=(const Frame &other)
+{
+    if (this == &other)
+        return *this;
+
+    clear();
+
+    func = other.func;
+    regs = other.regs;
+    regIsString = other.regIsString;
+    stack = other.stack;
+    sp = other.sp;
+    params = other.params;
+    paramIsString = other.paramIsString;
+    ehStack = other.ehStack;
+    activeError = other.activeError;
+    resumeState = other.resumeState;
+
+    for (size_t i = 0; i < regs.size() && i < regIsString.size(); ++i)
+        if (regIsString[i] && regs[i].str)
+            rt_str_retain_maybe(regs[i].str);
+
+    for (size_t i = 0; i < params.size() && i < paramIsString.size(); ++i)
+        if (params[i] && paramIsString[i] && params[i]->str)
+            rt_str_retain_maybe(params[i]->str);
+
+    return *this;
+}
+
+Frame::Frame(Frame &&other) noexcept
+    : func(other.func),
+      regs(std::move(other.regs)),
+      regIsString(std::move(other.regIsString)),
+      stack(other.stack),
+      sp(other.sp),
+      params(std::move(other.params)),
+      paramIsString(std::move(other.paramIsString)),
+      ehStack(std::move(other.ehStack)),
+      activeError(other.activeError),
+      resumeState(other.resumeState)
+{
+    other.func = nullptr;
+    other.sp = 0;
+    other.activeError = {};
+    other.resumeState = {};
+}
+
+Frame &Frame::operator=(Frame &&other) noexcept
+{
+    if (this == &other)
+        return *this;
+
+    clear();
+
+    func = other.func;
+    regs = std::move(other.regs);
+    regIsString = std::move(other.regIsString);
+    stack = other.stack;
+    sp = other.sp;
+    params = std::move(other.params);
+    paramIsString = std::move(other.paramIsString);
+    ehStack = std::move(other.ehStack);
+    activeError = other.activeError;
+    resumeState = other.resumeState;
+
+    other.func = nullptr;
+    other.sp = 0;
+    other.activeError = {};
+    other.resumeState = {};
+
+    return *this;
+}
+
+Frame::~Frame()
+{
+    clear();
+}
+
+void Frame::clear()
+{
+    Slot empty{};
+    for (size_t i = 0; i < regs.size(); ++i)
+    {
+        if (i < regIsString.size() && regIsString[i] && regs[i].str)
+            rt_str_release_maybe(regs[i].str);
+        regs[i] = empty;
+    }
+    regIsString.assign(regs.size(), false);
+
+    for (size_t i = 0; i < params.size(); ++i)
+    {
+        if (params[i] && i < paramIsString.size() && paramIsString[i] && params[i]->str)
+            rt_str_release_maybe(params[i]->str);
+        params[i].reset();
+    }
+    paramIsString.assign(params.size(), false);
+
+    ehStack.clear();
+    activeError = {};
+    resumeState = {};
+    sp = 0;
+}
 
 /// @brief Interface for pluggable interpreter dispatch strategies.
 struct VM::DispatchDriver
@@ -301,6 +426,7 @@ void VM::beginDispatch(ExecState &state)
 {
     state.exitRequested = false;
     state.pendingResult.reset();
+    state.pendingResultRetain = false;
     state.currentInstr = nullptr;
 }
 
@@ -362,6 +488,7 @@ bool VM::finalizeDispatch(ExecState &state, const ExecResult &exec)
     if (exec.returned)
     {
         state.pendingResult = exec.value;
+        state.pendingResultRetain = exec.retainReturnedString;
         state.exitRequested = true;
         return true;
     }
@@ -428,11 +555,17 @@ Slot VM::runFunctionLoop(ExecState &st)
 
             if (finished)
             {
+                Slot result{};
                 if (st.pendingResult)
-                    return *st.pendingResult;
-                Slot zero{};
-                zero.i64 = 0;
-                return zero;
+                    result = *st.pendingResult;
+                else
+                    result.i64 = 0;
+
+                if (st.pendingResultRetain && st.fr.func &&
+                    st.fr.func->retType.kind == il::core::Type::Kind::Str)
+                    rt_str_retain_maybe(result.str);
+
+                return result;
             }
         }
         catch (const TrapDispatchSignal &signal)
@@ -574,9 +707,23 @@ bool VM::prepareTrap(VmError &error)
             if (!record.handler->params.empty())
             {
                 const auto &params = record.handler->params;
-                fr.params[params[0].id] = errSlot;
+                if (fr.paramIsString.size() < fr.params.size())
+                    fr.paramIsString.resize(fr.params.size(), false);
+
+                const auto assignParam = [&](size_t id, const Slot &slotValue)
+                {
+                    if (id >= fr.params.size())
+                        return;
+                    auto &dest = fr.params[id];
+                    if (dest && fr.paramIsString[id] && dest->str)
+                        rt_str_release_maybe(dest->str);
+                    fr.paramIsString[id] = false;
+                    dest = slotValue;
+                };
+
+                assignParam(params[0].id, errSlot);
                 if (params.size() > 1)
-                    fr.params[params[1].id] = tokSlot;
+                    assignParam(params[1].id, tokSlot);
             }
 
             st->bb = record.handler;
