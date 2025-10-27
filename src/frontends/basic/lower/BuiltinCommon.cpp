@@ -58,7 +58,7 @@ Lowerer::RVal emitCustom(BuiltinLowerContext &ctx, const Variant &variant);
 BuiltinLowerContext::BuiltinLowerContext(Lowerer &lowerer, const BuiltinCallExpr &call)
     : lowerer_(&lowerer), call_(&call), rule_(&getBuiltinLoweringRule(call.builtin)),
       info_(&getBuiltinInfo(call.builtin)), originalTypes_(call.args.size()),
-      argLocs_(call.args.size()), loweredArgs_(call.args.size())
+      argLocs_(call.args.size()), loweredArgs_(call.args.size()), lowering_(lowerer)
 {
     for (std::size_t i = 0; i < call.args.size(); ++i)
     {
@@ -398,7 +398,7 @@ void BuiltinLowerContext::setCurrentLoc(il::support::SourceLoc loc)
 /// @return Boolean IL type.
 il::core::Type BuiltinLowerContext::boolType() const
 {
-    return lowerer_->ilBoolTy();
+    return lowering_.ilBoolTy();
 }
 
 /// @brief Emit a runtime call returning @p type.
@@ -412,7 +412,7 @@ il::core::Value BuiltinLowerContext::emitCall(il::core::Type type,
                                               const char *runtime,
                                               const std::vector<il::core::Value> &args)
 {
-    return lowerer_->emitCallRet(type, runtime, args);
+    return lowering_.emitCallRet(type, runtime, args);
 }
 
 /// @brief Emit a unary IL instruction.
@@ -426,7 +426,7 @@ il::core::Value BuiltinLowerContext::emitUnary(il::core::Opcode opcode,
                                                il::core::Type type,
                                                il::core::Value value)
 {
-    return lowerer_->emitUnary(opcode, type, value);
+    return lowering_.emitUnary(opcode, type, value);
 }
 
 /// @brief Emit a binary IL instruction.
@@ -442,7 +442,7 @@ il::core::Value BuiltinLowerContext::emitBinary(il::core::Opcode opcode,
                                                 il::core::Value lhs,
                                                 il::core::Value rhs)
 {
-    return lowerer_->emitBinary(opcode, type, lhs, rhs);
+    return lowering_.emitBinary(opcode, type, lhs, rhs);
 }
 
 /// @brief Emit a load from the given address.
@@ -452,7 +452,7 @@ il::core::Value BuiltinLowerContext::emitBinary(il::core::Opcode opcode,
 /// @return Loaded IL value.
 il::core::Value BuiltinLowerContext::emitLoad(il::core::Type type, il::core::Value addr)
 {
-    return lowerer_->emitLoad(type, addr);
+    return lowering_.emitLoad(type, addr);
 }
 
 /// @brief Allocate stack storage via the lowerer.
@@ -462,7 +462,7 @@ il::core::Value BuiltinLowerContext::emitLoad(il::core::Type type, il::core::Val
 /// @return IL value representing the address of the allocation.
 il::core::Value BuiltinLowerContext::emitAlloca(int bytes)
 {
-    return lowerer_->emitAlloca(bytes);
+    return lowering_.emitAlloca(bytes);
 }
 
 /// @brief Emit a conditional branch between two blocks.
@@ -475,7 +475,7 @@ void BuiltinLowerContext::emitCBr(il::core::Value cond,
                                   il::core::BasicBlock *t,
                                   il::core::BasicBlock *f)
 {
-    lowerer_->emitCBr(cond, t, f);
+    lowering_.emitCBr(cond, t, f);
 }
 
 /// @brief Emit a trap instruction signalling an unrecoverable error.
@@ -502,11 +502,7 @@ void BuiltinLowerContext::setCurrentBlock(il::core::BasicBlock *block)
 /// @return Fresh block label string.
 std::string BuiltinLowerContext::makeBlockLabel(const char *hint)
 {
-    Lowerer::ProcedureContext &procCtx = lowerer_->context();
-    Lowerer::BlockNamer *blockNamer = procCtx.blockNames().namer();
-    if (blockNamer)
-        return blockNamer->generic(hint);
-    return lowerer_->mangler.block(std::string(hint));
+    return lowering_.makeBlockLabel(hint);
 }
 
 /// @brief Create continuation and trap blocks for guard checks.

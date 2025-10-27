@@ -23,6 +23,7 @@
 #pragma once
 
 #include "frontends/basic/BuiltinRegistry.hpp"
+#include "frontends/basic/lower/common/CommonLowering.hpp"
 #include "support/source_location.hpp"
 
 #include <optional>
@@ -127,6 +128,7 @@ class BuiltinLowerContext
     std::vector<std::optional<il::support::SourceLoc>> argLocs_;
     std::vector<std::optional<Lowerer::RVal>> loweredArgs_;
     std::vector<Lowerer::RVal> syntheticArgs_;
+    lower::common::CommonLowering lowering_;
 };
 
 [[nodiscard]] Lowerer::RVal lowerGenericBuiltin(BuiltinLowerContext &ctx);
