@@ -24,6 +24,8 @@
 #include <cstddef>
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -31,9 +33,12 @@
 
 #ifndef _WIN32
 #    include <sys/wait.h>
+#    include <unistd.h>
 #endif
 
 #ifdef _WIN32
+#    include <direct.h>
+#    include <wchar.h>
 #    define POPEN _popen
 #    define PCLOSE _pclose
 #else
@@ -180,6 +185,93 @@ private:
 };
 } // namespace
 
+namespace
+{
+class ScopedWorkingDirectory
+{
+public:
+    explicit ScopedWorkingDirectory(const std::optional<std::string> &target)
+    {
+        if (!target)
+        {
+            return;
+        }
+
+#ifdef _WIN32
+        std::unique_ptr<wchar_t, decltype(&std::free)> previous(
+            _wgetcwd(nullptr, 0), &std::free);
+        if (!previous)
+        {
+            error_.emplace("failed to query current working directory");
+            return;
+        }
+
+        previous_ = std::wstring(previous.get());
+        const std::wstring newDirectory = std::filesystem::u8path(*target).wstring();
+        if (_wchdir(newDirectory.c_str()) != 0)
+        {
+            error_.emplace("failed to change working directory to '" + *target + "'");
+            previous_.clear();
+            return;
+        }
+#else
+        std::unique_ptr<char, decltype(&std::free)> previous(::getcwd(nullptr, 0), &std::free);
+        if (!previous)
+        {
+            error_.emplace("failed to query current working directory");
+            return;
+        }
+
+        previous_ = std::string(previous.get());
+        if (::chdir(target->c_str()) != 0)
+        {
+            error_.emplace("failed to change working directory to '" + *target + "'");
+            previous_.clear();
+            return;
+        }
+#endif
+
+        active_ = true;
+    }
+
+    ScopedWorkingDirectory(const ScopedWorkingDirectory &) = delete;
+    ScopedWorkingDirectory &operator=(const ScopedWorkingDirectory &) = delete;
+
+    ~ScopedWorkingDirectory()
+    {
+        if (!active_)
+        {
+            return;
+        }
+
+#ifdef _WIN32
+        _wchdir(previous_.c_str());
+#else
+        ::chdir(previous_.c_str());
+#endif
+    }
+
+    bool has_error() const
+    {
+        return error_.has_value();
+    }
+
+    const std::string &error_message() const
+    {
+        return *error_;
+    }
+
+private:
+#ifdef _WIN32
+    std::wstring previous_;
+#else
+    std::string previous_;
+#endif
+    bool active_ = false;
+    std::optional<std::string> error_;
+};
+} // namespace
+
 RunResult run_process(const std::vector<std::string> &argv,
                       std::optional<std::string> cwd,
                       const std::vector<std::pair<std::string, std::string>> &env)
@@ -189,6 +281,16 @@ RunResult run_process(const std::vector<std::string> &argv,
     for (const auto &pair : env)
     {
         scoped_env.emplace_back(pair.first, pair.second);
+    }
+
+    RunResult rr{0, "", ""};
+
+    ScopedWorkingDirectory scoped_cwd(cwd);
+    if (scoped_cwd.has_error())
+    {
+        rr.exit_code = -1;
+        rr.err = scoped_cwd.error_message();
+        return rr;
     }
 
     std::string cmd;
@@ -208,17 +310,6 @@ RunResult run_process(const std::vector<std::string> &argv,
     cmd += " 2>&1";
 #endif
 
-    if (cwd)
-    {
-#ifdef _WIN32
-        // Windows popen lacks a straightforward chdir hook; callers should adjust when needed.
-        (void)cwd;
-#else
-        (void)cwd;
-#endif
-    }
-
-    RunResult rr{0, "", ""};
     FILE *pipe = POPEN(cmd.c_str(), "r");
     if (!pipe)
     {
