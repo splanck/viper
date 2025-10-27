@@ -5,8 +5,11 @@
 // Links: docs/specs/numerics.md
 
 #include "il/build/IRBuilder.hpp"
+#include "il/runtime/RuntimeSignatures.hpp"
+#include "vm/Marshal.hpp"
 #include "vm/VM.hpp"
 
+#include <array>
 #include <cassert>
 #include <optional>
 #include <string>
@@ -139,6 +142,56 @@ int main()
         const bool ok = out.find("Trap @main") != std::string::npos &&
                         out.find("Overflow (code=0)") != std::string::npos;
         assert(ok && "expected Overflow trap for large exponent");
+    }
+
+    {
+        const auto *desc = il::runtime::findRuntimeDescriptor("rt_pow_f64_chkdom");
+        assert(desc && "pow runtime descriptor must exist");
+
+        il::vm::PowStatus powStatus{};
+        std::array<il::vm::Slot, 2> args{};
+        args[0].f64 = -2.0;
+        args[1].f64 = 0.5;
+
+        auto rawArgs = il::vm::marshalArguments(desc->signature, std::span<il::vm::Slot>(args), powStatus);
+        assert(powStatus.active);
+        const size_t statusIndex = desc->signature.paramTypes.size();
+        assert(statusIndex < rawArgs.size());
+
+        bool runtimeOk = true;
+        auto **statusPtrPtr = reinterpret_cast<bool **>(rawArgs[statusIndex]);
+        *statusPtrPtr = &runtimeOk;
+        runtimeOk = false;
+
+        il::vm::ResultBuffers buffers{};
+        auto trap = il::vm::classifyPowTrap(*desc, powStatus, std::span<const il::vm::Slot>(args), buffers);
+        assert(trap.triggered);
+        assert(trap.kind == il::vm::TrapKind::DomainError);
+    }
+
+    {
+        const auto *desc = il::runtime::findRuntimeDescriptor("rt_pow_f64_chkdom");
+        assert(desc && "pow runtime descriptor must exist");
+
+        il::vm::PowStatus powStatus{};
+        std::array<il::vm::Slot, 2> args{};
+        args[0].f64 = 2.0;
+        args[1].f64 = 2048.0;
+
+        auto rawArgs = il::vm::marshalArguments(desc->signature, std::span<il::vm::Slot>(args), powStatus);
+        assert(powStatus.active);
+        const size_t statusIndex = desc->signature.paramTypes.size();
+        assert(statusIndex < rawArgs.size());
+
+        bool runtimeOk = true;
+        auto **statusPtrPtr = reinterpret_cast<bool **>(rawArgs[statusIndex]);
+        *statusPtrPtr = &runtimeOk;
+        runtimeOk = false;
+
+        il::vm::ResultBuffers buffers{};
+        auto trap = il::vm::classifyPowTrap(*desc, powStatus, std::span<const il::vm::Slot>(args), buffers);
+        assert(trap.triggered);
+        assert(trap.kind == il::vm::TrapKind::Overflow);
     }
 
     return 0;
