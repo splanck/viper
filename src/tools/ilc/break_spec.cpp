@@ -30,8 +30,8 @@ namespace ilc
 ///          1. Ensure a colon delimiter exists and characters follow it.
 ///          2. Confirm every character after the colon is a digit, yielding a
 ///             positive line number.
-///          3. Require the prefix to resemble a path (contain `/`, `\`, or `.`)
-///             to avoid misclassifying plain label names.
+///          3. Require the prefix to contain at least one non-whitespace
+///             character so empty or padded strings are rejected.
 ///
 /// @param spec Command-line argument to analyse.
 /// @return True when @p spec names a source breakpoint; false otherwise.
@@ -49,10 +49,14 @@ bool isSrcBreakSpec(const std::string &spec)
             return false;
     }
 
-    // Portion before the colon; treated as a file path candidate.
-    std::string left = spec.substr(0, pos);
-    return left.find('/') != std::string::npos || left.find('\\') != std::string::npos ||
-           left.find('.') != std::string::npos;
+    // Portion before the colon must contain non-whitespace characters.
+    for (std::string::size_type i = 0; i < pos; ++i)
+    {
+        if (!std::isspace(static_cast<unsigned char>(spec[i])))
+            return true;
+    }
+
+    return false;
 }
 
 } // namespace ilc

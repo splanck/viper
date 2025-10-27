@@ -1,6 +1,6 @@
 // File: tests/tools/BreakParsingTests.cpp
 // Purpose: Verify heuristic parsing of --break flag arguments.
-// Key invariants: Tokens with path hints parse as source lines; others as labels.
+// Key invariants: Tokens with path hints parse as source lines; empty prefixes are rejected.
 // Ownership/Lifetime: N/A.
 // Links: docs/testing.md
 
@@ -25,9 +25,19 @@ int main()
         std::cerr << "dotted file not classified as src-line\n";
         return 1;
     }
-    if (isSrcBreakSpec("L1:2"))
+    if (!isSrcBreakSpec("foo:7"))
     {
-        std::cerr << "label with colon misclassified as src-line\n";
+        std::cerr << "plain token not classified as src-line\n";
+        return 1;
+    }
+    if (!isSrcBreakSpec("L1:2"))
+    {
+        std::cerr << "label-like token with digits not classified as src-line\n";
+        return 1;
+    }
+    if (isSrcBreakSpec(":5"))
+    {
+        std::cerr << "empty prefix misclassified as src-line\n";
         return 1;
     }
     return 0;
