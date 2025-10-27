@@ -3,46 +3,17 @@
 // License: MIT License. See LICENSE in project root for details.
 
 #include "il/build/IRBuilder.hpp"
-#include "vm/VM.hpp"
+#include "tests/common/VmFixture.hpp"
 
 #include <cassert>
 #include <cstdint>
 #include <limits>
 #include <string>
-#include <sys/wait.h>
-#include <unistd.h>
 
 using namespace il::core;
 
 namespace
 {
-std::string captureTrap(Module &module)
-{
-    int fds[2];
-    assert(pipe(fds) == 0);
-    pid_t pid = fork();
-    assert(pid >= 0);
-    if (pid == 0)
-    {
-        close(fds[0]);
-        dup2(fds[1], 2);
-        il::vm::VM vm(module);
-        vm.run();
-        _exit(0);
-    }
-    close(fds[1]);
-    char buffer[512];
-    ssize_t n = read(fds[0], buffer, sizeof(buffer) - 1);
-    if (n < 0)
-        n = 0;
-    buffer[n] = '\0';
-    close(fds[0]);
-    int status = 0;
-    waitpid(pid, &status, 0);
-    assert(WIFEXITED(status) && WEXITSTATUS(status) == 1);
-    return std::string(buffer);
-}
-
 void buildBinaryFunction(Module &module,
                          Opcode op,
                          Type::Kind type,
@@ -100,66 +71,68 @@ void buildUnaryFunction(Module &module,
 
 int main()
 {
-    {
-        Module module;
-        buildBinaryFunction(module, Opcode::SRemChk0, Type::Kind::I32, -3, 2);
-        il::vm::VM vm(module);
-        assert(vm.run() == -1);
-    }
+    using viper::tests::VmFixture;
 
-    {
-        Module module;
-        buildBinaryFunction(module, Opcode::SRemChk0, Type::Kind::I32, 3, -2);
-        il::vm::VM vm(module);
-        assert(vm.run() == 1);
-    }
+    VmFixture fixture;
 
+    const struct
+    {
+        int64_t lhs;
+        int64_t rhs;
+        int64_t expected;
+    } sremCases[] = {
+        {-3, 2, -1},
+        {3, -2, 1},
+        {-3, -2, -1},
+    };
+
+    for (const auto &sample : sremCases)
     {
         Module module;
-        buildBinaryFunction(module, Opcode::SRemChk0, Type::Kind::I32, -3, -2);
-        il::vm::VM vm(module);
-        assert(vm.run() == -1);
+        buildBinaryFunction(module, Opcode::SRemChk0, Type::Kind::I32, sample.lhs, sample.rhs);
+        const int64_t value = fixture.run(module);
+        assert(value == sample.expected);
     }
 
     {
         Module module;
         buildBinaryFunction(module, Opcode::IAddOvf, Type::Kind::I16, std::numeric_limits<int16_t>::max(), 1);
-        const std::string out = captureTrap(module);
+        const std::string out = fixture.captureTrap(module);
         assert(out.find("Overflow (code=0)") != std::string::npos);
     }
 
     {
         Module module;
         buildBinaryFunction(module, Opcode::SDivChk0, Type::Kind::I16, std::numeric_limits<int16_t>::min(), -1);
-        const std::string out = captureTrap(module);
+        const std::string out = fixture.captureTrap(module);
         assert(out.find("Overflow (code=0)") != std::string::npos);
     }
 
     {
         Module module;
         buildBinaryFunction(module, Opcode::UDivChk0, Type::Kind::I64, -1, 2);
-        il::vm::VM vm(module);
-        assert(vm.run() == std::numeric_limits<int64_t>::max());
+        const int64_t value = fixture.run(module);
+        assert(value == std::numeric_limits<int64_t>::max());
     }
 
     {
         Module module;
         buildBinaryFunction(module, Opcode::URemChk0, Type::Kind::I64, -1, 2);
-        il::vm::VM vm(module);
-        assert(vm.run() == 1);
+        const int64_t value = fixture.run(module);
+        assert(value == 1);
     }
 
     {
         Module module;
         buildUnaryFunction(module, Opcode::CastSiNarrowChk, Type::Kind::I16, 12345);
-        il::vm::VM vm(module);
-        assert(vm.run() == 12345);
+        const int64_t value = fixture.run(module);
+        assert(value == 12345);
     }
 
     {
         Module module;
         buildUnaryFunction(module, Opcode::CastSiNarrowChk, Type::Kind::I16, std::numeric_limits<int32_t>::max());
-        const std::string out = captureTrap(module);
+        const std::string out = fixture.captureTrap(module);
         assert(out.find("Trap @main#0 line 1: InvalidCast (code=0)") != std::string::npos);
     }
 

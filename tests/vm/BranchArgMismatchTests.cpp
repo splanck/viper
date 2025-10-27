@@ -5,58 +5,19 @@
 // Links: docs/il-guide.md#reference
 
 #include "il/build/IRBuilder.hpp"
-#include "vm/VM.hpp"
+#include "tests/common/VmFixture.hpp"
 
 #include <cassert>
 #include <cerrno>
 #include <optional>
 #include <string>
-#include <sys/wait.h>
-#include <unistd.h>
 
 using namespace il::core;
 
-namespace
-{
-std::string captureTrap(Module &module)
-{
-    int fds[2];
-    assert(pipe(fds) == 0);
-    pid_t pid = fork();
-    assert(pid >= 0);
-    if (pid == 0)
-    {
-        close(fds[0]);
-        dup2(fds[1], 2);
-        il::vm::VM vm(module);
-        vm.run();
-        _exit(0);
-    }
-    close(fds[1]);
-    char buffer[512];
-    ssize_t n = read(fds[0], buffer, sizeof(buffer) - 1);
-    if (n < 0)
-        n = 0;
-    buffer[n] = '\0';
-    close(fds[0]);
-    int status = 0;
-    while (true)
-    {
-        const pid_t waited = waitpid(pid, &status, 0);
-        if (waited == pid)
-            break;
-        if (waited == -1 && errno == EINTR)
-            continue;
-        assert(false && "waitpid failed");
-    }
-    assert(WIFEXITED(status) && WEXITSTATUS(status) == 1);
-    return std::string(buffer);
-}
-
-} // namespace
-
 int main()
 {
+    using viper::tests::VmFixture;
+
     Module module;
     il::build::IRBuilder builder(module);
     auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
@@ -77,7 +38,8 @@ int main()
     builder.setInsertPoint(target);
     builder.emitRet(std::optional<Value>(Value::constInt(0)), {1, 2, 1});
 
-    const std::string diag = captureTrap(module);
+    VmFixture fixture;
+    const std::string diag = fixture.captureTrap(module);
     const bool hasMessage = diag.find("branch argument count mismatch") != std::string::npos;
     assert(hasMessage && "expected branch argument mismatch diagnostic");
 

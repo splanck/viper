@@ -46,5 +46,5 @@ foreach(_viper_codegen_case IN LISTS _viper_codegen_x86_64_tests)
       COMMAND ${_viper_codegen_target})
   endif()
 
-  target_link_libraries(${_viper_codegen_target} PRIVATE viper_codegen_x86_64)
+  target_link_libraries(${_viper_codegen_target} PRIVATE viper_codegen_x86_64 viper_test_common)
 endforeach()

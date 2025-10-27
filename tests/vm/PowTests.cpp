@@ -6,6 +6,7 @@
 
 #include "il/build/IRBuilder.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
+#include "tests/common/VmFixture.hpp"
 #include "vm/Marshal.hpp"
 #include "vm/VM.hpp"
 
@@ -13,40 +14,11 @@
 #include <cassert>
 #include <optional>
 #include <string>
-#include <sys/wait.h>
-#include <unistd.h>
 
 using namespace il::core;
 
 namespace
 {
-std::string captureTrap(Module &module)
-{
-    int fds[2];
-    assert(pipe(fds) == 0);
-    pid_t pid = fork();
-    assert(pid >= 0);
-    if (pid == 0)
-    {
-        close(fds[0]);
-        dup2(fds[1], 2);
-        il::vm::VM vm(module);
-        vm.run();
-        _exit(0);
-    }
-    close(fds[1]);
-    char buffer[512];
-    ssize_t n = read(fds[0], buffer, sizeof(buffer) - 1);
-    if (n < 0)
-        n = 0;
-    buffer[n] = '\0';
-    close(fds[0]);
-    int status = 0;
-    waitpid(pid, &status, 0);
-    assert(WIFEXITED(status) && WEXITSTATUS(status) == 1);
-    return std::string(buffer);
-}
-
 void addPowExtern(Module &module)
 {
     il::build::IRBuilder builder(module);
@@ -118,18 +90,21 @@ void buildPowOverflow(Module &module)
 
 int main()
 {
+    using viper::tests::VmFixture;
+
+    VmFixture fixture;
+
     {
         Module module;
         buildPowSuccess(module);
-        il::vm::VM vm(module);
-        const int64_t rv = vm.run();
+        const int64_t rv = fixture.run(module);
         assert(rv == -8);
     }
 
     {
         Module module;
         buildPowDomainError(module);
-        const std::string out = captureTrap(module);
+        const std::string out = fixture.captureTrap(module);
         const bool ok = out.find("Trap @main") != std::string::npos &&
                         out.find("DomainError (code=0)") != std::string::npos;
         assert(ok && "expected DomainError trap for negative base fractional exponent");
@@ -138,7 +113,7 @@ int main()
     {
         Module module;
         buildPowOverflow(module);
-        const std::string out = captureTrap(module);
+        const std::string out = fixture.captureTrap(module);
         const bool ok = out.find("Trap @main") != std::string::npos &&
                         out.find("Overflow (code=0)") != std::string::npos;
         assert(ok && "expected Overflow trap for large exponent");
