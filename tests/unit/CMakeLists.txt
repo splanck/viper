@@ -31,6 +31,38 @@ if(NOT TARGET test_codegen_x86_64_passes)
   viper_add_ctest(test_codegen_x86_64_passes test_codegen_x86_64_passes)
 endif()
 
+if(NOT TARGET test_codegen_x86_64_live_intervals)
+  viper_add_test(
+    test_codegen_x86_64_live_intervals
+    ${VIPER_TESTS_DIR}/unit/test_codegen_x86_64_live_intervals.cpp)
+  target_link_libraries(test_codegen_x86_64_live_intervals PRIVATE viper_codegen_x86_64)
+  viper_add_ctest(test_codegen_x86_64_live_intervals test_codegen_x86_64_live_intervals)
+endif()
+
+if(NOT TARGET test_codegen_x86_64_spiller)
+  viper_add_test(
+    test_codegen_x86_64_spiller
+    ${VIPER_TESTS_DIR}/unit/test_codegen_x86_64_spiller.cpp)
+  target_link_libraries(test_codegen_x86_64_spiller PRIVATE viper_codegen_x86_64)
+  viper_add_ctest(test_codegen_x86_64_spiller test_codegen_x86_64_spiller)
+endif()
+
+if(NOT TARGET test_codegen_x86_64_allocator)
+  viper_add_test(
+    test_codegen_x86_64_allocator
+    ${VIPER_TESTS_DIR}/unit/test_codegen_x86_64_allocator.cpp)
+  target_link_libraries(test_codegen_x86_64_allocator PRIVATE viper_codegen_x86_64)
+  viper_add_ctest(test_codegen_x86_64_allocator test_codegen_x86_64_allocator)
+endif()
+
+if(NOT TARGET test_codegen_x86_64_coalescer)
+  viper_add_test(
+    test_codegen_x86_64_coalescer
+    ${VIPER_TESTS_DIR}/unit/test_codegen_x86_64_coalescer.cpp)
+  target_link_libraries(test_codegen_x86_64_coalescer PRIVATE viper_codegen_x86_64)
+  viper_add_ctest(test_codegen_x86_64_coalescer test_codegen_x86_64_coalescer)
+endif()
+
 if(NOT TARGET test_codegen_x86_64_lowering_rules)
   viper_add_test(
     test_codegen_x86_64_lowering_rules
