@@ -11,6 +11,7 @@ set(_viper_codegen_x86_64_tests
     udiv_urem
     i1_normalization
     pro_epi
+    pipeline_equivalence
     f64_const
     return_values
     select
