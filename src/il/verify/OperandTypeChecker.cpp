@@ -125,14 +125,14 @@ Expected<void> OperandTypeChecker::run() const
         if (actual.kind != expectedKind)
         {
             std::ostringstream ss;
-            ss << "operand type mismatch";
+            ss << "operand type mismatch: ";
             if (expectedKind == il::core::Type::Kind::Ptr)
             {
-                ss << ": operand " << index << " must be ptr";
+                ss << "pointer type mismatch: operand " << index << " must be ptr";
             }
             else
             {
-                ss << ": operand " << index << " must be " << kindToString(expectedKind);
+                ss << "operand " << index << " must be " << kindToString(expectedKind);
             }
             return report(ss.str());
         }
