@@ -6,6 +6,8 @@
 #pragma once
 
 #include "frontends/basic/ast/ExprNodes.hpp"
+#include "frontends/basic/SelectModel.hpp"
+
 #include "support/source_location.hpp"
 
 #include <cstdint>
@@ -478,6 +480,9 @@ struct SelectCaseStmt : Stmt
 
     /// @brief Source range spanning the SELECT CASE header.
     il::support::SourceRange range{};
+
+    /// @brief Normalised model describing CASE labels and ranges.
+    SelectModel model{};
 
     void accept(StmtVisitor &visitor) const override;
     void accept(MutStmtVisitor &visitor) override;

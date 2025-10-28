@@ -24,8 +24,6 @@
 
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/Lowerer.hpp"
-#include "frontends/basic/SelectCaseRange.hpp"
-#include "frontends/basic/SemanticAnalyzer.hpp"
 
 #include "il/core/Module.hpp"
 
@@ -80,25 +78,16 @@ void SelectCaseLowering::lower(const SelectCaseStmt &stmt)
     if (!func || !current)
         return;
 
-    bool hasRanges = false;
-    for (const auto &arm : stmt.arms)
-    {
-        if (!arm.ranges.empty())
-        {
-            hasRanges = true;
-        }
-    }
-
-    bool hasCaseElse = !stmt.elseBody.empty();
-    Blocks blocks = prepareBlocks(stmt, hasCaseElse, hasRanges);
+    const SelectModel &model = stmt.model;
+    Blocks blocks = prepareBlocks(stmt, model.hasCaseElse, model.hasNumericRanges);
 
     if (selectorIsString)
     {
-        lowerStringArms(stmt, blocks, stringSelector);
+        lowerStringArms(stmt, model, blocks, stringSelector);
     }
     else
     {
-        lowerNumericDispatch(stmt, blocks, selWide, sel, hasRanges);
+        lowerNumericDispatch(stmt, model, blocks, selWide, sel);
     }
 
     func = ctx.function();
@@ -110,7 +99,7 @@ void SelectCaseLowering::lower(const SelectCaseStmt &stmt)
         emitArmBody(stmt.arms[i].body, armBlk, stmt.arms[i].range.begin, endBlk);
     }
 
-    if (hasCaseElse)
+    if (model.hasCaseElse)
     {
         auto *caseElseBlk = &func->blocks[*blocks.elseIdx];
         emitArmBody(stmt.elseBody, caseElseBlk, stmt.range.end, endBlk);
@@ -199,6 +188,7 @@ SelectCaseLowering::Blocks SelectCaseLowering::prepareBlocks(const SelectCaseStm
 /// @param blocks Block indices prepared by @ref prepareBlocks.
 /// @param stringSelector Evaluated selector value produced by expression lowering.
 void SelectCaseLowering::lowerStringArms(const SelectCaseStmt &stmt,
+                                         const SelectModel &model,
                                          const Blocks &blocks,
                                          il::core::Value stringSelector)
 {
@@ -209,28 +199,18 @@ void SelectCaseLowering::lowerStringArms(const SelectCaseStmt &stmt,
         blocks.elseIdx ? &func->blocks[*blocks.elseIdx] : &func->blocks[blocks.endIdx];
 
     std::vector<CasePlanEntry> plan;
-    size_t labelCount = 0;
-    for (const auto &arm : stmt.arms)
-        labelCount += arm.str_labels.size();
-    plan.reserve(labelCount + 1);
+    plan.reserve(model.stringLabels.size() + 1);
 
-    for (size_t i = 0; i < stmt.arms.size(); ++i)
+    for (const auto &label : model.stringLabels)
     {
-        const auto &labels = stmt.arms[i].str_labels;
-        if (labels.empty())
-            continue;
-
-        auto *armBlk = &func->blocks[blocks.armIdx[i]];
-        for (const auto &label : labels)
-        {
-            CasePlanEntry entry{};
-            entry.kind = CasePlanEntry::Kind::StringLabel;
-            entry.armIndex = i;
-            entry.target = armBlk;
-            entry.loc = stmt.arms[i].range.begin;
-            entry.strLiteral = label;
-            plan.push_back(entry);
-        }
+        auto *armBlk = &func->blocks[blocks.armIdx[label.armIndex]];
+        CasePlanEntry entry{};
+        entry.kind = CasePlanEntry::Kind::StringLabel;
+        entry.armIndex = label.armIndex;
+        entry.target = armBlk;
+        entry.loc = label.loc;
+        entry.strLiteral = label.value;
+        plan.push_back(entry);
     }
 
     CasePlanEntry defaultEntry{};
@@ -274,74 +254,69 @@ void SelectCaseLowering::lowerStringArms(const SelectCaseStmt &stmt,
 /// @param selector Narrowed selector used when building the switch table.
 /// @param hasRanges Indicates whether any arm provides range guards.
 void SelectCaseLowering::lowerNumericDispatch(const SelectCaseStmt &stmt,
+                                              const SelectModel &model,
                                               const Blocks &blocks,
                                               il::core::Value selWide,
-                                              il::core::Value selector,
-                                              bool hasRanges)
+                                              il::core::Value selector)
 {
     auto &ctx = lowerer_.context();
     auto *func = ctx.function();
 
     std::vector<CasePlanEntry> plan;
-    size_t estCount = 0;
-    for (const auto &arm : stmt.arms)
-        estCount += arm.rels.size() + arm.ranges.size();
-    plan.reserve(estCount + 1);
+    plan.reserve(model.numericRelations.size() + model.numericRanges.size() + 1);
 
-    for (size_t i = 0; i < stmt.arms.size(); ++i)
+    for (const auto &rel : model.numericRelations)
     {
-        auto *armBlk = &func->blocks[blocks.armIdx[i]];
-        for (const auto &rel : stmt.arms[i].rels)
+        auto *armBlk = &func->blocks[blocks.armIdx[rel.armIndex]];
+        CasePlanEntry entry{};
+        entry.armIndex = rel.armIndex;
+        entry.target = armBlk;
+        entry.loc = rel.loc;
+        switch (rel.op)
         {
-            CasePlanEntry entry{};
-            entry.armIndex = i;
-            entry.target = armBlk;
-            entry.loc = stmt.arms[i].range.begin;
-            switch (rel.op)
-            {
-                case CaseArm::CaseRel::Op::LT:
-                    entry.kind = CasePlanEntry::Kind::RelLT;
-                    entry.valueRange.second = static_cast<int32_t>(rel.rhs);
-                    break;
-                case CaseArm::CaseRel::Op::LE:
-                    entry.kind = CasePlanEntry::Kind::RelLE;
-                    entry.valueRange.second = static_cast<int32_t>(rel.rhs);
-                    break;
-                case CaseArm::CaseRel::Op::EQ:
-                    entry.kind = CasePlanEntry::Kind::RelEQ;
-                    entry.valueRange.first = static_cast<int32_t>(rel.rhs);
-                    entry.valueRange.second = entry.valueRange.first;
-                    break;
-                case CaseArm::CaseRel::Op::GE:
-                    entry.kind = CasePlanEntry::Kind::RelGE;
-                    entry.valueRange.first = static_cast<int32_t>(rel.rhs);
-                    break;
-                case CaseArm::CaseRel::Op::GT:
-                    entry.kind = CasePlanEntry::Kind::RelGT;
-                    entry.valueRange.first = static_cast<int32_t>(rel.rhs);
-                    break;
-            }
-            plan.push_back(entry);
+            case SelectModel::NumericRelation::Op::LT:
+                entry.kind = CasePlanEntry::Kind::RelLT;
+                entry.valueRange.second = rel.rhs;
+                break;
+            case SelectModel::NumericRelation::Op::LE:
+                entry.kind = CasePlanEntry::Kind::RelLE;
+                entry.valueRange.second = rel.rhs;
+                break;
+            case SelectModel::NumericRelation::Op::EQ:
+                entry.kind = CasePlanEntry::Kind::RelEQ;
+                entry.valueRange.first = rel.rhs;
+                entry.valueRange.second = rel.rhs;
+                break;
+            case SelectModel::NumericRelation::Op::GE:
+                entry.kind = CasePlanEntry::Kind::RelGE;
+                entry.valueRange.first = rel.rhs;
+                break;
+            case SelectModel::NumericRelation::Op::GT:
+                entry.kind = CasePlanEntry::Kind::RelGT;
+                entry.valueRange.first = rel.rhs;
+                break;
         }
+        plan.push_back(entry);
+    }
 
-        for (const auto &range : stmt.arms[i].ranges)
-        {
-            CasePlanEntry entry{};
-            entry.kind = CasePlanEntry::Kind::Range;
-            entry.armIndex = i;
-            entry.target = armBlk;
-            entry.loc = stmt.arms[i].range.begin;
-            entry.valueRange.first = static_cast<int32_t>(range.first);
-            entry.valueRange.second = static_cast<int32_t>(range.second);
-            plan.push_back(entry);
-        }
+    for (const auto &range : model.numericRanges)
+    {
+        auto *armBlk = &func->blocks[blocks.armIdx[range.armIndex]];
+        CasePlanEntry entry{};
+        entry.kind = CasePlanEntry::Kind::Range;
+        entry.armIndex = range.armIndex;
+        entry.target = armBlk;
+        entry.loc = range.loc;
+        entry.valueRange.first = range.lo;
+        entry.valueRange.second = range.hi;
+        plan.push_back(entry);
     }
 
     const bool hasComparisons = !plan.empty();
 
     CasePlanEntry defaultEntry{};
     defaultEntry.kind = CasePlanEntry::Kind::Default;
-    if (hasRanges)
+    if (model.hasNumericRanges)
     {
         defaultEntry.target = &func->blocks[blocks.switchIdx];
     }
@@ -418,7 +393,7 @@ void SelectCaseLowering::lowerNumericDispatch(const SelectCaseStmt &stmt,
     };
 
     size_t switchIdx = emitCompareChain(blocks.currentIdx, plan, emitter);
-    emitSwitchJumpTable(stmt, blocks, selector, switchIdx);
+    emitSwitchJumpTable(stmt, model, blocks, selector, switchIdx);
 }
 
 /// @brief Emit a sequence of conditional branches for the comparison plan.
@@ -537,6 +512,7 @@ std::string_view SelectCaseLowering::blockTagFor(const CasePlanEntry &entry)
 /// @param selector Narrow selector operand used by the emitted switch.
 /// @param switchIdx Index of the block that should contain the jump table.
 void SelectCaseLowering::emitSwitchJumpTable(const SelectCaseStmt &stmt,
+                                             const SelectModel &model,
                                              const Blocks &blocks,
                                              il::core::Value selector,
                                              size_t switchIdx)
@@ -546,36 +522,14 @@ void SelectCaseLowering::emitSwitchJumpTable(const SelectCaseStmt &stmt,
     ctx.setCurrent(&func->blocks[switchIdx]);
 
     std::vector<std::pair<int32_t, il::core::BasicBlock *>> caseTargets;
-    auto *diag = lowerer_.diagnosticEmitter();
-    size_t labelCount = 0;
-    for (const auto &arm : stmt.arms)
-        labelCount += arm.labels.size();
-    caseTargets.reserve(labelCount);
+    caseTargets.reserve(model.numericLabels.size());
 
-    for (size_t i = 0; i < stmt.arms.size(); ++i)
+    for (const auto &label : model.numericLabels)
     {
-        auto *armBlk = &func->blocks[blocks.armIdx[i]];
+        auto *armBlk = &func->blocks[blocks.armIdx[label.armIndex]];
         if (armBlk->label.empty())
             armBlk->label = lowerer_.nextFallbackBlockLabel();
-        for (int64_t rawLabel : stmt.arms[i].labels)
-        {
-            if (rawLabel < kCaseLabelMin || rawLabel > kCaseLabelMax)
-            {
-                if (diag)
-                {
-                    lowerer_.curLoc = stmt.arms[i].range.begin;
-                    diag->emit(il::support::Severity::Error,
-                               std::string(SemanticAnalyzer::DiagSelectCaseLabelRange),
-                               stmt.arms[i].range.begin,
-                               1,
-                               makeSelectCaseLabelRangeMessage(rawLabel));
-                }
-                continue;
-            }
-
-            int32_t narrowed = static_cast<int32_t>(rawLabel);
-            caseTargets.emplace_back(narrowed, armBlk);
-        }
+        caseTargets.emplace_back(label.value, armBlk);
     }
 
     il::core::Instr sw;
