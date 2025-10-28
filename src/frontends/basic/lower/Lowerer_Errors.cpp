@@ -29,6 +29,12 @@
 namespace il::frontends::basic
 {
 
+/// @brief Attach a diagnostic emitter to the lowering pipeline.
+/// @details Stores the supplied @p emitter for later use and wires its reporting
+///          callbacks into @ref TypeRules so that type-check errors surface
+///          through the same sink as lowering diagnostics.  Passing `nullptr`
+///          detaches the sink and restores the default behaviour.
+/// @param emitter Optional diagnostic sink to receive error reports.
 void Lowerer::setDiagnosticEmitter(DiagnosticEmitter *emitter) noexcept
 {
     diagnosticEmitter_ = emitter;
@@ -50,11 +56,25 @@ void Lowerer::setDiagnosticEmitter(DiagnosticEmitter *emitter) noexcept
     }
 }
 
+/// @brief Retrieve the diagnostic emitter associated with the lowering pass.
+/// @details Returns the previously installed emitter without transferring
+///          ownership.  A null result indicates that diagnostics should be
+///          suppressed or routed elsewhere by the caller.
+/// @return Pointer to the active diagnostic emitter or `nullptr`.
 DiagnosticEmitter *Lowerer::diagnosticEmitter() const noexcept
 {
     return diagnosticEmitter_;
 }
 
+/// @brief Coerce a BASIC I/O channel value to the 32-bit integer domain.
+/// @details Accepts either 32-bit or 64-bit integer expressions.  When a
+///          64-bit value is supplied, it inserts a narrowing conversion into the
+///          current basic block using @ref emitCommon.  The resulting value is
+///          tagged with the 32-bit type so later stages observe the canonical
+///          representation.
+/// @param channel Lowered r-value representing the channel operand.
+/// @param loc Source location used for any generated instructions.
+/// @return Normalised r-value guaranteed to carry the 32-bit integer type.
 Lowerer::RVal Lowerer::normalizeChannelToI32(RVal channel, il::support::SourceLoc loc)
 {
     if (channel.type.kind == Type::Kind::I32)
@@ -66,6 +86,18 @@ Lowerer::RVal Lowerer::normalizeChannelToI32(RVal channel, il::support::SourceLo
     return channel;
 }
 
+/// @brief Emit a branch that checks a runtime error flag and handles failures.
+/// @details Spills the @p err value to stack so it can be safely reloaded as a
+///          64-bit operand, compares it against zero, and materialises a pair of
+///          continuation/failure blocks named using @p labelStem.  When the flag
+///          is non-zero, control transfers to a new failure block where
+///          @p onFailure is invoked to generate diagnostics or cleanup code.  On
+///          success, control resumes in the continuation block, preserving the
+///          original block ordering.
+/// @param err Value representing the runtime error flag to inspect.
+/// @param loc Source location applied to generated instructions.
+/// @param labelStem Stem used to derive unique failure/continuation block labels.
+/// @param onFailure Callback invoked within the failure block to emit handling code.
 void Lowerer::emitRuntimeErrCheck(Value err,
                                   il::support::SourceLoc loc,
                                   std::string_view labelStem,
