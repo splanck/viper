@@ -9,6 +9,7 @@
 #include "vm/OpHandlerUtils.hpp"
 #include "vm/RuntimeBridge.hpp"
 #include "vm/VM.hpp"
+#include "vm/ops/common/Branching.hpp"
 
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
@@ -257,11 +258,8 @@ inline VM::ExecResult handleSwitchI32Impl(VM &vm,
                                           const il::core::BasicBlock *&bb,
                                           size_t &ip)
 {
-    (void)blocks;
-    (void)ip;
-
-    const Slot scrutineeSlot = VMAccess::eval(vm, fr, switchScrutinee(in));
-    const int32_t sel = static_cast<int32_t>(scrutineeSlot.i64);
+    const auto scrutineeScalar = il::vm::ops::common::eval_scrutinee(fr, in);
+    const int32_t sel = scrutineeScalar.value;
 
     viper::vm::SwitchCache *cache = nullptr;
     if (state != nullptr)
@@ -325,7 +323,29 @@ inline VM::ExecResult handleSwitchI32Impl(VM &vm,
     }
 #endif
 
-    if (idx < 0 || static_cast<size_t>(idx) >= in.labels.size())
+    std::vector<il::vm::ops::common::Case> cases;
+    cases.reserve(in.labels.size());
+    auto makeTarget = [&](size_t labelIndex) {
+        il::vm::ops::common::Target target{};
+        target.vm = &vm;
+        target.instr = &in;
+        target.labelIndex = labelIndex;
+        target.blocks = &blocks;
+        target.currentBlock = &bb;
+        target.ip = &ip;
+        return target;
+    };
+
+    for (size_t labelIndex = 0; labelIndex < in.labels.size(); ++labelIndex)
+    {
+        cases.push_back(il::vm::ops::common::Case::exact(
+            il::vm::ops::common::Scalar{static_cast<int32_t>(labelIndex)}, makeTarget(labelIndex)));
+    }
+
+    il::vm::ops::common::Target invalid{};
+    auto selected = il::vm::ops::common::select_case(il::vm::ops::common::Scalar{idx}, cases, invalid);
+
+    if (!selected.valid())
     {
         VM::ExecResult result{};
         result.returned = true;
@@ -337,7 +357,11 @@ inline VM::ExecResult handleSwitchI32Impl(VM &vm,
         return result;
     }
 
-    return branchToTarget(vm, fr, in, static_cast<size_t>(idx), blocks, bb, ip);
+    il::vm::ops::common::jump(fr, selected);
+
+    VM::ExecResult result{};
+    result.jumped = true;
+    return result;
 }
 
 VM::ExecResult handleSwitchI32(VM &vm,

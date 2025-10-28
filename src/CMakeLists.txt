@@ -178,6 +178,7 @@ add_library(il_vm STATIC
         vm/int_ops_convert.cpp
         vm/fp_ops.cpp
         vm/control_flow.cpp
+        vm/ops/common/Branching.cpp
         vm/ops/Op_BranchSwitch.cpp
         vm/ops/Op_CallRet.cpp
         vm/ops/Op_TrapEh.cpp)

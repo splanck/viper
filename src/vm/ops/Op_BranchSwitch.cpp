@@ -19,6 +19,7 @@
 
 #include "vm/RuntimeBridge.hpp"
 #include "vm/control_flow.hpp"
+#include "vm/ops/common/Branching.hpp"
 
 #include <algorithm>
 #include <cassert>
@@ -117,37 +118,6 @@ namespace il::vm::detail::control
 
 namespace
 {
-/// @brief Raise a fatal branch argument mismatch trap and terminate the process.
-///
-/// @details Formats the diagnostic expected by the test suite, signals the VM trap
-///          machinery so the runtime records the failure, and then forces an exit
-///          with status code 1 as a defensive fallback.  The explicit `_Exit`
-///          ensures that even if embedders override the trap hook to return, the
-///          subprocess used by the tests observes the expected failure code.
-///
-/// @param target      Branch destination block whose parameters determine the
-///                    expected argument count.
-/// @param sourceLabel Label of the source block when available.
-/// @param expected    Number of block parameters declared by @p target.
-/// @param provided    Number of arguments supplied by the branch instruction.
-/// @param in          Branch instruction carrying source location metadata.
-/// @param function    Name of the function executing the branch.
-[[noreturn]] void reportBranchArgMismatch(const il::core::BasicBlock &target,
-                                          const std::string &sourceLabel,
-                                          size_t expected,
-                                          size_t provided,
-                                          const il::core::Instr &in,
-                                          const std::string &function)
-{
-    std::ostringstream os;
-    os << "branch argument count mismatch targeting '" << target.label << '\'';
-    if (!sourceLabel.empty())
-        os << " from '" << sourceLabel << '\'';
-    os << ": expected " << expected << ", got " << provided;
-    RuntimeBridge::trap(TrapKind::InvalidOperation, os.str(), in.loc, function, sourceLabel);
-    std::_Exit(1);
-}
-
 /// @brief Metadata extracted from a switch instruction for cache construction.
 } // namespace
 
@@ -176,47 +146,18 @@ VM::ExecResult branchToTarget(VM &vm,
                               const il::core::BasicBlock *&bb,
                               size_t &ip)
 {
-    const auto &label = in.labels[idx];
-    auto it = blocks.find(label);
-    assert(it != blocks.end() && "invalid branch target");
-    const il::core::BasicBlock *target = it->second;
-    const il::core::BasicBlock *sourceBlock = bb;
-    const std::string sourceLabel = sourceBlock ? sourceBlock->label : std::string{};
-    const std::string functionName = fr.func ? fr.func->name : std::string{};
+    assert(idx < in.labels.size() && "branch target index out of range");
 
-    const size_t expected = target->params.size();
-    const size_t provided = idx < in.brArgs.size() ? in.brArgs[idx].size() : 0;
-    if (provided != expected)
-        reportBranchArgMismatch(*target, sourceLabel, expected, provided, in, functionName);
+    il::vm::ops::common::Target target{};
+    target.vm = &vm;
+    target.instr = &in;
+    target.labelIndex = idx;
+    target.blocks = &blocks;
+    target.currentBlock = &bb;
+    target.ip = &ip;
 
-    if (provided > 0)
-    {
-        const auto &args = in.brArgs[idx];
-        for (size_t i = 0; i < provided; ++i)
-        {
-            const auto &param = target->params[i];
-            const auto id = param.id;
-            assert(id < fr.params.size());
+    il::vm::ops::common::jump(fr, target);
 
-            Slot incoming = VMAccess::eval(vm, fr, args[i]);
-            auto &dest = fr.params[id];
-
-            if (param.type.kind == il::core::Type::Kind::Str)
-            {
-                if (dest)
-                    rt_str_release_maybe(dest->str);
-
-                rt_str_retain_maybe(incoming.str);
-                dest = incoming;
-                continue;
-            }
-
-            dest = incoming;
-        }
-    }
-
-    bb = target;
-    ip = 0;
     VM::ExecResult result{};
     result.jumped = true;
     return result;
@@ -244,12 +185,8 @@ VM::ExecResult handleSwitchI32(VM &vm,
                                const il::core::BasicBlock *&bb,
                                size_t &ip)
 {
-    (void)blocks;
-    
-    (void)ip;
-
-    const Slot scrutineeSlot = VMAccess::eval(vm, fr, switchScrutinee(in));
-    const int32_t sel = static_cast<int32_t>(scrutineeSlot.i64);
+    const auto scrutineeScalar = il::vm::ops::common::eval_scrutinee(fr, in);
+    const int32_t sel = scrutineeScalar.value;
 
     SwitchCache *cache = nullptr;
     if (auto *state = VMAccess::currentExecState(vm))
@@ -313,7 +250,29 @@ VM::ExecResult handleSwitchI32(VM &vm,
     }
 #endif
 
-    if (idx < 0 || static_cast<size_t>(idx) >= in.labels.size())
+    std::vector<il::vm::ops::common::Case> cases;
+    cases.reserve(in.labels.size());
+    auto makeTarget = [&](size_t labelIndex) {
+        il::vm::ops::common::Target target{};
+        target.vm = &vm;
+        target.instr = &in;
+        target.labelIndex = labelIndex;
+        target.blocks = &blocks;
+        target.currentBlock = &bb;
+        target.ip = &ip;
+        return target;
+    };
+
+    for (size_t labelIndex = 0; labelIndex < in.labels.size(); ++labelIndex)
+    {
+        cases.push_back(il::vm::ops::common::Case::exact(
+            il::vm::ops::common::Scalar{static_cast<int32_t>(labelIndex)}, makeTarget(labelIndex)));
+    }
+
+    il::vm::ops::common::Target invalid{};
+    auto selected = il::vm::ops::common::select_case(il::vm::ops::common::Scalar{idx}, cases, invalid);
+
+    if (!selected.valid())
     {
         VM::ExecResult result{};
         result.returned = true;
@@ -325,7 +284,11 @@ VM::ExecResult handleSwitchI32(VM &vm,
         return result;
     }
 
-    return branchToTarget(vm, fr, in, static_cast<size_t>(idx), blocks, bb, ip);
+    il::vm::ops::common::jump(fr, selected);
+
+    VM::ExecResult result{};
+    result.jumped = true;
+    return result;
 }
 
 /// @brief Execute an unconditional branch to the first successor label.
