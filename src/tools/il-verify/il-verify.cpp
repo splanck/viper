@@ -20,6 +20,7 @@
 ///          wires together the parser, verifier, and diagnostic reporting in the
 ///          minimal amount of code necessary to expose a user-facing CLI.
 
+#include "support/diag_expected.hpp"
 #include "support/source_manager.hpp"
 #include "tools/common/module_loader.hpp"
 #include <iostream>
@@ -52,6 +53,9 @@ int runCLI(
     il::core::Module m;
     if (sm.addFile(argv[1]) == 0)
     {
+        auto diag = il::support::makeError(
+            {}, "source manager exhausted file identifier space");
+        il::support::printDiag(diag, err);
         return 1;
     }
 
