@@ -44,6 +44,15 @@ namespace il::verify
 namespace
 {
 
+/// @brief Encode an exception-handler stack snapshot into a stable cache key.
+/// @details Serialises the handler stack into a semicolon-separated string and
+///          prefixes a bit that records whether a resume token is active.  The
+///          resulting key uniquely identifies the execution state so traversals
+///          can detect revisits and avoid infinite loops when exploring
+///          recursive handler graphs.
+/// @param stack Ordered list of handler blocks currently on the stack.
+/// @param hasResumeToken Flag indicating whether a resume token is present.
+/// @return Deterministic key suitable for hash-table lookups.
 std::string encodeStateKey(const std::vector<const BasicBlock *> &stack, bool hasResumeToken)
 {
     std::string key;
@@ -67,6 +76,14 @@ struct StackState
     int depth = 0;
 };
 
+/// @brief Reconstruct the control-flow path that produced a state snapshot.
+/// @details Walks the @p states parent chain starting at @p index and collects
+///          the visited basic blocks in program order.  The path is used to
+///          explain verifier diagnostics by showing how the interpreter could
+///          reach the offending instruction.
+/// @param states Arena of explored execution states.
+/// @param index Index of the state whose ancestry should be materialised.
+/// @return Ordered list of basic blocks visited before the state.
 std::vector<const BasicBlock *> buildPath(const std::vector<StackState> &states, int index)
 {
     std::vector<const BasicBlock *> path;
@@ -79,6 +96,12 @@ std::vector<const BasicBlock *> buildPath(const std::vector<StackState> &states,
     return path;
 }
 
+/// @brief Convert a basic-block path into a human-readable string.
+/// @details Joins block labels with arrows so diagnostics can include the
+///          precise control-flow route.  Empty paths yield an empty string,
+///          keeping messages terse for entry-block failures.
+/// @param path Basic blocks comprising the path from entry to failure.
+/// @return Formatted path string for diagnostic suffixes.
 std::string formatPathString(const std::vector<const BasicBlock *> &path)
 {
     std::string buffer;
@@ -91,6 +114,20 @@ std::string formatPathString(const std::vector<const BasicBlock *> &path)
     return buffer;
 }
 
+/// @brief Emit a verifier diagnostic describing an EH stack inconsistency.
+/// @details Builds the control-flow path leading to @p instr, appends a
+///          diagnostic suffix tailored to @p code, and forwards the message to
+///          the central formatting helper.  The resulting expected object always
+///          contains an error so callers can return early with contextual
+///          information.
+/// @param model Exception-handling model that owns the instruction graph.
+/// @param bb Basic block containing the offending instruction.
+/// @param instr Instruction triggering the mismatch.
+/// @param code Verifier diagnostic code that explains the failure category.
+/// @param states All explored states, used to reconstruct the control-flow path.
+/// @param stateIndex Index of the state describing the failing execution.
+/// @param depth Depth of the handler stack at the failure point.
+/// @return Expected holding the diagnostic error to be propagated to callers.
 il::support::Expected<void> reportEhMismatch(const EhModel &model,
                                              const BasicBlock &bb,
                                              const Instr &instr,
@@ -126,6 +163,13 @@ il::support::Expected<void> reportEhMismatch(const EhModel &model,
     return il::support::Expected<void>{makeVerifierError(code, instr.loc, std::move(message))};
 }
 
+/// @brief Determine whether an opcode can fault and therefore require a handler.
+/// @details Classifies EH-related opcodes, branches, and returns as safe while
+///          treating all other operations as potential fault sources.  The
+///          handler coverage analysis uses this to identify basic blocks that
+///          must be dominated by a handler when resume tokens are absent.
+/// @param op Opcode under evaluation.
+/// @return True when @p op may raise a fault, false for benign instructions.
 bool isPotentialFaultingOpcode(Opcode op)
 {
     switch (op)
@@ -149,14 +193,31 @@ bool isPotentialFaultingOpcode(Opcode op)
 using HandlerCoverage =
     std::unordered_map<const BasicBlock *, std::unordered_set<const BasicBlock *>>;
 
+/// @brief Explore reachable blocks to determine which handlers protect them.
+/// @details Performs a forward data-flow traversal that tracks the active EH
+///          stack and whether a resume token is live.  As the traversal visits
+///          potential faulting instructions it records the innermost handler
+///          responsible for the current block, building the coverage map used
+///          by later checks.
 class HandlerCoverageTraversal
 {
   public:
+    /// @brief Create a traversal wired to the given EH model and coverage map.
+    /// @details Stores references so @ref compute can populate @p coverage in
+    ///          place without copying data structures.
+    /// @param model Exception-handling graph to traverse.
+    /// @param coverage Output map that gathers handler-to-block relationships.
     HandlerCoverageTraversal(const EhModel &model, HandlerCoverage &coverage)
         : model(model), coverage(coverage)
     {
     }
 
+    /// @brief Execute the traversal starting at the function entry block.
+    /// @details Initialises the work queue, walks reachable basic blocks, and
+    ///          records handler coverage whenever a potential fault is observed
+    ///          without an active resume token.  The algorithm mirrors the stack
+    ///          discipline enforced by the VM to faithfully reproduce handler
+    ///          transitions.
     void compute()
     {
         if (!model.entry())
@@ -204,6 +265,15 @@ class HandlerCoverageTraversal
         bool hasResumeToken = false;
     };
 
+    /// @brief Update traversal state in response to an EH-related instruction.
+    /// @details Tracks handler pushes and pops, toggles resume tokens when
+    ///          encountering resume opcodes, and records coverage for faulting
+    ///          instructions.  When the instruction is a terminator, the method
+    ///          returns it so the caller can enqueue successors.
+    /// @param instr Instruction being processed.
+    /// @param bb Owning basic block (used for coverage bookkeeping).
+    /// @param state Mutable traversal snapshot describing the active handlers.
+    /// @return Pointer to the instruction when it terminates the block; null otherwise.
     const Instr *processEhInstruction(const Instr &instr, const BasicBlock &bb, State &state)
     {
         if (!state.hasResumeToken && !state.handlerStack.empty() &&
@@ -239,6 +309,14 @@ class HandlerCoverageTraversal
         return nullptr;
     }
 
+    /// @brief Simulate trap unwinding by enqueuing the innermost handler block.
+    /// @details When the current state is positioned at a trap terminator, the
+    ///          method records coverage for the handler guarding the block and
+    ///          schedules that handler for execution with an active resume
+    ///          token.  This mirrors the runtime's trap dispatch semantics.
+    /// @param bb Faulting block whose handler should be entered.
+    /// @param state Traversal state observed at the trap terminator.
+    /// @param worklist Queue receiving the synthesised handler state.
     void handleTrapTerminator(const BasicBlock &bb, const State &state, std::deque<State> &worklist)
     {
         if (state.handlerStack.empty())
@@ -257,6 +335,13 @@ class HandlerCoverageTraversal
         enqueueState(std::move(nextState), worklist);
     }
 
+    /// @brief Queue successor blocks reached after executing a terminator.
+    /// @details Duplicates the traversal state for each successor, adjusts the
+    ///          resume-token flag when handling @c resume.label, and forwards the
+    ///          states to @ref enqueueState for deduplication.
+    /// @param terminator Block terminator that produced the successor list.
+    /// @param state Traversal state prior to transferring control.
+    /// @param worklist Queue that receives unexplored states.
     void enqueueSuccessors(const Instr &terminator, const State &state, std::deque<State> &worklist)
     {
         const std::vector<const BasicBlock *> successors = model.gatherSuccessors(terminator);
@@ -270,6 +355,12 @@ class HandlerCoverageTraversal
         }
     }
 
+    /// @brief Add a state to the worklist if it has not been visited before.
+    /// @details Uses @ref encodeStateKey to deduplicate per-block states so the
+    ///          traversal remains finite even when handlers recurse.  States
+    ///          lacking a block pointer are discarded silently.
+    /// @param state Candidate state to explore.
+    /// @param worklist Work queue managed by @ref compute.
     void enqueueState(State state, std::deque<State> &worklist)
     {
         if (!state.block)
@@ -282,6 +373,11 @@ class HandlerCoverageTraversal
         worklist.push_back(state);
     }
 
+    /// @brief Stage a state for future exploration without immediately running it.
+    /// @details Identical to the two-argument overload but appends to a pending
+    ///          deque used to bootstrap the traversal before the main loop
+    ///          begins.  This keeps queue initialisation logic centralised.
+    /// @param state Candidate state to schedule.
     void enqueueState(State state)
     {
         if (!state.block)
@@ -300,6 +396,13 @@ class HandlerCoverageTraversal
     std::deque<State> pending;
 };
 
+/// @brief Build a mapping from handler blocks to the blocks they protect.
+/// @details Drives @ref HandlerCoverageTraversal to explore the function and
+///          returns the populated coverage map.  Callers use this data to
+///          validate resume targets and ensure handlers dominate the sites they
+///          guard.
+/// @param model Exception-handling model describing the function.
+/// @return Map of handler blocks to the set of basic blocks they cover.
 HandlerCoverage computeHandlerCoverage(const EhModel &model)
 {
     HandlerCoverage coverage;
@@ -315,6 +418,14 @@ struct PostDomInfo
     std::vector<std::vector<uint8_t>> matrix;
 };
 
+/// @brief Compute a post-dominator matrix for the reachable CFG.
+/// @details Performs a breadth-first reachability walk to ignore dead blocks,
+///          assigns indices to the survivors, and then runs an iterative data
+///          flow algorithm to determine post-dominance relationships.  The
+///          resulting structure allows constant-time queries when validating
+///          EH resume edges.
+/// @param model Exception-handling model describing the function under check.
+/// @return Matrix-backed summary of post-dominator relationships.
 PostDomInfo computePostDominators(const EhModel &model)
 {
     PostDomInfo info;
@@ -420,6 +531,14 @@ PostDomInfo computePostDominators(const EhModel &model)
     return info;
 }
 
+/// @brief Query whether one block post-dominates another according to @p info.
+/// @details Looks up the indices assigned by @ref computePostDominators and
+///          checks the boolean matrix entry.  Missing blocks are treated as not
+///          related, which naturally occurs for unreachable code.
+/// @param info Precomputed post-dominator summary.
+/// @param from Basic block being post-dominated.
+/// @param candidate Block that may post-dominate @p from.
+/// @return True if @p candidate post-dominates @p from, false otherwise.
 bool isPostDominator(const PostDomInfo &info, const BasicBlock *from, const BasicBlock *candidate)
 {
     if (info.nodes.empty())
@@ -435,6 +554,14 @@ bool isPostDominator(const PostDomInfo &info, const BasicBlock *from, const Basi
 
 } // namespace
 
+/// @brief Ensure exception-handler pushes and pops remain balanced.
+/// @details Simulates execution from the entry block, tracking the active
+///          handler stack and resume-token state.  The verifier reports
+///          underflows, leaks at return instructions, and resume operations that
+///          lack a token, emitting diagnostics that include the reconstructed
+///          control-flow path leading to the violation.
+/// @param model Exception-handling model for the function under inspection.
+/// @return Empty expected on success, or a diagnostic describing the failure.
 il::support::Expected<void> checkEhStackBalance(const EhModel &model)
 {
     if (!model.entry())
@@ -579,18 +706,39 @@ il::support::Expected<void> checkEhStackBalance(const EhModel &model)
     return {};
 }
 
+/// @brief Placeholder for dominance checks on exception handlers.
+/// @details The legacy verifier exposes this hook but the modern
+///          implementation has not yet adopted the logic.  Returning success
+///          keeps behaviour consistent with historical builds while leaving a
+///          future seam for more detailed analysis.
+/// @param model Exception-handling model (currently unused).
+/// @return Always returns success until the check is implemented.
 il::support::Expected<void> checkDominanceOfHandlers(const EhModel &model)
 {
     (void)model;
     return {};
 }
 
+/// @brief Placeholder for detecting handlers that can never be reached.
+/// @details Mirrors the legacy verifier interface while deferring the actual
+///          implementation.  The stub allows callers to sequence checks without
+///          special casing missing functionality.
+/// @param model Exception-handling model (currently unused).
+/// @return Always returns success until handler reachability analysis lands.
 il::support::Expected<void> checkUnreachableHandlers(const EhModel &model)
 {
     (void)model;
     return {};
 }
 
+/// @brief Validate that resume.label targets post-dominate their triggering blocks.
+/// @details Uses handler coverage to identify basic blocks that may resume
+///          through a given handler and queries the post-dominator matrix to
+///          ensure the resume target is structurally valid.  If a mismatch is
+///          detected the function emits a diagnostic pointing out the offending
+///          handler and resume site.
+/// @param model Exception-handling model that exposes block lookups.
+/// @return Success when all resume edges are valid; otherwise a diagnostic.
 il::support::Expected<void> checkResumeEdges(const EhModel &model)
 {
     const HandlerCoverage coverage = computeHandlerCoverage(model);
