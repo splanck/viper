@@ -20,30 +20,16 @@
 #include "vm/RuntimeBridge.hpp"
 #include "vm/control_flow.hpp"
 
-#include <algorithm>
 #include <cassert>
-#include <cstdio>
 #include <cstdlib>
-#include <numeric>
-#include <sstream>
 #include <string>
-#include <type_traits>
-#include <unordered_set>
-#include <variant>
-#include <vector>
 
 namespace
 {
-using viper::vm::DenseJumpTable;
-using viper::vm::HashedCases;
-using viper::vm::SortedCases;
-using viper::vm::SwitchCache;
 using viper::vm::SwitchCacheEntry;
 using viper::vm::SwitchMode;
-using il::vm::detail::control::inline_impl::getOrBuildSwitchCache;
-using il::vm::detail::control::inline_impl::lookupDense;
-using il::vm::detail::control::inline_impl::lookupHashed;
-using il::vm::detail::control::inline_impl::lookupSorted;
+
+namespace ops_common = il::vm::detail::ops::common;
 
 SwitchMode g_switchMode = SwitchMode::Auto; ///< Global override for switch backend selection.
 
@@ -115,42 +101,6 @@ void setSwitchMode(SwitchMode mode)
 namespace il::vm::detail::control
 {
 
-namespace
-{
-/// @brief Raise a fatal branch argument mismatch trap and terminate the process.
-///
-/// @details Formats the diagnostic expected by the test suite, signals the VM trap
-///          machinery so the runtime records the failure, and then forces an exit
-///          with status code 1 as a defensive fallback.  The explicit `_Exit`
-///          ensures that even if embedders override the trap hook to return, the
-///          subprocess used by the tests observes the expected failure code.
-///
-/// @param target      Branch destination block whose parameters determine the
-///                    expected argument count.
-/// @param sourceLabel Label of the source block when available.
-/// @param expected    Number of block parameters declared by @p target.
-/// @param provided    Number of arguments supplied by the branch instruction.
-/// @param in          Branch instruction carrying source location metadata.
-/// @param function    Name of the function executing the branch.
-[[noreturn]] void reportBranchArgMismatch(const il::core::BasicBlock &target,
-                                          const std::string &sourceLabel,
-                                          size_t expected,
-                                          size_t provided,
-                                          const il::core::Instr &in,
-                                          const std::string &function)
-{
-    std::ostringstream os;
-    os << "branch argument count mismatch targeting '" << target.label << '\'';
-    if (!sourceLabel.empty())
-        os << " from '" << sourceLabel << '\'';
-    os << ": expected " << expected << ", got " << provided;
-    RuntimeBridge::trap(TrapKind::InvalidOperation, os.str(), in.loc, function, sourceLabel);
-    std::_Exit(1);
-}
-
-/// @brief Metadata extracted from a switch instruction for cache construction.
-} // namespace
-
 /// @brief Transfer control to a branch target while propagating block parameters.
 ///
 /// @details Validates the branch argument count against the destination block's
@@ -176,47 +126,12 @@ VM::ExecResult branchToTarget(VM &vm,
                               const il::core::BasicBlock *&bb,
                               size_t &ip)
 {
-    const auto &label = in.labels[idx];
-    auto it = blocks.find(label);
-    assert(it != blocks.end() && "invalid branch target");
-    const il::core::BasicBlock *target = it->second;
-    const il::core::BasicBlock *sourceBlock = bb;
-    const std::string sourceLabel = sourceBlock ? sourceBlock->label : std::string{};
-    const std::string functionName = fr.func ? fr.func->name : std::string{};
+    (void)vm;
 
-    const size_t expected = target->params.size();
-    const size_t provided = idx < in.brArgs.size() ? in.brArgs[idx].size() : 0;
-    if (provided != expected)
-        reportBranchArgMismatch(*target, sourceLabel, expected, provided, in, functionName);
+    auto target = ops_common::make_target(in, idx, blocks, bb, ip);
+    assert(target.valid && target.block && "invalid branch target");
 
-    if (provided > 0)
-    {
-        const auto &args = in.brArgs[idx];
-        for (size_t i = 0; i < provided; ++i)
-        {
-            const auto &param = target->params[i];
-            const auto id = param.id;
-            assert(id < fr.params.size());
-
-            Slot incoming = VMAccess::eval(vm, fr, args[i]);
-            auto &dest = fr.params[id];
-
-            if (param.type.kind == il::core::Type::Kind::Str)
-            {
-                if (dest)
-                    rt_str_release_maybe(dest->str);
-
-                rt_str_retain_maybe(incoming.str);
-                dest = incoming;
-                continue;
-            }
-
-            dest = incoming;
-        }
-    }
-
-    bb = target;
-    ip = 0;
+    ops_common::jump(fr, target);
     VM::ExecResult result{};
     result.jumped = true;
     return result;
@@ -244,88 +159,13 @@ VM::ExecResult handleSwitchI32(VM &vm,
                                const il::core::BasicBlock *&bb,
                                size_t &ip)
 {
-    (void)blocks;
-    
-    (void)ip;
-
-    const Slot scrutineeSlot = VMAccess::eval(vm, fr, switchScrutinee(in));
-    const int32_t sel = static_cast<int32_t>(scrutineeSlot.i64);
-
-    SwitchCache *cache = nullptr;
-    if (auto *state = VMAccess::currentExecState(vm))
-    {
-        cache = &state->switchCache;
-    }
-    else
-    {
-        static thread_local SwitchCache fallbackCache;
-        cache = &fallbackCache;
-    }
-
-    auto &entry = getOrBuildSwitchCache(*cache, in);
-
-    int32_t idx = entry.defaultIdx;
-
-    const bool forceLinear = (entry.kind == SwitchCacheEntry::Linear);
-
-#if defined(VIPER_VM_DEBUG_SWITCH_LINEAR)
-    (void)forceLinear;
-    const size_t caseCount = switchCaseCount(in);
-    for (size_t caseIdx = 0; caseIdx < caseCount; ++caseIdx)
-    {
-        const il::core::Value &caseValue = switchCaseValue(in, caseIdx);
-        const int32_t caseSel = static_cast<int32_t>(caseValue.i64);
-        if (caseSel == sel)
-        {
-            idx = static_cast<int32_t>(caseIdx + 1);
-            break;
-        }
-    }
-#else
-    if (forceLinear)
-    {
-        const size_t caseCount = switchCaseCount(in);
-        for (size_t caseIdx = 0; caseIdx < caseCount; ++caseIdx)
-        {
-            const il::core::Value &caseValue = switchCaseValue(in, caseIdx);
-            const int32_t caseSel = static_cast<int32_t>(caseValue.i64);
-            if (caseSel == sel)
-            {
-                idx = static_cast<int32_t>(caseIdx + 1);
-                break;
-            }
-        }
-    }
-    else
-    {
-        std::visit(
-            [&](auto &backend)
-            {
-                using BackendT = std::decay_t<decltype(backend)>;
-                if constexpr (std::is_same_v<BackendT, DenseJumpTable>)
-                    idx = lookupDense(backend, sel, entry.defaultIdx);
-                else if constexpr (std::is_same_v<BackendT, SortedCases>)
-                    idx = lookupSorted(backend, sel, entry.defaultIdx);
-                else if constexpr (std::is_same_v<BackendT, HashedCases>)
-                    idx = lookupHashed(backend, sel, entry.defaultIdx);
-            },
-            entry.backend);
-    }
-#endif
-
-    if (idx < 0 || static_cast<size_t>(idx) >= in.labels.size())
-    {
-        VM::ExecResult result{};
-        result.returned = true;
-        RuntimeBridge::trap(TrapKind::InvalidOperation,
-                            "switch target out of range",
-                            in.loc,
-                            fr.func ? fr.func->name : std::string(),
-                            bb ? bb->label : std::string());
-        return result;
-    }
-
-    return branchToTarget(vm, fr, in, static_cast<size_t>(idx), blocks, bb, ip);
+    return handleSwitchI32Impl(vm,
+                               VMAccess::currentExecState(vm),
+                               fr,
+                               in,
+                               blocks,
+                               bb,
+                               ip);
 }
 
 /// @brief Execute an unconditional branch to the first successor label.

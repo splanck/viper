@@ -9,6 +9,7 @@
 #include "vm/OpHandlerUtils.hpp"
 #include "vm/RuntimeBridge.hpp"
 #include "vm/VM.hpp"
+#include "vm/ops/common/Branching.hpp"
 
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
@@ -68,30 +69,6 @@ inline SwitchMeta collectSwitchMeta(const il::core::Instr &in)
 
     assert(meta.values.size() == meta.succIdx.size());
     return meta;
-}
-
-inline int32_t lookupDense(const viper::vm::DenseJumpTable &table, int32_t sel, int32_t defIdx)
-{
-    const int64_t offset = static_cast<int64_t>(sel) - static_cast<int64_t>(table.base);
-    if (offset < 0 || offset >= static_cast<int64_t>(table.targets.size()))
-        return defIdx;
-    const int32_t target = table.targets[static_cast<size_t>(offset)];
-    return (target < 0) ? defIdx : target;
-}
-
-inline int32_t lookupSorted(const viper::vm::SortedCases &cases, int32_t sel, int32_t defIdx)
-{
-    auto it = std::lower_bound(cases.keys.begin(), cases.keys.end(), sel);
-    if (it == cases.keys.end() || *it != sel)
-        return defIdx;
-    const size_t idx = static_cast<size_t>(it - cases.keys.begin());
-    return cases.targetIdx[idx];
-}
-
-inline int32_t lookupHashed(const viper::vm::HashedCases &cases, int32_t sel, int32_t defIdx)
-{
-    auto it = cases.map.find(sel);
-    return (it == cases.map.end()) ? defIdx : it->second;
 }
 
 inline viper::vm::SwitchCacheEntry::Kind chooseBackend(const SwitchMeta &meta)
@@ -215,6 +192,8 @@ inline viper::vm::SwitchCacheEntry &getOrBuildSwitchCache(viper::vm::SwitchCache
 }
 } // namespace inline_impl
 
+namespace ops_common = il::vm::detail::ops::common;
+
 VM::ExecResult branchToTarget(VM &vm,
                               Frame &fr,
                               const il::core::Instr &in,
@@ -254,14 +233,10 @@ inline VM::ExecResult handleSwitchI32Impl(VM &vm,
                                           Frame &fr,
                                           const il::core::Instr &in,
                                           const VM::BlockMap &blocks,
-                                          const il::core::BasicBlock *&bb,
-                                          size_t &ip)
+                                           const il::core::BasicBlock *&bb,
+                                           size_t &ip)
 {
-    (void)blocks;
-    (void)ip;
-
-    const Slot scrutineeSlot = VMAccess::eval(vm, fr, switchScrutinee(in));
-    const int32_t sel = static_cast<int32_t>(scrutineeSlot.i64);
+    (void)vm;
 
     viper::vm::SwitchCache *cache = nullptr;
     if (state != nullptr)
@@ -276,56 +251,41 @@ inline VM::ExecResult handleSwitchI32Impl(VM &vm,
 
     auto &entry = inline_impl::getOrBuildSwitchCache(*cache, in);
 
-    int32_t idx = entry.defaultIdx;
+    ops_common::Scalar sel = ops_common::eval_scrutinee(fr, in);
 
-    const bool forceLinear = (entry.kind == viper::vm::SwitchCacheEntry::Linear);
-
-#if defined(VIPER_VM_DEBUG_SWITCH_LINEAR)
-    (void)forceLinear;
-    const size_t caseCount = switchCaseCount(in);
-    for (size_t caseIdx = 0; caseIdx < caseCount; ++caseIdx)
+    ops_common::Target defaultTarget{};
+    if (entry.defaultIdx >= 0)
     {
-        const il::core::Value &caseValue = switchCaseValue(in, caseIdx);
-        const int32_t caseSel = static_cast<int32_t>(caseValue.i64);
-        if (caseSel == sel)
-        {
-            idx = static_cast<int32_t>(caseIdx + 1);
-            break;
-        }
-    }
-#else
-    if (forceLinear)
-    {
-        const size_t caseCount = switchCaseCount(in);
-        for (size_t caseIdx = 0; caseIdx < caseCount; ++caseIdx)
-        {
-            const il::core::Value &caseValue = switchCaseValue(in, caseIdx);
-            const int32_t caseSel = static_cast<int32_t>(caseValue.i64);
-            if (caseSel == sel)
-            {
-                idx = static_cast<int32_t>(caseIdx + 1);
-                break;
-            }
-        }
+        defaultTarget = ops_common::make_target(in,
+                                               static_cast<size_t>(entry.defaultIdx),
+                                               blocks,
+                                               bb,
+                                               ip,
+                                               &entry);
     }
     else
     {
-        std::visit(
-            [&](auto &backend)
-            {
-                using BackendT = std::decay_t<decltype(backend)>;
-                if constexpr (std::is_same_v<BackendT, viper::vm::DenseJumpTable>)
-                    idx = inline_impl::lookupDense(backend, sel, entry.defaultIdx);
-                else if constexpr (std::is_same_v<BackendT, viper::vm::SortedCases>)
-                    idx = inline_impl::lookupSorted(backend, sel, entry.defaultIdx);
-                else if constexpr (std::is_same_v<BackendT, viper::vm::HashedCases>)
-                    idx = inline_impl::lookupHashed(backend, sel, entry.defaultIdx);
-            },
-            entry.backend);
+        defaultTarget.cache = &entry;
     }
-#endif
 
-    if (idx < 0 || static_cast<size_t>(idx) >= in.labels.size())
+    std::vector<ops_common::Case> caseTable;
+    const size_t caseCount = switchCaseCount(in);
+    caseTable.reserve(caseCount);
+    for (size_t caseIdx = 0; caseIdx < caseCount; ++caseIdx)
+    {
+        const il::core::Value &caseValue = switchCaseValue(in, caseIdx);
+        const ops_common::Scalar caseSel = static_cast<ops_common::Scalar>(caseValue.i64);
+        auto caseTarget = ops_common::make_target(in, caseIdx + 1, blocks, bb, ip, &entry);
+        ops_common::Case spec{};
+        spec.lower = caseSel;
+        spec.upper = caseSel;
+        spec.target = caseTarget;
+        caseTable.push_back(spec);
+    }
+
+    ops_common::Target chosen = ops_common::select_case(sel, caseTable, defaultTarget);
+
+    if (!chosen.valid || chosen.block == nullptr)
     {
         VM::ExecResult result{};
         result.returned = true;
@@ -337,7 +297,10 @@ inline VM::ExecResult handleSwitchI32Impl(VM &vm,
         return result;
     }
 
-    return branchToTarget(vm, fr, in, static_cast<size_t>(idx), blocks, bb, ip);
+    ops_common::jump(fr, chosen);
+    VM::ExecResult result{};
+    result.jumped = true;
+    return result;
 }
 
 VM::ExecResult handleSwitchI32(VM &vm,
