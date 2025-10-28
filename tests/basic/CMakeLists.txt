@@ -46,6 +46,10 @@ function(viper_add_basic_main_tests)
   target_link_libraries(test_basic_lowerer_conversions PRIVATE ${VIPER_BASIC_LIBS})
   viper_add_ctest(test_basic_lowerer_conversions test_basic_lowerer_conversions)
 
+  viper_add_test(test_basic_emit_common ${_VIPER_BASIC_UNIT_DIR}/test_basic_emit_common.cpp)
+  target_link_libraries(test_basic_emit_common PRIVATE ${VIPER_BASIC_LIBS})
+  viper_add_ctest(test_basic_emit_common test_basic_emit_common)
+
   viper_add_test(test_basic_lowerer_runtime_helpers ${_VIPER_BASIC_UNIT_DIR}/test_basic_lowerer_runtime_helpers.cpp)
   target_link_libraries(test_basic_lowerer_runtime_helpers PRIVATE ${VIPER_BASIC_LIBS})
   viper_add_ctest(test_basic_lowerer_runtime_helpers test_basic_lowerer_runtime_helpers)

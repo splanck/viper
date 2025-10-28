@@ -58,8 +58,9 @@ void Lowerer::visit(const ColorStmt &s)
         auto bg = ensureI64(lowerExpr(*s.bg), s.loc);
         bgv = bg.value;
     }
-    Value fg32 = emitUnary(Opcode::CastSiNarrowChk, Type(Type::Kind::I32), fg.value);
-    Value bg32 = emitUnary(Opcode::CastSiNarrowChk, Type(Type::Kind::I32), bgv);
+    auto emit = emitCommon(s.loc);
+    Value fg32 = emit.to_iN(fg.value, 32);
+    Value bg32 = emit.to_iN(bgv, 32);
     requestHelper(il::runtime::RuntimeFeature::TermColor);
     emitCallRet(Type(Type::Kind::Void), "rt_term_color_i32", {fg32, bg32});
 }
@@ -82,8 +83,9 @@ void Lowerer::visit(const LocateStmt &s)
         auto col = ensureI64(lowerExpr(*s.col), s.loc);
         colv = col.value;
     }
-    Value row32 = emitUnary(Opcode::CastSiNarrowChk, Type(Type::Kind::I32), row.value);
-    Value col32 = emitUnary(Opcode::CastSiNarrowChk, Type(Type::Kind::I32), colv);
+    auto emit = emitCommon(s.loc);
+    Value row32 = emit.to_iN(row.value, 32);
+    Value col32 = emit.to_iN(colv, 32);
     requestHelper(il::runtime::RuntimeFeature::TermLocate);
     emitCallRet(Type(Type::Kind::Void), "rt_term_locate_i32", {row32, col32});
 }
@@ -277,7 +279,7 @@ Value Lowerer::emitArrayLengthCheck(Value bound,
                                     std::string_view labelBase)
 {
     curLoc = loc;
-    Value length = emitBinary(Opcode::IAddOvf, Type(Type::Kind::I64), bound, Value::constInt(1));
+    Value length = emitCommon(loc).add_checked(bound, Value::constInt(1), OverflowPolicy::Checked);
 
     ProcedureContext &ctx = context();
     Function *func = ctx.function();

@@ -72,10 +72,7 @@ void SelectCaseLowering::lower(const SelectCaseStmt &stmt)
     {
         selectorVal = lowerer_.ensureI64(std::move(selectorVal), stmt.selector->loc);
         selWide = selectorVal.value;
-        lowerer_.curLoc = stmt.selector->loc;
-        sel = lowerer_.emitUnary(il::core::Opcode::CastSiNarrowChk,
-                                 il::core::Type(il::core::Type::Kind::I32),
-                                 selectorVal.value);
+        sel = lowerer_.emitCommon(stmt.selector->loc).narrow_to(selectorVal.value, 64, 32);
     }
 
     func = ctx.function();
@@ -359,7 +356,7 @@ void SelectCaseLowering::lowerNumericDispatch(const SelectCaseStmt &stmt,
     defaultEntry.loc = stmt.loc;
     plan.push_back(defaultEntry);
 
-    ConditionEmitter emitter = [this, selWide](const CasePlanEntry &entry)
+    ConditionEmitter emitter = [this, selWide, &stmt](const CasePlanEntry &entry)
     {
         assert(entry.kind != CasePlanEntry::Kind::Default);
         switch (entry.kind)
@@ -409,8 +406,8 @@ void SelectCaseLowering::lowerNumericDispatch(const SelectCaseStmt &stmt,
                 // The And opcode requires i64 operands; extend the booleans and truncate back.
                 il::core::Value ge64 = lowerer_.emitZext1ToI64(ge);
                 il::core::Value le64 = lowerer_.emitZext1ToI64(le);
-                il::core::Value both64 = lowerer_.emitBinary(
-                    il::core::Opcode::And, il::core::Type(il::core::Type::Kind::I64), ge64, le64);
+                il::core::Value both64 =
+                    lowerer_.emitCommon(stmt.selector->loc).logical_and(ge64, le64);
                 return lowerer_.emitUnary(il::core::Opcode::Trunc1, lowerer_.ilBoolTy(), both64);
             }
             case CasePlanEntry::Kind::StringLabel:

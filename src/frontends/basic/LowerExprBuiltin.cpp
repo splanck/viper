@@ -192,7 +192,7 @@ Lowerer::RVal BuiltinExprLowering::emitLofBuiltin(Lowerer &lowerer, const Builti
         ctx.setCurrent(failBlk);
         lowerer.curLoc = expr.loc;
         Value negCode = lowerer.emitISub(Value::constInt(0), rawI64);
-        Value err32 = lowerer.emitUnary(Opcode::CastSiNarrowChk, IlType(IlKind::I32), negCode);
+        Value err32 = lowerer.emitCommon(expr.loc).narrow_to(negCode, 64, 32);
         lowerer.emitTrapFromErr(err32);
 
         ctx.setCurrent(contBlk);
@@ -283,7 +283,7 @@ Lowerer::RVal BuiltinExprLowering::emitEofBuiltin(Lowerer &lowerer, const Builti
             Value m2 = lowerer.emitBasicLogicalI64(notNegOne);
 
             // Bitwise AND (i64), then compare with 0 to get an i1 for cbr
-            Value both = lowerer.emitBinary(Opcode::And, IlType(IlKind::I64), m1, m2);
+            Value both = lowerer.emitCommon(expr.loc).logical_and(m1, m2);
             Value isError =
                 lowerer.emitBinary(Opcode::ICmpNe, lowerer.ilBoolTy(), both, Value::constInt(0));
 
@@ -374,7 +374,7 @@ Lowerer::RVal BuiltinExprLowering::emitLocBuiltin(Lowerer &lowerer, const Builti
         ctx.setCurrent(failBlk);
         lowerer.curLoc = expr.loc;
         Value negCode = lowerer.emitISub(Value::constInt(0), rawI64);
-        Value err32 = lowerer.emitUnary(Opcode::CastSiNarrowChk, IlType(IlKind::I32), negCode);
+        Value err32 = lowerer.emitCommon(expr.loc).narrow_to(negCode, 64, 32);
         lowerer.emitTrapFromErr(err32);
 
         ctx.setCurrent(contBlk);

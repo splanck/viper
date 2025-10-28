@@ -146,8 +146,20 @@ Lowerer::RVal NumericExprLowering::lowerDivOrMod(const BinaryExpr &expr)
         if (value.type.kind == target.kind)
             return value;
         value = lowerer.coerceToI64(std::move(value), node.loc);
-        lowerer.curLoc = node.loc;
-        value.value = lowerer.emitUnary(Opcode::CastSiNarrowChk, target, value.value);
+        int bits = 64;
+        switch (target.kind)
+        {
+            case IlKind::I16:
+                bits = 16;
+                break;
+            case IlKind::I32:
+                bits = 32;
+                break;
+            default:
+                bits = 64;
+                break;
+        }
+        value.value = lowerer.emitCommon(node.loc).narrow_to(value.value, 64, bits);
         value.type = target;
         return value;
     };
@@ -428,9 +440,7 @@ Lowerer::RVal NumericExprLowering::lowerStringBinary(const BinaryExpr &expr,
     Value eqLogical = lowerer.emitBasicLogicalI64(eq);
     if (expr.op == BinaryExpr::Op::Ne)
     {
-        lowerer.curLoc = expr.loc;
-        Value res = lowerer.emitBinary(
-            Opcode::Xor, IlType(IlKind::I64), eqLogical, lowerer.emitConstI64(-1));
+        Value res = lowerer.emitCommon(expr.loc).logical_xor(eqLogical, lowerer.emitConstI64(-1));
         return {res, IlType(IlKind::I64)};
     }
     return {eqLogical, IlType(IlKind::I64)};
