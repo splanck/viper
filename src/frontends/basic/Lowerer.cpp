@@ -353,9 +353,16 @@ int Lowerer::virtualLine(const Stmt &s)
     if (it != stmtVirtualLines_.end())
         return it->second;
 
-    int line = (s.line != 0) ? s.line : synthLineBase_ + (synthSeq_++);
-    stmtVirtualLines_[&s] = line;
-    return line;
+    const int userLine = s.line;
+    if (userLine > 0)
+    {
+        stmtVirtualLines_[&s] = userLine;
+        return userLine;
+    }
+
+    int synthLine = synthLineBase_ + (synthSeq_++);
+    stmtVirtualLines_[&s] = synthLine;
+    return synthLine;
 }
 
 /// @brief Initialise the block structure for a procedure prior to lowering.
