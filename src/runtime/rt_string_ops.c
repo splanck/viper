@@ -315,7 +315,8 @@ rt_string rt_substr(rt_string s, int64_t start, int64_t len)
         start = (int64_t)slen;
     size_t start_idx = (size_t)start;
     size_t avail = slen - start_idx;
-    size_t copy_len = (size_t)len;
+    uint64_t requested = (uint64_t)len;
+    size_t copy_len = requested > SIZE_MAX ? avail : (size_t)requested;
     if (copy_len > avail)
         copy_len = avail;
     if (copy_len == 0)
@@ -347,7 +348,11 @@ rt_string rt_left(rt_string s, int64_t n)
     size_t slen = rt_string_len_bytes(s);
     if (n == 0)
         return rt_empty_string();
-    if ((size_t)n >= slen)
+    uint64_t requested = (uint64_t)n;
+    if (requested > SIZE_MAX)
+        return rt_string_ref(s);
+    size_t take = (size_t)requested;
+    if (take >= slen)
         return rt_string_ref(s);
     return rt_substr(s, 0, n);
 }
@@ -373,9 +378,13 @@ rt_string rt_right(rt_string s, int64_t n)
     size_t len = rt_string_len_bytes(s);
     if (n == 0)
         return rt_empty_string();
-    if ((size_t)n >= len)
+    uint64_t requested = (uint64_t)n;
+    if (requested > SIZE_MAX)
         return rt_string_ref(s);
-    size_t start = len - (size_t)n;
+    size_t take = (size_t)requested;
+    if (take >= len)
+        return rt_string_ref(s);
+    size_t start = len - take;
     return rt_substr(s, (int64_t)start, n);
 }
 
@@ -445,11 +454,24 @@ rt_string rt_mid3(rt_string s, int64_t start, int64_t len)
     if (start_idx_u >= slen)
         return rt_empty_string();
     size_t start_idx = (size_t)start_idx_u;
-    if (start_idx == 0 && (size_t)len >= slen)
-        return rt_string_ref(s);
     size_t avail = slen - start_idx;
-    if ((uint64_t)len > avail)
+    uint64_t requested = (uint64_t)len;
+    if (requested > SIZE_MAX)
+    {
+        if (start_idx == 0)
+            return rt_string_ref(s);
         len = (int64_t)avail;
+    }
+    else
+    {
+        size_t req_len = (size_t)requested;
+        if (start_idx == 0 && req_len >= slen)
+            return rt_string_ref(s);
+        if (req_len >= avail)
+            len = (int64_t)avail;
+        else
+            len = (int64_t)req_len;
+    }
     return rt_substr(s, (int64_t)start_idx, len);
 }
 
