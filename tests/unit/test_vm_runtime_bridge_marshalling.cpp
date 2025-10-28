@@ -242,11 +242,9 @@ int main()
         simulated.literal_refs = 1;
 
         il::vm::StringRef simulatedView = il::vm::fromViperString(reinterpret_cast<rt_string>(&simulated));
-        if (!il::vm::detail::lengthWithinLimit(
-                overflowLength, static_cast<uint64_t>(std::numeric_limits<size_t>::max())))
-        {
-            assert(simulatedView.empty());
-        }
+        assert(!il::vm::detail::lengthWithinLimit(
+            overflowLength, il::vm::kMaxBridgeStringBytes));
+        assert(simulatedView.empty());
     }
 
     {

@@ -443,4 +443,9 @@ const RuntimeCallContext *RuntimeBridge::activeContext()
     return tlsContext;
 }
 
+bool RuntimeBridge::hasActiveVm()
+{
+    return VM::activeInstance() != nullptr;
+}
+
 } // namespace il::vm
