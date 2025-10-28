@@ -38,6 +38,7 @@ target_sources(fe_basic PRIVATE
         Lowerer.cpp
         EmitCommon.cpp
         SelectCaseLowering.cpp
+        SelectModel.cpp
         LowerExprLogical.cpp
         LowerExprNumeric.cpp
         LowerExprBuiltin.cpp

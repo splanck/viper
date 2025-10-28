@@ -18,6 +18,7 @@
 #include "frontends/basic/BasicDiagnosticMessages.hpp"
 #include "frontends/basic/Parser.hpp"
 #include "frontends/basic/Parser_Stmt_ControlHelpers.hpp"
+#include "frontends/basic/SelectModel.hpp"
 #include "il/io/StringEscape.hpp"
 
 #include <cstdio>
@@ -174,6 +175,9 @@ StmtPtr Parser::parseSelectCaseStatement()
 {
     auto state = parseSelectHeader();
     parseSelectArms(state);
+
+    SelectModelBuilder builder(state.diagnose);
+    state.stmt->model = builder.build(*state.stmt);
 
     if (state.expectEndSelect)
     {
