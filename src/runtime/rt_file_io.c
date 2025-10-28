@@ -1,8 +1,25 @@
-// File: src/runtime/rt_file_io.c
-// Purpose: Provide POSIX-backed file I/O helpers for the BASIC runtime.
-// Key invariants: Operations never leave RtFile handles in an indeterminate state on failure.
-// Ownership/Lifetime: Callers own RtFile structures and release heap allocations via runtime
-// helpers. Links: docs/specs/errors.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Provides the POSIX-backed file I/O layer used by the BASIC runtime.  The
+// functions in this translation unit manage descriptor lifetimes, translate
+// errno codes into the runtime's structured diagnostics, and implement
+// higher-level helpers such as line reading and binary writes.  Centralising the
+// logic keeps the VM and native runtimes in sync when interacting with the host
+// filesystem.
+//
+//===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief POSIX file I/O wrappers for the BASIC runtime.
+/// @details Offers safe descriptor management, buffered line reads, and error
+///          propagation utilities that convert errno into @ref RtError records.
+///          All routines maintain invariants around @ref RtFile handles so
+///          callers never observe partially-initialised state.
 
 #include "rt_file.h"
 
@@ -18,6 +35,11 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+/// @brief Clamp errno values into the 32-bit range stored by @ref RtError.
+/// @details Ensures large positive or negative errno values fit into the
+///          runtime's signed 32-bit field without overflow.
+/// @param err Errno value produced by the OS.
+/// @return Clamped errno suitable for storage in @ref RtError::code.
 static int32_t rt_file_clamp_errno(int err)
 {
     if (err > INT32_MAX)
@@ -27,6 +49,13 @@ static int32_t rt_file_clamp_errno(int err)
     return (int32_t)err;
 }
 
+/// @brief Map raw errno codes to runtime error kinds.
+/// @details Converts common errno values into more specific runtime error
+///          enumerations while falling back to @p fallback when no specialised
+///          mapping exists.
+/// @param err Errno value.
+/// @param fallback Error kind to use when no mapping exists.
+/// @return Runtime error kind describing the failure.
 static enum Err rt_file_err_from_errno(int err, enum Err fallback)
 {
     if (err == 0)
@@ -40,6 +69,11 @@ static enum Err rt_file_err_from_errno(int err, enum Err fallback)
     }
 }
 
+/// @brief Populate an @ref RtError structure with an error code.
+/// @details Safely handles null output pointers and clamps errno before storage.
+/// @param out_err Destination error pointer.
+/// @param kind Runtime error classification.
+/// @param err Errno value associated with the failure.
 static void rt_file_set_error(RtError *out_err, enum Err kind, int err)
 {
     if (!out_err)
@@ -48,12 +82,21 @@ static void rt_file_set_error(RtError *out_err, enum Err kind, int err)
     out_err->code = rt_file_clamp_errno(err);
 }
 
+/// @brief Reset an error structure to the success sentinel.
+/// @details Writes @ref RT_ERROR_NONE when the output pointer is non-null.
+/// @param out_err Destination error pointer.
 static void rt_file_set_ok(RtError *out_err)
 {
     if (out_err)
         *out_err = RT_ERROR_NONE;
 }
 
+/// @brief Validate that a file handle contains an open descriptor.
+/// @details Ensures @p file is non-null and the descriptor is valid, populating
+///          @p out_err on failure.
+/// @param file File handle to inspect.
+/// @param out_err Optional error destination.
+/// @return `true` when the descriptor is usable; otherwise `false`.
 static bool rt_file_check_fd(const RtFile *file, RtError *out_err)
 {
     if (!file)
@@ -69,6 +112,16 @@ static bool rt_file_check_fd(const RtFile *file, RtError *out_err)
     return true;
 }
 
+/// @brief Double a dynamically-allocated line buffer while checking overflow.
+/// @details Reallocates the caller-owned buffer, ensuring the new capacity
+///          accommodates the requested length and reporting structured errors on
+///          failure.  The helper releases the old buffer on error to avoid
+///          leaks.
+/// @param buffer Pointer to the caller's heap buffer pointer.
+/// @param cap Pointer to the current capacity in bytes.
+/// @param len Number of bytes currently stored in the buffer.
+/// @param out_err Receives error details when resizing fails.
+/// @return `true` when the buffer was grown successfully; otherwise `false`.
 static bool rt_file_line_buffer_grow(char **buffer, size_t *cap, size_t len, RtError *out_err)
 {
     if (!buffer || !*buffer || !cap)
@@ -127,6 +180,10 @@ bool rt_file_line_buffer_try_grow_for_test(char **buffer, size_t *cap, size_t le
     return rt_file_line_buffer_grow(buffer, cap, len, out_err);
 }
 
+/// @brief Initialise a file handle to the closed state.
+/// @details Sets the descriptor sentinel to -1 so subsequent operations can
+///          detect whether the handle has been opened.
+/// @param file Handle to initialise.
 void rt_file_init(RtFile *file)
 {
     if (!file)
@@ -134,6 +191,16 @@ void rt_file_init(RtFile *file)
     file->fd = -1;
 }
 
+/// @brief Open a file using BASIC runtime semantics.
+/// @details Validates arguments, translates the textual mode into POSIX flags,
+///          applies permissive default permissions, and records structured
+///          errors when the system call fails.  On success the descriptor is
+///          stored in @p file.
+/// @param file Handle receiving the descriptor.
+/// @param path File path to open.
+/// @param mode BASIC mode string (e.g., "r", "w", "a").
+/// @param out_err Optional error destination.
+/// @return `true` on success; otherwise `false` with @p out_err populated.
 bool rt_file_open(RtFile *file, const char *path, const char *mode, RtError *out_err)
 {
     if (!file || !path || !mode)
@@ -166,6 +233,12 @@ bool rt_file_open(RtFile *file, const char *path, const char *mode, RtError *out
     return true;
 }
 
+/// @brief Close an open runtime file handle.
+/// @details Treats already-closed handles as success, otherwise closes the
+///          descriptor and reports any system errors through @p out_err.
+/// @param file Handle to close.
+/// @param out_err Optional error destination.
+/// @return `true` when the handle is closed or already closed; otherwise `false`.
 bool rt_file_close(RtFile *file, RtError *out_err)
 {
     if (!file)
@@ -193,6 +266,14 @@ bool rt_file_close(RtFile *file, RtError *out_err)
     return true;
 }
 
+/// @brief Read a single byte from a file descriptor.
+/// @details Retries on EINTR, reports EOF via @ref Err_EOF, and surfaces other
+///          failures through @p out_err.  The byte is written to @p out_byte on
+///          success.
+/// @param file File handle to read from.
+/// @param out_byte Destination for the read byte.
+/// @param out_err Optional error destination.
+/// @return `true` when a byte was read; `false` on EOF or error.
 bool rt_file_read_byte(RtFile *file, uint8_t *out_byte, RtError *out_err)
 {
     if (!out_byte)
@@ -228,6 +309,15 @@ bool rt_file_read_byte(RtFile *file, uint8_t *out_byte, RtError *out_err)
     }
 }
 
+/// @brief Read a line of text terminated by `\n` from a file descriptor.
+/// @details Allocates a growable buffer, strips trailing carriage returns,
+///          handles EOF, and wraps the result in a runtime string object.
+///          Structured errors are produced when allocation fails or the
+///          descriptor encounters an I/O error.
+/// @param file File handle to read from.
+/// @param out_line Receives the allocated runtime string on success.
+/// @param out_err Optional error destination.
+/// @return `true` on success; `false` on EOF or error.
 bool rt_file_read_line(RtFile *file, rt_string *out_line, RtError *out_err)
 {
     if (out_line)
@@ -331,6 +421,14 @@ bool rt_file_read_line(RtFile *file, rt_string *out_line, RtError *out_err)
     return true;
 }
 
+/// @brief Adjust the file position indicator.
+/// @details Wraps @ref lseek, converting offsets to `off_t` and reporting
+///          failures through structured errors.
+/// @param file File handle.
+/// @param offset Byte offset relative to @p origin.
+/// @param origin One of `SEEK_SET`, `SEEK_CUR`, or `SEEK_END`.
+/// @param out_err Optional error destination.
+/// @return `true` on success; otherwise `false`.
 bool rt_file_seek(RtFile *file, int64_t offset, int origin, RtError *out_err)
 {
     if (!rt_file_check_fd(file, out_err))
@@ -350,6 +448,15 @@ bool rt_file_seek(RtFile *file, int64_t offset, int origin, RtError *out_err)
     return true;
 }
 
+/// @brief Write a byte buffer to a file descriptor, retrying short writes.
+/// @details Handles zero-length writes as success, validates the input pointer,
+///          and loops until all bytes are written or an error occurs.  EINTR is
+///          retried automatically.
+/// @param file File handle to write to.
+/// @param data Buffer containing bytes to write.
+/// @param len Number of bytes to write.
+/// @param out_err Optional error destination.
+/// @return `true` when all bytes are written; otherwise `false`.
 bool rt_file_write(RtFile *file, const uint8_t *data, size_t len, RtError *out_err)
 {
     if (len == 0)
