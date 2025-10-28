@@ -1,7 +1,7 @@
 //===----------------------------------------------------------------------===//
 //
 // Part of the Viper project, under the MIT License.
-// See LICENSE for license information.
+// See LICENSE in the project root for license information.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -17,6 +17,15 @@
 //
 //===----------------------------------------------------------------------===//
 
+/// @file
+/// @brief Shared lowering helpers used across x86-64 opcode emitters.
+/// @details Provides the @ref viper::codegen::x64::EmitCommon façade used by
+///          individual lowering translation units to materialise operands,
+///          append Machine IR instructions, and synthesise helper operations
+///          such as comparisons, shifts, and select emission. Centralising the
+///          utilities keeps opcode-specific files focused on control flow while
+///          guaranteeing consistent register-class handling.
+
 #include "Lowering.EmitCommon.hpp"
 
 #include <algorithm>
@@ -30,6 +39,13 @@ namespace viper::codegen::x64
 namespace
 {
 
+/// @brief Check whether a 64-bit integer fits in the 32-bit immediate domain.
+/// @details The check is used before selecting immediate-based instruction
+///          forms.  Guarding the conversion prevents accidental truncation when
+///          lowering wide IL constants into Machine IR encodings that only
+///          accept 32-bit operands.
+/// @param value Signed integer to test.
+/// @return True when @p value lies within the signed 32-bit range.
 [[nodiscard]] bool fitsImm32(int64_t value) noexcept
 {
     return value >= static_cast<int64_t>(std::numeric_limits<int32_t>::min()) &&
@@ -38,18 +54,41 @@ namespace
 
 } // namespace
 
+/// @brief Construct an @ref EmitCommon helper that appends to @p builder.
+/// @details Stores the builder pointer for later reuse so subsequent helper
+///          calls share a common emission context without repeatedly passing the
+///          builder reference.
+/// @param builder Active MIR builder receiving emitted instructions.
 EmitCommon::EmitCommon(MIRBuilder &builder) noexcept : builder_(&builder) {}
 
+/// @brief Access the underlying MIR builder.
+/// @return Reference to the builder supplied at construction.
 MIRBuilder &EmitCommon::builder() const noexcept
 {
     return *builder_;
 }
 
+/// @brief Create a shallow copy of a Machine IR operand.
+/// @details Operands are lightweight value types, so copying by value is
+///          sufficient when forwarding operands into new instructions.  The
+///          helper centralises the intent and improves readability at call
+///          sites.
+/// @param operand Operand to duplicate.
+/// @return Copy of @p operand.
 Operand EmitCommon::clone(const Operand &operand) const
 {
     return operand;
 }
 
+/// @brief Materialise an operand into a register of the requested class.
+/// @details Values already represented as registers are passed through.
+///          Immediates become MOV instructions, labels trigger LEA, and other
+///          operands are copied via MOVrr.  A fresh temporary register is
+///          created when materialisation is required so callers can subsequently
+///          reference the operand in register-only instruction forms.
+/// @param operand Operand that may require materialisation.
+/// @param cls Target register class for the temporary.
+/// @return Operand referencing the original value or the created temporary.
 Operand EmitCommon::materialise(Operand operand, RegClass cls)
 {
     if (std::holds_alternative<OpReg>(operand))
@@ -79,11 +118,29 @@ Operand EmitCommon::materialise(Operand operand, RegClass cls)
     return tmpOp;
 }
 
+/// @brief Ensure an operand is materialised in a general-purpose register.
+/// @details Convenience wrapper around @ref materialise that hard codes the GPR
+///          register class, used when instructions require integer register
+///          operands.
+/// @param operand Operand to materialise if necessary.
+/// @return Operand referencing the resulting GPR.
 Operand EmitCommon::materialiseGpr(Operand operand)
 {
     return materialise(std::move(operand), RegClass::GPR);
 }
 
+/// @brief Emit a binary arithmetic instruction with immediate folding support.
+/// @details Copies the left-hand operand into the destination register, then
+///          attempts to use the immediate form when the right-hand operand is a
+///          suitable immediate value.  Otherwise the helper materialises the
+///          right-hand operand into a register and emits the register-register
+///          encoding.  The routine is shared by many arithmetic lowerings to
+///          keep operand-handling logic consistent.
+/// @param instr IL instruction currently being lowered.
+/// @param opcRR Opcode used when both operands reside in registers.
+/// @param opcRI Opcode used when the right operand fits the immediate form.
+/// @param cls Register class expected by the instruction.
+/// @param requireImm32 When true, immediates must fit in 32 bits to use @p opcRI.
 void EmitCommon::emitBinary(const ILInstr &instr,
                             MOpcode opcRR,
                             MOpcode opcRI,
@@ -136,6 +193,16 @@ void EmitCommon::emitBinary(const ILInstr &instr,
     builder().append(MInstr::make(opcRR, std::vector<Operand>{clone(dest), clone(rhsReg)}));
 }
 
+/// @brief Emit a shift instruction choosing between immediate and register forms.
+/// @details Moves the left operand into the destination register, then inspects
+///          the shift amount.  Literal counts are masked to the architectural
+///          width and use the immediate opcode, while variable counts are
+///          materialised into RCX (the x86 shift-count register) before emitting
+///          the register form.  The helper therefore encapsulates the subtle
+///          register conventions of x86 shifts.
+/// @param instr IL instruction being lowered.
+/// @param opcImm Opcode for the immediate shift form.
+/// @param opcReg Opcode for the register-controlled shift form.
 void EmitCommon::emitShift(const ILInstr &instr, MOpcode opcImm, MOpcode opcReg)
 {
     if (instr.resultId < 0 || instr.ops.size() < 2)
@@ -184,6 +251,15 @@ void EmitCommon::emitShift(const ILInstr &instr, MOpcode opcImm, MOpcode opcReg)
     builder().append(MInstr::make(opcReg, std::vector<Operand>{clone(dest), clone(clOperand)}));
 }
 
+/// @brief Emit a compare instruction and optional SETcc materialisation.
+/// @details Evaluates optional condition-code operands, performs the register or
+///          floating-point comparison, and when the IL instruction produces a
+///          result emits a SETcc pseudo with the resolved condition code.  The
+///          helper shields callers from the boilerplate associated with IL
+///          comparisons that may or may not capture their results.
+/// @param instr IL compare instruction.
+/// @param cls Register class required for the compare operands.
+/// @param defaultCond Condition code used when the IL instruction omits an override.
 void EmitCommon::emitCmp(const ILInstr &instr, RegClass cls, int defaultCond)
 {
     if (instr.ops.size() < 2)
@@ -219,6 +295,13 @@ void EmitCommon::emitCmp(const ILInstr &instr, RegClass cls, int defaultCond)
                                   std::vector<Operand>{makeImmOperand(condCode), dest}));
 }
 
+/// @brief Emit the Machine IR sequence that implements an IL select.
+/// @details Handles both integer and floating-point selects by materialising the
+///          false branch, conditionally overwriting it with the true branch, and
+///          generating the required TEST/SETcc pair to drive control flow.  For
+///          integer selects immediates are first moved into temporaries so that
+///          conditional moves have register operands.
+/// @param instr IL select instruction containing condition, true, and false operands.
 void EmitCommon::emitSelect(const ILInstr &instr)
 {
     if (instr.resultId < 0 || instr.ops.size() < 3)
@@ -268,6 +351,10 @@ void EmitCommon::emitSelect(const ILInstr &instr)
         MInstr::make(MOpcode::SETcc, std::vector<Operand>{makeImmOperand(1), clone(dest)}));
 }
 
+/// @brief Emit an unconditional branch to the target label.
+/// @details Extracts the label operand from the IL instruction and appends a
+///          Machine IR JMP instruction pointing to the resolved block label.
+/// @param instr IL branch instruction providing the label operand.
 void EmitCommon::emitBranch(const ILInstr &instr)
 {
     if (instr.ops.empty())
@@ -278,6 +365,11 @@ void EmitCommon::emitBranch(const ILInstr &instr)
                                   std::vector<Operand>{builder().makeLabelOperand(instr.ops[0])}));
 }
 
+/// @brief Emit a conditional branch that tests the provided operand.
+/// @details Lowers to a TEST/JCC/JMP sequence that mirrors the IL conditional
+///          branch semantics.  The helper prepares both the taken and fallthrough
+///          labels so control flow mirrors the IL structure.
+/// @param instr IL conditional branch instruction (cond, true, false operands).
 void EmitCommon::emitCondBranch(const ILInstr &instr)
 {
     if (instr.ops.size() < 3)
@@ -295,6 +387,13 @@ void EmitCommon::emitCondBranch(const ILInstr &instr)
     builder().append(MInstr::make(MOpcode::JMP, std::vector<Operand>{falseLabel}));
 }
 
+/// @brief Emit the return sequence for an IL return instruction.
+/// @details Handles empty returns by emitting a bare RET.  When a value is
+///          returned, the helper materialises the operand, performs sign or zero
+///          extension for boolean returns, moves the value into the appropriate
+///          ABI register, and finally emits RET.  This centralises ABI-specific
+///          logic so callers remain simple.
+/// @param instr IL return instruction.
 void EmitCommon::emitReturn(const ILInstr &instr)
 {
     if (instr.ops.empty())
@@ -349,6 +448,13 @@ void EmitCommon::emitReturn(const ILInstr &instr)
     builder().append(MInstr::make(MOpcode::RET, {}));
 }
 
+/// @brief Emit a load from memory into a virtual register.
+/// @details Accepts a base register and optional displacement, verifies that the
+///          base is addressable, and then emits either a MOV or MOVSD load based
+///          on the requested register class.  The helper ensures the destination
+///          virtual register exists before appending the instruction.
+/// @param instr IL load instruction describing the address and displacement.
+/// @param cls Register class expected for the loaded value.
 void EmitCommon::emitLoad(const ILInstr &instr, RegClass cls)
 {
     if (instr.resultId < 0 || instr.ops.empty())
@@ -378,6 +484,12 @@ void EmitCommon::emitLoad(const ILInstr &instr, RegClass cls)
     }
 }
 
+/// @brief Emit a store from a value operand into memory.
+/// @details Resolves the address operands, ensures the base is a register, and
+///          emits the appropriate MOV variant depending on whether the value is
+///          an integer, floating-point, register, or immediate.  The helper
+///          therefore abstracts the heterogeneity of IL store operands.
+/// @param instr IL store instruction.
 void EmitCommon::emitStore(const ILInstr &instr)
 {
     if (instr.ops.size() < 2)
@@ -414,6 +526,15 @@ void EmitCommon::emitStore(const ILInstr &instr)
     }
 }
 
+/// @brief Emit a cast or move between register classes.
+/// @details Creates the destination virtual register and either forwards MOV
+///          when the operation is a pure copy, or appends the supplied opcode to
+///          perform the conversion.  Immediates are copied using MOV to ensure a
+///          register destination is produced.
+/// @param instr IL cast instruction.
+/// @param opc Machine opcode implementing the conversion.
+/// @param dstCls Destination register class (unused but recorded for clarity).
+/// @param srcCls Source register class for operand materialisation.
 void EmitCommon::emitCast(const ILInstr &instr, MOpcode opc, RegClass dstCls, RegClass srcCls)
 {
     if (instr.resultId < 0 || instr.ops.empty())
@@ -437,6 +558,14 @@ void EmitCommon::emitCast(const ILInstr &instr, MOpcode opc, RegClass dstCls, Re
     (void)dstCls;
 }
 
+/// @brief Emit a division or remainder pseudo instruction.
+/// @details Materialises both dividend and divisor into GPRs, selecting the
+///          appropriate pseudo opcode based on the mnemonic string.  The helper
+///          emits a three-operand instruction capturing destination, dividend,
+///          and divisor, leaving it to later passes to expand into concrete
+///          machine instructions.
+/// @param instr IL div/rem instruction with dividend and divisor operands.
+/// @param opcode Textual opcode (e.g. "div", "srem") used to select the pseudo.
 void EmitCommon::emitDivRem(const ILInstr &instr, std::string_view opcode)
 {
     if (instr.resultId < 0 || instr.ops.size() < 2)
@@ -479,6 +608,12 @@ void EmitCommon::emitDivRem(const ILInstr &instr, std::string_view opcode)
                                                        clone(divisor)}));
 }
 
+/// @brief Map an integer compare opcode string to a condition code.
+/// @details Recognises the canonical `icmp_*` prefixes and converts the suffix
+///          into the SETcc encoding expected by Machine IR.  Unrecognised
+///          strings yield @c std::nullopt so callers can detect missing support.
+/// @param opcode IL opcode string to translate.
+/// @return Condition code index or empty optional when unsupported.
 std::optional<int> EmitCommon::icmpConditionCode(std::string_view opcode) noexcept
 {
     if (!opcode.starts_with("icmp_"))
@@ -530,6 +665,11 @@ std::optional<int> EmitCommon::icmpConditionCode(std::string_view opcode) noexce
     return std::nullopt;
 }
 
+/// @brief Map a floating-point compare opcode string to a condition code.
+/// @details Similar to @ref icmpConditionCode but handles the `fcmp_*` family of
+///          opcodes, returning the encoding index consumed by SETcc expansion.
+/// @param opcode IL opcode string to translate.
+/// @return Condition code index or empty optional when unsupported.
 std::optional<int> EmitCommon::fcmpConditionCode(std::string_view opcode) noexcept
 {
     if (!opcode.starts_with("fcmp_"))
