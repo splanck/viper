@@ -193,9 +193,8 @@ Expected<void> checkIdxChk(const VerifyCtx &ctx)
 
 /// @brief Fallback verification path that simply records the instruction type.
 /// @details Used when no specialised checks are required.
-Expected<void> checkDefault(const VerifyCtx &ctx)
+Expected<void> checkDefault(const VerifyCtx &)
 {
-    ctx.types.recordResult(ctx.instr, ctx.instr.type);
     return {};
 }
 
