@@ -4,8 +4,7 @@
 // Ownership/Lifetime: Spawns child VM processes to capture stderr for each trap sample.
 // Links: docs/specs/errors.md
 
-#include "il/build/IRBuilder.hpp"
-#include "tests/common/VmFixture.hpp"
+#include "tests/common/TestIRBuilder.hpp"
 #include "vm/err_bridge.hpp"
 
 #include <array>
@@ -18,54 +17,51 @@ namespace
 {
 std::string captureTrap(il::vm::TrapKind kind, int line)
 {
-    Module module;
-    il::build::IRBuilder builder(module);
-    auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
-    auto &bb = builder.addBlock(fn, "entry");
-    builder.setInsertPoint(bb);
+    viper::tests::TestIRBuilder il;
+    const il::support::SourceLoc trapLoc = il.loc(static_cast<uint32_t>(line));
 
-    Instr trap;
-    trap.loc = {1, static_cast<uint32_t>(line), 1};
     switch (kind)
     {
         case il::vm::TrapKind::DivideByZero:
-            trap.result = builder.reserveTempId();
-            trap.op = Opcode::SDivChk0;
-            trap.type = Type(Type::Kind::I64);
-            trap.operands.push_back(Value::constInt(1));
-            trap.operands.push_back(Value::constInt(0));
+            il.binary(Opcode::SDivChk0,
+                      Type(Type::Kind::I64),
+                      il.const_i64(1),
+                      il.const_i64(0),
+                      trapLoc);
             break;
         case il::vm::TrapKind::Bounds:
         {
+            il::core::Instr trap;
             trap.op = Opcode::TrapFromErr;
             trap.type = Type(Type::Kind::I32);
-            trap.operands.push_back(Value::constInt(static_cast<long long>(il::vm::ErrCode::Err_Bounds)));
+            trap.operands.push_back(il.const_i64(static_cast<long long>(il::vm::ErrCode::Err_Bounds)));
+            trap.loc = trapLoc;
+            il.block().instructions.push_back(trap);
             break;
         }
         case il::vm::TrapKind::RuntimeError:
         {
+            il::core::Instr trap;
             trap.op = Opcode::TrapFromErr;
             trap.type = Type(Type::Kind::I32);
-            trap.operands.push_back(Value::constInt(static_cast<long long>(il::vm::ErrCode::Err_RuntimeError)));
+            trap.operands.push_back(il.const_i64(static_cast<long long>(il::vm::ErrCode::Err_RuntimeError)));
+            trap.loc = trapLoc;
+            il.block().instructions.push_back(trap);
             break;
         }
         default:
         {
+            il::core::Instr trap;
             trap.op = Opcode::Trap;
             trap.type = Type(Type::Kind::Void);
+            trap.loc = trapLoc;
+            il.block().instructions.push_back(trap);
             break;
         }
     }
-    bb.instructions.push_back(trap);
 
-    Instr ret;
-    ret.op = Opcode::Ret;
-    ret.type = Type(Type::Kind::Void);
-    ret.loc = {1, static_cast<uint32_t>(line), 1};
-    bb.instructions.push_back(ret);
-
-    viper::tests::VmFixture fixture;
-    return fixture.captureTrap(module);
+    il.retVoid(trapLoc);
+    return il.captureTrap();
 }
 } // namespace
 
