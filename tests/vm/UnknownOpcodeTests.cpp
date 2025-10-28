@@ -4,8 +4,7 @@
 // Ownership/Lifetime: Builds an ephemeral module executed in a forked child to capture stderr.
 // Links: docs/il-guide.md#reference
 
-#include "il/build/IRBuilder.hpp"
-#include "tests/common/VmFixture.hpp"
+#include "tests/common/TestIRBuilder.hpp"
 
 #include <cassert>
 #include <string>
@@ -19,33 +18,19 @@ constexpr Opcode kBogusOpcode = static_cast<Opcode>(kBogusOpcodeValue);
 
 } // namespace
 
-int main()
-{
-    using viper::tests::VmFixture;
+TEST_WITH_IL(il, {
+    const il::support::SourceLoc loc = il.loc();
 
-    Module module;
-    il::build::IRBuilder builder(module);
-    auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
-    auto &bb = builder.addBlock(fn, "entry");
-    builder.setInsertPoint(bb);
-
-    const il::support::SourceLoc loc{1, 1, 1};
-
-    Instr invalid;
-    invalid.result = builder.reserveTempId();
+    il::core::Instr invalid;
+    invalid.result = il.reserveTemp();
     invalid.op = kBogusOpcode;
     invalid.type = Type(Type::Kind::I64);
     invalid.loc = loc;
-    bb.instructions.push_back(invalid);
+    il.block().instructions.push_back(invalid);
 
-    Instr ret;
-    ret.op = Opcode::Ret;
-    ret.type = Type(Type::Kind::Void);
-    ret.loc = loc;
-    bb.instructions.push_back(ret);
+    il.retVoid(loc);
 
-    VmFixture fixture;
-    const std::string diag = fixture.captureTrap(module);
+    const std::string diag = il.captureTrap();
     const bool hasTrapKind = diag.find("Trap @main#0 line 1: InvalidOperation (code=0)") != std::string::npos;
     assert(hasTrapKind && "expected InvalidOperation trap for unmapped opcode");
 
@@ -58,6 +43,4 @@ int main()
 
     const bool hasBlock = diag.find("(block entry)") != std::string::npos;
     assert(hasBlock && "expected diagnostic to mention source block label");
-
-    return 0;
-}
+});
