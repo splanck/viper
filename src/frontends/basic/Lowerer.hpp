@@ -512,7 +512,6 @@ class Lowerer
     std::unordered_map<std::string, ProcedureSignature> procSignatures;
 
     std::unordered_map<const Stmt *, int> stmtVirtualLines_;
-    int synthLineBase_{-1000000000};
     int synthSeq_{0};
 
     ProcedureContext context_;

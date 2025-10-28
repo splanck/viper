@@ -342,9 +342,10 @@ Lowerer::ProcedureMetadata Lowerer::collectProcedureMetadata(const std::vector<P
 }
 
 /// @brief Compute a stable virtual line number for a statement.
-/// @details Returns the original source line when available, otherwise assigns
-///          a synthetic line number that is unique within the procedure.  The
-///          mapping is cached so repeated queries return the same value.
+/// @details Returns the original source line when available (>0), otherwise
+///          assigns a synthetic negative key that is unique within the
+///          procedure.  The mapping is cached so repeated queries return the
+///          same value.
 /// @param s Statement whose virtual line is required.
 /// @return Virtual line number used for block naming.
 int Lowerer::virtualLine(const Stmt &s)
@@ -353,9 +354,16 @@ int Lowerer::virtualLine(const Stmt &s)
     if (it != stmtVirtualLines_.end())
         return it->second;
 
-    int line = (s.line != 0) ? s.line : synthLineBase_ + (synthSeq_++);
-    stmtVirtualLines_[&s] = line;
-    return line;
+    int line = s.line;
+    if (line > 0)
+    {
+        stmtVirtualLines_[&s] = line;
+        return line;
+    }
+
+    int synthetic = -(++synthSeq_);
+    stmtVirtualLines_[&s] = synthetic;
+    return synthetic;
 }
 
 /// @brief Initialise the block structure for a procedure prior to lowering.
