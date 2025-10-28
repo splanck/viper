@@ -24,21 +24,21 @@ entry:
   %t2 = alloca 8
   %t3 = call @rt_str_empty()
   store str, %t2, %t3
-  br L-1000000000
-L-1000000000:
+  br UL1000000000
+UL1000000000:
   .loc 1 1 1
-  br L-999999999
-L-999999999:
+  br UL999999999
+UL999999999:
   .loc 1 2 1
-  br L-999999998
-L-999999998:
+  br UL999999998
+UL999999998:
   .loc 1 3 1
   %t4 = iadd.ovf 2, 1
   .loc 1 3 1
   %t5 = scmp_lt %t4, 0
   .loc 1 3 1
   cbr %t5, dim_len_fail, dim_len_cont
-L-999999997:
+UL999999997:
   .loc 1 4 15
   %t8 = const_str @.L0
   .loc 1 4 1
@@ -50,13 +50,13 @@ L-999999997:
   .loc 1 4 1
   store str, %t2, %t8
   .loc 1 4 1
-  br L-999999996
-L-999999996:
+  br UL999999996
+UL999999996:
   .loc 1 5 1
   store i64, %t1, 5
   .loc 1 5 1
-  br L-999999995
-L-999999995:
+  br UL999999995
+UL999999995:
   .loc 1 6 17
   %t10 = load i64, %t1
   .loc 1 6 17
@@ -77,7 +77,7 @@ L-999999995:
   %t18 = icmp_ne %t17, 0
   .loc 1 6 5
   cbr %t18, bc_oob0, bc_ok0
-L-999999994:
+UL999999994:
   .loc 1 7 7
   %t19 = load str, %t2
   .loc 1 7 1
@@ -87,8 +87,8 @@ L-999999994:
   .loc 1 7 1
   call @rt_print_str(%t20)
   .loc 1 7 1
-  br L-999999993
-L-999999993:
+  br UL999999993
+UL999999993:
   .loc 1 8 7
   %t21 = load i64, %t1
   .loc 1 8 1
@@ -98,8 +98,8 @@ L-999999993:
   .loc 1 8 1
   call @rt_print_str(%t22)
   .loc 1 8 1
-  br L-999999992
-L-999999992:
+  br UL999999992
+UL999999992:
   .loc 1 9 7
   %t23 = load ptr, %t0
   .loc 1 9 7
@@ -138,12 +138,12 @@ dim_len_cont:
   .loc 1 3 1
   store ptr, %t0, %t6
   .loc 1 3 1
-  br L-999999997
+  br UL999999997
 bc_ok0:
   .loc 1 6 1
   call @rt_arr_i32_set(%t11, 0, %t10)
   .loc 1 6 1
-  br L-999999994
+  br UL999999994
 bc_oob0:
   .loc 1 6 5
   call @rt_arr_oob_panic(0, %t12)
