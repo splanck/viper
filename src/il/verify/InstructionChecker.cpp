@@ -25,6 +25,7 @@
 #include "il/core/Type.hpp"
 #include "il/verify/DiagSink.hpp"
 #include "il/verify/InstructionCheckerShared.hpp"
+#include "il/verify/InstructionCheckUtils.hpp"
 #include "il/verify/OperandCountChecker.hpp"
 #include "il/verify/OperandTypeChecker.hpp"
 #include "il/verify/ResultTypeChecker.hpp"
@@ -61,8 +62,28 @@ using il::support::makeError;
 
 using StrategyFn = Expected<void> (*)(const VerifyCtx &, const InstructionSpec &);
 
-Expected<void> applyDefault(const VerifyCtx &ctx, const InstructionSpec &)
+Type resolveResultType(const VerifyCtx &ctx, const InstructionSpec &spec)
 {
+    using il::core::TypeCategory;
+
+    switch (spec.resultType)
+    {
+        case TypeCategory::None:
+        case TypeCategory::Void:
+        case TypeCategory::Any:
+        case TypeCategory::Dynamic:
+        case TypeCategory::InstrType:
+            return ctx.instr.type;
+        default:
+            if (auto expectedKind = detail::kindFromCategory(spec.resultType))
+                return Type(*expectedKind);
+            return ctx.instr.type;
+    }
+}
+
+Expected<void> applyDefault(const VerifyCtx &ctx, const InstructionSpec &spec)
+{
+    ctx.types.recordResult(ctx.instr, resolveResultType(ctx, spec));
     return checkDefault(ctx);
 }
 
@@ -196,7 +217,10 @@ Expected<void> dispatchStrategy(const VerifyCtx &ctx, const InstructionSpec &spe
 {
     const size_t index = static_cast<size_t>(spec.strategy);
     if (index >= kStrategyTable.size())
+    {
+        ctx.types.recordResult(ctx.instr, resolveResultType(ctx, spec));
         return checkDefault(ctx);
+    }
     return kStrategyTable[index](ctx, spec);
 }
 
