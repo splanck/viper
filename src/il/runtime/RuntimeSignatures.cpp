@@ -1220,6 +1220,8 @@ const char *sigParamKindName(signatures::SigParam::Kind kind)
     using signatures::SigParam;
     switch (kind)
     {
+    case SigParam::Kind::I1:
+        return "i1";
     case SigParam::Kind::I32:
         return "i32";
     case SigParam::Kind::I64:
@@ -1241,6 +1243,7 @@ signatures::SigParam::Kind mapToSigParamKind(il::core::Type::Kind kind)
     switch (kind)
     {
     case Kind::I1:
+        return SigParam::Kind::I1;
     case Kind::I16:
     case Kind::I32:
         return SigParam::Kind::I32;
