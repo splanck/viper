@@ -1,7 +1,22 @@
-// tui/src/widgets/command_palette.cpp
-// @brief CommandPalette implementation filtering commands and executing.
-// @invariant Query changes recompute filtered list.
-// @ownership CommandPalette borrows Keymap and Theme.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the command palette widget that lets users filter and execute
+// registered commands.  The widget maintains a searchable list derived from the
+// active keymap and renders the top matches into the TUI viewport.
+//
+//===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Implements the interactive command palette widget.
+/// @details The widget captures keystrokes while focused, updates a filtered
+///          list of command identifiers, and paints the results together with
+///          the query prompt.  Executing a command delegates back to the
+///          keymap, keeping ownership of callbacks centralised.
 
 #include "tui/widgets/command_palette.hpp"
 #include "tui/render/screen.hpp"
@@ -10,6 +25,10 @@ namespace viper::tui::widgets
 {
 using viper::tui::term::KeyEvent;
 
+/// @brief Construct a command palette bound to an existing keymap and theme.
+/// @details Stores references to collaborators and immediately generates the
+///          initial result list so the widget paints correctly before receiving
+///          user input.
 CommandPalette::CommandPalette(input::Keymap &km, const style::Theme &theme)
     : km_(km), theme_(theme)
 {
@@ -17,11 +36,17 @@ CommandPalette::CommandPalette(input::Keymap &km, const style::Theme &theme)
 }
 
 /// @brief Command palette must hold focus to accept incremental query input.
+/// @details Returning true ensures the application routes keystrokes directly to
+///          the widget whenever it is active.
 bool CommandPalette::wantsFocus() const
 {
     return true;
 }
 
+/// @brief Rebuild the filtered command list from the current query string.
+/// @details Normalises both the query and candidate command names to lowercase
+///          so matching becomes case-insensitive.  Commands whose name contains
+///          the query as a substring are kept in insertion order.
 void CommandPalette::update()
 {
     results_.clear();
@@ -44,6 +69,10 @@ void CommandPalette::update()
     }
 }
 
+/// @brief Handle keyboard input for editing the query and triggering commands.
+/// @details Supports backspace, enter, and printable ASCII characters.  Enter
+///          executes the first match, while typing adds characters to the query
+///          and re-filters the result list.  Unhandled keys bubble up to callers.
 bool CommandPalette::onEvent(const ui::Event &ev)
 {
     using Code = KeyEvent::Code;
@@ -73,6 +102,10 @@ bool CommandPalette::onEvent(const ui::Event &ev)
     return false;
 }
 
+/// @brief Paint the command palette contents into the provided screen buffer.
+/// @details Clears the widget's rectangle, renders the prompt prefixed with a
+///          colon, and lists the currently matched command names.  Rows beyond
+///          the widget height are clipped.
 void CommandPalette::paint(render::ScreenBuffer &sb)
 {
     const auto &st = theme_.style(style::Role::Normal);
