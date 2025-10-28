@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// This file is part of the Viper project, under the MIT License.
+// Part of the Viper project, under the MIT License.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
@@ -37,6 +37,12 @@
 
 namespace il::vm
 {
+/// @brief Retrieve the textual mnemonic associated with an opcode.
+/// @details Defined in the opcode metadata translation unit; declared here so
+///          diagnostic helpers can render human-readable opcode names when the
+///          VM encounters unimplemented instructions.
+/// @param op Opcode to describe.
+/// @return Null-terminated mnemonic string.
 std::string opcodeMnemonic(il::core::Opcode op);
 
 using il::core::BasicBlock;

@@ -1,19 +1,24 @@
 //===----------------------------------------------------------------------===//
 //
-// This file is part of the Viper project, under the MIT License.
+// Part of the Viper project, under the MIT License.
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-// File: src/vm/ops/Op_BranchSwitch.cpp
-// Purpose: Provide control-flow opcode handlers including conditional branches
-//          and switch dispatch.
-// Key invariants: Switch cache entries are keyed on instruction identity and the
-//                 handler always validates branch argument counts before jumping.
-// Ownership/Lifetime: Handlers borrow VM state and never assume ownership of
-//                     frames, blocks, or cached data structures.
-// Links: docs/runtime-vm.md#dispatch
+//
+// Provides the VM control-flow opcode handlers responsible for conditional
+// branches and switch dispatch.  The helpers validate branch arity, construct
+// switch caches, and funnel all jumps through the common branching utilities so
+// that parameter propagation and trap reporting remain consistent across
+// backends.
 //
 //===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Control-flow opcode handlers for branch and switch instructions.
+/// @details Implements conditional and unconditional branch helpers as well as
+///          the integer switch dispatcher.  Each handler cooperates with the VM
+///          execution state, consults switch caches when appropriate, and traps
+///          on malformed IL to keep execution deterministic.
 
 #include "vm/OpHandlers_Control.hpp"
 
