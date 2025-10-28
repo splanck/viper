@@ -1,16 +1,23 @@
 //===----------------------------------------------------------------------===//
 //
-// This file is part of the Viper project and is released under the MIT
-// License. See the LICENSE file accompanying this source for the full terms.
+// Part of the Viper project, under the MIT License.
+// See LICENSE in the project root for license information.
 //
 //===----------------------------------------------------------------------===//
 //
-// Implements numeric and CSV formatting helpers that mirror the BASIC runtime
-// semantics.  The routines encapsulate locale-sensitive behaviour, handle
-// special floating-point values deterministically, and generate quoted CSV
-// strings without leaking heap ownership conventions across the runtime.
-// Centralising the logic keeps formatting decisions consistent between the VM
-// and native backends.
+// Purpose: Implement numeric and CSV formatting helpers that mirror the BASIC
+//          runtime semantics.  The routines encapsulate locale-sensitive
+//          behaviour, handle special floating-point values deterministically,
+//          and generate quoted CSV strings without leaking heap ownership
+//          conventions across the runtime.
+// Key invariants: Callers must provide valid output buffers when the API
+//                 expects them; helper functions trap on invalid inputs or
+//                 truncation rather than returning partial results.  Locale
+//                 normalisation always rewrites decimal separators to '.' so
+//                 textual output remains stable across host environments.
+// Ownership/Lifetime: CSV helpers allocate fresh runtime strings that transfer
+//                     ownership to the caller; buffer-based helpers borrow the
+//                     provided storage and never retain pointers.
 //
 //===----------------------------------------------------------------------===//
 
