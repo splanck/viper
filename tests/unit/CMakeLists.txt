@@ -177,6 +177,10 @@ function(viper_add_runtime_tests)
   target_link_libraries(test_rt_chr_invalid PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
   viper_add_ctest(test_rt_chr_invalid test_rt_chr_invalid)
 
+  viper_add_test(test_rt_string_size_clamp ${VIPER_TESTS_DIR}/runtime/RTStringSizeClampTests.cpp)
+  target_link_libraries(test_rt_string_size_clamp PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+  viper_add_ctest(test_rt_string_size_clamp test_rt_string_size_clamp)
+
   viper_add_test(test_rt_string_ranges ${VIPER_TESTS_DIR}/runtime/RTStringRangeTests.cpp)
   target_link_libraries(test_rt_string_ranges PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
   viper_add_ctest(test_rt_string_ranges test_rt_string_ranges)
