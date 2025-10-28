@@ -18,7 +18,7 @@
 
 #include "frontends/basic/SelectCaseRange.hpp"
 #include "frontends/basic/SemanticAnalyzer.hpp"
-#include "frontends/basic/ast/StmtNodes.hpp"
+#include "frontends/basic/ast/StmtControl.hpp"
 
 #include <utility>
 

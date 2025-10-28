@@ -6,6 +6,7 @@
 #pragma once
 
 #include "frontends/basic/ast/DeclNodes.hpp"
+#include "frontends/basic/ast/StmtExpr.hpp"
 
 namespace il::frontends::basic
 {
