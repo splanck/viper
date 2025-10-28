@@ -34,6 +34,12 @@ using namespace il::core;
 namespace il::verify
 {
 
+/// @brief Capture exception-handling structure for @p function.
+/// @details Builds label lookups for all basic blocks and records the entry
+///          block so later analyses can answer reachability queries without
+///          recomputing metadata.  The model stores raw pointers into the
+///          original function and therefore must not outlive it.
+/// @param function Function whose EH layout should be modelled.
 EhModel::EhModel(const Function &function) : fn(&function)
 {
     if (!function.blocks.empty())
@@ -69,6 +75,13 @@ EhModel::EhModel(const Function &function) : fn(&function)
     }
 }
 
+/// @brief Locate a basic block by its label.
+/// @details Consults the pre-built label map and returns the corresponding
+///          basic-block pointer when it exists.  Missing labels yield @c nullptr
+///          so callers can report diagnostics without dereferencing invalid
+///          pointers.
+/// @param label Name of the basic block to retrieve.
+/// @return Pointer to the block when present, otherwise nullptr.
 const BasicBlock *EhModel::findBlock(const std::string &label) const
 {
     auto it = blocks.find(label);
@@ -77,6 +90,14 @@ const BasicBlock *EhModel::findBlock(const std::string &label) const
     return it->second;
 }
 
+/// @brief Enumerate successor blocks referenced by a terminator instruction.
+/// @details Handles the various terminator flavours used by the IL (branch,
+///          conditional branch, switch, resume variants, and trap).  Labels are
+///          resolved through @ref findBlock so downstream checks receive direct
+///          block pointers.  Missing labels are ignored to keep verification
+///          resilient to malformed modules.
+/// @param terminator Terminator instruction whose outgoing edges are requested.
+/// @return Vector containing zero or more successor block pointers.
 std::vector<const BasicBlock *> EhModel::gatherSuccessors(const Instr &terminator) const
 {
     std::vector<const BasicBlock *> successors;
@@ -110,6 +131,13 @@ std::vector<const BasicBlock *> EhModel::gatherSuccessors(const Instr &terminato
     return successors;
 }
 
+/// @brief Retrieve the terminator instruction for @p block.
+/// @details Scans the block's instruction list for the last element and checks
+///          whether it is a terminator.  Non-terminating blocks yield
+///          @c nullptr, allowing callers to differentiate between fallthrough
+///          and explicit control transfers.
+/// @param block Basic block whose terminator is requested.
+/// @return Pointer to the terminator instruction, or nullptr when absent.
 const Instr *EhModel::findTerminator(const BasicBlock &block) const
 {
     for (const auto &instr : block.instructions)
