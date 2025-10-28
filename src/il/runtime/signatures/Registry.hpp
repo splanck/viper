@@ -32,7 +32,8 @@ struct SigParam
     /// @brief Enumerate supported coarse-grained type categories.
     enum Kind
     {
-        I32, ///< 32-bit integral or boolean value.
+        I1,  ///< Boolean value.
+        I32, ///< 32-bit integral value.
         I64, ///< 64-bit integral value.
         F32, ///< 32-bit floating-point value.
         F64, ///< 64-bit floating-point value.
