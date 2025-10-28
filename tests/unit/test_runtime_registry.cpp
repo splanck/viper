@@ -62,6 +62,19 @@ int main()
                          "rt_term_locate_i32",
                          {il::core::Type::Kind::I32, il::core::Type::Kind::I32});
 
+    const auto *strEqDescriptor = il::runtime::findRuntimeDescriptor(il::runtime::RuntimeFeature::StrEq);
+    assert(strEqDescriptor && "string equality runtime descriptor missing");
+    assert(strEqDescriptor->name == "rt_str_eq" &&
+           "string equality runtime descriptor name mismatch");
+    assert(strEqDescriptor->signature.retType.kind == il::core::Type::Kind::I1 &&
+           "string equality runtime descriptor return type mismatch");
+    assert(strEqDescriptor->signature.paramTypes.size() == 2 &&
+           "string equality runtime descriptor arity mismatch");
+    assert(strEqDescriptor->signature.paramTypes[0].kind == il::core::Type::Kind::Str &&
+           "string equality runtime descriptor first parameter mismatch");
+    assert(strEqDescriptor->signature.paramTypes[1].kind == il::core::Type::Kind::Str &&
+           "string equality runtime descriptor second parameter mismatch");
+
     const auto &signatureMap = il::runtime::runtimeSignatures();
     assert(signatureMap.size() == registry.size());
     return 0;
