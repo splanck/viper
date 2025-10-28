@@ -1,7 +1,24 @@
-// tui/src/syntax/rules.cpp
-// @brief Implementation of regex-based syntax highlighting with tiny JSON loader.
-// @invariant Regex rules apply independently per line; cached spans reflect current line text.
-// @ownership SyntaxRuleSet owns compiled regexes and cached spans.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Implements the lightweight JSON loader and regular-expression engine used by
+// the TUI syntax highlighter.  The loader reads a small configuration file that
+// maps patterns to styles and compiles them into a set of reusable rules.  Each
+// line of text can then be highlighted by running the rules and caching the
+// resulting spans for incremental updates.
+//
+//===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Implements the SyntaxRuleSet JSON parser and highlighting routines.
+/// @details The file defines a minimal JSON parser tailored to the tool's
+///          configuration format and uses it to populate regular-expression
+///          rules.  Highlighting requests consult the compiled rules and cache
+///          the spans per line so repeated queries remain fast.
 
 #include "tui/syntax/rules.hpp"
 
@@ -13,17 +30,30 @@ namespace viper::tui::syntax
 {
 namespace
 {
+/// @brief Minimal JSON helper for parsing the syntax rule configuration.
+/// @details The parser understands just enough of JSON to process arrays of
+///          objects containing string and boolean values.  It operates on an
+///          in-memory string and keeps track of the current index.
 struct JsonParser
 {
     const std::string &s;
     std::size_t i{0};
 
+    /// @brief Advance past any ASCII whitespace characters.
+    /// @details Consumes spaces, tabs, and newlines by incrementing the parser
+    ///          index.  The helper is invoked before reading every token to keep
+    ///          the parsing logic straightforward.
     void skipWs()
     {
         while (i < s.size() && std::isspace(static_cast<unsigned char>(s[i])))
             ++i;
     }
 
+    /// @brief Expect the next non-whitespace character to match @p c.
+    /// @details Skips whitespace, checks the current character, and advances the
+    ///          index on success.  Failure leaves the parser untouched so callers
+    ///          can signal an error.
+    /// @return True when the expected delimiter is present, false otherwise.
     bool expect(char c)
     {
         skipWs();
@@ -35,6 +65,10 @@ struct JsonParser
         return false;
     }
 
+    /// @brief Parse a JSON string literal and return its decoded contents.
+    /// @details Handles common escape sequences (quotes, backslashes, newline,
+    ///          carriage return, and tab).  On malformed input the function
+    ///          returns an empty string, allowing callers to propagate failure.
     std::string parseString()
     {
         skipWs();
@@ -80,6 +114,10 @@ struct JsonParser
         return out;
     }
 
+    /// @brief Parse a boolean literal from the input.
+    /// @details Recognises `true` and `false` tokens, advancing the index when a
+    ///          match is found.  Unrecognised input leaves the index unchanged
+    ///          and returns false so callers can treat it as an error.
     bool parseBool()
     {
         skipWs();
@@ -97,6 +135,10 @@ struct JsonParser
     }
 };
 
+/// @brief Convert a `#RRGGBB` string into an RGBA struct.
+/// @details Parses the red, green, and blue components from hexadecimal pairs
+///          and leaves alpha at zero (the renderer interprets it as opaque).
+///          Invalid strings leave the struct at its default value.
 render::RGBA parseColor(const std::string &hex)
 {
     render::RGBA c{};
@@ -110,6 +152,13 @@ render::RGBA parseColor(const std::string &hex)
 }
 } // namespace
 
+/// @brief Load syntax rules from a JSON file located at @p path.
+/// @details Reads the entire file into memory, feeds it through the lightweight
+///          parser, and builds a list of regular-expression rules paired with
+///          styles.  The routine validates the expected structure and aborts on
+///          malformed input.  Successfully parsed rules replace any existing
+///          configuration.
+/// @return True on success; false when the file cannot be opened or parsed.
 bool SyntaxRuleSet::loadFromFile(const std::string &path)
 {
     std::ifstream in(path);
@@ -235,6 +284,11 @@ bool SyntaxRuleSet::loadFromFile(const std::string &path)
     return true;
 }
 
+/// @brief Return syntax highlight spans for @p lineNo and @p line content.
+/// @details Checks the cache first to reuse previous results when the line text
+///          has not changed.  Otherwise it runs every compiled regex against the
+///          line, collects spans, stores them in the cache, and returns the
+///          stored vector.
 const std::vector<Span> &SyntaxRuleSet::spans(std::size_t lineNo, const std::string &line)
 {
     auto it = cache_.find(lineNo);
@@ -254,6 +308,9 @@ const std::vector<Span> &SyntaxRuleSet::spans(std::size_t lineNo, const std::str
     return cache_[lineNo].second;
 }
 
+/// @brief Remove cached highlight spans for the specified line.
+/// @details Deleting the entry forces the next @ref spans call to recompute the
+///          matches, ensuring stale results do not persist after a line changes.
 void SyntaxRuleSet::invalidate(std::size_t lineNo)
 {
     cache_.erase(lineNo);
