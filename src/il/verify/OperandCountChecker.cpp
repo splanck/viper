@@ -66,6 +66,7 @@ Expected<void> OperandCountChecker::run() const
         (!variadicOperands && operandCount > spec_.numOperandsMax))
     {
         std::ostringstream ss;
+        ss << "invalid operand count: ";
         if (spec_.numOperandsMin == spec_.numOperandsMax && !variadicOperands)
         {
             ss << "expected " << static_cast<unsigned>(spec_.numOperandsMin) << " operand";

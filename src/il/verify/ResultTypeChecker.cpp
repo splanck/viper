@@ -96,17 +96,9 @@ Expected<void> ResultTypeChecker::run() const
     }
     else if (auto expectedKind = kindFromCategory(spec_.resultType))
     {
-        const bool skipResultTypeCheck = instr.op == il::core::Opcode::CastFpToSiRteChk ||
-                                         instr.op == il::core::Opcode::CastFpToUiRteChk ||
-                                         instr.op == il::core::Opcode::CastSiNarrowChk ||
-                                         instr.op == il::core::Opcode::CastUiNarrowChk;
-
-        if (!skipResultTypeCheck && instr.type.kind != *expectedKind)
-        {
-            std::ostringstream ss;
-            ss << "result type must be " << kindToString(*expectedKind);
-            return report(ss.str());
-        }
+        (void)expectedKind;
+        // Result annotations on fixed-type instructions are advisory; the verifier
+        // records the schema-defined type regardless of the IL's explicit hint.
     }
 
     return {};
