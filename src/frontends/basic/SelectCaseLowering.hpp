@@ -5,6 +5,7 @@
 // Links: docs/codemap.md
 #pragma once
 
+#include "frontends/basic/SelectModel.hpp"
 #include "frontends/basic/ast/StmtNodes.hpp"
 
 #include "support/source_location.hpp"
@@ -75,14 +76,15 @@ class SelectCaseLowering
     Blocks prepareBlocks(const SelectCaseStmt &stmt, bool hasCaseElse, bool needsDispatch);
 
     void lowerStringArms(const SelectCaseStmt &stmt,
+                         const SelectModel &model,
                          const Blocks &blocks,
                          il::core::Value stringSelector);
 
     void lowerNumericDispatch(const SelectCaseStmt &stmt,
+                              const SelectModel &model,
                               const Blocks &blocks,
                               il::core::Value selWide,
-                              il::core::Value selector,
-                              bool hasRanges);
+                              il::core::Value selector);
 
     size_t emitCompareChain(size_t startIdx,
                             std::vector<CasePlanEntry> &plan,
@@ -91,6 +93,7 @@ class SelectCaseLowering
     static std::string_view blockTagFor(const CasePlanEntry &entry);
 
     void emitSwitchJumpTable(const SelectCaseStmt &stmt,
+                             const SelectModel &model,
                              const Blocks &blocks,
                              il::core::Value selector,
                              size_t switchIdx);
