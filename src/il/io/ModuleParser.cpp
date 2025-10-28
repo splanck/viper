@@ -299,6 +299,14 @@ Expected<void> parseModuleHeader_E(std::istream &is, std::string &line, ParserSt
         std::string triple;
         if (ls >> std::quoted(triple))
         {
+            ls >> std::ws;
+            if (ls.peek() != std::char_traits<char>::eof())
+            {
+                std::ostringstream oss;
+                oss << "line " << st.lineNo << ": unexpected characters after target triple";
+                return Expected<void>{makeError({}, oss.str())};
+            }
+
             st.m.target = triple;
             return {};
         }
