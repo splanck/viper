@@ -115,9 +115,10 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
     Value len = emitCallRet(Type(Type::Kind::I64), "rt_arr_i32_len", {base});
     Value isNeg = emitBinary(Opcode::SCmpLT, ilBoolTy(), index, Value::constInt(0));
     Value tooHigh = emitBinary(Opcode::SCmpGE, ilBoolTy(), index, len);
-    Value isNeg64 = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), isNeg);
-    Value tooHigh64 = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), tooHigh);
-    Value oobInt = emitBinary(Opcode::Or, Type(Type::Kind::I64), isNeg64, tooHigh64);
+    auto emit = emitCommon(expr.loc);
+    Value isNeg64 = emit.widen_to(isNeg, 1, 64, Signedness::Unsigned);
+    Value tooHigh64 = emit.widen_to(tooHigh, 1, 64, Signedness::Unsigned);
+    Value oobInt = emit.logical_or(isNeg64, tooHigh64);
     Value oobCond = emitBinary(Opcode::ICmpNe, ilBoolTy(), oobInt, Value::constInt(0));
 
     Function *func = ctx.function();

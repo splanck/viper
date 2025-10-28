@@ -36,6 +36,7 @@ target_sources(fe_basic PRIVATE
         builtins/MathBuiltins.cpp
         builtins/StringBuiltins.cpp
         Lowerer.cpp
+        EmitCommon.cpp
         SelectCaseLowering.cpp
         LowerExprLogical.cpp
         LowerExprNumeric.cpp

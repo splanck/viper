@@ -22,6 +22,7 @@
 ///          individual lowering stages implemented in other translation units.
 
 #include "frontends/basic/Lowerer.hpp"
+#include "frontends/basic/EmitCommon.hpp"
 #include "frontends/basic/TypeSuffix.hpp"
 #include "frontends/basic/lower/Emitter.hpp"
 #include "il/core/BasicBlock.hpp"
@@ -1005,6 +1006,18 @@ unsigned Lowerer::nextTempId()
 std::string Lowerer::nextFallbackBlockLabel()
 {
     return mangler.block("bb_" + std::to_string(nextFallbackBlockId++));
+}
+
+Emit Lowerer::emitCommon() noexcept
+{
+    return Emit(*this);
+}
+
+Emit Lowerer::emitCommon(il::support::SourceLoc loc) noexcept
+{
+    Emit helper(*this);
+    helper.at(loc);
+    return helper;
 }
 
 /// @brief Access the lowering emitter responsible for IR construction.
