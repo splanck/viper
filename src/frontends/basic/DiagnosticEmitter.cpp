@@ -70,8 +70,15 @@ void DiagnosticEmitter::emit(il::support::Severity sev,
 ///          and observed tokens.
 void DiagnosticEmitter::emitExpected(TokenKind got, TokenKind expect, il::support::SourceLoc loc)
 {
-    std::string msg =
-        std::string("expected ") + tokenKindToString(expect) + ", got " + tokenKindToString(got);
+    std::string msg;
+    if (expect == TokenKind::Number && got == TokenKind::Identifier)
+    {
+        msg = "expected label or number";
+    }
+    else
+    {
+        msg = std::string("expected ") + tokenKindToString(expect) + ", got " + tokenKindToString(got);
+    }
     emit(il::support::Severity::Error, "B0001", loc, 0, std::move(msg));
 }
 
