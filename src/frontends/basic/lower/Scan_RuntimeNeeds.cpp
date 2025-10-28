@@ -18,6 +18,7 @@
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/TypeRules.hpp"
 #include "frontends/basic/TypeSuffix.hpp"
+#include "frontends/basic/ast/StmtNodes.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
 #include <array>
 #include <optional>
@@ -232,6 +233,19 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
 
         if (actualArgs > 0 && (!stmt.trailingNewline || actualArgs > 1))
             lowerer_.requireWriteChErr();
+    }
+
+    /// @brief Track string comparison helpers required by SELECT CASE arms.
+    void after(const SelectCaseStmt &stmt)
+    {
+        for (const auto &arm : stmt.arms)
+        {
+            if (!arm.str_labels.empty())
+            {
+                lowerer_.requestHelper(Lowerer::RuntimeFeature::StrEq);
+                break;
+            }
+        }
     }
 
     /// @brief Analyse PRINT# arguments and request supporting helpers.
