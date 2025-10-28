@@ -1,7 +1,29 @@
 //===----------------------------------------------------------------------===//
 //===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE in the project root for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Auto-generated instruction specification tables produced by
+// `src/il/verify/gen/specgen.py`.  The data encodes verifier expectations for
+// every opcode: operand/result arity, type categories, and custom strategy
+// hooks.  Keeping the table in generated form ensures it stays in lockstep with
+// the authoritative specification while still allowing the verifier to include
+// a richly documented source artifact.
+//
 // This file is auto-generated. Do not edit manually.
 // Use src/il/verify/gen/specgen.py to regenerate.
+//
+//===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Generated verifier tables that describe opcode semantics.
+/// @details Provides the constexpr @ref kSpecs array consumed by
+///          `SpecTables.cpp` to validate operand counts, result arity, type
+///          categories, and bespoke verifier strategies for each opcode defined
+///          in the IL specification.
 
 #include "il/verify/SpecTables.hpp"
 
@@ -9,6 +31,12 @@ namespace il::verify
 {
 namespace
 {
+/// @brief Compact description of verifier rules for every opcode.
+/// @details Each entry matches the order of @ref il::core::Opcode and records
+///          operand arity, result types, and whether overflow-safe variants are
+///          required.  Generated metadata feeds the table-driven verifier so new
+///          opcodes can be added in the specification without hand-editing
+///          C++ logic.
 inline constexpr std::array<InstructionSpec, il::core::kNumOpcodes> kSpecs = {{
     {
         il::core::ResultArity::One,

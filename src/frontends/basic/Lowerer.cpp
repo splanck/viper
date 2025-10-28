@@ -1,16 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// This file is part of the Viper project, under the MIT License.
-// See LICENSE for license information.
+// Part of the Viper project, under the MIT License.
+// See LICENSE in the project root for license information.
 //
 //===----------------------------------------------------------------------===//
 //
-// Implements the central lowering facade that turns BASIC AST nodes into IL.
-// The translation unit hosts symbol bookkeeping, block construction utilities,
-// and orchestration glue that coordinates the various specialised lowering
-// helpers.  Concentrating this logic here keeps the public Lowerer interface
-// compact while documenting how lowering state is managed across procedures and
-// programs.
+// Purpose: Implement the orchestration layer that converts BASIC ASTs into IL
+//          modules.  The lowering facade coordinates symbol tracking,
+//          procedure-level scheduling, and the shared emitter utilities used by
+//          the specialised lowering helpers.
+// Key invariants: Lowering state (symbol tables, block name mapping, gosub
+//                 prologue information) is reset between procedures so state
+//                 never leaks across runs.  Emitted IL must respect the type and
+//                 bounds metadata recorded during collection.
+// Ownership/Lifetime: The facade owns helper singletons (program, procedure,
+//                     and statement lowerers plus the emitter) and borrows AST
+//                     nodes when traversing.
 //
 //===----------------------------------------------------------------------===//
 
@@ -235,15 +240,12 @@ const Lowerer::ProcedureSignature *Lowerer::findProcSignature(const std::string 
     return &it->second;
 }
 
-/// @brief Construct a lowering context.
-/// @param boundsChecks When true, enable allocation of auxiliary slots used to
-///        emit runtime array bounds checks during lowering.
-/// @note The constructor merely stores configuration; transient lowering state
-///       is reset each time a program or procedure is processed.
-/// @brief Construct a lowering facade optionally enabling bounds checks.
+/// @brief Construct the lowering facade with optional bounds checks enabled.
 /// @details Instantiates the program, procedure, and statement lowering helpers
 ///          alongside the shared emitter.  Bounds-check configuration is stored
-///          for later use when emitting array operations.
+///          for later use when emitting array operations.  Per-procedure state
+///          is reset on each run, so the constructor only seeds persistent
+///          collaborators.
 /// @param boundsChecks Whether lowered code should emit runtime bounds checks.
 Lowerer::Lowerer(bool boundsChecks)
     : programLowering(std::make_unique<ProgramLowering>(*this)),
@@ -256,20 +258,11 @@ Lowerer::Lowerer(bool boundsChecks)
 /// @brief Destroy the lowering facade and release helper instances.
 Lowerer::~Lowerer() = default;
 
-/// @brief Lower a full BASIC program into an IL module.
-/// @param prog Parsed program containing procedures and top-level statements.
-/// @return Newly constructed module with all runtime declarations and lowered
-///         procedures.
-/// @details The method resets every per-run cache (name mangler, variable
-///          tracking, runtime requirements) and performs a three stage pipeline:
-///          (1) scan to identify runtime helpers, (2) declare those helpers in
-///          the module, and (3) emit procedure bodies plus a synthetic @main.
-///          `mod`, `builder`, and numerous tracking maps are updated in-place
-///          while the temporary `Module m` owns the resulting IR.
-/// @brief Lower a BASIC program into a freshly constructed IL module.
+/// @brief Lower a full BASIC program into a freshly constructed IL module.
 /// @details Delegates to @ref ProgramLowering::run while allocating a temporary
-///          module that receives the emitted IR.  After the helper completes the
-///          module is returned by value to the caller.
+///          module that receives the emitted IR.  The helper orchestrates
+///          runtime helper discovery, declaration emission, and procedure body
+///          lowering before returning the populated module by value.
 /// @param prog Program containing declarations and statements to lower.
 /// @return Module populated with the lowered program.
 Module Lowerer::lowerProgram(const Program &prog)
@@ -282,9 +275,6 @@ Module Lowerer::lowerProgram(const Program &prog)
 /// @brief Backward-compatible alias for @ref lowerProgram.
 /// @param prog Program lowered into a fresh module instance.
 /// @return Result from delegating to @ref lowerProgram.
-/// @brief Compatibility shim that forwards to @ref lowerProgram.
-/// @param prog Program to lower.
-/// @return Result of @ref lowerProgram.
 Module Lowerer::lower(const Program &prog)
 {
     return lowerProgram(prog);
@@ -1008,11 +998,24 @@ std::string Lowerer::nextFallbackBlockLabel()
     return mangler.block("bb_" + std::to_string(nextFallbackBlockId++));
 }
 
+/// @brief Create a lightweight emitter helper bound to this lowerer.
+/// @details Returns an @ref Emit facade that shares the lowerer's bookkeeping
+///          so call sites can emit IL without touching the owning
+///          @ref lower::Emitter directly.  The helper captures the current
+///          procedure context and uses the caller's source location when set via
+///          @ref Emit::at.
+/// @return Emit helper scoped to the active lowering session.
 Emit Lowerer::emitCommon() noexcept
 {
     return Emit(*this);
 }
 
+/// @brief Create an emitter helper seeded with an explicit source location.
+/// @details Wraps @ref emitCommon() while pre-populating the helper with
+///          @p loc so subsequent builder calls annotate instructions with the
+///          desired source metadata without extra boilerplate.
+/// @param loc Source location to associate with emitted instructions.
+/// @return Emit helper scoped to the active lowering session.
 Emit Lowerer::emitCommon(il::support::SourceLoc loc) noexcept
 {
     Emit helper(*this);
