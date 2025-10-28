@@ -16,6 +16,7 @@
 #include "il/core/Function.hpp"
 
 #include <cassert>
+#include <cstdlib>
 #include <unordered_set>
 
 using namespace il::core;
@@ -85,7 +86,8 @@ void Lowerer::buildMainFunctionSkeleton(ProgramEmitContext &state)
         if (lineBlocks.find(vLine) != lineBlocks.end())
             continue;
         size_t blockIdx = f.blocks.size();
-        b.addBlock(f, mangler.block("L" + std::to_string(vLine)));
+        b.addBlock(f,
+                   mangler.block((vLine > 0 ? "L" : "UL") + std::to_string(std::abs(vLine))));
         lineBlocks[vLine] = blockIdx;
     }
     ctx.setExitIndex(f.blocks.size());
