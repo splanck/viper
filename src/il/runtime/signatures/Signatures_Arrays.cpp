@@ -39,7 +39,7 @@ void register_array_signatures()
     register_signature(make_signature("rt_arr_oob_panic", {Kind::I64, Kind::I64}));
     register_signature(make_signature("rt_obj_new_i64", {Kind::I64, Kind::I64}, {Kind::Ptr}));
     register_signature(make_signature("rt_obj_retain_maybe", {Kind::Ptr}));
-    register_signature(make_signature("rt_obj_release_check0", {Kind::Ptr}, {Kind::I32}));
+    register_signature(make_signature("rt_obj_release_check0", {Kind::Ptr}, {Kind::I1}));
     register_signature(make_signature("rt_obj_free", {Kind::Ptr}));
 }
 

@@ -73,7 +73,7 @@ void register_string_signatures()
     register_signature(make_signature("rt_lcase", {Kind::Ptr}, {Kind::Ptr}));
     register_signature(make_signature("rt_chr", {Kind::I64}, {Kind::Ptr}));
     register_signature(make_signature("rt_asc", {Kind::Ptr}, {Kind::I64}));
-    register_signature(make_signature("rt_str_eq", {Kind::Ptr, Kind::Ptr}, {Kind::I32}));
+    register_signature(make_signature("rt_str_eq", {Kind::Ptr, Kind::Ptr}, {Kind::I1}));
     register_signature(make_signature("rt_val", {Kind::Ptr}, {Kind::F64}));
     register_signature(make_signature("rt_val_to_double",
                                       {Kind::Ptr, Kind::Ptr},
