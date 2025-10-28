@@ -26,6 +26,7 @@
 #include "rt_string.h"
 
 #include <assert.h>
+#include <limits.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -248,7 +249,10 @@ rt_string rt_str_empty(void)
 /// @return Length in characters (bytes).
 int64_t rt_len(rt_string s)
 {
-    return (int64_t)rt_string_len_bytes(s);
+    size_t len = rt_string_len_bytes(s);
+    if (len > (size_t)INT64_MAX)
+        return INT64_MAX;
+    return (int64_t)len;
 }
 
 /// @brief Concatenate two runtime strings, consuming the inputs.
