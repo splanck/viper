@@ -42,8 +42,8 @@ namespace il::verify::detail
 ///          lookups.
 /// @param ctx Verification context for the instruction under inspection.
 /// @param info Opcode metadata describing operand expectations.
-OperandTypeChecker::OperandTypeChecker(const VerifyCtx &ctx, const il::core::OpcodeInfo &info)
-    : ctx_(ctx), info_(info)
+OperandTypeChecker::OperandTypeChecker(const VerifyCtx &ctx, const InstructionSpec &spec)
+    : ctx_(ctx), spec_(spec)
 {
 }
 
@@ -58,10 +58,10 @@ Expected<void> OperandTypeChecker::run() const
 {
     const auto &instr = ctx_.instr;
 
-    for (size_t index = 0; index < instr.operands.size() && index < info_.operandTypes.size();
+    for (size_t index = 0; index < instr.operands.size() && index < spec_.operandTypes.size();
          ++index)
     {
-        const TypeCategory category = info_.operandTypes[index];
+        const TypeCategory category = spec_.operandTypes[index];
         if (category == TypeCategory::None || category == TypeCategory::Any ||
             category == TypeCategory::Dynamic)
             continue;

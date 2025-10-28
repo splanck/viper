@@ -5,7 +5,7 @@
 // Links: docs/il-guide.md#reference
 #pragma once
 
-#include "il/core/OpcodeInfo.hpp"
+#include "il/verify/SpecTables.hpp"
 #include "il/verify/VerifyCtx.hpp"
 
 #include "support/diag_expected.hpp"
@@ -19,7 +19,7 @@ namespace il::verify::detail
 class ResultTypeChecker
 {
   public:
-    ResultTypeChecker(const VerifyCtx &ctx, const il::core::OpcodeInfo &info);
+    ResultTypeChecker(const VerifyCtx &ctx, const InstructionSpec &spec);
 
     /// @brief Validates the presence and type of the instruction result.
     /// @return Empty on success or a populated diagnostic on failure.
@@ -29,7 +29,7 @@ class ResultTypeChecker
     il::support::Expected<void> report(std::string_view message) const;
 
     const VerifyCtx &ctx_;
-    const il::core::OpcodeInfo &info_;
+    const InstructionSpec &spec_;
 };
 
 } // namespace il::verify::detail
