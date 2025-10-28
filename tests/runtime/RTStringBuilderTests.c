@@ -11,6 +11,32 @@
 #include <stdint.h>
 #include <string.h>
 
+// Override strlen within this translation unit to simulate an oversized
+// formatting result. When the string builder under test points @ref g_overflow_target,
+// the custom strlen reports a much larger length than actually written, forcing
+// the overflow branch in rt_sb_append_double without invoking rt_trap.
+static rt_string_builder *g_overflow_target = NULL;
+static size_t g_forced_strlen_extra = 0;
+static int g_forced_strlen_used = 0;
+
+size_t strlen(const char *s)
+{
+    if (g_overflow_target)
+    {
+        const rt_string_builder *sb = g_overflow_target;
+        if (s == sb->data + sb->len)
+        {
+            g_forced_strlen_used = 1;
+            return sb->len + g_forced_strlen_extra;
+        }
+    }
+
+    size_t len = 0;
+    while (s[len] != '\0')
+        ++len;
+    return len;
+}
+
 static void test_init_empty(void)
 {
     rt_string_builder sb;
@@ -80,6 +106,33 @@ static void test_numeric_helpers(void)
     rt_sb_free(&sb);
 }
 
+static void test_append_double_overflow_preserves_state(void)
+{
+    rt_string_builder sb;
+    rt_sb_init(&sb);
+
+    assert(rt_sb_append_cstr(&sb, "prefix") == RT_SB_OK);
+
+    char *original_data = sb.data;
+    size_t original_len = sb.len;
+    sb.cap = sb.len + 1;
+    size_t original_cap = sb.cap;
+
+    g_overflow_target = &sb;
+    g_forced_strlen_extra = 1024;
+    g_forced_strlen_used = 0;
+    rt_sb_status status = rt_sb_append_double(&sb, 123.456);
+    g_overflow_target = NULL;
+    assert(g_forced_strlen_used);
+    assert(status == RT_SB_ERROR_OVERFLOW);
+    assert(sb.len == original_len);
+    assert(sb.data == original_data);
+    assert(sb.cap == original_cap);
+    assert(sb.data[sb.len] == '\0');
+
+    rt_sb_free(&sb);
+}
+
 int main(void)
 {
     test_init_empty();
@@ -87,5 +140,6 @@ int main(void)
     test_large_append();
     test_printf_growth();
     test_numeric_helpers();
+    test_append_double_overflow_preserves_state();
     return 0;
 }
