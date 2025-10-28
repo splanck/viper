@@ -14,6 +14,11 @@ add_library(viper_codegen_x86_64 STATIC
         LowerDiv.cpp
         LowerILToMIR.cpp
         LoweringRuleTable.cpp
+        Lowering.EmitCommon.cpp
+        Lowering.Arith.cpp
+        Lowering.Bitwise.cpp
+        Lowering.Mem.cpp
+        Lowering.CF.cpp
         LoweringRules.cpp
         Peephole.cpp
         Backend.cpp
