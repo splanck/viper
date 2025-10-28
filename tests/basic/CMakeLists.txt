@@ -162,6 +162,15 @@ function(viper_add_basic_main_tests)
     test_frontends_basic_parse_select_case_positive)
 
   viper_add_test(
+    test_frontends_basic_subroutines_gosub_inline_case
+    ${VIPER_TESTS_DIR}/frontends/basic/SubroutinesGosubInlineCaseTests.cpp)
+  target_link_libraries(
+    test_frontends_basic_subroutines_gosub_inline_case PRIVATE ${VIPER_BASIC_LIBS})
+  viper_add_ctest(
+    test_frontends_basic_subroutines_gosub_inline_case
+    test_frontends_basic_subroutines_gosub_inline_case)
+
+  viper_add_test(
     test_frontends_basic_parse_input_extra_args
     ${VIPER_TESTS_DIR}/frontends/basic/ParserInputExtraArgsTests.cpp)
   target_link_libraries(test_frontends_basic_parse_input_extra_args PRIVATE ${VIPER_BASIC_LIBS})
