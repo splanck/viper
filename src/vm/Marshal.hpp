@@ -12,6 +12,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <span>
 #include <string>
 #include <string_view>
@@ -43,6 +44,12 @@ constexpr bool lengthWithinLimit(int64_t length, uint64_t limit)
     return length >= 0 && static_cast<uint64_t>(length) <= limit;
 }
 } // namespace detail
+
+/// @brief Maximum number of bytes the VM is willing to expose from a runtime string.
+/// @details Strings larger than this limit are treated as invalid to avoid allocating
+///          unbounded host buffers when marshalling corrupted runtime handles.
+inline constexpr uint64_t kMaxBridgeStringBytes =
+    static_cast<uint64_t>(std::numeric_limits<int32_t>::max());
 
 struct ResultBuffers
 {
