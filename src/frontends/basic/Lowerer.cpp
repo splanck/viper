@@ -38,6 +38,9 @@
 #include <limits>
 #include <utility>
 #include <vector>
+#ifdef DEBUG
+#include <unordered_set>
+#endif
 
 using namespace il::core;
 
@@ -384,6 +387,11 @@ void Lowerer::buildProcedureSkeleton(Function &f,
         builder->addBlock(f, blockNamer ? blockNamer->entry() : mangler.block("entry_" + name));
     entry.params = f.params;
 
+#ifdef DEBUG
+    std::vector<int> keys;
+    keys.reserve(metadata.bodyStmts.size());
+#endif
+
     auto &lineBlocks = ctx.blockNames().lineBlocks();
     for (const auto *stmt : metadata.bodyStmts)
     {
@@ -396,7 +404,21 @@ void Lowerer::buildProcedureSkeleton(Function &f,
         else
             builder->addBlock(f, mangler.block("L" + std::to_string(vLine) + "_" + name));
         lineBlocks[vLine] = blockIdx;
+#ifdef DEBUG
+        keys.push_back(vLine);
+#endif
     }
+
+#ifdef DEBUG
+    {
+        std::unordered_set<int> seen;
+        for (int k : keys)
+        {
+            assert(seen.insert(k).second &&
+                   "Duplicate block key; unlabeled statements must have unique synthetic keys");
+        }
+    }
+#endif
 
     ctx.setExitIndex(f.blocks.size());
     if (blockNamer)
