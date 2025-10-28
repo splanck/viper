@@ -185,6 +185,11 @@ endif()
 
 if(VIPER_BUILD_TESTING)
   enable_testing()
+  add_test(
+    NAME basic_select_case_string
+    COMMAND ${CMAKE_SOURCE_DIR}/tests/integration/basic/select_case_string.sh
+            ${CMAKE_BINARY_DIR}
+  )
 endif()
 
 add_subdirectory(${CMAKE_SOURCE_DIR}/src/runtime)
