@@ -116,12 +116,13 @@ void findSelectCase(const Stmt &stmt, const SelectCaseStmt *&select)
 int main()
 {
     const auto basPath = fixturePath();
+    const std::string basPathStr = basPath.string();
     const std::string source = readFile(basPath);
     assert(!source.empty());
 
     // Parse the BASIC source and validate AST structure.
     SourceManager sm;
-    const uint32_t fid = sm.addFile(basPath.string());
+    const uint32_t fid = sm.addFile(basPathStr);
     Parser parser(source, fid);
     auto program = parser.parseProgram();
     assert(program);
@@ -185,7 +186,7 @@ int main()
     // Compile the BASIC program to IL and ensure the pipeline accepts the source.
     SourceManager compileSm;
     BasicCompilerOptions options{};
-    BasicCompilerInput input{source, basPath.string()};
+    BasicCompilerInput input{source, basPathStr};
     auto result = compileBasic(input, options, compileSm);
     assert(result.succeeded());
     assert(result.emitter);
