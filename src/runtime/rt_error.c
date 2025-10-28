@@ -1,8 +1,7 @@
 //===----------------------------------------------------------------------===//
 //
-// This file is part of the Viper project and is licensed under the MIT
-// License. Refer to the LICENSE file at the root of the repository for the
-// complete text.
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
