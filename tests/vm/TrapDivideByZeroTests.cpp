@@ -4,42 +4,20 @@
 // Ownership/Lifetime: Forks child VM process to capture trap output.
 // Links: docs/codemap.md
 
-#include "il/build/IRBuilder.hpp"
-#include "tests/common/VmFixture.hpp"
+#include "tests/common/TestIRBuilder.hpp"
 
 #include <cassert>
 #include <string>
 
 using namespace il::core;
 
-int main()
-{
-    using viper::tests::VmFixture;
+TEST_WITH_IL(il, {
+    const auto lhs = il.const_i64(1);
+    const auto rhs = il.const_i64(0);
+    il.binary(Opcode::SDivChk0, Type(Type::Kind::I64), lhs, rhs, il.loc());
+    il.retVoid(il.loc());
 
-    Module module;
-    il::build::IRBuilder builder(module);
-    auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
-    auto &bb = builder.addBlock(fn, "entry");
-    builder.setInsertPoint(bb);
-
-    Instr div;
-    div.result = builder.reserveTempId();
-    div.op = Opcode::SDivChk0;
-    div.type = Type(Type::Kind::I64);
-    div.operands.push_back(Value::constInt(1));
-    div.operands.push_back(Value::constInt(0));
-    div.loc = {1, 1, 1};
-    bb.instructions.push_back(div);
-
-    Instr ret;
-    ret.op = Opcode::Ret;
-    ret.type = Type(Type::Kind::Void);
-    ret.loc = {1, 1, 1};
-    bb.instructions.push_back(ret);
-
-    VmFixture fixture;
-    const std::string out = fixture.captureTrap(module);
+    const std::string out = il.captureTrap();
     const bool ok = out.find("Trap @main#0 line 1: DivideByZero (code=0)") != std::string::npos;
     assert(ok && "expected DivideByZero trap diagnostic with instruction index");
-    return 0;
-}
+});
