@@ -34,6 +34,23 @@ static bool rt_sb_is_inline(const rt_string_builder *sb)
     return sb && sb->data == sb->inline_buffer;
 }
 
+static void rt_sb_restore_on_overflow(rt_string_builder *sb, size_t original_len, size_t original_cap, bool was_inline)
+{
+    if (!sb)
+        return;
+
+    if (was_inline)
+    {
+        if (!rt_sb_is_inline(sb) && sb->data)
+            free(sb->data);
+        sb->data = sb->inline_buffer;
+    }
+
+    sb->len = original_len;
+    sb->cap = original_cap;
+    sb->data[sb->len] = '\0';
+}
+
 void rt_sb_init(rt_string_builder *sb)
 {
     if (!sb)
@@ -176,6 +193,10 @@ rt_sb_status rt_sb_append_double(rt_string_builder *sb, double value)
     if (extra > SIZE_MAX - sb->len - 1)
         return RT_SB_ERROR_OVERFLOW;
 
+    size_t original_len = sb->len;
+    size_t original_cap = sb->cap;
+    bool was_inline = rt_sb_is_inline(sb);
+
     rt_sb_status status = rt_sb_reserve(sb, sb->len + extra);
     if (status != RT_SB_OK)
         return status;
@@ -183,9 +204,20 @@ rt_sb_status rt_sb_append_double(rt_string_builder *sb, double value)
     size_t avail = sb->cap - sb->len;
     rt_format_f64(value, sb->data + sb->len, avail);
     size_t appended = strlen(sb->data + sb->len);
+
+    if (appended + 1 > avail)
+    {
+        rt_sb_restore_on_overflow(sb, original_len, original_cap, was_inline);
+        return RT_SB_ERROR_OVERFLOW;
+    }
+
     sb->len += appended;
     if (sb->len >= sb->cap)
+    {
+        rt_sb_restore_on_overflow(sb, original_len, original_cap, was_inline);
         return RT_SB_ERROR_OVERFLOW;
+    }
+
     sb->data[sb->len] = '\0';
     return RT_SB_OK;
 }
