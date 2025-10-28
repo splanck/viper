@@ -10,6 +10,17 @@ option(IL_ENABLE_DOCS_LINT "Run header/Doxygen docs check (scripts/check_comment
 
 set(VIPER_TESTS_DIR ${CMAKE_CURRENT_LIST_DIR})
 
+file(GLOB VIPER_TEST_SCRIPT_FILES
+     LIST_DIRECTORIES FALSE
+     "${CMAKE_CURRENT_SOURCE_DIR}/scripts/*.sh")
+foreach(_viper_test_script IN LISTS VIPER_TEST_SCRIPT_FILES)
+  file(
+    CHMOD "${_viper_test_script}"
+    PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE
+                GROUP_READ GROUP_EXECUTE
+                WORLD_READ WORLD_EXECUTE)
+endforeach()
+
 find_package(Threads REQUIRED)
 find_package(GTest QUIET)
 
@@ -76,6 +87,14 @@ viper_add_ctest(NoAssertFalseGuard
 
 add_test(NAME smoke_term_basic
   COMMAND $<TARGET_FILE:ilc> front basic -run ${CMAKE_CURRENT_SOURCE_DIR}/smoke/term_basic.bas)
+
+add_test(NAME basic_sum_no_linenos
+         COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/scripts/run_sum_no_linenos.sh
+                 $<TARGET_FILE:ilc>)
+set_tests_properties(basic_sum_no_linenos
+  PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    WILL_FAIL ON)
 
 add_executable(test_basic_oop_parsing ${CMAKE_CURRENT_SOURCE_DIR}/unit/BasicOOP_Parsing.cpp)
 target_link_libraries(test_basic_oop_parsing fe_basic viper_testing)
