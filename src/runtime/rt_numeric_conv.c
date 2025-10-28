@@ -1,16 +1,18 @@
 //===----------------------------------------------------------------------===//
 //
-// This file is part of the Viper project and is provided under the MIT
-// License. See the LICENSE file in the repository root for the full text.
+// Part of the Viper project, under the MIT License.
+// See LICENSE in the project root for license information.
 //
 //===----------------------------------------------------------------------===//
 //
-// Houses the scalar numeric conversion routines that emulate BASIC semantics
-// for rounding, truncation, and parsing.  The helpers convert floating-point
-// values to fixed-width integers while honouring banker rounding, translate
-// textual representations to runtime types, and expose utility functions shared
-// by both the VM and native runtime implementations.  Centralising the logic
-// ensures every consumer observes identical edge-case handling.
+// Purpose: Provide scalar numeric conversion routines that emulate BASIC
+//          semantics for rounding, truncation, and parsing.
+// Key invariants: All conversion APIs validate input pointers, communicate
+//                 failure through explicit flags or error codes, and never leave
+//                 outputs partially initialised.  Banker rounding is applied
+//                 consistently so the VM and native runtimes agree on results.
+// Ownership/Lifetime: Functions operate purely on caller-supplied values and
+//                     buffers; no state is retained between calls.
 //
 //===----------------------------------------------------------------------===//
 
