@@ -1,7 +1,7 @@
 //===----------------------------------------------------------------------===//
 //
 // Part of the Viper project, under the MIT License.
-// See LICENSE for license information.
+// See LICENSE in the project root for license information.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -15,6 +15,12 @@
 //                     lifetime spans the process.
 //
 //===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Glue logic that exposes declarative lowering rules to the backend.
+/// @details Connects the @ref viper::codegen::x64::lowering::kLoweringRuleTable
+///          metadata with runtime match and emit function pointers.  The module
+///          constructs the registry lazily and caches it for subsequent queries.
 
 #include "LoweringRules.hpp"
 
@@ -30,18 +36,41 @@ namespace viper::codegen::x64
 namespace
 {
 
+/// @brief Match thunk that forwards to a declarative lowering rule.
+/// @details Wraps the @ref viper::codegen::x64::lowering::kLoweringRuleTable
+///          entry at @p Index in a function pointer compatible signature for the
+///          runtime registry.  This enables the declarative data to satisfy the
+///          imperative interface expected by the pass manager.
+/// @tparam Index Entry within the lowering table to query.
+/// @param instr IL instruction presented to the rule.
+/// @return True when the instruction satisfies the rule's predicate.
 template <std::size_t Index>
 bool matchRuleThunk(const IL::Instr &instr)
 {
     return matchesRuleSpec(lowering::kLoweringRuleTable[Index], instr);
 }
 
+/// @brief Emit thunk that invokes the declarative lowering rule.
+/// @details Calls the `emit` function stored in the declarative table entry at
+///          @p Index, adapting it to the runtime function pointer signature used
+///          by the registry.
+/// @tparam Index Entry within the lowering table to invoke.
+/// @param instr IL instruction being lowered.
+/// @param builder Machine IR builder receiving the emitted instructions.
 template <std::size_t Index>
 void emitRuleThunk(const IL::Instr &instr, MIRBuilder &builder)
 {
     lowering::kLoweringRuleTable[Index].emit(instr, builder);
 }
 
+/// @brief Build the immutable lowering rule registry at compile time.
+/// @details Uses template parameter packs to transform every entry in the
+///          declarative rule table into a @ref LoweringRule record containing the
+///          match and emit thunks.  The resulting vector is stored in static
+///          storage so subsequent calls reuse the cached registry.
+/// @tparam Indices Compile-time indices spanning the declarative rule table.
+/// @param Unnamed Sequence object carrying the indices.
+/// @return Reference to the lazily initialised registry.
 template <std::size_t... Indices>
 const std::vector<LoweringRule> &makeRules(std::index_sequence<Indices...>)
 {
@@ -51,6 +80,11 @@ const std::vector<LoweringRule> &makeRules(std::index_sequence<Indices...>)
     return rules;
 }
 
+/// @brief Lazily construct or fetch the lowering rule registry.
+/// @details Instantiates the registry on first use by calling @ref makeRules
+///          with an index sequence spanning the declarative rule table.  Later
+///          invocations reuse the cached vector.
+/// @return Reference to the static lowering rule registry.
 const std::vector<LoweringRule> &buildRules()
 {
     static const auto &rules =
@@ -60,11 +94,23 @@ const std::vector<LoweringRule> &buildRules()
 
 } // namespace
 
+/// @brief Retrieve the full set of lowering rules available to the backend.
+/// @details Forwards to @ref buildRules so callers always receive the cached
+///          registry constructed from the declarative rule table.
+/// @return Reference to the lowering rule registry.
 const std::vector<LoweringRule> &viper_get_lowering_rules()
 {
     return buildRules();
 }
 
+/// @brief Locate the lowering rule associated with an IL instruction.
+/// @details Performs a lookup in the declarative rule table, converts the
+///          resulting pointer into a registry index, and returns the
+///          corresponding @ref LoweringRule entry when found.  The helper keeps
+///          the runtime-facing API independent from the declarative data
+///          structures.
+/// @param instr IL instruction that needs a lowering rule.
+/// @return Pointer to the matching rule or nullptr when no rule applies.
 const LoweringRule *viper_select_rule(const IL::Instr &instr)
 {
     const auto *spec = lookupRuleSpec(instr);
