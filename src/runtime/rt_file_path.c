@@ -1,16 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
-// This file is part of the Viper project and is distributed under the terms of
-// the MIT License. See the accompanying LICENSE file for the full text.
+// Part of the Viper project, under the MIT License.
+// See LICENSE in the project root for license information.
 //
 //===----------------------------------------------------------------------===//
 //
-// Provides small utilities that translate BASIC file mode flags into operating
-// system specific open flags and expose view helpers for ViperString path
-// values.  These routines allow the runtime to keep platform conditionals out
-// of the hot path while centralising validation, error reporting, and
-// canonical conversions.  Callers remain responsible for owning the
-// ViperString buffers that back the returned pointers.
+// Purpose: Translate BASIC runtime file mode descriptors into platform
+//          specific strings and flag combinations while exposing borrowing
+//          helpers for runtime-managed string paths.
+// Key invariants: Mode conversion routines never return partially initialised
+//                 data—callers receive either a fully populated flag set or a
+//                 `false`/`NULL` result.  Borrowed string views remain valid only
+//                 for the lifetime of the originating @ref ViperString handle.
+// Ownership/Lifetime: The utilities borrow underlying string buffers without
+//                     copying; callers must manage reference counts on
+//                     @ref ViperString objects and respect the borrowed view
+//                     semantics.
 //
 //===----------------------------------------------------------------------===//
 
