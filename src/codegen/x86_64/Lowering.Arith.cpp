@@ -1,7 +1,7 @@
 //===----------------------------------------------------------------------===//
 //
 // Part of the Viper project, under the MIT License.
-// See LICENSE for license information.
+// See LICENSE in the project root for license information.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -16,6 +16,14 @@
 //
 //===----------------------------------------------------------------------===//
 
+/// @file
+/// @brief Arithmetic lowering rules for the x86-64 backend.
+/// @details Translates IL arithmetic instructions into Machine IR by
+///          orchestrating @ref viper::codegen::x64::EmitCommon helpers.  Each
+///          rule chooses opcode variants that match the operand register class
+///          and ensures integer immediates and floating-point operations are
+///          handled consistently.
+
 #include "LoweringRuleTable.hpp"
 
 #include "LowerILToMIR.hpp"
@@ -24,6 +32,12 @@
 namespace viper::codegen::x64::lowering
 {
 
+/// @brief Lower an integer or floating-point add IL instruction.
+/// @details Selects MOV/ADD forms based on the destination register class and
+///          delegates operand handling to @ref EmitCommon::emitBinary so immediates
+///          can be folded when possible.
+/// @param instr IL add instruction to lower.
+/// @param builder Machine IR builder receiving the emitted instructions.
 void emitAdd(const ILInstr &instr, MIRBuilder &builder)
 {
     EmitCommon emit(builder);
@@ -33,6 +47,12 @@ void emitAdd(const ILInstr &instr, MIRBuilder &builder)
     emit.emitBinary(instr, opRR, opRI, cls, cls == RegClass::GPR);
 }
 
+/// @brief Lower a subtraction IL instruction.
+/// @details Chooses between integer and floating-point subtraction opcodes, then
+///          forwards to @ref EmitCommon::emitBinary to handle operand
+///          normalisation.
+/// @param instr IL subtract instruction to lower.
+/// @param builder Machine IR builder receiving the emitted instructions.
 void emitSub(const ILInstr &instr, MIRBuilder &builder)
 {
     EmitCommon emit(builder);
@@ -41,6 +61,12 @@ void emitSub(const ILInstr &instr, MIRBuilder &builder)
     emit.emitBinary(instr, opRR, opRR, cls, false);
 }
 
+/// @brief Lower a multiply IL instruction.
+/// @details Selects integer or floating-point multiply opcodes and leverages
+///          @ref EmitCommon::emitBinary to move operands into their canonical
+///          locations.
+/// @param instr IL multiply instruction to lower.
+/// @param builder Machine IR builder receiving the emitted instructions.
 void emitMul(const ILInstr &instr, MIRBuilder &builder)
 {
     EmitCommon emit(builder);
@@ -49,11 +75,23 @@ void emitMul(const ILInstr &instr, MIRBuilder &builder)
     emit.emitBinary(instr, opRR, opRR, cls, false);
 }
 
+/// @brief Lower a floating-point division IL instruction.
+/// @details Division always occurs in XMM registers, so the helper directly
+///          invokes @ref EmitCommon::emitBinary with FDIV opcodes and floating
+///          register classes.
+/// @param instr IL floating-point divide instruction.
+/// @param builder Machine IR builder receiving the emitted instructions.
 void emitFDiv(const ILInstr &instr, MIRBuilder &builder)
 {
     EmitCommon(builder).emitBinary(instr, MOpcode::FDIV, MOpcode::FDIV, RegClass::XMM, false);
 }
 
+/// @brief Lower an integer compare IL instruction.
+/// @details Uses @ref EmitCommon::icmpConditionCode to resolve the condition
+///          code and @ref EmitCommon::emitCmp to produce the Machine IR compare
+///          sequence.
+/// @param instr IL integer compare instruction.
+/// @param builder Machine IR builder receiving the emitted instructions.
 void emitICmp(const ILInstr &instr, MIRBuilder &builder)
 {
     if (const auto cond = EmitCommon::icmpConditionCode(instr.opcode))
@@ -62,6 +100,11 @@ void emitICmp(const ILInstr &instr, MIRBuilder &builder)
     }
 }
 
+/// @brief Lower a floating-point compare IL instruction.
+/// @details Translates the opcode suffix into a condition code and emits the
+///          appropriate floating-point compare using @ref EmitCommon::emitCmp.
+/// @param instr IL floating-point compare instruction.
+/// @param builder Machine IR builder receiving the emitted instructions.
 void emitFCmp(const ILInstr &instr, MIRBuilder &builder)
 {
     if (const auto cond = EmitCommon::fcmpConditionCode(instr.opcode))
@@ -70,6 +113,12 @@ void emitFCmp(const ILInstr &instr, MIRBuilder &builder)
     }
 }
 
+/// @brief Lower an explicit compare IL instruction that encodes the result type.
+/// @details Determines the register class using either the result or first
+///          operand kind, then emits a compare that materialises the condition
+///          into the destination virtual register.
+/// @param instr IL compare instruction with explicit operands.
+/// @param builder Machine IR builder receiving the emitted instructions.
 void emitCmpExplicit(const ILInstr &instr, MIRBuilder &builder)
 {
     EmitCommon emit(builder);
