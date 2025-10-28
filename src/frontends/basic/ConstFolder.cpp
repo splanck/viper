@@ -22,6 +22,9 @@
 ///          while exposing rich documentation for each folding primitive.
 
 #include "frontends/basic/ConstFolder.hpp"
+#include "frontends/basic/ast/StmtControl.hpp"
+#include "frontends/basic/ast/StmtExpr.hpp"
+#include "frontends/basic/ast/StmtIO.hpp"
 #include "frontends/basic/constfold/Dispatch.hpp"
 
 extern "C"

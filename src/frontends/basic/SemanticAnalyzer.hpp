@@ -10,6 +10,7 @@
 #include "frontends/basic/ProcRegistry.hpp"
 #include "frontends/basic/ScopeTracker.hpp"
 #include "frontends/basic/SemanticDiagnostics.hpp"
+#include "frontends/basic/ast/ExprNodes.hpp"
 #include "frontends/basic/ast/NodeFwd.hpp"
 #include <initializer_list>
 #include <optional>

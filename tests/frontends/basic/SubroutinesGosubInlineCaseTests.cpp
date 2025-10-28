@@ -8,7 +8,8 @@
 #include "frontends/basic/Parser.hpp"
 #include "frontends/basic/ast/DeclNodes.hpp"
 #include "frontends/basic/ast/ExprNodes.hpp"
-#include "frontends/basic/ast/StmtNodes.hpp"
+#include "frontends/basic/ast/StmtControl.hpp"
+#include "frontends/basic/ast/StmtIO.hpp"
 #include "support/source_manager.hpp"
 
 #include <cassert>

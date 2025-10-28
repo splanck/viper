@@ -10,6 +10,10 @@
 #include "frontends/basic/Lexer.hpp"
 #include "frontends/basic/StatementSequencer.hpp"
 #include "frontends/basic/ast/DeclNodes.hpp"
+#include "frontends/basic/ast/ExprNodes.hpp"
+#include "frontends/basic/ast/StmtControl.hpp"
+#include "frontends/basic/ast/StmtExpr.hpp"
+#include "frontends/basic/ast/StmtIO.hpp"
 #include "support/diag_expected.hpp"
 #include <array>
 #include <functional>
