@@ -22,10 +22,12 @@
 #include "AsmEmitter.hpp"
 #include "asmfmt/Format.hpp"
 
+#include <array>
 #include <bit>
 #include <cassert>
 #include <cstdint>
 #include <iomanip>
+#include <span>
 #include <sstream>
 #include <utility>
 
@@ -35,52 +37,199 @@ namespace viper::codegen::x64
 namespace
 {
 
-static const EmitterSpec kEmitterTable[] = {
-    {MOpcode::MOVrr, "movq", OperandOrder::R_R, 0U},
-    {MOpcode::MOVri, "movq", OperandOrder::R_I, 0U},
-    {MOpcode::CMOVNErr, "cmovne", OperandOrder::R_R, 0U},
-    {MOpcode::LEA, "leaq", OperandOrder::LEA, 0U},
-    {MOpcode::ADDrr, "addq", OperandOrder::R_R, 0U},
-    {MOpcode::ADDri, "addq", OperandOrder::R_I, 0U},
-    {MOpcode::ANDrr, "andq", OperandOrder::R_R, 0U},
-    {MOpcode::ANDri, "andq", OperandOrder::R_I, 0U},
-    {MOpcode::ORrr, "orq", OperandOrder::R_R, 0U},
-    {MOpcode::ORri, "orq", OperandOrder::R_I, 0U},
-    {MOpcode::XORrr, "xorq", OperandOrder::R_R, 0U},
-    {MOpcode::XORri, "xorq", OperandOrder::R_I, 0U},
-    {MOpcode::SUBrr, "subq", OperandOrder::R_R, 0U},
-    {MOpcode::SHLri, "shlq", OperandOrder::R_I, 0U},
-    {MOpcode::SHLrc, "shlq", OperandOrder::SHIFT, 0U},
-    {MOpcode::SHRri, "shrq", OperandOrder::R_I, 0U},
-    {MOpcode::SHRrc, "shrq", OperandOrder::SHIFT, 0U},
-    {MOpcode::SARri, "sarq", OperandOrder::R_I, 0U},
-    {MOpcode::SARrc, "sarq", OperandOrder::SHIFT, 0U},
-    {MOpcode::IMULrr, "imulq", OperandOrder::R_R, 0U},
-    {MOpcode::CQO, "cqto", OperandOrder::NONE, 0U},
-    {MOpcode::IDIVrm, "idivq", OperandOrder::DIRECT, 0U},
-    {MOpcode::DIVrm, "divq", OperandOrder::DIRECT, 0U},
-    {MOpcode::XORrr32, "xorl", OperandOrder::R_R, 0U},
-    {MOpcode::CMPrr, "cmpq", OperandOrder::R_R, 0U},
-    {MOpcode::CMPri, "cmpq", OperandOrder::R_I, 0U},
-    {MOpcode::SETcc, "set", OperandOrder::SETCC, 0U},
-    {MOpcode::MOVZXrr32, "movzbq", OperandOrder::MOVZX_RR8, 0U},
-    {MOpcode::TESTrr, "testq", OperandOrder::R_R, 0U},
-    {MOpcode::JMP, "jmp", OperandOrder::JUMP, 0U},
-    {MOpcode::JCC, "j", OperandOrder::JCC, 0U},
-    {MOpcode::CALL, "callq", OperandOrder::CALL, 0U},
-    {MOpcode::UD2, "ud2", OperandOrder::NONE, 0U},
-    {MOpcode::RET, "ret", OperandOrder::NONE, 0U},
-    {MOpcode::FADD, "addsd", OperandOrder::R_R, 0U},
-    {MOpcode::FSUB, "subsd", OperandOrder::R_R, 0U},
-    {MOpcode::FMUL, "mulsd", OperandOrder::R_R, 0U},
-    {MOpcode::FDIV, "divsd", OperandOrder::R_R, 0U},
-    {MOpcode::UCOMIS, "ucomisd", OperandOrder::R_R, 0U},
-    {MOpcode::CVTSI2SD, "cvtsi2sdq", OperandOrder::R_R, 0U},
-    {MOpcode::CVTTSD2SI, "cvttsd2siq", OperandOrder::R_R, 0U},
-    {MOpcode::MOVSDrr, "movsd", OperandOrder::R_R, 0U},
-    {MOpcode::MOVSDrm, "movsd", OperandOrder::R_M, 0U},
-    {MOpcode::MOVSDmr, "movsd", OperandOrder::M_R, 0U},
-};
+constexpr OperandPattern makePattern(OperandKind first = OperandKind::None,
+                                     OperandKind second = OperandKind::None,
+                                     OperandKind third = OperandKind::None) noexcept
+{
+    OperandPattern pattern{};
+    pattern.kinds[0] = first;
+    pattern.kinds[1] = second;
+    pattern.kinds[2] = third;
+    if (first != OperandKind::None)
+    {
+        ++pattern.count;
+    }
+    if (second != OperandKind::None)
+    {
+        ++pattern.count;
+    }
+    if (third != OperandKind::None)
+    {
+        ++pattern.count;
+    }
+    return pattern;
+}
+
+constexpr EncodingFlag operator|(EncodingFlag lhs, EncodingFlag rhs) noexcept
+{
+    return static_cast<EncodingFlag>(static_cast<std::uint32_t>(lhs) |
+                                     static_cast<std::uint32_t>(rhs));
+}
+
+[[maybe_unused]] constexpr bool hasFlag(EncodingFlag value, EncodingFlag flag) noexcept
+{
+    return (static_cast<std::uint32_t>(value) & static_cast<std::uint32_t>(flag)) != 0U;
+}
+
+static constexpr std::array<EncodingRow, 44> kEncodingTable = {{
+    {MOpcode::MOVrr, "movq", EncodingForm::RegReg, OperandOrder::R_R,
+     makePattern(OperandKind::Reg, OperandKind::Reg),
+     EncodingFlag::RequiresModRM | EncodingFlag::REXW},
+    {MOpcode::MOVri, "movq", EncodingForm::RegImm, OperandOrder::R_I,
+     makePattern(OperandKind::Reg, OperandKind::Imm), EncodingFlag::UsesImm64},
+    {MOpcode::CMOVNErr, "cmovne", EncodingForm::RegReg, OperandOrder::R_R,
+     makePattern(OperandKind::Reg, OperandKind::Reg), EncodingFlag::RequiresModRM},
+    {MOpcode::LEA, "leaq", EncodingForm::Lea, OperandOrder::LEA,
+     makePattern(OperandKind::Reg, OperandKind::Any), EncodingFlag::RequiresModRM | EncodingFlag::REXW},
+    {MOpcode::ADDrr, "addq", EncodingForm::RegReg, OperandOrder::R_R,
+     makePattern(OperandKind::Reg, OperandKind::Reg),
+     EncodingFlag::RequiresModRM | EncodingFlag::REXW},
+    {MOpcode::ADDri, "addq", EncodingForm::RegImm, OperandOrder::R_I,
+     makePattern(OperandKind::Reg, OperandKind::Imm),
+     EncodingFlag::RequiresModRM | EncodingFlag::UsesImm32 | EncodingFlag::REXW},
+    {MOpcode::ANDrr, "andq", EncodingForm::RegReg, OperandOrder::R_R,
+     makePattern(OperandKind::Reg, OperandKind::Reg),
+     EncodingFlag::RequiresModRM | EncodingFlag::REXW},
+    {MOpcode::ANDri, "andq", EncodingForm::RegImm, OperandOrder::R_I,
+     makePattern(OperandKind::Reg, OperandKind::Imm),
+     EncodingFlag::RequiresModRM | EncodingFlag::UsesImm32 | EncodingFlag::REXW},
+    {MOpcode::ORrr, "orq", EncodingForm::RegReg, OperandOrder::R_R,
+     makePattern(OperandKind::Reg, OperandKind::Reg),
+     EncodingFlag::RequiresModRM | EncodingFlag::REXW},
+    {MOpcode::ORri, "orq", EncodingForm::RegImm, OperandOrder::R_I,
+     makePattern(OperandKind::Reg, OperandKind::Imm),
+     EncodingFlag::RequiresModRM | EncodingFlag::UsesImm32 | EncodingFlag::REXW},
+    {MOpcode::XORrr, "xorq", EncodingForm::RegReg, OperandOrder::R_R,
+     makePattern(OperandKind::Reg, OperandKind::Reg),
+     EncodingFlag::RequiresModRM | EncodingFlag::REXW},
+    {MOpcode::XORri, "xorq", EncodingForm::RegImm, OperandOrder::R_I,
+     makePattern(OperandKind::Reg, OperandKind::Imm),
+     EncodingFlag::RequiresModRM | EncodingFlag::UsesImm32 | EncodingFlag::REXW},
+    {MOpcode::SUBrr, "subq", EncodingForm::RegReg, OperandOrder::R_R,
+     makePattern(OperandKind::Reg, OperandKind::Reg),
+     EncodingFlag::RequiresModRM | EncodingFlag::REXW},
+    {MOpcode::SHLri, "shlq", EncodingForm::ShiftImm, OperandOrder::R_I,
+     makePattern(OperandKind::Reg, OperandKind::Imm),
+     EncodingFlag::RequiresModRM | EncodingFlag::UsesImm8 | EncodingFlag::REXW},
+    {MOpcode::SHLrc, "shlq", EncodingForm::ShiftReg, OperandOrder::SHIFT,
+     makePattern(OperandKind::Reg, OperandKind::Reg), EncodingFlag::RequiresModRM | EncodingFlag::REXW},
+    {MOpcode::SHRri, "shrq", EncodingForm::ShiftImm, OperandOrder::R_I,
+     makePattern(OperandKind::Reg, OperandKind::Imm),
+     EncodingFlag::RequiresModRM | EncodingFlag::UsesImm8 | EncodingFlag::REXW},
+    {MOpcode::SHRrc, "shrq", EncodingForm::ShiftReg, OperandOrder::SHIFT,
+     makePattern(OperandKind::Reg, OperandKind::Reg), EncodingFlag::RequiresModRM | EncodingFlag::REXW},
+    {MOpcode::SARri, "sarq", EncodingForm::ShiftImm, OperandOrder::R_I,
+     makePattern(OperandKind::Reg, OperandKind::Imm),
+     EncodingFlag::RequiresModRM | EncodingFlag::UsesImm8 | EncodingFlag::REXW},
+    {MOpcode::SARrc, "sarq", EncodingForm::ShiftReg, OperandOrder::SHIFT,
+     makePattern(OperandKind::Reg, OperandKind::Reg), EncodingFlag::RequiresModRM | EncodingFlag::REXW},
+    {MOpcode::IMULrr, "imulq", EncodingForm::RegReg, OperandOrder::R_R,
+     makePattern(OperandKind::Reg, OperandKind::Reg),
+     EncodingFlag::RequiresModRM | EncodingFlag::REXW},
+    {MOpcode::CQO, "cqto", EncodingForm::Nullary, OperandOrder::NONE,
+     makePattern(), EncodingFlag::REXW},
+    {MOpcode::IDIVrm, "idivq", EncodingForm::Unary, OperandOrder::DIRECT,
+     makePattern(OperandKind::RegOrMem), EncodingFlag::RequiresModRM | EncodingFlag::REXW},
+    {MOpcode::DIVrm, "divq", EncodingForm::Unary, OperandOrder::DIRECT,
+     makePattern(OperandKind::RegOrMem), EncodingFlag::RequiresModRM | EncodingFlag::REXW},
+    {MOpcode::XORrr32, "xorl", EncodingForm::RegReg, OperandOrder::R_R,
+     makePattern(OperandKind::Reg, OperandKind::Reg), EncodingFlag::RequiresModRM},
+    {MOpcode::CMPrr, "cmpq", EncodingForm::RegReg, OperandOrder::R_R,
+     makePattern(OperandKind::Reg, OperandKind::Reg),
+     EncodingFlag::RequiresModRM | EncodingFlag::REXW},
+    {MOpcode::CMPri, "cmpq", EncodingForm::RegImm, OperandOrder::R_I,
+     makePattern(OperandKind::Reg, OperandKind::Imm),
+     EncodingFlag::RequiresModRM | EncodingFlag::UsesImm32 | EncodingFlag::REXW},
+    {MOpcode::SETcc, "set", EncodingForm::Setcc, OperandOrder::SETCC,
+     makePattern(OperandKind::Imm, OperandKind::RegOrMem),
+     EncodingFlag::RequiresModRM | EncodingFlag::UsesCondition},
+    {MOpcode::MOVZXrr32, "movzbq", EncodingForm::RegReg, OperandOrder::MOVZX_RR8,
+     makePattern(OperandKind::Reg, OperandKind::Reg),
+     EncodingFlag::RequiresModRM | EncodingFlag::REXW},
+    {MOpcode::TESTrr, "testq", EncodingForm::RegReg, OperandOrder::R_R,
+     makePattern(OperandKind::Reg, OperandKind::Reg),
+     EncodingFlag::RequiresModRM | EncodingFlag::REXW},
+    {MOpcode::JMP, "jmp", EncodingForm::Jump, OperandOrder::JUMP,
+     makePattern(OperandKind::LabelOrRegOrMem), EncodingFlag::None},
+    {MOpcode::JCC, "j", EncodingForm::Condition, OperandOrder::JCC,
+     makePattern(OperandKind::Imm, OperandKind::LabelOrRegOrMem), EncodingFlag::UsesCondition},
+    {MOpcode::CALL, "callq", EncodingForm::Call, OperandOrder::CALL,
+     makePattern(OperandKind::Any), EncodingFlag::None},
+    {MOpcode::UD2, "ud2", EncodingForm::Nullary, OperandOrder::NONE,
+     makePattern(), EncodingFlag::None},
+    {MOpcode::RET, "ret", EncodingForm::Nullary, OperandOrder::NONE,
+     makePattern(), EncodingFlag::None},
+    {MOpcode::FADD, "addsd", EncodingForm::RegReg, OperandOrder::R_R,
+     makePattern(OperandKind::Reg, OperandKind::Reg), EncodingFlag::RequiresModRM},
+    {MOpcode::FSUB, "subsd", EncodingForm::RegReg, OperandOrder::R_R,
+     makePattern(OperandKind::Reg, OperandKind::Reg), EncodingFlag::RequiresModRM},
+    {MOpcode::FMUL, "mulsd", EncodingForm::RegReg, OperandOrder::R_R,
+     makePattern(OperandKind::Reg, OperandKind::Reg), EncodingFlag::RequiresModRM},
+    {MOpcode::FDIV, "divsd", EncodingForm::RegReg, OperandOrder::R_R,
+     makePattern(OperandKind::Reg, OperandKind::Reg), EncodingFlag::RequiresModRM},
+    {MOpcode::UCOMIS, "ucomisd", EncodingForm::RegReg, OperandOrder::R_R,
+     makePattern(OperandKind::Reg, OperandKind::Reg), EncodingFlag::RequiresModRM},
+    {MOpcode::CVTSI2SD, "cvtsi2sdq", EncodingForm::RegReg, OperandOrder::R_R,
+     makePattern(OperandKind::Reg, OperandKind::Reg),
+     EncodingFlag::RequiresModRM | EncodingFlag::REXW},
+    {MOpcode::CVTTSD2SI, "cvttsd2siq", EncodingForm::RegReg, OperandOrder::R_R,
+     makePattern(OperandKind::Reg, OperandKind::Reg),
+     EncodingFlag::RequiresModRM | EncodingFlag::REXW},
+    {MOpcode::MOVSDrr, "movsd", EncodingForm::RegReg, OperandOrder::R_R,
+     makePattern(OperandKind::Reg, OperandKind::Reg), EncodingFlag::RequiresModRM},
+    {MOpcode::MOVSDrm, "movsd", EncodingForm::RegMem, OperandOrder::R_M,
+     makePattern(OperandKind::Reg, OperandKind::Mem), EncodingFlag::RequiresModRM},
+    {MOpcode::MOVSDmr, "movsd", EncodingForm::MemReg, OperandOrder::M_R,
+     makePattern(OperandKind::Mem, OperandKind::Reg), EncodingFlag::RequiresModRM},
+}};
+
+[[nodiscard]] bool matchesOperandKind(OperandKind kind, const Operand &operand) noexcept
+{
+    switch (kind)
+    {
+        case OperandKind::None:
+            return false;
+        case OperandKind::Reg:
+            return std::holds_alternative<OpReg>(operand);
+        case OperandKind::Imm:
+            return std::holds_alternative<OpImm>(operand);
+        case OperandKind::Mem:
+            return std::holds_alternative<OpMem>(operand) ||
+                   std::holds_alternative<OpRipLabel>(operand);
+        case OperandKind::Label:
+            return std::holds_alternative<OpLabel>(operand);
+        case OperandKind::RipLabel:
+            return std::holds_alternative<OpRipLabel>(operand);
+        case OperandKind::RegOrMem:
+            return std::holds_alternative<OpReg>(operand) || std::holds_alternative<OpMem>(operand);
+        case OperandKind::RegOrImm:
+            return std::holds_alternative<OpReg>(operand) || std::holds_alternative<OpImm>(operand);
+        case OperandKind::LabelOrRegOrMem:
+            return std::holds_alternative<OpLabel>(operand) ||
+                   std::holds_alternative<OpRipLabel>(operand) ||
+                   std::holds_alternative<OpReg>(operand) || std::holds_alternative<OpMem>(operand);
+        case OperandKind::Any:
+            return true;
+    }
+    return false;
+}
+
+[[nodiscard]] bool matchesPattern(const OperandPattern &pattern,
+                                  std::span<const Operand> operands) noexcept
+{
+    if (static_cast<std::size_t>(pattern.count) != operands.size())
+    {
+        return false;
+    }
+    for (std::size_t i = 0; i < operands.size(); ++i)
+    {
+        if (!matchesOperandKind(pattern.kinds[i], operands[i]))
+        {
+            return false;
+        }
+    }
+    return true;
+}
 
 /// @brief Provide an overload set capable of visiting std::variant operands.
 /// @details Aggregates multiple lambda visitors into a single callable so
@@ -103,6 +252,22 @@ template <typename... Ts> Overload(Ts...) -> Overload<Ts...>;
 }
 
 } // namespace
+
+const EncodingRow *find_encoding(MOpcode op, std::span<const Operand> operands) noexcept
+{
+    for (const auto &row : kEncodingTable)
+    {
+        if (row.opcode != op)
+        {
+            continue;
+        }
+        if (matchesPattern(row.pattern, operands))
+        {
+            return &row;
+        }
+    }
+    return nullptr;
+}
 
 /// @brief Intern a string literal into the read-only data pool.
 /// @details Deduplicates identical byte sequences so repeated literals emit a
@@ -343,52 +508,60 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &instr, const Ta
         return;
     }
 
-    const auto *spec = lookup_emitter_spec(instr.opcode);
-    if (!spec)
+    const auto operands = std::span<const Operand>{instr.operands};
+    const auto *row = find_encoding(instr.opcode, operands);
+    if (!row)
     {
         os << "  # <unknown opcode>\n";
         return;
     }
 
+    emit_from_row(*row, operands, os, target);
+}
+
+void AsmEmitter::emit_from_row(const EncodingRow &row,
+                               std::span<const Operand> operands,
+                               std::ostream &os,
+                               const TargetInfo &target)
+{
     const auto emitBinary = [&](auto &&formatSource, auto &&formatDest)
     {
-        if (instr.operands.size() < 2)
+        if (operands.size() < 2)
         {
             os << " #<missing>\n";
             return;
         }
-        os << ' ' << formatSource(instr.operands[1]) << ", "
-           << formatDest(instr.operands[0]);
+        os << ' ' << formatSource(operands[1]) << ", " << formatDest(operands[0]);
         os << '\n';
     };
 
     const auto emitUnary = [&](const auto &formatter)
     {
-        if (instr.operands.empty())
+        if (operands.empty())
         {
             os << " #<missing>\n";
             return;
         }
-        os << ' ' << formatter(instr.operands.front()) << '\n';
+        os << ' ' << formatter(operands.front()) << '\n';
     };
 
-    os << "  " << spec->mnem;
+    os << "  " << row.mnemonic;
 
-    switch (spec->order)
+    switch (row.order)
     {
         case OperandOrder::NONE:
             os << '\n';
             return;
         case OperandOrder::DIRECT:
         {
-            if (instr.operands.empty())
+            if (operands.empty())
             {
                 os << '\n';
                 return;
             }
             os << ' ';
             bool first = true;
-            for (const auto &operand : instr.operands)
+            for (const auto &operand : operands)
             {
                 if (!first)
                 {
@@ -415,14 +588,14 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &instr, const Ta
             return;
         case OperandOrder::R_R_R:
         {
-            if (instr.operands.size() < 3)
+            if (operands.size() < 3)
             {
                 os << " #<missing>\n";
                 return;
             }
-            os << ' ' << formatOperand(instr.operands[2], target) << ", "
-               << formatOperand(instr.operands[1], target) << ", "
-               << formatOperand(instr.operands[0], target) << '\n';
+            os << ' ' << formatOperand(operands[2], target) << ", "
+               << formatOperand(operands[1], target) << ", "
+               << formatOperand(operands[0], target) << '\n';
             return;
         }
         case OperandOrder::SHIFT:
@@ -431,13 +604,13 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &instr, const Ta
             return;
         case OperandOrder::MOVZX_RR8:
         {
-            if (instr.operands.size() < 2)
+            if (operands.size() < 2)
             {
                 os << " #<missing>\n";
                 return;
             }
-            const auto *dest = std::get_if<OpReg>(&instr.operands[0]);
-            const auto *src = std::get_if<OpReg>(&instr.operands[1]);
+            const auto *dest = std::get_if<OpReg>(&operands[0]);
+            const auto *src = std::get_if<OpReg>(&operands[1]);
             if (!dest || !src)
             {
                 os << " #<invalid>\n";
@@ -448,34 +621,34 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &instr, const Ta
         }
         case OperandOrder::LEA:
         {
-            if (instr.operands.size() < 2)
+            if (operands.size() < 2)
             {
                 os << " #<missing>\n";
                 return;
             }
-            os << ' ' << formatLeaSource(instr.operands[1], target) << ", "
-               << formatOperand(instr.operands[0], target) << '\n';
+            os << ' ' << formatLeaSource(operands[1], target) << ", "
+               << formatOperand(operands[0], target) << '\n';
             return;
         }
         case OperandOrder::CALL:
         {
-            if (instr.operands.empty())
+            if (operands.empty())
             {
                 os << " #<missing>\n";
                 return;
             }
-            os << ' ' << formatCallTarget(instr.operands.front(), target) << '\n';
+            os << ' ' << formatCallTarget(operands.front(), target) << '\n';
             return;
         }
         case OperandOrder::JUMP:
         {
-            if (instr.operands.empty())
+            if (operands.empty())
             {
                 os << " #<missing>\n";
                 return;
             }
             os << ' ';
-            const auto &targetOp = instr.operands.front();
+            const auto &targetOp = operands.front();
             if (std::holds_alternative<OpLabel>(targetOp))
             {
                 os << formatOperand(targetOp, target) << '\n';
@@ -490,7 +663,7 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &instr, const Ta
         {
             const Operand *branchTarget = nullptr;
             const OpImm *cond = nullptr;
-            for (const auto &operand : instr.operands)
+            for (const auto &operand : operands)
             {
                 if (!cond)
                 {
@@ -501,9 +674,9 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &instr, const Ta
                     branchTarget = &operand;
                 }
             }
-            if (!branchTarget && !instr.operands.empty())
+            if (!branchTarget && !operands.empty())
             {
-                branchTarget = &instr.operands.back();
+                branchTarget = &operands.back();
             }
             const auto suffix = cond ? conditionSuffix(cond->val) : std::string_view{"e"};
             os << suffix << ' ';
@@ -528,14 +701,13 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &instr, const Ta
         {
             const Operand *dest = nullptr;
             const OpImm *cond = nullptr;
-            for (const auto &operand : instr.operands)
+            for (const auto &operand : operands)
             {
                 if (!cond)
                 {
                     cond = std::get_if<OpImm>(&operand);
                 }
-                if (!dest && (std::holds_alternative<OpReg>(operand) ||
-                              std::holds_alternative<OpMem>(operand)))
+                if (!dest && (std::holds_alternative<OpReg>(operand) || std::holds_alternative<OpMem>(operand)))
                 {
                     dest = &operand;
                 }
@@ -554,7 +726,7 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &instr, const Ta
         }
     }
 
-    os << "\n";
+    os << '\n';
 }
 
 /// @brief Convert a Machine IR operand into its assembly representation.
@@ -725,18 +897,6 @@ std::string AsmEmitter::formatCallTarget(const Operand &operand, const TargetInf
                  [&](const OpImm &imm) { return formatImm(imm); },
                  [&](const OpRipLabel &label) { return std::string{"*"} + formatRipLabel(label); }},
         operand);
-}
-
-const EmitterSpec *lookup_emitter_spec(MOpcode op) noexcept
-{
-    for (const auto &entry : kEmitterTable)
-    {
-        if (entry.op == op)
-        {
-            return &entry;
-        }
-    }
-    return nullptr;
 }
 
 /// @brief Translate a Machine IR condition code into an x86 suffix.
