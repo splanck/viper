@@ -36,6 +36,7 @@
 #include <cstdio>
 #include <exception>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
@@ -51,7 +52,7 @@ struct RunILConfig
     struct SourceBreak
     {
         std::string file;
-        int line = 0;
+        uint32_t line = 0;
     };
 
     std::string ilFile;
@@ -79,12 +80,12 @@ struct RunILConfig
 /// @return Copy of @p text with outer whitespace removed.
 std::string trimWhitespace(std::string text)
 {
-    auto begin = std::find_if_not(text.begin(), text.end(), [](unsigned char ch) {
-        return std::isspace(ch) != 0;
-    });
-    auto end = std::find_if_not(text.rbegin(), text.rend(), [](unsigned char ch) {
-        return std::isspace(ch) != 0;
-    }).base();
+    auto begin = std::find_if_not(
+        text.begin(), text.end(), [](unsigned char ch) { return std::isspace(ch) != 0; });
+    auto end = std::find_if_not(text.rbegin(),
+                                text.rend(),
+                                [](unsigned char ch) { return std::isspace(ch) != 0; })
+                   .base();
     if (begin >= end)
     {
         return std::string();
@@ -93,37 +94,41 @@ std::string trimWhitespace(std::string text)
 }
 
 /// @brief Parse a decimal breakpoint line number from a CLI token.
-/// @details Validates that @p token contains only digits before invoking
-///          @c std::stoi.  Successful conversions must be strictly positive; the
-///          parsed value is stored in @p line and the helper returns true.
-///          Failures leave @p line untouched and return false so callers can
-///          surface consistent diagnostics.
+/// @details Validates that @p token contains only digits before accumulating the
+///          numeric value.  Successful conversions must be strictly positive and
+///          no larger than @c std::numeric_limits<uint32_t>::max().  The parsed
+///          value is stored in @p line and the helper returns true.  Failures
+///          leave @p line untouched and return false so callers can surface
+///          consistent diagnostics.
 /// @param token Candidate substring containing the numeric portion of a
 ///        breakpoint spec.
 /// @param line Output slot populated with the parsed value on success.
 /// @return True when @p token encodes a positive decimal integer.
-bool tryParseLineNumber(const std::string &token, int &line)
+bool tryParseLineNumber(const std::string &token, uint32_t &line)
 {
     if (token.empty())
     {
         return false;
     }
+    uint64_t value = 0;
     for (char ch : token)
     {
         if (!std::isdigit(static_cast<unsigned char>(ch)))
         {
             return false;
         }
+        value = value * 10 + static_cast<unsigned>(ch - '0');
+        if (value > std::numeric_limits<uint32_t>::max())
+        {
+            return false;
+        }
     }
-    try
-    {
-        line = std::stoi(token);
-    }
-    catch (const std::exception &)
+    if (value == 0)
     {
         return false;
     }
-    return line > 0;
+    line = static_cast<uint32_t>(value);
+    return true;
 }
 
 /// @brief Report a malformed line-number argument and display usage text.
@@ -183,7 +188,7 @@ bool parseRunILArgs(int argc, char **argv, RunILConfig &config)
                 auto pos = spec.rfind(':');
                 std::string file = trimWhitespace(spec.substr(0, pos));
                 const std::string lineToken = trimWhitespace(spec.substr(pos + 1));
-                int line = 0;
+                uint32_t line = 0;
                 if (!tryParseLineNumber(lineToken, line))
                 {
                     reportInvalidLineNumber(lineToken, spec, "--break");
@@ -219,7 +224,7 @@ bool parseRunILArgs(int argc, char **argv, RunILConfig &config)
                     reportInvalidLineNumber(lineToken, spec, "--break-src");
                     return false;
                 }
-                int line = 0;
+                uint32_t line = 0;
                 if (!tryParseLineNumber(lineToken, line))
                 {
                     reportInvalidLineNumber(lineToken, spec, "--break-src");

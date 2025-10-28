@@ -7,9 +7,11 @@
 #include "tools/ilc/cli.hpp"
 
 #include <cassert>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <sstream>
 #include <string>
 #include <system_error>
@@ -18,9 +20,12 @@
 namespace
 {
 
-int runWithArgs(const std::string &file, const std::string &flag, const std::string &spec, std::string &stderrText)
+int runWithArgs(const std::string &file,
+                const std::string &flag,
+                const std::string &spec,
+                std::string &stderrText)
 {
-    std::vector<std::string> argStorage = { file, flag, spec };
+    std::vector<std::string> argStorage = {file, flag, spec};
     std::vector<char *> argv;
     argv.reserve(argStorage.size());
     for (auto &arg : argStorage)
@@ -49,7 +54,8 @@ void usage()
 
 int main()
 {
-    const std::filesystem::path tmpDir = std::filesystem::temp_directory_path() / "viper_cli_break_plain";
+    const std::filesystem::path tmpDir =
+        std::filesystem::temp_directory_path() / "viper_cli_break_plain";
     std::error_code ec;
     std::filesystem::create_directories(tmpDir, ec);
 
@@ -74,6 +80,30 @@ int main()
     const auto breakPos = err.find("[BREAK] src=foo");
     assert(breakPos != std::string::npos);
     assert(err.find(":7", breakPos) != std::string::npos);
+
+    const uint32_t hugeLine = static_cast<uint32_t>(std::numeric_limits<int>::max()) + 42U;
+    {
+        std::ofstream out(ilPath);
+        assert(out.good());
+        out << "il 0.1.2\n";
+        out << "func @main() -> i64 {\n";
+        out << "entry:\n";
+        out << "  .loc 1 " << hugeLine << " 1\n";
+        out << "  ret 0\n";
+        out << "}\n";
+    }
+
+    err.clear();
+    gUsageCalled = false;
+    const std::string hugeSpec = std::string("foo:") + std::to_string(hugeLine);
+    rc = runWithArgs(ilPath.string(), "--break", hugeSpec, err);
+
+    assert(rc == 10);
+    assert(!gUsageCalled);
+    const auto hugeBreakPos = err.find("[BREAK] src=foo");
+    assert(hugeBreakPos != std::string::npos);
+    assert(err.find(std::string(":") + std::to_string(hugeLine), hugeBreakPos) !=
+           std::string::npos);
 
     err.clear();
     gUsageCalled = false;

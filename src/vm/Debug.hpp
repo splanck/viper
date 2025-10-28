@@ -54,7 +54,7 @@ class DebugCtrl
     bool shouldBreak(const il::core::BasicBlock &blk) const;
 
     /// @brief Add breakpoint at source @p file and line @p line.
-    void addBreakSrcLine(std::string file, int line);
+    void addBreakSrcLine(std::string file, uint32_t line);
 
     /// @brief Check if any source line breakpoints are registered.
     bool hasSrcLineBPs() const;
@@ -100,14 +100,14 @@ class DebugCtrl
     {
         std::string normFile; ///< Normalized source file path
         std::string base;     ///< Basename of source file
-        int line;             ///< 1-based line number
+        uint32_t line;        ///< 1-based line number
     };
 
     const il::support::SourceManager *sm_ = nullptr; ///< Source manager for paths
     std::vector<SrcLineBP> srcLineBPs_;              ///< Source line breakpoints;
                                                      ///< match by path or basename
 
-    mutable std::optional<std::pair<uint32_t, int>> lastHitSrc_; ///< (file id + line)
+    mutable std::optional<std::pair<uint32_t, uint32_t>> lastHitSrc_; ///< (file id + line)
 
     struct WatchEntry
     {

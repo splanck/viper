@@ -126,7 +126,7 @@ bool DebugCtrl::shouldBreak(const il::core::BasicBlock &blk) const
 ///
 /// @param file Source file path supplied by the user.
 /// @param line One-based line number that should trigger a breakpoint.
-void DebugCtrl::addBreakSrcLine(std::string file, int line)
+void DebugCtrl::addBreakSrcLine(std::string file, uint32_t line)
 {
     auto [normFile, base] = normalizePathWithBase(std::move(file));
     srcLineBPs_.push_back({std::move(normFile), std::move(base), line});
@@ -176,7 +176,7 @@ bool DebugCtrl::shouldBreakOn(const il::core::Instr &I) const
         return false;
 
     const uint32_t fileId = I.loc.file_id;
-    const int line = static_cast<int>(I.loc.line);
+    const uint32_t line = I.loc.line;
     if (lastHitSrc_ && lastHitSrc_->first == fileId && lastHitSrc_->second == line)
         return false;
 
@@ -261,7 +261,8 @@ void DebugCtrl::onStore(std::string_view name,
     const bool typeChanged = w.hasValue && w.type != ty;
     bool changed = !w.hasValue || typeChanged;
 
-    auto isIntegerKind = [](il::core::Type::Kind kind) {
+    auto isIntegerKind = [](il::core::Type::Kind kind)
+    {
         return kind == il::core::Type::Kind::I1 || kind == il::core::Type::Kind::I16 ||
                kind == il::core::Type::Kind::I32 || kind == il::core::Type::Kind::I64;
     };
