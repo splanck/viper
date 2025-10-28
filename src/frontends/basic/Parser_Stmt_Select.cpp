@@ -17,6 +17,7 @@
 
 #include "frontends/basic/BasicDiagnosticMessages.hpp"
 #include "frontends/basic/Parser.hpp"
+#include "frontends/basic/ast/StmtNodesAll.hpp"
 #include "frontends/basic/Parser_Stmt_ControlHelpers.hpp"
 #include "il/io/StringEscape.hpp"
 

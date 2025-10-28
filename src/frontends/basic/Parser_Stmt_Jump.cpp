@@ -23,6 +23,7 @@
 ///          and returns heap-allocated AST nodes describing the parsed constructs.
 
 #include "frontends/basic/Parser.hpp"
+#include "frontends/basic/ast/StmtNodesAll.hpp"
 
 #include <cstdio>
 #include <cstdlib>

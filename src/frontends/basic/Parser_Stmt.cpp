@@ -18,6 +18,7 @@
 
 #include "frontends/basic/BasicDiagnosticMessages.hpp"
 #include "frontends/basic/Parser.hpp"
+#include "frontends/basic/ast/StmtNodesAll.hpp"
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
