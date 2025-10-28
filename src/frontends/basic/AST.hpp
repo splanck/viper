@@ -8,4 +8,4 @@
 #include "frontends/basic/ast/DeclNodes.hpp"
 #include "frontends/basic/ast/ExprNodes.hpp"
 #include "frontends/basic/ast/NodeFwd.hpp"
-#include "frontends/basic/ast/StmtNodes.hpp"
+#include "frontends/basic/ast/StmtNodesAll.hpp"
