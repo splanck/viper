@@ -25,6 +25,7 @@
 #include "codegen/x86_64/passes/LoweringPass.hpp"
 
 #include "codegen/x86_64/Unsupported.hpp"
+#include "common/IntegerHelpers.hpp"
 
 #include <optional>
 #include <unordered_map>
@@ -109,7 +110,9 @@ ILModule convertToAdapterModule(const il::core::Module &module)
     {
         ILValue imm{};
         imm.kind = ILValue::Kind::I64;
-        imm.i64 = static_cast<long long>(code);
+        imm.i64 = il::common::integer::narrow_to(static_cast<long long>(code),
+                                                 64,
+                                                 il::common::integer::OverflowPolicy::Wrap);
         imm.id = -1;
         return imm;
     };

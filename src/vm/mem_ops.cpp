@@ -14,6 +14,7 @@
 
 #include "vm/OpHandlers_Memory.hpp"
 
+#include "common/IntegerHelpers.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
@@ -166,18 +167,15 @@ VM::ExecResult handleGEP(VM &vm,
 
     const std::uintptr_t baseAddr = reinterpret_cast<std::uintptr_t>(base.ptr);
     const int64_t delta = offset.i64;
+    const auto magnitude = static_cast<std::uint64_t>(
+        il::common::integer::widen_to(delta, 64, il::common::integer::Signedness::Unsigned));
     std::uintptr_t resultAddr = baseAddr;
     if (delta >= 0)
     {
-        resultAddr += static_cast<std::uintptr_t>(delta);
+        resultAddr += static_cast<std::uintptr_t>(magnitude);
     }
     else
     {
-        // Compute the magnitude of the negative offset without applying unary
-        // minus directly to INT64_MIN, which would overflow.  The expression
-        // expands the two's-complement negation manually to stay within the
-        // representable range and then widens to uintptr_t for the subtraction.
-        const uint64_t magnitude = static_cast<uint64_t>(-(delta + 1)) + 1U;
         resultAddr -= static_cast<std::uintptr_t>(magnitude);
     }
 
