@@ -8,6 +8,7 @@
 #include "rt_format.h"
 #include "rt_int_format.h"
 #include "rt_internal.h"
+#include "rt_string_builder.h"
 
 #include <assert.h>
 #include <ctype.h>
@@ -91,50 +92,25 @@ void rt_print_str(rt_string s)
  */
 void rt_print_i64(int64_t v)
 {
-    char stack_buf[32];
-    char *buf = stack_buf;
-    size_t cap = sizeof(stack_buf);
-    char *heap_buf = NULL;
-
-    size_t written = rt_i64_to_cstr(v, buf, cap);
-    if (written == 0 && buf[0] == '\0')
-        rt_trap("rt_print_i64: format");
-
-    while (written + 1 >= cap)
+    rt_string_builder sb;
+    rt_sb_init(&sb);
+    rt_sb_status status = rt_sb_append_int(&sb, v);
+    if (status != RT_SB_OK)
     {
-        if (cap > SIZE_MAX / 2)
-        {
-            if (heap_buf)
-                free(heap_buf);
-            rt_trap("rt_print_i64: overflow");
-        }
-        size_t new_cap = cap * 2;
-        char *new_buf = (char *)malloc(new_cap);
-        if (!new_buf)
-        {
-            if (heap_buf)
-                free(heap_buf);
-            rt_trap("rt_print_i64: alloc");
-        }
-        size_t new_written = rt_i64_to_cstr(v, new_buf, new_cap);
-        if (new_written == 0 && new_buf[0] == '\0')
-        {
-            free(new_buf);
-            if (heap_buf)
-                free(heap_buf);
-            rt_trap("rt_print_i64: format");
-        }
-        if (heap_buf)
-            free(heap_buf);
-        heap_buf = new_buf;
-        buf = new_buf;
-        cap = new_cap;
-        written = new_written;
+        const char *msg = "rt_print_i64: format";
+        if (status == RT_SB_ERROR_ALLOC)
+            msg = "rt_print_i64: alloc";
+        else if (status == RT_SB_ERROR_OVERFLOW)
+            msg = "rt_print_i64: overflow";
+        else if (status == RT_SB_ERROR_INVALID)
+            msg = "rt_print_i64: invalid";
+        rt_sb_free(&sb);
+        rt_trap(msg);
     }
 
-    fwrite(buf, 1, written, stdout);
-    if (heap_buf)
-        free(heap_buf);
+    if (sb.len > 0)
+        (void)fwrite(sb.data, 1, sb.len, stdout);
+    rt_sb_free(&sb);
 }
 
 /**
