@@ -29,8 +29,8 @@ if_else_0_F:
 }
 func @main() -> i64 {
 entry:
-  br L-1000000000
-L-1000000000:
+  br UL1000000000
+UL1000000000:
   .loc 1 4 7
   %t0 = call @F()
   .loc 1 4 1
