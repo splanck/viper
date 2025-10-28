@@ -13,6 +13,7 @@
 /// @brief Implements numeric folding utilities shared by the dispatcher.
 #include "frontends/basic/constfold/Dispatch.hpp"
 #include "frontends/basic/ast/ExprNodes.hpp"
+#include "common/IntegerHelpers.hpp"
 #include <cassert>
 #include <cstdint>
 #include <limits>
@@ -21,6 +22,8 @@ namespace il::frontends::basic::constfold
 {
 namespace
 {
+namespace intops = il::common::integer;
+
 std::optional<NumericValue> fold_numeric_impl(AST::BinaryExpr::Op op, const NumericValue &lhsRaw, const NumericValue &rhsRaw)
 {
     NumericValue lhs = promote_numeric(lhsRaw, rhsRaw);
@@ -36,8 +39,9 @@ std::optional<NumericValue> fold_numeric_impl(AST::BinaryExpr::Op op, const Nume
             {
                 const auto min16 = std::numeric_limits<std::int16_t>::min(),
                            max16 = std::numeric_limits<std::int16_t>::max();
-                auto sum = static_cast<long long>(static_cast<std::uint64_t>(lhs.i) +
-                                                  static_cast<std::uint64_t>(rhs.i));
+                const auto promoted = intops::promote_binary(lhs.i, rhs.i);
+                auto sum = static_cast<long long>(static_cast<std::uint64_t>(promoted.lhs) +
+                                                  static_cast<std::uint64_t>(promoted.rhs));
                 if (lhs.i >= min16 && lhs.i <= max16 && rhs.i >= min16 && rhs.i <= max16 &&
                     (sum < min16 || sum > max16))
                     return std::nullopt;
@@ -47,16 +51,18 @@ std::optional<NumericValue> fold_numeric_impl(AST::BinaryExpr::Op op, const Nume
         case AST::BinaryExpr::Op::Sub:
             if (ints)
             {
-                auto diff = static_cast<long long>(static_cast<std::uint64_t>(lhs.i) -
-                                                   static_cast<std::uint64_t>(rhs.i));
+                const auto promoted = intops::promote_binary(lhs.i, rhs.i);
+                auto diff = static_cast<long long>(static_cast<std::uint64_t>(promoted.lhs) -
+                                                   static_cast<std::uint64_t>(promoted.rhs));
                 return NumericValue{false, static_cast<double>(diff), diff};
             }
             return NumericValue{true, lv - rv, static_cast<long long>(lv - rv)};
         case AST::BinaryExpr::Op::Mul:
             if (ints)
             {
-                auto prod = static_cast<long long>(static_cast<std::uint64_t>(lhs.i) *
-                                                   static_cast<std::uint64_t>(rhs.i));
+                const auto promoted = intops::promote_binary(lhs.i, rhs.i);
+                auto prod = static_cast<long long>(static_cast<std::uint64_t>(promoted.lhs) *
+                                                   static_cast<std::uint64_t>(promoted.rhs));
                 return NumericValue{false, static_cast<double>(prod), prod};
             }
             return NumericValue{true, lv * rv, static_cast<long long>(lv * rv)};
@@ -111,8 +117,9 @@ AST::ExprPtr fold_unary_arith(AST::UnaryExpr::Op op, const AST::Expr &value)
             }
             else
             {
-                auto neg = static_cast<long long>(static_cast<std::uint64_t>(0) -
-                                                  static_cast<std::uint64_t>(result.i));
+                const auto promoted = intops::promote_binary(0, result.i);
+                auto neg = static_cast<long long>(static_cast<std::uint64_t>(promoted.lhs) -
+                                                  static_cast<std::uint64_t>(promoted.rhs));
                 result = NumericValue{false, static_cast<double>(neg), neg};
             }
             break;
