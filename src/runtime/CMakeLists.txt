@@ -4,6 +4,7 @@ set(RT_SOURCES
         rt_fp.c
         rt_memory.c
         rt_string_ops.c
+        rt_string_builder.c
         rt_string_format.c
         rt_string_encode.c
         rt_io.c
@@ -39,6 +40,7 @@ set(RT_PUBLIC_HEADERS
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_file.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_format.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_int_format.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/rt_string_builder.h
 )
 
 add_library(viper_runtime STATIC ${RT_SOURCES})
