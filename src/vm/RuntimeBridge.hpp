@@ -65,6 +65,9 @@ class RuntimeBridge
     /// @brief Access the runtime call context active on the current thread.
     /// @return Pointer to the call context when a runtime call is executing; nullptr otherwise.
     static const RuntimeCallContext *activeContext();
+
+    /// @brief Indicate whether a VM instance is actively executing on this thread.
+    static bool hasActiveVm();
 };
 
 } // namespace il::vm
