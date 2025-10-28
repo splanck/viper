@@ -76,10 +76,8 @@ void Lowerer::lowerOpen(const OpenStmt &stmt)
     RVal channel = lowerExpr(*stmt.channelExpr);
     channel = normalizeChannelToI32(std::move(channel), stmt.loc);
 
-    curLoc = stmt.loc;
-    Value modeValue = emitUnary(Opcode::CastSiNarrowChk,
-                                Type(Type::Kind::I32),
-                                Value::constInt(static_cast<int32_t>(stmt.mode)));
+    Value modeValue = emitCommon(stmt.loc).narrow_to(
+        Value::constInt(static_cast<int32_t>(stmt.mode)), 64, 32);
 
     Value err = emitCallRet(
         Type(Type::Kind::I32), "rt_open_err_vstr", {path.value, modeValue, channel.value});
@@ -255,8 +253,23 @@ Lowerer::PrintChArgString Lowerer::lowerPrintChArgToString(const Expr &expr,
     auto narrowInteger = [&](Type::Kind target)
     {
         value = ensureI64(std::move(value), expr.loc);
-        curLoc = expr.loc;
-        value.value = emitUnary(Opcode::CastSiNarrowChk, Type(target), value.value);
+        int bits = 64;
+        switch (target)
+        {
+            case Type::Kind::I16:
+                bits = 16;
+                break;
+            case Type::Kind::I32:
+                bits = 32;
+                break;
+            case Type::Kind::I1:
+                bits = 1;
+                break;
+            default:
+                bits = 64;
+                break;
+        }
+        value.value = emitCommon(expr.loc).narrow_to(value.value, 64, bits);
         value.type = Type(target);
     };
 

@@ -61,8 +61,7 @@ Lowerer::RVal Lowerer::normalizeChannelToI32(RVal channel, il::support::SourceLo
         return channel;
 
     channel = ensureI64(std::move(channel), loc);
-    curLoc = loc;
-    channel.value = emitUnary(Opcode::CastSiNarrowChk, Type(Type::Kind::I32), channel.value);
+    channel.value = emitCommon(loc).narrow_to(channel.value, 64, 32);
     channel.type = Type(Type::Kind::I32);
     return channel;
 }

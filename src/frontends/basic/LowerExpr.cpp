@@ -329,20 +329,8 @@ Lowerer::RVal Lowerer::coerceToI64(RVal v, il::support::SourceLoc loc)
         case Type::Kind::I16:
         case Type::Kind::I32:
         {
-            // Materialize a sign-extended i64 from the narrower integer.
-            curLoc = loc;
-
-            const int shift = (v.type.kind == Type::Kind::I32) ? 32 : 48;
-            const std::int64_t mask = (v.type.kind == Type::Kind::I32) ? 0xFFFFFFFFll : 0xFFFFll;
-
-            Value masked =
-                emitBinary(Opcode::And, Type(Type::Kind::I64), v.value, Value::constInt(mask));
-            Value shl =
-                emitBinary(Opcode::Shl, Type(Type::Kind::I64), masked, Value::constInt(shift));
-            Value ashr =
-                emitBinary(Opcode::AShr, Type(Type::Kind::I64), shl, Value::constInt(shift));
-
-            v.value = ashr;
+            const int fromBits = (v.type.kind == Type::Kind::I32) ? 32 : 16;
+            v.value = emitCommon(loc).widen_to(v.value, fromBits, 64);
             v.type = Type(Type::Kind::I64);
             return v;
         }
