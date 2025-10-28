@@ -594,9 +594,8 @@ Lowerer::RVal &LowerCtx::addConst(std::size_t idx,
                                   il::support::SourceLoc loc)
 {
     Lowerer::RVal &slot = ensureLowered(idx);
-    lowerer_.curLoc = loc;
-    slot.value = lowerer_.emitBinary(
-        il::core::Opcode::IAddOvf, Type(Type::Kind::I64), slot.value, Value::constInt(immediate));
+    slot.value = lowerer_.emitCommon(loc).add_checked(
+        slot.value, Value::constInt(immediate), OverflowPolicy::Checked);
     slot.type = Type(Type::Kind::I64);
     syncValue(idx);
     return slot;
@@ -620,8 +619,26 @@ Lowerer::RVal &LowerCtx::narrowInt(std::size_t idx, Type target, il::support::So
     {
         Lowerer::RVal coerced = lowerer_.coerceToI64(slot, loc);
         slot = coerced;
-        lowerer_.curLoc = loc;
-        slot.value = lowerer_.emitUnary(il::core::Opcode::CastSiNarrowChk, target, slot.value);
+        int targetBits = 64;
+        switch (target.kind)
+        {
+            case Type::Kind::I1:
+                targetBits = 1;
+                break;
+            case Type::Kind::I16:
+                targetBits = 16;
+                break;
+            case Type::Kind::I32:
+                targetBits = 32;
+                break;
+            case Type::Kind::I64:
+                targetBits = 64;
+                break;
+            default:
+                targetBits = 64;
+                break;
+        }
+        slot.value = lowerer_.emitCommon(loc).narrow_to(slot.value, 64, targetBits);
         slot.type = target;
         syncValue(idx);
     }

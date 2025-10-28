@@ -7,6 +7,7 @@
 #pragma once
 
 #include "frontends/basic/AST.hpp"
+#include "frontends/basic/EmitCommon.hpp"
 #include "frontends/basic/LowerRuntime.hpp"
 #include "frontends/basic/NameMangler.hpp"
 #include "frontends/basic/TypeRules.hpp"
@@ -60,6 +61,10 @@ class ExprTypeScanner;
 class RuntimeNeedsScanner;
 } // namespace detail
 } // namespace lower
+
+class Emit;
+enum class OverflowPolicy;
+enum class Signedness;
 
 /// @brief Lowers BASIC AST into IL Module.
 /// @invariant Generates deterministic block names per procedure using BlockNamer.
@@ -116,6 +121,7 @@ class Lowerer
     friend class lower::Emitter;
     friend class lower::BuiltinLowerContext;
     friend class lower::common::CommonLowering;
+    friend class Emit;
 
     using Module = il::core::Module;
     using Function = il::core::Function;
@@ -440,6 +446,8 @@ class Lowerer
     Value emitISub(Value lhs, Value rhs);
 
     Value emitBasicLogicalI64(Value b1);
+    Emit emitCommon() noexcept;
+    Emit emitCommon(il::support::SourceLoc loc) noexcept;
 
     /// @brief Emit checked integer negation for @p val producing type @p ty.
     Value emitCheckedNeg(Type ty, Value val);

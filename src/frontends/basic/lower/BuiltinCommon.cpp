@@ -229,9 +229,7 @@ Lowerer::RVal &BuiltinLowerContext::applyTransforms(
                 slot = lowerer_->ensureI64(std::move(slot), loc);
                 if (slot.type.kind != IlKind::I32)
                 {
-                    lowerer_->curLoc = loc;
-                    slot.value = lowerer_->emitUnary(
-                        Opcode::CastSiNarrowChk, IlType(IlKind::I32), slot.value);
+                    slot.value = lowerer_->emitCommon(loc).narrow_to(slot.value, 64, 32);
                     slot.type = IlType(IlKind::I32);
                 }
                 break;
@@ -245,11 +243,8 @@ Lowerer::RVal &BuiltinLowerContext::applyTransforms(
                 slot = lowerer_->coerceToBool(std::move(slot), loc);
                 break;
             case TransformKind::AddConst:
-                lowerer_->curLoc = loc;
-                slot.value = lowerer_->emitBinary(Opcode::IAddOvf,
-                                                  IlType(IlKind::I64),
-                                                  slot.value,
-                                                  Value::constInt(transform.immediate));
+                slot.value = lowerer_->emitCommon(loc).add_checked(
+                    slot.value, Value::constInt(transform.immediate), OverflowPolicy::Checked);
                 slot.type = IlType(IlKind::I64);
                 break;
         }

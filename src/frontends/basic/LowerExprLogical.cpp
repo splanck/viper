@@ -142,8 +142,7 @@ Lowerer::RVal LogicalExprLowering::lower(const BinaryExpr &expr)
         Value lhsLogical = lowerer.emitBasicLogicalI64(lhsBool);
         lowerer.curLoc = expr.loc;
         Value rhsLogical = lowerer.emitBasicLogicalI64(rhsBool);
-        lowerer.curLoc = expr.loc;
-        Value res = lowerer.emitBinary(Opcode::And, IlType(IlKind::I64), lhsLogical, rhsLogical);
+        Value res = lowerer.emitCommon(expr.loc).logical_and(lhsLogical, rhsLogical);
         return {res, IlType(IlKind::I64)};
     }
 
@@ -156,8 +155,7 @@ Lowerer::RVal LogicalExprLowering::lower(const BinaryExpr &expr)
         Value lhsLogical = lowerer.emitBasicLogicalI64(lhsBool);
         lowerer.curLoc = expr.loc;
         Value rhsLogical = lowerer.emitBasicLogicalI64(rhsBool);
-        lowerer.curLoc = expr.loc;
-        Value res = lowerer.emitBinary(Opcode::Or, IlType(IlKind::I64), lhsLogical, rhsLogical);
+        Value res = lowerer.emitCommon(expr.loc).logical_or(lhsLogical, rhsLogical);
         return {res, IlType(IlKind::I64)};
     }
 

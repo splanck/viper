@@ -50,7 +50,7 @@ namespace il::frontends::basic
 void Lowerer::emitForStep(Value slot, Value step)
 {
     Value load = emitLoad(Type(Type::Kind::I64), slot);
-    Value add = emitBinary(Opcode::IAddOvf, Type(Type::Kind::I64), load, step);
+    Value add = emitCommon(curLoc).add_checked(load, step, OverflowPolicy::Checked);
     emitStore(Type(Type::Kind::I64), slot, add);
 }
 
