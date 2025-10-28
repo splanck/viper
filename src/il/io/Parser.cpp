@@ -25,6 +25,7 @@
 #include "il/io/ParserUtil.hpp"
 #include "support/diag_expected.hpp"
 
+#include <algorithm>
 #include <sstream>
 #include <string>
 
@@ -69,7 +70,7 @@ il::support::Expected<void> Parser::parse(std::istream &is, il::core::Module &m)
     if (!st.sawVersion)
     {
         std::ostringstream oss;
-        oss << "line " << st.lineNo << ": missing 'il' version directive";
+        oss << "line " << std::max(1u, st.lineNo) << ": missing 'il' version directive";
         return il::support::Expected<void>{il::support::makeError({}, oss.str())};
     }
     return {};

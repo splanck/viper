@@ -22,7 +22,19 @@ int main()
         std::ostringstream diag;
         il::support::printDiag(parse.error(), diag);
         std::string msg = diag.str();
-        assert(msg.find("missing 'il' version directive") != std::string::npos);
+        assert(msg.find("line 1: missing 'il' version directive") != std::string::npos);
+    }
+
+    {
+        const char *src = "";
+        std::istringstream in(src);
+        il::core::Module m;
+        auto parse = il::api::v2::parse_text_expected(in, m);
+        assert(!parse);
+        std::ostringstream diag;
+        il::support::printDiag(parse.error(), diag);
+        std::string msg = diag.str();
+        assert(msg.find("line 1: missing 'il' version directive") != std::string::npos);
     }
 
     {
@@ -34,7 +46,7 @@ int main()
         std::ostringstream diag;
         il::support::printDiag(parse.error(), diag);
         std::string msg = diag.str();
-        assert(msg.find("missing 'il' version directive") != std::string::npos);
+        assert(msg.find("line 2: missing 'il' version directive") != std::string::npos);
     }
 
     {
