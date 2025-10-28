@@ -5,6 +5,7 @@
 // Links: docs/codemap.md
 #pragma once
 
+#include "frontends/basic/ast/ExprNodes.hpp"
 #include "frontends/basic/ast/StmtBase.hpp"
 
 #include <string>
