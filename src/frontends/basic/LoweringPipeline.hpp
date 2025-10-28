@@ -6,6 +6,7 @@
 #pragma once
 
 #include "frontends/basic/ast/DeclNodes.hpp"
+#include "frontends/basic/ast/StmtNodesAll.hpp"
 #include "il/core/Module.hpp"
 #include "il/core/Type.hpp"
 #include <functional>

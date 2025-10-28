@@ -7,6 +7,8 @@
 
 #include "frontends/basic/Token.hpp"
 #include "frontends/basic/ast/DeclNodes.hpp"
+#include "frontends/basic/ast/ExprNodes.hpp"
+#include "frontends/basic/ast/StmtNodesAll.hpp"
 
 namespace il::frontends::basic
 {

@@ -7,6 +7,8 @@
 
 #include "frontends/basic/AstWalkerUtils.hpp"
 #include "frontends/basic/ast/DeclNodes.hpp"
+#include "frontends/basic/ast/ExprNodes.hpp"
+#include "frontends/basic/ast/StmtNodesAll.hpp"
 #include <type_traits>
 
 namespace il::frontends::basic
