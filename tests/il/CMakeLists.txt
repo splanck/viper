@@ -214,6 +214,13 @@ function(viper_add_il_core_tests)
   target_link_libraries(test_il_parse_global_missing_quotes PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
   viper_add_ctest(test_il_parse_global_missing_quotes test_il_parse_global_missing_quotes)
 
+  viper_add_test(
+    test_il_parse_global_trailing_characters
+    ${_VIPER_IL_UNIT_DIR}/test_il_parse_global_trailing_characters.cpp)
+  target_link_libraries(test_il_parse_global_trailing_characters PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
+  viper_add_ctest(
+    test_il_parse_global_trailing_characters test_il_parse_global_trailing_characters)
+
   viper_add_test(test_il_parse_global_missing_at ${_VIPER_IL_UNIT_DIR}/test_il_parse_global_missing_at.cpp)
   target_link_libraries(test_il_parse_global_missing_at PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
   viper_add_ctest(test_il_parse_global_missing_at test_il_parse_global_missing_at)

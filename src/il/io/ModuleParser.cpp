@@ -27,6 +27,7 @@
 #include "viper/parse/Cursor.h"
 
 #include <algorithm>
+#include <cctype>
 #include <iomanip>
 #include <sstream>
 #include <utility>
@@ -125,9 +126,9 @@ Expected<void> parseExtern_E(const std::string &line, ParserState &st)
         oss << "line " << st.lineNo << ": unknown type '" << retStr << "'";
         return Expected<void>{makeError({}, oss.str())};
     }
-    auto hasDuplicate = std::any_of(st.m.externs.begin(), st.m.externs.end(), [&](const il::core::Extern &ext) {
-        return ext.name == name;
-    });
+    auto hasDuplicate = std::any_of(st.m.externs.begin(),
+                                    st.m.externs.end(),
+                                    [&](const il::core::Extern &ext) { return ext.name == name; });
     if (hasDuplicate)
     {
         std::ostringstream oss;
@@ -229,6 +230,16 @@ Expected<void> parseGlobal_E(const std::string &line, ParserState &st)
         return Expected<void>{makeError({}, oss.str())};
     }
     std::string init = line.substr(q1 + 1, q2 - q1 - 1);
+    auto trailingBegin = line.begin() + static_cast<std::ptrdiff_t>(q2 + 1);
+    auto trailingEnd = line.end();
+    auto nonWs = std::find_if(
+        trailingBegin, trailingEnd, [](unsigned char ch) { return !std::isspace(ch); });
+    if (nonWs != trailingEnd)
+    {
+        std::ostringstream oss;
+        oss << "line " << st.lineNo << ": unexpected characters after closing '\"'";
+        return Expected<void>{makeError({}, oss.str())};
+    }
     std::string decoded;
     std::string errMsg;
     if (!il::io::decodeEscapedString(init, decoded, &errMsg))
