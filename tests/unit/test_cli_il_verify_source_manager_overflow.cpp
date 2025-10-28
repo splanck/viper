@@ -63,12 +63,9 @@ int main()
 
     std::ostringstream outStream;
     std::ostringstream errStream;
-    auto *oldErr = std::cerr.rdbuf(errStream.rdbuf());
 
     int rc = il::tools::verify::runCLI(2, argv, outStream, errStream, sm);
 
-    std::cerr.flush();
-    std::cerr.rdbuf(oldErr);
     fs::remove(tmpPath);
 
     const std::string errText = errStream.str();
