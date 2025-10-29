@@ -145,6 +145,85 @@ class VarCollectWalker final : public BasicAstWalker<VarCollectWalker>
     Lowerer &lowerer_;
 };
 
+/// @brief Bundles the transient state used while lowering a single procedure.
+///
+/// @details The lowering pipeline touches the shared symbol table, emitter, and
+///          per-procedure context owned by @ref Lowerer.  This structure wires
+///          those references together while providing the staged operations that
+///          drive procedure lowering.  Each instance resets the borrowed
+///          lowerer state before capturing the metadata required by subsequent
+///          steps.  The staged helpers make the orchestration logic easier to
+///          follow while keeping responsibilities focused.
+struct LoweringContext
+{
+    using Step = std::function<void(LoweringContext &)>;
+
+    LoweringContext(Lowerer &lowerer,
+                    std::unordered_map<std::string, Lowerer::SymbolInfo> &symbols,
+                    il::build::IRBuilder &builder,
+                    lower::Emitter &emitter,
+                    const std::string &name,
+                    const std::vector<Param> &params,
+                    const std::vector<StmtPtr> &body,
+                    const Lowerer::ProcedureConfig &config) noexcept
+        : lowerer(lowerer),
+          symbols(symbols),
+          builder(builder),
+          emitter(emitter),
+          name(name),
+          params(params),
+          body(body),
+          config(config)
+    {
+    }
+
+    void collectProcedureInfo()
+    {
+        if (collectInfoStep)
+            collectInfoStep(*this);
+    }
+
+    void scheduleBlocks()
+    {
+        if (scheduleBlocksStep)
+            scheduleBlocksStep(*this);
+    }
+
+    void emitProcedureIL()
+    {
+        if (emitILStep)
+            emitILStep(*this);
+    }
+
+    [[nodiscard]] bool hasHandlers() const noexcept
+    {
+        return static_cast<bool>(config.emitEmptyBody) && static_cast<bool>(config.emitFinalReturn);
+    }
+
+    [[nodiscard]] bool hasBody() const noexcept
+    {
+        return !bodyStmts.empty();
+    }
+
+    Lowerer &lowerer;
+    [[maybe_unused]] std::unordered_map<std::string, Lowerer::SymbolInfo> &symbols;
+    il::build::IRBuilder &builder;
+    [[maybe_unused]] lower::Emitter &emitter;
+    const std::string &name;
+    const std::vector<Param> &params;
+    const std::vector<StmtPtr> &body;
+    const Lowerer::ProcedureConfig &config;
+    std::vector<const Stmt *> bodyStmts;
+    std::unordered_set<std::string> paramNames;
+    std::vector<il::core::Param> irParams;
+    size_t paramCount{0};
+    il::core::Function *function{nullptr};
+    std::shared_ptr<void> metadataHandle;
+    Step collectInfoStep;
+    Step scheduleBlocksStep;
+    Step emitILStep;
+};
+
 } // namespace
 
 /// @brief Create a procedure lowering helper bound to @p lowerer.
@@ -224,46 +303,80 @@ void ProcedureLowering::emit(const std::string &name,
                              const std::vector<StmtPtr> &body,
                              const Lowerer::ProcedureConfig &config)
 {
-    lowerer.resetLoweringState();
-    auto &ctx = lowerer.context();
+    LoweringContext ctx(lowerer,
+                        lowerer.symbols,
+                        *lowerer.builder,
+                        lowerer.emitter(),
+                        name,
+                        params,
+                        body,
+                        config);
 
-    Lowerer::ProcedureMetadata metadata = lowerer.collectProcedureMetadata(params, body, config);
+    ctx.collectInfoStep = [&](LoweringContext &state) {
+        lowerer.resetLoweringState();
+        auto metadata = std::make_shared<Lowerer::ProcedureMetadata>(
+            lowerer.collectProcedureMetadata(params, body, config));
+        state.metadataHandle = metadata;
+        state.paramCount = metadata->paramCount;
+        state.bodyStmts = metadata->bodyStmts;
+        state.paramNames = metadata->paramNames;
+        state.irParams = metadata->irParams;
+    };
 
-    assert(config.emitEmptyBody && "Missing empty body return handler");
-    assert(config.emitFinalReturn && "Missing final return handler");
-    if (!config.emitEmptyBody || !config.emitFinalReturn)
-        return;
+    ctx.scheduleBlocksStep = [&](LoweringContext &state) {
+        assert(config.emitEmptyBody && "Missing empty body return handler");
+        assert(config.emitFinalReturn && "Missing final return handler");
+        if (!state.hasHandlers())
+            return;
 
-    il::core::Function &f = lowerer.builder->startFunction(name, config.retType, metadata.irParams);
-    ctx.setFunction(&f);
-    ctx.setNextTemp(f.valueNames.size());
+        auto metadata = std::static_pointer_cast<Lowerer::ProcedureMetadata>(state.metadataHandle);
+        auto &procCtx = lowerer.context();
+        il::core::Function &f = lowerer.builder->startFunction(name, config.retType, state.irParams);
+        state.function = &f;
+        procCtx.setFunction(&f);
+        procCtx.setNextTemp(f.valueNames.size());
 
-    lowerer.buildProcedureSkeleton(f, name, metadata);
+        lowerer.buildProcedureSkeleton(f, name, *metadata);
 
-    ctx.setCurrent(&f.blocks.front());
-    lowerer.materializeParams(params);
-    lowerer.allocateLocalSlots(metadata.paramNames, /*includeParams=*/false);
+        if (!f.blocks.empty())
+            procCtx.setCurrent(&f.blocks.front());
 
-    if (metadata.bodyStmts.empty())
-    {
+        lowerer.materializeParams(params);
+        lowerer.allocateLocalSlots(state.paramNames, /*includeParams=*/false);
+    };
+
+    ctx.emitILStep = [&](LoweringContext &state) {
+        if (!state.hasHandlers() || !state.function)
+            return;
+
+        auto metadata = std::static_pointer_cast<Lowerer::ProcedureMetadata>(state.metadataHandle);
+        auto &procCtx = lowerer.context();
+
+        if (!state.hasBody())
+        {
+            lowerer.curLoc = {};
+            config.emitEmptyBody();
+            procCtx.blockNames().resetNamer();
+            return;
+        }
+
+        lowerer.lowerStatementSequence(state.bodyStmts, /*stopOnTerminated=*/true);
+
+        procCtx.setCurrent(&state.function->blocks[procCtx.exitIndex()]);
         lowerer.curLoc = {};
-        config.emitEmptyBody();
-        ctx.blockNames().resetNamer();
-        return;
-    }
+        lowerer.releaseObjectLocals(state.paramNames);
+        lowerer.releaseObjectParams(state.paramNames);
+        lowerer.releaseArrayLocals(state.paramNames);
+        lowerer.releaseArrayParams(state.paramNames);
+        lowerer.curLoc = {};
+        config.emitFinalReturn();
 
-    lowerer.lowerStatementSequence(metadata.bodyStmts, /*stopOnTerminated=*/true);
+        procCtx.blockNames().resetNamer();
+    };
 
-    ctx.setCurrent(&f.blocks[ctx.exitIndex()]);
-    lowerer.curLoc = {};
-    lowerer.releaseObjectLocals(metadata.paramNames);
-    lowerer.releaseObjectParams(metadata.paramNames);
-    lowerer.releaseArrayLocals(metadata.paramNames);
-    lowerer.releaseArrayParams(metadata.paramNames);
-    lowerer.curLoc = {};
-    config.emitFinalReturn();
-
-    ctx.blockNames().resetNamer();
+    ctx.collectProcedureInfo();
+    ctx.scheduleBlocks();
+    ctx.emitProcedureIL();
 }
 
 } // namespace il::frontends::basic
