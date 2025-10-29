@@ -100,14 +100,28 @@ int main()
     if (n < 0)
         n = 0;
     buffer[n] = '\0';
+    const std::string diag(buffer);
     close(fds[0]);
 
     int status = 0;
     waitpid(pid, &status, 0);
-    assert(WIFEXITED(status));
+    if (!WIFEXITED(status))
+    {
+        std::fprintf(stderr,
+                     "switch-block-label: child terminated abnormally (status=%d)\n",
+                     status);
+        if (WIFSIGNALED(status))
+        {
+            std::fprintf(stderr,
+                         "switch-block-label: received signal=%d\n",
+                         WTERMSIG(status));
+        }
+        if (!diag.empty())
+            std::fprintf(stderr, "switch-block-label: stderr: %s", diag.c_str());
+        assert(false && "switch-block-label child did not exit normally");
+    }
     assert(WEXITSTATUS(status) == 1);
 
-    const std::string diag(buffer);
     assert(diag.find("switch target out of range") != std::string::npos);
     assert(diag.find("runtime-context: fn='main' block='trap'\n") != std::string::npos);
     assert(diag.find("block='entry'") == std::string::npos);
