@@ -26,6 +26,14 @@
 #include <algorithm>
 #include <cassert>
 
+/// @file
+/// @brief Implements the x86-64 linear-scan register allocator.
+/// @details The allocator walks Machine IR blocks in order, leasing physical
+///          registers from ABI-configured pools, spilling values when pressure
+///          grows, and invoking the coalescer to expand PX_COPY pseudos.  The
+///          implementation maintains per-class pools and active lists so live
+///          ranges can be reconstituted on demand.
+
 namespace viper::codegen::x64::ra
 {
 
@@ -40,11 +48,23 @@ template <typename... Ts> struct Overload : Ts...
 };
 template <typename... Ts> Overload(Ts...) -> Overload<Ts...>;
 
+/// @brief Identify general-purpose registers that must never be allocated.
+/// @details The stack pointer and frame pointer are reserved by the calling
+///          convention, so the allocator filters them out of the initial pools.
+/// @param reg Candidate register.
+/// @return @c true when @p reg is reserved.
 [[nodiscard]] bool isReservedGPR(PhysReg reg) noexcept
 {
     return reg == PhysReg::RSP || reg == PhysReg::RBP;
 }
 
+/// @brief Wrap a physical register into a Machine IR operand.
+/// @details Converts the strongly typed @ref PhysReg enumeration into the raw
+///          identifier used by Machine IR instructions so helper routines can
+///          build @c MOV-like instructions without repeating casts.
+/// @param cls Register class the operand belongs to.
+/// @param reg Physical register identifier.
+/// @return Machine operand referencing @p reg.
 [[nodiscard]] Operand makePhysOperand(RegClass cls, PhysReg reg)
 {
     return makePhysRegOperand(cls, static_cast<uint16_t>(reg));
@@ -52,6 +72,13 @@ template <typename... Ts> Overload(Ts...) -> Overload<Ts...>;
 
 } // namespace
 
+/// @brief Create an allocator for a machine function.
+/// @details The constructor caches references to the function being rewritten,
+///          target ABI metadata, and liveness information.  It also precomputes
+///          the register pools so @ref run can draw from ready-to-use vectors.
+/// @param func Machine function to allocate.
+/// @param target Target-specific register and ABI description.
+/// @param intervals Live interval analysis results for @p func.
 LinearScanAllocator::LinearScanAllocator(MFunction &func,
                                          const TargetInfo &target,
                                          const LiveIntervals &intervals)
@@ -60,6 +87,13 @@ LinearScanAllocator::LinearScanAllocator(MFunction &func,
     buildPools();
 }
 
+/// @brief Execute the allocation pipeline over the entire function.
+/// @details Iterates blocks in layout order, rewriting each instruction to use
+///          physical registers while invoking the coalescer to lower PX_COPY
+///          pseudos.  After each block the allocator releases any registers that
+///          do not remain live into successor blocks.  The final spill-slot
+///          counts are copied from the spiller before returning the result map.
+/// @return Summary of virtual→physical mappings and spill requirements.
 AllocationResult LinearScanAllocator::run()
 {
     Coalescer coalescer{*this, spiller_};
@@ -73,6 +107,11 @@ AllocationResult LinearScanAllocator::run()
     return result_;
 }
 
+/// @brief Populate the per-class register pools from target metadata.
+/// @details Caller-saved and callee-saved registers are concatenated so the
+///          allocator can draw from a single vector per class.  Reserved
+///          registers (stack and frame pointers) are filtered out to avoid
+///          accidental allocation.
 void LinearScanAllocator::buildPools()
 {
     auto appendRegs = [](RegPool &pool, const std::vector<PhysReg> &regs)
@@ -91,16 +130,28 @@ void LinearScanAllocator::buildPools()
     appendRegs(freeXMM_, target_.calleeSavedXMM);
 }
 
+/// @brief Access the register pool matching a class.
+/// @param cls Register class to query.
+/// @return Mutable vector of available physical registers.
 std::vector<PhysReg> &LinearScanAllocator::poolFor(RegClass cls)
 {
     return cls == RegClass::GPR ? freeGPR_ : freeXMM_;
 }
 
+/// @brief Access the active list for a given register class.
+/// @param cls Register class to query.
+/// @return Mutable list of virtual registers currently holding physical regs.
 std::vector<uint16_t> &LinearScanAllocator::activeFor(RegClass cls)
 {
     return cls == RegClass::GPR ? activeGPR_ : activeXMM_;
 }
 
+/// @brief Fetch or create the allocation record for a virtual register.
+/// @details Stores the register class on first use and asserts that subsequent
+///          queries agree on the class, catching mismatched operand encodings.
+/// @param cls Register class inferred from the current operand.
+/// @param id Virtual register identifier.
+/// @return Mutable allocation state for @p id.
 VirtualAllocation &LinearScanAllocator::stateFor(RegClass cls, uint16_t id)
 {
     auto [it, inserted] = states_.try_emplace(id);
@@ -118,6 +169,12 @@ VirtualAllocation &LinearScanAllocator::stateFor(RegClass cls, uint16_t id)
     return state;
 }
 
+/// @brief Record that a virtual register currently owns a physical register.
+/// @details Active sets ensure the allocator can pick eviction victims and
+///          release registers at block boundaries.  Duplicates are suppressed to
+///          keep the list stable across multiple uses within a block.
+/// @param cls Register class of the active value.
+/// @param id Virtual register identifier.
 void LinearScanAllocator::addActive(RegClass cls, uint16_t id)
 {
     auto &active = activeFor(cls);
@@ -127,12 +184,25 @@ void LinearScanAllocator::addActive(RegClass cls, uint16_t id)
     }
 }
 
+/// @brief Remove a virtual register from the active set.
+/// @details Called when a value goes dead or is explicitly spilled so future
+///          spill victims do not consider the register.
+/// @param cls Register class of the active value.
+/// @param id Virtual register identifier to remove.
 void LinearScanAllocator::removeActive(RegClass cls, uint16_t id)
 {
     auto &active = activeFor(cls);
     active.erase(std::remove(active.begin(), active.end(), id), active.end());
 }
 
+/// @brief Lease a physical register from the free pool.
+/// @details If the pool is empty the allocator triggers a spill to free one
+///          register, appending spill code to @p prefix.  Once a register is
+///          available, it is removed from the front of the pool to preserve a
+///          deterministic allocation order.
+/// @param cls Register class to allocate.
+/// @param prefix Instruction list receiving any required spill code.
+/// @return Physical register assigned to the caller.
 PhysReg LinearScanAllocator::takeRegister(RegClass cls, std::vector<MInstr> &prefix)
 {
     auto &pool = poolFor(cls);
@@ -146,11 +216,23 @@ PhysReg LinearScanAllocator::takeRegister(RegClass cls, std::vector<MInstr> &pre
     return reg;
 }
 
+/// @brief Return a physical register to the free pool.
+/// @details Used after temporary loads or at block exits to recycle registers
+///          for future allocations.
+/// @param phys Register being released.
+/// @param cls Class of @p phys.
 void LinearScanAllocator::releaseRegister(PhysReg phys, RegClass cls)
 {
     poolFor(cls).push_back(phys);
 }
 
+/// @brief Spill one active virtual register to free a physical register.
+/// @details The allocator selects the earliest active value, requests that the
+///          spiller emit a store, and returns the freed register to the pool.
+///          Values that already lack a physical register are skipped to avoid
+///          redundant work.
+/// @param cls Register class experiencing pressure.
+/// @param prefix Instruction list capturing generated spill code.
 void LinearScanAllocator::spillOne(RegClass cls, std::vector<MInstr> &prefix)
 {
     auto &active = activeFor(cls);
@@ -173,6 +255,17 @@ void LinearScanAllocator::spillOne(RegClass cls, std::vector<MInstr> &prefix)
     spiller_.spillValue(cls, victimId, victim, poolFor(cls), prefix, result_);
 }
 
+/// @brief Rewrite a block so each instruction uses allocated registers.
+/// @details The method iterates the block, lowering PX_COPY pseudos via the
+///          coalescer and handling other instructions by:
+///          1. Classifying operand roles (use/def).
+///          2. Ensuring operands have physical registers, emitting loads or
+///             spills into prefix/suffix buffers as needed.
+///          3. Releasing scratch registers after their final use.
+///          The rewritten instruction sequence replaces the original block
+///          contents in place.
+/// @param block Machine basic block being processed.
+/// @param coalescer Helper that lowers PX_COPY instructions.
 void LinearScanAllocator::processBlock(MBasicBlock &block, Coalescer &coalescer)
 {
     std::vector<MInstr> rewritten{};
@@ -215,6 +308,10 @@ void LinearScanAllocator::processBlock(MBasicBlock &block, Coalescer &coalescer)
     block.instructions = std::move(rewritten);
 }
 
+/// @brief Release all registers that do not live beyond the current block.
+/// @details Called after rewriting a block to return physical registers to the
+///          free pools while marking allocation states as no longer owning a
+///          register.  Both GPR and XMM active lists are cleared.
 void LinearScanAllocator::releaseActiveForBlock()
 {
     for (auto vreg : activeGPR_)
@@ -240,6 +337,13 @@ void LinearScanAllocator::releaseActiveForBlock()
     activeXMM_.clear();
 }
 
+/// @brief Determine whether operands are read, written, or both.
+/// @details The classification drives register materialisation: uses require
+///          loads while defs may force spills after the instruction executes.
+///          The switch enumerates the instructions emitted during Phase A of the
+///          backend.
+/// @param instr Instruction whose operands are being analysed.
+/// @return Vector describing the role of each operand.
 std::vector<LinearScanAllocator::OperandRole>
 LinearScanAllocator::classifyOperands(const MInstr &instr) const
 {
@@ -373,6 +477,15 @@ LinearScanAllocator::classifyOperands(const MInstr &instr) const
     return roles;
 }
 
+/// @brief Ensure an operand has a valid physical encoding.
+/// @details Delegates to @ref processRegOperand for register operands and
+///          recursively handles memory operands by processing their base
+///          registers.  Immediate-like operands require no work.
+/// @param operand Operand being rewritten in place.
+/// @param role Use/def classification for @p operand.
+/// @param prefix Instruction list receiving pre-instruction loads or spills.
+/// @param suffix Instruction list receiving post-instruction spills.
+/// @param scratch Scratch register tracker used to release temporaries.
 void LinearScanAllocator::handleOperand(Operand &operand,
                                         const OperandRole &role,
                                         std::vector<MInstr> &prefix,
@@ -390,6 +503,20 @@ void LinearScanAllocator::handleOperand(Operand &operand,
         operand);
 }
 
+/// @brief Rewrite a virtual register operand into a physical register operand.
+/// @details Handles three scenarios:
+///          1. Already-spilled values: reload into a scratch register (for uses)
+///             and/or schedule stores (for defs).
+///          2. First-time allocations: lease a register, update maps, and mark
+///             the register as active.
+///          3. Previously allocated values: reuse the recorded physical
+///             register.  Any scratch registers acquired are tracked for later
+///             release.
+/// @param reg Operand mutated in place.
+/// @param role Use/def role for @p reg.
+/// @param prefix List receiving pre-instruction loads.
+/// @param suffix List receiving post-instruction spills.
+/// @param scratch Scratch register tracker for release bookkeeping.
 void LinearScanAllocator::processRegOperand(OpReg &reg,
                                             const OperandRole &role,
                                             std::vector<MInstr> &prefix,
@@ -431,6 +558,13 @@ void LinearScanAllocator::processRegOperand(OpReg &reg,
     reg = makePhysReg(state.cls, static_cast<uint16_t>(state.phys));
 }
 
+/// @brief Build a register-to-register move for a specific class.
+/// @details Used by the coalescer and allocator to move values without
+///          duplicating opcode selection logic.
+/// @param cls Register class describing the move type.
+/// @param dst Destination physical register.
+/// @param src Source physical register.
+/// @return Machine instruction encoding the move.
 MInstr LinearScanAllocator::makeMove(RegClass cls, PhysReg dst, PhysReg src) const
 {
     if (cls == RegClass::GPR)
