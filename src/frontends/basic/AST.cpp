@@ -23,6 +23,26 @@
 namespace il::frontends::basic
 {
 
+void visit(const Expr &expr, ExprVisitor &visitor)
+{
+    expr.accept(visitor);
+}
+
+void visit(Expr &expr, MutExprVisitor &visitor)
+{
+    expr.accept(visitor);
+}
+
+void visit(const Stmt &stmt, StmtVisitor &visitor)
+{
+    stmt.accept(visitor);
+}
+
+void visit(Stmt &stmt, MutStmtVisitor &visitor)
+{
+    stmt.accept(visitor);
+}
+
 /// @brief Forwards this integer literal node to the visitor for double dispatch.
 /// @param visitor Receives the node; ownership remains with the AST.
 void IntExpr::accept(ExprVisitor &visitor) const

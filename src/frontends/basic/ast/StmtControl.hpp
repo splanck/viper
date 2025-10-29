@@ -23,7 +23,7 @@ namespace il::frontends::basic
 /// @brief Pseudo statement that only carries a line label.
 struct LabelStmt : Stmt
 {
-    [[nodiscard]] Kind stmtKind() const override
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
     {
         return Kind::Label;
     }
@@ -35,7 +35,7 @@ struct LabelStmt : Stmt
 /// @brief IF statement with optional ELSEIF chain and ELSE branch.
 struct IfStmt : Stmt
 {
-    [[nodiscard]] Kind stmtKind() const override
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
     {
         return Kind::If;
     }
@@ -113,7 +113,7 @@ struct CaseArm
 /// @brief SELECT CASE statement with zero or more CASE arms and optional ELSE body.
 struct SelectCaseStmt : Stmt
 {
-    [[nodiscard]] Kind stmtKind() const override
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
     {
         return Kind::SelectCase;
     }
@@ -140,7 +140,7 @@ struct SelectCaseStmt : Stmt
 /// @brief WHILE ... WEND loop statement.
 struct WhileStmt : Stmt
 {
-    [[nodiscard]] Kind stmtKind() const override
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
     {
         return Kind::While;
     }
@@ -157,7 +157,7 @@ struct WhileStmt : Stmt
 /// @brief DO ... LOOP statement supporting WHILE and UNTIL tests.
 struct DoStmt : Stmt
 {
-    [[nodiscard]] Kind stmtKind() const override
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
     {
         return Kind::Do;
     }
@@ -188,7 +188,7 @@ struct DoStmt : Stmt
 /// @brief FOR ... NEXT loop statement.
 struct ForStmt : Stmt
 {
-    [[nodiscard]] Kind stmtKind() const override
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
     {
         return Kind::For;
     }
@@ -214,7 +214,7 @@ struct ForStmt : Stmt
 /// @brief NEXT statement closing a FOR.
 struct NextStmt : Stmt
 {
-    [[nodiscard]] Kind stmtKind() const override
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
     {
         return Kind::Next;
     }
@@ -228,7 +228,7 @@ struct NextStmt : Stmt
 /// @brief EXIT statement leaving the innermost enclosing loop.
 struct ExitStmt : Stmt
 {
-    [[nodiscard]] Kind stmtKind() const override
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
     {
         return Kind::Exit;
     }
@@ -247,7 +247,7 @@ struct ExitStmt : Stmt
 /// @brief GOTO statement transferring control to a line number.
 struct GotoStmt : Stmt
 {
-    [[nodiscard]] Kind stmtKind() const override
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
     {
         return Kind::Goto;
     }
@@ -261,7 +261,7 @@ struct GotoStmt : Stmt
 /// @brief GOSUB statement invoking a line label as a subroutine.
 struct GosubStmt : Stmt
 {
-    [[nodiscard]] Kind stmtKind() const override
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
     {
         return Kind::Gosub;
     }
@@ -275,7 +275,7 @@ struct GosubStmt : Stmt
 /// @brief ON ERROR GOTO statement configuring error handler target.
 struct OnErrorGoto : Stmt
 {
-    [[nodiscard]] Kind stmtKind() const override
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
     {
         return Kind::OnErrorGoto;
     }
@@ -292,7 +292,7 @@ struct OnErrorGoto : Stmt
 /// @brief RESUME statement controlling error-handler resumption.
 struct Resume : Stmt
 {
-    [[nodiscard]] Kind stmtKind() const override
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
     {
         return Kind::Resume;
     }
@@ -313,7 +313,7 @@ struct Resume : Stmt
 /// @brief END statement terminating program execution.
 struct EndStmt : Stmt
 {
-    [[nodiscard]] Kind stmtKind() const override
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
     {
         return Kind::End;
     }
@@ -325,7 +325,7 @@ struct EndStmt : Stmt
 /// @brief RETURN statement optionally yielding a value.
 struct ReturnStmt : Stmt
 {
-    [[nodiscard]] Kind stmtKind() const override
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
     {
         return Kind::Return;
     }
