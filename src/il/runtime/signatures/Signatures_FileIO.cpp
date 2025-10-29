@@ -7,9 +7,13 @@
 //
 // File: src/il/runtime/signatures/Signatures_FileIO.cpp
 // Purpose: Register expected runtime helper signatures related to console and
-//          file I/O for debug validation.
+//          file I/O for debug validation. This mapping ensures the IL verifier
+//          can confirm compiler-emitted calls align with the runtime ABI used to
+//          access terminals and file channels.
 // Key invariants: Describes the coarse type layout for each runtime symbol in
-//                 the I/O subsystem.
+//                 the I/O subsystem. Parameter kinds reflect the runtime
+//                 structure definitions, so updates to the runtime must be
+//                 mirrored here.
 // Ownership/Lifetime: Registered shapes persist for the lifetime of the
 //                     process via the shared registry.
 // Links: docs/il-guide.md#reference
@@ -27,6 +31,11 @@ using Kind = SigParam::Kind;
 
 /// @brief Publish expected runtime signature shapes for the file and console
 ///        subsystem helpers.
+/// @details Registers every console and channel primitive with the shared
+///          registry so verification passes can check argument counts and
+///          primitive kinds. Entries cover synchronous console output, file
+///          handle operations, and error-reporting helpers that expose status
+///          codes to BASIC programs.
 void register_fileio_signatures()
 {
     register_signature(make_signature("rt_abort", {Kind::Ptr}));
