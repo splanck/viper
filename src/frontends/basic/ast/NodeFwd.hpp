@@ -98,4 +98,9 @@ using Identifier = std::string;
 using StmtPtr = std::unique_ptr<Stmt>;
 using ProcDecl = StmtPtr;
 
+void visit(const Expr &expr, ExprVisitor &visitor);
+void visit(Expr &expr, MutExprVisitor &visitor);
+void visit(const Stmt &stmt, StmtVisitor &visitor);
+void visit(Stmt &stmt, MutStmtVisitor &visitor);
+
 } // namespace il::frontends::basic
