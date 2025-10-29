@@ -31,11 +31,13 @@ namespace il::vm
 {
 
 /// @brief Apply pending block parameter transfers for the given block.
-///
-/// Any arguments staged by a predecessor terminator are copied into the frame's
-/// register file and announced to the debug controller. Parameters are cleared
-/// after transfer so repeated calls are harmless when no updates remain.
-///
+/// @details Any arguments staged by a predecessor terminator are copied into the
+///          frame's register file and announced to the debug controller.  The
+///          routine grows the register vector when necessary, materialises a
+///          pseudo-instruction so existing store helpers can marshal the value,
+///          and releases transient string handles once consumed.  Parameters are
+///          cleared after transfer so repeated calls are harmless when no
+///          updates remain.
 /// @param fr Current frame whose registers receive parameter values.
 /// @param bb Basic block that has just become active.
 void VM::transferBlockParams(Frame &fr, const BasicBlock &bb)
@@ -62,11 +64,14 @@ void VM::transferBlockParams(Frame &fr, const BasicBlock &bb)
 }
 
 /// @brief Manage a potential debug break before or after executing an instruction.
-///
-/// Checks label and source line breakpoints using @c DebugCtrl. When a break is
-/// hit the optional @c DebugScript controls stepping; otherwise a fixed slot is
-/// returned to pause execution.
-///
+/// @details The helper first considers block-level breakpoints, honouring the
+///          single-step skip flag by deferring only the next break opportunity.
+///          When a break triggers and no script is present, a synthetic slot is
+///          returned to suspend the interpreter; otherwise the current debug
+///          script dictates how many instructions to step before resuming.
+///          Source line breakpoints are processed when @p in is non-null so the
+///          debugger can halt on specific instructions even when control stays
+///          within the same block.
 /// @param fr            Current frame.
 /// @param bb            Current basic block.
 /// @param ip            Instruction index within @p bb.
@@ -117,11 +122,13 @@ std::optional<Slot> VM::handleDebugBreak(
 }
 
 /// @brief Handle debugging-related bookkeeping before or after an instruction executes.
-///
-/// Enforces the global step limit, performs breakpoint checks via
-/// @c handleDebugBreak, and manages the single-step budget. When a pause is
-/// requested, a special slot is returned to signal the interpreter loop.
-///
+/// @details Prior to execution the helper enforces the global step limit,
+///          performs parameter transfers when entering a block, and consults
+///          @ref handleDebugBreak to honour label and source breakpoints.  After
+///          execution it decrements the remaining step budget, halting when it
+///          reaches zero and optionally re-arming the debugger script.  Whenever
+///          a pause is requested a dedicated slot value is returned so the
+///          interpreter loop can unwind gracefully.
 /// @param st      Current execution state.
 /// @param in      Instruction being processed, if any.
 /// @param postExec Set to true when invoked after executing @p in.

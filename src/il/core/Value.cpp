@@ -25,10 +25,8 @@ namespace il::core
 {
 
 /// @brief Create a temporary value wrapper for SSA identifiers.
-///
-/// Temporaries appear as `%tN` in the textual IL.  They always use the temp
-/// kind and record the numeric identifier in @ref Value::id.
-///
+/// @details Temporaries appear as `%tN` in the textual IL.  They always use the
+///          temp kind and record the numeric identifier in @ref Value::id.
 /// @param t Zero-based identifier assigned by the surrounding builder.
 /// @return Value representing the temporary reference.
 Value Value::temp(unsigned t)
@@ -37,10 +35,8 @@ Value Value::temp(unsigned t)
 }
 
 /// @brief Create a signed integer constant value.
-///
-/// The payload preserves the exact @c long long bit pattern so two's-complement
-/// wraparound semantics are preserved when consumed by handlers.
-///
+/// @details Preserves the exact @c long long bit pattern so two's-complement
+///          wraparound semantics are maintained when consumed by handlers.
 /// @param v Integer payload to embed in the value.
 /// @return Value representing the integer literal.
 Value Value::constInt(long long v)
@@ -49,11 +45,9 @@ Value Value::constInt(long long v)
 }
 
 /// @brief Create a boolean literal backed by the integer constant encoding.
-///
-/// Booleans piggy-back on the integer constant representation but set the
-/// @ref Value::isBool flag so printers render them as `true` / `false` instead
-/// of numeric digits.
-///
+/// @details Booleans piggy-back on the integer constant representation but set
+///          the @ref Value::isBool flag so printers render them as `true` /
+///          `false` instead of numeric digits.
 /// @param v Boolean payload to embed in the value.
 /// @return Value representing the boolean literal.
 Value Value::constBool(bool v)
@@ -62,10 +56,8 @@ Value Value::constBool(bool v)
 }
 
 /// @brief Create a floating-point constant value.
-///
-/// Stores the exact @c double payload so NaNs and infinities propagate through
-/// the IR unchanged.
-///
+/// @details Stores the exact @c double payload so NaNs and infinities propagate
+///          through the IR unchanged.
 /// @param v Floating-point payload to embed in the value.
 /// @return Value representing the floating literal.
 Value Value::constFloat(double v)
@@ -74,10 +66,9 @@ Value Value::constFloat(double v)
 }
 
 /// @brief Create a string literal value.
-///
-/// The string payload is owned by the @ref Value instance and therefore moved
-/// into place.  Literal encoding (escaped or raw) is handled by callers.
-///
+/// @details Moves the string payload into the @ref Value instance.  Literal
+///          encoding (escaped or raw) is handled by callers so the helper merely
+///          records the bytes.
 /// @param s String contents of the literal.
 /// @return Value representing the string literal.
 Value Value::constStr(std::string s)
@@ -86,10 +77,8 @@ Value Value::constStr(std::string s)
 }
 
 /// @brief Create a global address value that refers to a named global symbol.
-///
-/// The stored string is the canonical name of the global and is owned by the
-/// resulting @ref Value instance.
-///
+/// @details Stores the canonical name of the global and transfers ownership to
+///          the resulting @ref Value instance.
 /// @param s Name of the referenced global.
 /// @return Value representing the global address literal.
 Value Value::global(std::string s)
@@ -98,9 +87,8 @@ Value Value::global(std::string s)
 }
 
 /// @brief Create the null pointer literal used by pointer-typed values.
-///
-/// Null values always carry the @ref Kind::NullPtr tag and have empty payloads.
-///
+/// @details Null values always carry the @ref Kind::NullPtr tag and have empty
+///          payloads.
 /// @return Value representing the null literal.
 Value Value::null()
 {
@@ -108,12 +96,11 @@ Value Value::null()
 }
 
 /// @brief Render a value into its textual IL representation.
-///
-/// The printer mirrors the canonical format produced by the serializer: temps
-/// appear as `%tN`, integers as decimal literals (with booleans spelled out),
-/// floating-point values use a trimmed scientific/decimal format, strings are
-/// escaped, and globals are prefixed with `@`.  Null pointers render as `null`.
-///
+/// @details Mirrors the canonical format produced by the serializer: temps
+///          appear as `%tN`, integers as decimal literals (with booleans spelled
+///          out), floating-point values use a trimmed scientific/decimal format,
+///          strings are escaped, and globals are prefixed with `@`.  Null
+///          pointers render as `null`.
 /// @param v Value to render.
 /// @return String representation suitable for diagnostics or textual IL.
 std::string toString(const Value &v)
