@@ -178,7 +178,13 @@ void SemanticAnalyzer::analyzeArrayAssignment(ArrayExpr &a, const LetStmt &l)
     if (l.expr)
     {
         valueTy = visitExpr(*l.expr);
-        if (valueTy != Type::Unknown && valueTy != Type::Int)
+        if (valueTy == Type::Float)
+        {
+            markImplicitConversion(*l.expr, Type::Int);
+            std::string msg = "narrowing conversion from FLOAT to INT in array assignment";
+            de.emit(il::support::Severity::Warning, "B2002", l.loc, 1, std::move(msg));
+        }
+        else if (valueTy != Type::Unknown && valueTy != Type::Int)
         {
             std::string msg = "array element type mismatch";
             de.emit(il::support::Severity::Error, "B2001", l.loc, 1, std::move(msg));
