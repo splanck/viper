@@ -41,6 +41,7 @@ class Parser
 
   private:
     template <class T> using ErrorOr = il::support::Expected<T>;
+    using ParsedStmt = std::optional<StmtPtr>;
 
     friend class StatementSequencer;
 
@@ -132,6 +133,53 @@ class Parser
     /// @param line Line number associated with the statement.
     /// @return Parsed statement or nullptr on error.
     StmtPtr parseStatement(int line);
+
+    /// @brief Implementation helper that performs dispatch and error recovery.
+    /// @param line Line number associated with the statement.
+    /// @return Optional statement result; engaged with nullptr when an error was handled.
+    ParsedStmt parseStatementImpl(int line);
+
+    /// @brief Handle statements that start with a numeric token.
+    /// @param tok Token introducing the statement.
+    /// @return Optional statement; engaged with nullptr when the number was unexpected.
+    ParsedStmt parseLeadingNumberStatement(const Token &tok);
+
+    /// @brief Dispatch keyword-led statements to the appropriate handlers.
+    /// @param line Source line attached to the statement.
+    /// @param tok Lookahead token identifying the keyword.
+    /// @return Optional statement result; disengaged when the keyword is unknown.
+    ParsedStmt parseKeywordStatement(int line, const Token &tok);
+
+    /// @brief Handle identifier-led statements such as CALL.
+    /// @param line Source line number propagated to the statement.
+    /// @param tok Identifier token that started the statement.
+    /// @return Optional statement; disengaged when the identifier does not lead a statement.
+    ParsedStmt parseIdentifierStatement(int line, const Token &tok);
+
+    /// @brief Delegate to the statement registry for remaining keywords.
+    /// @param line Source line associated with the statement.
+    /// @param tok Current keyword token.
+    /// @return Optional statement; disengaged when the registry lacks a handler.
+    ParsedStmt parseRegisteredStatement(int line, const Token &tok);
+
+    /// @brief Wrap existing statement parsers with optional-aware helpers.
+    ParsedStmt parseIf(int line);
+    ParsedStmt parseSelect(int line);
+    ParsedStmt parseFor(int line);
+    ParsedStmt parseWhile(int line);
+    ParsedStmt parseLet();
+
+    /// @brief Parse identifier-led CALL statements.
+    ParsedStmt parseCall(int line);
+
+    /// @brief Diagnose bare procedure names that omit parentheses.
+    ParsedStmt handleKnownProcedureWithoutParen(const Token &tok);
+
+    /// @brief Emit a diagnostic for unknown statements and recover synchronisation.
+    ParsedStmt emitUnknownStatementDiagnostic(const Token &tok);
+
+    /// @brief Skip tokens after an error until a safe statement boundary is reached.
+    void resyncAfterError();
 
     /// @brief Identify whether the lookahead token begins a new statement.
     /// @param kind Token kind to classify.

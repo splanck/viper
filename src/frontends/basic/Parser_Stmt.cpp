@@ -84,22 +84,50 @@ bool Parser::isKnownProcedureName(const std::string &name) const
 
 /// @brief Parse a single BASIC statement based on the current token.
 ///
-/// @details Dispatches through the statement registry to locate the handler
-///          responsible for the current keyword.  The function also recognises
-///          call statements that omit parentheses and emits diagnostics for
-///          stray line numbers or unknown keywords.  When a statement cannot be
-///          parsed the routine consumes tokens until the end of the line so the
-///          parser can continue producing additional diagnostics.
+/// @details Delegates to specialised helpers that perform keyword dispatch,
+///          identifier handling, and recovery from malformed constructs.  The
+///          implementation keeps the dispatcher small while ensuring that each
+///          helper reports diagnostics that mention the offending statement
+///          kind.  When parsing fails the helpers invoke @ref resyncAfterError
+///          to position the token stream at the next safe boundary so the
+///          parser can continue collecting diagnostics.
 ///
 /// @param line One-based line number attached to the statement from the
 ///        original source listing.
 /// @return Owned AST node on success; @c nullptr when recovery is required.
 StmtPtr Parser::parseStatement(int line)
 {
+    auto result = parseStatementImpl(line);
+    if (!result.has_value())
+        return nullptr;
+    return std::move(*result);
+}
+
+Parser::ParsedStmt Parser::parseStatementImpl(int line)
+{
     const Token &tok = peek();
-    std::string tokLexeme = tok.lexeme;
-    auto tokLoc = tok.loc;
-    if (tok.kind == TokenKind::Number)
+
+    if (auto handled = parseLeadingNumberStatement(tok); handled.has_value())
+        return handled;
+
+    if (auto keyword = parseKeywordStatement(line, tok); keyword.has_value())
+        return keyword;
+
+    if (tok.kind == TokenKind::Identifier)
+    {
+        if (auto ident = parseIdentifierStatement(line, tok); ident.has_value())
+            return ident;
+    }
+
+    return emitUnknownStatementDiagnostic(tok);
+}
+
+Parser::ParsedStmt Parser::parseLeadingNumberStatement(const Token &tok)
+{
+    if (tok.kind != TokenKind::Number)
+        return std::nullopt;
+
+    auto report = [&](std::string message)
     {
         if (emitter_)
         {
@@ -107,99 +135,206 @@ StmtPtr Parser::parseStatement(int line)
                            "B0001",
                            tok.loc,
                            static_cast<uint32_t>(tok.lexeme.size()),
-                           "unexpected line number");
+                           std::move(message));
         }
         else
         {
-            std::fprintf(stderr, "unexpected line number '%s'\n", tok.lexeme.c_str());
+            std::fprintf(stderr, "%s\n", message.c_str());
         }
+    };
 
-        while (!at(TokenKind::EndOfFile) && !at(TokenKind::EndOfLine))
-        {
-            consume();
-        }
-        return nullptr;
+    report("statement cannot begin with a line number; expected a statement keyword");
+    resyncAfterError();
+    return ParsedStmt{StmtPtr{}};
+}
+
+Parser::ParsedStmt Parser::parseKeywordStatement(int line, const Token &tok)
+{
+    switch (tok.kind)
+    {
+        case TokenKind::KeywordIf:
+            return parseIf(line);
+        case TokenKind::KeywordSelect:
+            return parseSelect(line);
+        case TokenKind::KeywordFor:
+            return parseFor(line);
+        case TokenKind::KeywordWhile:
+            return parseWhile(line);
+        case TokenKind::KeywordLet:
+            return parseLet();
+        default:
+            break;
     }
 
-    const auto kind = tok.kind;
-    const auto [noArg, withLine] = statementRegistry().lookup(kind);
+    return parseRegisteredStatement(line, tok);
+}
+
+Parser::ParsedStmt Parser::parseIdentifierStatement(int line, const Token &tok)
+{
+    (void)line;
+
+    if (peek(1).kind == TokenKind::LParen)
+        return parseCall(line);
+
+    if (isKnownProcedureName(tok.lexeme) && peek(1).kind != TokenKind::LParen)
+        return handleKnownProcedureWithoutParen(tok);
+
+    return std::nullopt;
+}
+
+Parser::ParsedStmt Parser::parseRegisteredStatement(int line, const Token &tok)
+{
+    const auto [noArg, withLine] = statementRegistry().lookup(tok.kind);
     if (noArg)
-        return (this->*noArg)();
+    {
+        auto stmt = (this->*noArg)();
+        if (!stmt)
+            return ParsedStmt{StmtPtr{}};
+        return ParsedStmt{std::move(stmt)};
+    }
     if (withLine)
-        return (this->*withLine)(line);
-    if (tok.kind == TokenKind::Identifier && peek(1).kind == TokenKind::LParen)
     {
-        std::string ident = tokLexeme;
-        auto identLoc = tokLoc;
-        auto expr = parseArrayOrVar();
-        if (auto *callExpr = dynamic_cast<CallExpr *>(expr.get()))
-        {
-            auto stmt = std::make_unique<CallStmt>();
-            stmt->loc = identLoc;
-            stmt->call.reset(static_cast<CallExpr *>(expr.release()));
-            return stmt;
-        }
-        if (emitter_)
-        {
-            std::string msg = std::string("unknown statement '") + ident + "'";
-            emitter_->emit(il::support::Severity::Error,
-                           "B0001",
-                           identLoc,
-                           static_cast<uint32_t>(ident.size()),
-                           std::move(msg));
-        }
-        else
-        {
-            std::fprintf(stderr, "unknown statement '%s'\n", ident.c_str());
-        }
-        while (!at(TokenKind::EndOfFile) && !at(TokenKind::EndOfLine))
-        {
-            consume();
-        }
-        return nullptr;
+        auto stmt = (this->*withLine)(line);
+        if (!stmt)
+            return ParsedStmt{StmtPtr{}};
+        return ParsedStmt{std::move(stmt)};
     }
-    if (tok.kind == TokenKind::Identifier && isKnownProcedureName(tokLexeme) &&
-        peek(1).kind != TokenKind::LParen)
+    return std::nullopt;
+}
+
+Parser::ParsedStmt Parser::parseIf(int line)
+{
+    auto stmt = parseIfStatement(line);
+    if (!stmt)
+        return ParsedStmt{StmtPtr{}};
+    return ParsedStmt{std::move(stmt)};
+}
+
+Parser::ParsedStmt Parser::parseSelect(int line)
+{
+    (void)line;
+    auto stmt = parseSelectCaseStatement();
+    if (!stmt)
+        return ParsedStmt{StmtPtr{}};
+    return ParsedStmt{std::move(stmt)};
+}
+
+Parser::ParsedStmt Parser::parseFor(int line)
+{
+    (void)line;
+    auto stmt = parseForStatement();
+    if (!stmt)
+        return ParsedStmt{StmtPtr{}};
+    return ParsedStmt{std::move(stmt)};
+}
+
+Parser::ParsedStmt Parser::parseWhile(int line)
+{
+    (void)line;
+    auto stmt = parseWhileStatement();
+    if (!stmt)
+        return ParsedStmt{StmtPtr{}};
+    return ParsedStmt{std::move(stmt)};
+}
+
+Parser::ParsedStmt Parser::parseLet()
+{
+    auto stmt = parseLetStatement();
+    if (!stmt)
+        return ParsedStmt{StmtPtr{}};
+    return ParsedStmt{std::move(stmt)};
+}
+
+Parser::ParsedStmt Parser::parseCall(int line)
+{
+    (void)line;
+    const Token identTok = peek();
+    std::string ident = identTok.lexeme;
+    auto identLoc = identTok.loc;
+
+    auto expr = parseArrayOrVar();
+    if (auto *callExpr = dynamic_cast<CallExpr *>(expr.get()))
     {
-        std::string ident = tokLexeme;
-        auto nextTok = peek(1);
-        auto diagLoc = (nextTok.loc.hasLine() ? nextTok.loc : tokLoc);
-        uint32_t length = 1;
-        if (emitter_)
-        {
-            std::string msg = "expected '(' after procedure name '" + ident + "'";
-            emitter_->emit(il::support::Severity::Error, "B0001", diagLoc, length, std::move(msg));
-        }
-        else
-        {
-            std::fprintf(stderr, "expected '(' after procedure name '%s'\n", ident.c_str());
-        }
-        while (!at(TokenKind::EndOfFile) && !at(TokenKind::EndOfLine))
-        {
-            consume();
-        }
-        return nullptr;
+        auto stmt = std::make_unique<CallStmt>();
+        stmt->loc = identLoc;
+        stmt->call.reset(static_cast<CallExpr *>(expr.release()));
+        return ParsedStmt{std::move(stmt)};
     }
+
+    auto message = std::string("CALL statement expects '") + ident + "(<args>)'";
     if (emitter_)
     {
-        std::string msg = std::string("unknown statement '") + tokLexeme + "'";
         emitter_->emit(il::support::Severity::Error,
                        "B0001",
-                       tokLoc,
-                       static_cast<uint32_t>(tokLexeme.size()),
-                       std::move(msg));
+                       identLoc,
+                       static_cast<uint32_t>(ident.size()),
+                       message);
     }
     else
     {
-        std::fprintf(stderr, "unknown statement '%s'\n", tok.lexeme.c_str());
+        std::fprintf(stderr, "%s\n", message.c_str());
     }
 
-    while (!at(TokenKind::EndOfFile) && !at(TokenKind::EndOfLine))
+    resyncAfterError();
+    return ParsedStmt{StmtPtr{}};
+}
+
+Parser::ParsedStmt Parser::handleKnownProcedureWithoutParen(const Token &tok)
+{
+    auto nextTok = peek(1);
+    auto diagLoc = (nextTok.loc.hasLine() ? nextTok.loc : tok.loc);
+    uint32_t length = nextTok.loc.hasLine() ? static_cast<uint32_t>(nextTok.lexeme.size()) : 1U;
+    std::string msg = "CALL statement requires '(' after procedure name '" + tok.lexeme + "'";
+    if (emitter_)
     {
+        emitter_->emit(il::support::Severity::Error, "B0001", diagLoc, length, msg);
+    }
+    else
+    {
+        std::fprintf(stderr, "%s\n", msg.c_str());
+    }
+
+    resyncAfterError();
+    return ParsedStmt{StmtPtr{}};
+}
+
+Parser::ParsedStmt Parser::emitUnknownStatementDiagnostic(const Token &tok)
+{
+    std::string msg = std::string("unknown statement start '") + tok.lexeme +
+                      "'; expected a BASIC statement keyword or CALL form";
+    if (emitter_)
+    {
+        emitter_->emit(il::support::Severity::Error,
+                       "B0001",
+                       tok.loc,
+                       static_cast<uint32_t>(tok.lexeme.size()),
+                       msg);
+    }
+    else
+    {
+        std::fprintf(stderr, "%s\n", msg.c_str());
+    }
+
+    resyncAfterError();
+    return ParsedStmt{StmtPtr{}};
+}
+
+void Parser::resyncAfterError()
+{
+    while (!at(TokenKind::EndOfFile))
+    {
+        TokenKind kind = peek().kind;
+        if (kind == TokenKind::EndOfLine)
+        {
+            consume();
+            break;
+        }
+        if (kind == TokenKind::Colon)
+            break;
+        if (isStatementStart(kind))
+            break;
         consume();
     }
-
-    return nullptr;
 }
 
 /// @brief Check whether @p kind marks the beginning of a statement.
