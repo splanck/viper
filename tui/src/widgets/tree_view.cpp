@@ -1,7 +1,34 @@
-// tui/src/widgets/tree_view.cpp
-// @brief Implementation of TreeView widget with expand/collapse.
-// @invariant Visible nodes refreshed on state change.
-// @ownership TreeView owns nodes and borrows Theme.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// Provides the implementation of the TreeView widget used throughout the Viper
+// terminal UI.  The widget renders a hierarchical set of nodes, supports
+// keyboard-driven expansion and collapse, and exposes helpers for retrieving the
+// currently selected node.  Rendering is deliberately lightweight so large
+// trees remain responsive: visible nodes are cached in a linear array that is
+// rebuilt only when expansion state changes.
+//
+// Invariants:
+//   * The `visible_` cache mirrors the depth-first traversal of expanded nodes
+//     and is refreshed whenever expansion toggles to keep painting deterministic.
+//   * The cursor always references a valid element inside `visible_` when the
+//     tree is non-empty, clamping automatically during rebuilds.
+// Ownership:
+//   * TreeView owns the root node collection but borrows the theme reference so
+//     callers can maintain a shared style palette.
+//
+//===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Implements the TreeView widget for hierarchical navigation.
+/// @details Functions in this unit manage visible node caches, handle keyboard
+///          events for traversal, and render the textual representation into a
+///          screen buffer.  The widget focuses on behaviour; presentation is
+///          derived entirely from the injected theme object.
 
 #include "tui/widgets/tree_view.hpp"
 #include "tui/render/screen.hpp"
@@ -12,9 +39,16 @@ namespace viper::tui::widgets
 {
 
 /// @brief Construct a tree node with the provided label string.
+/// @details Nodes start collapsed with no children and no parent reference.
+///          The label is stored by value to guarantee stable data for rendering.
 TreeNode::TreeNode(std::string lbl) : label(std::move(lbl)) {}
 
 /// @brief Append a child node and wire its parent pointer.
+/// @details Ownership of the child transfers to the current node.  The helper
+///          patches the child's `parent` field before storing it so upward
+///          navigation and rebuilds can track ancestry.
+/// @param child Node to adopt as the final child.
+/// @return Raw pointer to the stored child to aid fluent tree construction.
 TreeNode *TreeNode::add(std::unique_ptr<TreeNode> child)
 {
     child->parent = this;
@@ -22,6 +56,11 @@ TreeNode *TreeNode::add(std::unique_ptr<TreeNode> child)
     return children.back().get();
 }
 
+/// @brief Build a tree view using the supplied root nodes and theme.
+/// @details The constructor takes ownership of @p roots, stores the borrowed
+///          theme reference, and immediately calls @ref rebuild() to populate
+///          the visible cache.  This ensures the widget paints valid content on
+///          the very first frame.
 TreeView::TreeView(std::vector<std::unique_ptr<TreeNode>> roots, const style::Theme &theme)
     : roots_(std::move(roots)), theme_(theme)
 {
@@ -29,11 +68,20 @@ TreeView::TreeView(std::vector<std::unique_ptr<TreeNode>> roots, const style::Th
 }
 
 /// @brief Tree views require focus to drive expansion and navigation via keyboard.
+/// @return Always true so focus-based navigation can interact with the widget.
 bool TreeView::wantsFocus() const
 {
     return true;
 }
 
+/// @brief Render the visible portion of the tree into a screen buffer.
+/// @details Iterates over cached visible nodes until either the buffer height or
+///          the visible list is exhausted.  For each node the routine paints a
+///          cursor marker, indentation derived from @ref depth(), an expansion
+///          glyph (`+` or `-`), and the node label truncated to the available
+///          width.  Styling uses the accent role for markers and the normal role
+///          for text, keeping selection obvious while retaining theme control.
+/// @param sb Screen buffer receiving the rendered characters.
 void TreeView::paint(render::ScreenBuffer &sb)
 {
     const auto &sel = theme_.style(style::Role::Accent);
@@ -79,6 +127,17 @@ void TreeView::paint(render::ScreenBuffer &sb)
     }
 }
 
+/// @brief Handle keyboard navigation and expansion shortcuts.
+/// @details Supports the following bindings:
+///          * Up/Down move the cursor within the visible node list.
+///          * Right expands the current node when it contains collapsed children.
+///          * Left collapses the current node or moves to the parent when
+///            already collapsed.
+///          * Enter toggles expansion when the node has children.
+///          Rebuilds are triggered whenever expansion state changes so painting
+///          reflects the latest structure.
+/// @param ev UI event containing the key input.
+/// @return True when the event was consumed and state potentially changed.
 bool TreeView::onEvent(const ui::Event &ev)
 {
     if (visible_.empty())
@@ -142,6 +201,10 @@ bool TreeView::onEvent(const ui::Event &ev)
     return false;
 }
 
+/// @brief Access the node currently selected by the cursor.
+/// @details Returns `nullptr` when the tree has no visible nodes.  The pointer
+///          remains valid as long as the tree structure is unchanged.
+/// @return Pointer to the active node or nullptr when no selection exists.
 TreeNode *TreeView::current() const
 {
     if (visible_.empty())
@@ -151,6 +214,12 @@ TreeNode *TreeView::current() const
     return visible_[cursor_];
 }
 
+/// @brief Recompute the linear list of visible nodes after structural changes.
+/// @details Performs a manual depth-first traversal using a stack to avoid
+///          recursion and push children in reverse order so the resulting array
+///          preserves natural left-to-right iteration.  The cursor is clamped to
+///          the new bounds to maintain a valid selection.  This method is called
+///          eagerly from the constructor and whenever expansion state toggles.
 void TreeView::rebuild()
 {
     visible_.clear();
@@ -182,6 +251,11 @@ void TreeView::rebuild()
     }
 }
 
+/// @brief Compute the depth of a node relative to the root set.
+/// @details Walks parent pointers until reaching a root, counting the number of
+///          hops on the way.  Used exclusively for indentation when painting.
+/// @param n Node whose depth should be calculated.
+/// @return Zero for root nodes, otherwise the ancestor count.
 int TreeView::depth(TreeNode *n)
 {
     int d = 0;
@@ -194,3 +268,4 @@ int TreeView::depth(TreeNode *n)
 }
 
 } // namespace viper::tui::widgets
+
