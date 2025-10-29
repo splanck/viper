@@ -71,37 +71,109 @@ enum class TokenKind
     End,
 };
 
-enum class DiagKind
+class TokenStream
 {
-    CurrentLine,
-    PendingBranch,
+  public:
+    TokenStream(std::istream &stream, ParserState &legacy) : stream_(&stream), legacy_(&legacy) {}
+
+    [[nodiscard]] TokenKind kind() const noexcept
+    {
+        return token_;
+    }
+
+    [[nodiscard]] const std::string &line() const noexcept
+    {
+        return line_;
+    }
+
+    [[nodiscard]] ParserState &legacy() noexcept
+    {
+        return *legacy_;
+    }
+
+    bool advance()
+    {
+        while (std::getline(*stream_, line_))
+        {
+            ++legacy_->lineNo;
+            line_ = trim(line_);
+            if (line_.empty() || line_.rfind("//", 0) == 0)
+                continue;
+            if (!line_.empty() && line_.front() == '#')
+                continue;
+            if (!line_.empty() && line_.front() == '}')
+            {
+                token_ = TokenKind::CloseBrace;
+                return true;
+            }
+            if (!line_.empty() && line_.back() == ':')
+            {
+                token_ = TokenKind::BlockLabel;
+                return true;
+            }
+            if (line_.rfind(".loc", 0) == 0)
+            {
+                token_ = TokenKind::LocDirective;
+                return true;
+            }
+            token_ = TokenKind::Instruction;
+            return true;
+        }
+        token_ = TokenKind::End;
+        line_.clear();
+        return false;
+    }
+
+  private:
+    std::istream *stream_ = nullptr;
+    ParserState *legacy_ = nullptr;
+    std::string line_;
+    TokenKind token_ = TokenKind::Skip;
 };
 
-struct ParseState
+namespace parser_impl
 {
-    std::istream &stream;
-    std::string &header;
-    ParserState &ctx;
-    std::string line;
-    TokenKind token = TokenKind::Skip;
+
+struct ParserState
+{
+    il::core::Module *mod = nullptr;
+    il::core::Function *fn = nullptr;
+    il::core::BasicBlock *cur = nullptr;
+    il::support::SourceLoc loc{};
+    il::support::DiagnosticEngine *diags = nullptr;
+    TokenStream *ts = nullptr;
+    il::io::detail::ParserState *legacy = nullptr;
+
+    void refresh()
+    {
+        if (!legacy)
+            return;
+        mod = &legacy->m;
+        fn = legacy->curFn;
+        cur = legacy->curBB;
+        loc = legacy->curLoc;
+    }
+
+    void commit()
+    {
+        if (!legacy)
+            return;
+        legacy->curFn = fn;
+        legacy->curBB = cur;
+        legacy->curLoc = loc;
+    }
+
+    [[nodiscard]] unsigned lineNo() const noexcept
+    {
+        return legacy ? legacy->lineNo : 0;
+    }
 };
+
+} // namespace parser_impl
 
 } // namespace
 
-bool tokenIs(TokenKind tok, TokenKind kind)
-{
-    return tok == kind;
-}
-
-template <class T = void> Expected<T> expect(ParseState &state, DiagKind kind, std::string message)
-{
-    unsigned line = state.ctx.lineNo;
-    if (kind == DiagKind::PendingBranch && !state.ctx.pendingBrs.empty())
-        line = state.ctx.pendingBrs.front().line;
-    std::ostringstream oss;
-    oss << "line " << line << ": " << message;
-    return Expected<T>{makeError({}, oss.str())};
-}
+using LegacyParserState = ::il::io::detail::ParserState;
 
 #define TRY(expr)                                                                                  \
     do                                                                                             \
@@ -417,6 +489,86 @@ std::string stripCapturedDiagMessage(std::string text)
     return text;
 }
 
+std::string_view describeTokenKind(TokenKind token)
+{
+    switch (token)
+    {
+    case TokenKind::CloseBrace:
+        return "'}'";
+    case TokenKind::BlockLabel:
+        return "block label";
+    case TokenKind::LocDirective:
+        return "'.loc' directive";
+    case TokenKind::Instruction:
+        return "instruction";
+    case TokenKind::End:
+        return "end of function";
+    case TokenKind::Skip:
+        break;
+    }
+    return "token";
+}
+
+std::string describeOffendingToken(const parser_impl::ParserState &state)
+{
+    if (!state.ts)
+        return "";
+    switch (state.ts->kind())
+    {
+    case TokenKind::CloseBrace:
+        return "}";
+    case TokenKind::BlockLabel:
+    case TokenKind::LocDirective:
+    case TokenKind::Instruction:
+        return state.ts->line();
+    case TokenKind::End:
+        return "<eof>";
+    case TokenKind::Skip:
+        break;
+    }
+    return "";
+}
+
+Expected<void> expect(parser_impl::ParserState &state, TokenKind want, std::string_view what)
+{
+    if (state.ts && state.ts->kind() == want)
+        return {};
+
+    std::ostringstream oss;
+    oss << "unexpected " << describeTokenKind(state.ts ? state.ts->kind() : TokenKind::Skip);
+    std::string offending = describeOffendingToken(state);
+    if (!offending.empty())
+        oss << " '" << offending << "'";
+    oss << " (expected " << what << ")";
+    return lineError<void>(state.lineNo(), oss.str());
+}
+
+bool peekIs(const parser_impl::ParserState &state, TokenKind kind)
+{
+    return state.ts && state.ts->kind() == kind;
+}
+
+bool consumeIf(parser_impl::ParserState &state, TokenKind kind)
+{
+    if (!peekIs(state, kind))
+        return false;
+    state.ts->advance();
+    state.refresh();
+    return true;
+}
+
+void recoverTo(parser_impl::ParserState &state, TokenKind boundary)
+{
+    if (!state.ts)
+        return;
+    while (state.ts->kind() != TokenKind::End && state.ts->kind() != boundary)
+    {
+        if (!state.ts->advance())
+            break;
+    }
+    state.refresh();
+}
+
 /// @brief Parses a single IL instruction line and forwards diagnostics.
 ///
 /// @param line Text of one instruction, in the same format emitted by the IL
@@ -426,7 +578,7 @@ std::string stripCapturedDiagMessage(std::string text)
 /// pending branch bookkeeping, and capture diagnostic locations.
 /// @return Empty on success; otherwise, a diagnostic normalised via
 /// stripCapturedDiagMessage().
-Expected<void> parseInstructionShim_E(const std::string &line, ParserState &st)
+Expected<void> parseInstructionShim_E(const std::string &line, LegacyParserState &st)
 {
     std::ostringstream capture;
     if (parseInstruction(line, st, capture))
@@ -435,115 +587,153 @@ Expected<void> parseInstructionShim_E(const std::string &line, ParserState &st)
     return Expected<void>{makeError(st.curLoc, std::move(message))};
 }
 
-bool advance(ParseState &state)
+Expected<void> parseLocDirective(parser_impl::ParserState &state)
 {
-    while (std::getline(state.stream, state.line))
-    {
-        ++state.ctx.lineNo;
-        state.line = trim(state.line);
-        if (state.line.empty() || state.line.rfind("//", 0) == 0)
-            continue;
-        if (!state.line.empty() && state.line.front() == '#')
-            continue;
-        if (!state.line.empty() && state.line.front() == '}')
-        {
-            state.token = TokenKind::CloseBrace;
-            return true;
-        }
-        if (!state.line.empty() && state.line.back() == ':')
-        {
-            state.token = TokenKind::BlockLabel;
-            return true;
-        }
-        if (state.line.rfind(".loc", 0) == 0)
-        {
-            state.token = TokenKind::LocDirective;
-            return true;
-        }
-        state.token = TokenKind::Instruction;
-        return true;
-    }
-    state.token = TokenKind::End;
-    return false;
-}
+    if (!state.ts)
+        return lineError<void>(state.lineNo(), "malformed .loc directive");
 
-Expected<void> parseLocDirective(ParseState &state)
-{
-    std::istringstream ls(state.line.substr(4));
+    std::istringstream ls(state.ts->line().substr(4));
     uint32_t file = 0;
     uint32_t line = 0;
     uint32_t column = 0;
     ls >> file >> line >> column;
     if (!ls)
-        return expect(state, DiagKind::CurrentLine, "malformed .loc directive");
+        return lineError<void>(state.lineNo(), "malformed .loc directive");
     ls >> std::ws;
     if (ls.peek() != std::char_traits<char>::eof())
-        return expect(state, DiagKind::CurrentLine, "malformed .loc directive");
-    state.ctx.curLoc = {file, line, column};
+        return lineError<void>(state.lineNo(), "malformed .loc directive");
+    state.loc = {file, line, column};
+    state.commit();
     return {};
 }
 
-Expected<void> parseHeader(ParseState &state)
+Expected<void> parseBlock(parser_impl::ParserState &state)
 {
-    return parseFunctionHeader(state.header, state.ctx);
+    if (!state.ts)
+        return lineError<void>(state.lineNo(), "missing block label");
+    std::string blockHeader = state.ts->line();
+    if (!blockHeader.empty())
+        blockHeader.pop_back();
+    auto result = parseBlockHeader(blockHeader, *state.legacy);
+    state.refresh();
+    return result;
 }
 
-Expected<void> parseSignature(ParseState &state)
+std::string_view extractOpcode(std::string_view line)
 {
-    (void)state;
-    return {};
-}
-
-Expected<void> parseAttributes(ParseState &state)
-{
-    (void)state;
-    return {};
-}
-
-Expected<void> parseBody(ParseState &state)
-{
-    while (advance(state))
+    line = trimView(line);
+    if (line.empty())
+        return line;
+    size_t eq = line.find('=');
+    if (eq != std::string_view::npos)
     {
-        if (tokenIs(state.token, TokenKind::CloseBrace))
+        line.remove_prefix(eq + 1);
+        line = trimView(line);
+    }
+    size_t space = line.find_first_of(" \t");
+    if (space == std::string_view::npos)
+        return line;
+    return line.substr(0, space);
+}
+
+Expected<void> parseGenericInstr(parser_impl::ParserState &state, std::string_view)
+{
+    if (!state.ts || !state.legacy)
+        return lineError<void>(state.lineNo(), "unexpected instruction context");
+    return parseInstructionShim_E(state.ts->line(), *state.legacy);
+}
+
+Expected<void> parseInstr(parser_impl::ParserState &state)
+{
+    using Handler = Expected<void> (*)(parser_impl::ParserState &, std::string_view);
+    struct Dispatch
+    {
+        std::string_view opcode;
+        Handler handler;
+    };
+
+    static constexpr std::array<Dispatch, 3> kDispatchTable = {{
+        Dispatch{"br", &parseGenericInstr},
+        Dispatch{"ret", &parseGenericInstr},
+        Dispatch{"", &parseGenericInstr},
+    }};
+
+    std::string_view opcode = state.ts ? extractOpcode(state.ts->line()) : std::string_view{};
+    for (const auto &entry : kDispatchTable)
+    {
+        if (entry.opcode.empty() || entry.opcode == opcode)
+            return entry.handler(state, opcode);
+    }
+    return kDispatchTable.back().handler(state, opcode);
+}
+
+Expected<void> parseBody(TokenStream &stream, parser_impl::ParserState &state)
+{
+    state.ts = &stream;
+    state.refresh();
+
+    while (stream.advance())
+    {
+        state.refresh();
+
+        if (stream.kind() == TokenKind::CloseBrace)
         {
-            state.ctx.curFn = nullptr;
-            state.ctx.curBB = nullptr;
-            state.ctx.curLoc = {};
+            state.fn = nullptr;
+            state.cur = nullptr;
+            state.loc = {};
+            state.commit();
             break;
         }
 
-        if (tokenIs(state.token, TokenKind::BlockLabel))
+        if (stream.kind() == TokenKind::BlockLabel)
         {
-            std::string blockHeader = state.line.substr(0, state.line.size() - 1);
-            TRY(parseBlockHeader(blockHeader, state.ctx));
+            auto blockResult = parseBlock(state);
+            if (!blockResult)
+            {
+                recoverTo(state, TokenKind::BlockLabel);
+                return blockResult;
+            }
             continue;
         }
 
-        if (!state.ctx.curBB)
-            return expect(state, DiagKind::CurrentLine, "instruction outside block");
+        if (!state.cur)
+            return expect(state, TokenKind::BlockLabel, "block label before instructions");
 
-        if (tokenIs(state.token, TokenKind::LocDirective))
+        if (stream.kind() == TokenKind::LocDirective)
         {
-            TRY(parseLocDirective(state));
+            auto locResult = parseLocDirective(state);
+            if (!locResult)
+            {
+                recoverTo(state, TokenKind::BlockLabel);
+                return locResult;
+            }
             continue;
         }
 
-        TRY(parseInstructionShim_E(state.line, state.ctx));
+        auto instrResult = parseInstr(state);
+        if (!instrResult)
+        {
+            recoverTo(state, TokenKind::BlockLabel);
+            return instrResult;
+        }
+        state.refresh();
     }
 
-    if (state.ctx.curFn)
+    if (state.fn)
     {
-        state.ctx.curFn = nullptr;
-        state.ctx.curBB = nullptr;
-        state.ctx.curLoc = {};
-        return expect(state, DiagKind::CurrentLine, "unexpected end of file; missing '}'");
+        state.fn = nullptr;
+        state.cur = nullptr;
+        state.loc = {};
+        state.commit();
+        return lineError<void>(state.lineNo(), "unexpected end of file; missing '}'");
     }
 
-    if (!state.ctx.pendingBrs.empty())
+    if (!state.legacy->pendingBrs.empty())
     {
-        const auto &unresolved = state.ctx.pendingBrs.front();
-        std::string message = "unknown block '" + unresolved.label + "'";
-        return expect(state, DiagKind::PendingBranch, std::move(message));
+        const auto &unresolved = state.legacy->pendingBrs.front();
+        std::ostringstream oss;
+        oss << "unknown block '" << unresolved.label << "'";
+        return lineError<void>(unresolved.line, oss.str());
     }
 
     return {};
@@ -798,11 +988,15 @@ Expected<void> parseBlockHeader(const std::string &header, ParserState &st)
 /// @return Empty on success; otherwise, a diagnostic describing the parsing issue.
 Expected<void> parseFunction(std::istream &is, std::string &header, ParserState &st)
 {
-    ParseState state{is, header, st};
-    TRY(parseHeader(state));
-    TRY(parseSignature(state));
-    TRY(parseAttributes(state));
-    TRY(parseBody(state));
+    TRY(parseFunctionHeader(header, st));
+
+    TokenStream tokens(is, st);
+    parser_impl::ParserState local{};
+    local.legacy = &st;
+    local.ts = &tokens;
+    local.refresh();
+
+    TRY(parseBody(tokens, local));
     return {};
 }
 
