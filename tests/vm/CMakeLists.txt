@@ -244,6 +244,10 @@ function(viper_add_vm_unit_tests)
   target_link_libraries(test_vm_gep_nullptr PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
   viper_add_ctest(test_vm_gep_nullptr test_vm_gep_nullptr)
 
+  viper_add_test(test_vm_gep_offsets ${VIPER_TESTS_DIR}/unit/test_vm_gep_offsets.cpp)
+  target_link_libraries(test_vm_gep_offsets PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
+  viper_add_ctest(test_vm_gep_offsets test_vm_gep_offsets)
+
   viper_add_test(test_vm_many_temps ${VIPER_TESTS_DIR}/unit/test_vm_many_temps.cpp)
   target_link_libraries(test_vm_many_temps PRIVATE ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
   viper_add_ctest(test_vm_many_temps test_vm_many_temps)
