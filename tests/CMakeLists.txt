@@ -143,3 +143,7 @@ viper_add_basic_call_tests()
 viper_add_basic_integration_tests()
 viper_add_e2e_codegen_tests()
 viper_add_golden_suite_tests()
+
+add_test(NAME basic_repros
+         COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/scripts/run_basic_repros.sh
+                 $<TARGET_FILE:ilc>)
