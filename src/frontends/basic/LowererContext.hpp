@@ -460,6 +460,18 @@ struct ProcedureContext
         current_ = block;
     }
 
+    [[nodiscard]] size_t currentIndex() const noexcept
+    {
+        auto *f = function();
+        return static_cast<size_t>(current_ - &f->blocks.front());
+    }
+
+    void setCurrentByIndex(size_t idx) noexcept
+    {
+        auto *f = function();
+        setCurrent(&f->blocks[idx]);
+    }
+
     [[nodiscard]] size_t exitIndex() const noexcept
     {
         return exitIndex_;
