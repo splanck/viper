@@ -94,6 +94,7 @@ int main()
     EhModel rethrowModel(rethrowFn);
     auto rethrowDiag = checkEhStackBalance(rethrowModel);
     assert(!rethrowDiag);
+    assert(rethrowDiag.error().message.find("checkUnreachableAfterThrow") != std::string::npos);
     assert(rethrowDiag.error().message.find("resume.* requires active resume token") !=
            std::string::npos);
 
@@ -229,6 +230,7 @@ int main()
     EhModel leakModel(leakFn);
     auto leakDiag = checkEhStackBalance(leakModel);
     assert(!leakDiag);
+    assert(leakDiag.error().message.find("checkAllPathsCloseTry") != std::string::npos);
     assert(leakDiag.error().message.find("unmatched eh.push depth 1") != std::string::npos);
 
     // Degenerate resume target: handler target must postdominate faulting block.

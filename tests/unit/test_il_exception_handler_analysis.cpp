@@ -86,6 +86,7 @@ int main()
     EhModel stackModel(stackFn);
     auto stackDiag = checkEhStackBalance(stackModel);
     assert(!stackDiag);
+    assert(stackDiag.error().message.find("checkNoHandlerCrossing") != std::string::npos);
     assert(stackDiag.error().message.find("eh.pop without matching") != std::string::npos);
 
     Function balancedFn;
