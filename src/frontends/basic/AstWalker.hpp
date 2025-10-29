@@ -25,14 +25,14 @@ template <typename Derived> class BasicAstWalker : public ExprVisitor, public St
     /// @param expr Root expression to walk.
     void walkExpr(const Expr &expr)
     {
-        expr.accept(*static_cast<Derived *>(this));
+        visit(expr, *static_cast<Derived *>(this));
     }
 
     /// @brief Visit a statement subtree.
     /// @param stmt Root statement to walk.
     void walkStmt(const Stmt &stmt)
     {
-        stmt.accept(*static_cast<Derived *>(this));
+        visit(stmt, *static_cast<Derived *>(this));
     }
 
   protected:

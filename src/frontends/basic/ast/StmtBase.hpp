@@ -158,7 +158,7 @@ struct Stmt
 
     virtual ~Stmt() = default;
     /// @brief Retrieve the discriminator for this statement.
-    [[nodiscard]] virtual Kind stmtKind() const = 0;
+    [[nodiscard]] virtual Kind stmtKind() const noexcept = 0;
     /// @brief Accept a visitor to process this statement.
     virtual void accept(StmtVisitor &visitor) const = 0;
     /// @brief Accept a mutable visitor to process this statement.

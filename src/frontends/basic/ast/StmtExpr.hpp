@@ -36,7 +36,7 @@ struct PrintItem
 /// @invariant items.size() > 0
 struct PrintStmt : Stmt
 {
-    [[nodiscard]] Kind stmtKind() const override
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
     {
         return Kind::Print;
     }
@@ -50,7 +50,7 @@ struct PrintStmt : Stmt
 /// @brief PRINT # statement that outputs to a file channel.
 struct PrintChStmt : Stmt
 {
-    [[nodiscard]] Kind stmtKind() const override
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
     {
         return Kind::PrintCh;
     }
@@ -75,7 +75,7 @@ struct PrintChStmt : Stmt
 /// @brief CALL statement invoking a user-defined SUB.
 struct CallStmt : Stmt
 {
-    [[nodiscard]] Kind stmtKind() const override
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
     {
         return Kind::Call;
     }
@@ -89,7 +89,7 @@ struct CallStmt : Stmt
 /// @brief CLS statement clearing the screen.
 struct ClsStmt : Stmt
 {
-    [[nodiscard]] Kind stmtKind() const override
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
     {
         return Kind::Cls;
     }
@@ -101,7 +101,7 @@ struct ClsStmt : Stmt
 /// @brief COLOR statement changing the palette.
 struct ColorStmt : Stmt
 {
-    [[nodiscard]] Kind stmtKind() const override
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
     {
         return Kind::Color;
     }
@@ -119,7 +119,7 @@ struct ColorStmt : Stmt
 /// @brief LOCATE statement moving the cursor.
 struct LocateStmt : Stmt
 {
-    [[nodiscard]] Kind stmtKind() const override
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
     {
         return Kind::Locate;
     }
@@ -146,7 +146,7 @@ struct LocateStmt : Stmt
 /// @brief LET statement assigning to an lvalue.
 struct LetStmt : Stmt
 {
-    [[nodiscard]] Kind stmtKind() const override
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
     {
         return Kind::Let;
     }
@@ -164,7 +164,7 @@ struct LetStmt : Stmt
 /// @brief DIM statement declaring a variable or array.
 struct DimStmt : Stmt
 {
-    [[nodiscard]] Kind stmtKind() const override
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
     {
         return Kind::Dim;
     }
@@ -187,7 +187,7 @@ struct DimStmt : Stmt
 /// @brief REDIM statement resizing an existing array.
 struct ReDimStmt : Stmt
 {
-    [[nodiscard]] Kind stmtKind() const override
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
     {
         return Kind::ReDim;
     }
@@ -205,7 +205,7 @@ struct ReDimStmt : Stmt
 /// @brief RANDOMIZE statement seeding the pseudo-random generator.
 struct RandomizeStmt : Stmt
 {
-    [[nodiscard]] Kind stmtKind() const override
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
     {
         return Kind::Randomize;
     }
@@ -219,7 +219,7 @@ struct RandomizeStmt : Stmt
 /// @brief OPEN statement configuring a file channel.
 struct OpenStmt : Stmt
 {
-    [[nodiscard]] Kind stmtKind() const override
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
     {
         return Kind::Open;
     }
@@ -247,7 +247,7 @@ struct OpenStmt : Stmt
 /// @brief CLOSE statement closing a file channel.
 struct CloseStmt : Stmt
 {
-    [[nodiscard]] Kind stmtKind() const override
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
     {
         return Kind::Close;
     }
@@ -261,7 +261,7 @@ struct CloseStmt : Stmt
 /// @brief SEEK statement moving a file position.
 struct SeekStmt : Stmt
 {
-    [[nodiscard]] Kind stmtKind() const override
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
     {
         return Kind::Seek;
     }
@@ -279,7 +279,7 @@ struct SeekStmt : Stmt
 /// @brief INPUT statement to read from stdin into a variable, optionally displaying a prompt.
 struct InputStmt : Stmt
 {
-    [[nodiscard]] Kind stmtKind() const override
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
     {
         return Kind::Input;
     }
@@ -306,7 +306,7 @@ struct NameRef
 /// @brief INPUT # statement reading a field from a file channel.
 struct InputChStmt : Stmt
 {
-    [[nodiscard]] Kind stmtKind() const override
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
     {
         return Kind::InputCh;
     }
@@ -324,7 +324,7 @@ struct InputChStmt : Stmt
 /// @brief LINE INPUT # statement reading an entire line from a file channel.
 struct LineInputChStmt : Stmt
 {
-    [[nodiscard]] Kind stmtKind() const override
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
     {
         return Kind::LineInputCh;
     }
@@ -342,7 +342,7 @@ struct LineInputChStmt : Stmt
 /// @brief DELETE statement releasing an object reference.
 struct DeleteStmt : Stmt
 {
-    [[nodiscard]] Kind stmtKind() const override
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
     {
         return Kind::Delete;
     }

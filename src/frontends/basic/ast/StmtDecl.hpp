@@ -35,7 +35,7 @@ struct Param
 /// @brief FUNCTION declaration with optional parameters and return type.
 struct FunctionDecl : Stmt
 {
-    [[nodiscard]] Kind stmtKind() const override
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
     {
         return Kind::FunctionDecl;
     }
@@ -61,7 +61,7 @@ struct FunctionDecl : Stmt
 /// @brief SUB declaration representing a void procedure.
 struct SubDecl : Stmt
 {
-    [[nodiscard]] Kind stmtKind() const override
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
     {
         return Kind::SubDecl;
     }
@@ -81,7 +81,7 @@ struct SubDecl : Stmt
 /// @brief Sequence of statements executed left-to-right on one BASIC line.
 struct StmtList : Stmt
 {
-    [[nodiscard]] Kind stmtKind() const override
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
     {
         return Kind::StmtList;
     }
@@ -95,7 +95,7 @@ struct StmtList : Stmt
 /// @brief Constructor declaration for a CLASS.
 struct ConstructorDecl : Stmt
 {
-    [[nodiscard]] Kind stmtKind() const override
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
     {
         return Kind::ConstructorDecl;
     }
@@ -112,7 +112,7 @@ struct ConstructorDecl : Stmt
 /// @brief Destructor declaration for a CLASS.
 struct DestructorDecl : Stmt
 {
-    [[nodiscard]] Kind stmtKind() const override
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
     {
         return Kind::DestructorDecl;
     }
@@ -126,7 +126,7 @@ struct DestructorDecl : Stmt
 /// @brief Method declaration inside a CLASS.
 struct MethodDecl : Stmt
 {
-    [[nodiscard]] Kind stmtKind() const override
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
     {
         return Kind::MethodDecl;
     }
@@ -149,7 +149,7 @@ struct MethodDecl : Stmt
 /// @brief CLASS declaration grouping fields and members.
 struct ClassDecl : Stmt
 {
-    [[nodiscard]] Kind stmtKind() const override
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
     {
         return Kind::ClassDecl;
     }
@@ -176,7 +176,7 @@ struct ClassDecl : Stmt
 /// @brief TYPE declaration defining a structured record type.
 struct TypeDecl : Stmt
 {
-    [[nodiscard]] Kind stmtKind() const override
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
     {
         return Kind::TypeDecl;
     }

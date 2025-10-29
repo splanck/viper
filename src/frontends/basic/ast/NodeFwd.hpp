@@ -98,4 +98,16 @@ using Identifier = std::string;
 using StmtPtr = std::unique_ptr<Stmt>;
 using ProcDecl = StmtPtr;
 
+/// @brief Uniform visitor entry point for expression hierarchies.
+void visit(const Expr &expr, ExprVisitor &visitor);
+
+/// @brief Uniform visitor entry point for mutable expression hierarchies.
+void visit(Expr &expr, MutExprVisitor &visitor);
+
+/// @brief Uniform visitor entry point for statement hierarchies.
+void visit(const Stmt &stmt, StmtVisitor &visitor);
+
+/// @brief Uniform visitor entry point for mutable statement hierarchies.
+void visit(Stmt &stmt, MutStmtVisitor &visitor);
+
 } // namespace il::frontends::basic
