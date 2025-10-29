@@ -95,6 +95,10 @@ Lowerer::CtrlState Lowerer::emitWhile(const WhileStmt &stmt)
     ctx.loopState().push(done);
     // Rebind current after potential reallocation, then branch to head.
     ctx.setCurrent(&func->blocks[curIdx]);
+#ifndef NDEBUG
+    assert(ctx.current() == &func->blocks[curIdx] &&
+           "lost active block after while block allocation");
+#endif
     curLoc = stmt.loc;
     emitBr(head);
     func = ctx.function();
