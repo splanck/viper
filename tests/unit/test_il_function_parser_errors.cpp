@@ -92,7 +92,9 @@ int main()
         auto parseResult = parseFunction(body, header, st);
         assert(!parseResult);
         const std::string &msg = parseResult.error().message;
-        assert(msg.find("instruction outside block") != std::string::npos);
+        assert(msg.find("unexpected instruction") != std::string::npos);
+        assert(msg.find("ret 0") != std::string::npos);
+        assert(msg.find("block label before instructions") != std::string::npos);
     }
 
     // Subsequent functions after a `.loc` should not inherit the previous location.
