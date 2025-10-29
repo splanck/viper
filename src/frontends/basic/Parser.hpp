@@ -41,6 +41,7 @@ class Parser
 
   private:
     template <class T> using ErrorOr = il::support::Expected<T>;
+    using StmtResult = std::optional<StmtPtr>;
 
     friend class StatementSequencer;
 
@@ -132,6 +133,66 @@ class Parser
     /// @param line Line number associated with the statement.
     /// @return Parsed statement or nullptr on error.
     StmtPtr parseStatement(int line);
+
+    /// @brief Attempt to parse a statement registered in the dispatcher.
+    /// @param line Source line attached to the current statement.
+    /// @return Optional statement; disengaged when no handler matches.
+    StmtResult parseRegisteredStatement(int line);
+
+    /// @brief Parse an IF statement when the corresponding keyword is present.
+    /// @param line One-based line number propagated to the statement.
+    /// @return Parsed statement when successful; otherwise empty optional.
+    StmtResult parseIf(int line);
+
+    /// @brief Parse a SELECT CASE statement when the keyword is present.
+    /// @param line Line number used for diagnostics.
+    /// @return Parsed statement or empty optional if not matched.
+    StmtResult parseSelect(int line);
+
+    /// @brief Parse a FOR statement beginning at the current token.
+    /// @param line Line metadata to attach to the statement.
+    /// @return Parsed statement or empty optional if the keyword is absent.
+    StmtResult parseFor(int line);
+
+    /// @brief Parse a WHILE statement when the current token matches.
+    /// @param line Line metadata to propagate.
+    /// @return Parsed statement or empty optional when not applicable.
+    StmtResult parseWhile(int line);
+
+    /// @brief Parse a LET assignment statement when the keyword is present.
+    /// @return Parsed statement or empty optional when not applicable.
+    StmtResult parseLet();
+
+    /// @brief Parse a procedure call statement starting with an identifier.
+    /// @param line Line metadata attached to the resulting statement.
+    /// @return Parsed statement, null statement on error, or empty optional when
+    ///         the pattern does not match.
+    StmtResult parseCall(int line);
+
+    /// @brief Diagnose and consume unexpected leading line numbers.
+    /// @return Optional containing nullptr when an error was handled;
+    ///         disengaged when the current token is not a line number.
+    StmtResult parseLeadingLineNumberError();
+
+    /// @brief Emit diagnostic for an unexpected leading line number token.
+    /// @param tok Number token that introduced the error.
+    void reportUnexpectedLineNumber(const Token &tok);
+
+    /// @brief Emit diagnostic when a procedure call omits its opening parenthesis.
+    /// @param identTok Identifier token introducing the call.
+    /// @param nextTok Token following the identifier.
+    void reportMissingCallParenthesis(const Token &identTok, const Token &nextTok);
+
+    /// @brief Emit diagnostic when an identifier cannot be interpreted as a statement.
+    /// @param identTok Identifier token responsible for the error.
+    void reportInvalidCallExpression(const Token &identTok);
+
+    /// @brief Emit diagnostic for an unknown statement introducer.
+    /// @param tok Token that failed to match a known statement form.
+    void reportUnknownStatement(const Token &tok);
+
+    /// @brief Skip tokens after an error until reaching a boundary token.
+    void resyncAfterError();
 
     /// @brief Identify whether the lookahead token begins a new statement.
     /// @param kind Token kind to classify.
