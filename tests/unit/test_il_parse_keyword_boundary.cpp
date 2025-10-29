@@ -13,24 +13,43 @@
 
 int main()
 {
-    constexpr const char *kProgram = R"(il 0.1.2
+    {
+        constexpr const char *kProgram = R"(il 0.1.2
 function @main() -> void {
 entry:
   ret
 }
 )";
 
-    std::istringstream input(kProgram);
-    il::core::Module module;
-    std::ostringstream diag;
+        std::istringstream input(kProgram);
+        il::core::Module module;
+        std::ostringstream diag;
 
-    auto parsed = il::api::v2::parse_text_expected(input, module);
-    if (!parsed)
-        il::support::printDiag(parsed.error(), diag);
+        auto parsed = il::api::v2::parse_text_expected(input, module);
+        if (!parsed)
+            il::support::printDiag(parsed.error(), diag);
 
-    assert(!parsed);
-    const std::string message = diag.str();
-    assert(message.find("unexpected line: function") != std::string::npos);
+        assert(!parsed);
+        const std::string message = diag.str();
+        assert(message.find("unexpected line: function") != std::string::npos);
+    }
+
+    {
+        constexpr const char *kProgram = R"(il 0.1.2
+func @main() -> void {
+entry:
+  br label il_loop
+il_loop:
+  ret
+}
+)";
+
+        std::istringstream input(kProgram);
+        il::core::Module module;
+
+        auto parsed = il::api::v2::parse_text_expected(input, module);
+        assert(parsed);
+    }
 
     return 0;
 }

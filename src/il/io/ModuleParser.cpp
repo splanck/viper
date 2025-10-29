@@ -263,7 +263,22 @@ Expected<void> parseGlobal_E(const std::string &line, ParserState &st)
 /// feedback.
 Expected<void> parseModuleHeader_E(std::istream &is, std::string &line, ParserState &st)
 {
-    if (line.rfind("il", 0) == 0)
+    Cursor versionCursor{line, SourcePos{st.lineNo, 0}};
+    bool hasVersionDirective = false;
+    if (versionCursor.consumeKeyword("il"))
+    {
+        if (versionCursor.atEnd())
+        {
+            hasVersionDirective = true;
+        }
+        else
+        {
+            const unsigned char next = static_cast<unsigned char>(versionCursor.peek());
+            if (std::isspace(next))
+                hasVersionDirective = true;
+        }
+    }
+    if (hasVersionDirective)
     {
         if (st.sawVersion)
         {
