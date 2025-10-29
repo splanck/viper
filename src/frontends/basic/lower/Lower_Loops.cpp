@@ -72,7 +72,7 @@ Lowerer::CtrlState Lowerer::emitWhile(const WhileStmt &stmt)
 
     // Save a stable index to the current block. Adding blocks may reallocate
     // the vector and invalidate raw pointers.
-    const size_t curIdx = static_cast<size_t>(current - &func->blocks.front());
+    const size_t curIdx = ctx.currentIndex();
 
     BlockNamer *blockNamer = ctx.blockNames().namer();
     size_t start = func->blocks.size();
@@ -94,7 +94,7 @@ Lowerer::CtrlState Lowerer::emitWhile(const WhileStmt &stmt)
     state.after = done;
     ctx.loopState().push(done);
     // Rebind current after potential reallocation, then branch to head.
-    ctx.setCurrent(&func->blocks[curIdx]);
+    ctx.setCurrentByIndex(curIdx);
 #ifndef NDEBUG
     assert(ctx.current() == &func->blocks[curIdx] &&
            "lost active block after while block allocation");
@@ -167,7 +167,7 @@ Lowerer::CtrlState Lowerer::emitDo(const DoStmt &stmt)
     if (!func || !current)
         return state;
 
-    const size_t currentIdx = static_cast<size_t>(current - &func->blocks.front());
+    const size_t currentIdx = ctx.currentIndex();
 
     BlockNamer *blockNamer = ctx.blockNames().namer();
     size_t start = func->blocks.size();
@@ -185,8 +185,7 @@ Lowerer::CtrlState Lowerer::emitDo(const DoStmt &stmt)
     size_t doneIdx = start + 2;
     auto *done = &func->blocks[doneIdx];
     state.after = done;
-    current = &func->blocks[currentIdx];
-    ctx.setCurrent(current);
+    ctx.setCurrentByIndex(currentIdx);
     ctx.loopState().push(done);
     auto emitHead = [&]()
     {
@@ -295,7 +294,7 @@ Lowerer::ForBlocks Lowerer::setupForBlocks(bool varStep)
     Function *func = ctx.function();
     assert(func && ctx.current());
     BlockNamer *blockNamer = ctx.blockNames().namer();
-    size_t curIdx = static_cast<size_t>(ctx.current() - &func->blocks[0]);
+    size_t curIdx = ctx.currentIndex();
     size_t base = func->blocks.size();
     unsigned id = blockNamer ? blockNamer->nextFor() : 0;
     ForBlocks fb;
@@ -327,7 +326,7 @@ Lowerer::ForBlocks Lowerer::setupForBlocks(bool varStep)
     fb.bodyIdx = base;
     fb.incIdx = base + 1;
     fb.doneIdx = base + 2;
-    ctx.setCurrent(&func->blocks[curIdx]);
+    ctx.setCurrentByIndex(curIdx);
     return fb;
 }
 
