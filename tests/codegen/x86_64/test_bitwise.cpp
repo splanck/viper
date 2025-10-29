@@ -65,8 +65,7 @@ namespace
     orInstr.opcode = "or";
     orInstr.resultId = 3;
     orInstr.resultKind = ILValue::Kind::I64;
-    orInstr.ops = {makeValueRef(andInstr.resultId, ILValue::Kind::I64),
-                   makeI64Const(0x100)};
+    orInstr.ops = {makeValueRef(andInstr.resultId, ILValue::Kind::I64), makeI64Const(0x100)};
 
     ILInstr xorInstr{};
     xorInstr.opcode = "xor";
@@ -96,7 +95,7 @@ namespace
 [[nodiscard]] bool containsImmediateAnd(const std::string &asmText)
 {
     const bool hexMatch = asmText.find("andq $0xff00ff00") != std::string::npos ||
-                           asmText.find("andq $0x00000000ff00ff00") != std::string::npos;
+                          asmText.find("andq $0x00000000ff00ff00") != std::string::npos;
     const bool decMatch = asmText.find("andq $-16711936") != std::string::npos;
     return hexMatch || decMatch || asmText.find("andq $") != std::string::npos;
 }

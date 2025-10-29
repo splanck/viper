@@ -32,10 +32,10 @@ namespace viper::codegen::x64::ra
 /// @invariant `start` <= `end` and both are measured in instruction indices.
 struct LiveInterval
 {
-    uint16_t vreg{0U};        ///< Virtual register identifier.
+    uint16_t vreg{0U};           ///< Virtual register identifier.
     RegClass cls{RegClass::GPR}; ///< Register class constraining allocation.
-    std::size_t start{0U};    ///< Index of the first instruction touching the vreg.
-    std::size_t end{0U};      ///< Index just past the last instruction touching the vreg.
+    std::size_t start{0U};       ///< Index of the first instruction touching the vreg.
+    std::size_t end{0U};         ///< Index just past the last instruction touching the vreg.
 };
 
 /// @brief Result of the local live interval analysis over a machine function.

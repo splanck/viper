@@ -13,8 +13,8 @@
 int main()
 {
     using il::core::Type;
-    using il::vm::Slot;
     using il::vm::Frame;
+    using il::vm::Slot;
     using il::vm::VmError;
     using il::vm::detail::memory::inline_impl::loadSlotFromPtr;
     using il::vm::detail::memory::inline_impl::storeSlotToPtr;

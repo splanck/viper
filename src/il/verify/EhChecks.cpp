@@ -601,12 +601,12 @@ il::support::Expected<void> checkEhStackBalance(const EhModel &model)
             {
                 if (handlerStack.empty())
                     return reportEhMismatch(model,
-                                             bb,
-                                             instr,
-                                             VerifyDiagCode::EhStackUnderflow,
-                                             states,
-                                             stateIndex,
-                                             static_cast<int>(handlerStack.size()));
+                                            bb,
+                                            instr,
+                                            VerifyDiagCode::EhStackUnderflow,
+                                            states,
+                                            stateIndex,
+                                            static_cast<int>(handlerStack.size()));
 
                 handlerStack.pop_back();
             }
@@ -615,12 +615,12 @@ il::support::Expected<void> checkEhStackBalance(const EhModel &model)
             {
                 if (!hasResumeToken)
                     return reportEhMismatch(model,
-                                             bb,
-                                             instr,
-                                             VerifyDiagCode::EhResumeTokenMissing,
-                                             states,
-                                             stateIndex,
-                                             static_cast<int>(handlerStack.size()));
+                                            bb,
+                                            instr,
+                                            VerifyDiagCode::EhResumeTokenMissing,
+                                            states,
+                                            stateIndex,
+                                            static_cast<int>(handlerStack.size()));
 
                 if (!handlerStack.empty())
                     handlerStack.pop_back();
@@ -791,4 +791,3 @@ il::support::Expected<void> checkResumeEdges(const EhModel &model)
 }
 
 } // namespace il::verify
-

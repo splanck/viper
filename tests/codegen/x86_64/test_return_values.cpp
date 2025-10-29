@@ -83,8 +83,8 @@ namespace
         return false;
     }
 
-    const std::size_t movEndOffset = static_cast<std::size_t>(match.position()) +
-                                     static_cast<std::size_t>(match.length());
+    const std::size_t movEndOffset =
+        static_cast<std::size_t>(match.position()) + static_cast<std::size_t>(match.length());
     const std::size_t retPos = asmText.find("ret", movEndOffset);
     return retPos != std::string_view::npos;
 }

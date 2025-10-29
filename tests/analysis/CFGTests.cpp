@@ -83,8 +83,7 @@ int main()
 
     auto pJoin = predecessors(ctx, join);
     assert(pJoin.size() == 2);
-    assert((pJoin[0] == &t && pJoin[1] == &handler) ||
-           (pJoin[0] == &handler && pJoin[1] == &t));
+    assert((pJoin[0] == &t && pJoin[1] == &handler) || (pJoin[0] == &handler && pJoin[1] == &t));
 
     auto pHandler = predecessors(ctx, handler);
     assert(pHandler.size() == 1 && pHandler[0] == &f);

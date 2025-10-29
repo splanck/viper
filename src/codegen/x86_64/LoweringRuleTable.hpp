@@ -56,14 +56,12 @@ enum class RuleFlags : std::uint8_t
 
 constexpr RuleFlags operator|(RuleFlags lhs, RuleFlags rhs) noexcept
 {
-    return static_cast<RuleFlags>(static_cast<std::uint8_t>(lhs) |
-                                  static_cast<std::uint8_t>(rhs));
+    return static_cast<RuleFlags>(static_cast<std::uint8_t>(lhs) | static_cast<std::uint8_t>(rhs));
 }
 
 constexpr RuleFlags operator&(RuleFlags lhs, RuleFlags rhs) noexcept
 {
-    return static_cast<RuleFlags>(static_cast<std::uint8_t>(lhs) &
-                                  static_cast<std::uint8_t>(rhs));
+    return static_cast<RuleFlags>(static_cast<std::uint8_t>(lhs) & static_cast<std::uint8_t>(rhs));
 }
 
 constexpr bool hasFlag(RuleFlags flags, RuleFlags flag) noexcept
@@ -449,4 +447,3 @@ bool matchesRuleSpec(const lowering::RuleSpec &spec, const ILInstr &instr);
 const lowering::RuleSpec *lookupRuleSpec(const ILInstr &instr);
 
 } // namespace viper::codegen::x64
-

@@ -26,36 +26,40 @@
 #include <stdint.h>
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
 /// @brief Inline storage size reserved in each builder instance.
 #define RT_SB_INLINE_CAPACITY 128
 
-/// @brief Status codes returned by string builder operations.
-typedef enum rt_sb_status {
-    RT_SB_OK = 0,              ///< Operation completed successfully.
-    RT_SB_ERROR_ALLOC,         ///< Memory allocation failed.
-    RT_SB_ERROR_OVERFLOW,      ///< Size computation overflowed the platform limit.
-    RT_SB_ERROR_INVALID,       ///< Caller supplied invalid arguments.
-    RT_SB_ERROR_FORMAT         ///< Formatting helper reported an error.
-} rt_sb_status;
+    /// @brief Status codes returned by string builder operations.
+    typedef enum rt_sb_status
+    {
+        RT_SB_OK = 0,         ///< Operation completed successfully.
+        RT_SB_ERROR_ALLOC,    ///< Memory allocation failed.
+        RT_SB_ERROR_OVERFLOW, ///< Size computation overflowed the platform limit.
+        RT_SB_ERROR_INVALID,  ///< Caller supplied invalid arguments.
+        RT_SB_ERROR_FORMAT    ///< Formatting helper reported an error.
+    } rt_sb_status;
 
-/// @brief Small-buffer string builder used by the runtime.
-typedef struct rt_string_builder {
-    char *data;                                  ///< Points to the active buffer.
-    size_t len;                                  ///< Current number of bytes in use (excluding NUL).
-    size_t cap;                                  ///< Capacity of @ref data in bytes.
-    char inline_buffer[RT_SB_INLINE_CAPACITY];   ///< Inline storage for the small-buffer fast path.
-} rt_string_builder;
+    /// @brief Small-buffer string builder used by the runtime.
+    typedef struct rt_string_builder
+    {
+        char *data; ///< Points to the active buffer.
+        size_t len; ///< Current number of bytes in use (excluding NUL).
+        size_t cap; ///< Capacity of @ref data in bytes.
+        char inline_buffer[RT_SB_INLINE_CAPACITY]; ///< Inline storage for the small-buffer fast
+                                                   ///< path.
+    } rt_string_builder;
 
-void rt_sb_init(rt_string_builder *sb);
-void rt_sb_free(rt_string_builder *sb);
-rt_sb_status rt_sb_reserve(rt_string_builder *sb, size_t required);
-rt_sb_status rt_sb_append_cstr(rt_string_builder *sb, const char *text);
-rt_sb_status rt_sb_append_int(rt_string_builder *sb, int64_t value);
-rt_sb_status rt_sb_append_double(rt_string_builder *sb, double value);
-rt_sb_status rt_sb_printf(rt_string_builder *sb, const char *fmt, ...);
+    void rt_sb_init(rt_string_builder *sb);
+    void rt_sb_free(rt_string_builder *sb);
+    rt_sb_status rt_sb_reserve(rt_string_builder *sb, size_t required);
+    rt_sb_status rt_sb_append_cstr(rt_string_builder *sb, const char *text);
+    rt_sb_status rt_sb_append_int(rt_string_builder *sb, int64_t value);
+    rt_sb_status rt_sb_append_double(rt_string_builder *sb, double value);
+    rt_sb_status rt_sb_printf(rt_string_builder *sb, const char *fmt, ...);
 
 #ifdef __cplusplus
 }

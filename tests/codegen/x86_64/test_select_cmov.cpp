@@ -63,9 +63,8 @@ namespace
     selectInstr.opcode = "select";
     selectInstr.resultId = 3;
     selectInstr.resultKind = ILValue::Kind::I64;
-    selectInstr.ops = {makeValueRef(cmpInstr.resultId, ILValue::Kind::I1),
-                       makeConst(7),
-                       makeConst(0)};
+    selectInstr.ops = {
+        makeValueRef(cmpInstr.resultId, ILValue::Kind::I1), makeConst(7), makeConst(0)};
 
     ILInstr retInstr{};
     retInstr.opcode = "ret";
@@ -104,9 +103,8 @@ namespace
     // looking for either a zeroing XOR or an explicit MOV immediate.
     const std::size_t xorPos = asmText.find("xor", testPos);
     const std::size_t movPos = asmText.find("movq $", testPos);
-    const bool hasFalseMaterialisation =
-        (xorPos != std::string::npos && xorPos < cmovPos) ||
-        (movPos != std::string::npos && movPos < cmovPos);
+    const bool hasFalseMaterialisation = (xorPos != std::string::npos && xorPos < cmovPos) ||
+                                         (movPos != std::string::npos && movPos < cmovPos);
     return hasFalseMaterialisation;
 }
 

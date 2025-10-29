@@ -229,9 +229,11 @@ BenchResult runDispatchBench(const char *mode, size_t iterations)
     }
     const auto end = std::chrono::steady_clock::now();
 
-    const double elapsedMs = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(end - start).count();
+    const double elapsedMs =
+        std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(end - start).count();
     std::cout << "VIPER_DISPATCH=" << (mode ? mode : "<unset>") << " iterations=" << iterations
-              << " runs=" << kBenchmarkRuns << " checksum=" << total << " elapsed_ms=" << elapsedMs << '\n';
+              << " runs=" << kBenchmarkRuns << " checksum=" << total << " elapsed_ms=" << elapsedMs
+              << '\n';
 
     return BenchResult{elapsedMs, total};
 }
@@ -272,18 +274,19 @@ int main()
 
     if (table.checksum != switchResult.checksum)
     {
-        std::cerr << "Dispatch benchmark checksum mismatch between table and switch modes." << std::endl;
+        std::cerr << "Dispatch benchmark checksum mismatch between table and switch modes."
+                  << std::endl;
         return 1;
     }
 
 #if VIPER_THREADING_SUPPORTED
     if (table.checksum != threaded.checksum)
     {
-        std::cerr << "Dispatch benchmark checksum mismatch between table and threaded modes." << std::endl;
+        std::cerr << "Dispatch benchmark checksum mismatch between table and threaded modes."
+                  << std::endl;
         return 1;
     }
 #endif
 
     return 0;
 }
-

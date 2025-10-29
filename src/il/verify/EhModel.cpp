@@ -149,4 +149,3 @@ const Instr *EhModel::findTerminator(const BasicBlock &block) const
 }
 
 } // namespace il::verify
-

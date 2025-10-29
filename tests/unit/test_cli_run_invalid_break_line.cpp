@@ -18,8 +18,8 @@ namespace
 int invokeWithFlag(const std::string &flag, const std::string &spec, std::string &stderrText)
 {
     std::string fileArg = "placeholder.il";
-    std::vector<std::string> argStorage = { fileArg, flag, spec };
-    std::vector<char *> argv = { argStorage[0].data(), argStorage[1].data(), argStorage[2].data() };
+    std::vector<std::string> argStorage = {fileArg, flag, spec};
+    std::vector<char *> argv = {argStorage[0].data(), argStorage[1].data(), argStorage[2].data()};
 
     std::ostringstream errStream;
     auto *oldBuf = std::cerr.rdbuf(errStream.rdbuf());

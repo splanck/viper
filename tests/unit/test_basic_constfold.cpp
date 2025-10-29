@@ -266,12 +266,11 @@ int main()
 
     // boolean literals stay BOOLEAN after folding
     {
-        std::string src =
-            "10 LET A = NOT TRUE\n"
-            "20 LET B = TRUE AND TRUE\n"
-            "30 LET C = FALSE ORELSE TRUE\n"
-            "40 LET D = FALSE ORELSE (1 = 1)\n"
-            "50 END\n";
+        std::string src = "10 LET A = NOT TRUE\n"
+                          "20 LET B = TRUE AND TRUE\n"
+                          "30 LET C = FALSE ORELSE TRUE\n"
+                          "40 LET D = FALSE ORELSE (1 = 1)\n"
+                          "50 END\n";
         SourceManager sm;
         uint32_t fid = sm.addFile("bool.bas");
         Parser p(src, fid);

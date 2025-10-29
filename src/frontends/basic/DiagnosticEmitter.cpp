@@ -78,7 +78,8 @@ void DiagnosticEmitter::emitExpected(TokenKind got, TokenKind expect, il::suppor
     }
     else
     {
-        msg = std::string("expected ") + tokenKindToString(expect) + ", got " + tokenKindToString(got);
+        msg = std::string("expected ") + tokenKindToString(expect) + ", got " +
+              tokenKindToString(got);
     }
     emit(il::support::Severity::Error, "B0001", loc, 0, std::move(msg));
 }

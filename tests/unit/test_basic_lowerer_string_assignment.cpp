@@ -30,9 +30,8 @@ std::unordered_set<std::string> collectExternNames(const il::core::Module &modul
 
 int main()
 {
-    const std::string src =
-        "10 LET S$ = \"HELLO\"\n"
-        "20 LET S$ = \"WORLD\"\n";
+    const std::string src = "10 LET S$ = \"HELLO\"\n"
+                            "20 LET S$ = \"WORLD\"\n";
 
     SourceManager sm;
     uint32_t fid = sm.addFile("string_assign.bas");

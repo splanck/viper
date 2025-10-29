@@ -1,8 +1,8 @@
 // File: tests/unit/test_run_process_quotes.cpp
-// Purpose: Verify run_process correctly preserves shell-sensitive characters when quoting arguments.
-// Key invariants: Quotes and backslashes inside arguments survive round-tripping through the helper.
-// Ownership/Lifetime: RunProcess owns no persistent resources; the spawned process terminates immediately.
-// Links: src/common/RunProcess.cpp
+// Purpose: Verify run_process correctly preserves shell-sensitive characters when quoting
+// arguments. Key invariants: Quotes and backslashes inside arguments survive round-tripping through
+// the helper. Ownership/Lifetime: RunProcess owns no persistent resources; the spawned process
+// terminates immediately. Links: src/common/RunProcess.cpp
 
 #include "common/RunProcess.hpp"
 
@@ -12,8 +12,8 @@
 #include <cstdlib>
 #include <filesystem>
 #include <optional>
-#include <system_error>
 #include <string>
+#include <system_error>
 #include <vector>
 
 namespace
@@ -37,9 +37,9 @@ struct ScopedEnvironmentAssignmentMoveResult
     bool restored;
 };
 
-ScopedEnvironmentAssignmentMoveResult scoped_environment_assignment_move_preserves(const std::string &name,
-                                                                                   const std::string &value);
-}
+ScopedEnvironmentAssignmentMoveResult scoped_environment_assignment_move_preserves(
+    const std::string &name, const std::string &value);
+} // namespace viper::test_support
 
 TEST(RunProcess, PreservesQuotesAndBackslashes)
 {
@@ -67,8 +67,8 @@ TEST(RunProcess, ForwardsEnvironmentVariables)
 {
     const std::string varName = "VIPER_RUN_PROCESS_TEST_VAR";
     const std::string varValue = "viper-test-value";
-    const RunResult result = run_process({"cmake", "-E", "environment"}, std::nullopt,
-                                         {{varName, varValue}});
+    const RunResult result =
+        run_process({"cmake", "-E", "environment"}, std::nullopt, {{varName, varValue}});
 
     EXPECT_NE(-1, result.exit_code);
     const std::string expectedLine = varName + "=" + varValue;
@@ -80,7 +80,8 @@ TEST(RunProcess, ScopedEnvironmentAssignmentSurvivesMove)
     const std::string varName = "VIPER_SCOPED_ENV_MOVE_TEST";
     const std::string varValue = "scoped-env-move-value";
 
-    const auto result = viper::test_support::scoped_environment_assignment_move_preserves(varName, varValue);
+    const auto result =
+        viper::test_support::scoped_environment_assignment_move_preserves(varName, varValue);
 
     EXPECT_TRUE(result.value_visible_after_move_ctor);
     EXPECT_TRUE(result.value_visible_after_move_assign);
@@ -91,8 +92,8 @@ TEST(RunProcess, AppliesWorkingDirectory)
 {
     const std::filesystem::path tempRoot = std::filesystem::temp_directory_path();
     const auto uniqueSuffix = std::chrono::steady_clock::now().time_since_epoch().count();
-    const std::filesystem::path tempDir = tempRoot /
-                                         std::filesystem::path("viper-run-process-" + std::to_string(uniqueSuffix));
+    const std::filesystem::path tempDir =
+        tempRoot / std::filesystem::path("viper-run-process-" + std::to_string(uniqueSuffix));
 
     std::filesystem::create_directories(tempDir);
 
@@ -118,8 +119,7 @@ TEST(RunProcess, ReportsPosixExitStatus)
 #else
 TEST(RunProcess, CapturesWindowsStderr)
 {
-    const RunResult result =
-        run_process({"cmd", "/C", "echo viper-stderr-sample 1>&2"});
+    const RunResult result = run_process({"cmd", "/C", "echo viper-stderr-sample 1>&2"});
 
     EXPECT_NE(-1, result.exit_code);
     const std::string trimmed = trim_trailing_newlines(result.err);

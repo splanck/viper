@@ -44,8 +44,7 @@ int main()
     {
         SourceManager exhaustedSm;
         SourceManagerTestAccess::setNextFileId(
-            exhaustedSm,
-            static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()) + 1);
+            exhaustedSm, static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()) + 1);
 
         BasicCompilerInput exhaustedInput{source, "overflow.bas"};
         auto exhaustedResult = compileBasic(exhaustedInput, options, exhaustedSm);

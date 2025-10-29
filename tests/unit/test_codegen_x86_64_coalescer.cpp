@@ -34,8 +34,10 @@ TEST(Coalescer, LowersParallelCopy)
     block.instructions.push_back(makeMovImm(1, 1));
     block.instructions.push_back(makeMovImm(2, 2));
     block.instructions.push_back(MInstr::make(MOpcode::PX_COPY,
-                                              {makeVRegOperand(RegClass::GPR, 1), makeVRegOperand(RegClass::GPR, 2),
-                                               makeVRegOperand(RegClass::GPR, 2), makeVRegOperand(RegClass::GPR, 1)}));
+                                              {makeVRegOperand(RegClass::GPR, 1),
+                                               makeVRegOperand(RegClass::GPR, 2),
+                                               makeVRegOperand(RegClass::GPR, 2),
+                                               makeVRegOperand(RegClass::GPR, 1)}));
     func.blocks.push_back(std::move(block));
 
     LiveIntervals intervals{};

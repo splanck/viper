@@ -1,8 +1,7 @@
 // File: tests/unit/test_vm_null_mem_ops.cpp
 // Purpose: Verify VM traps when load/store operate on null or misaligned pointers.
-// Key invariants: Null or misaligned pointer operands surface InvalidOperation traps with detail messages.
-// Ownership: Standalone unit test executable.
-// Links: docs/codemap.md
+// Key invariants: Null or misaligned pointer operands surface InvalidOperation traps with detail
+// messages. Ownership: Standalone unit test executable. Links: docs/codemap.md
 
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
@@ -126,7 +125,8 @@ il::core::Module makeMisalignedStoreModule(il::core::Type::Kind kind)
 {
     using namespace il::core;
 
-    auto storeValueFor = [](Type::Kind k) {
+    auto storeValueFor = [](Type::Kind k)
+    {
         switch (k)
         {
             case Type::Kind::I16:
@@ -228,22 +228,23 @@ std::string runModuleAndCapture(il::core::Module module)
 int main()
 {
     std::string loadTrap = runModuleAndCapture(makeLoadModule());
-    bool loadOk = loadTrap.find("Trap @main#0 line 1: InvalidOperation (code=0): null load") != std::string::npos;
+    bool loadOk = loadTrap.find("Trap @main#0 line 1: InvalidOperation (code=0): null load") !=
+                  std::string::npos;
     assert(loadOk);
 
     std::string storeTrap = runModuleAndCapture(makeStoreModule());
-    bool storeOk = storeTrap.find("Trap @main#0 line 2: InvalidOperation (code=0): null store") != std::string::npos;
+    bool storeOk = storeTrap.find("Trap @main#0 line 2: InvalidOperation (code=0): null store") !=
+                   std::string::npos;
     assert(storeOk);
 
-    const il::core::Type::Kind misalignedKinds[] = {
-        il::core::Type::Kind::I16,
-        il::core::Type::Kind::I32,
-        il::core::Type::Kind::I64,
-        il::core::Type::Kind::F64,
-        il::core::Type::Kind::Ptr,
-        il::core::Type::Kind::Str,
-        il::core::Type::Kind::Error,
-        il::core::Type::Kind::ResumeTok};
+    const il::core::Type::Kind misalignedKinds[] = {il::core::Type::Kind::I16,
+                                                    il::core::Type::Kind::I32,
+                                                    il::core::Type::Kind::I64,
+                                                    il::core::Type::Kind::F64,
+                                                    il::core::Type::Kind::Ptr,
+                                                    il::core::Type::Kind::Str,
+                                                    il::core::Type::Kind::Error,
+                                                    il::core::Type::Kind::ResumeTok};
 
     for (il::core::Type::Kind kind : misalignedKinds)
     {
@@ -255,7 +256,8 @@ int main()
     for (il::core::Type::Kind kind : misalignedKinds)
     {
         std::string diag = runModuleAndCapture(makeMisalignedStoreModule(kind));
-        bool trapped = diag.find("InvalidOperation (code=0): misaligned store") != std::string::npos;
+        bool trapped =
+            diag.find("InvalidOperation (code=0): misaligned store") != std::string::npos;
         assert(trapped);
     }
 

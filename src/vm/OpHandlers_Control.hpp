@@ -325,7 +325,8 @@ inline VM::ExecResult handleSwitchI32Impl(VM &vm,
 
     std::vector<il::vm::ops::common::Case> cases;
     cases.reserve(in.labels.size());
-    auto makeTarget = [&](size_t labelIndex) {
+    auto makeTarget = [&](size_t labelIndex)
+    {
         il::vm::ops::common::Target target{};
         target.vm = &vm;
         target.instr = &in;
@@ -343,7 +344,8 @@ inline VM::ExecResult handleSwitchI32Impl(VM &vm,
     }
 
     il::vm::ops::common::Target invalid{};
-    auto selected = il::vm::ops::common::select_case(il::vm::ops::common::Scalar{idx}, cases, invalid);
+    auto selected =
+        il::vm::ops::common::select_case(il::vm::ops::common::Scalar{idx}, cases, invalid);
 
     if (!selected.valid())
     {

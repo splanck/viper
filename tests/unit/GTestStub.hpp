@@ -19,6 +19,7 @@ namespace testing
 struct TestFailure : public std::exception
 {
     explicit TestFailure(bool fatal) : fatal(fatal) {}
+
     bool fatal;
 };
 
@@ -43,13 +44,9 @@ struct TestRegistrar
     }
 };
 
-inline void InitGoogleTest(int *, char ***)
-{
-}
+inline void InitGoogleTest(int *, char ***) {}
 
-inline void InitGoogleTest(int *, char **)
-{
-}
+inline void InitGoogleTest(int *, char **) {}
 
 inline int RUN_ALL_TESTS()
 {
@@ -96,69 +93,68 @@ inline void reportFailure(std::string_view expr, const char *file, int line, boo
 #define GTEST_DETAIL_CAT_INNER(a, b) a##b
 #define GTEST_DETAIL_CAT(a, b) GTEST_DETAIL_CAT_INNER(a, b)
 
-#define TEST(SuiteName, TestName)                                                                      \
-    static void GTEST_DETAIL_CAT(SuiteName, TestName)();                                                \
-    static const ::testing::TestRegistrar GTEST_DETAIL_CAT(SuiteName, TestName##Registrar)(            \
-        #SuiteName, #TestName, GTEST_DETAIL_CAT(SuiteName, TestName));                                 \
+#define TEST(SuiteName, TestName)                                                                  \
+    static void GTEST_DETAIL_CAT(SuiteName, TestName)();                                           \
+    static const ::testing::TestRegistrar GTEST_DETAIL_CAT(SuiteName, TestName##Registrar)(        \
+        #SuiteName, #TestName, GTEST_DETAIL_CAT(SuiteName, TestName));                             \
     static void GTEST_DETAIL_CAT(SuiteName, TestName)()
 
-#define EXPECT_TRUE(expr)                                                                               \
-    do                                                                                                  \
-    {                                                                                                   \
-        if (!(expr))                                                                                    \
-        {                                                                                               \
-            ::testing::reportFailure(#expr, __FILE__, __LINE__, false);                                 \
-        }                                                                                               \
+#define EXPECT_TRUE(expr)                                                                          \
+    do                                                                                             \
+    {                                                                                              \
+        if (!(expr))                                                                               \
+        {                                                                                          \
+            ::testing::reportFailure(#expr, __FILE__, __LINE__, false);                            \
+        }                                                                                          \
     } while (false)
 
 #define EXPECT_FALSE(expr) EXPECT_TRUE(!(expr))
 
-#define ASSERT_TRUE(expr)                                                                               \
-    do                                                                                                  \
-    {                                                                                                   \
-        if (!(expr))                                                                                    \
-        {                                                                                               \
-            ::testing::reportFailure(#expr, __FILE__, __LINE__, true);                                  \
-        }                                                                                               \
+#define ASSERT_TRUE(expr)                                                                          \
+    do                                                                                             \
+    {                                                                                              \
+        if (!(expr))                                                                               \
+        {                                                                                          \
+            ::testing::reportFailure(#expr, __FILE__, __LINE__, true);                             \
+        }                                                                                          \
     } while (false)
 
 #define ASSERT_FALSE(expr) ASSERT_TRUE(!(expr))
 
-#define EXPECT_EQ(val1, val2)                                                                           \
-    do                                                                                                  \
-    {                                                                                                   \
-        if (!((val1) == (val2)))                                                                        \
-        {                                                                                               \
-            ::testing::reportFailure(#val1 " == " #val2, __FILE__, __LINE__, false);                    \
-        }                                                                                               \
+#define EXPECT_EQ(val1, val2)                                                                      \
+    do                                                                                             \
+    {                                                                                              \
+        if (!((val1) == (val2)))                                                                   \
+        {                                                                                          \
+            ::testing::reportFailure(#val1 " == " #val2, __FILE__, __LINE__, false);               \
+        }                                                                                          \
     } while (false)
 
-#define EXPECT_NE(val1, val2)                                                                           \
-    do                                                                                                  \
-    {                                                                                                   \
-        if (!((val1) != (val2)))                                                                        \
-        {                                                                                               \
-            ::testing::reportFailure(#val1 " != " #val2, __FILE__, __LINE__, false);                    \
-        }                                                                                               \
+#define EXPECT_NE(val1, val2)                                                                      \
+    do                                                                                             \
+    {                                                                                              \
+        if (!((val1) != (val2)))                                                                   \
+        {                                                                                          \
+            ::testing::reportFailure(#val1 " != " #val2, __FILE__, __LINE__, false);               \
+        }                                                                                          \
     } while (false)
 
-#define ASSERT_EQ(val1, val2)                                                                           \
-    do                                                                                                  \
-    {                                                                                                   \
-        if (!((val1) == (val2)))                                                                        \
-        {                                                                                               \
-            ::testing::reportFailure(#val1 " == " #val2, __FILE__, __LINE__, true);                     \
-        }                                                                                               \
+#define ASSERT_EQ(val1, val2)                                                                      \
+    do                                                                                             \
+    {                                                                                              \
+        if (!((val1) == (val2)))                                                                   \
+        {                                                                                          \
+            ::testing::reportFailure(#val1 " == " #val2, __FILE__, __LINE__, true);                \
+        }                                                                                          \
     } while (false)
 
-#define ASSERT_NE(val1, val2)                                                                           \
-    do                                                                                                  \
-    {                                                                                                   \
-        if (!((val1) != (val2)))                                                                        \
-        {                                                                                               \
-            ::testing::reportFailure(#val1 " != " #val2, __FILE__, __LINE__, true);                     \
-        }                                                                                               \
+#define ASSERT_NE(val1, val2)                                                                      \
+    do                                                                                             \
+    {                                                                                              \
+        if (!((val1) != (val2)))                                                                   \
+        {                                                                                          \
+            ::testing::reportFailure(#val1 " != " #val2, __FILE__, __LINE__, true);                \
+        }                                                                                          \
     } while (false)
 
 #define RUN_ALL_TESTS() ::testing::RUN_ALL_TESTS()
-

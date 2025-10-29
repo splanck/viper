@@ -62,7 +62,8 @@ void emitCall(const ILInstr &instr, MIRBuilder &builder)
         }
         else
         {
-            const Operand operand = builder.makeOperandForValue(argVal, builder.regClassFor(argVal.kind));
+            const Operand operand =
+                builder.makeOperandForValue(argVal, builder.regClassFor(argVal.kind));
             if (const auto *reg = std::get_if<OpReg>(&operand))
             {
                 arg.vreg = reg->idOrPhys;
@@ -87,8 +88,8 @@ void emitCall(const ILInstr &instr, MIRBuilder &builder)
     }
 
     builder.recordCallPlan(std::move(plan));
-    builder.append(MInstr::make(MOpcode::CALL,
-                                std::vector<Operand>{builder.makeLabelOperand(instr.ops[0])}));
+    builder.append(
+        MInstr::make(MOpcode::CALL, std::vector<Operand>{builder.makeLabelOperand(instr.ops[0])}));
 }
 
 /// @brief Lower an automatic storage load instruction.
@@ -116,4 +117,3 @@ void emitStore(const ILInstr &instr, MIRBuilder &builder)
 }
 
 } // namespace viper::codegen::x64::lowering
-

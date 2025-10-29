@@ -33,60 +33,54 @@ int main()
     transform::PassManager pm;
 
     int functionAnalysisCount = 0;
-    pm.registerFunctionAnalysis<int>(
-        "count",
-        [&functionAnalysisCount](core::Module &, core::Function &)
-        { return ++functionAnalysisCount; });
+    pm.registerFunctionAnalysis<int>("count",
+                                     [&functionAnalysisCount](core::Module &, core::Function &)
+                                     { return ++functionAnalysisCount; });
 
     bool functionPassRun = false;
     bool modulePassRun = false;
 
-    pm.registerFunctionPass(
-        "mark-function",
-        [&functionPassRun](core::Function &, transform::AnalysisManager &)
-        {
-            functionPassRun = true;
-            return transform::PreservedAnalyses::none();
-        });
+    pm.registerFunctionPass("mark-function",
+                            [&functionPassRun](core::Function &, transform::AnalysisManager &)
+                            {
+                                functionPassRun = true;
+                                return transform::PreservedAnalyses::none();
+                            });
 
-    pm.registerFunctionPass(
-        "check-preserve",
-        [](core::Function &fn, transform::AnalysisManager &analysis)
-        {
-            int &first = analysis.getFunctionResult<int>("count", fn);
-            int &second = analysis.getFunctionResult<int>("count", fn);
-            assert(first == 1 && second == 1);
-            transform::PreservedAnalyses preserved;
-            preserved.preserveFunction("count");
-            return preserved;
-        });
+    pm.registerFunctionPass("check-preserve",
+                            [](core::Function &fn, transform::AnalysisManager &analysis)
+                            {
+                                int &first = analysis.getFunctionResult<int>("count", fn);
+                                int &second = analysis.getFunctionResult<int>("count", fn);
+                                assert(first == 1 && second == 1);
+                                transform::PreservedAnalyses preserved;
+                                preserved.preserveFunction("count");
+                                return preserved;
+                            });
 
-    pm.registerFunctionPass(
-        "check-reuse",
-        [](core::Function &fn, transform::AnalysisManager &analysis)
-        {
-            int &value = analysis.getFunctionResult<int>("count", fn);
-            assert(value == 1);
-            return transform::PreservedAnalyses::none();
-        });
+    pm.registerFunctionPass("check-reuse",
+                            [](core::Function &fn, transform::AnalysisManager &analysis)
+                            {
+                                int &value = analysis.getFunctionResult<int>("count", fn);
+                                assert(value == 1);
+                                return transform::PreservedAnalyses::none();
+                            });
 
-    pm.registerFunctionPass(
-        "check-recompute",
-        [](core::Function &fn, transform::AnalysisManager &analysis)
-        {
-            int &valueFirst = analysis.getFunctionResult<int>("count", fn);
-            int &valueSecond = analysis.getFunctionResult<int>("count", fn);
-            assert(valueFirst == 2 && valueSecond == 2);
-            return transform::PreservedAnalyses::none();
-        });
+    pm.registerFunctionPass("check-recompute",
+                            [](core::Function &fn, transform::AnalysisManager &analysis)
+                            {
+                                int &valueFirst = analysis.getFunctionResult<int>("count", fn);
+                                int &valueSecond = analysis.getFunctionResult<int>("count", fn);
+                                assert(valueFirst == 2 && valueSecond == 2);
+                                return transform::PreservedAnalyses::none();
+                            });
 
-    pm.registerModulePass(
-        "mark-module",
-        [&modulePassRun](core::Module &, transform::AnalysisManager &)
-        {
-            modulePassRun = true;
-            return transform::PreservedAnalyses::all();
-        });
+    pm.registerModulePass("mark-module",
+                          [&modulePassRun](core::Module &, transform::AnalysisManager &)
+                          {
+                              modulePassRun = true;
+                              return transform::PreservedAnalyses::all();
+                          });
 
     transform::PassManager::Pipeline pipeline = {
         "mark-function", "check-preserve", "check-reuse", "check-recompute", "mark-module"};
@@ -101,4 +95,3 @@ int main()
 
     return 0;
 }
-

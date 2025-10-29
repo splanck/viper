@@ -110,9 +110,8 @@ ILModule convertToAdapterModule(const il::core::Module &module)
     {
         ILValue imm{};
         imm.kind = ILValue::Kind::I64;
-        imm.i64 = il::common::integer::narrow_to(static_cast<long long>(code),
-                                                 64,
-                                                 il::common::integer::OverflowPolicy::Wrap);
+        imm.i64 = il::common::integer::narrow_to(
+            static_cast<long long>(code), 64, il::common::integer::OverflowPolicy::Wrap);
         imm.id = -1;
         return imm;
     };
@@ -402,8 +401,8 @@ ILModule convertToAdapterModule(const il::core::Module &module)
                             adaptedInstr.resultKind = ILValue::Kind::I64;
                         }
                         adaptedInstr.opcode = "and";
-                        convertOperands(instr, {ILValue::Kind::I64, ILValue::Kind::I64},
-                                        adaptedInstr);
+                        convertOperands(
+                            instr, {ILValue::Kind::I64, ILValue::Kind::I64}, adaptedInstr);
                         break;
                     }
                     case il::core::Opcode::Or:
@@ -419,8 +418,8 @@ ILModule convertToAdapterModule(const il::core::Module &module)
                             adaptedInstr.resultKind = ILValue::Kind::I64;
                         }
                         adaptedInstr.opcode = "or";
-                        convertOperands(instr, {ILValue::Kind::I64, ILValue::Kind::I64},
-                                        adaptedInstr);
+                        convertOperands(
+                            instr, {ILValue::Kind::I64, ILValue::Kind::I64}, adaptedInstr);
                         break;
                     }
                     case il::core::Opcode::Xor:
@@ -436,8 +435,8 @@ ILModule convertToAdapterModule(const il::core::Module &module)
                             adaptedInstr.resultKind = ILValue::Kind::I64;
                         }
                         adaptedInstr.opcode = "xor";
-                        convertOperands(instr, {ILValue::Kind::I64, ILValue::Kind::I64},
-                                        adaptedInstr);
+                        convertOperands(
+                            instr, {ILValue::Kind::I64, ILValue::Kind::I64}, adaptedInstr);
                         break;
                     }
                     case il::core::Opcode::ICmpEq:
@@ -462,8 +461,8 @@ ILModule convertToAdapterModule(const il::core::Module &module)
                         {
                             adaptedInstr.resultKind = ILValue::Kind::I1;
                         }
-                        convertOperands(instr, {ILValue::Kind::I64, ILValue::Kind::I64},
-                                        adaptedInstr);
+                        convertOperands(
+                            instr, {ILValue::Kind::I64, ILValue::Kind::I64}, adaptedInstr);
                         adaptedInstr.ops.push_back(makeCondImmediate(condCodeFor(instr.op)));
                         break;
                     }
@@ -485,8 +484,8 @@ ILModule convertToAdapterModule(const il::core::Module &module)
                         {
                             adaptedInstr.resultKind = ILValue::Kind::I1;
                         }
-                        convertOperands(instr, {ILValue::Kind::F64, ILValue::Kind::F64},
-                                        adaptedInstr);
+                        convertOperands(
+                            instr, {ILValue::Kind::F64, ILValue::Kind::F64}, adaptedInstr);
                         adaptedInstr.ops.push_back(makeCondImmediate(condCodeFor(instr.op)));
                         break;
                     }
@@ -568,9 +567,10 @@ ILModule convertToAdapterModule(const il::core::Module &module)
                         adaptedInstr.opcode = "ret";
                         if (!instr.operands.empty())
                         {
-                            const auto returnKind = func.retType.kind == il::core::Type::Kind::Void
-                                                        ? std::optional<ILValue::Kind>{}
-                                                        : std::optional<ILValue::Kind>{typeToKind(func.retType)};
+                            const auto returnKind =
+                                func.retType.kind == il::core::Type::Kind::Void
+                                    ? std::optional<ILValue::Kind>{}
+                                    : std::optional<ILValue::Kind>{typeToKind(func.retType)};
                             adaptedInstr.ops.push_back(
                                 convertValue(instr.operands.front(), returnKind));
                         }

@@ -1,8 +1,8 @@
 // File: tests/il/transform/simplifycfg_values_equal_fp.cpp
 // Purpose: Validate SimplifyCFG value comparisons handle floating-point edge cases.
-// Key invariants: Floating constants compare using bit patterns preserving NaN payloads and zero sign.
-// Ownership/Lifetime: Constructs temporary Value objects on the stack only.
-// Links: docs/il-guide.md#reference
+// Key invariants: Floating constants compare using bit patterns preserving NaN payloads and zero
+// sign. Ownership/Lifetime: Constructs temporary Value objects on the stack only. Links:
+// docs/il-guide.md#reference
 
 #include "il/core/Value.hpp"
 #include "il/transform/SimplifyCFG/Utils.hpp"

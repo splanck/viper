@@ -5,9 +5,9 @@
 // Ownership: Uses runtime library.
 // Links: docs/codemap.md
 #include "rt_internal.h"
-#include <cstdio>
 #include <cassert>
 #include <cstdarg>
+#include <cstdio>
 #include <cstring>
 #include <string>
 

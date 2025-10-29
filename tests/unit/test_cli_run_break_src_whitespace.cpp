@@ -21,7 +21,7 @@ int runWithArgs(const std::string &file,
                 const std::string &spec,
                 std::string &stderrText)
 {
-    std::vector<std::string> argStorage = { file, flag, spec };
+    std::vector<std::string> argStorage = {file, flag, spec};
     std::vector<char *> argv;
     argv.reserve(argStorage.size());
     for (auto &arg : argStorage)
@@ -41,9 +41,7 @@ int runWithArgs(const std::string &file,
 
 } // namespace
 
-void usage()
-{
-}
+void usage() {}
 
 int main()
 {

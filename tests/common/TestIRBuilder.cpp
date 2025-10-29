@@ -24,7 +24,9 @@ namespace
 }
 } // namespace
 
-TestIRBuilder::TestIRBuilder(il::core::Type retType, std::string functionName, std::string entryLabel)
+TestIRBuilder::TestIRBuilder(il::core::Type retType,
+                             std::string functionName,
+                             std::string entryLabel)
     : builder_(module_)
 {
     function_ = &builder_.startFunction(functionName, retType, {});
@@ -36,9 +38,9 @@ TestIRBuilder::TestIRBuilder(il::core::Type retType, std::string functionName, s
 void TestIRBuilder::setInsertPoint(il::core::BasicBlock &bb)
 {
     builder_.setInsertPoint(bb);
-    const auto it = std::find_if(function_->blocks.begin(), function_->blocks.end(), [&](auto &candidate) {
-        return &candidate == &bb;
-    });
+    const auto it = std::find_if(function_->blocks.begin(),
+                                 function_->blocks.end(),
+                                 [&](auto &candidate) { return &candidate == &bb; });
     if (it != function_->blocks.end())
     {
         currentBlockIndex_ = static_cast<std::size_t>(std::distance(function_->blocks.begin(), it));
@@ -107,13 +109,15 @@ void TestIRBuilder::retVoid(il::support::SourceLoc loc)
     ret(std::nullopt, loc);
 }
 
-std::int64_t TestIRBuilder::run(const std::optional<il::core::Value> &value, il::support::SourceLoc loc)
+std::int64_t TestIRBuilder::run(const std::optional<il::core::Value> &value,
+                                il::support::SourceLoc loc)
 {
     ret(value, loc);
     return fixture_.run(module_);
 }
 
-std::string TestIRBuilder::captureTrap(const std::optional<il::core::Value> &value, il::support::SourceLoc loc)
+std::string TestIRBuilder::captureTrap(const std::optional<il::core::Value> &value,
+                                       il::support::SourceLoc loc)
 {
     ret(value, loc);
     return fixture_.captureTrap(module_);

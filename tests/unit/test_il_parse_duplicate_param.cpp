@@ -33,4 +33,3 @@ entry:
 
     return 0;
 }
-

@@ -94,7 +94,8 @@ int main()
     EhModel rethrowModel(rethrowFn);
     auto rethrowDiag = checkEhStackBalance(rethrowModel);
     assert(!rethrowDiag);
-    assert(rethrowDiag.error().message.find("resume.* requires active resume token") != std::string::npos);
+    assert(rethrowDiag.error().message.find("resume.* requires active resume token") !=
+           std::string::npos);
 
     // Multiple catch handlers and shared cleanup; checks should pass.
     Function multiCatchFn;
@@ -300,4 +301,3 @@ int main()
 
     return 0;
 }
-

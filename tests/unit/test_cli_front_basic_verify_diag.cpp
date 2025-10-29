@@ -1,19 +1,19 @@
 // File: tests/unit/test_cli_front_basic_verify_diag.cpp
 // Purpose: Ensure cmdFrontBasic reports verifier failures with BASIC source locations.
-// Key invariants: Diagnostic text must include the filename and line/column of the failing instruction.
-// Ownership/Lifetime: Test owns temporary BASIC source file and diagnostic buffers.
+// Key invariants: Diagnostic text must include the filename and line/column of the failing
+// instruction. Ownership/Lifetime: Test owns temporary BASIC source file and diagnostic buffers.
 // Links: src/tools/ilc/cmd_front_basic.cpp
 
 #include "frontends/basic/BasicCompiler.hpp"
-#include "support/source_manager.hpp"
-#include "support/source_location.hpp"
-#include "support/diagnostics.hpp"
-#include "support/diag_expected.hpp"
-#include "il/core/Module.hpp"
-#include "il/core/Function.hpp"
 #include "il/core/BasicBlock.hpp"
+#include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
+#include "il/core/Module.hpp"
 #include "il/core/Opcode.hpp"
+#include "support/diag_expected.hpp"
+#include "support/diagnostics.hpp"
+#include "support/source_location.hpp"
+#include "support/source_manager.hpp"
 #include "tools/ilc/cli.hpp"
 
 #include <cassert>
@@ -27,13 +27,11 @@
 #include <vector>
 
 // Provide usage() expected by cmd_front_basic.cpp when embedded in the test.
-void usage()
-{
-}
+void usage() {}
 
 // Bring in the token utilities and diagnostic emitter implementation for the stub compiler.
-#include "frontends/basic/Token.cpp"
 #include "frontends/basic/DiagnosticEmitter.cpp"
+#include "frontends/basic/Token.cpp"
 
 // Include the implementation under test so the helper functions (e.g., runFrontBasic)
 // are available within this translation unit.
@@ -137,10 +135,8 @@ int main()
     std::cerr.rdbuf(oldErr);
 
     const std::string saturatedText = saturatedErr.str();
-    const std::string exhaustionMessage =
-        "error: source manager exhausted file identifier space";
-    const bool reportedExhaustion =
-        saturatedText.find(exhaustionMessage) != std::string::npos;
+    const std::string exhaustionMessage = "error: source manager exhausted file identifier space";
+    const bool reportedExhaustion = saturatedText.find(exhaustionMessage) != std::string::npos;
 
     assert(saturatedRc != 0);
     assert(reportedExhaustion);

@@ -52,23 +52,21 @@ AnalysisResult analyzeSnippet(const std::string &src)
 int main()
 {
     {
-        const std::string src =
-            "10 FUNCTION INC(X)\n"
-            "20 RETURN X + 1\n"
-            "30 END FUNCTION\n"
-            "40 LET Y = INC(5)\n"
-            "50 END\n";
+        const std::string src = "10 FUNCTION INC(X)\n"
+                                "20 RETURN X + 1\n"
+                                "30 END FUNCTION\n"
+                                "40 LET Y = INC(5)\n"
+                                "50 END\n";
         auto result = analyzeSnippet(src);
         assert(result.errors == 0);
     }
 
     {
-        const std::string src =
-            "10 FUNCTION INC(X)\n"
-            "20 RETURN X + 1\n"
-            "30 END FUNCTION\n"
-            "40 LET Y = INC()\n"
-            "50 END\n";
+        const std::string src = "10 FUNCTION INC(X)\n"
+                                "20 RETURN X + 1\n"
+                                "30 END FUNCTION\n"
+                                "40 LET Y = INC()\n"
+                                "50 END\n";
         auto result = analyzeSnippet(src);
         assert(result.errors == 1);
         assert(result.output.find("error[B2008]") != std::string::npos);

@@ -16,8 +16,8 @@
 int main()
 {
     using namespace il::core;
-    using il::verify::TypeInference;
     using il::verify::checkBlockTerminators;
+    using il::verify::TypeInference;
     using il::verify::validateBlockParams;
     using il::verify::verifyBr;
 

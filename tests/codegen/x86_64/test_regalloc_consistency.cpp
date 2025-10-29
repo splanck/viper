@@ -96,12 +96,14 @@ TEST(RegAllocConsistency, MatchesExpectedAssignments)
     EXPECT_EQ(pressureResult.vregToPhys.at(15), PhysReg::RAX);
 
     const auto &pressureBlock = pressure.blocks.front().instructions;
-    const bool hasSpillStore = std::any_of(pressureBlock.begin(),
-                                           pressureBlock.end(),
-                                           [](const MInstr &instr)
-                                           { return instr.opcode == MOpcode::MOVrr &&
-                                                    instr.operands.size() == 2 &&
-                                                    std::holds_alternative<OpMem>(instr.operands[0]); });
+    const bool hasSpillStore =
+        std::any_of(pressureBlock.begin(),
+                    pressureBlock.end(),
+                    [](const MInstr &instr)
+                    {
+                        return instr.opcode == MOpcode::MOVrr && instr.operands.size() == 2 &&
+                               std::holds_alternative<OpMem>(instr.operands[0]);
+                    });
     EXPECT_TRUE(hasSpillStore);
 }
 

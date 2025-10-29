@@ -279,11 +279,7 @@ VM::ExecResult VM::executeOpcode(Frame &fr,
         {
             detail += " (block " + blockLabel + ')';
         }
-        RuntimeBridge::trap(TrapKind::InvalidOperation,
-                            detail,
-                            in.loc,
-                            fr.func->name,
-                            blockLabel);
+        RuntimeBridge::trap(TrapKind::InvalidOperation, detail, in.loc, fr.func->name, blockLabel);
         ExecResult res{};
         res.jumped = true;
         return res;

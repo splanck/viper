@@ -16,10 +16,10 @@ int main()
 {
     {
         const char src[] = "\xEF\xBB\xBFil 0.1.2\n"
-                            "func @main() -> i64 {\n"
-                            "entry:\n"
-                            "  ret 0\n"
-                            "}\n";
+                           "func @main() -> i64 {\n"
+                           "entry:\n"
+                           "  ret 0\n"
+                           "}\n";
         std::istringstream in(src);
         il::core::Module m;
         std::ostringstream diag;
@@ -36,10 +36,10 @@ int main()
 
     {
         const char src[] = "    il 0.1.2\n"
-                            "func @main() -> i64 {\n"
-                            "entry:\n"
-                            "  ret 0\n"
-                            "}\n";
+                           "func @main() -> i64 {\n"
+                           "entry:\n"
+                           "  ret 0\n"
+                           "}\n";
         std::istringstream in(src);
         il::core::Module m;
         std::ostringstream diag;

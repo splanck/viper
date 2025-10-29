@@ -36,9 +36,10 @@ int main()
     const size_t entryIndex = fn.blocks.size();
     builder.addBlock(fn, "entry");
     const size_t loopIndex = fn.blocks.size();
-    builder.createBlock(fn,
-                         "loop",
-                         {Param{"iter", Type(Type::Kind::I64), 0}, Param{"carry", Type(Type::Kind::Str), 0}});
+    builder.createBlock(
+        fn,
+        "loop",
+        {Param{"iter", Type(Type::Kind::I64), 0}, Param{"carry", Type(Type::Kind::Str), 0}});
     const size_t updateIndex = fn.blocks.size();
     builder.createBlock(fn, "update", {Param{"iter", Type(Type::Kind::I64), 0}});
     const size_t finishIndex = fn.blocks.size();
@@ -101,7 +102,8 @@ int main()
     update.terminated = true;
 
     builder.setInsertPoint(finish);
-    builder.emitCall("rt_str_release_maybe", {builder.blockParam(finish, 0)}, std::nullopt, kLoc(7));
+    builder.emitCall(
+        "rt_str_release_maybe", {builder.blockParam(finish, 0)}, std::nullopt, kLoc(7));
     builder.emitRet(std::optional<Value>{Value::constInt(0)}, kLoc(8));
 
     il::vm::VM vm(module);

@@ -43,8 +43,8 @@ namespace asmfmt
 /// \brief Describe an x86-64 memory operand.
 struct MemAddr
 {
-    int base{-1};      ///< Encoded base register; negative for virtual regs.
-    int index{-1};     ///< Encoded index register; negative when absent.
+    int base{-1};          ///< Encoded base register; negative for virtual regs.
+    int index{-1};         ///< Encoded index register; negative when absent.
     std::uint8_t scale{1}; ///< Scaling factor applied to the index register.
     std::int32_t disp{0};  ///< Signed displacement.
     bool has_index{false}; ///< True when the index register participates.
@@ -66,4 +66,3 @@ struct MemAddr
 [[nodiscard]] std::string format_rodata_bytes(std::string_view bytes);
 
 } // namespace asmfmt
-

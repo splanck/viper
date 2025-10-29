@@ -8,242 +8,242 @@ set(VIPER_RUNTIME_TEST_LIBS viper_runtime)
 set(VIPER_RUNTIME_TEST_LIBS ${VIPER_RUNTIME_TEST_LIBS} PARENT_SCOPE)
 
 function(viper_add_unit_support_tests)
-  if(TARGET test_support)
-    return()
-  endif()
+    if (TARGET test_support)
+        return()
+    endif ()
 
-  viper_add_test(test_support ${VIPER_TESTS_DIR}/unit/test_support.cpp)
-  target_link_libraries(test_support PRIVATE ${VIPER_UNIT_SUPPORT_LIBS})
-  viper_add_ctest(test_support test_support)
+    viper_add_test(test_support ${VIPER_TESTS_DIR}/unit/test_support.cpp)
+    target_link_libraries(test_support PRIVATE ${VIPER_UNIT_SUPPORT_LIBS})
+    viper_add_ctest(test_support test_support)
 endfunction()
 
-if(NOT TARGET test_basic_terminal_scan)
-  viper_add_test(test_basic_terminal_scan ${VIPER_TESTS_DIR}/unit/BasicTerminalScanTest.cpp)
-  target_link_libraries(test_basic_terminal_scan PRIVATE fe_basic)
-  viper_add_ctest(test_basic_terminal_scan test_basic_terminal_scan)
-endif()
+if (NOT TARGET test_basic_terminal_scan)
+    viper_add_test(test_basic_terminal_scan ${VIPER_TESTS_DIR}/unit/BasicTerminalScanTest.cpp)
+    target_link_libraries(test_basic_terminal_scan PRIVATE fe_basic)
+    viper_add_ctest(test_basic_terminal_scan test_basic_terminal_scan)
+endif ()
 
-if(NOT TARGET test_codegen_x86_64_passes)
-  viper_add_test(
-    test_codegen_x86_64_passes
-    ${VIPER_TESTS_DIR}/unit/test_codegen_x86_64_passes.cpp)
-  target_link_libraries(test_codegen_x86_64_passes PRIVATE viper_codegen_x86_64)
-  viper_add_ctest(test_codegen_x86_64_passes test_codegen_x86_64_passes)
-endif()
+if (NOT TARGET test_codegen_x86_64_passes)
+    viper_add_test(
+            test_codegen_x86_64_passes
+            ${VIPER_TESTS_DIR}/unit/test_codegen_x86_64_passes.cpp)
+    target_link_libraries(test_codegen_x86_64_passes PRIVATE viper_codegen_x86_64)
+    viper_add_ctest(test_codegen_x86_64_passes test_codegen_x86_64_passes)
+endif ()
 
-if(NOT TARGET test_codegen_x86_64_live_intervals)
-  viper_add_test(
-    test_codegen_x86_64_live_intervals
-    ${VIPER_TESTS_DIR}/unit/test_codegen_x86_64_live_intervals.cpp)
-  target_link_libraries(test_codegen_x86_64_live_intervals PRIVATE viper_codegen_x86_64)
-  viper_add_ctest(test_codegen_x86_64_live_intervals test_codegen_x86_64_live_intervals)
-endif()
+if (NOT TARGET test_codegen_x86_64_live_intervals)
+    viper_add_test(
+            test_codegen_x86_64_live_intervals
+            ${VIPER_TESTS_DIR}/unit/test_codegen_x86_64_live_intervals.cpp)
+    target_link_libraries(test_codegen_x86_64_live_intervals PRIVATE viper_codegen_x86_64)
+    viper_add_ctest(test_codegen_x86_64_live_intervals test_codegen_x86_64_live_intervals)
+endif ()
 
-if(NOT TARGET test_codegen_x86_64_spiller)
-  viper_add_test(
-    test_codegen_x86_64_spiller
-    ${VIPER_TESTS_DIR}/unit/test_codegen_x86_64_spiller.cpp)
-  target_link_libraries(test_codegen_x86_64_spiller PRIVATE viper_codegen_x86_64)
-  viper_add_ctest(test_codegen_x86_64_spiller test_codegen_x86_64_spiller)
-endif()
+if (NOT TARGET test_codegen_x86_64_spiller)
+    viper_add_test(
+            test_codegen_x86_64_spiller
+            ${VIPER_TESTS_DIR}/unit/test_codegen_x86_64_spiller.cpp)
+    target_link_libraries(test_codegen_x86_64_spiller PRIVATE viper_codegen_x86_64)
+    viper_add_ctest(test_codegen_x86_64_spiller test_codegen_x86_64_spiller)
+endif ()
 
-if(NOT TARGET test_codegen_x86_64_allocator)
-  viper_add_test(
-    test_codegen_x86_64_allocator
-    ${VIPER_TESTS_DIR}/unit/test_codegen_x86_64_allocator.cpp)
-  target_link_libraries(test_codegen_x86_64_allocator PRIVATE viper_codegen_x86_64)
-  viper_add_ctest(test_codegen_x86_64_allocator test_codegen_x86_64_allocator)
-endif()
+if (NOT TARGET test_codegen_x86_64_allocator)
+    viper_add_test(
+            test_codegen_x86_64_allocator
+            ${VIPER_TESTS_DIR}/unit/test_codegen_x86_64_allocator.cpp)
+    target_link_libraries(test_codegen_x86_64_allocator PRIVATE viper_codegen_x86_64)
+    viper_add_ctest(test_codegen_x86_64_allocator test_codegen_x86_64_allocator)
+endif ()
 
-if(NOT TARGET test_codegen_x86_64_coalescer)
-  viper_add_test(
-    test_codegen_x86_64_coalescer
-    ${VIPER_TESTS_DIR}/unit/test_codegen_x86_64_coalescer.cpp)
-  target_link_libraries(test_codegen_x86_64_coalescer PRIVATE viper_codegen_x86_64)
-  viper_add_ctest(test_codegen_x86_64_coalescer test_codegen_x86_64_coalescer)
-endif()
+if (NOT TARGET test_codegen_x86_64_coalescer)
+    viper_add_test(
+            test_codegen_x86_64_coalescer
+            ${VIPER_TESTS_DIR}/unit/test_codegen_x86_64_coalescer.cpp)
+    target_link_libraries(test_codegen_x86_64_coalescer PRIVATE viper_codegen_x86_64)
+    viper_add_ctest(test_codegen_x86_64_coalescer test_codegen_x86_64_coalescer)
+endif ()
 
-if(NOT TARGET test_codegen_x86_64_lowering_rules)
-  viper_add_test(
-    test_codegen_x86_64_lowering_rules
-    ${VIPER_TESTS_DIR}/unit/test_codegen_x86_64_lowering_rules.cpp)
-  target_link_libraries(test_codegen_x86_64_lowering_rules PRIVATE viper_codegen_x86_64)
-  viper_add_ctest(test_codegen_x86_64_lowering_rules test_codegen_x86_64_lowering_rules)
-endif()
+if (NOT TARGET test_codegen_x86_64_lowering_rules)
+    viper_add_test(
+            test_codegen_x86_64_lowering_rules
+            ${VIPER_TESTS_DIR}/unit/test_codegen_x86_64_lowering_rules.cpp)
+    target_link_libraries(test_codegen_x86_64_lowering_rules PRIVATE viper_codegen_x86_64)
+    viper_add_ctest(test_codegen_x86_64_lowering_rules test_codegen_x86_64_lowering_rules)
+endif ()
 
 function(viper_add_runtime_tests)
-  if(TARGET test_rt_string)
-    return()
-  endif()
+    if (TARGET test_rt_string)
+        return()
+    endif ()
 
-  viper_add_test(test_rt_string ${VIPER_TESTS_DIR}/unit/test_rt_string.cpp)
-  target_link_libraries(test_rt_string PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
-  viper_add_ctest(test_rt_string test_rt_string)
+    viper_add_test(test_rt_string ${VIPER_TESTS_DIR}/unit/test_rt_string.cpp)
+    target_link_libraries(test_rt_string PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_string test_rt_string)
 
-  viper_add_test(test_rt_string_invalid ${VIPER_TESTS_DIR}/unit/test_rt_string_invalid.cpp)
-  target_link_libraries(test_rt_string_invalid PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
-  viper_add_ctest(test_rt_string_invalid test_rt_string_invalid)
-  set_tests_properties(test_rt_string_invalid PROPERTIES WILL_FAIL TRUE)
+    viper_add_test(test_rt_string_invalid ${VIPER_TESTS_DIR}/unit/test_rt_string_invalid.cpp)
+    target_link_libraries(test_rt_string_invalid PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_string_invalid test_rt_string_invalid)
+    set_tests_properties(test_rt_string_invalid PROPERTIES WILL_FAIL TRUE)
 
-  viper_add_test(test_rt_conv ${VIPER_TESTS_DIR}/unit/test_rt_conv.cpp)
-  target_link_libraries(test_rt_conv PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
-  viper_add_ctest(test_rt_conv test_rt_conv)
+    viper_add_test(test_rt_conv ${VIPER_TESTS_DIR}/unit/test_rt_conv.cpp)
+    target_link_libraries(test_rt_conv PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_conv test_rt_conv)
 
-  viper_add_test(test_rt_int_to_str_big ${VIPER_TESTS_DIR}/unit/test_rt_int_to_str_big.cpp)
-  target_link_libraries(test_rt_int_to_str_big PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
-  viper_add_ctest(test_rt_int_to_str_big test_rt_int_to_str_big)
+    viper_add_test(test_rt_int_to_str_big ${VIPER_TESTS_DIR}/unit/test_rt_int_to_str_big.cpp)
+    target_link_libraries(test_rt_int_to_str_big PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_int_to_str_big test_rt_int_to_str_big)
 
-  viper_add_test(test_rt_val_str ${VIPER_TESTS_DIR}/runtime/RTValStrTests.cpp)
-  target_link_libraries(test_rt_val_str PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
-  viper_add_ctest(test_rt_val_str test_rt_val_str)
+    viper_add_test(test_rt_val_str ${VIPER_TESTS_DIR}/runtime/RTValStrTests.cpp)
+    target_link_libraries(test_rt_val_str PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_val_str test_rt_val_str)
 
-  viper_add_test(test_rt_math_core ${VIPER_TESTS_DIR}/runtime/RTMathCoreTests.cpp)
-  target_link_libraries(test_rt_math_core PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
-  viper_add_ctest(test_rt_math_core test_rt_math_core)
+    viper_add_test(test_rt_math_core ${VIPER_TESTS_DIR}/runtime/RTMathCoreTests.cpp)
+    target_link_libraries(test_rt_math_core PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_math_core test_rt_math_core)
 
-  viper_add_test(test_rt_numeric ${VIPER_TESTS_DIR}/runtime/RTNumericTests.cpp)
-  target_link_libraries(test_rt_numeric PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
-  viper_add_ctest(test_rt_numeric test_rt_numeric)
+    viper_add_test(test_rt_numeric ${VIPER_TESTS_DIR}/runtime/RTNumericTests.cpp)
+    target_link_libraries(test_rt_numeric PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_numeric test_rt_numeric)
 
-  viper_add_test(test_rt_float_determinism ${VIPER_TESTS_DIR}/runtime/FloatDeterminismTests.cpp)
-  target_link_libraries(test_rt_float_determinism PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
-  viper_add_ctest(test_rt_float_determinism test_rt_float_determinism)
+    viper_add_test(test_rt_float_determinism ${VIPER_TESTS_DIR}/runtime/FloatDeterminismTests.cpp)
+    target_link_libraries(test_rt_float_determinism PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_float_determinism test_rt_float_determinism)
 
-  viper_add_test(
-    test_rt_float_formatting
-    ${VIPER_TESTS_DIR}/runtime/FloatFormattingTests.cpp
-    TEST_NAME runtime_FloatFormattingTests)
-  target_link_libraries(test_rt_float_formatting PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_test(
+            test_rt_float_formatting
+            ${VIPER_TESTS_DIR}/runtime/FloatFormattingTests.cpp
+            TEST_NAME runtime_FloatFormattingTests)
+    target_link_libraries(test_rt_float_formatting PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
 
-  viper_add_test(
-    test_rt_int64_to_string
-    ${VIPER_TESTS_DIR}/runtime/Int64ToStringTests.cpp
-    TEST_NAME runtime_Int64ToStringTests)
-  target_link_libraries(test_rt_int64_to_string PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_test(
+            test_rt_int64_to_string
+            ${VIPER_TESTS_DIR}/runtime/Int64ToStringTests.cpp
+            TEST_NAME runtime_Int64ToStringTests)
+    target_link_libraries(test_rt_int64_to_string PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
 
-  viper_add_test(test_rt_string_builder ${VIPER_TESTS_DIR}/runtime/RTStringBuilderTests.c)
-  target_link_libraries(test_rt_string_builder PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
-  viper_add_ctest(test_rt_string_builder test_rt_string_builder)
+    viper_add_test(test_rt_string_builder ${VIPER_TESTS_DIR}/runtime/RTStringBuilderTests.c)
+    target_link_libraries(test_rt_string_builder PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_string_builder test_rt_string_builder)
 
-  viper_add_test(test_rt_error_plumbing ${VIPER_TESTS_DIR}/runtime/RtErrorPlumbingTests.cpp)
-  target_link_libraries(test_rt_error_plumbing PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
-  viper_add_ctest(test_rt_error_plumbing test_rt_error_plumbing)
+    viper_add_test(test_rt_error_plumbing ${VIPER_TESTS_DIR}/runtime/RtErrorPlumbingTests.cpp)
+    target_link_libraries(test_rt_error_plumbing PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_error_plumbing test_rt_error_plumbing)
 
-  viper_add_test(test_rt_errors_io ${VIPER_TESTS_DIR}/runtime/ErrorsIoTests.c)
-  target_link_libraries(test_rt_errors_io PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
-  viper_add_ctest(test_rt_errors_io test_rt_errors_io)
+    viper_add_test(test_rt_errors_io ${VIPER_TESTS_DIR}/runtime/ErrorsIoTests.c)
+    target_link_libraries(test_rt_errors_io PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_errors_io test_rt_errors_io)
 
-  viper_add_test(test_rt_file_mode_string ${VIPER_TESTS_DIR}/runtime/RTFileModeStringTests.c)
-  target_link_libraries(test_rt_file_mode_string PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
-  viper_add_ctest(test_rt_file_mode_string test_rt_file_mode_string)
+    viper_add_test(test_rt_file_mode_string ${VIPER_TESTS_DIR}/runtime/RTFileModeStringTests.c)
+    target_link_libraries(test_rt_file_mode_string PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_file_mode_string test_rt_file_mode_string)
 
-  viper_add_test(test_rt_file_wrappers ${VIPER_TESTS_DIR}/runtime/FileWrappersTests.c)
-  target_link_libraries(test_rt_file_wrappers PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
-  viper_add_ctest(test_rt_file_wrappers test_rt_file_wrappers)
+    viper_add_test(test_rt_file_wrappers ${VIPER_TESTS_DIR}/runtime/FileWrappersTests.c)
+    target_link_libraries(test_rt_file_wrappers PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_file_wrappers test_rt_file_wrappers)
 
-  viper_add_test(test_rt_file_channel_io ${VIPER_TESTS_DIR}/runtime/FileChannelIoTests.c)
-  target_link_libraries(test_rt_file_channel_io PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
-  viper_add_ctest(test_rt_file_channel_io test_rt_file_channel_io)
+    viper_add_test(test_rt_file_channel_io ${VIPER_TESTS_DIR}/runtime/FileChannelIoTests.c)
+    target_link_libraries(test_rt_file_channel_io PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_file_channel_io test_rt_file_channel_io)
 
-  viper_add_test(test_rt_file_mode ${VIPER_TESTS_DIR}/runtime/RTFileModeTests.c)
-  target_link_libraries(test_rt_file_mode PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
-  viper_add_ctest(test_rt_file_mode test_rt_file_mode)
+    viper_add_test(test_rt_file_mode ${VIPER_TESTS_DIR}/runtime/RTFileModeTests.c)
+    target_link_libraries(test_rt_file_mode PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_file_mode test_rt_file_mode)
 
-  viper_add_test(test_rt_abs_i64_overflow ${VIPER_TESTS_DIR}/runtime/RTAbsI64OverflowTests.cpp)
-  target_link_libraries(test_rt_abs_i64_overflow PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
-  viper_add_ctest(test_rt_abs_i64_overflow test_rt_abs_i64_overflow)
+    viper_add_test(test_rt_abs_i64_overflow ${VIPER_TESTS_DIR}/runtime/RTAbsI64OverflowTests.cpp)
+    target_link_libraries(test_rt_abs_i64_overflow PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_abs_i64_overflow test_rt_abs_i64_overflow)
 
-  viper_add_test(test_rt_random ${VIPER_TESTS_DIR}/runtime/RTRandomTests.cpp)
-  target_link_libraries(test_rt_random PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
-  viper_add_ctest(test_rt_random test_rt_random)
+    viper_add_test(test_rt_random ${VIPER_TESTS_DIR}/runtime/RTRandomTests.cpp)
+    target_link_libraries(test_rt_random PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_random test_rt_random)
 
-  viper_add_test(test_rt_instr ${VIPER_TESTS_DIR}/runtime/RTInstrTests.cpp)
-  target_link_libraries(test_rt_instr PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
-  viper_add_ctest(test_rt_instr test_rt_instr)
+    viper_add_test(test_rt_instr ${VIPER_TESTS_DIR}/runtime/RTInstrTests.cpp)
+    target_link_libraries(test_rt_instr PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_instr test_rt_instr)
 
-  viper_add_test(test_rt_term_color ${VIPER_TESTS_DIR}/runtime/RTTermColorTests.cpp)
-  target_link_libraries(test_rt_term_color PRIVATE ${VIPER_RUNTIME_TEST_LIBS} util)
-  viper_add_ctest(test_rt_term_color test_rt_term_color)
+    viper_add_test(test_rt_term_color ${VIPER_TESTS_DIR}/runtime/RTTermColorTests.cpp)
+    target_link_libraries(test_rt_term_color PRIVATE ${VIPER_RUNTIME_TEST_LIBS} util)
+    viper_add_ctest(test_rt_term_color test_rt_term_color)
 
-  viper_add_test(test_rt_trim_case ${VIPER_TESTS_DIR}/runtime/RTTrimCaseTests.cpp)
-  target_link_libraries(test_rt_trim_case PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
-  viper_add_ctest(test_rt_trim_case test_rt_trim_case)
+    viper_add_test(test_rt_trim_case ${VIPER_TESTS_DIR}/runtime/RTTrimCaseTests.cpp)
+    target_link_libraries(test_rt_trim_case PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_trim_case test_rt_trim_case)
 
-  viper_add_test(test_rt_chr_asc ${VIPER_TESTS_DIR}/runtime/RTChrAscTests.cpp)
-  target_link_libraries(test_rt_chr_asc PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
-  viper_add_ctest(test_rt_chr_asc test_rt_chr_asc)
+    viper_add_test(test_rt_chr_asc ${VIPER_TESTS_DIR}/runtime/RTChrAscTests.cpp)
+    target_link_libraries(test_rt_chr_asc PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_chr_asc test_rt_chr_asc)
 
-  viper_add_test(test_rt_chr_invalid ${VIPER_TESTS_DIR}/runtime/RTChrInvalidTests.cpp)
-  target_link_libraries(test_rt_chr_invalid PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
-  viper_add_ctest(test_rt_chr_invalid test_rt_chr_invalid)
+    viper_add_test(test_rt_chr_invalid ${VIPER_TESTS_DIR}/runtime/RTChrInvalidTests.cpp)
+    target_link_libraries(test_rt_chr_invalid PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_chr_invalid test_rt_chr_invalid)
 
-  viper_add_test(test_rt_string_size_clamp ${VIPER_TESTS_DIR}/runtime/RTStringSizeClampTests.cpp)
-  target_link_libraries(test_rt_string_size_clamp PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
-  viper_add_ctest(test_rt_string_size_clamp test_rt_string_size_clamp)
+    viper_add_test(test_rt_string_size_clamp ${VIPER_TESTS_DIR}/runtime/RTStringSizeClampTests.cpp)
+    target_link_libraries(test_rt_string_size_clamp PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_string_size_clamp test_rt_string_size_clamp)
 
-  viper_add_test(test_rt_string_ranges ${VIPER_TESTS_DIR}/runtime/RTStringRangeTests.cpp)
-  target_link_libraries(test_rt_string_ranges PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
-  viper_add_ctest(test_rt_string_ranges test_rt_string_ranges)
+    viper_add_test(test_rt_string_ranges ${VIPER_TESTS_DIR}/runtime/RTStringRangeTests.cpp)
+    target_link_libraries(test_rt_string_ranges PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_string_ranges test_rt_string_ranges)
 
-  viper_add_test(test_rt_alloc ${VIPER_TESTS_DIR}/runtime/RTAllocTests.cpp)
-  target_link_libraries(test_rt_alloc PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
-  viper_add_ctest(test_rt_alloc test_rt_alloc)
+    viper_add_test(test_rt_alloc ${VIPER_TESTS_DIR}/runtime/RTAllocTests.cpp)
+    target_link_libraries(test_rt_alloc PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_alloc test_rt_alloc)
 
-  viper_add_test(
-    test_rt_string_alloc_overflow
-    ${VIPER_TESTS_DIR}/runtime/RTStringAllocOverflowTests.cpp)
-  target_link_libraries(test_rt_string_alloc_overflow PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
-  viper_add_ctest(test_rt_string_alloc_overflow test_rt_string_alloc_overflow)
+    viper_add_test(
+            test_rt_string_alloc_overflow
+            ${VIPER_TESTS_DIR}/runtime/RTStringAllocOverflowTests.cpp)
+    target_link_libraries(test_rt_string_alloc_overflow PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_string_alloc_overflow test_rt_string_alloc_overflow)
 
-  viper_add_test(
-    test_rt_string_len_clamp
-    ${VIPER_TESTS_DIR}/runtime/RTStringLenClampTests.cpp)
-  target_link_libraries(test_rt_string_len_clamp PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
-  viper_add_ctest(test_rt_string_len_clamp test_rt_string_len_clamp)
+    viper_add_test(
+            test_rt_string_len_clamp
+            ${VIPER_TESTS_DIR}/runtime/RTStringLenClampTests.cpp)
+    target_link_libraries(test_rt_string_len_clamp PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_string_len_clamp test_rt_string_len_clamp)
 
-  viper_add_test(test_rt_alloc_zero ${VIPER_TESTS_DIR}/runtime/RTAllocZeroTests.cpp)
-  target_link_libraries(test_rt_alloc_zero PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
-  viper_add_ctest(test_rt_alloc_zero test_rt_alloc_zero)
+    viper_add_test(test_rt_alloc_zero ${VIPER_TESTS_DIR}/runtime/RTAllocZeroTests.cpp)
+    target_link_libraries(test_rt_alloc_zero PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_alloc_zero test_rt_alloc_zero)
 
-  viper_add_test(test_rt_alloc_zero_fill ${VIPER_TESTS_DIR}/runtime/RTAllocZeroFillTests.cpp)
-  target_link_libraries(test_rt_alloc_zero_fill PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
-  viper_add_ctest(test_rt_alloc_zero_fill test_rt_alloc_zero_fill)
+    viper_add_test(test_rt_alloc_zero_fill ${VIPER_TESTS_DIR}/runtime/RTAllocZeroFillTests.cpp)
+    target_link_libraries(test_rt_alloc_zero_fill PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_alloc_zero_fill test_rt_alloc_zero_fill)
 
-  viper_add_test(test_rt_object_alloc ${VIPER_TESTS_DIR}/runtime/RTObjectAllocTests.cpp)
-  target_link_libraries(test_rt_object_alloc PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
-  viper_add_ctest(test_rt_object_alloc test_rt_object_alloc)
+    viper_add_test(test_rt_object_alloc ${VIPER_TESTS_DIR}/runtime/RTObjectAllocTests.cpp)
+    target_link_libraries(test_rt_object_alloc PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_object_alloc test_rt_object_alloc)
 
-  viper_add_test(test_rt_array_i32 ${VIPER_TESTS_DIR}/runtime/RTArrayI32Tests.cpp)
-  target_link_libraries(test_rt_array_i32 PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
-  viper_add_ctest(test_rt_array_i32 test_rt_array_i32)
+    viper_add_test(test_rt_array_i32 ${VIPER_TESTS_DIR}/runtime/RTArrayI32Tests.cpp)
+    target_link_libraries(test_rt_array_i32 PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_array_i32 test_rt_array_i32)
 
-  viper_add_test(test_rt_array_i32_refcount ${VIPER_TESTS_DIR}/runtime/RTArrayI32RefcountTests.cpp)
-  target_link_libraries(test_rt_array_i32_refcount PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
-  viper_add_ctest(test_rt_array_i32_refcount test_rt_array_i32_refcount)
+    viper_add_test(test_rt_array_i32_refcount ${VIPER_TESTS_DIR}/runtime/RTArrayI32RefcountTests.cpp)
+    target_link_libraries(test_rt_array_i32_refcount PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_array_i32_refcount test_rt_array_i32_refcount)
 
-  viper_add_test(test_rt_input_line ${VIPER_TESTS_DIR}/runtime/RTInputLineTests.cpp)
-  target_link_libraries(test_rt_input_line PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
-  viper_add_ctest(test_rt_input_line test_rt_input_line)
+    viper_add_test(test_rt_input_line ${VIPER_TESTS_DIR}/runtime/RTInputLineTests.cpp)
+    target_link_libraries(test_rt_input_line PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_input_line test_rt_input_line)
 
-  viper_add_test(test_rt_input_overflow ${VIPER_TESTS_DIR}/unit/runtime/RTInputGrowOverflowTests.cpp)
-  target_link_libraries(test_rt_input_overflow PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
-  viper_add_ctest(test_rt_input_overflow test_rt_input_overflow)
+    viper_add_test(test_rt_input_overflow ${VIPER_TESTS_DIR}/unit/runtime/RTInputGrowOverflowTests.cpp)
+    target_link_libraries(test_rt_input_overflow PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_input_overflow test_rt_input_overflow)
 
-  viper_add_test(
-    test_rt_file_read_line_overflow
-    ${VIPER_TESTS_DIR}/unit/runtime/RTFileReadLineOverflowTests.cpp)
-  target_link_libraries(test_rt_file_read_line_overflow PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
-  viper_add_ctest(test_rt_file_read_line_overflow test_rt_file_read_line_overflow)
+    viper_add_test(
+            test_rt_file_read_line_overflow
+            ${VIPER_TESTS_DIR}/unit/runtime/RTFileReadLineOverflowTests.cpp)
+    target_link_libraries(test_rt_file_read_line_overflow PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_file_read_line_overflow test_rt_file_read_line_overflow)
 
-  viper_add_test(test_rt_input_line_fail ${VIPER_TESTS_DIR}/runtime/RTInputLineFailTests.cpp)
-  target_link_libraries(test_rt_input_line_fail PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
-  viper_add_ctest(test_rt_input_line_fail test_rt_input_line_fail)
+    viper_add_test(test_rt_input_line_fail ${VIPER_TESTS_DIR}/runtime/RTInputLineFailTests.cpp)
+    target_link_libraries(test_rt_input_line_fail PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_input_line_fail test_rt_input_line_fail)
 
-  viper_add_test(test_rt_input_numeric_fail ${VIPER_TESTS_DIR}/runtime/RTInputNumericFailTests.cpp)
-  target_link_libraries(test_rt_input_numeric_fail PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
-  viper_add_ctest(test_rt_input_numeric_fail test_rt_input_numeric_fail)
+    viper_add_test(test_rt_input_numeric_fail ${VIPER_TESTS_DIR}/runtime/RTInputNumericFailTests.cpp)
+    target_link_libraries(test_rt_input_numeric_fail PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_input_numeric_fail test_rt_input_numeric_fail)
 
-  viper_add_test(test_rt_split_fields ${VIPER_TESTS_DIR}/runtime/RTSplitFieldsTests.cpp)
-  target_link_libraries(test_rt_split_fields PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
-  viper_add_ctest(test_rt_split_fields test_rt_split_fields)
+    viper_add_test(test_rt_split_fields ${VIPER_TESTS_DIR}/runtime/RTSplitFieldsTests.cpp)
+    target_link_libraries(test_rt_split_fields PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_split_fields test_rt_split_fields)
 endfunction()

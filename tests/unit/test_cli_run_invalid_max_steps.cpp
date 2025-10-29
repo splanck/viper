@@ -52,22 +52,21 @@ int main()
     std::string err;
 
     gUsageCalled = false;
-    int rc = invokeRunIL({ "--max-steps", "not-a-number" }, err);
+    int rc = invokeRunIL({"--max-steps", "not-a-number"}, err);
     assert(rc != 0);
     assert(gUsageCalled);
 
     gUsageCalled = false;
     err.clear();
-    rc = invokeRunIL({ "--max-steps", "18446744073709551616" }, err);
+    rc = invokeRunIL({"--max-steps", "18446744073709551616"}, err);
     assert(rc != 0);
     assert(gUsageCalled);
 
     gUsageCalled = false;
     err.clear();
-    rc = invokeRunIL({ "--max-steps", "-1" }, err);
+    rc = invokeRunIL({"--max-steps", "-1"}, err);
     assert(rc != 0);
     assert(gUsageCalled);
 
     return 0;
 }
-

@@ -32,7 +32,7 @@ namespace
 ///          the UI.  One megabyte is large enough for typical buffers yet small
 ///          enough for interactive latency.
 constexpr size_t kMaxSearchSize = 1 << 20; // 1MB cap
-}
+} // namespace
 
 /// @brief Locate every match for @p query within @p buf.
 /// @details Performs a literal scan when @p useRegex is false and otherwise uses

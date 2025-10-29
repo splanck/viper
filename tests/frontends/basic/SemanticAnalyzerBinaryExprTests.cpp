@@ -273,20 +273,17 @@ int main()
     }
 
     {
-        const std::string src =
-            "10 LET X = 1 : IF X = \"A\" THEN END\n20 END\n";
+        const std::string src = "10 LET X = 1 : IF X = \"A\" THEN END\n20 END\n";
         auto result = analyzeSnippet(src);
         assert(result.errors == 1);
         assert(result.output.find("error[B2001]") != std::string::npos);
     }
 
     {
-        const std::string src =
-            "10 LET S$ = \"A\" : IF S$ = \"A\" THEN END\n20 END\n";
+        const std::string src = "10 LET S$ = \"A\" : IF S$ = \"A\" THEN END\n20 END\n";
         auto result = analyzeSnippet(src);
         assert(result.errors == 0);
     }
 
     return 0;
 }
-

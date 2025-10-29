@@ -53,8 +53,10 @@ int main()
         "seed-cfg-cache",
         [&seedRan, &cfgComputeCount](Function &function, il::transform::AnalysisManager &analysis)
         {
-            il::transform::CFGInfo &first = analysis.getFunctionResult<il::transform::CFGInfo>("cfg", function);
-            il::transform::CFGInfo &second = analysis.getFunctionResult<il::transform::CFGInfo>("cfg", function);
+            il::transform::CFGInfo &first =
+                analysis.getFunctionResult<il::transform::CFGInfo>("cfg", function);
+            il::transform::CFGInfo &second =
+                analysis.getFunctionResult<il::transform::CFGInfo>("cfg", function);
             assert(&first == &second);
             seedRan = true;
             assert(cfgComputeCount == 1);
@@ -68,7 +70,8 @@ int main()
         "verify-cfg-recomputed",
         [&checkRan, &cfgComputeCount](Function &function, il::transform::AnalysisManager &analysis)
         {
-            il::transform::CFGInfo &cfg = analysis.getFunctionResult<il::transform::CFGInfo>("cfg", function);
+            il::transform::CFGInfo &cfg =
+                analysis.getFunctionResult<il::transform::CFGInfo>("cfg", function);
             (void)cfg;
             checkRan = true;
             assert(cfgComputeCount == 2);

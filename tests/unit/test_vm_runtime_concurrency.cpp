@@ -23,7 +23,7 @@ namespace
 std::barrier<> trapBarrier(2);
 std::mutex trapMutex;
 std::vector<std::string> trapMessages;
-}
+} // namespace
 
 extern "C" void vm_trap(const char *msg)
 {
@@ -84,9 +84,11 @@ int main()
     for (const auto &entry : trapMessages)
     {
         if (entry.find("trap-A") != std::string::npos)
-            seenA = entry.find("blockA") != std::string::npos && entry.find("(1:10:4)") != std::string::npos;
+            seenA = entry.find("blockA") != std::string::npos &&
+                    entry.find("(1:10:4)") != std::string::npos;
         if (entry.find("trap-B") != std::string::npos)
-            seenB = entry.find("blockB") != std::string::npos && entry.find("(2:20:8)") != std::string::npos;
+            seenB = entry.find("blockB") != std::string::npos &&
+                    entry.find("(2:20:8)") != std::string::npos;
     }
     assert(seenA && seenB);
     return 0;

@@ -30,7 +30,8 @@ entry:
 
     const std::string message = diag.str();
     assert(message.find("missing operand") != std::string::npos);
-    assert(message.find("Line 4") != std::string::npos || message.find("line 4") != std::string::npos);
+    assert(message.find("Line 4") != std::string::npos ||
+           message.find("line 4") != std::string::npos);
 
     return 0;
 }

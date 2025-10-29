@@ -52,13 +52,12 @@ int main()
 {
     SourceManager sm;
     uint32_t fid = sm.addFile("test.bas");
-    std::string src =
-        "10 FUNCTION F()\n"
-        "20 RANDOMIZE SEED\n"
-        "30 RETURN SEED\n"
-        "40 END FUNCTION\n"
-        "100 RANDOMIZE MAINSEED\n"
-        "110 PRINT MAINSEED\n";
+    std::string src = "10 FUNCTION F()\n"
+                      "20 RANDOMIZE SEED\n"
+                      "30 RETURN SEED\n"
+                      "40 END FUNCTION\n"
+                      "100 RANDOMIZE MAINSEED\n"
+                      "110 PRINT MAINSEED\n";
 
     Parser parser(src, fid);
     auto prog = parser.parseProgram();

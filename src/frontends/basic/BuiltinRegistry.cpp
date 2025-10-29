@@ -89,7 +89,8 @@ struct TransparentStringEqual
     }
 };
 
-using HandlerMap = std::unordered_map<std::string, BuiltinHandler, TransparentStringHash, TransparentStringEqual>;
+using HandlerMap =
+    std::unordered_map<std::string, BuiltinHandler, TransparentStringHash, TransparentStringEqual>;
 
 /// @brief Access the singleton map storing dynamically registered builtins.
 /// @details The registry persists for the lifetime of the process, allowing

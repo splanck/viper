@@ -50,4 +50,3 @@ int main()
     expect_input_failure("7.5foo");
     return 0;
 }
-

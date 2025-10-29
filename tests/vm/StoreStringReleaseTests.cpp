@@ -30,7 +30,8 @@ int main()
     il::build::IRBuilder builder(module);
     builder.addExtern("rt_str_i32_alloc", Type(Type::Kind::Str), {Type(Type::Kind::I32)});
     builder.addExtern("rt_str_release_maybe", Type(Type::Kind::Void), {Type(Type::Kind::Str)});
-    builder.addExtern("rt_left", Type(Type::Kind::Str), {Type(Type::Kind::Str), Type(Type::Kind::I64)});
+    builder.addExtern(
+        "rt_left", Type(Type::Kind::Str), {Type(Type::Kind::Str), Type(Type::Kind::I64)});
 
     builder.addGlobalStr("literal", "sample");
 
@@ -91,7 +92,8 @@ int main()
     auto &mainFn = module.functions.front();
     il::vm::VMTestHook::State state = il::vm::VMTestHook::prepare(vm, mainFn);
 
-    auto stepExpectIp = [&](size_t expectedIp) -> bool {
+    auto stepExpectIp = [&](size_t expectedIp) -> bool
+    {
         auto result = il::vm::VMTestHook::step(vm, state);
         if (result)
             return true;
@@ -183,4 +185,3 @@ int main()
 
     return 0;
 }
-

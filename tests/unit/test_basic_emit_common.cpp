@@ -17,15 +17,14 @@ using namespace il::support;
 
 int main()
 {
-    const std::string src =
-        "10 COLOR 1, 2\n"
-        "20 DIM ARR%(2)\n"
-        "30 LET ARR%(0) = 1\n"
-        "40 LET ARR%(1) = ARR%(0) + 1\n"
-        "50 LET L& = ARR%(0) AND ARR%(1)\n"
-        "60 LET M& = ARR%(0) OR ARR%(1)\n"
-        "70 FOR I% = 1 TO 2\n"
-        "80 NEXT I%\n";
+    const std::string src = "10 COLOR 1, 2\n"
+                            "20 DIM ARR%(2)\n"
+                            "30 LET ARR%(0) = 1\n"
+                            "40 LET ARR%(1) = ARR%(0) + 1\n"
+                            "50 LET L& = ARR%(0) AND ARR%(1)\n"
+                            "60 LET M& = ARR%(0) OR ARR%(1)\n"
+                            "70 FOR I% = 1 TO 2\n"
+                            "80 NEXT I%\n";
 
     SourceManager sm;
     uint32_t fid = sm.addFile("emit_common.bas");

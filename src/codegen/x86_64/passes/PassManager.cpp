@@ -145,4 +145,3 @@ bool PassManager::run(Module &module, Diagnostics &diags) const
 }
 
 } // namespace viper::codegen::x64::passes
-

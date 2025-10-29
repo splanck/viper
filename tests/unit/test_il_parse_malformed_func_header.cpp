@@ -32,8 +32,8 @@ void expectMalformedHeader(const std::string &header)
 int main()
 {
     expectMalformedHeader("func @main() -> i64");
-    expectMalformedHeader("func main() -> i64");          // Missing '@'
-    expectMalformedHeader("func @main) -> i64");          // Missing '('
-    expectMalformedHeader("func @main( -> i64");          // Missing ')'
+    expectMalformedHeader("func main() -> i64"); // Missing '@'
+    expectMalformedHeader("func @main) -> i64"); // Missing '('
+    expectMalformedHeader("func @main( -> i64"); // Missing ')'
     return 0;
 }

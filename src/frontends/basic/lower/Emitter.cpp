@@ -45,7 +45,10 @@ Emitter::Emitter(Lowerer &lowerer) noexcept : lowerer_(lowerer), common_(lowerer
 ///          @c i1 slots.  This accessor centralises the construction of the
 ///          @ref il::core::Type instance so all call sites agree on the
 ///          representation and avoid repeating the `Type::Kind::I1` literal.
-Emitter::Type Emitter::ilBoolTy() const { return common_.ilBoolTy(); }
+Emitter::Type Emitter::ilBoolTy() const
+{
+    return common_.ilBoolTy();
+}
 
 /// @brief Emit a boolean constant in the current function.
 ///
@@ -55,7 +58,10 @@ Emitter::Type Emitter::ilBoolTy() const { return common_.ilBoolTy(); }
 ///
 /// @param v Whether the emitted literal should be @c true.
 /// @return SSA value representing the boolean constant.
-Emitter::Value Emitter::emitBoolConst(bool v) { return common_.emitBoolConst(v); }
+Emitter::Value Emitter::emitBoolConst(bool v)
+{
+    return common_.emitBoolConst(v);
+}
 
 /// @brief Materialise a control-flow diamond that collapses to a boolean value.
 ///
@@ -164,7 +170,10 @@ Emitter::Value Emitter::emitUnary(Opcode op, Type ty, Value val)
 ///
 /// @param v Literal value to encode.
 /// @return SSA value referring to the constant literal.
-Emitter::Value Emitter::emitConstI64(std::int64_t v) { return common_.emitConstI64(v); }
+Emitter::Value Emitter::emitConstI64(std::int64_t v)
+{
+    return common_.emitConstI64(v);
+}
 
 /// @brief Zero-extend a boolean into a 64-bit integer slot.
 ///
@@ -173,7 +182,10 @@ Emitter::Value Emitter::emitConstI64(std::int64_t v) { return common_.emitConstI
 ///
 /// @param val Boolean SSA value to extend.
 /// @return 64-bit integer SSA value.
-Emitter::Value Emitter::emitZext1ToI64(Value val) { return common_.emitZext1ToI64(val); }
+Emitter::Value Emitter::emitZext1ToI64(Value val)
+{
+    return common_.emitZext1ToI64(val);
+}
 
 /// @brief Emit a checked integer subtraction.
 ///
@@ -183,7 +195,10 @@ Emitter::Value Emitter::emitZext1ToI64(Value val) { return common_.emitZext1ToI6
 /// @param lhs Left operand.
 /// @param rhs Right operand.
 /// @return SSA value with the subtraction result.
-Emitter::Value Emitter::emitISub(Value lhs, Value rhs) { return common_.emitISub(lhs, rhs); }
+Emitter::Value Emitter::emitISub(Value lhs, Value rhs)
+{
+    return common_.emitISub(lhs, rhs);
+}
 
 /// @brief Normalise a BASIC logical value to an @c i64 mask.
 ///

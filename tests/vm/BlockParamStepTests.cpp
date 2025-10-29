@@ -20,8 +20,8 @@ int main(int argc, char **argv)
     std::string ilFile = argv[2];
     std::string script = argv[3];
     std::string errFile = "block_param_step.err";
-    std::string cmd = ilc + " -run " + ilFile + " --break entry --debug-cmds " + script +
-                      " 2>" + errFile;
+    std::string cmd =
+        ilc + " -run " + ilFile + " --break entry --debug-cmds " + script + " 2>" + errFile;
     int rc = std::system(cmd.c_str());
     if (rc != 7 * 256)
     {

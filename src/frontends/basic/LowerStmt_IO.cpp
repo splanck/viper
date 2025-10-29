@@ -76,8 +76,8 @@ void Lowerer::lowerOpen(const OpenStmt &stmt)
     RVal channel = lowerExpr(*stmt.channelExpr);
     channel = normalizeChannelToI32(std::move(channel), stmt.loc);
 
-    Value modeValue = emitCommon(stmt.loc).narrow_to(
-        Value::constInt(static_cast<int32_t>(stmt.mode)), 64, 32);
+    Value modeValue =
+        emitCommon(stmt.loc).narrow_to(Value::constInt(static_cast<int32_t>(stmt.mode)), 64, 32);
 
     Value err = emitCallRet(
         Type(Type::Kind::I32), "rt_open_err_vstr", {path.value, modeValue, channel.value});
@@ -422,17 +422,18 @@ void Lowerer::lowerPrintCh(const PrintChStmt &stmt)
 
     if (stmt.trailingNewline)
     {
-        auto hasPrintedArg = std::any_of(stmt.args.begin(), stmt.args.end(), [](const auto &expr) {
-            return static_cast<bool>(expr);
-        });
+        auto hasPrintedArg = std::any_of(stmt.args.begin(),
+                                         stmt.args.end(),
+                                         [](const auto &expr) { return static_cast<bool>(expr); });
         if (!hasPrintedArg)
         {
             std::string emptyLbl = getStringLabel("");
             Value empty = emitConstStr(emptyLbl);
             curLoc = stmt.loc;
-            Value err = emitCallRet(
-                Type(Type::Kind::I32), "rt_println_ch_err", {channel.value, empty});
-            emitRuntimeErrCheck(err, stmt.loc, "printch", [&](Value code) { emitTrapFromErr(code); });
+            Value err =
+                emitCallRet(Type(Type::Kind::I32), "rt_println_ch_err", {channel.value, empty});
+            emitRuntimeErrCheck(
+                err, stmt.loc, "printch", [&](Value code) { emitTrapFromErr(code); });
         }
     }
 }

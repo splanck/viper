@@ -78,4 +78,3 @@ std::string VmFixture::captureTrap(il::core::Module &module) const
 }
 
 } // namespace viper::tests
-

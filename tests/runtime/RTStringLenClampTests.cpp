@@ -8,7 +8,7 @@
 #include "rt_string.h"
 
 #ifdef NDEBUG
-#    undef NDEBUG
+#undef NDEBUG
 #endif
 #include <assert.h>
 #include <stdint.h>

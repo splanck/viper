@@ -17,11 +17,10 @@ using namespace il::support;
 
 int main()
 {
-    const std::string src =
-        "10 PRINT \"LINE\\n\"\n"
-        "20 PRINT \"quote:\\\"\"\n"
-        "30 PRINT \"tab:\\t\"\n"
-        "40 END\n";
+    const std::string src = "10 PRINT \"LINE\\n\"\n"
+                            "20 PRINT \"quote:\\\"\"\n"
+                            "30 PRINT \"tab:\\t\"\n"
+                            "40 END\n";
 
     SourceManager sm;
     uint32_t fid = sm.addFile("string_escapes.bas");

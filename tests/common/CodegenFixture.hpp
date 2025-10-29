@@ -53,7 +53,7 @@ struct CodegenRunConfig
 
 class CodegenFixture
 {
-public:
+  public:
     CodegenFixture();
     CodegenFixture(const CodegenFixture &) = delete;
     CodegenFixture &operator=(const CodegenFixture &) = delete;
@@ -61,9 +61,20 @@ public:
     CodegenFixture &operator=(CodegenFixture &&) = delete;
     ~CodegenFixture();
 
-    [[nodiscard]] bool isReady() const noexcept { return setupError_.empty(); }
-    [[nodiscard]] const std::string &setupError() const noexcept { return setupError_; }
-    [[nodiscard]] const std::filesystem::path &tempDirectory() const noexcept { return tempDir_; }
+    [[nodiscard]] bool isReady() const noexcept
+    {
+        return setupError_.empty();
+    }
+
+    [[nodiscard]] const std::string &setupError() const noexcept
+    {
+        return setupError_;
+    }
+
+    [[nodiscard]] const std::filesystem::path &tempDirectory() const noexcept
+    {
+        return tempDir_;
+    }
 
     [[nodiscard]] std::filesystem::path writeIlProgram(std::string_view fileName,
                                                        const std::string &source) const;
@@ -73,10 +84,10 @@ public:
     [[nodiscard]] CodegenExecutionResult runNative(const std::filesystem::path &ilPath,
                                                    const std::vector<std::string> &extraArgs = {});
 
-    [[nodiscard]] CodegenComparisonResult compareVmAndNative(const CodegenRunConfig &config,
-                                                             const CodegenComparisonOptions &options);
+    [[nodiscard]] CodegenComparisonResult compareVmAndNative(
+        const CodegenRunConfig &config, const CodegenComparisonOptions &options);
 
-private:
+  private:
     [[nodiscard]] std::filesystem::path reserveStdoutCapturePath(const std::string &stem);
     [[nodiscard]] CodegenExecutionResult runCommand(const std::string &commandLine,
                                                     const std::filesystem::path &stdoutPath) const;
@@ -88,4 +99,3 @@ private:
 };
 
 } // namespace viper::tests
-

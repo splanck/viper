@@ -40,16 +40,16 @@
 
 namespace
 {
+using il::vm::detail::control::inline_impl::getOrBuildSwitchCache;
+using il::vm::detail::control::inline_impl::lookupDense;
+using il::vm::detail::control::inline_impl::lookupHashed;
+using il::vm::detail::control::inline_impl::lookupSorted;
 using viper::vm::DenseJumpTable;
 using viper::vm::HashedCases;
 using viper::vm::SortedCases;
 using viper::vm::SwitchCache;
 using viper::vm::SwitchCacheEntry;
 using viper::vm::SwitchMode;
-using il::vm::detail::control::inline_impl::getOrBuildSwitchCache;
-using il::vm::detail::control::inline_impl::lookupDense;
-using il::vm::detail::control::inline_impl::lookupHashed;
-using il::vm::detail::control::inline_impl::lookupSorted;
 
 SwitchMode g_switchMode = SwitchMode::Auto; ///< Global override for switch backend selection.
 
@@ -257,7 +257,8 @@ VM::ExecResult handleSwitchI32(VM &vm,
 
     std::vector<il::vm::ops::common::Case> cases;
     cases.reserve(in.labels.size());
-    auto makeTarget = [&](size_t labelIndex) {
+    auto makeTarget = [&](size_t labelIndex)
+    {
         il::vm::ops::common::Target target{};
         target.vm = &vm;
         target.instr = &in;
@@ -275,7 +276,8 @@ VM::ExecResult handleSwitchI32(VM &vm,
     }
 
     il::vm::ops::common::Target invalid{};
-    auto selected = il::vm::ops::common::select_case(il::vm::ops::common::Scalar{idx}, cases, invalid);
+    auto selected =
+        il::vm::ops::common::select_case(il::vm::ops::common::Scalar{idx}, cases, invalid);
 
     if (!selected.valid())
     {

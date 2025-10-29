@@ -45,4 +45,3 @@ bool RegAllocPass::run(Module &module, Diagnostics &diags)
 }
 
 } // namespace viper::codegen::x64::passes
-

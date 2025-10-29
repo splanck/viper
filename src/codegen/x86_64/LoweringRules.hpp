@@ -28,7 +28,7 @@ class MIRBuilder;
 /// \brief Description of a single IL lowering rule.
 struct LoweringRule
 {
-    bool (*match)(const IL::Instr &); ///< Match predicate invoked before emit.
+    bool (*match)(const IL::Instr &);              ///< Match predicate invoked before emit.
     void (*emit)(const IL::Instr &, MIRBuilder &); ///< Emit routine for matched opcode.
     const char *name; ///< Debug name describing the handled opcode family.
 };

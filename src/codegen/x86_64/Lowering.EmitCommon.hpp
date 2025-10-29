@@ -43,11 +43,8 @@ class EmitCommon
     [[nodiscard]] Operand materialise(Operand operand, RegClass cls);
     [[nodiscard]] Operand materialiseGpr(Operand operand);
 
-    void emitBinary(const ILInstr &instr,
-                    MOpcode opcRR,
-                    MOpcode opcRI,
-                    RegClass cls,
-                    bool requireImm32);
+    void emitBinary(
+        const ILInstr &instr, MOpcode opcRR, MOpcode opcRI, RegClass cls, bool requireImm32);
     void emitShift(const ILInstr &instr, MOpcode opcImm, MOpcode opcReg);
     void emitCmp(const ILInstr &instr, RegClass cls, int defaultCond);
     void emitSelect(const ILInstr &instr);
@@ -67,4 +64,3 @@ class EmitCommon
 };
 
 } // namespace viper::codegen::x64
-

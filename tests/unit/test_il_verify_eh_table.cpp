@@ -132,7 +132,8 @@ int main()
             std::fprintf(stderr, "%s\n", message.c_str());
         }
         const bool typeMismatch = message.find("operand type mismatch") != std::string::npos;
-        const bool resumeTokMessage = message.find("operand 0 must be resume_tok") != std::string::npos;
+        const bool resumeTokMessage =
+            message.find("operand 0 must be resume_tok") != std::string::npos;
         assert(typeMismatch || resumeTokMessage);
     }
 

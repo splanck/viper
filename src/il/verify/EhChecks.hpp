@@ -52,4 +52,3 @@ il::support::Expected<void> checkUnreachableHandlers(const EhModel &model);
 il::support::Expected<void> checkResumeEdges(const EhModel &model);
 
 } // namespace il::verify
-

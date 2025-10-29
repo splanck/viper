@@ -222,4 +222,3 @@ void ListView::selectRange(int a, int b)
 }
 
 } // namespace viper::tui::widgets
-

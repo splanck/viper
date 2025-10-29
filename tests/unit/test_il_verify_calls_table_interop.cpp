@@ -1,8 +1,8 @@
 // File: tests/unit/test_il_verify_calls_table_interop.cpp
-// Purpose: Validate call verification against extern/function tables including success and failure paths.
-// Key invariants: Matching signatures verify; mismatched arity or argument types surface checkCall_E diagnostics.
-// Ownership/Lifetime: Modules, functions, and externs are local to each test scope.
-// Links: docs/il-guide.md#reference
+// Purpose: Validate call verification against extern/function tables including success and failure
+// paths. Key invariants: Matching signatures verify; mismatched arity or argument types surface
+// checkCall_E diagnostics. Ownership/Lifetime: Modules, functions, and externs are local to each
+// test scope. Links: docs/il-guide.md#reference
 
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Extern.hpp"
@@ -23,7 +23,8 @@ int main()
 {
     using namespace il::core;
 
-    auto makeFooExtern = []() {
+    auto makeFooExtern = []()
+    {
         Extern foo;
         foo.name = "foo";
         foo.retType = Type(Type::Kind::I32);
@@ -198,4 +199,3 @@ int main()
 
     return 0;
 }
-

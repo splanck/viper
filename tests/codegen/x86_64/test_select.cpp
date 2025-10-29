@@ -73,9 +73,8 @@ namespace
     selectInstr.opcode = "select";
     selectInstr.resultId = 3;
     selectInstr.resultKind = ILValue::Kind::I64;
-    selectInstr.ops = {makeValueRef(icmpInstr.resultId, ILValue::Kind::I1),
-                       makeI64Const(42),
-                       makeI64Const(7)};
+    selectInstr.ops = {
+        makeValueRef(icmpInstr.resultId, ILValue::Kind::I1), makeI64Const(42), makeI64Const(7)};
 
     ILInstr retInstr{};
     retInstr.opcode = "ret";
@@ -111,9 +110,8 @@ namespace
     selectInstr.opcode = "select";
     selectInstr.resultId = 3;
     selectInstr.resultKind = ILValue::Kind::F64;
-    selectInstr.ops = {makeValueRef(icmpInstr.resultId, ILValue::Kind::I1),
-                       makeF64Const(42.0),
-                       makeF64Const(7.0)};
+    selectInstr.ops = {
+        makeValueRef(icmpInstr.resultId, ILValue::Kind::I1), makeF64Const(42.0), makeF64Const(7.0)};
 
     ILInstr retInstr{};
     retInstr.opcode = "ret";

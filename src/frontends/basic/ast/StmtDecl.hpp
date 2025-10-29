@@ -198,4 +198,3 @@ struct TypeDecl : Stmt
 };
 
 } // namespace il::frontends::basic
-

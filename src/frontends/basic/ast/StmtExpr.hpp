@@ -354,4 +354,3 @@ struct DeleteStmt : Stmt
 };
 
 } // namespace il::frontends::basic
-

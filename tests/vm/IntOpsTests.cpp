@@ -14,11 +14,7 @@ using namespace il::core;
 
 namespace
 {
-void buildBinaryFunction(Module &module,
-                         Opcode op,
-                         Type::Kind type,
-                         int64_t lhs,
-                         int64_t rhs)
+void buildBinaryFunction(Module &module, Opcode op, Type::Kind type, int64_t lhs, int64_t rhs)
 {
     il::build::IRBuilder builder(module);
     auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
@@ -42,10 +38,7 @@ void buildBinaryFunction(Module &module,
     bb.instructions.push_back(ret);
 }
 
-void buildUnaryFunction(Module &module,
-                        Opcode op,
-                        Type::Kind type,
-                        int64_t operand)
+void buildUnaryFunction(Module &module, Opcode op, Type::Kind type, int64_t operand)
 {
     il::build::IRBuilder builder(module);
     auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
@@ -96,14 +89,16 @@ int main()
 
     {
         Module module;
-        buildBinaryFunction(module, Opcode::IAddOvf, Type::Kind::I16, std::numeric_limits<int16_t>::max(), 1);
+        buildBinaryFunction(
+            module, Opcode::IAddOvf, Type::Kind::I16, std::numeric_limits<int16_t>::max(), 1);
         const std::string out = fixture.captureTrap(module);
         assert(out.find("Overflow (code=0)") != std::string::npos);
     }
 
     {
         Module module;
-        buildBinaryFunction(module, Opcode::SDivChk0, Type::Kind::I16, std::numeric_limits<int16_t>::min(), -1);
+        buildBinaryFunction(
+            module, Opcode::SDivChk0, Type::Kind::I16, std::numeric_limits<int16_t>::min(), -1);
         const std::string out = fixture.captureTrap(module);
         assert(out.find("Overflow (code=0)") != std::string::npos);
     }
@@ -131,7 +126,8 @@ int main()
 
     {
         Module module;
-        buildUnaryFunction(module, Opcode::CastSiNarrowChk, Type::Kind::I16, std::numeric_limits<int32_t>::max());
+        buildUnaryFunction(
+            module, Opcode::CastSiNarrowChk, Type::Kind::I16, std::numeric_limits<int32_t>::max());
         const std::string out = fixture.captureTrap(module);
         assert(out.find("Trap @main#0 line 1: InvalidCast (code=0)") != std::string::npos);
     }

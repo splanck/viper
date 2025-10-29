@@ -13,7 +13,7 @@
 int main()
 {
     char buffer[32];
-    RtError err = { Err_RuntimeError, -1 };
+    RtError err = {Err_RuntimeError, -1};
     rt_str_from_double(42.0, buffer, sizeof(buffer), &err);
     assert(rt_ok(err));
     assert(std::strcmp(buffer, "42") == 0);

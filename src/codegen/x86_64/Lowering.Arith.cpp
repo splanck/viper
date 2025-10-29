@@ -135,10 +135,11 @@ void emitDivFamily(const ILInstr &instr, MIRBuilder &builder)
 void emitZSTrunc(const ILInstr &instr, MIRBuilder &builder)
 {
     EmitCommon emit(builder);
-    emit.emitCast(instr,
-                  MOpcode::MOVrr,
-                  builder.regClassFor(instr.resultKind),
-                  builder.regClassFor(instr.ops.empty() ? instr.resultKind : instr.ops.front().kind));
+    emit.emitCast(
+        instr,
+        MOpcode::MOVrr,
+        builder.regClassFor(instr.resultKind),
+        builder.regClassFor(instr.ops.empty() ? instr.resultKind : instr.ops.front().kind));
 }
 
 void emitSIToFP(const ILInstr &instr, MIRBuilder &builder)
@@ -152,4 +153,3 @@ void emitFPToSI(const ILInstr &instr, MIRBuilder &builder)
 }
 
 } // namespace viper::codegen::x64::lowering
-

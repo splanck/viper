@@ -22,9 +22,8 @@ namespace
 void addPowExtern(Module &module)
 {
     il::build::IRBuilder builder(module);
-    builder.addExtern("rt_pow_f64_chkdom",
-                      Type(Type::Kind::F64),
-                      {Type(Type::Kind::F64), Type(Type::Kind::F64)});
+    builder.addExtern(
+        "rt_pow_f64_chkdom", Type(Type::Kind::F64), {Type(Type::Kind::F64), Type(Type::Kind::F64)});
 }
 
 void buildPowSuccess(Module &module)
@@ -63,10 +62,8 @@ void buildPowDomainError(Module &module)
     builder.setInsertPoint(bb);
 
     const il::support::SourceLoc loc{1, 1, 1};
-    builder.emitCall("rt_pow_f64_chkdom",
-                     {Value::constFloat(-2.0), Value::constFloat(0.5)},
-                     std::nullopt,
-                     loc);
+    builder.emitCall(
+        "rt_pow_f64_chkdom", {Value::constFloat(-2.0), Value::constFloat(0.5)}, std::nullopt, loc);
     builder.emitRet(std::optional<Value>{Value::constInt(0)}, loc);
 }
 
@@ -128,7 +125,8 @@ int main()
         args[0].f64 = -2.0;
         args[1].f64 = 0.5;
 
-        auto rawArgs = il::vm::marshalArguments(desc->signature, std::span<il::vm::Slot>(args), powStatus);
+        auto rawArgs =
+            il::vm::marshalArguments(desc->signature, std::span<il::vm::Slot>(args), powStatus);
         assert(powStatus.active);
         const size_t statusIndex = desc->signature.paramTypes.size();
         assert(statusIndex < rawArgs.size());
@@ -139,7 +137,8 @@ int main()
         runtimeOk = false;
 
         il::vm::ResultBuffers buffers{};
-        auto trap = il::vm::classifyPowTrap(*desc, powStatus, std::span<const il::vm::Slot>(args), buffers);
+        auto trap =
+            il::vm::classifyPowTrap(*desc, powStatus, std::span<const il::vm::Slot>(args), buffers);
         assert(trap.triggered);
         assert(trap.kind == il::vm::TrapKind::DomainError);
     }
@@ -153,7 +152,8 @@ int main()
         args[0].f64 = 2.0;
         args[1].f64 = 2048.0;
 
-        auto rawArgs = il::vm::marshalArguments(desc->signature, std::span<il::vm::Slot>(args), powStatus);
+        auto rawArgs =
+            il::vm::marshalArguments(desc->signature, std::span<il::vm::Slot>(args), powStatus);
         assert(powStatus.active);
         const size_t statusIndex = desc->signature.paramTypes.size();
         assert(statusIndex < rawArgs.size());
@@ -164,7 +164,8 @@ int main()
         runtimeOk = false;
 
         il::vm::ResultBuffers buffers{};
-        auto trap = il::vm::classifyPowTrap(*desc, powStatus, std::span<const il::vm::Slot>(args), buffers);
+        auto trap =
+            il::vm::classifyPowTrap(*desc, powStatus, std::span<const il::vm::Slot>(args), buffers);
         assert(trap.triggered);
         assert(trap.kind == il::vm::TrapKind::Overflow);
     }

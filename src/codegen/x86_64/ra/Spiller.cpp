@@ -87,7 +87,8 @@ MInstr Spiller::makeLoad(RegClass cls, PhysReg dst, const SpillPlan &plan) const
 {
     if (cls == RegClass::GPR)
     {
-        return MInstr::make(MOpcode::MOVrr, {makePhysOperand(cls, dst), makeFrameOperand(plan.slot)});
+        return MInstr::make(MOpcode::MOVrr,
+                            {makePhysOperand(cls, dst), makeFrameOperand(plan.slot)});
     }
     return MInstr::make(MOpcode::MOVSDmr, {makePhysOperand(cls, dst), makeFrameOperand(plan.slot)});
 }
@@ -104,7 +105,8 @@ MInstr Spiller::makeStore(RegClass cls, const SpillPlan &plan, PhysReg src) cons
 {
     if (cls == RegClass::GPR)
     {
-        return MInstr::make(MOpcode::MOVrr, {makeFrameOperand(plan.slot), makePhysOperand(cls, src)});
+        return MInstr::make(MOpcode::MOVrr,
+                            {makeFrameOperand(plan.slot), makePhysOperand(cls, src)});
     }
     return MInstr::make(MOpcode::MOVSDrm, {makeFrameOperand(plan.slot), makePhysOperand(cls, src)});
 }

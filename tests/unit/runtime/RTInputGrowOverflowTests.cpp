@@ -1,8 +1,8 @@
 // File: tests/unit/runtime/RTInputGrowOverflowTests.cpp
 // Purpose: Validate rt_input_try_grow guards against size_t overflow before reallocating.
-// Key invariants: Buffer pointer remains unchanged and helper reports overflow instead of reallocating.
-// Ownership: Allocates a small runtime buffer and releases it after the check.
-// Links: docs/codemap.md
+// Key invariants: Buffer pointer remains unchanged and helper reports overflow instead of
+// reallocating. Ownership: Allocates a small runtime buffer and releases it after the check. Links:
+// docs/codemap.md
 
 #include "rt.hpp"
 #include "rt_internal.h"
@@ -28,4 +28,3 @@ int main()
     free(buf);
     return 0;
 }
-

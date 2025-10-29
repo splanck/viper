@@ -44,8 +44,7 @@ bool isSrcBreakSpec(const std::string &spec)
 
     // Skip whitespace between the colon and the first digit.
     auto linePos = pos + 1;
-    while (linePos < spec.size() &&
-           std::isspace(static_cast<unsigned char>(spec[linePos])))
+    while (linePos < spec.size() && std::isspace(static_cast<unsigned char>(spec[linePos])))
     {
         ++linePos;
     }

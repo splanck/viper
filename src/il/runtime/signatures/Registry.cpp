@@ -50,4 +50,3 @@ const std::vector<Signature> &all_signatures()
 }
 
 } // namespace il::runtime::signatures
-

@@ -44,8 +44,7 @@ namespace
 /// @tparam Index Entry within the lowering table to query.
 /// @param instr IL instruction presented to the rule.
 /// @return True when the instruction satisfies the rule's predicate.
-template <std::size_t Index>
-bool matchRuleThunk(const IL::Instr &instr)
+template <std::size_t Index> bool matchRuleThunk(const IL::Instr &instr)
 {
     return matchesRuleSpec(lowering::kLoweringRuleTable[Index], instr);
 }
@@ -57,8 +56,7 @@ bool matchRuleThunk(const IL::Instr &instr)
 /// @tparam Index Entry within the lowering table to invoke.
 /// @param instr IL instruction being lowered.
 /// @param builder Machine IR builder receiving the emitted instructions.
-template <std::size_t Index>
-void emitRuleThunk(const IL::Instr &instr, MIRBuilder &builder)
+template <std::size_t Index> void emitRuleThunk(const IL::Instr &instr, MIRBuilder &builder)
 {
     lowering::kLoweringRuleTable[Index].emit(instr, builder);
 }
@@ -75,7 +73,8 @@ template <std::size_t... Indices>
 const std::vector<LoweringRule> &makeRules(std::index_sequence<Indices...>)
 {
     static const std::vector<LoweringRule> rules{
-        LoweringRule{&matchRuleThunk<Indices>, &emitRuleThunk<Indices>,
+        LoweringRule{&matchRuleThunk<Indices>,
+                     &emitRuleThunk<Indices>,
                      lowering::kLoweringRuleTable[Indices].name}...};
     return rules;
 }
@@ -125,4 +124,3 @@ const LoweringRule *viper_select_rule(const IL::Instr &instr)
 }
 
 } // namespace viper::codegen::x64
-

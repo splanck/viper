@@ -126,9 +126,10 @@ std::optional<Constant> fold_numeric_logic(AST::BinaryExpr::Op op,
     if (op == AST::BinaryExpr::Op::LogicalAnd || op == AST::BinaryExpr::Op::LogicalAndShort ||
         op == AST::BinaryExpr::Op::LogicalOr || op == AST::BinaryExpr::Op::LogicalOrShort)
     {
-        bool swapped = (op == AST::BinaryExpr::Op::LogicalAnd || op == AST::BinaryExpr::Op::LogicalAndShort)
-                           ? (right.i != 0 && left.i != 0)
-                           : (right.i != 0 || left.i != 0);
+        bool swapped =
+            (op == AST::BinaryExpr::Op::LogicalAnd || op == AST::BinaryExpr::Op::LogicalAndShort)
+                ? (right.i != 0 && left.i != 0)
+                : (right.i != 0 || left.i != 0);
         assert(result == swapped);
     }
 #endif

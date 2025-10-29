@@ -17,12 +17,12 @@
 
 #include <cassert>
 #include <chrono>
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
-#include <cstdio>
 #include <optional>
-#include <string_view>
 #include <string>
+#include <string_view>
 
 using namespace il::core;
 
@@ -73,7 +73,9 @@ int main()
 
     Module module;
     il::build::IRBuilder builder(module);
-    builder.addExtern("rt_line_input_ch_err", Type(Type::Kind::I32), {Type(Type::Kind::I32), Type(Type::Kind::Ptr)});
+    builder.addExtern("rt_line_input_ch_err",
+                      Type(Type::Kind::I32),
+                      {Type(Type::Kind::I32), Type(Type::Kind::Ptr)});
     builder.addExtern("rt_len", Type(Type::Kind::I64), {Type(Type::Kind::Str)});
     builder.addExtern("rt_str_release_maybe", Type(Type::Kind::Void), {Type(Type::Kind::Str)});
 
@@ -115,9 +117,8 @@ int main()
     auto &mainFn = module.functions.front();
     auto state = il::vm::VMTestHook::prepare(vm, mainFn);
 
-    auto step = [&]() -> std::optional<il::vm::Slot> {
-        return il::vm::VMTestHook::step(vm, state);
-    };
+    auto step = [&]() -> std::optional<il::vm::Slot>
+    { return il::vm::VMTestHook::step(vm, state); };
 
     if (step())
     {

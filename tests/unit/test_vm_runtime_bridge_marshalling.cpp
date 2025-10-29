@@ -4,12 +4,6 @@
 // Ownership: Uses runtime library helpers; callers release any allocated resources.
 // Links: docs/codemap.md
 
-#include "vm/Marshal.hpp"
-#include "vm/OpHandlers_Control.hpp"
-#include "vm/RuntimeBridge.hpp"
-#include "vm/Trap.hpp"
-#include "vm/VM.hpp"
-#include "vm/VMContext.hpp"
 #include "VMTestHook.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
@@ -21,10 +15,16 @@
 #include "rt_array.h"
 #include "rt_internal.h"
 #include "rt_string.h"
+#include "vm/Marshal.hpp"
+#include "vm/OpHandlers_Control.hpp"
+#include "vm/RuntimeBridge.hpp"
+#include "vm/Trap.hpp"
+#include "vm/VM.hpp"
+#include "vm/VMContext.hpp"
 #include <array>
-#include <initializer_list>
 #include <cassert>
 #include <cstdlib>
+#include <initializer_list>
 #include <limits>
 #include <string>
 #include <string_view>
@@ -32,10 +32,10 @@
 
 int main()
 {
-    using il::support::SourceLoc;
+    using il::core::Opcode;
     using il::core::Type;
     using il::core::Value;
-    using il::core::Opcode;
+    using il::support::SourceLoc;
     using il::vm::RuntimeBridge;
     using il::vm::RuntimeCallContext;
     using il::vm::Slot;
@@ -54,7 +54,8 @@ int main()
     auto callBridge = [&](const std::string &name,
                           std::vector<Slot> arguments,
                           Type::Kind resultKind,
-                          std::initializer_list<Type::Kind> argKinds) {
+                          std::initializer_list<Type::Kind> argKinds)
+    {
         for (Type::Kind arg : argKinds)
             markKind(arg);
         markKind(resultKind);
@@ -87,7 +88,8 @@ int main()
 
     Slot numberArg{};
     numberArg.i64 = 12345;
-    Slot strNumberResult = callBridge("rt_int_to_str", {numberArg}, Type::Kind::Str, {Type::Kind::I64});
+    Slot strNumberResult =
+        callBridge("rt_int_to_str", {numberArg}, Type::Kind::Str, {Type::Kind::I64});
     assert(strNumberResult.str != nullptr);
     rt_string numberStr = strNumberResult.str;
     std::string numberText(numberStr->data, rt_heap_len(numberStr->data));
@@ -105,7 +107,8 @@ int main()
     eqArgA.str = strResA.str;
     Slot eqArgB{};
     eqArgB.str = strResB.str;
-    Slot eqResult = callBridge("rt_str_eq", {eqArgA, eqArgB}, Type::Kind::I1, {Type::Kind::Str, Type::Kind::Str});
+    Slot eqResult = callBridge(
+        "rt_str_eq", {eqArgA, eqArgB}, Type::Kind::I1, {Type::Kind::Str, Type::Kind::Str});
     assert(eqResult.i64 == 1);
     rt_string_unref(strResA.str);
     rt_string_unref(strResB.str);
@@ -118,7 +121,8 @@ int main()
 
     Slot seedArg{};
     seedArg.i64 = 42;
-    Slot voidResult = callBridge("rt_randomize_i64", {seedArg}, Type::Kind::Void, {Type::Kind::I64});
+    Slot voidResult =
+        callBridge("rt_randomize_i64", {seedArg}, Type::Kind::Void, {Type::Kind::I64});
     assert(voidResult.i64 == 0);
 
     Slot arrLenArg{};
@@ -143,10 +147,8 @@ int main()
 
     Slot getIdx{};
     getIdx.i64 = 1;
-    Slot arrGetResult = callBridge("rt_arr_i32_get",
-                                   {arrSlot, getIdx},
-                                   Type::Kind::I64,
-                                   {Type::Kind::Ptr, Type::Kind::I64});
+    Slot arrGetResult = callBridge(
+        "rt_arr_i32_get", {arrSlot, getIdx}, Type::Kind::I64, {Type::Kind::Ptr, Type::Kind::I64});
     assert(arrGetResult.i64 == -17);
 
     Slot resizeLen{};
@@ -163,10 +165,8 @@ int main()
 
     Slot newIdx{};
     newIdx.i64 = 3;
-    Slot zeroResult = callBridge("rt_arr_i32_get",
-                                 {arrSlot, newIdx},
-                                 Type::Kind::I64,
-                                 {Type::Kind::Ptr, Type::Kind::I64});
+    Slot zeroResult = callBridge(
+        "rt_arr_i32_get", {arrSlot, newIdx}, Type::Kind::I64, {Type::Kind::Ptr, Type::Kind::I64});
     assert(zeroResult.i64 == 0);
 
     rt_arr_i32_release(static_cast<int32_t *>(arrSlot.ptr));
@@ -241,9 +241,9 @@ int main()
         simulated.literal_len = static_cast<size_t>(overflowLength);
         simulated.literal_refs = 1;
 
-        il::vm::StringRef simulatedView = il::vm::fromViperString(reinterpret_cast<rt_string>(&simulated));
-        assert(!il::vm::detail::lengthWithinLimit(
-            overflowLength, il::vm::kMaxBridgeStringBytes));
+        il::vm::StringRef simulatedView =
+            il::vm::fromViperString(reinterpret_cast<rt_string>(&simulated));
+        assert(!il::vm::detail::lengthWithinLimit(overflowLength, il::vm::kMaxBridgeStringBytes));
         assert(simulatedView.empty());
     }
 
@@ -336,7 +336,8 @@ int main()
         args[0].str = reinterpret_cast<rt_string>(&bogus);
 
         il::vm::Slot vmResult = il::vm::VMTestHook::run(vm, module.functions.front(), args);
-        const int64_t expectedTrap = static_cast<int64_t>(static_cast<int32_t>(il::vm::TrapKind::DomainError));
+        const int64_t expectedTrap =
+            static_cast<int64_t>(static_cast<int32_t>(il::vm::TrapKind::DomainError));
         assert(vmResult.i64 == expectedTrap);
     }
 

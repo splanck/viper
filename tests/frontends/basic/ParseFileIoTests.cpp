@@ -33,10 +33,8 @@ std::string dumpProgram(const std::string &src)
 int main()
 {
     {
-        std::string dump =
-            dumpProgram("10 OPEN \"foo.txt\" FOR INPUT AS #1\n20 END\n");
-        assert(dump ==
-               "10: (OPEN mode=INPUT(0) path=\"foo.txt\" channel=#1)\n20: (END)\n");
+        std::string dump = dumpProgram("10 OPEN \"foo.txt\" FOR INPUT AS #1\n20 END\n");
+        assert(dump == "10: (OPEN mode=INPUT(0) path=\"foo.txt\" channel=#1)\n20: (END)\n");
     }
 
     {
@@ -55,10 +53,9 @@ int main()
     }
 
     {
-        const std::string src =
-            "10 DIM BUF(4)\n"
-            "20 LINE INPUT #1, BUF(2)\n"
-            "30 END\n";
+        const std::string src = "10 DIM BUF(4)\n"
+                                "20 LINE INPUT #1, BUF(2)\n"
+                                "30 END\n";
         SourceManager sm;
         const uint32_t fid = sm.addFile("line_input_array.bas");
         Parser parser(src, fid);
@@ -72,9 +69,8 @@ int main()
     }
 
     {
-        const std::string src =
-            "10 LINE INPUT #1, LEFT$(A$, 1)\n"
-            "20 END\n";
+        const std::string src = "10 LINE INPUT #1, LEFT$(A$, 1)\n"
+                                "20 END\n";
         SourceManager sm;
         const uint32_t fid = sm.addFile("line_input_invalid.bas");
         DiagnosticEngine de;

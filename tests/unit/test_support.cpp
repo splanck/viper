@@ -5,10 +5,10 @@
 #include "support/source_location.hpp"
 #include "support/source_manager.hpp"
 #include "support/string_interner.hpp"
-#include <cstdint>
-#include <iostream>
 #include <cassert>
 #include <cstddef>
+#include <cstdint>
+#include <iostream>
 #include <limits>
 #include <sstream>
 #include <string>
@@ -90,14 +90,11 @@ int main()
     il::support::SourceLoc missingLineEnd{loc.file_id, 0, 0};
     il::support::SourceRange missingLineRange{sameLineBegin, missingLineEnd};
     assert(missingLineRange.isValid());
-    il::support::Diag partialDiag{il::support::Severity::Error,
-                                  "partial coordinates",
-                                  partial};
+    il::support::Diag partialDiag{il::support::Severity::Error, "partial coordinates", partial};
     std::ostringstream partialStream;
     il::support::printDiag(partialDiag, partialStream, &sm);
     const std::string partialText = partialStream.str();
-    assert(partialText.find("test:2: error: partial coordinates")
-           != std::string::npos);
+    assert(partialText.find("test:2: error: partial coordinates") != std::string::npos);
     assert(partialText.find("test:2:0") == std::string::npos);
 
     // Captured string views must remain valid after subsequent insertions.
@@ -138,8 +135,7 @@ int main()
     // Expected<Diag> success versus error disambiguation
     std::string diagValueMessage = "value diag";
     il::support::Diag diagValue = il::support::makeError({}, diagValueMessage);
-    il::support::Expected<il::support::Diag> ok(il::support::kSuccessDiag,
-                                                std::move(diagValue));
+    il::support::Expected<il::support::Diag> ok(il::support::kSuccessDiag, std::move(diagValue));
     assert(ok.hasValue());
     assert(ok.value().message == diagValueMessage);
 
@@ -186,13 +182,11 @@ int main()
     assert(!intError.isOk());
     assert(intError.error() == "boom");
 
-    il::support::Result<std::string> strResult =
-        il::support::Result<std::string>::success("value");
+    il::support::Result<std::string> strResult = il::support::Result<std::string>::success("value");
     assert(strResult.isOk());
     assert(strResult.value() == "value");
 
-    il::support::Result<std::string> strError =
-        il::support::Result<std::string>::error("nope");
+    il::support::Result<std::string> strError = il::support::Result<std::string>::error("nope");
     assert(!strError.isOk());
     assert(strError.error() == "nope");
 
@@ -206,15 +200,14 @@ int main()
         std::stringstream captured;
         auto *old = std::cerr.rdbuf(captured.rdbuf());
         il::support::SourceManagerTestAccess::setNextFileId(
-            overflowSm,
-            static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()) + 1);
+            overflowSm, static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()) + 1);
         uint32_t overflowId = overflowSm.addFile("overflow");
         std::cerr.rdbuf(old);
         assert(overflowId == 0);
         auto diagText = captured.str();
         assert(diagText.find("error:") != std::string::npos);
-        assert(diagText.find("source manager exhausted file identifier space")
-               != std::string::npos);
+        assert(diagText.find("source manager exhausted file identifier space") !=
+               std::string::npos);
     }
 
     return 0;

@@ -36,8 +36,7 @@ int main()
     }
 
     {
-        std::string dump = dumpProgram(
-            "10 GOTO Handler\n20 END\nHandler: RETURN\n");
+        std::string dump = dumpProgram("10 GOTO Handler\n20 END\nHandler: RETURN\n");
         assert(dump == "10: (GOTO 1000000)\n20: (END)\n1000000: (RETURN)\n");
     }
 

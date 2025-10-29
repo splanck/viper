@@ -24,6 +24,7 @@
 #include <cassert>
 #include <cstdio>
 #include <unordered_set>
+
 namespace il::runtime::signatures
 {
 void register_fileio_signatures();
@@ -98,8 +99,8 @@ void testMutateStringNoStack(void **args, void * /*result*/)
     auto *slot = reinterpret_cast<rt_string *>(args[0]);
     if (!slot)
         return;
-    rt_string updated = rt_string_from_bytes(kTestBridgeMutatedText,
-                                             sizeof(kTestBridgeMutatedText) - 1);
+    rt_string updated =
+        rt_string_from_bytes(kTestBridgeMutatedText, sizeof(kTestBridgeMutatedText) - 1);
     *slot = updated;
 }
 
@@ -184,14 +185,12 @@ template <auto Fn, typename Ret, typename... Args> struct ConsumingStringHandler
     }
 
   private:
-    template <std::size_t... I>
-    static void retainStrings(void **args, std::index_sequence<I...>)
+    template <std::size_t... I> static void retainStrings(void **args, std::index_sequence<I...>)
     {
         (retainArg<Args>(args, I), ...);
     }
 
-    template <typename T>
-    static void retainArg(void **args, std::size_t index)
+    template <typename T> static void retainArg(void **args, std::size_t index)
     {
         if constexpr (std::is_same_v<std::remove_cv_t<T>, rt_string>)
         {
@@ -1189,8 +1188,7 @@ constexpr auto makeDescriptorIndex()
     return index;
 }
 
-constexpr std::array<Descriptor, kDescriptorRows.size()> kDescriptors =
-    makeDescriptorIndex();
+constexpr std::array<Descriptor, kDescriptorRows.size()> kDescriptors = makeDescriptorIndex();
 
 constexpr auto makeDescriptorNames()
 {
@@ -1268,18 +1266,18 @@ const char *sigParamKindName(signatures::SigParam::Kind kind)
     using signatures::SigParam;
     switch (kind)
     {
-    case SigParam::Kind::I1:
-        return "i1";
-    case SigParam::Kind::I32:
-        return "i32";
-    case SigParam::Kind::I64:
-        return "i64";
-    case SigParam::Kind::F32:
-        return "f32";
-    case SigParam::Kind::F64:
-        return "f64";
-    case SigParam::Kind::Ptr:
-        return "ptr";
+        case SigParam::Kind::I1:
+            return "i1";
+        case SigParam::Kind::I32:
+            return "i32";
+        case SigParam::Kind::I64:
+            return "i64";
+        case SigParam::Kind::F32:
+            return "f32";
+        case SigParam::Kind::F64:
+            return "f64";
+        case SigParam::Kind::Ptr:
+            return "ptr";
     }
     return "unknown";
 }
@@ -1290,31 +1288,30 @@ signatures::SigParam::Kind mapToSigParamKind(il::core::Type::Kind kind)
     using signatures::SigParam;
     switch (kind)
     {
-    case Kind::I1:
-        return SigParam::Kind::I1;
-    case Kind::I16:
-    case Kind::I32:
-        return SigParam::Kind::I32;
-    case Kind::I64:
-        return SigParam::Kind::I64;
-    case Kind::F64:
-        return SigParam::Kind::F64;
-    case Kind::Ptr:
-    case Kind::Str:
-    case Kind::ResumeTok:
-        return SigParam::Kind::Ptr;
-    case Kind::Void:
-        std::fprintf(stderr, "Unexpected void type in parameter list.\n");
-        assert(false && "void type cannot appear in parameter list");
-        return SigParam::Kind::Ptr;
-    case Kind::Error:
-        std::fprintf(stderr, "Unexpected error type in runtime signature.\n");
-        assert(false && "error type cannot appear in runtime signature");
-        return SigParam::Kind::Ptr;
+        case Kind::I1:
+            return SigParam::Kind::I1;
+        case Kind::I16:
+        case Kind::I32:
+            return SigParam::Kind::I32;
+        case Kind::I64:
+            return SigParam::Kind::I64;
+        case Kind::F64:
+            return SigParam::Kind::F64;
+        case Kind::Ptr:
+        case Kind::Str:
+        case Kind::ResumeTok:
+            return SigParam::Kind::Ptr;
+        case Kind::Void:
+            std::fprintf(stderr, "Unexpected void type in parameter list.\n");
+            assert(false && "void type cannot appear in parameter list");
+            return SigParam::Kind::Ptr;
+        case Kind::Error:
+            std::fprintf(stderr, "Unexpected error type in runtime signature.\n");
+            assert(false && "error type cannot appear in runtime signature");
+            return SigParam::Kind::Ptr;
     }
-    std::fprintf(stderr,
-                 "Unhandled runtime type kind: %s.\n",
-                 il::core::kindToString(kind).c_str());
+    std::fprintf(
+        stderr, "Unhandled runtime type kind: %s.\n", il::core::kindToString(kind).c_str());
     assert(false && "unhandled runtime type kind");
     return SigParam::Kind::Ptr;
 }
@@ -1398,11 +1395,12 @@ void validateRuntimeDescriptors(const std::vector<RuntimeDescriptor> &descriptor
 
         if (params.size() != signature.params.size())
         {
-            std::fprintf(stderr,
-                         "Runtime signature '%s' parameter count mismatch (expected %zu, got %zu).\n",
-                         signature.name.c_str(),
-                         signature.params.size(),
-                         params.size());
+            std::fprintf(
+                stderr,
+                "Runtime signature '%s' parameter count mismatch (expected %zu, got %zu).\n",
+                signature.name.c_str(),
+                signature.params.size(),
+                params.size());
             assert(false && "runtime signature parameter count mismatch");
         }
         else
@@ -1414,7 +1412,8 @@ void validateRuntimeDescriptors(const std::vector<RuntimeDescriptor> &descriptor
                 if (expectedKind != actualKind)
                 {
                     std::fprintf(stderr,
-                                 "Runtime signature '%s' parameter %zu type mismatch (expected %s, got %s).\n",
+                                 "Runtime signature '%s' parameter %zu type mismatch (expected %s, "
+                                 "got %s).\n",
                                  signature.name.c_str(),
                                  index,
                                  sigParamKindName(expectedKind),
@@ -1442,12 +1441,13 @@ void validateRuntimeDescriptors(const std::vector<RuntimeDescriptor> &descriptor
                 const auto actualKind = returns[index];
                 if (expectedKind != actualKind)
                 {
-                    std::fprintf(stderr,
-                                 "Runtime signature '%s' return %zu type mismatch (expected %s, got %s).\n",
-                                 signature.name.c_str(),
-                                 index,
-                                 sigParamKindName(expectedKind),
-                                 sigParamKindName(actualKind));
+                    std::fprintf(
+                        stderr,
+                        "Runtime signature '%s' return %zu type mismatch (expected %s, got %s).\n",
+                        signature.name.c_str(),
+                        index,
+                        sigParamKindName(expectedKind),
+                        sigParamKindName(actualKind));
                     assert(false && "runtime signature return type mismatch");
                     break;
                 }
@@ -1499,8 +1499,7 @@ const RuntimeDescriptor *findRuntimeDescriptor(std::string_view name)
 ///          constant-time lookup without allocating supporting data structures.
 const RuntimeDescriptor *findRuntimeDescriptor(RuntimeFeature feature)
 {
-    const auto index =
-        kFeatureIndex[static_cast<std::size_t>(feature)];
+    const auto index = kFeatureIndex[static_cast<std::size_t>(feature)];
     if (index < 0)
         return nullptr;
     return &runtimeRegistry()[static_cast<std::size_t>(index)];

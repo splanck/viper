@@ -34,7 +34,10 @@ static bool rt_sb_is_inline(const rt_string_builder *sb)
     return sb && sb->data == sb->inline_buffer;
 }
 
-static void rt_sb_restore_on_overflow(rt_string_builder *sb, size_t original_len, size_t original_cap, bool was_inline)
+static void rt_sb_restore_on_overflow(rt_string_builder *sb,
+                                      size_t original_len,
+                                      size_t original_cap,
+                                      bool was_inline)
 {
     if (!sb)
         return;

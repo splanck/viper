@@ -23,11 +23,11 @@ namespace viper::codegen::x64::passes
 /// \brief Mutable state threaded through the code-generation passes.
 struct Module
 {
-    il::core::Module il;                                ///< Original IL module loaded from disk.
-    std::optional<ILModule> lowered;                    ///< Adapter module produced by lowering.
-    bool legalised = false;                             ///< Flag toggled once legalisation completes.
-    bool registersAllocated = false;                    ///< Flag toggled once register allocation runs.
-    std::optional<CodegenResult> codegenResult;         ///< Backend assembly emission artefacts.
+    il::core::Module il;                        ///< Original IL module loaded from disk.
+    std::optional<ILModule> lowered;            ///< Adapter module produced by lowering.
+    bool legalised = false;                     ///< Flag toggled once legalisation completes.
+    bool registersAllocated = false;            ///< Flag toggled once register allocation runs.
+    std::optional<CodegenResult> codegenResult; ///< Backend assembly emission artefacts.
 };
 
 /// \brief Diagnostic sink used by passes to surface errors and warnings.

@@ -31,13 +31,12 @@ int main()
 {
     SourceManager sm;
     uint32_t fid = sm.addFile("runtime_walk.bas");
-    const std::string src =
-        "10 DIM A(3)\n"
-        "20 LET A(1) = 5\n"
-        "30 OPEN \"out.dat\" FOR OUTPUT AS #1\n"
-        "40 PRINT #1, 42\n"
-        "50 INPUT X, Y$\n"
-        "60 CLOSE #1\n";
+    const std::string src = "10 DIM A(3)\n"
+                            "20 LET A(1) = 5\n"
+                            "30 OPEN \"out.dat\" FOR OUTPUT AS #1\n"
+                            "40 PRINT #1, 42\n"
+                            "50 INPUT X, Y$\n"
+                            "60 CLOSE #1\n";
 
     Parser parser(src, fid);
     auto program = parser.parseProgram();

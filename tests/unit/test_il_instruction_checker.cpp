@@ -11,8 +11,8 @@
 #include "il/core/Opcode.hpp"
 #include "il/verify/InstructionChecker.hpp"
 #include <cassert>
-#include <string>
 #include <sstream>
+#include <string>
 
 int main()
 {

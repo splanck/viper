@@ -11,64 +11,64 @@ option(IL_ENABLE_DOCS_LINT "Run header/Doxygen docs check (scripts/check_comment
 set(VIPER_TESTS_DIR ${CMAKE_CURRENT_LIST_DIR})
 
 file(GLOB VIPER_TEST_SCRIPT_FILES
-     LIST_DIRECTORIES FALSE
-     "${CMAKE_CURRENT_SOURCE_DIR}/scripts/*.sh")
-foreach(_viper_test_script IN LISTS VIPER_TEST_SCRIPT_FILES)
-  file(
-    CHMOD "${_viper_test_script}"
-    PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE
-                GROUP_READ GROUP_EXECUTE
-                WORLD_READ WORLD_EXECUTE)
-endforeach()
+        LIST_DIRECTORIES FALSE
+        "${CMAKE_CURRENT_SOURCE_DIR}/scripts/*.sh")
+foreach (_viper_test_script IN LISTS VIPER_TEST_SCRIPT_FILES)
+    file(
+            CHMOD "${_viper_test_script}"
+            PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE
+            GROUP_READ GROUP_EXECUTE
+            WORLD_READ WORLD_EXECUTE)
+endforeach ()
 
 find_package(Threads REQUIRED)
 find_package(GTest QUIET)
 
 set(_viper_testing_gtest_targets)
-if(GTest_FOUND)
-  list(APPEND _viper_testing_gtest_targets GTest::gtest)
-  if(TARGET GTest::gtest_main)
-    list(APPEND _viper_testing_gtest_targets GTest::gtest_main)
-  endif()
-else()
-  if(TARGET GTest::gtest)
+if (GTest_FOUND)
     list(APPEND _viper_testing_gtest_targets GTest::gtest)
-  elseif(TARGET gtest)
-    list(APPEND _viper_testing_gtest_targets gtest)
-  endif()
-  if(TARGET GTest::gtest_main)
-    list(APPEND _viper_testing_gtest_targets GTest::gtest_main)
-  elseif(TARGET gtest_main)
-    list(APPEND _viper_testing_gtest_targets gtest_main)
-  endif()
-endif()
+    if (TARGET GTest::gtest_main)
+        list(APPEND _viper_testing_gtest_targets GTest::gtest_main)
+    endif ()
+else ()
+    if (TARGET GTest::gtest)
+        list(APPEND _viper_testing_gtest_targets GTest::gtest)
+    elseif (TARGET gtest)
+        list(APPEND _viper_testing_gtest_targets gtest)
+    endif ()
+    if (TARGET GTest::gtest_main)
+        list(APPEND _viper_testing_gtest_targets GTest::gtest_main)
+    elseif (TARGET gtest_main)
+        list(APPEND _viper_testing_gtest_targets gtest_main)
+    endif ()
+endif ()
 
 add_library(viper_testing INTERFACE)
 target_link_libraries(viper_testing INTERFACE viper_common_opts viper::il_full ${_viper_testing_gtest_targets})
 
 add_library(viper_test_common STATIC
-  ${CMAKE_CURRENT_LIST_DIR}/common/CodegenFixture.cpp
-  ${CMAKE_CURRENT_LIST_DIR}/common/TestIRBuilder.cpp
-  ${CMAKE_CURRENT_LIST_DIR}/common/VmFixture.cpp)
+        ${CMAKE_CURRENT_LIST_DIR}/common/CodegenFixture.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/common/TestIRBuilder.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/common/VmFixture.cpp)
 target_include_directories(viper_test_common PUBLIC ${CMAKE_CURRENT_LIST_DIR} ${CMAKE_SOURCE_DIR})
 target_link_libraries(viper_test_common PUBLIC viper_testing il_vm il_build)
 
-if(IL_ENABLE_DOCS_LINT)
-  find_package(Python3 COMPONENTS Interpreter REQUIRED)
-  execute_process(
-    COMMAND git rev-parse --is-inside-work-tree
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-    RESULT_VARIABLE GIT_OK
-    OUTPUT_QUIET ERROR_QUIET)
-  if(GIT_OK EQUAL 0)
-    viper_add_ctest(docs_comment_check
-      ${Python3_EXECUTABLE}
-      ${CMAKE_SOURCE_DIR}/scripts/check_comments.py)
-    set_tests_properties(docs_comment_check PROPERTIES LABELS Docs)
-  else()
-    message(STATUS "Skipping docs_comment_check (not a Git working tree)")
-  endif()
-endif()
+if (IL_ENABLE_DOCS_LINT)
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    execute_process(
+            COMMAND git rev-parse --is-inside-work-tree
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            RESULT_VARIABLE GIT_OK
+            OUTPUT_QUIET ERROR_QUIET)
+    if (GIT_OK EQUAL 0)
+        viper_add_ctest(docs_comment_check
+                ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/scripts/check_comments.py)
+        set_tests_properties(docs_comment_check PROPERTIES LABELS Docs)
+    else ()
+        message(STATUS "Skipping docs_comment_check (not a Git working tree)")
+    endif ()
+endif ()
 
 add_subdirectory(unit)
 add_subdirectory(il)
@@ -81,19 +81,19 @@ add_subdirectory(e2e)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/codegen/x86_64)
 
 viper_add_ctest(NoAssertFalseGuard
-  ${CMAKE_COMMAND}
-  -DVIPER_SOURCE_DIR=${CMAKE_SOURCE_DIR}
-  -P ${CMAKE_SOURCE_DIR}/tests/tools/NoAssertFalseTest.cmake)
+        ${CMAKE_COMMAND}
+        -DVIPER_SOURCE_DIR=${CMAKE_SOURCE_DIR}
+        -P ${CMAKE_SOURCE_DIR}/tests/tools/NoAssertFalseTest.cmake)
 
 add_test(NAME smoke_term_basic
-  COMMAND $<TARGET_FILE:ilc> front basic -run ${CMAKE_CURRENT_SOURCE_DIR}/smoke/term_basic.bas)
+        COMMAND $<TARGET_FILE:ilc> front basic -run ${CMAKE_CURRENT_SOURCE_DIR}/smoke/term_basic.bas)
 
 add_test(NAME basic_sum_no_linenos
-         COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/scripts/run_sum_no_linenos.sh
-                 $<TARGET_FILE:ilc>)
+        COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/scripts/run_sum_no_linenos.sh
+        $<TARGET_FILE:ilc>)
 set_tests_properties(basic_sum_no_linenos
-  PROPERTIES
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+        PROPERTIES
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
 add_executable(test_basic_oop_parsing ${CMAKE_CURRENT_SOURCE_DIR}/unit/BasicOOP_Parsing.cpp)
 target_link_libraries(test_basic_oop_parsing fe_basic viper_testing)
@@ -104,8 +104,8 @@ target_link_libraries(test_basic_oop_lowering fe_basic viper_testing)
 add_test(NAME unit_basic_oop_lowering COMMAND test_basic_oop_lowering)
 
 viper_add_test(
-  test_basic_lower_builtin_dispatch
-  ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_basic_lower_builtin_dispatch.cpp)
+        test_basic_lower_builtin_dispatch
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_basic_lower_builtin_dispatch.cpp)
 target_link_libraries(test_basic_lower_builtin_dispatch PRIVATE fe_basic)
 viper_add_ctest(test_basic_lower_builtin_dispatch test_basic_lower_builtin_dispatch)
 
@@ -114,7 +114,7 @@ target_link_libraries(test_run_process_quotes PRIVATE viper_common)
 viper_add_ctest(test_run_process_quotes test_run_process_quotes)
 
 add_test(NAME smoke_basic_oop
-         COMMAND $<TARGET_FILE:ilc> front basic -run ${CMAKE_CURRENT_SOURCE_DIR}/smoke/basic_oop.bas)
+        COMMAND $<TARGET_FILE:ilc> front basic -run ${CMAKE_CURRENT_SOURCE_DIR}/smoke/basic_oop.bas)
 
 viper_add_unit_support_tests()
 viper_add_il_core_tests()
@@ -144,8 +144,8 @@ viper_add_e2e_codegen_tests()
 viper_add_golden_suite_tests()
 
 add_test(NAME basic_repros
-         COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/scripts/run_basic_repros.sh
-                 $<TARGET_FILE:ilc>)
+        COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/scripts/run_basic_repros.sh
+        $<TARGET_FILE:ilc>)
 set_tests_properties(basic_repros
-  PROPERTIES
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+        PROPERTIES
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})

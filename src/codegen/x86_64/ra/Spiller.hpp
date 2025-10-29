@@ -65,8 +65,15 @@ class Spiller
                     std::vector<MInstr> &prefix,
                     AllocationResult &result);
 
-    [[nodiscard]] int gprSlots() const noexcept { return nextSpillSlotGPR_; }
-    [[nodiscard]] int xmmSlots() const noexcept { return nextSpillSlotXMM_; }
+    [[nodiscard]] int gprSlots() const noexcept
+    {
+        return nextSpillSlotGPR_;
+    }
+
+    [[nodiscard]] int xmmSlots() const noexcept
+    {
+        return nextSpillSlotXMM_;
+    }
 
   private:
     int nextSpillSlotGPR_{0};

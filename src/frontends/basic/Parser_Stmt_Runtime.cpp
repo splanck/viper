@@ -146,10 +146,10 @@ StmtPtr Parser::parseDimStatement()
     consume(); // DIM
 
     // Parse a single DIM item: <name> [ ( <size> ) ] [ AS <type> ]
-    auto parseOne = [&](Token firstNameTok = Token{}) -> std::unique_ptr<DimStmt> {
-        Token nameTok = firstNameTok.kind == TokenKind::Identifier
-                            ? firstNameTok
-                            : expect(TokenKind::Identifier);
+    auto parseOne = [&](Token firstNameTok = Token{}) -> std::unique_ptr<DimStmt>
+    {
+        Token nameTok = firstNameTok.kind == TokenKind::Identifier ? firstNameTok
+                                                                   : expect(TokenKind::Identifier);
 
         auto node = std::make_unique<DimStmt>();
         node->loc = loc;

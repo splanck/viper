@@ -1,8 +1,8 @@
 // File: tests/unit/test_il_switch_i32.cpp
 // Purpose: Confirm SwitchI32 opcode metadata, parsing, and passes handle multi-way control flow.
-// Key invariants: SwitchI32 must expose correct operands/successors and analyses recognise all edges.
-// Ownership/Lifetime: Test owns parsed module and mutates it locally.
-// Links: docs/il-guide.md#reference
+// Key invariants: SwitchI32 must expose correct operands/successors and analyses recognise all
+// edges. Ownership/Lifetime: Test owns parsed module and mutates it locally. Links:
+// docs/il-guide.md#reference
 
 #include "il/analysis/CFG.hpp"
 #include "il/analysis/Dominators.hpp"
@@ -88,7 +88,8 @@ int main()
         "check-switch-cfg",
         [&checkedCfg](core::Function &function, transform::AnalysisManager &analysis)
         {
-            transform::CFGInfo &cfg = analysis.getFunctionResult<transform::CFGInfo>("cfg", function);
+            transform::CFGInfo &cfg =
+                analysis.getFunctionResult<transform::CFGInfo>("cfg", function);
             assert(!function.blocks.empty());
             core::BasicBlock &curEntry = function.blocks[0];
             auto succIt = cfg.successors.find(&curEntry);
@@ -98,8 +99,10 @@ int main()
             std::unordered_set<const core::BasicBlock *> succSet(succList.begin(), succList.end());
             for (const std::string &label : curEntry.instructions.back().labels)
             {
-                auto targetIt = std::find_if(function.blocks.begin(), function.blocks.end(),
-                                             [&label](const core::BasicBlock &bb) { return bb.label == label; });
+                auto targetIt = std::find_if(function.blocks.begin(),
+                                             function.blocks.end(),
+                                             [&label](const core::BasicBlock &bb)
+                                             { return bb.label == label; });
                 assert(targetIt != function.blocks.end());
                 assert(succSet.count(&*targetIt));
             }
@@ -123,8 +126,10 @@ int main()
 
     for (const std::string &label : switchAfter.labels)
     {
-        auto blockIt = std::find_if(fn.blocks.begin(), fn.blocks.end(),
-                                    [&label](const core::BasicBlock &bb) { return bb.label == label; });
+        auto blockIt =
+            std::find_if(fn.blocks.begin(),
+                         fn.blocks.end(),
+                         [&label](const core::BasicBlock &bb) { return bb.label == label; });
         assert(blockIt != fn.blocks.end());
         assert(blockIt->params.size() == 1);
     }

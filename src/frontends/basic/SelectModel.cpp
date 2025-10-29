@@ -30,7 +30,10 @@ namespace il::frontends::basic
 ///          issues using the caller's diagnostic machinery.  The builder itself
 ///          maintains no additional state beyond the callback.
 /// @param diagnose Function invoked when semantic issues are detected.
-SelectModelBuilder::SelectModelBuilder(DiagnoseFn diagnose) noexcept : diagnose_(std::move(diagnose)) {}
+SelectModelBuilder::SelectModelBuilder(DiagnoseFn diagnose) noexcept
+    : diagnose_(std::move(diagnose))
+{
+}
 
 /// @brief Narrow a 64-bit literal to the 32-bit range allowed by SELECT CASE.
 /// @details Checks the bounds mandated by the BASIC specification and emits a
@@ -40,7 +43,8 @@ SelectModelBuilder::SelectModelBuilder(DiagnoseFn diagnose) noexcept : diagnose_
 /// @param value Literal being narrowed.
 /// @param loc Source location used when reporting diagnostics.
 /// @return Narrowed value on success; @c std::nullopt when out of range.
-std::optional<int32_t> SelectModelBuilder::narrowToI32(int64_t value, il::support::SourceLoc loc) const
+std::optional<int32_t> SelectModelBuilder::narrowToI32(int64_t value,
+                                                       il::support::SourceLoc loc) const
 {
     if (value < kCaseLabelMin || value > kCaseLabelMax)
     {
@@ -150,4 +154,3 @@ SelectModel SelectModelBuilder::build(const SelectCaseStmt &stmt)
 }
 
 } // namespace il::frontends::basic
-

@@ -1,7 +1,7 @@
 // File: tests/vm/ErrorsCoreTests.cpp
 // Purpose: Verify trap.kind emits structured trap diagnostics with kind, IP, and line info.
-// Key invariants: Diagnostics must include the requested trap kind, instruction index, and source line.
-// Ownership/Lifetime: Spawns child VM processes to capture stderr for each trap sample.
+// Key invariants: Diagnostics must include the requested trap kind, instruction index, and source
+// line. Ownership/Lifetime: Spawns child VM processes to capture stderr for each trap sample.
 // Links: docs/specs/errors.md
 
 #include "tests/common/TestIRBuilder.hpp"
@@ -23,18 +23,16 @@ std::string captureTrap(il::vm::TrapKind kind, int line)
     switch (kind)
     {
         case il::vm::TrapKind::DivideByZero:
-            il.binary(Opcode::SDivChk0,
-                      Type(Type::Kind::I64),
-                      il.const_i64(1),
-                      il.const_i64(0),
-                      trapLoc);
+            il.binary(
+                Opcode::SDivChk0, Type(Type::Kind::I64), il.const_i64(1), il.const_i64(0), trapLoc);
             break;
         case il::vm::TrapKind::Bounds:
         {
             il::core::Instr trap;
             trap.op = Opcode::TrapFromErr;
             trap.type = Type(Type::Kind::I32);
-            trap.operands.push_back(il.const_i64(static_cast<long long>(il::vm::ErrCode::Err_Bounds)));
+            trap.operands.push_back(
+                il.const_i64(static_cast<long long>(il::vm::ErrCode::Err_Bounds)));
             trap.loc = trapLoc;
             il.block().instructions.push_back(trap);
             break;
@@ -44,7 +42,8 @@ std::string captureTrap(il::vm::TrapKind kind, int line)
             il::core::Instr trap;
             trap.op = Opcode::TrapFromErr;
             trap.type = Type(Type::Kind::I32);
-            trap.operands.push_back(il.const_i64(static_cast<long long>(il::vm::ErrCode::Err_RuntimeError)));
+            trap.operands.push_back(
+                il.const_i64(static_cast<long long>(il::vm::ErrCode::Err_RuntimeError)));
             trap.loc = trapLoc;
             il.block().instructions.push_back(trap);
             break;
@@ -75,9 +74,13 @@ int main()
         int code;
     };
 
-    const std::array<Sample, 3> samples = {{{il::vm::TrapKind::DivideByZero, 5, "DivideByZero", 0},
-                                            {il::vm::TrapKind::Bounds, 9, "Bounds", static_cast<int>(il::vm::ErrCode::Err_Bounds)},
-                                            {il::vm::TrapKind::RuntimeError, 13, "RuntimeError", static_cast<int>(il::vm::ErrCode::Err_RuntimeError)}}};
+    const std::array<Sample, 3> samples = {
+        {{il::vm::TrapKind::DivideByZero, 5, "DivideByZero", 0},
+         {il::vm::TrapKind::Bounds, 9, "Bounds", static_cast<int>(il::vm::ErrCode::Err_Bounds)},
+         {il::vm::TrapKind::RuntimeError,
+          13,
+          "RuntimeError",
+          static_cast<int>(il::vm::ErrCode::Err_RuntimeError)}}};
 
     for (const auto &sample : samples)
     {

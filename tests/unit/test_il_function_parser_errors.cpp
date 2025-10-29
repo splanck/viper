@@ -4,9 +4,9 @@
 // Ownership/Lifetime: Tests construct modules and parser states locally.
 // Links: docs/il-guide.md#reference
 
+#include "il/core/Module.hpp"
 #include "il/io/FunctionParser.hpp"
 #include "il/io/ParserState.hpp"
-#include "il/core/Module.hpp"
 #include "support/source_location.hpp"
 
 #include <cassert>

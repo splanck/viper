@@ -214,9 +214,7 @@ Operand LowerILToMIR::makeLabelOperand(const ILValue &value) const
     return x64::makeLabelOperand(value.label);
 }
 
-Operand LowerILToMIR::makeOperandForValue(MBasicBlock &block,
-                                          const ILValue &value,
-                                          RegClass cls)
+Operand LowerILToMIR::makeOperandForValue(MBasicBlock &block, const ILValue &value, RegClass cls)
 {
     if (value.kind == ILValue::Kind::LABEL)
     {

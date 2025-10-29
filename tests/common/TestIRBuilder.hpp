@@ -8,8 +8,8 @@
 
 #include "il/build/IRBuilder.hpp"
 #include "il/core/Instr.hpp"
-#include "tests/common/VmFixture.hpp"
 #include "support/source_location.hpp"
+#include "tests/common/VmFixture.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -24,7 +24,7 @@ namespace viper::tests
 /// @ownership Owns the module under construction and the VmFixture executing it.
 class TestIRBuilder
 {
-public:
+  public:
     /// @brief Create a builder targeting a default "main" function returning i64.
     /// @param retType Return type for the generated function (defaults to i64).
     /// @param functionName Synthetic function identifier (defaults to "main").
@@ -34,7 +34,10 @@ public:
                            std::string entryLabel = "entry");
 
     /// @brief Retrieve the default source location used by helper methods.
-    [[nodiscard]] static il::support::SourceLoc defaultLoc() noexcept { return {1, 1, 1}; }
+    [[nodiscard]] static il::support::SourceLoc defaultLoc() noexcept
+    {
+        return {1, 1, 1};
+    }
 
     TestIRBuilder(const TestIRBuilder &) = delete;
     TestIRBuilder &operator=(const TestIRBuilder &) = delete;
@@ -43,13 +46,22 @@ public:
     ~TestIRBuilder() = default;
 
     /// @brief Access the underlying module under construction.
-    [[nodiscard]] il::core::Module &module() noexcept { return module_; }
+    [[nodiscard]] il::core::Module &module() noexcept
+    {
+        return module_;
+    }
 
     /// @brief Access the synthetic function used for the test program.
-    [[nodiscard]] il::core::Function &function() noexcept { return *function_; }
+    [[nodiscard]] il::core::Function &function() noexcept
+    {
+        return *function_;
+    }
 
     /// @brief Access the current insertion block.
-    [[nodiscard]] il::core::BasicBlock &block() noexcept { return function_->blocks.at(currentBlockIndex_); }
+    [[nodiscard]] il::core::BasicBlock &block() noexcept
+    {
+        return function_->blocks.at(currentBlockIndex_);
+    }
 
     /// @brief Change the insertion point to @p bb.
     void setInsertPoint(il::core::BasicBlock &bb);
@@ -90,16 +102,20 @@ public:
                                    il::support::SourceLoc loc = defaultLoc());
 
     /// @brief Execute the constructed module expecting a trap and capture stderr.
-    [[nodiscard]] std::string captureTrap(const std::optional<il::core::Value> &value = std::nullopt,
-                                          il::support::SourceLoc loc = defaultLoc());
+    [[nodiscard]] std::string captureTrap(
+        const std::optional<il::core::Value> &value = std::nullopt,
+        il::support::SourceLoc loc = defaultLoc());
 
     /// @brief Produce a source location anchored at @p line/@p column.
     [[nodiscard]] il::support::SourceLoc loc(uint32_t line = 1, uint32_t column = 1) const;
 
     /// @brief Update the default file identifier used for generated locations.
-    void setFileId(uint32_t fileId) { defaultLoc_.file_id = fileId; }
+    void setFileId(uint32_t fileId)
+    {
+        defaultLoc_.file_id = fileId;
+    }
 
-private:
+  private:
     il::core::Module module_{};
     il::build::IRBuilder builder_;
     il::core::Function *function_{nullptr};
@@ -115,6 +131,5 @@ private:
     int main()                                                                                     \
     {                                                                                              \
         viper::tests::TestIRBuilder NAME;                                                          \
-        BODY                                                                                       \
-        return 0;                                                                                  \
+        BODY return 0;                                                                             \
     }

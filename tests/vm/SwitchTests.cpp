@@ -58,7 +58,8 @@ Module buildSwitchModule(const SwitchSpec &spec)
     for (const auto &cs : spec.cases)
         builder.addBlock(fn, cs.label);
 
-    auto findBlock = [&fn](const std::string &label) -> BasicBlock & {
+    auto findBlock = [&fn](const std::string &label) -> BasicBlock &
+    {
         for (auto &block : fn.blocks)
         {
             if (block.label == label)
@@ -129,17 +130,16 @@ std::string switchTraceGolden()
 #endif
     return readFile(path);
 }
-}
+} // namespace
 
 int main()
 {
     {
-        const SwitchSpec denseBase{0,
-                                   "dense_default",
-                                   99,
-                                   {{"dense_case0", 0, 100},
-                                    {"dense_case1", 1, 101},
-                                    {"dense_case2", 2, 102}}};
+        const SwitchSpec denseBase{
+            0,
+            "dense_default",
+            99,
+            {{"dense_case0", 0, 100}, {"dense_case1", 1, 101}, {"dense_case2", 2, 102}}};
         const std::array<std::pair<int32_t, int64_t>, 4> denseCases{{
             {0, 100},
             {1, 101},
@@ -152,12 +152,11 @@ int main()
     }
 
     {
-        const SwitchSpec sparseBase{0,
-                                    "sparse_default",
-                                    0,
-                                    {{"sparse_case2", 2, 222},
-                                     {"sparse_case10", 10, 1010},
-                                     {"sparse_case42", 42, 4242}}};
+        const SwitchSpec sparseBase{
+            0,
+            "sparse_default",
+            0,
+            {{"sparse_case2", 2, 222}, {"sparse_case10", 10, 1010}, {"sparse_case42", 42, 4242}}};
         const std::array<std::pair<int32_t, int64_t>, 4> sparseCases{{
             {2, 222},
             {10, 1010},
@@ -170,20 +169,14 @@ int main()
     }
 
     {
-        SwitchSpec spec{7,
-                        "default_case",
-                        42,
-                        {{"first_case", 1, 11}, {"last_case", 3, 33}}};
+        SwitchSpec spec{7, "default_case", 42, {{"first_case", 1, 11}, {"last_case", 3, 33}}};
         Module module = buildSwitchModule(spec);
         il::vm::VM vm(module);
         assert(vm.run() == 42);
     }
 
     {
-        SwitchSpec spec{1,
-                        "fallback",
-                        99,
-                        {{"case_first", 1, 111}, {"case_last", 3, 333}}};
+        SwitchSpec spec{1, "fallback", 99, {{"case_first", 1, 111}, {"case_last", 3, 333}}};
         Module module = buildSwitchModule(spec);
         il::vm::TraceConfig traceCfg;
         traceCfg.mode = il::vm::TraceConfig::IL;
@@ -198,20 +191,14 @@ int main()
     }
 
     {
-        SwitchSpec spec{3,
-                        "default_case",
-                        0,
-                        {{"first_case", 1, 5}, {"last_case", 3, 55}}};
+        SwitchSpec spec{3, "default_case", 0, {{"first_case", 1, 5}, {"last_case", 3, 55}}};
         Module module = buildSwitchModule(spec);
         il::vm::VM vm(module);
         assert(vm.run() == 55);
     }
 
     {
-        SwitchSpec spec{1,
-                        "fallback",
-                        300,
-                        {{"dup_first", 1, 10}, {"dup_second", 1, 20}}};
+        SwitchSpec spec{1, "fallback", 300, {{"dup_first", 1, 10}, {"dup_second", 1, 20}}};
         Module module = buildSwitchModule(spec);
         il::vm::DebugCtrl debug;
         debug.addBreak(debug.internLabel("dup_first"));

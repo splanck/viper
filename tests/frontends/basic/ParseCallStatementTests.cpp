@@ -15,12 +15,11 @@ using namespace il::support;
 
 int main()
 {
-    const std::string src =
-        "10 SUB GREET(N$)\n"
-        "20 PRINT \"Hi, \"; N$\n"
-        "30 END SUB\n"
-        "40 GREET(\"Alice\")\n"
-        "50 END\n";
+    const std::string src = "10 SUB GREET(N$)\n"
+                            "20 PRINT \"Hi, \"; N$\n"
+                            "30 END SUB\n"
+                            "40 GREET(\"Alice\")\n"
+                            "50 END\n";
 
     SourceManager sm;
     uint32_t fid = sm.addFile("call_stmt.bas");

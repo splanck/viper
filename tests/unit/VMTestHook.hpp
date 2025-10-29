@@ -51,11 +51,8 @@ struct VMTestHook
         return vm.handleTrapDispatch(signal, st);
     }
 
-    static void setContext(VM &vm,
-                           Frame &fr,
-                           const il::core::BasicBlock *bb,
-                           size_t ip,
-                           const il::core::Instr &in)
+    static void setContext(
+        VM &vm, Frame &fr, const il::core::BasicBlock *bb, size_t ip, const il::core::Instr &in)
     {
         vm.setCurrentContext(fr, bb, ip, in);
     }
@@ -94,4 +91,3 @@ struct VMTestHook
     }
 };
 } // namespace il::vm
-

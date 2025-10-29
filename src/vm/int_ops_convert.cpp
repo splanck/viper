@@ -187,9 +187,8 @@ VM::ExecResult handleCastNarrowChkImpl(const Slot &value,
     {
         case il::core::Type::Kind::I16:
         {
-            using NarrowT = std::conditional_t<std::is_same_v<Traits, UnsignedNarrowCastTraits>,
-                                               uint16_t,
-                                               int16_t>;
+            using NarrowT = std::
+                conditional_t<std::is_same_v<Traits, UnsignedNarrowCastTraits>, uint16_t, int16_t>;
             inRange = Traits::template fits<NarrowT>(operand);
             if (inRange)
             {
@@ -199,9 +198,8 @@ VM::ExecResult handleCastNarrowChkImpl(const Slot &value,
         }
         case il::core::Type::Kind::I32:
         {
-            using NarrowT = std::conditional_t<std::is_same_v<Traits, UnsignedNarrowCastTraits>,
-                                               uint32_t,
-                                               int32_t>;
+            using NarrowT = std::
+                conditional_t<std::is_same_v<Traits, UnsignedNarrowCastTraits>, uint32_t, int32_t>;
             inRange = Traits::template fits<NarrowT>(operand);
             if (inRange)
             {

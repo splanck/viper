@@ -33,9 +33,8 @@ struct CliScenario
     CodegenComparisonOptions options;
 };
 
-const std::array<CliScenario, 1> kScenarios = {{{
-    "FDiv",
-    {R"(il 0.1.2
+const std::array<CliScenario, 1> kScenarios = {{{"FDiv",
+                                                 {R"(il 0.1.2
 extern @rt_print_f64(f64) -> void
 func @main() -> i64 {
 entry:
@@ -46,10 +45,10 @@ entry:
   ret 0
 }
 )",
-     "fdiv.il",
-     {},
-     {}},
-    {true, 1e-12}}}};
+                                                  "fdiv.il",
+                                                  {},
+                                                  {}},
+                                                 {true, 1e-12}}}};
 
 CodegenComparisonResult runScenario(CodegenFixture &fixture, const CliScenario &scenario)
 {
@@ -62,7 +61,7 @@ CodegenComparisonResult runScenario(CodegenFixture &fixture, const CliScenario &
 
 class CodegenFdivCliTest : public ::testing::TestWithParam<CliScenario>
 {
-protected:
+  protected:
     CodegenFixture fixture_;
 };
 
@@ -73,13 +72,11 @@ TEST_P(CodegenFdivCliTest, VmAndNativeOutputsMatch)
     ASSERT_TRUE(result.success) << result.message;
 }
 
-INSTANTIATE_TEST_SUITE_P(
-    FdivCli,
-    CodegenFdivCliTest,
-    ::testing::ValuesIn(kScenarios),
-    [](const ::testing::TestParamInfo<CliScenario> &info) {
-        return info.param.name;
-    });
+INSTANTIATE_TEST_SUITE_P(FdivCli,
+                         CodegenFdivCliTest,
+                         ::testing::ValuesIn(kScenarios),
+                         [](const ::testing::TestParamInfo<CliScenario> &info)
+                         { return info.param.name; });
 
 int main(int argc, char **argv)
 {
@@ -112,4 +109,3 @@ int main()
 }
 
 #endif
-

@@ -155,11 +155,11 @@ def emit_spec_table(ops: List[Dict[str, Any]]) -> str:
         lines.append(
             f"        {{ {operand_types(op)} }},"
         )
-        lines.append(f"        { 'true' if flags['side_effects'] else 'false' },")
+        lines.append(f"        {'true' if flags['side_effects'] else 'false'},")
         lines.append(
             f"        static_cast<uint8_t>({numeric_literal(flags['successors'])}),"
         )
-        lines.append(f"        { 'true' if flags['terminator'] else 'false' },")
+        lines.append(f"        {'true' if flags['terminator'] else 'false'},")
         lines.append(f"        {strategy},")
         if message == "nullptr":
             lines.append("        nullptr,")

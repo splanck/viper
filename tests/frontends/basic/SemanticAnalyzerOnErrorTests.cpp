@@ -1,8 +1,8 @@
 // File: tests/frontends/basic/SemanticAnalyzerOnErrorTests.cpp
 // Purpose: Validate BASIC semantic analyzer error handler tracking and RESUME diagnostics.
-// Key invariants: ON ERROR establishes procedure-scoped handlers and RESUME requires active handlers.
-// Ownership/Lifetime: Tests instantiate parser/analyzer per snippet; diagnostics collected locally.
-// Links: docs/codemap.md
+// Key invariants: ON ERROR establishes procedure-scoped handlers and RESUME requires active
+// handlers. Ownership/Lifetime: Tests instantiate parser/analyzer per snippet; diagnostics
+// collected locally. Links: docs/codemap.md
 
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/Parser.hpp"

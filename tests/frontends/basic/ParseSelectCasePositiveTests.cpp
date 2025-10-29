@@ -85,9 +85,10 @@ int main()
         return 1;
     }
 
-    const auto selectCount = std::count_if(program->main.begin(), program->main.end(), [](const StmtPtr &stmt) {
-        return dynamic_cast<SelectCaseStmt *>(stmt.get()) != nullptr;
-    });
+    const auto selectCount = std::count_if(
+        program->main.begin(),
+        program->main.end(),
+        [](const StmtPtr &stmt) { return dynamic_cast<SelectCaseStmt *>(stmt.get()) != nullptr; });
     if (selectCount != 1)
     {
         std::cerr << "error: expected exactly one SelectCaseStmt, found " << selectCount << '\n';

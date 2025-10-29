@@ -14,9 +14,9 @@
 /// @brief Result of launching a subprocess.
 struct RunResult
 {
-    int exit_code;           ///< Normalised process exit code (or -1 on launch failure).
-    std::string out;         ///< Captured standard output text.
-    std::string err;         ///< Captured standard error text (may be merged with stdout).
+    int exit_code;   ///< Normalised process exit code (or -1 on launch failure).
+    std::string out; ///< Captured standard output text.
+    std::string err; ///< Captured standard error text (may be merged with stdout).
 };
 
 /// @brief Spawn a subprocess using the provided argument vector.

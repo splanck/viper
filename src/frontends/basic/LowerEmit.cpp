@@ -11,8 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/LineUtils.hpp"
+#include "frontends/basic/Lowerer.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
 
@@ -87,9 +87,8 @@ void Lowerer::buildMainFunctionSkeleton(ProgramEmitContext &state)
         if (lineBlocks.find(vLine) != lineBlocks.end())
             continue;
         size_t blockIdx = f.blocks.size();
-        b.addBlock(f,
-                   mangler.block((hasUserLine(vLine) ? "L" : "UL") +
-                                 std::to_string(std::abs(vLine))));
+        b.addBlock(
+            f, mangler.block((hasUserLine(vLine) ? "L" : "UL") + std::to_string(std::abs(vLine))));
         lineBlocks[vLine] = blockIdx;
     }
     ctx.setExitIndex(f.blocks.size());

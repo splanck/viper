@@ -144,16 +144,16 @@ enum class OperandOrder
 /// \brief Categorises operand variants for encoding table matching.
 enum class OperandKind
 {
-    None,           ///< No operand expected in this slot.
-    Reg,            ///< Register operand.
-    Imm,            ///< Immediate operand.
-    Mem,            ///< Memory operand using base+disp addressing.
-    Label,          ///< Symbolic label operand.
-    RipLabel,       ///< RIP-relative label operand.
-    RegOrMem,       ///< Register or memory operand.
-    RegOrImm,       ///< Register or immediate operand.
-    LabelOrRegOrMem,///< Label, RIP label, register, or memory operand.
-    Any             ///< Any operand kind accepted.
+    None,            ///< No operand expected in this slot.
+    Reg,             ///< Register operand.
+    Imm,             ///< Immediate operand.
+    Mem,             ///< Memory operand using base+disp addressing.
+    Label,           ///< Symbolic label operand.
+    RipLabel,        ///< RIP-relative label operand.
+    RegOrMem,        ///< Register or memory operand.
+    RegOrImm,        ///< Register or immediate operand.
+    LabelOrRegOrMem, ///< Label, RIP label, register, or memory operand.
+    Any              ///< Any operand kind accepted.
 };
 
 /// \brief Describes high-level encoding forms used to differentiate rows.
