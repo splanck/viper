@@ -112,8 +112,13 @@ StmtPtr Parser::parseStatement(int line)
     if (auto stmt = parseRegisteredStatement(line))
         return std::move(*stmt);
 
-    reportUnknownStatement(peek());
+    Token offendingTok = peek();
+    reportUnknownStatement(offendingTok);
     resyncAfterError();
+    while (!at(TokenKind::EndOfFile) && !at(TokenKind::EndOfLine))
+    {
+        consume();
+    }
     return nullptr;
 }
 
@@ -242,14 +247,15 @@ void Parser::reportMissingCallParenthesis(const Token &identTok, const Token &ne
     uint32_t length = nextTok.lexeme.empty() ? 1 : static_cast<uint32_t>(nextTok.lexeme.size());
     if (emitter_)
     {
-        std::string message =
-            "procedure call statement requires '(' after '" + identTok.lexeme + "'";
+        std::string message = "expected '(' after procedure name '" + identTok.lexeme +
+                              "' in procedure call statement";
         emitter_->emit(il::support::Severity::Error, "B0001", diagLoc, length, std::move(message));
     }
     else
     {
-        std::fprintf(
-            stderr, "procedure call statement requires '(' after '%s'\n", identTok.lexeme.c_str());
+        std::fprintf(stderr,
+                     "expected '(' after procedure name '%s' in procedure call statement\n",
+                     identTok.lexeme.c_str());
     }
 }
 
