@@ -33,30 +33,60 @@ using IlType = il::core::Type;
 using IlValue = il::core::Value;
 
 /// @brief Visitor that lowers BASIC expressions using Lowerer helpers.
+/// @details The visitor implements the generated @ref ExprVisitor interface and
+///          redirects each AST node type to the specialised lowering helpers on
+///          @ref Lowerer. The instance carries a reference to the current
+///          lowering context so it can update source locations, perform type
+///          coercions, and capture the produced IL value for the caller.
 class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
 {
   public:
+    /// @brief Construct a visitor that records results into @p lowerer.
+    /// @details The visitor only borrows the lowering context; ownership of the
+    ///          surrounding compiler state remains with the caller.
+    /// @param lowerer Lowering context that exposes shared helper routines.
     explicit LowererExprVisitor(Lowerer &lowerer) noexcept : lowerer_(lowerer) {}
 
+    /// @brief Dispatch an expression node to the corresponding visit method.
+    /// @details Updates the result cache by forwarding the call to
+    ///          @ref Expr::accept, allowing dynamic dispatch over the concrete
+    ///          expression type.
+    /// @param expr Expression node that should be lowered into IL form.
     void visitExpr(const Expr &expr) override
     {
         expr.accept(*this);
     }
 
+    /// @brief Ignore statement nodes encountered through the generic visitor.
+    /// @details Expression lowering never acts on statements, so the override is
+    ///          a no-op that satisfies the @ref lower::AstVisitor contract.
     void visitStmt(const Stmt &) override {}
 
+    /// @brief Lower an integer literal expression.
+    /// @details Captures the literal value as a 64-bit IL constant and records
+    ///          the associated source location in the lowering context.
+    /// @param expr Integer literal node from the BASIC AST.
     void visit(const IntExpr &expr) override
     {
         lowerer_.curLoc = expr.loc;
         result_ = Lowerer::RVal{IlValue::constInt(expr.value), IlType(IlType::Kind::I64)};
     }
 
+    /// @brief Lower a floating-point literal expression.
+    /// @details Emits an IL constant containing the literal value and tags it
+    ///          with the 64-bit floating-point type descriptor.
+    /// @param expr Floating-point literal node from the BASIC AST.
     void visit(const FloatExpr &expr) override
     {
         lowerer_.curLoc = expr.loc;
         result_ = Lowerer::RVal{IlValue::constFloat(expr.value), IlType(IlType::Kind::F64)};
     }
 
+    /// @brief Lower a string literal expression.
+    /// @details Interns the string in the module's constant pool, emits a load
+    ///          of the retained runtime string handle, and records the result
+    ///          with the IL string type.
+    /// @param expr String literal node from the BASIC AST.
     void visit(const StringExpr &expr) override
     {
         lowerer_.curLoc = expr.loc;
@@ -65,6 +95,11 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
         result_ = Lowerer::RVal{tmp, IlType(IlType::Kind::Str)};
     }
 
+    /// @brief Lower a boolean literal expression.
+    /// @details Emits either `-1` or `0` according to BASIC truthiness rules and
+    ///          annotates the value with a 64-bit integer type so downstream
+    ///          coercions treat it as logical state.
+    /// @param expr Boolean literal node from the BASIC AST.
     void visit(const BoolExpr &expr) override
     {
         lowerer_.curLoc = expr.loc;
@@ -72,11 +107,22 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
         result_ = Lowerer::RVal{logical, IlType(IlType::Kind::I64)};
     }
 
+    /// @brief Lower a variable reference expression.
+    /// @details Defers to @ref Lowerer::lowerVarExpr so storage class specific
+    ///          logic (such as locals versus fields) is centralised in the
+    ///          lowering helpers.
+    /// @param expr Variable reference node from the BASIC AST.
     void visit(const VarExpr &expr) override
     {
         result_ = lowerer_.lowerVarExpr(expr);
     }
 
+    /// @brief Lower an array access expression.
+    /// @details Computes the base pointer and index using
+    ///          @ref Lowerer::lowerArrayAccess, then emits a runtime call to load
+    ///          the indexed element. The result is tagged as a 64-bit integer
+    ///          because BASIC integer arrays currently map to that representation.
+    /// @param expr Array access node from the BASIC AST.
     void visit(const ArrayExpr &expr) override
     {
         Lowerer::ArrayAccess access =
@@ -88,32 +134,59 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
         result_ = Lowerer::RVal{val, IlType(IlType::Kind::I64)};
     }
 
+    /// @brief Lower a unary operator expression.
+    /// @details Delegates to the shared helper that understands the full matrix
+    ///          of BASIC unary operators.
+    /// @param expr Unary operator node from the BASIC AST.
     void visit(const UnaryExpr &expr) override
     {
         result_ = lowerer_.lowerUnaryExpr(expr);
     }
 
+    /// @brief Lower a binary operator expression.
+    /// @details Forwards to @ref Lowerer::lowerBinaryExpr which handles operand
+    ///          coercion and emits the correct IL opcode for the operator.
+    /// @param expr Binary operator node from the BASIC AST.
     void visit(const BinaryExpr &expr) override
     {
         result_ = lowerer_.lowerBinaryExpr(expr);
     }
 
+    /// @brief Lower a builtin function call expression.
+    /// @details Delegates to @ref lowerBuiltinCall so builtin-specific lowering
+    ///          stays concentrated in the helper module.
+    /// @param expr Builtin invocation node from the BASIC AST.
     void visit(const BuiltinCallExpr &expr) override
     {
         result_ = lowerBuiltinCall(lowerer_, expr);
     }
 
+    /// @brief Lower the LBOUND intrinsic expression.
+    /// @details Emits the constant zero because BASIC arrays are zero based in
+    ///          the current runtime configuration.
+    /// @param expr LBOUND invocation node from the BASIC AST.
     void visit(const LBoundExpr &expr) override
     {
         lowerer_.curLoc = expr.loc;
         result_ = Lowerer::RVal{IlValue::constInt(0), IlType(IlType::Kind::I64)};
     }
 
+    /// @brief Lower the UBOUND intrinsic expression.
+    /// @details Delegates to the helper that computes the appropriate runtime
+    ///          query for the array upper bound.
+    /// @param expr UBOUND invocation node from the BASIC AST.
     void visit(const UBoundExpr &expr) override
     {
         result_ = lowerer_.lowerUBoundExpr(expr);
     }
 
+    /// @brief Lower a user-defined procedure call expression.
+    /// @details Resolves the callee signature when available so argument values
+    ///          can be coerced into the expected IL types before emitting the
+    ///          call. When the signature advertises a return value the helper
+    ///          records the call result; otherwise it fabricates a dummy integer
+    ///          to keep the return type consistent for expression contexts.
+    /// @param expr Call expression node from the BASIC AST.
     void visit(const CallExpr &expr) override
     {
         const auto *signature = lowerer_.findProcSignature(expr.callee);
@@ -149,26 +222,47 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
         }
     }
 
+    /// @brief Lower a @c NEW expression for object construction.
+    /// @details Defers to @ref Lowerer::lowerNewExpr so object layout specifics
+    ///          reside in the dedicated helper.
+    /// @param expr Object construction node from the BASIC AST.
     void visit(const NewExpr &expr) override
     {
         result_ = lowerer_.lowerNewExpr(expr);
     }
 
+    /// @brief Lower a reference to the implicit @c ME parameter.
+    /// @details Hands control to @ref Lowerer::lowerMeExpr which implements the
+    ///          details around retrieving the current instance reference.
+    /// @param expr ME expression node from the BASIC AST.
     void visit(const MeExpr &expr) override
     {
         result_ = lowerer_.lowerMeExpr(expr);
     }
 
+    /// @brief Lower a member access expression.
+    /// @details Uses @ref Lowerer::lowerMemberAccessExpr to resolve the field or
+    ///          property lookup and produce the corresponding IL value.
+    /// @param expr Member access node from the BASIC AST.
     void visit(const MemberAccessExpr &expr) override
     {
         result_ = lowerer_.lowerMemberAccessExpr(expr);
     }
 
+    /// @brief Lower a method call expression.
+    /// @details Delegates to @ref Lowerer::lowerMethodCallExpr which handles the
+    ///          implicit receiver and method dispatch semantics.
+    /// @param expr Method call node from the BASIC AST.
     void visit(const MethodCallExpr &expr) override
     {
         result_ = lowerer_.lowerMethodCallExpr(expr);
     }
 
+    /// @brief Retrieve the IL value produced by the most recent visit.
+    /// @details The visitor stores the result internally to avoid allocating on
+    ///          every visit call; this accessor exposes the cached value to the
+    ///          caller.
+    /// @return Pair containing the IL value and its static type.
     [[nodiscard]] Lowerer::RVal result() const noexcept
     {
         return result_;
@@ -179,6 +273,13 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
     Lowerer::RVal result_{IlValue::constInt(0), IlType(IlType::Kind::I64)};
 };
 
+/// @brief Lower an arbitrary BASIC expression to IL form.
+/// @details Creates a temporary @ref LowererExprVisitor to traverse the AST and
+///          capture the resulting value. The current source location is updated
+///          so diagnostics emitted during lowering point back to the originating
+///          node.
+/// @param expr Expression node to lower.
+/// @return Resulting IL value and type.
 Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
 {
     curLoc = expr.loc;
@@ -187,11 +288,26 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
     return visitor.result();
 }
 
+/// @brief Lower an expression and coerce it to a scalar IL type.
+/// @details Invokes @ref lowerExpr and then normalises the result to an integer
+///          or floating type acceptable for scalar contexts (for example loop
+///          bounds). The original source location is reused for any diagnostics
+///          emitted during coercion.
+/// @param expr Expression node expected to resolve to a scalar.
+/// @return Coerced IL value and its scalar type.
 Lowerer::RVal Lowerer::lowerScalarExpr(const Expr &expr)
 {
     return lowerScalarExpr(lowerExpr(expr), expr.loc);
 }
 
+/// @brief Coerce an already-lowered expression result into a scalar type.
+/// @details Examines the value's static type and converts booleans and floating
+///          values into 64-bit integers when required by the caller. Other types
+///          are forwarded unchanged so complex lowering logic can handle them
+///          separately.
+/// @param value Result previously returned by @ref lowerExpr.
+/// @param loc Source location used for diagnostics during coercion.
+/// @return IL value adjusted for scalar contexts.
 Lowerer::RVal Lowerer::lowerScalarExpr(RVal value, il::support::SourceLoc loc)
 {
     switch (value.type.kind)
