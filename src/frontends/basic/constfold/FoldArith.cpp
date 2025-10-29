@@ -5,12 +5,18 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Arithmetic constant folding helpers for the BASIC front end.
+// Arithmetic constant folding helpers for the BASIC front end.  These utilities
+// canonicalise arithmetic expressions at compile time, handling both integer and
+// floating-point operands while preserving overflow semantics mandated by the
+// BASIC language definition.
 //
 //===----------------------------------------------------------------------===//
 
 /// @file
 /// @brief Implements numeric folding utilities shared by the dispatcher.
+/// @details The helpers evaluate constant expressions in place, promoting
+///          operands as necessary and preserving diagnostic information so the
+///          caller can decide whether folding succeeded.
 #include "frontends/basic/constfold/Dispatch.hpp"
 #include "frontends/basic/ast/ExprNodes.hpp"
 #include "common/IntegerHelpers.hpp"
@@ -24,6 +30,18 @@ namespace
 {
 namespace intops = il::common::integer;
 
+/// @brief Perform the core arithmetic folding logic for numeric operands.
+/// @details The helper promotes operands to a common representation, executes
+///          the arithmetic operation specified by @p op, and applies BASIC's
+///          overflow and division-by-zero semantics.  Integer operations reuse
+///          the integer helper utilities to avoid undefined behaviour on
+///          overflow, while floating-point operations operate in double
+///          precision.  Returning @c std::nullopt signals that the expression
+///          cannot be folded safely.
+/// @param op Arithmetic operator being folded.
+/// @param lhsRaw Left-hand constant operand.
+/// @param rhsRaw Right-hand constant operand.
+/// @return Folded numeric value or @c std::nullopt when folding is invalid.
 std::optional<NumericValue> fold_numeric_impl(AST::BinaryExpr::Op op, const NumericValue &lhsRaw, const NumericValue &rhsRaw)
 {
     NumericValue lhs = promote_numeric(lhsRaw, rhsRaw);
@@ -83,6 +101,15 @@ std::optional<NumericValue> fold_numeric_impl(AST::BinaryExpr::Op op, const Nume
     }
 }
 
+/// @brief Public entry point for folding numeric binary expressions.
+/// @details Delegates to @ref fold_numeric_impl and, when assertions are
+///          enabled, verifies commutativity for addition and multiplication by
+///          re-folding with operands swapped.  This guards against asymmetric
+///          promotion bugs without affecting release builds.
+/// @param op Arithmetic operator under evaluation.
+/// @param lhsRaw Left-hand operand.
+/// @param rhsRaw Right-hand operand.
+/// @return Folded numeric result or @c std::nullopt.
 std::optional<NumericValue> fold_numeric(AST::BinaryExpr::Op op, const NumericValue &lhsRaw, const NumericValue &rhsRaw)
 {
     auto result = fold_numeric_impl(op, lhsRaw, rhsRaw);
@@ -99,6 +126,16 @@ std::optional<NumericValue> fold_numeric(AST::BinaryExpr::Op op, const NumericVa
 
 } // namespace
 
+/// @brief Fold unary arithmetic expressions when the operand is constant.
+/// @details Attempts to extract a @ref NumericValue from @p value and applies the
+///          unary operator.  Only the identity and negation operators are
+///          supported; unsupported operators or non-constant operands result in a
+///          @c nullptr return so the caller can emit the original expression.
+///          When folding succeeds a new AST node containing the literal result
+///          is returned.
+/// @param op Unary operator being folded.
+/// @param value Expression to evaluate.
+/// @return Newly allocated constant expression or @c nullptr.
 AST::ExprPtr fold_unary_arith(AST::UnaryExpr::Op op, const AST::Expr &value)
 {
     auto numeric = numeric_from_expr(value);
@@ -138,6 +175,15 @@ AST::ExprPtr fold_unary_arith(AST::UnaryExpr::Op op, const AST::Expr &value)
     return out;
 }
 
+/// @brief Fold binary arithmetic expressions composed of literal constants.
+/// @details Validates that both operands are numeric literals before forwarding
+///          to @ref fold_numeric.  When folding succeeds a @ref Constant with the
+///          appropriate literal kind (integer or float) is produced so callers
+///          can splice the result back into the AST.
+/// @param op Operator to fold.
+/// @param lhs Left-hand constant operand.
+/// @param rhs Right-hand constant operand.
+/// @return Folded constant or @c std::nullopt when folding fails.
 std::optional<Constant> fold_arith(AST::BinaryExpr::Op op, const Constant &lhs, const Constant &rhs)
 {
     if ((lhs.kind != LiteralKind::Int && lhs.kind != LiteralKind::Float) ||
