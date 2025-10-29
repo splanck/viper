@@ -198,10 +198,17 @@ bool parseRunILArgs(int argc, char **argv, RunILConfig &config)
             }
             else
             {
-                std::string label = trimWhitespace(std::move(spec));
+                std::string label = trimWhitespace(spec);
                 while (!label.empty() && label.back() == ':')
                 {
                     label.pop_back();
+                }
+                label = trimWhitespace(std::move(label));
+                if (label.empty())
+                {
+                    std::cerr << "invalid label for --break argument \"" << spec << "\"\n";
+                    usage();
+                    return false;
                 }
                 config.breakLabels.push_back(std::move(label));
             }

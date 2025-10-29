@@ -67,5 +67,21 @@ int main()
     assert(err.find("invalid line number") != std::string::npos);
     assert(err.find("--break") != std::string::npos);
 
+    gUsageCalled = false;
+    err.clear();
+    rc = invokeWithFlag("--break", ":", err);
+    assert(rc != 0);
+    assert(gUsageCalled);
+    assert(err.find("invalid label") != std::string::npos);
+    assert(err.find("--break") != std::string::npos);
+
+    gUsageCalled = false;
+    err.clear();
+    rc = invokeWithFlag("--break", "  :   ", err);
+    assert(rc != 0);
+    assert(gUsageCalled);
+    assert(err.find("invalid label") != std::string::npos);
+    assert(err.find("--break") != std::string::npos);
+
     return 0;
 }
