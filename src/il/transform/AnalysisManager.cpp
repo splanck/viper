@@ -25,11 +25,9 @@ class AnalysisCacheInvalidator
 {
   public:
     /// @brief Prepare an invalidator for the given manager/preservation pair.
-    ///
-    /// The helper stores references to the owning AnalysisManager and the
-    /// preservation summary returned by a pass.  Subsequent calls use these
-    /// references to decide which cached analyses to evict.
-    ///
+    /// @details Stores references to the owning AnalysisManager and the
+    ///          preservation summary returned by a pass.  Subsequent calls use
+    ///          these references to decide which cached analyses to evict.
     /// @param manager Manager whose caches will be pruned.
     /// @param preserved Summary describing which analyses remain valid.
     AnalysisCacheInvalidator(AnalysisManager &manager, const PreservedAnalyses &preserved)
@@ -38,11 +36,10 @@ class AnalysisCacheInvalidator
     }
 
     /// @brief Invalidate module-scoped analyses according to preservation data.
-    ///
-    /// When no module analyses were ever registered the call is a no-op.  If a
-    /// pass preserved every analysis the cache is untouched.  Otherwise the
-    /// routine either clears the entire cache or erases just the analyses that
-    /// were not marked as preserved.
+    /// @details Skips work when no module analyses were registered or when the
+    ///          summary preserved everything.  Otherwise the routine either
+    ///          clears the entire cache or erases only those entries not listed in
+    ///          the summary, balancing correctness with minimal churn.
     void afterModulePass()
     {
         if (!manager_.moduleAnalyses_)
@@ -67,12 +64,10 @@ class AnalysisCacheInvalidator
     }
 
     /// @brief Invalidate function-scoped analyses for a specific function.
-    ///
-    /// Behaviour mirrors @ref AnalysisCacheInvalidator::afterModulePass but operates on the
-    /// per-function caches.  When only a subset of analyses are preserved, the routine walks each
-    /// cache entry and removes the stale data for @p fn.  Empty analysis maps are pruned to keep
-    /// the cache compact.
-    ///
+    /// @details Mirrors @ref AnalysisCacheInvalidator::afterModulePass() but operates on the
+    ///          per-function caches.  When only a subset of analyses are preserved, the routine
+    ///          walks each cache entry and removes the stale data for @p fn.  Empty analysis maps
+    ///          are pruned to keep the cache compact.
     /// @param fn Function whose cached analyses should be reviewed.
     void afterFunctionPass(core::Function &fn)
     {
@@ -108,11 +103,9 @@ class AnalysisCacheInvalidator
 };
 
 /// @brief Construct an analysis manager tied to a module and registry.
-///
-/// The constructor captures the module reference and caches pointers to the
-/// module/function analysis registries so that lookups avoid repeated
-/// indirection during pipeline execution.
-///
+/// @details Captures the module reference and caches pointers to the module and
+///          function analysis registries so that lookups avoid repeated
+///          indirection during pipeline execution.
 /// @param module Module undergoing transformation.
 /// @param registry Registry describing the available analyses.
 AnalysisManager::AnalysisManager(core::Module &module, const AnalysisRegistry &registry)
@@ -123,10 +116,8 @@ AnalysisManager::AnalysisManager(core::Module &module, const AnalysisRegistry &r
 }
 
 /// @brief Apply invalidation logic after a module pass has completed.
-///
-/// Wraps the helper class so callers can simply forward the preservation summary
-/// returned by the pass.
-///
+/// @details Wraps the helper class so callers can simply forward the
+///          preservation summary returned by the pass.
 /// @param preserved Summary of analyses that remain valid.
 void AnalysisManager::invalidateAfterModulePass(const PreservedAnalyses &preserved)
 {
@@ -134,7 +125,8 @@ void AnalysisManager::invalidateAfterModulePass(const PreservedAnalyses &preserv
 }
 
 /// @brief Apply invalidation logic after a function pass has completed.
-///
+/// @details Delegates to the helper so preservation summaries remain the sole
+///          source of truth for invalidation behaviour.
 /// @param preserved Summary of analyses that remain valid.
 /// @param fn Function whose cached analyses should be pruned.
 void AnalysisManager::invalidateAfterFunctionPass(const PreservedAnalyses &preserved,
