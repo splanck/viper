@@ -31,6 +31,15 @@ namespace
 {
 
 /// @brief Update an interval with a new observation position.
+/// @details The helper expands the closed-open [start, end) range tracked by the
+///          interval so that it covers @p pos. When the interval has not been
+///          observed before the function seeds both bounds from the provided
+///          index. Subsequent updates take the minimum/maximum with existing
+///          bounds to avoid shrinking the live range when operands reappear
+///          later in the instruction stream.
+/// @param interval Interval structure that records the first and last touches
+///                  of a virtual register.
+/// @param pos Instruction index associated with the latest observation.
 void updateInterval(LiveInterval &interval, std::size_t pos)
 {
     if (interval.start == 0U && interval.end == 0U)
@@ -45,6 +54,15 @@ void updateInterval(LiveInterval &interval, std::size_t pos)
 
 } // namespace
 
+/// @brief Compute live intervals for every virtual register in a function.
+/// @details Walks the machine function in program order, assigns a monotonically
+///          increasing instruction index to each opcode, and feeds every
+///          encountered virtual register into @ref updateInterval. Memory
+///          operands are also inspected so base registers extending live ranges
+///          through loads and stores are recorded. The analysis resets any
+///          previous results before executing so repeated invocations stay
+///          deterministic.
+/// @param func Machine function whose instructions should be analysed.
 void LiveIntervals::run(const MFunction &func)
 {
     intervals_.clear();
@@ -95,6 +113,14 @@ void LiveIntervals::run(const MFunction &func)
     }
 }
 
+/// @brief Retrieve the computed interval for a virtual register.
+/// @details Performs a dictionary lookup against the cached analysis state and
+///          returns @c nullptr when the register was never observed. The method
+///          avoids inserting new entries so callers can cheaply probe for
+///          optional intervals during allocation.
+/// @param vreg Identifier of the virtual register to query.
+/// @return Pointer to the interval owned by the analysis, or @c nullptr when no
+///         interval exists.
 const LiveInterval *LiveIntervals::lookup(uint16_t vreg) const noexcept
 {
     auto it = intervals_.find(vreg);
