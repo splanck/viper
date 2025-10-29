@@ -40,6 +40,7 @@ void register_array_signatures();
 #include "rt_math.h"
 #include "rt_numeric.h"
 #include "rt_random.h"
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <limits>
@@ -129,26 +130,6 @@ const RuntimeSignature &signatureFor(RtSig sig)
 bool isValid(RtSig sig)
 {
     return static_cast<std::size_t>(sig) < kRtSigCount;
-}
-
-/// @brief Return a lazily initialised index mapping symbol names to signatures.
-///
-/// @details Constructs an unordered_map once by iterating over the generated
-///          symbol name table.  The index enables fast lookup of enumerators by
-///          their canonical name.
-///
-/// @return Map from runtime symbol names to signature identifiers.
-const std::unordered_map<std::string_view, RtSig> &generatedSigIndex()
-{
-    static const auto map = []
-    {
-        std::unordered_map<std::string_view, RtSig> table;
-        table.reserve(kRtSigCount);
-        for (std::size_t i = 0; i < kRtSigCount; ++i)
-            table.emplace(data::kRtSigSymbolNames[i], static_cast<RtSig>(i));
-        return table;
-    }();
-    return map;
 }
 
 /// @brief Adapter that invokes a concrete runtime function from VM call stubs.
@@ -1185,6 +1166,73 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   RuntimeTrapClass::None},
 }};
 
+struct Descriptor
+{
+    std::string_view name{};
+    std::size_t rowIndex{};
+};
+
+constexpr auto makeDescriptorIndex()
+{
+    std::array<Descriptor, kDescriptorRows.size()> index{};
+    for (std::size_t i = 0; i < index.size(); ++i)
+        index[i] = Descriptor{kDescriptorRows[i].name, i};
+
+    for (std::size_t i = 0; i < index.size(); ++i)
+    {
+        for (std::size_t j = i + 1; j < index.size(); ++j)
+        {
+            if (index[j].name < index[i].name)
+                std::swap(index[i], index[j]);
+        }
+    }
+    return index;
+}
+
+constexpr std::array<Descriptor, kDescriptorRows.size()> kDescriptors =
+    makeDescriptorIndex();
+
+constexpr auto makeDescriptorNames()
+{
+    std::array<std::string_view, kDescriptors.size()> names{};
+    for (std::size_t i = 0; i < names.size(); ++i)
+        names[i] = kDescriptors[i].name;
+    return names;
+}
+
+constexpr std::array<std::string_view, kDescriptors.size()> kNames = makeDescriptorNames();
+
+constexpr auto makeFeatureIndex()
+{
+    std::array<int, static_cast<std::size_t>(RuntimeFeature::Count)> featureIndex{};
+    for (auto &entry : featureIndex)
+        entry = -1;
+
+    for (std::size_t i = 0; i < kDescriptorRows.size(); ++i)
+    {
+        const auto &row = kDescriptorRows[i];
+        if (row.lowering.kind == RuntimeLoweringKind::Feature)
+        {
+            auto &slot = featureIndex[static_cast<std::size_t>(row.lowering.feature)];
+            if (slot < 0)
+                slot = static_cast<int>(i);
+        }
+    }
+
+    return featureIndex;
+}
+
+constexpr std::array<int, static_cast<std::size_t>(RuntimeFeature::Count)> kFeatureIndex =
+    makeFeatureIndex();
+
+static constexpr int indexOf(std::string_view name) noexcept
+{
+    const auto it = std::lower_bound(kNames.begin(), kNames.end(), name);
+    if (it == kNames.end() || *it != name)
+        return -1;
+    return static_cast<int>(std::distance(kNames.begin(), it));
+}
+
 /// @brief Construct a @ref RuntimeSignature from a descriptor table row.
 ///
 /// @details Uses a pre-generated signature when available or parses the spec
@@ -1433,39 +1481,29 @@ const std::vector<RuntimeDescriptor> &runtimeRegistry()
 
 /// @brief Find a runtime descriptor by its exported name.
 ///
-/// @details Builds a map on first use from descriptor names to pointers and
-///          returns the matching entry when present.
+/// @details Performs a binary search over the compile-time sorted descriptor
+///          index, avoiding dynamic map construction on lookup.
 const RuntimeDescriptor *findRuntimeDescriptor(std::string_view name)
 {
-    static const auto index = []
-    {
-        std::unordered_map<std::string_view, const RuntimeDescriptor *> map;
-        for (const auto &entry : runtimeRegistry())
-            map.emplace(entry.name, &entry);
-        return map;
-    }();
-    auto it = index.find(name);
-    return it == index.end() ? nullptr : it->second;
+    const int idx = indexOf(name);
+    if (idx < 0)
+        return nullptr;
+    const auto rowIndex = kDescriptors[static_cast<std::size_t>(idx)].rowIndex;
+    const auto &registry = runtimeRegistry();
+    return &registry[rowIndex];
 }
 
 /// @brief Locate the descriptor that provides a particular runtime feature.
 ///
-/// @details Indexes descriptors by the feature recorded in their lowering
-///          metadata so callers can query for optional runtime helpers.
+/// @details Uses a precomputed table mapping features to descriptor indices for
+///          constant-time lookup without allocating supporting data structures.
 const RuntimeDescriptor *findRuntimeDescriptor(RuntimeFeature feature)
 {
-    static const auto index = []
-    {
-        std::unordered_map<RuntimeFeature, const RuntimeDescriptor *> map;
-        for (const auto &entry : runtimeRegistry())
-        {
-            if (entry.lowering.kind == RuntimeLoweringKind::Feature)
-                map.emplace(entry.lowering.feature, &entry);
-        }
-        return map;
-    }();
-    auto it = index.find(feature);
-    return it == index.end() ? nullptr : it->second;
+    const auto index =
+        kFeatureIndex[static_cast<std::size_t>(feature)];
+    if (index < 0)
+        return nullptr;
+    return &runtimeRegistry()[static_cast<std::size_t>(index)];
 }
 
 /// @brief Provide a map from runtime names to parsed signatures.
@@ -1490,11 +1528,13 @@ const std::unordered_map<std::string_view, RuntimeSignature> &runtimeSignatures(
 /// @return Enumerator when found or std::nullopt otherwise.
 std::optional<RtSig> findRuntimeSignatureId(std::string_view name)
 {
-    const auto &index = generatedSigIndex();
-    auto it = index.find(name);
-    if (it == index.end())
+    const int idx = indexOf(name);
+    if (idx < 0)
         return std::nullopt;
-    return it->second;
+    const auto &row = kDescriptorRows[kDescriptors[static_cast<std::size_t>(idx)].rowIndex];
+    if (!row.signatureId)
+        return std::nullopt;
+    return row.signatureId;
 }
 
 /// @brief Retrieve a signature descriptor by enumerator.
