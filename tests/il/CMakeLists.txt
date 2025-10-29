@@ -272,6 +272,13 @@ function(viper_add_il_core_tests)
   viper_add_ctest(test_il_parse_keyword_boundary test_il_parse_keyword_boundary)
 
   viper_add_test(
+    test_il_parse_global_keyword_boundary
+    ${_VIPER_IL_UNIT_DIR}/test_il_parse_global_keyword_boundary.cpp)
+  target_link_libraries(test_il_parse_global_keyword_boundary PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
+  viper_add_ctest(
+    test_il_parse_global_keyword_boundary test_il_parse_global_keyword_boundary)
+
+  viper_add_test(
     test_il_parse_missing_operand_between_commas
     ${_VIPER_IL_UNIT_DIR}/test_il_parse_missing_operand_between_commas.cpp)
   target_link_libraries(test_il_parse_missing_operand_between_commas PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)

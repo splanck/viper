@@ -321,7 +321,12 @@ Expected<void> parseModuleHeader_E(std::istream &is, std::string &line, ParserSt
     if (line.rfind("extern", 0) == 0)
         return parseExtern_E(line, st);
     if (line.rfind("global", 0) == 0)
-        return parseGlobal_E(line, st);
+    {
+        const bool atEnd = line.size() == 6;
+        const bool hasWhitespace = !atEnd && std::isspace(static_cast<unsigned char>(line[6]));
+        if (atEnd || hasWhitespace)
+            return parseGlobal_E(line, st);
+    }
     if (line.rfind("func", 0) == 0)
     {
         Cursor cursor{line, SourcePos{st.lineNo, 0}};
