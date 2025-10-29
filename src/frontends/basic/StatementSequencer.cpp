@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/basic/StatementSequencer.hpp"
+#include "frontends/basic/LineUtils.hpp"
 #include "frontends/basic/AST.hpp"
 
 #include "frontends/basic/Parser.hpp"
@@ -339,19 +340,19 @@ StmtPtr StatementSequencer::parseStatementLine()
 
         if (lastSeparator() == SeparatorKind::LineBreak)
         {
-            if (line > 0)
+            if (hasUserLine(line))
                 stashPendingLine(line, loc);
             return true;
         }
 
         if (lastSeparator() != SeparatorKind::Colon)
         {
-            if (line > 0)
+            if (hasUserLine(line))
                 stashPendingLine(line, loc);
             return true;
         }
 
-        if (line > 0 && line != lineNumber)
+        if (hasUserLine(line) && line != lineNumber)
         {
             stashPendingLine(line, loc);
             return true;
@@ -360,7 +361,7 @@ StmtPtr StatementSequencer::parseStatementLine()
     };
     auto consumer = [&](int line, il::support::SourceLoc loc, TerminatorInfo &)
     {
-        if (line > 0)
+        if (hasUserLine(line))
             stashPendingLine(line, loc);
     };
 
@@ -372,7 +373,7 @@ StmtPtr StatementSequencer::parseStatementLine()
         stmtLineLoc = parser_.peek().loc;
     }
 
-    if (stmts.empty() && haveLine && lineNumber > 0)
+    if (stmts.empty() && haveLine && hasUserLine(lineNumber))
     {
         auto label = std::make_unique<LabelStmt>();
         label->line = lineNumber;
@@ -399,7 +400,7 @@ StmtPtr StatementSequencer::parseStatementLine()
     if (!haveLine && !stmts.empty())
         lineNumber = stmts.front()->line;
 
-    if (lineNumber != 0)
+    if (!isUnlabeledLine(lineNumber))
     {
         for (auto &stmt : stmts)
         {
