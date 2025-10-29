@@ -319,7 +319,14 @@ Expected<void> parseModuleHeader_E(std::istream &is, std::string &line, ParserSt
         return Expected<void>{makeError({}, oss.str())};
     }
     if (line.rfind("extern", 0) == 0)
-        return parseExtern_E(line, st);
+    {
+        constexpr size_t kExternKeywordLen = 6;
+        if (line.size() == kExternKeywordLen)
+            return parseExtern_E(line, st);
+        const unsigned char next = static_cast<unsigned char>(line[kExternKeywordLen]);
+        if (!std::isalnum(next) && next != '_')
+            return parseExtern_E(line, st);
+    }
     if (line.rfind("global", 0) == 0)
         return parseGlobal_E(line, st);
     if (line.rfind("func", 0) == 0)
