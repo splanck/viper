@@ -79,7 +79,7 @@ Lowerer::CtrlState Lowerer::emitWhile(const WhileStmt &stmt)
     unsigned id = blockNamer ? blockNamer->nextWhile() : 0;
     std::string headLbl = blockNamer ? blockNamer->whileHead(id) : mangler.block("loop_head");
     std::string bodyLbl = blockNamer ? blockNamer->whileBody(id) : mangler.block("loop_body");
-    std::string doneLbl = blockNamer ? blockNamer->whileEnd(id)  : mangler.block("loop_done");
+    std::string doneLbl = blockNamer ? blockNamer->whileEnd(id)  : mangler.block("done");
     builder->addBlock(*func, headLbl);
     builder->addBlock(*func, bodyLbl);
     builder->addBlock(*func, doneLbl);
