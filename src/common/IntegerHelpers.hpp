@@ -38,17 +38,17 @@ enum class Signedness
 /// @brief Selects the behaviour used when narrowing would overflow.
 enum class OverflowPolicy
 {
-    Wrap,      ///< Wrap around modulo 2^n.
-    Trap,      ///< Throw std::overflow_error when the value does not fit.
-    Saturate,  ///< Clamp to the representable range.
+    Wrap,     ///< Wrap around modulo 2^n.
+    Trap,     ///< Throw std::overflow_error when the value does not fit.
+    Saturate, ///< Clamp to the representable range.
 };
 
 /// @brief Result of promoting two operands to a common width and signedness.
 struct PromotePair
 {
-    Value lhs{0};              ///< Left operand after promotion.
-    Value rhs{0};              ///< Right operand after promotion.
-    int width{0};              ///< Common bit-width of the promoted operands.
+    Value lhs{0};                              ///< Left operand after promotion.
+    Value rhs{0};                              ///< Right operand after promotion.
+    int width{0};                              ///< Common bit-width of the promoted operands.
     Signedness signedness{Signedness::Signed}; ///< Signedness used for promotion.
 };
 
@@ -193,10 +193,12 @@ namespace detail
     PromotePair out{};
     out.signedness = (lhs < 0 || rhs < 0) ? Signedness::Signed : Signedness::Unsigned;
 
-    const int lhsBits = (out.signedness == Signedness::Signed) ? detail::bits_required_signed(lhs)
-                                                               : detail::bits_required_unsigned(lhs);
-    const int rhsBits = (out.signedness == Signedness::Signed) ? detail::bits_required_signed(rhs)
-                                                               : detail::bits_required_unsigned(rhs);
+    const int lhsBits = (out.signedness == Signedness::Signed)
+                            ? detail::bits_required_signed(lhs)
+                            : detail::bits_required_unsigned(lhs);
+    const int rhsBits = (out.signedness == Signedness::Signed)
+                            ? detail::bits_required_signed(rhs)
+                            : detail::bits_required_unsigned(rhs);
     out.width = lhsBits > rhsBits ? lhsBits : rhsBits;
 
     const int promotedBits = out.width > 64 ? 64 : out.width;
@@ -206,4 +208,3 @@ namespace detail
 }
 
 } // namespace il::common::integer
-

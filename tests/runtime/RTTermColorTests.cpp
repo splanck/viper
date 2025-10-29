@@ -13,14 +13,15 @@
 #include <unistd.h>
 
 #if defined(__linux__)
-#  include <pty.h>
+#include <pty.h>
 #elif defined(__APPLE__)
-#  include <util.h>
+#include <util.h>
 #else
-#  error "openpty is required for RTTermColorTests"
+#error "openpty is required for RTTermColorTests"
 #endif
 
-namespace {
+namespace
+{
 
 std::string capture_sgr(int fg, int bg)
 {
@@ -83,4 +84,3 @@ int main()
 
     return 0;
 }
-

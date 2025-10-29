@@ -62,43 +62,64 @@ class LowererStmtVisitor final : public lower::AstVisitor, public StmtVisitor
     /// @details Forwards to @ref Lowerer::lowerPrint which handles argument
     ///          lowering and runtime dispatch.
     /// @param stmt PRINT statement node.
-    void visit(const PrintStmt &stmt) override { lowerer_.lowerPrint(stmt); }
+    void visit(const PrintStmt &stmt) override
+    {
+        lowerer_.lowerPrint(stmt);
+    }
 
     /// @brief Lower a PRINT# (channel) statement.
     /// @details Delegates to @ref Lowerer::lowerPrintCh so channel-specific
     ///          semantics remain encapsulated in the helper.
     /// @param stmt PRINT# statement node.
-    void visit(const PrintChStmt &stmt) override { lowerer_.lowerPrintCh(stmt); }
+    void visit(const PrintChStmt &stmt) override
+    {
+        lowerer_.lowerPrintCh(stmt);
+    }
 
     /// @brief Lower a call statement that invokes a procedure.
     /// @details Defers to @ref Lowerer::lowerCallStmt to reuse the call lowering
     ///          logic shared with expression contexts.
     /// @param stmt CALL statement node.
-    void visit(const CallStmt &stmt) override { lowerer_.lowerCallStmt(stmt); }
+    void visit(const CallStmt &stmt) override
+    {
+        lowerer_.lowerCallStmt(stmt);
+    }
 
     /// @brief Lower the CLS statement.
     /// @details Invokes the generic @ref Lowerer::visit helper which dispatches
     ///          to the runtime bridge for screen clearing.
     /// @param stmt CLS statement node.
-    void visit(const ClsStmt &stmt) override { lowerer_.visit(stmt); }
+    void visit(const ClsStmt &stmt) override
+    {
+        lowerer_.visit(stmt);
+    }
 
     /// @brief Lower the COLOR statement.
     /// @details Delegates to @ref Lowerer::visit so colour changes go through the
     ///          shared runtime helper path.
     /// @param stmt COLOR statement node.
-    void visit(const ColorStmt &stmt) override { lowerer_.visit(stmt); }
+    void visit(const ColorStmt &stmt) override
+    {
+        lowerer_.visit(stmt);
+    }
 
     /// @brief Lower the LOCATE statement.
     /// @details Uses @ref Lowerer::visit to emit runtime calls for cursor
     ///          positioning.
     /// @param stmt LOCATE statement node.
-    void visit(const LocateStmt &stmt) override { lowerer_.visit(stmt); }
+    void visit(const LocateStmt &stmt) override
+    {
+        lowerer_.visit(stmt);
+    }
 
     /// @brief Lower a LET assignment statement.
     /// @details Delegates to @ref Lowerer::lowerLet which manages target storage
     ///          resolution and expression coercion.
     /// @param stmt LET statement node.
-    void visit(const LetStmt &stmt) override { lowerer_.lowerLet(stmt); }
+    void visit(const LetStmt &stmt) override
+    {
+        lowerer_.lowerLet(stmt);
+    }
 
     /// @brief Lower a DIM statement.
     /// @details Only array declarations require code generation; scalar DIM
@@ -109,129 +130,193 @@ class LowererStmtVisitor final : public lower::AstVisitor, public StmtVisitor
         if (stmt.isArray)
             lowerer_.lowerDim(stmt);
     }
+
     /// @brief Lower a REDIM statement.
     /// @details Delegates to @ref Lowerer::lowerReDim to emit runtime reallocation logic.
     /// @param stmt REDIM statement node.
-    void visit(const ReDimStmt &stmt) override { lowerer_.lowerReDim(stmt); }
+    void visit(const ReDimStmt &stmt) override
+    {
+        lowerer_.lowerReDim(stmt);
+    }
 
     /// @brief Lower a RANDOMIZE statement.
     /// @details Forwards to @ref Lowerer::lowerRandomize so seeding semantics
     ///          remain centralised.
     /// @param stmt RANDOMIZE statement node.
-    void visit(const RandomizeStmt &stmt) override { lowerer_.lowerRandomize(stmt); }
+    void visit(const RandomizeStmt &stmt) override
+    {
+        lowerer_.lowerRandomize(stmt);
+    }
 
     /// @brief Lower an IF statement.
     /// @details Delegates to @ref Lowerer::lowerIf which constructs the control
     ///          flow graph for conditional execution.
     /// @param stmt IF statement node.
-    void visit(const IfStmt &stmt) override { lowerer_.lowerIf(stmt); }
+    void visit(const IfStmt &stmt) override
+    {
+        lowerer_.lowerIf(stmt);
+    }
 
     /// @brief Lower a SELECT CASE statement.
     /// @details Uses @ref Lowerer::lowerSelectCase to build the dispatch blocks
     ///          for each case branch.
     /// @param stmt SELECT CASE statement node.
-    void visit(const SelectCaseStmt &stmt) override { lowerer_.lowerSelectCase(stmt); }
+    void visit(const SelectCaseStmt &stmt) override
+    {
+        lowerer_.lowerSelectCase(stmt);
+    }
 
     /// @brief Lower a WHILE loop.
     /// @details Delegates to @ref Lowerer::lowerWhile which wires up loop entry
     ///          and exit blocks.
     /// @param stmt WHILE statement node.
-    void visit(const WhileStmt &stmt) override { lowerer_.lowerWhile(stmt); }
+    void visit(const WhileStmt &stmt) override
+    {
+        lowerer_.lowerWhile(stmt);
+    }
 
     /// @brief Lower a DO loop.
     /// @details Forwards to @ref Lowerer::lowerDo to cover DO WHILE and DO UNTIL
     ///          semantics.
     /// @param stmt DO statement node.
-    void visit(const DoStmt &stmt) override { lowerer_.lowerDo(stmt); }
+    void visit(const DoStmt &stmt) override
+    {
+        lowerer_.lowerDo(stmt);
+    }
 
     /// @brief Lower a FOR loop.
     /// @details Delegates to @ref Lowerer::lowerFor which emits induction setup
     ///          and loop body blocks.
     /// @param stmt FOR statement node.
-    void visit(const ForStmt &stmt) override { lowerer_.lowerFor(stmt); }
+    void visit(const ForStmt &stmt) override
+    {
+        lowerer_.lowerFor(stmt);
+    }
 
     /// @brief Lower a NEXT statement.
     /// @details Uses @ref Lowerer::lowerNext to advance the active FOR loop's
     ///          induction variable and evaluate continuation conditions.
     /// @param stmt NEXT statement node.
-    void visit(const NextStmt &stmt) override { lowerer_.lowerNext(stmt); }
+    void visit(const NextStmt &stmt) override
+    {
+        lowerer_.lowerNext(stmt);
+    }
 
     /// @brief Lower an EXIT statement.
     /// @details Delegates to @ref Lowerer::lowerExit so the correct exit target
     ///          (loop or procedure) is selected.
     /// @param stmt EXIT statement node.
-    void visit(const ExitStmt &stmt) override { lowerer_.lowerExit(stmt); }
+    void visit(const ExitStmt &stmt) override
+    {
+        lowerer_.lowerExit(stmt);
+    }
 
     /// @brief Lower a GOTO statement.
     /// @details Forwards to @ref Lowerer::lowerGoto which resolves labels and
     ///          emits branch instructions.
     /// @param stmt GOTO statement node.
-    void visit(const GotoStmt &stmt) override { lowerer_.lowerGoto(stmt); }
+    void visit(const GotoStmt &stmt) override
+    {
+        lowerer_.lowerGoto(stmt);
+    }
 
     /// @brief Lower a GOSUB statement.
     /// @details Uses @ref Lowerer::lowerGosub to emit call/return bookkeeping for
     ///          subroutine invocations.
     /// @param stmt GOSUB statement node.
-    void visit(const GosubStmt &stmt) override { lowerer_.lowerGosub(stmt); }
+    void visit(const GosubStmt &stmt) override
+    {
+        lowerer_.lowerGosub(stmt);
+    }
 
     /// @brief Lower an OPEN statement for file handles.
     /// @details Delegates to @ref Lowerer::lowerOpen to generate runtime calls
     ///          for channel creation.
     /// @param stmt OPEN statement node.
-    void visit(const OpenStmt &stmt) override { lowerer_.lowerOpen(stmt); }
+    void visit(const OpenStmt &stmt) override
+    {
+        lowerer_.lowerOpen(stmt);
+    }
 
     /// @brief Lower a CLOSE statement.
     /// @details Invokes @ref Lowerer::lowerClose so channel shutdown logic is
     ///          reused across the compiler.
     /// @param stmt CLOSE statement node.
-    void visit(const CloseStmt &stmt) override { lowerer_.lowerClose(stmt); }
+    void visit(const CloseStmt &stmt) override
+    {
+        lowerer_.lowerClose(stmt);
+    }
 
     /// @brief Lower a SEEK statement.
     /// @details Delegates to @ref Lowerer::lowerSeek which emits the runtime
     ///          reposition call.
     /// @param stmt SEEK statement node.
-    void visit(const SeekStmt &stmt) override { lowerer_.lowerSeek(stmt); }
+    void visit(const SeekStmt &stmt) override
+    {
+        lowerer_.lowerSeek(stmt);
+    }
 
     /// @brief Lower an ON ERROR GOTO handler.
     /// @details Forwards to @ref Lowerer::lowerOnErrorGoto to wire the error
     ///          handling metadata.
     /// @param stmt ON ERROR GOTO statement node.
-    void visit(const OnErrorGoto &stmt) override { lowerer_.lowerOnErrorGoto(stmt); }
+    void visit(const OnErrorGoto &stmt) override
+    {
+        lowerer_.lowerOnErrorGoto(stmt);
+    }
 
     /// @brief Lower a RESUME statement.
     /// @details Delegates to @ref Lowerer::lowerResume so the runtime resumes the
     ///          saved error state appropriately.
     /// @param stmt RESUME statement node.
-    void visit(const Resume &stmt) override { lowerer_.lowerResume(stmt); }
+    void visit(const Resume &stmt) override
+    {
+        lowerer_.lowerResume(stmt);
+    }
 
     /// @brief Lower an END statement.
     /// @details Forwards to @ref Lowerer::lowerEnd which emits program
     ///          termination code.
     /// @param stmt END statement node.
-    void visit(const EndStmt &stmt) override { lowerer_.lowerEnd(stmt); }
+    void visit(const EndStmt &stmt) override
+    {
+        lowerer_.lowerEnd(stmt);
+    }
 
     /// @brief Lower an INPUT statement.
     /// @details Delegates to @ref Lowerer::lowerInput to emit runtime prompts and
     ///          assignments.
     /// @param stmt INPUT statement node.
-    void visit(const InputStmt &stmt) override { lowerer_.lowerInput(stmt); }
+    void visit(const InputStmt &stmt) override
+    {
+        lowerer_.lowerInput(stmt);
+    }
 
     /// @brief Lower an INPUT# statement.
     /// @details Uses @ref Lowerer::lowerInputCh to process channel-based input.
     /// @param stmt INPUT# statement node.
-    void visit(const InputChStmt &stmt) override { lowerer_.lowerInputCh(stmt); }
+    void visit(const InputChStmt &stmt) override
+    {
+        lowerer_.lowerInputCh(stmt);
+    }
 
     /// @brief Lower a LINE INPUT# statement.
     /// @details Delegates to @ref Lowerer::lowerLineInputCh for buffered channel
     ///          reads.
     /// @param stmt LINE INPUT# statement node.
-    void visit(const LineInputChStmt &stmt) override { lowerer_.lowerLineInputCh(stmt); }
+    void visit(const LineInputChStmt &stmt) override
+    {
+        lowerer_.lowerLineInputCh(stmt);
+    }
 
     /// @brief Lower a RETURN statement.
     /// @details Forwards to @ref Lowerer::lowerReturn which distinguishes normal
     ///          procedure returns from GOSUB returns.
     /// @param stmt RETURN statement node.
-    void visit(const ReturnStmt &stmt) override { lowerer_.lowerReturn(stmt); }
+    void visit(const ReturnStmt &stmt) override
+    {
+        lowerer_.lowerReturn(stmt);
+    }
 
     /// @brief Ignore function declarations encountered during statement lowering.
     /// @details Declarations are handled by dedicated compilation phases so the
@@ -247,13 +332,19 @@ class LowererStmtVisitor final : public lower::AstVisitor, public StmtVisitor
     /// @details Delegates to @ref Lowerer::lowerStmtList so child statements are
     ///          processed sequentially.
     /// @param stmt Statement list node.
-    void visit(const StmtList &stmt) override { lowerer_.lowerStmtList(stmt); }
+    void visit(const StmtList &stmt) override
+    {
+        lowerer_.lowerStmtList(stmt);
+    }
 
     /// @brief Lower a DELETE statement.
     /// @details Uses @ref Lowerer::lowerDelete to emit runtime calls for removing
     ///          files.
     /// @param stmt DELETE statement node.
-    void visit(const DeleteStmt &stmt) override { lowerer_.lowerDelete(stmt); }
+    void visit(const DeleteStmt &stmt) override
+    {
+        lowerer_.lowerDelete(stmt);
+    }
 
     /// @brief Ignore constructor declarations encountered during lowering.
     /// @details Constructors are compiled via dedicated passes, so this visitor

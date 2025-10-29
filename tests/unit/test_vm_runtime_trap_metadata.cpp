@@ -32,7 +32,8 @@ void reportRuntimeContext()
     if (!gReportContext || !gExitVm)
         return;
     const auto &ctx = il::vm::VMTestHook::runtimeContext(*gExitVm);
-    fprintf(stderr, "runtime-context: fn='%s' block='%s'\n", ctx.function.c_str(), ctx.block.c_str());
+    fprintf(
+        stderr, "runtime-context: fn='%s' block='%s'\n", ctx.function.c_str(), ctx.block.c_str());
 }
 
 std::string captureTrap(bool includeMetadata, bool primeContext)
@@ -66,8 +67,10 @@ std::string captureTrap(bool includeMetadata, bool primeContext)
             gReportContext = false;
         }
 
-        const il::support::SourceLoc loc = includeMetadata ? il::support::SourceLoc{1, 1, 1} : il::support::SourceLoc{};
-        const std::string message = includeMetadata ? std::string("first trap") : std::string("second trap");
+        const il::support::SourceLoc loc =
+            includeMetadata ? il::support::SourceLoc{1, 1, 1} : il::support::SourceLoc{};
+        const std::string message =
+            includeMetadata ? std::string("first trap") : std::string("second trap");
         const std::string fn = includeMetadata ? std::string(kFirstFunction) : std::string();
         const std::string block = includeMetadata ? std::string(kFirstBlock) : std::string();
 

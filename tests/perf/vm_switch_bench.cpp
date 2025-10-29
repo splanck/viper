@@ -1,8 +1,8 @@
 // File: tests/perf/vm_switch_bench.cpp
 // Purpose: Micro-benchmark SwitchI32 dispatch paths to detect major performance regressions.
-// Key invariants: Both Auto and Linear switch modes execute equivalent IL and produce the same checksum.
-// Ownership/Lifetime: Benchmark builds ephemeral modules per run and executes them immediately.
-// Links: docs/il-guide.md#reference
+// Key invariants: Both Auto and Linear switch modes execute equivalent IL and produce the same
+// checksum. Ownership/Lifetime: Benchmark builds ephemeral modules per run and executes them
+// immediately. Links: docs/il-guide.md#reference
 
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
@@ -113,9 +113,8 @@ Module buildSwitchModule(size_t caseCount, size_t iterations)
     {
         sw.operands.push_back(Value::constInt(static_cast<int32_t>(i)));
         sw.labels.push_back("dispatch");
-        sw.brArgs.push_back({Value::temp(workSum.id),
-                             Value::temp(workIdx.id),
-                             Value::constInt(caseValue(i))});
+        sw.brArgs.push_back(
+            {Value::temp(workSum.id), Value::temp(workIdx.id), Value::constInt(caseValue(i))});
     }
     work.instructions.push_back(sw);
     work.terminated = true;
@@ -221,10 +220,11 @@ BenchResult runSwitchBench(const char *mode, size_t caseCount, size_t iterations
     }
     const auto end = std::chrono::steady_clock::now();
 
-    const double elapsedMs = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(end - start).count();
+    const double elapsedMs =
+        std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(end - start).count();
     std::cout << "VIPER_SWITCH_MODE=" << (mode ? mode : "<unset>") << " cases=" << caseCount
-              << " iterations=" << iterations << " runs=" << kBenchmarkRuns
-              << " checksum=" << total << " elapsed_ms=" << elapsedMs << '\n';
+              << " iterations=" << iterations << " runs=" << kBenchmarkRuns << " checksum=" << total
+              << " elapsed_ms=" << elapsedMs << '\n';
 
     return BenchResult{elapsedMs, total};
 }
@@ -270,7 +270,8 @@ int main()
 
     if (linear.milliseconds <= 0.0)
     {
-        std::cout << "Linear dispatch completed too quickly; skipping ratio assertion." << std::endl;
+        std::cout << "Linear dispatch completed too quickly; skipping ratio assertion."
+                  << std::endl;
         return 0;
     }
 
@@ -278,10 +279,10 @@ int main()
     if (ratio > 5.0)
     {
         std::cerr << "Auto switch dispatch regressed: ratio=" << ratio
-                  << ", linear=" << linear.milliseconds << "ms, auto=" << autoResult.milliseconds << "ms." << std::endl;
+                  << ", linear=" << linear.milliseconds << "ms, auto=" << autoResult.milliseconds
+                  << "ms." << std::endl;
         return 1;
     }
 
     return 0;
 }
-

@@ -9,9 +9,9 @@
 #include "tests/common/CodegenFixture.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <cmath>
-#include <cctype>
 #include <cstdlib>
 #include <exception>
 #include <fstream>
@@ -71,16 +71,19 @@ namespace
 
 [[nodiscard]] std::string trimWhitespace(const std::string &text)
 {
-    const auto first = std::find_if_not(text.begin(), text.end(), [](unsigned char ch) {
-        return static_cast<bool>(std::isspace(ch));
-    });
+    const auto first =
+        std::find_if_not(text.begin(),
+                         text.end(),
+                         [](unsigned char ch) { return static_cast<bool>(std::isspace(ch)); });
     if (first == text.end())
     {
         return std::string();
     }
-    const auto last = std::find_if_not(text.rbegin(), text.rend(), [](unsigned char ch) {
-        return static_cast<bool>(std::isspace(ch));
-    }).base();
+    const auto last =
+        std::find_if_not(text.rbegin(),
+                         text.rend(),
+                         [](unsigned char ch) { return static_cast<bool>(std::isspace(ch)); })
+            .base();
     return std::string(first, last);
 }
 
@@ -102,7 +105,8 @@ CodegenFixture::CodegenFixture()
     std::filesystem::create_directories(tempDir_, ec);
     if (ec)
     {
-        setupError_ = "Failed to create temporary directory: " + tempDir_.string() + " (" + ec.message() + ")";
+        setupError_ = "Failed to create temporary directory: " + tempDir_.string() + " (" +
+                      ec.message() + ")";
         tempDir_.clear();
     }
 }
@@ -195,7 +199,8 @@ CodegenComparisonResult CodegenFixture::compareVmAndNative(const CodegenRunConfi
         success = false;
         diff << "System invocation failure.\n";
         diff << "VM system call status: " << (result.vm.systemCallFailed ? "failed" : "ok") << '\n';
-        diff << "Native system call status: " << (result.native.systemCallFailed ? "failed" : "ok") << '\n';
+        diff << "Native system call status: " << (result.native.systemCallFailed ? "failed" : "ok")
+             << '\n';
     }
 
     if (result.vm.stdoutReadFailed || result.native.stdoutReadFailed)
@@ -273,7 +278,8 @@ std::filesystem::path CodegenFixture::reserveStdoutCapturePath(const std::string
     {
         return {};
     }
-    const std::filesystem::path path = tempDir_ / (stem + '_' + std::to_string(invocationId_++) + ".txt");
+    const std::filesystem::path path =
+        tempDir_ / (stem + '_' + std::to_string(invocationId_++) + ".txt");
     return path;
 }
 
@@ -312,4 +318,3 @@ void CodegenFixture::removeAll() noexcept
 }
 
 } // namespace viper::tests
-

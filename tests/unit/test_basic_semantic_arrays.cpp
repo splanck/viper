@@ -134,8 +134,7 @@ int main()
         {
             for (const auto &instr : block.instructions)
             {
-                if (instr.op == il::core::Opcode::Store &&
-                    instr.loc.line == letSourceLine &&
+                if (instr.op == il::core::Opcode::Store && instr.loc.line == letSourceLine &&
                     instr.operands.size() == 2)
                 {
                     const auto &value = instr.operands[1];

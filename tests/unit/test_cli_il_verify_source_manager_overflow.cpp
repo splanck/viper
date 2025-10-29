@@ -30,11 +30,8 @@ struct SourceManagerTestAccess
 
 namespace il::tools::verify
 {
-int runCLI(int argc,
-           char **argv,
-           std::ostream &out,
-           std::ostream &err,
-           il::support::SourceManager &sm);
+int runCLI(
+    int argc, char **argv, std::ostream &out, std::ostream &err, il::support::SourceManager &sm);
 } // namespace il::tools::verify
 
 int main()
@@ -55,7 +52,7 @@ int main()
     pathStorage.push_back('\0');
 
     char exeName[] = "il-verify";
-    char *argv[] = { exeName, pathStorage.data() };
+    char *argv[] = {exeName, pathStorage.data()};
 
     il::support::SourceManager sm;
     il::support::SourceManagerTestAccess::setNextFileId(

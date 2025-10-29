@@ -15,8 +15,8 @@
 #include <cassert>
 #include <memory>
 #include <sstream>
-#include <string_view>
 #include <string>
+#include <string_view>
 
 using namespace il::frontends::basic;
 using namespace il::support;
@@ -41,7 +41,8 @@ int main()
                << "1040 LET X = 3\n"
                << "1050 LET Y# = 1.5\n"
                << "1060 RANDOMIZE 42: PRINT LEN(\"HI\"), A(X)\n"
-               << "1070 IF FLAG THEN LET X = X + 1 ELSEIF X > 1 THEN LET X = X - 1 ELSE PRINT \"ZERO\": PRINT \"TAIL\"\n"
+               << "1070 IF FLAG THEN LET X = X + 1 ELSEIF X > 1 THEN LET X = X - 1 ELSE PRINT "
+                  "\"ZERO\": PRINT \"TAIL\"\n"
                << "1080 WHILE X > 0\n"
                << "1090 PRINT LEN(\"HI\"), A(X)\n"
                << "1100 LET X = X - 1: PRINT X\n"
@@ -195,15 +196,14 @@ int main()
     }
     assert(sawMain && sawFunction && sawSub);
 
-    const std::array<std::string_view, 8> forbiddenPrefixes = {
-        "LARGE_FN_DIM_",
-        "LARGE_FN_LOCAL_",
-        "LARGE_FN_INPUT_",
-        "LARGE_FN_ARG_",
-        "LARGE_SUB_DIM_",
-        "LARGE_SUB_LOCAL_",
-        "LARGE_SUB_INPUT_",
-        "LARGE_SUB_ARG_"};
+    const std::array<std::string_view, 8> forbiddenPrefixes = {"LARGE_FN_DIM_",
+                                                               "LARGE_FN_LOCAL_",
+                                                               "LARGE_FN_INPUT_",
+                                                               "LARGE_FN_ARG_",
+                                                               "LARGE_SUB_DIM_",
+                                                               "LARGE_SUB_LOCAL_",
+                                                               "LARGE_SUB_INPUT_",
+                                                               "LARGE_SUB_ARG_"};
     for (const auto &name : sema.symbols())
     {
         for (auto prefix : forbiddenPrefixes)

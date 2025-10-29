@@ -27,14 +27,13 @@ bool hasLine(const std::vector<int> &lines, int target)
 
 int main()
 {
-    const std::string src =
-        "10 DIM FLAG AS BOOLEAN\n"
-        "20 LET I = 3.14\n"
-        "30 LET D# = 1\n"
-        "40 LET I = TRUE\n"
-        "50 PRINT TRUE\n"
-        "70 INPUT \"?\", FLAG\n"
-        "80 INPUT \"?\", D#\n";
+    const std::string src = "10 DIM FLAG AS BOOLEAN\n"
+                            "20 LET I = 3.14\n"
+                            "30 LET D# = 1\n"
+                            "40 LET I = TRUE\n"
+                            "50 PRINT TRUE\n"
+                            "70 INPUT \"?\", FLAG\n"
+                            "80 INPUT \"?\", D#\n";
 
     SourceManager sm;
     uint32_t fid = sm.addFile("conversions.bas");
@@ -86,7 +85,7 @@ int main()
         }
     }
 
-    assert(hasLine(castChkLines, 2));  // LET I = 3.14
+    assert(hasLine(castChkLines, 2)); // LET I = 3.14
     assert(hasLine(sitofpLines, 3));  // LET D# = 1
     assert(hasLine(truncLines, 6));   // INPUT "?", FLAG
     assert(!toDoubleLines.empty());   // INPUT "?", D# uses rt_to_double

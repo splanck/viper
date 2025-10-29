@@ -50,24 +50,22 @@ AnalysisResult analyzeSnippet(const std::string &src)
 int main()
 {
     {
-        const std::string src =
-            "10 SUB GREET(N$)\n"
-            "20 PRINT \"Hi, \"; N$\n"
-            "30 END SUB\n"
-            "40 GREET(\"Alice\")\n"
-            "50 END\n";
+        const std::string src = "10 SUB GREET(N$)\n"
+                                "20 PRINT \"Hi, \"; N$\n"
+                                "30 END SUB\n"
+                                "40 GREET(\"Alice\")\n"
+                                "50 END\n";
         auto result = analyzeSnippet(src);
         assert(result.errors == 0);
         assert(result.warnings == 0);
     }
 
     {
-        const std::string src =
-            "10 FUNCTION VALUE()\n"
-            "20 RETURN 1\n"
-            "30 END FUNCTION\n"
-            "40 VALUE()\n"
-            "50 END\n";
+        const std::string src = "10 FUNCTION VALUE()\n"
+                                "20 RETURN 1\n"
+                                "30 END FUNCTION\n"
+                                "40 VALUE()\n"
+                                "50 END\n";
         auto result = analyzeSnippet(src);
         assert(result.errors == 1);
         assert(result.output.find("error[B2015]") != std::string::npos);

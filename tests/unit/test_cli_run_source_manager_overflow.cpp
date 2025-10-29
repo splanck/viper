@@ -18,9 +18,7 @@
 #include <vector>
 
 // Stub usage() required by cmd_run_il.cpp when embedded in the test binary.
-void usage()
-{
-}
+void usage() {}
 
 namespace il::support
 {
@@ -49,7 +47,7 @@ int main()
     std::string pathStr = tmpPath.string();
     std::vector<char> argStorage(pathStr.begin(), pathStr.end());
     argStorage.push_back('\0');
-    char *argv[] = { argStorage.data() };
+    char *argv[] = {argStorage.data()};
 
     il::support::SourceManager sm;
     il::support::SourceManagerTestAccess::setNextFileId(

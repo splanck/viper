@@ -33,9 +33,8 @@ struct CliScenario
     CodegenComparisonOptions options;
 };
 
-const std::array<CliScenario, 1> kScenarios = {{{
-    "BranchPrint",
-    {R"(il 0.1.2
+const std::array<CliScenario, 1> kScenarios = {{{"BranchPrint",
+                                                 {R"(il 0.1.2
 extern @rt_print_i64(i64) -> void
 extern @rt_print_f64(f64) -> void
 
@@ -55,10 +54,10 @@ exit:
   ret 7
 }
 )",
-     "branch_print.il",
-     {},
-     {}},
-    {false, std::nullopt}}}};
+                                                  "branch_print.il",
+                                                  {},
+                                                  {}},
+                                                 {false, std::nullopt}}}};
 
 CodegenComparisonResult runScenario(CodegenFixture &fixture, const CliScenario &scenario)
 {
@@ -71,7 +70,7 @@ CodegenComparisonResult runScenario(CodegenFixture &fixture, const CliScenario &
 
 class CodegenDiffVmNativeTest : public ::testing::TestWithParam<CliScenario>
 {
-protected:
+  protected:
     CodegenFixture fixture_;
 };
 
@@ -82,13 +81,11 @@ TEST_P(CodegenDiffVmNativeTest, VmAndNativeOutputsMatch)
     ASSERT_TRUE(result.success) << result.message;
 }
 
-INSTANTIATE_TEST_SUITE_P(
-    VmNativeDiff,
-    CodegenDiffVmNativeTest,
-    ::testing::ValuesIn(kScenarios),
-    [](const ::testing::TestParamInfo<CliScenario> &info) {
-        return info.param.name;
-    });
+INSTANTIATE_TEST_SUITE_P(VmNativeDiff,
+                         CodegenDiffVmNativeTest,
+                         ::testing::ValuesIn(kScenarios),
+                         [](const ::testing::TestParamInfo<CliScenario> &info)
+                         { return info.param.name; });
 
 int main(int argc, char **argv)
 {
@@ -121,4 +118,3 @@ int main()
 }
 
 #endif
-

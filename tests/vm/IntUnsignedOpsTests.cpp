@@ -14,11 +14,7 @@ using namespace il::core;
 
 namespace
 {
-void buildBinaryFunction(Module &module,
-                         Opcode op,
-                         Type::Kind type,
-                         int64_t lhs,
-                         int64_t rhs)
+void buildBinaryFunction(Module &module, Opcode op, Type::Kind type, int64_t lhs, int64_t rhs)
 {
     il::build::IRBuilder builder(module);
     auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
@@ -111,8 +107,8 @@ int main()
         const int64_t lhs = -9;
         const int64_t rhs = 4;
         buildBinaryFunction(module, Opcode::UDiv, Type::Kind::I64, lhs, rhs);
-        const int64_t expected = static_cast<int64_t>(static_cast<uint64_t>(lhs) /
-                                                       static_cast<uint64_t>(rhs));
+        const int64_t expected =
+            static_cast<int64_t>(static_cast<uint64_t>(lhs) / static_cast<uint64_t>(rhs));
         assert(fixture.run(module) == expected);
     }
 
@@ -121,8 +117,8 @@ int main()
         const int64_t lhs = -3;
         const int64_t rhs = 5;
         buildBinaryFunction(module, Opcode::URem, Type::Kind::I64, lhs, rhs);
-        const int64_t expected = static_cast<int64_t>(static_cast<uint64_t>(lhs) %
-                                                       static_cast<uint64_t>(rhs));
+        const int64_t expected =
+            static_cast<int64_t>(static_cast<uint64_t>(lhs) % static_cast<uint64_t>(rhs));
         assert(fixture.run(module) == expected);
     }
 

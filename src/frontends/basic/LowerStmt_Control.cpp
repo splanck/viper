@@ -86,7 +86,8 @@ void Lowerer::lowerGosub(const GosubStmt &stmt)
     Value slotPtr = emitBinary(Opcode::GEP, Type(Type::Kind::Ptr), gosubState.stackSlot(), offset);
     emitStore(Type(Type::Kind::I32), slotPtr, Value::constInt(static_cast<long long>(*contIndex)));
 
-    Value nextSp = emitCommon(stmt.loc).add_checked(sp, Value::constInt(1), OverflowPolicy::Checked);
+    Value nextSp =
+        emitCommon(stmt.loc).add_checked(sp, Value::constInt(1), OverflowPolicy::Checked);
     emitStore(Type(Type::Kind::I64), gosubState.spSlot(), nextSp);
 
     BasicBlock *target = &func->blocks[destIt->second];

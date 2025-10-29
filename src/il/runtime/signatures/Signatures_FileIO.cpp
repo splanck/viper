@@ -50,26 +50,16 @@ void register_fileio_signatures()
     register_signature(make_signature("rt_term_locate_i32", {Kind::I32, Kind::I32}));
     register_signature(make_signature("rt_getkey_str", {}, {Kind::Ptr}));
     register_signature(make_signature("rt_inkey_str", {}, {Kind::Ptr}));
-    register_signature(make_signature("rt_open_err_vstr",
-                                      {Kind::Ptr, Kind::I32, Kind::I32},
-                                      {Kind::I32}));
+    register_signature(
+        make_signature("rt_open_err_vstr", {Kind::Ptr, Kind::I32, Kind::I32}, {Kind::I32}));
     register_signature(make_signature("rt_close_err", {Kind::I32}, {Kind::I32}));
-    register_signature(make_signature("rt_write_ch_err",
-                                      {Kind::I32, Kind::Ptr},
-                                      {Kind::I32}));
-    register_signature(make_signature("rt_println_ch_err",
-                                      {Kind::I32, Kind::Ptr},
-                                      {Kind::I32}));
-    register_signature(make_signature("rt_line_input_ch_err",
-                                      {Kind::I32, Kind::Ptr},
-                                      {Kind::I32}));
+    register_signature(make_signature("rt_write_ch_err", {Kind::I32, Kind::Ptr}, {Kind::I32}));
+    register_signature(make_signature("rt_println_ch_err", {Kind::I32, Kind::Ptr}, {Kind::I32}));
+    register_signature(make_signature("rt_line_input_ch_err", {Kind::I32, Kind::Ptr}, {Kind::I32}));
     register_signature(make_signature("rt_eof_ch", {Kind::I32}, {Kind::I32}));
     register_signature(make_signature("rt_lof_ch", {Kind::I32}, {Kind::I32}));
     register_signature(make_signature("rt_loc_ch", {Kind::I32}, {Kind::I32}));
-    register_signature(make_signature("rt_seek_ch_err",
-                                      {Kind::I32, Kind::I64},
-                                      {Kind::I32}));
+    register_signature(make_signature("rt_seek_ch_err", {Kind::I32, Kind::I64}, {Kind::I32}));
 }
 
 } // namespace il::runtime::signatures
-

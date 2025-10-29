@@ -25,8 +25,8 @@
 #include "rt_int_format.h"
 #include "rt_internal.h"
 #include "rt_numeric.h"
-#include "rt_string_builder.h"
 #include "rt_string.h"
+#include "rt_string_builder.h"
 
 #include <ctype.h>
 #include <errno.h>

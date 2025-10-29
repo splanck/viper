@@ -120,13 +120,15 @@ int main()
     badSwitch.operands.push_back(Value::constInt(0));
     badSwitch.labels = {defaultBlock.label, caseBlock.label};
 
-    auto badSwitchResult = verifySwitchI32_E(switchFn, switchBlock, badSwitch, manualSwitchMap, switchTypes);
+    auto badSwitchResult =
+        verifySwitchI32_E(switchFn, switchBlock, badSwitch, manualSwitchMap, switchTypes);
     assert(!badSwitchResult);
     const std::string switchMessage = badSwitchResult.error().message;
     assert(switchMessage.find("branch argument vector count mismatch") != std::string::npos);
 
     badSwitch.brArgs = std::vector<std::vector<Value>>{std::vector<Value>{}, std::vector<Value>{}};
-    auto goodSwitch = verifySwitchI32_E(switchFn, switchBlock, badSwitch, manualSwitchMap, switchTypes);
+    auto goodSwitch =
+        verifySwitchI32_E(switchFn, switchBlock, badSwitch, manualSwitchMap, switchTypes);
     assert(goodSwitch);
 
 #ifdef NEGATIVE_DIR
@@ -159,14 +161,17 @@ int main()
     }
     TypeInference fixtureTypes(fixtureTemps, fixtureDefined);
 
-    auto fixtureOk = verifySwitchI32_E(fixtureFn, fixtureEntry, fixtureSwitch, fixtureMap, fixtureTypes);
+    auto fixtureOk =
+        verifySwitchI32_E(fixtureFn, fixtureEntry, fixtureSwitch, fixtureMap, fixtureTypes);
     assert(fixtureOk);
 
     Instr mutatedSwitch = fixtureSwitch;
     mutatedSwitch.brArgs.clear();
-    auto mutatedResult = verifySwitchI32_E(fixtureFn, fixtureEntry, mutatedSwitch, fixtureMap, fixtureTypes);
+    auto mutatedResult =
+        verifySwitchI32_E(fixtureFn, fixtureEntry, mutatedSwitch, fixtureMap, fixtureTypes);
     assert(!mutatedResult);
-    assert(mutatedResult.error().message.find("branch argument vector count mismatch") != std::string::npos);
+    assert(mutatedResult.error().message.find("branch argument vector count mismatch") !=
+           std::string::npos);
 #endif
 
     return 0;

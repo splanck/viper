@@ -76,7 +76,8 @@ namespace
 
     const std::size_t lineEnd = asmText.find('\n', movsdPos);
     const std::size_t lineStart = movsdPos;
-    const std::size_t length = (lineEnd == std::string::npos) ? std::string::npos : lineEnd - lineStart;
+    const std::size_t length =
+        (lineEnd == std::string::npos) ? std::string::npos : lineEnd - lineStart;
     const std::string line = asmText.substr(lineStart, length);
     return line.find(".LC_f64_") != std::string::npos;
 }

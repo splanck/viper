@@ -51,18 +51,17 @@ bool blockPrintsConstant(const il::core::BasicBlock &bb, long long value)
 
 int main()
 {
-    const std::string src =
-        "10 DIM X AS LONG\n"
-        "20 LET X = 2\n"
-        "30 SELECT CASE X\n"
-        "40 CASE 1\n"
-        "50 PRINT 1\n"
-        "60 CASE 2\n"
-        "70 PRINT 2\n"
-        "80 CASE ELSE\n"
-        "90 PRINT 0\n"
-        "100 END SELECT\n"
-        "110 END\n";
+    const std::string src = "10 DIM X AS LONG\n"
+                            "20 LET X = 2\n"
+                            "30 SELECT CASE X\n"
+                            "40 CASE 1\n"
+                            "50 PRINT 1\n"
+                            "60 CASE 2\n"
+                            "70 PRINT 2\n"
+                            "80 CASE ELSE\n"
+                            "90 PRINT 0\n"
+                            "100 END SELECT\n"
+                            "110 END\n";
 
     SourceManager sm;
     uint32_t fid = sm.addFile("select_case.bas");

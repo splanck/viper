@@ -232,4 +232,3 @@ bool VSplitter::onEvent(const ui::Event &ev)
 }
 
 } // namespace viper::tui::widgets
-

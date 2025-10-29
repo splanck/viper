@@ -1,8 +1,8 @@
 // File: tests/unit/test_basic_parse_do.cpp
 // Purpose: Verify BASIC parser handles all DO/EXIT loop forms and preserves nesting details.
-// Key invariants: DO loop conditions map to correct enum/test position and nested statements keep line info.
-// Ownership/Lifetime: Test constructs parser/source manager per case and inspects resulting AST.
-// Links: docs/codemap.md
+// Key invariants: DO loop conditions map to correct enum/test position and nested statements keep
+// line info. Ownership/Lifetime: Test constructs parser/source manager per case and inspects
+// resulting AST. Links: docs/codemap.md
 
 #include "frontends/basic/Parser.hpp"
 #include "support/source_manager.hpp"

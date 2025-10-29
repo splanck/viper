@@ -38,13 +38,13 @@ struct SigParam
         F32, ///< 32-bit floating-point value.
         F64, ///< 64-bit floating-point value.
         Ptr  ///< Pointer-like value, including runtime strings.
-    } kind; ///< Active type classification.
+    } kind;  ///< Active type classification.
 };
 
 /// @brief Capture the expected signature shape for a runtime helper.
 struct Signature
 {
-    std::string name;          ///< Canonical runtime symbol name.
+    std::string name;             ///< Canonical runtime symbol name.
     std::vector<SigParam> params; ///< Parameter type sequence.
     std::vector<SigParam> rets;   ///< Result type sequence (empty for void).
 };
@@ -78,4 +78,3 @@ inline Signature make_signature(std::string name,
 }
 
 } // namespace il::runtime::signatures
-

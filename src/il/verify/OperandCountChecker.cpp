@@ -75,8 +75,7 @@ Expected<void> OperandCountChecker::run() const
         }
         else if (variadicOperands)
         {
-            ss << "expected at least " << static_cast<unsigned>(spec_.numOperandsMin)
-               << " operand";
+            ss << "expected at least " << static_cast<unsigned>(spec_.numOperandsMin) << " operand";
             if (spec_.numOperandsMin != 1)
                 ss << 's';
         }

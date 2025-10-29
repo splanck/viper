@@ -16,6 +16,7 @@
 #include "il/verify/Verifier.hpp"
 
 #include <cassert>
+
 int main()
 {
     using namespace il::core;

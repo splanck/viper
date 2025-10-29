@@ -7,11 +7,11 @@
 #include "rt_array.h"
 
 #ifdef NDEBUG
-#    undef NDEBUG
+#undef NDEBUG
 #endif
 #include <cassert>
-#include <cstdio>
 #include <cstddef>
+#include <cstdio>
 #include <cstdlib>
 #if !defined(_WIN32)
 #include <string>
@@ -84,7 +84,8 @@ int main()
     rt_arr_i32_release(fresh);
 
 #if !defined(_WIN32)
-    auto capture_stderr = [](void (*fn)()) {
+    auto capture_stderr = [](void (*fn)())
+    {
         int fds[2];
         assert(pipe(fds) == 0);
         pid_t pid = fork();
@@ -108,7 +109,8 @@ int main()
         return std::string(buf);
     };
 
-    auto expect_oob_message = [](const std::string &stderr_output) {
+    auto expect_oob_message = [](const std::string &stderr_output)
+    {
         bool saw_panic = stderr_output.find("rt_arr_i32: index") != std::string::npos;
         if (!saw_panic)
         {
@@ -117,28 +119,32 @@ int main()
         }
     };
 
-    auto invoke_oob_get = []() {
+    auto invoke_oob_get = []()
+    {
         int32_t *panic_arr = rt_arr_i32_new(1);
         assert(panic_arr != nullptr);
         rt_arr_i32_get(panic_arr, 1);
     };
     expect_oob_message(capture_stderr(invoke_oob_get));
 
-    auto invoke_oob_set = []() {
+    auto invoke_oob_set = []()
+    {
         int32_t *panic_arr = rt_arr_i32_new(1);
         assert(panic_arr != nullptr);
         rt_arr_i32_set(panic_arr, 1, 42);
     };
     expect_oob_message(capture_stderr(invoke_oob_set));
 
-    auto invoke_copy_null_src = []() {
+    auto invoke_copy_null_src = []()
+    {
         int32_t *panic_dst = rt_arr_i32_new(1);
         assert(panic_dst != nullptr);
         rt_arr_i32_copy_payload(panic_dst, NULL, 1);
     };
     expect_oob_message(capture_stderr(invoke_copy_null_src));
 
-    auto invoke_copy_null_dst = []() {
+    auto invoke_copy_null_dst = []()
+    {
         int32_t *panic_src = rt_arr_i32_new(1);
         assert(panic_src != nullptr);
         panic_src[0] = 99;
@@ -149,4 +155,3 @@ int main()
 
     return 0;
 }
-

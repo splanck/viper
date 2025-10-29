@@ -163,4 +163,3 @@ void SearchBar::paint(render::ScreenBuffer &sb)
 }
 
 } // namespace viper::tui::widgets
-

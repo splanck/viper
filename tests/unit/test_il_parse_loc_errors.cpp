@@ -4,9 +4,9 @@
 // Ownership/Lifetime: Constructs parser state locally for each scenario.
 // Links: docs/il-guide.md#reference
 
+#include "il/core/Module.hpp"
 #include "il/io/FunctionParser.hpp"
 #include "il/io/ParserState.hpp"
-#include "il/core/Module.hpp"
 
 #include <cassert>
 #include <sstream>
@@ -35,4 +35,3 @@ int main()
 
     return 0;
 }
-

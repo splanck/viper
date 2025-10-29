@@ -17,13 +17,14 @@
 /// @details The helpers evaluate constant expressions in place, promoting
 ///          operands as necessary and preserving diagnostic information so the
 ///          caller can decide whether folding succeeded.
-#include "frontends/basic/constfold/Dispatch.hpp"
-#include "frontends/basic/ast/ExprNodes.hpp"
 #include "common/IntegerHelpers.hpp"
+#include "frontends/basic/ast/ExprNodes.hpp"
+#include "frontends/basic/constfold/Dispatch.hpp"
 #include <cassert>
 #include <cstdint>
 #include <limits>
 #include <optional>
+
 namespace il::frontends::basic::constfold
 {
 namespace
@@ -42,7 +43,9 @@ namespace intops = il::common::integer;
 /// @param lhsRaw Left-hand constant operand.
 /// @param rhsRaw Right-hand constant operand.
 /// @return Folded numeric value or @c std::nullopt when folding is invalid.
-std::optional<NumericValue> fold_numeric_impl(AST::BinaryExpr::Op op, const NumericValue &lhsRaw, const NumericValue &rhsRaw)
+std::optional<NumericValue> fold_numeric_impl(AST::BinaryExpr::Op op,
+                                              const NumericValue &lhsRaw,
+                                              const NumericValue &rhsRaw)
 {
     NumericValue lhs = promote_numeric(lhsRaw, rhsRaw);
     NumericValue rhs = promote_numeric(rhsRaw, lhsRaw);
@@ -110,7 +113,9 @@ std::optional<NumericValue> fold_numeric_impl(AST::BinaryExpr::Op op, const Nume
 /// @param lhsRaw Left-hand operand.
 /// @param rhsRaw Right-hand operand.
 /// @return Folded numeric result or @c std::nullopt.
-std::optional<NumericValue> fold_numeric(AST::BinaryExpr::Op op, const NumericValue &lhsRaw, const NumericValue &rhsRaw)
+std::optional<NumericValue> fold_numeric(AST::BinaryExpr::Op op,
+                                         const NumericValue &lhsRaw,
+                                         const NumericValue &rhsRaw)
 {
     auto result = fold_numeric_impl(op, lhsRaw, rhsRaw);
 #ifdef VIPER_CONSTFOLD_ASSERTS

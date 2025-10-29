@@ -1,8 +1,8 @@
 // File: tests/il/transform/simplifycfg_merge_single_pred.cpp
 // Purpose: Validate SimplifyCFG merges single-predecessor blocks into their parent.
-// Key invariants: Instructions from the merged block relocate to the predecessor and the block is removed.
-// Ownership/Lifetime: Constructs a local module and applies the pass in place.
-// Links: docs/il-guide.md#reference
+// Key invariants: Instructions from the merged block relocate to the predecessor and the block is
+// removed. Ownership/Lifetime: Constructs a local module and applies the pass in place. Links:
+// docs/il-guide.md#reference
 
 #include "il/build/IRBuilder.hpp"
 #include "il/transform/SimplifyCFG.hpp"
@@ -20,9 +20,8 @@ int main()
     Module module;
     il::build::IRBuilder builder(module);
 
-    Function &fn = builder.startFunction("merge_single_pred",
-                                         Type(Type::Kind::I64),
-                                         {Param{"x", Type(Type::Kind::I64), 0}});
+    Function &fn = builder.startFunction(
+        "merge_single_pred", Type(Type::Kind::I64), {Param{"x", Type(Type::Kind::I64), 0}});
 
     builder.createBlock(fn, "entry");
     const std::vector<Param> midParams{Param{"v", Type(Type::Kind::I64), 0}};
@@ -75,7 +74,8 @@ int main()
     assert(changed && "SimplifyCFG should merge the single-predecessor block");
     assert(stats.blocksMerged >= 1 && "Expected at least one block merge to occur");
 
-    const auto findBlock = [](const Function &function, const std::string &label) -> const BasicBlock *
+    const auto findBlock = [](const Function &function,
+                              const std::string &label) -> const BasicBlock *
     {
         for (const auto &block : function.blocks)
         {
@@ -103,7 +103,8 @@ int main()
     assert(firstRhs.kind == Value::Kind::ConstInt && firstRhs.i64 == 5);
 
     const Instr &secondInstr = entryBlock->instructions[1];
-    assert(secondInstr.op == Opcode::IMulOvf && "Second instruction should be the hoisted multiply");
+    assert(secondInstr.op == Opcode::IMulOvf &&
+           "Second instruction should be the hoisted multiply");
     assert(secondInstr.result.has_value());
     assert(secondInstr.operands.size() == 2);
     const Value &mulLhs = secondInstr.operands[0];
@@ -121,7 +122,8 @@ int main()
         assert(entryTerm.brArgs.front().size() == 1);
         const Value &branchArg = entryTerm.brArgs.front().front();
         assert(branchArg.kind == Value::Kind::Temp);
-        assert(branchArg.id == *secondInstr.result && "Branch argument should forward the multiply result");
+        assert(branchArg.id == *secondInstr.result &&
+               "Branch argument should forward the multiply result");
         assert(exitBlock->params.size() == 1 && "Exit block must retain its parameter");
     }
     else

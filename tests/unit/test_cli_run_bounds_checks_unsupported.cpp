@@ -50,9 +50,10 @@ void usage()
 int main()
 {
     std::string err;
-    const int rc = invokeRunIL({ "--bounds-checks" }, err);
+    const int rc = invokeRunIL({"--bounds-checks"}, err);
 
-    const bool mentionsUnsupported = err.find("--bounds-checks is not supported") != std::string::npos;
+    const bool mentionsUnsupported =
+        err.find("--bounds-checks is not supported") != std::string::npos;
 
     assert(rc != 0);
     assert(!gUsageCalled);

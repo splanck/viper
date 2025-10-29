@@ -244,11 +244,10 @@ std::optional<AST::ExprPtr> fold_expr(const AST::Expr &expr)
             if (swapped)
                 assert(same_constant(*folded, *swapped));
         }
-        if (*kind == FoldKind::Logical &&
-            (binary->op == AST::BinaryExpr::Op::LogicalAnd ||
-             binary->op == AST::BinaryExpr::Op::LogicalAndShort ||
-             binary->op == AST::BinaryExpr::Op::LogicalOr ||
-             binary->op == AST::BinaryExpr::Op::LogicalOrShort))
+        if (*kind == FoldKind::Logical && (binary->op == AST::BinaryExpr::Op::LogicalAnd ||
+                                           binary->op == AST::BinaryExpr::Op::LogicalAndShort ||
+                                           binary->op == AST::BinaryExpr::Op::LogicalOr ||
+                                           binary->op == AST::BinaryExpr::Op::LogicalOrShort))
         {
             auto swapped = dispatch_fold(*kind, binary->op, *rhs, *lhs);
             if (swapped)

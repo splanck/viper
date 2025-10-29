@@ -16,10 +16,8 @@
 int main(void)
 {
     char template_path[128];
-    int written = snprintf(template_path,
-                           sizeof(template_path),
-                           "tmp_channel_io_%ld.txt",
-                           (long)getpid());
+    int written =
+        snprintf(template_path, sizeof(template_path), "tmp_channel_io_%ld.txt", (long)getpid());
     assert(written > 0 && written < (int)sizeof(template_path));
     remove(template_path);
 

@@ -13,8 +13,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/basic/StatementSequencer.hpp"
-#include "frontends/basic/LineUtils.hpp"
 #include "frontends/basic/AST.hpp"
+#include "frontends/basic/LineUtils.hpp"
 
 #include "frontends/basic/Parser.hpp"
 #include <cstdlib>
@@ -140,8 +140,7 @@ void StatementSequencer::skipStatementSeparator()
 /// @param fn Callback invoked with the discovered line number (or zero when
 ///           absent) and its source location.
 void StatementSequencer::withOptionalLineNumber(
-    const std::function<void(int, il::support::SourceLoc)> &fn,
-    bool allowIdentifierLabel)
+    const std::function<void(int, il::support::SourceLoc)> &fn, bool allowIdentifierLabel)
 {
     int line = 0;
     il::support::SourceLoc loc{};
@@ -267,7 +266,8 @@ StatementSequencer::TerminatorInfo StatementSequencer::collectStatements(
 
         int line = 0;
         il::support::SourceLoc lineLoc{};
-        bool allowIdentifierLabel = (state.separatorBefore != SeparatorKind::Colon) && !state.hadPendingLine;
+        bool allowIdentifierLabel =
+            (state.separatorBefore != SeparatorKind::Colon) && !state.hadPendingLine;
         withOptionalLineNumber(
             [&line, &lineLoc](int currentLine, il::support::SourceLoc currentLoc)
             {

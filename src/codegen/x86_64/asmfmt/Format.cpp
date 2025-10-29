@@ -90,7 +90,8 @@ std::string fmt_reg(int reg)
 {
     if (reg >= 0)
     {
-        const auto phys = viper::codegen::x64::regName(static_cast<viper::codegen::x64::PhysReg>(reg));
+        const auto phys =
+            viper::codegen::x64::regName(static_cast<viper::codegen::x64::PhysReg>(reg));
         return std::string{phys != nullptr ? phys : "%r?"};
     }
 
@@ -177,4 +178,3 @@ std::string format_rodata_bytes(std::string_view bytes)
 }
 
 } // namespace asmfmt
-

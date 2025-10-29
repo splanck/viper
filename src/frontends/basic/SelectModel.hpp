@@ -103,4 +103,3 @@ class SelectModelBuilder
 };
 
 } // namespace il::frontends::basic
-

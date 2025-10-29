@@ -1,8 +1,8 @@
 // File: tests/unit/test_il_instruction_checker_binary_arity.cpp
 // Purpose: Regression test ensuring binary arithmetic instructions enforce operand arity.
-// Key invariants: iadd.ovf instructions reject operand counts other than two and surface diagnostics.
-// Ownership/Lifetime: Constructs ephemeral IL state in function scope.
-// Links: docs/il-guide.md#reference
+// Key invariants: iadd.ovf instructions reject operand counts other than two and surface
+// diagnostics. Ownership/Lifetime: Constructs ephemeral IL state in function scope. Links:
+// docs/il-guide.md#reference
 
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Extern.hpp"
@@ -31,9 +31,8 @@ int main()
     BasicBlock entry;
     entry.label = "entry";
 
-    std::unordered_map<unsigned, Type> temps{{1u, Type(Type::Kind::I64)},
-                                             {2u, Type(Type::Kind::I64)},
-                                             {3u, Type(Type::Kind::I64)}};
+    std::unordered_map<unsigned, Type> temps{
+        {1u, Type(Type::Kind::I64)}, {2u, Type(Type::Kind::I64)}, {3u, Type(Type::Kind::I64)}};
     std::unordered_set<unsigned> defined{1u, 2u, 3u};
     TypeInference types(temps, defined);
 

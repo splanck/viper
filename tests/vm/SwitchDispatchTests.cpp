@@ -50,7 +50,8 @@ Module buildSwitchModule(const SwitchSpec &spec)
     for (const auto &cs : spec.cases)
         builder.addBlock(fn, cs.label);
 
-    auto findBlock = [&fn](const std::string &label) -> BasicBlock & {
+    auto findBlock = [&fn](const std::string &label) -> BasicBlock &
+    {
         for (auto &block : fn.blocks)
         {
             if (block.label == label)

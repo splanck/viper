@@ -13,7 +13,10 @@
 #include <cstdlib>
 #include <limits>
 
-extern "C" bool rt_file_line_buffer_try_grow_for_test(char **buffer, size_t *cap, size_t len, RtError *out_err);
+extern "C" bool rt_file_line_buffer_try_grow_for_test(char **buffer,
+                                                      size_t *cap,
+                                                      size_t len,
+                                                      RtError *out_err);
 
 int main()
 {

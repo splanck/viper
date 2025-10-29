@@ -12,10 +12,10 @@
 
 namespace
 {
-    static jmp_buf g_trap_jmp;
-    static const char *g_last_trap = nullptr;
-    static bool g_trap_expected = false;
-}
+static jmp_buf g_trap_jmp;
+static const char *g_last_trap = nullptr;
+static bool g_trap_expected = false;
+} // namespace
 
 extern "C" void vm_trap(const char *msg)
 {

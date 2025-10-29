@@ -8,7 +8,7 @@
 #include "rt_heap.h"
 
 #ifdef NDEBUG
-#    undef NDEBUG
+#undef NDEBUG
 #endif
 #include <cassert>
 #include <cstddef>

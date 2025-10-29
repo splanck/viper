@@ -108,4 +108,3 @@ void emitShiftAshr(const ILInstr &instr, MIRBuilder &builder)
 }
 
 } // namespace viper::codegen::x64::lowering
-

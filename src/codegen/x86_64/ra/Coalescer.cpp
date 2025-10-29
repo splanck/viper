@@ -283,7 +283,8 @@ void Coalescer::emitCopyTask(const CopyTask &task, std::vector<MInstr> &generate
     {
         if (task.src.kind == CopySource::Kind::Reg)
         {
-            generated.push_back(spiller_.makeStore(task.cls, SpillPlan{true, task.destSlot}, task.src.reg));
+            generated.push_back(
+                spiller_.makeStore(task.cls, SpillPlan{true, task.destSlot}, task.src.reg));
         }
         else
         {
@@ -306,7 +307,8 @@ void Coalescer::emitCopyTask(const CopyTask &task, std::vector<MInstr> &generate
     }
     else
     {
-        generated.push_back(spiller_.makeLoad(task.cls, task.destReg, SpillPlan{true, task.src.slot}));
+        generated.push_back(
+            spiller_.makeLoad(task.cls, task.destReg, SpillPlan{true, task.src.slot}));
     }
 }
 

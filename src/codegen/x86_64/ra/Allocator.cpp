@@ -46,6 +46,7 @@ template <typename... Ts> struct Overload : Ts...
 {
     using Ts::operator()...;
 };
+
 template <typename... Ts> Overload(Ts...) -> Overload<Ts...>;
 
 /// @brief Identify general-purpose registers that must never be allocated.
@@ -115,9 +116,7 @@ AllocationResult LinearScanAllocator::run()
 void LinearScanAllocator::buildPools()
 {
     auto appendRegs = [](RegPool &pool, const std::vector<PhysReg> &regs)
-    {
-        pool.insert(pool.end(), regs.begin(), regs.end());
-    };
+    { pool.insert(pool.end(), regs.begin(), regs.end()); };
 
     appendRegs(freeGPR_, target_.callerSavedGPR);
     appendRegs(freeGPR_, target_.calleeSavedGPR);
@@ -344,8 +343,8 @@ void LinearScanAllocator::releaseActiveForBlock()
 ///          backend.
 /// @param instr Instruction whose operands are being analysed.
 /// @return Vector describing the role of each operand.
-std::vector<LinearScanAllocator::OperandRole>
-LinearScanAllocator::classifyOperands(const MInstr &instr) const
+std::vector<LinearScanAllocator::OperandRole> LinearScanAllocator::classifyOperands(
+    const MInstr &instr) const
 {
     std::vector<OperandRole> roles(instr.operands.size(), OperandRole{true, false});
     switch (instr.opcode)
@@ -492,15 +491,14 @@ void LinearScanAllocator::handleOperand(Operand &operand,
                                         std::vector<MInstr> &suffix,
                                         std::vector<ScratchRelease> &scratch)
 {
-    std::visit(
-        Overload{[&](OpReg &reg) { processRegOperand(reg, role, prefix, suffix, scratch); },
-                 [&](OpMem &mem)
-                 {
-                     OperandRole baseRole{true, false};
-                     processRegOperand(mem.base, baseRole, prefix, suffix, scratch);
-                 },
-                 [](auto &) {}},
-        operand);
+    std::visit(Overload{[&](OpReg &reg) { processRegOperand(reg, role, prefix, suffix, scratch); },
+                        [&](OpMem &mem)
+                        {
+                            OperandRole baseRole{true, false};
+                            processRegOperand(mem.base, baseRole, prefix, suffix, scratch);
+                        },
+                        [](auto &) {}},
+               operand);
 }
 
 /// @brief Rewrite a virtual register operand into a physical register operand.
@@ -569,11 +567,9 @@ MInstr LinearScanAllocator::makeMove(RegClass cls, PhysReg dst, PhysReg src) con
 {
     if (cls == RegClass::GPR)
     {
-        return MInstr::make(MOpcode::MOVrr,
-                            {makePhysOperand(cls, dst), makePhysOperand(cls, src)});
+        return MInstr::make(MOpcode::MOVrr, {makePhysOperand(cls, dst), makePhysOperand(cls, src)});
     }
-    return MInstr::make(MOpcode::MOVSDrr,
-                        {makePhysOperand(cls, dst), makePhysOperand(cls, src)});
+    return MInstr::make(MOpcode::MOVSDrr, {makePhysOperand(cls, dst), makePhysOperand(cls, src)});
 }
 
 } // namespace viper::codegen::x64::ra

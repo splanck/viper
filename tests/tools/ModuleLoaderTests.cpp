@@ -8,9 +8,9 @@
 #include "support/source_manager.hpp"
 #include "tools/common/module_loader.hpp"
 
-#include <filesystem>
 #include <algorithm>
 #include <cctype>
+#include <filesystem>
 #include <sstream>
 
 namespace
@@ -20,7 +20,7 @@ std::filesystem::path repoRoot()
     const auto sourcePath = std::filesystem::absolute(std::filesystem::path(__FILE__));
     return sourcePath.parent_path().parent_path().parent_path();
 }
-}
+} // namespace
 
 int main()
 {
@@ -28,7 +28,8 @@ int main()
 
     il::core::Module module{};
     std::ostringstream okErrors;
-    auto okResult = il::tools::common::loadModuleFromFile((root / "tests/data/loop.il").string(), module, okErrors);
+    auto okResult = il::tools::common::loadModuleFromFile(
+        (root / "tests/data/loop.il").string(), module, okErrors);
     if (!okResult.succeeded())
     {
         return 1;
@@ -49,7 +50,8 @@ int main()
 
     il::core::Module missingModule{};
     std::ostringstream missingErrors;
-    auto missingResult = il::tools::common::loadModuleFromFile("/definitely/not/present.il", missingModule, missingErrors, "cannot open ");
+    auto missingResult = il::tools::common::loadModuleFromFile(
+        "/definitely/not/present.il", missingModule, missingErrors, "cannot open ");
     if (missingResult.status != il::tools::common::LoadStatus::FileError)
     {
         return 1;
@@ -61,7 +63,8 @@ int main()
 
     il::core::Module parseModule{};
     std::ostringstream parseErrors;
-    auto parseResult = il::tools::common::loadModuleFromFile((root / "tests/il/parse/mismatched_paren.il").string(), parseModule, parseErrors);
+    auto parseResult = il::tools::common::loadModuleFromFile(
+        (root / "tests/il/parse/mismatched_paren.il").string(), parseModule, parseErrors);
     if (parseResult.status != il::tools::common::LoadStatus::ParseError)
     {
         return 1;
@@ -76,7 +79,8 @@ int main()
     const auto negativePath = (root / "tests/il/negatives/unbalanced_eh.il").string();
     il::support::SourceManager sm;
     const auto fileId = sm.addFile(negativePath);
-    auto negativeLoad = il::tools::common::loadModuleFromFile(negativePath, verifyModule, verifyErrors);
+    auto negativeLoad =
+        il::tools::common::loadModuleFromFile(negativePath, verifyModule, verifyErrors);
     if (!negativeLoad.succeeded())
     {
         return 1;
@@ -90,10 +94,10 @@ int main()
         auto &entry = verifyModule.functions.front().blocks.front();
         if (!entry.instructions.empty())
         {
-            entry.instructions.front().loc = { fileId, 4, 3 };
+            entry.instructions.front().loc = {fileId, 4, 3};
             if (entry.instructions.size() > 1)
             {
-                entry.instructions[1].loc = { fileId, 5, 3 };
+                entry.instructions[1].loc = {fileId, 5, 3};
             }
         }
     }
@@ -138,4 +142,3 @@ int main()
 
     return 0;
 }
-

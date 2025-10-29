@@ -187,12 +187,11 @@ int main()
         const char *expectedKind;
     };
 
-    const std::array<TrapCase, 4> fpCastTrapInputs = {{{
-                                                            std::numeric_limits<double>::quiet_NaN(),
-                                                            "InvalidCast"},
-                                                        {-0.0, "InvalidCast"},
-                                                        {-1.0, "InvalidCast"},
-                                                        {std::ldexp(1.0, 64), "Overflow"}}};
+    const std::array<TrapCase, 4> fpCastTrapInputs = {
+        {{std::numeric_limits<double>::quiet_NaN(), "InvalidCast"},
+         {-0.0, "InvalidCast"},
+         {-1.0, "InvalidCast"},
+         {std::ldexp(1.0, 64), "Overflow"}}};
 
     for (const auto &[input, expectedKind] : fpCastTrapInputs)
     {
@@ -205,4 +204,3 @@ int main()
 
     return 0;
 }
-

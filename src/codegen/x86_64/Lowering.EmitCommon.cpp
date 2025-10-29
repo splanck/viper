@@ -104,7 +104,8 @@ Operand EmitCommon::materialise(Operand operand, RegClass cls)
         builder().append(
             MInstr::make(MOpcode::MOVri, std::vector<Operand>{clone(tmpOp), clone(operand)}));
     }
-    else if (std::holds_alternative<OpLabel>(operand) || std::holds_alternative<OpRipLabel>(operand))
+    else if (std::holds_alternative<OpLabel>(operand) ||
+             std::holds_alternative<OpRipLabel>(operand))
     {
         builder().append(
             MInstr::make(MOpcode::LEA, std::vector<Operand>{clone(tmpOp), clone(operand)}));
@@ -141,11 +142,8 @@ Operand EmitCommon::materialiseGpr(Operand operand)
 /// @param opcRI Opcode used when the right operand fits the immediate form.
 /// @param cls Register class expected by the instruction.
 /// @param requireImm32 When true, immediates must fit in 32 bits to use @p opcRI.
-void EmitCommon::emitBinary(const ILInstr &instr,
-                            MOpcode opcRR,
-                            MOpcode opcRI,
-                            RegClass cls,
-                            bool requireImm32)
+void EmitCommon::emitBinary(
+    const ILInstr &instr, MOpcode opcRR, MOpcode opcRI, RegClass cls, bool requireImm32)
 {
     if (instr.resultId < 0 || instr.ops.size() < 2)
     {
@@ -166,7 +164,8 @@ void EmitCommon::emitBinary(const ILInstr &instr,
         builder().append(MInstr::make(MOpcode::MOVrr, std::vector<Operand>{clone(dest), lhs}));
     }
 
-    const bool canUseImm = [&]() {
+    const bool canUseImm = [&]()
+    {
         if (opcRI == opcRR)
         {
             return false;
@@ -244,8 +243,8 @@ void EmitCommon::emitShift(const ILInstr &instr, MOpcode opcImm, MOpcode opcReg)
 
     if (!alreadyCl)
     {
-        builder().append(MInstr::make(MOpcode::MOVrr,
-                                      std::vector<Operand>{clone(clOperand), clone(rhs)}));
+        builder().append(
+            MInstr::make(MOpcode::MOVrr, std::vector<Operand>{clone(clOperand), clone(rhs)}));
     }
 
     builder().append(MInstr::make(opcReg, std::vector<Operand>{clone(dest), clone(clOperand)}));
@@ -291,8 +290,8 @@ void EmitCommon::emitCmp(const ILInstr &instr, RegClass cls, int defaultCond)
 
     const VReg destReg = builder().ensureVReg(instr.resultId, instr.resultKind);
     const Operand dest = makeVRegOperand(destReg.cls, destReg.id);
-    builder().append(MInstr::make(MOpcode::SETcc,
-                                  std::vector<Operand>{makeImmOperand(condCode), dest}));
+    builder().append(
+        MInstr::make(MOpcode::SETcc, std::vector<Operand>{makeImmOperand(condCode), dest}));
 }
 
 /// @brief Emit the Machine IR sequence that implements an IL select.
@@ -322,8 +321,8 @@ void EmitCommon::emitSelect(const ILInstr &instr)
         {
             const VReg tmpVReg = builder().makeTempVReg(destReg.cls);
             cmovSource = makeVRegOperand(tmpVReg.cls, tmpVReg.id);
-            builder().append(MInstr::make(MOpcode::MOVri,
-                                          std::vector<Operand>{clone(cmovSource), trueVal}));
+            builder().append(
+                MInstr::make(MOpcode::MOVri, std::vector<Operand>{clone(cmovSource), trueVal}));
         }
 
         const bool falseIsImm = std::holds_alternative<OpImm>(falseVal);
@@ -331,8 +330,8 @@ void EmitCommon::emitSelect(const ILInstr &instr)
         movOperands.push_back(clone(dest));
         movOperands.push_back(clone(falseVal));
         movOperands.push_back(clone(cmovSource));
-        builder().append(MInstr::make(falseIsImm ? MOpcode::MOVri : MOpcode::MOVrr,
-                                      std::move(movOperands)));
+        builder().append(
+            MInstr::make(falseIsImm ? MOpcode::MOVri : MOpcode::MOVrr, std::move(movOperands)));
 
         builder().append(MInstr::make(MOpcode::TESTrr, std::vector<Operand>{clone(cond), cond}));
         builder().append(
@@ -361,8 +360,8 @@ void EmitCommon::emitBranch(const ILInstr &instr)
     {
         return;
     }
-    builder().append(MInstr::make(MOpcode::JMP,
-                                  std::vector<Operand>{builder().makeLabelOperand(instr.ops[0])}));
+    builder().append(
+        MInstr::make(MOpcode::JMP, std::vector<Operand>{builder().makeLabelOperand(instr.ops[0])}));
 }
 
 /// @brief Emit a conditional branch that tests the provided operand.
@@ -382,8 +381,8 @@ void EmitCommon::emitCondBranch(const ILInstr &instr)
     const Operand falseLabel = builder().makeLabelOperand(instr.ops[2]);
 
     builder().append(MInstr::make(MOpcode::TESTrr, std::vector<Operand>{clone(cond), cond}));
-    builder().append(MInstr::make(MOpcode::JCC,
-                                  std::vector<Operand>{makeImmOperand(1), trueLabel}));
+    builder().append(
+        MInstr::make(MOpcode::JCC, std::vector<Operand>{makeImmOperand(1), trueLabel}));
     builder().append(MInstr::make(MOpcode::JMP, std::vector<Operand>{falseLabel}));
 }
 
@@ -434,15 +433,14 @@ void EmitCommon::emitReturn(const ILInstr &instr)
     {
         const Operand retReg = makePhysRegOperand(
             RegClass::XMM, static_cast<uint16_t>(builder().target().f64ReturnReg));
-        builder().append(MInstr::make(MOpcode::MOVSDrr,
-                                      std::vector<Operand>{retReg, clone(srcReg)}));
+        builder().append(
+            MInstr::make(MOpcode::MOVSDrr, std::vector<Operand>{retReg, clone(srcReg)}));
     }
     else
     {
         const Operand retReg = makePhysRegOperand(
             RegClass::GPR, static_cast<uint16_t>(builder().target().intReturnReg));
-        builder().append(MInstr::make(MOpcode::MOVrr,
-                                      std::vector<Operand>{retReg, clone(srcReg)}));
+        builder().append(MInstr::make(MOpcode::MOVrr, std::vector<Operand>{retReg, clone(srcReg)}));
     }
 
     builder().append(MInstr::make(MOpcode::RET, {}));
@@ -497,8 +495,8 @@ void EmitCommon::emitStore(const ILInstr &instr)
         return;
     }
 
-    const Operand value = builder().makeOperandForValue(
-        instr.ops[0], builder().regClassFor(instr.ops[0].kind));
+    const Operand value =
+        builder().makeOperandForValue(instr.ops[0], builder().regClassFor(instr.ops[0].kind));
     Operand baseOp = builder().makeOperandForValue(instr.ops[1], RegClass::GPR);
     const auto *baseReg = std::get_if<OpReg>(&baseOp);
     if (!baseReg)
@@ -586,7 +584,8 @@ void EmitCommon::emitDivRem(const ILInstr &instr, std::string_view opcode)
 
     divisor = materialiseGpr(divisor);
 
-    const MOpcode pseudo = [&]() {
+    const MOpcode pseudo = [&]()
+    {
         if (opcode == "div" || opcode == "sdiv")
         {
             return MOpcode::DIVS64rr;
@@ -602,10 +601,8 @@ void EmitCommon::emitDivRem(const ILInstr &instr, std::string_view opcode)
         return MOpcode::REMU64rr;
     }();
 
-    builder().append(MInstr::make(pseudo,
-                                  std::vector<Operand>{clone(dest),
-                                                       clone(dividend),
-                                                       clone(divisor)}));
+    builder().append(
+        MInstr::make(pseudo, std::vector<Operand>{clone(dest), clone(dividend), clone(divisor)}));
 }
 
 /// @brief Map an integer compare opcode string to a condition code.
@@ -706,4 +703,3 @@ std::optional<int> EmitCommon::fcmpConditionCode(std::string_view opcode) noexce
 }
 
 } // namespace viper::codegen::x64
-

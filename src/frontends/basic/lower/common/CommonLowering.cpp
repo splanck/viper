@@ -71,11 +71,12 @@ CommonLowering::Value CommonLowering::emitBoolConst(bool v)
 /// @param elseLabelBase Base label used to name the `false` block.
 /// @param joinLabelBase Base label used for the join continuation block.
 /// @return Value holding the boolean loaded from the join block.
-CommonLowering::Value CommonLowering::emitBoolFromBranches(const std::function<void(Value)> &emitThen,
-                                                           const std::function<void(Value)> &emitElse,
-                                                           std::string_view thenLabelBase,
-                                                           std::string_view elseLabelBase,
-                                                           std::string_view joinLabelBase)
+CommonLowering::Value CommonLowering::emitBoolFromBranches(
+    const std::function<void(Value)> &emitThen,
+    const std::function<void(Value)> &emitElse,
+    std::string_view thenLabelBase,
+    std::string_view elseLabelBase,
+    std::string_view joinLabelBase)
 {
     auto &ctx = lowerer_->context();
     Value slot = emitAlloca(1);

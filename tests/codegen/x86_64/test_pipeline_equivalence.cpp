@@ -79,7 +79,8 @@ namespace
     manager.addPass(std::make_unique<viper::codegen::x64::passes::LoweringPass>());
     manager.addPass(std::make_unique<viper::codegen::x64::passes::LegalizePass>());
     manager.addPass(std::make_unique<viper::codegen::x64::passes::RegAllocPass>());
-    manager.addPass(std::make_unique<viper::codegen::x64::passes::EmitPass>(viper::codegen::x64::CodegenOptions{}));
+    manager.addPass(std::make_unique<viper::codegen::x64::passes::EmitPass>(
+        viper::codegen::x64::CodegenOptions{}));
 
     if (!manager.run(module, diags) || !module.codegenResult)
     {

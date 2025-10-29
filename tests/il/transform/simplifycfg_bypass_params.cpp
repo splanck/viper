@@ -21,12 +21,8 @@ int main()
 
     Function &fn = builder.startFunction("bypass", Type(Type::Kind::I64), {});
     BasicBlock &entry = builder.createBlock(fn, "entry");
-    BasicBlock &mid = builder.createBlock(fn,
-                                          "mid",
-                                          {Param{"p", Type(Type::Kind::I64), 0}});
-    BasicBlock &exit = builder.createBlock(fn,
-                                           "exit",
-                                           {Param{"result", Type(Type::Kind::I64), 0}});
+    BasicBlock &mid = builder.createBlock(fn, "mid", {Param{"p", Type(Type::Kind::I64), 0}});
+    BasicBlock &exit = builder.createBlock(fn, "exit", {Param{"result", Type(Type::Kind::I64), 0}});
 
     builder.setInsertPoint(entry);
     builder.br(mid, {Value::constInt(7)});
@@ -48,7 +44,8 @@ int main()
     assert(stats.predsMerged == 1 && "Expected a single predecessor redirection");
     assert(stats.emptyBlocksRemoved == 1 && "Expected the forwarding block to be removed");
 
-    const auto findBlock = [](const Function &function, const std::string &label) -> const BasicBlock *
+    const auto findBlock = [](const Function &function,
+                              const std::string &label) -> const BasicBlock *
     {
         for (const auto &block : function.blocks)
         {

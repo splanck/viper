@@ -166,14 +166,8 @@ struct LoweringContext
                     const std::vector<Param> &params,
                     const std::vector<StmtPtr> &body,
                     const Lowerer::ProcedureConfig &config) noexcept
-        : lowerer(lowerer),
-          symbols(symbols),
-          builder(builder),
-          emitter(emitter),
-          name(name),
-          params(params),
-          body(body),
-          config(config)
+        : lowerer(lowerer), symbols(symbols), builder(builder), emitter(emitter), name(name),
+          params(params), body(body), config(config)
     {
     }
 
@@ -303,16 +297,11 @@ void ProcedureLowering::emit(const std::string &name,
                              const std::vector<StmtPtr> &body,
                              const Lowerer::ProcedureConfig &config)
 {
-    LoweringContext ctx(lowerer,
-                        lowerer.symbols,
-                        *lowerer.builder,
-                        lowerer.emitter(),
-                        name,
-                        params,
-                        body,
-                        config);
+    LoweringContext ctx(
+        lowerer, lowerer.symbols, *lowerer.builder, lowerer.emitter(), name, params, body, config);
 
-    ctx.collectInfoStep = [&](LoweringContext &state) {
+    ctx.collectInfoStep = [&](LoweringContext &state)
+    {
         lowerer.resetLoweringState();
         auto metadata = std::make_shared<Lowerer::ProcedureMetadata>(
             lowerer.collectProcedureMetadata(params, body, config));
@@ -323,7 +312,8 @@ void ProcedureLowering::emit(const std::string &name,
         state.irParams = metadata->irParams;
     };
 
-    ctx.scheduleBlocksStep = [&](LoweringContext &state) {
+    ctx.scheduleBlocksStep = [&](LoweringContext &state)
+    {
         assert(config.emitEmptyBody && "Missing empty body return handler");
         assert(config.emitFinalReturn && "Missing final return handler");
         if (!state.hasHandlers())
@@ -331,7 +321,8 @@ void ProcedureLowering::emit(const std::string &name,
 
         auto metadata = std::static_pointer_cast<Lowerer::ProcedureMetadata>(state.metadataHandle);
         auto &procCtx = lowerer.context();
-        il::core::Function &f = lowerer.builder->startFunction(name, config.retType, state.irParams);
+        il::core::Function &f =
+            lowerer.builder->startFunction(name, config.retType, state.irParams);
         state.function = &f;
         procCtx.setFunction(&f);
         procCtx.setNextTemp(f.valueNames.size());
@@ -345,7 +336,8 @@ void ProcedureLowering::emit(const std::string &name,
         lowerer.allocateLocalSlots(state.paramNames, /*includeParams=*/false);
     };
 
-    ctx.emitILStep = [&](LoweringContext &state) {
+    ctx.emitILStep = [&](LoweringContext &state)
+    {
         if (!state.hasHandlers() || !state.function)
             return;
 

@@ -81,4 +81,3 @@ il::support::Expected<void> EhVerifier::run(const Module &module, DiagSink &sink
 }
 
 } // namespace il::verify
-

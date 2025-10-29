@@ -58,16 +58,16 @@ AnalysisResult analyzeSnippet(const std::string &src,
 int main()
 {
     {
-        const std::string src =
-            "10 SELECT CASE \"foo\"\n"
-            "20 CASE 1\n"
-            "30 PRINT 1\n"
-            "40 END SELECT\n"
-            "50 END\n";
+        const std::string src = "10 SELECT CASE \"foo\"\n"
+                                "20 CASE 1\n"
+                                "30 PRINT 1\n"
+                                "40 END SELECT\n"
+                                "50 END\n";
         auto result = analyzeSnippet(src);
         assert(result.errors == 1);
         const std::string expected =
-            "select_case.bas:2:4: error[ERR_SelectCase_StringSelectorLabels]: SELECT CASE on a string selector requires string litera"
+            "select_case.bas:2:4: error[ERR_SelectCase_StringSelectorLabels]: SELECT CASE on a "
+            "string selector requires string litera"
             "l CASE labels\n"
             "20 CASE 1\n"
             "   ^\n";
@@ -75,47 +75,46 @@ int main()
     }
 
     {
-        const std::string src =
-            "10 SELECT CASE 0\n"
-            "20 CASE \"foo\"\n"
-            "30 PRINT 1\n"
-            "40 END SELECT\n"
-            "50 END\n";
+        const std::string src = "10 SELECT CASE 0\n"
+                                "20 CASE \"foo\"\n"
+                                "30 PRINT 1\n"
+                                "40 END SELECT\n"
+                                "50 END\n";
         auto result = analyzeSnippet(src);
         assert(result.errors == 1);
         const std::string expected =
-            "select_case.bas:2:4: error[ERR_SelectCase_StringLabelSelector]: String CASE labels require a string SELECT CASE selector\n"
+            "select_case.bas:2:4: error[ERR_SelectCase_StringLabelSelector]: String CASE labels "
+            "require a string SELECT CASE selector\n"
             "20 CASE \"foo\"\n"
             "   ^\n";
         assert(result.output == expected);
     }
 
     {
-        const std::string src =
-            "10 SELECT CASE 0\n"
-            "20 CASE 1, \"foo\"\n"
-            "30 PRINT 1\n"
-            "40 END SELECT\n"
-            "50 END\n";
+        const std::string src = "10 SELECT CASE 0\n"
+                                "20 CASE 1, \"foo\"\n"
+                                "30 PRINT 1\n"
+                                "40 END SELECT\n"
+                                "50 END\n";
         auto result = analyzeSnippet(src);
         assert(result.errors == 2);
         const std::string expected =
             "select_case.bas:2:4: error[ERR_SelectCase_MixedLabelTypes]: mixed-type SELECT CASE\n"
             "20 CASE 1, \"foo\"\n"
             "   ^\n"
-            "select_case.bas:2:4: error[ERR_SelectCase_StringLabelSelector]: String CASE labels require a string SELECT CASE selector\n"
+            "select_case.bas:2:4: error[ERR_SelectCase_StringLabelSelector]: String CASE labels "
+            "require a string SELECT CASE selector\n"
             "20 CASE 1, \"foo\"\n"
             "   ^\n";
         assert(result.output == expected);
     }
 
     {
-        const std::string src =
-            "10 SELECT CASE 0\n"
-            "20 CASE 2147483648\n"
-            "30 PRINT 1\n"
-            "40 END SELECT\n"
-            "50 END\n";
+        const std::string src = "10 SELECT CASE 0\n"
+                                "20 CASE 2147483648\n"
+                                "30 PRINT 1\n"
+                                "40 END SELECT\n"
+                                "50 END\n";
         auto result = analyzeSnippet(src);
         assert(result.errors == 1);
         assert(result.output.find("error[B2012]") != std::string::npos);
@@ -123,14 +122,13 @@ int main()
     }
 
     {
-        const std::string src =
-            "10 SELECT CASE 0\n"
-            "20 CASE 1\n"
-            "30 PRINT 1\n"
-            "40 CASE 1\n"
-            "50 PRINT 2\n"
-            "60 END SELECT\n"
-            "70 END\n";
+        const std::string src = "10 SELECT CASE 0\n"
+                                "20 CASE 1\n"
+                                "30 PRINT 1\n"
+                                "40 CASE 1\n"
+                                "50 PRINT 2\n"
+                                "60 END SELECT\n"
+                                "70 END\n";
         auto result = analyzeSnippet(src);
         assert(result.errors == 1);
         const std::string expected =
@@ -141,15 +139,14 @@ int main()
     }
 
     {
-        const std::string src =
-            "10 LET X = 0\n"
-            "20 SELECT CASE X\n"
-            "30 CASE 1\n"
-            "40 PRINT \"a\"\n"
-            "50 CASE 1\n"
-            "60 PRINT \"b\"\n"
-            "70 END SELECT\n"
-            "80 END\n";
+        const std::string src = "10 LET X = 0\n"
+                                "20 SELECT CASE X\n"
+                                "30 CASE 1\n"
+                                "40 PRINT \"a\"\n"
+                                "50 CASE 1\n"
+                                "60 PRINT \"b\"\n"
+                                "70 END SELECT\n"
+                                "80 END\n";
         auto result = analyzeSnippet(src);
         assert(result.errors == 1);
         const std::string expected =
@@ -160,25 +157,27 @@ int main()
     }
 
     {
-        const std::string src =
-            "10 SELECT CASE 0\n"
-            "20 CASE 0\n"
-            "30 PRINT 1\n"
-            "40 CASE ELSE\n"
-            "50 PRINT 2\n"
-            "60 END SELECT\n"
-            "70 END\n";
+        const std::string src = "10 SELECT CASE 0\n"
+                                "20 CASE 0\n"
+                                "30 PRINT 1\n"
+                                "40 CASE ELSE\n"
+                                "50 PRINT 2\n"
+                                "60 END SELECT\n"
+                                "70 END\n";
 
-        auto result = analyzeSnippet(src, [](Program &program) {
-            assert(!program.main.empty());
-            auto *select = dynamic_cast<SelectCaseStmt *>(program.main.front().get());
-            assert(select);
+        auto result = analyzeSnippet(src,
+                                     [](Program &program)
+                                     {
+                                         assert(!program.main.empty());
+                                         auto *select = dynamic_cast<SelectCaseStmt *>(
+                                             program.main.front().get());
+                                         assert(select);
 
-            CaseArm duplicateElse;
-            duplicateElse.range.begin = select->range.begin;
-            duplicateElse.range.end = select->range.begin;
-            select->arms.push_back(std::move(duplicateElse));
-        });
+                                         CaseArm duplicateElse;
+                                         duplicateElse.range.begin = select->range.begin;
+                                         duplicateElse.range.end = select->range.begin;
+                                         select->arms.push_back(std::move(duplicateElse));
+                                     });
 
         assert(result.errors == 1);
         const std::string expected =

@@ -62,14 +62,10 @@ StmtPtr Parser::parseGotoStatement()
         if (emitter_)
         {
             std::string msg = "expected label or number after GOTO";
-            uint32_t length = unexpected.lexeme.empty()
-                                   ? 1u
-                                   : static_cast<uint32_t>(unexpected.lexeme.size());
-            emitter_->emit(il::support::Severity::Error,
-                           "B0001",
-                           unexpected.loc,
-                           length,
-                           std::move(msg));
+            uint32_t length =
+                unexpected.lexeme.empty() ? 1u : static_cast<uint32_t>(unexpected.lexeme.size());
+            emitter_->emit(
+                il::support::Severity::Error, "B0001", unexpected.loc, length, std::move(msg));
         }
         else
         {
@@ -115,14 +111,10 @@ StmtPtr Parser::parseGosubStatement()
         if (emitter_)
         {
             std::string msg = "expected label or number after GOSUB";
-            uint32_t length = unexpected.lexeme.empty()
-                                   ? 1u
-                                   : static_cast<uint32_t>(unexpected.lexeme.size());
-            emitter_->emit(il::support::Severity::Error,
-                           "B0001",
-                           unexpected.loc,
-                           length,
-                           std::move(msg));
+            uint32_t length =
+                unexpected.lexeme.empty() ? 1u : static_cast<uint32_t>(unexpected.lexeme.size());
+            emitter_->emit(
+                il::support::Severity::Error, "B0001", unexpected.loc, length, std::move(msg));
         }
         else
         {

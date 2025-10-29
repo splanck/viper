@@ -69,10 +69,7 @@ namespace
 [[nodiscard]] bool containsExpectedInstructions(const std::string &asmText)
 {
     constexpr std::string_view kPatterns[] = {
-        ".globl add",
-        "movq %rdi, %rax",
-        "addq %rsi, %rax",
-        "ret"};
+        ".globl add", "movq %rdi, %rax", "addq %rsi, %rax", "ret"};
 
     for (const std::string_view pattern : kPatterns)
     {

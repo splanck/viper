@@ -5,8 +5,8 @@
 // Links: docs/il-guide.md#reference
 
 #include "il/build/IRBuilder.hpp"
-#include "vm/VM.hpp"
 #include "support/source_location.hpp"
+#include "vm/VM.hpp"
 
 #include <cassert>
 #include <cstdlib>
@@ -20,9 +20,8 @@ namespace
 void addPowExtern(Module &module)
 {
     il::build::IRBuilder builder(module);
-    builder.addExtern("rt_pow_f64_chkdom",
-                      Type(Type::Kind::F64),
-                      {Type(Type::Kind::F64), Type(Type::Kind::F64)});
+    builder.addExtern(
+        "rt_pow_f64_chkdom", Type(Type::Kind::F64), {Type(Type::Kind::F64), Type(Type::Kind::F64)});
 }
 
 Module buildHostCallModule()

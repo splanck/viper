@@ -23,7 +23,7 @@ struct VmTrapResult
 
 class VmFixture
 {
-public:
+  public:
     VmFixture() = default;
     VmFixture(const VmFixture &) = delete;
     VmFixture &operator=(const VmFixture &) = delete;
@@ -37,4 +37,3 @@ public:
 };
 
 } // namespace viper::tests
-

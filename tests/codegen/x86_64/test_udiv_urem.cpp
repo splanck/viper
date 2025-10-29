@@ -107,8 +107,7 @@ namespace
         }
 
         const auto rdxFirst = line.find("%rdx");
-        if (rdxFirst != std::string::npos &&
-            line.find("%rdx", rdxFirst + 4) != std::string::npos)
+        if (rdxFirst != std::string::npos && line.find("%rdx", rdxFirst + 4) != std::string::npos)
         {
             return true;
         }

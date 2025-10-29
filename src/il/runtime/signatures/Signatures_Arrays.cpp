@@ -53,4 +53,3 @@ void register_array_signatures()
 }
 
 } // namespace il::runtime::signatures
-

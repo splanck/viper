@@ -46,7 +46,8 @@ int main()
     assert(changed && "SimplifyCFG should fold the trivial conditional branch");
     assert(stats.cbrToBr == 1 && "Expected exactly one conditional branch fold");
 
-    const auto findBlock = [](const Function &function, const std::string &label) -> const BasicBlock *
+    const auto findBlock = [](const Function &function,
+                              const std::string &label) -> const BasicBlock *
     {
         for (const auto &block : function.blocks)
         {

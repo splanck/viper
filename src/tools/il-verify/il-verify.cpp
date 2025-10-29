@@ -53,8 +53,7 @@ int runCLI(
     il::core::Module m;
     if (sm.addFile(argv[1]) == 0)
     {
-        auto diag = il::support::makeError(
-            {}, "source manager exhausted file identifier space");
+        auto diag = il::support::makeError({}, "source manager exhausted file identifier space");
         il::support::printDiag(diag, err);
         return 1;
     }

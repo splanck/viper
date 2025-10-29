@@ -27,8 +27,8 @@
 ///          individual lowering stages implemented in other translation units.
 
 #include "frontends/basic/Lowerer.hpp"
-#include "frontends/basic/LineUtils.hpp"
 #include "frontends/basic/EmitCommon.hpp"
+#include "frontends/basic/LineUtils.hpp"
 #include "frontends/basic/TypeSuffix.hpp"
 #include "frontends/basic/lower/Emitter.hpp"
 #include "il/core/BasicBlock.hpp"

@@ -24,8 +24,8 @@
 #include "il/core/Opcode.hpp"
 #include "il/core/Type.hpp"
 #include "il/verify/DiagSink.hpp"
-#include "il/verify/InstructionCheckerShared.hpp"
 #include "il/verify/InstructionCheckUtils.hpp"
+#include "il/verify/InstructionCheckerShared.hpp"
 #include "il/verify/OperandCountChecker.hpp"
 #include "il/verify/OperandTypeChecker.hpp"
 #include "il/verify/ResultTypeChecker.hpp"
@@ -257,11 +257,13 @@ Expected<void> verifyOpcodeSignature_impl(const il::core::Function &fn,
     {
         case il::core::ResultArity::None:
             if (hasResult)
-                return Expected<void>(makeError(instr.loc, formatInstrDiag(fn, bb, instr, "unexpected result")));
+                return Expected<void>(
+                    makeError(instr.loc, formatInstrDiag(fn, bb, instr, "unexpected result")));
             break;
         case il::core::ResultArity::One:
             if (!hasResult)
-                return Expected<void>(makeError(instr.loc, formatInstrDiag(fn, bb, instr, "missing result")));
+                return Expected<void>(
+                    makeError(instr.loc, formatInstrDiag(fn, bb, instr, "missing result")));
             break;
         case il::core::ResultArity::Optional:
             break;
@@ -275,19 +277,22 @@ Expected<void> verifyOpcodeSignature_impl(const il::core::Function &fn,
         std::string message;
         if (spec.numOperandsMin == spec.numOperandsMax && !variadicOperands)
         {
-            message = "expected " + std::to_string(static_cast<unsigned>(spec.numOperandsMin)) + " operand";
+            message = "expected " + std::to_string(static_cast<unsigned>(spec.numOperandsMin)) +
+                      " operand";
             if (spec.numOperandsMin != 1)
                 message += 's';
         }
         else if (variadicOperands)
         {
-            message = "expected at least " + std::to_string(static_cast<unsigned>(spec.numOperandsMin)) + " operand";
+            message = "expected at least " +
+                      std::to_string(static_cast<unsigned>(spec.numOperandsMin)) + " operand";
             if (spec.numOperandsMin != 1)
                 message += 's';
         }
         else
         {
-            message = "expected between " + std::to_string(static_cast<unsigned>(spec.numOperandsMin)) + " and " +
+            message = "expected between " +
+                      std::to_string(static_cast<unsigned>(spec.numOperandsMin)) + " and " +
                       std::to_string(static_cast<unsigned>(spec.numOperandsMax)) + " operands";
         }
         return Expected<void>(makeError(instr.loc, formatInstrDiag(fn, bb, instr, message)));
@@ -297,13 +302,16 @@ Expected<void> verifyOpcodeSignature_impl(const il::core::Function &fn,
     if (variadicSucc)
     {
         if (instr.labels.empty())
-            return Expected<void>(makeError(instr.loc, formatInstrDiag(fn, bb, instr, "expected at least 1 successor")));
+            return Expected<void>(makeError(
+                instr.loc, formatInstrDiag(fn, bb, instr, "expected at least 1 successor")));
     }
     else
     {
         if (instr.labels.size() != spec.numSuccessors)
         {
-            std::string message = "expected " + std::to_string(static_cast<unsigned>(spec.numSuccessors)) + " successor";
+            std::string message = "expected " +
+                                  std::to_string(static_cast<unsigned>(spec.numSuccessors)) +
+                                  " successor";
             if (spec.numSuccessors != 1)
                 message += 's';
             return Expected<void>(makeError(instr.loc, formatInstrDiag(fn, bb, instr, message)));
@@ -314,16 +322,18 @@ Expected<void> verifyOpcodeSignature_impl(const il::core::Function &fn,
     {
         if (!instr.brArgs.empty() && instr.brArgs.size() != instr.labels.size())
         {
-            return Expected<void>(makeError(instr.loc,
-                                            formatInstrDiag(
-                                                fn, bb, instr, "expected branch argument bundle per successor or none")));
+            return Expected<void>(makeError(
+                instr.loc,
+                formatInstrDiag(
+                    fn, bb, instr, "expected branch argument bundle per successor or none")));
         }
     }
     else
     {
         if (instr.brArgs.size() > spec.numSuccessors)
         {
-            std::string message = "expected at most " + std::to_string(static_cast<unsigned>(spec.numSuccessors)) +
+            std::string message = "expected at most " +
+                                  std::to_string(static_cast<unsigned>(spec.numSuccessors)) +
                                   " branch argument bundle";
             if (spec.numSuccessors != 1)
                 message += 's';
@@ -331,7 +341,8 @@ Expected<void> verifyOpcodeSignature_impl(const il::core::Function &fn,
         }
         if (!instr.brArgs.empty() && instr.brArgs.size() != spec.numSuccessors)
         {
-            std::string message = "expected " + std::to_string(static_cast<unsigned>(spec.numSuccessors)) +
+            std::string message = "expected " +
+                                  std::to_string(static_cast<unsigned>(spec.numSuccessors)) +
                                   " branch argument bundle";
             if (spec.numSuccessors != 1)
                 message += 's';
@@ -430,4 +441,3 @@ Expected<void> verifyInstruction_expected(
 }
 
 } // namespace il::verify
-

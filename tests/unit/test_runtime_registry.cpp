@@ -17,7 +17,8 @@ int main()
     assert(!registry.empty());
 
     std::unordered_set<std::string_view> names;
-    std::unordered_map<il::runtime::RuntimeFeature, const il::runtime::RuntimeDescriptor *> featureOwners;
+    std::unordered_map<il::runtime::RuntimeFeature, const il::runtime::RuntimeDescriptor *>
+        featureOwners;
     for (const auto &entry : registry)
     {
         assert(entry.handler && "runtime descriptor missing handler");
@@ -39,7 +40,8 @@ int main()
 
     auto expectTermDescriptor = [](il::runtime::RuntimeFeature feature,
                                    std::string_view expectedName,
-                                   std::initializer_list<il::core::Type::Kind> paramKinds) {
+                                   std::initializer_list<il::core::Type::Kind> paramKinds)
+    {
         const auto *descriptor = il::runtime::findRuntimeDescriptor(feature);
         assert(descriptor && "terminal runtime descriptor missing");
         assert(descriptor->name == expectedName && "terminal runtime descriptor name mismatch");
@@ -62,7 +64,8 @@ int main()
                          "rt_term_locate_i32",
                          {il::core::Type::Kind::I32, il::core::Type::Kind::I32});
 
-    const auto *strEqDescriptor = il::runtime::findRuntimeDescriptor(il::runtime::RuntimeFeature::StrEq);
+    const auto *strEqDescriptor =
+        il::runtime::findRuntimeDescriptor(il::runtime::RuntimeFeature::StrEq);
     assert(strEqDescriptor && "string equality runtime descriptor missing");
     assert(strEqDescriptor->name == "rt_str_eq" &&
            "string equality runtime descriptor name mismatch");
@@ -79,4 +82,3 @@ int main()
     assert(signatureMap.size() == registry.size());
     return 0;
 }
-

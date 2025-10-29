@@ -65,9 +65,8 @@ namespace
     selectInstr.opcode = "select";
     selectInstr.resultId = 3;
     selectInstr.resultKind = ILValue::Kind::I64;
-    selectInstr.ops = {makeValueRef(cmpInstr.resultId, ILValue::Kind::I1),
-                       makeConstI64(1),
-                       makeConstI64(0)};
+    selectInstr.ops = {
+        makeValueRef(cmpInstr.resultId, ILValue::Kind::I1), makeConstI64(1), makeConstI64(0)};
 
     ILInstr retInstr{};
     retInstr.opcode = "ret";

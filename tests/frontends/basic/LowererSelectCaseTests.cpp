@@ -118,14 +118,13 @@ LowerWithDiagnosticsResult lowerSnippetWithDiagnostics(const std::string &src)
 int main()
 {
     {
-        const std::string src =
-            "10 SELECT CASE \"foo\"\n"
-            "20 CASE \"foo\"\n"
-            "30 PRINT \"foo\"\n"
-            "40 CASE \"bar\"\n"
-            "50 PRINT \"bar\"\n"
-            "60 END SELECT\n"
-            "70 END\n";
+        const std::string src = "10 SELECT CASE \"foo\"\n"
+                                "20 CASE \"foo\"\n"
+                                "30 PRINT \"foo\"\n"
+                                "40 CASE \"bar\"\n"
+                                "50 PRINT \"bar\"\n"
+                                "60 END SELECT\n"
+                                "70 END\n";
         il::core::Module module = lowerSnippet(src);
         const il::core::Function *mainFn = findMain(module);
         assert(mainFn);
@@ -147,15 +146,14 @@ int main()
     }
 
     {
-        const std::string src =
-            "10 LET X = 5\n"
-            "20 SELECT CASE X\n"
-            "30 CASE 1 TO 3\n"
-            "40 PRINT 1\n"
-            "50 CASE 4 TO 6\n"
-            "60 PRINT 2\n"
-            "70 END SELECT\n"
-            "80 END\n";
+        const std::string src = "10 LET X = 5\n"
+                                "20 SELECT CASE X\n"
+                                "30 CASE 1 TO 3\n"
+                                "40 PRINT 1\n"
+                                "50 CASE 4 TO 6\n"
+                                "60 PRINT 2\n"
+                                "70 END SELECT\n"
+                                "80 END\n";
         il::core::Module module = lowerSnippet(src);
         const il::core::Function *mainFn = findMain(module);
         assert(mainFn);
@@ -185,15 +183,14 @@ int main()
     }
 
     {
-        const std::string src =
-            "10 LET X = 10\n"
-            "20 SELECT CASE X\n"
-            "30 CASE 1\n"
-            "40 PRINT 1\n"
-            "50 CASE ELSE\n"
-            "60 PRINT 0\n"
-            "70 END SELECT\n"
-            "80 END\n";
+        const std::string src = "10 LET X = 10\n"
+                                "20 SELECT CASE X\n"
+                                "30 CASE 1\n"
+                                "40 PRINT 1\n"
+                                "50 CASE ELSE\n"
+                                "60 PRINT 0\n"
+                                "70 END SELECT\n"
+                                "80 END\n";
         il::core::Module module = lowerSnippet(src);
         const il::core::Function *mainFn = findMain(module);
         assert(mainFn);
@@ -208,13 +205,12 @@ int main()
     }
 
     {
-        const std::string src =
-            "10 LET X = 0\n"
-            "20 SELECT CASE X\n"
-            "30 CASE 9223372036854775807\n"
-            "40 PRINT 1\n"
-            "50 END SELECT\n"
-            "60 END\n";
+        const std::string src = "10 LET X = 0\n"
+                                "20 SELECT CASE X\n"
+                                "30 CASE 9223372036854775807\n"
+                                "40 PRINT 1\n"
+                                "50 END SELECT\n"
+                                "60 END\n";
         auto result = lowerSnippetWithDiagnostics(src);
         assert(result.errorCount == 1);
         assert(result.diagnostics.find("error[B2012]") != std::string::npos);

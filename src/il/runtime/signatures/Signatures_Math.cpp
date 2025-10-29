@@ -48,4 +48,3 @@ void register_math_signatures()
 }
 
 } // namespace il::runtime::signatures
-

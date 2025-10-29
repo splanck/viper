@@ -26,7 +26,8 @@ std::string captureRuntimeTrap(bool attachLoc)
     auto &bb = b.addBlock(fn, "entry");
     b.setInsertPoint(bb);
     Value s = b.emitConstStr("g", {1, 1, 1});
-    const il::support::SourceLoc callLoc = attachLoc ? il::support::SourceLoc{1, 1, 1} : il::support::SourceLoc{};
+    const il::support::SourceLoc callLoc =
+        attachLoc ? il::support::SourceLoc{1, 1, 1} : il::support::SourceLoc{};
     b.emitCall("rt_to_int", {s}, std::optional<Value>{}, callLoc);
     b.emitRet(std::optional<Value>{}, {1, 1, 1});
 
@@ -59,7 +60,8 @@ std::string captureRuntimeTrap(bool attachLoc)
 int main()
 {
     const std::string withLoc = captureRuntimeTrap(true);
-    const bool precise = withLoc.find("Trap @main#1 line 1: DomainError (code=0)") != std::string::npos;
+    const bool precise =
+        withLoc.find("Trap @main#1 line 1: DomainError (code=0)") != std::string::npos;
     assert(precise);
 
     const std::string withoutLoc = captureRuntimeTrap(false);

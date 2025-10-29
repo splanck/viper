@@ -67,8 +67,7 @@ bool matchesOperandPattern(const lowering::OperandShape &shape, const ILInstr &i
     {
         return false;
     }
-    if (shape.maxArity != std::numeric_limits<std::uint8_t>::max() &&
-        arity > shape.maxArity)
+    if (shape.maxArity != std::numeric_limits<std::uint8_t>::max() && arity > shape.maxArity)
     {
         return false;
     }

@@ -95,17 +95,14 @@ Emit::Value Emit::widen_to(Value value, int fromBits, int toBits, Signedness sig
         const std::int64_t mask = (fromBits == 16) ? 0xFFFFll : 0xFFFFFFFFll;
         if (signedness == Signedness::Unsigned)
         {
-            return emitBinary(il::core::Opcode::And, intType(toBits), value, il::core::Value::constInt(mask));
+            return emitBinary(
+                il::core::Opcode::And, intType(toBits), value, il::core::Value::constInt(mask));
         }
         const int shift = (fromBits == 32) ? 32 : 48;
-        Value masked = emitBinary(il::core::Opcode::And,
-                                  intType(toBits),
-                                  value,
-                                  il::core::Value::constInt(mask));
-        Value shl = emitBinary(il::core::Opcode::Shl,
-                               intType(toBits),
-                               masked,
-                               il::core::Value::constInt(shift));
+        Value masked = emitBinary(
+            il::core::Opcode::And, intType(toBits), value, il::core::Value::constInt(mask));
+        Value shl = emitBinary(
+            il::core::Opcode::Shl, intType(toBits), masked, il::core::Value::constInt(shift));
         return emitBinary(
             il::core::Opcode::AShr, intType(toBits), shl, il::core::Value::constInt(shift));
     }

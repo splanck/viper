@@ -111,8 +111,9 @@ void jump(Frame &frame, Target target)
     const il::core::BasicBlock *sourceBlock = *target.currentBlock;
 
     const size_t expected = dest->params.size();
-    const size_t provided =
-        target.labelIndex < target.instr->brArgs.size() ? target.instr->brArgs[target.labelIndex].size() : 0;
+    const size_t provided = target.labelIndex < target.instr->brArgs.size()
+                                ? target.instr->brArgs[target.labelIndex].size()
+                                : 0;
     if (provided != expected)
         reportBranchArgMismatch(*dest, sourceBlock, expected, provided, *target.instr, frame);
 
@@ -166,4 +167,3 @@ Scalar eval_scrutinee(Frame &frame, const il::core::Instr &instr)
 }
 
 } // namespace il::vm::ops::common
-

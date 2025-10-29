@@ -169,7 +169,8 @@ Module buildErrGetKindModule()
     makeErr.result = builder.reserveTempId();
     makeErr.op = Opcode::TrapErr;
     makeErr.type = Type(Type::Kind::Error);
-    makeErr.operands.push_back(Value::constInt(static_cast<long long>(il::vm::ErrCode::Err_IOError)));
+    makeErr.operands.push_back(
+        Value::constInt(static_cast<long long>(il::vm::ErrCode::Err_IOError)));
     makeErr.operands.push_back(Value::temp(*makeStr.result));
     entry.instructions.push_back(makeErr);
 
@@ -209,7 +210,8 @@ Module buildErrGetCodeModule()
     makeErr.result = builder.reserveTempId();
     makeErr.op = Opcode::TrapErr;
     makeErr.type = Type(Type::Kind::Error);
-    makeErr.operands.push_back(Value::constInt(static_cast<long long>(il::vm::ErrCode::Err_IOError)));
+    makeErr.operands.push_back(
+        Value::constInt(static_cast<long long>(il::vm::ErrCode::Err_IOError)));
     makeErr.operands.push_back(Value::temp(*makeStr.result));
     entry.instructions.push_back(makeErr);
 
@@ -255,7 +257,8 @@ Module buildErrGetIpModule()
     makeErr.result = builder.reserveTempId();
     makeErr.op = Opcode::TrapErr;
     makeErr.type = Type(Type::Kind::Error);
-    makeErr.operands.push_back(Value::constInt(static_cast<long long>(il::vm::ErrCode::Err_IOError)));
+    makeErr.operands.push_back(
+        Value::constInt(static_cast<long long>(il::vm::ErrCode::Err_IOError)));
     makeErr.operands.push_back(Value::temp(*makeStr.result));
     entry.instructions.push_back(makeErr);
 
@@ -301,7 +304,8 @@ Module buildErrGetLineModule()
     makeErr.result = builder.reserveTempId();
     makeErr.op = Opcode::TrapErr;
     makeErr.type = Type(Type::Kind::Error);
-    makeErr.operands.push_back(Value::constInt(static_cast<long long>(il::vm::ErrCode::Err_IOError)));
+    makeErr.operands.push_back(
+        Value::constInt(static_cast<long long>(il::vm::ErrCode::Err_IOError)));
     makeErr.operands.push_back(Value::temp(*makeStr.result));
     entry.instructions.push_back(makeErr);
 
@@ -422,7 +426,8 @@ int main()
         Module module = buildErrGetCodeModule();
         il::vm::VM vm(module);
         const int64_t exitCode = vm.run();
-        assert(exitCode == static_cast<int64_t>(static_cast<int32_t>(il::vm::ErrCode::Err_IOError)));
+        assert(exitCode ==
+               static_cast<int64_t>(static_cast<int32_t>(il::vm::ErrCode::Err_IOError)));
     }
 
     {
@@ -443,7 +448,8 @@ int main()
         Module module = buildTrapKindReadModule();
         il::vm::VM vm(module);
         const int64_t exitCode = vm.run();
-        assert(exitCode == static_cast<int64_t>(static_cast<int32_t>(il::vm::TrapKind::DivideByZero)));
+        assert(exitCode ==
+               static_cast<int64_t>(static_cast<int32_t>(il::vm::TrapKind::DivideByZero)));
     }
 
     return 0;

@@ -32,9 +32,9 @@ constexpr std::string_view kSrc = R"BASIC(
 [[nodiscard]] bool hasExtern(const il::core::Module &module, std::string_view name)
 {
     const auto &externs = module.externs;
-    return std::any_of(externs.begin(), externs.end(), [&](const il::core::Extern &ext) {
-        return ext.name == name;
-    });
+    return std::any_of(externs.begin(),
+                       externs.end(),
+                       [&](const il::core::Extern &ext) { return ext.name == name; });
 }
 } // namespace
 

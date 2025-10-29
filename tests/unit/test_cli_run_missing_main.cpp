@@ -21,9 +21,7 @@ const char kModuleSource[] = "il 0.1\n\nfunc @helper() -> i64 {\nentry:\n  ret 0
 }
 
 // Stubbed usage() to satisfy linkage when embedding cmd_run_il.cpp in the test.
-void usage()
-{
-}
+void usage() {}
 
 int main()
 {
@@ -40,7 +38,7 @@ int main()
     std::string pathStr = tmpPath.string();
     std::vector<char> argStorage(pathStr.begin(), pathStr.end());
     argStorage.push_back('\0');
-    char *argv[] = { argStorage.data() };
+    char *argv[] = {argStorage.data()};
 
     std::ostringstream errStream;
     auto *oldBuf = std::cerr.rdbuf(errStream.rdbuf());

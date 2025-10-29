@@ -31,7 +31,8 @@ TEST_WITH_IL(il, {
     il.retVoid(loc);
 
     const std::string diag = il.captureTrap();
-    const bool hasTrapKind = diag.find("Trap @main#0 line 1: InvalidOperation (code=0)") != std::string::npos;
+    const bool hasTrapKind =
+        diag.find("Trap @main#0 line 1: InvalidOperation (code=0)") != std::string::npos;
     assert(hasTrapKind && "expected InvalidOperation trap for unmapped opcode");
 
     const bool hasPrefix = diag.find("unimplemented opcode:") != std::string::npos;

@@ -87,7 +87,9 @@ class CommonLowering
 
     void emitCBr(Value cond, BasicBlock *t, BasicBlock *f);
 
-    [[nodiscard]] Value emitCallRet(Type ty, const std::string &callee, const std::vector<Value> &args);
+    [[nodiscard]] Value emitCallRet(Type ty,
+                                    const std::string &callee,
+                                    const std::vector<Value> &args);
 
     void emitCall(const std::string &callee, const std::vector<Value> &args);
 

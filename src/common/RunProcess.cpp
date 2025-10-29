@@ -32,18 +32,18 @@
 #include <vector>
 
 #ifndef _WIN32
-#    include <sys/wait.h>
-#    include <unistd.h>
+#include <sys/wait.h>
+#include <unistd.h>
 #endif
 
 #ifdef _WIN32
-#    include <direct.h>
-#    include <wchar.h>
-#    define POPEN _popen
-#    define PCLOSE _pclose
+#include <direct.h>
+#include <wchar.h>
+#define POPEN _popen
+#define PCLOSE _pclose
 #else
-#    define POPEN popen
-#    define PCLOSE pclose
+#define POPEN popen
+#define PCLOSE pclose
 #endif
 
 namespace
@@ -100,14 +100,14 @@ std::string quote_posix_argument(const std::string &arg)
     {
         switch (ch)
         {
-        case '\\':
-        case '"':
-        case '$':
-        case '`':
-            quoted.push_back('\\');
-            break;
-        default:
-            break;
+            case '\\':
+            case '"':
+            case '$':
+            case '`':
+                quoted.push_back('\\');
+                break;
+            default:
+                break;
         }
         quoted.push_back(ch);
     }
@@ -129,10 +129,9 @@ namespace
 {
 class ScopedEnvironmentAssignment
 {
-public:
+  public:
     ScopedEnvironmentAssignment(std::string name, std::string value)
-        : name_(std::move(name))
-        , previous_(capture_existing())
+        : name_(std::move(name)), previous_(capture_existing())
     {
         apply(std::move(value));
     }
@@ -141,8 +140,7 @@ public:
     ScopedEnvironmentAssignment &operator=(const ScopedEnvironmentAssignment &) = delete;
 
     ScopedEnvironmentAssignment(ScopedEnvironmentAssignment &&other) noexcept
-        : name_(std::move(other.name_))
-        , previous_(std::move(other.previous_))
+        : name_(std::move(other.name_)), previous_(std::move(other.previous_))
     {
         other.name_.clear();
         other.previous_.reset();
@@ -186,7 +184,7 @@ public:
         restore();
     }
 
-private:
+  private:
     std::optional<std::string> capture_existing() const
     {
         const char *existing = std::getenv(name_.c_str());
@@ -244,8 +242,8 @@ struct ScopedEnvironmentAssignmentMoveResult
     bool restored;
 };
 
-ScopedEnvironmentAssignmentMoveResult scoped_environment_assignment_move_preserves(const std::string &name,
-                                                                                   const std::string &value)
+ScopedEnvironmentAssignmentMoveResult scoped_environment_assignment_move_preserves(
+    const std::string &name, const std::string &value)
 {
     const char *original_raw = std::getenv(name.c_str());
     std::optional<std::string> original_value;
@@ -260,12 +258,14 @@ ScopedEnvironmentAssignmentMoveResult scoped_environment_assignment_move_preserv
         ScopedEnvironmentAssignment guard(name, value);
         ScopedEnvironmentAssignment moved(std::move(guard));
         const char *current = std::getenv(name.c_str());
-        result.value_visible_after_move_ctor = (current != nullptr) && std::string(current) == value;
+        result.value_visible_after_move_ctor =
+            (current != nullptr) && std::string(current) == value;
 
         ScopedEnvironmentAssignment receiver(name, value);
         receiver = std::move(moved);
         current = std::getenv(name.c_str());
-        result.value_visible_after_move_assign = (current != nullptr) && std::string(current) == value;
+        result.value_visible_after_move_assign =
+            (current != nullptr) && std::string(current) == value;
     }
 
     const char *restored_raw = std::getenv(name.c_str());
@@ -286,7 +286,7 @@ namespace
 {
 class ScopedWorkingDirectory
 {
-public:
+  public:
     explicit ScopedWorkingDirectory(const std::optional<std::string> &target)
     {
         if (!target)
@@ -295,8 +295,7 @@ public:
         }
 
 #ifdef _WIN32
-        std::unique_ptr<wchar_t, decltype(&std::free)> previous(
-            _wgetcwd(nullptr, 0), &std::free);
+        std::unique_ptr<wchar_t, decltype(&std::free)> previous(_wgetcwd(nullptr, 0), &std::free);
         if (!previous)
         {
             error_.emplace("failed to query current working directory");
@@ -358,7 +357,7 @@ public:
         return *error_;
     }
 
-private:
+  private:
 #ifdef _WIN32
     std::wstring previous_;
 #else

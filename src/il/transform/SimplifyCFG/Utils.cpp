@@ -21,8 +21,8 @@
 
 #include <bit>
 #include <cassert>
-#include <cstdlib>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 
 namespace il::transform::simplify_cfg

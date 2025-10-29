@@ -4,8 +4,8 @@
 // Ownership/Lifetime: Test owns captured streams and buffers.
 // Links: docs/testing.md
 
-#include "tools/basic/common.hpp"
 #include "support/source_manager.hpp"
+#include "tools/basic/common.hpp"
 
 #include <cassert>
 #include <cstdint>
@@ -29,8 +29,7 @@ int main()
 {
     il::support::SourceManager sm;
     il::support::SourceManagerTestAccess::setNextFileId(
-        sm,
-        static_cast<uint64_t>(std::numeric_limits<std::uint32_t>::max()) + 1);
+        sm, static_cast<uint64_t>(std::numeric_limits<std::uint32_t>::max()) + 1);
 
     std::string buffer = "sentinel";
     std::stringstream captured;
@@ -45,8 +44,7 @@ int main()
 
     const std::string diagnostics = captured.str();
     assert(diagnostics.find("error:") != std::string::npos);
-    assert(diagnostics.find("source manager exhausted file identifier space")
-           != std::string::npos);
+    assert(diagnostics.find("source manager exhausted file identifier space") != std::string::npos);
     assert(diagnostics.find("cannot register") != std::string::npos);
 
     return 0;

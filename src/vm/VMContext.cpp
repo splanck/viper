@@ -239,11 +239,8 @@ void VMContext::handleInlineResult(VM::ExecState &state, const VM::ExecResult &e
     std::string detail = "unimplemented opcode: " + opcodeMnemonic(opcode);
     if (!blockLabel.empty())
         detail += " (block " + blockLabel + ')';
-    RuntimeBridge::trap(TrapKind::InvalidOperation,
-                        detail,
-                        vmInstance->currentContext.loc,
-                        funcName,
-                        blockLabel);
+    RuntimeBridge::trap(
+        TrapKind::InvalidOperation, detail, vmInstance->currentContext.loc, funcName, blockLabel);
     std::terminate();
 }
 

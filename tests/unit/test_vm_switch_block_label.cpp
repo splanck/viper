@@ -40,10 +40,8 @@ void reportRuntimeContext()
     if (!gTrapVm)
         return;
     const auto &ctx = il::vm::VMTestHook::runtimeContext(*gTrapVm);
-    std::fprintf(stderr,
-                 "runtime-context: fn='%s' block='%s'\n",
-                 ctx.function.c_str(),
-                 ctx.block.c_str());
+    std::fprintf(
+        stderr, "runtime-context: fn='%s' block='%s'\n", ctx.function.c_str(), ctx.block.c_str());
 }
 } // namespace
 
@@ -84,12 +82,8 @@ int main()
 
         const Instr &switchInstr = trapBlock.instructions.front();
         il::vm::VMTestHook::setContext(vm, state.fr, state.bb, state.ip, switchInstr);
-        il::vm::detail::control::handleSwitchI32(vm,
-                                                 state.fr,
-                                                 switchInstr,
-                                                 state.blocks,
-                                                 state.bb,
-                                                 state.ip);
+        il::vm::detail::control::handleSwitchI32(
+            vm, state.fr, switchInstr, state.blocks, state.bb, state.ip);
 
         _exit(0); // Unreachable but placates compilers.
     }
@@ -107,14 +101,11 @@ int main()
     waitpid(pid, &status, 0);
     if (!WIFEXITED(status))
     {
-        std::fprintf(stderr,
-                     "switch-block-label: child terminated abnormally (status=%d)\n",
-                     status);
+        std::fprintf(
+            stderr, "switch-block-label: child terminated abnormally (status=%d)\n", status);
         if (WIFSIGNALED(status))
         {
-            std::fprintf(stderr,
-                         "switch-block-label: received signal=%d\n",
-                         WTERMSIG(status));
+            std::fprintf(stderr, "switch-block-label: received signal=%d\n", WTERMSIG(status));
         }
         if (!diag.empty())
             std::fprintf(stderr, "switch-block-label: stderr: %s", diag.c_str());
@@ -128,4 +119,3 @@ int main()
 
     return 0;
 }
-

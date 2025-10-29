@@ -248,10 +248,12 @@ class TempDirGuard
 {
   public:
     explicit TempDirGuard(std::filesystem::path path) : path_(std::move(path)) {}
+
     TempDirGuard(const TempDirGuard &) = delete;
     TempDirGuard &operator=(const TempDirGuard &) = delete;
     TempDirGuard(TempDirGuard &&) = delete;
     TempDirGuard &operator=(TempDirGuard &&) = delete;
+
     ~TempDirGuard()
     {
         if (path_.empty())
@@ -262,7 +264,10 @@ class TempDirGuard
         std::filesystem::remove_all(path_, ec);
     }
 
-    [[nodiscard]] const std::filesystem::path &path() const noexcept { return path_; }
+    [[nodiscard]] const std::filesystem::path &path() const noexcept
+    {
+        return path_;
+    }
 
   private:
     std::filesystem::path path_{};
@@ -306,7 +311,7 @@ struct NativeRunResult
     {
         result.launchFailed = true;
         result.message = std::string("Failed to create temporary directory '") + tempDir.string() +
-                          "': " + createEc.message();
+                         "': " + createEc.message();
         return result;
     }
 
@@ -342,7 +347,8 @@ entry:
     }
 
     result.exitCode = exitCode;
-    result.message = std::string("Command '") + command + "' exited with code " + std::to_string(exitCode);
+    result.message =
+        std::string("Command '") + command + "' exited with code " + std::to_string(exitCode);
     return result;
 }
 
@@ -380,7 +386,7 @@ TEST(CodegenX64DivTrapTest, RunNativeTrapExitsNonZero)
 
     ASSERT_FALSE(result.launchFailed) << result.message;
     EXPECT_NE(result.exitCode, 0) << "Expected non-zero exit code when running native trap. "
-                                   << result.message;
+                                  << result.message;
 }
 
 #else
@@ -416,8 +422,9 @@ int main()
         }
         if (native.exitCode == 0)
         {
-            std::cerr << "Expected ilc run-native to exit with a non-zero status when dividing by zero.\n"
-                      << native.message << '\n';
+            std::cerr
+                << "Expected ilc run-native to exit with a non-zero status when dividing by zero.\n"
+                << native.message << '\n';
             return EXIT_FAILURE;
         }
     }

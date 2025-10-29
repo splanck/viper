@@ -19,17 +19,14 @@ int main()
     Module module;
     il::build::IRBuilder builder(module);
 
-    Function &fn = builder.startFunction("shrink_params",
-                                         Type(Type::Kind::I64),
-                                         {Param{"flag", Type(Type::Kind::I1), 0}});
+    Function &fn = builder.startFunction(
+        "shrink_params", Type(Type::Kind::I64), {Param{"flag", Type(Type::Kind::I1), 0}});
 
     builder.createBlock(fn, "entry");
     builder.createBlock(fn, "left");
     builder.createBlock(fn, "right");
-    builder.createBlock(fn,
-                        "join",
-                        {Param{"a", Type(Type::Kind::I64), 0},
-                         Param{"b", Type(Type::Kind::I64), 0}});
+    builder.createBlock(
+        fn, "join", {Param{"a", Type(Type::Kind::I64), 0}, Param{"b", Type(Type::Kind::I64), 0}});
 
     BasicBlock &entry = fn.blocks[0];
     BasicBlock &left = fn.blocks[1];
@@ -68,7 +65,8 @@ int main()
     assert(changed && "SimplifyCFG should remove redundant block parameters");
     assert(stats.paramsShrunk == 1 && "Expected a single parameter to be removed");
 
-    const auto findBlock = [](const Function &function, const std::string &label) -> const BasicBlock *
+    const auto findBlock = [](const Function &function,
+                              const std::string &label) -> const BasicBlock *
     {
         for (const auto &block : function.blocks)
         {
@@ -87,7 +85,8 @@ int main()
     assert(sumInstr.operands.size() == 2 && "Addition should have two operands");
     const Value &firstOperand = sumInstr.operands[0];
     assert(firstOperand.kind == Value::Kind::ConstInt);
-    assert(firstOperand.i64 == 99 && "Canonicalized parameter should be replaced with constant value");
+    assert(firstOperand.i64 == 99 &&
+           "Canonicalized parameter should be replaced with constant value");
     const Value &secondOperand = sumInstr.operands[1];
     assert(secondOperand.kind == Value::Kind::Temp);
     assert(secondOperand.id == joinBlock->params[0].id &&

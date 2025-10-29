@@ -53,10 +53,10 @@ Module buildIdxChkTrapModule(Opcode getter, int64_t idxConst, int64_t hiConst)
     auto &fn = builder.startFunction("main", retType, {});
     builder.addBlock(fn, "entry");
     builder.addBlock(fn, "body");
-    builder.createBlock(fn,
-                        "handler",
-                        {Param{"err", Type(Type::Kind::Error), 0},
-                         Param{"tok", Type(Type::Kind::ResumeTok), 0}});
+    builder.createBlock(
+        fn,
+        "handler",
+        {Param{"err", Type(Type::Kind::Error), 0}, Param{"tok", Type(Type::Kind::ResumeTok), 0}});
 
     auto &entry = fn.blocks[0];
     auto &body = fn.blocks[1];

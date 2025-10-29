@@ -50,9 +50,9 @@ constexpr std::string_view kLoweringSnippet = R"BASIC(
 [[nodiscard]] bool hasExtern(const il::core::Module &module, std::string_view name)
 {
     const auto &externs = module.externs;
-    return std::any_of(externs.begin(), externs.end(), [&](const il::core::Extern &ext) {
-        return ext.name == name;
-    });
+    return std::any_of(externs.begin(),
+                       externs.end(),
+                       [&](const il::core::Extern &ext) { return ext.name == name; });
 }
 
 [[nodiscard]] bool equalsIgnoreCase(std::string_view lhs, std::string_view rhs)
@@ -72,9 +72,10 @@ constexpr std::string_view kLoweringSnippet = R"BASIC(
 [[nodiscard]] bool hasFunction(const il::core::Module &module, std::string_view name)
 {
     const auto &functions = module.functions;
-    return std::any_of(functions.begin(), functions.end(), [&](const il::core::Function &fn) {
-        return equalsIgnoreCase(fn.name, name);
-    });
+    return std::any_of(functions.begin(),
+                       functions.end(),
+                       [&](const il::core::Function &fn)
+                       { return equalsIgnoreCase(fn.name, name); });
 }
 } // namespace
 

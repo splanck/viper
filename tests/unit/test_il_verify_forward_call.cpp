@@ -9,8 +9,8 @@
 #include "il/core/Instr.hpp"
 #include "il/core/Module.hpp"
 #include "il/core/Opcode.hpp"
-#include "il/verify/Verifier.hpp"
 #include "il/core/Type.hpp"
+#include "il/verify/Verifier.hpp"
 
 #include <cassert>
 #include <string>
@@ -68,7 +68,8 @@ int main()
     {
         Module module;
 
-        auto makeVoidFunction = [](const std::string &name) {
+        auto makeVoidFunction = [](const std::string &name)
+        {
             Function fn;
             fn.name = name;
             fn.retType = Type(Type::Kind::Void);
@@ -91,7 +92,8 @@ int main()
 
         auto duplicateResult = il::verify::Verifier::verify(module);
         assert(!duplicateResult && "duplicate function names must still be rejected");
-        assert(duplicateResult.error().message.find("duplicate function @dup") != std::string::npos);
+        assert(duplicateResult.error().message.find("duplicate function @dup") !=
+               std::string::npos);
     }
 
     return 0;

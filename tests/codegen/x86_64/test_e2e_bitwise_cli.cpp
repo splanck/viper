@@ -34,9 +34,8 @@ struct CliScenario
     CodegenComparisonOptions options;
 };
 
-const std::array<CliScenario, 1> kScenarios = {{{
-    "Bitwise",
-    {R"(il 0.1.2
+const std::array<CliScenario, 1> kScenarios = {{{"Bitwise",
+                                                 {R"(il 0.1.2
 func @main() -> i64 {
 entry:
   %a = iconst.i64 0xFF00FF00
@@ -47,10 +46,10 @@ entry:
   ret %e
 }
 )",
-     "bitwise.il",
-     {},
-     {}},
-    {false, std::nullopt}}}};
+                                                  "bitwise.il",
+                                                  {},
+                                                  {}},
+                                                 {false, std::nullopt}}}};
 
 CodegenComparisonResult runScenario(CodegenFixture &fixture, const CliScenario &scenario)
 {
@@ -63,7 +62,7 @@ CodegenComparisonResult runScenario(CodegenFixture &fixture, const CliScenario &
 
 class CodegenBitwiseCliTest : public ::testing::TestWithParam<CliScenario>
 {
-protected:
+  protected:
     CodegenFixture fixture_;
 };
 
@@ -74,13 +73,11 @@ TEST_P(CodegenBitwiseCliTest, VmAndNativeOutputsMatch)
     ASSERT_TRUE(result.success) << result.message;
 }
 
-INSTANTIATE_TEST_SUITE_P(
-    BitwiseCli,
-    CodegenBitwiseCliTest,
-    ::testing::ValuesIn(kScenarios),
-    [](const ::testing::TestParamInfo<CliScenario> &info) {
-        return info.param.name;
-    });
+INSTANTIATE_TEST_SUITE_P(BitwiseCli,
+                         CodegenBitwiseCliTest,
+                         ::testing::ValuesIn(kScenarios),
+                         [](const ::testing::TestParamInfo<CliScenario> &info)
+                         { return info.param.name; });
 
 int main(int argc, char **argv)
 {
@@ -113,4 +110,3 @@ int main()
 }
 
 #endif
-

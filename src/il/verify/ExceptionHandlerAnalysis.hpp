@@ -35,4 +35,3 @@ il::support::Expected<std::optional<HandlerSignature>> analyzeHandlerBlock(
     const il::core::Function &fn, const il::core::BasicBlock &bb);
 
 } // namespace il::verify
-

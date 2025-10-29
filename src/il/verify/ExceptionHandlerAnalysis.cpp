@@ -79,4 +79,3 @@ Expected<std::optional<HandlerSignature>> analyzeHandlerBlock(const Function &fn
 }
 
 } // namespace il::verify
-

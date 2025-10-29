@@ -128,9 +128,8 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
         Lowerer::ArrayAccess access =
             lowerer_.lowerArrayAccess(expr, Lowerer::ArrayAccessKind::Load);
         lowerer_.curLoc = expr.loc;
-        IlValue val = lowerer_.emitCallRet(IlType(IlType::Kind::I64),
-                                           "rt_arr_i32_get",
-                                           {access.base, access.index});
+        IlValue val = lowerer_.emitCallRet(
+            IlType(IlType::Kind::I64), "rt_arr_i32_get", {access.base, access.index});
         result_ = Lowerer::RVal{val, IlType(IlType::Kind::I64)};
     }
 

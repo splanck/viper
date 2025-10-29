@@ -118,7 +118,8 @@ Expected<Operand> parseImm(Cursor &cursor, ParserState &state)
     const bool hasExponent = (!isHexLiteral) && (token.find('e') != std::string::npos ||
                                                  token.find('E') != std::string::npos);
 
-    auto parseFloatingToken = [&](const std::string &literal) -> Expected<Operand> {
+    auto parseFloatingToken = [&](const std::string &literal) -> Expected<Operand>
+    {
         double value = 0.0;
         if (parseFloatLiteral(literal, value))
         {

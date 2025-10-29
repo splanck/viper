@@ -1,6 +1,6 @@
 // File: tests/vm/InlineLiteralCacheTests.cpp
-// Purpose: Ensure inline ConstStr operands reuse cached runtime handles for embedded NULs and ASCII strings.
-// License: MIT License. See LICENSE in project root for details.
+// Purpose: Ensure inline ConstStr operands reuse cached runtime handles for embedded NULs and ASCII
+// strings. License: MIT License. See LICENSE in project root for details.
 
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"

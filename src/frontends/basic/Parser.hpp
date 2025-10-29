@@ -70,11 +70,11 @@ class Parser
 
     struct NamedLabelEntry
     {
-        int number = 0;                        ///< Synthesised numeric identifier for the label.
-        bool defined = false;                  ///< True once the label definition has been seen.
-        il::support::SourceLoc definitionLoc;  ///< Location of the defining identifier.
-        bool referenced = false;               ///< True when the label was referenced in source.
-        il::support::SourceLoc referenceLoc;   ///< First location the label was referenced.
+        int number = 0;                       ///< Synthesised numeric identifier for the label.
+        bool defined = false;                 ///< True once the label definition has been seen.
+        il::support::SourceLoc definitionLoc; ///< Location of the defining identifier.
+        bool referenced = false;              ///< True when the label was referenced in source.
+        il::support::SourceLoc referenceLoc;  ///< First location the label was referenced.
     };
 
     int allocateSyntheticLabelNumber();
@@ -85,8 +85,9 @@ class Parser
     void noteNamedLabelReference(const Token &tok, int labelNumber);
     void noteNumericLabelUsage(int labelNumber);
 
-    std::unordered_map<std::string, NamedLabelEntry> namedLabels_; ///< Mapping from label names to ids.
-    int nextSyntheticLabel_ = 1'000'000;                           ///< Next synthesised label id candidate.
+    std::unordered_map<std::string, NamedLabelEntry>
+        namedLabels_;                    ///< Mapping from label names to ids.
+    int nextSyntheticLabel_ = 1'000'000; ///< Next synthesised label id candidate.
 
     /// @brief Registry that maps statement-leading tokens to parser callbacks.
     class StatementParserRegistry
