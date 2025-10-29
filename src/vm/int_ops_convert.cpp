@@ -19,6 +19,8 @@
 
 #include "il/core/Opcode.hpp"
 
+#include <type_traits>
+
 /// @file
 /// @brief Integer conversion opcode handlers used by the VM interpreter.
 /// @details The functions in this translation unit convert integers between
@@ -184,19 +186,29 @@ VM::ExecResult handleCastNarrowChkImpl(const Slot &value,
     switch (in.type.kind)
     {
         case il::core::Type::Kind::I16:
-            inRange = Traits::template fits<int16_t>(operand);
+        {
+            using NarrowT = std::conditional_t<std::is_same_v<Traits, UnsignedNarrowCastTraits>,
+                                               uint16_t,
+                                               int16_t>;
+            inRange = Traits::template fits<NarrowT>(operand);
             if (inRange)
             {
-                narrowed = Traits::template narrow<int16_t>(operand);
+                narrowed = Traits::template narrow<NarrowT>(operand);
             }
             break;
+        }
         case il::core::Type::Kind::I32:
-            inRange = Traits::template fits<int32_t>(operand);
+        {
+            using NarrowT = std::conditional_t<std::is_same_v<Traits, UnsignedNarrowCastTraits>,
+                                               uint32_t,
+                                               int32_t>;
+            inRange = Traits::template fits<NarrowT>(operand);
             if (inRange)
             {
-                narrowed = Traits::template narrow<int32_t>(operand);
+                narrowed = Traits::template narrow<NarrowT>(operand);
             }
             break;
+        }
         case il::core::Type::Kind::I1:
             inRange = Traits::checkBoolean(operand);
             if (inRange)
