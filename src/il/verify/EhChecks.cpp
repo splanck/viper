@@ -30,8 +30,9 @@
 
 #include <algorithm>
 #include <deque>
-#include <sstream>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -114,54 +115,295 @@ std::string formatPathString(const std::vector<const BasicBlock *> &path)
     return buffer;
 }
 
-/// @brief Emit a verifier diagnostic describing an EH stack inconsistency.
-/// @details Builds the control-flow path leading to @p instr, appends a
-///          diagnostic suffix tailored to @p code, and forwards the message to
-///          the central formatting helper.  The resulting expected object always
-///          contains an error so callers can return early with contextual
-///          information.
-/// @param model Exception-handling model that owns the instruction graph.
-/// @param bb Basic block containing the offending instruction.
-/// @param instr Instruction triggering the mismatch.
-/// @param code Verifier diagnostic code that explains the failure category.
-/// @param states All explored states, used to reconstruct the control-flow path.
-/// @param stateIndex Index of the state describing the failing execution.
-/// @param depth Depth of the handler stack at the failure point.
-/// @return Expected holding the diagnostic error to be propagated to callers.
-il::support::Expected<void> reportEhMismatch(const EhModel &model,
-                                             const BasicBlock &bb,
-                                             const Instr &instr,
-                                             VerifyDiagCode code,
-                                             const std::vector<StackState> &states,
-                                             int stateIndex,
-                                             int depth)
+struct Diagnostics
 {
+    void fail(il::support::Diag diag)
+    {
+        if (!error)
+            error = std::move(diag);
+    }
+
+    [[nodiscard]] bool hasError() const noexcept
+    {
+        return error.has_value();
+    }
+
+    il::support::Expected<void> take()
+    {
+        if (error)
+            return il::support::Expected<void>{std::move(*error)};
+        return {};
+    }
+
+    std::optional<il::support::Diag> error;
+};
+
+void emitInvariantFailure(Diagnostics &diags,
+                          std::string_view invariant,
+                          VerifyDiagCode code,
+                          const EhModel &model,
+                          const BasicBlock &bb,
+                          const Instr &instr,
+                          const std::vector<StackState> &states,
+                          int stateIndex,
+                          int depth)
+{
+    if (diags.hasError())
+        return;
+
     const std::vector<const BasicBlock *> path = buildPath(states, stateIndex);
-    std::string suffix;
+    std::string suffix = "[";
+    suffix += invariant;
+    suffix += "] ";
+
     switch (code)
     {
         case VerifyDiagCode::EhStackUnderflow:
-            suffix = "eh.pop without matching eh.push; path: ";
-            suffix += formatPathString(path);
+            suffix += "eh.pop without matching eh.push";
             break;
         case VerifyDiagCode::EhStackLeak:
-            suffix = "unmatched eh.push depth ";
+            suffix += "unmatched eh.push depth ";
             suffix += std::to_string(depth);
-            suffix += "; path: ";
-            suffix += formatPathString(path);
             break;
         case VerifyDiagCode::EhResumeTokenMissing:
-            suffix = "resume.* requires active resume token; path: ";
-            suffix += formatPathString(path);
+            suffix += "resume.* requires active resume token";
             break;
         default:
-            suffix = formatPathString(path);
             break;
     }
 
+    suffix += "; path: ";
+    suffix += formatPathString(path);
+
     auto message = formatInstrDiag(model.function(), bb, instr, suffix);
-    return il::support::Expected<void>{makeVerifierError(code, instr.loc, std::move(message))};
+    diags.fail(makeVerifierError(code, instr.loc, std::move(message)));
 }
+
+bool checkNoHandlerCrossing(const EhModel &model,
+                            const BasicBlock &bb,
+                            const Instr &instr,
+                            std::vector<const BasicBlock *> &handlerStack,
+                            Diagnostics &diags,
+                            const std::vector<StackState> &states,
+                            int stateIndex)
+{
+    if (!handlerStack.empty())
+    {
+        handlerStack.pop_back();
+        return true;
+    }
+
+    emitInvariantFailure(diags,
+                         "checkNoHandlerCrossing",
+                         VerifyDiagCode::EhStackUnderflow,
+                         model,
+                         bb,
+                         instr,
+                         states,
+                         stateIndex,
+                         static_cast<int>(handlerStack.size()));
+    return false;
+}
+
+bool checkUnreachableAfterThrow(const EhModel &model,
+                                const BasicBlock &bb,
+                                const Instr &instr,
+                                std::vector<const BasicBlock *> &handlerStack,
+                                bool &hasResumeToken,
+                                Diagnostics &diags,
+                                const std::vector<StackState> &states,
+                                int stateIndex)
+{
+    if (!hasResumeToken)
+    {
+        emitInvariantFailure(diags,
+                             "checkUnreachableAfterThrow",
+                             VerifyDiagCode::EhResumeTokenMissing,
+                             model,
+                             bb,
+                             instr,
+                             states,
+                             stateIndex,
+                             static_cast<int>(handlerStack.size()));
+        return false;
+    }
+
+    if (!handlerStack.empty())
+        handlerStack.pop_back();
+    hasResumeToken = false;
+    return true;
+}
+
+bool checkAllPathsCloseTry(const EhModel &model,
+                           const BasicBlock &bb,
+                           const Instr &terminator,
+                           const std::vector<const BasicBlock *> &handlerStack,
+                           Diagnostics &diags,
+                           const std::vector<StackState> &states,
+                           int stateIndex)
+{
+    if (terminator.op != Opcode::Ret || handlerStack.empty())
+        return true;
+
+    emitInvariantFailure(diags,
+                         "checkAllPathsCloseTry",
+                         VerifyDiagCode::EhStackLeak,
+                         model,
+                         bb,
+                         terminator,
+                         states,
+                         stateIndex,
+                         static_cast<int>(handlerStack.size()));
+    return false;
+}
+
+class EhStackTraversal
+{
+  public:
+    EhStackTraversal(const EhModel &model, Diagnostics &diags)
+        : model(model), diags(diags)
+    {
+    }
+
+    bool run()
+    {
+        if (!model.entry())
+            return true;
+
+        StackState initial;
+        initial.block = model.entry();
+        enqueueState(std::move(initial));
+
+        while (!worklist.empty())
+        {
+            const int stateIndex = worklist.front();
+            worklist.pop_front();
+            if (!processState(stateIndex))
+                return false;
+        }
+
+        return !diags.hasError();
+    }
+
+  private:
+    std::vector<StackState> states;
+
+    void enqueueState(StackState state)
+    {
+        if (!state.block)
+            return;
+
+        const std::string key = encodeStateKey(state.handlerStack, state.hasResumeToken);
+        if (!visited[state.block].insert(key).second)
+            return;
+
+        const int index = static_cast<int>(states.size());
+        states.push_back(std::move(state));
+        worklist.push_back(index);
+    }
+
+    bool processState(int stateIndex)
+    {
+        const StackState &snapshot = states[stateIndex];
+        if (!snapshot.block)
+            return true;
+
+        const BasicBlock &bb = *snapshot.block;
+        std::vector<const BasicBlock *> handlerStack = snapshot.handlerStack;
+        bool hasResumeToken = snapshot.hasResumeToken;
+
+        const Instr *terminator = nullptr;
+        for (const auto &instr : bb.instructions)
+        {
+            if (instr.op == Opcode::EhPush)
+            {
+                const BasicBlock *handlerBlock = nullptr;
+                if (!instr.labels.empty())
+                    handlerBlock = model.findBlock(instr.labels[0]);
+                handlerStack.push_back(handlerBlock);
+            }
+            else if (instr.op == Opcode::EhPop)
+            {
+                if (!checkNoHandlerCrossing(model, bb, instr, handlerStack, diags, states, stateIndex))
+                    return false;
+            }
+            else if (instr.op == Opcode::ResumeSame || instr.op == Opcode::ResumeNext ||
+                     instr.op == Opcode::ResumeLabel)
+            {
+                if (!checkUnreachableAfterThrow(
+                        model, bb, instr, handlerStack, hasResumeToken, diags, states, stateIndex))
+                    return false;
+            }
+
+            if (isTerminator(instr.op))
+            {
+                terminator = &instr;
+                break;
+            }
+        }
+
+        if (!terminator)
+            return true;
+
+        states[stateIndex].handlerStack = handlerStack;
+        states[stateIndex].hasResumeToken = hasResumeToken;
+        states[stateIndex].depth = static_cast<int>(handlerStack.size());
+
+        if (!checkAllPathsCloseTry(model, bb, *terminator, handlerStack, diags, states, stateIndex))
+            return false;
+
+        if (terminator->op == Opcode::Trap || terminator->op == Opcode::TrapFromErr)
+        {
+            enqueueTrapHandler(stateIndex, handlerStack);
+            return true;
+        }
+
+        enqueueSuccessors(*terminator, stateIndex, handlerStack, hasResumeToken);
+        return true;
+    }
+
+    void enqueueTrapHandler(int stateIndex, const std::vector<const BasicBlock *> &handlerStack)
+    {
+        if (handlerStack.empty())
+            return;
+
+        const BasicBlock *handlerBlock = handlerStack.back();
+        if (!handlerBlock)
+            return;
+
+        StackState nextState;
+        nextState.block = handlerBlock;
+        nextState.handlerStack = handlerStack;
+        nextState.hasResumeToken = true;
+        nextState.parent = stateIndex;
+        nextState.depth = static_cast<int>(handlerStack.size());
+        enqueueState(std::move(nextState));
+    }
+
+    void enqueueSuccessors(const Instr &terminator,
+                           int stateIndex,
+                           const std::vector<const BasicBlock *> &handlerStack,
+                           bool hasResumeToken)
+    {
+        const std::vector<const BasicBlock *> successors = model.gatherSuccessors(terminator);
+        for (const BasicBlock *succ : successors)
+        {
+            StackState nextState;
+            nextState.block = succ;
+            nextState.handlerStack = handlerStack;
+            nextState.hasResumeToken =
+                terminator.op == Opcode::ResumeLabel ? false : hasResumeToken;
+            nextState.parent = stateIndex;
+            nextState.depth = static_cast<int>(handlerStack.size());
+            enqueueState(std::move(nextState));
+        }
+    }
+
+    const EhModel &model;
+    Diagnostics &diags;
+    std::unordered_map<const BasicBlock *, std::unordered_set<std::string>> visited;
+    std::deque<int> worklist;
+};
 
 /// @brief Determine whether an opcode can fault and therefore require a handler.
 /// @details Classifies EH-related opcodes, branches, and returns as safe while
@@ -567,143 +809,10 @@ il::support::Expected<void> checkEhStackBalance(const EhModel &model)
     if (!model.entry())
         return {};
 
-    std::deque<int> worklist;
-    std::vector<StackState> states;
-    std::unordered_map<const BasicBlock *, std::unordered_set<std::string>> visited;
-
-    StackState initial;
-    initial.block = model.entry();
-    states.push_back(initial);
-    worklist.push_back(0);
-    visited[initial.block].insert(encodeStateKey(initial.handlerStack, initial.hasResumeToken));
-
-    while (!worklist.empty())
-    {
-        const int stateIndex = worklist.front();
-        worklist.pop_front();
-
-        const StackState &snapshot = states[stateIndex];
-        const BasicBlock &bb = *snapshot.block;
-        std::vector<const BasicBlock *> handlerStack = snapshot.handlerStack;
-        bool hasResumeToken = snapshot.hasResumeToken;
-
-        const Instr *terminator = nullptr;
-        for (const auto &instr : bb.instructions)
-        {
-            if (instr.op == Opcode::EhPush)
-            {
-                const BasicBlock *handlerBlock = nullptr;
-                if (!instr.labels.empty())
-                    handlerBlock = model.findBlock(instr.labels[0]);
-                handlerStack.push_back(handlerBlock);
-            }
-            else if (instr.op == Opcode::EhPop)
-            {
-                if (handlerStack.empty())
-                    return reportEhMismatch(model,
-                                            bb,
-                                            instr,
-                                            VerifyDiagCode::EhStackUnderflow,
-                                            states,
-                                            stateIndex,
-                                            static_cast<int>(handlerStack.size()));
-
-                handlerStack.pop_back();
-            }
-            else if (instr.op == Opcode::ResumeSame || instr.op == Opcode::ResumeNext ||
-                     instr.op == Opcode::ResumeLabel)
-            {
-                if (!hasResumeToken)
-                    return reportEhMismatch(model,
-                                            bb,
-                                            instr,
-                                            VerifyDiagCode::EhResumeTokenMissing,
-                                            states,
-                                            stateIndex,
-                                            static_cast<int>(handlerStack.size()));
-
-                if (!handlerStack.empty())
-                    handlerStack.pop_back();
-                hasResumeToken = false;
-            }
-
-            if (isTerminator(instr.op))
-            {
-                terminator = &instr;
-                break;
-            }
-        }
-
-        if (!terminator)
-            continue;
-
-        states[stateIndex].depth = static_cast<int>(handlerStack.size());
-        states[stateIndex].handlerStack = handlerStack;
-        states[stateIndex].hasResumeToken = hasResumeToken;
-
-        if (terminator->op == Opcode::Ret && !handlerStack.empty())
-        {
-            return reportEhMismatch(model,
-                                    bb,
-                                    *terminator,
-                                    VerifyDiagCode::EhStackLeak,
-                                    states,
-                                    stateIndex,
-                                    static_cast<int>(handlerStack.size()));
-        }
-
-        if (terminator->op == Opcode::Trap || terminator->op == Opcode::TrapFromErr)
-        {
-            if (!handlerStack.empty())
-            {
-                const BasicBlock *handlerBlock = handlerStack.back();
-                if (handlerBlock)
-                {
-                    StackState nextState;
-                    nextState.block = handlerBlock;
-                    nextState.handlerStack = handlerStack;
-                    nextState.hasResumeToken = true;
-                    nextState.parent = stateIndex;
-                    nextState.depth = static_cast<int>(handlerStack.size());
-
-                    const std::string key =
-                        encodeStateKey(nextState.handlerStack, nextState.hasResumeToken);
-                    if (visited[handlerBlock].insert(key).second)
-                    {
-                        const int nextIndex = static_cast<int>(states.size());
-                        states.push_back(std::move(nextState));
-                        worklist.push_back(nextIndex);
-                    }
-                }
-            }
-            continue;
-        }
-
-        const std::vector<const BasicBlock *> successors = model.gatherSuccessors(*terminator);
-        for (const BasicBlock *succ : successors)
-        {
-            StackState nextState;
-            nextState.block = succ;
-            nextState.handlerStack = handlerStack;
-            nextState.parent = stateIndex;
-            nextState.depth = static_cast<int>(handlerStack.size());
-            if (terminator->op == Opcode::ResumeLabel)
-                nextState.hasResumeToken = false;
-            else
-                nextState.hasResumeToken = hasResumeToken;
-
-            const std::string key =
-                encodeStateKey(nextState.handlerStack, nextState.hasResumeToken);
-            if (!visited[succ].insert(key).second)
-                continue;
-
-            const int nextIndex = static_cast<int>(states.size());
-            states.push_back(std::move(nextState));
-            worklist.push_back(nextIndex);
-        }
-    }
-
-    return {};
+    Diagnostics diags;
+    EhStackTraversal traversal(model, diags);
+    traversal.run();
+    return diags.take();
 }
 
 /// @brief Placeholder for dominance checks on exception handlers.
