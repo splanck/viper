@@ -16,6 +16,7 @@
 ///          store full source text, and later print caret-highlighted output.
 
 #include "frontends/basic/DiagnosticEmitter.hpp"
+#include "frontends/basic/LineUtils.hpp"
 #include <algorithm>
 #include <sstream>
 
@@ -111,7 +112,7 @@ static const char *toString(il::support::Severity s)
 /// @return Line contents or empty string if unavailable.
 std::string DiagnosticEmitter::getLine(uint32_t fileId, uint32_t line) const
 {
-    if (line == 0)
+    if (isUnlabeledLine(line))
         return {};
 
     auto it = sources_.find(fileId);
@@ -147,7 +148,7 @@ void DiagnosticEmitter::printAll(std::ostream &os) const
             if (!path.empty())
             {
                 os << path;
-                if (e.loc.line != 0)
+                if (!isUnlabeledLine(e.loc.line))
                 {
                     os << ':' << e.loc.line;
                     if (e.loc.column != 0)

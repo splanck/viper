@@ -27,6 +27,7 @@
 ///          individual lowering stages implemented in other translation units.
 
 #include "frontends/basic/Lowerer.hpp"
+#include "frontends/basic/LineUtils.hpp"
 #include "frontends/basic/EmitCommon.hpp"
 #include "frontends/basic/TypeSuffix.hpp"
 #include "frontends/basic/lower/Emitter.hpp"
@@ -357,7 +358,7 @@ int Lowerer::virtualLine(const Stmt &s)
         return it->second;
 
     const int userLine = s.line;
-    if (userLine > 0)
+    if (hasUserLine(userLine))
     {
         stmtVirtualLines_[&s] = userLine;
         return userLine;
