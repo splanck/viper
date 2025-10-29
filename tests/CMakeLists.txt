@@ -93,8 +93,7 @@ add_test(NAME basic_sum_no_linenos
                  $<TARGET_FILE:ilc>)
 set_tests_properties(basic_sum_no_linenos
   PROPERTIES
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-    WILL_FAIL ON)
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
 add_executable(test_basic_oop_parsing ${CMAKE_CURRENT_SOURCE_DIR}/unit/BasicOOP_Parsing.cpp)
 target_link_libraries(test_basic_oop_parsing fe_basic viper_testing)
@@ -149,5 +148,4 @@ add_test(NAME basic_repros
                  $<TARGET_FILE:ilc>)
 set_tests_properties(basic_repros
   PROPERTIES
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-    WILL_FAIL ON)
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
