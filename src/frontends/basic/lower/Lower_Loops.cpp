@@ -70,12 +70,16 @@ Lowerer::CtrlState Lowerer::emitWhile(const WhileStmt &stmt)
     if (!func || !current)
         return state;
 
+    // Save a stable index to the current block. Adding blocks may reallocate
+    // the vector and invalidate raw pointers.
+    const size_t curIdx = static_cast<size_t>(current - &func->blocks.front());
+
     BlockNamer *blockNamer = ctx.blockNames().namer();
     size_t start = func->blocks.size();
     unsigned id = blockNamer ? blockNamer->nextWhile() : 0;
     std::string headLbl = blockNamer ? blockNamer->whileHead(id) : mangler.block("loop_head");
     std::string bodyLbl = blockNamer ? blockNamer->whileBody(id) : mangler.block("loop_body");
-    std::string doneLbl = blockNamer ? blockNamer->whileEnd(id) : mangler.block("done");
+    std::string doneLbl = blockNamer ? blockNamer->whileEnd(id)  : mangler.block("loop_done");
     builder->addBlock(*func, headLbl);
     builder->addBlock(*func, bodyLbl);
     builder->addBlock(*func, doneLbl);
@@ -89,6 +93,8 @@ Lowerer::CtrlState Lowerer::emitWhile(const WhileStmt &stmt)
     auto *done = &func->blocks[doneIdx];
     state.after = done;
     ctx.loopState().push(done);
+    // Rebind current after potential reallocation, then branch to head.
+    ctx.setCurrent(&func->blocks[curIdx]);
     curLoc = stmt.loc;
     emitBr(head);
     func = ctx.function();
