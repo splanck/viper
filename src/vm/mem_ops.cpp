@@ -14,7 +14,6 @@
 
 #include "vm/OpHandlers_Memory.hpp"
 
-#include "common/IntegerHelpers.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
@@ -167,8 +166,9 @@ VM::ExecResult handleGEP(VM &vm,
 
     const std::uintptr_t baseAddr = reinterpret_cast<std::uintptr_t>(base.ptr);
     const int64_t delta = offset.i64;
-    const auto magnitude = static_cast<std::uint64_t>(
-        il::common::integer::widen_to(delta, 64, il::common::integer::Signedness::Unsigned));
+    const std::uint64_t magnitude =
+        delta >= 0 ? static_cast<std::uint64_t>(delta)
+                   : static_cast<std::uint64_t>(-(delta + 1)) + std::uint64_t{1};
     std::uintptr_t resultAddr = baseAddr;
     if (delta >= 0)
     {
