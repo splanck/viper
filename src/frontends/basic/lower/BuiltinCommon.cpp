@@ -23,8 +23,12 @@
 #include "il/core/Opcode.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cassert>
+#include <cstdint>
+#include <functional>
 #include <limits>
+#include <sstream>
 #include <utility>
 #include <vector>
 
@@ -42,9 +46,211 @@ using TransformKind = BuiltinLoweringRule::ArgTransform::Kind;
 using Feature = BuiltinLoweringRule::Feature;
 using FeatureAction = BuiltinLoweringRule::Feature::Action;
 
-Lowerer::RVal emitCallRuntime(BuiltinLowerContext &ctx, const Variant &variant);
-Lowerer::RVal emitUnary(BuiltinLowerContext &ctx, const Variant &variant);
-Lowerer::RVal emitCustom(BuiltinLowerContext &ctx, const Variant &variant);
+/// Coercion matrix documenting allowed constant-folding strategies.
+/// Rows index the destination il::core::Type::Kind while columns index the
+/// source kind observed on the operand. The matrix maps each combination to a
+/// @ref CoerceRule describing whether the conversion can be folded eagerly or
+/// must be lowered through runtime helpers. The table is intentionally kept at
+/// the top of the file to simplify audits when new IL types are introduced.
+enum class CoerceRule : std::uint8_t
+{
+    Exact,
+    PromoteInt,
+    PromoteFloat,
+    ToString,
+    Forbid,
+};
+
+using CoerceTable =
+    std::array<std::array<CoerceRule, static_cast<std::size_t>(IlKind::ResumeTok) + 1>,
+               static_cast<std::size_t>(IlKind::ResumeTok) + 1>;
+
+constexpr CoerceTable makeCoerceTable()
+{
+    CoerceTable table{};
+    for (auto &row : table)
+        row.fill(CoerceRule::Forbid);
+
+    const auto setRule = [&](IlKind dst, IlKind src, CoerceRule rule)
+    {
+        table[static_cast<std::size_t>(dst)][static_cast<std::size_t>(src)] = rule;
+    };
+
+    setRule(IlKind::I64, IlKind::I64, CoerceRule::Exact);
+    setRule(IlKind::I64, IlKind::I32, CoerceRule::PromoteInt);
+    setRule(IlKind::I64, IlKind::I16, CoerceRule::PromoteInt);
+    setRule(IlKind::I64, IlKind::I1, CoerceRule::PromoteInt);
+
+    setRule(IlKind::F64, IlKind::F64, CoerceRule::Exact);
+    setRule(IlKind::F64, IlKind::I64, CoerceRule::PromoteFloat);
+    setRule(IlKind::F64, IlKind::I32, CoerceRule::PromoteFloat);
+    setRule(IlKind::F64, IlKind::I16, CoerceRule::PromoteFloat);
+    setRule(IlKind::F64, IlKind::I1, CoerceRule::PromoteFloat);
+
+    setRule(IlKind::I1, IlKind::I1, CoerceRule::Exact);
+    setRule(IlKind::I1, IlKind::I64, CoerceRule::PromoteInt);
+    setRule(IlKind::I1, IlKind::I32, CoerceRule::PromoteInt);
+    setRule(IlKind::I1, IlKind::I16, CoerceRule::PromoteInt);
+    setRule(IlKind::I1, IlKind::F64, CoerceRule::PromoteFloat);
+
+    setRule(IlKind::Str, IlKind::Str, CoerceRule::Exact);
+    setRule(IlKind::Str, IlKind::I64, CoerceRule::ToString);
+    setRule(IlKind::Str, IlKind::I32, CoerceRule::ToString);
+    setRule(IlKind::Str, IlKind::I16, CoerceRule::ToString);
+    setRule(IlKind::Str, IlKind::I1, CoerceRule::ToString);
+    setRule(IlKind::Str, IlKind::F64, CoerceRule::ToString);
+
+    return table;
+}
+
+constexpr CoerceTable kCoerce = makeCoerceTable();
+
+[[nodiscard]] inline CoerceRule lookupCoerceRule(IlKind dst, IlKind src) noexcept
+{
+    return kCoerce[static_cast<std::size_t>(dst)][static_cast<std::size_t>(src)];
+}
+
+static void applyCoerceRule(CoerceRule rule, Value &value)
+{
+    using ValueKind = Value::Kind;
+    switch (rule)
+    {
+        case CoerceRule::Exact:
+        case CoerceRule::Forbid:
+            break;
+        case CoerceRule::PromoteInt:
+            if (value.kind == ValueKind::ConstInt)
+                value.isBool = false;
+            break;
+        case CoerceRule::PromoteFloat:
+            if (value.kind == ValueKind::ConstInt)
+                value = Value::constFloat(static_cast<double>(value.i64));
+            break;
+        case CoerceRule::ToString:
+            if (value.kind == ValueKind::ConstInt)
+            {
+                value = Value::constStr(std::to_string(value.i64));
+            }
+            else if (value.kind == ValueKind::ConstFloat)
+            {
+                std::ostringstream stream;
+                stream << value.f64;
+                value = Value::constStr(stream.str());
+            }
+            break;
+    }
+}
+
+static bool tryConstantCoercion(IlKind target, CoerceRule rule, Value &value)
+{
+    using ValueKind = Value::Kind;
+    switch (target)
+    {
+        case IlKind::I64:
+            if (value.kind == ValueKind::ConstInt)
+            {
+                applyCoerceRule(rule, value);
+                return value.kind == ValueKind::ConstInt;
+            }
+            break;
+        case IlKind::F64:
+            if (value.kind == ValueKind::ConstFloat)
+                return true;
+            if (value.kind == ValueKind::ConstInt)
+            {
+                applyCoerceRule(rule, value);
+                return value.kind == ValueKind::ConstFloat;
+            }
+            break;
+        case IlKind::I1:
+            if (value.kind == ValueKind::ConstInt)
+            {
+                value = Value::constBool(value.i64 != 0);
+                return true;
+            }
+            break;
+        case IlKind::Str:
+            if (value.kind == ValueKind::ConstStr)
+                return true;
+            if (rule == CoerceRule::ToString &&
+                (value.kind == ValueKind::ConstInt || value.kind == ValueKind::ConstFloat))
+            {
+                applyCoerceRule(rule, value);
+                return value.kind == ValueKind::ConstStr;
+            }
+            break;
+        default:
+            break;
+    }
+    return false;
+}
+
+static void coerceValueInPlace(BuiltinLowerContext &ctx,
+                               Lowerer::RVal &slot,
+                               IlKind target,
+                               il::support::SourceLoc loc)
+{
+    if (slot.type.kind == target)
+        return;
+
+    const CoerceRule rule = lookupCoerceRule(target, slot.type.kind);
+    if (tryConstantCoercion(target, rule, slot.value))
+    {
+        slot.type = (target == IlKind::I1) ? ctx.boolType() : IlType(target);
+        return;
+    }
+
+    switch (target)
+    {
+        case IlKind::I64:
+            slot = ctx.lowerer().coerceToI64(std::move(slot), loc);
+            break;
+        case IlKind::F64:
+            slot = ctx.lowerer().coerceToF64(std::move(slot), loc);
+            break;
+        case IlKind::I1:
+            slot = ctx.lowerer().coerceToBool(std::move(slot), loc);
+            break;
+        default:
+            break;
+    }
+}
+
+struct GuardedConversion
+{
+    Value out;
+    il::core::BasicBlock *slowPath{nullptr};
+};
+
+static GuardedConversion emitGuardedConversion(
+    BuiltinLowerContext &ctx,
+    const Variant &variant,
+    IlType resultType,
+    std::vector<Value> callArgs,
+    il::support::SourceLoc callLoc,
+    const std::function<BuiltinLowerContext::BranchPair()> &guardFactory)
+{
+    Value okSlot = ctx.emitAlloca(1);
+    callArgs.push_back(okSlot);
+
+    ctx.setCurrentLoc(callLoc);
+    Value callRes = ctx.emitCall(resultType, variant.runtime, callArgs);
+
+    ctx.setCurrentLoc(callLoc);
+    Value okVal = ctx.emitLoad(ctx.boolType(), okSlot);
+
+    const BuiltinLowerContext::BranchPair guards = guardFactory();
+    if (!guards.cont || !guards.trap)
+        return {callRes, nullptr};
+
+    ctx.emitCBr(okVal, guards.cont, guards.trap);
+    ctx.setCurrentBlock(guards.cont);
+    return {callRes, guards.trap};
+}
+
+static Lowerer::RVal emitCallRuntime(BuiltinLowerContext &ctx, const Variant &variant);
+static Lowerer::RVal emitUnary(BuiltinLowerContext &ctx, const Variant &variant);
+static Lowerer::RVal emitCustom(BuiltinLowerContext &ctx, const Variant &variant);
 
 } // namespace
 
@@ -220,13 +426,13 @@ Lowerer::RVal &BuiltinLowerContext::applyTransforms(
         switch (transform.kind)
         {
             case TransformKind::EnsureI64:
-                slot = lowerer_->ensureI64(std::move(slot), loc);
+                coerceValueInPlace(*this, slot, IlKind::I64, loc);
                 break;
             case TransformKind::EnsureF64:
-                slot = lowerer_->ensureF64(std::move(slot), loc);
+                coerceValueInPlace(*this, slot, IlKind::F64, loc);
                 break;
             case TransformKind::EnsureI32:
-                slot = lowerer_->ensureI64(std::move(slot), loc);
+                coerceValueInPlace(*this, slot, IlKind::I64, loc);
                 if (slot.type.kind != IlKind::I32)
                 {
                     slot.value = lowerer_->emitCommon(loc).narrow_to(slot.value, 64, 32);
@@ -234,13 +440,13 @@ Lowerer::RVal &BuiltinLowerContext::applyTransforms(
                 }
                 break;
             case TransformKind::CoerceI64:
-                slot = lowerer_->coerceToI64(std::move(slot), loc);
+                coerceValueInPlace(*this, slot, IlKind::I64, loc);
                 break;
             case TransformKind::CoerceF64:
-                slot = lowerer_->coerceToF64(std::move(slot), loc);
+                coerceValueInPlace(*this, slot, IlKind::F64, loc);
                 break;
             case TransformKind::CoerceBool:
-                slot = lowerer_->coerceToBool(std::move(slot), loc);
+                coerceValueInPlace(*this, slot, IlKind::I1, loc);
                 break;
             case TransformKind::AddConst:
                 slot.value = lowerer_->emitCommon(loc).add_checked(
@@ -695,7 +901,7 @@ namespace
 /// @param ctx Builtin lowering context.
 /// @param variant Variant metadata describing arguments and runtime symbol.
 /// @return Lowered builtin result.
-Lowerer::RVal emitCallRuntime(BuiltinLowerContext &ctx, const Variant &variant)
+static Lowerer::RVal emitCallRuntime(BuiltinLowerContext &ctx, const Variant &variant)
 {
     std::vector<Value> callArgs;
     callArgs.reserve(variant.arguments.size());
@@ -716,7 +922,7 @@ Lowerer::RVal emitCallRuntime(BuiltinLowerContext &ctx, const Variant &variant)
 /// @param ctx Builtin lowering context.
 /// @param variant Variant metadata describing the unary operation.
 /// @return Lowered builtin result.
-Lowerer::RVal emitUnary(BuiltinLowerContext &ctx, const Variant &variant)
+static Lowerer::RVal emitUnary(BuiltinLowerContext &ctx, const Variant &variant)
 {
     assert(!variant.arguments.empty() && "unary builtin requires an operand");
     const auto &argSpec = variant.arguments.front();
@@ -733,7 +939,7 @@ Lowerer::RVal emitUnary(BuiltinLowerContext &ctx, const Variant &variant)
 /// @param ctx Builtin lowering context.
 /// @param variant Variant metadata accompanying the builtin.
 /// @return Lowered builtin result.
-Lowerer::RVal emitCustom(BuiltinLowerContext &ctx, const Variant &variant)
+static Lowerer::RVal emitCustom(BuiltinLowerContext &ctx, const Variant &variant)
 {
     switch (ctx.call().builtin)
     {
@@ -785,25 +991,22 @@ Lowerer::RVal lowerNumericConversion(BuiltinLowerContext &ctx,
     Lowerer::RVal &argVal = ctx.applyTransforms(argSpec, argSpec.transforms);
     const il::support::SourceLoc callLoc = ctx.callLoc(variant.callLocArg);
 
-    Value okSlot = ctx.emitAlloca(1);
-    std::vector<Value> callArgs{argVal.value, okSlot};
-    ctx.setCurrentLoc(callLoc);
-    Value callRes = ctx.emitCall(resultType, variant.runtime, callArgs);
+    GuardedConversion conversion = emitGuardedConversion(
+        ctx,
+        variant,
+        resultType,
+        std::vector<Value>{argVal.value},
+        callLoc,
+        [&]() { return ctx.createGuardBlocks(contHint, trapHint); });
 
-    ctx.setCurrentLoc(callLoc);
-    Value okVal = ctx.emitLoad(ctx.boolType(), okSlot);
+    if (!conversion.slowPath)
+        return {conversion.out, resultType};
 
-    BuiltinLowerContext::BranchPair guards = ctx.createGuardBlocks(contHint, trapHint);
-    if (!guards.cont || !guards.trap)
-        return {callRes, resultType};
-
-    ctx.emitCBr(okVal, guards.cont, guards.trap);
-
-    ctx.setCurrentBlock(guards.trap);
+    il::core::BasicBlock *contBlock = ctx.lowerer().context().current();
+    ctx.setCurrentBlock(conversion.slowPath);
     ctx.emitConversionTrap(callLoc);
-
-    ctx.setCurrentBlock(guards.cont);
-    return {callRes, resultType};
+    ctx.setCurrentBlock(contBlock);
+    return {conversion.out, resultType};
 }
 
 /// @brief Lower the VAL builtin, which parses strings into numeric values.
@@ -823,24 +1026,30 @@ Lowerer::RVal lowerValBuiltin(BuiltinLowerContext &ctx, const Variant &variant)
     ctx.setCurrentLoc(conversionLoc);
     Value cstr = ctx.emitCall(IlType(IlKind::Ptr), "rt_string_cstr", {argVal.value});
 
-    Value okSlot = ctx.emitAlloca(1);
-    std::vector<Value> callArgs{cstr, okSlot};
-    IlType resultType = ctx.resolveResultType();
-    ctx.setCurrentLoc(conversionLoc);
-    Value callRes = ctx.emitCall(resultType, variant.runtime, callArgs);
-
-    ctx.setCurrentLoc(conversionLoc);
-    Value okVal = ctx.emitLoad(ctx.boolType(), okSlot);
-
     BuiltinLowerContext::ValBlocks blocks = ctx.createValBlocks();
+    IlType resultType = ctx.resolveResultType();
+
+    GuardedConversion conversion = emitGuardedConversion(
+        ctx,
+        variant,
+        resultType,
+        std::vector<Value>{cstr},
+        conversionLoc,
+        [&]() {
+            return BuiltinLowerContext::BranchPair{blocks.cont, blocks.trap};
+        });
+
     if (!blocks.cont || !blocks.trap || !blocks.nan || !blocks.overflow)
-        return {callRes, resultType};
+        return {conversion.out, resultType};
 
-    ctx.emitCBr(okVal, blocks.cont, blocks.trap);
+    if (!conversion.slowPath)
+        return {conversion.out, resultType};
 
-    ctx.setCurrentBlock(blocks.trap);
+    il::core::BasicBlock *contBlock = ctx.lowerer().context().current();
+
+    ctx.setCurrentBlock(conversion.slowPath);
     ctx.setCurrentLoc(conversionLoc);
-    Value isNan = ctx.emitBinary(Opcode::FCmpNE, ctx.boolType(), callRes, callRes);
+    Value isNan = ctx.emitBinary(Opcode::FCmpNE, ctx.boolType(), conversion.out, conversion.out);
     ctx.emitCBr(isNan, blocks.nan, blocks.overflow);
 
     ctx.setCurrentBlock(blocks.nan);
@@ -854,8 +1063,8 @@ Lowerer::RVal lowerValBuiltin(BuiltinLowerContext &ctx, const Variant &variant)
     (void)overflowSentinel;
     ctx.emitTrap();
 
-    ctx.setCurrentBlock(blocks.cont);
-    return {callRes, resultType};
+    ctx.setCurrentBlock(contBlock);
+    return {conversion.out, resultType};
 }
 
 } // namespace il::frontends::basic::lower
