@@ -1,1 +1,1 @@
-error: verify.eh.underflow: main:second: eh.pop: eh.pop without matching eh.push; path: entry -> first -> second
+error: verify.eh.underflow: main:second: eh.pop: [checkNoHandlerCrossing] eh.pop without matching eh.push; path: entry -> first -> second
