@@ -33,11 +33,13 @@
 #include "il/io/TypeParser.hpp"
 
 #include "support/diag_expected.hpp"
-#include "viper/parse/Cursor.h"
+#include <charconv>
+#include <limits>
+#include <optional>
 
 #include <cctype>
-#include <exception>
 #include <sstream>
+#include <string>
 #include <string_view>
 #include <utility>
 
@@ -58,8 +60,6 @@ using il::io::parseFloatLiteral;
 using il::io::parseIntegerLiteral;
 
 using Operand = Value;
-using viper::parse::Cursor;
-using viper::parse::SourcePos;
 
 template <typename T> Expected<T> makeSyntaxError(ParserState &state, std::string message)
 {
@@ -80,153 +80,315 @@ bool equalsIgnoreCase(std::string_view value, std::string_view literal)
     return true;
 }
 
-Expected<Operand> parseImm(Cursor &cursor, ParserState &state)
+void skipSpace(std::string_view &text)
 {
-    const std::string token(cursor.remaining());
-    if (token.empty())
-        return makeSyntaxError<Operand>(state, "missing operand");
+    size_t consumed = 0;
+    while (consumed < text.size() && std::isspace(static_cast<unsigned char>(text[consumed])))
+        ++consumed;
+    text.remove_prefix(consumed);
+}
 
-    if (equalsIgnoreCase(token, "true"))
-    {
-        cursor.consumeRest();
-        return Operand::constBool(true);
-    }
-    if (equalsIgnoreCase(token, "false"))
-    {
-        cursor.consumeRest();
-        return Operand::constBool(false);
-    }
-    if (token == "null")
-    {
-        cursor.consumeRest();
-        return Operand::null();
-    }
-    if (token.size() >= 2 && token.front() == '"' && token.back() == '"')
-    {
-        std::string literal = token.substr(1, token.size() - 2);
-        std::string decoded;
-        std::string errMsg;
-        if (!decodeEscapedString(literal, decoded, &errMsg))
-            return makeSyntaxError<Operand>(state, std::move(errMsg));
-        cursor.consumeRest();
-        return Operand::constStr(std::move(decoded));
-    }
+bool isIdentStart(char c)
+{
+    return std::isalpha(static_cast<unsigned char>(c)) || c == '_' || c == '.';
+}
 
-    const bool hasDecimalPoint = token.find('.') != std::string::npos;
-    const bool isHexLiteral =
-        token.size() >= 2 && token[0] == '0' && (token[1] == 'x' || token[1] == 'X');
-    const bool hasExponent = (!isHexLiteral) && (token.find('e') != std::string::npos ||
-                                                 token.find('E') != std::string::npos);
+bool isIdentBody(char c)
+{
+    return std::isalnum(static_cast<unsigned char>(c)) || c == '_' || c == '.';
+}
 
-    auto parseFloatingToken = [&](const std::string &literal) -> Expected<Operand>
+std::optional<std::string_view> parseIdent(std::string_view &text)
+{
+    std::string_view original = text;
+    if (original.empty() || !isIdentStart(original.front()))
+        return std::nullopt;
+
+    size_t length = 1;
+    while (length < original.size() && isIdentBody(original[length]))
+        ++length;
+
+    text.remove_prefix(length);
+    return original.substr(0, length);
+}
+
+bool parseInt(std::string_view &text, int64_t &value)
+{
+    std::string_view original = text;
+    if (original.empty())
+        return false;
+
+    const char *begin = original.data();
+    const char *end = begin + original.size();
+    auto [ptr, ec] = std::from_chars(begin, end, value, 10);
+    if (ec != std::errc{})
+        return false;
+    text.remove_prefix(static_cast<size_t>(ptr - begin));
+    return true;
+}
+
+bool parseBracketed(std::string_view &text, std::string_view &out)
+{
+    std::string_view original = text;
+    if (original.empty() || original.front() != '[')
+        return false;
+
+    size_t depth = 0;
+    size_t start = 0;
+    bool inString = false;
+    bool escape = false;
+    for (size_t index = 0; index < original.size(); ++index)
     {
-        double value = 0.0;
-        if (parseFloatLiteral(literal, value))
+        char c = original[index];
+        if (inString)
         {
-            cursor.consumeRest();
-            return Operand::constFloat(value);
+            if (escape)
+            {
+                escape = false;
+                continue;
+            }
+            if (c == '\\')
+            {
+                escape = true;
+                continue;
+            }
+            if (c == '"')
+                inString = false;
+            continue;
         }
+
+        if (c == '"')
+        {
+            inString = true;
+            continue;
+        }
+
+        if (c == '[')
+        {
+            if (depth == 0)
+                start = index + 1;
+            ++depth;
+            continue;
+        }
+
+        if (c == ']')
+        {
+            if (depth == 0)
+                return false;
+            --depth;
+            if (depth == 0)
+            {
+                out = original.substr(start, index - start);
+                text.remove_prefix(index + 1);
+                return true;
+            }
+            continue;
+        }
+    }
+    return false;
+}
+
+class OperandReader
+{
+  public:
+    explicit OperandReader(ParserState &state) : state_(state) {}
+
+    Expected<size_t> parseOperand(std::string_view &text, Operand &out) const
+    {
+        bool matched = false;
+        auto reg = tryParseRegister(text, out, matched);
+        if (matched)
+        {
+            if (!reg)
+                return reg;
+            text.remove_prefix(reg.value());
+            return reg;
+        }
+
+        auto mem = tryParseMemory(text, out, matched);
+        if (matched)
+        {
+            if (!mem)
+                return mem;
+            text.remove_prefix(mem.value());
+            return mem;
+        }
+
+        auto imm = parseImmediate(text, out);
+        if (!imm)
+            return imm;
+        text.remove_prefix(imm.value());
+        return imm;
+    }
+
+  private:
+    Expected<size_t> tryParseRegister(std::string_view text, Operand &out, bool &matched) const
+    {
+        matched = false;
+        if (text.empty() || text.front() != '%')
+            return Expected<size_t>{size_t{0}};
+
+        matched = true;
+        text.remove_prefix(1);
+        auto identText = text;
+        auto ident = parseIdent(identText);
+        if (!ident || ident->empty())
+            return makeSyntaxError<size_t>(state_, "missing temp name");
+
+        std::string name(ident->begin(), ident->end());
+        auto it = state_.tempIds.find(name);
+        if (it != state_.tempIds.end())
+        {
+            out = Operand::temp(it->second);
+            return Expected<size_t>{1 + ident->size()};
+        }
+
+        if (name.size() > 1 && name.front() == 't')
+        {
+            std::string_view digits = name;
+            digits.remove_prefix(1);
+            std::string_view digitCursor = digits;
+            int64_t parsed = 0;
+            if (parseInt(digitCursor, parsed) && digitCursor.empty() && parsed >= 0 &&
+                static_cast<uint64_t>(parsed) <= std::numeric_limits<unsigned>::max())
+            {
+                out = Operand::temp(static_cast<unsigned>(parsed));
+                return Expected<size_t>{1 + ident->size()};
+            }
+        }
+
         std::ostringstream oss;
-        oss << "invalid floating literal '" << literal << "'";
-        return makeSyntaxError<Operand>(state, oss.str());
-    };
-
-    if (hasDecimalPoint || hasExponent)
-        return parseFloatingToken(token);
-
-    if (equalsIgnoreCase(token, "nan") || equalsIgnoreCase(token, "inf") ||
-        equalsIgnoreCase(token, "+inf") || equalsIgnoreCase(token, "-inf"))
-    {
-        return parseFloatingToken(token);
+        oss << "unknown temp '%" << name << "'";
+        return makeSyntaxError<size_t>(state_, oss.str());
     }
 
-    long long value = 0;
-    if (parseIntegerLiteral(token, value))
+    Expected<size_t> tryParseMemory(std::string_view text, Operand &out, bool &matched) const
     {
-        cursor.consumeRest();
-        return Operand::constInt(value);
+        matched = false;
+        if (text.empty() || text.front() != '[')
+            return Expected<size_t>{size_t{0}};
+
+        matched = true;
+        std::string_view contents;
+        auto cursor = text;
+        if (!parseBracketed(cursor, contents))
+            return makeSyntaxError<size_t>(state_, "unterminated memory operand");
+
+        std::ostringstream oss;
+        oss << "unsupported memory operand '[" << contents << "]'";
+        return makeSyntaxError<size_t>(state_, oss.str());
     }
 
-    std::ostringstream oss;
-    oss << "invalid integer literal '" << token << "'";
-    return makeSyntaxError<Operand>(state, oss.str());
-}
-
-Expected<Operand> parseReg(Cursor &cursor, ParserState &state)
-{
-    const std::string token(cursor.remaining());
-    std::string name = token.substr(1);
-    auto it = state.tempIds.find(name);
-    if (it != state.tempIds.end())
+    Expected<size_t> parseImmediate(std::string_view text, Operand &out) const
     {
-        cursor.consumeRest();
-        return Operand::temp(it->second);
-    }
+        if (text.empty())
+            return makeSyntaxError<size_t>(state_, "missing operand");
 
-    if (name.size() > 1 && name[0] == 't')
-    {
-        bool digits = true;
-        for (size_t i = 1; i < name.size(); ++i)
+        std::string token(text);
+        if (equalsIgnoreCase(token, "true"))
         {
-            if (!std::isdigit(static_cast<unsigned char>(name[i])))
-            {
-                digits = false;
-                break;
-            }
+            out = Operand::constBool(true);
+            return Expected<size_t>{token.size()};
         }
-        if (digits)
+        if (equalsIgnoreCase(token, "false"))
         {
-            try
-            {
-                cursor.consumeRest();
-                return Operand::temp(static_cast<unsigned>(std::stoul(name.substr(1))));
-            }
-            catch (const std::exception &)
-            {
-                std::ostringstream oss;
-                oss << "invalid temp id '" << token << "'";
-                return makeSyntaxError<Operand>(state, oss.str());
-            }
+            out = Operand::constBool(false);
+            return Expected<size_t>{token.size()};
         }
+        if (token == "null")
+        {
+            out = Operand::null();
+            return Expected<size_t>{token.size()};
+        }
+        if (token.size() >= 2 && token.front() == '"' && token.back() == '"')
+        {
+            std::string literal = token.substr(1, token.size() - 2);
+            std::string decoded;
+            std::string errMsg;
+            if (!decodeEscapedString(literal, decoded, &errMsg))
+                return makeSyntaxError<size_t>(state_, std::move(errMsg));
+            out = Operand::constStr(std::move(decoded));
+            return Expected<size_t>{token.size()};
+        }
+
+        const bool hasDecimalPoint = token.find('.') != std::string::npos;
+        const bool isHexLiteral =
+            token.size() >= 2 && token[0] == '0' && (token[1] == 'x' || token[1] == 'X');
+        const bool hasExponent = (!isHexLiteral) && (token.find('e') != std::string::npos ||
+                                                     token.find('E') != std::string::npos);
+
+        auto parseFloatingToken = [&](const std::string &literal) -> Expected<size_t>
+        {
+            double value = 0.0;
+            if (parseFloatLiteral(literal, value))
+            {
+                out = Operand::constFloat(value);
+                return Expected<size_t>{literal.size()};
+            }
+            std::ostringstream oss;
+            oss << "invalid floating literal '" << literal << "'";
+            return makeSyntaxError<size_t>(state_, oss.str());
+        };
+
+        if (hasDecimalPoint || hasExponent || equalsIgnoreCase(token, "nan") ||
+            equalsIgnoreCase(token, "inf") || equalsIgnoreCase(token, "+inf") ||
+            equalsIgnoreCase(token, "-inf"))
+        {
+            return parseFloatingToken(token);
+        }
+
+        long long value = 0;
+        if (parseIntegerLiteral(token, value))
+        {
+            out = Operand::constInt(value);
+            return Expected<size_t>{token.size()};
+        }
+
+        std::ostringstream oss;
+        oss << "invalid integer literal '" << token << "'";
+        return makeSyntaxError<size_t>(state_, oss.str());
     }
 
-    std::ostringstream oss;
-    oss << "unknown temp '" << token << "'";
-    return makeSyntaxError<Operand>(state, oss.str());
-}
+    ParserState &state_;
+};
 
-Expected<Operand> parseMem(Cursor &cursor, ParserState &state)
+Expected<Operand> parseSymbolRef(std::string_view &text, ParserState &state)
 {
-    const std::string token(cursor.remaining());
-    std::ostringstream oss;
-    oss << "invalid integer literal '" << token << "'";
-    return makeSyntaxError<Operand>(state, oss.str());
-}
-
-Expected<Operand> parseSymbolRef(Cursor &cursor, ParserState &state)
-{
-    const std::string token(cursor.remaining());
-    std::string name = token.substr(1);
-    if (name.empty())
+    skipSpace(text);
+    if (text.empty() || text.front() != '@')
         return makeSyntaxError<Operand>(state, "missing global name");
-    cursor.consumeRest();
-    return Operand::global(std::move(name));
+
+    text.remove_prefix(1);
+    auto nameCursor = text;
+    auto ident = parseIdent(nameCursor);
+    if (!ident || ident->empty())
+        return makeSyntaxError<Operand>(state, "missing global name");
+
+    skipSpace(nameCursor);
+    if (!nameCursor.empty())
+        return makeSyntaxError<Operand>(state, "malformed global name");
+
+    text = nameCursor;
+    return Operand::global(std::string(ident->begin(), ident->end()));
 }
 
-[[maybe_unused]] Expected<Type> parseType(Cursor &cursor, ParserState &state)
+[[maybe_unused]] Expected<Type> parseType(std::string_view token, ParserState &state)
 {
-    const std::string token(cursor.remaining());
-    if (token.empty())
+    std::string_view view = token;
+    skipSpace(view);
+    if (view.empty())
         return makeSyntaxError<Type>(state, "missing type");
+
+    std::string literal(view);
     bool ok = false;
-    Type ty = ::il::io::parseType(token, &ok);
+    Type ty = ::il::io::parseType(literal, &ok);
     if (!ok)
     {
         std::ostringstream oss;
-        oss << "unknown type '" << token << "'";
+        oss << "unknown type '" << literal << "'";
         return makeSyntaxError<Type>(state, oss.str());
     }
-    cursor.consumeRest();
+
     return ty;
 }
 
@@ -246,25 +408,36 @@ OperandParser::OperandParser(ParserState &state, Instr &instr) : state_(state), 
 /// @return Parsed value or an error diagnostic.
 Expected<Value> OperandParser::parseValueToken(const std::string &tok) const
 {
-    Cursor cursor(tok, SourcePos{state_.lineNo, 0});
-    cursor.skipWs();
+    std::string_view remaining(tok);
+    skipSpace(remaining);
 
-    if (cursor.atEnd())
+    if (remaining.empty())
         return makeSyntaxError<Value>(state_, "missing operand");
 
-    const char first = cursor.peek();
-    if (first == '%')
-        return parseReg(cursor, state_);
-    if (first == '@')
-        return parseSymbolRef(cursor, state_);
-    if (first == '[')
-        return parseMem(cursor, state_);
-    if (first == '"')
-        return parseImm(cursor, state_);
-    if (first == '+' || first == '-' || std::isdigit(static_cast<unsigned char>(first)))
-        return parseImm(cursor, state_);
+    if (remaining.front() == '@')
+    {
+        auto symbol = parseSymbolRef(remaining, state_);
+        if (!symbol)
+            return Expected<Value>{symbol.error()};
 
-    return parseImm(cursor, state_);
+        skipSpace(remaining);
+        if (!remaining.empty())
+            return makeSyntaxError<Value>(state_, "unexpected trailing characters");
+
+        return Expected<Value>{std::move(symbol.value())};
+    }
+
+    OperandReader reader(state_);
+    Operand operand;
+    auto consumed = reader.parseOperand(remaining, operand);
+    if (!consumed)
+        return Expected<Value>{consumed.error()};
+
+    skipSpace(remaining);
+    if (!remaining.empty())
+        return makeSyntaxError<Value>(state_, "unexpected trailing characters");
+
+    return Expected<Value>{std::move(operand)};
 }
 
 /// @brief Split a comma-separated operand list while respecting nested constructs.
