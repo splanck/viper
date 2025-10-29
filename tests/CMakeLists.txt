@@ -149,3 +149,7 @@ add_test(NAME basic_repros
 set_tests_properties(basic_repros
         PROPERTIES
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
+add_test(NAME basic_array_assign_smoke
+        COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/scripts/run_array_assign_smoke.sh
+        $<TARGET_FILE:ilc>)
