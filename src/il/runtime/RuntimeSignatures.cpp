@@ -9,7 +9,7 @@
 // Purpose: Build and expose the runtime descriptor registry used by IL
 //          consumers to marshal calls into the C runtime.
 // Key invariants: The descriptor table is immutable, matches runtime helpers
-//                 one-to-one, and is initialised lazily in a thread-safe manner.
+//                 one-to-one, and is provided via compile-time tables.
 // Ownership/Lifetime: All descriptors have static storage duration and remain
 //                     valid for the lifetime of the process.
 // Links: docs/il-guide.md#reference, docs/architecture.md#cpp-overview
@@ -40,12 +40,14 @@ void register_array_signatures();
 #include "rt_math.h"
 #include "rt_numeric.h"
 #include "rt_random.h"
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <limits>
 #include <optional>
 #include <span>
 #include <string_view>
+#include <iterator>
 #include <type_traits>
 #include <unordered_map>
 #include <utility>
@@ -59,6 +61,14 @@ namespace
 using Kind = il::core::Type::Kind;
 
 constexpr std::size_t kRtSigCount = data::kRtSigCount;
+
+const std::array<RuntimeSignature, kRtSigCount> kSignatureTable = []
+{
+    std::array<RuntimeSignature, kRtSigCount> entries;
+    for (std::size_t i = 0; i < kRtSigCount; ++i)
+        entries[i] = parseSignatureSpec(data::kRtSigSpecs[i]);
+    return entries;
+}();
 
 /// @brief Clamp a 64-bit runtime file position/length to a 32-bit IL value.
 ///
@@ -110,45 +120,18 @@ void testMutateStringNoStack(void **args, void * /*result*/)
 ///
 /// @param sig Enumerated runtime signature identifier.
 /// @return Reference to the parsed runtime signature.
-const RuntimeSignature &signatureFor(RtSig sig)
+const RuntimeSignature &signatureFor(RtSig sig) noexcept
 {
-    static const auto table = []
-    {
-        std::array<RuntimeSignature, kRtSigCount> entries;
-        for (std::size_t i = 0; i < kRtSigCount; ++i)
-            entries[i] = parseSignatureSpec(data::kRtSigSpecs[i]);
-        return entries;
-    }();
-    return table[static_cast<std::size_t>(sig)];
+    return kSignatureTable[static_cast<std::size_t>(sig)];
 }
 
 /// @brief Check whether a runtime signature enumerator is in range.
 ///
 /// @param sig Enumerated runtime signature identifier.
 /// @return True when @p sig maps to a generated signature entry.
-bool isValid(RtSig sig)
+constexpr bool isValid(RtSig sig) noexcept
 {
     return static_cast<std::size_t>(sig) < kRtSigCount;
-}
-
-/// @brief Return a lazily initialised index mapping symbol names to signatures.
-///
-/// @details Constructs an unordered_map once by iterating over the generated
-///          symbol name table.  The index enables fast lookup of enumerators by
-///          their canonical name.
-///
-/// @return Map from runtime symbol names to signature identifiers.
-const std::unordered_map<std::string_view, RtSig> &generatedSigIndex()
-{
-    static const auto map = []
-    {
-        std::unordered_map<std::string_view, RtSig> table;
-        table.reserve(kRtSigCount);
-        for (std::size_t i = 0; i < kRtSigCount; ++i)
-            table.emplace(data::kRtSigSymbolNames[i], static_cast<RtSig>(i));
-        return table;
-    }();
-    return map;
 }
 
 /// @brief Adapter that invokes a concrete runtime function from VM call stubs.
@@ -456,7 +439,7 @@ constexpr RuntimeLowering featureLowering(RuntimeFeature feature, bool ordered =
 constexpr std::array<RuntimeHiddenParam, 1> kPowHidden{
     RuntimeHiddenParam{RuntimeHiddenParamKind::PowStatusPointer}};
 
-struct DescriptorRow
+struct Descriptor
 {
     std::string_view name;
     std::optional<RtSig> signatureId;
@@ -468,8 +451,8 @@ struct DescriptorRow
     RuntimeTrapClass trapClass;
 };
 
-constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
-    DescriptorRow{"rt_abort",
+constexpr std::array<Descriptor, 89> kDescriptorRows{{
+    Descriptor{"rt_abort",
                   std::nullopt,
                   "void(ptr)",
                   &DirectHandler<&rt_abort, void, const char *>::invoke,
@@ -477,7 +460,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_print_str",
+    Descriptor{"rt_print_str",
                   RtSig::PrintS,
                   data::kRtSigSpecs[static_cast<std::size_t>(RtSig::PrintS)],
                   &DirectHandler<&rt_print_str, void, rt_string>::invoke,
@@ -485,7 +468,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_print_i64",
+    Descriptor{"rt_print_i64",
                   RtSig::PrintI,
                   data::kRtSigSpecs[static_cast<std::size_t>(RtSig::PrintI)],
                   &DirectHandler<&rt_print_i64, void, int64_t>::invoke,
@@ -493,7 +476,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_print_f64",
+    Descriptor{"rt_print_f64",
                   RtSig::PrintF,
                   data::kRtSigSpecs[static_cast<std::size_t>(RtSig::PrintF)],
                   &DirectHandler<&rt_print_f64, void, double>::invoke,
@@ -501,7 +484,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_println_i32",
+    Descriptor{"rt_println_i32",
                   std::nullopt,
                   "void(i32)",
                   &DirectHandler<&rt_println_i32, void, int32_t>::invoke,
@@ -509,7 +492,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_println_str",
+    Descriptor{"rt_println_str",
                   std::nullopt,
                   "void(ptr)",
                   &DirectHandler<&rt_println_str, void, const char *>::invoke,
@@ -517,7 +500,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_len",
+    Descriptor{"rt_len",
                   RtSig::Len,
                   data::kRtSigSpecs[static_cast<std::size_t>(RtSig::Len)],
                   &DirectHandler<&rt_len, int64_t, rt_string>::invoke,
@@ -525,7 +508,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_substr",
+    Descriptor{"rt_substr",
                   RtSig::Substr,
                   data::kRtSigSpecs[static_cast<std::size_t>(RtSig::Substr)],
                   &DirectHandler<&rt_substr, rt_string, rt_string, int64_t, int64_t>::invoke,
@@ -533,7 +516,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_trap",
+    Descriptor{"rt_trap",
                   RtSig::Trap,
                   data::kRtSigSpecs[static_cast<std::size_t>(RtSig::Trap)],
                   &trapFromRuntimeString,
@@ -541,7 +524,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_concat",
+    Descriptor{"rt_concat",
                   RtSig::Concat,
                   data::kRtSigSpecs[static_cast<std::size_t>(RtSig::Concat)],
                   &ConsumingStringHandler<&rt_concat, rt_string, rt_string, rt_string>::invoke,
@@ -549,7 +532,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_csv_quote_alloc",
+    Descriptor{"rt_csv_quote_alloc",
                   std::nullopt,
                   "string(string)",
                   &DirectHandler<&rt_csv_quote_alloc, rt_string, rt_string>::invoke,
@@ -557,7 +540,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_input_line",
+    Descriptor{"rt_input_line",
                   RtSig::InputLine,
                   data::kRtSigSpecs[static_cast<std::size_t>(RtSig::InputLine)],
                   &DirectHandler<&rt_input_line, rt_string>::invoke,
@@ -565,7 +548,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{
+    Descriptor{
         "rt_split_fields",
         RtSig::SplitFields,
         data::kRtSigSpecs[static_cast<std::size_t>(RtSig::SplitFields)],
@@ -574,7 +557,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
         nullptr,
         0,
         RuntimeTrapClass::None},
-    DescriptorRow{"rt_to_int",
+    Descriptor{"rt_to_int",
                   RtSig::ToInt,
                   data::kRtSigSpecs[static_cast<std::size_t>(RtSig::ToInt)],
                   &DirectHandler<&rt_to_int, int64_t, rt_string>::invoke,
@@ -582,7 +565,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_to_double",
+    Descriptor{"rt_to_double",
                   RtSig::ToDouble,
                   data::kRtSigSpecs[static_cast<std::size_t>(RtSig::ToDouble)],
                   &DirectHandler<&rt_to_double, double, rt_string>::invoke,
@@ -590,7 +573,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_parse_int64",
+    Descriptor{"rt_parse_int64",
                   RtSig::ParseInt64,
                   data::kRtSigSpecs[static_cast<std::size_t>(RtSig::ParseInt64)],
                   &DirectHandler<&rt_parse_int64, int32_t, const char *, int64_t *>::invoke,
@@ -598,7 +581,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_parse_double",
+    Descriptor{"rt_parse_double",
                   RtSig::ParseDouble,
                   data::kRtSigSpecs[static_cast<std::size_t>(RtSig::ParseDouble)],
                   &DirectHandler<&rt_parse_double, int32_t, const char *, double *>::invoke,
@@ -606,7 +589,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_int_to_str",
+    Descriptor{"rt_int_to_str",
                   RtSig::IntToStr,
                   data::kRtSigSpecs[static_cast<std::size_t>(RtSig::IntToStr)],
                   &DirectHandler<&rt_int_to_str, rt_string, int64_t>::invoke,
@@ -614,7 +597,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_f64_to_str",
+    Descriptor{"rt_f64_to_str",
                   RtSig::F64ToStr,
                   data::kRtSigSpecs[static_cast<std::size_t>(RtSig::F64ToStr)],
                   &DirectHandler<&rt_f64_to_str, rt_string, double>::invoke,
@@ -622,7 +605,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_term_cls",
+    Descriptor{"rt_term_cls",
                   std::nullopt,
                   "void()",
                   &DirectHandler<&rt_term_cls, void>::invoke,
@@ -630,7 +613,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_term_color_i32",
+    Descriptor{"rt_term_color_i32",
                   std::nullopt,
                   "void(i32,i32)",
                   &DirectHandler<&rt_term_color_i32, void, int32_t, int32_t>::invoke,
@@ -638,7 +621,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_term_locate_i32",
+    Descriptor{"rt_term_locate_i32",
                   std::nullopt,
                   "void(i32,i32)",
                   &DirectHandler<&rt_term_locate_i32, void, int32_t, int32_t>::invoke,
@@ -646,7 +629,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_getkey_str",
+    Descriptor{"rt_getkey_str",
                   std::nullopt,
                   "string()",
                   &DirectHandler<&rt_getkey_str, rt_string>::invoke,
@@ -654,7 +637,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_inkey_str",
+    Descriptor{"rt_inkey_str",
                   std::nullopt,
                   "string()",
                   &DirectHandler<&rt_inkey_str, rt_string>::invoke,
@@ -662,7 +645,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_str_i16_alloc",
+    Descriptor{"rt_str_i16_alloc",
                   RtSig::StrFromI16,
                   data::kRtSigSpecs[static_cast<std::size_t>(RtSig::StrFromI16)],
                   &DirectHandler<&rt_str_i16_alloc, rt_string, int16_t>::invoke,
@@ -670,7 +653,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_str_i32_alloc",
+    Descriptor{"rt_str_i32_alloc",
                   RtSig::StrFromI32,
                   data::kRtSigSpecs[static_cast<std::size_t>(RtSig::StrFromI32)],
                   &DirectHandler<&rt_str_i32_alloc, rt_string, int32_t>::invoke,
@@ -678,7 +661,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_str_f_alloc",
+    Descriptor{"rt_str_f_alloc",
                   RtSig::StrFromSingle,
                   data::kRtSigSpecs[static_cast<std::size_t>(RtSig::StrFromSingle)],
                   &invokeRtStrFAlloc,
@@ -686,7 +669,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_str_d_alloc",
+    Descriptor{"rt_str_d_alloc",
                   RtSig::StrFromDouble,
                   data::kRtSigSpecs[static_cast<std::size_t>(RtSig::StrFromDouble)],
                   &DirectHandler<&rt_str_d_alloc, rt_string, double>::invoke,
@@ -694,7 +677,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_cint_from_double",
+    Descriptor{"rt_cint_from_double",
                   std::nullopt,
                   "i64(f64,ptr)",
                   &invokeRtCintFromDouble,
@@ -702,7 +685,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_clng_from_double",
+    Descriptor{"rt_clng_from_double",
                   std::nullopt,
                   "i64(f64,ptr)",
                   &invokeRtClngFromDouble,
@@ -710,7 +693,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_csng_from_double",
+    Descriptor{"rt_csng_from_double",
                   std::nullopt,
                   "f64(f64,ptr)",
                   &invokeRtCsngFromDouble,
@@ -718,7 +701,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_cdbl_from_any",
+    Descriptor{"rt_cdbl_from_any",
                   std::nullopt,
                   "f64(f64)",
                   &DirectHandler<&rt_cdbl_from_any, double, double>::invoke,
@@ -726,7 +709,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_int_floor",
+    Descriptor{"rt_int_floor",
                   std::nullopt,
                   "f64(f64)",
                   &DirectHandler<&rt_int_floor, double, double>::invoke,
@@ -734,7 +717,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_fix_trunc",
+    Descriptor{"rt_fix_trunc",
                   std::nullopt,
                   "f64(f64)",
                   &DirectHandler<&rt_fix_trunc, double, double>::invoke,
@@ -742,7 +725,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_round_even",
+    Descriptor{"rt_round_even",
                   std::nullopt,
                   "f64(f64,i32)",
                   &invokeRtRoundEven,
@@ -750,7 +733,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_alloc",
+    Descriptor{"rt_alloc",
                   std::nullopt,
                   "ptr(i64)",
                   &DirectHandler<&rt_alloc, void *, int64_t>::invoke,
@@ -758,7 +741,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_arr_i32_new",
+    Descriptor{"rt_arr_i32_new",
                   std::nullopt,
                   "ptr(i64)",
                   &invokeRtArrI32New,
@@ -766,7 +749,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_arr_i32_retain",
+    Descriptor{"rt_arr_i32_retain",
                   std::nullopt,
                   "void(ptr)",
                   &DirectHandler<&rt_arr_i32_retain, void, int32_t *>::invoke,
@@ -774,7 +757,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_arr_i32_release",
+    Descriptor{"rt_arr_i32_release",
                   std::nullopt,
                   "void(ptr)",
                   &DirectHandler<&rt_arr_i32_release, void, int32_t *>::invoke,
@@ -782,7 +765,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_arr_i32_len",
+    Descriptor{"rt_arr_i32_len",
                   std::nullopt,
                   "i64(ptr)",
                   &invokeRtArrI32Len,
@@ -790,7 +773,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_arr_i32_get",
+    Descriptor{"rt_arr_i32_get",
                   std::nullopt,
                   "i64(ptr,i64)",
                   &invokeRtArrI32Get,
@@ -798,7 +781,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_arr_i32_set",
+    Descriptor{"rt_arr_i32_set",
                   std::nullopt,
                   "void(ptr,i64,i64)",
                   &invokeRtArrI32Set,
@@ -806,7 +789,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_arr_i32_resize",
+    Descriptor{"rt_arr_i32_resize",
                   std::nullopt,
                   "ptr(ptr,i64)",
                   &invokeRtArrI32Resize,
@@ -814,7 +797,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_arr_oob_panic",
+    Descriptor{"rt_arr_oob_panic",
                   std::nullopt,
                   "void(i64,i64)",
                   &invokeRtArrOobPanic,
@@ -822,7 +805,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_left",
+    Descriptor{"rt_left",
                   std::nullopt,
                   "string(string,i64)",
                   &DirectHandler<&rt_left, rt_string, rt_string, int64_t>::invoke,
@@ -830,7 +813,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_right",
+    Descriptor{"rt_right",
                   std::nullopt,
                   "string(string,i64)",
                   &DirectHandler<&rt_right, rt_string, rt_string, int64_t>::invoke,
@@ -838,7 +821,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_mid2",
+    Descriptor{"rt_mid2",
                   std::nullopt,
                   "string(string,i64)",
                   &DirectHandler<&rt_mid2, rt_string, rt_string, int64_t>::invoke,
@@ -846,7 +829,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_mid3",
+    Descriptor{"rt_mid3",
                   std::nullopt,
                   "string(string,i64,i64)",
                   &DirectHandler<&rt_mid3, rt_string, rt_string, int64_t, int64_t>::invoke,
@@ -854,7 +837,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_instr2",
+    Descriptor{"rt_instr2",
                   std::nullopt,
                   "i64(string,string)",
                   &DirectHandler<&rt_instr2, int64_t, rt_string, rt_string>::invoke,
@@ -862,7 +845,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_instr3",
+    Descriptor{"rt_instr3",
                   std::nullopt,
                   "i64(i64,string,string)",
                   &DirectHandler<&rt_instr3, int64_t, int64_t, rt_string, rt_string>::invoke,
@@ -870,7 +853,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_ltrim",
+    Descriptor{"rt_ltrim",
                   std::nullopt,
                   "string(string)",
                   &DirectHandler<&rt_ltrim, rt_string, rt_string>::invoke,
@@ -878,7 +861,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_rtrim",
+    Descriptor{"rt_rtrim",
                   std::nullopt,
                   "string(string)",
                   &DirectHandler<&rt_rtrim, rt_string, rt_string>::invoke,
@@ -886,7 +869,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_trim",
+    Descriptor{"rt_trim",
                   std::nullopt,
                   "string(string)",
                   &DirectHandler<&rt_trim, rt_string, rt_string>::invoke,
@@ -894,7 +877,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_ucase",
+    Descriptor{"rt_ucase",
                   std::nullopt,
                   "string(string)",
                   &DirectHandler<&rt_ucase, rt_string, rt_string>::invoke,
@@ -902,7 +885,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_lcase",
+    Descriptor{"rt_lcase",
                   std::nullopt,
                   "string(string)",
                   &DirectHandler<&rt_lcase, rt_string, rt_string>::invoke,
@@ -910,7 +893,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_chr",
+    Descriptor{"rt_chr",
                   std::nullopt,
                   "string(i64)",
                   &DirectHandler<&rt_chr, rt_string, int64_t>::invoke,
@@ -918,7 +901,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_asc",
+    Descriptor{"rt_asc",
                   std::nullopt,
                   "i64(string)",
                   &DirectHandler<&rt_asc, int64_t, rt_string>::invoke,
@@ -926,7 +909,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_str_eq",
+    Descriptor{"rt_str_eq",
                   std::nullopt,
                   "i1(string,string)",
                   &DirectHandler<&rt_str_eq, int64_t, rt_string, rt_string>::invoke,
@@ -934,7 +917,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_val",
+    Descriptor{"rt_val",
                   std::nullopt,
                   "f64(string)",
                   &DirectHandler<&rt_val, double, rt_string>::invoke,
@@ -942,7 +925,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_val_to_double",
+    Descriptor{"rt_val_to_double",
                   std::nullopt,
                   "f64(ptr,ptr)",
                   &DirectHandler<&rt_val_to_double, double, const char *, bool *>::invoke,
@@ -950,7 +933,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_string_cstr",
+    Descriptor{"rt_string_cstr",
                   std::nullopt,
                   "ptr(string)",
                   &DirectHandler<&rt_string_cstr, const char *, rt_string>::invoke,
@@ -958,7 +941,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_sqrt",
+    Descriptor{"rt_sqrt",
                   std::nullopt,
                   "f64(f64)",
                   &DirectHandler<&rt_sqrt, double, double>::invoke,
@@ -966,7 +949,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_abs_i64",
+    Descriptor{"rt_abs_i64",
                   std::nullopt,
                   "i64(i64)",
                   &DirectHandler<&rt_abs_i64, long long, long long>::invoke,
@@ -974,7 +957,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_abs_f64",
+    Descriptor{"rt_abs_f64",
                   std::nullopt,
                   "f64(f64)",
                   &DirectHandler<&rt_abs_f64, double, double>::invoke,
@@ -982,7 +965,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_floor",
+    Descriptor{"rt_floor",
                   std::nullopt,
                   "f64(f64)",
                   &DirectHandler<&rt_floor, double, double>::invoke,
@@ -990,7 +973,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_ceil",
+    Descriptor{"rt_ceil",
                   std::nullopt,
                   "f64(f64)",
                   &DirectHandler<&rt_ceil, double, double>::invoke,
@@ -998,7 +981,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_sin",
+    Descriptor{"rt_sin",
                   std::nullopt,
                   "f64(f64)",
                   &DirectHandler<&rt_sin, double, double>::invoke,
@@ -1006,7 +989,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_cos",
+    Descriptor{"rt_cos",
                   std::nullopt,
                   "f64(f64)",
                   &DirectHandler<&rt_cos, double, double>::invoke,
@@ -1014,7 +997,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_pow_f64_chkdom",
+    Descriptor{"rt_pow_f64_chkdom",
                   std::nullopt,
                   "f64(f64,f64)",
                   &invokeRtPowF64Chkdom,
@@ -1022,7 +1005,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   kPowHidden.data(),
                   kPowHidden.size(),
                   RuntimeTrapClass::PowDomainOverflow},
-    DescriptorRow{"rt_randomize_i64",
+    Descriptor{"rt_randomize_i64",
                   std::nullopt,
                   "void(i64)",
                   &DirectHandler<&rt_randomize_i64, void, long long>::invoke,
@@ -1030,7 +1013,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_rnd",
+    Descriptor{"rt_rnd",
                   std::nullopt,
                   "f64()",
                   &DirectHandler<&rt_rnd, double>::invoke,
@@ -1038,7 +1021,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{
+    Descriptor{
         "rt_open_err_vstr",
         std::nullopt,
         "i32(string,i32,i32)",
@@ -1047,7 +1030,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
         nullptr,
         0,
         RuntimeTrapClass::None},
-    DescriptorRow{"rt_close_err",
+    Descriptor{"rt_close_err",
                   std::nullopt,
                   "i32(i32)",
                   &DirectHandler<&rt_close_err, int32_t, int32_t>::invoke,
@@ -1055,7 +1038,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_write_ch_err",
+    Descriptor{"rt_write_ch_err",
                   std::nullopt,
                   "i32(i32,string)",
                   &DirectHandler<&rt_write_ch_err, int32_t, int32_t, ViperString *>::invoke,
@@ -1063,7 +1046,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_println_ch_err",
+    Descriptor{"rt_println_ch_err",
                   std::nullopt,
                   "i32(i32,string)",
                   &DirectHandler<&rt_println_ch_err, int32_t, int32_t, ViperString *>::invoke,
@@ -1071,7 +1054,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_line_input_ch_err",
+    Descriptor{"rt_line_input_ch_err",
                   std::nullopt,
                   "i32(i32,ptr)",
                   &DirectHandler<&rt_line_input_ch_err, int32_t, int32_t, ViperString **>::invoke,
@@ -1079,7 +1062,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_eof_ch",
+    Descriptor{"rt_eof_ch",
                   std::nullopt,
                   "i32(i32)",
                   &DirectHandler<&rt_eof_ch, int32_t, int32_t>::invoke,
@@ -1087,7 +1070,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_lof_ch",
+    Descriptor{"rt_lof_ch",
                   std::nullopt,
                   "i32(i32)",
                   &DirectHandler<&rt_lof_ch_i32, int32_t, int32_t>::invoke,
@@ -1095,7 +1078,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_loc_ch",
+    Descriptor{"rt_loc_ch",
                   std::nullopt,
                   "i32(i32)",
                   &DirectHandler<&rt_loc_ch_i32, int32_t, int32_t>::invoke,
@@ -1103,7 +1086,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_seek_ch_err",
+    Descriptor{"rt_seek_ch_err",
                   std::nullopt,
                   "i32(i32,i64)",
                   &DirectHandler<&rt_seek_ch_err, int32_t, int32_t, int64_t>::invoke,
@@ -1111,7 +1094,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_str_empty",
+    Descriptor{"rt_str_empty",
                   std::nullopt,
                   "string()",
                   &DirectHandler<&rt_str_empty, rt_string>::invoke,
@@ -1119,7 +1102,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_const_cstr",
+    Descriptor{"rt_const_cstr",
                   std::nullopt,
                   "string(ptr)",
                   &DirectHandler<&rt_const_cstr, rt_string, const char *>::invoke,
@@ -1127,7 +1110,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_str_retain_maybe",
+    Descriptor{"rt_str_retain_maybe",
                   std::nullopt,
                   "void(string)",
                   &DirectHandler<&rt_str_retain_maybe, void, rt_string>::invoke,
@@ -1135,7 +1118,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_str_release_maybe",
+    Descriptor{"rt_str_release_maybe",
                   std::nullopt,
                   "void(string)",
                   &DirectHandler<&rt_str_release_maybe, void, rt_string>::invoke,
@@ -1143,7 +1126,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_test_bridge_mutate_str",
+    Descriptor{"rt_test_bridge_mutate_str",
                   std::nullopt,
                   "void(string)",
                   &testMutateStringNoStack,
@@ -1151,7 +1134,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_obj_new_i64",
+    Descriptor{"rt_obj_new_i64",
                   std::nullopt,
                   "ptr(i64,i64)",
                   &DirectHandler<&rt_obj_new_i64, void *, int64_t, int64_t>::invoke,
@@ -1159,7 +1142,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_obj_retain_maybe",
+    Descriptor{"rt_obj_retain_maybe",
                   std::nullopt,
                   "void(ptr)",
                   &DirectHandler<&rt_obj_retain_maybe, void, void *>::invoke,
@@ -1167,7 +1150,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_obj_release_check0",
+    Descriptor{"rt_obj_release_check0",
                   std::nullopt,
                   "i1(ptr)",
                   &DirectHandler<&rt_obj_release_check0, int32_t, void *>::invoke,
@@ -1175,7 +1158,7 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-    DescriptorRow{"rt_obj_free",
+    Descriptor{"rt_obj_free",
                   std::nullopt,
                   "void(ptr)",
                   &DirectHandler<&rt_obj_free, void, void *>::invoke,
@@ -1185,12 +1168,75 @@ constexpr std::array<DescriptorRow, 89> kDescriptorRows{{
                   RuntimeTrapClass::None},
 }};
 
+template <std::size_t N>
+consteval std::array<Descriptor, N> sortDescriptors(std::array<Descriptor, N> descriptors)
+{
+    for (std::size_t i = 0; i < N; ++i)
+    {
+        for (std::size_t j = i + 1; j < N; ++j)
+        {
+            if (descriptors[j].name < descriptors[i].name)
+                std::swap(descriptors[i], descriptors[j]);
+        }
+    }
+    return descriptors;
+}
+
+constexpr auto kDescriptors = sortDescriptors(kDescriptorRows);
+
+template <std::size_t N>
+consteval std::array<std::string_view, N> extractNames(const std::array<Descriptor, N> &descriptors)
+{
+    std::array<std::string_view, N> names{};
+    for (std::size_t i = 0; i < N; ++i)
+        names[i] = descriptors[i].name;
+    return names;
+}
+
+constexpr auto kNames = extractNames(kDescriptors);
+
+template <std::size_t N>
+consteval std::array<int, static_cast<std::size_t>(RuntimeFeature::Count)>
+buildFeatureIndex(const std::array<Descriptor, N> &descriptors)
+{
+    std::array<int, static_cast<std::size_t>(RuntimeFeature::Count)> index{};
+    for (auto &entry : index)
+        entry = -1;
+    for (std::size_t i = 0; i < N; ++i)
+    {
+        const auto &descriptor = descriptors[i];
+        if (descriptor.lowering.kind == RuntimeLoweringKind::Feature)
+        {
+            const auto featureIndex = static_cast<std::size_t>(descriptor.lowering.feature);
+            if (featureIndex < index.size() && index[featureIndex] == -1)
+                index[featureIndex] = static_cast<int>(i);
+        }
+    }
+    return index;
+}
+
+constexpr auto kFeatureToDescriptor = buildFeatureIndex(kDescriptors);
+
+constexpr std::size_t kDescriptorCount = kDescriptors.size();
+
+constexpr int indexOf(std::string_view name) noexcept
+{
+    const auto it = std::lower_bound(kNames.begin(), kNames.end(), name);
+    if (it == kNames.end() || *it != name)
+        return -1;
+    return static_cast<int>(std::distance(kNames.begin(), it));
+}
+
+#ifndef NDEBUG
+void validateRuntimeDescriptors(const std::vector<RuntimeDescriptor> &descriptors);
+#endif
+
 /// @brief Construct a @ref RuntimeSignature from a descriptor table row.
 ///
 /// @details Uses a pre-generated signature when available or parses the spec
 ///          string otherwise.  Hidden parameters and trap metadata are copied
 ///          from the descriptor row.
-RuntimeSignature buildSignature(const DescriptorRow &row)
+RuntimeSignature buildSignature(const Descriptor &row)
 {
     RuntimeSignature signature =
         row.signatureId ? signatureFor(*row.signatureId) : parseSignatureSpec(row.spec);
@@ -1203,7 +1249,7 @@ RuntimeSignature buildSignature(const DescriptorRow &row)
 ///
 /// @details Populates the descriptor with the name, parsed signature, handler
 ///          thunk, lowering metadata, and trap classification.
-RuntimeDescriptor buildDescriptor(const DescriptorRow &row)
+RuntimeDescriptor buildDescriptor(const Descriptor &row)
 {
     RuntimeDescriptor descriptor;
     descriptor.name = row.name;
@@ -1213,6 +1259,27 @@ RuntimeDescriptor buildDescriptor(const DescriptorRow &row)
     descriptor.trapClass = row.trapClass;
     return descriptor;
 }
+
+const std::vector<RuntimeDescriptor> kRuntimeRegistry = []
+{
+    std::vector<RuntimeDescriptor> entries;
+    entries.reserve(kDescriptorCount);
+    for (const auto &row : kDescriptors)
+        entries.push_back(buildDescriptor(row));
+#ifndef NDEBUG
+    validateRuntimeDescriptors(entries);
+#endif
+    return entries;
+}();
+
+const std::unordered_map<std::string_view, RuntimeSignature> kRuntimeSignatureMap = []
+{
+    std::unordered_map<std::string_view, RuntimeSignature> table;
+    table.reserve(kDescriptorCount);
+    for (const auto &descriptor : kRuntimeRegistry)
+        table.emplace(descriptor.name, descriptor.signature);
+    return table;
+}();
 
 #ifndef NDEBUG
 const char *sigParamKindName(signatures::SigParam::Kind kind)
@@ -1288,17 +1355,18 @@ std::vector<signatures::SigParam::Kind> makeReturnKinds(const RuntimeSignature &
     return kinds;
 }
 
+const bool kSignatureWhitelistRegistered = []
+{
+    signatures::register_fileio_signatures();
+    signatures::register_string_signatures();
+    signatures::register_math_signatures();
+    signatures::register_array_signatures();
+    return true;
+}();
+
 void ensureSignatureWhitelist()
 {
-    static const bool registered = []
-    {
-        signatures::register_fileio_signatures();
-        signatures::register_string_signatures();
-        signatures::register_math_signatures();
-        signatures::register_array_signatures();
-        return true;
-    }();
-    (void)registered;
+    (void)kSignatureWhitelistRegistered;
 }
 
 void validateRuntimeDescriptors(const std::vector<RuntimeDescriptor> &descriptors)
@@ -1413,75 +1481,43 @@ void validateRuntimeDescriptors(const std::vector<RuntimeDescriptor> &descriptor
 
 /// @brief Retrieve the immutable list of runtime descriptors.
 ///
-/// @details Lazily constructs the registry from @ref kDescriptorRows on first
-///          use and caches it for subsequent lookups.
+/// @details Returns the statically initialised registry mirroring the runtime ABI.
 const std::vector<RuntimeDescriptor> &runtimeRegistry()
 {
-    static const std::vector<RuntimeDescriptor> registry = []
-    {
-        std::vector<RuntimeDescriptor> entries;
-        entries.reserve(kDescriptorRows.size());
-        for (const auto &row : kDescriptorRows)
-            entries.push_back(buildDescriptor(row));
-#ifndef NDEBUG
-        validateRuntimeDescriptors(entries);
-#endif
-        return entries;
-    }();
-    return registry;
+    return kRuntimeRegistry;
 }
 
 /// @brief Find a runtime descriptor by its exported name.
 ///
-/// @details Builds a map on first use from descriptor names to pointers and
-///          returns the matching entry when present.
+/// @return Descriptor pointer when registered; nullptr otherwise.
 const RuntimeDescriptor *findRuntimeDescriptor(std::string_view name)
 {
-    static const auto index = []
-    {
-        std::unordered_map<std::string_view, const RuntimeDescriptor *> map;
-        for (const auto &entry : runtimeRegistry())
-            map.emplace(entry.name, &entry);
-        return map;
-    }();
-    auto it = index.find(name);
-    return it == index.end() ? nullptr : it->second;
+    const int idx = indexOf(name);
+    if (idx < 0)
+        return nullptr;
+    return &kRuntimeRegistry[static_cast<std::size_t>(idx)];
 }
 
 /// @brief Locate the descriptor that provides a particular runtime feature.
 ///
-/// @details Indexes descriptors by the feature recorded in their lowering
-///          metadata so callers can query for optional runtime helpers.
+/// @details Uses a precomputed index to map features to descriptor slots.
 const RuntimeDescriptor *findRuntimeDescriptor(RuntimeFeature feature)
 {
-    static const auto index = []
-    {
-        std::unordered_map<RuntimeFeature, const RuntimeDescriptor *> map;
-        for (const auto &entry : runtimeRegistry())
-        {
-            if (entry.lowering.kind == RuntimeLoweringKind::Feature)
-                map.emplace(entry.lowering.feature, &entry);
-        }
-        return map;
-    }();
-    auto it = index.find(feature);
-    return it == index.end() ? nullptr : it->second;
+    const auto featureIndex = static_cast<std::size_t>(feature);
+    if (featureIndex >= kFeatureToDescriptor.size())
+        return nullptr;
+    const int descriptorIndex = kFeatureToDescriptor[featureIndex];
+    if (descriptorIndex < 0)
+        return nullptr;
+    return &kRuntimeRegistry[static_cast<std::size_t>(descriptorIndex)];
 }
 
 /// @brief Provide a map from runtime names to parsed signatures.
 ///
-/// @details Materialises an unordered_map on first access by iterating over the
-///          registry, enabling quick signature lookups by string name.
+/// @return Mapping of runtime names to their IL signatures.
 const std::unordered_map<std::string_view, RuntimeSignature> &runtimeSignatures()
 {
-    static const std::unordered_map<std::string_view, RuntimeSignature> table = []
-    {
-        std::unordered_map<std::string_view, RuntimeSignature> map;
-        for (const auto &entry : runtimeRegistry())
-            map.emplace(entry.name, entry.signature);
-        return map;
-    }();
-    return table;
+    return kRuntimeSignatureMap;
 }
 
 /// @brief Look up the generated signature enumerator for a runtime symbol name.
@@ -1490,11 +1526,11 @@ const std::unordered_map<std::string_view, RuntimeSignature> &runtimeSignatures(
 /// @return Enumerator when found or std::nullopt otherwise.
 std::optional<RtSig> findRuntimeSignatureId(std::string_view name)
 {
-    const auto &index = generatedSigIndex();
-    auto it = index.find(name);
-    if (it == index.end())
+    const int idx = indexOf(name);
+    if (idx < 0)
         return std::nullopt;
-    return it->second;
+    const auto &descriptor = kDescriptors[static_cast<std::size_t>(idx)];
+    return descriptor.signatureId;
 }
 
 /// @brief Retrieve a signature descriptor by enumerator.
@@ -1519,9 +1555,10 @@ const RuntimeSignature *findRuntimeSignature(std::string_view name)
 {
     if (auto id = findRuntimeSignatureId(name))
         return findRuntimeSignature(*id);
-    if (const auto *desc = findRuntimeDescriptor(name))
-        return &desc->signature;
-    return nullptr;
+    const int idx = indexOf(name);
+    if (idx < 0)
+        return nullptr;
+    return &kRuntimeRegistry[static_cast<std::size_t>(idx)].signature;
 }
 
 } // namespace il::runtime
