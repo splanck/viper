@@ -21,6 +21,7 @@
 #include <cassert>
 #include <string>
 #include <string_view>
+#include <unordered_set>
 
 namespace il::frontends::basic
 {
@@ -133,32 +134,42 @@ void declareRuntimeExtern(build::IRBuilder &b, const il::runtime::RuntimeDescrip
 /// @param boundsChecks Whether array bounds helpers should be declared.
 void RuntimeHelperTracker::declareRequiredRuntime(build::IRBuilder &b, bool boundsChecks) const
 {
+    std::unordered_set<std::string> declared;
+
+    auto tryDeclare = [&](const il::runtime::RuntimeDescriptor &d) {
+        if (declared.insert(std::string(d.name)).second)
+        {
+            declareRuntimeExtern(b, d);
+        }
+    };
+
     const auto &registry = il::runtime::runtimeRegistry();
     for (const auto &entry : registry)
     {
         switch (entry.lowering.kind)
         {
             case il::runtime::RuntimeLoweringKind::Always:
-                declareRuntimeExtern(b, entry);
+                tryDeclare(entry);
                 break;
             case il::runtime::RuntimeLoweringKind::BoundsChecked:
                 if (boundsChecks)
-                    declareRuntimeExtern(b, entry);
+                    tryDeclare(entry);
                 break;
             case il::runtime::RuntimeLoweringKind::Feature:
                 if (!entry.lowering.ordered && isHelperNeeded(entry.lowering.feature))
-                    declareRuntimeExtern(b, entry);
+                    tryDeclare(entry);
                 break;
             case il::runtime::RuntimeLoweringKind::Manual:
                 break;
         }
     }
 
+    // Replay only ordered features; trackRuntime recorded them deterministically.
     for (RuntimeFeature feature : ordered_)
     {
         const auto *desc = il::runtime::findRuntimeDescriptor(feature);
         assert(desc && "requested runtime feature missing from registry");
-        declareRuntimeExtern(b, *desc);
+        tryDeclare(*desc);
     }
 }
 
