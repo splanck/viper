@@ -82,9 +82,25 @@ bool RuntimeHelperTracker::isHelperNeeded(RuntimeFeature feature) const
 /// @param feature Feature whose helper was touched during lowering.
 void RuntimeHelperTracker::trackRuntime(RuntimeFeature feature)
 {
+    // Mark the feature as "needed" for the unordered pass.
     requestHelper(feature);
-    if (tracked_.insert(feature).second)
-        ordered_.push_back(feature);
+
+    // Look up its descriptor to decide if we should queue it for the ordered replay.
+    const auto *desc = il::runtime::findRuntimeDescriptor(feature);
+    if (!desc)
+        return;
+
+    // Only *ordered* Feature-lowered helpers belong in ordered_.
+    if (desc->lowering.kind == il::runtime::RuntimeLoweringKind::Feature && desc->lowering.ordered)
+    {
+        if (tracked_.insert(feature).second)
+            ordered_.push_back(feature);
+    }
+    else
+    {
+        // Keep bookkeeping for completeness (no push to ordered_).
+        tracked_.insert(feature);
+    }
 }
 
 namespace
