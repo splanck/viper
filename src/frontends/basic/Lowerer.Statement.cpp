@@ -101,4 +101,11 @@ void StatementLowering::lowerSequence(const std::vector<const Stmt *> &stmts,
     }
 }
 
+void Lowerer::lowerStatementSequence(const std::vector<const Stmt *> &stmts,
+                                     bool stopOnTerminated,
+                                     const std::function<void(const Stmt &)> &beforeBranch)
+{
+    statementLowering->lowerSequence(stmts, stopOnTerminated, beforeBranch);
+}
+
 } // namespace il::frontends::basic
