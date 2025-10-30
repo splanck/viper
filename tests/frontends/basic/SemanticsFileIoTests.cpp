@@ -62,9 +62,30 @@ int main()
     }
 
     {
+        auto result = analyzeSnippet("10 OPEN \"x\" FOR INPUT AS #1.5#\n20 END\n");
+        assert(result.errors == 0);
+        assert(result.warnings == 1);
+        assert(result.output.find("warning[B2002]") != std::string::npos);
+    }
+
+    {
         auto result = analyzeSnippet("10 CLOSE #\"1\"\n20 END\n");
         assert(result.errors == 1);
         assert(result.output.find("error[B2001]") != std::string::npos);
+    }
+
+    {
+        auto result = analyzeSnippet("10 CLOSE #1.5#\n20 END\n");
+        assert(result.errors == 0);
+        assert(result.warnings == 1);
+        assert(result.output.find("warning[B2002]") != std::string::npos);
+    }
+
+    {
+        auto result = analyzeSnippet("10 SEEK #1.5#, 7.25#\n20 END\n");
+        assert(result.errors == 0);
+        assert(result.warnings == 2);
+        assert(result.output.find("warning[B2002]") != std::string::npos);
     }
 
     return 0;

@@ -142,7 +142,24 @@ void SemanticAnalyzer::analyzeOpen(OpenStmt &stmt)
 
     if (stmt.channelExpr)
     {
+        FloatExpr *floatLiteral = nullptr;
         Type channelTy = visitExpr(*stmt.channelExpr);
+        if (channelTy == Type::Float)
+        {
+            if (auto *floatExpr = dynamic_cast<FloatExpr *>(stmt.channelExpr.get()))
+            {
+                insertImplicitCast(*stmt.channelExpr, Type::Int);
+                std::string msg =
+                    "narrowing conversion from FLOAT literal to INT in OPEN channel expression";
+                de.emit(il::support::Severity::Warning,
+                        "B2002",
+                        stmt.channelExpr->loc,
+                        1,
+                        std::move(msg));
+                channelTy = Type::Int;
+                floatLiteral = floatExpr;
+            }
+        }
         if (channelTy != Type::Unknown && channelTy != Type::Int)
         {
             std::string msg = "OPEN channel expression must be INTEGER, got ";
@@ -154,6 +171,28 @@ void SemanticAnalyzer::analyzeOpen(OpenStmt &stmt)
         else if (auto *intExpr = dynamic_cast<IntExpr *>(stmt.channelExpr.get()))
         {
             long long channel = intExpr->value;
+            bool wasOpen = openChannels_.count(channel) > 0;
+            if (wasOpen)
+            {
+                std::string msg = "channel #";
+                msg += std::to_string(channel);
+                msg += " is already open";
+                de.emit(il::support::Severity::Warning,
+                        "B3002",
+                        stmt.channelExpr->loc,
+                        1,
+                        std::move(msg));
+            }
+            else
+            {
+                if (activeProcScope_)
+                    activeProcScope_->noteChannelMutation(channel, false);
+                openChannels_.insert(channel);
+            }
+        }
+        else if (floatLiteral != nullptr)
+        {
+            long long channel = static_cast<long long>(floatLiteral->value);
             bool wasOpen = openChannels_.count(channel) > 0;
             if (wasOpen)
             {
@@ -185,7 +224,24 @@ void SemanticAnalyzer::analyzeClose(CloseStmt &stmt)
     if (!stmt.channelExpr)
         return;
 
+    FloatExpr *floatLiteral = nullptr;
     Type channelTy = visitExpr(*stmt.channelExpr);
+    if (channelTy == Type::Float)
+    {
+        if (auto *floatExpr = dynamic_cast<FloatExpr *>(stmt.channelExpr.get()))
+        {
+            insertImplicitCast(*stmt.channelExpr, Type::Int);
+            std::string msg =
+                "narrowing conversion from FLOAT literal to INT in CLOSE channel expression";
+            de.emit(il::support::Severity::Warning,
+                    "B2002",
+                    stmt.channelExpr->loc,
+                    1,
+                    std::move(msg));
+            channelTy = Type::Int;
+            floatLiteral = floatExpr;
+        }
+    }
     if (channelTy != Type::Unknown && channelTy != Type::Int)
     {
         std::string msg = "CLOSE channel expression must be INTEGER, got ";
@@ -205,6 +261,16 @@ void SemanticAnalyzer::analyzeClose(CloseStmt &stmt)
             openChannels_.erase(channel);
         }
     }
+    else if (floatLiteral != nullptr)
+    {
+        long long channel = static_cast<long long>(floatLiteral->value);
+        if (openChannels_.count(channel))
+        {
+            if (activeProcScope_)
+                activeProcScope_->noteChannelMutation(channel, true);
+            openChannels_.erase(channel);
+        }
+    }
 }
 
 /// @brief Analyze a SEEK statement for channel and position correctness.
@@ -215,6 +281,21 @@ void SemanticAnalyzer::analyzeSeek(SeekStmt &stmt)
     if (stmt.channelExpr)
     {
         Type channelTy = visitExpr(*stmt.channelExpr);
+        if (channelTy == Type::Float)
+        {
+            if (auto *floatExpr = dynamic_cast<FloatExpr *>(stmt.channelExpr.get()))
+            {
+                insertImplicitCast(*stmt.channelExpr, Type::Int);
+                std::string msg =
+                    "narrowing conversion from FLOAT literal to INT in SEEK channel expression";
+                de.emit(il::support::Severity::Warning,
+                        "B2002",
+                        stmt.channelExpr->loc,
+                        1,
+                        std::move(msg));
+                channelTy = Type::Int;
+            }
+        }
         if (channelTy != Type::Unknown && channelTy != Type::Int)
         {
             std::string msg = "SEEK channel expression must be INTEGER, got ";
@@ -228,6 +309,21 @@ void SemanticAnalyzer::analyzeSeek(SeekStmt &stmt)
     if (stmt.positionExpr)
     {
         Type posTy = visitExpr(*stmt.positionExpr);
+        if (posTy == Type::Float)
+        {
+            if (auto *floatExpr = dynamic_cast<FloatExpr *>(stmt.positionExpr.get()))
+            {
+                insertImplicitCast(*stmt.positionExpr, Type::Int);
+                std::string msg =
+                    "narrowing conversion from FLOAT literal to INT in SEEK position expression";
+                de.emit(il::support::Severity::Warning,
+                        "B2002",
+                        stmt.positionExpr->loc,
+                        1,
+                        std::move(msg));
+                posTy = Type::Int;
+            }
+        }
         if (posTy != Type::Unknown && posTy != Type::Int)
         {
             std::string msg = "SEEK position expression must be INTEGER, got ";
