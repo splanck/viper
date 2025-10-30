@@ -131,6 +131,30 @@ constexpr std::array<BinOpFn, kOpCount> make_compare_table()
 
 constexpr auto kCompareFold = make_compare_table();
 
+[[nodiscard]] std::optional<Value> makeValueFromConstant(const Constant &constant)
+{
+    if (constant.kind == LiteralKind::Int || constant.kind == LiteralKind::Float)
+    {
+        if (constant.stringValue.empty())
+            return makeValue(constant.numeric);
+
+        auto parsed = detail::parseNumericLiteral(constant.stringValue);
+        if (parsed.ok)
+            return parsed.isFloat ? Value::fromFloat(parsed.d) : Value::fromInt(parsed.i);
+        return makeValue(constant.numeric);
+    }
+
+    if (constant.kind == LiteralKind::Invalid && !constant.stringValue.empty())
+    {
+        auto parsed = detail::parseNumericLiteral(constant.stringValue);
+        if (!parsed.ok)
+            return std::nullopt;
+        return parsed.isFloat ? Value::fromFloat(parsed.d) : Value::fromInt(parsed.i);
+    }
+
+    return std::nullopt;
+}
+
 std::optional<Value> tryFold(AST::BinaryExpr::Op op, Value lhs, Value rhs)
 {
     if (!lhs.valid || !rhs.valid)
@@ -146,11 +170,6 @@ std::optional<Value> tryFold(AST::BinaryExpr::Op op, Value lhs, Value rhs)
     if (!result.valid)
         return std::nullopt;
     return result;
-}
-
-bool is_numeric(LiteralKind kind)
-{
-    return kind == LiteralKind::Int || kind == LiteralKind::Float;
 }
 
 Constant make_int_constant(long long value)
@@ -176,10 +195,12 @@ std::optional<Constant> fold_compare(AST::BinaryExpr::Op op,
         return make_int_constant(v);
     }
 
-    if (!is_numeric(lhs.kind) || !is_numeric(rhs.kind))
+    auto lhsValue = makeValueFromConstant(lhs);
+    auto rhsValue = makeValueFromConstant(rhs);
+    if (!lhsValue || !rhsValue)
         return std::nullopt;
 
-    auto folded = tryFold(op, makeValue(lhs.numeric), makeValue(rhs.numeric));
+    auto folded = tryFold(op, *lhsValue, *rhsValue);
     if (!folded)
         return std::nullopt;
 
