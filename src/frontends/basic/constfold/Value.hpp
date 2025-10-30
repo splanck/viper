@@ -22,10 +22,136 @@
 
 #include "frontends/basic/constfold/Dispatch.hpp"
 
+#include <charconv>
+#include <cctype>
+#include <cmath>
+#include <limits>
+#include <string>
+#include <string_view>
 #include <utility>
 
 namespace il::frontends::basic::constfold
 {
+
+namespace detail
+{
+
+struct ParsedNumber
+{
+    bool ok = false;
+    bool isFloat = false;
+    long long i = 0;
+    double d = 0.0;
+};
+
+inline ParsedNumber parseNumericLiteral(std::string_view sv) noexcept
+{
+    ParsedNumber result{};
+
+    auto trim = [](std::string_view &view) noexcept {
+        auto is_space = [](unsigned char ch) { return std::isspace(ch) != 0; };
+        while (!view.empty() && is_space(static_cast<unsigned char>(view.front())))
+            view.remove_prefix(1);
+        while (!view.empty() && is_space(static_cast<unsigned char>(view.back())))
+            view.remove_suffix(1);
+    };
+
+    trim(sv);
+    if (sv.empty())
+        return result;
+
+    bool forceFloat = false;
+    bool forceInt = false;
+    switch (sv.back())
+    {
+        case '!':
+        case '#':
+            forceFloat = true;
+            sv.remove_suffix(1);
+            break;
+        case '%':
+        case '&':
+            forceInt = true;
+            sv.remove_suffix(1);
+            break;
+        default:
+            break;
+    }
+
+    trim(sv);
+    if (sv.empty())
+        return result;
+
+    bool hasFloatMarkers = sv.find_first_of(".eEpP") != std::string_view::npos;
+
+    if (sv.find_first_of("dD") != std::string_view::npos)
+    {
+        std::string normalised(sv.begin(), sv.end());
+        for (char &ch : normalised)
+        {
+            if (ch == 'd' || ch == 'D')
+                ch = 'e';
+        }
+        sv = normalised;
+        hasFloatMarkers = true;
+    }
+
+    const bool tryFloatFirst = forceFloat || (!forceInt && hasFloatMarkers);
+
+    auto parseFloat = [&](std::string_view view) -> bool {
+        double value = 0.0;
+        auto fc = std::from_chars(view.data(), view.data() + view.size(), value, std::chars_format::general);
+        if (fc.ec == std::errc{} && fc.ptr == view.data() + view.size())
+        {
+            if (!std::isfinite(value))
+                return false;
+            result.ok = true;
+            result.isFloat = true;
+            result.d = value;
+            if (value >= static_cast<double>(std::numeric_limits<long long>::min()) &&
+                value <= static_cast<double>(std::numeric_limits<long long>::max()))
+            {
+                result.i = static_cast<long long>(value);
+            }
+            else
+            {
+                result.i = value < 0 ? std::numeric_limits<long long>::min()
+                                      : std::numeric_limits<long long>::max();
+            }
+            return true;
+        }
+        return false;
+    };
+
+    if (tryFloatFirst)
+    {
+        if (parseFloat(sv))
+            return result;
+    }
+
+    long long intValue = 0;
+    auto ic = std::from_chars(sv.data(), sv.data() + sv.size(), intValue, 10);
+    if (ic.ec == std::errc{} && ic.ptr == sv.data() + sv.size())
+    {
+        result.ok = true;
+        result.isFloat = false;
+        result.i = intValue;
+        result.d = static_cast<double>(intValue);
+        return result;
+    }
+    if (ic.ec == std::errc::result_out_of_range)
+        return result;
+
+    if (!tryFloatFirst && !forceInt)
+    {
+        if (parseFloat(sv))
+            return result;
+    }
+
+    return result;
+}
+
+} // namespace detail
 
 /// @brief Kind tags understood by the constant-folding helpers.
 enum class ValueKind
