@@ -314,6 +314,11 @@ void CommonLowering::emitCBr(Value cond, BasicBlock *t, BasicBlock *f)
     in.op = Opcode::CBr;
     in.type = Type(Type::Kind::Void);
     in.operands.push_back(cond);
+    // Ensure both successors have concrete labels, mirroring emitBr().
+    if (t->label.empty())
+        t->label = lowerer_->nextFallbackBlockLabel();
+    if (f->label.empty())
+        f->label = lowerer_->nextFallbackBlockLabel();
     in.labels.push_back(t->label);
     in.labels.push_back(f->label);
     in.loc = lowerer_->curLoc;
