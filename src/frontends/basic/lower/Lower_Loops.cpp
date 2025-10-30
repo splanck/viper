@@ -190,8 +190,10 @@ Lowerer::CtrlState Lowerer::emitDo(const DoStmt &stmt)
     auto emitHead = [&]()
     {
         func = ctx.function();
-        func->blocks[headIdx].label = headLbl;
-        func->blocks[bodyIdx].label = bodyLbl;
+        if (func->blocks[headIdx].label.empty())
+            func->blocks[headIdx].label = headLbl;
+        if (func->blocks[bodyIdx].label.empty())
+            func->blocks[bodyIdx].label = bodyLbl;
         auto *head = &func->blocks[headIdx];
         ctx.setCurrent(head);
         curLoc = stmt.loc;
@@ -218,14 +220,16 @@ Lowerer::CtrlState Lowerer::emitDo(const DoStmt &stmt)
     {
         case DoStmt::TestPos::Pre:
             curLoc = stmt.loc;
-            func->blocks[headIdx].label = headLbl;
+            if (func->blocks[headIdx].label.empty())
+                func->blocks[headIdx].label = headLbl;
             emitBr(&func->blocks[headIdx]);
             emitHead();
             ctx.setCurrent(&func->blocks[bodyIdx]);
             break;
         case DoStmt::TestPos::Post:
             curLoc = stmt.loc;
-            func->blocks[bodyIdx].label = bodyLbl;
+            if (func->blocks[bodyIdx].label.empty())
+                func->blocks[bodyIdx].label = bodyLbl;
             emitBr(&func->blocks[bodyIdx]);
             ctx.setCurrent(&func->blocks[bodyIdx]);
             break;
@@ -240,14 +244,16 @@ Lowerer::CtrlState Lowerer::emitDo(const DoStmt &stmt)
     {
         curLoc = stmt.loc;
         func = ctx.function();
-        func->blocks[headIdx].label = headLbl;
+        if (func->blocks[headIdx].label.empty())
+            func->blocks[headIdx].label = headLbl;
         emitBr(&func->blocks[headIdx]);
     }
 
     if (stmt.testPos == DoStmt::TestPos::Post)
         emitHead();
     func = ctx.function();
-    func->blocks[doneIdx].label = doneLbl;
+    if (func->blocks[doneIdx].label.empty())
+        func->blocks[doneIdx].label = doneLbl;
     done = &func->blocks[doneIdx];
     ctx.loopState().refresh(done);
     ctx.setCurrent(done);
