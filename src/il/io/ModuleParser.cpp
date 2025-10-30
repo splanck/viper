@@ -91,31 +91,35 @@ Expected<void> parseExtern_E(const std::string &line, ParserState &st)
     }
     std::string paramsStr = line.substr(lp + 1, rp - lp - 1);
     std::vector<Type> params;
-    std::stringstream pss(paramsStr);
-    std::string rawParam;
-    while (std::getline(pss, rawParam, ','))
+    std::string trimmedParams = trim(paramsStr);
+    if (!trimmedParams.empty())
     {
-        std::string trimmed = trim(rawParam);
-        if (trimmed.empty())
+        std::stringstream pss(paramsStr);
+        std::string rawParam;
+        while (std::getline(pss, rawParam, ','))
         {
-            std::ostringstream oss;
-            oss << "line " << st.lineNo << ": malformed extern parameter";
-            if (!rawParam.empty())
-                oss << " '" << rawParam << "'";
-            else
-                oss << " ''";
-            oss << " (empty entry)";
-            return Expected<void>{makeError({}, oss.str())};
+            std::string trimmed = trim(rawParam);
+            if (trimmed.empty())
+            {
+                std::ostringstream oss;
+                oss << "line " << st.lineNo << ": malformed extern parameter";
+                if (!rawParam.empty())
+                    oss << " '" << rawParam << "'";
+                else
+                    oss << " ''";
+                oss << " (empty entry)";
+                return Expected<void>{makeError({}, oss.str())};
+            }
+            bool ok = true;
+            Type ty = parseType(trimmed, &ok);
+            if (!ok)
+            {
+                std::ostringstream oss;
+                oss << "line " << st.lineNo << ": unknown type '" << trimmed << "'";
+                return Expected<void>{makeError({}, oss.str())};
+            }
+            params.push_back(ty);
         }
-        bool ok = true;
-        Type ty = parseType(trimmed, &ok);
-        if (!ok)
-        {
-            std::ostringstream oss;
-            oss << "line " << st.lineNo << ": unknown type '" << trimmed << "'";
-            return Expected<void>{makeError({}, oss.str())};
-        }
-        params.push_back(ty);
     }
     std::string retStr = trim(line.substr(arr + 2));
     bool retOk = true;
