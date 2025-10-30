@@ -139,6 +139,30 @@ constexpr std::array<BinOpFn, kOpCount> make_arith_table()
 
 constexpr auto kArithFold = make_arith_table();
 
+[[nodiscard]] std::optional<Value> makeValueFromConstant(const Constant &constant)
+{
+    if (constant.kind == LiteralKind::Int || constant.kind == LiteralKind::Float)
+    {
+        if (constant.stringValue.empty())
+            return makeValue(constant.numeric);
+
+        auto parsed = detail::parseNumericLiteral(constant.stringValue);
+        if (parsed.ok)
+            return parsed.isFloat ? Value::fromFloat(parsed.d) : Value::fromInt(parsed.i);
+        return makeValue(constant.numeric);
+    }
+
+    if (constant.kind == LiteralKind::Invalid && !constant.stringValue.empty())
+    {
+        auto parsed = detail::parseNumericLiteral(constant.stringValue);
+        if (!parsed.ok)
+            return std::nullopt;
+        return parsed.isFloat ? Value::fromFloat(parsed.d) : Value::fromInt(parsed.i);
+    }
+
+    return std::nullopt;
+}
+
 std::optional<Value> tryFold(AST::BinaryExpr::Op op, Value lhs, Value rhs)
 {
     if (!lhs.valid || !rhs.valid)
@@ -222,11 +246,12 @@ std::optional<Constant> fold_arith(AST::BinaryExpr::Op op,
                                    const Constant &lhs,
                                    const Constant &rhs)
 {
-    if ((lhs.kind != LiteralKind::Int && lhs.kind != LiteralKind::Float) ||
-        (rhs.kind != LiteralKind::Int && rhs.kind != LiteralKind::Float))
+    auto lhsValue = makeValueFromConstant(lhs);
+    auto rhsValue = makeValueFromConstant(rhs);
+    if (!lhsValue || !rhsValue)
         return std::nullopt;
 
-    auto folded = tryFold(op, makeValue(lhs.numeric), makeValue(rhs.numeric));
+    auto folded = tryFold(op, *lhsValue, *rhsValue);
     if (!folded)
         return std::nullopt;
 
