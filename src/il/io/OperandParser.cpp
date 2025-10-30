@@ -95,7 +95,7 @@ bool isIdentStart(char c)
 
 bool isIdentBody(char c)
 {
-    return std::isalnum(static_cast<unsigned char>(c)) || c == '_' || c == '.';
+    return std::isalnum(static_cast<unsigned char>(c)) || c == '_' || c == '.' || c == '$';
 }
 
 std::optional<std::string_view> parseIdent(std::string_view &text)

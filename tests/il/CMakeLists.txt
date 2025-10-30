@@ -186,6 +186,12 @@ function(viper_add_il_core_tests)
             PRIVATE OPERAND_WS_DIR="${CMAKE_SOURCE_DIR}/tests/il/parse")
     viper_add_ctest(test_il_parse_operand_whitespace test_il_parse_operand_whitespace)
 
+    viper_add_test(
+            test_il_parse_dollar_identifiers
+            ${_VIPER_IL_UNIT_DIR}/test_il_parse_dollar_identifiers.cpp)
+    target_link_libraries(test_il_parse_dollar_identifiers PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
+    viper_add_ctest(test_il_parse_dollar_identifiers test_il_parse_dollar_identifiers)
+
     viper_add_test(test_il_parse_comment ${_VIPER_IL_UNIT_DIR}/test_il_parse_comment.cpp)
     target_link_libraries(test_il_parse_comment PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
     viper_add_ctest(test_il_parse_comment test_il_parse_comment)
