@@ -22,10 +22,114 @@
 
 #include "frontends/basic/constfold/Dispatch.hpp"
 
+#include <charconv>
+#include <cmath>
+#include <string_view>
 #include <utility>
 
 namespace il::frontends::basic::constfold
 {
+
+namespace detail
+{
+
+struct ParsedNumber
+{
+    bool ok = false;
+    bool isFloat = false;
+    long long i = 0;
+    double d = 0.0;
+};
+
+namespace
+{
+
+[[nodiscard]] constexpr bool is_ascii_space(char ch) noexcept
+{
+    return ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r' || ch == '\f' || ch == '\v';
+}
+
+[[nodiscard]] constexpr std::string_view trim_ascii(std::string_view sv) noexcept
+{
+    while (!sv.empty() && is_ascii_space(sv.front()))
+        sv.remove_prefix(1);
+    while (!sv.empty() && is_ascii_space(sv.back()))
+        sv.remove_suffix(1);
+    return sv;
+}
+
+} // namespace
+
+[[nodiscard]] inline ParsedNumber parseNumericLiteral(std::string_view sv) noexcept
+{
+    ParsedNumber result{};
+    sv = trim_ascii(sv);
+    if (sv.empty())
+        return result;
+
+    bool forceFloat = false;
+    bool forceInt = false;
+    if (!sv.empty())
+    {
+        char suffix = sv.back();
+        switch (suffix)
+        {
+            case '!':
+            case '#':
+                forceFloat = true;
+                sv.remove_suffix(1);
+                break;
+            case '%':
+            case '&':
+                forceInt = true;
+                sv.remove_suffix(1);
+                break;
+            default:
+                break;
+        }
+    }
+
+    sv = trim_ascii(sv);
+    if (sv.empty())
+        return result;
+
+    const char *begin = sv.data();
+    const char *end = begin + sv.size();
+
+    if (!forceFloat)
+    {
+        long long value = 0;
+        auto [ptr, ec] = std::from_chars(begin, end, value, 10);
+        if (ec == std::errc{} && ptr == end)
+        {
+            result.ok = true;
+            result.isFloat = false;
+            result.i = value;
+            result.d = static_cast<double>(value);
+            return result;
+        }
+        if (ec == std::errc::result_out_of_range)
+            return result;
+    }
+
+    if (forceInt)
+        return result;
+
+    double value = 0.0;
+    auto [ptr, ec] = std::from_chars(begin, end, value, std::chars_format::general);
+    if (ec == std::errc{} && ptr == end && std::isfinite(value))
+    {
+        result.ok = true;
+        result.isFloat = true;
+        result.d = value;
+        result.i = static_cast<long long>(value);
+        return result;
+    }
+
+    return result;
+}
+
+} // namespace detail
 
 /// @brief Kind tags understood by the constant-folding helpers.
 enum class ValueKind

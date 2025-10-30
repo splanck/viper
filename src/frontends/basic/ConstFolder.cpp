@@ -23,20 +23,22 @@
 
 #include "frontends/basic/ConstFolder.hpp"
 #include "frontends/basic/constfold/Dispatch.hpp"
+#include "frontends/basic/constfold/Value.hpp"
 
 extern "C"
 {
 #include "runtime/rt_format.h"
 }
 #include <array>
-#include <cctype>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <charconv>
 #include <cstdlib>
 #include <limits>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 
 namespace il::frontends::basic
@@ -223,7 +225,10 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
     {
         const std::string &s = expr.value;
         const char *raw = s.c_str();
-        while (*raw && std::isspace(static_cast<unsigned char>(*raw)))
+        auto isSpace = [](char ch) {
+            return ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r' || ch == '\f' || ch == '\v';
+        };
+        while (*raw && isSpace(*raw))
             ++raw;
 
         if (*raw == '\0')
@@ -254,13 +259,25 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
             return 0.0;
         }
 
-        char *endp = nullptr;
-        double parsed = std::strtod(raw, &endp);
-        if (endp == raw)
+        const std::string_view rest(raw, s.c_str() + s.size() - raw);
+        double parsedValue = 0.0;
+        auto [ptr, ec] = std::from_chars(rest.data(), rest.data() + rest.size(), parsedValue,
+                                         std::chars_format::general);
+        if (ptr == rest.data())
             return 0.0;
-        if (!std::isfinite(parsed))
+        if (ec == std::errc::result_out_of_range)
             return std::nullopt;
-        return parsed;
+
+        const std::size_t consumed = static_cast<std::size_t>(ptr - rest.data());
+        auto prefix = rest.substr(0, consumed);
+        auto parsed = cf::detail::parseNumericLiteral(prefix);
+        if (!parsed.ok)
+            return std::nullopt;
+
+        double value = parsed.isFloat ? parsed.d : static_cast<double>(parsed.i);
+        if (!std::isfinite(value))
+            return std::nullopt;
+        return value;
     }
 
     /// @brief Fold LEN builtin calls when the argument is a literal.
