@@ -365,6 +365,16 @@ class SemanticAnalyzer
     /// @brief Record that @p expr should be implicitly converted to @p targetType.
     void markImplicitConversion(const Expr &expr, Type targetType);
 
+    /// @brief Request that @p expr be wrapped in an implicit cast to @p target.
+    ///
+    /// @details Until the BASIC AST grows an explicit cast node this utility
+    ///          records the intent as an implicit conversion so that lowering
+    ///          can inject the appropriate runtime helper when emitting IL.
+    ///
+    /// @param expr Expression slated for conversion.
+    /// @param target Semantic type to coerce the expression to.
+    void insertImplicitCast(Expr &expr, Type target);
+
     /// @brief Determine if @p stmts guarantees a return value on all control paths.
     bool mustReturn(const std::vector<StmtPtr> &stmts) const;
     /// @brief Determine if single statement @p s guarantees a return value.
