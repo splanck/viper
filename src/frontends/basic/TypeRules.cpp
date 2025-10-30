@@ -65,7 +65,7 @@ std::string_view numericTypeName(NumericType type) noexcept
 /// @brief Emit a diagnostic for a type error if a sink is configured.
 /// @param code Diagnostic identifier describing the error.
 /// @param message Human-readable explanation of the violation.
-void emitTypeError(std::string code, std::string message) noexcept
+void emitTypeError(std::string code, std::string message)
 {
     if (auto &sink = typeErrorSink())
     {
@@ -77,7 +77,7 @@ void emitTypeError(std::string code, std::string message) noexcept
 /// @param op Operator spelling.
 /// @param lhs Left-hand operand type.
 /// @param rhs Right-hand operand type.
-void reportUnsupportedBinary(std::string_view op, NumericType lhs, NumericType rhs) noexcept
+void reportUnsupportedBinary(std::string_view op, NumericType lhs, NumericType rhs)
 {
     std::string message = "unsupported numeric operator '";
     message += op;
@@ -92,7 +92,7 @@ void reportUnsupportedBinary(std::string_view op, NumericType lhs, NumericType r
 /// @brief Report an unsupported unary operator.
 /// @param op Operator character (for example '+').
 /// @param operand Operand type.
-void reportUnsupportedUnaryOperator(char op, NumericType operand) noexcept
+void reportUnsupportedUnaryOperator(char op, NumericType operand)
 {
     std::string message = "unsupported unary operator '";
     message.push_back(op);
@@ -105,7 +105,7 @@ void reportUnsupportedUnaryOperator(char op, NumericType operand) noexcept
 /// @brief Report an unsupported unary operand for a valid operator.
 /// @param op Operator character.
 /// @param operand Operand type.
-void reportUnsupportedUnaryOperand(char op, NumericType operand) noexcept
+void reportUnsupportedUnaryOperand(char op, NumericType operand)
 {
     std::string message = "unsupported operand ";
     message += numericTypeName(operand);
