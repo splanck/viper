@@ -205,10 +205,9 @@ void Lowerer::assignScalarSlot(const SlotType &slotInfo,
 /// @param loc    Source location for diagnostics and helper invocations.
 void Lowerer::assignArrayElement(const ArrayExpr &target, RVal value, il::support::SourceLoc loc)
 {
-    if (value.type.kind == Type::Kind::I1)
-    {
-        value = coerceToI64(std::move(value), loc);
-    }
+    // Runtime ABI: rt_arr_i32_set expects its value operand as i64.
+    // Always normalize the RHS to i64 (handles i1/i16/i32/f64).
+    value = ensureI64(std::move(value), loc);
 
     ArrayAccess access = lowerArrayAccess(target, ArrayAccessKind::Store);
     curLoc = loc;
