@@ -135,11 +135,20 @@ int main()
     std::cerr.rdbuf(oldErr);
 
     const std::string saturatedText = saturatedErr.str();
-    const std::string exhaustionMessage = "error: source manager exhausted file identifier space";
+    const std::string exhaustionMessage =
+        "error: " + std::string(il::support::kSourceManagerFileIdOverflowMessage);
     const bool reportedExhaustion = saturatedText.find(exhaustionMessage) != std::string::npos;
+    size_t overflowCount = 0;
+    size_t overflowPos = saturatedText.find(exhaustionMessage);
+    while (overflowPos != std::string::npos)
+    {
+        ++overflowCount;
+        overflowPos = saturatedText.find(exhaustionMessage, overflowPos + exhaustionMessage.size());
+    }
 
     assert(saturatedRc != 0);
     assert(reportedExhaustion);
+    assert(overflowCount == 1);
 
     fs::remove(tmpPath);
 

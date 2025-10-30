@@ -19,6 +19,9 @@
 namespace il::support
 {
 
+inline constexpr std::string_view kSourceManagerFileIdOverflowMessage =
+    "source manager exhausted file identifier space";
+
 struct SourceManagerTestAccess;
 
 /// Maintains the mapping between numeric file identifiers and their
