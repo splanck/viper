@@ -235,7 +235,11 @@ int main()
         emIndex.addSource(fidIndex, indexSrc);
         SemanticAnalyzer semaIndex(emIndex);
         semaIndex.analyze(*progIndex);
-        assert(emIndex.errorCount() == 1);
+        assert(emIndex.errorCount() == 0);
+        assert(emIndex.warningCount() == 1);
+        std::ostringstream diag;
+        emIndex.printAll(diag);
+        assert(diag.str().find("warning[B2002]") != std::string::npos);
     }
     return 0;
 }
