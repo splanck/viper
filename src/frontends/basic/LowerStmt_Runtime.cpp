@@ -207,11 +207,11 @@ void Lowerer::assignArrayElement(const ArrayExpr &target, RVal value, il::suppor
 {
     // Runtime ABI: rt_arr_i32_set expects its value operand as i64.
     // Always normalize the RHS to i64 (handles i1/i16/i32/f64).
-    value = ensureI64(std::move(value), loc);
+    RVal coerced = ensureI64(std::move(value), loc);
 
     ArrayAccess access = lowerArrayAccess(target, ArrayAccessKind::Store);
     curLoc = loc;
-    emitCall("rt_arr_i32_set", {access.base, access.index, value.value});
+    emitCall("rt_arr_i32_set", {access.base, access.index, coerced.value});
 }
 
 /// @brief Lower a BASIC @c LET statement.
