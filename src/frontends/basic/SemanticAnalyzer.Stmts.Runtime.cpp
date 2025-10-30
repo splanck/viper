@@ -169,7 +169,21 @@ void SemanticAnalyzer::analyzeArrayAssignment(ArrayExpr &a, const LetStmt &l)
                 std::move(msg));
     }
     auto indexTy = visitExpr(*a.index);
-    if (indexTy != Type::Unknown && indexTy != Type::Int)
+    if (indexTy == Type::Float)
+    {
+        if (auto *floatLiteral = dynamic_cast<FloatExpr *>(a.index.get()))
+        {
+            insertImplicitCast(*a.index, Type::Int);
+            std::string msg = "narrowing conversion from FLOAT to INT in array index";
+            de.emit(il::support::Severity::Warning, "B2002", a.loc, 1, std::move(msg));
+        }
+        else
+        {
+            std::string msg = "index type mismatch";
+            de.emit(il::support::Severity::Error, "B2001", a.loc, 1, std::move(msg));
+        }
+    }
+    else if (indexTy != Type::Unknown && indexTy != Type::Int)
     {
         std::string msg = "index type mismatch";
         de.emit(il::support::Severity::Error, "B2001", a.loc, 1, std::move(msg));
@@ -264,13 +278,37 @@ void SemanticAnalyzer::analyzeDim(DimStmt &d)
     {
         if (d.size)
         {
+            FloatExpr *floatLiteral = nullptr;
             auto ty = visitExpr(*d.size);
-            if (ty != Type::Unknown && ty != Type::Int)
+            if (ty == Type::Float)
+            {
+                floatLiteral = dynamic_cast<FloatExpr *>(d.size.get());
+                if (floatLiteral != nullptr)
+                {
+                    insertImplicitCast(*d.size, Type::Int);
+                    std::string msg = "narrowing conversion from FLOAT to INT in array size";
+                    de.emit(il::support::Severity::Warning, "B2002", d.loc, 1, std::move(msg));
+                }
+                else
+                {
+                    std::string msg = "size type mismatch";
+                    de.emit(il::support::Severity::Error, "B2001", d.loc, 1, std::move(msg));
+                }
+            }
+            else if (ty != Type::Unknown && ty != Type::Int)
             {
                 std::string msg = "size type mismatch";
                 de.emit(il::support::Severity::Error, "B2001", d.loc, 1, std::move(msg));
             }
-            if (auto *ci = dynamic_cast<const IntExpr *>(d.size.get()))
+            if (floatLiteral)
+            {
+                if (floatLiteral->value < 0.0)
+                {
+                    std::string msg = "array size must be non-negative";
+                    de.emit(il::support::Severity::Error, "B2003", d.loc, 1, std::move(msg));
+                }
+            }
+            else if (auto *ci = dynamic_cast<const IntExpr *>(d.size.get()))
             {
                 sz = ci->value;
                 if (sz < 0)
@@ -353,13 +391,37 @@ void SemanticAnalyzer::analyzeReDim(ReDimStmt &d)
     long long sz = -1;
     if (d.size)
     {
+        FloatExpr *floatLiteral = nullptr;
         auto ty = visitExpr(*d.size);
-        if (ty != Type::Unknown && ty != Type::Int)
+        if (ty == Type::Float)
+        {
+            floatLiteral = dynamic_cast<FloatExpr *>(d.size.get());
+            if (floatLiteral != nullptr)
+            {
+                insertImplicitCast(*d.size, Type::Int);
+                std::string msg = "narrowing conversion from FLOAT to INT in array size";
+                de.emit(il::support::Severity::Warning, "B2002", d.loc, 1, std::move(msg));
+            }
+            else
+            {
+                std::string msg = "size type mismatch";
+                de.emit(il::support::Severity::Error, "B2001", d.loc, 1, std::move(msg));
+            }
+        }
+        else if (ty != Type::Unknown && ty != Type::Int)
         {
             std::string msg = "size type mismatch";
             de.emit(il::support::Severity::Error, "B2001", d.loc, 1, std::move(msg));
         }
-        if (auto *ci = dynamic_cast<const IntExpr *>(d.size.get()))
+        if (floatLiteral)
+        {
+            if (floatLiteral->value < 0.0)
+            {
+                std::string msg = "array size must be non-negative";
+                de.emit(il::support::Severity::Error, "B2003", d.loc, 1, std::move(msg));
+            }
+        }
+        else if (auto *ci = dynamic_cast<const IntExpr *>(d.size.get()))
         {
             sz = ci->value;
             if (sz < 0)

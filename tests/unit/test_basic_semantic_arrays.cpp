@@ -13,6 +13,7 @@
 #include "frontends/basic/SemanticAnalyzer.hpp"
 #include "support/source_manager.hpp"
 #include <cassert>
+#include <sstream>
 #include <string>
 
 using namespace il::frontends::basic;
@@ -41,6 +42,28 @@ int main()
         assert(*arrTy == SemanticAnalyzer::Type::ArrayInt);
     }
 
+    // Float literal dimensions produce a narrowing warning instead of an error.
+    {
+        const std::string src = "10 DIM A(2.5#)\n20 END\n";
+        SourceManager sm;
+        uint32_t fid = sm.addFile("dim_array_float.bas");
+        Parser parser(src, fid);
+        auto prog = parser.parseProgram();
+        assert(prog);
+
+        DiagnosticEngine de;
+        DiagnosticEmitter em(de, sm);
+        em.addSource(fid, src);
+        SemanticAnalyzer sema(em);
+        sema.analyze(*prog);
+
+        assert(em.errorCount() == 0);
+        assert(em.warningCount() == 1);
+        std::ostringstream diag;
+        em.printAll(diag);
+        assert(diag.str().find("warning[B2002]") != std::string::npos);
+    }
+
     // REDIM succeeds for known arrays and fails for unknown names.
     {
         const std::string src = "10 DIM A(5)\n20 REDIM A(10)\n30 END\n";
@@ -60,6 +83,26 @@ int main()
         auto arrTy = sema.lookupVarType("A");
         assert(arrTy.has_value());
         assert(*arrTy == SemanticAnalyzer::Type::ArrayInt);
+    }
+    {
+        const std::string src = "10 DIM A(5)\n20 REDIM A(7.5#)\n30 END\n";
+        SourceManager sm;
+        uint32_t fid = sm.addFile("redim_float.bas");
+        Parser parser(src, fid);
+        auto prog = parser.parseProgram();
+        assert(prog);
+
+        DiagnosticEngine de;
+        DiagnosticEmitter em(de, sm);
+        em.addSource(fid, src);
+        SemanticAnalyzer sema(em);
+        sema.analyze(*prog);
+
+        assert(em.errorCount() == 0);
+        assert(em.warningCount() == 1);
+        std::ostringstream diag;
+        em.printAll(diag);
+        assert(diag.str().find("warning[B2002]") != std::string::npos);
     }
     {
         const std::string src = "10 REDIM B(3)\n20 END\n";
