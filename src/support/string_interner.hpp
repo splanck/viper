@@ -49,8 +49,8 @@ class StringInterner
     /// @return View of the interned string.
     std::string_view lookup(Symbol sym) const;
 
-    StringInterner(const StringInterner &other) noexcept;
-    StringInterner &operator=(const StringInterner &other) noexcept;
+    StringInterner(const StringInterner &other);
+    StringInterner &operator=(const StringInterner &other);
     StringInterner(StringInterner &&) noexcept = default;
     StringInterner &operator=(StringInterner &&) noexcept = default;
 
