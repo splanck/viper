@@ -34,7 +34,7 @@ StringInterner::StringInterner(uint32_t maxSymbols) noexcept : maxSymbols_(maxSy
 ///          @ref rebuildMap so the new instance lazily reconstructs the handle
 ///          lookup table.  The map is rebuilt rather than copied directly to
 ///          keep string_view keys pointing at the newly owned storage.
-StringInterner::StringInterner(const StringInterner &other) noexcept
+StringInterner::StringInterner(const StringInterner &other)
     : map_{}, storage_(other.storage_), maxSymbols_(other.maxSymbols_)
 {
     rebuildMap();
@@ -46,7 +46,7 @@ StringInterner::StringInterner(const StringInterner &other) noexcept
 /// @details Self-assignment is handled explicitly; otherwise the string storage
 ///          and cap are copied before @ref rebuildMap refreshes the lookup map to
 ///          reference the new owned storage.
-StringInterner &StringInterner::operator=(const StringInterner &other) noexcept
+StringInterner &StringInterner::operator=(const StringInterner &other)
 {
     if (this == &other)
         return *this;
