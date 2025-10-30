@@ -9,11 +9,24 @@
 #include "il/core/Module.hpp"
 #include "il/core/Type.hpp"
 #include <functional>
+#include <memory>
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
+
+namespace il::build
+{
+class IRBuilder;
+} // namespace il::build
 
 namespace il::frontends::basic
 {
+
+namespace lower
+{
+class Emitter;
+} // namespace lower
 
 class Lowerer;
 
@@ -41,6 +54,33 @@ struct ProgramLowering
 /// @brief Handles procedure signature caching, variable collection, and body emission.
 struct ProcedureLowering
 {
+    struct LoweringContext
+    {
+        LoweringContext(Lowerer &lowerer,
+                        std::unordered_map<std::string, Lowerer::SymbolInfo> &symbols,
+                        il::build::IRBuilder &builder,
+                        lower::Emitter &emitter,
+                        std::string name,
+                        const std::vector<Param> &params,
+                        const std::vector<StmtPtr> &body,
+                        const Lowerer::ProcedureConfig &config);
+
+        Lowerer &lowerer;
+        std::unordered_map<std::string, Lowerer::SymbolInfo> &symbols;
+        il::build::IRBuilder &builder;
+        lower::Emitter &emitter;
+        std::string name;
+        const std::vector<Param> &params;
+        const std::vector<StmtPtr> &body;
+        const Lowerer::ProcedureConfig &config;
+        std::vector<const Stmt *> bodyStmts;
+        std::unordered_set<std::string> paramNames;
+        std::vector<il::core::Param> irParams;
+        size_t paramCount{0};
+        il::core::Function *function{nullptr};
+        std::shared_ptr<Lowerer::ProcedureMetadata> metadata;
+    };
+
     explicit ProcedureLowering(Lowerer &lowerer);
 
     /// @brief Cache declared signatures for all user-defined procedures.
@@ -52,11 +92,23 @@ struct ProcedureLowering
     /// @brief Collect variables from every procedure and main body statement.
     void collectVars(const Program &prog);
 
-    /// @brief Emit a BASIC procedure using the provided configuration.
-    void emit(const std::string &name,
-              const std::vector<Param> &params,
-              const std::vector<StmtPtr> &body,
-              const Lowerer::ProcedureConfig &config);
+    /// @brief Build a lowering context describing a BASIC procedure.
+    LoweringContext makeContext(const std::string &name,
+                                const std::vector<Param> &params,
+                                const std::vector<StmtPtr> &body,
+                                const Lowerer::ProcedureConfig &config);
+
+    /// @brief Reset per-procedure state prior to emission.
+    void resetContext(LoweringContext &ctx);
+
+    /// @brief Collect metadata required for lowering the procedure body.
+    void collectProcedureInfo(LoweringContext &ctx);
+
+    /// @brief Construct the IL function skeleton and allocate locals.
+    void scheduleBlocks(LoweringContext &ctx);
+
+    /// @brief Emit IL instructions for the lowered BASIC procedure.
+    void emitProcedureIL(LoweringContext &ctx);
 
   private:
     Lowerer &lowerer;
