@@ -107,7 +107,7 @@ int main()
 
     err.clear();
     gUsageCalled = false;
-    rc = runWithArgs(ilPath.string(), "--break", "entry:", err);
+    rc = runWithArgs(ilPath.string(), "--break", "entry", err);
 
     assert(rc == 10);
     assert(!gUsageCalled);
