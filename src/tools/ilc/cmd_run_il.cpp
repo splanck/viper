@@ -204,14 +204,16 @@ bool parseRunILArgs(int argc, char **argv, RunILConfig &config)
                 {
                     std::string file = trimWhitespace(trimmedSpec.substr(0, pos));
                     const std::string lineToken = trimWhitespace(trimmedSpec.substr(pos + 1));
-                    if (!lineToken.empty())
+                    if (lineToken.empty())
                     {
-                        uint32_t dummy = 0;
-                        if (file.empty() || !tryParseLineNumber(lineToken, dummy))
-                        {
-                            reportInvalidLineNumber(lineToken, spec, "--break");
-                            return false;
-                        }
+                        reportInvalidLineNumber(lineToken, spec, "--break");
+                        return false;
+                    }
+                    uint32_t dummy = 0;
+                    if (file.empty() || !tryParseLineNumber(lineToken, dummy))
+                    {
+                        reportInvalidLineNumber(lineToken, spec, "--break");
+                        return false;
                     }
                 }
 
