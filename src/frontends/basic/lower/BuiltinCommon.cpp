@@ -17,14 +17,20 @@
 
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/Lowerer.hpp"
+#include "frontends/basic/lower/Emitter.hpp"
 
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Opcode.hpp"
+#include "il/core/Type.hpp"
+#include "il/core/Value.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cassert>
+#include <cstdint>
 #include <limits>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -41,6 +47,251 @@ using Transform = BuiltinLoweringRule::ArgTransform;
 using TransformKind = BuiltinLoweringRule::ArgTransform::Kind;
 using Feature = BuiltinLoweringRule::Feature;
 using FeatureAction = BuiltinLoweringRule::Feature::Action;
+using TypeKind = IlKind;
+using Emitter = lower::Emitter;
+
+constexpr const char *kDiagBuiltinCoerceFailed = "B4005";
+
+enum class CoerceRule : std::uint8_t
+{
+    Exact,
+    PromoteInt,
+    PromoteFloat,
+    ToString,
+    Forbid,
+};
+
+constexpr std::array<TypeKind, 6> kTypeKinds = {
+    TypeKind::I1, TypeKind::I16, TypeKind::I32, TypeKind::I64, TypeKind::F64, TypeKind::Str};
+
+constexpr std::size_t kTypeCount = kTypeKinds.size();
+
+constexpr int typeIndex(TypeKind kind) noexcept
+{
+    for (int i = 0; i < static_cast<int>(kTypeCount); ++i)
+    {
+        if (kTypeKinds[static_cast<std::size_t>(i)] == kind)
+            return i;
+    }
+    return -1;
+}
+
+constexpr bool isIntegral(TypeKind kind) noexcept
+{
+    switch (kind)
+    {
+        case TypeKind::I1:
+        case TypeKind::I16:
+        case TypeKind::I32:
+        case TypeKind::I64:
+            return true;
+        default:
+            return false;
+    }
+}
+
+constexpr int bitWidth(TypeKind kind) noexcept
+{
+    switch (kind)
+    {
+        case TypeKind::I1:
+            return 1;
+        case TypeKind::I16:
+            return 16;
+        case TypeKind::I32:
+            return 32;
+        case TypeKind::I64:
+            return 64;
+        default:
+            return 0;
+    }
+}
+
+constexpr CoerceRule F = CoerceRule::Forbid;
+constexpr CoerceRule E = CoerceRule::Exact;
+constexpr CoerceRule PI = CoerceRule::PromoteInt;
+constexpr CoerceRule PF = CoerceRule::PromoteFloat;
+constexpr CoerceRule TS = CoerceRule::ToString;
+
+constexpr std::array<std::array<CoerceRule, kTypeCount>, kTypeCount> kCoerce = {{
+    // From I1
+    {{E, PI, PI, PI, PF, TS}},
+    // From I16
+    {{PI, E, PI, PI, PF, TS}},
+    // From I32 (narrowing to I16 is forbidden to mirror legacy behaviour)
+    {{PI, F, E, PI, PF, TS}},
+    // From I64
+    {{PI, PI, PI, E, PF, TS}},
+    // From F64 (rounded-to-even when targeting integers)
+    {{PF, PF, PF, PF, E, TS}},
+    // From Str
+    {{F, F, F, F, F, E}},
+}};
+
+static const char *ruleName(CoerceRule rule) noexcept
+{
+    switch (rule)
+    {
+        case CoerceRule::Exact:
+            return "Exact";
+        case CoerceRule::PromoteInt:
+            return "PromoteInt";
+        case CoerceRule::PromoteFloat:
+            return "PromoteFloat";
+        case CoerceRule::ToString:
+            return "ToString";
+        case CoerceRule::Forbid:
+            return "Forbid";
+    }
+    return "Unknown";
+}
+
+static bool canCoerce(TypeKind from, TypeKind to) noexcept
+{
+    const int fromIdx = typeIndex(from);
+    const int toIdx = typeIndex(to);
+    if (fromIdx < 0 || toIdx < 0)
+        return false;
+    return kCoerce[static_cast<std::size_t>(fromIdx)][static_cast<std::size_t>(toIdx)] !=
+           CoerceRule::Forbid;
+}
+
+static thread_local TypeKind gActiveCoerceFrom = TypeKind::I64;
+
+struct CoerceScope
+{
+    TypeKind prev;
+    explicit CoerceScope(TypeKind from) noexcept : prev(gActiveCoerceFrom)
+    {
+        gActiveCoerceFrom = from;
+    }
+    ~CoerceScope()
+    {
+        gActiveCoerceFrom = prev;
+    }
+};
+
+static Value narrowFromI64(Value value, TypeKind to, Emitter &emit)
+{
+    const int targetBits = bitWidth(to);
+    if (targetBits <= 0 || targetBits == 64)
+        return value;
+    if (targetBits == 1)
+        return emit.emitUnary(Opcode::Trunc1, IlType(TypeKind::I1), value);
+    return emit.emitUnary(Opcode::CastSiNarrowChk, IlType(to), value);
+}
+
+static Value signExtendToI64(Value value, TypeKind from, Emitter &emit)
+{
+    const int fromBits = bitWidth(from);
+    if (fromBits <= 0 || fromBits == 64)
+        return value;
+    if (fromBits == 1)
+        return emit.emitUnary(Opcode::Zext1, IlType(TypeKind::I64), value);
+
+    const std::int64_t mask = (fromBits == 16) ? 0xFFFFll : 0xFFFFFFFFll;
+    Value masked =
+        emit.emitBinary(Opcode::And, IlType(TypeKind::I64), value, Value::constInt(mask));
+    const int shift = (fromBits == 32) ? 32 : 48;
+    Value shl = emit.emitBinary(
+        Opcode::Shl, IlType(TypeKind::I64), masked, Value::constInt(shift));
+    return emit.emitBinary(
+        Opcode::AShr, IlType(TypeKind::I64), shl, Value::constInt(shift));
+}
+
+static Value applyCoerceRule(CoerceRule rule, const Value &v, TypeKind to, Emitter &emit)
+{
+    const TypeKind from = gActiveCoerceFrom;
+    switch (rule)
+    {
+        case CoerceRule::Exact:
+            return v;
+
+        case CoerceRule::PromoteInt:
+        {
+            Value widened = isIntegral(from) ? signExtendToI64(v, from, emit) : v;
+            return narrowFromI64(widened, to, emit);
+        }
+
+        case CoerceRule::PromoteFloat:
+        {
+            if (to == TypeKind::F64)
+            {
+                Value widened = isIntegral(from) ? signExtendToI64(v, from, emit) : v;
+                return emit.emitUnary(Opcode::CastSiToFp, IlType(TypeKind::F64), widened);
+            }
+            Value asInt = emit.emitUnary(Opcode::CastFpToSiRteChk, IlType(TypeKind::I64), v);
+            return narrowFromI64(asInt, to, emit);
+        }
+
+        case CoerceRule::ToString:
+            return v;
+
+        case CoerceRule::Forbid:
+        default:
+            return v;
+    }
+}
+
+static void emitCoerceDiagnostic(Lowerer &lowerer,
+                                 il::support::SourceLoc loc,
+                                 TypeKind from,
+                                 TypeKind to,
+                                 CoerceRule rule)
+{
+    if (auto *diag = lowerer.diagnosticEmitter())
+    {
+        std::string message = "failed to coerce builtin argument from ";
+        message += il::core::kindToString(from);
+        message += " to ";
+        message += il::core::kindToString(to);
+        message += " using rule ";
+        message += ruleName(rule);
+        diag->emit(il::support::Severity::Error,
+                   kDiagBuiltinCoerceFailed,
+                   loc,
+                   0,
+                   std::move(message));
+    }
+}
+
+static IlType typeForKind(BuiltinLowerContext &ctx, TypeKind kind)
+{
+    if (kind == TypeKind::I1)
+        return ctx.boolType();
+    return IlType(kind);
+}
+
+static bool applyBuiltinCoercion(BuiltinLowerContext &ctx,
+                                 Lowerer::RVal &slot,
+                                 TypeKind to,
+                                 il::support::SourceLoc loc)
+{
+    const TypeKind from = slot.type.kind;
+    if (from == to)
+    {
+        slot.type = typeForKind(ctx, to);
+        return true;
+    }
+
+    if (!canCoerce(from, to))
+    {
+        emitCoerceDiagnostic(ctx.lowerer(), loc, from, to, CoerceRule::Forbid);
+        return false;
+    }
+
+    const int fromIdx = typeIndex(from);
+    const int toIdx = typeIndex(to);
+    const CoerceRule rule =
+        kCoerce[static_cast<std::size_t>(fromIdx)][static_cast<std::size_t>(toIdx)];
+
+    CoerceScope scope(from);
+    ctx.setCurrentLoc(loc);
+    Emitter emitter(ctx.lowerer());
+    slot.value = applyCoerceRule(rule, slot.value, to, emitter);
+    slot.type = typeForKind(ctx, to);
+    return true;
+}
 
 Lowerer::RVal emitCallRuntime(BuiltinLowerContext &ctx, const Variant &variant);
 Lowerer::RVal emitUnary(BuiltinLowerContext &ctx, const Variant &variant);
@@ -220,27 +471,28 @@ Lowerer::RVal &BuiltinLowerContext::applyTransforms(
         switch (transform.kind)
         {
             case TransformKind::EnsureI64:
-                slot = lowerer_->ensureI64(std::move(slot), loc);
+                if (!applyBuiltinCoercion(*this, slot, IlKind::I64, loc))
+                    return slot;
                 break;
             case TransformKind::EnsureF64:
-                slot = lowerer_->ensureF64(std::move(slot), loc);
+                if (!applyBuiltinCoercion(*this, slot, IlKind::F64, loc))
+                    return slot;
                 break;
             case TransformKind::EnsureI32:
-                slot = lowerer_->ensureI64(std::move(slot), loc);
-                if (slot.type.kind != IlKind::I32)
-                {
-                    slot.value = lowerer_->emitCommon(loc).narrow_to(slot.value, 64, 32);
-                    slot.type = IlType(IlKind::I32);
-                }
+                if (!applyBuiltinCoercion(*this, slot, IlKind::I32, loc))
+                    return slot;
                 break;
             case TransformKind::CoerceI64:
-                slot = lowerer_->coerceToI64(std::move(slot), loc);
+                if (!applyBuiltinCoercion(*this, slot, IlKind::I64, loc))
+                    return slot;
                 break;
             case TransformKind::CoerceF64:
-                slot = lowerer_->coerceToF64(std::move(slot), loc);
+                if (!applyBuiltinCoercion(*this, slot, IlKind::F64, loc))
+                    return slot;
                 break;
             case TransformKind::CoerceBool:
-                slot = lowerer_->coerceToBool(std::move(slot), loc);
+                if (!applyBuiltinCoercion(*this, slot, IlKind::I1, loc))
+                    return slot;
                 break;
             case TransformKind::AddConst:
                 slot.value = lowerer_->emitCommon(loc).add_checked(
