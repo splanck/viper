@@ -288,6 +288,16 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeArray(ArrayExpr &a)
         return Type::Unknown;
     }
     Type ty = visitExpr(*a.index);
+    if (ty == Type::Float)
+    {
+        if (auto *literal = dynamic_cast<FloatExpr *>(a.index.get()))
+        {
+            insertImplicitCast(*a.index, Type::Int);
+            std::string msg = "narrowing conversion from FLOAT literal to INT array index";
+            de.emit(il::support::Severity::Warning, "B2002", a.loc, 1, std::move(msg));
+            ty = Type::Int;
+        }
+    }
     if (ty != Type::Unknown && ty != Type::Int)
     {
         std::string msg = "index type mismatch";

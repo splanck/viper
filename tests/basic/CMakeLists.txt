@@ -214,6 +214,14 @@ function(viper_add_basic_main_tests)
     viper_add_ctest(
             test_frontends_basic_semantic_var_expr test_frontends_basic_semantic_var_expr)
 
+    viper_add_test(
+            test_frontends_basic_semantic_array_indices
+            ${VIPER_TESTS_DIR}/frontends/basic/SemanticAnalyzerArrayIndexTests.cpp)
+    target_link_libraries(test_frontends_basic_semantic_array_indices PRIVATE ${VIPER_BASIC_LIBS})
+    viper_add_ctest(
+            test_frontends_basic_semantic_array_indices
+            test_frontends_basic_semantic_array_indices)
+
     viper_add_test(test_frontends_basic_semantic_calls ${VIPER_TESTS_DIR}/frontends/basic/SemanticAnalyzerCallTests.cpp)
     target_link_libraries(test_frontends_basic_semantic_calls PRIVATE ${VIPER_BASIC_LIBS})
     viper_add_ctest(test_frontends_basic_semantic_calls test_frontends_basic_semantic_calls)
