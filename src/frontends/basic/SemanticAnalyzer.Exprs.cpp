@@ -236,6 +236,23 @@ void SemanticAnalyzer::markImplicitConversion(const Expr &expr, Type targetType)
     implicitConversions_[&expr] = targetType;
 }
 
+/// @brief Request that @p expr be wrapped in an implicit cast to @p target.
+///
+/// @details The current BASIC AST lacks a dedicated cast node, so the semantic
+///          analyser records the intent using the same implicit-conversion map
+///          consulted during lowering. Once cast nodes exist this helper can
+///          be updated to rewrite the AST directly.
+///
+/// @param expr Expression slated for conversion.
+/// @param target Semantic type to coerce the expression to.
+void SemanticAnalyzer::insertImplicitCast(Expr &expr, Type target)
+{
+    auto it = implicitConversions_.find(&expr);
+    if (it != implicitConversions_.end() && it->second == target)
+        return;
+    markImplicitConversion(expr, target);
+}
+
 /// @brief Analyse an array element access.
 ///
 /// @details Validates that the referenced symbol is an array, ensures the index
