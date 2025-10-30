@@ -52,6 +52,11 @@ struct LoadedSource
     uint32_t fileId{0};
 };
 
+bool isSourceManagerOverflowDiag(const il::support::Diag &diag)
+{
+    return diag.message == il::support::kSourceManagerFileIdOverflowMessage;
+}
+
 /// @brief Parse CLI arguments for the BASIC frontend subcommand.
 ///
 /// The routine accepts either `-emit-il <file>` or `-run <file>` plus shared
@@ -150,8 +155,8 @@ il::support::Expected<LoadedSource> loadSourceBuffer(const std::string &path,
     const uint32_t fileId = sm.addFile(path);
     if (fileId == 0)
     {
-        return il::support::Expected<LoadedSource>(
-            il::support::makeError({}, "source manager exhausted file identifier space"));
+        return il::support::Expected<LoadedSource>(il::support::makeError(
+            {}, std::string{il::support::kSourceManagerFileIdOverflowMessage}));
     }
 
     LoadedSource source{};
@@ -287,7 +292,11 @@ int cmdFrontBasicWithSourceManager(int argc, char **argv, il::support::SourceMan
     auto source = loadSourceBuffer(config.sourcePath, sm);
     if (!source)
     {
-        il::support::printDiag(source.error(), std::cerr, &sm);
+        const auto &diag = source.error();
+        if (!isSourceManagerOverflowDiag(diag))
+        {
+            il::support::printDiag(diag, std::cerr, &sm);
+        }
         return 1;
     }
 

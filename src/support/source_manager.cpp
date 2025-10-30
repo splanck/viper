@@ -59,7 +59,7 @@ uint32_t SourceManager::addFile(std::string path)
 
     if (next_file_id_ > std::numeric_limits<uint32_t>::max())
     {
-        auto diag = makeError({}, "source manager exhausted file identifier space");
+        auto diag = makeError({}, std::string{kSourceManagerFileIdOverflowMessage});
         printDiag(diag, std::cerr);
         return 0;
     }
