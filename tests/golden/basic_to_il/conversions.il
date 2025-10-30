@@ -11,7 +11,6 @@ extern @rt_val(str) -> f64
 extern @rt_val_to_double(ptr, ptr) -> f64
 extern @rt_string_cstr(str) -> ptr
 extern @rt_str_empty() -> str
-extern @rt_int_floor(f64) -> f64
 extern @rt_str_retain_maybe(str) -> void
 extern @rt_str_release_maybe(str) -> void
 global const str @.L0 = "              "
