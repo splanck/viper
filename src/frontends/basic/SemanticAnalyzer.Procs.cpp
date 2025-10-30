@@ -298,6 +298,7 @@ void SemanticAnalyzer::analyze(const Program &prog)
     errorHandlerTarget_.reset();
     procReg_.clear();
     scopes_.reset();
+    exprOwners_.clear();
 
     for (const auto &p : prog.procs)
         if (p)
@@ -381,8 +382,19 @@ std::vector<SemanticAnalyzer::Type> SemanticAnalyzer::checkCallArgs(const CallEx
                                                                     const ProcSignature *sig)
 {
     std::vector<Type> argTys;
-    for (auto &a : c.args)
-        argTys.push_back(a ? visitExpr(*a) : Type::Unknown);
+    for (std::size_t idx = 0; idx < c.args.size(); ++idx)
+    {
+        const ExprPtr &arg = c.args[idx];
+        if (arg)
+        {
+            auto *slot = const_cast<ExprPtr *>(&c.args[idx]);
+            argTys.push_back(visitExpr(*arg, slot));
+        }
+        else
+        {
+            argTys.push_back(Type::Unknown);
+        }
+    }
 
     if (!sig)
         return argTys;

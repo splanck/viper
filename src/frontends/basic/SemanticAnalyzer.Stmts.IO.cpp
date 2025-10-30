@@ -76,7 +76,10 @@ void SemanticAnalyzer::analyzePrint(const PrintStmt &p)
 {
     for (const auto &it : p.items)
         if (it.kind == PrintItem::Kind::Expr && it.expr)
-            visitExpr(*it.expr);
+        {
+            auto &exprSlot = *const_cast<ExprPtr *>(&it.expr);
+            visitExpr(*it.expr, &exprSlot);
+        }
 }
 
 /// @brief Analyze a PRINT# or WRITE# statement.
@@ -85,10 +88,16 @@ void SemanticAnalyzer::analyzePrint(const PrintStmt &p)
 void SemanticAnalyzer::analyzePrintCh(const PrintChStmt &p)
 {
     if (p.channelExpr)
-        visitExpr(*p.channelExpr);
+    {
+        auto &channelSlot = *const_cast<ExprPtr *>(&p.channelExpr);
+        visitExpr(*p.channelExpr, &channelSlot);
+    }
     for (const auto &arg : p.args)
         if (arg)
-            visitExpr(*arg);
+        {
+            auto &argSlot = *const_cast<ExprPtr *>(&arg);
+            visitExpr(*arg, &argSlot);
+        }
 }
 
 /// @brief Analyze the CLS statement wrapper.
@@ -130,7 +139,7 @@ void SemanticAnalyzer::analyzeOpen(OpenStmt &stmt)
 
     if (stmt.pathExpr)
     {
-        Type pathTy = visitExpr(*stmt.pathExpr);
+        Type pathTy = visitExpr(*stmt.pathExpr, &stmt.pathExpr);
         if (pathTy != Type::Unknown && pathTy != Type::String)
         {
             std::string msg = "OPEN path expression must be STRING, got ";
@@ -142,7 +151,7 @@ void SemanticAnalyzer::analyzeOpen(OpenStmt &stmt)
 
     if (stmt.channelExpr)
     {
-        Type channelTy = visitExpr(*stmt.channelExpr);
+        Type channelTy = visitExpr(*stmt.channelExpr, &stmt.channelExpr);
         if (channelTy != Type::Unknown && channelTy != Type::Int)
         {
             std::string msg = "OPEN channel expression must be INTEGER, got ";
@@ -185,7 +194,7 @@ void SemanticAnalyzer::analyzeClose(CloseStmt &stmt)
     if (!stmt.channelExpr)
         return;
 
-    Type channelTy = visitExpr(*stmt.channelExpr);
+    Type channelTy = visitExpr(*stmt.channelExpr, &stmt.channelExpr);
     if (channelTy != Type::Unknown && channelTy != Type::Int)
     {
         std::string msg = "CLOSE channel expression must be INTEGER, got ";
@@ -214,7 +223,7 @@ void SemanticAnalyzer::analyzeSeek(SeekStmt &stmt)
 {
     if (stmt.channelExpr)
     {
-        Type channelTy = visitExpr(*stmt.channelExpr);
+        Type channelTy = visitExpr(*stmt.channelExpr, &stmt.channelExpr);
         if (channelTy != Type::Unknown && channelTy != Type::Int)
         {
             std::string msg = "SEEK channel expression must be INTEGER, got ";
@@ -227,7 +236,7 @@ void SemanticAnalyzer::analyzeSeek(SeekStmt &stmt)
 
     if (stmt.positionExpr)
     {
-        Type posTy = visitExpr(*stmt.positionExpr);
+        Type posTy = visitExpr(*stmt.positionExpr, &stmt.positionExpr);
         if (posTy != Type::Unknown && posTy != Type::Int)
         {
             std::string msg = "SEEK position expression must be INTEGER, got ";
@@ -247,7 +256,7 @@ void SemanticAnalyzer::analyzeInput(InputStmt &inp)
 {
     IOStmtContext ctx(*this);
     if (inp.prompt)
-        visitExpr(*inp.prompt);
+        visitExpr(*inp.prompt, &inp.prompt);
     for (auto &name : inp.vars)
     {
         if (name.empty())
@@ -279,9 +288,9 @@ void SemanticAnalyzer::analyzeInputCh(InputChStmt &inp)
 void SemanticAnalyzer::analyzeLineInputCh(LineInputChStmt &inp)
 {
     if (inp.channelExpr)
-        visitExpr(*inp.channelExpr);
+        visitExpr(*inp.channelExpr, &inp.channelExpr);
     if (inp.targetVar)
-        visitExpr(*inp.targetVar);
+        visitExpr(*inp.targetVar, &inp.targetVar);
 }
 
 } // namespace il::frontends::basic

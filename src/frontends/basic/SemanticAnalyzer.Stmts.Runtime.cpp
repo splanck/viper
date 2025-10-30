@@ -71,7 +71,7 @@ void SemanticAnalyzer::analyzeVarAssignment(VarExpr &v, const LetStmt &l)
         varTy = itType->second;
     Type exprTy = Type::Unknown;
     if (l.expr)
-        exprTy = visitExpr(*l.expr);
+        exprTy = visitExpr(*l.expr, const_cast<ExprPtr *>(&l.expr));
 
     if (varTy == Type::ArrayInt)
     {
@@ -168,7 +168,7 @@ void SemanticAnalyzer::analyzeArrayAssignment(ArrayExpr &a, const LetStmt &l)
                 static_cast<uint32_t>(a.name.size()),
                 std::move(msg));
     }
-    auto indexTy = visitExpr(*a.index);
+    auto indexTy = visitExpr(*a.index, &a.index);
     if (indexTy != Type::Unknown && indexTy != Type::Int)
     {
         std::string msg = "index type mismatch";
@@ -177,7 +177,7 @@ void SemanticAnalyzer::analyzeArrayAssignment(ArrayExpr &a, const LetStmt &l)
     Type valueTy = Type::Unknown;
     if (l.expr)
     {
-        valueTy = visitExpr(*l.expr);
+        valueTy = visitExpr(*l.expr, const_cast<ExprPtr *>(&l.expr));
         if (valueTy == Type::Float)
         {
             markImplicitConversion(*l.expr, Type::Int);
@@ -210,9 +210,9 @@ void SemanticAnalyzer::analyzeArrayAssignment(ArrayExpr &a, const LetStmt &l)
 void SemanticAnalyzer::analyzeConstExpr(const LetStmt &l)
 {
     if (l.target)
-        visitExpr(*l.target);
+        visitExpr(*l.target, const_cast<ExprPtr *>(&l.target));
     if (l.expr)
-        visitExpr(*l.expr);
+        visitExpr(*l.expr, const_cast<ExprPtr *>(&l.expr));
     std::string msg = "left-hand side of LET must be a variable or array element";
     de.emit(il::support::Severity::Error, "B2007", l.loc, 1, std::move(msg));
 }
@@ -245,7 +245,7 @@ void SemanticAnalyzer::analyzeRandomize(const RandomizeStmt &r)
 {
     if (r.seed)
     {
-        auto ty = visitExpr(*r.seed);
+        auto ty = visitExpr(*r.seed, const_cast<ExprPtr *>(&r.seed));
         if (ty != Type::Unknown && ty != Type::Int && ty != Type::Float)
         {
             std::string msg = "seed type mismatch";
@@ -264,7 +264,7 @@ void SemanticAnalyzer::analyzeDim(DimStmt &d)
     {
         if (d.size)
         {
-            auto ty = visitExpr(*d.size);
+            auto ty = visitExpr(*d.size, &d.size);
             if (ty != Type::Unknown && ty != Type::Int)
             {
                 std::string msg = "size type mismatch";
@@ -353,7 +353,7 @@ void SemanticAnalyzer::analyzeReDim(ReDimStmt &d)
     long long sz = -1;
     if (d.size)
     {
-        auto ty = visitExpr(*d.size);
+        auto ty = visitExpr(*d.size, &d.size);
         if (ty != Type::Unknown && ty != Type::Int)
         {
             std::string msg = "size type mismatch";

@@ -316,7 +316,8 @@ inline SemanticAnalyzer::SelectCaseSelectorInfo classifySelectCaseSelector(
         return info;
 
     using Type = SemanticAnalyzer::Type;
-    const Type selectorType = context.evaluateExpr(*stmt.selector);
+    auto &selectorSlot = *const_cast<ExprPtr *>(&stmt.selector);
+    const Type selectorType = context.evaluateExpr(*stmt.selector, selectorSlot);
     if (selectorType == Type::Int)
     {
         context.markImplicitConversion(*stmt.selector, Type::Int);

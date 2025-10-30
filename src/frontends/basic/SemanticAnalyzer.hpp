@@ -274,6 +274,12 @@ class SemanticAnalyzer
 
     /// @brief Validate variable references in @p e and recurse into subtrees.
     /// @param e Expression node to analyze.
+    /// @param slot Owning smart pointer slot for @p e when available.
+    /// @return Inferred type of the expression.
+    Type visitExpr(Expr &e, ExprPtr *slot);
+
+    /// @brief Validate variable references in @p e without recording ownership.
+    /// @param e Expression node to analyze.
     /// @return Inferred type of the expression.
     Type visitExpr(Expr &e);
 
@@ -365,6 +371,11 @@ class SemanticAnalyzer
     /// @brief Record that @p expr should be implicitly converted to @p targetType.
     void markImplicitConversion(const Expr &expr, Type targetType);
 
+    /// @brief Wrap @p expr in an implicit cast targeting @p targetType when possible.
+    /// @param expr Expression slated for implicit conversion.
+    /// @param targetType Destination semantic type requested by the analyzer.
+    void insertImplicitCast(Expr &expr, Type targetType);
+
     /// @brief Determine if @p stmts guarantees a return value on all control paths.
     bool mustReturn(const std::vector<StmtPtr> &stmts) const;
     /// @brief Determine if single statement @p s guarantees a return value.
@@ -412,6 +423,7 @@ class SemanticAnalyzer
     std::vector<std::string> forStack_; ///< Active FOR loop variables.
     std::vector<LoopKind> loopStack_;   ///< Active loop constructs for EXIT validation.
     std::unordered_map<const Expr *, Type> implicitConversions_;
+    std::unordered_map<const Expr *, ExprPtr *> exprOwners_;
     ProcedureScope *activeProcScope_{nullptr};
     bool errorHandlerActive_{false};
     std::optional<int> errorHandlerTarget_;

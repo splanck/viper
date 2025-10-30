@@ -452,9 +452,9 @@ SemanticAnalyzer::Type analyzeBinaryExpr(SemanticAnalyzer &analyzer, const Binar
     Type lhs = Type::Unknown;
     Type rhs = Type::Unknown;
     if (expr.lhs)
-        lhs = context.evaluate(*expr.lhs);
+        lhs = context.evaluate(*expr.lhs, expr.lhs);
     if (expr.rhs)
-        rhs = context.evaluate(*expr.rhs);
+        rhs = context.evaluate(*expr.rhs, expr.rhs);
 
     if (expr.op == BinaryExpr::Op::Add || expr.op == BinaryExpr::Op::Sub ||
         expr.op == BinaryExpr::Op::Mul)

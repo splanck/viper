@@ -109,11 +109,11 @@ void analyzeFor(SemanticAnalyzer &analyzer, ForStmt &stmt)
     ControlCheckContext context(analyzer);
     context.resolveLoopVariable(stmt.var);
     if (stmt.start)
-        context.evaluateExpr(*stmt.start);
+        context.evaluateExpr(*stmt.start, stmt.start);
     if (stmt.end)
-        context.evaluateExpr(*stmt.end);
+        context.evaluateExpr(*stmt.end, stmt.end);
     if (stmt.step)
-        context.evaluateExpr(*stmt.step);
+        context.evaluateExpr(*stmt.step, stmt.step);
 
     [[maybe_unused]] auto forGuard = context.trackForVariable(stmt.var);
     [[maybe_unused]] auto loopGuard = context.forLoopGuard();

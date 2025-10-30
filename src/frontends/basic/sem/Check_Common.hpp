@@ -208,6 +208,11 @@ class ControlCheckContext
         return analyzer_->visitExpr(expr);
     }
 
+    SemanticAnalyzer::Type evaluateExpr(Expr &expr, ExprPtr &slot)
+    {
+        return analyzer_->visitExpr(expr, &slot);
+    }
+
     void visitStmt(Stmt &stmt)
     {
         analyzer_->visitStmt(stmt);
@@ -250,9 +255,19 @@ class ExprCheckContext
         return analyzer_->visitExpr(expr);
     }
 
+    SemanticAnalyzer::Type evaluate(Expr &expr, ExprPtr &slot)
+    {
+        return analyzer_->visitExpr(expr, &slot);
+    }
+
     SemanticAnalyzer::Type evaluate(const Expr &expr)
     {
         return analyzer_->visitExpr(const_cast<Expr &>(expr));
+    }
+
+    SemanticAnalyzer::Type evaluate(const Expr &expr, ExprPtr &slot)
+    {
+        return analyzer_->visitExpr(const_cast<Expr &>(expr), &slot);
     }
 
     void markImplicitConversion(const Expr &expr, SemanticAnalyzer::Type target)

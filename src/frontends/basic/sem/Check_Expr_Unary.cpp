@@ -78,7 +78,7 @@ SemanticAnalyzer::Type analyzeUnaryExpr(SemanticAnalyzer &analyzer, const UnaryE
     ExprCheckContext context(analyzer);
     Type operandType = Type::Unknown;
     if (expr.expr)
-        operandType = context.evaluate(*expr.expr);
+        operandType = context.evaluate(*expr.expr, expr.expr);
 
     switch (expr.op)
     {

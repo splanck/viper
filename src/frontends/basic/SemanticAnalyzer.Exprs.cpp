@@ -236,6 +236,53 @@ void SemanticAnalyzer::markImplicitConversion(const Expr &expr, Type targetType)
     implicitConversions_[&expr] = targetType;
 }
 
+/// @brief Replace @p expr with an implicit cast expression when ownership is known.
+///
+/// @details The helper looks up the owning smart pointer slot recorded for
+///          @p expr. When a slot exists, the function synthesises a CINT builtin
+///          call, transfers ownership of the original operand, and updates the
+///          ownership map so further rewrites continue to work.
+///
+/// @param expr Expression scheduled for implicit conversion.
+/// @param targetType Target semantic type for the conversion. Only integer casts
+///        are generated at present.
+void SemanticAnalyzer::insertImplicitCast(Expr &expr, Type targetType)
+{
+    if (targetType != Type::Int)
+        return;
+
+    auto ownerIt = exprOwners_.find(&expr);
+    if (ownerIt == exprOwners_.end())
+        return;
+
+    ExprPtr *slot = ownerIt->second;
+    if (slot == nullptr || !*slot)
+        return;
+
+    if (auto *existing = dynamic_cast<BuiltinCallExpr *>(slot->get()))
+    {
+        if (existing->builtin == BuiltinCallExpr::Builtin::Cint && !existing->args.empty() &&
+            existing->args.front().get() == &expr)
+            return;
+    }
+
+    ExprPtr operand = std::move(*slot);
+
+    auto cast = std::make_unique<BuiltinCallExpr>();
+    cast->loc = expr.loc;
+    cast->builtin = BuiltinCallExpr::Builtin::Cint;
+    cast->args.push_back(std::move(operand));
+
+    ExprPtr *operandSlot = &cast->args.front();
+    Expr *operandPtr = operandSlot->get();
+
+    *slot = std::move(cast);
+
+    exprOwners_[slot->get()] = slot;
+    ownerIt->second = operandSlot;
+    exprOwners_[operandPtr] = operandSlot;
+}
+
 /// @brief Analyse an array element access.
 ///
 /// @details Validates that the referenced symbol is an array, ensures the index
@@ -255,7 +302,7 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeArray(ArrayExpr &a)
                 a.loc,
                 static_cast<uint32_t>(a.name.size()),
                 std::move(msg));
-        visitExpr(*a.index);
+        visitExpr(*a.index, &a.index);
         return Type::Unknown;
     }
     if (auto itType = varTypes_.find(a.name);
@@ -267,10 +314,10 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeArray(ArrayExpr &a)
                 a.loc,
                 static_cast<uint32_t>(a.name.size()),
                 std::move(msg));
-        visitExpr(*a.index);
+        visitExpr(*a.index, &a.index);
         return Type::Unknown;
     }
-    Type ty = visitExpr(*a.index);
+    Type ty = visitExpr(*a.index, &a.index);
     if (ty != Type::Unknown && ty != Type::Int)
     {
         std::string msg = "index type mismatch";
@@ -362,11 +409,18 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeUBound(UBoundExpr &expr)
 ///
 /// @param e Expression to analyse.
 /// @return Semantic type determined by the visitor.
-SemanticAnalyzer::Type SemanticAnalyzer::visitExpr(Expr &e)
+SemanticAnalyzer::Type SemanticAnalyzer::visitExpr(Expr &e, ExprPtr *slot)
 {
+    if (slot)
+        exprOwners_[&e] = slot;
     SemanticAnalyzerExprVisitor visitor(*this);
     e.accept(visitor);
     return visitor.result();
+}
+
+SemanticAnalyzer::Type SemanticAnalyzer::visitExpr(Expr &e)
+{
+    return visitExpr(e, nullptr);
 }
 
 } // namespace il::frontends::basic
