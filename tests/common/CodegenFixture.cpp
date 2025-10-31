@@ -24,30 +24,42 @@
 
 namespace viper::tests
 {
-namespace
-{
 [[nodiscard]] std::string quoteForShell(const std::filesystem::path &path)
 {
     const std::string raw = path.string();
     std::string quoted;
     quoted.reserve(raw.size() + 2);
     quoted.push_back('"');
+
     for (const char ch : raw)
     {
+#ifdef _WIN32
         if (ch == '"')
         {
             quoted.push_back('\\');
-            quoted.push_back('"');
         }
-        else
+#else
+        switch (ch)
         {
-            quoted.push_back(ch);
+            case '\\':
+            case '"':
+            case '$':
+            case '`':
+                quoted.push_back('\\');
+                break;
+            default:
+                break;
         }
+#endif
+        quoted.push_back(ch);
     }
+
     quoted.push_back('"');
     return quoted;
 }
 
+namespace
+{
 [[nodiscard]] int decodeExitCode(int rawStatus)
 {
 #ifdef _WIN32
