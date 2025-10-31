@@ -17,9 +17,10 @@ int main()
 {
     const std::string src = "10 o.INC()\n20 END\n";
     SourceManager sm;
-    auto diag = std::make_unique<DiagnosticEmitter>(&sm);
-    Parser p(sm, *diag);
-    auto program = p.parseString(src);
+    uint32_t fid = sm.addFile("method_call_stmt.bas");
+
+    Parser parser(src, fid);
+    auto program = parser.parseProgram();
     assert(program);
     assert(program->main.size() == 2);
 
@@ -29,7 +30,7 @@ int main()
     auto *mcall = dynamic_cast<MethodCallExpr *>(callStmt->call.get());
     assert(mcall);
     auto *base = dynamic_cast<VarExpr *>(mcall->base.get());
-    assert(base && base->name == "o");
+    assert(base && base->name == "O");
     assert(mcall->method == "INC");
     return 0;
 }
