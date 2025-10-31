@@ -5,10 +5,16 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Implements the runtime string builder helper declared in
-// rt_string_builder.h.  The utility centralises the growable buffer logic used
-// by printf-style formatting and numeric conversions, ensuring consistent error
-// handling and a small-buffer fast path for common cases.
+// File: src/runtime/rt_string_builder.c
+// Purpose: Provide the growable string buffer used by the BASIC runtime's
+//          formatting helpers.
+// Key invariants: Builders always keep their buffers null-terminated, respect
+//                 a fixed in-struct inline capacity before allocating on the
+//                 heap, and surface allocation/overflow failures via explicit
+//                 status codes instead of trapping.
+// Ownership/Lifetime: Callers own the builder object and are responsible for
+//                     eventually releasing any heap storage via rt_sb_free.
+// Links: docs/runtime/strings.md#string-builder
 //
 //===----------------------------------------------------------------------===//
 
@@ -29,11 +35,30 @@
 #include <stdlib.h>
 #include <string.h>
 
+/// @brief Determine whether the builder currently points at its inline buffer.
+/// @details Builders start life with @ref rt_string_builder::data referencing
+///          @ref rt_string_builder::inline_buffer.  When the buffer grows beyond
+///          the inline capacity the data pointer is redirected to heap storage.
+///          This helper allows other routines to branch on that condition
+///          without duplicating pointer comparisons.
+/// @param sb Builder to inspect; may be @c NULL.
+/// @return Non-zero when the builder uses its inline buffer; zero otherwise.
 static bool rt_sb_is_inline(const rt_string_builder *sb)
 {
     return sb && sb->data == sb->inline_buffer;
 }
 
+/// @brief Restore a builder to a prior state after formatting overflow.
+/// @details When formatting functions attempt to append into a buffer that was
+///          subsequently found to be too small, callers use this helper to
+///          release any temporary heap allocation, restore the caller-provided
+///          length/capacity snapshot, and ensure the buffer remains
+///          null-terminated.  No work is performed when @p sb is @c NULL.
+/// @param sb Builder being restored.
+/// @param original_len Length of the string before the attempted append.
+/// @param original_cap Capacity (in bytes) before the attempted append.
+/// @param was_inline Whether the builder resided in its inline buffer prior to
+///        the append attempt.
 static void rt_sb_restore_on_overflow(rt_string_builder *sb,
                                       size_t original_len,
                                       size_t original_cap,
@@ -54,6 +79,12 @@ static void rt_sb_restore_on_overflow(rt_string_builder *sb,
     sb->data[sb->len] = '\0';
 }
 
+/// @brief Initialise a builder so it starts with the inline small buffer.
+/// @details Resets length and capacity bookkeeping, points @c data at the inline
+///          storage, and seeds the buffer with a null terminator.  Passing a
+///          null pointer is tolerated as a no-op so callers can unconditionally
+///          initialise arrays of builders.
+/// @param sb Builder instance to prepare.
 void rt_sb_init(rt_string_builder *sb)
 {
     if (!sb)
@@ -64,6 +95,12 @@ void rt_sb_init(rt_string_builder *sb)
     sb->inline_buffer[0] = '\0';
 }
 
+/// @brief Release any heap storage owned by the builder and reset it to empty.
+/// @details Frees the heap buffer when the builder outgrew the inline storage,
+///          resets bookkeeping fields, and reinstates the inline buffer as the
+///          active storage.  After the call the builder is indistinguishable from
+///          a freshly initialised instance.
+/// @param sb Builder instance to tear down; null pointers are ignored.
 void rt_sb_free(rt_string_builder *sb)
 {
     if (!sb)
@@ -76,6 +113,15 @@ void rt_sb_free(rt_string_builder *sb)
     sb->inline_buffer[0] = '\0';
 }
 
+/// @brief Grow the builder capacity to at least @p new_cap bytes.
+/// @details Allocates or reallocates storage when the requested capacity exceeds
+///          the current capacity.  Inline buffers transition to heap storage via
+///          @c malloc, while existing heap buffers are resized with
+///          @c realloc.  The method preserves the string contents and trailing
+///          null terminator on success.
+/// @param sb Builder to grow.
+/// @param new_cap Desired capacity including space for the terminator.
+/// @return Status code describing the outcome of the operation.
 static rt_sb_status rt_sb_grow(rt_string_builder *sb, size_t new_cap)
 {
     if (!sb)
@@ -106,6 +152,15 @@ static rt_sb_status rt_sb_grow(rt_string_builder *sb, size_t new_cap)
     return RT_SB_OK;
 }
 
+/// @brief Ensure the builder can store @p required bytes including the terminator.
+/// @details Rounds the requested capacity up to the next power-of-two style
+///          growth factor, respecting the inline capacity first, before
+///          delegating to @ref rt_sb_grow.  The helper avoids integer overflow by
+///          clamping the capacity increase once @c SIZE_MAX would be exceeded.
+/// @param sb Builder whose storage should be grown on demand.
+/// @param required Minimum number of bytes required (excluding the implicit
+///        null terminator).
+/// @return Status describing success, allocation failure, or overflow.
 rt_sb_status rt_sb_reserve(rt_string_builder *sb, size_t required)
 {
     if (!sb)
@@ -135,6 +190,15 @@ rt_sb_status rt_sb_reserve(rt_string_builder *sb, size_t required)
     return rt_sb_grow(sb, new_cap);
 }
 
+/// @brief Append raw bytes to the builder without performing formatting.
+/// @details Validates arguments, expands the buffer to fit @p len additional
+///          bytes plus the null terminator, copies the data, and updates the
+///          length bookkeeping.  Overflow checks ensure callers never observe
+///          wrap-around behaviour even when appending enormous strings.
+/// @param sb Builder receiving the bytes.
+/// @param text Pointer to the bytes to append; may be null when @p len is zero.
+/// @param len Number of bytes to copy from @p text.
+/// @return Status code describing success, allocation failure, or invalid input.
 static rt_sb_status rt_sb_append_bytes(rt_string_builder *sb, const char *text, size_t len)
 {
     if (!sb || (!text && len > 0))
@@ -155,6 +219,14 @@ static rt_sb_status rt_sb_append_bytes(rt_string_builder *sb, const char *text, 
     return RT_SB_OK;
 }
 
+/// @brief Append a null-terminated C string to the builder.
+/// @details Rejects null pointers and otherwise forwards to
+///          @ref rt_sb_append_bytes after computing the string length with
+///          @ref strlen.  The helper exists so callers do not need to manually
+///          compute lengths for common cases.
+/// @param sb Destination builder.
+/// @param text Null-terminated UTF-8 string to append.
+/// @return Status code indicating success or the error that occurred.
 rt_sb_status rt_sb_append_cstr(rt_string_builder *sb, const char *text)
 {
     if (!text)
@@ -162,6 +234,15 @@ rt_sb_status rt_sb_append_cstr(rt_string_builder *sb, const char *text)
     return rt_sb_append_bytes(sb, text, strlen(text));
 }
 
+/// @brief Append the decimal representation of a signed 64-bit integer.
+/// @details Ensures enough capacity for a typical 64-bit integer string, grows
+///          the buffer if necessary, formats the integer via
+///          @ref rt_i64_to_cstr, and updates the builder length.  Overflow and
+///          formatting failures are reported via explicit status codes so the
+///          caller can trap or recover.
+/// @param sb Destination builder.
+/// @param value Integer to append in base 10.
+/// @return Status describing whether the append succeeded.
 rt_sb_status rt_sb_append_int(rt_string_builder *sb, int64_t value)
 {
     if (!sb)
@@ -187,6 +268,15 @@ rt_sb_status rt_sb_append_int(rt_string_builder *sb, int64_t value)
     return RT_SB_OK;
 }
 
+/// @brief Append a floating-point value formatted with BASIC semantics.
+/// @details Reserves additional space, captures the builder's previous state in
+///          case the formatted output exceeds the buffer, invokes
+///          @ref rt_format_f64, and rolls back to the original state on overflow.
+///          Successful calls leave the buffer null-terminated with the appended
+///          text at the end.
+/// @param sb Destination builder.
+/// @param value Floating-point value to append.
+/// @return Status describing whether the append succeeded.
 rt_sb_status rt_sb_append_double(rt_string_builder *sb, double value)
 {
     if (!sb)
@@ -225,6 +315,15 @@ rt_sb_status rt_sb_append_double(rt_string_builder *sb, double value)
     return RT_SB_OK;
 }
 
+/// @brief Append formatted text using @c vsnprintf semantics.
+/// @details Repeatedly attempts to render the formatted text into the available
+///          space, expanding the builder whenever @c vsnprintf reports that the
+///          buffer was insufficient.  Formatting failures or allocation issues
+///          result in descriptive status codes so callers can handle the error.
+/// @param sb Destination builder.
+/// @param fmt printf-style format string.
+/// @param args Variadic argument list to render.
+/// @return Status describing whether the formatted append succeeded.
 static rt_sb_status rt_sb_vprintf_internal(rt_string_builder *sb, const char *fmt, va_list args)
 {
     if (!sb || !fmt)
@@ -269,6 +368,14 @@ static rt_sb_status rt_sb_vprintf_internal(rt_string_builder *sb, const char *fm
     }
 }
 
+/// @brief Variadic convenience wrapper around @ref rt_sb_vprintf_internal.
+/// @details Initializes a @c va_list, forwards it to the internal formatting
+///          helper, and then tears down the variadic state before returning the
+///          resulting status code.
+/// @param sb Destination builder to append to.
+/// @param fmt printf-style format string.
+/// @param ... Variadic arguments consumed by @p fmt.
+/// @return Status from the underlying formatting routine.
 rt_sb_status rt_sb_printf(rt_string_builder *sb, const char *fmt, ...)
 {
     va_list args;
