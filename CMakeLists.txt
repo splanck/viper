@@ -136,7 +136,8 @@ endfunction()
 
 file(GLOB_RECURSE ALL_CXX_SOURCE_FILES
      src/*.cpp src/*.hpp
-     src/runtime/*.cpp src/runtime/*.hpp)
+     src/runtime/*.cpp src/runtime/*.hpp
+     src/runtime/*.c src/runtime/*.h)
 
 add_custom_target(format
   COMMAND clang-format -i ${ALL_CXX_SOURCE_FILES}
