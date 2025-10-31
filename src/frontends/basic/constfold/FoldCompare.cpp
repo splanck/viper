@@ -3,14 +3,29 @@
 // Part of the Viper project, under the MIT License.
 // See LICENSE for license information.
 //
-//===----------------------------------------------------------------------===//
+// This source file is part of the Viper project.
 //
-// Comparison constant folding helpers for the BASIC front end.
+// File: src/frontends/basic/constfold/FoldCompare.cpp
+// Purpose: Implement the comparison-specific branch of the BASIC constant
+//          folder so equality and ordering operations can be reduced at parse
+//          time when both operands are literal expressions.
+// Key invariants: Maintains IEEE semantics for floating-point comparisons and
+//                 honours BASIC's three-way comparison rules, including
+//                 propagation of unordered results for NaNs.
+// Ownership/Lifetime: Operates entirely on lightweight Value helpers without
+//                     owning AST nodes; callers remain responsible for
+//                     replacing nodes within the tree.
+// Links: docs/codemap.md, docs/il-guide.md#basic-frontend-constant-folding
 //
 //===----------------------------------------------------------------------===//
 
 /// @file
 /// @brief Implements comparison folding utilities.
+/// @details The helpers translate AST comparison operators into pre-computed
+///          truth tables so constant folding produces the same results that the
+///          runtime would. Floating-point operands mirror IEEE ordering rules,
+///          including propagation of unordered outcomes when NaNs appear in the
+///          input.
 
 #include "frontends/basic/constfold/Dispatch.hpp"
 #include "frontends/basic/constfold/Value.hpp"
@@ -50,6 +65,15 @@ constexpr std::array<TruthRow, 6> kTruthTable = {
      {AST::BinaryExpr::Op::Gt, {0LL, 0LL, 1LL, std::nullopt}},
      {AST::BinaryExpr::Op::Ge, {0LL, 1LL, 1LL, std::nullopt}}}};
 
+/// @brief Map a comparison outcome to the folded literal for @p op.
+/// @details Looks up the requested operator in @ref kTruthTable and returns the
+///          matching literal when available. Operators that do not define a
+///          result for the supplied @p outcome, such as unordered `<`, yield
+///          @ref Value::invalid so the dispatcher can decline the fold.
+/// @param op BASIC AST opcode describing the comparison to evaluate.
+/// @param outcome Precomputed comparison category for the literal operands.
+/// @return Folded literal or @ref Value::invalid when the combination is
+///         unsupported.
 [[nodiscard]] Value from_truth(AST::BinaryExpr::Op op, Outcome outcome)
 {
     for (const auto &row : kTruthTable)
@@ -65,6 +89,13 @@ constexpr std::array<TruthRow, 6> kTruthTable = {
     return Value::invalid();
 }
 
+/// @brief Compute the three-way ordering between two literal operands.
+/// @details Promotes to floating point when necessary so BASIC's numeric
+///          widening rules are honoured. Propagates @ref Outcome::Unordered when
+///          either side is NaN, preserving IEEE comparison semantics.
+/// @param lhs Left-hand literal operand.
+/// @param rhs Right-hand literal operand.
+/// @return Comparison outcome describing the relationship between operands.
 [[nodiscard]] Outcome compare_ordered(Value lhs, Value rhs)
 {
     if (lhs.isFloat() || rhs.isFloat())
@@ -86,36 +117,80 @@ constexpr std::array<TruthRow, 6> kTruthTable = {
     return Outcome::Equal;
 }
 
+/// @brief Fold the equality operator for literal operands.
+/// @details Delegates to @ref compare_ordered and maps the result through
+///          @ref from_truth to produce a boolean literal. NaN involvement yields
+///          @ref Value::invalid so the caller can skip folding.
+/// @param lhs Left-hand literal operand.
+/// @param rhs Right-hand literal operand.
+/// @return Folded literal representing the equality result.
 Value fold_eq(Value lhs, Value rhs)
 {
     return from_truth(AST::BinaryExpr::Op::Eq, compare_ordered(lhs, rhs));
 }
 
+/// @brief Fold the not-equal operator for literal operands.
+/// @details Translates the operands via @ref compare_ordered and returns the
+///          corresponding truth-table value. Unordered comparisons collapse to
+///          `true`, matching runtime behaviour when NaNs are present.
+/// @param lhs Left-hand literal operand.
+/// @param rhs Right-hand literal operand.
+/// @return Folded literal representing the not-equal result.
 Value fold_ne(Value lhs, Value rhs)
 {
     return from_truth(AST::BinaryExpr::Op::Ne, compare_ordered(lhs, rhs));
 }
 
+/// @brief Fold the less-than operator for literal operands.
+/// @details Produces a boolean literal when the comparison is ordered and
+///          yields @ref Value::invalid when NaNs prevent establishing an order.
+/// @param lhs Left-hand literal operand.
+/// @param rhs Right-hand literal operand.
+/// @return Folded literal or @ref Value::invalid when folding is unsafe.
 Value fold_lt(Value lhs, Value rhs)
 {
     return from_truth(AST::BinaryExpr::Op::Lt, compare_ordered(lhs, rhs));
 }
 
+/// @brief Fold the less-or-equal operator for literal operands.
+/// @details Builds on @ref compare_ordered to support equality in addition to
+///          strict ordering. NaNs again prevent folding.
+/// @param lhs Left-hand literal operand.
+/// @param rhs Right-hand literal operand.
+/// @return Folded literal for the `<=` predicate or @ref Value::invalid.
 Value fold_le(Value lhs, Value rhs)
 {
     return from_truth(AST::BinaryExpr::Op::Le, compare_ordered(lhs, rhs));
 }
 
+/// @brief Fold the greater-than operator for literal operands.
+/// @details Shares logic with @ref fold_lt while reflecting the swapped operand
+///          semantics encoded in @ref kTruthTable.
+/// @param lhs Left-hand literal operand.
+/// @param rhs Right-hand literal operand.
+/// @return Folded literal for the `>` predicate or invalid when unordered.
 Value fold_gt(Value lhs, Value rhs)
 {
     return from_truth(AST::BinaryExpr::Op::Gt, compare_ordered(lhs, rhs));
 }
 
+/// @brief Fold the greater-or-equal operator for literal operands.
+/// @details Mirrors @ref fold_le for the reversed comparison, including NaN
+///          handling and boolean literal emission.
+/// @param lhs Left-hand literal operand.
+/// @param rhs Right-hand literal operand.
+/// @return Folded literal representing the `>=` predicate or invalid.
 Value fold_ge(Value lhs, Value rhs)
 {
     return from_truth(AST::BinaryExpr::Op::Ge, compare_ordered(lhs, rhs));
 }
 
+/// @brief Build the dispatch table associating comparison ops with folders.
+/// @details Initialises a dense array sized for all binary operators, installs
+///          folding callbacks for the comparison subset, and leaves other
+///          entries null so the dispatcher can efficiently skip unsupported
+///          operations.
+/// @return Table mapping @ref AST::BinaryExpr::Op indices to folding routines.
 constexpr std::array<BinOpFn, kOpCount> make_compare_table()
 {
     std::array<BinOpFn, kOpCount> table{};
@@ -131,6 +206,13 @@ constexpr std::array<BinOpFn, kOpCount> make_compare_table()
 
 constexpr auto kCompareFold = make_compare_table();
 
+/// @brief Convert a BASIC constant into the internal Value representation.
+/// @details Handles both parsed numeric payloads and cases where only the
+///          literal spelling is available. Attempting to parse invalid literals
+///          mirrors runtime coercions so folding results stay consistent.
+/// @param constant AST constant extracted from a literal expression.
+/// @return Value describing the literal, or @c std::nullopt when conversion
+///         fails.
 [[nodiscard]] std::optional<Value> makeValueFromConstant(const Constant &constant)
 {
     if (constant.kind == LiteralKind::Int || constant.kind == LiteralKind::Float)
@@ -155,6 +237,15 @@ constexpr auto kCompareFold = make_compare_table();
     return std::nullopt;
 }
 
+/// @brief Attempt to fold a comparison using the prepared dispatch table.
+/// @details Validates both operands before indexing into @ref kCompareFold. When
+///          a folding routine is available the operands are promoted to a common
+///          type, the folder invoked, and its result returned. Invalid results
+///          signal that folding should be abandoned.
+/// @param op Comparison opcode being folded.
+/// @param lhs Left-hand literal operand.
+/// @param rhs Right-hand literal operand.
+/// @return Folded value or @c std::nullopt when folding is not possible.
 std::optional<Value> tryFold(AST::BinaryExpr::Op op, Value lhs, Value rhs)
 {
     if (!lhs.valid || !rhs.valid)
@@ -172,6 +263,9 @@ std::optional<Value> tryFold(AST::BinaryExpr::Op op, Value lhs, Value rhs)
     return result;
 }
 
+/// @brief Construct an integer @ref Constant from a scalar literal.
+/// @param value Integer payload to encode into the constant wrapper.
+/// @return Constant describing the literal integer value.
 Constant make_int_constant(long long value)
 {
     Constant c;
@@ -182,6 +276,15 @@ Constant make_int_constant(long long value)
 
 } // namespace
 
+/// @brief Fold comparison expressions when both operands are literal constants.
+/// @details Handles string equality directly because the Value helper focuses on
+///          numeric operands. For numeric comparisons the function converts to
+///          @ref Value wrappers, dispatches to @ref tryFold, and converts the
+///          result back into a @ref Constant when successful.
+/// @param op Comparison opcode describing the expression.
+/// @param lhs Left-hand literal constant.
+/// @param rhs Right-hand literal constant.
+/// @return Folded constant when the comparison can be evaluated eagerly.
 std::optional<Constant> fold_compare(AST::BinaryExpr::Op op,
                                      const Constant &lhs,
                                      const Constant &rhs)
