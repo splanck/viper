@@ -24,6 +24,7 @@
 
 #include "frontends/basic/BasicDiagnosticMessages.hpp"
 #include "frontends/basic/SemanticAnalyzer.Internal.hpp"
+#include "frontends/basic/ast/ExprNodes.hpp"
 
 namespace il::frontends::basic::semantic_analyzer_detail
 {
@@ -52,26 +53,26 @@ void SemanticAnalyzer::analyzeCallStmt(CallStmt &stmt)
     if (!stmt.call)
         return;
 
-    if (auto *callExpr = dynamic_cast<CallExpr *>(stmt.call.get()))
+    if (auto *ce = dynamic_cast<CallExpr *>(stmt.call.get()))
     {
-        const ProcSignature *sig = resolveCallee(*callExpr, ProcSignature::Kind::Sub);
-        checkCallArgs(*callExpr, sig);
+        // Statement calls must target SUBs (not FUNCTIONs)
+        const ProcSignature *sig = resolveCallee(*ce, ProcSignature::Kind::Sub);
+        checkCallArgs(*ce, sig);
         return;
     }
 
-    if (auto *methodCall = dynamic_cast<MethodCallExpr *>(stmt.call.get()))
+    if (auto *me = dynamic_cast<MethodCallExpr *>(stmt.call.get()))
     {
-        if (methodCall->base)
-            visitExpr(*methodCall->base);
-        for (auto &arg : methodCall->args)
-        {
+        // Best-effort analysis: visit receiver and args to trigger diagnostics.
+        if (me->base)
+            visitExpr(*me->base);
+        for (auto &arg : me->args)
             if (arg)
                 visitExpr(*arg);
-        }
         return;
     }
 
-    visitExpr(*stmt.call);
+    // Unknown invocation node: nothing to analyze (defensive).
 }
 
 /// @brief Check type rules and loop-variable restrictions for scalar assignments.
