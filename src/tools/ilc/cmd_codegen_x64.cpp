@@ -39,21 +39,32 @@ namespace
 constexpr std::string_view kUsage =
     "usage: ilc codegen x64 <file.il> [-S <file.s>] [-o <a.out>] [-run-native]\n";
 
+/// @brief Lightweight non-owning view over argv-style argument arrays.
+/// @details Encapsulates the argument count and pointer pair supplied by the C
+///          runtime so helpers can inspect and slice the list without copying.
 struct ArgvView
 {
     int argc;
     char **argv;
 
+    /// @brief Determine whether the view contains no arguments.
+    /// @return True when `argc` is non-positive or the pointer is null.
     [[nodiscard]] bool empty() const
     {
         return argc <= 0 || argv == nullptr;
     }
 
+    /// @brief Access the first argument in the sequence.
+    /// @details Returns an empty view when the sequence is empty.
+    /// @return String view referencing the first argument.
     [[nodiscard]] std::string_view front() const
     {
         return empty() ? std::string_view{} : std::string_view(argv[0]);
     }
 
+    /// @brief Read the argument at @p index, returning an empty view on overflow.
+    /// @param index Offset into the argv array.
+    /// @return View over the requested argument or empty view when invalid.
     [[nodiscard]] std::string_view at(int index) const
     {
         if (index < 0 || index >= argc || argv == nullptr)
@@ -63,6 +74,9 @@ struct ArgvView
         return std::string_view(argv[index]);
     }
 
+    /// @brief Produce a suffix view that skips the first @p count entries.
+    /// @param count Number of arguments to drop.
+    /// @return New view representing the remaining arguments.
     [[nodiscard]] ArgvView drop_front(int count = 1) const
     {
         if (count >= argc)
@@ -73,12 +87,20 @@ struct ArgvView
     }
 };
 
+/// @brief Result bundle produced by @ref parseCompileArgs.
+/// @details Contains the successfully parsed options or a diagnostic string when
+///          parsing failed.
 struct ParseOutcome
 {
     std::optional<viper::codegen::x64::CodegenPipeline::Options> opts{};
     std::string diagnostics{};
 };
 
+/// @brief Decode `ilc codegen x64 compile` arguments into pipeline options.
+/// @details Validates positional arguments, handles recognised flags, and emits
+///          user-friendly diagnostics on failure.
+/// @param args View of the arguments following `codegen x64`.
+/// @return Parsed options or diagnostics describing the failure.
 ParseOutcome parseCompileArgs(const ArgvView &args)
 {
     ParseOutcome outcome{};
@@ -135,6 +157,12 @@ ParseOutcome parseCompileArgs(const ArgvView &args)
     return outcome;
 }
 
+/// @brief Execute the `compile` handler for the x64 codegen driver.
+/// @details Parses arguments via @ref parseCompileArgs and, when successful,
+///          runs the code generation pipeline before forwarding captured
+///          stdout/stderr to the caller.
+/// @param args View over the user-provided arguments.
+/// @return Zero on success; otherwise non-zero to signal failure.
 int handleCompile(const ArgvView &args)
 {
     const ParseOutcome parsed = parseCompileArgs(args);
@@ -169,6 +197,13 @@ const std::unordered_map<std::string, Handler> kHandlers = {
 
 } // namespace
 
+/// @brief Dispatch entry point for the `codegen x64` driver.
+/// @details Routes to known subcommands (currently only `compile`).  Unknown
+///          tokens fall back to `compile` so one-off invocations like
+///          `ilc codegen x64 foo.il` still succeed.
+/// @param argc Argument count supplied by the CLI harness.
+/// @param argv Argument vector supplied by the CLI harness.
+/// @return Exit code reported by the chosen handler.
 int cmd_codegen_x64(int argc, char **argv)
 {
     const ArgvView args{argc, argv};
@@ -187,6 +222,10 @@ int cmd_codegen_x64(int argc, char **argv)
     return handleCompile(args);
 }
 
+/// @brief Register x64 codegen commands with the shared CLI object.
+/// @details Present for symmetry with other command registration helpers.  The
+///          current driver wires subcommands manually so the function is a
+///          no-op.
 void register_codegen_x64_commands(CLI &cli)
 {
     (void)cli;

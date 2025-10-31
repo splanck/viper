@@ -23,21 +23,41 @@
 namespace il::frontends::basic
 {
 
+/// @brief Forward a const expression node to a visitor implementation.
+/// @details Wraps the polymorphic @c accept call so clients can invoke
+///          `visit(expr, visitor)` without naming the exact derived type.
+/// @param expr Expression node to visit.
+/// @param visitor Visitor receiving the node.
 void visit(const Expr &expr, ExprVisitor &visitor)
 {
     expr.accept(visitor);
 }
 
+/// @brief Forward a mutable expression node to a visitor implementation.
+/// @details Enables uniform visitation over mutable AST nodes by deferring to
+///          the node's @c accept overload.
+/// @param expr Expression node to visit and potentially mutate.
+/// @param visitor Visitor receiving the node.
 void visit(Expr &expr, MutExprVisitor &visitor)
 {
     expr.accept(visitor);
 }
 
+/// @brief Forward a const statement node to a visitor implementation.
+/// @details Used when traversing immutable ASTs; delegates to @c accept to
+///          perform the double-dispatch.
+/// @param stmt Statement node to visit.
+/// @param visitor Visitor receiving the node.
 void visit(const Stmt &stmt, StmtVisitor &visitor)
 {
     stmt.accept(visitor);
 }
 
+/// @brief Forward a mutable statement node to a visitor implementation.
+/// @details Invokes the node's @c accept overload so visitors can mutate the
+///          statement in-place.
+/// @param stmt Statement node to visit and potentially mutate.
+/// @param visitor Visitor receiving the node.
 void visit(Stmt &stmt, MutStmtVisitor &visitor)
 {
     stmt.accept(visitor);
