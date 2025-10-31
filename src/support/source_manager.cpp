@@ -32,6 +32,12 @@ namespace il::support
 {
 namespace
 {
+/// @brief Normalise a filesystem path into the canonical representation used by diagnostics.
+/// @details Converts the path to a `std::filesystem::path`, performs lexical
+///          normalisation, and returns a forward-slash separated string so output
+///          remains stable across host platforms.
+/// @param path Raw filesystem path supplied by the caller.
+/// @return Normalised path string.
 std::string normalizePath(std::string path)
 {
     std::filesystem::path p(std::move(path));
