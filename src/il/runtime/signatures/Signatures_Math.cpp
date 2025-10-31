@@ -26,6 +26,14 @@ using Kind = SigParam::Kind;
 }
 
 /// @brief Publish expected runtime signature shapes for math-related helpers.
+/// @details Registers each math-focused runtime routine with the shared
+///          signature registry so debug builds can validate bridge calls.
+///          Signatures are grouped here to keep the registration order and
+///          intent explicit: conversion helpers appear first, followed by
+///          arithmetic routines and finally the pseudo-random number generator
+///          hooks.  The registry retains the entries for the lifetime of the
+///          process, allowing verifier utilities to query expected shapes at any
+///          time.
 void register_math_signatures()
 {
     register_signature(make_signature("rt_cint_from_double", {Kind::F64, Kind::Ptr}, {Kind::I64}));
