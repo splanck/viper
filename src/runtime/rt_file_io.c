@@ -35,6 +35,8 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include <stdint.h>
+
 /// @brief Clamp errno values into the 32-bit range stored by @ref RtError.
 /// @details Ensures large positive or negative errno values fit into the
 ///          runtime's signed 32-bit field without overflow.
@@ -89,6 +91,34 @@ static void rt_file_set_ok(RtError *out_err)
 {
     if (out_err)
         *out_err = RT_ERROR_NONE;
+}
+
+/// @brief Determine whether an `int64_t` offset fits within the host's @ref off_t range.
+/// @details Uses POSIX-provided limits when available and falls back to width-based
+///          calculations otherwise.  The helper avoids undefined behaviour from
+///          narrowing casts by performing bounds checks prior to conversion.
+/// @param offset Proposed byte offset for @ref lseek.
+/// @return `true` when @p offset is representable as @ref off_t; otherwise `false`.
+static bool rt_file_offset_in_range(int64_t offset)
+{
+#if defined(OFF_MAX) && defined(OFF_MIN)
+    if (sizeof(off_t) > sizeof(int64_t))
+        return true;
+    if (offset < (int64_t)OFF_MIN || offset > (int64_t)OFF_MAX)
+        return false;
+    return true;
+#else
+    const int bits = (int)(sizeof(off_t) * CHAR_BIT);
+    const int int64_bits = (int)(sizeof(int64_t) * CHAR_BIT);
+    if (bits >= int64_bits)
+        return true;
+    const int shift = bits - 1;
+    if (shift <= 0)
+        return offset == 0;
+    const int64_t max = (INT64_C(1) << shift) - 1;
+    const int64_t min = -((INT64_C(1) << shift));
+    return offset >= min && offset <= max;
+#endif
 }
 
 /// @brief Validate that a file handle contains an open descriptor.
@@ -433,6 +463,12 @@ bool rt_file_seek(RtFile *file, int64_t offset, int origin, RtError *out_err)
 {
     if (!rt_file_check_fd(file, out_err))
         return false;
+
+    if (!rt_file_offset_in_range(offset))
+    {
+        rt_file_set_error(out_err, Err_InvalidOperation, ERANGE);
+        return false;
+    }
 
     errno = 0;
     off_t target = (off_t)offset;
