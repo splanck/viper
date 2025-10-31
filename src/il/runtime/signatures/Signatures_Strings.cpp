@@ -26,6 +26,12 @@ using Kind = SigParam::Kind;
 }
 
 /// @brief Publish expected runtime signature shapes for string-related helpers.
+/// @details Populates the signature registry with all string-processing runtime
+///          functions.  Grouping the registrations in a single function keeps
+///          the mapping between runtime symbol names and their parameter/return
+///          contracts easy to audit.  The collection spans pure string utilities
+///          (length, slicing, trimming), conversions, and retain/release hooks so
+///          debugger tooling can validate every call site uniformly.
 void register_string_signatures()
 {
     register_signature(make_signature("rt_len", {Kind::Ptr}, {Kind::I64}));
