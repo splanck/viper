@@ -553,9 +553,78 @@ Expected<std::vector<std::string>> OperandParser::splitCommaSeparated(const std:
 Expected<void> OperandParser::parseCallOperands(const std::string &text)
 {
     const size_t at = text.find('@');
-    const size_t lp = text.find('(', at);
-    const size_t rp = text.find(')', lp);
-    if (at == std::string::npos || lp == std::string::npos || rp == std::string::npos)
+    if (at == std::string::npos)
+    {
+        std::ostringstream oss;
+        oss << "line " << state_.lineNo << ": malformed call";
+        return Expected<void>{makeError(instr_.loc, oss.str())};
+    }
+
+    size_t lp = std::string::npos;
+    size_t rp = std::string::npos;
+    size_t depth = 0;
+    bool inString = false;
+    bool escape = false;
+    bool mismatchedClose = false;
+
+    for (size_t index = at + 1; index < text.size(); ++index)
+    {
+        char c = text[index];
+        if (inString)
+        {
+            if (escape)
+            {
+                escape = false;
+                continue;
+            }
+            if (c == '\\')
+            {
+                escape = true;
+                continue;
+            }
+            if (c == '"')
+                inString = false;
+            continue;
+        }
+
+        if (c == '"')
+        {
+            inString = true;
+            continue;
+        }
+
+        if (c == '(')
+        {
+            if (lp == std::string::npos)
+            {
+                lp = index;
+                depth = 1;
+            }
+            else
+            {
+                ++depth;
+            }
+            continue;
+        }
+
+        if (c == ')')
+        {
+            if (lp == std::string::npos || depth == 0)
+            {
+                mismatchedClose = true;
+                break;
+            }
+            --depth;
+            if (depth == 0)
+            {
+                rp = index;
+                break;
+            }
+            continue;
+        }
+    }
+
+    if (lp == std::string::npos || rp == std::string::npos || depth != 0 || mismatchedClose)
     {
         std::ostringstream oss;
         oss << "line " << state_.lineNo << ": malformed call";
