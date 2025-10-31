@@ -456,6 +456,10 @@ class Parser
     /// @return Resolved BASIC type, defaults to I64 on mismatch.
     Type parseTypeKeyword();
 
+    /// @brief Parse an optional BASIC return type following a FUNCTION header.
+    /// @return Parsed BASIC type; returns Unknown when no recognised annotation is present.
+    BasicType parseBasicType();
+
     /// @brief Parse an expression using precedence climbing.
     /// @param min_prec Minimum precedence to enforce.
     /// @return Parsed expression node.

@@ -815,6 +815,11 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionHeader()
     fn->name = nameTok.lexeme;
     fn->ret = typeFromSuffix(nameTok.lexeme);
     fn->params = parseParamList();
+    if (at(TokenKind::KeywordAs))
+    {
+        consume();
+        fn->explicitRetType = parseBasicType();
+    }
     return fn;
 }
 
@@ -889,6 +894,25 @@ StmtPtr Parser::parseSubStatement()
     sub->loc = loc;
     sub->name = nameTok.lexeme;
     sub->params = parseParamList();
+    if (at(TokenKind::KeywordAs))
+    {
+        Token asTok = peek();
+        if (emitter_)
+        {
+            std::string message = "SUB does not take a return type; remove 'AS <TYPE>'";
+            emitter_->emit(il::support::Severity::Error,
+                           "B4007",
+                           asTok.loc,
+                           static_cast<uint32_t>(asTok.lexeme.size()),
+                           std::move(message));
+        }
+        else
+        {
+            std::fprintf(stderr, "SUB does not take a return type; remove 'AS <TYPE>'\n");
+        }
+        consume();
+        (void)parseBasicType();
+    }
     noteProcedureName(sub->name);
     parseProcedureBody(TokenKind::KeywordSub, sub->body);
     return sub;
