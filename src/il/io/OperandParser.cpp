@@ -714,6 +714,10 @@ Expected<void> OperandParser::parseBranchTarget(const std::string &segment,
     }
 
     label = trim(text.substr(0, lp));
+    if (label.empty())
+    {
+        return makeSyntaxError<void>(state_, "malformed branch target: missing label");
+    }
     std::string argsStr = text.substr(lp + 1, rp - lp - 1);
     auto tokens = splitCommaSeparated(argsStr, mnemonic);
     if (!tokens)
