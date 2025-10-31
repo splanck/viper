@@ -294,6 +294,12 @@ function(viper_add_il_core_tests)
     target_link_libraries(test_il_parse_missing_operand_between_commas PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
     viper_add_ctest(test_il_parse_missing_operand_between_commas test_il_parse_missing_operand_between_commas)
 
+    viper_add_test(
+            test_il_parse_branch_missing_label
+            ${_VIPER_IL_UNIT_DIR}/test_il_parse_branch_missing_label.cpp)
+    target_link_libraries(test_il_parse_branch_missing_label PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
+    viper_add_ctest(test_il_parse_branch_missing_label test_il_parse_branch_missing_label)
+
     viper_add_test(test_il_function_parser_errors ${_VIPER_IL_UNIT_DIR}/test_il_function_parser_errors.cpp)
     target_link_libraries(test_il_function_parser_errors PRIVATE ${VIPER_IL_CORE_IO_LIBS})
     viper_add_ctest(test_il_function_parser_errors test_il_function_parser_errors)
