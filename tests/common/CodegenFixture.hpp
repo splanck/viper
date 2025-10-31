@@ -98,4 +98,11 @@ class CodegenFixture
     std::size_t invocationId_ = 0;
 };
 
+/// @brief Quote @p path for use in shell command strings.
+/// @details Wraps the string form of the path in double quotes and escapes
+///          characters that carry special meaning for POSIX shells so tests can
+///          forward paths verbatim to subprocesses. Windows keeps the historical
+///          behaviour of only escaping embedded double quotes.
+[[nodiscard]] std::string quoteForShell(const std::filesystem::path &path);
+
 } // namespace viper::tests
