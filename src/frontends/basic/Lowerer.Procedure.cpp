@@ -483,14 +483,8 @@ ProcedureLowering::LoweringContext ProcedureLowering::makeContext(
     const Lowerer::ProcedureConfig &config)
 {
     assert(lowerer.builder && "makeContext requires an active IRBuilder");
-    return LoweringContext(lowerer,
-                           lowerer.symbols,
-                           *lowerer.builder,
-                           lowerer.emitter(),
-                           name,
-                           params,
-                           body,
-                           config);
+    return LoweringContext(
+        lowerer, lowerer.symbols, *lowerer.builder, lowerer.emitter(), name, params, body, config);
 }
 
 /// @brief Reset shared lowering state prior to emitting a new procedure.
@@ -669,7 +663,8 @@ void Lowerer::buildProcedureSkeleton(Function &f,
     ctx.blockNames().setNamer(std::make_unique<BlockNamer>(name));
     BlockNamer *blockNamer = ctx.blockNames().namer();
 
-    auto &entry = builder->addBlock(f, blockNamer ? blockNamer->entry() : mangler.block("entry_" + name));
+    auto &entry =
+        builder->addBlock(f, blockNamer ? blockNamer->entry() : mangler.block("entry_" + name));
     entry.params = f.params;
 
 #ifdef DEBUG
@@ -720,7 +715,8 @@ void Lowerer::buildProcedureSkeleton(Function &f,
 ///          enabled, auxiliary slots are reserved for array lengths.
 /// @param paramNames Names of parameters for the current procedure.
 /// @param includeParams When true, allocate slots for parameters as well as locals.
-void Lowerer::allocateLocalSlots(const std::unordered_set<std::string> &paramNames, bool includeParams)
+void Lowerer::allocateLocalSlots(const std::unordered_set<std::string> &paramNames,
+                                 bool includeParams)
 {
     for (auto &[name, info] : symbols)
     {
@@ -1009,4 +1005,3 @@ std::string Lowerer::nextFallbackBlockLabel()
 }
 
 } // namespace il::frontends::basic
-

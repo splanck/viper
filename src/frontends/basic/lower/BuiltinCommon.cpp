@@ -161,10 +161,12 @@ static thread_local TypeKind gActiveCoerceFrom = TypeKind::I64;
 struct CoerceScope
 {
     TypeKind prev;
+
     explicit CoerceScope(TypeKind from) noexcept : prev(gActiveCoerceFrom)
     {
         gActiveCoerceFrom = from;
     }
+
     ~CoerceScope()
     {
         gActiveCoerceFrom = prev;
@@ -193,10 +195,8 @@ static Value signExtendToI64(Value value, TypeKind from, Emitter &emit)
     Value masked =
         emit.emitBinary(Opcode::And, IlType(TypeKind::I64), value, Value::constInt(mask));
     const int shift = (fromBits == 32) ? 32 : 48;
-    Value shl = emit.emitBinary(
-        Opcode::Shl, IlType(TypeKind::I64), masked, Value::constInt(shift));
-    return emit.emitBinary(
-        Opcode::AShr, IlType(TypeKind::I64), shl, Value::constInt(shift));
+    Value shl = emit.emitBinary(Opcode::Shl, IlType(TypeKind::I64), masked, Value::constInt(shift));
+    return emit.emitBinary(Opcode::AShr, IlType(TypeKind::I64), shl, Value::constInt(shift));
 }
 
 static Value applyCoerceRule(CoerceRule rule, const Value &v, TypeKind to, Emitter &emit)
@@ -233,11 +233,8 @@ static Value applyCoerceRule(CoerceRule rule, const Value &v, TypeKind to, Emitt
     }
 }
 
-static void emitCoerceDiagnostic(Lowerer &lowerer,
-                                 il::support::SourceLoc loc,
-                                 TypeKind from,
-                                 TypeKind to,
-                                 CoerceRule rule)
+static void emitCoerceDiagnostic(
+    Lowerer &lowerer, il::support::SourceLoc loc, TypeKind from, TypeKind to, CoerceRule rule)
 {
     if (auto *diag = lowerer.diagnosticEmitter())
     {
@@ -247,11 +244,8 @@ static void emitCoerceDiagnostic(Lowerer &lowerer,
         message += il::core::kindToString(to);
         message += " using rule ";
         message += ruleName(rule);
-        diag->emit(il::support::Severity::Error,
-                   kDiagBuiltinCoerceFailed,
-                   loc,
-                   0,
-                   std::move(message));
+        diag->emit(
+            il::support::Severity::Error, kDiagBuiltinCoerceFailed, loc, 0, std::move(message));
     }
 }
 

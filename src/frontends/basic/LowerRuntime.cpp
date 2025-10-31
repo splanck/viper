@@ -136,7 +136,8 @@ void RuntimeHelperTracker::declareRequiredRuntime(build::IRBuilder &b, bool boun
 {
     std::unordered_set<std::string> declared;
 
-    auto tryDeclare = [&](const il::runtime::RuntimeDescriptor &d) {
+    auto tryDeclare = [&](const il::runtime::RuntimeDescriptor &d)
+    {
         if (declared.insert(std::string(d.name)).second)
         {
             declareRuntimeExtern(b, d);

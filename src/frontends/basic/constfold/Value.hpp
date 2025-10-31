@@ -22,8 +22,8 @@
 
 #include "frontends/basic/constfold/Dispatch.hpp"
 
-#include <charconv>
 #include <cctype>
+#include <charconv>
 #include <cmath>
 #include <limits>
 #include <string>
@@ -48,7 +48,8 @@ inline ParsedNumber parseNumericLiteral(std::string_view sv) noexcept
 {
     ParsedNumber result{};
 
-    auto trim = [](std::string_view &view) noexcept {
+    auto trim = [](std::string_view &view) noexcept
+    {
         auto is_space = [](unsigned char ch) { return std::isspace(ch) != 0; };
         while (!view.empty() && is_space(static_cast<unsigned char>(view.front())))
             view.remove_prefix(1);
@@ -98,9 +99,11 @@ inline ParsedNumber parseNumericLiteral(std::string_view sv) noexcept
 
     const bool tryFloatFirst = forceFloat || (!forceInt && hasFloatMarkers);
 
-    auto parseFloat = [&](std::string_view view) -> bool {
+    auto parseFloat = [&](std::string_view view) -> bool
+    {
         double value = 0.0;
-        auto fc = std::from_chars(view.data(), view.data() + view.size(), value, std::chars_format::general);
+        auto fc = std::from_chars(
+            view.data(), view.data() + view.size(), value, std::chars_format::general);
         if (fc.ec == std::errc{} && fc.ptr == view.data() + view.size())
         {
             if (!std::isfinite(value))
@@ -116,7 +119,7 @@ inline ParsedNumber parseNumericLiteral(std::string_view sv) noexcept
             else
             {
                 result.i = value < 0 ? std::numeric_limits<long long>::min()
-                                      : std::numeric_limits<long long>::max();
+                                     : std::numeric_limits<long long>::max();
             }
             return true;
         }
@@ -237,4 +240,3 @@ struct Value
 }
 
 } // namespace il::frontends::basic::constfold
-

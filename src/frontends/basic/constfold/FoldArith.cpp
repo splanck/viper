@@ -37,8 +37,7 @@ namespace
 {
 namespace intops = il::common::integer;
 
-constexpr std::size_t kOpCount =
-    static_cast<std::size_t>(AST::BinaryExpr::Op::LogicalOr) + 1;
+constexpr std::size_t kOpCount = static_cast<std::size_t>(AST::BinaryExpr::Op::LogicalOr) + 1;
 
 using BinOpFn = Value (*)(Value, Value);
 
@@ -67,8 +66,8 @@ using BinOpFn = Value (*)(Value, Value);
 [[nodiscard]] long long wrap_add(long long lhs, long long rhs) noexcept
 {
     const auto promoted = intops::promote_binary(lhs, rhs);
-    const auto sum = static_cast<std::uint64_t>(promoted.lhs) +
-                     static_cast<std::uint64_t>(promoted.rhs);
+    const auto sum =
+        static_cast<std::uint64_t>(promoted.lhs) + static_cast<std::uint64_t>(promoted.rhs);
     return static_cast<long long>(sum);
 }
 
@@ -82,8 +81,8 @@ using BinOpFn = Value (*)(Value, Value);
 [[nodiscard]] long long wrap_sub(long long lhs, long long rhs) noexcept
 {
     const auto promoted = intops::promote_binary(lhs, rhs);
-    const auto diff = static_cast<std::uint64_t>(promoted.lhs) -
-                      static_cast<std::uint64_t>(promoted.rhs);
+    const auto diff =
+        static_cast<std::uint64_t>(promoted.lhs) - static_cast<std::uint64_t>(promoted.rhs);
     return static_cast<long long>(diff);
 }
 
@@ -97,8 +96,8 @@ using BinOpFn = Value (*)(Value, Value);
 [[nodiscard]] long long wrap_mul(long long lhs, long long rhs) noexcept
 {
     const auto promoted = intops::promote_binary(lhs, rhs);
-    const auto prod = static_cast<std::uint64_t>(promoted.lhs) *
-                      static_cast<std::uint64_t>(promoted.rhs);
+    const auto prod =
+        static_cast<std::uint64_t>(promoted.lhs) * static_cast<std::uint64_t>(promoted.rhs);
     return static_cast<long long>(prod);
 }
 
@@ -346,9 +345,7 @@ AST::ExprPtr fold_unary_arith(AST::UnaryExpr::Op op, const AST::Expr &value)
     return out;
 }
 
-std::optional<Constant> fold_arith(AST::BinaryExpr::Op op,
-                                   const Constant &lhs,
-                                   const Constant &rhs)
+std::optional<Constant> fold_arith(AST::BinaryExpr::Op op, const Constant &lhs, const Constant &rhs)
 {
     auto lhsValue = makeValueFromConstant(lhs);
     auto rhsValue = makeValueFromConstant(rhs);
@@ -366,4 +363,3 @@ std::optional<Constant> fold_arith(AST::BinaryExpr::Op op,
 }
 
 } // namespace il::frontends::basic::constfold
-

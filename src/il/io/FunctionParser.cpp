@@ -493,18 +493,18 @@ std::string_view describeTokenKind(TokenKind token)
 {
     switch (token)
     {
-    case TokenKind::CloseBrace:
-        return "'}'";
-    case TokenKind::BlockLabel:
-        return "block label";
-    case TokenKind::LocDirective:
-        return "'.loc' directive";
-    case TokenKind::Instruction:
-        return "instruction";
-    case TokenKind::End:
-        return "end of function";
-    case TokenKind::Skip:
-        break;
+        case TokenKind::CloseBrace:
+            return "'}'";
+        case TokenKind::BlockLabel:
+            return "block label";
+        case TokenKind::LocDirective:
+            return "'.loc' directive";
+        case TokenKind::Instruction:
+            return "instruction";
+        case TokenKind::End:
+            return "end of function";
+        case TokenKind::Skip:
+            break;
     }
     return "token";
 }
@@ -515,16 +515,16 @@ std::string describeOffendingToken(const parser_impl::ParserState &state)
         return "";
     switch (state.ts->kind())
     {
-    case TokenKind::CloseBrace:
-        return "}";
-    case TokenKind::BlockLabel:
-    case TokenKind::LocDirective:
-    case TokenKind::Instruction:
-        return state.ts->line();
-    case TokenKind::End:
-        return "<eof>";
-    case TokenKind::Skip:
-        break;
+        case TokenKind::CloseBrace:
+            return "}";
+        case TokenKind::BlockLabel:
+        case TokenKind::LocDirective:
+        case TokenKind::Instruction:
+            return state.ts->line();
+        case TokenKind::End:
+            return "<eof>";
+        case TokenKind::Skip:
+            break;
     }
     return "";
 }
@@ -646,6 +646,7 @@ Expected<void> parseGenericInstr(parser_impl::ParserState &state, std::string_vi
 Expected<void> parseInstr(parser_impl::ParserState &state)
 {
     using Handler = Expected<void> (*)(parser_impl::ParserState &, std::string_view);
+
     struct Dispatch
     {
         std::string_view opcode;
