@@ -163,7 +163,19 @@ namespace detail
     const std::uint64_t truncated = static_cast<std::uint64_t>(value) & mask;
     if (policy == OverflowPolicy::Wrap)
     {
-        return static_cast<Value>(truncated);
+        if (bits <= 0)
+        {
+            return 0;
+        }
+
+        const std::uint64_t signBit = std::uint64_t{1} << static_cast<unsigned>(bits - 1);
+        if ((truncated & signBit) == 0)
+        {
+            return static_cast<Value>(truncated);
+        }
+
+        const std::uint64_t extend = detail::mask_for(64) ^ mask;
+        return static_cast<Value>(truncated | extend);
     }
 
     const Value min = detail::min_for(bits);

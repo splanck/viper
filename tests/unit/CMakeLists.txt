@@ -23,6 +23,12 @@ if (NOT TARGET test_basic_terminal_scan)
     viper_add_ctest(test_basic_terminal_scan test_basic_terminal_scan)
 endif ()
 
+if (NOT TARGET test_integer_helpers)
+    viper_add_test(test_integer_helpers ${VIPER_TESTS_DIR}/unit/test_integer_helpers.cpp)
+    target_link_libraries(test_integer_helpers PRIVATE ${VIPER_UNIT_SUPPORT_LIBS})
+    viper_add_ctest(test_integer_helpers test_integer_helpers)
+endif ()
+
 if (NOT TARGET test_codegen_x86_64_passes)
     viper_add_test(
             test_codegen_x86_64_passes
