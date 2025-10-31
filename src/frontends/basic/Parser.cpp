@@ -21,6 +21,7 @@
 
 #include "frontends/basic/Parser.hpp"
 #include <array>
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <utility>
@@ -161,6 +162,49 @@ Parser::StatementParserRegistry Parser::buildStatementRegistry()
     registerIoParsers(registry);
     registerOopParsers(registry);
     return registry;
+}
+
+/// @brief Parse an optional BASIC type annotation for function return values.
+///
+/// @details Consumes recognised BASIC type names used in FUNCTION headers after an
+///          `AS` clause.  The helper mirrors the accepted spellings from DIM so
+///          semantic analysis observes consistent defaults.  When no known type is
+///          present the current token remains untouched and callers see
+///          BasicType::Unknown, allowing them to diagnose the omission if
+///          necessary.
+///
+/// @return Parsed BASIC return type or @ref BasicType::Unknown when unrecognised.
+BasicType Parser::parseBasicType()
+{
+    const auto toUpper = [](std::string_view text) {
+        std::string result;
+        result.reserve(text.size());
+        for (char c : text)
+            result.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(c))));
+        return result;
+    };
+
+    const Token &tok = peek();
+    if (tok.kind != TokenKind::Identifier)
+        return BasicType::Unknown;
+
+    std::string upper = toUpper(tok.lexeme);
+    if (upper == "INTEGER" || upper == "LONG" || upper == "INT")
+    {
+        consume();
+        return BasicType::Int;
+    }
+    if (upper == "DOUBLE" || upper == "FLOAT")
+    {
+        consume();
+        return BasicType::Float;
+    }
+    if (upper == "STRING")
+    {
+        consume();
+        return BasicType::String;
+    }
+    return BasicType::Unknown;
 }
 
 /// @brief Access the singleton statement parser registry.
