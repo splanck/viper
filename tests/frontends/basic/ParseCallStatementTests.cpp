@@ -31,12 +31,11 @@ int main()
     assert(program->main.size() == 2);
     auto *callStmt = dynamic_cast<CallStmt *>(program->main[0].get());
     assert(callStmt);
-    assert(callStmt->call);
-    auto *callExpr = dynamic_cast<CallExpr *>(callStmt->call.get());
-    assert(callExpr);
-    assert(callExpr->callee == "GREET");
-    assert(callExpr->args.size() == 1);
-    auto *arg0 = dynamic_cast<StringExpr *>(callExpr->args[0].get());
+    auto *call = dynamic_cast<CallExpr *>(callStmt->call.get());
+    assert(call);
+    assert(call->callee == "GREET");
+    assert(call->args.size() == 1);
+    auto *arg0 = dynamic_cast<StringExpr *>(call->args[0].get());
     assert(arg0);
     assert(arg0->value == "Alice");
 
