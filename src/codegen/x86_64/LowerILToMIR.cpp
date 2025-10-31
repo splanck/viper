@@ -1,16 +1,21 @@
 //===----------------------------------------------------------------------===//
 //
 // Part of the Viper project, under the MIT License.
-// See LICENSE for license information.
+// See LICENSE in the project root for license information.
 //
 //===----------------------------------------------------------------------===//
 //
-// Bridges the temporary IL structures used by the bring-up harness into the
-// provisional Machine IR form consumed by the x86-64 backend.  The adapter is
-// now intentionally slim: it walks blocks, consults the rule registry, and lets
-// each rule append instructions through MIRBuilder.  State management and
-// literal materialisation helpers continue to live here so rules can remain
-// focused on opcode semantics.
+// File: src/codegen/x86_64/LowerILToMIR.cpp
+// Purpose: Bridge IL produced by the compiler front-end into Machine IR consumed
+//          by the x86-64 backend using declarative lowering rules.
+// Key invariants: Lowering must preserve SSA identities, emit deterministic
+//                 basic-block ordering, and leave the adapter's internal caches
+//                 consistent for subsequent functions.  Helper routines manage
+//                 literal materialisation and virtual-register allocation so rule
+//                 implementations remain stateless.
+// Ownership/Lifetime: The adapter owns transient lowering state per function
+//                     and writes into caller-owned Machine IR structures.
+// Links: docs/architecture.md#codegen, src/codegen/x86_64/LowerILToMIR.hpp
 //
 //===----------------------------------------------------------------------===//
 
@@ -37,11 +42,19 @@ namespace viper::codegen::x64
 
 namespace
 {
+/// @brief Produce a shallow copy of an operand for reuse in new instructions.
+/// @param operand Operand emitted by a lowering rule.
+/// @return Copy suitable for appending to additional instructions.
 [[nodiscard]] Operand cloneOperand(const Operand &operand)
 {
     return operand;
 }
 
+/// @brief Emit a debug assertion when no lowering rule matches an instruction.
+/// @details In release builds the function is a no-op so the adapter can
+///          continue, but debug builds assert to highlight missing rule
+///          coverage.
+/// @param instr Instruction that failed to match any rule.
 void reportNoRule(const ILInstr &instr)
 {
     (void)instr;
@@ -56,89 +69,130 @@ void reportNoRule(const ILInstr &instr)
 // MIRBuilder façade
 // -----------------------------------------------------------------------------
 
+/// @brief Construct a builder facade that emits into a specific MIR block.
+/// @param lower Adapter that provides lowering utilities and state.
+/// @param block Machine IR block that will receive emitted instructions.
 MIRBuilder::MIRBuilder(LowerILToMIR &lower, MBasicBlock &block) noexcept
     : lower_{&lower}, block_{&block}
 {
 }
 
+/// @brief Access the mutable machine block being populated.
+/// @return Reference to the target machine block.
 MBasicBlock &MIRBuilder::block() noexcept
 {
     assert(block_ && "MIRBuilder missing block");
     return *block_;
 }
 
+/// @brief Access the machine block being populated (const view).
+/// @return Const reference to the target machine block.
 const MBasicBlock &MIRBuilder::block() const noexcept
 {
     assert(block_ && "MIRBuilder missing block");
     return *block_;
 }
 
+/// @brief Access the owning adapter for helper services.
+/// @return Reference to the lowering adapter.
 LowerILToMIR &MIRBuilder::lower() noexcept
 {
     assert(lower_ && "MIRBuilder missing adapter");
     return *lower_;
 }
 
+/// @brief Access the owning adapter (const view).
+/// @return Const reference to the lowering adapter.
 const LowerILToMIR &MIRBuilder::lower() const noexcept
 {
     assert(lower_ && "MIRBuilder missing adapter");
     return *lower_;
 }
 
+/// @brief Retrieve target information describing registers and calling
+///        conventions.
+/// @return Const reference to the target description.
 const TargetInfo &MIRBuilder::target() const noexcept
 {
     assert(lower_ && lower_->target_ && "Target info unavailable");
     return *lower_->target_;
 }
 
+/// @brief Access the read-only data pool used to materialise literals.
+/// @return Reference to the shared rodata pool.
 AsmEmitter::RoDataPool &MIRBuilder::roData() const noexcept
 {
     assert(lower_ && lower_->roDataPool_ && "RoData pool unavailable");
     return *lower_->roDataPool_;
 }
 
+/// @brief Map an IL value kind to a machine register class.
+/// @param kind IL value classification (integer, float, pointer, etc.).
+/// @return Register class that should represent the value.
 RegClass MIRBuilder::regClassFor(ILValue::Kind kind) const noexcept
 {
     assert(lower_);
     return LowerILToMIR::regClassFor(kind);
 }
 
+/// @brief Ensure an SSA identifier has a materialised virtual register.
+/// @details Delegates to the adapter to allocate or reuse the register mapping.
+/// @param id SSA identifier from the IL.
+/// @param kind IL value kind associated with the identifier.
+/// @return Virtual register assigned to the identifier.
 VReg MIRBuilder::ensureVReg(int id, ILValue::Kind kind)
 {
     assert(lower_);
     return lower_->ensureVReg(id, kind);
 }
 
+/// @brief Allocate a fresh temporary virtual register.
+/// @param cls Register class to assign to the new temporary.
+/// @return Newly allocated virtual register.
 VReg MIRBuilder::makeTempVReg(RegClass cls)
 {
     assert(lower_);
     return lower_->makeTempVReg(cls);
 }
 
+/// @brief Convert an IL value into a machine operand, materialising literals as needed.
+/// @param value IL value to translate.
+/// @param cls Preferred register class when a temporary must be created.
+/// @return Machine operand referencing the value.
 Operand MIRBuilder::makeOperandForValue(const ILValue &value, RegClass cls)
 {
     assert(lower_ && block_);
     return lower_->makeOperandForValue(*block_, value, cls);
 }
 
+/// @brief Translate a label IL value into a machine operand.
+/// @param value IL label value.
+/// @return Machine operand referencing the label.
 Operand MIRBuilder::makeLabelOperand(const ILValue &value) const
 {
     assert(lower_);
     return lower_->makeLabelOperand(value);
 }
 
+/// @brief Determine whether an IL value encodes a literal immediate.
+/// @param value IL value to inspect.
+/// @return True when the value should be emitted as an immediate operand.
 bool MIRBuilder::isImmediate(const ILValue &value) const noexcept
 {
     assert(lower_);
     return lower_->isImmediate(value);
 }
 
+/// @brief Append a machine instruction to the current block.
+/// @param instr Machine instruction to insert.
 void MIRBuilder::append(MInstr instr)
 {
     assert(block_);
     block_->append(std::move(instr));
 }
 
+/// @brief Record a call-lowering plan produced by a rule.
+/// @param plan Plan describing register shuffles and call conventions.
 void MIRBuilder::recordCallPlan(CallLoweringPlan plan)
 {
     assert(lower_);
@@ -149,16 +203,24 @@ void MIRBuilder::recordCallPlan(CallLoweringPlan plan)
 // Adapter core
 // -----------------------------------------------------------------------------
 
+/// @brief Construct the lowering adapter with target configuration and rodata pool.
+/// @param target Target description including register assignment details.
+/// @param roData Read-only data pool used for literal materialisation.
 LowerILToMIR::LowerILToMIR(const TargetInfo &target, AsmEmitter::RoDataPool &roData) noexcept
     : target_{&target}, roDataPool_{&roData}
 {
 }
 
+/// @brief Expose the call-lowering plans accumulated during lowering.
+/// @return Reference to the vector of plans emitted by call rules.
 const std::vector<CallLoweringPlan> &LowerILToMIR::callPlans() const noexcept
 {
     return callPlans_;
 }
 
+/// @brief Reset per-function caches before lowering a new function.
+/// @details Clears virtual register assignments, block metadata, and pending
+///          call plans so state from the previous function does not leak.
 void LowerILToMIR::resetFunctionState()
 {
     nextVReg_ = 1U;
@@ -167,6 +229,9 @@ void LowerILToMIR::resetFunctionState()
     callPlans_.clear();
 }
 
+/// @brief Map an IL value kind to a machine register class for the target.
+/// @param kind IL value classification.
+/// @return Register class capable of representing the value.
 RegClass LowerILToMIR::regClassFor(ILValue::Kind kind) noexcept
 {
     switch (kind)
@@ -184,6 +249,12 @@ RegClass LowerILToMIR::regClassFor(ILValue::Kind kind) noexcept
     return RegClass::GPR;
 }
 
+/// @brief Ensure an SSA identifier has an assigned virtual register.
+/// @details Allocates a new register when necessary and verifies that repeated
+///          requests agree on the register class.
+/// @param id SSA identifier number.
+/// @param kind IL value kind associated with @p id.
+/// @return Virtual register descriptor for the identifier.
 VReg LowerILToMIR::ensureVReg(int id, ILValue::Kind kind)
 {
     assert(id >= 0 && "SSA value without identifier");
@@ -198,22 +269,38 @@ VReg LowerILToMIR::ensureVReg(int id, ILValue::Kind kind)
     return vreg;
 }
 
+/// @brief Allocate a fresh temporary virtual register owned by the adapter.
+/// @param cls Register class assigned to the temporary.
+/// @return Newly allocated virtual register descriptor.
 VReg LowerILToMIR::makeTempVReg(RegClass cls)
 {
     return VReg{nextVReg_++, cls};
 }
 
+/// @brief Determine whether an IL value should be emitted as an immediate.
+/// @param value IL value candidate.
+/// @return True when the value encodes a literal rather than an SSA id.
 bool LowerILToMIR::isImmediate(const ILValue &value) const noexcept
 {
     return value.id < 0;
 }
 
+/// @brief Translate an IL label into a machine operand.
+/// @param value Label-valued IL operand.
+/// @return Machine operand referencing the label target.
 Operand LowerILToMIR::makeLabelOperand(const ILValue &value) const
 {
     assert(value.kind == ILValue::Kind::LABEL && "label operand expected");
     return x64::makeLabelOperand(value.label);
 }
 
+/// @brief Convert an IL value into an operand for the current machine block.
+/// @details Handles literals by materialising loads into the provided block and
+///          delegates register mapping for SSA identifiers.
+/// @param block Machine block receiving any helper instructions.
+/// @param value IL value to translate.
+/// @param cls Preferred register class when literals must be materialised.
+/// @return Machine operand representing the value.
 Operand LowerILToMIR::makeOperandForValue(MBasicBlock &block, const ILValue &value, RegClass cls)
 {
     if (value.kind == ILValue::Kind::LABEL)
@@ -302,6 +389,12 @@ Operand LowerILToMIR::makeOperandForValue(MBasicBlock &block, const ILValue &val
     return makeImmOperand(0);
 }
 
+/// @brief Emit PX_COPY instructions to satisfy block parameter semantics.
+/// @details Inserts copies on outgoing edges so successor block parameters have
+///          the expected values.  Operates after each block's instructions are
+///          lowered to ensure value mappings exist.
+/// @param source IL block providing edge metadata.
+/// @param block Machine block receiving the copies.
 void LowerILToMIR::emitEdgeCopies(const ILBlock &source, MBasicBlock &block)
 {
     for (const auto &edge : source.terminatorEdges)
@@ -336,6 +429,11 @@ void LowerILToMIR::emitEdgeCopies(const ILBlock &source, MBasicBlock &block)
     }
 }
 
+/// @brief Lower an IL function into machine IR using declarative rules.
+/// @details Resets per-function state, creates machine blocks, invokes the rule
+///          dispatcher for every instruction, and emits block-parameter copies.
+/// @param func IL function to lower.
+/// @return Machine function containing the lowered instructions.
 MFunction LowerILToMIR::lower(const ILFunction &func)
 {
     resetFunctionState();
