@@ -17,6 +17,13 @@
 #include <array>
 #include <sstream>
 
+/// @file
+/// @brief Implements the expression visitor used by the BASIC AST printer.
+/// @details The visitor translates strongly typed AST nodes into formatted text
+///          written to the printer stream supplied by @ref AstPrinter.  Each
+///          visit method mirrors the surface syntax while remaining explicit
+///          enough for diagnostics and golden tests.
+
 namespace il::frontends::basic
 {
 
@@ -28,37 +35,41 @@ namespace
 struct AstPrinter::ExprPrinter final : ExprVisitor
 {
     /// @brief Construct the visitor with a destination printer.
-    ///
-    /// The style parameter is currently unused but preserved so expression and
-    /// statement visitors share a consistent signature.  Future formatting
-    /// tweaks can opt into style-specific behaviour without changing call sites.
+    /// @details Stores a reference to the shared printer so every visit method
+    ///          can stream text directly.  The unused @p style argument keeps the
+    ///          constructor signature aligned with the statement visitor and
+    ///          preserves a hook for future formatting policies.
     ExprPrinter(Printer &printer, [[maybe_unused]] PrintStyle &style) : printer(printer) {}
 
     /// @brief Dispatch expression printing through the visitor interface.
-    ///
-    /// The helper simply delegates to @ref Expr::accept, enabling virtual
-    /// dispatch across the node hierarchy.
+    /// @details Delegates to @ref Expr::accept so the dynamic node type selects
+    ///          the appropriate visit overload.
     void print(const Expr &expr)
     {
         expr.accept(*this);
     }
 
     /// @brief Fallback for unhandled expression types; triggers a build-time failure.
+    /// @details The static assertion fires during compilation if a new AST node
+    ///          lacks a visit overload, ensuring dumps stay in sync with the
+    ///          language.
     template <typename NodeT> void visit([[maybe_unused]] const NodeT &)
     {
         static_assert(sizeof(NodeT) == 0, "Unhandled expression node in AstPrinter");
     }
 
     /// @brief Print an integer literal expression.
+    /// @details Emits the literal digits exactly as stored so diagnostics mirror
+    ///          the user's source text.
     void visit(const IntExpr &expr) override
     {
         printer.os << expr.value;
     }
 
     /// @brief Print a floating-point literal expression preserving precision.
-    ///
-    /// The value is streamed through a string stream so the default formatting
-    /// rules apply while avoiding locale-sensitive behaviour.
+    /// @details Streams through @c std::ostringstream to leverage standard
+    ///          formatting rules, including scientific notation when needed while
+    ///          remaining locale agnostic.
     void visit(const FloatExpr &expr) override
     {
         std::ostringstream os;
@@ -67,27 +78,32 @@ struct AstPrinter::ExprPrinter final : ExprVisitor
     }
 
     /// @brief Print a string literal with surrounding quotes.
-    ///
-    /// Characters are written verbatim because the parser already normalises
-    /// escape sequences.
+    /// @details Writes the lexeme verbatim between double quotes.  Escapes are
+    ///          already normalised by the parser.
     void visit(const StringExpr &expr) override
     {
         printer.os << '"' << expr.value << '"';
     }
 
     /// @brief Print a boolean literal as TRUE/FALSE tokens.
+    /// @details BASIC traditionally surfaces uppercase TRUE/FALSE so the dump
+    ///          follows suit.
     void visit(const BoolExpr &expr) override
     {
         printer.os << (expr.value ? "TRUE" : "FALSE");
     }
 
     /// @brief Print a variable reference by name.
+    /// @details Emits the identifier without decoration so chained expressions
+    ///          remain compact.
     void visit(const VarExpr &expr) override
     {
         printer.os << expr.name;
     }
 
     /// @brief Print an array element access with its index expression.
+    /// @details Formats the reference as ``name(index)`` by recursively printing
+    ///          the index expression inside parentheses.
     void visit(const ArrayExpr &expr) override
     {
         printer.os << expr.name << '(';
@@ -96,9 +112,8 @@ struct AstPrinter::ExprPrinter final : ExprVisitor
     }
 
     /// @brief Print a unary expression with explicit operator tokens.
-    ///
-    /// Prefix notation avoids ambiguity with chained unary operators and keeps
-    /// the textual output compact.
+    /// @details Uses prefix notation (e.g., ``(NOT expr)``) to avoid ambiguity
+    ///          when multiple unary operators are chained.
     void visit(const UnaryExpr &expr) override
     {
         printer.os << '(';
@@ -119,9 +134,9 @@ struct AstPrinter::ExprPrinter final : ExprVisitor
     }
 
     /// @brief Print a binary expression using prefix notation.
-    ///
-    /// The operator table mirrors the enum order so the visitor remains data
-    /// driven; prefix notation ensures evaluation order is explicit.
+    /// @details Uses a static operator table aligned with the enum to keep the
+    ///          implementation data driven.  Prefix notation (``(+ lhs rhs)``)
+    ///          makes evaluation order explicit.
     void visit(const BinaryExpr &expr) override
     {
         static constexpr std::array<const char *, 17> ops = {"+",
@@ -149,9 +164,8 @@ struct AstPrinter::ExprPrinter final : ExprVisitor
     }
 
     /// @brief Print a builtin call including the builtin mnemonic and arguments.
-    ///
-    /// Builtin metadata supplies the canonical name used across diagnostics and
-    /// code generation.
+    /// @details Prepends the canonical builtin name obtained from
+    ///          @ref getBuiltinInfo and then prints each argument recursively.
     void visit(const BuiltinCallExpr &expr) override
     {
         printer.os << '(' << getBuiltinInfo(expr.builtin).name;
@@ -164,18 +178,24 @@ struct AstPrinter::ExprPrinter final : ExprVisitor
     }
 
     /// @brief Print an LBOUND expression with its array operand.
+    /// @details Emits ``(LBOUND name)`` to match the surface syntax while making
+    ///          the operand explicit.
     void visit(const LBoundExpr &expr) override
     {
         printer.os << "(LBOUND " << expr.name << ')';
     }
 
     /// @brief Print a UBOUND expression with its array operand.
+    /// @details Mirrors @ref visit(const LBoundExpr &) but uses the ``UBOUND``
+    ///          mnemonic.
     void visit(const UBoundExpr &expr) override
     {
         printer.os << "(UBOUND " << expr.name << ')';
     }
 
     /// @brief Print a user-defined call expression with its argument list.
+    /// @details Prints ``(callee arg1 arg2 ...)`` so nested calls remain
+    ///          unambiguous and easy to diff.
     void visit(const CallExpr &expr) override
     {
         printer.os << '(' << expr.callee;
@@ -188,6 +208,8 @@ struct AstPrinter::ExprPrinter final : ExprVisitor
     }
 
     /// @brief Print an object construction expression.
+    /// @details Formats as ``(NEW Class arg1 arg2 ...)`` to highlight both the
+    ///          constructor target and arguments.
     void visit(const NewExpr &expr) override
     {
         printer.os << "(NEW " << expr.className;
@@ -200,12 +222,16 @@ struct AstPrinter::ExprPrinter final : ExprVisitor
     }
 
     /// @brief Print the ME receiver expression.
+    /// @details Emits the ``ME`` keyword verbatim, matching BASIC's implicit
+    ///          receiver semantics.
     void visit(const MeExpr &) override
     {
         printer.os << "ME";
     }
 
     /// @brief Print a member access expression as base.member.
+    /// @details Encloses the access in parentheses to separate it from adjacent
+    ///          syntax when nested inside larger expressions.
     void visit(const MemberAccessExpr &expr) override
     {
         printer.os << '(';
@@ -214,6 +240,8 @@ struct AstPrinter::ExprPrinter final : ExprVisitor
     }
 
     /// @brief Print a method invocation on an object instance.
+    /// @details Uses ``(base.method arg1 ...)`` notation so both the receiver and
+    ///          argument order remain explicit.
     void visit(const MethodCallExpr &expr) override
     {
         printer.os << '(';
@@ -232,6 +260,8 @@ struct AstPrinter::ExprPrinter final : ExprVisitor
 };
 
 /// @brief Entry point used by AstPrinter to render an expression node.
+/// @details Instantiates an @ref ExprPrinter bound to the caller-supplied
+///          printer and forwards the expression for visitation.
 void AstPrinter::printExpr(const Expr &expr, Printer &printer, PrintStyle &style)
 {
     ExprPrinter exprPrinter{printer, style};
