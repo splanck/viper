@@ -37,6 +37,17 @@ default(%v2:i32, %unused2:i32):
   ret %v2
 }
 )";
+
+const char *kSwitchProgramWithStringArgs = R"(il 0.1
+func @main(%x:i32) -> void {
+entry(%x:i32):
+  switch.i32 %x, ^default("default)string"), 0 -> ^case0("case)value")
+case0(%text:str):
+  ret
+default(%text:str):
+  ret
+}
+)";
 }
 
 int main()
@@ -133,6 +144,28 @@ int main()
         assert(blockIt != fn.blocks.end());
         assert(blockIt->params.size() == 1);
     }
+
+    core::Module stringModule;
+    std::istringstream stringInput(kSwitchProgramWithStringArgs);
+    auto stringParsed = il::api::v2::parse_text_expected(stringInput, stringModule);
+    assert(stringParsed);
+    assert(stringModule.functions.size() == 1);
+
+    const core::Function &stringFn = stringModule.functions[0];
+    assert(stringFn.blocks.size() == 3);
+
+    const core::BasicBlock &stringEntry = stringFn.blocks[0];
+    assert(!stringEntry.instructions.empty());
+    const core::Instr &stringSwitch = stringEntry.instructions.back();
+    assert(stringSwitch.op == core::Opcode::SwitchI32);
+    assert(stringSwitch.labels.size() == 2);
+    assert(stringSwitch.brArgs.size() == 2);
+    assert(stringSwitch.brArgs[0].size() == 1);
+    assert(stringSwitch.brArgs[1].size() == 1);
+    assert(stringSwitch.brArgs[0][0].kind == core::Value::Kind::ConstStr);
+    assert(stringSwitch.brArgs[1][0].kind == core::Value::Kind::ConstStr);
+    assert(stringSwitch.brArgs[0][0].str == "default)string");
+    assert(stringSwitch.brArgs[1][0].str == "case)value");
 
     return 0;
 }
