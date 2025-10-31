@@ -9,10 +9,13 @@
 // Purpose: Register expected runtime helper signatures for string processing
 //          and textual conversions used by debug validation.
 // Key invariants: Entries cover helpers that operate on runtime string values
-//                 or provide textual conversions.
+//                 or provide textual conversions.  The table mixes pure string
+//                 manipulations with bridge routines that convert between
+//                 textual and numeric representations; both categories are kept
+//                 together because they share reference-counted string handles.
 // Ownership/Lifetime: Registered metadata persists via the shared registry for
 //                     the life of the process.
-// Links: docs/il-guide.md#reference
+// Links: docs/il-guide.md#reference, docs/architecture.md#runtime-signatures
 //
 //===----------------------------------------------------------------------===//
 
@@ -34,16 +37,20 @@ using Kind = SigParam::Kind;
 }
 
 /// @brief Publish expected runtime signature shapes for string-related helpers.
-/// @details Populates the signature registry with all string-processing runtime
-///          functions.  The procedure runs through a curated list of helpers and
-///          registers each via @ref register_signature / @ref make_signature,
-///          ensuring the table covers:
-///          - Pure string utilities (length queries, slicing, trimming).
-///          - Converters between strings and numeric types.
-///          - Memory-management hooks that retain or release runtime strings.
-///          Consolidating the registrations in one function keeps the mapping
-///          between runtime symbol names and their parameter/return contracts
-///          easy to audit.
+/// @details The registration sweep intentionally interleaves related helpers so
+///          maintainers can see at a glance how the runtime surface area maps to
+///          IL-visible contracts:
+///          - Fundamental allocation utilities produce or retain the reference-
+///            counted runtime string structure.
+///          - Substring and trimming helpers operate on positional arguments and
+///            return fresh handles.
+///          - Comparison and search routines expose boolean or index results
+///            while consuming string handles by pointer.
+///          - Conversions to and from numeric types handle parsing failures via
+///            out-parameters and status codes.
+///          Each call to @ref register_signature simply appends metadata to the
+///          global registry; consumers that snapshot the registry after
+///          registration obtain a process-wide view of the runtime string ABI.
 void register_string_signatures()
 {
     register_signature(make_signature("rt_len", {Kind::Ptr}, {Kind::I64}));
