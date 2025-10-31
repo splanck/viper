@@ -439,7 +439,20 @@ int executeRunIL(const RunILConfig &config, il::support::SourceManager &sm)
     {
         start = std::chrono::steady_clock::now();
     }
-    int rc = static_cast<int>(vm.run());
+    const int64_t runResult = vm.run();
+    int rc = 0;
+    const auto intMin = std::numeric_limits<int>::min();
+    const auto intMax = std::numeric_limits<int>::max();
+    if (runResult < intMin || runResult > intMax)
+    {
+        std::cerr << "ilc run: program return value " << runResult
+                  << " outside host int range [" << intMin << ", " << intMax << "]\n";
+        rc = 1;
+    }
+    else
+    {
+        rc = static_cast<int>(runResult);
+    }
     const auto trapMessage = vm.lastTrapMessage();
     if (trapMessage)
     {
