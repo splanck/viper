@@ -32,9 +32,11 @@ int main()
     auto *callStmt = dynamic_cast<CallStmt *>(program->main[0].get());
     assert(callStmt);
     assert(callStmt->call);
-    assert(callStmt->call->callee == "GREET");
-    assert(callStmt->call->args.size() == 1);
-    auto *arg0 = dynamic_cast<StringExpr *>(callStmt->call->args[0].get());
+    auto *callExpr = dynamic_cast<CallExpr *>(callStmt->call.get());
+    assert(callExpr);
+    assert(callExpr->callee == "GREET");
+    assert(callExpr->args.size() == 1);
+    auto *arg0 = dynamic_cast<StringExpr *>(callExpr->args[0].get());
     assert(arg0);
     assert(arg0->value == "Alice");
 
