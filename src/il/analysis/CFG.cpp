@@ -11,6 +11,14 @@
 //
 //===----------------------------------------------------------------------===//
 
+/// @file
+/// @brief Control-flow graph helpers for IL analyses.
+/// @details Provides cached successor/predecessor lookups plus traversal
+///          algorithms such as post-order, reverse post-order, and topological
+///          ordering.  The context precomputes per-function indices so
+///          subsequent passes can query the CFG without re-scanning blocks,
+///          improving both clarity and performance for analyses layered on top.
+
 #include "il/analysis/CFG.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
@@ -114,13 +122,15 @@ CFGContext::CFGContext(il::core::Module &module) : module(&module)
 
 /// @brief Gather successor blocks of @p B.
 ///
-/// Examines the terminator instruction of @p B and returns the blocks
-/// targeted by branch or conditional branch operations.
+/// @details Looks up @p B in the context's cache and returns the branch targets
+///          recorded during construction.  Because the cache only records
+///          terminator-imposed edges, the helper runs in constant time and
+///          avoids re-scanning instructions.  Missing entries simply yield an
+///          empty vector so callers can treat absent edges as "no successors".
 /// @param ctx Context providing access to the parent function mapping.
 /// @param B Block whose outgoing edges are requested.
-/// @return List of successor blocks. The list is empty if the current
-/// module is unset, @p B lacks a branch terminator, or the targets cannot
-/// be resolved.
+/// @return List of successor blocks; empty when the block was not indexed or
+///         does not terminate with a branch.
 /// @invariant A valid CFGContext describing @p B's parent function is provided.
 std::vector<il::core::Block *> successors(const CFGContext &ctx, const il::core::Block &B)
 {
@@ -132,8 +142,11 @@ std::vector<il::core::Block *> successors(const CFGContext &ctx, const il::core:
 
 /// @brief Gather predecessor blocks of @p B within its parent function.
 ///
-/// Scans every block in the owning function for branch or conditional branch terminators
-/// that reference @p B by label.
+/// @details Returns the cached predecessor list accumulated during context
+///          construction.  Each entry represents a block that branches to
+///          @p B.  Because duplicates are removed when caching, the result set is
+///          unique and suitable for algorithms that assume each predecessor is
+///          visited once.
 /// @param ctx Context providing block-to-function lookup.
 /// @param B Target block whose incoming edges are requested.
 /// @return List of predecessor blocks; empty if none are found.
@@ -148,9 +161,12 @@ std::vector<il::core::Block *> predecessors(const CFGContext &ctx, const il::cor
 
 /// @brief Compute a depth-first post-order traversal of @p F.
 ///
-/// Performs an iterative DFS starting from the entry block and records
-/// each block after all its successors have been visited. Only blocks
-/// reachable from the entry block are included.
+/// @details Implements an explicit-stack DFS that tracks which successor index
+///          is currently being explored.  A block is appended to the output only
+///          after all reachable successors have been processed, mirroring the
+///          behaviour of a recursive DFS without relying on recursion.  Blocks
+///          unreachable from the entry block never enter the stack, so they are
+///          naturally excluded from the ordering.
 /// @param ctx Context providing successor lookups.
 /// @param F Function whose blocks are traversed.
 /// @return Blocks in post-order; empty if @p F has no blocks.
@@ -199,9 +215,11 @@ std::vector<il::core::Block *> postOrder(const CFGContext &ctx, il::core::Functi
 
 /// @brief Compute reverse post-order (RPO) traversal of @p F.
 ///
-/// Generates the post-order sequence and then reverses it so that the
-/// entry block appears first. Only blocks reachable from the entry block
-/// are present.
+/// @details Calls @ref postOrder and reverses the resulting vector so the entry
+///          block appears first.  RPO is a common visitation order for forward
+///          data-flow analyses, and computing it by reversing post-order keeps
+///          the implementation compact while inheriting the reachability filter
+///          from the DFS.
 /// @param ctx Context providing successor lookups.
 /// @param F Function whose blocks are traversed.
 /// @return Blocks in reverse post-order; empty if @p F has no blocks.
@@ -214,9 +232,11 @@ std::vector<il::core::Block *> reversePostOrder(const CFGContext &ctx, il::core:
 
 /// @brief Compute a topological ordering of blocks in @p F.
 ///
-/// Uses Kahn's algorithm to order blocks such that all edges go from
-/// earlier to later blocks. If the graph contains a cycle, an empty
-/// vector is returned.
+/// @details Executes Kahn's algorithm: initialise in-degree counts for each
+///          block, seed a queue with zero in-degree blocks, and repeatedly
+///          remove blocks while decrementing the in-degree of successors.  If a
+///          cycle prevents the queue from consuming every block the function
+///          returns an empty vector to signal the failure.
 /// @param ctx Context providing predecessor/successor lookups.
 /// @param F Function whose blocks are ordered.
 /// @return Blocks in topological order or an empty list if @p F is empty
@@ -260,8 +280,10 @@ std::vector<il::core::Block *> topoOrder(const CFGContext &ctx, il::core::Functi
 
 /// @brief Determine whether the CFG of @p F contains a cycle.
 ///
-/// Delegates to topoOrder() and compares the number of blocks returned
-/// against the total blocks in @p F.
+/// @details Runs @ref topoOrder and compares the number of blocks produced
+///          against the function's block count.  Because @ref topoOrder returns
+///          an empty vector for cyclic graphs, equality indicates an acyclic CFG
+///          while a mismatch identifies at least one cycle.
 /// @param ctx Context providing successor and predecessor lookups.
 /// @param F Function whose CFG is inspected.
 /// @return `true` if @p F has no cycles or no blocks; otherwise `false`.

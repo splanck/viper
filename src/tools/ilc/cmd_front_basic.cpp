@@ -12,6 +12,14 @@
 //
 //===----------------------------------------------------------------------===//
 
+/// @file
+/// @brief Command-line entry point for the BASIC frontend of `ilc`.
+/// @details Documents the supporting helpers used to parse arguments, load
+///          BASIC source files, and either emit IL or execute the program
+///          through the virtual machine.  The implementation keeps side effects
+///          (like diagnostic printing and VM execution) in well-contained
+///          functions so higher-level tooling can reuse them.
+
 #include "cli.hpp"
 #include "frontends/basic/BasicCompiler.hpp"
 #include "il/api/expected_api.hpp"
@@ -52,6 +60,13 @@ struct LoadedSource
     uint32_t fileId{0};
 };
 
+/// @brief Identify diagnostics that reflect SourceManager identifier overflow.
+/// @details The BASIC driver must suppress SourceManager overflow diagnostics
+///          because the error itself already gets surfaced during file loading.
+///          This helper compares the diagnostic message against the canonical
+///          overflow text so callers can detect and elide the redundant report.
+/// @param diag Diagnostic produced by helper routines while loading sources.
+/// @return @c true when the diagnostic indicates SourceManager overflow.
 bool isSourceManagerOverflowDiag(const il::support::Diag &diag)
 {
     return diag.message == il::support::kSourceManagerFileIdOverflowMessage;
@@ -304,6 +319,13 @@ int cmdFrontBasicWithSourceManager(int argc, char **argv, il::support::SourceMan
     return runFrontBasic(config, source.value().buffer, sm);
 }
 
+/// @brief Top-level BASIC frontend command invoked by main().
+/// @details Instantiates a fresh @ref il::support::SourceManager so diagnostics
+///          can resolve file paths and then forwards to
+///          @ref cmdFrontBasicWithSourceManager for the actual workflow.
+///          Keeping this entry point tiny allows tests to exercise the driver
+///          with injected source managers while production builds use the
+///          default implementation.
 int cmdFrontBasic(int argc, char **argv)
 {
     SourceManager sm;
