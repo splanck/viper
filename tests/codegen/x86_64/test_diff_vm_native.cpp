@@ -33,7 +33,7 @@ struct CliScenario
     CodegenComparisonOptions options;
 };
 
-const std::array<CliScenario, 1> kScenarios = {{{"BranchPrint",
+const std::array<CliScenario, 2> kScenarios = {{{"BranchPrint",
                                                  {R"(il 0.1.2
 extern @rt_print_i64(i64) -> void
 extern @rt_print_f64(f64) -> void
@@ -55,6 +55,31 @@ exit:
 }
 )",
                                                   "branch_print.il",
+                                                  {},
+                                                  {}},
+                                                 {false, std::nullopt}},
+                                                {"BranchPrintSpecialChar",
+                                                 {R"(il 0.1.2
+extern @rt_print_i64(i64) -> void
+extern @rt_print_f64(f64) -> void
+
+func @main() -> i32 {
+entry:
+  %condition = scmp_gt 5, 3
+  cbr %condition, greater, smaller
+greater:
+  call @rt_print_i64(42)
+  call @rt_print_f64(3.5)
+  br exit
+smaller:
+  call @rt_print_i64(0)
+  call @rt_print_f64(0.0)
+  br exit
+exit:
+  ret 7
+}
+)",
+                                                  "branch_print$literal.il",
                                                   {},
                                                   {}},
                                                  {false, std::nullopt}}}};

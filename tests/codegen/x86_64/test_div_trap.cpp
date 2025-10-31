@@ -10,6 +10,7 @@
 // Links: src/codegen/x86_64/LowerDiv.cpp
 
 #include "codegen/x86_64/Backend.hpp"
+#include "tests/common/CodegenFixture.hpp"
 
 #include <chrono>
 #include <cstdlib>
@@ -185,28 +186,6 @@ struct DivTrapSequence
     return std::nullopt;
 }
 
-[[nodiscard]] std::string quoteForShell(const std::filesystem::path &path)
-{
-    const std::string raw = path.string();
-    std::string quoted;
-    quoted.reserve(raw.size() + 2);
-    quoted.push_back('"');
-    for (const char ch : raw)
-    {
-        if (ch == '"')
-        {
-            quoted.push_back('\\');
-            quoted.push_back('"');
-        }
-        else
-        {
-            quoted.push_back(ch);
-        }
-    }
-    quoted.push_back('"');
-    return quoted;
-}
-
 [[nodiscard]] int decodeExitCode(const int rawStatus)
 {
 #ifdef _WIN32
@@ -230,7 +209,7 @@ struct DivTrapSequence
 
 [[nodiscard]] std::string makeRunNativeCommand(const std::filesystem::path &ilPath)
 {
-    return std::string("ilc codegen x64 ") + quoteForShell(ilPath) + " -run-native";
+    return std::string("ilc codegen x64 ") + viper::tests::quoteForShell(ilPath) + " -run-native";
 }
 
 [[nodiscard]] bool writeTextFile(const std::filesystem::path &path, std::string_view contents)
