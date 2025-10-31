@@ -5,6 +5,7 @@
 // Links: docs/codemap.md
 #pragma once
 
+#include "frontends/basic/BasicTypes.hpp"
 #include "frontends/basic/ast/DeclNodes.hpp"
 #include "frontends/basic/ast/ExprNodes.hpp"
 #include "frontends/basic/ast/NodeFwd.hpp"
