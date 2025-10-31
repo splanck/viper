@@ -5,12 +5,15 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Implements the runtime I/O helpers that power BASIC's PRINT, INPUT, and file
-// channel operations.  The routines centralise newline conventions, trap
-// reporting, and channel bookkeeping so that both the interpreter and the
-// native runtime expose identical observable behaviour.  The functions in this
-// translation unit never assume ownership of caller supplied buffers and
-// propagate detailed error codes to mirror the historic BASIC semantics.
+// File: src/runtime/rt_io.c
+// Purpose: Provide the native implementations of BASIC's PRINT/INPUT/file I/O
+//          intrinsics, mirroring the VM's behaviour exactly.
+// Key invariants: Trap handling always routes through rt_trap/vm_trap, newline
+//                 conventions stay consistent with historical BASIC (CRLF
+//                 tolerant input, LF output), channel bookkeeping preserves EOF
+//                 semantics across seeks, and helpers never assume ownership of
+//                 caller-supplied buffers.
+// Links: docs/runtime/io.md
 //
 //===----------------------------------------------------------------------===//
 

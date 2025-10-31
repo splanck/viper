@@ -5,12 +5,16 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Implements the BASIC runtime string conversion helpers that bridge between
-// textual input and numeric values.  The routines here parse integer and double
-// literals, format numbers with deterministic semantics, and allocate new
-// runtime strings while honouring the shared heap ownership rules.  Centralising
-// these utilities keeps the VM and native runtime perfectly aligned when
-// handling INPUT statements and intrinsic string conversions.
+// File: src/runtime/rt_string_format.c
+// Purpose: Implement BASIC's numeric/string conversion pipeline for the native
+//          runtime.
+// Key invariants: Parsing honours the language's whitespace trimming and
+//                 overflow rules, formatting always produces locale-stable
+//                 output, and every allocation returns reference-counted runtime
+//                 strings that the caller must eventually release.  Errors are
+//                 surfaced through rt_trap so VM and native executions diverge
+//                 only at the diagnostic boundary.
+// Links: docs/runtime/strings.md#numeric-formatting
 //
 //===----------------------------------------------------------------------===//
 
@@ -37,10 +41,15 @@
 #include <string.h>
 
 /// @brief Parse a runtime string as a signed 64-bit integer.
-/// @details Trims ASCII whitespace, validates that the entire string represents
-///          a base-10 integer, and traps on overflow or invalid characters.
-///          Conversion uses @ref strtoll so platform locale rules around sign
-///          handling are respected.
+/// @details Performs a staged conversion so diagnostics match the historical
+///          BASIC runtime:
+///          1. Trim leading/trailing ASCII whitespace without touching locale
+///             state.
+///          2. Copy the trimmed slice into a scratch buffer allocated via
+///             @ref rt_alloc so the process works even with embedded NUL bytes
+///             (which trap later).
+///          3. Invoke @ref strtoll to honour sign handling and detect overflow.
+///          4. Trap with a BASIC-style message on overflow or trailing junk.
 /// @param s Runtime string containing the textual representation.
 /// @return Parsed 64-bit integer value.
 int64_t rt_to_int(rt_string s)
@@ -79,10 +88,11 @@ int64_t rt_to_int(rt_string s)
 }
 
 /// @brief Parse a runtime string into a double.
-/// @details Delegates to @ref rt_val_to_double so the conversion logic remains
-///          shared with other parts of the runtime.  The helper validates the
-///          input handle, traps on overflow, and reports generic parse failures
-///          using the BASIC diagnostic wording.
+/// @details Defers to the shared @ref rt_val_to_double helper so floating-point
+///          quirks (NaN tokens, INF spelling, banker rounding) remain
+///          centralised.  Overflow raises a dedicated BASIC diagnostic while any
+///          other parse failure becomes the generic "expected numeric value"
+///          trap, mirroring INPUT semantics.
 /// @param s Runtime string handle.
 /// @return Parsed floating-point value.
 double rt_to_double(rt_string s)
@@ -101,9 +111,10 @@ double rt_to_double(rt_string s)
 }
 
 /// @brief Format a signed 64-bit integer into a newly allocated runtime string.
-/// @details Uses a stack buffer for common cases, falling back to heap buffers
-///          when the decimal representation does not fit.  The result is wrapped
-///          into a @ref rt_string with ownership transferred to the caller.
+/// @details Builds the textual representation in a @ref rt_string_builder so the
+///          implementation benefits from the builder's overflow-aware reserve
+///          logic.  Formatting failures propagate through status codes and are
+///          converted to rt_trap messages to preserve BASIC's fatal-error model.
 /// @param v Integer value to format.
 /// @return Fresh runtime string containing the decimal representation.
 rt_string rt_int_to_str(int64_t v)
@@ -130,8 +141,9 @@ rt_string rt_int_to_str(int64_t v)
 }
 
 /// @brief Convert a double to a runtime string using BASIC formatting rules.
-/// @details Formats the value via @ref rt_format_f64 and copies the textual
-///          result into a new runtime string.
+/// @details Relies on @ref rt_format_f64 to produce locale-stable decimal text,
+///          then copies the result into a freshly allocated runtime string whose
+///          ownership transfers to the caller.
 /// @param v Floating-point value to format.
 /// @return Newly allocated runtime string containing the formatted value.
 rt_string rt_f64_to_str(double v)
@@ -141,8 +153,9 @@ rt_string rt_f64_to_str(double v)
     return rt_string_from_bytes(buf, strlen(buf));
 }
 
-/// @brief Alias for @ref rt_f64_to_str retained for compatibility with legacy
-///        callers.
+/// @brief Legacy entry point that forwards to @ref rt_f64_to_str.
+/// @details Retained for ABI compatibility with historical runtime releases
+///          that exported @c rt_str_d_alloc directly.
 /// @param v Floating-point value to format.
 /// @return Newly allocated runtime string containing the formatted value.
 rt_string rt_str_d_alloc(double v)
@@ -153,8 +166,8 @@ rt_string rt_str_d_alloc(double v)
 }
 
 /// @brief Format a float value as a runtime string.
-/// @details Promotes the value to double to reuse @ref rt_format_f64 and allocates
-///          the resulting textual representation.
+/// @details Promotes to double so @ref rt_format_f64 can be reused, guaranteeing
+///          the same rounding behaviour as other BASIC numeric printers.
 /// @param v Float value to format.
 /// @return Newly allocated runtime string with the formatted value.
 rt_string rt_str_f_alloc(float v)
@@ -165,8 +178,9 @@ rt_string rt_str_f_alloc(float v)
 }
 
 /// @brief Format a 32-bit integer into a runtime string.
-/// @details Utilises @ref rt_str_from_i32 to populate a caller-managed buffer
-///          before wrapping it into a @ref rt_string instance.
+/// @details Uses @ref rt_str_from_i32 to write into a stack buffer before
+///          wrapping that buffer in a runtime-managed allocation.  Using the
+///          shared helper keeps zero-padding and sign handling consistent.
 /// @param v Integer value to format.
 /// @return Newly allocated runtime string containing the decimal text.
 rt_string rt_str_i32_alloc(int32_t v)
@@ -177,8 +191,8 @@ rt_string rt_str_i32_alloc(int32_t v)
 }
 
 /// @brief Format a 16-bit integer into a runtime string.
-/// @details Calls @ref rt_str_from_i16 so the behaviour matches the integer
-///          printing routines used elsewhere in the runtime.
+/// @details Calls @ref rt_str_from_i16 so behaviour matches the runtime's other
+///          integer printers, including sign handling and overflow checking.
 /// @param v Integer value to format.
 /// @return Newly allocated runtime string containing the decimal text.
 rt_string rt_str_i16_alloc(int16_t v)
@@ -189,9 +203,11 @@ rt_string rt_str_i16_alloc(int16_t v)
 }
 
 /// @brief Parse a runtime string using BASIC's `VAL` semantics.
-/// @details Mirrors @ref rt_to_double but exposes the return value even when the
-///          parse fails so callers can inspect overflow results.  The function
-///          traps when the handle is null or when the parse produced NaN.
+/// @details Calls @ref rt_val_to_double to perform the heavy lifting but, unlike
+///          @ref rt_to_double, returns the floating-point value even when the
+///          parse fails.  The caller can then decide whether infinities indicate
+///          overflow.  Null handles trap eagerly to avoid dereferencing invalid
+///          pointers.
 /// @param s Runtime string handle.
 /// @return Parsed floating-point value (possibly infinity on overflow).
 double rt_val(rt_string s)
@@ -209,7 +225,10 @@ double rt_val(rt_string s)
     return value;
 }
 
-/// @brief Convenience wrapper that formats a double via @ref rt_f64_to_str.
+/// @brief Convenience wrapper mirroring the historic `STR$` intrinsic.
+/// @details Forwards to @ref rt_f64_to_str so the intrinsic reuses the same
+///          formatting code path and therefore shares rounding and NaN/INF
+///          behaviour with the rest of the runtime.
 /// @param v Floating-point value to format.
 /// @return Newly allocated runtime string containing the formatted value.
 rt_string rt_str(double v)

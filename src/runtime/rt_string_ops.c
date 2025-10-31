@@ -5,12 +5,13 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Implements the BASIC runtime string primitives responsible for allocation,
-// sharing, slicing, case conversion, and intrinsic library functions such as
-// LEFT$, MID$, and INSTR.  The routines coordinate with the shared heap to
-// enforce reference-counted ownership while mirroring the VM's semantics for
-// trimming, concatenation, and comparisons.  Collecting the behaviour here keeps
-// host embeddings and the interpreter perfectly aligned.
+// File: src/runtime/rt_string_ops.c
+// Purpose: Implement the BASIC runtime's intrinsic string operations and
+//          supporting allocation/retention helpers.
+// Key invariants: Runtime strings are reference-counted, literal handles are
+//                 immutable and may become immortal, and every intrinsic mirrors
+//                 the VM's slicing/trimming/case-conversion semantics exactly.
+// Links: docs/runtime/strings.md
 //
 //===----------------------------------------------------------------------===//
 
