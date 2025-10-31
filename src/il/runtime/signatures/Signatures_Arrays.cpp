@@ -13,10 +13,22 @@
 // Key invariants: Entries describe helpers that manipulate heap storage for
 //                 arrays or reference-counted objects. Signature metadata must
 //                 stay in sync with the runtime C implementations so verifier
-//                 checks remain sound.
+//                 checks remain sound.  The registration function is idempotent
+//                 with respect to observable behaviour; calling it multiple
+//                 times appends duplicate entries without mutating prior
+//                 snapshots.
 // Ownership/Lifetime: Registered metadata persists for the lifetime of the
 //                     process via the shared registry.
-// Links: docs/il-guide.md#reference
+// Links: docs/il-guide.md#reference, docs/architecture.md#runtime-signatures
+
+/// @file
+/// @brief Runtime signature definitions for array and object helpers.
+/// @details The BASIC runtime exposes a suite of allocation, retention, and
+///          bounds-checking utilities for heap-managed containers.  This file
+///          enumerates the corresponding IL-facing signatures so verifier code
+///          can ensure compiler-emitted calls pass the correct argument counts
+///          and value categories.  Documenting the categories in one translation
+///          unit keeps maintenance straightforward when the runtime evolves.
 //
 //===----------------------------------------------------------------------===//
 
@@ -30,11 +42,19 @@ using Kind = SigParam::Kind;
 }
 
 /// @brief Publish expected runtime signature shapes for array/object helpers.
-/// @details The registration feeds the global @ref signatures::Registry so the
-///          verifier can compare call sites against the runtime ABI. Each entry
-///          specifies the parameter and result kinds consumed by helpers that
-///          allocate, retain, release, or index into BASIC arrays and
-///          heap-allocated objects.
+/// @details The registration proceeds in themed batches that mirror the
+///          lifecycle of heap-managed containers:
+///          - Allocation helpers return payload pointers sized according to the
+///            requested length or capacity.
+///          - Retain/release routines manage reference counts so the compiler
+///            can emit balanced calls when values escape or die.
+///          - Accessors encapsulate bounds checking and metadata queries for
+///            array length, indexing, and resizing.
+///          - Object helpers cover the runtime's boxed-object support, ensuring
+///            IL-level code can interoperate with reference-counted handles.
+///          Each call funnels through @ref register_signature, appending a
+///          @ref Signature entry that downstream verification utilities inspect
+///          when validating call sites.
 void register_array_signatures()
 {
     register_signature(make_signature("rt_alloc", {Kind::I64}, {Kind::Ptr}));

@@ -13,10 +13,19 @@
 // Key invariants: Describes the coarse type layout for each runtime symbol in
 //                 the I/O subsystem. Parameter kinds reflect the runtime
 //                 structure definitions, so updates to the runtime must be
-//                 mirrored here.
+//                 mirrored here.  The registry deliberately retains duplicates
+//                 to preserve a full registration log for debugging.
 // Ownership/Lifetime: Registered shapes persist for the lifetime of the
 //                     process via the shared registry.
-// Links: docs/il-guide.md#reference
+// Links: docs/il-guide.md#reference, docs/architecture.md#runtime-signatures
+
+/// @file
+/// @brief Runtime signature definitions for console and file I/O helpers.
+/// @details Compiler-generated IL frequently touches the runtime's I/O surface
+///          area for PRINT/INPUT statements, channel manipulation, and terminal
+///          control.  Centralising the signatures in this translation unit keeps
+///          the mapping between symbol names and type categories close to the
+///          runtime ABI, easing maintenance when the runtime evolves.
 //
 //===----------------------------------------------------------------------===//
 
@@ -31,11 +40,19 @@ using Kind = SigParam::Kind;
 
 /// @brief Publish expected runtime signature shapes for the file and console
 ///        subsystem helpers.
-/// @details Registers every console and channel primitive with the shared
-///          registry so verification passes can check argument counts and
-///          primitive kinds. Entries cover synchronous console output, file
-///          handle operations, and error-reporting helpers that expose status
-///          codes to BASIC programs.
+/// @details The function walks through logical groupings of runtime helpers and
+///          records their parameter/return kinds:
+///          - Console printing/input helpers that operate on strings, integers,
+///            and floating-point values.
+///          - Terminal control routines that manipulate colours, cursor
+///            position, and screen clearing.
+///          - Channel-based I/O helpers, including open/close primitives and
+///            operations that query or mutate file state.
+///          - Error-reporting routines that return status codes so BASIC
+///            programs can branch on failure.
+///          By routing every entry through @ref register_signature the mapping
+///          becomes visible to the verification pipeline without requiring each
+///          caller to know the registry internals.
 void register_fileio_signatures()
 {
     register_signature(make_signature("rt_abort", {Kind::Ptr}));
