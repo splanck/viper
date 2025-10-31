@@ -1,7 +1,7 @@
 //===----------------------------------------------------------------------===//
 //
 // Part of the Viper project, under the MIT License.
-// See LICENSE for license information.
+// See LICENSE in the project root for license information.
 //
 // File: src/codegen/x86_64/LoweringRuleTable.cpp
 // Purpose: Translate declarative lowering rules into efficient opcode
