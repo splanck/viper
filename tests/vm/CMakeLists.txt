@@ -304,6 +304,14 @@ function(viper_add_vm_path_tests)
     viper_add_ctest(test_vm_debug_src_breakpoint test_vm_debug_src_breakpoint)
 
     viper_add_test(
+            test_vm_debug_src_breakpoint_full_path
+            ${VIPER_TESTS_DIR}/unit/test_vm_debug_src_breakpoint_full_path.cpp)
+    target_link_libraries(test_vm_debug_src_breakpoint_full_path
+            PRIVATE ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
+    viper_add_ctest(test_vm_debug_src_breakpoint_full_path
+            test_vm_debug_src_breakpoint_full_path)
+
+    viper_add_test(
             test_vm_debug_src_breakpoint_unknown_file
             ${VIPER_TESTS_DIR}/unit/test_vm_debug_src_breakpoint_unknown_file.cpp)
     target_link_libraries(test_vm_debug_src_breakpoint_unknown_file

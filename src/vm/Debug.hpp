@@ -61,7 +61,7 @@ class DebugCtrl
 
     /// @brief Check whether instruction @p I matches a source line breakpoint.
     /// A match occurs when the instruction's line number equals a breakpoint's
-    /// line and either the normalized path or basename also matches.
+    /// line and the path comparison matches the user-specified granularity.
     bool shouldBreakOn(const il::core::Instr &I) const;
 
     /// @brief Set source manager used to resolve file paths.
@@ -98,14 +98,15 @@ class DebugCtrl
 
     struct SrcLineBP
     {
-        std::string normFile; ///< Normalized source file path
-        std::string base;     ///< Basename of source file
-        uint32_t line;        ///< 1-based line number
+        std::string normFile;    ///< Normalized source file path
+        std::string base;        ///< Basename of source file
+        uint32_t line;           ///< 1-based line number
+        bool requireFullPath;    ///< True when breakpoint was defined with a path
     };
 
     const il::support::SourceManager *sm_ = nullptr; ///< Source manager for paths
     std::vector<SrcLineBP> srcLineBPs_;              ///< Source line breakpoints;
-                                                     ///< match by path or basename
+                                                     ///< match strictly or by basename
 
     mutable std::optional<std::pair<uint32_t, uint32_t>> lastHitSrc_; ///< (file id + line)
 
