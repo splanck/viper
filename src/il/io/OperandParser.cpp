@@ -898,9 +898,34 @@ Expected<void> OperandParser::parseSwitchTargets(const std::string &text)
     {
         size_t split = remaining.size();
         size_t depth = 0;
+        bool inString = false;
+        bool escape = false;
         for (size_t pos = 0; pos < remaining.size(); ++pos)
         {
             char c = remaining[pos];
+            if (inString)
+            {
+                if (escape)
+                {
+                    escape = false;
+                    continue;
+                }
+                if (c == '\\')
+                {
+                    escape = true;
+                    continue;
+                }
+                if (c == '"')
+                    inString = false;
+                continue;
+            }
+
+            if (c == '"')
+            {
+                inString = true;
+                continue;
+            }
+
             if (c == '(')
                 ++depth;
             else if (c == ')')
@@ -919,6 +944,9 @@ Expected<void> OperandParser::parseSwitchTargets(const std::string &text)
                 break;
             }
         }
+
+        if (inString || escape)
+            return malformedSwitch();
 
         std::string segment = trim(remaining.substr(0, split));
         if (segment.empty())
