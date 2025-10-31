@@ -13,6 +13,15 @@
 //
 //===----------------------------------------------------------------------===//
 
+/// @file
+/// @brief Textual IL module parser entry points.
+/// @details The parser walks line-oriented module input, dispatching directives
+///          like `il`, `target`, `extern`, `global`, and `func` to dedicated
+///          helpers.  Each helper emits @ref il::support::Expected diagnostics so
+///          command-line tools can forward precise messages to users.  The
+///          implementation deliberately minimises allocations by reusing shared
+///          parser state while still providing richly documented behaviour.
+
 #include "il/io/ModuleParser.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Global.hpp"
@@ -260,11 +269,16 @@ Expected<void> parseGlobal_E(const std::string &line, ParserState &st)
 
 /// @brief Dispatch module-header directives such as `il`, `extern`, `global`, and `func`.
 ///
-/// @details Handles the leading `il` version directive, parses target triples,
-/// and forwards externs/globals/functions
-/// to their specialised helpers.  Unrecognised directives return diagnostics
-/// that include the current line number so the caller can surface precise
-/// feedback.
+/// @details Executes a fixed sequence of checks for every incoming line:
+///          1. Ensure the file begins with an `il` version banner and that only
+///             one appears.
+///          2. Recognise the optional `target` triple and extract its quoted
+///             payload.
+///          3. Delegate `extern`, `global`, and `func` directives to specialised
+///             helpers that populate the module state.
+///          When a directive is malformed or appears out of order, a diagnostic
+///          containing the current line number is returned so the caller can
+///          surface precise feedback to the user.
 Expected<void> parseModuleHeader_E(std::istream &is, std::string &line, ParserState &st)
 {
     if (line.rfind("il", 0) == 0)
