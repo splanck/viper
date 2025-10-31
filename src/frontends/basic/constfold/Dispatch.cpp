@@ -5,6 +5,18 @@
 //
 //===----------------------------------------------------------------------===//
 //
+// File: src/frontends/basic/constfold/Dispatch.cpp
+// Purpose: Dispatch BASIC constant folding requests to domain-specific helpers
+//          covering arithmetic, logical, comparison, cast, and string
+//          operations.
+// Key invariants: Dispatch never mutates the AST directly; it operates purely
+//                 on @ref Constant summaries and only materialises fresh AST
+//                 nodes when a fold succeeds.
+// Ownership/Lifetime: Relies on caller-managed AST nodes and temporary
+//                     constants; newly created AST nodes are returned via
+//                     std::unique_ptr to transfer ownership back to the caller.
+// Links: docs/basic-language.md, docs/codemap.md
+//
 // Dispatches BASIC constant folding requests to domain-specific helpers.
 //
 //===----------------------------------------------------------------------===//
@@ -29,6 +41,9 @@ std::optional<Constant> fold_cast(AST::BinaryExpr::Op, const Constant &, const C
 
 namespace
 {
+/// @brief Determine whether a literal kind carries numeric semantics.
+/// @param kind Literal classification to inspect.
+/// @return True when the literal represents an integer or floating-point value.
 bool is_numeric(LiteralKind kind)
 {
     return kind == LiteralKind::Int || kind == LiteralKind::Float;
@@ -36,6 +51,13 @@ bool is_numeric(LiteralKind kind)
 
 } // namespace
 
+/// @brief Convert an AST expression into a numeric constant when possible.
+/// @details Attempts to interpret integer and floating literal nodes as
+///          @ref NumericValue, capturing both the floating and integer views so
+///          downstream folding code can operate in whichever domain is
+///          convenient.  Non-numeric expressions yield @c std::nullopt.
+/// @param expr Expression candidate to inspect.
+/// @return Numeric summary or empty optional when conversion fails.
 std::optional<NumericValue> numeric_from_expr(const AST::Expr &expr)
 {
     if (auto *i = dynamic_cast<const ::il::frontends::basic::IntExpr *>(&expr))
@@ -45,6 +67,14 @@ std::optional<NumericValue> numeric_from_expr(const AST::Expr &expr)
     return std::nullopt;
 }
 
+/// @brief Promote two numeric values to a compatible representation.
+/// @details Returns a copy of @p lhs promoted to floating point when either
+///          operand is a float; otherwise preserves the integer view.  The
+///          helper centralises the promotion policy so callers do not have to
+///          duplicate the decision logic.
+/// @param lhs Left-hand numeric operand.
+/// @param rhs Right-hand numeric operand.
+/// @return Promoted numeric representation suitable for folding.
 NumericValue promote_numeric(const NumericValue &lhs, const NumericValue &rhs)
 {
     if (lhs.isFloat || rhs.isFloat)
@@ -55,6 +85,12 @@ NumericValue promote_numeric(const NumericValue &lhs, const NumericValue &rhs)
 namespace
 {
 
+/// @brief Summarise an AST literal into the internal @ref Constant form.
+/// @details Handles integers, floats, booleans, and strings by populating the
+///          appropriate fields on @ref Constant.  Non-literal expressions yield
+///          @c std::nullopt so callers know folding cannot proceed.
+/// @param expr Expression to inspect.
+/// @return Populated constant or empty optional when @p expr is not a literal.
 std::optional<Constant> extract_constant(const AST::Expr &expr)
 {
     if (auto *i = dynamic_cast<const ::il::frontends::basic::IntExpr *>(&expr))
@@ -89,6 +125,13 @@ std::optional<Constant> extract_constant(const AST::Expr &expr)
     return std::nullopt;
 }
 
+/// @brief Construct a new AST literal node from a folded constant.
+/// @details Allocates the appropriate AST node type for the constant's kind and
+///          copies the stored value across.  The resulting unique_ptr transfers
+///          ownership to the caller, who typically replaces an existing AST
+///          subtree with the materialised literal.
+/// @param constant Folded constant value to materialise.
+/// @return Newly allocated AST expression representing @p constant.
 AST::ExprPtr materialize_constant(const Constant &constant)
 {
     switch (constant.kind)
@@ -124,6 +167,16 @@ AST::ExprPtr materialize_constant(const Constant &constant)
     return nullptr;
 }
 
+/// @brief Infer which folding domain applies to a binary expression.
+/// @details Examines the operator and operand literal kinds to decide whether
+///          the expression should be handled by arithmetic, logical, comparison,
+///          string, or cast folders.  Returns @c std::nullopt when the
+///          combination cannot be folded at compile time (for example, mixing
+///          string and numeric operands with subtraction).
+/// @param op Binary operator under consideration.
+/// @param lhs Literal kind of the left operand.
+/// @param rhs Literal kind of the right operand.
+/// @return Selected fold domain or empty optional when no fold applies.
 std::optional<FoldKind> deduce_kind(AST::BinaryExpr::Op op, LiteralKind lhs, LiteralKind rhs)
 {
     switch (op)
@@ -159,6 +212,12 @@ std::optional<FoldKind> deduce_kind(AST::BinaryExpr::Op op, LiteralKind lhs, Lit
 }
 
 #ifdef VIPER_CONSTFOLD_ASSERTS
+/// @brief Compare two constants for equality across all literal kinds.
+/// @details Used exclusively in debug builds to validate that folding helpers
+///          produce stable results across alternative code paths.
+/// @param lhs First constant to compare.
+/// @param rhs Second constant to compare.
+/// @return True when the constants represent identical values.
 bool same_constant(const Constant &lhs, const Constant &rhs)
 {
     if (lhs.kind != rhs.kind)
@@ -180,6 +239,16 @@ bool same_constant(const Constant &lhs, const Constant &rhs)
 }
 #endif
 
+/// @brief Route a binary constant fold to the appropriate domain helper.
+/// @details Switches on the deduced fold kind and calls the specialised folding
+///          routine, forwarding the original operator and operands.  Returns the
+///          folded constant on success or @c std::nullopt when the domain helper
+///          cannot simplify the expression.
+/// @param kind Folding domain selected by @ref deduce_kind.
+/// @param op Binary operator being folded.
+/// @param lhs Left-hand constant operand.
+/// @param rhs Right-hand constant operand.
+/// @return Folded constant or empty optional when folding is not possible.
 std::optional<Constant> dispatch_fold(FoldKind kind,
                                       AST::BinaryExpr::Op op,
                                       const Constant &lhs,
@@ -203,6 +272,12 @@ std::optional<Constant> dispatch_fold(FoldKind kind,
 
 } // namespace
 
+/// @brief Determine whether a binary expression can be constant folded.
+/// @details Verifies that the expression is a binary operation with literal
+///          operands, deduces the folding domain, and performs a dry-run fold to
+///          confirm the helper succeeds.  The actual AST is not mutated.
+/// @param expr Candidate expression to analyse.
+/// @return True when folding would succeed.
 bool can_fold(const AST::Expr &expr)
 {
     auto *binary = dynamic_cast<const ::il::frontends::basic::BinaryExpr *>(&expr);
@@ -218,6 +293,13 @@ bool can_fold(const AST::Expr &expr)
     return dispatch_fold(*kind, binary->op, *lhs, *rhs).has_value();
 }
 
+/// @brief Attempt to fold a binary expression into a constant AST node.
+/// @details Mirrors @ref can_fold but, upon success, materialises a new literal
+///          node that the caller can splice into the AST.  Debug builds include
+///          sanity checks to ensure commutative folds are insensitive to operand
+///          order.
+/// @param expr Expression to fold.
+/// @return New AST node containing the folded value or empty optional on failure.
 std::optional<AST::ExprPtr> fold_expr(const AST::Expr &expr)
 {
     auto *binary = dynamic_cast<const ::il::frontends::basic::BinaryExpr *>(&expr);
