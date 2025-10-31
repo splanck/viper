@@ -133,6 +133,26 @@ static void test_append_double_overflow_preserves_state(void)
     rt_sb_free(&sb);
 }
 
+static void test_append_int_reports_overflow_when_near_limit(void)
+{
+    rt_string_builder sb;
+    rt_sb_init(&sb);
+
+    sb.len = SIZE_MAX - 8;
+    sb.cap = SIZE_MAX - 7;
+    sb.data = sb.inline_buffer;
+    sb.inline_buffer[0] = '\0';
+
+    rt_sb_status status = rt_sb_append_int(&sb, INT64_MIN);
+    assert(status == RT_SB_ERROR_OVERFLOW);
+    assert(sb.len == SIZE_MAX - 8);
+    assert(sb.cap == SIZE_MAX - 7);
+    assert(sb.data == sb.inline_buffer);
+    assert(sb.data[0] == '\0');
+
+    rt_sb_free(&sb);
+}
+
 int main(void)
 {
     test_init_empty();
@@ -141,5 +161,6 @@ int main(void)
     test_printf_growth();
     test_numeric_helpers();
     test_append_double_overflow_preserves_state();
+    test_append_int_reports_overflow_when_near_limit();
     return 0;
 }

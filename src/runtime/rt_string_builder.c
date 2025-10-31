@@ -248,20 +248,53 @@ rt_sb_status rt_sb_append_int(rt_string_builder *sb, int64_t value)
     if (!sb)
         return RT_SB_ERROR_INVALID;
 
-    const size_t extra = 32;
-    if (extra > SIZE_MAX - sb->len - 1)
+    char scratch[2] = {0};
+    size_t needed = rt_i64_to_cstr(value, scratch, sizeof(scratch));
+    if (needed == 0 && scratch[0] == '\0')
+        return RT_SB_ERROR_FORMAT;
+
+    if (needed > SIZE_MAX - sb->len - 1)
         return RT_SB_ERROR_OVERFLOW;
 
-    rt_sb_status status = rt_sb_reserve(sb, sb->len + extra);
-    if (status != RT_SB_OK)
-        return status;
+    size_t avail = (sb->cap > sb->len) ? sb->cap - sb->len : 0;
+    size_t required = sb->len + needed + 1;
+    if (avail < needed + 1)
+    {
+        size_t original_len = sb->len;
+        size_t original_cap = sb->cap;
+        bool was_inline = rt_sb_is_inline(sb);
 
-    size_t avail = sb->cap - sb->len;
+        rt_sb_status status = rt_sb_reserve(sb, required);
+        if (status != RT_SB_OK)
+            return status;
+
+        avail = sb->cap - sb->len;
+
+        size_t written = rt_i64_to_cstr(value, sb->data + sb->len, avail);
+        if (written == 0 && sb->data[sb->len] == '\0')
+        {
+            rt_sb_restore_on_overflow(sb, original_len, original_cap, was_inline);
+            return RT_SB_ERROR_FORMAT;
+        }
+        if (written >= avail)
+        {
+            rt_sb_restore_on_overflow(sb, original_len, original_cap, was_inline);
+            return RT_SB_ERROR_OVERFLOW;
+        }
+
+        sb->len += written;
+        sb->data[sb->len] = '\0';
+        return RT_SB_OK;
+    }
+
     size_t written = rt_i64_to_cstr(value, sb->data + sb->len, avail);
     if (written == 0 && sb->data[sb->len] == '\0')
         return RT_SB_ERROR_FORMAT;
-    if (written + 1 > avail)
+    if (written >= avail)
+    {
+        sb->data[sb->len] = '\0';
         return RT_SB_ERROR_OVERFLOW;
+    }
 
     sb->len += written;
     sb->data[sb->len] = '\0';

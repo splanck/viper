@@ -46,5 +46,20 @@ int main()
         }
     }
 
+    {
+        char small_buffer[4] = {};
+        const size_t written = rt_i64_to_cstr(123456789, small_buffer, sizeof(small_buffer));
+        assert(written == std::strlen("123456789"));
+        assert(std::strcmp(small_buffer, "123") == 0);
+        assert(small_buffer[sizeof(small_buffer) - 1] == '\0');
+
+        char unsigned_small[4] = {};
+        const size_t unsigned_written =
+            rt_u64_to_cstr(987654321u, unsigned_small, sizeof(unsigned_small));
+        assert(unsigned_written == std::strlen("987654321"));
+        assert(std::strcmp(unsigned_small, "987") == 0);
+        assert(unsigned_small[sizeof(unsigned_small) - 1] == '\0');
+    }
+
     return 0;
 }
