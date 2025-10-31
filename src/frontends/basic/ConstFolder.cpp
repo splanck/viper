@@ -618,20 +618,22 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
     {
         if (!stmt.call)
             return;
-        if (auto *callExpr = dynamic_cast<CallExpr *>(stmt.call.get()))
+
+        if (auto *ce = dynamic_cast<CallExpr *>(stmt.call.get()))
         {
-            for (auto &arg : callExpr->args)
+            for (auto &arg : ce->args)
                 foldExpr(arg);
             return;
         }
-        if (auto *methodCall = dynamic_cast<MethodCallExpr *>(stmt.call.get()))
+
+        if (auto *me = dynamic_cast<MethodCallExpr *>(stmt.call.get()))
         {
-            foldExpr(methodCall->base);
-            for (auto &arg : methodCall->args)
+            if (me->base)
+                foldExpr(me->base);
+            for (auto &arg : me->args)
                 foldExpr(arg);
             return;
         }
-        foldExpr(stmt.call);
     }
 
     /// @brief CLS has no foldable expressions.
