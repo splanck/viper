@@ -201,11 +201,11 @@ Parser::StmtResult Parser::parseCall(int)
     }
 
     auto expr = parseArrayOrVar();
-    if (auto *callExpr = dynamic_cast<CallExpr *>(expr.get()))
+    if (dynamic_cast<CallExpr *>(expr.get()) || dynamic_cast<MethodCallExpr *>(expr.get()))
     {
         auto stmt = std::make_unique<CallStmt>();
         stmt->loc = identTok.loc;
-        stmt->call.reset(static_cast<CallExpr *>(expr.release()));
+        stmt->call = std::move(expr);
         return StmtResult(std::move(stmt));
     }
 
