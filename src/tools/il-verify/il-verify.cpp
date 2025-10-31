@@ -53,9 +53,6 @@ int runCLI(
     il::core::Module m;
     if (sm.addFile(argv[1]) == 0)
     {
-        auto diag = il::support::makeError(
-            {}, std::string{il::support::kSourceManagerFileIdOverflowMessage});
-        il::support::printDiag(diag, err);
         return 1;
     }
 
