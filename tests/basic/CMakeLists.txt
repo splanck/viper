@@ -134,6 +134,14 @@ function(viper_add_basic_main_tests)
     viper_add_ctest(test_frontends_basic_parse_call_stmt test_frontends_basic_parse_call_stmt)
 
     viper_add_test(
+            test_frontends_basic_parse_method_call_stmt
+            ${VIPER_TESTS_DIR}/frontends/basic/ParseMethodCallStatementTests.cpp)
+    target_link_libraries(test_frontends_basic_parse_method_call_stmt PRIVATE ${VIPER_BASIC_LIBS})
+    viper_add_ctest(
+            test_frontends_basic_parse_method_call_stmt
+            test_frontends_basic_parse_method_call_stmt)
+
+    viper_add_test(
             test_frontends_basic_lowerer_select_case
             ${VIPER_TESTS_DIR}/frontends/basic/LowererSelectCaseTests.cpp)
     target_link_libraries(test_frontends_basic_lowerer_select_case PRIVATE ${VIPER_BASIC_LIBS})
