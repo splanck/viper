@@ -3,12 +3,18 @@
 // Part of the Viper project, under the MIT License.
 // See LICENSE in the project root for license information.
 //
-// File: src/il/verify/ExceptionHandlerAnalysis.cpp
+// This source file is part of the Viper project.
 //
-// Summary:
-//   Implements verifier helpers that reason about exception-handler block
-//   signatures. Stack-balance checks moved to EhChecks and operate on EhModel,
-//   allowing reuse across verifier components.
+// File: src/il/verify/ExceptionHandlerAnalysis.cpp
+// Purpose: Provide verifier utilities that describe exception-handler blocks,
+//          validating their entry signature before downstream analyses run.
+// Key invariants: Handler blocks must start with `eh.entry`, declare exactly two
+//                 parameters, and name them `%err` and `%tok` with the `Error`
+//                 and `ResumeTok` types respectively. Violations surface as
+//                 structured diagnostics.
+// Ownership/Lifetime: Operates on references to IR structures owned by the
+//                     caller; no allocations or state are retained.
+// Links: docs/il-guide.md#exception-handling, docs/codemap.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -35,6 +41,15 @@ namespace il::verify
 using il::support::Expected;
 using il::support::makeError;
 
+/// @brief Inspect a basic block to determine whether it is a valid handler.
+/// @details Validates that the block begins with `eh.entry`, contains the
+///          canonical parameter pair, and reports descriptive diagnostics when
+///          invariants are violated. On success the helper returns the ids of
+///          the `%err` and `%tok` parameters so consumers can wire them into
+///          downstream analyses.
+/// @param fn Function owning the block, used for diagnostics.
+/// @param bb Candidate handler block to validate.
+/// @return Optional handler signature when the block is well-formed.
 Expected<std::optional<HandlerSignature>> analyzeHandlerBlock(const Function &fn,
                                                               const BasicBlock &bb)
 {
