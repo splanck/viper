@@ -7,6 +7,7 @@
 // Links: docs/codemap.md
 #pragma once
 
+#include "frontends/basic/BasicTypes.hpp"
 #include "frontends/basic/ast/StmtBase.hpp"
 
 #include <optional>
@@ -45,6 +46,11 @@ struct FunctionDecl : Stmt
 
     /// Return type derived from name suffix.
     Type ret{Type::I64};
+
+    /// Optional explicit return type from "AS <TYPE>".
+    /// For SUB, keep at BasicType::Void.
+    /// For FUNCTION without AS, keep at BasicType::Unknown.
+    BasicType explicitRetType{BasicType::Unknown};
 
     /// Ordered parameter list.
     std::vector<Param> params;
