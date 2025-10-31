@@ -1,16 +1,19 @@
 //===----------------------------------------------------------------------===//
 //
 // Part of the Viper project, under the MIT License.
-// See LICENSE for license information.
+// See LICENSE in the project root for license information.
 //
-//===----------------------------------------------------------------------===//
-//
-// Implements constant folding for the IL.  The routines recognise arithmetic
-// operations and selected runtime intrinsics when all operands are literal
-// values, compute the reduced result, and update the IR in place.  Integer
-// folding respects the overflow behaviour encoded by the opcodes while
-// floating-point folding defers to the C math library to mirror runtime
-// semantics.
+// File: src/il/transform/ConstFold.cpp
+// Purpose: Implement the IL constant-folding pass that reduces literal
+//          expressions and recognised runtime calls.
+// Key invariants: Folding must never change observable behaviour—operations
+//                 that would trap at runtime or depend on non-constant data must
+//                 be left untouched.  Integer folding respects overflow flags,
+//                 and floating-point folding matches runtime helper semantics.
+// Ownership/Lifetime: Operates on caller-owned Module/Function instances and
+//                     mutates instructions in place without allocating global
+//                     state.
+// Links: docs/il-guide.md#reference, docs/codemap.md
 //
 //===----------------------------------------------------------------------===//
 //
@@ -39,19 +42,14 @@ namespace il::transform
 namespace
 {
 
-/**
- * @brief Extract a 64-bit integer constant operand.
- *
- * Recognises temporaries that already carry @ref Value::Kind::ConstInt and
- * exposes their signed 64-bit payload for folding. Conversion is lossless and
- * respects the IR's wraparound semantics by leaving the integer untouched. The
- * helper fails for all other operand categories, ensuring that folding does not
- * mix integers with floats or unresolved temporaries.
- *
- * @param v Operand to inspect.
- * @param out Receives the integer payload when recognised.
- * @returns True when @p v is a constant integer; false otherwise.
- */
+/// @brief Extract a 64-bit integer constant operand.
+/// @details Recognises @ref Value::Kind::ConstInt operands and exposes their
+///          payload for folding without performing any conversions.  Other
+///          operand kinds leave @p out untouched and cause the helper to fail so
+///          callers can defer to runtime evaluation.
+/// @param v Operand to inspect.
+/// @param out Receives the integer payload when recognised.
+/// @return True when @p v carries a constant integer value.
 static bool isConstInt(const Value &v, long long &out)
 {
     if (v.kind == Value::Kind::ConstInt)
@@ -62,21 +60,14 @@ static bool isConstInt(const Value &v, long long &out)
     return false;
 }
 
-/**
- * @brief Extract a floating-point value suitable for math intrinsic folding.
- *
- * Accepts both @ref Value::Kind::ConstFloat and @ref Value::Kind::ConstInt so
- * that integer literals can be promoted to double precision when folding
- * runtime math intrinsics. Promotion leverages the default C++ rules, meaning
- * large integers may lose precision while still matching the runtime helper's
- * semantics. The function rejects temporaries and references, signalling that
- * the fold must be deferred to runtime.
- *
- * @param v Operand to convert.
- * @param out Receives the double precision value when available.
- * @returns True when @p v encodes a usable floating-point quantity; false on
- *          unsupported operand kinds.
- */
+/// @brief Extract a floating-point value suitable for math intrinsic folding.
+/// @details Accepts floating and integer literals, promoting integers to double
+///          precision using the default C++ conversion so runtime semantics are
+///          preserved.  Temporaries and references cause the helper to fail so
+///          the call remains at runtime.
+/// @param v Operand to convert.
+/// @param out Receives the double-precision value when available.
+/// @return True when @p v provides a foldable floating-point payload.
 static bool getConstFloat(const Value &v, double &out)
 {
     if (v.kind == Value::Kind::ConstFloat)
@@ -92,14 +83,13 @@ static bool getConstFloat(const Value &v, double &out)
     return false;
 }
 
-/**
- * @brief Perform checked addition mirroring the `.ovf` opcode semantics.
- *
- * Folding must trap on overflow, matching the runtime behaviour of
- * @ref Opcode::IAddOvf. The builtin overflow helpers report whether the
- * operation overflowed; if so the caller must bail out of folding so that the
- * verifier continues to reject the IR as trapping.
- */
+/// @brief Perform checked addition mirroring the `.ovf` opcode semantics.
+/// @details Uses compiler builtins to detect overflow; when detected the helper
+///          returns @c std::nullopt so folding can be skipped and runtime traps
+///          are preserved.
+/// @param a Left-hand integer operand.
+/// @param b Right-hand integer operand.
+/// @return Folded result or empty optional when overflow occurred.
 static std::optional<long long> checkedAdd(long long a, long long b)
 {
     long long result{};
@@ -108,9 +98,10 @@ static std::optional<long long> checkedAdd(long long a, long long b)
     return result;
 }
 
-/**
- * @brief Perform checked subtraction mirroring the `.ovf` opcode semantics.
- */
+/// @brief Perform checked subtraction mirroring the `.ovf` opcode semantics.
+/// @param a Left-hand integer operand.
+/// @param b Right-hand integer operand.
+/// @return Folded result or empty optional when overflow occurred.
 static std::optional<long long> checkedSub(long long a, long long b)
 {
     long long result{};
@@ -119,9 +110,10 @@ static std::optional<long long> checkedSub(long long a, long long b)
     return result;
 }
 
-/**
- * @brief Perform checked multiplication mirroring the `.ovf` opcode semantics.
- */
+/// @brief Perform checked multiplication mirroring the `.ovf` opcode semantics.
+/// @param a Left-hand integer operand.
+/// @param b Right-hand integer operand.
+/// @return Folded result or empty optional when overflow occurred.
 static std::optional<long long> checkedMul(long long a, long long b)
 {
     long long result{};
@@ -130,15 +122,14 @@ static std::optional<long long> checkedMul(long long a, long long b)
     return result;
 }
 
-/**
- * @brief Substitute a folded value for all uses of a temporary.
- *
- * Iterates the function's blocks and instruction operands in-place, mutating
- * the IR so that every reference to the temporary identifier resolves to the
- * newly folded constant. Because the traversal rewrites operands directly, it
- * must run before the defining instruction is erased to avoid dangling
- * references.
- */
+/// @brief Substitute a folded value for all uses of a temporary.
+/// @details Walks every block and instruction operand to replace references to
+///          the temporary identifier with the folded constant.  Must be invoked
+///          before erasing the defining instruction to avoid dangling
+///          references.
+/// @param f Function containing the temporary.
+/// @param id Temporary identifier to rewrite.
+/// @param v Replacement value to substitute.
 static void replaceAll(Function &f, unsigned id, const Value &v)
 {
     for (auto &b : f.blocks)
@@ -148,23 +139,15 @@ static void replaceAll(Function &f, unsigned id, const Value &v)
                     op = v;
 }
 
-/**
- * @brief Fold recognised math runtime calls into constants.
- *
- * Matches against intrinsics such as @c rt_abs_i64, @c rt_floor, @c rt_pow_f64_chkdom, and
- * trigonometric helpers. Each case documents the numeric preconditions it
- * enforces (e.g., @c rt_sqrt requires non-negative inputs, @c rt_pow_f64_chkdom only folds
- * small integral exponents) and relies on <cmath> routines like @c std::fabs,
- * @c std::pow, and friends to mirror runtime semantics. Folding fails when
- * operands are non-constant or violate domain restrictions, ensuring no change
- * to behaviour when C library edge cases (NaN propagation, domain errors) would
- * otherwise diverge from the runtime.
- *
- * @param in Instruction describing the call.
- * @param out Receives the constant result when folding succeeds.
- * @returns True when the call is replaced by a constant; false if no safe fold
- *          is available.
- */
+/// @brief Fold recognised math runtime calls into constants.
+/// @details Handles a curated set of runtime helpers (absolute value, rounding,
+///          power, square root, trigonometry, etc.) when all operands are
+///          literals that satisfy each helper's domain restrictions.  When a
+///          domain precondition fails or an operand is non-constant the helper
+///          returns @c false so the call remains in the IR.
+/// @param in Instruction describing the runtime call.
+/// @param out Receives the folded constant on success.
+/// @return True when folding succeeded and @p out contains the result.
 static bool foldCall(const Instr &in, Value &out)
 {
     if (in.op != Opcode::Call)
@@ -324,20 +307,13 @@ static bool foldCall(const Instr &in, Value &out)
 
 } // namespace
 
-/**
- * @brief Perform constant folding across a module in-place.
- *
- * Traverses each function block, opportunistically folding binary integer
- * operations and recognised runtime calls. Successful folds substitute the
- * computed value via @ref replaceAll before erasing the defining instruction,
- * so block traversal both mutates operand lists and shrinks instruction
- * sequences as it progresses. Wraparound helpers guarantee that integer
- * arithmetic matches the VM's modulo behaviour, while floating-point folds rely
- * on the C math library to honour runtime semantics and propagate failures when
- * inputs are out of domain or non-constant.
- *
- * @param m Module whose IR is rewritten in place.
- */
+/// @brief Perform constant folding across a module in-place.
+/// @details Visits every instruction, attempting to fold recognised runtime
+///          calls, unary casts, and binary arithmetic operations.  Successful
+///          folds update all uses of the temporary via @ref replaceAll and erase
+///          the original instruction, shrinking the IR without altering
+///          observable behaviour.
+/// @param m Module whose functions are to be folded.
 void constFold(Module &m)
 {
     // Constant folding must be observationally equivalent to VM; where traps would
