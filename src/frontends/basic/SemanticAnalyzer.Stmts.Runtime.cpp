@@ -51,8 +51,27 @@ void SemanticAnalyzer::analyzeCallStmt(CallStmt &stmt)
 {
     if (!stmt.call)
         return;
-    const ProcSignature *sig = resolveCallee(*stmt.call, ProcSignature::Kind::Sub);
-    checkCallArgs(*stmt.call, sig);
+
+    if (auto *callExpr = dynamic_cast<CallExpr *>(stmt.call.get()))
+    {
+        const ProcSignature *sig = resolveCallee(*callExpr, ProcSignature::Kind::Sub);
+        checkCallArgs(*callExpr, sig);
+        return;
+    }
+
+    if (auto *methodCall = dynamic_cast<MethodCallExpr *>(stmt.call.get()))
+    {
+        if (methodCall->base)
+            visitExpr(*methodCall->base);
+        for (auto &arg : methodCall->args)
+        {
+            if (arg)
+                visitExpr(*arg);
+        }
+        return;
+    }
+
+    visitExpr(*stmt.call);
 }
 
 /// @brief Check type rules and loop-variable restrictions for scalar assignments.
