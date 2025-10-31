@@ -48,7 +48,7 @@ default(%text:str):
   ret
 }
 )";
-}
+} // namespace
 
 int main()
 {

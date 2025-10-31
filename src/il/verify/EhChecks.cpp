@@ -260,10 +260,7 @@ bool checkAllPathsCloseTry(const EhModel &model,
 class EhStackTraversal
 {
   public:
-    EhStackTraversal(const EhModel &model, Diagnostics &diags)
-        : model(model), diags(diags)
-    {
-    }
+    EhStackTraversal(const EhModel &model, Diagnostics &diags) : model(model), diags(diags) {}
 
     bool run()
     {
@@ -324,7 +321,8 @@ class EhStackTraversal
             }
             else if (instr.op == Opcode::EhPop)
             {
-                if (!checkNoHandlerCrossing(model, bb, instr, handlerStack, diags, states, stateIndex))
+                if (!checkNoHandlerCrossing(
+                        model, bb, instr, handlerStack, diags, states, stateIndex))
                     return false;
             }
             else if (instr.op == Opcode::ResumeSame || instr.op == Opcode::ResumeNext ||

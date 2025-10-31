@@ -18,8 +18,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/basic/Lowerer.hpp"
-#include "frontends/basic/lower/Emitter.hpp"
 #include "frontends/basic/LoweringPipeline.hpp"
+#include "frontends/basic/lower/Emitter.hpp"
 
 namespace il::frontends::basic
 {
@@ -94,4 +94,3 @@ void Lowerer::lowerProcedure(const std::string &name,
 }
 
 } // namespace il::frontends::basic
-

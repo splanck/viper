@@ -189,7 +189,7 @@ Parser::StmtResult Parser::parseCall(int)
         return std::nullopt;
 
     const Token identTok = peek();
-    const Token nextTok  = peek(1);
+    const Token nextTok = peek(1);
 
     // Path A: instance-method call like: obj.Method(...)
     // Conservative lookahead to avoid backtracking: Ident '.' Ident '('
@@ -204,7 +204,7 @@ Parser::StmtResult Parser::parseCall(int)
             if (expr && dynamic_cast<MethodCallExpr *>(expr.get()) != nullptr)
             {
                 auto stmt = std::make_unique<CallStmt>();
-                stmt->loc  = identTok.loc;
+                stmt->loc = identTok.loc;
                 stmt->call = std::move(expr);
                 return StmtResult(std::move(stmt));
             }
@@ -237,7 +237,7 @@ Parser::StmtResult Parser::parseCall(int)
     if (expr && dynamic_cast<CallExpr *>(expr.get()) != nullptr)
     {
         auto stmt = std::make_unique<CallStmt>();
-        stmt->loc  = identTok.loc;
+        stmt->loc = identTok.loc;
         stmt->call = std::move(expr);
         return StmtResult(std::move(stmt));
     }

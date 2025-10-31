@@ -46,8 +46,7 @@ enum class Outcome : std::size_t
     Unordered = 3,
 };
 
-constexpr std::size_t kOpCount =
-    static_cast<std::size_t>(AST::BinaryExpr::Op::LogicalOr) + 1;
+constexpr std::size_t kOpCount = static_cast<std::size_t>(AST::BinaryExpr::Op::LogicalOr) + 1;
 
 using BinOpFn = Value (*)(Value, Value);
 
