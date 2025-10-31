@@ -17,6 +17,14 @@
 //
 //===----------------------------------------------------------------------===//
 
+/// @file
+/// @brief Peephole optimisation pass for the x86-64 code generator.
+/// @details Documents the local rewrites that fold `mov`-zero and `cmp`-zero
+///          patterns into smaller `xor`/`test` sequences.  The file concentrates
+///          the pattern recognisers and mutation helpers so later extensions can
+///          add new folds while sharing the same descriptive comments and
+///          invariants.
+
 #include "Peephole.hpp"
 
 namespace viper::codegen::x64

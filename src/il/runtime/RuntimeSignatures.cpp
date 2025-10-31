@@ -16,6 +16,14 @@
 //
 //===----------------------------------------------------------------------===//
 
+/// @file
+/// @brief Runtime descriptor registry and helper adapters.
+/// @details Describes the machinery that maps IL runtime calls onto concrete C
+///          functions.  The file documents every helper involved in building the
+///          descriptor tables, the small bridging thunks that mediate between VM
+///          calling conventions and the C ABI, and the lookup utilities used by
+///          the verifier and code generator.
+
 #include "il/runtime/RuntimeSignatures.hpp"
 #include "il/runtime/RuntimeSignatureParser.hpp"
 #include "il/runtime/RuntimeSignaturesData.hpp"
@@ -79,12 +87,18 @@ int32_t clampRuntimeOffset(int64_t value)
 }
 
 /// @brief Adapter that narrows @ref rt_lof_ch results to 32 bits.
+/// @details Calls the underlying runtime helper and then passes the 64-bit
+///          offset through @ref clampRuntimeOffset so BASIC observers receive a
+///          saturated 32-bit result that mirrors the language's numeric limits.
 int32_t rt_lof_ch_i32(int32_t channel)
 {
     return clampRuntimeOffset(rt_lof_ch(channel));
 }
 
 /// @brief Adapter that narrows @ref rt_loc_ch results to 32 bits.
+/// @details Matches the behaviour of @ref rt_lof_ch_i32 but for the `LOC` file
+///          position builtin, providing a saturating conversion that avoids
+///          wrapping when the runtime exposes offsets beyond 32 bits.
 int32_t rt_loc_ch_i32(int32_t channel)
 {
     return clampRuntimeOffset(rt_loc_ch(channel));
@@ -92,6 +106,13 @@ int32_t rt_loc_ch_i32(int32_t channel)
 
 constexpr const char kTestBridgeMutatedText[] = "bridge-mutated";
 
+/// @brief Mutate a string handle in place for debugger bridge tests.
+/// @details Used only in debug builds to ensure the runtime bridge forwards
+///          pointer arguments correctly.  The helper reads the string handle
+///          from @p args, constructs a temporary runtime string, and overwrites
+///          the caller-provided slot without touching the VM stack.
+/// @param args VM-supplied argument array containing an @c rt_string pointer.
+/// @param result Unused placeholder to match the runtime handler signature.
 void testMutateStringNoStack(void **args, void * /*result*/)
 {
     if (!args)
@@ -178,6 +199,14 @@ template <auto Fn, typename Ret, typename... Args> struct DirectHandler
 
 template <auto Fn, typename Ret, typename... Args> struct ConsumingStringHandler
 {
+    /// @brief Invoke a runtime helper after retaining string arguments.
+    /// @details Some runtime entry points consume string handles without
+    ///          retaining them, so the VM must increment reference counts before
+    ///          the call to keep values alive.  The wrapper first retains any
+    ///          string arguments and then delegates to @ref DirectHandler to
+    ///          perform the actual call/return marshalling.
+    /// @param args VM-supplied argument array.
+    /// @param result Optional pointer to storage for the return value.
     static void invoke(void **args, void *result)
     {
         retainStrings(args, std::index_sequence_for<Args...>{});
@@ -185,11 +214,23 @@ template <auto Fn, typename Ret, typename... Args> struct ConsumingStringHandler
     }
 
   private:
+    /// @brief Retain every string argument present in the parameter pack.
+    /// @details Expands an index sequence over @p Args, calling @ref retainArg
+    ///          for each slot.  Non-string parameters become no-ops while
+    ///          string arguments acquire an additional reference to satisfy the
+    ///          runtime ownership contract.
     template <std::size_t... I> static void retainStrings(void **args, std::index_sequence<I...>)
     {
         (retainArg<Args>(args, I), ...);
     }
 
+    /// @brief Retain a single argument when it is of type @c rt_string.
+    /// @details Reads the argument slot, performs null checks, and invokes
+    ///          @ref rt_string_ref to increment the reference count.  Template
+    ///          substitution means non-string arguments skip the retention path
+    ///          entirely.
+    /// @param args VM argument array (may be null when the VM omitted operands).
+    /// @param index Index of the argument being inspected.
     template <typename T> static void retainArg(void **args, std::size_t index)
     {
         if constexpr (std::is_same_v<std::remove_cv_t<T>, rt_string>)
@@ -1171,6 +1212,10 @@ struct Descriptor
     std::size_t rowIndex{};
 };
 
+/// @brief Build a sorted index over @ref kDescriptorRows by symbol name.
+/// @details Copies every descriptor row alongside its row index and performs a
+///          simple insertion-sort so lookups can binary search the resulting
+///          array without constructing dynamic state at runtime.
 constexpr auto makeDescriptorIndex()
 {
     std::array<Descriptor, kDescriptorRows.size()> index{};
@@ -1190,6 +1235,10 @@ constexpr auto makeDescriptorIndex()
 
 constexpr std::array<Descriptor, kDescriptorRows.size()> kDescriptors = makeDescriptorIndex();
 
+/// @brief Extract just the descriptor names for binary search comparisons.
+/// @details Projects @ref kDescriptors into an array of string views so
+///          @ref indexOf can use `std::lower_bound` without touching the row
+///          metadata.
 constexpr auto makeDescriptorNames()
 {
     std::array<std::string_view, kDescriptors.size()> names{};
@@ -1200,6 +1249,10 @@ constexpr auto makeDescriptorNames()
 
 constexpr std::array<std::string_view, kDescriptors.size()> kNames = makeDescriptorNames();
 
+/// @brief Build a lookup table from runtime features to descriptor rows.
+/// @details Initialises an array keyed by @ref RuntimeFeature enumerators and
+///          records the first descriptor row that requires each feature.  Entries
+///          left at -1 indicate the feature has no dedicated runtime helper.
 constexpr auto makeFeatureIndex()
 {
     std::array<int, static_cast<std::size_t>(RuntimeFeature::Count)> featureIndex{};
@@ -1223,6 +1276,10 @@ constexpr auto makeFeatureIndex()
 constexpr std::array<int, static_cast<std::size_t>(RuntimeFeature::Count)> kFeatureIndex =
     makeFeatureIndex();
 
+/// @brief Locate the sorted descriptor index entry for a symbol name.
+/// @details Performs a binary search over @ref kNames and returns the matching
+///          index or -1 when the symbol is absent, enabling callers to fetch
+///          either the descriptor row or parsed signature without allocating.
 static constexpr int indexOf(std::string_view name) noexcept
 {
     const auto it = std::lower_bound(kNames.begin(), kNames.end(), name);
@@ -1261,6 +1318,10 @@ RuntimeDescriptor buildDescriptor(const DescriptorRow &row)
 }
 
 #ifndef NDEBUG
+/// @brief Convert a signature parameter kind into a printable name.
+/// @details Used exclusively in debug assertions to emit human-friendly
+///          diagnostics when runtime descriptors drift from the expected
+///          registry entries.
 const char *sigParamKindName(signatures::SigParam::Kind kind)
 {
     using signatures::SigParam;
@@ -1282,6 +1343,10 @@ const char *sigParamKindName(signatures::SigParam::Kind kind)
     return "unknown";
 }
 
+/// @brief Translate IL type kinds into signature parameter kinds.
+/// @details Normalises several IL integer types down to the ABI shapes used in
+///          runtime signatures, asserting in debug builds when encountering
+///          unsupported kinds so descriptor drift is caught early.
 signatures::SigParam::Kind mapToSigParamKind(il::core::Type::Kind kind)
 {
     using Kind = il::core::Type::Kind;
@@ -1316,6 +1381,10 @@ signatures::SigParam::Kind mapToSigParamKind(il::core::Type::Kind kind)
     return SigParam::Kind::Ptr;
 }
 
+/// @brief Build the list of parameter kinds expected by a runtime signature.
+/// @details Iterates the IL type descriptors recorded in @p signature and maps
+///          them into the signature::SigParam domain using @ref mapToSigParamKind
+///          so debug validation can compare against whitelisted expectations.
 std::vector<signatures::SigParam::Kind> makeParamKinds(const RuntimeSignature &signature)
 {
     std::vector<signatures::SigParam::Kind> kinds;
@@ -1325,6 +1394,10 @@ std::vector<signatures::SigParam::Kind> makeParamKinds(const RuntimeSignature &s
     return kinds;
 }
 
+/// @brief Describe the return type of a runtime signature in signature kind form.
+/// @details Produces either an empty vector (for void results) or a single entry
+///          that mirrors the ABI-visible type, enabling uniform comparison logic
+///          for both parameters and results.
 std::vector<signatures::SigParam::Kind> makeReturnKinds(const RuntimeSignature &signature)
 {
     std::vector<signatures::SigParam::Kind> kinds;
@@ -1333,6 +1406,10 @@ std::vector<signatures::SigParam::Kind> makeReturnKinds(const RuntimeSignature &
     return kinds;
 }
 
+/// @brief Ensure the debug-only signature registry is populated.
+/// @details Registers every runtime signature group the first time validation
+///          runs so later checks can compare descriptors against the whitelist
+///          emitted by the dedicated signature modules.
 void ensureSignatureWhitelist()
 {
     static const bool registered = []
@@ -1346,6 +1423,11 @@ void ensureSignatureWhitelist()
     (void)registered;
 }
 
+/// @brief Compare generated descriptors against the debug whitelist.
+/// @details Builds a map of actual descriptors, verifies that every expected
+///          signature is present exactly once, and checks that parameter/return
+///          kinds match.  Any mismatch triggers assertions accompanied by a
+///          descriptive message to simplify debugging.
 void validateRuntimeDescriptors(const std::vector<RuntimeDescriptor> &descriptors)
 {
     ensureSignatureWhitelist();
