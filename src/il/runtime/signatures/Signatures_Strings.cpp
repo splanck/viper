@@ -16,6 +16,14 @@
 //
 //===----------------------------------------------------------------------===//
 
+/// @file
+/// @brief Runtime signature definitions for string-related helpers.
+/// @details Centralises every string-oriented runtime symbol so that
+///          verification tooling can register the expected parameter/return
+///          shapes in one location.  The comments explain the breadth of
+///          coverage—from allocation helpers through parsing/conversion—to make
+///          future maintenance straightforward.
+
 #include "il/runtime/signatures/Registry.hpp"
 
 namespace il::runtime::signatures
@@ -27,11 +35,15 @@ using Kind = SigParam::Kind;
 
 /// @brief Publish expected runtime signature shapes for string-related helpers.
 /// @details Populates the signature registry with all string-processing runtime
-///          functions.  Grouping the registrations in a single function keeps
-///          the mapping between runtime symbol names and their parameter/return
-///          contracts easy to audit.  The collection spans pure string utilities
-///          (length, slicing, trimming), conversions, and retain/release hooks so
-///          debugger tooling can validate every call site uniformly.
+///          functions.  The procedure runs through a curated list of helpers and
+///          registers each via @ref register_signature / @ref make_signature,
+///          ensuring the table covers:
+///          - Pure string utilities (length queries, slicing, trimming).
+///          - Converters between strings and numeric types.
+///          - Memory-management hooks that retain or release runtime strings.
+///          Consolidating the registrations in one function keeps the mapping
+///          between runtime symbol names and their parameter/return contracts
+///          easy to audit.
 void register_string_signatures()
 {
     register_signature(make_signature("rt_len", {Kind::Ptr}, {Kind::I64}));
