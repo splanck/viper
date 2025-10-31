@@ -49,6 +49,17 @@
 namespace
 {
 #if defined(_WIN32)
+/// @brief Quote a single argument for safe consumption by the Windows command shell.
+///
+/// @details Windows applies bespoke parsing rules for backslashes that precede
+///          quotes.  The helper tracks runs of backslashes and doubles them
+///          before emitting a literal quote so that the CRT reconstructs the
+///          original argument byte-for-byte.  All other characters pass through
+///          unchanged, and the argument is wrapped in double quotes to preserve
+///          embedded whitespace.
+///
+/// @param arg Individual argv element to quote.
+/// @return Quoted argument ready for concatenation into a command string.
 std::string quote_windows_argument(const std::string &arg)
 {
     std::string quoted;
@@ -90,6 +101,16 @@ std::string quote_windows_argument(const std::string &arg)
     return quoted;
 }
 #else
+/// @brief Quote a single argument for POSIX-compatible shells.
+///
+/// @details The helper wraps the argument in double quotes and escapes only the
+///          characters that POSIX shells treat specially inside that context:
+///          backslash, double quote, dollar sign, and backtick.  Everything else
+///          is forwarded unchanged so the final command line is both safe to
+///          pass to `/bin/sh` and human readable when emitted for debugging.
+///
+/// @param arg Individual argv element to quote.
+/// @return Quoted argument ready for concatenation into a command string.
 std::string quote_posix_argument(const std::string &arg)
 {
     std::string quoted;
@@ -130,6 +151,11 @@ namespace
 class ScopedEnvironmentAssignment
 {
   public:
+    /// @brief Construct a scoped override for the specified environment variable.
+    /// @details Captures the existing value, installs @p value, and restores the
+    ///          previous state when the guard is destroyed.
+    /// @param name Environment variable to override.
+    /// @param value Temporary value applied for the guard's lifetime.
     ScopedEnvironmentAssignment(std::string name, std::string value)
         : name_(std::move(name)), previous_(capture_existing())
     {
@@ -139,6 +165,11 @@ class ScopedEnvironmentAssignment
     ScopedEnvironmentAssignment(const ScopedEnvironmentAssignment &) = delete;
     ScopedEnvironmentAssignment &operator=(const ScopedEnvironmentAssignment &) = delete;
 
+    /// @brief Transfer ownership of the override to a new guard instance.
+    /// @details Moves the tracked variable name and any captured prior value
+    ///          into @p other while leaving it inert so the destructor performs
+    ///          no additional work.
+    /// @param other Guard supplying the override to adopt.
     ScopedEnvironmentAssignment(ScopedEnvironmentAssignment &&other) noexcept
         : name_(std::move(other.name_)), previous_(std::move(other.previous_))
     {
@@ -146,6 +177,11 @@ class ScopedEnvironmentAssignment
         other.previous_.reset();
     }
 
+    /// @brief Replace the active override with state moved from @p other.
+    /// @details Restores any currently-active override before adopting
+    ///          @p other 's environment state to keep mutations balanced.
+    /// @param other Guard providing the override to adopt.
+    /// @return Reference to this guard after the transfer.
     ScopedEnvironmentAssignment &operator=(ScopedEnvironmentAssignment &&other) noexcept
     {
         if (this == &other)
@@ -179,12 +215,18 @@ class ScopedEnvironmentAssignment
         return *this;
     }
 
+    /// @brief Restore the environment when the guard leaves scope.
+    /// @details Calls @ref restore so RAII users observe deterministic cleanup.
     ~ScopedEnvironmentAssignment()
     {
         restore();
     }
 
   private:
+    /// @brief Snapshot the pre-existing environment value for @ref name_.
+    /// @details Returns `std::nullopt` when the variable was unset so the guard
+    ///          knows to erase it during restoration rather than reassign a
+    ///          value.
     std::optional<std::string> capture_existing() const
     {
         const char *existing = std::getenv(name_.c_str());
@@ -195,6 +237,13 @@ class ScopedEnvironmentAssignment
         return std::string(existing);
     }
 
+    /// @brief Apply the temporary environment value.
+    /// @details Delegates to the platform-specific API without error checking,
+    ///          mirroring the helper's historical behaviour.  The guard assumes
+    ///          callers provide valid inputs because failures would only occur
+    ///          under catastrophic conditions (for example, running out of
+    ///          memory while duplicating the string).
+    /// @param value Environment value to install.
     void apply(std::string value) const
     {
 #ifdef _WIN32
@@ -204,6 +253,10 @@ class ScopedEnvironmentAssignment
 #endif
     }
 
+    /// @brief Reinstate the captured environment state.
+    /// @details Restores the previous value when one existed or removes the
+    ///          variable entirely.  The method is const to allow guards stored in
+    ///          containers of const elements used purely for cleanup.
     void restore() const
     {
         if (name_.empty())
@@ -235,6 +288,10 @@ class ScopedEnvironmentAssignment
 
 namespace viper::test_support
 {
+/// @brief Outcome bundle returned by environment-override move tests.
+/// @details Records whether the override remained visible after move
+///          construction and move assignment as well as whether the original
+///          environment value was restored once the guards exited scope.
 struct ScopedEnvironmentAssignmentMoveResult
 {
     bool value_visible_after_move_ctor;
@@ -242,6 +299,13 @@ struct ScopedEnvironmentAssignmentMoveResult
     bool restored;
 };
 
+/// @brief Exercise move construction/assignment semantics of the environment guard.
+/// @details Installs a temporary environment override, moves it through various
+///          scenarios, and inspects the observable environment to ensure the
+///          override propagates and restores as expected.
+/// @param name Environment variable manipulated during the test.
+/// @param value Temporary value assigned by the guard.
+/// @return Structured summary of the observed behaviour.
 ScopedEnvironmentAssignmentMoveResult scoped_environment_assignment_move_preserves(
     const std::string &name, const std::string &value)
 {
@@ -287,6 +351,11 @@ namespace
 class ScopedWorkingDirectory
 {
   public:
+    /// @brief Optionally change the process working directory for the guard's lifetime.
+    /// @details Captures the original directory and attempts to switch to
+    ///          @p target.  Failures record a diagnostic so @ref run_process can
+    ///          surface the issue without throwing exceptions.
+    /// @param target Destination directory; when absent the guard becomes a no-op.
     explicit ScopedWorkingDirectory(const std::optional<std::string> &target)
     {
         if (!target)
@@ -333,6 +402,9 @@ class ScopedWorkingDirectory
     ScopedWorkingDirectory(const ScopedWorkingDirectory &) = delete;
     ScopedWorkingDirectory &operator=(const ScopedWorkingDirectory &) = delete;
 
+    /// @brief Restore the previous working directory on scope exit.
+    /// @details Invoked automatically when the guard is destroyed.  If the
+    ///          constructor failed, the destructor becomes a no-op.
     ~ScopedWorkingDirectory()
     {
         if (!active_)
@@ -347,11 +419,15 @@ class ScopedWorkingDirectory
 #endif
     }
 
+    /// @brief Check whether the constructor encountered an error.
+    /// @return True when the working directory change failed.
     bool has_error() const
     {
         return error_.has_value();
     }
 
+    /// @brief Retrieve the human-readable error captured during construction.
+    /// @return Reference to the stored diagnostic message.
     const std::string &error_message() const
     {
         return *error_;
@@ -368,6 +444,17 @@ class ScopedWorkingDirectory
 };
 } // namespace
 
+/// @brief Launch a subprocess using the host shell and capture its output.
+/// @details Joins @p argv into a quoted command string, temporarily applies any
+///          environment overrides, optionally adjusts the working directory, and
+///          then streams the child's stdout/stderr back into the returned
+///          @ref RunResult.  The helper preserves historical behaviour by
+///          ignoring the @p cwd parameter on platforms lacking a portable
+///          implementation.
+/// @param argv Command fragments to concatenate into a shell invocation.
+/// @param cwd Optional working directory requested by the caller.
+/// @param env Environment overrides applied for the lifetime of the child process.
+/// @return Result bundle containing exit code, stdout, and stderr text.
 RunResult run_process(const std::vector<std::string> &argv,
                       std::optional<std::string> cwd,
                       const std::vector<std::pair<std::string, std::string>> &env)

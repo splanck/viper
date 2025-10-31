@@ -25,11 +25,23 @@ namespace viper::parse
 
 namespace
 {
+/// @brief Determine whether @p ch can appear at the start of an identifier.
+/// @details BASIC identifiers may begin with alphabetic characters, underscores,
+///          or dots to support qualified names produced by the lowering phase.
+/// @param ch Character to test.
+/// @return True when @p ch is a valid starting character.
 bool isIdentStart(unsigned char ch) noexcept
 {
     return std::isalpha(ch) || ch == '_' || ch == '.';
 }
 
+/// @brief Determine whether @p ch can appear after the first identifier byte.
+/// @details The BASIC lexer accepts alphanumeric characters, underscores,
+///          dots, and dollar signs, the latter supporting legacy numeric type
+///          suffixes.  Keeping the helper here prevents duplication across
+///          cursor users.
+/// @param ch Character to test.
+/// @return True when @p ch can be part of an identifier body.
 bool isIdentBody(unsigned char ch) noexcept
 {
     return std::isalnum(ch) || ch == '_' || ch == '.' || ch == '$';
