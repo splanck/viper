@@ -22,7 +22,8 @@ set(_viper_codegen_x86_64_tests
 
 list(APPEND _viper_codegen_x86_64_tests
         e2e_bitwise_cli
-        e2e_fdiv_cli)
+        e2e_fdiv_cli
+        object_only_cli)
 
 set(_viper_codegen_x86_64_has_gtest OFF)
 if (TARGET GTest::gtest_main OR TARGET GTest::gtest OR TARGET gtest_main OR TARGET gtest)
@@ -48,4 +49,9 @@ foreach (_viper_codegen_case IN LISTS _viper_codegen_x86_64_tests)
     endif ()
 
     target_link_libraries(${_viper_codegen_target} PRIVATE viper_codegen_x86_64 viper_test_common)
+
+    if (_viper_codegen_case STREQUAL "object_only_cli")
+        target_compile_definitions(${_viper_codegen_target}
+                                    PRIVATE VIPER_ILC_PATH="$<TARGET_FILE:ilc>")
+    endif ()
 endforeach ()

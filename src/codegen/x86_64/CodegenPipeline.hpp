@@ -30,9 +30,9 @@ class CodegenPipeline
     /// \brief User-configurable options controlling pipeline behaviour.
     struct Options
     {
-        std::string input_il_path; ///< IL module to load and compile.
-        std::string
-            output_obj_path; ///< Destination executable/object file path; empty disables linking.
+        std::string input_il_path;   ///< IL module to load and compile.
+        std::string output_obj_path; ///< Destination path for executable/object output; when set
+                                     ///< without @ref run_native the pipeline emits an object file.
         std::string output_asm_path; ///< Optional assembly output path when emit_asm is true.
         bool emit_asm = false;       ///< Emit assembly text to disk for inspection.
         bool optimize = false;       ///< Placeholder for future optimisation control.

@@ -142,6 +142,46 @@ bool writeAssemblyFile(const std::filesystem::path &path,
     return true;
 }
 
+/// @brief Assemble emitted assembly into an object file.
+/// @details Invokes the system C compiler with the `-c` flag so the pipeline
+///          can stop after producing a relocatable object when no executable is
+///          required.
+/// @param asmPath Path to the assembly file to assemble.
+/// @param objPath Destination path for the object file.
+/// @param out     Stream receiving the assembler's standard output.
+/// @param err     Stream receiving the assembler's standard error.
+/// @return Normalised assembler exit code (-1 when the command could not start).
+int invokeAssembler(const std::filesystem::path &asmPath,
+                    const std::filesystem::path &objPath,
+                    std::ostream &out,
+                    std::ostream &err)
+{
+    const RunResult assemble = run_process({"cc", "-c", asmPath.string(), "-o", objPath.string()});
+    if (assemble.exit_code == -1)
+    {
+        err << "error: failed to launch system assembler command\n";
+        return -1;
+    }
+
+    if (!assemble.out.empty())
+    {
+        out << assemble.out;
+    }
+#if defined(_WIN32)
+    if (!assemble.err.empty())
+    {
+        err << assemble.err;
+    }
+#endif
+
+    const int exitCode = normaliseStatus(assemble.exit_code);
+    if (exitCode != 0)
+    {
+        err << "error: cc (assemble) exited with status " << exitCode << "\n";
+    }
+    return exitCode;
+}
+
 /// @brief Link the emitted assembly into an executable.
 /// @details Invokes the system C compiler, forwarding stdout/stderr to the
 ///          provided streams and normalising the resulting exit code.
@@ -295,8 +335,26 @@ PipelineResult CodegenPipeline::run()
         // Maintain parity with previous behaviour by always keeping the file around for linking.
     }
 
-    const bool needLink = !opts_.output_obj_path.empty() || opts_.run_native;
-    if (!needLink)
+    const bool wantsObjectOnly = !opts_.output_obj_path.empty() && !opts_.run_native;
+    if (wantsObjectOnly)
+    {
+        const std::filesystem::path objPath(opts_.output_obj_path);
+        const int assembleExit = invokeAssembler(asmPath, objPath, out, err);
+        if (assembleExit != 0)
+        {
+            result.exit_code = assembleExit == -1 ? 1 : assembleExit;
+        }
+        else
+        {
+            result.exit_code = 0;
+        }
+        result.stdout_text = out.str();
+        result.stderr_text = err.str();
+        return result;
+    }
+
+    const bool needsExecutable = opts_.run_native || opts_.output_obj_path.empty();
+    if (!needsExecutable)
     {
         result.exit_code = 0;
         result.stdout_text = out.str();
