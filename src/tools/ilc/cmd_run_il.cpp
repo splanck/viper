@@ -199,22 +199,36 @@ bool parseRunILArgs(int argc, char **argv, RunILConfig &config)
             else
             {
                 std::string trimmedSpec = trimWhitespace(spec);
+                bool parsedAsSrcBreak = false;
                 auto pos = trimmedSpec.rfind(':');
                 if (pos != std::string::npos)
                 {
                     std::string file = trimWhitespace(trimmedSpec.substr(0, pos));
                     const std::string lineToken = trimWhitespace(trimmedSpec.substr(pos + 1));
-                    if (lineToken.empty())
+                    if (!lineToken.empty())
                     {
-                        reportInvalidLineNumber(lineToken, spec, "--break");
-                        return false;
+                        uint32_t line = 0;
+                        if (!tryParseLineNumber(lineToken, line))
+                        {
+                            // Fall through to label handling when the suffix is not a
+                            // valid line number.
+                        }
+                        else if (file.empty())
+                        {
+                            reportInvalidLineNumber(lineToken, spec, "--break");
+                            return false;
+                        }
+                        else
+                        {
+                            config.breakSrcLines.push_back({std::move(file), line});
+                            parsedAsSrcBreak = true;
+                        }
                     }
-                    uint32_t dummy = 0;
-                    if (file.empty() || !tryParseLineNumber(lineToken, dummy))
-                    {
-                        reportInvalidLineNumber(lineToken, spec, "--break");
-                        return false;
-                    }
+                }
+
+                if (parsedAsSrcBreak)
+                {
+                    continue;
                 }
 
                 std::string label = std::move(trimmedSpec);

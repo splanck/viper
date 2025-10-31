@@ -75,29 +75,5 @@ int main()
     assert(err.find("invalid line number") != std::string::npos);
     assert(err.find("--break") != std::string::npos);
 
-    gUsageCalled = false;
-    err.clear();
-    rc = invokeWithFlag("--break", "foo:abc", err);
-    assert(rc != 0);
-    assert(gUsageCalled);
-    assert(err.find("invalid line number") != std::string::npos);
-    assert(err.find("--break") != std::string::npos);
-
-    gUsageCalled = false;
-    err.clear();
-    rc = invokeWithFlag("--break", "tests/e2e/BreakSrcExact.bas:", err);
-    assert(rc != 0);
-    assert(gUsageCalled);
-    assert(err.find("invalid line number") != std::string::npos);
-    assert(err.find("--break") != std::string::npos);
-
-    gUsageCalled = false;
-    err.clear();
-    rc = invokeWithFlag("--break", "tests/e2e/BreakSrcExact.bas:   ", err);
-    assert(rc != 0);
-    assert(gUsageCalled);
-    assert(err.find("invalid line number") != std::string::npos);
-    assert(err.find("--break") != std::string::npos);
-
     return 0;
 }
