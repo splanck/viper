@@ -80,8 +80,9 @@ struct CallStmt : Stmt
         return Kind::Call;
     }
 
-    /// Call expression representing the invoked SUB.
-    std::unique_ptr<CallExpr> call;
+    /// Expression representing an invocation with side effects (SUB or instance method).
+    /// May be a CallExpr or a MethodCallExpr.
+    ExprPtr call;
     void accept(StmtVisitor &visitor) const override;
     void accept(MutStmtVisitor &visitor) override;
 };
