@@ -18,6 +18,7 @@
 
 #include "frontends/basic/BasicDiagnosticMessages.hpp"
 #include "frontends/basic/Parser.hpp"
+#include "frontends/basic/ast/ExprNodes.hpp"
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
@@ -188,7 +189,38 @@ Parser::StmtResult Parser::parseCall(int)
         return std::nullopt;
 
     const Token identTok = peek();
-    const Token nextTok = peek(1);
+    const Token nextTok  = peek(1);
+
+    // Path A: instance-method call like: obj.Method(...)
+    // Conservative lookahead to avoid backtracking: Ident '.' Ident '('
+    if (nextTok.kind == TokenKind::Dot)
+    {
+        const Token t2 = peek(2);
+        const Token t3 = peek(3);
+        if (t2.kind == TokenKind::Identifier && t3.kind == TokenKind::LParen)
+        {
+            // Now parse a full expression; top-level must be a MethodCallExpr.
+            auto expr = parseExpression(/*min_prec=*/0);
+            if (expr && dynamic_cast<MethodCallExpr *>(expr.get()) != nullptr)
+            {
+                auto stmt = std::make_unique<CallStmt>();
+                stmt->loc  = identTok.loc;
+                stmt->call = std::move(expr);
+                return StmtResult(std::move(stmt));
+            }
+
+            // We saw Ident '.' Ident '(' but didn't end up with a method-call node.
+            // Treat as a hard error (unknown statement), since we consumed tokens.
+            reportUnknownStatement(identTok);
+            resyncAfterError();
+            return StmtResult(StmtPtr{});
+        }
+
+        // Not a method invocation start; let other statement parsers try.
+        return std::nullopt;
+    }
+
+    // Path B (existing): bare SUB call: GREET("Alice")
     if (nextTok.kind != TokenKind::LParen)
     {
         if (isKnownProcedureName(identTok.lexeme))
@@ -200,11 +232,12 @@ Parser::StmtResult Parser::parseCall(int)
         return std::nullopt;
     }
 
+    // Parse name(...) and accept only if it is a CallExpr (not an array ref).
     auto expr = parseArrayOrVar();
-    if (dynamic_cast<CallExpr *>(expr.get()) || dynamic_cast<MethodCallExpr *>(expr.get()))
+    if (expr && dynamic_cast<CallExpr *>(expr.get()) != nullptr)
     {
         auto stmt = std::make_unique<CallStmt>();
-        stmt->loc = identTok.loc;
+        stmt->loc  = identTok.loc;
         stmt->call = std::move(expr);
         return StmtResult(std::move(stmt));
     }
