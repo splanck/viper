@@ -11,7 +11,9 @@
 #include "rt_string.h"
 
 #include <assert.h>
+#include <errno.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -136,6 +138,41 @@ static void ensure_invalid_handle_surfaces_ioerror(void)
     assert(err.code != 0);
 }
 
+static void ensure_seek_out_of_range_reports_invalid_operation(void)
+{
+#if (defined(OFF_MAX) && (OFF_MAX < INT64_MAX)) || (defined(OFF_MIN) && (OFF_MIN > INT64_MIN))
+    char path[] = "/tmp/viper_io_seek_rangeXXXXXX";
+    int fd = mkstemp(path);
+    assert(fd >= 0);
+    int rc = close(fd);
+    assert(rc == 0);
+
+    RtFile file;
+    rt_file_init(&file);
+    RtError err = {Err_None, 0};
+    bool ok = rt_file_open(&file, path, "r", &err);
+    assert(ok);
+
+#if defined(OFF_MAX) && (OFF_MAX < INT64_MAX)
+    const int64_t overflow_offset = (int64_t)OFF_MAX + 1;
+#else
+    const int64_t overflow_offset = (int64_t)OFF_MIN - 1;
+#endif
+    err.kind = Err_None;
+    err.code = 0;
+    ok = rt_file_seek(&file, overflow_offset, SEEK_SET, &err);
+    assert(!ok);
+    assert(err.kind == Err_InvalidOperation);
+    assert(err.code == ERANGE);
+
+    ok = rt_file_close(&file, &err);
+    assert(ok);
+    unlink(path);
+#else
+    // No representable int64_t value falls outside off_t's range on this platform.
+#endif
+}
+
 int main(void)
 {
     ensure_missing_open_sets_file_not_found();
@@ -143,5 +180,6 @@ int main(void)
     ensure_read_line_reports_eof();
     ensure_read_line_trims_crlf();
     ensure_invalid_handle_surfaces_ioerror();
+    ensure_seek_out_of_range_reports_invalid_operation();
     return 0;
 }
