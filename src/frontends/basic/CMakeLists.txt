@@ -3,6 +3,8 @@ add_library(fe_basic STATIC)
 target_sources(fe_basic PRIVATE
         Token.cpp
         Lexer.cpp
+        Lexer.Literals.cpp
+        Lexer.Trivia.cpp
         AST.cpp
         AstPrinter.cpp
         AstPrint_Expr.cpp
