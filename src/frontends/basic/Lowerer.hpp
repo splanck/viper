@@ -26,6 +26,26 @@
 #include <unordered_set>
 #include <vector>
 
+namespace viper::basic::lower::calls
+{
+struct Access;
+} // namespace viper::basic::lower::calls
+
+namespace viper::basic::lower::locals
+{
+struct Access;
+} // namespace viper::basic::lower::locals
+
+namespace viper::basic::lower::ssa
+{
+struct Access;
+} // namespace viper::basic::lower::ssa
+
+namespace viper::basic::lower::control
+{
+struct Access;
+} // namespace viper::basic::lower::control
+
 namespace il::frontends::basic
 {
 
@@ -123,6 +143,10 @@ class Lowerer
     friend class lower::BuiltinLowerContext;
     friend class lower::common::CommonLowering;
     friend class Emit;
+    friend struct viper::basic::lower::locals::Access;
+    friend struct viper::basic::lower::calls::Access;
+    friend struct viper::basic::lower::ssa::Access;
+    friend struct viper::basic::lower::control::Access;
 
     using Module = il::core::Module;
     using Function = il::core::Function;

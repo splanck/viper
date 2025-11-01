@@ -20,6 +20,26 @@ namespace il::build
 class IRBuilder;
 } // namespace il::build
 
+namespace viper::basic::lower::calls
+{
+struct Access;
+} // namespace viper::basic::lower::calls
+
+namespace viper::basic::lower::locals
+{
+struct Access;
+} // namespace viper::basic::lower::locals
+
+namespace viper::basic::lower::ssa
+{
+struct Access;
+} // namespace viper::basic::lower::ssa
+
+namespace viper::basic::lower::control
+{
+struct Access;
+} // namespace viper::basic::lower::control
+
 namespace il::frontends::basic
 {
 
@@ -112,6 +132,10 @@ struct ProcedureLowering
 
   private:
     Lowerer &lowerer;
+    friend struct viper::basic::lower::calls::Access;
+    friend struct viper::basic::lower::locals::Access;
+    friend struct viper::basic::lower::ssa::Access;
+    friend struct viper::basic::lower::control::Access;
 };
 
 /// @brief Emits control flow for sequential statement lowering within a procedure.
