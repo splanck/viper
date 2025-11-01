@@ -31,6 +31,10 @@ target_sources(fe_basic PRIVATE
         LoweringContext.cpp
         Lowerer.Program.cpp
         Lowerer.Procedure.cpp
+        lower/Proc_Calls.cpp
+        lower/Proc_Control.cpp
+        lower/Proc_Locals.cpp
+        lower/Proc_SSA.cpp
         Lowerer.Statement.cpp
         BuiltinRegistry.cpp
         builtins/MathBuiltins.cpp

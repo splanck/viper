@@ -15,6 +15,26 @@
 #include <unordered_set>
 #include <vector>
 
+namespace viper::basic::lower
+{
+namespace calls
+{
+struct API;
+} // namespace calls
+namespace locals
+{
+struct API;
+} // namespace locals
+namespace ssa
+{
+struct API;
+} // namespace ssa
+namespace control
+{
+struct API;
+} // namespace control
+} // namespace viper::basic::lower
+
 namespace il::build
 {
 class IRBuilder;
@@ -54,6 +74,10 @@ struct ProgramLowering
 /// @brief Handles procedure signature caching, variable collection, and body emission.
 struct ProcedureLowering
 {
+    friend struct viper::basic::lower::calls::API;
+    friend struct viper::basic::lower::locals::API;
+    friend struct viper::basic::lower::ssa::API;
+    friend struct viper::basic::lower::control::API;
     struct LoweringContext
     {
         LoweringContext(Lowerer &lowerer,
