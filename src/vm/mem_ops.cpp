@@ -271,7 +271,7 @@ VM::ExecResult handleConstNull(VM &vm,
         case Type::Kind::I64:
         case Type::Kind::Error:
         case Type::Kind::ResumeTok:
-            out.i64 = 0;
+            out.ptr = nullptr;
             break;
         case Type::Kind::F64:
             out.f64 = 0.0;
