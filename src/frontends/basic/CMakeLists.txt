@@ -49,6 +49,11 @@ target_sources(fe_basic PRIVATE
         LowerRuntime.cpp
         LowerScan.cpp
         lower/BuiltinCommon.cpp
+        lower/builtins/Common.cpp
+        lower/builtins/Math.cpp
+        lower/builtins/String.cpp
+        lower/builtins/Array.cpp
+        lower/builtins/IO.cpp
         lower/common/CommonLowering.cpp
         lower/common/BuiltinUtils.cpp
         lower/Lowerer_Errors.cpp
