@@ -23,16 +23,11 @@
 
 #include "frontends/basic/ConstFolder.hpp"
 #include "frontends/basic/constfold/Dispatch.hpp"
-
-extern "C"
-{
-#include "runtime/rt_format.h"
-}
+#include "viper/il/io/FormatUtils.hpp"
 #include <array>
 #include <cctype>
 #include <cmath>
 #include <cstdint>
-#include <cstdio>
 #include <cstdlib>
 #include <limits>
 #include <optional>
@@ -418,16 +413,14 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
         if (!numeric)
             return false;
 
-        char buf[64];
         if (numeric->isFloat)
         {
-            rt_format_f64(numeric->f, buf, sizeof(buf));
+            replaceWithStr(viper::il::io::format_float(numeric->f), expr.loc);
         }
         else
         {
-            snprintf(buf, sizeof(buf), "%lld", numeric->i);
+            replaceWithStr(viper::il::io::format_integer(numeric->i), expr.loc);
         }
-        replaceWithStr(buf, expr.loc);
         return true;
     }
 

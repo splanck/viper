@@ -1,4 +1,5 @@
 add_library(viper_il_io STATIC
+        FormatUtils.cpp
         FunctionParser.cpp
         InstrParser.cpp
         OperandParser.cpp
@@ -19,3 +20,6 @@ target_include_directories(viper_il_io PUBLIC
         $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>
 )
+
+install(FILES ${PROJECT_SOURCE_DIR}/include/viper/il/io/FormatUtils.hpp
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/viper/il/io)
