@@ -95,7 +95,6 @@ il::support::Expected<FrontBasicConfig> parseFrontBasicArgs(int argc, char **arg
         {
             if (i + 1 >= argc)
             {
-                usage();
                 return il::support::Expected<FrontBasicConfig>(il::support::Diagnostic{
                     il::support::Severity::Error, "missing BASIC source path", {}});
             }
@@ -106,7 +105,6 @@ il::support::Expected<FrontBasicConfig> parseFrontBasicArgs(int argc, char **arg
         {
             if (i + 1 >= argc)
             {
-                usage();
                 return il::support::Expected<FrontBasicConfig>(il::support::Diagnostic{
                     il::support::Severity::Error, "missing BASIC source path", {}});
             }
@@ -120,11 +118,9 @@ il::support::Expected<FrontBasicConfig> parseFrontBasicArgs(int argc, char **arg
                 case ilc::SharedOptionParseResult::Parsed:
                     continue;
                 case ilc::SharedOptionParseResult::Error:
-                    usage();
                     return il::support::Expected<FrontBasicConfig>(il::support::Diagnostic{
                         il::support::Severity::Error, "failed to parse shared option", {}});
                 case ilc::SharedOptionParseResult::NotMatched:
-                    usage();
                     return il::support::Expected<FrontBasicConfig>(
                         il::support::Diagnostic{il::support::Severity::Error, "unknown flag", {}});
             }
@@ -133,7 +129,6 @@ il::support::Expected<FrontBasicConfig> parseFrontBasicArgs(int argc, char **arg
 
     if ((config.emitIl == config.run) || config.sourcePath.empty())
     {
-        usage();
         return il::support::Expected<FrontBasicConfig>(il::support::Diagnostic{
             il::support::Severity::Error, "specify exactly one of -emit-il or -run", {}});
     }
@@ -299,6 +294,9 @@ int cmdFrontBasicWithSourceManager(int argc, char **argv, il::support::SourceMan
     auto parsed = parseFrontBasicArgs(argc, argv);
     if (!parsed)
     {
+        const auto &diag = parsed.error();
+        il::support::printDiag(diag, std::cerr, &sm);
+        usage();
         return 1;
     }
 
