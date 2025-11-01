@@ -59,6 +59,10 @@ target_sources(fe_basic PRIVATE
         lower/Lowerer_Errors.cpp
         lower/Lowerer_Expr.cpp
         lower/Lowerer_Stmt.cpp
+        lower/Proc_Calls.cpp
+        lower/Proc_Control.cpp
+        lower/Proc_Locals.cpp
+        lower/Proc_SSA.cpp
         lower/Scan_ExprTypes.cpp
         lower/Scan_RuntimeNeeds.cpp
         Lower_OOP_Scan.cpp
