@@ -896,10 +896,12 @@ StmtPtr Parser::parseSubStatement()
     sub->params = parseParamList();
     if (at(TokenKind::KeywordAs))
     {
-        Token asTok = peek();
+        Token asTok = consume();
+        if (!at(TokenKind::EndOfLine) && !at(TokenKind::EndOfFile))
+            consume();
         if (emitter_)
         {
-            std::string message = "SUB does not take a return type; remove 'AS <TYPE>'";
+            std::string message = "SUB cannot have 'AS <TYPE>'";
             emitter_->emit(il::support::Severity::Error,
                            "B4007",
                            asTok.loc,
@@ -908,10 +910,8 @@ StmtPtr Parser::parseSubStatement()
         }
         else
         {
-            std::fprintf(stderr, "SUB does not take a return type; remove 'AS <TYPE>'\n");
+            std::fprintf(stderr, "SUB cannot have 'AS <TYPE>'\n");
         }
-        consume();
-        (void)parseBasicType();
     }
     noteProcedureName(sub->name);
     parseProcedureBody(TokenKind::KeywordSub, sub->body);
