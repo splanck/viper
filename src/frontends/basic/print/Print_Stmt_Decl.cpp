@@ -14,6 +14,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "frontends/basic/BasicTypes.hpp"
 #include "frontends/basic/print/Print_Stmt_Common.hpp"
 
 namespace il::frontends::basic::print_stmt
@@ -141,6 +142,10 @@ void printFunction(const FunctionDecl &stmt, Context &ctx)
     os << "(FUNCTION " << stmt.name << " RET " << typeToString(stmt.ret) << " (";
     printParamList(stmt.params, ctx);
     os << ")";
+    if (stmt.explicitRetType != BasicType::Unknown && stmt.explicitRetType != BasicType::Void)
+    {
+        os << " AS " << toString(stmt.explicitRetType);
+    }
     ctx.printNumberedBody(stmt.body);
 }
 
