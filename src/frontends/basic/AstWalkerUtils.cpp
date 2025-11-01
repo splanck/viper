@@ -5,11 +5,19 @@
 //
 // File: src/frontends/basic/AstWalkerUtils.cpp
 // Purpose: Implements helper utilities shared by BASIC AST walker implementations.
-// Key invariants: Utilities mirror BasicAstWalker traversal semantics.
+// Key invariants: Utilities mirror BasicAstWalker traversal semantics and never
+//                 mutate AST nodes.
 // Ownership/Lifetime: Functions operate on borrowed nodes.
 // Links: docs/codemap.md
 //
 //===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Convenience predicates for BASIC AST walker implementations.
+/// @details The helpers here encode common queries used by the walkers and
+///          printers in the BASIC front-end.  Housing the logic out of line
+///          keeps headers minimal while providing a single location that
+///          documents traversal assumptions shared across the front-end.
 
 #include "frontends/basic/AstWalkerUtils.hpp"
 
@@ -22,7 +30,9 @@ namespace il::frontends::basic::walker
 ///          expressions.  The AST walker needs to know when an item provides a
 ///          computed value so it can request lowering or formatting.  The
 ///          helper simply inspects the discriminant and ensures the expression
-///          pointer is populated for safety.
+///          pointer is populated for safety; returning @c false for malformed
+///          items allows callers to degrade gracefully without dereferencing
+///          null nodes.
 ///
 /// @param item PRINT item under inspection.
 /// @return True when the item represents an expression payload.

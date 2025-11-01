@@ -14,6 +14,16 @@
 //
 //===----------------------------------------------------------------------===//
 
+/// @file
+/// @brief Implements the dead-code elimination (DCE) pass for the IL pipeline.
+/// @details The pass complements the lightweight optimiser by erasing trivially
+///          dead temporaries, redundant stack traffic, and unused block
+///          parameters.  It relies solely on syntactic information so that it
+///          can run quickly and deterministically even in debug builds where
+///          richer analysis infrastructure may be disabled.  The implementation
+///          lives out of line to keep the public header minimal while providing a
+///          single, well-documented reference for the pass' heuristics.
+
 #include "il/transform/DCE.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
@@ -63,16 +73,22 @@ static std::unordered_map<unsigned, size_t> countUses(Function &F)
 /// @brief Eliminate trivially dead instructions and block parameters.
 ///
 /// @details The transformation iterates over every function in @p M and:
-///   1. Builds use counts for temporaries via @ref countUses.
-///   2. Records which @c alloca results are observed by @c load instructions.
+///   1. Builds use counts for temporaries via @ref countUses so later stages can
+///      determine which results are never observed.
+///   2. Records which @c alloca results are observed by @c load instructions to
+///      distinguish genuine stack slots from those that only ever receive
+///      stores.
 ///   3. Deletes loads whose results have zero uses, stores that write to never
-///      loaded allocas, and allocas that are never read.
+///      loaded allocas, and allocas that are never read.  The instruction
+///      traversal keeps indices stable by only advancing when no erasure
+///      occurred.
 ///   4. Walks block parameters in reverse order, removing unused entries and
 ///      erasing the corresponding operands from predecessor branch argument
-///      lists.
+///      lists so SSA form remains consistent.
 /// Instructions that may observe side effects (for example calls) are
 /// intentionally untouched; the pass focuses solely on obvious dead temporaries
-/// to keep compilation fast and predictable.
+/// to keep compilation fast and predictable.  The in-place updates mean callers
+/// can reuse existing module objects without re-running expensive analyses.
 ///
 /// @param M Module simplified in place.
 void dce(Module &M)
