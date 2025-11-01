@@ -15,6 +15,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/basic/AstPrinter.hpp"
+#include "frontends/basic/BasicTypes.hpp"
 #include <sstream>
 
 namespace il::frontends::basic
