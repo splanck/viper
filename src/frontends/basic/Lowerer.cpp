@@ -117,16 +117,4 @@ Lowerer::Module Lowerer::lower(const Program &prog)
 /// @param params Parameter declarations describing the procedure signature.
 /// @param body Ordered statement list comprising the procedure body.
 /// @param config Behavioural hooks that customise prologue/epilogue emission.
-void Lowerer::lowerProcedure(const std::string &name,
-                             const std::vector<Param> &params,
-                             const std::vector<StmtPtr> &body,
-                             const ProcedureConfig &config)
-{
-    auto ctx = procedureLowering->makeContext(name, params, body, config);
-    procedureLowering->resetContext(ctx);
-    procedureLowering->collectProcedureInfo(ctx);
-    procedureLowering->scheduleBlocks(ctx);
-    procedureLowering->emitProcedureIL(ctx);
-}
-
 } // namespace il::frontends::basic
