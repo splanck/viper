@@ -7,6 +7,7 @@
 // Links: docs/codemap.md
 #pragma once
 
+#include "frontends/basic/BasicTypes.hpp"
 #include "frontends/basic/ProcRegistry.hpp"
 #include "frontends/basic/ScopeTracker.hpp"
 #include "frontends/basic/SemanticDiagnostics.hpp"
@@ -425,6 +426,8 @@ class SemanticAnalyzer
     ProcedureScope *activeProcScope_{nullptr};
     bool errorHandlerActive_{false};
     std::optional<int> errorHandlerTarget_;
+    const FunctionDecl *activeFunction_{nullptr};
+    BasicType activeFunctionExplicitRet_{BasicType::Unknown};
 };
 
 } // namespace il::frontends::basic
