@@ -120,6 +120,22 @@ int main()
     assert(stored_before == stored_after);
     assert(dedupeSm.getPath(dedupeFirst) == "dupe/file.txt");
 
+#ifdef _WIN32
+    // Windows path normalization should ignore ASCII casing to align with
+    // case-insensitive filesystem semantics.
+    il::support::SourceManager caseInsensitiveSm;
+    const uint32_t winFirst = caseInsensitiveSm.addFile("Case/FILE.TXT");
+    assert(winFirst != 0);
+    const size_t winStoredBefore =
+        il::support::SourceManagerTestAccess::storedPathCount(caseInsensitiveSm);
+    const uint32_t winSecond = caseInsensitiveSm.addFile("case/file.txt");
+    assert(winSecond == winFirst);
+    const size_t winStoredAfter =
+        il::support::SourceManagerTestAccess::storedPathCount(caseInsensitiveSm);
+    assert(winStoredBefore == winStoredAfter);
+    assert(caseInsensitiveSm.getPath(winFirst) == "case/file.txt");
+#endif
+
     // Diagnostics missing a registered path should not emit a leading colon.
     il::support::Diag missingPath{
         il::support::Severity::Error,
