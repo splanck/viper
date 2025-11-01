@@ -7,6 +7,7 @@
 #pragma once
 
 #include "frontends/basic/AST.hpp"
+#include "frontends/basic/BasicTypes.hpp"
 #include "frontends/basic/EmitCommon.hpp"
 #include "frontends/basic/LowerRuntime.hpp"
 #include "frontends/basic/NameMangler.hpp"
@@ -304,6 +305,12 @@ class Lowerer
     /// @param expr Binary expression node.
     /// @return Resulting value and type.
     RVal lowerBinaryExpr(const BinaryExpr &expr);
+
+    /// @brief Translate a BASIC return type hint into an IL type.
+    /// @param fnName BASIC function name used for suffix inference.
+    /// @param hint Explicit BASIC return type annotation, if any.
+    /// @return IL type matching the BASIC semantics for the function return.
+    Type functionRetTypeFromHint(const std::string &fnName, BasicType hint) const;
 
     /// @brief Lower a boolean expression using explicit branch bodies.
     /// @param cond Boolean condition selecting THEN branch.
