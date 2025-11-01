@@ -12,6 +12,16 @@
 //
 //===----------------------------------------------------------------------===//
 
+/// @file
+/// @brief Implements convenience constructors and printers for IL values.
+/// @details The @ref il::core::Value type is a compact tagged union that
+///          represents SSA temporaries and literals flowing through the
+///          intermediate language.  This file defines ergonomic factory helpers
+///          together with @ref toString so other subsystems can construct and
+///          inspect values without repeating encoding knowledge.  Keeping the
+///          logic out of the header minimises compile times while centralising
+///          documentation for how each literal form should appear in textual IL.
+
 #include "il/core/Value.hpp"
 #include "il/io/StringEscape.hpp"
 
@@ -96,11 +106,15 @@ Value Value::null()
 }
 
 /// @brief Render a value into its textual IL representation.
-/// @details Mirrors the canonical format produced by the serializer: temps
-///          appear as `%tN`, integers as decimal literals (with booleans spelled
-///          out), floating-point values use a trimmed scientific/decimal format,
-///          strings are escaped, and globals are prefixed with `@`.  Null
-///          pointers render as `null`.
+/// @details Mirrors the canonical format produced by the serializer: temporaries
+///          appear as `%tN`, integers print in base 10 (with booleans spelled
+///          out through the dedicated flag), floating-point values use a
+///          precision high enough to round-trip IEEE-754 doubles before trimming
+///          redundant zeros, strings are re-escaped through
+///          @ref il::io::encodeEscapedString, and globals are prefixed with `@`.
+///          Null pointers always render as the literal `null`.  Keeping the
+///          implementation here avoids scattering formatting conventions across
+///          the codebase and ensures debug output matches the canonical printer.
 /// @param v Value to render.
 /// @return String representation suitable for diagnostics or textual IL.
 std::string toString(const Value &v)
