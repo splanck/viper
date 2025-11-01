@@ -41,7 +41,17 @@ namespace
 std::string normalizePath(std::string path)
 {
     std::filesystem::path p(std::move(path));
-    return p.lexically_normal().generic_string();
+    std::string normalized = p.lexically_normal().generic_string();
+
+#ifdef _WIN32
+    for (char &ch : normalized)
+    {
+        if (ch >= 'A' && ch <= 'Z')
+            ch = static_cast<char>(ch - 'A' + 'a');
+    }
+#endif
+
+    return normalized;
 }
 } // namespace
 
