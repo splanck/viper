@@ -23,6 +23,7 @@
 #include <cmath>
 #include <cstdint>
 #include <limits>
+#include <utility>
 
 /// @file
 /// @brief Floating-point opcode handlers and helpers for the VM interpreter.
@@ -40,6 +41,90 @@ namespace il::vm::detail::floating
 namespace
 {
 constexpr double kUint64Boundary = 18446744073709551616.0; ///< 2^64, sentinel for overflow.
+
+Type::Kind tempType(const Frame &fr, unsigned id)
+{
+    if (id < fr.regTypes.size())
+        return fr.regTypes[id];
+    return Type::Kind::Void;
+}
+
+float operandAsF32(const Frame &fr, const Instr &in, size_t index, const Slot &slot)
+{
+    const auto &value = in.operands[index];
+    switch (value.kind)
+    {
+        case Value::Kind::ConstFloat:
+            return static_cast<float>(value.f64);
+        case Value::Kind::ConstInt:
+            return static_cast<float>(value.i64);
+        case Value::Kind::NullPtr:
+            return 0.0f;
+        case Value::Kind::Temp:
+        {
+            const auto kind = tempType(fr, value.id);
+            if (kind == Type::Kind::F64)
+                return static_cast<float>(slot.f64);
+            return slot.f32;
+        }
+        default:
+            return slot.f32;
+    }
+}
+
+double operandAsF64(const Frame &fr, const Instr &in, size_t index, const Slot &slot)
+{
+    const auto &value = in.operands[index];
+    switch (value.kind)
+    {
+        case Value::Kind::ConstFloat:
+            return value.f64;
+        case Value::Kind::ConstInt:
+            return static_cast<double>(value.i64);
+        case Value::Kind::NullPtr:
+            return 0.0;
+        case Value::Kind::Temp:
+        {
+            const auto kind = tempType(fr, value.id);
+            if (kind == Type::Kind::F32)
+                return static_cast<double>(slot.f32);
+            return slot.f64;
+        }
+        default:
+            return slot.f64;
+    }
+}
+
+bool operandsPreferF32(const Frame &fr, const Instr &in)
+{
+    const auto first = in.operands.empty() ? Type::Kind::Void
+                                           : (in.operands[0].kind == Value::Kind::Temp
+                                                  ? tempType(fr, in.operands[0].id)
+                                                  : Type::Kind::Void);
+    const auto second = in.operands.size() > 1 && in.operands[1].kind == Value::Kind::Temp
+                            ? tempType(fr, in.operands[1].id)
+                            : Type::Kind::Void;
+    return first == Type::Kind::F32 || second == Type::Kind::F32;
+}
+
+template <typename PredF32, typename PredF64>
+bool runFloatCompare(const Frame &fr,
+                     const Instr &in,
+                     const Slot &lhsSlot,
+                     const Slot &rhsSlot,
+                     PredF32 &&predF32,
+                     PredF64 &&predF64)
+{
+    if (operandsPreferF32(fr, in))
+    {
+        const float lhs = operandAsF32(fr, in, 0, lhsSlot);
+        const float rhs = operandAsF32(fr, in, 1, rhsSlot);
+        return std::forward<PredF32>(predF32)(lhs, rhs);
+    }
+    const double lhs = operandAsF64(fr, in, 0, lhsSlot);
+    const double rhs = operandAsF64(fr, in, 1, rhsSlot);
+    return std::forward<PredF64>(predF64)(lhs, rhs);
+}
 
 /// @brief Round @p operand to the nearest unsigned 64-bit integer or raise a trap.
 /// @details Implements the semantics of `cast.fp_to_ui.rte.chk` in four stages:
@@ -104,15 +189,12 @@ constexpr double kUint64Boundary = 18446744073709551616.0; ///< 2^64, sentinel f
 } // namespace
 
 /// @brief Execute the `fadd` opcode by summing two floating-point operands.
-/// @details The handler performs three steps:
-///          1. Use @ref ops::applyBinary to evaluate both operand slots,
-///             ensuring any lazy values are materialised.
-///          2. Add the `double` values using host IEEE-754 semantics so NaNs
-///             propagate and infinities behave consistently across platforms.
-///          3. Store the sum back to the destination slot via
-///             @ref ops::storeResult.
-///          No control-flow metadata is adjusted because floating-point addition
-///          never branches.
+/// @details Evaluates operand slots with @ref VMAccess::eval so lazy values are
+///          materialised, converts each operand to either @c float or
+///          @c double depending on the active instruction type, performs the
+///          addition with host IEEE-754 semantics, and writes the result via
+///          @ref ops::storeResult.  Control-flow state remains untouched because
+///          the instruction is purely arithmetic.
 /// @param vm Virtual machine orchestrating execution (unused).
 /// @param fr Active frame containing operand and result slots.
 /// @param in Instruction describing the addition.
@@ -130,18 +212,32 @@ VM::ExecResult handleFAdd(VM &vm,
     (void)blocks;
     (void)bb;
     (void)ip;
-    return ops::applyBinary(vm,
-                            fr,
-                            in,
-                            [](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
-                            { out.f64 = lhsVal.f64 + rhsVal.f64; });
+
+    Slot lhsSlot = VMAccess::eval(vm, fr, in.operands[0]);
+    Slot rhsSlot = VMAccess::eval(vm, fr, in.operands[1]);
+    Slot out{};
+    if (in.type.kind == Type::Kind::F32)
+    {
+        const float lhs = operandAsF32(fr, in, 0, lhsSlot);
+        const float rhs = operandAsF32(fr, in, 1, rhsSlot);
+        out.f32 = lhs + rhs;
+    }
+    else
+    {
+        const double lhs = operandAsF64(fr, in, 0, lhsSlot);
+        const double rhs = operandAsF64(fr, in, 1, rhsSlot);
+        out.f64 = lhs + rhs;
+    }
+    ops::storeResult(fr, in, out);
+    return {};
 }
 
 /// @brief Execute the `fsub` opcode by subtracting two floating-point operands.
-/// @details Uses @ref ops::applyBinary to materialise operand slots, then
-///          computes the difference with host IEEE-754 subtraction so signed
-///          zero behaviour and NaN propagation follow the specification.  The
-///          only state change is writing the destination slot.
+/// @details Materialises operands through @ref VMAccess::eval, converts them to
+///          the width dictated by the instruction's result type, performs the
+///          subtraction using IEEE-754 rules (preserving signed zero and NaN
+///          propagation), and stores the result back through
+///          @ref ops::storeResult.
 /// @param vm Virtual machine coordinating execution (unused).
 /// @param fr Active frame containing operand and result storage.
 /// @param in Instruction describing the subtraction.
@@ -159,19 +255,32 @@ VM::ExecResult handleFSub(VM &vm,
     (void)blocks;
     (void)bb;
     (void)ip;
-    return ops::applyBinary(vm,
-                            fr,
-                            in,
-                            [](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
-                            { out.f64 = lhsVal.f64 - rhsVal.f64; });
+
+    Slot lhsSlot = VMAccess::eval(vm, fr, in.operands[0]);
+    Slot rhsSlot = VMAccess::eval(vm, fr, in.operands[1]);
+    Slot out{};
+    if (in.type.kind == Type::Kind::F32)
+    {
+        const float lhs = operandAsF32(fr, in, 0, lhsSlot);
+        const float rhs = operandAsF32(fr, in, 1, rhsSlot);
+        out.f32 = lhs - rhs;
+    }
+    else
+    {
+        const double lhs = operandAsF64(fr, in, 0, lhsSlot);
+        const double rhs = operandAsF64(fr, in, 1, rhsSlot);
+        out.f64 = lhs - rhs;
+    }
+    ops::storeResult(fr, in, out);
+    return {};
 }
 
 /// @brief Execute the `fmul` opcode by multiplying two floating-point operands.
-/// @details Delegates to @ref ops::applyBinary to fetch operands, multiplies the
-///          values using host IEEE-754 semantics (preserving NaN and infinity
-///          behaviour), and stores the product in the destination slot.
-///          Control-flow metadata parameters are unused because the operation is
-///          purely arithmetic.
+/// @details Fetches operand slots via @ref VMAccess::eval, widens them to
+///          @c float or @c double as required, multiplies the values with IEEE-754
+///          semantics, and stores the product in the destination slot.  The
+///          handler never mutates control-flow metadata because the operation is
+///          side-effect free.
 /// @param vm Virtual machine coordinating execution (unused).
 /// @param fr Active frame providing operand and destination slots.
 /// @param in Instruction describing the multiplication.
@@ -189,18 +298,31 @@ VM::ExecResult handleFMul(VM &vm,
     (void)blocks;
     (void)bb;
     (void)ip;
-    return ops::applyBinary(vm,
-                            fr,
-                            in,
-                            [](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
-                            { out.f64 = lhsVal.f64 * rhsVal.f64; });
+
+    Slot lhsSlot = VMAccess::eval(vm, fr, in.operands[0]);
+    Slot rhsSlot = VMAccess::eval(vm, fr, in.operands[1]);
+    Slot out{};
+    if (in.type.kind == Type::Kind::F32)
+    {
+        const float lhs = operandAsF32(fr, in, 0, lhsSlot);
+        const float rhs = operandAsF32(fr, in, 1, rhsSlot);
+        out.f32 = lhs * rhs;
+    }
+    else
+    {
+        const double lhs = operandAsF64(fr, in, 0, lhsSlot);
+        const double rhs = operandAsF64(fr, in, 1, rhsSlot);
+        out.f64 = lhs * rhs;
+    }
+    ops::storeResult(fr, in, out);
+    return {};
 }
 
 /// @brief Execute the `fdiv` opcode by dividing two floating-point operands.
-/// @details Fetches operands through @ref ops::applyBinary, divides the values
-///          using host IEEE-754 semantics (surfacing infinities and NaNs exactly
-///          as the specification requires), and stores the quotient in the
-///          destination slot.  Control-flow bookkeeping parameters remain
+/// @details Materialises operands with @ref VMAccess::eval, narrows them to the
+///          instruction's precision, performs IEEE-754 division (surfacing
+///          infinities and NaNs exactly as specified), and writes the quotient to
+///          the destination slot.  Control-flow bookkeeping parameters remain
 ///          untouched because division cannot branch.
 /// @param vm Virtual machine orchestrating execution (unused).
 /// @param fr Active frame providing operand and destination storage.
@@ -219,19 +341,32 @@ VM::ExecResult handleFDiv(VM &vm,
     (void)blocks;
     (void)bb;
     (void)ip;
-    return ops::applyBinary(vm,
-                            fr,
-                            in,
-                            [](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
-                            { out.f64 = lhsVal.f64 / rhsVal.f64; });
+
+    Slot lhsSlot = VMAccess::eval(vm, fr, in.operands[0]);
+    Slot rhsSlot = VMAccess::eval(vm, fr, in.operands[1]);
+    Slot out{};
+    if (in.type.kind == Type::Kind::F32)
+    {
+        const float lhs = operandAsF32(fr, in, 0, lhsSlot);
+        const float rhs = operandAsF32(fr, in, 1, rhsSlot);
+        out.f32 = lhs / rhs;
+    }
+    else
+    {
+        const double lhs = operandAsF64(fr, in, 0, lhsSlot);
+        const double rhs = operandAsF64(fr, in, 1, rhsSlot);
+        out.f64 = lhs / rhs;
+    }
+    ops::storeResult(fr, in, out);
+    return {};
 }
 
 /// @brief Execute the `fcmp.eq` opcode and record whether operands compare equal.
-/// @details Evaluates operands via @ref ops::applyCompare, allowing the shared
-///          helper to materialise values and write a boolean result.  Equality
-///          uses host IEEE-754 rules: NaN operands force a false result while
-///          signed zeros compare equal.  The handler writes `1` for equality and
-///          `0` otherwise, leaving control-flow metadata untouched.
+/// @details Evaluates operand slots with @ref VMAccess::eval, routes the
+///          comparison through @ref runFloatCompare so both precisions are
+///          handled uniformly, and finally writes the boolean result via
+///          @ref ops::storeResult.  IEEE-754 semantics apply: NaN operands force
+///          a false result while signed zeros compare equal.
 /// @param vm Virtual machine coordinating execution (unused).
 /// @param fr Active frame providing operand and destination slots.
 /// @param in Instruction describing the comparison.
@@ -249,19 +384,27 @@ VM::ExecResult handleFCmpEQ(VM &vm,
     (void)blocks;
     (void)bb;
     (void)ip;
-    return ops::applyCompare(vm,
-                             fr,
-                             in,
-                             [](const Slot &lhsVal, const Slot &rhsVal)
-                             { return lhsVal.f64 == rhsVal.f64; });
+
+    Slot lhsSlot = VMAccess::eval(vm, fr, in.operands[0]);
+    Slot rhsSlot = VMAccess::eval(vm, fr, in.operands[1]);
+    const bool result = runFloatCompare(fr,
+                                        in,
+                                        lhsSlot,
+                                        rhsSlot,
+                                        [](float lhs, float rhs) { return lhs == rhs; },
+                                        [](double lhs, double rhs) { return lhs == rhs; });
+    Slot out{};
+    out.i64 = result ? 1 : 0;
+    ops::storeResult(fr, in, out);
+    return {};
 }
 
 /// @brief Execute the `fcmp.ne` opcode and record whether operands differ.
-/// @details Delegates to @ref ops::applyCompare so operand evaluation and result
-///          storage remain centralised.  IEEE-754 semantics mark comparisons
-///          with any NaN operand as unordered, which the helper models by
-///          returning true (1).  Otherwise the predicate succeeds when the
-///          operands are not equal.  Control-flow metadata is unchanged.
+/// @details Materialises operands via @ref VMAccess::eval and forwards them to
+///          @ref runFloatCompare, which selects @c float or @c double predicates
+///          as needed.  NaN operands follow IEEE-754 semantics by yielding true
+///          (unordered), and the boolean result is written back through
+///          @ref ops::storeResult without affecting control-flow metadata.
 /// @param vm Virtual machine coordinating execution (unused).
 /// @param fr Active frame providing operand and destination slots.
 /// @param in Instruction describing the comparison.
@@ -279,11 +422,19 @@ VM::ExecResult handleFCmpNE(VM &vm,
     (void)blocks;
     (void)bb;
     (void)ip;
-    return ops::applyCompare(vm,
-                             fr,
-                             in,
-                             [](const Slot &lhsVal, const Slot &rhsVal)
-                             { return lhsVal.f64 != rhsVal.f64; });
+
+    Slot lhsSlot = VMAccess::eval(vm, fr, in.operands[0]);
+    Slot rhsSlot = VMAccess::eval(vm, fr, in.operands[1]);
+    const bool result = runFloatCompare(fr,
+                                        in,
+                                        lhsSlot,
+                                        rhsSlot,
+                                        [](float lhs, float rhs) { return lhs != rhs; },
+                                        [](double lhs, double rhs) { return lhs != rhs; });
+    Slot out{};
+    out.i64 = result ? 1 : 0;
+    ops::storeResult(fr, in, out);
+    return {};
 }
 
 /// @brief Execute the `fcmp.gt` opcode and record whether lhs > rhs.
@@ -308,8 +459,19 @@ VM::ExecResult handleFCmpGT(VM &vm,
     (void)blocks;
     (void)bb;
     (void)ip;
-    return ops::applyCompare(
-        vm, fr, in, [](const Slot &lhsVal, const Slot &rhsVal) { return lhsVal.f64 > rhsVal.f64; });
+
+    Slot lhsSlot = VMAccess::eval(vm, fr, in.operands[0]);
+    Slot rhsSlot = VMAccess::eval(vm, fr, in.operands[1]);
+    const bool result = runFloatCompare(fr,
+                                        in,
+                                        lhsSlot,
+                                        rhsSlot,
+                                        [](float lhs, float rhs) { return lhs > rhs; },
+                                        [](double lhs, double rhs) { return lhs > rhs; });
+    Slot out{};
+    out.i64 = result ? 1 : 0;
+    ops::storeResult(fr, in, out);
+    return {};
 }
 
 /// @brief Execute the `fcmp.lt` opcode and record whether lhs < rhs.
@@ -334,8 +496,19 @@ VM::ExecResult handleFCmpLT(VM &vm,
     (void)blocks;
     (void)bb;
     (void)ip;
-    return ops::applyCompare(
-        vm, fr, in, [](const Slot &lhsVal, const Slot &rhsVal) { return lhsVal.f64 < rhsVal.f64; });
+
+    Slot lhsSlot = VMAccess::eval(vm, fr, in.operands[0]);
+    Slot rhsSlot = VMAccess::eval(vm, fr, in.operands[1]);
+    const bool result = runFloatCompare(fr,
+                                        in,
+                                        lhsSlot,
+                                        rhsSlot,
+                                        [](float lhs, float rhs) { return lhs < rhs; },
+                                        [](double lhs, double rhs) { return lhs < rhs; });
+    Slot out{};
+    out.i64 = result ? 1 : 0;
+    ops::storeResult(fr, in, out);
+    return {};
 }
 
 /// @brief Execute the `fcmp.le` opcode and record whether lhs <= rhs.
@@ -361,11 +534,19 @@ VM::ExecResult handleFCmpLE(VM &vm,
     (void)blocks;
     (void)bb;
     (void)ip;
-    return ops::applyCompare(vm,
-                             fr,
-                             in,
-                             [](const Slot &lhsVal, const Slot &rhsVal)
-                             { return lhsVal.f64 <= rhsVal.f64; });
+
+    Slot lhsSlot = VMAccess::eval(vm, fr, in.operands[0]);
+    Slot rhsSlot = VMAccess::eval(vm, fr, in.operands[1]);
+    const bool result = runFloatCompare(fr,
+                                        in,
+                                        lhsSlot,
+                                        rhsSlot,
+                                        [](float lhs, float rhs) { return lhs <= rhs; },
+                                        [](double lhs, double rhs) { return lhs <= rhs; });
+    Slot out{};
+    out.i64 = result ? 1 : 0;
+    ops::storeResult(fr, in, out);
+    return {};
 }
 
 /// @brief Execute the `fcmp.ge` opcode and record whether lhs >= rhs.
@@ -390,11 +571,19 @@ VM::ExecResult handleFCmpGE(VM &vm,
     (void)blocks;
     (void)bb;
     (void)ip;
-    return ops::applyCompare(vm,
-                             fr,
-                             in,
-                             [](const Slot &lhsVal, const Slot &rhsVal)
-                             { return lhsVal.f64 >= rhsVal.f64; });
+
+    Slot lhsSlot = VMAccess::eval(vm, fr, in.operands[0]);
+    Slot rhsSlot = VMAccess::eval(vm, fr, in.operands[1]);
+    const bool result = runFloatCompare(fr,
+                                        in,
+                                        lhsSlot,
+                                        rhsSlot,
+                                        [](float lhs, float rhs) { return lhs >= rhs; },
+                                        [](double lhs, double rhs) { return lhs >= rhs; });
+    Slot out{};
+    out.i64 = result ? 1 : 0;
+    ops::storeResult(fr, in, out);
+    return {};
 }
 
 /// @brief Execute the `sitofp` opcode by converting a signed 64-bit integer to `double`.
@@ -422,7 +611,10 @@ VM::ExecResult handleSitofp(VM &vm,
     (void)ip;
     Slot value = VMAccess::eval(vm, fr, in.operands[0]);
     Slot out{};
-    out.f64 = static_cast<double>(value.i64);
+    if (in.type.kind == Type::Kind::F32)
+        out.f32 = static_cast<float>(value.i64);
+    else
+        out.f64 = static_cast<double>(value.i64);
     ops::storeResult(fr, in, out);
     return {};
 }
@@ -453,8 +645,9 @@ VM::ExecResult handleFptosi(VM &vm,
     (void)bb;
     (void)ip;
     Slot value = VMAccess::eval(vm, fr, in.operands[0]);
+    const double operand = operandAsF64(fr, in, 0, value);
     Slot out{};
-    out.i64 = static_cast<int64_t>(value.f64);
+    out.i64 = static_cast<int64_t>(operand);
     ops::storeResult(fr, in, out);
     return {};
 }
@@ -485,8 +678,8 @@ VM::ExecResult handleCastFpToSiRteChk(VM &vm,
 {
     (void)blocks;
     (void)ip;
-    const Slot value = VMAccess::eval(vm, fr, in.operands[0]);
-    const double operand = value.f64;
+    Slot value = VMAccess::eval(vm, fr, in.operands[0]);
+    const double operand = operandAsF64(fr, in, 0, value);
     if (!std::isfinite(operand))
     {
         RuntimeBridge::trap(TrapKind::InvalidCast,
@@ -547,8 +740,9 @@ VM::ExecResult handleCastFpToUiRteChk(VM &vm,
 {
     (void)blocks;
     (void)ip;
-    const Slot value = VMAccess::eval(vm, fr, in.operands[0]);
-    const uint64_t rounded = castFpToUiRoundedOrTrap(value.f64, in, fr, bb);
+    Slot value = VMAccess::eval(vm, fr, in.operands[0]);
+    const double operand = operandAsF64(fr, in, 0, value);
+    const uint64_t rounded = castFpToUiRoundedOrTrap(operand, in, fr, bb);
 
     Slot out{};
     out.i64 = static_cast<int64_t>(rounded);

@@ -194,6 +194,7 @@ Frame VM::setupFrame(const Function &fn,
     // the number of temporaries and parameters required by @p fn and avoids
     // incremental growth during execution.
     fr.regs.resize(fn.valueNames.size());
+    fr.regTypes.assign(fr.regs.size(), il::core::Type::Kind::Void);
     assert(fr.regs.size() == fn.valueNames.size());
     fr.params.assign(fr.regs.size(), std::nullopt);
     fr.ehStack.clear();

@@ -273,6 +273,9 @@ VM::ExecResult handleConstNull(VM &vm,
         case Type::Kind::ResumeTok:
             out.i64 = 0;
             break;
+        case Type::Kind::F32:
+            out.f32 = 0.0f;
+            break;
         case Type::Kind::F64:
             out.f64 = 0.0;
             break;

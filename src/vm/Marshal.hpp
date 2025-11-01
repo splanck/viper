@@ -54,6 +54,7 @@ inline constexpr uint64_t kMaxBridgeStringBytes =
 struct ResultBuffers
 {
     int64_t i64 = 0;
+    float f32 = 0.0f;
     double f64 = 0.0;
     ViperString str = nullptr;
     void *ptr = nullptr;

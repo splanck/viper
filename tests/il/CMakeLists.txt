@@ -32,6 +32,10 @@ function(viper_add_il_core_tests)
     target_compile_definitions(test_il_serialize_opcodes PRIVATE TESTS_DIR="${VIPER_TESTS_DIR}")
     viper_add_ctest(test_il_serialize_opcodes test_il_serialize_opcodes)
 
+    viper_add_test(test_il_parse_f32 ${_VIPER_IL_UNIT_DIR}/test_il_parse_f32.cpp)
+    target_link_libraries(test_il_parse_f32 PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
+    viper_add_ctest(test_il_parse_f32 test_il_parse_f32)
+
     viper_add_test(test_il_malformed_cbr ${_VIPER_IL_UNIT_DIR}/test_il_malformed_cbr.cpp)
     target_link_libraries(test_il_malformed_cbr PRIVATE ${VIPER_IL_CORE_IO_LIBS})
     viper_add_ctest(test_il_malformed_cbr test_il_malformed_cbr)

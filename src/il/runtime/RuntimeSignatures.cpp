@@ -1360,6 +1360,8 @@ signatures::SigParam::Kind mapToSigParamKind(il::core::Type::Kind kind)
             return SigParam::Kind::I32;
         case Kind::I64:
             return SigParam::Kind::I64;
+        case Kind::F32:
+            return SigParam::Kind::F32;
         case Kind::F64:
             return SigParam::Kind::F64;
         case Kind::Ptr:

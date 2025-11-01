@@ -39,6 +39,8 @@ inline size_t minimumAlignmentFor(il::core::Type::Kind kind)
             return alignof(int32_t);
         case il::core::Type::Kind::I64:
             return alignof(int64_t);
+        case il::core::Type::Kind::F32:
+            return alignof(float);
         case il::core::Type::Kind::F64:
             return alignof(double);
         case il::core::Type::Kind::Str:
@@ -69,6 +71,9 @@ inline Slot loadSlotFromPtr(il::core::Type::Kind kind, void *ptr)
             break;
         case il::core::Type::Kind::I1:
             out.i64 = static_cast<int64_t>(*reinterpret_cast<uint8_t *>(ptr) & 1);
+            break;
+        case il::core::Type::Kind::F32:
+            out.f32 = *reinterpret_cast<float *>(ptr);
             break;
         case il::core::Type::Kind::F64:
             out.f64 = *reinterpret_cast<double *>(ptr);
@@ -105,6 +110,9 @@ inline void storeSlotToPtr(il::core::Type::Kind kind, void *ptr, const Slot &val
             break;
         case il::core::Type::Kind::I1:
             *reinterpret_cast<uint8_t *>(ptr) = static_cast<uint8_t>(value.i64 & 1);
+            break;
+        case il::core::Type::Kind::F32:
+            *reinterpret_cast<float *>(ptr) = value.f32;
             break;
         case il::core::Type::Kind::F64:
             *reinterpret_cast<double *>(ptr) = value.f64;

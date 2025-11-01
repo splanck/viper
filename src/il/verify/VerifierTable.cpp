@@ -51,10 +51,10 @@ constexpr Table buildTable()
     table[static_cast<size_t>(Opcode::ISubOvf)] = makeBinary(TypeClass::I64, TypeClass::I64, true);
     table[static_cast<size_t>(Opcode::IMulOvf)] = makeBinary(TypeClass::I64, TypeClass::I64, true);
     table[static_cast<size_t>(Opcode::SDivChk0)] = makeBinary(TypeClass::I64, TypeClass::I64, true);
-    table[static_cast<size_t>(Opcode::FAdd)] = makeBinary(TypeClass::F64, TypeClass::F64, false);
-    table[static_cast<size_t>(Opcode::FSub)] = makeBinary(TypeClass::F64, TypeClass::F64, false);
-    table[static_cast<size_t>(Opcode::FMul)] = makeBinary(TypeClass::F64, TypeClass::F64, false);
-    table[static_cast<size_t>(Opcode::FDiv)] = makeBinary(TypeClass::F64, TypeClass::F64, false);
+    table[static_cast<size_t>(Opcode::FAdd)] = makeBinary(TypeClass::InstrType, TypeClass::InstrType, false);
+    table[static_cast<size_t>(Opcode::FSub)] = makeBinary(TypeClass::InstrType, TypeClass::InstrType, false);
+    table[static_cast<size_t>(Opcode::FMul)] = makeBinary(TypeClass::InstrType, TypeClass::InstrType, false);
+    table[static_cast<size_t>(Opcode::FDiv)] = makeBinary(TypeClass::InstrType, TypeClass::InstrType, false);
 
     return table;
 }
@@ -94,6 +94,8 @@ constexpr TypeClass mapCategory(il::core::TypeCategory category)
             return TypeClass::I32;
         case TypeCategory::I64:
             return TypeClass::I64;
+        case TypeCategory::F32:
+            return TypeClass::F32;
         case TypeCategory::F64:
             return TypeClass::F64;
         case TypeCategory::Ptr:

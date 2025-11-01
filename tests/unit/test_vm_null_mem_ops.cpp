@@ -133,6 +133,8 @@ il::core::Module makeMisalignedStoreModule(il::core::Type::Kind kind)
             case Type::Kind::I32:
             case Type::Kind::I64:
                 return Value::constInt(42);
+            case Type::Kind::F32:
+                return Value::constFloat(1.0f);
             case Type::Kind::F64:
                 return Value::constFloat(1.0);
             case Type::Kind::Ptr:

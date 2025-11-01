@@ -7,6 +7,7 @@
 #pragma once
 
 #include "il/core/Opcode.hpp"
+#include "il/core/Type.hpp"
 #include "il/core/fwd.hpp"
 #include "rt.hpp"
 #include "support/source_location.hpp"
@@ -54,6 +55,9 @@ union Slot
     /// @brief Signed integer value.
     int64_t i64;
 
+    /// @brief 32-bit floating-point value.
+    float f32;
+
     /// @brief Floating-point value.
     double f64;
 
@@ -93,6 +97,10 @@ struct Frame
     /// @brief Register file for SSA values.
     /// @ownership Owned by the frame; sized to the function's register count.
     std::vector<Slot> regs;
+
+    /// @brief Tracked type of each register slot.
+    /// @ownership Owned by the frame; mirrors @ref regs in size.
+    std::vector<il::core::Type::Kind> regTypes;
 
     /// @brief Operand stack storage.
     /// @ownership Owned by the frame; fixed capacity of 1024 bytes.

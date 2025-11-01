@@ -401,6 +401,10 @@ void printInstr(const Instr &in, std::ostream &os)
             if (in.type.kind != *def)
                 os << ':' << in.type.toString();
         }
+        else if (info.resultType == TypeCategory::InstrType && in.type.kind == Type::Kind::F32)
+        {
+            os << ':' << in.type.toString();
+        }
         os << " = ";
     }
     os << il::core::toString(in.op);

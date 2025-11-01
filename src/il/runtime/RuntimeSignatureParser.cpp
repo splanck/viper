@@ -52,6 +52,8 @@ il::core::Type::Kind parseKindToken(std::string_view token)
         return Kind::I32;
     if (token == "i64")
         return Kind::I64;
+    if (token == "f32")
+        return Kind::F32;
     if (token == "f64")
         return Kind::F64;
     if (token == "str" || token == "string")

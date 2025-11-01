@@ -124,6 +124,15 @@ Expected<void> OperandTypeChecker::run() const
 
         if (actual.kind != expectedKind)
         {
+            if (expectedKind == il::core::Type::Kind::F64 && actual.kind == il::core::Type::Kind::F32)
+            {
+                continue;
+            }
+            if (expectedKind == il::core::Type::Kind::F32 &&
+                operand.kind == il::core::Value::Kind::ConstFloat)
+            {
+                continue;
+            }
             std::ostringstream ss;
             ss << "operand type mismatch: ";
             if (expectedKind == il::core::Type::Kind::Ptr)

@@ -44,6 +44,8 @@ std::optional<Type::Kind> kindFromClass(TypeClass typeClass)
             return Type::Kind::I32;
         case TypeClass::I64:
             return Type::Kind::I64;
+        case TypeClass::F32:
+            return Type::Kind::F32;
         case TypeClass::F64:
             return Type::Kind::F64;
         case TypeClass::Ptr:

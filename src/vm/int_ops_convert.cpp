@@ -303,7 +303,10 @@ VM::ExecResult handleCastSiToFp(VM &vm,
     (void)ip;
     const Slot value = VMAccess::eval(vm, fr, in.operands[0]);
     Slot out{};
-    out.f64 = static_cast<double>(value.i64);
+    if (in.type.kind == il::core::Type::Kind::F32)
+        out.f32 = static_cast<float>(value.i64);
+    else
+        out.f64 = static_cast<double>(value.i64);
     ops::storeResult(fr, in, out);
     return {};
 }
@@ -332,7 +335,10 @@ VM::ExecResult handleCastUiToFp(VM &vm,
     const Slot value = VMAccess::eval(vm, fr, in.operands[0]);
     const uint64_t operand = static_cast<uint64_t>(value.i64);
     Slot out{};
-    out.f64 = static_cast<double>(operand);
+    if (in.type.kind == il::core::Type::Kind::F32)
+        out.f32 = static_cast<float>(operand);
+    else
+        out.f64 = static_cast<double>(operand);
     ops::storeResult(fr, in, out);
     return {};
 }

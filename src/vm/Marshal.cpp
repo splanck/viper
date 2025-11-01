@@ -49,12 +49,13 @@ struct KindAccessors
     ResultAssigner assignResult = nullptr;
 };
 
-constexpr std::array<Type::Kind, 10> kSupportedKinds = {
+constexpr std::array<Type::Kind, 11> kSupportedKinds = {
     Type::Kind::Void,
     Type::Kind::I1,
     Type::Kind::I16,
     Type::Kind::I32,
     Type::Kind::I64,
+    Type::Kind::F32,
     Type::Kind::F64,
     Type::Kind::Ptr,
     Type::Kind::Str,
@@ -62,7 +63,7 @@ constexpr std::array<Type::Kind, 10> kSupportedKinds = {
     Type::Kind::ResumeTok,
 };
 
-static_assert(kSupportedKinds.size() == 10, "update kind accessors when Type::Kind grows");
+static_assert(kSupportedKinds.size() == 11, "update kind accessors when Type::Kind grows");
 
 constexpr void *nullResultBuffer(ResultBuffers &)
 {
@@ -109,6 +110,7 @@ constexpr std::array<KindAccessors, kSupportedKinds.size()> kKindAccessors = []
     table[static_cast<size_t>(Type::Kind::I16)] = makeAccessors<&Slot::i64, &ResultBuffers::i64>();
     table[static_cast<size_t>(Type::Kind::I32)] = makeAccessors<&Slot::i64, &ResultBuffers::i64>();
     table[static_cast<size_t>(Type::Kind::I64)] = makeAccessors<&Slot::i64, &ResultBuffers::i64>();
+    table[static_cast<size_t>(Type::Kind::F32)] = makeAccessors<&Slot::f32, &ResultBuffers::f32>();
     table[static_cast<size_t>(Type::Kind::F64)] = makeAccessors<&Slot::f64, &ResultBuffers::f64>();
     table[static_cast<size_t>(Type::Kind::Ptr)] = makeAccessors<&Slot::ptr, &ResultBuffers::ptr>();
     table[static_cast<size_t>(Type::Kind::Str)] = makeAccessors<&Slot::str, &ResultBuffers::str>();

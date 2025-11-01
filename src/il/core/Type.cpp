@@ -54,6 +54,8 @@ std::string kindToString(Type::Kind k)
             return "i32";
         case Type::Kind::I64:
             return "i64";
+        case Type::Kind::F32:
+            return "f32";
         case Type::Kind::F64:
             return "f64";
         case Type::Kind::Ptr:

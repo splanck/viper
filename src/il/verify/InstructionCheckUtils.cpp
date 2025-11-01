@@ -83,6 +83,8 @@ std::optional<il::core::Type::Kind> kindFromCategory(il::core::TypeCategory cate
             return Type::Kind::I32;
         case il::core::TypeCategory::I64:
             return Type::Kind::I64;
+        case il::core::TypeCategory::F32:
+            return Type::Kind::F32;
         case il::core::TypeCategory::F64:
             return Type::Kind::F64;
         case il::core::TypeCategory::Ptr:

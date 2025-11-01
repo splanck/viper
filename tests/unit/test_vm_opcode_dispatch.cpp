@@ -45,6 +45,11 @@ entry:
   %fsub = fsub %fmul, 0.5
   %fdiv = fdiv %fsub, 1.0
   %back = cast.fp_to_si.rte.chk %fdiv
+  %fseed:f32 = sitofp %back
+  %fbonus:f32 = fadd %fseed, 1.5
+  %fscaled:f32 = fmul %fbonus, 2.0
+  %ftrim:f32 = fsub %fscaled, %fseed
+  %fback32 = cast.fp_to_si.rte.chk %ftrim
   %eq = icmp_eq %back, %shl
   %gt = scmp_gt %shl, %back
   cbr %gt, high(%back), low(%back)
@@ -65,7 +70,8 @@ merge(%val: i64, %flag: i64):
   %sum0 = iadd.ovf %call, %len
   %sum1 = iadd.ovf %sum0, %fcmp
   %sum2 = iadd.ovf %sum1, %ptr_nonzero
-  %sum = iadd.ovf %sum2, %trunc
+  %sum3 = iadd.ovf %sum2, %fback32
+  %sum = iadd.ovf %sum3, %trunc
   store i64, %slot2, %sum
   %out = load i64, %slot2
   ret %out
@@ -79,6 +85,6 @@ merge(%val: i64, %flag: i64):
 
     il::vm::VM vm(m);
     int64_t rv = vm.run();
-    assert(rv == 48);
+    assert(rv == 91);
     return 0;
 }

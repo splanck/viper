@@ -36,6 +36,7 @@ enum class TypeCategory : uint8_t
     I16,       ///< 16-bit integer type.
     I32,       ///< 32-bit integer type.
     I64,       ///< 64-bit integer type.
+    F32,       ///< 32-bit floating point type.
     F64,       ///< 64-bit floating point type.
     Ptr,       ///< Pointer type.
     Str,       ///< Runtime string type.
