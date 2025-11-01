@@ -221,6 +221,29 @@ void SemanticAnalyzer::analyzeProcedureCommon(const Proc &proc, BodyCallback &&b
 /// @param f FUNCTION declaration node.
 void SemanticAnalyzer::analyzeProc(const FunctionDecl &f)
 {
+    const FunctionDecl *previousFunction = activeFunction_;
+    BasicType previousExplicit = activeFunctionExplicitRet_;
+    activeFunction_ = &f;
+    activeFunctionExplicitRet_ = f.explicitRetType;
+
+    if (f.explicitRetType != BasicType::Unknown)
+    {
+        if (auto suffix = semantic_analyzer_detail::suffixBasicType(f.name))
+        {
+            if (*suffix != f.explicitRetType)
+            {
+                std::string msg = "Conflicting return type: AS ";
+                msg += semantic_analyzer_detail::uppercaseBasicTypeName(f.explicitRetType);
+                msg += " vs name suffix";
+                de.emit(il::support::Severity::Error,
+                        "B4006",
+                        f.loc,
+                        static_cast<uint32_t>(f.name.size()),
+                        std::move(msg));
+            }
+        }
+    }
+
     analyzeProcedureCommon(f,
                            [this](const FunctionDecl &func)
                            {
@@ -234,6 +257,9 @@ void SemanticAnalyzer::analyzeProc(const FunctionDecl &f)
                                        3,
                                        std::move(msg));
                            });
+
+    activeFunction_ = previousFunction;
+    activeFunctionExplicitRet_ = previousExplicit;
 }
 
 /// @brief Analyze a SUB declaration.

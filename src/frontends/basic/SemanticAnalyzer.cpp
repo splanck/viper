@@ -23,7 +23,10 @@
 
 #include "frontends/basic/SemanticAnalyzer.Internal.hpp"
 
+#include "frontends/basic/BasicTypes.hpp"
+
 #include <algorithm>
+#include <cctype>
 #include <sstream>
 #include <vector>
 
@@ -251,6 +254,70 @@ std::string conditionExprText(const Expr &expr)
         return text;
     }
     return {};
+}
+
+/// @brief Derive the BASIC return type implied by the trailing name suffix.
+///
+/// @param name Procedure name potentially ending in a BASIC type sigil.
+/// @return The matching @ref BasicType when the suffix is recognised.
+std::optional<BasicType> suffixBasicType(std::string_view name)
+{
+    if (name.empty())
+        return std::nullopt;
+    switch (name.back())
+    {
+        case '$':
+            return BasicType::String;
+        case '#':
+            return BasicType::Float;
+        default:
+            break;
+    }
+    return std::nullopt;
+}
+
+/// @brief Translate a BASIC return annotation into the analyzer's semantic type.
+///
+/// @param type BASIC-level return type (from an AS clause).
+/// @return The corresponding semantic type when one exists; otherwise nullopt.
+std::optional<SemanticAnalyzer::Type> semanticTypeFromBasic(BasicType type)
+{
+    using Type = SemanticAnalyzer::Type;
+    switch (type)
+    {
+        case BasicType::Int:
+            return Type::Int;
+        case BasicType::Float:
+            return Type::Float;
+        case BasicType::String:
+            return Type::String;
+        default:
+            break;
+    }
+    return std::nullopt;
+}
+
+/// @brief Uppercase helper for printing BASIC type names in diagnostics.
+///
+/// @param type BASIC type whose name should be formatted.
+/// @return Uppercase representation of @p type suitable for user output.
+std::string uppercaseBasicTypeName(BasicType type)
+{
+    std::string text{toString(type)};
+    std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) {
+        return static_cast<char>(std::toupper(c));
+    });
+    return text;
+}
+
+/// @brief Identify whether a semantic type should be treated as numeric.
+///
+/// @param type Semantic analyzer type to classify.
+/// @return True when @p type denotes a numeric category.
+bool isNumericSemanticType(SemanticAnalyzer::Type type) noexcept
+{
+    using Type = SemanticAnalyzer::Type;
+    return type == Type::Int || type == Type::Float || type == Type::Bool;
 }
 
 } // namespace il::frontends::basic::semantic_analyzer_detail
