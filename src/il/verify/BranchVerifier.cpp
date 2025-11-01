@@ -294,11 +294,19 @@ Expected<void> verifyRet_E(const Function &fn,
         return {};
     }
 
-    if (instr.operands.size() == 1 && types.valueType(instr.operands[0]).kind == fn.retType.kind)
-        return {};
+    if (instr.operands.size() != 1)
+        return Expected<void>{
+            makeError(instr.loc, formatInstrDiag(fn, bb, instr, "ret value type mismatch"))};
 
-    return Expected<void>{
-        makeError(instr.loc, formatInstrDiag(fn, bb, instr, "ret value type mismatch"))};
+    Type actualType = types.valueType(instr.operands[0]);
+    if (actualType.kind != fn.retType.kind)
+    {
+        std::string message = "ret value type mismatch: expected " + fn.retType.toString() +
+                              " but got " + actualType.toString();
+        return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, message))};
+    }
+
+    return {};
 }
 
 } // namespace il::verify
