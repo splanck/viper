@@ -1,5 +1,6 @@
 add_library(viper_il_io STATIC
         FunctionParser.cpp
+        FormatUtils.cpp
         InstrParser.cpp
         OperandParser.cpp
         ModuleParser.cpp
