@@ -415,7 +415,7 @@ void ProcedureLowering::collectProcedureSignatures(const Program &prog)
         if (auto *fn = dynamic_cast<const FunctionDecl *>(decl.get()))
         {
             Lowerer::ProcedureSignature sig;
-            sig.retType = coreTypeForAstType(fn->ret);
+            sig.retType = lowerer.functionRetTypeFromHint(fn->name, fn->explicitRetType);
             sig.paramTypes.reserve(fn->params.size());
             for (const auto &p : fn->params)
             {
@@ -822,7 +822,7 @@ void Lowerer::lowerFunctionDecl(const FunctionDecl &decl)
     };
 
     ProcedureConfig config;
-    config.retType = coreTypeForAstType(decl.ret);
+    config.retType = functionRetTypeFromHint(decl.name, decl.explicitRetType);
     config.postCollect = [&]() { setSymbolType(decl.name, decl.ret); };
     config.emitEmptyBody = [&]() { emitRet(defaultRet()); };
     config.emitFinalReturn = [&]() { emitRet(defaultRet()); };

@@ -17,12 +17,48 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "frontends/basic/BasicTypes.hpp"
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/LoweringPipeline.hpp"
 #include "frontends/basic/lower/Emitter.hpp"
 
+using il::core::Type;
+using il::frontends::basic::BasicType;
+
+namespace
+{
+
+Type ilTypeForBasicRet(const std::string &fnName, BasicType hint)
+{
+    using K = Type::Kind;
+    if (hint == BasicType::String)
+        return Type(K::Str);
+    if (hint == BasicType::Float)
+        return Type(K::F64);
+    if (hint == BasicType::Int)
+        return Type(K::I64);
+    if (hint == BasicType::Void)
+        return Type(K::Void);
+    if (!fnName.empty())
+    {
+        char c = fnName.back();
+        if (c == '$')
+            return Type(K::Str);
+        if (c == '#')
+            return Type(K::F64);
+    }
+    return Type(K::I64);
+}
+
+} // namespace
+
 namespace il::frontends::basic
 {
+
+Lowerer::Type Lowerer::functionRetTypeFromHint(const std::string &fnName, BasicType hint) const
+{
+    return ilTypeForBasicRet(fnName, hint);
+}
 
 /// @brief Construct a lowering driver composed of specialised helper stages.
 /// @details Instantiates the program-, procedure-, and statement-level lowering
