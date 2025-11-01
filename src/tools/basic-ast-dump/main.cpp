@@ -18,7 +18,9 @@
 ///          developer tools so diagnostics and usage text stay consistent.
 
 #include "frontends/basic/AstPrinter.hpp"
+#include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/Parser.hpp"
+#include "support/diagnostics.hpp"
 #include "support/source_manager.hpp"
 #include "tools/basic/common.hpp"
 
@@ -59,8 +61,18 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    Parser p(src, *fileId);
+    il::support::DiagnosticEngine diagEngine;
+    DiagnosticEmitter emitter(diagEngine, sm);
+    emitter.addSource(*fileId, src);
+
+    Parser p(src, *fileId, &emitter);
     auto prog = p.parseProgram();
+    if (!prog)
+    {
+        emitter.printAll(std::cerr);
+        std::cerr << std::flush;
+        return 1;
+    }
     AstPrinter printer;
     std::cout << printer.dump(*prog);
     return 0;
