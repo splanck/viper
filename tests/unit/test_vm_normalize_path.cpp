@@ -17,5 +17,6 @@ int main()
     assert(DebugCtrl::normalizePath("dir/../file") == "file");
     assert(DebugCtrl::normalizePath("/foo/../") == "/");
     assert(DebugCtrl::normalizePath("") == ".");
+    assert(DebugCtrl::normalizePath("utf8/naïve/文件.txt") == "utf8/naïve/文件.txt");
     return 0;
 }

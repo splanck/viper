@@ -40,7 +40,12 @@ namespace
 /// @return Normalised path string.
 std::string normalizePath(std::string path)
 {
+#ifdef _WIN32
+    std::u8string u8Path(path.begin(), path.end());
+    std::filesystem::path p = std::filesystem::u8path(u8Path);
+#else
     std::filesystem::path p(std::move(path));
+#endif
     return p.lexically_normal().generic_string();
 }
 } // namespace

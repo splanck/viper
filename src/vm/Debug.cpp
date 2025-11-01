@@ -53,7 +53,13 @@ std::string DebugCtrl::normalizePath(std::string p)
     if (p.empty())
         return ".";
 
-    std::filesystem::path normalized = std::filesystem::path(p).lexically_normal();
+    std::filesystem::path normalized =
+#ifdef _WIN32
+        std::filesystem::u8path(std::u8string(p.begin(), p.end()))
+#else
+        std::filesystem::path(p)
+#endif
+            .lexically_normal();
     std::string generic = normalized.generic_string();
 
     if (generic.empty())

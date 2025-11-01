@@ -120,6 +120,12 @@ int main()
     assert(stored_before == stored_after);
     assert(dedupeSm.getPath(dedupeFirst) == "dupe/file.txt");
 
+    il::support::SourceManager utf8Sm;
+    const std::string utf8Path = "utf8/naïve/文件.txt";
+    const uint32_t utf8Id = utf8Sm.addFile(utf8Path);
+    assert(utf8Id != 0);
+    assert(utf8Sm.getPath(utf8Id) == "utf8/naïve/文件.txt");
+
     // Diagnostics missing a registered path should not emit a leading colon.
     il::support::Diag missingPath{
         il::support::Severity::Error,
