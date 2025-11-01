@@ -294,6 +294,9 @@ install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/il/io/
         FILES_MATCHING PATTERN "*.hpp"
 )
 
+install(FILES ${PROJECT_SOURCE_DIR}/include/viper/il/io/FormatUtils.hpp
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/viper/il/io)
+
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/il/verify/
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/viper/il/verify
         FILES_MATCHING PATTERN "*.hpp"
