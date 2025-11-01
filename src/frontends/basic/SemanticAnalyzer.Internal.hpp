@@ -9,9 +9,11 @@
 #pragma once
 
 #include "frontends/basic/AST.hpp"
+#include "frontends/basic/BasicTypes.hpp"
 #include "frontends/basic/SemanticAnalyzer.hpp"
 
 #include <cstddef>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -61,5 +63,9 @@ const char *builtinName(BuiltinCallExpr::Builtin b);
 const char *semanticTypeName(SemanticAnalyzer::Type type);
 const char *logicalOpName(BinaryExpr::Op op);
 std::string conditionExprText(const Expr &expr);
+std::optional<BasicType> suffixBasicType(std::string_view name);
+std::optional<SemanticAnalyzer::Type> semanticTypeFromBasic(BasicType type);
+std::string uppercaseBasicTypeName(BasicType type);
+bool isNumericSemanticType(SemanticAnalyzer::Type type) noexcept;
 
 } // namespace il::frontends::basic::semantic_analyzer_detail

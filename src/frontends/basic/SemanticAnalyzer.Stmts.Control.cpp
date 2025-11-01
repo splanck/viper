@@ -204,6 +204,37 @@ void SemanticAnalyzer::analyzeResume(const Resume &stmt)
 void SemanticAnalyzer::analyzeReturn(ReturnStmt &stmt)
 {
     sem::analyzeReturn(*this, stmt);
+
+    if (!stmt.value)
+        return;
+    if (!activeFunction_ || activeFunctionExplicitRet_ == BasicType::Unknown)
+        return;
+
+    auto expected = semantic_analyzer_detail::semanticTypeFromBasic(activeFunctionExplicitRet_);
+    if (!expected)
+        return;
+
+    auto valueType = visitExpr(*stmt.value);
+    if (valueType == Type::Unknown)
+        return;
+
+    const bool expectString = *expected == Type::String;
+    const bool expectNumeric = semantic_analyzer_detail::isNumericSemanticType(*expected);
+    const bool valueIsString = valueType == Type::String;
+    const bool valueIsNumeric = semantic_analyzer_detail::isNumericSemanticType(valueType);
+
+    if ((expectString && valueIsNumeric) || (expectNumeric && valueIsString))
+    {
+        std::string msg = "RETURN expression type ";
+        msg += semantic_analyzer_detail::semanticTypeName(valueType);
+        msg += " does not match declared AS ";
+        msg += semantic_analyzer_detail::semanticTypeName(*expected);
+        de.emit(il::support::Severity::Warning,
+                "B4010",
+                stmt.value->loc,
+                1,
+                std::move(msg));
+    }
 }
 
 /// @brief Handle END statements that terminate program execution.
