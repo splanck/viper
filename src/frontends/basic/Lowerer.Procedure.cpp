@@ -822,6 +822,11 @@ void Lowerer::lowerFunctionDecl(const FunctionDecl &decl)
     };
 
     ProcedureConfig config;
+    // Return type precedence for BASIC functions:
+    // 1) explicitRetType from "AS <TYPE>" if present
+    // 2) name suffix ($ => string, # => float)
+    // 3) default to integer (I64)
+    // SUBs are always void.
     config.retType = functionRetTypeFromHint(decl.name, decl.explicitRetType);
     config.postCollect = [&]() { setSymbolType(decl.name, decl.ret); };
     config.emitEmptyBody = [&]() { emitRet(defaultRet()); };
