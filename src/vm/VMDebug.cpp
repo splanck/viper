@@ -12,6 +12,16 @@
 //
 //===----------------------------------------------------------------------===//
 
+/// @file
+/// @brief Implements the IL VM's debugger integration helpers.
+/// @details The routines here coordinate between the interpreter core, the
+///          debug controller, and optional scripting front-ends.  They transfer
+///          staged block parameters, evaluate breakpoints, honour step budgets,
+///          and surface rich diagnostics describing why execution pauses.
+///          Centralising the logic keeps the dispatch loop uncluttered and
+///          ensures all debug pathways apply consistent invariants when
+///          manipulating VM state.
+
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
