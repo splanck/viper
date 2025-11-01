@@ -14,12 +14,14 @@ target_sources(fe_basic PRIVATE
         AstWalkerUtils.cpp
         Parser.cpp
         Parser_Stmt.cpp
+        Parser_Stmt_Core.cpp
         Parser_Stmt_Control.cpp
         Parser_Stmt_If.cpp
         Parser_Stmt_Select.cpp
         Parser_Stmt_Loop.cpp
         Parser_Stmt_Jump.cpp
         Parser_Stmt_IO.cpp
+        Parser_Stmt_OOP.cpp
         Parser_Stmt_Runtime.cpp
         Parser_Expr.cpp
         Parser_Token.cpp
