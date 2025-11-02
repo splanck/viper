@@ -48,6 +48,25 @@ void SemanticDiagnostics::emit(il::support::Severity sev,
     emitter_.emit(sev, std::move(code), loc, length, std::move(message));
 }
 
+/// @brief Emit a catalogued BASIC diagnostic identified by @p diag.
+/// @details Retrieves severity, code, and message template from the generated
+///          catalog before forwarding the formatted diagnostic to the shared
+///          emitter.  Callers supply placeholder substitutions via
+///          @p replacements; unspecified placeholders are left intact so specs
+///          can enforce required fields.
+/// @param diag Catalog identifier describing the diagnostic to emit.
+/// @param loc Source location associated with the diagnostic.
+/// @param length Number of characters to underline.
+/// @param replacements Placeholder substitutions applied to the message.
+void SemanticDiagnostics::emit(diag::BasicDiag diag,
+                               il::support::SourceLoc loc,
+                               uint32_t length,
+                               std::initializer_list<diag::Replacement> replacements)
+{
+    auto message = diag::formatMessage(diag, replacements);
+    emit(diag::getSeverity(diag), std::string(diag::getCode(diag)), loc, length, std::move(message));
+}
+
 /// @brief Retrieve the number of error diagnostics recorded so far.
 /// @details Pass-through convenience wrapper over
 ///          `DiagnosticEmitter::errorCount()` that keeps semantic analysis

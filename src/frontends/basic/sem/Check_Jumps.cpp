@@ -38,9 +38,11 @@ void emitUnknownLabel(ControlCheckContext &context,
                       const il::support::SourceLoc &loc,
                       uint32_t width)
 {
-    std::string msg = "unknown line ";
-    msg += std::to_string(label);
-    context.diagnostics().emit(il::support::Severity::Error, "B1003", loc, width, std::move(msg));
+    const std::string labelText = std::to_string(label);
+    context.diagnostics().emit(diag::BasicDiag::UnknownLineLabel,
+                               loc,
+                               width,
+                               std::initializer_list<diag::Replacement>{diag::Replacement{"label", labelText}});
 }
 } // namespace
 

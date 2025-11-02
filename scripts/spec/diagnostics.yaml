@@ -1,0 +1,40 @@
+- id: BASIC_UNKNOWN_VARIABLE
+  code: B1001
+  severity: error
+  format: "unknown variable '{name}'{suggestion}"
+- id: BASIC_UNKNOWN_ARRAY
+  code: B1001
+  severity: error
+  format: "unknown array '{name}'"
+- id: BASIC_NOT_AN_ARRAY
+  code: B2001
+  severity: error
+  format: "variable '{name}' is not an array"
+- id: BASIC_UNKNOWN_PROCEDURE
+  code: B1006
+  severity: error
+  format: "unknown procedure '{name}'"
+- id: BASIC_DUPLICATE_PARAMETER
+  code: B1005
+  severity: error
+  format: "duplicate parameter '{name}'"
+- id: BASIC_ARRAY_PARAM_TYPE
+  code: B2004
+  severity: error
+  format: "array parameter must be i64 or str"
+- id: BASIC_DUPLICATE_PROCEDURE
+  code: B1004
+  severity: error
+  format: "duplicate procedure '{name}'"
+- id: BASIC_UNKNOWN_STATEMENT
+  code: B0001
+  severity: error
+  format: "unknown statement '{token}'; expected keyword or procedure call"
+- id: BASIC_UNEXPECTED_LINE_NUMBER
+  code: B0001
+  severity: error
+  format: "unexpected line number '{token}' before statement"
+- id: BASIC_UNKNOWN_LINE_LABEL
+  code: B1003
+  severity: error
+  format: "unknown line {label}"

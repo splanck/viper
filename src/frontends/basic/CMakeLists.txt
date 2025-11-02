@@ -1,3 +1,22 @@
+set(BASIC_DIAG_SPEC ${CMAKE_SOURCE_DIR}/scripts/spec/diagnostics.yaml)
+set(BASIC_DIAG_HEADER ${CMAKE_BINARY_DIR}/generated/include/viper/diag/BasicDiag.hpp)
+set(BASIC_DIAG_SOURCE ${CMAKE_BINARY_DIR}/generated/src/frontends/basic/diag/BasicDiag.cpp)
+
+add_custom_command(
+        OUTPUT ${BASIC_DIAG_HEADER} ${BASIC_DIAG_SOURCE}
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/generated/include/viper/diag
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/generated/src/frontends/basic/diag
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/gen_diagnostics.py
+                --spec ${BASIC_DIAG_SPEC}
+                --header ${BASIC_DIAG_HEADER}
+                --source ${BASIC_DIAG_SOURCE}
+        DEPENDS ${BASIC_DIAG_SPEC} ${CMAKE_SOURCE_DIR}/scripts/gen_diagnostics.py
+        COMMENT "Generating BASIC diagnostics catalog"
+        VERBATIM)
+
+add_custom_target(basic_diagnostics_catalog
+        DEPENDS ${BASIC_DIAG_HEADER} ${BASIC_DIAG_SOURCE})
+
 add_library(fe_basic STATIC)
 
 target_sources(fe_basic PRIVATE
@@ -109,8 +128,13 @@ target_sources(fe_basic PRIVATE
         SemanticDiagnostics.cpp
 )
 
+set_source_files_properties(${BASIC_DIAG_SOURCE} PROPERTIES GENERATED TRUE)
+target_sources(fe_basic PRIVATE ${BASIC_DIAG_SOURCE})
+add_dependencies(fe_basic basic_diagnostics_catalog)
+
 target_link_libraries(fe_basic PUBLIC viper_il_full il_build il_runtime)
 target_include_directories(fe_basic PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../..>
+        $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated/include>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>
 )

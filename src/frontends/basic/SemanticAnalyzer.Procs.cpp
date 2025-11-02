@@ -364,12 +364,10 @@ const ProcSignature *SemanticAnalyzer::resolveCallee(const CallExpr &c,
     const ProcSignature *sig = procReg_.lookup(c.callee);
     if (!sig)
     {
-        std::string msg = "unknown procedure '" + c.callee + "'";
-        de.emit(il::support::Severity::Error,
-                "B1006",
+        de.emit(diag::BasicDiag::UnknownProcedure,
                 c.loc,
                 static_cast<uint32_t>(c.callee.size()),
-                std::move(msg));
+                std::initializer_list<diag::Replacement>{diag::Replacement{"name", c.callee}});
         return nullptr;
     }
     if (sig->kind != expectedKind)
