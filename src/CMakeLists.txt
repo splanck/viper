@@ -26,6 +26,21 @@ target_include_directories(viper_il_core PUBLIC
 )
 target_link_libraries(viper_il_core PRIVATE viper_support)
 
+set(RUNTIME_SIGNATURE_SPEC ${CMAKE_SOURCE_DIR}/scripts/spec/runtime_signatures.yaml)
+set(RUNTIME_SIGNATURE_OUTPUT ${CMAKE_BINARY_DIR}/generated/RuntimeSignatures.inc)
+
+add_custom_command(
+        OUTPUT ${RUNTIME_SIGNATURE_OUTPUT}
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/generated
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/gen_runtime_signatures.py
+                --spec ${RUNTIME_SIGNATURE_SPEC}
+                --output ${RUNTIME_SIGNATURE_OUTPUT}
+        DEPENDS ${RUNTIME_SIGNATURE_SPEC} ${CMAKE_SOURCE_DIR}/scripts/gen_runtime_signatures.py
+        COMMENT "Generating runtime signature registry"
+        VERBATIM)
+
+add_custom_target(runtime_signatures_inc DEPENDS ${RUNTIME_SIGNATURE_OUTPUT})
+
 add_library(il_runtime STATIC
         il/runtime/RuntimeSignatures.cpp
         il/runtime/RuntimeSignatureParser.cpp
@@ -35,10 +50,12 @@ add_library(il_runtime STATIC
         il/runtime/signatures/Signatures_Math.cpp
         il/runtime/signatures/Signatures_Arrays.cpp)
 target_link_libraries(il_runtime PUBLIC viper_il_core viper_runtime)
+add_dependencies(il_runtime runtime_signatures_inc)
 target_include_directories(il_runtime PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>
 )
+target_include_directories(il_runtime PRIVATE ${CMAKE_BINARY_DIR}/generated)
 
 add_library(il_build STATIC il/build/IRBuilder.cpp)
 target_link_libraries(il_build
