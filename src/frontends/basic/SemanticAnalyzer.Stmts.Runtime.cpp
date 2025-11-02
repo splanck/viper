@@ -22,9 +22,9 @@
 
 #include "frontends/basic/SemanticAnalyzer.Stmts.Runtime.hpp"
 
-#include "frontends/basic/BasicDiagnosticMessages.hpp"
 #include "frontends/basic/SemanticAnalyzer.Internal.hpp"
 #include "frontends/basic/ast/ExprNodes.hpp"
+#include "viper/diag/BasicDiag.hpp"
 
 namespace il::frontends::basic::semantic_analyzer_detail
 {
@@ -44,6 +44,7 @@ namespace il::frontends::basic
 using semantic_analyzer_detail::astToSemanticType;
 using semantic_analyzer_detail::RuntimeStmtContext;
 using semantic_analyzer_detail::semanticTypeName;
+namespace diag = il::frontends::basic::diag;
 
 /// @brief Validate a CALL statement against registered procedure signatures.
 ///
@@ -146,8 +147,9 @@ void SemanticAnalyzer::analyzeVarAssignment(VarExpr &v, const LetStmt &l)
         else
         {
             markImplicitConversion(*l.expr, Type::Int);
-            std::string msg = "narrowing conversion from FLOAT to INT in assignment";
-            de.emit(il::support::Severity::Warning, "B2002", l.loc, 1, std::move(msg));
+            const auto diagId = diag::BasicDiagId::BASIC_ASSIGN_NARROWING_FLOAT_TO_INT;
+            std::string msg = diag::formatMessage(diagId);
+            de.emit(diag::getSeverity(diagId), "B2002", l.loc, 1, std::move(msg));
         }
     }
     else if (varTy == Type::String && exprTy != Type::Unknown && exprTy != Type::String)
@@ -171,8 +173,10 @@ void SemanticAnalyzer::analyzeArrayAssignment(ArrayExpr &a, const LetStmt &l)
     resolveAndTrackSymbol(a.name, SymbolKind::Reference);
     if (!arrays_.count(a.name))
     {
-        std::string msg = "unknown array '" + a.name + "'";
-        de.emit(il::support::Severity::Error,
+        const auto diagId = diag::BasicDiagId::BASIC_UNKNOWN_ARRAY;
+        std::string msg =
+            diag::formatMessage(diagId, {diag::Replacement{"name", a.name}});
+        de.emit(diag::getSeverity(diagId),
                 "B1001",
                 a.loc,
                 static_cast<uint32_t>(a.name.size()),
@@ -181,8 +185,10 @@ void SemanticAnalyzer::analyzeArrayAssignment(ArrayExpr &a, const LetStmt &l)
     if (auto itType = varTypes_.find(a.name);
         itType != varTypes_.end() && itType->second != Type::ArrayInt)
     {
-        std::string msg = "variable '" + a.name + "' is not an array";
-        de.emit(il::support::Severity::Error,
+        const auto diagId = diag::BasicDiagId::BASIC_NOT_AN_ARRAY;
+        std::string msg =
+            diag::formatMessage(diagId, {diag::Replacement{"name", a.name}});
+        de.emit(diag::getSeverity(diagId),
                 "B2001",
                 a.loc,
                 static_cast<uint32_t>(a.name.size()),
@@ -194,19 +200,22 @@ void SemanticAnalyzer::analyzeArrayAssignment(ArrayExpr &a, const LetStmt &l)
         if (auto *floatLiteral = dynamic_cast<FloatExpr *>(a.index.get()))
         {
             insertImplicitCast(*a.index, Type::Int);
-            std::string msg = "narrowing conversion from FLOAT to INT in array index";
-            de.emit(il::support::Severity::Warning, "B2002", a.loc, 1, std::move(msg));
+            const auto diagId = diag::BasicDiagId::BASIC_INDEX_NARROWING_FLOAT;
+            std::string msg = diag::formatMessage(diagId);
+            de.emit(diag::getSeverity(diagId), "B2002", a.loc, 1, std::move(msg));
         }
         else
         {
-            std::string msg = "index type mismatch";
-            de.emit(il::support::Severity::Error, "B2001", a.loc, 1, std::move(msg));
+            const auto diagId = diag::BasicDiagId::BASIC_INDEX_TYPE_MISMATCH;
+            std::string msg = diag::formatMessage(diagId);
+            de.emit(diag::getSeverity(diagId), "B2001", a.loc, 1, std::move(msg));
         }
     }
     else if (indexTy != Type::Unknown && indexTy != Type::Int)
     {
-        std::string msg = "index type mismatch";
-        de.emit(il::support::Severity::Error, "B2001", a.loc, 1, std::move(msg));
+        const auto diagId = diag::BasicDiagId::BASIC_INDEX_TYPE_MISMATCH;
+        std::string msg = diag::formatMessage(diagId);
+        de.emit(diag::getSeverity(diagId), "B2001", a.loc, 1, std::move(msg));
     }
     Type valueTy = Type::Unknown;
     if (l.expr)
@@ -215,8 +224,9 @@ void SemanticAnalyzer::analyzeArrayAssignment(ArrayExpr &a, const LetStmt &l)
         if (valueTy == Type::Float)
         {
             markImplicitConversion(*l.expr, Type::Int);
-            std::string msg = "narrowing conversion from FLOAT to INT in array assignment";
-            de.emit(il::support::Severity::Warning, "B2002", l.loc, 1, std::move(msg));
+            const auto diagId = diag::BasicDiagId::BASIC_ARRAY_ASSIGN_NARROWING_FLOAT_TO_INT;
+            std::string msg = diag::formatMessage(diagId);
+            de.emit(diag::getSeverity(diagId), "B2002", l.loc, 1, std::move(msg));
         }
         else if (valueTy != Type::Unknown && valueTy != Type::Int)
         {
@@ -231,8 +241,9 @@ void SemanticAnalyzer::analyzeArrayAssignment(ArrayExpr &a, const LetStmt &l)
         {
             if (ci->value < 0 || ci->value >= it->second)
             {
-                std::string msg = "index out of bounds";
-                de.emit(il::support::Severity::Warning, "B3001", a.loc, 1, std::move(msg));
+                const auto diagId = diag::BasicDiagId::BASIC_INDEX_OUT_OF_BOUNDS;
+                std::string msg = diag::formatMessage(diagId);
+                de.emit(diag::getSeverity(diagId), "B3001", a.loc, 1, std::move(msg));
             }
         }
     }
@@ -306,8 +317,9 @@ void SemanticAnalyzer::analyzeDim(DimStmt &d)
                 if (floatLiteral != nullptr)
                 {
                     insertImplicitCast(*d.size, Type::Int);
-                    std::string msg = "narrowing conversion from FLOAT to INT in array size";
-                    de.emit(il::support::Severity::Warning, "B2002", d.loc, 1, std::move(msg));
+                    const auto diagId = diag::BasicDiagId::BASIC_ARRAY_SIZE_NARROWING_FLOAT_TO_INT;
+                    std::string msg = diag::formatMessage(diagId);
+                    de.emit(diag::getSeverity(diagId), "B2002", d.loc, 1, std::move(msg));
                 }
                 else
                 {
@@ -324,8 +336,9 @@ void SemanticAnalyzer::analyzeDim(DimStmt &d)
             {
                 if (floatLiteral->value < 0.0)
                 {
-                    std::string msg = "array size must be non-negative";
-                    de.emit(il::support::Severity::Error, "B2003", d.loc, 1, std::move(msg));
+                    const auto diagId = diag::BasicDiagId::BASIC_ARRAY_SIZE_NON_NEGATIVE;
+                    std::string msg = diag::formatMessage(diagId);
+                    de.emit(diag::getSeverity(diagId), "B2003", d.loc, 1, std::move(msg));
                 }
             }
             else if (auto *ci = dynamic_cast<const IntExpr *>(d.size.get()))
@@ -333,8 +346,9 @@ void SemanticAnalyzer::analyzeDim(DimStmt &d)
                 sz = ci->value;
                 if (sz < 0)
                 {
-                    std::string msg = "array size must be non-negative";
-                    de.emit(il::support::Severity::Error, "B2003", d.loc, 1, std::move(msg));
+                    const auto diagId = diag::BasicDiagId::BASIC_ARRAY_SIZE_NON_NEGATIVE;
+                    std::string msg = diag::formatMessage(diagId);
+                    de.emit(diag::getSeverity(diagId), "B2003", d.loc, 1, std::move(msg));
                 }
             }
         }
@@ -419,8 +433,9 @@ void SemanticAnalyzer::analyzeReDim(ReDimStmt &d)
             if (floatLiteral != nullptr)
             {
                 insertImplicitCast(*d.size, Type::Int);
-                std::string msg = "narrowing conversion from FLOAT to INT in array size";
-                de.emit(il::support::Severity::Warning, "B2002", d.loc, 1, std::move(msg));
+                const auto diagId = diag::BasicDiagId::BASIC_ARRAY_SIZE_NARROWING_FLOAT_TO_INT;
+                std::string msg = diag::formatMessage(diagId);
+                de.emit(diag::getSeverity(diagId), "B2002", d.loc, 1, std::move(msg));
             }
             else
             {
@@ -437,8 +452,9 @@ void SemanticAnalyzer::analyzeReDim(ReDimStmt &d)
         {
             if (floatLiteral->value < 0.0)
             {
-                std::string msg = "array size must be non-negative";
-                de.emit(il::support::Severity::Error, "B2003", d.loc, 1, std::move(msg));
+                const auto diagId = diag::BasicDiagId::BASIC_ARRAY_SIZE_NON_NEGATIVE;
+                std::string msg = diag::formatMessage(diagId);
+                de.emit(diag::getSeverity(diagId), "B2003", d.loc, 1, std::move(msg));
             }
         }
         else if (auto *ci = dynamic_cast<const IntExpr *>(d.size.get()))
@@ -446,8 +462,9 @@ void SemanticAnalyzer::analyzeReDim(ReDimStmt &d)
             sz = ci->value;
             if (sz < 0)
             {
-                std::string msg = "array size must be non-negative";
-                de.emit(il::support::Severity::Error, "B2003", d.loc, 1, std::move(msg));
+                const auto diagId = diag::BasicDiagId::BASIC_ARRAY_SIZE_NON_NEGATIVE;
+                std::string msg = diag::formatMessage(diagId);
+                de.emit(diag::getSeverity(diagId), "B2003", d.loc, 1, std::move(msg));
             }
         }
     }
@@ -457,8 +474,10 @@ void SemanticAnalyzer::analyzeReDim(ReDimStmt &d)
     auto itArray = arrays_.find(d.name);
     if (itArray == arrays_.end())
     {
-        std::string msg = "unknown array '" + d.name + "'";
-        de.emit(il::support::Severity::Error,
+        const auto diagId = diag::BasicDiagId::BASIC_UNKNOWN_ARRAY;
+        std::string msg =
+            diag::formatMessage(diagId, {diag::Replacement{"name", d.name}});
+        de.emit(diag::getSeverity(diagId),
                 "B1001",
                 d.loc,
                 static_cast<uint32_t>(d.name.size()),

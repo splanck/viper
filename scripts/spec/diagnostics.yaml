@@ -1,0 +1,30 @@
+- id: BASIC_UNDECLARED_VARIABLE
+  severity: error
+  format: "unknown variable '{name}'{suggestion}"
+- id: BASIC_UNKNOWN_ARRAY
+  severity: error
+  format: "unknown array '{name}'"
+- id: BASIC_NOT_AN_ARRAY
+  severity: error
+  format: "variable '{name}' is not an array"
+- id: BASIC_INDEX_TYPE_MISMATCH
+  severity: error
+  format: "index type mismatch"
+- id: BASIC_INDEX_NARROWING_FLOAT
+  severity: warning
+  format: "narrowing conversion from FLOAT to INT in array index"
+- id: BASIC_INDEX_OUT_OF_BOUNDS
+  severity: warning
+  format: "index out of bounds"
+- id: BASIC_ASSIGN_NARROWING_FLOAT_TO_INT
+  severity: warning
+  format: "narrowing conversion from FLOAT to INT in assignment"
+- id: BASIC_ARRAY_ASSIGN_NARROWING_FLOAT_TO_INT
+  severity: warning
+  format: "narrowing conversion from FLOAT to INT in array assignment"
+- id: BASIC_ARRAY_SIZE_NARROWING_FLOAT_TO_INT
+  severity: warning
+  format: "narrowing conversion from FLOAT to INT in array size"
+- id: BASIC_ARRAY_SIZE_NON_NEGATIVE
+  severity: error
+  format: "array size must be non-negative"

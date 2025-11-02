@@ -107,6 +107,7 @@ target_sources(fe_basic PRIVATE
         Lower_OOP_Stmt.cpp
         ProcRegistry.cpp
         SemanticDiagnostics.cpp
+        diag/BasicDiag.cpp
 )
 
 target_link_libraries(fe_basic PUBLIC viper_il_full il_build il_runtime)
