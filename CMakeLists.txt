@@ -5,6 +5,8 @@ enable_language(C)
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+
 option(VIPER_INSTALL_TUI "Install TUI apps/libraries" OFF)
 option(VIPER_BUILD_TESTING "Enable CTest-based tests" ON)
 option(VIPER_VM_THREADED "Enable threaded VM dispatch" OFF)

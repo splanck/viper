@@ -1,0 +1,76 @@
+- name: rt_print_str
+  signature: PrintS
+  handler: "&DirectHandler<&rt_print_str, void, rt_string>::invoke"
+  lowering: always
+- name: rt_print_i64
+  signature: PrintI
+  handler: "&DirectHandler<&rt_print_i64, void, int64_t>::invoke"
+  lowering: always
+- name: rt_print_f64
+  signature: PrintF
+  handler: "&DirectHandler<&rt_print_f64, void, double>::invoke"
+  lowering: always
+- name: rt_len
+  signature: Len
+  handler: "&DirectHandler<&rt_len, int64_t, rt_string>::invoke"
+  lowering: always
+- name: rt_substr
+  signature: Substr
+  handler: "&DirectHandler<&rt_substr, rt_string, rt_string, int64_t, int64_t>::invoke"
+  lowering: always
+- name: rt_trap
+  signature: Trap
+  handler: "&trapFromRuntimeString"
+  lowering: bounds_checked
+- name: rt_concat
+  signature: Concat
+  handler: "&ConsumingStringHandler<&rt_concat, rt_string, rt_string, rt_string>::invoke"
+  lowering: feature:Concat
+- name: rt_input_line
+  signature: InputLine
+  handler: "&DirectHandler<&rt_input_line, rt_string>::invoke"
+  lowering: feature:InputLine
+- name: rt_split_fields
+  signature: SplitFields
+  handler: "&DirectHandler<&rt_split_fields, int64_t, rt_string, rt_string *, int64_t>::invoke"
+  lowering: feature:SplitFields
+- name: rt_to_int
+  signature: ToInt
+  handler: "&DirectHandler<&rt_to_int, int64_t, rt_string>::invoke"
+  lowering: feature:ToInt
+- name: rt_to_double
+  signature: ToDouble
+  handler: "&DirectHandler<&rt_to_double, double, rt_string>::invoke"
+  lowering: feature:ToDouble
+- name: rt_parse_int64
+  signature: ParseInt64
+  handler: "&DirectHandler<&rt_parse_int64, int32_t, const char *, int64_t *>::invoke"
+  lowering: feature:ParseInt64
+- name: rt_parse_double
+  signature: ParseDouble
+  handler: "&DirectHandler<&rt_parse_double, int32_t, const char *, double *>::invoke"
+  lowering: feature:ParseDouble
+- name: rt_int_to_str
+  signature: IntToStr
+  handler: "&DirectHandler<&rt_int_to_str, rt_string, int64_t>::invoke"
+  lowering: feature:IntToStr
+- name: rt_f64_to_str
+  signature: F64ToStr
+  handler: "&DirectHandler<&rt_f64_to_str, rt_string, double>::invoke"
+  lowering: feature:F64ToStr
+- name: rt_str_i16_alloc
+  signature: StrFromI16
+  handler: "&DirectHandler<&rt_str_i16_alloc, rt_string, int16_t>::invoke"
+  lowering: feature:StrFromI16
+- name: rt_str_i32_alloc
+  signature: StrFromI32
+  handler: "&DirectHandler<&rt_str_i32_alloc, rt_string, int32_t>::invoke"
+  lowering: feature:StrFromI32
+- name: rt_str_f_alloc
+  signature: StrFromSingle
+  handler: "&invokeRtStrFAlloc"
+  lowering: feature:StrFromSingle
+- name: rt_str_d_alloc
+  signature: StrFromDouble
+  handler: "&DirectHandler<&rt_str_d_alloc, rt_string, double>::invoke"
+  lowering: feature:StrFromDouble
