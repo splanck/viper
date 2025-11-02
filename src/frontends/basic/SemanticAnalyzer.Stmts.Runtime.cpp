@@ -171,22 +171,18 @@ void SemanticAnalyzer::analyzeArrayAssignment(ArrayExpr &a, const LetStmt &l)
     resolveAndTrackSymbol(a.name, SymbolKind::Reference);
     if (!arrays_.count(a.name))
     {
-        std::string msg = "unknown array '" + a.name + "'";
-        de.emit(il::support::Severity::Error,
-                "B1001",
+        de.emit(diag::BasicDiag::UnknownArray,
                 a.loc,
                 static_cast<uint32_t>(a.name.size()),
-                std::move(msg));
+                std::initializer_list<diag::Replacement>{diag::Replacement{"name", a.name}});
     }
     if (auto itType = varTypes_.find(a.name);
         itType != varTypes_.end() && itType->second != Type::ArrayInt)
     {
-        std::string msg = "variable '" + a.name + "' is not an array";
-        de.emit(il::support::Severity::Error,
-                "B2001",
+        de.emit(diag::BasicDiag::NotAnArray,
                 a.loc,
                 static_cast<uint32_t>(a.name.size()),
-                std::move(msg));
+                std::initializer_list<diag::Replacement>{diag::Replacement{"name", a.name}});
     }
     auto indexTy = visitExpr(*a.index);
     if (indexTy == Type::Float)
@@ -457,12 +453,10 @@ void SemanticAnalyzer::analyzeReDim(ReDimStmt &d)
     auto itArray = arrays_.find(d.name);
     if (itArray == arrays_.end())
     {
-        std::string msg = "unknown array '" + d.name + "'";
-        de.emit(il::support::Severity::Error,
-                "B1001",
+        de.emit(diag::BasicDiag::UnknownArray,
                 d.loc,
                 static_cast<uint32_t>(d.name.size()),
-                std::move(msg));
+                std::initializer_list<diag::Replacement>{diag::Replacement{"name", d.name}});
         return;
     }
 
