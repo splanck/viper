@@ -18,7 +18,7 @@
 
 #pragma once
 
-#include "il/core/Instr.hpp"
+#include "viper/il/Module.hpp"
 #include "support/source_location.hpp"
 
 #include <cstdint>

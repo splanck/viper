@@ -29,7 +29,7 @@
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/LoweringPipeline.hpp"
 
-#include "il/build/IRBuilder.hpp"
+#include "viper/il/IRBuilder.hpp"
 
 namespace il::frontends::basic
 {

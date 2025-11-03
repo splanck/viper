@@ -7,7 +7,7 @@
 
 #include "frontends/basic/lower/common/CommonLowering.hpp"
 
-#include "il/core/Instr.hpp"
+#include "viper/il/Module.hpp"
 
 #include <cstdint>
 #include <functional>

@@ -25,7 +25,7 @@
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/Lowerer.hpp"
 
-#include "il/core/Module.hpp"
+#include "viper/il/Module.hpp"
 
 #include <cassert>
 #include <cstdlib>

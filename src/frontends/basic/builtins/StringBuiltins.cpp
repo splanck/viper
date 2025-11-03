@@ -23,7 +23,7 @@
 #include "frontends/basic/builtins/StringBuiltins.hpp"
 
 #include "frontends/basic/TypeRules.hpp"
-#include "il/core/Opcode.hpp"
+#include "viper/il/Module.hpp"
 #include <algorithm>
 #include <array>
 #include <cassert>

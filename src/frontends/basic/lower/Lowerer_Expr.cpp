@@ -22,7 +22,7 @@
 #include "frontends/basic/TypeSuffix.hpp"
 #include "frontends/basic/lower/AstVisitor.hpp"
 
-#include "il/core/Instr.hpp"
+#include "viper/il/Module.hpp"
 
 #include <limits>
 #include <utility>

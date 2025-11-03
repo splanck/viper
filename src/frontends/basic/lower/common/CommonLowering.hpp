@@ -16,7 +16,7 @@
 
 #pragma once
 
-#include "il/core/Instr.hpp"
+#include "viper/il/Module.hpp"
 
 #include <cstdint>
 #include <functional>

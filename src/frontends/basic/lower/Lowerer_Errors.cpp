@@ -18,9 +18,7 @@
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/Lowerer.hpp"
 
-#include "il/core/BasicBlock.hpp"
-#include "il/core/Function.hpp"
-#include "il/core/Instr.hpp"
+#include "viper/il/Module.hpp"
 
 #include <functional>
 #include <string_view>

@@ -19,11 +19,7 @@
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/lower/Emitter.hpp"
 
-#include "il/core/BasicBlock.hpp"
-#include "il/core/Function.hpp"
-#include "il/core/Opcode.hpp"
-#include "il/core/Type.hpp"
-#include "il/core/Value.hpp"
+#include "viper/il/Module.hpp"
 
 #include <algorithm>
 #include <array>

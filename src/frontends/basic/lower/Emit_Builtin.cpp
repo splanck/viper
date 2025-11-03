@@ -24,8 +24,7 @@
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/lower/Emitter.hpp"
 
-#include "il/core/BasicBlock.hpp"
-#include "il/core/Instr.hpp"
+#include "viper/il/Module.hpp"
 
 using namespace il::core;
 

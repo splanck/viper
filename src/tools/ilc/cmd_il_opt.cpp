@@ -18,7 +18,7 @@
 ///          transformation passes together using the public API.
 
 #include "cli.hpp"
-#include "il/io/Serializer.hpp"
+#include "viper/il/IO.hpp"
 #include "il/transform/ConstFold.hpp"
 #include "il/transform/DCE.hpp"
 #include "il/transform/Mem2Reg.hpp"
