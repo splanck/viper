@@ -5,7 +5,7 @@
 // Ownership/Lifetime: Each test initialises and frees its own builder instance.
 // Links: docs/codemap.md
 
-#include "rt_string_builder.h"
+#include "viper/runtime/rt.h"
 
 #include <assert.h>
 #include <stdint.h>

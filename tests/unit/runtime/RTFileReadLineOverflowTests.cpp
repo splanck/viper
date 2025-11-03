@@ -5,7 +5,7 @@
 // Links: docs/codemap.md
 
 #include "rt.hpp"
-#include "rt_error.h"
+#include "viper/runtime/rt.h"
 
 #include <cassert>
 #include <cerrno>

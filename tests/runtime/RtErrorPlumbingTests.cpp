@@ -4,8 +4,7 @@
 // Ownership: Links against the C runtime library.
 // Links: docs/specs/numerics.md
 
-#include "rt_error.h"
-#include "rt_numeric.h"
+#include "viper/runtime/rt.h"
 
 #include <cassert>
 #include <cstring>

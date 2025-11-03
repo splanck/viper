@@ -4,7 +4,7 @@
 // Ownership: Tests own allocated arrays and release them via rt_arr_i32_release().
 // Links: docs/runtime-vm.md#runtime-abi
 
-#include "rt_array.h"
+#include "viper/runtime/rt.h"
 
 #ifdef NDEBUG
 #undef NDEBUG
