@@ -186,6 +186,7 @@ add_library(il_vm STATIC
         vm/Marshal.cpp
         vm/OpHandlers.cpp
         vm/OpHandlerUtils.cpp
+        vm/OpHelpers.cpp
         vm/Trap.cpp
         vm/err_bridge.cpp
         vm/debug/Debug.cpp
