@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/vm/Trace.cpp
+// File: src/vm/debug/Trace.cpp
 // Purpose: Implement deterministic tracing for IL VM steps and consolidate the
 //          presentation logic that surfaces interpreter activity to developers.
 // Key invariants: Each executed instruction produces at most one flushed line,
@@ -29,7 +29,7 @@
 ///          the VM dispatch loop lightweight while concentrating all
 ///          presentation logic in a single location.
 
-#include "vm/Trace.hpp"
+#include "viper/vm/debug/Debug.hpp"
 
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"

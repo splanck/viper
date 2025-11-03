@@ -28,8 +28,7 @@
 #include "il/verify/Verifier.hpp"
 #include "support/diag_expected.hpp"
 #include "support/source_manager.hpp"
-#include "vm/Trace.hpp"
-#include "vm/VM.hpp"
+#include "viper/vm/VM.hpp"
 #include <cstdint>
 #include <cstdio>
 #include <fstream>
@@ -258,9 +257,14 @@ int runFrontBasic(const FrontBasicConfig &config,
 
     vm::TraceConfig traceCfg = config.shared.trace;
     traceCfg.sm = &sm;
-    vm::VM vm(module, traceCfg, config.shared.maxSteps);
-    int rc = static_cast<int>(vm.run());
-    const auto trapMessage = vm.lastTrapMessage();
+
+    vm::RunConfig runCfg;
+    runCfg.trace = traceCfg;
+    runCfg.maxSteps = config.shared.maxSteps;
+
+    vm::Runner runner(module, std::move(runCfg));
+    int rc = static_cast<int>(runner.run());
+    const auto trapMessage = runner.lastTrapMessage();
     if (trapMessage)
     {
         if (config.shared.dumpTrap && !trapMessage->empty())

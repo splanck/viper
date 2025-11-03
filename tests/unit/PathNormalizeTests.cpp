@@ -4,7 +4,7 @@
 // basename extracted from normalized path.
 // Ownership: Standalone executable.
 // Links: docs/codemap.md
-#include "vm/Debug.hpp"
+#include "viper/vm/debug/Debug.hpp"
 #include <cassert>
 
 int main()
