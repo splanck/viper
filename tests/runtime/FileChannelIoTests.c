@@ -3,8 +3,7 @@
 // Key invariants: Wrappers return Err_None on success and allocate readable strings.
 // Ownership/Lifetime: Runtime owns allocations; test releases acquired strings.
 // Links: docs/codemap.md
-#include "rt_file.h"
-#include "rt_string.h"
+#include "viper/runtime/rt.h"
 
 #include <assert.h>
 #include <fcntl.h>

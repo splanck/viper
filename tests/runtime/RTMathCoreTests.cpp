@@ -3,8 +3,7 @@
 // Key invariants: Results match libm within tolerance.
 // Ownership: Uses runtime library.
 // Links: docs/runtime-vm.md#runtime-abi
-#include "rt_fp.h"
-#include "rt_math.h"
+#include "viper/runtime/rt.h"
 #include <cassert>
 #include <cmath>
 

@@ -6,9 +6,7 @@
 
 #define _XOPEN_SOURCE 700
 
-#include "rt_error.h"
-#include "rt_file.h"
-#include "rt_string.h"
+#include "viper/runtime/rt.h"
 
 #include <assert.h>
 #include <errno.h>

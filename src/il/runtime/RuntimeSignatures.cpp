@@ -43,12 +43,8 @@ void register_array_signatures();
 #endif
 
 #include "rt.hpp"
-#include "rt_debug.h"
-#include "rt_fp.h"
+#include "viper/runtime/rt.h"
 #include "rt_internal.h"
-#include "rt_math.h"
-#include "rt_numeric.h"
-#include "rt_random.h"
 #include <algorithm>
 #include <array>
 #include <cstdint>

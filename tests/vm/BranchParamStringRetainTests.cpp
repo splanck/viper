@@ -9,8 +9,8 @@
 
 #include "../unit/VMTestHook.hpp"
 
+#include "viper/runtime/rt.h"
 #include "rt_internal.h"
-#include "rt_string.h"
 
 #include <optional>
 

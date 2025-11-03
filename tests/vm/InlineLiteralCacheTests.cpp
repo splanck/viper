@@ -14,7 +14,7 @@
 
 #include "../unit/VMTestHook.hpp"
 
-#include "rt_string.h"
+#include "viper/runtime/rt.h"
 
 #include <cassert>
 #include <cstring>
