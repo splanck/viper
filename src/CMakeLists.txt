@@ -176,20 +176,21 @@ target_include_directories(il_tools_common PUBLIC
 )
 
 add_library(il_vm STATIC
+        vm/Runner.cpp
         vm/VM.cpp
-        vm/VM_DebugUtils.cpp
+        vm/debug/VM_DebugUtils.cpp
         vm/VMInit.cpp
         vm/VMContext.cpp
-        vm/VMDebug.cpp
+        vm/debug/VMDebug.cpp
         vm/RuntimeBridge.cpp
         vm/Marshal.cpp
         vm/OpHandlers.cpp
         vm/OpHandlerUtils.cpp
         vm/Trap.cpp
         vm/err_bridge.cpp
-        vm/Debug.cpp
-        vm/DebugScript.cpp
-        vm/Trace.cpp
+        vm/debug/Debug.cpp
+        vm/debug/DebugScript.cpp
+        vm/debug/Trace.cpp
         vm/mem_ops.cpp
         vm/int_ops_arith.cpp
         vm/int_ops_cmp.cpp
@@ -202,6 +203,7 @@ add_library(il_vm STATIC
         vm/ops/Op_TrapEh.cpp)
 target_include_directories(il_vm PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>
 )
 target_link_libraries(il_vm
@@ -345,6 +347,12 @@ install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/il/utils/
 )
 
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/vm/
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/viper/vm
+        FILES_MATCHING PATTERN "*.hpp"
+        PATTERN "VM.hpp" EXCLUDE
+)
+
+install(DIRECTORY ${PROJECT_SOURCE_DIR}/include/viper/vm/
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/viper/vm
         FILES_MATCHING PATTERN "*.hpp"
 )

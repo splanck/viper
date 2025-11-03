@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/vm/DebugScript.cpp
+// File: src/vm/debug/DebugScript.cpp
 // Purpose: Implement the queue-based script loader that drives the interactive
 //          VM debugger.
 // Links: docs/runtime-vm.md#debugger
@@ -17,7 +17,7 @@
 /// @details Keeps I/O and parsing logic out of the header so the debugger can
 ///          include lightweight declarations while the implementation handles
 ///          error messaging and command expansion.
-#include "vm/DebugScript.hpp"
+#include "viper/vm/debug/Debug.hpp"
 
 #include <algorithm>
 #include <cctype>

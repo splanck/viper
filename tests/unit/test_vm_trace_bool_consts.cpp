@@ -8,7 +8,7 @@
 
 #include "il/api/expected_api.hpp"
 #include "il/core/Module.hpp"
-#include "vm/Trace.hpp"
+#include "viper/vm/debug/Debug.hpp"
 #include "vm/VM.hpp"
 
 #include <cassert>

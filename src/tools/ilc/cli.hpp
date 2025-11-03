@@ -6,7 +6,7 @@
 
 #pragma once
 
-#include "vm/Trace.hpp"
+#include "viper/vm/debug/Debug.hpp"
 #include <cstdint>
 #include <string>
 
