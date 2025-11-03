@@ -29,7 +29,6 @@
 #include "il/core/OpcodeInfo.hpp"
 #include "il/core/Value.hpp"
 #include "il/internal/io/ParserUtil.hpp"
-#include "il/internal/io/TypeParser.hpp"
 
 #include "support/diag_expected.hpp"
 #include "viper/il/io/OperandParse.hpp"
@@ -57,24 +56,6 @@ using Operand = Value;
 template <typename T> Expected<T> makeSyntaxError(ParserState &state, std::string message)
 {
     return Expected<T>{makeError(state.curLoc, formatLineDiag(state.lineNo, std::move(message)))};
-}
-
-[[maybe_unused]] Expected<Type> parseType(std::string_view token, ParserState &state)
-{
-    std::string literal = trim(std::string(token));
-    if (literal.empty())
-        return makeSyntaxError<Type>(state, "missing type");
-
-    bool ok = false;
-    Type ty = ::il::io::parseType(literal, &ok);
-    if (!ok)
-    {
-        std::ostringstream oss;
-        oss << "unknown type '" << literal << "'";
-        return makeSyntaxError<Type>(state, oss.str());
-    }
-
-    return ty;
 }
 
 } // namespace

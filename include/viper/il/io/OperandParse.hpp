@@ -96,5 +96,18 @@ ParseResult parseValueOperand(viper::parse::Cursor &cur, Context &ctx);
 /// @return Result describing success and, on success, the parsed label string.
 ParseResult parseLabelOperand(viper::parse::Cursor &cur, Context &ctx);
 
+/// @brief Parse a type literal operand and attach it to the instruction context.
+/// @param cur Cursor positioned at the beginning of the type token.
+/// @param ctx Shared parser context providing diagnostics and instruction sink.
+/// @return Result describing success or failure of the parse. No additional payloads
+///         are populated beyond the status indicator.
+ParseResult parseTypeOperand(viper::parse::Cursor &cur, Context &ctx);
+
+/// @brief Parse a constant literal operand, producing a Value payload.
+/// @param cur Cursor positioned at the start of the literal token.
+/// @param ctx Shared parser context providing diagnostics and SSA mappings.
+/// @return Result describing success and, on success, the parsed Value payload.
+ParseResult parseConstOperand(viper::parse::Cursor &cur, Context &ctx);
+
 } // namespace viper::il::io
 

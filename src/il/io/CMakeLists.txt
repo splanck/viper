@@ -3,7 +3,10 @@ add_library(viper_il_io STATIC
         FormatUtils.cpp
         InstrParser.cpp
         OperandParse_Label.cpp
+        OperandParse_Const.cpp
+        OperandParse_Type.cpp
         OperandParse_Value.cpp
+        OperandParse_ValueDetail.cpp
         OperandParser.cpp
         ModuleParser.cpp
         Parser.cpp
