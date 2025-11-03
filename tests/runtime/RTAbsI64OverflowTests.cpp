@@ -3,7 +3,7 @@
 // Key invariants: Overflowing inputs trigger runtime trap.
 // Ownership: Uses runtime library; stubs vm_trap to capture message.
 // Links: docs/runtime-vm.md#runtime-abi
-#include "rt_math.h"
+#include "viper/runtime/rt.h"
 #include <cassert>
 #include <climits>
 #include <cstring>

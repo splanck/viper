@@ -4,7 +4,7 @@
 // Ownership/Lifetime: Uses constant literals provided by the runtime; no allocations performed.
 // Links: docs/codemap.md
 
-#include "rt_file.h"
+#include "viper/runtime/rt.h"
 #include "rt_file_path.h"
 
 #include <assert.h>

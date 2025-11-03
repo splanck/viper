@@ -7,13 +7,7 @@
 
 #include <stdint.h>
 
-#include "rt_array.h"
-#include "rt_debug.h"
-#include "rt_error.h"
-#include "rt_file.h"
-#include "rt_format.h"
-#include "rt_object.h" /* plain include; functions are no-ops when not linked */
-#include "rt_string.h"
+#include "viper/runtime/rt.h"
 
 #ifdef __cplusplus
 extern "C"

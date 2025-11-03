@@ -4,7 +4,7 @@
 // Ownership: Runtime numeric formatting helpers.
 // Links: docs/codemap.md
 
-#include "rt_format.h"
+#include "viper/runtime/rt.h"
 
 #include <array>
 #include <cassert>

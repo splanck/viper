@@ -4,7 +4,7 @@
 // Ownership: Uses runtime helpers directly.
 // Links: docs/specs/numerics.md
 
-#include "rt_numeric.h"
+#include "viper/runtime/rt.h"
 
 #include <cassert>
 

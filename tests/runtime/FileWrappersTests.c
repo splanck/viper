@@ -3,8 +3,7 @@
 // Key invariants: Missing files return Err_FileNotFound; closing unopened channel is invalid.
 // Ownership/Lifetime: Uses runtime library; relies on shared literals.
 // Links: docs/codemap.md
-#include "rt_file.h"
-#include "rt_string.h"
+#include "viper/runtime/rt.h"
 
 #include <assert.h>
 #include <sys/stat.h>

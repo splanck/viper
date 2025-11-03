@@ -4,8 +4,7 @@
 // Ownership: Tests manage retains/releases explicitly and ensure all arrays are freed.
 // Links: docs/runtime-vm.md#runtime-abi
 
-#include "rt_array.h"
-#include "rt_heap.h"
+#include "viper/runtime/rt.h"
 
 #ifdef NDEBUG
 #undef NDEBUG
