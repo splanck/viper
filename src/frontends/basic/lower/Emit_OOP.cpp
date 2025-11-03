@@ -27,9 +27,7 @@
 #include "frontends/basic/NameMangler_OOP.hpp"
 #include "frontends/basic/lower/Emitter.hpp"
 
-#include "il/core/BasicBlock.hpp"
-#include "il/core/Function.hpp"
-#include "il/core/Instr.hpp"
+#include "viper/il/Module.hpp"
 
 #include <cassert>
 

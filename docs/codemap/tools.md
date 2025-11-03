@@ -10,7 +10,7 @@
 
 - **src/tools/il-dis/main.cpp**
 
-  Acts as a tiny IL disassembler demo that constructs a module in memory and emits it as text. The program uses `il::build::IRBuilder` to declare the runtime `rt_print_str` extern, create a global string, and populate `main` with basic blocks and instructions that print and return zero. Once the synthetic module is built it serializes the result to standard output via the IL serializer, making the example handy for tutorials and smoke tests. Dependencies include `il/build/IRBuilder.hpp`, `il/io/Serializer.hpp`, and `<iostream>`.
+  Acts as a tiny IL disassembler demo that constructs a module in memory and emits it as text. The program uses `il::build::IRBuilder` to declare the runtime `rt_print_str` extern, create a global string, and populate `main` with basic blocks and instructions that print and return zero. Once the synthetic module is built it serializes the result to standard output via the IL serializer, making the example handy for tutorials and smoke tests. Dependencies include `viper/il/IRBuilder.hpp`, `viper/il/IO.hpp`, and `<iostream>`.
 
 - **src/tools/ilc/break_spec.cpp**
 

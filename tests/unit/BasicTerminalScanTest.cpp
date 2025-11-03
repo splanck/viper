@@ -13,7 +13,7 @@
 #include "frontends/basic/BasicCompiler.hpp"
 #include "il/core/Extern.hpp"
 #include "il/core/Module.hpp"
-#include "il/io/Serializer.hpp"
+#include "viper/il/IO.hpp"
 #include "support/source_manager.hpp"
 
 #include <algorithm>

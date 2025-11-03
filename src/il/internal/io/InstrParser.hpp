@@ -1,11 +1,11 @@
-// File: src/il/io/InstrParser.hpp
+// File: src/il/internal/io/InstrParser.hpp
 // Purpose: Declares helpers for parsing IL instruction statements.
 // Key invariants: Operates within a valid ParserState containing an active block.
 // Ownership/Lifetime: Writes instructions directly into the ParserState's current block.
 // Links: docs/il-guide.md#reference
 #pragma once
 
-#include "il/io/ParserState.hpp"
+#include "il/internal/io/ParserState.hpp"
 
 #include <ostream>
 #include <string>

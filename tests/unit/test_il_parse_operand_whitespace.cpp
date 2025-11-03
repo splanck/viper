@@ -7,8 +7,8 @@
 #include "il/core/Instr.hpp"
 #include "il/core/Module.hpp"
 #include "il/core/Opcode.hpp"
-#include "il/io/OperandParser.hpp"
-#include "il/io/ParserState.hpp"
+#include "il/internal/io/OperandParser.hpp"
+#include "il/internal/io/ParserState.hpp"
 
 #include <cassert>
 #include <fstream>

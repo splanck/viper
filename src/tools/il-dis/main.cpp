@@ -20,8 +20,8 @@
 ///          IL-building workflow.  It serves as both developer documentation and
 ///          a smoke test for the builder/serializer stack.
 
-#include "il/build/IRBuilder.hpp"
-#include "il/io/Serializer.hpp"
+#include "viper/il/IRBuilder.hpp"
+#include "viper/il/IO.hpp"
 #include <iostream>
 
 /// @brief Emit IL for a fixed "hello world" style program.
