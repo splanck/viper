@@ -25,7 +25,7 @@ declare -a units=(
   "src/il/io/FunctionParser.cpp"
   "src/il/io/InstrParser.cpp"
   "src/il/io/ModuleParser.cpp"
-  "src/vm/Debug.cpp"
+  "src/vm/debug/Debug.cpp"
 )
 
 for unit in "${units[@]}"; do

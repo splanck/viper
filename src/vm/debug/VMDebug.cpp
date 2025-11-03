@@ -26,7 +26,7 @@
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
 #include "support/source_manager.hpp"
-#include "vm/DebugScript.hpp"
+#include "viper/vm/debug/Debug.hpp"
 #include "vm/OpHandlerUtils.hpp"
 #include "vm/VM.hpp"
 

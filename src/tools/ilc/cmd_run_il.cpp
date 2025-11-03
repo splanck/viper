@@ -25,10 +25,8 @@
 #include "il/core/Module.hpp"
 #include "support/source_manager.hpp"
 #include "tools/common/module_loader.hpp"
-#include "vm/Debug.hpp"
-#include "vm/DebugScript.hpp"
-#include "vm/Trace.hpp"
-#include "vm/VM.hpp"
+#include "viper/vm/VM.hpp"
+#include "viper/vm/debug/Debug.hpp"
 #include <algorithm>
 #include <cctype>
 #include <chrono>
@@ -442,18 +440,20 @@ int executeRunIL(const RunILConfig &config, il::support::SourceManager &sm)
         }
     }
 
-    vm::VM vm(m,
-              traceCfg,
-              config.sharedOpts.maxSteps,
-              std::move(dbg),
-              config.debugScript ? config.debugScript.get() : nullptr);
+    vm::RunConfig runCfg;
+    runCfg.trace = traceCfg;
+    runCfg.maxSteps = config.sharedOpts.maxSteps;
+    runCfg.debug = std::move(dbg);
+    runCfg.debugScript = config.debugScript ? config.debugScript.get() : nullptr;
+
+    vm::Runner runner(m, std::move(runCfg));
 
     std::chrono::steady_clock::time_point start;
     if (config.timeFlag)
     {
         start = std::chrono::steady_clock::now();
     }
-    const int64_t runResult = vm.run();
+    const int64_t runResult = runner.run();
     int rc = 0;
     const auto intMin = std::numeric_limits<int>::min();
     const auto intMax = std::numeric_limits<int>::max();
@@ -467,7 +467,7 @@ int executeRunIL(const RunILConfig &config, il::support::SourceManager &sm)
     {
         rc = static_cast<int>(runResult);
     }
-    const auto trapMessage = vm.lastTrapMessage();
+    const auto trapMessage = runner.lastTrapMessage();
     if (trapMessage)
     {
         if (config.sharedOpts.dumpTrap && !trapMessage->empty())
@@ -494,7 +494,7 @@ int executeRunIL(const RunILConfig &config, il::support::SourceManager &sm)
         std::cerr << "[SUMMARY]";
         if (config.countFlag)
         {
-            std::cerr << " instr=" << vm.getInstrCount();
+            std::cerr << " instr=" << runner.instructionCount();
         }
         if (config.timeFlag)
         {
