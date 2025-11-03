@@ -19,7 +19,7 @@
 ///          notifications for developers.  They borrow VM-owned state such as
 ///          the source manager to avoid duplicating heavyweight resources.
 
-#include "vm/Debug.hpp"
+#include "viper/vm/debug/Debug.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Instr.hpp"
 #include "support/source_location.hpp"
