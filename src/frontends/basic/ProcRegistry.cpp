@@ -54,21 +54,16 @@ ProcSignature ProcRegistry::buildSignature(const ProcDescriptor &descriptor)
     {
         if (!paramNames.insert(p.name).second)
         {
-            std::string msg = "duplicate parameter '" + p.name + "'";
-            de.emit(il::support::Severity::Error,
-                    "B1005",
+            de.emit(diag::BasicDiag::DuplicateParameter,
                     p.loc,
                     static_cast<uint32_t>(p.name.size()),
-                    std::move(msg));
+                    std::initializer_list<diag::Replacement>{diag::Replacement{"name", p.name}});
         }
         if (p.is_array && p.type != Type::I64 && p.type != Type::Str)
         {
-            std::string msg = "array parameter must be i64 or str";
-            de.emit(il::support::Severity::Error,
-                    "B2004",
+            de.emit(diag::BasicDiag::ArrayParamType,
                     p.loc,
-                    static_cast<uint32_t>(p.name.size()),
-                    std::move(msg));
+                    static_cast<uint32_t>(p.name.size()));
         }
         sig.params.push_back({p.type, p.is_array});
     }
@@ -92,12 +87,10 @@ void ProcRegistry::registerProcImpl(std::string_view name,
 
     if (procs_.count(nameStr))
     {
-        std::string msg = "duplicate procedure '" + nameStr + "'";
-        de.emit(il::support::Severity::Error,
-                "B1004",
+        de.emit(diag::BasicDiag::DuplicateProcedure,
                 loc,
                 static_cast<uint32_t>(nameStr.size()),
-                std::move(msg));
+                std::initializer_list<diag::Replacement>{diag::Replacement{"name", nameStr}});
         return;
     }
 
