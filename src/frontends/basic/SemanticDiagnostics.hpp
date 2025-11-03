@@ -6,6 +6,9 @@
 #pragma once
 
 #include "frontends/basic/DiagnosticEmitter.hpp"
+#include "viper/diag/BasicDiag.hpp"
+
+#include <initializer_list>
 #include <string>
 #include <string_view>
 
@@ -26,6 +29,11 @@ class SemanticDiagnostics
               il::support::SourceLoc loc,
               uint32_t length,
               std::string message);
+
+    void emit(diag::BasicDiag diag,
+              il::support::SourceLoc loc,
+              uint32_t length,
+              std::initializer_list<diag::Replacement> replacements = {});
 
     [[nodiscard]] size_t errorCount() const;
 

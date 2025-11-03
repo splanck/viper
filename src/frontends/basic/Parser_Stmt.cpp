@@ -17,6 +17,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/basic/BasicDiagnosticMessages.hpp"
+#include "viper/diag/BasicDiag.hpp"
 #include "frontends/basic/Parser.hpp"
 #include "frontends/basic/ast/ExprNodes.hpp"
 #include <cctype>
@@ -167,12 +168,13 @@ void Parser::reportUnexpectedLineNumber(const Token &tok)
 {
     if (emitter_)
     {
-        std::string message = "unexpected line number '" + tok.lexeme + "' before statement";
-        emitter_->emit(il::support::Severity::Error,
-                       "B0001",
+        auto diagId = diag::BasicDiag::UnexpectedLineNumber;
+        emitter_->emit(diag::getSeverity(diagId),
+                       std::string(diag::getCode(diagId)),
                        tok.loc,
                        static_cast<uint32_t>(tok.lexeme.size()),
-                       std::move(message));
+                       diag::formatMessage(diagId,
+                                           std::initializer_list<diag::Replacement>{diag::Replacement{"token", tok.lexeme}}));
     }
     else
     {
@@ -184,13 +186,13 @@ void Parser::reportUnknownStatement(const Token &tok)
 {
     if (emitter_)
     {
-        std::string message =
-            "unknown statement '" + tok.lexeme + "'; expected keyword or procedure call";
-        emitter_->emit(il::support::Severity::Error,
-                       "B0001",
+        auto diagId = diag::BasicDiag::UnknownStatement;
+        emitter_->emit(diag::getSeverity(diagId),
+                       std::string(diag::getCode(diagId)),
                        tok.loc,
                        static_cast<uint32_t>(tok.lexeme.size()),
-                       std::move(message));
+                       diag::formatMessage(diagId,
+                                           std::initializer_list<diag::Replacement>{diag::Replacement{"token", tok.lexeme}}));
     }
     else
     {
