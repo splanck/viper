@@ -24,6 +24,7 @@
 
 #include "vm/RuntimeBridge.hpp"
 #include "vm/control_flow.hpp"
+#include "viper/vm/internal/OpHelpers.hpp"
 #include "vm/ops/common/Branching.hpp"
 
 #include <algorithm>
@@ -326,8 +327,8 @@ VM::ExecResult handleCBr(VM &vm,
                          const il::core::BasicBlock *&bb,
                          size_t &ip)
 {
-    Slot cond = VMAccess::eval(vm, fr, in.operands[0]);
-    const size_t targetIdx = (cond.i64 != 0) ? 0 : 1;
+    const bool cond = il::vm::internal::readOperand<bool>(vm, fr, in, 0);
+    const size_t targetIdx = cond ? 0 : 1;
     return branchToTarget(vm, fr, in, targetIdx, blocks, bb, ip);
 }
 
