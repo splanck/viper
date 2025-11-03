@@ -21,8 +21,8 @@
 
 #include "viper/il/io/OperandParse.hpp"
 
-#include "il/io/ParserState.hpp"
-#include "il/io/ParserUtil.hpp"
+#include "il/internal/io/ParserState.hpp"
+#include "il/internal/io/ParserUtil.hpp"
 
 #include <string>
 #include <utility>

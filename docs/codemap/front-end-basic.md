@@ -50,7 +50,7 @@
 
 - **src/frontends/basic/LoweringPipeline.cpp**
 
-  Implements the helper visitors and utilities `Lowerer` uses to stage BASIC lowering in well-defined passes. The expression and statement collectors walk AST nodes to mark referenced symbols, arrays, and builtin usages while deferring to `Lowerer` for bookkeeping. Additional helpers translate BASIC scalar types to IL core kinds and ensure array metadata is recorded before emission so later passes see consistent slot information. Dependencies include `frontends/basic/LoweringPipeline.hpp`, `frontends/basic/Lowerer.hpp`, `frontends/basic/TypeSuffix.hpp`, `il/build/IRBuilder.hpp`, and IL core block/function definitions.
+  Implements the helper visitors and utilities `Lowerer` uses to stage BASIC lowering in well-defined passes. The expression and statement collectors walk AST nodes to mark referenced symbols, arrays, and builtin usages while deferring to `Lowerer` for bookkeeping. Additional helpers translate BASIC scalar types to IL core kinds and ensure array metadata is recorded before emission so later passes see consistent slot information. Dependencies include `frontends/basic/LoweringPipeline.hpp`, `frontends/basic/Lowerer.hpp`, `frontends/basic/TypeSuffix.hpp`, `viper/il/IRBuilder.hpp`, and IL core block/function definitions.
 
 - **src/frontends/basic/LowerEmit.hpp**
 

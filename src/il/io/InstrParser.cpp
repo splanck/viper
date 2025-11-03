@@ -22,7 +22,7 @@
 ///          details.  It produces diagnostic-rich errors whenever the textual
 ///          representation deviates from the IL specification.
 
-#include "il/io/InstrParser.hpp"
+#include "il/internal/io/InstrParser.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
@@ -31,9 +31,9 @@
 #include "il/core/Opcode.hpp"
 #include "il/core/OpcodeInfo.hpp"
 #include "il/core/Value.hpp"
-#include "il/io/OperandParser.hpp"
-#include "il/io/ParserUtil.hpp"
-#include "il/io/TypeParser.hpp"
+#include "il/internal/io/OperandParser.hpp"
+#include "il/internal/io/ParserUtil.hpp"
+#include "il/internal/io/TypeParser.hpp"
 #include "support/diag_expected.hpp"
 
 #include <optional>

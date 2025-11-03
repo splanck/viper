@@ -10,7 +10,7 @@
 
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/ast/ExprNodes.hpp"
-#include "il/core/Value.hpp"
+#include "viper/il/Module.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
 #include <cstddef>
 #include <cstdint>

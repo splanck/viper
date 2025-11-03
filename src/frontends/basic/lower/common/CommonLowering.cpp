@@ -20,8 +20,7 @@
 
 #include "frontends/basic/Lowerer.hpp"
 
-#include "il/core/BasicBlock.hpp"
-#include "il/core/Function.hpp"
+#include "viper/il/Module.hpp"
 
 #include <cassert>
 #include <utility>

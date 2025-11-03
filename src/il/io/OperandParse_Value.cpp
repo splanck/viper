@@ -23,8 +23,8 @@
 
 #include "il/core/Instr.hpp"
 #include "il/core/Value.hpp"
-#include "il/io/ParserState.hpp"
-#include "il/io/ParserUtil.hpp"
+#include "il/internal/io/ParserState.hpp"
+#include "il/internal/io/ParserUtil.hpp"
 #include "il/io/StringEscape.hpp"
 
 #include <charconv>

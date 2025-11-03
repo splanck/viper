@@ -6,10 +6,10 @@
 #pragma once
 
 #include "il/core/fwd.hpp"
-#include "il/io/FunctionParser.hpp"
-#include "il/io/InstrParser.hpp"
-#include "il/io/ModuleParser.hpp"
-#include "il/io/ParserState.hpp"
+#include "il/internal/io/FunctionParser.hpp"
+#include "il/internal/io/InstrParser.hpp"
+#include "il/internal/io/ModuleParser.hpp"
+#include "il/internal/io/ParserState.hpp"
 #include "support/diag_expected.hpp"
 
 #include <istream>

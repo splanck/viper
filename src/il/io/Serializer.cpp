@@ -28,7 +28,7 @@
 #include "il/core/Opcode.hpp"
 #include "il/core/OpcodeInfo.hpp"
 #include "il/core/Value.hpp"
-#include "il/io/ParserUtil.hpp"
+#include "il/internal/io/ParserUtil.hpp"
 #include "il/io/StringEscape.hpp"
 #include <algorithm>
 #include <array>

@@ -21,8 +21,8 @@
 #include "il/io/Parser.hpp"
 #include "il/core/Module.hpp"
 
-#include "il/io/ModuleParser.hpp"
-#include "il/io/ParserUtil.hpp"
+#include "il/internal/io/ModuleParser.hpp"
+#include "il/internal/io/ParserUtil.hpp"
 #include "support/diag_expected.hpp"
 
 #include <sstream>

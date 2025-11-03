@@ -7,7 +7,7 @@
 #include "il/core/Param.hpp"
 #include "il/core/Type.hpp"
 #include "il/core/Value.hpp"
-#include "il/io/Serializer.hpp"
+#include "viper/il/IO.hpp"
 #include <cassert>
 #include <fstream>
 #include <initializer_list>

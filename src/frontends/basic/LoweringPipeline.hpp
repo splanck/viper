@@ -6,8 +6,7 @@
 #pragma once
 
 #include "frontends/basic/ast/DeclNodes.hpp"
-#include "il/core/Module.hpp"
-#include "il/core/Type.hpp"
+#include "viper/il/Module.hpp"
 #include <functional>
 #include <memory>
 #include <string>

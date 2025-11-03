@@ -12,8 +12,8 @@
 #include "frontends/basic/LowerRuntime.hpp"
 #include "frontends/basic/NameMangler.hpp"
 #include "frontends/basic/TypeRules.hpp"
-#include "il/build/IRBuilder.hpp"
-#include "il/core/Module.hpp"
+#include "viper/il/IRBuilder.hpp"
+#include "viper/il/Module.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
 #include <array>
 #include <cstdint>

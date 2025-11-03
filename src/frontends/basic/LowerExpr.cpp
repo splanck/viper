@@ -19,9 +19,7 @@
 #include "frontends/basic/LowerExprNumeric.hpp"
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/lower/Emitter.hpp"
-#include "il/core/BasicBlock.hpp"
-#include "il/core/Function.hpp"
-#include "il/core/Instr.hpp"
+#include "viper/il/Module.hpp"
 #include <algorithm>
 #include <cassert>
 #include <cstdint>
