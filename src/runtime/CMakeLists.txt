@@ -47,7 +47,9 @@ add_library(viper_runtime STATIC ${RT_SOURCES})
 target_include_directories(viper_runtime
         PUBLIC
         $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/src/runtime>
+        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper_runtime>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper/runtime>
         PRIVATE
         ${PROJECT_SOURCE_DIR}/src
 )
@@ -63,4 +65,8 @@ target_compile_definitions(viper_runtime
 
 install(FILES ${RT_PUBLIC_HEADERS}
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/viper_runtime
+)
+
+install(FILES ${PROJECT_SOURCE_DIR}/include/viper/runtime/rt.h
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/viper/runtime
 )

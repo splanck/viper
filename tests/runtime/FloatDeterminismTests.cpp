@@ -4,7 +4,7 @@
 // Ownership: Runtime numeric helpers.
 // Links: docs/codemap.md
 
-#include "rt_numeric.h"
+#include "viper/runtime/rt.h"
 
 #include <array>
 #include <cassert>

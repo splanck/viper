@@ -7,7 +7,7 @@
 
 #include "il/core/Value.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
-#include "rt_string.h"
+#include "viper/runtime/rt.h"
 #include "vm/Trap.hpp"
 
 #include <cstddef>

@@ -4,7 +4,7 @@
 // Ownership: Uses runtime helpers directly.
 // Links: docs/codemap.md
 
-#include "rt_string.h"
+#include "viper/runtime/rt.h"
 
 #include <cassert>
 #include <string>

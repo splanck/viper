@@ -3,7 +3,7 @@
 // Key invariants: Sequence reproducible for given seed; outputs in [0,1).
 // Ownership: Uses runtime library.
 // Links: docs/runtime-vm.md#runtime-abi
-#include "rt_random.h"
+#include "viper/runtime/rt.h"
 #include <cassert>
 
 int main()

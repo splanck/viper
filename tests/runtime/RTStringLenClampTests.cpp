@@ -4,8 +4,8 @@
 // Ownership/Lifetime: Test allocates and releases its own runtime string handle.
 // Links: docs/codemap.md
 
+#include "viper/runtime/rt.h"
 #include "rt_internal.h"
-#include "rt_string.h"
 
 #ifdef NDEBUG
 #undef NDEBUG

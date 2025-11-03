@@ -20,7 +20,7 @@
 
 #include "vm/Marshal.hpp"
 
-#include "rt_string.h"
+#include "viper/runtime/rt.h"
 #include "vm/RuntimeBridge.hpp"
 #include "vm/VM.hpp"
 
