@@ -6,7 +6,7 @@
 
 #include "il/api/expected_api.hpp"
 #include "il/core/Module.hpp"
-#include "il/io/Serializer.hpp"
+#include "viper/il/IO.hpp"
 #include "support/diag_expected.hpp"
 
 #include <algorithm>

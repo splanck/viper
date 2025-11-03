@@ -14,7 +14,7 @@
 /// @details Supplies trimming, tokenisation, literal parsing, and trap-kind
 ///          mapping helpers that keep the main parser logic concise.
 
-#include "il/io/ParserUtil.hpp"
+#include "il/internal/io/ParserUtil.hpp"
 
 #include <array>
 #include <cctype>

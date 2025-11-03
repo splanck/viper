@@ -9,7 +9,7 @@
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/SemanticAnalyzer.hpp"
 #include "frontends/basic/ast/ExprNodes.hpp"
-#include "il/core/Opcode.hpp"
+#include "viper/il/Module.hpp"
 #include <cstddef>
 #include <cstdint>
 #include <optional>

@@ -23,13 +23,13 @@
 ///          match block parameter signatures, emitting diagnostics when the
 ///          textual form deviates from the IL specification.
 
-#include "il/io/OperandParser.hpp"
+#include "il/internal/io/OperandParser.hpp"
 
 #include "il/core/Instr.hpp"
 #include "il/core/OpcodeInfo.hpp"
 #include "il/core/Value.hpp"
-#include "il/io/ParserUtil.hpp"
-#include "il/io/TypeParser.hpp"
+#include "il/internal/io/ParserUtil.hpp"
+#include "il/internal/io/TypeParser.hpp"
 
 #include "support/diag_expected.hpp"
 #include "viper/il/io/OperandParse.hpp"

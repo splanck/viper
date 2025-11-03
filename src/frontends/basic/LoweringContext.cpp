@@ -22,8 +22,8 @@
 ///          a single location.
 
 #include "frontends/basic/LoweringContext.hpp"
-#include "il/build/IRBuilder.hpp"
-#include "il/core/Function.hpp"
+#include "viper/il/IRBuilder.hpp"
+#include "viper/il/Module.hpp"
 
 namespace il::frontends::basic
 {

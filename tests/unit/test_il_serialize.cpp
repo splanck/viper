@@ -1,5 +1,5 @@
 #include "il/build/IRBuilder.hpp"
-#include "il/io/Serializer.hpp"
+#include "viper/il/IO.hpp"
 #include <cassert>
 #include <fstream>
 #include <sstream>

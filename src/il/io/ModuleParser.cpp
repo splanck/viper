@@ -22,15 +22,15 @@
 ///          implementation deliberately minimises allocations by reusing shared
 ///          parser state while still providing richly documented behaviour.
 
-#include "il/io/ModuleParser.hpp"
+#include "il/internal/io/ModuleParser.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Global.hpp"
 #include "il/core/Module.hpp"
 
-#include "il/io/FunctionParser.hpp"
-#include "il/io/ParserUtil.hpp"
+#include "il/internal/io/FunctionParser.hpp"
+#include "il/internal/io/ParserUtil.hpp"
 #include "il/io/StringEscape.hpp"
-#include "il/io/TypeParser.hpp"
+#include "il/internal/io/TypeParser.hpp"
 
 #include "support/diag_expected.hpp"
 #include "viper/parse/Cursor.h"

@@ -20,7 +20,7 @@
 ///          caller-provided module directly and therefore rely on the reference
 ///          stored here remaining valid for the parser's lifetime.
 
-#include "il/io/ParserState.hpp"
+#include "il/internal/io/ParserState.hpp"
 
 namespace il::io::detail
 {

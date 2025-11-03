@@ -18,7 +18,7 @@
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/lower/AstVisitor.hpp"
 
-#include "il/core/BasicBlock.hpp"
+#include "viper/il/Module.hpp"
 
 namespace il::frontends::basic
 {

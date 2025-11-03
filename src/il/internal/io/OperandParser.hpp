@@ -1,4 +1,4 @@
-// File: src/il/io/OperandParser.hpp
+// File: src/il/internal/io/OperandParser.hpp
 // Purpose: Declares a helper for parsing textual IL operands.
 // Key invariants: Requires ParserState to supply SSA mappings and diagnostics.
 // Ownership/Lifetime: Operates on instructions owned by the parser caller.
@@ -6,7 +6,7 @@
 #pragma once
 
 #include "il/core/fwd.hpp"
-#include "il/io/ParserState.hpp"
+#include "il/internal/io/ParserState.hpp"
 #include "support/diag_expected.hpp"
 
 #include <string>

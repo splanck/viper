@@ -17,7 +17,7 @@
 #include "frontends/basic/BuiltinRegistry.hpp"
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/TypeSuffix.hpp"
-#include "il/core/Type.hpp"
+#include "viper/il/Module.hpp"
 #include <cassert>
 #include <optional>
 #include <vector>

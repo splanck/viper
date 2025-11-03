@@ -18,7 +18,7 @@
 ///          compiler.  The helpers are pure and do not retain references to
 ///          caller data.
 
-#include "il/io/TypeParser.hpp"
+#include "il/internal/io/TypeParser.hpp"
 
 namespace il::io
 {

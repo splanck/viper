@@ -14,7 +14,7 @@
 
 #include "frontends/basic/BuiltinRegistry.hpp"
 #include "frontends/basic/Parser.hpp"
-#include "il/io/StringEscape.hpp"
+#include "viper/il/IO.hpp"
 #include <algorithm>
 #include <array>
 #include <cstdio>

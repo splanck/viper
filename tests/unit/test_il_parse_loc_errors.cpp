@@ -5,8 +5,8 @@
 // Links: docs/il-guide.md#reference
 
 #include "il/core/Module.hpp"
-#include "il/io/FunctionParser.hpp"
-#include "il/io/ParserState.hpp"
+#include "il/internal/io/FunctionParser.hpp"
+#include "il/internal/io/ParserState.hpp"
 
 #include <cassert>
 #include <sstream>
