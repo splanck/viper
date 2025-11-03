@@ -33,7 +33,7 @@
 #include "il/core/Value.hpp"
 #include "il/internal/io/OperandParser.hpp"
 #include "il/internal/io/ParserUtil.hpp"
-#include "il/internal/io/TypeParser.hpp"
+#include "viper/il/io/OperandParse.hpp"
 #include "support/diag_expected.hpp"
 
 #include <optional>
@@ -59,24 +59,6 @@ using il::core::Value;
 using il::support::Expected;
 using il::support::makeError;
 using il::support::printDiag;
-
-/// @brief Parses a textual type token and validates it against the IL type set.
-///
-/// @param tok Canonical type spelling, as emitted by the serializer.
-/// @param st Parser state used for diagnostic line numbering.
-/// @return Parsed type or an error describing the unknown spelling.
-Expected<Type> parseType_E(const std::string &tok, ParserState &st)
-{
-    bool ok = false;
-    Type ty = parseType(tok, &ok);
-    if (!ok)
-    {
-        std::ostringstream oss;
-        oss << "line " << st.lineNo << ": unknown type '" << tok << "'";
-        return Expected<Type>{makeError(st.curLoc, oss.str())};
-    }
-    return ty;
-}
 
 /// @brief Ensures an instruction matches the arity described by its opcode.
 ///
@@ -309,10 +291,11 @@ Expected<void> parseWithMetadata(Opcode opcode, const std::string &rest, Instr &
                         << " for " << info.name;
                     return Expected<void>{makeError(in.loc, oss.str())};
                 }
-                auto ty = parseType_E(token, st);
-                if (!ty)
-                    return Expected<void>{ty.error()};
-                in.type = ty.value();
+                viper::parse::Cursor typeCursor{token, viper::parse::SourcePos{st.lineNo, 0}};
+                viper::il::io::Context typeCtx{st, in};
+                auto parsedType = viper::il::io::parseTypeOperand(typeCursor, typeCtx);
+                if (!parsedType.ok())
+                    return Expected<void>{parsedType.status.error()};
                 break;
             }
             case OperandParseKind::Value:
@@ -416,27 +399,29 @@ Expected<void> parseInstruction_E(const std::string &line, ParserState &st)
         }
         std::string res = trim(work.substr(1, eq - 1));
         size_t colon = res.find(':');
-        if (colon != std::string::npos)
-        {
-            std::string tyTok = trim(res.substr(colon + 1));
-            res = trim(res.substr(0, colon));
-            if (res.empty())
+            if (colon != std::string::npos)
             {
-                std::ostringstream oss;
-                oss << "line " << st.lineNo << ": missing temp name before type annotation";
-                return Expected<void>{makeError(in.loc, oss.str())};
+                std::string tyTok = trim(res.substr(colon + 1));
+                res = trim(res.substr(0, colon));
+                if (res.empty())
+                {
+                    std::ostringstream oss;
+                    oss << "line " << st.lineNo << ": missing temp name before type annotation";
+                    return Expected<void>{makeError(in.loc, oss.str())};
+                }
+                viper::parse::Cursor annotCursor{tyTok, viper::parse::SourcePos{st.lineNo, 0}};
+                viper::il::io::Context annotCtx{st, in};
+                auto parsedType = viper::il::io::parseTypeOperand(annotCursor, annotCtx);
+                if (!parsedType.ok())
+                    return Expected<void>{parsedType.status.error()};
+                if (in.type.kind == Type::Kind::Void)
+                {
+                    std::ostringstream oss;
+                    oss << "line " << st.lineNo << ": result type cannot be void";
+                    return Expected<void>{makeError(in.loc, oss.str())};
+                }
+                annotatedType = in.type;
             }
-            auto ty = parseType_E(tyTok, st);
-            if (!ty)
-                return Expected<void>{ty.error()};
-            if (ty.value().kind == Type::Kind::Void)
-            {
-                std::ostringstream oss;
-                oss << "line " << st.lineNo << ": result type cannot be void";
-                return Expected<void>{makeError(in.loc, oss.str())};
-            }
-            annotatedType = ty.value();
-        }
         auto [it, inserted] = st.tempIds.emplace(res, st.nextTemp);
         if (!inserted)
         {
