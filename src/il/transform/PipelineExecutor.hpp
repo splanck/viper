@@ -8,8 +8,11 @@
 #include "il/core/fwd.hpp"
 #include "il/transform/AnalysisManager.hpp"
 #include "il/transform/PassRegistry.hpp"
+#include "viper/pass/PassManager.hpp"
 
+#include <functional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace il::transform
@@ -18,16 +21,24 @@ namespace il::transform
 class PipelineExecutor
 {
   public:
+    /// @brief Configuration for instrumentation hooks around pass execution.
+    struct Instrumentation
+    {
+        viper::pass::PassManager::PrintHook printBefore;
+        viper::pass::PassManager::PrintHook printAfter;
+        viper::pass::PassManager::VerifyHook verifyEach;
+    };
+
     PipelineExecutor(const PassRegistry &registry,
                      const AnalysisRegistry &analysisRegistry,
-                     bool verifyBetweenPasses);
+                     Instrumentation instrumentation);
 
     void run(core::Module &module, const std::vector<std::string> &pipeline) const;
 
   private:
     const PassRegistry &registry_;
     const AnalysisRegistry &analysisRegistry_;
-    bool verifyBetweenPasses_;
+    Instrumentation instrumentation_;
 };
 
 } // namespace il::transform

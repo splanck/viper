@@ -24,10 +24,16 @@
 
 #include "il/analysis/CFG.hpp"
 #include "il/analysis/Dominators.hpp"
+#include "il/io/Serializer.hpp"
 #include "il/transform/PipelineExecutor.hpp"
 #include "il/transform/SimplifyCFG.hpp"
 #include "il/transform/analysis/Liveness.hpp"
+#include "il/verify/Verifier.hpp"
+#include "support/diag_expected.hpp"
+#include "viper/pass/PassManager.hpp"
 
+#include <cassert>
+#include <iostream>
 #include <utility>
 
 using namespace il::core;
@@ -47,6 +53,7 @@ PassManager::PassManager()
 #else
     verifyBetweenPasses_ = false;
 #endif
+    instrumentationStream_ = &std::cerr;
 
     analysisRegistry_.registerFunctionAnalysis<CFGInfo>(
         "cfg", [](core::Module &module, core::Function &fn) { return buildCFG(module, fn); });
@@ -120,6 +127,21 @@ void PassManager::setVerifyBetweenPasses(bool enable)
     verifyBetweenPasses_ = enable;
 }
 
+void PassManager::setPrintBeforeEach(bool enable)
+{
+    printBeforeEach_ = enable;
+}
+
+void PassManager::setPrintAfterEach(bool enable)
+{
+    printAfterEach_ = enable;
+}
+
+void PassManager::setInstrumentationStream(std::ostream &os)
+{
+    instrumentationStream_ = &os;
+}
+
 /// @brief Execute a specific pipeline against a module.
 /// @details Constructs a @ref PipelineExecutor using the current pass and
 ///          analysis registries, then invokes it with the provided pipeline.
@@ -129,7 +151,52 @@ void PassManager::setVerifyBetweenPasses(bool enable)
 /// @param pipeline Ordered list of pass identifiers to execute.
 void PassManager::run(core::Module &module, const Pipeline &pipeline) const
 {
-    PipelineExecutor executor(passRegistry_, analysisRegistry_, verifyBetweenPasses_);
+    PipelineExecutor::Instrumentation instrumentation{};
+
+    if (printBeforeEach_ && instrumentationStream_)
+    {
+        instrumentation.printBefore = [this, &module](std::string_view passId)
+        {
+            *instrumentationStream_ << "*** IR before pass '" << passId << "' ***\n";
+            il::io::Serializer::write(module, *instrumentationStream_);
+            *instrumentationStream_ << "\n";
+        };
+    }
+
+    if (printAfterEach_ && instrumentationStream_)
+    {
+        instrumentation.printAfter = [this, &module](std::string_view passId)
+        {
+            *instrumentationStream_ << "*** IR after pass '" << passId << "' ***\n";
+            il::io::Serializer::write(module, *instrumentationStream_);
+            *instrumentationStream_ << "\n";
+        };
+    }
+
+    if (verifyBetweenPasses_)
+    {
+        instrumentation.verifyEach = [this, &module](std::string_view passId)
+        {
+            auto result = il::verify::Verifier::verify(module);
+            if (!result)
+            {
+                if (instrumentationStream_)
+                {
+                    *instrumentationStream_ << "verification failed after pass '" << passId
+                                            << "'\n";
+                    il::support::printDiag(result.error(), *instrumentationStream_);
+                    *instrumentationStream_ << "\n";
+                }
+#ifndef NDEBUG
+                assert(false && "IL verification failed after pass");
+#endif
+                return false;
+            }
+            return true;
+        };
+    }
+
+    PipelineExecutor executor(passRegistry_, analysisRegistry_, std::move(instrumentation));
     executor.run(module, pipeline);
 }
 

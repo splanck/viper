@@ -226,6 +226,7 @@ add_custom_target(distclean
 set(VIPER_PUBLIC_LIB_TARGETS
   viper_support
   viper_runtime
+  viper_pass
   viper_il_core
   il_runtime
   il_build

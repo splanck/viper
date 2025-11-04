@@ -66,6 +66,9 @@ int cmdILOpt(int argc, char **argv)
     bool passesExplicit = false;
     bool noMem2Reg = false;
     bool mem2regStats = false;
+    bool printBefore = false;
+    bool printAfter = false;
+    bool verifyEach = false;
     auto trimToken = [](const std::string &token)
     {
         auto begin = token.begin();
@@ -116,6 +119,18 @@ int cmdILOpt(int argc, char **argv)
         {
             mem2regStats = true;
         }
+        else if (arg == "-print-before")
+        {
+            printBefore = true;
+        }
+        else if (arg == "-print-after")
+        {
+            printAfter = true;
+        }
+        else if (arg == "-verify-each")
+        {
+            verifyEach = true;
+        }
         else
         {
             usage();
@@ -134,6 +149,12 @@ int cmdILOpt(int argc, char **argv)
         return 1;
     }
     transform::PassManager pm;
+    pm.setInstrumentationStream(std::cerr);
+    pm.setPrintBeforeEach(printBefore);
+    pm.setPrintAfterEach(printAfter);
+    if (verifyEach)
+        pm.setVerifyBetweenPasses(true);
+
     pm.addSimplifyCFG();
     pm.registerModulePass("constfold",
                           [](core::Module &mod, transform::AnalysisManager &)
