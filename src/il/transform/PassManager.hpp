@@ -10,6 +10,7 @@
 #include "il/transform/PassRegistry.hpp"
 
 #include <functional>
+#include <iosfwd>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -99,6 +100,9 @@ class PassManager
     const Pipeline *getPipeline(const std::string &id) const;
 
     void setVerifyBetweenPasses(bool enable);
+    void setPrintBeforeEach(bool enable);
+    void setPrintAfterEach(bool enable);
+    void setInstrumentationStream(std::ostream &os);
 
     void run(core::Module &module, const Pipeline &pipeline) const;
     bool runPipeline(core::Module &module, const std::string &pipelineId) const;
@@ -108,6 +112,9 @@ class PassManager
     PassRegistry passRegistry_;
     std::unordered_map<std::string, Pipeline> pipelines_;
     bool verifyBetweenPasses_ = false;
+    bool printBeforeEach_ = false;
+    bool printAfterEach_ = false;
+    std::ostream *instrumentationStream_ = nullptr;
 };
 
 } // namespace il::transform
