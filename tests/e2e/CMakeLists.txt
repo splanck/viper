@@ -292,6 +292,16 @@ function(viper_add_e2e_vm_suite)
             -DILC=$<TARGET_FILE:ilc>
             -DIL_FILE=${CMAKE_SOURCE_DIR}/tests/golden/il_opt/mem2reg_multi.in.il
             -P ${_VIPER_E2E_DIR}/test_mem2reg_stats_multi.cmake)
+
+    viper_add_test(test_e2e_engine_matrix
+            ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/TestMatrix.cpp
+            TEST_NAME e2e_engine_matrix)
+    target_compile_definitions(test_e2e_engine_matrix
+            PRIVATE
+            VIPER_ILC_PATH="$<TARGET_FILE:ilc>"
+            VIPER_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+            VIPER_TEST_MATRIX_HAS_NATIVE=$<AND:$<BOOL:${IL_ENABLE_X64_NATIVE_RUN}>,$<BOOL:${CLANG_FOUND}>>)
+    target_link_libraries(test_e2e_engine_matrix PRIVATE viper_common)
 endfunction()
 
 function(viper_add_e2e_codegen_tests)

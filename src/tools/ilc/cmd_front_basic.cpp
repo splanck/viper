@@ -21,6 +21,7 @@
 ///          functions so higher-level tooling can reuse them.
 
 #include "cli.hpp"
+#include "codegen/x86_64/CodegenPipeline.hpp"
 #include "frontends/basic/BasicCompiler.hpp"
 #include "il/api/expected_api.hpp"
 #include "il/transform/SimplifyCFG.hpp"
@@ -29,8 +30,11 @@
 #include "support/diag_expected.hpp"
 #include "support/source_manager.hpp"
 #include "viper/vm/VM.hpp"
+#include "vm/VMConfig.hpp"
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <optional>
@@ -41,8 +45,213 @@ using namespace il;
 using namespace il::frontends::basic;
 using namespace il::support;
 
+#ifndef VIPER_CLI_HAS_NATIVE_RUN
+#define VIPER_CLI_HAS_NATIVE_RUN 0
+#endif
+
 namespace
 {
+
+/// @brief RAII helper that temporarily overrides an environment variable.
+/// @details Mirrors the helper used by the run command so BASIC execution can select
+///          specific dispatch strategies without leaking state across invocations.
+class ScopedEnvOverride
+{
+  public:
+    ScopedEnvOverride() = default;
+
+    ScopedEnvOverride(const char *name, const char *value)
+        : name_(name)
+    {
+        if (name_ == nullptr)
+        {
+            return;
+        }
+        const char *existing = std::getenv(name_);
+        if (existing != nullptr)
+        {
+            previous_ = std::string(existing);
+        }
+#ifdef _WIN32
+        _putenv_s(name_, value);
+#else
+        setenv(name_, value, 1);
+#endif
+        active_ = true;
+    }
+
+    ScopedEnvOverride(const ScopedEnvOverride &) = delete;
+    ScopedEnvOverride &operator=(const ScopedEnvOverride &) = delete;
+
+    ScopedEnvOverride(ScopedEnvOverride &&other) noexcept
+        : name_(other.name_), previous_(std::move(other.previous_)), active_(other.active_)
+    {
+        other.name_ = nullptr;
+        other.active_ = false;
+    }
+
+    ScopedEnvOverride &operator=(ScopedEnvOverride &&other) noexcept
+    {
+        if (this == &other)
+        {
+            return *this;
+        }
+        restore();
+        name_ = other.name_;
+        previous_ = std::move(other.previous_);
+        active_ = other.active_;
+        other.name_ = nullptr;
+        other.active_ = false;
+        return *this;
+    }
+
+    ~ScopedEnvOverride()
+    {
+        restore();
+    }
+
+    void reset(const char *name, const char *value)
+    {
+        restore();
+        name_ = name;
+        previous_.reset();
+        active_ = false;
+        if (name_ == nullptr)
+        {
+            return;
+        }
+        const char *existing = std::getenv(name_);
+        if (existing != nullptr)
+        {
+            previous_ = std::string(existing);
+        }
+#ifdef _WIN32
+        _putenv_s(name_, value);
+#else
+        setenv(name_, value, 1);
+#endif
+        active_ = true;
+    }
+
+  private:
+    void restore()
+    {
+        if (!active_ || name_ == nullptr)
+        {
+            return;
+        }
+        if (previous_.has_value())
+        {
+#ifdef _WIN32
+            _putenv_s(name_, previous_->c_str());
+#else
+            setenv(name_, previous_->c_str(), 1);
+#endif
+        }
+        else
+        {
+#ifdef _WIN32
+            _putenv_s(name_, "");
+#else
+            unsetenv(name_);
+#endif
+        }
+        active_ = false;
+    }
+
+    const char *name_ = nullptr;
+    std::optional<std::string> previous_{};
+    bool active_ = false;
+};
+
+/// @brief Determine the effective engine selection from CLI and environment inputs.
+/// @param opts Shared CLI options for the current invocation.
+/// @return Selected engine kind; defaults to @c Auto when unspecified.
+ilc::SharedCliOptions::EngineKind resolveEngine(const ilc::SharedCliOptions &opts)
+{
+    if (opts.engineExplicit)
+    {
+        return opts.engine;
+    }
+    if (const char *env = std::getenv("VIPER_ENGINE"))
+    {
+        if (auto parsed = ilc::parseEngineName(env))
+        {
+            return *parsed;
+        }
+    }
+    return opts.engine;
+}
+
+/// @brief Materialise the compiled module into a temporary IL file and run native codegen.
+/// @param module Lowered BASIC module ready for execution.
+/// @return Exit status reported by the native runner or 1 on infrastructure failures.
+int runModuleNative(const core::Module &module)
+{
+#if VIPER_CLI_HAS_NATIVE_RUN
+    /// @brief Remove a filesystem path recursively, ignoring failures.
+    auto removeAllQuiet = [](const std::filesystem::path &path) {
+        std::error_code ec;
+        std::filesystem::remove_all(path, ec);
+        (void)ec;
+    };
+
+    std::error_code ec;
+    const std::filesystem::path base = std::filesystem::temp_directory_path(ec);
+    if (ec)
+    {
+        std::cerr << "error: unable to resolve temporary directory: " << ec.message() << "\n";
+        return 1;
+    }
+
+    const std::filesystem::path workDir = base / std::filesystem::unique_path("viper_basic_native-%%%%-%%%%");
+    std::filesystem::create_directories(workDir, ec);
+    if (ec)
+    {
+        std::cerr << "error: unable to create temporary directory: " << ec.message() << "\n";
+        return 1;
+    }
+
+    const std::filesystem::path ilPath = workDir / "module.il";
+    {
+        std::ofstream out(ilPath, std::ios::binary | std::ios::trunc);
+        if (!out)
+        {
+            std::cerr << "error: unable to open temporary IL file for native execution\n";
+            removeAllQuiet(workDir);
+            return 1;
+        }
+        io::Serializer::write(module, out, io::Serializer::Mode::Canonical);
+        if (!out)
+        {
+            std::cerr << "error: failed to write temporary IL module for native execution\n";
+            removeAllQuiet(workDir);
+            return 1;
+        }
+    }
+
+    viper::codegen::x64::CodegenPipeline::Options opts{};
+    opts.input_il_path = ilPath.string();
+    opts.run_native = true;
+    viper::codegen::x64::CodegenPipeline pipeline(opts);
+    const PipelineResult result = pipeline.run();
+    if (!result.stdout_text.empty())
+    {
+        std::cout << result.stdout_text;
+    }
+    if (!result.stderr_text.empty())
+    {
+        std::cerr << result.stderr_text;
+    }
+
+    removeAllQuiet(workDir);
+    return result.exit_code;
+#else
+    (void)module;
+    std::cerr << "error: native engine requested but IL_ENABLE_X64_NATIVE_RUN=OFF during the build\n";
+    return 1;
+#endif
+}
 
 struct FrontBasicConfig
 {
@@ -194,6 +403,8 @@ int runFrontBasic(const FrontBasicConfig &config,
                   const std::string &source,
                   il::support::SourceManager &sm)
 {
+    const auto engine = resolveEngine(config.shared);
+
     BasicCompilerOptions compilerOpts{};
     compilerOpts.boundsChecks = config.shared.boundsChecks;
 
@@ -246,6 +457,27 @@ int runFrontBasic(const FrontBasicConfig &config,
         return 1;
     }
 
+    if (engine == ilc::SharedCliOptions::EngineKind::Native)
+    {
+        if (config.shared.trace.mode != vm::TraceConfig::Off)
+        {
+            std::cerr << "error: --trace is not supported with the native engine\n";
+            return 1;
+        }
+        if (config.shared.maxSteps != 0)
+        {
+            std::cerr << "error: --max-steps is not supported with the native engine\n";
+            return 1;
+        }
+        if (!config.shared.stdinPath.empty())
+        {
+            std::cerr << "error: --stdin-from is not supported with the native engine\n";
+            return 1;
+        }
+
+        return runModuleNative(module);
+    }
+
     if (!config.shared.stdinPath.empty())
     {
         if (!freopen(config.shared.stdinPath.c_str(), "r", stdin))
@@ -257,6 +489,31 @@ int runFrontBasic(const FrontBasicConfig &config,
 
     vm::TraceConfig traceCfg = config.shared.trace;
     traceCfg.sm = &sm;
+
+    ScopedEnvOverride dispatchOverride;
+    switch (engine)
+    {
+        case ilc::SharedCliOptions::EngineKind::Auto:
+            break;
+        case ilc::SharedCliOptions::EngineKind::VmSwitch:
+            dispatchOverride.reset("VIPER_DISPATCH", "switch");
+            break;
+        case ilc::SharedCliOptions::EngineKind::VmTable:
+            dispatchOverride.reset("VIPER_DISPATCH", "table");
+            break;
+        case ilc::SharedCliOptions::EngineKind::VmThreaded:
+#if VIPER_THREADING_SUPPORTED
+            dispatchOverride.reset("VIPER_DISPATCH", "threaded");
+            break;
+#else
+            std::cerr << "error: threaded dispatch requested but the interpreter was built without "
+                      << "VIPER_VM_THREADED support\n";
+            return 1;
+#endif
+        case ilc::SharedCliOptions::EngineKind::Native:
+            // Already handled above.
+            break;
+    }
 
     vm::RunConfig runCfg;
     runCfg.trace = traceCfg;

@@ -8,7 +8,9 @@
 
 #include "viper/vm/debug/Debug.hpp"
 #include <cstdint>
+#include <optional>
 #include <string>
+#include <string_view>
 
 namespace il::support
 {
@@ -35,6 +37,19 @@ struct SharedCliOptions
 
     /// @brief Request formatted trap diagnostics on unhandled errors.
     bool dumpTrap = false;
+
+    /// @brief Execution engine selected via --engine or environment overrides.
+    enum class EngineKind
+    {
+        Auto,       ///< Use the tool default (respecting VIPER_DISPATCH when set).
+        VmSwitch,   ///< Force the VM to use switch-based dispatch.
+        VmTable,    ///< Force the VM to use the function-table dispatcher.
+        VmThreaded, ///< Request the threaded dispatcher when available.
+        Native      ///< Run via the native x86-64 code generator.
+    } engine = EngineKind::Auto;
+
+    /// @brief Track whether the engine selection originated from the CLI.
+    bool engineExplicit = false;
 };
 
 /// @brief Result of attempting to parse a shared CLI option.
@@ -56,6 +71,11 @@ SharedOptionParseResult parseSharedOption(int &index,
                                           int argc,
                                           char **argv,
                                           SharedCliOptions &opts);
+
+/// @brief Decode a textual engine name used by --engine or VIPER_ENGINE.
+/// @param name Candidate engine specifier.
+/// @return Parsed engine kind on success; std::nullopt when unknown.
+std::optional<SharedCliOptions::EngineKind> parseEngineName(std::string_view name);
 
 } // namespace ilc
 

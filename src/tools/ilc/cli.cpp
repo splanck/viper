@@ -19,6 +19,8 @@
 
 #include "cli.hpp"
 
+#include <algorithm>
+#include <cctype>
 #include <charconv>
 #include <string_view>
 #include <system_error>
@@ -45,6 +47,46 @@ namespace ilc
 /// @param opts Structure receiving parsed option values.
 /// @return Result indicating whether the option was handled, not matched, or
 ///         produced a parsing error.
+namespace
+{
+
+std::string toLowerCopy(std::string_view text)
+{
+    std::string lowered(text.begin(), text.end());
+    std::transform(lowered.begin(), lowered.end(), lowered.begin(), [](unsigned char ch) {
+        return static_cast<char>(std::tolower(ch));
+    });
+    return lowered;
+}
+
+} // namespace
+
+std::optional<SharedCliOptions::EngineKind> parseEngineName(std::string_view name)
+{
+    const std::string lowered = toLowerCopy(name);
+    if (lowered == "auto" || lowered.empty())
+    {
+        return SharedCliOptions::EngineKind::Auto;
+    }
+    if (lowered == "vm-switch" || lowered == "switch" || lowered == "vm")
+    {
+        return SharedCliOptions::EngineKind::VmSwitch;
+    }
+    if (lowered == "vm-table" || lowered == "table" || lowered == "fn-table")
+    {
+        return SharedCliOptions::EngineKind::VmTable;
+    }
+    if (lowered == "vm-threaded" || lowered == "threaded")
+    {
+        return SharedCliOptions::EngineKind::VmThreaded;
+    }
+    if (lowered == "native" || lowered == "codegen" || lowered == "codegen-x64")
+    {
+        return SharedCliOptions::EngineKind::Native;
+    }
+    return std::nullopt;
+}
+
 SharedOptionParseResult parseSharedOption(int &index, int argc, char **argv, SharedCliOptions &opts)
 {
     const std::string arg = argv[index];
@@ -95,6 +137,31 @@ SharedOptionParseResult parseSharedOption(int &index, int argc, char **argv, Sha
     {
         opts.dumpTrap = true;
         return SharedOptionParseResult::Parsed;
+    }
+    if (arg == "--engine")
+    {
+        if (index + 1 >= argc)
+        {
+            return SharedOptionParseResult::Error;
+        }
+        if (auto parsed = parseEngineName(argv[++index]))
+        {
+            opts.engine = *parsed;
+            opts.engineExplicit = true;
+            return SharedOptionParseResult::Parsed;
+        }
+        return SharedOptionParseResult::Error;
+    }
+    if (arg.rfind("--engine=", 0) == 0)
+    {
+        const std::string_view value(arg.c_str() + std::string("--engine=").size());
+        if (auto parsed = parseEngineName(value))
+        {
+            opts.engine = *parsed;
+            opts.engineExplicit = true;
+            return SharedOptionParseResult::Parsed;
+        }
+        return SharedOptionParseResult::Error;
     }
     return SharedOptionParseResult::NotMatched;
 }

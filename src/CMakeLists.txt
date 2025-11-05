@@ -265,6 +265,9 @@ target_link_libraries(ilc
         il_api
         il_tools_common
         viper_codegen_x86_64)
+target_compile_definitions(ilc
+        PRIVATE
+        VIPER_CLI_HAS_NATIVE_RUN=$<AND:$<BOOL:${IL_ENABLE_X64_NATIVE_RUN}>,$<BOOL:${CLANG_FOUND}>>)
 get_target_property(ILC_LINK_LIBS ilc LINK_LIBRARIES)
 message(STATUS "ilc LINK_LIBRARIES: ${ILC_LINK_LIBS}")
 

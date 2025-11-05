@@ -21,29 +21,170 @@
 
 #include "break_spec.hpp"
 #include "cli.hpp"
+#include "codegen/x86_64/CodegenPipeline.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Module.hpp"
 #include "support/source_manager.hpp"
 #include "tools/common/module_loader.hpp"
 #include "viper/vm/VM.hpp"
 #include "viper/vm/debug/Debug.hpp"
+#include "vm/VMConfig.hpp"
 #include <algorithm>
 #include <cctype>
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <exception>
 #include <iostream>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
+
+#ifndef VIPER_CLI_HAS_NATIVE_RUN
+#define VIPER_CLI_HAS_NATIVE_RUN 0
+#endif
 
 using namespace il;
 
 namespace
 {
+
+/// @brief RAII helper that temporarily overrides an environment variable.
+/// @details Captures the previous value and restores it when the guard is destroyed,
+///          ensuring the ilc process does not leak dispatch overrides between runs.
+class ScopedEnvOverride
+{
+  public:
+    ScopedEnvOverride(const char *name, const char *value)
+        : name_(name)
+    {
+        if (name_ == nullptr)
+        {
+            return;
+        }
+        const char *existing = std::getenv(name_);
+        if (existing != nullptr)
+        {
+            previous_ = std::string(existing);
+        }
+#ifdef _WIN32
+        _putenv_s(name_, value);
+#else
+        setenv(name_, value, 1);
+#endif
+        active_ = true;
+    }
+
+    ScopedEnvOverride(const ScopedEnvOverride &) = delete;
+    ScopedEnvOverride &operator=(const ScopedEnvOverride &) = delete;
+
+    ScopedEnvOverride(ScopedEnvOverride &&other) noexcept
+        : name_(other.name_), previous_(std::move(other.previous_)), active_(other.active_)
+    {
+        other.name_ = nullptr;
+        other.active_ = false;
+    }
+
+    ScopedEnvOverride &operator=(ScopedEnvOverride &&other) noexcept
+    {
+        if (this == &other)
+        {
+            return *this;
+        }
+        restore();
+        name_ = other.name_;
+        previous_ = std::move(other.previous_);
+        active_ = other.active_;
+        other.name_ = nullptr;
+        other.active_ = false;
+        return *this;
+    }
+
+    ~ScopedEnvOverride()
+    {
+        restore();
+    }
+
+  private:
+    void restore()
+    {
+        if (!active_ || name_ == nullptr)
+        {
+            return;
+        }
+        if (previous_.has_value())
+        {
+#ifdef _WIN32
+            _putenv_s(name_, previous_->c_str());
+#else
+            setenv(name_, previous_->c_str(), 1);
+#endif
+        }
+        else
+        {
+#ifdef _WIN32
+            _putenv_s(name_, "");
+#else
+            unsetenv(name_);
+#endif
+        }
+        active_ = false;
+    }
+
+    const char *name_ = nullptr;
+    std::optional<std::string> previous_{};
+    bool active_ = false;
+};
+
+/// @brief Determine the effective engine, honouring CLI and environment overrides.
+/// @param opts Shared CLI options parsed for the current invocation.
+/// @return Engine requested by the user or auto when no explicit selection exists.
+ilc::SharedCliOptions::EngineKind resolveEngine(const ilc::SharedCliOptions &opts)
+{
+    if (opts.engineExplicit)
+    {
+        return opts.engine;
+    }
+    if (const char *env = std::getenv("VIPER_ENGINE"))
+    {
+        if (auto parsed = ilc::parseEngineName(env))
+        {
+            return *parsed;
+        }
+    }
+    return opts.engine;
+}
+
+/// @brief Execute the IL module through the native code generation pipeline.
+/// @param ilPath Filesystem path to the IL file supplied on the command line.
+/// @return Exit status reported by the native runner; 1 when native execution is unavailable.
+int runModuleNative(const std::string &ilPath)
+{
+#if VIPER_CLI_HAS_NATIVE_RUN
+    viper::codegen::x64::CodegenPipeline::Options opts{};
+    opts.input_il_path = ilPath;
+    opts.run_native = true;
+    viper::codegen::x64::CodegenPipeline pipeline(opts);
+    const PipelineResult result = pipeline.run();
+    if (!result.stdout_text.empty())
+    {
+        std::cout << result.stdout_text;
+    }
+    if (!result.stderr_text.empty())
+    {
+        std::cerr << result.stderr_text;
+    }
+    return result.exit_code;
+#else
+    (void)ilPath;
+    std::cerr << "error: native engine requested but IL_ENABLE_X64_NATIVE_RUN=OFF during the build\n";
+    return 1;
+#endif
+}
 
 struct RunILConfig
 {
@@ -388,6 +529,8 @@ void configureDebugger(const RunILConfig &config,
 /// @return Process-style exit status; zero indicates success.
 int executeRunIL(const RunILConfig &config, il::support::SourceManager &sm)
 {
+    const auto engine = resolveEngine(config.sharedOpts);
+
     if (config.boundsChecksRequested)
     {
         std::cerr << "error: --bounds-checks is not supported when running existing IL modules;";
@@ -395,17 +538,37 @@ int executeRunIL(const RunILConfig &config, il::support::SourceManager &sm)
         return 1;
     }
 
+    if (engine == ilc::SharedCliOptions::EngineKind::Native)
+    {
+        if (config.stepFlag || config.continueFlag || config.countFlag || config.timeFlag ||
+            !config.breakLabels.empty() || !config.breakSrcLines.empty() ||
+            !config.watchSymbols.empty() || !config.debugScriptPath.empty())
+        {
+            std::cerr << "error: debugging and profiling flags are not supported with the native engine\n";
+            return 1;
+        }
+        if (config.sharedOpts.trace.mode != vm::TraceConfig::Off)
+        {
+            std::cerr << "error: --trace is not supported with the native engine\n";
+            return 1;
+        }
+        if (config.sharedOpts.maxSteps != 0)
+        {
+            std::cerr << "error: --max-steps is not supported with the native engine\n";
+            return 1;
+        }
+        if (!config.sharedOpts.stdinPath.empty())
+        {
+            std::cerr << "error: --stdin-from is not supported with the native engine\n";
+            return 1;
+        }
+    }
+
     const uint32_t fileId = sm.addFile(config.ilFile);
     if (fileId == 0)
     {
         return 1;
     }
-
-    vm::TraceConfig traceCfg = config.sharedOpts.trace;
-    traceCfg.sm = &sm;
-
-    vm::DebugCtrl dbg = config.debugCtrl;
-    dbg.setSourceManager(&sm);
 
     core::Module m;
     auto load = il::tools::common::loadModuleFromFile(config.ilFile, m, std::cerr);
@@ -418,6 +581,17 @@ int executeRunIL(const RunILConfig &config, il::support::SourceManager &sm)
     {
         return 1;
     }
+
+    if (engine == ilc::SharedCliOptions::EngineKind::Native)
+    {
+        return runModuleNative(config.ilFile);
+    }
+
+    vm::TraceConfig traceCfg = config.sharedOpts.trace;
+    traceCfg.sm = &sm;
+
+    vm::DebugCtrl dbg = config.debugCtrl;
+    dbg.setSourceManager(&sm);
 
     if (!config.sharedOpts.stdinPath.empty())
     {
@@ -438,6 +612,31 @@ int executeRunIL(const RunILConfig &config, il::support::SourceManager &sm)
             auto sym = dbg.internLabel(it->blocks.front().label);
             dbg.addBreak(sym);
         }
+    }
+
+    std::optional<ScopedEnvOverride> dispatchOverride;
+    switch (engine)
+    {
+        case ilc::SharedCliOptions::EngineKind::Auto:
+            break;
+        case ilc::SharedCliOptions::EngineKind::VmSwitch:
+            dispatchOverride.emplace("VIPER_DISPATCH", "switch");
+            break;
+        case ilc::SharedCliOptions::EngineKind::VmTable:
+            dispatchOverride.emplace("VIPER_DISPATCH", "table");
+            break;
+        case ilc::SharedCliOptions::EngineKind::VmThreaded:
+#if VIPER_THREADING_SUPPORTED
+            dispatchOverride.emplace("VIPER_DISPATCH", "threaded");
+            break;
+#else
+            std::cerr << "error: threaded dispatch requested but the interpreter was built without "
+                      << "VIPER_VM_THREADED support\n";
+            return 1;
+#endif
+        case ilc::SharedCliOptions::EngineKind::Native:
+            // Handled earlier.
+            break;
     }
 
     vm::RunConfig runCfg;
