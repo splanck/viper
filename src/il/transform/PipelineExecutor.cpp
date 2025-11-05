@@ -21,9 +21,10 @@
 #include "il/transform/PipelineExecutor.hpp"
 
 #include "il/core/Module.hpp"
-#include "il/verify/Verifier.hpp"
+#include "viper/pass/PassManager.hpp"
 
 #include <cassert>
+#include <utility>
 
 namespace il::transform
 {
@@ -39,9 +40,9 @@ namespace il::transform
 ///                            after each pass.
 PipelineExecutor::PipelineExecutor(const PassRegistry &registry,
                                    const AnalysisRegistry &analysisRegistry,
-                                   bool verifyBetweenPasses)
+                                   Instrumentation instrumentation)
     : registry_(registry), analysisRegistry_(analysisRegistry),
-      verifyBetweenPasses_(verifyBetweenPasses)
+      instrumentation_(std::move(instrumentation))
 {
 }
 
@@ -57,49 +58,60 @@ void PipelineExecutor::run(core::Module &module, const std::vector<std::string> 
 {
     AnalysisManager analysis(module, analysisRegistry_);
 
+    viper::pass::PassManager driver;
+    if (instrumentation_.printBefore)
+        driver.setPrintBeforeHook(instrumentation_.printBefore);
+    if (instrumentation_.printAfter)
+        driver.setPrintAfterHook(instrumentation_.printAfter);
+    if (instrumentation_.verifyEach)
+        driver.setVerifyEachHook(instrumentation_.verifyEach);
+
     for (const auto &passId : pipeline)
     {
-        const detail::PassFactory *factory = registry_.lookup(passId);
-        if (!factory)
-            continue;
+        driver.registerPass(passId, [this, &module, &analysis, passId]() -> bool {
+            const detail::PassFactory *factory = registry_.lookup(passId);
+            if (!factory)
+                return false;
 
-        switch (factory->kind)
-        {
-            case detail::PassKind::Module:
+            switch (factory->kind)
             {
-                if (!factory->makeModule)
-                    break;
-                auto pass = factory->makeModule();
-                if (!pass)
-                    break;
-                PreservedAnalyses preserved = pass->run(module, analysis);
-                analysis.invalidateAfterModulePass(preserved);
-                break;
-            }
-            case detail::PassKind::Function:
-            {
-                if (!factory->makeFunction)
-                    break;
-                for (auto &fn : module.functions)
+                case detail::PassKind::Module:
                 {
-                    auto pass = factory->makeFunction();
+                    if (!factory->makeModule)
+                        return false;
+                    auto pass = factory->makeModule();
                     if (!pass)
-                        continue;
-                    PreservedAnalyses preserved = pass->run(fn, analysis);
-                    analysis.invalidateAfterFunctionPass(preserved, fn);
+                        return false;
+                    PreservedAnalyses preserved = pass->run(module, analysis);
+                    analysis.invalidateAfterModulePass(preserved);
+                    return true;
                 }
-                break;
+                case detail::PassKind::Function:
+                {
+                    if (!factory->makeFunction)
+                        return false;
+                    for (auto &fn : module.functions)
+                    {
+                        auto pass = factory->makeFunction();
+                        if (!pass)
+                            continue;
+                        PreservedAnalyses preserved = pass->run(fn, analysis);
+                        analysis.invalidateAfterFunctionPass(preserved, fn);
+                    }
+                    return true;
+                }
             }
-        }
 
-#ifndef NDEBUG
-        if (verifyBetweenPasses_)
-        {
-            auto verified = il::verify::Verifier::verify(module);
-            assert(verified && "IL verification failed after pass");
-        }
-#endif
+            return false;
+        });
     }
+
+    bool ok = driver.runPipeline(pipeline);
+#ifndef NDEBUG
+    assert(ok && "pass pipeline execution failed");
+#else
+    (void)ok;
+#endif
 }
 
 } // namespace il::transform

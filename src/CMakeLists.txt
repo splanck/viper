@@ -6,6 +6,12 @@ target_include_directories(viper_common PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>)
 
+add_library(viper_pass STATIC
+        pass/PassManager.cpp)
+target_include_directories(viper_pass PUBLIC
+        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>)
+
 add_subdirectory(codegen/x86_64)
 
 add_library(viper_il_core STATIC
@@ -153,11 +159,13 @@ add_library(il_transform STATIC
 target_link_libraries(il_transform
         PUBLIC
         viper_il_core
+        viper_pass
         PRIVATE
         viper_il_verify
         il_analysis)
 target_include_directories(il_transform PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>
 )
 
@@ -316,6 +324,10 @@ install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/il/io/
 
 install(FILES ${PROJECT_SOURCE_DIR}/include/viper/il/io/FormatUtils.hpp
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/viper/il/io)
+
+install(DIRECTORY ${PROJECT_SOURCE_DIR}/include/viper/pass/
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/viper/pass
+        FILES_MATCHING PATTERN "*.hpp")
 
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/il/verify/
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/viper/il/verify
