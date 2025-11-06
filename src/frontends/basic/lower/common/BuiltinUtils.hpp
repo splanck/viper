@@ -23,9 +23,17 @@
 namespace il::frontends::basic::lower::common
 {
 /// @brief Lower a BASIC builtin call by dispatching through the handler registry.
+/// @details Looks up the builtin identifier captured on @p call, ensures the corresponding
+///          handler has been registered, and invokes it using the provided @p lowerer.  The
+///          returned @ref Lowerer::RVal wraps the IL value produced by the handler.  When a
+///          builtin is missing, the helper emits a lowering diagnostic before yielding an empty
+///          result.
 [[nodiscard]] Lowerer::RVal lowerBuiltinCall(Lowerer &lowerer, const BuiltinCallExpr &call);
 
-/// @brief Initialise builtin handler registry; exposed for unit testing.
+/// @brief Ensure builtin handlers are registered for unit tests.
+/// @details Lazily initialises the registry to the default production state so tests can exercise
+///          lowering routines without depending on the global initialization side effects
+///          performed by the full driver.
 void ensureBuiltinHandlersForTesting();
 
 } // namespace il::frontends::basic::lower::common
