@@ -24,6 +24,7 @@
 ///          detection so the dispatcher can replace literal logical expressions
 ///          with compact AST nodes.
 
+#include "frontends/basic/constfold/ConstantUtils.hpp"
 #include "frontends/basic/constfold/Dispatch.hpp"
 
 #include "frontends/basic/ast/ExprNodes.hpp"
@@ -31,24 +32,6 @@
 
 namespace il::frontends::basic::constfold
 {
-namespace
-{
-/// @brief Build an integer constant that represents a boolean truth value.
-/// @details BASIC models booleans as integer literals during constant folding.
-///          This helper constructs the @ref Constant wrapper with coherent
-///          numeric metadata so downstream folding steps can rely on a
-///          consistent encoding.
-/// @param value Boolean payload to encode.
-/// @return Constant representing @p value using the BASIC integer form.
-Constant make_int_constant(bool value)
-{
-    Constant c;
-    c.kind = LiteralKind::Int;
-    c.numeric = NumericValue{false, value ? 1.0 : 0.0, value ? 1 : 0};
-    return c;
-}
-} // namespace
-
 /// @brief Attempt to fold a unary NOT expression when the operand is literal.
 /// @details Handles both boolean and integer representations, ensuring that
 ///          integer literals follow BASIC's zero/non-zero truthiness rules.
@@ -188,7 +171,7 @@ std::optional<Constant> fold_numeric_logic(AST::BinaryExpr::Op op,
         assert(result == swapped);
     }
 #endif
-    return make_int_constant(result);
+    return make_bool_constant(result);
 }
 
 } // namespace il::frontends::basic::constfold
