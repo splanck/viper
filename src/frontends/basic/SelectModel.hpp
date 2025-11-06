@@ -90,12 +90,24 @@ class SelectModelBuilder
     using DiagnoseFn =
         std::function<void(il::support::SourceLoc, uint32_t, std::string_view, std::string_view)>;
 
+    /// @brief Construct a builder that reports errors through the supplied callback.
+    /// @details Stores @p diagnose so semantic issues discovered while normalising the SELECT
+    ///          statement (such as overlapping numeric ranges) can surface through the same
+    ///          diagnostic path used by the parser and lowerer.
     explicit SelectModelBuilder(DiagnoseFn diagnose) noexcept;
 
-    /// @brief Create a model for the provided statement.
+    /// @brief Create a normalised model for the provided SELECT CASE statement.
+    /// @details Iterates each case arm, folds line-number labels, canonicalises numeric ranges,
+    ///          and records whether CASE ELSE was present.  When the builder detects duplicate or
+    ///          invalid arms it emits diagnostics via @ref DiagnoseFn while still producing a
+    ///          best-effort model for downstream stages.
     [[nodiscard]] SelectModel build(const SelectCaseStmt &stmt);
 
   private:
+    /// @brief Attempt to narrow a parsed integer literal into a 32-bit range.
+    /// @details Emits a diagnostic when @p value does not fit into @c int32_t, returning
+    ///          @c std::nullopt so the caller can skip recording the offending arm while keeping
+    ///          the rest of the model consistent.
     [[nodiscard]] std::optional<int32_t> narrowToI32(int64_t value,
                                                      il::support::SourceLoc loc) const;
 

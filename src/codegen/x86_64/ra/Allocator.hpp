@@ -47,8 +47,16 @@ struct VirtualAllocation
 class LinearScanAllocator
 {
   public:
+    /// @brief Construct a linear-scan allocator for the supplied Machine IR function.
+    /// @details Captures references to the function, target description, and precomputed live
+    ///          intervals so that the allocator can walk instructions in block order without
+    ///          recomputing analysis.  Ownership of the referenced data remains with the caller.
     LinearScanAllocator(MFunction &func, const TargetInfo &target, const LiveIntervals &intervals);
 
+    /// @brief Execute the allocation algorithm over the bound Machine IR function.
+    /// @details Initialises register pools, walks each basic block in dominance order, assigns
+    ///          physical registers or spill slots as required, and records the resulting mapping
+    ///          inside @ref AllocationResult for downstream passes.
     [[nodiscard]] AllocationResult run();
 
   private:
@@ -78,31 +86,91 @@ class LinearScanAllocator
     std::vector<uint16_t> activeGPR_{};
     std::vector<uint16_t> activeXMM_{};
 
+    /// @brief Populate the free-register pools from the target description.
+    /// @details Queries the @ref TargetInfo to enumerate allocatable registers for each class
+    ///          and seeds the internal free lists that drive linear-scan allocation.
     void buildPools();
+
+    /// @brief Retrieve the free list associated with a register class.
+    /// @details Returns either the general-purpose or floating-point pool so helpers can push
+    ///          and pop physical registers while allocating or releasing values.
     [[nodiscard]] std::vector<PhysReg> &poolFor(RegClass cls);
+
+    /// @brief Retrieve the currently active interval list for a register class.
+    /// @details Provides access to the vector that tracks active virtual register identifiers so
+    ///          expiration checks can scan the appropriate list.
     [[nodiscard]] std::vector<uint16_t> &activeFor(RegClass cls);
+
+    /// @brief Lookup or initialise allocation state for a virtual register.
+    /// @details Fetches the @ref VirtualAllocation record keyed by @p id, initialising defaults
+    ///          when the register is observed for the first time so state mutations remain
+    ///          centralised.
     [[nodiscard]] VirtualAllocation &stateFor(RegClass cls, uint16_t id);
+
+    /// @brief Mark a virtual register as active within its class list.
+    /// @details Inserts the identifier into the appropriate active set so future spill decisions
+    ///          can consider its live interval ordering.
     void addActive(RegClass cls, uint16_t id);
+
+    /// @brief Remove a virtual register from the active set once it expires.
+    /// @details Updates bookkeeping so the allocator knows the associated physical register can
+    ///          be released back to the free pool.
     void removeActive(RegClass cls, uint16_t id);
 
+    /// @brief Acquire a physical register for the next live virtual value.
+    /// @details Removes a register from the free pool when available; otherwise triggers a spill
+    ///          via @ref spillOne to free space before returning the assigned physical register.
     [[nodiscard]] PhysReg takeRegister(RegClass cls, std::vector<MInstr> &prefix);
+
+    /// @brief Return a physical register to the free pool once it becomes idle.
+    /// @details Pushes @p phys back into the free list for @p cls so subsequent allocations can
+    ///          reuse it.
     void releaseRegister(PhysReg phys, RegClass cls);
+
+    /// @brief Spill the active interval with the furthest end point.
+    /// @details Selects a victim live range in @p cls, emits the necessary spill code into
+    ///          @p prefix, updates state bookkeeping, and frees the associated physical register
+    ///          for reuse.
     void spillOne(RegClass cls, std::vector<MInstr> &prefix);
 
+    /// @brief Allocate registers for every instruction in the provided block.
+    /// @details Walks the block's instructions in order, handles live range transitions, and
+    ///          cooperates with the coalescer to apply PX_COPY eliminations.
     void processBlock(MBasicBlock &block, Coalescer &coalescer);
+
+    /// @brief Release any registers whose live intervals end at the current block boundary.
+    /// @details Clears the active sets after a block finishes so registers are returned to the
+    ///          free pools before processing the next block.
     void releaseActiveForBlock();
+
+    /// @brief Classify each operand of an instruction as a use, def, or both.
+    /// @details Produces a parallel vector describing operand roles so subsequent handling can
+    ///          decide whether to allocate, retain, or release registers around the instruction.
     [[nodiscard]] std::vector<OperandRole> classifyOperands(const MInstr &instr) const;
+
+    /// @brief Handle an instruction operand, inserting spills or reloads as required.
+    /// @details Depending on @p role, materialises register operands, schedules spill code into
+    ///          @p prefix or @p suffix, and records scratch registers that must be released after
+    ///          the instruction executes.
     void handleOperand(Operand &operand,
                        const OperandRole &role,
                        std::vector<MInstr> &prefix,
                        std::vector<MInstr> &suffix,
                        std::vector<ScratchRelease> &scratch);
+
+    /// @brief Handle a register operand specifically, mapping it to a physical register.
+    /// @details Applies the same logic as @ref handleOperand but operates directly on the
+    ///          strongly typed @ref OpReg, updating allocation state and scheduling required
+    ///          moves.
     void processRegOperand(OpReg &reg,
                            const OperandRole &role,
                            std::vector<MInstr> &prefix,
                            std::vector<MInstr> &suffix,
                            std::vector<ScratchRelease> &scratch);
 
+    /// @brief Construct a MOV instruction that copies between physical registers.
+    /// @details Used when spilling or resolving PX_COPY nodes; the helper populates opcode and
+    ///          operand fields according to the register class being moved.
     [[nodiscard]] MInstr makeMove(RegClass cls, PhysReg dst, PhysReg src) const;
 };
 
