@@ -4,14 +4,25 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-// File: src/frontends/basic/Parser_Stmt_OOP.cpp
-// Purpose: Provide BASIC parser support for object-oriented extensions such as CLASS and TYPE declarations.
-// Key invariants: Ensures member declarations respect BASIC's optional line numbers and type suffix rules while preserving the
-//                 parser's recovery behaviour when malformed input is encountered.
-// Ownership/Lifetime: Parser allocates AST nodes via std::unique_ptr and transfers ownership to the caller.
-// Links: docs/basic-language.md#oop, docs/codemap.md
+//
+// Extends the BASIC statement parser with the object-oriented constructs used
+// by the language's TYPE and CLASS features.  The routines in this translation
+// unit mirror the recovery rules and optional line-number handling followed by
+// the core statement parser while stitching together the nested loops required
+// to parse class members, method bodies, and user-defined record fields.  Each
+// helper confines the fiddly token juggling associated with optional keywords,
+// suffix-based type inference, and legacy numbering rules so the main parser can
+// remain readable.
 //
 //===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief BASIC statement parser extensions for object-oriented constructs.
+/// @details Declares the helper routines that recognise `CLASS`, `TYPE`, and
+///          `DELETE` statements.  Keeping the implementations separate from the
+///          core statement parser preserves readability while ensuring the
+///          object-oriented grammar shares the same recovery behaviour and type
+///          inference shims as procedural code.
 
 #include "frontends/basic/Parser.hpp"
 #include <cctype>
@@ -20,7 +31,17 @@
 namespace il::frontends::basic
 {
 
-/// @brief Parse a BASIC `CLASS` declaration.
+/// @brief Parse a BASIC `CLASS` declaration from the current token stream.
+/// @details The parser consumes the opening keyword, captures the class name,
+///          and then iteratively processes field and member declarations until
+///          the matching `END CLASS` terminator is encountered.  During the
+///          field pass the helper tolerates optional line numbers, recognises
+///          explicit `AS` type annotations, and defaults unspecified members to
+///          integer types to preserve legacy semantics.  For the member pass the
+///          routine recognises constructors (`SUB NEW`), methods, functions with
+///          suffix-driven return types, and destructors.  Each body is delegated
+///          to the general procedure parser so control-flow, locals, and
+///          recovery all remain consistent with non-OOP procedures.
 /// @return Newly allocated @ref ClassDecl describing the parsed declaration.
 StmtPtr Parser::parseClassDecl()
 {
@@ -204,6 +225,14 @@ StmtPtr Parser::parseClassDecl()
 }
 
 /// @brief Parse a BASIC `TYPE` declaration used for user-defined records.
+/// @details After consuming the opening keyword the helper gathers the record
+///          name and then iterates over the member list, tolerating optional
+///          line numbers and blank lines between entries.  Each field must
+///          supply an explicit `AS` clause; `parseTypeKeyword` bridges to the
+///          shared type parsing routine so suffixes, aliases, and BOOLEAN
+///          keywords are handled uniformly with the non-OOP parser.  Trailing
+///          trivia is skipped before the closing `END TYPE` pair is enforced to
+///          guarantee deterministic error recovery locations.
 /// @return Newly allocated @ref TypeDecl describing the record type.
 StmtPtr Parser::parseTypeDecl()
 {
@@ -282,6 +311,12 @@ StmtPtr Parser::parseTypeDecl()
 }
 
 /// @brief Parse the `DELETE` statement for object lifetimes.
+/// @details The helper records the keyword location for diagnostics, parses the
+///          following expression using the generic expression parser, and wraps
+///          the result in a @ref DeleteStmt.  Validation of operand categories
+///          (ensuring objects rather than primitives) is deferred to semantic
+///          analysis so the parser can remain error-tolerant and avoid
+///          duplicating type logic.
 /// @return Newly allocated @ref DeleteStmt representing the statement.
 StmtPtr Parser::parseDeleteStatement()
 {
