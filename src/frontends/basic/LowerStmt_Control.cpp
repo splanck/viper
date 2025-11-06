@@ -20,11 +20,23 @@
 
 using namespace il::core;
 
+/// @file
+/// @brief Control-flow lowering helpers for BASIC statements.
+/// @details Contains the lowering routines for legacy control constructs such
+///          as GOTO, GOSUB, and END.  The helpers coordinate with the active
+///          @ref Lowerer context to produce deterministic block graphs while
+///          respecting runtime invariants around the continuation stack.
+
 namespace il::frontends::basic
 {
 
 /// @brief Lower a BASIC GOSUB statement using the runtime-managed continuation stack.
-///
+/// @details Materialises the continuation push sequence: verifies/initialises
+///          the stack, guards against overflow with a trap block, stores the
+///          current continuation index, bumps the stack pointer, and finally
+///          branches to the target line's basic block.  Continuation metadata is
+///          looked up through @ref ProcedureContext::gosub so matching RETURN
+///          statements can pop back to the correct block.
 /// @param stmt GOSUB statement providing the target line and source location.
 void Lowerer::lowerGosub(const GosubStmt &stmt)
 {
@@ -95,7 +107,10 @@ void Lowerer::lowerGosub(const GosubStmt &stmt)
 }
 
 /// @brief Lower an unconditional GOTO statement.
-///
+/// @details Resolves the destination block via the shared line-label mapping
+///          and emits a direct branch when the label has been materialised.
+///          Missing targets are ignored so unresolved labels can be diagnosed
+///          later during verification.
 /// @param stmt GOTO statement pointing at a target line label.
 void Lowerer::lowerGoto(const GotoStmt &stmt)
 {
@@ -111,7 +126,12 @@ void Lowerer::lowerGoto(const GotoStmt &stmt)
 }
 
 /// @brief Lower RETURN statements that exit from a GOSUB invocation.
-///
+/// @details Pops the continuation stack with full error checking: emits an
+///          empty-stack trap, decrements the stack pointer, loads the stored
+///          continuation index, and dispatches via a `switch` to the recorded
+///          basic block.  Invalid indices funnel into a trap block so mismatched
+///          RETURN statements manifest as runtime errors rather than silent
+///          corruption.
 /// @param stmt RETURN statement appearing in GOSUB contexts.
 void Lowerer::lowerGosubReturn(const ReturnStmt &stmt)
 {
@@ -203,7 +223,8 @@ void Lowerer::lowerGosubReturn(const ReturnStmt &stmt)
 }
 
 /// @brief Lower the END statement, terminating program execution.
-///
+/// @details Emits an unconditional `ret` of zero from the active function,
+///          matching the runtime convention for successful program completion.
 /// @param stmt END statement providing the source location.
 void Lowerer::lowerEnd(const EndStmt &stmt)
 {
