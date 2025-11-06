@@ -7,6 +7,7 @@
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/Parser.hpp"
 #include "frontends/basic/SemanticAnalyzer.hpp"
+#include "frontends/basic/constfold/Dispatch.hpp"
 #include "support/source_manager.hpp"
 #include <cassert>
 #include <sstream>
@@ -288,6 +289,21 @@ int main()
         auto *letD = dynamic_cast<LetStmt *>(prog->main[3].get());
         auto *boolD = dynamic_cast<BoolExpr *>(letD->expr.get());
         assert(boolD && boolD->value == true);
+    }
+
+    // Dispatch materialises boolean comparisons as BoolExpr nodes
+    {
+        std::string src = "10 LET X = 3 > 1\n20 END\n";
+        SourceManager sm;
+        uint32_t fid = sm.addFile("dispatch_bool.bas");
+        Parser p(src, fid);
+        auto prog = p.parseProgram();
+        auto *let = dynamic_cast<LetStmt *>(prog->main[0].get());
+        assert(let);
+        auto folded = il::frontends::basic::constfold::fold_expr(*let->expr);
+        assert(folded);
+        auto *boolExpr = dynamic_cast<BoolExpr *>(folded->get());
+        assert(boolExpr && boolExpr->value == true);
     }
 
     return 0;
