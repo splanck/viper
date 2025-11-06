@@ -9,8 +9,9 @@
 // Purpose: Provide the per-kind parser for IL type immediates.
 // Key invariants: Emits diagnostics consistent with the legacy OperandParser
 //                 implementation while updating the instruction type in place.
-// Ownership/Lifetime: Operates on parser-managed state without owning data.
-// Links: docs/il-guide.md#reference
+// Ownership/Lifetime: Operates on parser-managed state without owning data and
+//                     never allocates persistent resources.
+// Links: docs/il-guide.md#reference and docs/il-reference.md#types
 //
 //===----------------------------------------------------------------------===//
 
@@ -40,6 +41,13 @@ namespace viper::il::io
 namespace
 {
 
+/// @brief Construct a parse result representing a type syntax error.
+/// @details Type operand parsing uses the shared Expected-based diagnostic
+///          channel.  This helper wraps the provided message with line/location
+///          context, yielding a result whose status signals failure to the caller.
+/// @param ctx Parser context holding the current source location.
+/// @param message Diagnostic text to surface to the user.
+/// @return Parse result whose status contains the formatted diagnostic.
 ParseResult syntaxError(Context &ctx, std::string message)
 {
     ParseResult result;
@@ -50,6 +58,16 @@ ParseResult syntaxError(Context &ctx, std::string message)
 
 } // namespace
 
+/// @brief Parse a type literal operand and attach it to the active instruction.
+/// @details Consumes the next non-whitespace token, normalises trailing commas
+///          produced by operand lists, and dispatches to the shared type parser.
+///          Successful parses update @ref Context::instr while failures route
+///          descriptive diagnostics through @ref syntaxError.  The cursor is
+///          rewound to immediately after the consumed token so subsequent parsing
+///          continues in lockstep.
+/// @param cur Cursor positioned at the start of the type token.
+/// @param ctx Parser context providing access to instruction state and diagnostics.
+/// @return Parse result signalling success or failure.
 ParseResult parseTypeOperand(viper::parse::Cursor &cur, Context &ctx)
 {
     cur.skipWs();
