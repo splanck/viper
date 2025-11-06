@@ -27,6 +27,7 @@
 ///          including propagation of unordered outcomes when NaNs appear in the
 ///          input.
 
+#include "frontends/basic/constfold/ConstantUtils.hpp"
 #include "frontends/basic/constfold/Dispatch.hpp"
 #include "frontends/basic/constfold/Value.hpp"
 
@@ -262,17 +263,6 @@ std::optional<Value> tryFold(AST::BinaryExpr::Op op, Value lhs, Value rhs)
     return result;
 }
 
-/// @brief Construct an integer @ref Constant from a scalar literal.
-/// @param value Integer payload to encode into the constant wrapper.
-/// @return Constant describing the literal integer value.
-Constant make_int_constant(long long value)
-{
-    Constant c;
-    c.kind = LiteralKind::Int;
-    c.numeric = NumericValue{false, static_cast<double>(value), value};
-    return c;
-}
-
 } // namespace
 
 /// @brief Fold comparison expressions when both operands are literal constants.
@@ -292,9 +282,9 @@ std::optional<Constant> fold_compare(AST::BinaryExpr::Op op,
     {
         if (op != AST::BinaryExpr::Op::Eq && op != AST::BinaryExpr::Op::Ne)
             return std::nullopt;
-        bool eq = lhs.stringValue == rhs.stringValue;
-        long long v = (op == AST::BinaryExpr::Op::Eq) ? (eq ? 1 : 0) : (eq ? 0 : 1);
-        return make_int_constant(v);
+        const bool eq = lhs.stringValue == rhs.stringValue;
+        const bool result = (op == AST::BinaryExpr::Op::Eq) ? eq : !eq;
+        return make_bool_constant(result);
     }
 
     auto lhsValue = makeValueFromConstant(lhs);
@@ -306,10 +296,8 @@ std::optional<Constant> fold_compare(AST::BinaryExpr::Op op,
     if (!folded)
         return std::nullopt;
 
-    Constant c;
-    c.kind = LiteralKind::Int;
-    c.numeric = toNumericValue(*folded);
-    return c;
+    const bool result = folded->isFloat() ? (folded->f != 0.0) : (folded->i != 0);
+    return make_bool_constant(result);
 }
 
 } // namespace il::frontends::basic::constfold

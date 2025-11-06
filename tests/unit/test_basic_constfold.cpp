@@ -71,8 +71,8 @@ int main()
         auto prog = p.parseProgram();
         foldConstants(*prog);
         auto *let = dynamic_cast<LetStmt *>(prog->main[0].get());
-        auto *ie = dynamic_cast<IntExpr *>(let->expr.get());
-        assert(ie && ie->value == 1);
+        auto *be = dynamic_cast<BoolExpr *>(let->expr.get());
+        assert(be && be->value == true);
     }
 
     // INTEGER overflow prevents folding (32767 + 1)
@@ -150,8 +150,8 @@ int main()
         auto prog = p.parseProgram();
         foldConstants(*prog);
         auto *pr = dynamic_cast<PrintStmt *>(prog->main[0].get());
-        auto *ie = dynamic_cast<IntExpr *>(pr->items[0].expr.get());
-        assert(ie && ie->value == 0);
+        auto *be = dynamic_cast<BoolExpr *>(pr->items[0].expr.get());
+        assert(be && be->value == false);
     }
 
     // logical OR
@@ -163,8 +163,8 @@ int main()
         auto prog = p.parseProgram();
         foldConstants(*prog);
         auto *let = dynamic_cast<LetStmt *>(prog->main[0].get());
-        auto *ie = dynamic_cast<IntExpr *>(let->expr.get());
-        assert(ie && ie->value == 1);
+        auto *be = dynamic_cast<BoolExpr *>(let->expr.get());
+        assert(be && be->value == true);
     }
 
     // numeric modulus
@@ -189,8 +189,8 @@ int main()
         auto prog = p.parseProgram();
         foldConstants(*prog);
         auto *pr = dynamic_cast<PrintStmt *>(prog->main[0].get());
-        auto *ie = dynamic_cast<IntExpr *>(pr->items[0].expr.get());
-        assert(ie && ie->value == 1);
+        auto *be = dynamic_cast<BoolExpr *>(pr->items[0].expr.get());
+        assert(be && be->value == true);
     }
 
     // LEN on literal string
@@ -286,8 +286,8 @@ int main()
         auto *boolC = dynamic_cast<BoolExpr *>(letC->expr.get());
         assert(boolC && boolC->value == true);
         auto *letD = dynamic_cast<LetStmt *>(prog->main[3].get());
-        auto *intD = dynamic_cast<IntExpr *>(letD->expr.get());
-        assert(intD && intD->value == 1);
+        auto *boolD = dynamic_cast<BoolExpr *>(letD->expr.get());
+        assert(boolD && boolD->value == true);
     }
 
     return 0;
