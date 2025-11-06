@@ -19,24 +19,29 @@
 #include "frontends/basic/Parser.hpp"
 #include <cstdlib>
 
+/// @file
+/// @brief Statement sequencing helper shared by BASIC parser productions.
+/// @details Normalises the handling of colon/newline separators and optional
+///          line labels so grammar productions can focus solely on recognising
+///          statement shapes.  The sequencer also exposes utilities for parsing
+///          lists of statements that terminate on custom predicates.
+
 namespace il::frontends::basic
 {
 /// @brief Construct a sequencer bound to a parser instance.
-///
-/// The sequencer stores a reference to the owning parser so it can delegate
-/// token queries and statement parsing while it focuses on separator
-/// bookkeeping. No additional state is initialised beyond clearing pending line
-/// bookkeeping.
+/// @details Stores a reference to the owning parser so token queries and
+///          sub-parses can be delegated while this helper focuses on separator
+///          bookkeeping.  Pending line label state is initialised to an empty
+///          sentinel.
 ///
 /// @param parser Parser instance that supplies tokens and parsing callbacks.
 StatementSequencer::StatementSequencer(Parser &parser) : parser_(parser) {}
 
 /// @brief Consume any leading statement separators before parsing begins.
-///
-/// The routine eats an arbitrary number of colon or end-of-line tokens and
-/// updates the cached separator kind to reflect the most recent token consumed.
-/// This allows callers to understand whether statements were separated by a
-/// colon or newline when they resume parsing.
+/// @details Eats an arbitrary number of colon or end-of-line tokens and updates
+///          the cached separator kind to reflect the most recent token
+///          consumed.  Callers can then determine whether the next statement was
+///          preceded by a newline or a colon separator.
 void StatementSequencer::skipLeadingSeparator()
 {
     bool consumedColon = false;
@@ -71,10 +76,9 @@ void StatementSequencer::skipLeadingSeparator()
 }
 
 /// @brief Consume consecutive end-of-line tokens.
-///
-/// Used when parsing constructs that should coalesce blank lines. The method
-/// records that the last separator encountered was a line break when any tokens
-/// are consumed.
+/// @details Used when parsing constructs that should coalesce blank lines.  The
+///          routine records that the last separator encountered was a line break
+///          whenever any tokens are consumed.
 ///
 /// @return True when at least one end-of-line token was removed.
 bool StatementSequencer::skipLineBreaks()
@@ -91,10 +95,10 @@ bool StatementSequencer::skipLineBreaks()
 }
 
 /// @brief Consume colon or newline separators following a statement.
-///
-/// This variant mirrors `skipLeadingSeparator` but is intended for use once a
-/// statement has already been parsed. The cached separator kind is updated so
-/// later logic knows how the last pair of statements were separated.
+/// @details Mirrors @ref skipLeadingSeparator but is intended for use once a
+///          statement has already been parsed.  The cached separator kind is
+///          updated so later logic knows how the last pair of statements were
+///          separated.
 void StatementSequencer::skipStatementSeparator()
 {
     bool consumedColon = false;
@@ -129,13 +133,13 @@ void StatementSequencer::skipStatementSeparator()
 }
 
 /// @brief Execute a callback with the current line-number context.
-///
-/// BASIC permits optional numeric labels ahead of statements. This helper
-/// checks for such a label—either pending from a previous iteration or present
-/// in the token stream—and passes the line number and its location to @p fn. If
-/// a label is read directly from tokens and a subsequent numeric token appears
-/// without intervening code, the sequencer marks `deferredLineOnly_` so the
-/// caller can defer statement parsing until more input arrives.
+/// @details BASIC permits optional numeric labels ahead of statements.  This
+///          helper checks for such a label—either pending from a previous
+///          iteration or present in the token stream—and passes the line number
+///          and its location to @p fn.  If a label is read directly from tokens
+///          and a subsequent numeric token appears without intervening code, the
+///          sequencer marks @ref deferredLineOnly_ so the caller can defer
+///          statement parsing until more input arrives.
 ///
 /// @param fn Callback invoked with the discovered line number (or zero when
 ///           absent) and its source location.
@@ -178,10 +182,10 @@ void StatementSequencer::withOptionalLineNumber(
 }
 
 /// @brief Record a line number token for consumption by the next iteration.
-///
-/// When parsing falls through due to colon-separated content the following line
-/// number needs to be preserved. This method caches the value so
-/// `withOptionalLineNumber` can present it before reading additional tokens.
+/// @details When parsing falls through due to colon-separated content the
+///          following line number needs to be preserved.  This method caches the
+///          value so @ref withOptionalLineNumber can present it before reading
+///          additional tokens.
 ///
 /// @param line Parsed line number to replay later.
 /// @param loc Source location associated with the numeric token.
@@ -192,10 +196,9 @@ void StatementSequencer::stashPendingLine(int line, il::support::SourceLoc loc)
 }
 
 /// @brief Retrieve the most recent separator kind consumed by the sequencer.
-///
-/// Helps callers distinguish between statements separated by newlines, colons,
-/// or nothing when reasoning about layout-sensitive constructs like multi-line
-/// IF statements.
+/// @details Helps callers distinguish between statements separated by newlines,
+///          colons, or nothing when reasoning about layout-sensitive constructs
+///          such as multi-line IF statements.
 ///
 /// @return Enum describing the last observed separator.
 StatementSequencer::SeparatorKind StatementSequencer::lastSeparator() const
@@ -203,6 +206,19 @@ StatementSequencer::SeparatorKind StatementSequencer::lastSeparator() const
     return lastSeparator_;
 }
 
+/// @brief Decide how statement collection should proceed for the current line.
+/// @details Evaluates the supplied @p isTerminator predicate and deferred-line
+///          state to determine whether parsing should continue, terminate, or
+///          pause until more input arrives.  When terminating, the
+///          @p onTerminator callback is invoked so callers can consume any
+///          terminator tokens before returning.
+///
+/// @param line Numeric label associated with the pending statement (0 when absent).
+/// @param lineLoc Source location of the label token, if any.
+/// @param isTerminator Predicate consulted to decide whether to stop parsing.
+/// @param onTerminator Callback executed when the terminator predicate succeeds.
+/// @param state Mutable bookkeeping record that captures separator and deferral information.
+/// @return Action describing whether to continue, terminate, or defer parsing.
 StatementSequencer::LineAction StatementSequencer::evaluateLineAction(
     int line,
     il::support::SourceLoc lineLoc,
@@ -235,12 +251,12 @@ StatementSequencer::LineAction StatementSequencer::evaluateLineAction(
 }
 
 /// @brief Collect consecutive statements until a terminator predicate fires.
-///
-/// The sequencer repeatedly parses statements, forwarding them into @p dst, and
-/// consults @p isTerminator before each iteration to decide whether parsing
-/// should stop. When the predicate succeeds the supplied @p onTerminator callback
-/// is run to perform any clean-up or token consumption and the gathered
-/// terminator metadata is returned to the caller.
+/// @details Repeatedly parses statements, forwarding them into @p dst while
+///          consulting @p isTerminator before each iteration to decide whether
+///          parsing should stop.  When the predicate succeeds the supplied
+///          @p onTerminator callback is run to perform any clean-up or token
+///          consumption, and the gathered terminator metadata is returned to the
+///          caller.
 ///
 /// @param isTerminator Predicate that inspects the current line context and
 ///        decides whether collection should stop.
