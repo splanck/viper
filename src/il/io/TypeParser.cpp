@@ -5,9 +5,11 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Implements the light-weight parser that recognises IL textual type tokens.
-// The translation unit remains intentionally tiny so the parser can be used
-// freely in tools and unit tests without pulling in the full front-end stack.
+// Provides the textual-to-enumeration bridge for IL type mnemonics.  Tools and
+// tests rely on this translation unit to map lowercase tokens such as `i64` and
+// `ptr` into @ref il::core::Type instances without instantiating the full parser
+// stack.  Keeping the logic concentrated here ensures that every consumer shares
+// the same keyword spelling and optional success flag semantics.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -24,9 +26,16 @@ namespace il::io
 {
 
 /// @brief Resolve a primitive IL type token to a concrete Type value.
+/// @details Performs a string comparison against the canonical lowercase
+///          mnemonics recognised by the IL textual format.  When @p token matches
+///          a known type the helper constructs the corresponding
+///          @ref il::core::Type and, if provided, stores @c true into @p ok.  On
+///          failure the returned type is default constructed and @p ok receives
+///          @c false, allowing callers to distinguish unsupported tokens without
+///          relying on exceptions.
 /// @param token Lowercase identifier naming a supported primitive type (e.g., "i64").
 /// @param ok Optional pointer that receives true when parsing succeeds and false on failure.
-/// @return Matching il::core::Type on success or default constructed when the token is unsupported.
+/// @return Matching @ref il::core::Type on success or default constructed when unsupported.
 /// @note When @p ok is null the caller is opting out of explicit success signalling; failure is
 ///       observable via the returned default-constructed Type.
 il::core::Type parseType(const std::string &token, bool *ok)
