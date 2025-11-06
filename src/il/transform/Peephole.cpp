@@ -34,15 +34,13 @@ namespace il::transform
 namespace
 {
 
-/// \brief Test whether a value is an integer constant and expose its payload.
-///
-/// The peephole rules only reason about literal integers. This helper centralises
-/// the check and extraction so pattern matching can simply compare the numeric
-/// payload in subsequent rules.
-///
-/// @param v      Candidate value operand.
-/// @param out    Populated with the constant when the check succeeds.
-/// @returns True when @p v is a @c ConstInt.
+/// @brief Test whether a value operand carries an integer literal.
+/// @details Peephole rules only reason about literal integers.  This helper
+///          centralises the classification and payload extraction so callers can
+///          reuse the numeric value without duplicating checks.
+/// @param v Candidate value operand.
+/// @param out Populated with the literal integer when the check succeeds.
+/// @return True when @p v is a @c ConstInt.
 static bool isConstInt(const Value &v, long long &out)
 {
     if (v.kind == Value::Kind::ConstInt)
@@ -53,34 +51,28 @@ static bool isConstInt(const Value &v, long long &out)
     return false;
 }
 
-/// \brief Determine whether an operand equals a specific integer literal.
-///
-/// The helper reuses @ref isConstInt to recognise literal integers and then
-/// performs the comparison against @p target.  Centralising the logic allows the
-/// peephole rule table to specify literal matches declaratively without in-line
-/// conditionals at each call site.
-///
-/// @param v       Operand to classify.
-/// @param target  Required constant value.
-/// @returns True when the operand is an integer constant identical to
-///          @p target.
+/// @brief Check whether an operand equals a specific integer literal.
+/// @details Reuses @ref isConstInt to identify literal integers before comparing
+///          them against @p target.  Consolidating the logic keeps the peephole
+///          rule table declarative and avoids repeating literal comparisons.
+/// @param v Operand to classify.
+/// @param target Required constant value.
+/// @return True when the operand is an integer constant identical to @p target.
 static bool isConstEq(const Value &v, long long target)
 {
     long long c;
     return isConstInt(v, c) && c == target;
 }
 
-/// \brief Count how many times a temporary identifier is referenced in @p f.
-///
-/// The routine walks every instruction in every block, iterating each operand
-/// vector and incrementing a counter whenever it encounters the requested
-/// temporary.  Because the nested loops cover both regular operands and branch
-/// arguments, the resulting count accurately reflects all SSA uses inside the
-/// function, which the pass uses to guard single-use simplifications.
-///
-/// @param f   Function being optimised.
-/// @param id  Temporary identifier to count.
-/// @returns Number of uses observed for the identifier.
+/// @brief Count how many times a temporary identifier appears within a function.
+/// @details Walks every instruction in every block, visiting each operand and
+///          incrementing a counter when it references the requested identifier.
+///          The count helps guard transformations that only apply when a value
+///          has a single use (for example forwarding constants and erasing the
+///          defining instruction).
+/// @param f Function being optimised.
+/// @param id Temporary identifier whose uses are being counted.
+/// @return Number of operands that reference the temporary.
 static size_t countUses(const Function &f, unsigned id)
 {
     size_t uses = 0;
@@ -92,16 +84,14 @@ static size_t countUses(const Function &f, unsigned id)
     return uses;
 }
 
-/// \brief Substitute every use of a temporary with a replacement value.
-///
-/// Arithmetic identity rules forward an existing operand in place of the
-/// computed result. Once a rule matches, this helper rewrites all uses before
-/// the defining instruction is removed, preserving SSA-style data flow without
-/// altering block structure.
-///
-/// @param f   Function whose operands should be updated.
-/// @param id  Temporary identifier to replace.
-/// @param v   Replacement value propagated to all uses.
+/// @brief Substitute every use of a temporary with a replacement value.
+/// @details Algebraic simplifications reuse an existing operand in place of the
+///          computed result.  This helper updates all operands that reference the
+///          temporary before the defining instruction is removed, preserving the
+///          function's SSA-style data flow without altering block structure.
+/// @param f Function whose operands should be rewritten.
+/// @param id Temporary identifier to replace.
+/// @param v Replacement value propagated to all uses.
 static void replaceAll(Function &f, unsigned id, const Value &v)
 {
     for (auto &b : f.blocks)
@@ -113,22 +103,19 @@ static void replaceAll(Function &f, unsigned id, const Value &v)
 
 } // namespace
 
-/// \brief Apply local simplifications to all functions in a module.
-///
-/// The pass performs two kinds of optimisation:
-///  - Apply algebraic identity rules from @c kRules, forwarding constant-folded
-///    operands and erasing the now-dead producer instruction.
-///  - Simplify conditional branches whose predicate collapses to a known boolean
-///    value, rewriting them into unconditional jumps.
-///
-/// When a branch is rewritten, the routine also prunes the untaken successor's
-/// block parameters by trimming @c brArgs so the surviving edge keeps its
-/// argument arity in sync with the callee block. Additionally, a branch-condition
-/// definition is erased when the predicate was produced in the same block and
-/// had a single use, ensuring we do not leave dead instructions behind. The
-/// implementation intentionally limits itself to integer comparisons with
-/// literal operands and does not chase values across blocks or through
-/// non-literal arithmetic.
+/// @brief Apply peephole simplifications to every function in a module.
+/// @details The pass performs two core optimisations:
+///          - Apply algebraic identity rules from @c kRules, forwarding
+///            constant-folded operands and erasing the now-dead producer.
+///          - Simplify conditional branches whose predicate collapses to a known
+///            boolean value, rewriting them into unconditional jumps.
+///          When a branch is rewritten the routine also prunes block arguments
+///          on the untaken edge and, when the predicate was defined in the same
+///          block with a single use, erases the redundant defining instruction.
+///          The implementation intentionally limits itself to integer literals
+///          and does not attempt inter-block reasoning, keeping the pass fast and
+///          predictable.
+/// @param m Module containing the functions to simplify in place.
 void peephole(Module &m)
 {
     for (auto &f : m.functions)

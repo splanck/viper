@@ -26,14 +26,26 @@
 #include "ra/Allocator.hpp"
 #include "ra/LiveIntervals.hpp"
 
+/// @file
+/// @brief Entry point that wires together the linear-scan register allocator.
+/// @details Provides the glue that runs live-interval analysis and feeds the
+///          resulting data into @ref ra::LinearScanAllocator.  Housing the logic
+///          here keeps the public header lightweight while documenting the exact
+///          sequencing of allocation phases used by the backend.
+
 namespace viper::codegen::x64
 {
 
-/// @brief Run the linear-scan register allocator over a function.
-/// @details Computes live intervals for every virtual register, feeds them into
-///          the @ref ra::LinearScanAllocator, and returns the resulting
-///          allocation summary.  The helper owns the sequencing of analyses so
-///          callers only need to provide the Machine IR and target description.
+/// @brief Run the linear-scan register allocator over a machine function.
+/// @details The helper performs three steps:
+///          1. Construct @ref ra::LiveIntervals and walk @p func to compute
+///             closed-open [start, end) ranges for each virtual register.
+///          2. Materialise @ref ra::LinearScanAllocator with the function, target
+///             description, and interval data.
+///          3. Invoke the allocator, returning its @ref AllocationResult so later
+///             passes know which temporaries were spilled.
+///          Owning the orchestration here keeps call sites concise and documents
+///          the canonical ordering of analysis and allocation phases.
 /// @param func Machine function to allocate in place.
 /// @param target Target lowering information describing available registers.
 /// @return Summary of the allocation, including spill slot usage.

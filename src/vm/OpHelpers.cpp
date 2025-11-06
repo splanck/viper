@@ -23,14 +23,20 @@
 
 #include <string>
 
+/// @file
+/// @brief Trap helpers that bridge VM failures to the runtime diagnostics system.
+/// @details Centralises the logic for forwarding trap metadata—including source
+///          locations, function names, and block labels—to @ref RuntimeBridge so
+///          every VM failure reports consistent context.
+
 namespace il::vm::internal::detail
 {
 /// @brief Forward a VM trap to the runtime diagnostics bridge with context.
-/// @details Collects the current function and basic block names—when available—
-///          and invokes @ref RuntimeBridge::trap so the host runtime emits a
-///          deterministic diagnostic.  The helper keeps the VM implementation
-///          agnostic of how traps are surfaced while guaranteeing that
-///          contextual metadata accompanies every failure.
+/// @details Collects the enclosing function name, active block label, and source
+///          location information before invoking @ref RuntimeBridge::trap.  By
+///          funnelling every failure through this helper the VM keeps trap
+///          reporting deterministic and decoupled from the runtime's diagnostic
+///          formatting.
 /// @param kind High-level trap classification associated with the failure.
 /// @param message Human-readable description explaining what went wrong.
 /// @param instr Instruction that triggered the trap; used for source locations.

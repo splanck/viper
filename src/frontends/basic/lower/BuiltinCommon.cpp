@@ -5,6 +5,16 @@
 //
 //===----------------------------------------------------------------------===//
 //
+// File: src/frontends/basic/lower/BuiltinCommon.cpp
+// Purpose: Anchor the builtin-lowering registration entry points so each family
+//          can contribute helpers without bespoke linkage glue.
+// Key invariants: The translation unit must remain in every build so static
+//                 constructors inside the registrar libraries execute reliably.
+// Ownership/Lifetime: Exports a single symbol that higher layers reference to
+//                     force linkage; the registrar functions themselves continue
+//                     to own their static state.
+// Links: docs/codemap.md#front-end-lowering
+//
 // Thin translation unit that anchors the shared builtin lowering interfaces and
 // pulls in the family-specific registrars.  The heavy lifting lives under
 // src/frontends/basic/lower/builtins/ where each domain provides its own
@@ -13,6 +23,12 @@
 // domain-specific file references it directly.
 //
 //===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Anchor translation unit for BASIC builtin lowering registrars.
+/// @details Aggregates the family-specific registration headers and provides a
+///          stable symbol that drivers can reference to ensure the linker retains
+///          the builtin lowering side effects.
 
 #include "frontends/basic/lower/BuiltinCommon.hpp"
 #include "frontends/basic/lower/builtins/Registrars.hpp"

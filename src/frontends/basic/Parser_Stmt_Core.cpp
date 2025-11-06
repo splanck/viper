@@ -5,13 +5,24 @@
 //
 //===----------------------------------------------------------------------===//
 // File: src/frontends/basic/Parser_Stmt_Core.cpp
-// Purpose: Implement parsing routines for core BASIC statements such as LET and procedure declarations.
-// Key invariants: Maintains the parser's registry of known procedures so CALL statements without parentheses can still be
-//                 resolved and ensures assignment targets honour BASIC's typing conventions.
-// Ownership/Lifetime: Parser allocates AST nodes with std::unique_ptr and transfers ownership to the caller.
+// Purpose: Implement parsing routines for core BASIC statements such as LET and
+//          procedure declarations.
+// Key invariants: Maintains the parser's registry of known procedures so CALL
+//                 statements without parentheses can still be resolved and
+//                 ensures assignment targets honour BASIC's typing conventions.
+// Ownership/Lifetime: Parser allocates AST nodes with std::unique_ptr and
+//                     transfers ownership to the caller.
 // Links: docs/codemap.md, docs/basic-language.md#statements
 //
 //===----------------------------------------------------------------------===//
+
+/// @file
+/// @brief Implements statement-level parsing helpers for the BASIC front end.
+/// @details These helpers cover assignment, CALL statements, and procedure
+///          declarations.  They operate on the token stream owned by @ref Parser,
+///          emit diagnostics via @ref emitter_, and keep the procedure registry
+///          up to date so later passes can recognise identifiers in CALL syntax
+///          that omits parentheses.
 
 #include "frontends/basic/BasicDiagnosticMessages.hpp"
 #include "frontends/basic/Parser.hpp"
@@ -25,19 +36,35 @@
 namespace il::frontends::basic
 {
 
-/// Remember that a procedure with @p name was encountered.
+/// @brief Record that a procedure declaration introduced a name.
+/// @details The parser tracks procedure identifiers so later CALL statements can
+///          recognise bare identifiers that omit parentheses.  The registry is
+///          also consulted when emitting diagnostics for ambiguous identifiers.
+/// @param name Procedure identifier to register.
 void Parser::noteProcedureName(std::string name)
 {
     knownProcedures_.insert(std::move(name));
 }
 
-/// Check whether @p name has been recorded previously.
+/// @brief Query whether a procedure name has been seen previously.
+/// @details Looks up @p name in the registry populated by
+///          @ref noteProcedureName.  Names are compared using the canonical
+///          casing produced by the lexer, making the check deterministic across
+///          dialects.
+/// @param name Identifier being queried.
+/// @return True when @p name already appears in the procedure registry.
 bool Parser::isKnownProcedureName(const std::string &name) const
 {
     return knownProcedures_.find(name) != knownProcedures_.end();
 }
 
-/// Parse a LET assignment statement when present.
+/// @brief Attempt to parse a `LET` assignment statement.
+/// @details Recognises the `LET` keyword (which some dialects make optional) and
+///          delegates to @ref parseLetStatement to build the AST node.  When no
+///          keyword is present the token stream is left untouched so other
+///          statement parsers can attempt a match.
+/// @return Populated @ref StmtResult when a `LET` statement is recognised;
+///         @c std::nullopt otherwise.
 Parser::StmtResult Parser::parseLet()
 {
     if (!at(TokenKind::KeywordLet))
@@ -46,9 +73,23 @@ Parser::StmtResult Parser::parseLet()
     return StmtResult(std::move(stmt));
 }
 
-/// Parse a procedure or method call statement when possible.
-Parser::StmtResult Parser::parseCall(int)
+/// @brief Parse a procedure or method call statement when the lookahead matches.
+/// @details BASIC allows calling procedures without parentheses.  The parser
+///          therefore checks whether the identifier corresponds to a known
+///          procedure and, if the following token is not an opening parenthesis,
+///          emits a diagnostic before recovering.  Method-call syntax using the
+///          dotted form is delegated to the expression parser so object-oriented
+///          lowering can handle it uniformly.  When the pattern does not match,
+///          the helper leaves the token stream untouched so other statement
+///          parsers can attempt to consume the input.
+/// @param line Source line hint supplied by the driver; the parser uses token
+///             locations directly so the parameter is ignored.
+/// @return Successful call statement wrapped in @ref StmtResult, @c std::nullopt
+///         when no call is present, or an error result when recovery diagnostics
+///         were emitted.
+Parser::StmtResult Parser::parseCall(int line)
 {
+    static_cast<void>(line);
     if (!at(TokenKind::Identifier))
         return std::nullopt;
     const Token identTok = peek();
@@ -97,7 +138,13 @@ Parser::StmtResult Parser::parseCall(int)
     return StmtResult(StmtPtr{});
 }
 
-/// Emit diagnostic when a procedure call omits its opening parenthesis.
+/// @brief Emit a diagnostic when a procedure call omits its opening parenthesis.
+/// @details Highlights either the token that replaced the parenthesis or, when
+///          such a token is absent, the identifier itself.  Diagnostics prefer
+///          the configured @ref emitter_ but fall back to stderr so command-line
+///          tools still provide feedback.
+/// @param identTok Identifier naming the procedure being invoked.
+/// @param nextTok Token that followed the identifier in the input stream.
 void Parser::reportMissingCallParenthesis(const Token &identTok, const Token &nextTok)
 {
     auto diagLoc = nextTok.loc.hasLine() ? nextTok.loc : identTok.loc;
@@ -113,7 +160,12 @@ void Parser::reportMissingCallParenthesis(const Token &identTok, const Token &ne
     }
 }
 
-/// Emit diagnostic when an identifier cannot be interpreted as a statement.
+/// @brief Emit a diagnostic when an identifier cannot be parsed as a call.
+/// @details Triggered after the parser determines that an identifier-led
+///          statement is neither a method call nor a registered procedure.  The
+///          message mirrors historical front-end behaviour to keep existing
+///          tests stable.
+/// @param identTok Identifier token that initiated the failed parse.
 void Parser::reportInvalidCallExpression(const Token &identTok)
 {
     if (emitter_)
@@ -131,7 +183,13 @@ void Parser::reportInvalidCallExpression(const Token &identTok)
     }
 }
 
-/// Parse a `LET` assignment statement.
+/// @brief Parse a `LET` assignment statement and build the AST node.
+/// @details Consumes the keyword, parses the assignment target (which may be a
+///          variable or array element), verifies the presence of the equals sign,
+///          and then parses the right-hand expression.  The resulting
+///          @ref LetStmt retains the originating source location for later
+///          diagnostics.
+/// @return Newly constructed @ref LetStmt instance.
 StmtPtr Parser::parseLetStatement()
 {
     auto loc = peek().loc;
@@ -146,7 +204,14 @@ StmtPtr Parser::parseLetStatement()
     return stmt;
 }
 
-/// Derive a BASIC type from an identifier suffix.
+/// @brief Translate a BASIC identifier suffix into a concrete type.
+/// @details BASIC supports single-character suffixes to denote the expected
+///          storage type (for example `%` for integers and `$` for strings).
+///          When no suffix is present the helper returns the language's default
+///          numeric type.
+/// @param name Identifier lexeme to inspect.
+/// @return Corresponding @ref Type derived from the suffix, defaulting to
+///         @ref Type::I64.
 Type Parser::typeFromSuffix(std::string_view name)
 {
     if (!name.empty())
@@ -169,7 +234,12 @@ Type Parser::typeFromSuffix(std::string_view name)
     return Type::I64;
 }
 
-/// Parse a type keyword following an `AS` clause.
+/// @brief Parse a BASIC type keyword following an `AS` clause.
+/// @details Accepts both reserved keywords (such as `BOOLEAN`) and legacy
+///          identifier spellings (`INTEGER`, `DOUBLE`, `SINGLE`, `STRING`).  When
+///          the token does not match any recognised type the helper returns the
+///          default integer type so the caller can emit a targeted diagnostic.
+/// @return Type decoded from the keyword, defaulting to @ref Type::I64.
 Type Parser::parseTypeKeyword()
 {
     if (at(TokenKind::KeywordBoolean))
@@ -193,7 +263,13 @@ Type Parser::parseTypeKeyword()
     return Type::I64;
 }
 
-/// Parse a parenthesised parameter list if present.
+/// @brief Parse the optional parameter list attached to a procedure header.
+/// @details Handles empty lists, array suffixes, and comma-separated parameters.
+///          Each parameter inherits its identifier suffix for type inference and
+///          records whether it represents an array argument.  The helper stops
+///          parsing at the closing parenthesis, leaving newline handling to the
+///          caller.
+/// @return Ordered list of parameters; empty when no list was present.
 std::vector<Param> Parser::parseParamList()
 {
     std::vector<Param> params;
@@ -230,7 +306,13 @@ std::vector<Param> Parser::parseParamList()
     return params;
 }
 
-/// Parse a complete `FUNCTION` procedure declaration.
+/// @brief Parse a complete `FUNCTION` procedure declaration.
+/// @details Builds the function AST node, applies explicit return-type
+///          annotations, registers the procedure name for later CALL resolution,
+///          and delegates to @ref parseProcedureBody to collect nested
+///          statements.  Explicit BASIC type keywords are translated into the
+///          internal @ref Type enumeration.
+/// @return Newly constructed function declaration node.
 StmtPtr Parser::parseFunctionStatement()
 {
     auto func = parseFunctionHeader();
@@ -259,7 +341,12 @@ StmtPtr Parser::parseFunctionStatement()
     return func;
 }
 
-/// Parse a complete `SUB` procedure declaration.
+/// @brief Parse a complete `SUB` procedure declaration.
+/// @details SUB routines mirror functions without return values.  The parser
+///          constructs the AST node, parses the parameter list, rejects any `AS`
+///          type clause with a diagnostic, registers the procedure name, and
+///          finally gathers the body statements through @ref parseProcedureBody.
+/// @return Newly constructed subroutine declaration node.
 StmtPtr Parser::parseSubStatement()
 {
     auto loc = peek().loc;
