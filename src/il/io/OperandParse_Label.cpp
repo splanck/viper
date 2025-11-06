@@ -33,6 +33,13 @@ namespace
 {
 using viper::parse::Cursor;
 
+/// @brief Construct a parse result representing a fatal syntax error.
+/// @details Wraps the provided @p message in an @ref il::support::Expected error
+///          that carries the current parser location.  Centralising the error
+///          creation keeps diagnostics consistent with other operand parsers.
+/// @param ctx Parser context containing source location metadata.
+/// @param message Human-readable diagnostic to report.
+/// @return Parse result populated with the error state.
 ParseResult syntaxError(Context &ctx, std::string message)
 {
     ParseResult result;
@@ -43,6 +50,15 @@ ParseResult syntaxError(Context &ctx, std::string message)
 
 } // namespace
 
+/// @brief Parse a branch label operand from the remaining cursor text.
+/// @details Normalises whitespace, strips optional ``label`` keywords and caret
+///          prefixes, and traps malformed inputs via @ref syntaxError.  On
+///          success the helper consumes the rest of the cursor to avoid
+///          downstream parsers reprocessing the label text.
+/// @param cur Cursor positioned at the operand text.
+/// @param ctx Parser context receiving diagnostics and results.
+/// @return Successful parse result containing the label text, or an error when
+///         the operand is malformed.
 ParseResult parseLabelOperand(Cursor &cur, Context &ctx)
 {
     std::string text(cur.remaining());

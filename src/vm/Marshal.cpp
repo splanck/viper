@@ -7,7 +7,13 @@
 //
 // File: src/vm/Marshal.cpp
 // Purpose: Implement conversions between VM value wrappers and runtime bridge types.
-// Ownership/Lifetime: Returned views borrow storage from runtime-managed strings.
+// Invariants: Slot/string conversions must mirror the runtime C ABI exactly so
+//             VM and native executions observe identical semantics, and helper
+//             tables must be updated whenever @ref il::core::Type gains new
+//             kinds.
+// Ownership/Lifetime: Returned views borrow storage from runtime-managed strings
+//                     and therefore remain valid only as long as the originating
+//                     runtime object stays alive.
 // Links: docs/runtime-vm.md#marshalling
 //
 //===----------------------------------------------------------------------===//
@@ -38,6 +44,12 @@ namespace
 {
 using il::core::Type;
 
+/// @brief Bundle accessor callbacks for a specific IL type kind.
+/// @details Each @ref KindAccessors record holds the function pointers needed to
+///          expose VM @ref Slot storage to the runtime bridge.  Slot accessors
+///          return pointers to mutable slot payloads, result accessors expose the
+///          matching entry inside a @ref ResultBuffers aggregate, and assigners
+///          move values back into slots after bridge calls complete.
 struct KindAccessors
 {
     using SlotAccessor = void *(*)(Slot &);
@@ -49,6 +61,9 @@ struct KindAccessors
     ResultAssigner assignResult = nullptr;
 };
 
+/// @brief Enumerate the IL kinds the runtime bridge is capable of marshalling.
+/// @details The list doubles as an index set for @ref kKindAccessors so we can
+///          precompute a dense lookup table keyed by @ref Type::Kind ordinals.
 constexpr std::array<Type::Kind, 10> kSupportedKinds = {
     Type::Kind::Void,
     Type::Kind::I1,
@@ -64,34 +79,60 @@ constexpr std::array<Type::Kind, 10> kSupportedKinds = {
 
 static_assert(kSupportedKinds.size() == 10, "update kind accessors when Type::Kind grows");
 
+/// @brief Return a null pointer for result kinds that have no dedicated buffer.
+/// @details Void, error, and resume-token results do not occupy storage in
+///          @ref ResultBuffers.  The accessor communicates that by always
+///          returning @c nullptr.
 constexpr void *nullResultBuffer(ResultBuffers &)
 {
     return nullptr;
 }
 
-constexpr void assignNoop(Slot &, const ResultBuffers &) {}
+/// @brief Ignore result assignment for kinds that carry no payload.
+/// @details Error and resume-token kinds are represented entirely through VM
+///          state, so the assigner simply performs no work while keeping the
+///          table entries structurally uniform.
+constexpr void assignNoop(Slot &, const ResultBuffers &)
+{
+}
 
+/// @brief Produce a pointer to a member inside a @ref Slot instance.
+/// @details The accessor template is instantiated for each supported slot field
+///          (integer, floating-point, pointer, string) and returns a mutable
+///          pointer suitable for passing to the runtime bridge.
 template <auto Member> constexpr void *slotMemberAccessor(Slot &slot)
 {
     return static_cast<void *>(&(slot.*Member));
 }
 
+/// @brief Produce a pointer to a member inside @ref ResultBuffers.
+/// @details Mirrors @ref slotMemberAccessor but targets the structure that
+///          receives return values from runtime calls.
 template <auto Member> constexpr void *bufferMemberAccessor(ResultBuffers &buffers)
 {
     return static_cast<void *>(&(buffers.*Member));
 }
 
+/// @brief Copy a value from @ref ResultBuffers back into a VM slot.
+/// @details Instantiated per-kind to ensure the correct slot field is written
+///          after a runtime call produces a result.
 template <auto SlotMember, auto BufferMember>
 constexpr void assignFromBuffer(Slot &slot, const ResultBuffers &buffers)
 {
     slot.*SlotMember = buffers.*BufferMember;
 }
 
+/// @brief Construct accessor callbacks for kinds that transport no data.
+/// @details Void, error, and resume-token kinds all share the same accessor
+///          triple: no slot pointer, null result buffer, and no-op assignment.
 constexpr KindAccessors makeVoidAccessors()
 {
     return KindAccessors{nullptr, &nullResultBuffer, &assignNoop};
 }
 
+/// @brief Construct accessor callbacks for data-bearing kinds.
+/// @details Binds the correct slot and buffer member functions together with an
+///          assigner that copies the buffer value back into the VM slot.
 template <auto SlotMember, auto BufferMember> constexpr KindAccessors makeAccessors()
 {
     return KindAccessors{
@@ -101,6 +142,11 @@ template <auto SlotMember, auto BufferMember> constexpr KindAccessors makeAccess
     };
 }
 
+/// @brief Lookup table mapping IL kinds to accessor callbacks.
+/// @details The table is constructed at startup using a constexpr lambda so the
+///          runtime can perform O(1) dispatch without branching.  Unsupported
+///          kinds retain the default-initialised null pointers which downstream
+///          helpers detect and translate into traps.
 constexpr std::array<KindAccessors, kSupportedKinds.size()> kKindAccessors = []
 {
     std::array<KindAccessors, kSupportedKinds.size()> table{};
@@ -117,6 +163,12 @@ constexpr std::array<KindAccessors, kSupportedKinds.size()> kKindAccessors = []
     return table;
 }();
 
+/// @brief Retrieve the accessor bundle corresponding to an IL kind.
+/// @details Performs a bounds check when assertions are enabled and returns the
+///          precomputed entry for @p kind.  Callers inspect the result to decide
+///          whether a particular type is marshalable.
+/// @param kind IL type kind requested by a bridge operation.
+/// @return Reference to the accessor triple for @p kind.
 const KindAccessors &dispatchFor(Type::Kind kind)
 {
     const auto index = static_cast<size_t>(kind);
@@ -233,6 +285,14 @@ double toF64(const il::core::Value &value)
     }
 }
 
+/// @brief Return a pointer to the payload stored in a VM slot.
+/// @details Uses @ref dispatchFor to identify the accessor triple for @p kind
+///          and reports a trap when the runtime bridge lacks support for the
+///          requested type.  The returned pointer addresses storage inside
+///          @p slot, allowing runtime helpers to operate directly on VM data.
+/// @param slot Slot whose payload should be exposed to the runtime bridge.
+/// @param kind IL type describing how the slot should be interpreted.
+/// @return Mutable pointer to the slot payload, or @c nullptr when unsupported.
 void *slotToArgPointer(Slot &slot, il::core::Type::Kind kind)
 {
     const auto &entry = dispatchFor(kind);
@@ -247,6 +307,13 @@ void *slotToArgPointer(Slot &slot, il::core::Type::Kind kind)
     return entry.slotAccessor(slot);
 }
 
+/// @brief Produce a pointer to the result buffer for a given IL kind.
+/// @details Runtime bridge calls populate the @ref ResultBuffers aggregate. This
+///          helper selects the correct member based on @p kind and traps when no
+///          storage exists for that type (for example, @c void results).
+/// @param kind Return type requested by the runtime descriptor.
+/// @param buffers Aggregate containing per-kind result storage.
+/// @return Pointer to the buffer member associated with @p kind.
 void *resultBufferFor(il::core::Type::Kind kind, ResultBuffers &buffers)
 {
     const auto &entry = dispatchFor(kind);
@@ -261,6 +328,13 @@ void *resultBufferFor(il::core::Type::Kind kind, ResultBuffers &buffers)
     return entry.resultAccessor(buffers);
 }
 
+/// @brief Copy a runtime result back into a VM slot.
+/// @details Looks up the assigner associated with @p kind and either transfers
+///          the data or reports a trap when the runtime bridge lacks an
+///          assignment strategy for that type.
+/// @param slot Destination slot owned by the VM frame.
+/// @param kind IL kind describing the returned value.
+/// @param buffers Result aggregate filled by the runtime bridge.
 void assignResult(Slot &slot, il::core::Type::Kind kind, const ResultBuffers &buffers)
 {
     const auto &entry = dispatchFor(kind);
@@ -274,6 +348,16 @@ void assignResult(Slot &slot, il::core::Type::Kind kind, const ResultBuffers &bu
     entry.assignResult(slot, buffers);
 }
 
+/// @brief Translate VM call arguments into the runtime bridge ABI format.
+/// @details Allocates a contiguous array of pointers sized to the runtime
+///          signature, storing the address of each VM slot payload followed by
+///          any hidden parameters required by the descriptor.  Power-intrinsic
+///          calls trigger additional status wiring so domain errors can be
+///          reported consistently.
+/// @param sig Runtime signature describing parameter and hidden argument kinds.
+/// @param args Slots containing the evaluated argument values.
+/// @param powStatus Scratch status record used when power intrinsics require it.
+/// @return Array of raw argument pointers ready for @c RuntimeBridge::invoke.
 std::vector<void *> marshalArguments(const il::runtime::RuntimeSignature &sig,
                                      std::span<Slot> args,
                                      PowStatus &powStatus)
@@ -309,6 +393,16 @@ std::vector<void *> marshalArguments(const il::runtime::RuntimeSignature &sig,
     return rawArgs;
 }
 
+/// @brief Interpret the status of a runtime power intrinsic invocation.
+/// @details Examines the descriptor and @p powStatus scratch space to determine
+///          whether the helper trapped due to a domain or overflow error.  The
+///          routine also checks the returned floating-point value for non-finite
+///          results when the signature indicates a double return type.
+/// @param desc Runtime descriptor that may classify power traps specially.
+/// @param powStatus Scratch status populated during @ref marshalArguments.
+/// @param args Argument slots originally passed to the runtime helper.
+/// @param buffers Result storage filled by the runtime helper.
+/// @return Outcome structure indicating whether a trap occurred and its kind.
 PowTrapOutcome classifyPowTrap(const il::runtime::RuntimeDescriptor &desc,
                                const PowStatus &powStatus,
                                std::span<const Slot> args,
@@ -362,6 +456,12 @@ PowTrapOutcome classifyPowTrap(const il::runtime::RuntimeDescriptor &desc,
     return outcome;
 }
 
+/// @brief Construct a slot containing the runtime call result.
+/// @details Delegates to @ref assignResult so that string and numeric ownership
+///          rules mirror the rest of the marshalling layer.
+/// @param signature Signature describing the return value kind.
+/// @param buffers Result aggregate filled by the runtime helper.
+/// @return Slot containing the return value, ready for placement into a frame.
 Slot assignCallResult(const il::runtime::RuntimeSignature &signature, const ResultBuffers &buffers)
 {
     Slot destination{};
