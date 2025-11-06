@@ -7,7 +7,10 @@
 //
 // Implements lowering support for BASIC string builtins.  Specialised lowering
 // delegates to the shared string builtin registry when available and falls back
-// to the rule-driven pipeline otherwise.
+// to the rule-driven pipeline otherwise.  Consolidating the logic here keeps the
+// dispatcher agnostic of how each builtin rewrites the call, whether it
+// requires runtime helpers, and which diagnostic guards must be materialised for
+// conversion operations.
 //
 //===----------------------------------------------------------------------===//
 
@@ -32,6 +35,15 @@ using Variant = BuiltinLoweringRule::Variant;
 using Opcode = il::core::Opcode;
 } // namespace
 
+/// @brief Lower the VAL builtin through the runtime conversion helper.
+/// @details Applies builtin-specific transforms to the argument, emits the
+///          runtime call that performs string-to-number conversion, and wires up
+///          the guard blocks that differentiate success, trap, NaN, and overflow
+///          exits.  The helper mirrors the numeric conversion flow used by
+///          math builtins so diagnostics remain consistent.
+/// @param ctx Lowering context providing block builders and runtime hooks.
+/// @param variant Concrete lowering rule chosen for the builtin invocation.
+/// @return Result value paired with its IL type.
 Lowerer::RVal lowerValBuiltin(BuiltinLowerContext &ctx, const Variant &variant)
 {
     assert(!variant.arguments.empty());
@@ -86,6 +98,14 @@ namespace
 using Builtin = BuiltinCallExpr::Builtin;
 namespace string_builtins = il::frontends::basic::builtins;
 
+/// @brief Dispatch a BASIC string builtin to either specialised or generic lowering.
+/// @details Looks up the builtin in the dedicated string registry.  When a
+///          specialised lowering routine is available it executes the
+///          user-provided callback to obtain the lowered value and result type;
+///          otherwise it falls back to the generic rule-driven lowering path so
+///          less common functions still compile.
+/// @param ctx Call-specific lowering context.
+/// @return Lowered value/type pair ready for emission.
 Lowerer::RVal lowerStringBuiltin(BuiltinLowerContext &ctx)
 {
     const auto *stringSpec = string_builtins::findBuiltin(ctx.info().name);
@@ -104,6 +124,11 @@ Lowerer::RVal lowerStringBuiltin(BuiltinLowerContext &ctx)
 
 } // namespace
 
+/// @brief Install specialised string builtin lowerers into the shared registry.
+/// @details Registers the string dispatcher for every builtin supported by the
+///          specialised registry.  Each entry binds the BASIC builtin identifier
+///          to @ref lowerStringBuiltin so the front-end automatically picks up
+///          future enhancements without touching the registrar again.
 void registerStringBuiltins()
 {
     register_builtin(getBuiltinInfo(Builtin::Len).name, &lowerStringBuiltin);
