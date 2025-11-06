@@ -9,8 +9,9 @@
 // Purpose: Provide the per-kind parser for constant literal operands.
 // Key invariants: Preserves OperandParser diagnostics and literal handling
 //                 semantics for integers, floats, booleans, null, and strings.
-// Ownership/Lifetime: Operates on parser-managed state without owning data.
-// Links: docs/il-guide.md#reference
+// Ownership/Lifetime: Operates on parser-managed state without owning data and
+//                     never allocates process-global resources.
+// Links: docs/il-guide.md#reference and docs/il-reference.md#literal-operands
 //
 //===----------------------------------------------------------------------===//
 
@@ -41,6 +42,14 @@ namespace viper::il::io
 namespace
 {
 
+/// @brief Compare ASCII strings without considering letter case.
+/// @details Literal parsing must recognise canonical spellings like "INF" and
+///          "Inf" regardless of how the user wrote them.  This helper lowers
+///          characters manually instead of relying on locale-aware facilities so
+///          behaviour remains deterministic across hosts.
+/// @param value Source token extracted from the IL stream.
+/// @param literal Reference literal to compare against.
+/// @return @c true when both strings match ignoring ASCII case, otherwise @c false.
 bool equalsIgnoreCase(std::string_view value, std::string_view literal)
 {
     if (value.size() != literal.size())
@@ -55,6 +64,14 @@ bool equalsIgnoreCase(std::string_view value, std::string_view literal)
     return true;
 }
 
+/// @brief Build a parse result representing a syntax error at the current cursor.
+/// @details Constant operand parsing reports failures through the
+///          `Expected<void>` stored inside @ref ParseResult.  This helper
+///          packages @p message with the active source location so diagnostics
+///          mirror the legacy operand parser.
+/// @param ctx Parser state carrying diagnostic and location information.
+/// @param message Human readable description of the error.
+/// @return Parse result whose status holds the constructed diagnostic.
 ParseResult syntaxError(Context &ctx, std::string message)
 {
     ParseResult result;
@@ -63,6 +80,13 @@ ParseResult syntaxError(Context &ctx, std::string message)
     return result;
 }
 
+/// @brief Consume the next whitespace-delimited token from the IL cursor.
+/// @details The cursor hands back a view of the consumed characters and the
+///          caller is responsible for trimming trailing delimiters such as
+///          commas.  Returning `std::nullopt` allows the caller to emit a tailored
+///          diagnostic when the operand list unexpectedly ends.
+/// @param cur Cursor positioned at the beginning of the token.
+/// @return View representing the consumed token or `std::nullopt` when no bytes remain.
 std::optional<std::string_view> consumeToken(viper::parse::Cursor &cur)
 {
     cur.skipWs();
@@ -75,6 +99,15 @@ std::optional<std::string_view> consumeToken(viper::parse::Cursor &cur)
     return token;
 }
 
+/// @brief Decode a quoted string literal operand from the cursor.
+/// @details Copies characters out of the cursor while tracking escape
+///          sequences, then delegates to @ref ::il::io::decodeEscapedString to
+///          expand escapes into their runtime form.  The helper updates the
+///          cursor position so subsequent parsers resume at the first
+///          unconsumed byte following the literal.
+/// @param cur Cursor positioned at the opening quote.
+/// @param ctx Parser context used for diagnostic emission.
+/// @return Parse result whose value contains the decoded string on success.
 ParseResult parseStringLiteral(viper::parse::Cursor &cur, Context &ctx)
 {
     const std::size_t begin = cur.offset();
@@ -117,6 +150,14 @@ ParseResult parseStringLiteral(viper::parse::Cursor &cur, Context &ctx)
     return result;
 }
 
+/// @brief Interpret @p token as either an integer or floating-point literal.
+/// @details Examines the token for decimal points, exponent markers, or
+///          well-known floating spellings (INF/NAN) before dispatching to the
+///          shared literal parsing helpers.  Diagnostics match the historical
+///          operand parser so tools that diff output remain stable.
+/// @param token Literal token stripped of trailing delimiters and whitespace.
+/// @param ctx Parser context that receives diagnostics when parsing fails.
+/// @return Parse result containing the parsed value or an error status.
 ParseResult parseNumericLiteral(const std::string &token, Context &ctx)
 {
     ParseResult result;
@@ -158,6 +199,15 @@ ParseResult parseNumericLiteral(const std::string &token, Context &ctx)
 
 } // namespace
 
+/// @brief Parse a literal constant operand from the IL token stream.
+/// @details Handles strings, booleans, `null`, and numeric literals while
+///          trimming delimiter characters that separate operands.  Each case
+///          delegates to a specialist helper to keep the control flow readable
+///          and to reuse shared validation routines.  Diagnostics are emitted via
+///          @ref syntaxError so the parser maintains consistent formatting.
+/// @param cur Cursor describing the remaining operand text.
+/// @param ctx Parser context capturing diagnostics and results.
+/// @return Parse result containing the decoded literal or an error.
 ParseResult parseConstOperand(viper::parse::Cursor &cur, Context &ctx)
 {
     cur.skipWs();

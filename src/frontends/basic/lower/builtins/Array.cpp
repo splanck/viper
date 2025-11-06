@@ -6,10 +6,11 @@
 //===----------------------------------------------------------------------===//
 //
 // Array-oriented BASIC builtins are currently lowered elsewhere in the pipeline.
-// This translation unit exists so future array helpers have a dedicated home and
-// to keep the builtin registrar structure uniform across domains.  Maintaining
-// the stub ensures downstream tooling can rely on every builtin family exposing
-// a registrar even when no special lowering is required yet.
+// This translation unit provides the intentionally empty registrar used by the
+// BASIC front end to hook in lowering code for each builtin family.  Keeping the
+// stub in-tree documents the extension point for array-specific lowering logic,
+// preserves the invariant that every builtin domain exports a registrar, and
+// makes it obvious where future work should live once the lowering rules grow.
 //
 //===----------------------------------------------------------------------===//
 
@@ -17,11 +18,15 @@
 
 namespace il::frontends::basic::lower::builtins
 {
-/// @brief Placeholder registrar for array builtins.
-/// @details The BASIC front-end does not currently lower any array builtins via
-///          the shared registry.  Installing an explicit no-op registrar keeps
-///          the builtin registration pattern consistent and signals where future
-///          lowering code should live.
+/// @brief Install array builtin lowering rules into the shared registry.
+/// @details The BASIC lowering pipeline wires builtin support together by
+///          invoking a registrar function for each feature domain (numeric,
+///          runtime, string, array, ...).  Array intrinsics do not yet require
+///          bespoke lowering, so this registrar deliberately performs no
+///          registration while still advertising the canonical entry point.  The
+///          no-op keeps the call sites uniform, simplifies feature detection in
+///          downstream tools, and serves as a breadcrumb for future lowering
+///          additions.
 void registerArrayBuiltins()
 {
     // No array-specific builtin lowering is routed through the shared registry.
