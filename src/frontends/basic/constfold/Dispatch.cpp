@@ -24,6 +24,7 @@
 /// @file
 /// @brief Implements the central dispatch logic for constant folding.
 
+#include "frontends/basic/constfold/ConstantUtils.hpp"
 #include "frontends/basic/constfold/Dispatch.hpp"
 
 #include "frontends/basic/ast/ExprNodes.hpp"
@@ -108,13 +109,7 @@ std::optional<Constant> extract_constant(const AST::Expr &expr)
         return c;
     }
     if (auto *b = dynamic_cast<const ::il::frontends::basic::BoolExpr *>(&expr))
-    {
-        Constant c;
-        c.kind = LiteralKind::Bool;
-        c.boolValue = b->value;
-        c.numeric = NumericValue{false, b->value ? 1.0 : 0.0, b->value ? 1 : 0};
-        return c;
-    }
+        return make_bool_constant(b->value);
     if (auto *s = dynamic_cast<const ::il::frontends::basic::StringExpr *>(&expr))
     {
         Constant c;

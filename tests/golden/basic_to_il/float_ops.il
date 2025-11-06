@@ -17,7 +17,7 @@ L10:
   br L20
 L20:
   .loc 1 2 4
-  call @rt_print_i64(1)
+  call @rt_print_i64(-1)
   .loc 1 2 4
   %t1 = const_str @.L0
   .loc 1 2 4
