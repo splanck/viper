@@ -146,7 +146,7 @@ AST::ExprPtr materialize_constant(const Constant &constant)
         }
         case LiteralKind::Bool:
         {
-            auto out = std::make_unique<::il::frontends::basic::BoolExpr>();
+            auto out = std::make_unique<AST::BoolExpr>();
             out->value = constant.boolValue;
             return out;
         }
