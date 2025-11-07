@@ -44,6 +44,16 @@ constexpr std::string_view kClassSnippet = R"BASIC(
 130 END
 )BASIC";
 
+constexpr std::string_view kTypedParamsSnippet = R"BASIC(
+CLASS P
+  x AS INTEGER
+  SUB Init(ix AS INTEGER, iy AS INTEGER)
+    PRINT ix, iy
+  END SUB
+END CLASS
+END
+)BASIC";
+
 [[nodiscard]] bool equalsIgnoreCase(std::string_view lhs, std::string_view rhs)
 {
     if (lhs.size() != rhs.size())
@@ -118,6 +128,39 @@ TEST(BasicOOPParsingTest, ParsesClassWithMembersWithoutDiagnostics)
     EXPECT_FALSE(dtor->body.empty());
     EXPECT_TRUE(inc->params.empty());
     EXPECT_FALSE(inc->body.empty());
+}
+
+TEST(BasicOOPParsingTest, ParsesMethodParametersWithExplicitTypes)
+{
+    SourceManager sourceManager;
+    uint32_t fileId = sourceManager.addFile("basic_oop_typed_params.bas");
+
+    DiagnosticEngine engine;
+    DiagnosticEmitter emitter(engine, sourceManager);
+    emitter.addSource(fileId, std::string(kTypedParamsSnippet));
+
+    Parser parser(kTypedParamsSnippet, fileId, &emitter);
+    std::unique_ptr<Program> program = parser.parseProgram();
+
+    ASSERT_TRUE(program);
+    EXPECT_EQ(emitter.errorCount(), 0u);
+    EXPECT_EQ(emitter.warningCount(), 0u);
+    ASSERT_FALSE(program->main.empty());
+
+    const auto *klass = dynamic_cast<const ClassDecl *>(program->main.front().get());
+    ASSERT_NE(klass, nullptr);
+    ASSERT_EQ(klass->members.size(), 1u);
+
+    const auto *method = dynamic_cast<const MethodDecl *>(klass->members.front().get());
+    ASSERT_NE(method, nullptr);
+    EXPECT_TRUE(equalsIgnoreCase(method->name, "init"));
+    ASSERT_EQ(method->params.size(), 2u);
+    EXPECT_TRUE(equalsIgnoreCase(method->params[0].name, "ix"));
+    EXPECT_EQ(method->params[0].type, Type::I64);
+    EXPECT_FALSE(method->params[0].is_array);
+    EXPECT_TRUE(equalsIgnoreCase(method->params[1].name, "iy"));
+    EXPECT_EQ(method->params[1].type, Type::I64);
+    EXPECT_FALSE(method->params[1].is_array);
 }
 
 int main(int argc, char **argv)
