@@ -273,6 +273,97 @@ TEST(BasicOOPLoweringTest, LoadsMemberAccessFromField)
     EXPECT_TRUE(sawLoad);
 }
 
+TEST(BasicOOPLoweringTest, MemberFieldAccessibleAcrossMethods)
+{
+    const std::string src = "10 CLASS R\n"
+                            "20   a AS INTEGER\n"
+                            "30   SUB Set(v AS INTEGER)\n"
+                            "40     LET Me.a = v\n"
+                            "50   END SUB\n"
+                            "60   FUNCTION Get%()\n"
+                            "70     RETURN Me.a\n"
+                            "80   END FUNCTION\n"
+                            "90 END CLASS\n"
+                            "100 DIM r AS R\n"
+                            "110 LET r = NEW R()\n"
+                            "120 r.Set(77)\n"
+                            "130 PRINT r.Get%()\n"
+                            "140 END\n";
+
+    SourceManager sm;
+    BasicCompilerInput input{src, "member_cross_methods.bas"};
+    BasicCompilerOptions options{};
+
+    auto result = compileBasic(input, options, sm);
+    ASSERT_TRUE(result.succeeded());
+
+    const il::core::Module &module = result.module;
+
+    const il::core::Function *setFn = findFunctionCaseInsensitive(module, "R.Set");
+    ASSERT_NE(setFn, nullptr);
+
+    std::unordered_map<unsigned, long long> gepOffsets;
+    bool sawFieldStore = false;
+    for (const auto &block : setFn->blocks)
+    {
+        for (const auto &instr : block.instructions)
+        {
+            if (instr.op == il::core::Opcode::GEP && instr.result && instr.operands.size() >= 2 &&
+                instr.operands[1].kind == il::core::Value::Kind::ConstInt)
+            {
+                gepOffsets.emplace(*instr.result, instr.operands[1].i64);
+            }
+            if (instr.op == il::core::Opcode::Store && instr.operands.size() >= 1 &&
+                instr.operands[0].kind == il::core::Value::Kind::Temp)
+            {
+                auto it = gepOffsets.find(instr.operands[0].id);
+                if (it != gepOffsets.end() && it->second == 0)
+                    sawFieldStore = true;
+            }
+        }
+    }
+
+    EXPECT_TRUE(sawFieldStore);
+
+    const il::core::Function *getFn = findFunctionCaseInsensitive(module, "R.Get%");
+    ASSERT_NE(getFn, nullptr);
+
+    gepOffsets.clear();
+    bool sawFieldLoad = false;
+    bool sawReturnFromLoad = false;
+    unsigned loadedTemp = 0;
+    for (const auto &block : getFn->blocks)
+    {
+        for (const auto &instr : block.instructions)
+        {
+            if (instr.op == il::core::Opcode::GEP && instr.result && instr.operands.size() >= 2 &&
+                instr.operands[1].kind == il::core::Value::Kind::ConstInt)
+            {
+                gepOffsets.emplace(*instr.result, instr.operands[1].i64);
+            }
+            if (instr.op == il::core::Opcode::Load && !instr.operands.empty() &&
+                instr.operands[0].kind == il::core::Value::Kind::Temp && instr.result)
+            {
+                auto it = gepOffsets.find(instr.operands[0].id);
+                if (it != gepOffsets.end() && it->second == 0)
+                {
+                    sawFieldLoad = true;
+                    loadedTemp = *instr.result;
+                }
+            }
+            if (instr.op == il::core::Opcode::Ret && !instr.operands.empty() &&
+                instr.operands[0].kind == il::core::Value::Kind::Temp)
+            {
+                if (sawFieldLoad && instr.operands[0].id == loadedTemp)
+                    sawReturnFromLoad = true;
+            }
+        }
+    }
+
+    EXPECT_TRUE(sawFieldLoad);
+    EXPECT_TRUE(sawReturnFromLoad);
+}
+
 TEST(BasicOOPLoweringTest, MemberAccessOutsideMethodsStoresAndLoads)
 {
     const std::string src = "10 CLASS D\n"
