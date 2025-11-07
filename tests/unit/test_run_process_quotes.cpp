@@ -35,10 +35,11 @@ struct ScopedEnvironmentAssignmentMoveResult
     bool value_visible_after_move_ctor;
     bool value_visible_after_move_assign;
     bool restored;
+    std::optional<std::string> move_assigned_value;
 };
 
 ScopedEnvironmentAssignmentMoveResult scoped_environment_assignment_move_preserves(
-    const std::string &name, const std::string &value);
+    const std::string &name, const std::string &source_value, const std::string &receiver_value);
 } // namespace viper::test_support
 
 TEST(RunProcess, PreservesQuotesAndBackslashes)
@@ -81,9 +82,25 @@ TEST(RunProcess, ScopedEnvironmentAssignmentSurvivesMove)
     const std::string varValue = "scoped-env-move-value";
 
     const auto result =
-        viper::test_support::scoped_environment_assignment_move_preserves(varName, varValue);
+        viper::test_support::scoped_environment_assignment_move_preserves(varName, varValue, varValue);
 
     EXPECT_TRUE(result.value_visible_after_move_ctor);
+    EXPECT_TRUE(result.value_visible_after_move_assign);
+    EXPECT_TRUE(result.restored);
+}
+
+TEST(RunProcess, ScopedEnvironmentAssignmentMoveAssignmentPrefersSourceValue)
+{
+    const std::string varName = "VIPER_SCOPED_ENV_MOVE_ASSIGN_TEST";
+    const std::string sourceValue = "scoped-env-source-value";
+    const std::string receiverValue = "scoped-env-receiver-value";
+
+    const auto result = viper::test_support::scoped_environment_assignment_move_preserves(
+        varName, sourceValue, receiverValue);
+
+    EXPECT_TRUE(result.value_visible_after_move_ctor);
+    ASSERT_TRUE(result.move_assigned_value.has_value());
+    EXPECT_EQ(sourceValue, *result.move_assigned_value);
     EXPECT_TRUE(result.value_visible_after_move_assign);
     EXPECT_TRUE(result.restored);
 }

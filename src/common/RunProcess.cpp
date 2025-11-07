@@ -157,9 +157,9 @@ class ScopedEnvironmentAssignment
     /// @param name Environment variable to override.
     /// @param value Temporary value applied for the guard's lifetime.
     ScopedEnvironmentAssignment(std::string name, std::string value)
-        : name_(std::move(name)), previous_(capture_existing())
+        : name_(std::move(name)), previous_(capture_existing()), override_(std::move(value))
     {
-        apply(std::move(value));
+        apply_override();
     }
 
     ScopedEnvironmentAssignment(const ScopedEnvironmentAssignment &) = delete;
@@ -171,10 +171,13 @@ class ScopedEnvironmentAssignment
     ///          no additional work.
     /// @param other Guard supplying the override to adopt.
     ScopedEnvironmentAssignment(ScopedEnvironmentAssignment &&other) noexcept
-        : name_(std::move(other.name_)), previous_(std::move(other.previous_))
+        : name_(std::move(other.name_)),
+          previous_(std::move(other.previous_)),
+          override_(std::move(other.override_))
     {
         other.name_.clear();
         other.previous_.reset();
+        other.override_.reset();
     }
 
     /// @brief Replace the active override with state moved from @p other.
@@ -189,28 +192,17 @@ class ScopedEnvironmentAssignment
             return *this;
         }
 
-        std::optional<std::string> current_value;
-        if (!other.name_.empty())
-        {
-            const char *current_raw = std::getenv(other.name_.c_str());
-            if (current_raw != nullptr)
-            {
-                current_value = std::string(current_raw);
-            }
-        }
-
         restore();
 
         name_ = std::move(other.name_);
         previous_ = std::move(other.previous_);
+        override_ = std::move(other.override_);
 
         other.name_.clear();
         other.previous_.reset();
+        other.override_.reset();
 
-        if (current_value.has_value())
-        {
-            apply(*current_value);
-        }
+        apply_override();
 
         return *this;
     }
@@ -244,13 +236,23 @@ class ScopedEnvironmentAssignment
     ///          under catastrophic conditions (for example, running out of
     ///          memory while duplicating the string).
     /// @param value Environment value to install.
-    void apply(std::string value) const
+    void apply(const std::string &value) const
     {
 #ifdef _WIN32
         _putenv_s(name_.c_str(), value.c_str());
 #else
         setenv(name_.c_str(), value.c_str(), 1);
 #endif
+    }
+
+    void apply_override() const
+    {
+        if (!override_.has_value() || name_.empty())
+        {
+            return;
+        }
+
+        apply(*override_);
     }
 
     /// @brief Reinstate the captured environment state.
@@ -283,6 +285,7 @@ class ScopedEnvironmentAssignment
 
     std::string name_;
     std::optional<std::string> previous_;
+    std::optional<std::string> override_;
 };
 } // namespace
 
@@ -297,6 +300,7 @@ struct ScopedEnvironmentAssignmentMoveResult
     bool value_visible_after_move_ctor;
     bool value_visible_after_move_assign;
     bool restored;
+    std::optional<std::string> move_assigned_value;
 };
 
 /// @brief Exercise move construction/assignment semantics of the environment guard.
@@ -307,7 +311,7 @@ struct ScopedEnvironmentAssignmentMoveResult
 /// @param value Temporary value assigned by the guard.
 /// @return Structured summary of the observed behaviour.
 ScopedEnvironmentAssignmentMoveResult scoped_environment_assignment_move_preserves(
-    const std::string &name, const std::string &value)
+    const std::string &name, const std::string &source_value, const std::string &receiver_value)
 {
     const char *original_raw = std::getenv(name.c_str());
     std::optional<std::string> original_value;
@@ -316,20 +320,27 @@ ScopedEnvironmentAssignmentMoveResult scoped_environment_assignment_move_preserv
         original_value = std::string(original_raw);
     }
 
-    ScopedEnvironmentAssignmentMoveResult result{false, false, false};
+    ScopedEnvironmentAssignmentMoveResult result{false, false, false, std::nullopt};
 
     {
-        ScopedEnvironmentAssignment guard(name, value);
+        ScopedEnvironmentAssignment guard(name, source_value);
         ScopedEnvironmentAssignment moved(std::move(guard));
         const char *current = std::getenv(name.c_str());
         result.value_visible_after_move_ctor =
-            (current != nullptr) && std::string(current) == value;
+            (current != nullptr) && std::string(current) == source_value;
 
-        ScopedEnvironmentAssignment receiver(name, value);
+        ScopedEnvironmentAssignment receiver(name, receiver_value);
         receiver = std::move(moved);
         current = std::getenv(name.c_str());
-        result.value_visible_after_move_assign =
-            (current != nullptr) && std::string(current) == value;
+        if (current != nullptr)
+        {
+            result.move_assigned_value = std::string(current);
+            result.value_visible_after_move_assign = *result.move_assigned_value == source_value;
+        }
+        else
+        {
+            result.value_visible_after_move_assign = false;
+        }
     }
 
     const char *restored_raw = std::getenv(name.c_str());
