@@ -627,6 +627,7 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
     {
         if (var.name.empty())
             return;
+        bool targetIsObject = false;
         if (value)
         {
             std::string className;
@@ -635,7 +636,22 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
             else
                 className = lowerer_.resolveObjectClass(*value);
             if (!className.empty())
+            {
                 lowerer_.setSymbolObjectType(var.name, className);
+                targetIsObject = true;
+            }
+        }
+        if (!targetIsObject)
+        {
+            if (const auto *sym = lowerer_.findSymbol(var.name); sym && sym->isObject)
+                targetIsObject = true;
+        }
+        if (targetIsObject)
+        {
+            using Feature = il::runtime::RuntimeFeature;
+            lowerer_.requestRuntimeFeature(Feature::ObjRetainMaybe);
+            lowerer_.requestRuntimeFeature(Feature::ObjReleaseChk0);
+            lowerer_.requestRuntimeFeature(Feature::ObjFree);
         }
         ensureSymbolType(var.name, inferAstTypeFromName(var.name));
         if (const auto *info = lowerer_.findSymbol(var.name); info && info->isArray)
