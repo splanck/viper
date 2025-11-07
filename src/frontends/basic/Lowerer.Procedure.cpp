@@ -871,6 +871,10 @@ void Lowerer::materializeParams(const std::vector<Param> &params)
     ProcedureContext &ctx = context();
     Function *func = ctx.function();
     assert(func && "materializeParams requires an active function");
+    size_t ilParamOffset = 0;
+    if (func->params.size() >= params.size())
+        ilParamOffset = func->params.size() - params.size();
+
     for (size_t i = 0; i < params.size(); ++i)
     {
         const auto &p = params[i];
@@ -885,8 +889,11 @@ void Lowerer::materializeParams(const std::vector<Param> &params)
         markSymbolReferenced(p.name);
         auto &info = ensureSymbol(p.name);
         info.slotId = slot.id;
-        il::core::Type ty = func->params[i].type;
-        Value incoming = Value::temp(func->params[i].id);
+        const size_t ilIndex = i + ilParamOffset;
+        if (ilIndex >= func->params.size())
+            continue;
+        il::core::Type ty = func->params[ilIndex].type;
+        Value incoming = Value::temp(func->params[ilIndex].id);
         if (p.is_array)
         {
             storeArray(slot, incoming);
