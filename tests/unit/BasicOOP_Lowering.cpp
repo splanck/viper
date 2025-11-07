@@ -167,6 +167,61 @@ TEST(BasicOOPLoweringTest, StoresMemberAssignmentIntoField)
     EXPECT_TRUE(storeUsesOffset);
 }
 
+TEST(BasicOOPLoweringTest, StoresImplicitMemberAssignmentIntoField)
+{
+    const std::string src = "10 CLASS C\n"
+                            "20   v AS INTEGER\n"
+                            "30   SUB Set7()\n"
+                            "40     Me.v = 7\n"
+                            "50   END SUB\n"
+                            "60 END CLASS\n"
+                            "70 END\n";
+
+    SourceManager sm;
+    BasicCompilerInput input{src, "member_set_implicit.bas"};
+    BasicCompilerOptions options{};
+
+    auto result = compileBasic(input, options, sm);
+    ASSERT_TRUE(result.succeeded());
+
+    const il::core::Module &module = result.module;
+    const il::core::Function *set7 = findFunctionCaseInsensitive(module, "C.Set7");
+    ASSERT_NE(set7, nullptr);
+
+    std::unordered_map<unsigned, long long> gepOffsets;
+    bool sawStore = false;
+    bool storeUsesOffset = false;
+    for (const auto &block : set7->blocks)
+    {
+        for (const auto &instr : block.instructions)
+        {
+            if (instr.op == il::core::Opcode::GEP && instr.result && instr.operands.size() >= 2 &&
+                instr.operands[1].kind == il::core::Value::Kind::ConstInt)
+            {
+                gepOffsets.emplace(*instr.result, instr.operands[1].i64);
+            }
+            if (instr.op == il::core::Opcode::Store && instr.operands.size() >= 2 &&
+                instr.operands[1].kind == il::core::Value::Kind::ConstInt &&
+                instr.operands[1].i64 == 7)
+            {
+                sawStore = true;
+                if (instr.operands[0].kind == il::core::Value::Kind::Temp)
+                {
+                    auto it = gepOffsets.find(instr.operands[0].id);
+                    if (it != gepOffsets.end() && it->second == 0)
+                        storeUsesOffset = true;
+                }
+                break;
+            }
+        }
+        if (sawStore)
+            break;
+    }
+
+    EXPECT_TRUE(sawStore);
+    EXPECT_TRUE(storeUsesOffset);
+}
+
 TEST(BasicOOPLoweringTest, LoadsMemberAccessFromField)
 {
     const std::string src = "10 CLASS C\n"
