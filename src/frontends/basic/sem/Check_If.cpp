@@ -71,8 +71,7 @@ void analyzeBranch(ControlCheckContext &context, const StmtPtr &branch)
 /// @brief Validate a conditional expression used by IF/ELSEIF.
 ///
 /// The helper evaluates the expression to recover its semantic type.  Boolean
-/// results are accepted; integer literals 0 or 1 are also allowed for backwards
-/// compatibility.  All other types trigger diagnostic
+/// results are accepted; all other types trigger diagnostic
 /// `DiagNonBooleanCondition`, including a formatted representation of the source
 /// expression when available.
 ///
@@ -86,15 +85,6 @@ void checkConditionExpr(SemanticAnalyzer &analyzer, Expr &expr)
 
     if (condTy == Type::Unknown || condTy == Type::Bool)
         return;
-
-    if (condTy == Type::Int)
-    {
-        if (const auto *intExpr = dynamic_cast<const IntExpr *>(&expr))
-        {
-            if (intExpr->value == 0 || intExpr->value == 1)
-                return;
-        }
-    }
 
     std::string exprText = semantic_analyzer_detail::conditionExprText(expr);
     if (exprText.empty())
