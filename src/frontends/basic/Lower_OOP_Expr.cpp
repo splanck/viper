@@ -77,7 +77,7 @@ std::string Lowerer::resolveObjectClass(const Expr &expr) const
     }
     if (dynamic_cast<const MeExpr *>(&expr) != nullptr)
     {
-        SlotType slotInfo = getSlotType("Me");
+        SlotType slotInfo = getSlotType("ME");
         if (slotInfo.isObject)
             return slotInfo.objectClass;
         return {};
@@ -156,7 +156,7 @@ Lowerer::RVal Lowerer::lowerNewExpr(const NewExpr &expr)
 Lowerer::RVal Lowerer::lowerMeExpr(const MeExpr &expr)
 {
     curLoc = expr.loc;
-    const auto *sym = findSymbol("Me");
+    const auto *sym = findSymbol("ME");
     if (!sym || !sym->slotId)
         return {Value::null(), Type(Type::Kind::Ptr)};
     Value slot = Value::temp(*sym->slotId);
@@ -214,7 +214,7 @@ Lowerer::resolveImplicitField(std::string_view name, il::support::SourceLoc loc)
     if (!field)
         return std::nullopt;
 
-    const auto *selfInfo = findSymbol("Me");
+    const auto *selfInfo = findSymbol("ME");
     if (!selfInfo || !selfInfo->slotId)
         return std::nullopt;
 
