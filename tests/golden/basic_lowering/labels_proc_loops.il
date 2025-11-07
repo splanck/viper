@@ -26,9 +26,9 @@ L-999999998_F:
 ret_F:
   ret 0
 while_head_0_F:
-  .loc 1 2 1
+  .loc 1 2 7
   %t1 = trunc1 0
-  .loc 1 2 1
+  .loc 1 2 7
   cbr %t1, while_body_0_F, while_end_0_F
 while_body_0_F:
   .loc 1 2 1
