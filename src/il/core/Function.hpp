@@ -14,6 +14,22 @@
 namespace il::core
 {
 
+/// @brief Container describing semantic attributes for a function.
+/// @details These attributes do not currently influence lowering but allow
+///          later optimisation passes to query summarised behaviour such as
+///          exception safety or memory side effects.
+struct FunctionAttrs
+{
+    /// @brief Function is guaranteed not to throw.
+    bool nothrow = false;
+
+    /// @brief Function may read memory but performs no writes.
+    bool readonly = false;
+
+    /// @brief Function is free of observable side effects and memory access.
+    bool pure = false;
+};
+
 /// @brief Definition of an IL function with parameters and basic blocks.
 /// @see docs/il-guide.md#reference
 struct Function
@@ -42,6 +58,23 @@ struct Function
     /// @ownership Function owns this vector.
     /// @constraint Index aligns with SSA value numbering; entries may be empty.
     std::vector<std::string> valueNames;
+
+    /// @brief Mutable attribute bundle describing semantic hints for the function.
+    FunctionAttrs Attrs{};
+
+    /// @brief Access mutable attribute bundle for the function.
+    /// @return Reference to the owned attribute container.
+    [[nodiscard]] FunctionAttrs &attrs()
+    {
+        return Attrs;
+    }
+
+    /// @brief Access read-only function attributes.
+    /// @return Const reference to the attribute container.
+    [[nodiscard]] const FunctionAttrs &attrs() const
+    {
+        return Attrs;
+    }
 };
 
 } // namespace il::core
