@@ -25,6 +25,7 @@
 #include "frontends/basic/Semantic_OOP.hpp"
 #include "frontends/basic/AST.hpp"
 #include "frontends/basic/DiagnosticEmitter.hpp"
+#include "frontends/basic/TypeSuffix.hpp"
 
 #include "support/diagnostics.hpp"
 
@@ -85,7 +86,6 @@ void emitMissingReturn(const ClassDecl &klass, const MethodDecl &method, Diagnos
     emitter->emit(il::support::Severity::Error, "B1007", method.loc, 3, std::move(msg));
 }
 } // namespace
-
 
 /// @brief Look up a mutable class record by name.
 /// @details Searches the internal @c std::unordered_map for the requested class
@@ -187,6 +187,10 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
                     if (method.ret.has_value())
                     {
                         sig.returnType = method.ret;
+                    }
+                    else if (auto suffixType = inferAstTypeFromSuffix(method.name))
+                    {
+                        sig.returnType = suffixType;
                     }
                     emitMissingReturn(classDecl, method, emitter);
                     info.methods[method.name] = std::move(sig);

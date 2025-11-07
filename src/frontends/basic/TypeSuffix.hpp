@@ -6,6 +6,8 @@
 #pragma once
 
 #include "frontends/basic/ast/NodeFwd.hpp"
+
+#include <optional>
 #include <string_view>
 
 namespace il::frontends::basic
@@ -15,5 +17,10 @@ namespace il::frontends::basic
 /// @param name BASIC identifier, potentially containing a type suffix character.
 /// @return Semantic type derived from the suffix, defaulting to integer when none matches.
 Type inferAstTypeFromName(std::string_view name);
+
+/// @brief Inspect @p name and return the AST type encoded by a recognised suffix.
+/// @param name Identifier spelling to analyse.
+/// @return Optional semantic type when the suffix matches one of BASIC's sigils.
+std::optional<Type> inferAstTypeFromSuffix(std::string_view name);
 
 } // namespace il::frontends::basic

@@ -37,7 +37,7 @@ namespace il::frontends::basic
 /// @param name Identifier to inspect; the view is not stored.
 /// @return The inferred type based on the final character, or `Type::I64` when
 ///         no suffix is present.
-Type inferAstTypeFromName(std::string_view name)
+std::optional<Type> inferAstTypeFromSuffix(std::string_view name)
 {
     if (!name.empty())
     {
@@ -55,6 +55,13 @@ Type inferAstTypeFromName(std::string_view name)
                 break;
         }
     }
+    return std::nullopt;
+}
+
+Type inferAstTypeFromName(std::string_view name)
+{
+    if (auto suffixType = inferAstTypeFromSuffix(name))
+        return *suffixType;
     return Type::I64;
 }
 
