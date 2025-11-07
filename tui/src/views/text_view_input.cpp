@@ -34,10 +34,18 @@ namespace viper::tui::views
 {
 
 /// @brief Handle a terminal input event and update cursor/selection state.
-/// @details Maps cursor keys, paging keys, and home/end navigation to the
-///          corresponding TextView helpers while preserving the "sticky" target
-///          column used during vertical motion. Shift modifiers extend the
-///          active selection; otherwise it collapses to the new caret.
+/// @details The dispatcher recognises navigation keys and translates them into
+///          edits against the view state:
+///          - Horizontal movement (`Left`/`Right`) converts the desired column to
+///            a byte offset using UTF-8 decoding so multi-column glyphs move as a
+///            single unit.
+///          - Vertical movement keeps the "target" column sticky so successive
+///            `Up`/`Down` presses remain aligned even when line widths differ.
+///          - Paging keys scroll the viewport in whole-screen increments while
+///            clamping the caret inside the available buffer extents.
+///          Shift modifiers extend the active selection; otherwise the selection
+///          collapses to the updated caret location.  Unhandled events are
+///          returned to the caller so outer containers can process them.
 /// @param ev UI event describing the received key press.
 /// @return True when the event was handled and should not propagate further.
 bool TextView::onEvent(const ui::Event &ev)
