@@ -46,6 +46,19 @@ enum class TypeCategory : uint8_t
     Dynamic    ///< Type derived from external context (e.g., call signature).
 };
 
+/// @brief Coarse classification of an opcode's interaction with memory.
+/// @details Designed for analyses that need conservative read/write flags
+///          without performing full alias modelling.  Unknown values should be
+///          treated as both reading and writing memory by consumers.
+enum class MemoryEffects : uint8_t
+{
+    None,      ///< Instruction is known to avoid memory reads and writes.
+    Read,      ///< Instruction only reads memory.
+    Write,     ///< Instruction only writes memory.
+    ReadWrite, ///< Instruction may both read and write memory.
+    Unknown    ///< Insufficient information; assume reads and writes occur.
+};
+
 /// @brief Identifier describing VM dispatch strategy for an opcode.
 enum class VMDispatch : uint8_t
 {
@@ -178,6 +191,33 @@ const OpcodeInfo &getOpcodeInfo(Opcode op);
 /// @brief Enumerate all opcodes defined by the IL in declaration order.
 /// @return Vector containing every opcode exactly once.
 std::vector<Opcode> all_opcodes();
+
+/// @brief Retrieve the conservative memory interaction classification.
+/// @param op Opcode to query.
+/// @return MemoryEffects value describing @p op's memory behaviour.
+MemoryEffects memoryEffects(Opcode op) noexcept;
+
+/// @brief Determine whether an opcode is known to read from memory.
+/// @param op Opcode to query.
+/// @return True if @p op may read memory.
+inline bool hasMemoryRead(Opcode op) noexcept
+{
+    using il::core::MemoryEffects;
+    const auto me = memoryEffects(op);
+    return me == MemoryEffects::Read || me == MemoryEffects::ReadWrite ||
+           me == MemoryEffects::Unknown;
+}
+
+/// @brief Determine whether an opcode is known to write to memory.
+/// @param op Opcode to query.
+/// @return True if @p op may write memory.
+inline bool hasMemoryWrite(Opcode op) noexcept
+{
+    using il::core::MemoryEffects;
+    const auto me = memoryEffects(op);
+    return me == MemoryEffects::Write || me == MemoryEffects::ReadWrite ||
+           me == MemoryEffects::Unknown;
+}
 
 /// @brief Retrieve the canonical mnemonic string for an opcode.
 /// @param op Opcode to translate into text.
