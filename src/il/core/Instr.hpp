@@ -16,6 +16,23 @@
 namespace il::core
 {
 
+/// @brief Attribute container for call-like instructions capturing semantic hints.
+/// @details Stored on every instruction but only meaningful when
+///          @ref Instr::op equals @ref Opcode::Call. Future passes may use these
+///          attributes to reason about exception safety and memory effects
+///          without re-deriving metadata from callee analysis.
+struct CallAttrs
+{
+    /// @brief Call cannot throw an exception.
+    bool nothrow = false;
+
+    /// @brief Call may read from memory but performs no writes.
+    bool readonly = false;
+
+    /// @brief Call performs no memory access and has no observable side effects.
+    bool pure = false;
+};
+
 /// @brief Instruction within a basic block.
 struct Instr
 {
@@ -58,6 +75,9 @@ struct Instr
     /// Owned by the instruction.
     /// Line and column are >=1 when known; {0,0} denotes unknown.
     il::support::SourceLoc loc;
+
+    /// @brief Semantic attributes describing the behaviour of call-like instructions.
+    CallAttrs CallAttr{};
 };
 
 /// @brief Access the scrutinee operand of a switch instruction.
