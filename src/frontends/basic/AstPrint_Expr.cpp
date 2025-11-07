@@ -229,7 +229,7 @@ struct AstPrinter::ExprPrinter final : ExprVisitor
     ///          to the current instance inside type members.
     void visit(const MeExpr &) override
     {
-        printer.os << "ME";
+        printer.os << "Me";
     }
 
     /// @brief Print a member access expression as base.member.
