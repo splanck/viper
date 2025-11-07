@@ -49,21 +49,21 @@ enum class Outcome : std::size_t
 
 constexpr std::size_t kOpCount = static_cast<std::size_t>(AST::BinaryExpr::Op::LogicalOr) + 1;
 
-using BinOpFn = Value (*)(Value, Value);
+using BinOpFn = std::optional<bool> (*)(Value, Value);
 
 struct TruthRow
 {
     AST::BinaryExpr::Op op;
-    std::array<std::optional<long long>, 4> truth;
+    std::array<std::optional<bool>, 4> truth;
 };
 
 constexpr std::array<TruthRow, 6> kTruthTable = {
-    {{AST::BinaryExpr::Op::Eq, {0LL, 1LL, 0LL, 0LL}},
-     {AST::BinaryExpr::Op::Ne, {1LL, 0LL, 1LL, 1LL}},
-     {AST::BinaryExpr::Op::Lt, {1LL, 0LL, 0LL, std::nullopt}},
-     {AST::BinaryExpr::Op::Le, {1LL, 1LL, 0LL, std::nullopt}},
-     {AST::BinaryExpr::Op::Gt, {0LL, 0LL, 1LL, std::nullopt}},
-     {AST::BinaryExpr::Op::Ge, {0LL, 1LL, 1LL, std::nullopt}}}};
+    {{AST::BinaryExpr::Op::Eq, {false, true, false, false}},
+     {AST::BinaryExpr::Op::Ne, {true, false, true, true}},
+     {AST::BinaryExpr::Op::Lt, {true, false, false, std::nullopt}},
+     {AST::BinaryExpr::Op::Le, {true, true, false, std::nullopt}},
+     {AST::BinaryExpr::Op::Gt, {false, false, true, std::nullopt}},
+     {AST::BinaryExpr::Op::Ge, {false, true, true, std::nullopt}}}};
 
 /// @brief Map a comparison outcome to the folded literal for @p op.
 /// @details Looks up the requested operator in @ref kTruthTable and returns the
@@ -74,19 +74,16 @@ constexpr std::array<TruthRow, 6> kTruthTable = {
 /// @param outcome Precomputed comparison category for the literal operands.
 /// @return Folded literal or @ref Value::invalid when the combination is
 ///         unsupported.
-[[nodiscard]] Value from_truth(AST::BinaryExpr::Op op, Outcome outcome)
+[[nodiscard]] std::optional<bool> from_truth(AST::BinaryExpr::Op op, Outcome outcome)
 {
     for (const auto &row : kTruthTable)
     {
         if (row.op == op)
         {
-            auto value = row.truth[static_cast<std::size_t>(outcome)];
-            if (!value)
-                return Value::invalid();
-            return Value::fromInt(*value);
+            return row.truth[static_cast<std::size_t>(outcome)];
         }
     }
-    return Value::invalid();
+    return std::nullopt;
 }
 
 /// @brief Compute the three-way ordering between two literal operands.
@@ -124,7 +121,7 @@ constexpr std::array<TruthRow, 6> kTruthTable = {
 /// @param lhs Left-hand literal operand.
 /// @param rhs Right-hand literal operand.
 /// @return Folded literal representing the equality result.
-Value fold_eq(Value lhs, Value rhs)
+std::optional<bool> fold_eq(Value lhs, Value rhs)
 {
     return from_truth(AST::BinaryExpr::Op::Eq, compare_ordered(lhs, rhs));
 }
@@ -136,7 +133,7 @@ Value fold_eq(Value lhs, Value rhs)
 /// @param lhs Left-hand literal operand.
 /// @param rhs Right-hand literal operand.
 /// @return Folded literal representing the not-equal result.
-Value fold_ne(Value lhs, Value rhs)
+std::optional<bool> fold_ne(Value lhs, Value rhs)
 {
     return from_truth(AST::BinaryExpr::Op::Ne, compare_ordered(lhs, rhs));
 }
@@ -147,7 +144,7 @@ Value fold_ne(Value lhs, Value rhs)
 /// @param lhs Left-hand literal operand.
 /// @param rhs Right-hand literal operand.
 /// @return Folded literal or @ref Value::invalid when folding is unsafe.
-Value fold_lt(Value lhs, Value rhs)
+std::optional<bool> fold_lt(Value lhs, Value rhs)
 {
     return from_truth(AST::BinaryExpr::Op::Lt, compare_ordered(lhs, rhs));
 }
@@ -158,7 +155,7 @@ Value fold_lt(Value lhs, Value rhs)
 /// @param lhs Left-hand literal operand.
 /// @param rhs Right-hand literal operand.
 /// @return Folded literal for the `<=` predicate or @ref Value::invalid.
-Value fold_le(Value lhs, Value rhs)
+std::optional<bool> fold_le(Value lhs, Value rhs)
 {
     return from_truth(AST::BinaryExpr::Op::Le, compare_ordered(lhs, rhs));
 }
@@ -169,7 +166,7 @@ Value fold_le(Value lhs, Value rhs)
 /// @param lhs Left-hand literal operand.
 /// @param rhs Right-hand literal operand.
 /// @return Folded literal for the `>` predicate or invalid when unordered.
-Value fold_gt(Value lhs, Value rhs)
+std::optional<bool> fold_gt(Value lhs, Value rhs)
 {
     return from_truth(AST::BinaryExpr::Op::Gt, compare_ordered(lhs, rhs));
 }
@@ -180,7 +177,7 @@ Value fold_gt(Value lhs, Value rhs)
 /// @param lhs Left-hand literal operand.
 /// @param rhs Right-hand literal operand.
 /// @return Folded literal representing the `>=` predicate or invalid.
-Value fold_ge(Value lhs, Value rhs)
+std::optional<bool> fold_ge(Value lhs, Value rhs)
 {
     return from_truth(AST::BinaryExpr::Op::Ge, compare_ordered(lhs, rhs));
 }
@@ -246,7 +243,7 @@ constexpr auto kCompareFold = make_compare_table();
 /// @param lhs Left-hand literal operand.
 /// @param rhs Right-hand literal operand.
 /// @return Folded value or @c std::nullopt when folding is not possible.
-std::optional<Value> tryFold(AST::BinaryExpr::Op op, Value lhs, Value rhs)
+std::optional<bool> tryFold(AST::BinaryExpr::Op op, Value lhs, Value rhs)
 {
     if (!lhs.valid || !rhs.valid)
         return std::nullopt;
@@ -257,10 +254,7 @@ std::optional<Value> tryFold(AST::BinaryExpr::Op op, Value lhs, Value rhs)
     if (!fn)
         return std::nullopt;
     auto promoted = promote(lhs, rhs);
-    Value result = fn(promoted.first, promoted.second);
-    if (!result.valid)
-        return std::nullopt;
-    return result;
+    return fn(promoted.first, promoted.second);
 }
 
 } // namespace
@@ -296,8 +290,7 @@ std::optional<Constant> fold_compare(AST::BinaryExpr::Op op,
     if (!folded)
         return std::nullopt;
 
-    const bool result = folded->isFloat() ? (folded->f != 0.0) : (folded->i != 0);
-    return make_bool_constant(result);
+    return make_bool_constant(*folded);
 }
 
 } // namespace il::frontends::basic::constfold
