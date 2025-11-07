@@ -87,6 +87,8 @@ StmtPtr Parser::parseStatement(int line)
         return std::move(*stmt);
     if (auto stmt = parseLet())
         return std::move(*stmt);
+    if (auto stmt = parseImplicitLet())
+        return std::move(*stmt);
     if (auto stmt = parseCall(line))
         return std::move(*stmt);
     if (auto stmt = parseRegisteredStatement(line))

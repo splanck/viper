@@ -73,6 +73,74 @@ Parser::StmtResult Parser::parseLet()
     return StmtResult(std::move(stmt));
 }
 
+Parser::StmtResult Parser::parseImplicitLet()
+{
+    if (!isImplicitAssignmentStart())
+        return std::nullopt;
+
+    auto loc = peek().loc;
+    auto target = parseLetTarget();
+    expect(TokenKind::Equal);
+    auto expr = parseExpression();
+
+    auto stmt = std::make_unique<LetStmt>();
+    stmt->loc = loc;
+    stmt->target = std::move(target);
+    stmt->expr = std::move(expr);
+    return StmtResult(std::move(stmt));
+}
+
+bool Parser::isImplicitAssignmentStart() const
+{
+    if (!at(TokenKind::Identifier) && !at(TokenKind::KeywordMe))
+        return false;
+
+    int depth = 0;
+    int offset = 1;
+    while (true)
+    {
+        const Token &tok = peek(offset);
+        if (tok.kind == TokenKind::Equal)
+        {
+            if (depth == 0)
+                return true;
+            ++offset;
+            continue;
+        }
+        if (tok.kind == TokenKind::EndOfLine || tok.kind == TokenKind::EndOfFile || tok.kind == TokenKind::Colon)
+            return false;
+        if (tok.kind == TokenKind::LParen)
+        {
+            ++depth;
+            ++offset;
+            continue;
+        }
+        if (tok.kind == TokenKind::RParen)
+        {
+            if (depth == 0)
+                return false;
+            --depth;
+            ++offset;
+            continue;
+        }
+        if (tok.kind == TokenKind::Dot && depth == 0)
+        {
+            ++offset;
+            const Token &member = peek(offset);
+            if (member.kind != TokenKind::Identifier)
+                return false;
+            ++offset;
+            continue;
+        }
+        if (depth > 0)
+        {
+            ++offset;
+            continue;
+        }
+        return false;
+    }
+}
+
 /// @brief Parse a procedure or method call statement when possible.
 /// @details BASIC allows both object method invocations (e.g. `obj.method()`)
 ///          and legacy procedure calls that omit parentheses.  The routine first
