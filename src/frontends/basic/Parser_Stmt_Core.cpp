@@ -192,7 +192,7 @@ StmtPtr Parser::parseLetStatement()
 {
     auto loc = peek().loc;
     consume();
-    auto target = parsePrimary();
+    auto target = parseLetTarget();
     expect(TokenKind::Equal);
     auto e = parseExpression();
     auto stmt = std::make_unique<LetStmt>();
@@ -200,6 +200,20 @@ StmtPtr Parser::parseLetStatement()
     stmt->target = std::move(target);
     stmt->expr = std::move(e);
     return stmt;
+}
+
+ExprPtr Parser::parseLetTarget()
+{
+    ExprPtr base;
+    if (at(TokenKind::Identifier))
+    {
+        base = parseArrayOrVar();
+    }
+    else
+    {
+        base = parsePrimary();
+    }
+    return parsePostfix(std::move(base));
 }
 
 /// @brief Derive the default BASIC type from an identifier suffix.

@@ -14,6 +14,7 @@
 #include "frontends/basic/BasicCompiler.hpp"
 #include "il/core/Extern.hpp"
 #include "il/core/Function.hpp"
+#include "il/core/Opcode.hpp"
 #include "il/core/Module.hpp"
 #include "support/source_manager.hpp"
 
@@ -77,6 +78,17 @@ constexpr std::string_view kLoweringSnippet = R"BASIC(
                        [&](const il::core::Function &fn)
                        { return equalsIgnoreCase(fn.name, name); });
 }
+
+[[nodiscard]] const il::core::Function *findFunctionCaseInsensitive(const il::core::Module &module,
+                                                                    std::string_view name)
+{
+    for (const auto &fn : module.functions)
+    {
+        if (equalsIgnoreCase(fn.name, name))
+            return &fn;
+    }
+    return nullptr;
+}
 } // namespace
 
 TEST(BasicOOPLoweringTest, EmitsRuntimeHelpersAndClassMembers)
@@ -97,6 +109,47 @@ TEST(BasicOOPLoweringTest, EmitsRuntimeHelpersAndClassMembers)
     EXPECT_TRUE(hasFunction(module, "Klass.__ctor"));
     EXPECT_TRUE(hasFunction(module, "Klass.__dtor"));
     EXPECT_TRUE(hasFunction(module, "Klass.inc"));
+}
+
+TEST(BasicOOPLoweringTest, StoresMemberAssignmentIntoField)
+{
+    const std::string src = "10 CLASS C\n"
+                             "20   v AS INTEGER\n"
+                             "30   SUB Set7()\n"
+                             "40     LET Me.v = 7\n"
+                             "50   END SUB\n"
+                             "60 END CLASS\n"
+                             "70 END\n";
+
+    SourceManager sm;
+    BasicCompilerInput input{src, "member_set.bas"};
+    BasicCompilerOptions options{};
+
+    auto result = compileBasic(input, options, sm);
+    ASSERT_TRUE(result.succeeded());
+
+    const il::core::Module &module = result.module;
+    const il::core::Function *set7 = findFunctionCaseInsensitive(module, "C.Set7");
+    ASSERT_NE(set7, nullptr);
+
+    bool sawStore = false;
+    for (const auto &block : set7->blocks)
+    {
+        for (const auto &instr : block.instructions)
+        {
+            if (instr.op == il::core::Opcode::Store && instr.operands.size() >= 2 &&
+                instr.operands[1].kind == il::core::Value::Kind::ConstInt &&
+                instr.operands[1].i64 == 7)
+            {
+                sawStore = true;
+                break;
+            }
+        }
+        if (sawStore)
+            break;
+    }
+
+    EXPECT_TRUE(sawStore);
 }
 
 int main(int argc, char **argv)
