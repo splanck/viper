@@ -465,10 +465,10 @@ void Lowerer::lowerInput(const InputStmt &stmt)
 
     auto storeField = [&](const std::string &name, Value field)
     {
-        SlotType slotInfo = getSlotType(name);
-        const auto *info = findSymbol(name);
-        assert(info && info->slotId);
-        Value target = Value::temp(*info->slotId);
+        auto storage = resolveVariableStorage(name, stmt.loc);
+        assert(storage && "INPUT target should have storage");
+        SlotType slotInfo = storage->slotInfo;
+        Value target = storage->pointer;
         if (slotInfo.type.kind == Type::Kind::Str)
         {
             curLoc = stmt.loc;
@@ -562,12 +562,12 @@ void Lowerer::lowerInputCh(const InputChStmt &stmt)
     curLoc = stmt.loc;
     Value field = emitLoad(Type(Type::Kind::Str), fieldSlot);
 
-    SlotType slotInfo = getSlotType(stmt.target.name);
-    const auto *info = findSymbol(stmt.target.name);
-    if (!info || !info->slotId)
+    auto storage = resolveVariableStorage(stmt.target.name, stmt.loc);
+    if (!storage)
         return;
 
-    Value slot = Value::temp(*info->slotId);
+    SlotType slotInfo = storage->slotInfo;
+    Value slot = storage->pointer;
     if (slotInfo.type.kind == Type::Kind::Str)
     {
         curLoc = stmt.loc;
@@ -641,10 +641,10 @@ void Lowerer::lowerLineInputCh(const LineInputChStmt &stmt)
 
     if (const auto *var = dynamic_cast<const VarExpr *>(stmt.targetVar.get()))
     {
-        const auto *info = findSymbol(var->name);
-        if (!info || !info->slotId)
+        auto storage = resolveVariableStorage(var->name, stmt.loc);
+        if (!storage)
             return;
-        Value slot = Value::temp(*info->slotId);
+        Value slot = storage->pointer;
         curLoc = stmt.loc;
         emitStore(Type(Type::Kind::Str), slot, line);
     }

@@ -66,7 +66,11 @@ class VarCollectWalker final : public BasicAstWalker<VarCollectWalker>
     void after(const VarExpr &expr)
     {
         if (!expr.name.empty())
+        {
+            if (lowerer_.isFieldInScope(expr.name))
+                return;
             lowerer_.markSymbolReferenced(expr.name);
+        }
     }
 
     /// @brief Record usage of an array element expression.
@@ -78,6 +82,8 @@ class VarCollectWalker final : public BasicAstWalker<VarCollectWalker>
     {
         if (!expr.name.empty())
         {
+            if (lowerer_.isFieldInScope(expr.name))
+                return;
             lowerer_.markSymbolReferenced(expr.name);
             lowerer_.markArray(expr.name);
         }
@@ -91,6 +97,8 @@ class VarCollectWalker final : public BasicAstWalker<VarCollectWalker>
     {
         if (!expr.name.empty())
         {
+            if (lowerer_.isFieldInScope(expr.name))
+                return;
             lowerer_.markSymbolReferenced(expr.name);
             lowerer_.markArray(expr.name);
         }
@@ -104,6 +112,8 @@ class VarCollectWalker final : public BasicAstWalker<VarCollectWalker>
     {
         if (!expr.name.empty())
         {
+            if (lowerer_.isFieldInScope(expr.name))
+                return;
             lowerer_.markSymbolReferenced(expr.name);
             lowerer_.markArray(expr.name);
         }
@@ -160,7 +170,7 @@ class VarCollectWalker final : public BasicAstWalker<VarCollectWalker>
     {
         for (const auto &name : stmt.vars)
         {
-            if (!name.empty())
+            if (!name.empty() && !lowerer_.isFieldInScope(name))
                 lowerer_.markSymbolReferenced(name);
         }
     }
@@ -223,10 +233,16 @@ Lowerer::SymbolInfo &Lowerer::ensureSymbol(std::string_view name)
 /// @return Mutable symbol metadata or @c nullptr when absent.
 Lowerer::SymbolInfo *Lowerer::findSymbol(std::string_view name)
 {
-    auto it = symbols.find(std::string(name));
-    if (it == symbols.end())
-        return nullptr;
-    return &it->second;
+    std::string key(name);
+    if (auto it = symbols.find(key); it != symbols.end())
+        return &it->second;
+    for (auto scopeIt = fieldScopeStack_.rbegin(); scopeIt != fieldScopeStack_.rend(); ++scopeIt)
+    {
+        auto symIt = scopeIt->symbols.find(key);
+        if (symIt != scopeIt->symbols.end())
+            return &symIt->second;
+    }
+    return nullptr;
 }
 
 /// @brief Const-qualified symbol lookup helper.
@@ -236,10 +252,16 @@ Lowerer::SymbolInfo *Lowerer::findSymbol(std::string_view name)
 /// @return Const symbol metadata or @c nullptr when absent.
 const Lowerer::SymbolInfo *Lowerer::findSymbol(std::string_view name) const
 {
-    auto it = symbols.find(std::string(name));
-    if (it == symbols.end())
-        return nullptr;
-    return &it->second;
+    std::string key(name);
+    if (auto it = symbols.find(key); it != symbols.end())
+        return &it->second;
+    for (auto scopeIt = fieldScopeStack_.rbegin(); scopeIt != fieldScopeStack_.rend(); ++scopeIt)
+    {
+        auto symIt = scopeIt->symbols.find(key);
+        if (symIt != scopeIt->symbols.end())
+            return &symIt->second;
+    }
+    return nullptr;
 }
 
 /// @brief Record the declared type for a symbol and mark it as referenced.
@@ -306,6 +328,54 @@ void Lowerer::markArray(std::string_view name)
     info.isArray = true;
     if (info.isBoolean)
         info.isBoolean = false;
+}
+
+void Lowerer::pushFieldScope(const std::string &className)
+{
+    FieldScope scope;
+    if (auto it = classLayouts_.find(className); it != classLayouts_.end())
+    {
+        scope.layout = &it->second;
+        for (const auto &field : it->second.fields)
+        {
+            SymbolInfo info;
+            info.type = field.type;
+            info.hasType = true;
+            info.isArray = false;
+            info.isBoolean = (field.type == AstType::Bool);
+            info.referenced = false;
+            info.isObject = false;
+            info.objectClass.clear();
+            scope.symbols.emplace(field.name, std::move(info));
+        }
+    }
+    fieldScopeStack_.push_back(std::move(scope));
+}
+
+void Lowerer::popFieldScope()
+{
+    if (!fieldScopeStack_.empty())
+        fieldScopeStack_.pop_back();
+}
+
+const Lowerer::FieldScope *Lowerer::activeFieldScope() const
+{
+    if (fieldScopeStack_.empty())
+        return nullptr;
+    return &fieldScopeStack_.back();
+}
+
+bool Lowerer::isFieldInScope(std::string_view name) const
+{
+    if (name.empty())
+        return false;
+    std::string key(name);
+    for (auto it = fieldScopeStack_.rbegin(); it != fieldScopeStack_.rend(); ++it)
+    {
+        if (it->symbols.find(key) != it->symbols.end())
+            return true;
+    }
+    return false;
 }
 
 /// @brief Reset symbol metadata between procedure lowering runs.
@@ -379,6 +449,36 @@ Lowerer::SlotType Lowerer::getSlotType(std::string_view name) const
     else
         info.type = coreTypeForAstType(info.isBoolean ? AstType::Bool : astTy);
     return info;
+}
+
+std::optional<Lowerer::VariableStorage>
+Lowerer::resolveVariableStorage(std::string_view name, il::support::SourceLoc loc)
+{
+    if (name.empty())
+        return std::nullopt;
+
+    SlotType slotInfo = getSlotType(name);
+    if (const auto *info = findSymbol(name))
+    {
+        if (info->slotId)
+            return VariableStorage{slotInfo, Value::temp(*info->slotId), false};
+    }
+
+    if (auto field = resolveImplicitField(name, loc))
+    {
+        VariableStorage storage;
+        storage.slotInfo = slotInfo;
+        storage.slotInfo.type = field->ilType;
+        storage.slotInfo.isArray = false;
+        storage.slotInfo.isBoolean = (field->astType == AstType::Bool);
+        storage.slotInfo.isObject = false;
+        storage.slotInfo.objectClass.clear();
+        storage.pointer = field->ptr;
+        storage.isField = true;
+        return storage;
+    }
+
+    return std::nullopt;
 }
 
 /// @brief Retrieve a cached procedure signature when available.
