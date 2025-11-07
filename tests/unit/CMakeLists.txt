@@ -207,6 +207,12 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_string_len_clamp PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_string_len_clamp test_rt_string_len_clamp)
 
+    viper_add_test(
+            test_rt_string_wrap_alloc_fail
+            ${VIPER_TESTS_DIR}/runtime/RTStringWrapAllocFailTests.cpp)
+    target_link_libraries(test_rt_string_wrap_alloc_fail PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_string_wrap_alloc_fail test_rt_string_wrap_alloc_fail)
+
     viper_add_test(test_rt_alloc_zero ${VIPER_TESTS_DIR}/runtime/RTAllocZeroTests.cpp)
     target_link_libraries(test_rt_alloc_zero PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_alloc_zero test_rt_alloc_zero)

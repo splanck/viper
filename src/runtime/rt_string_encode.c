@@ -100,6 +100,11 @@ rt_string rt_const_cstr(const char *c)
     if (!c)
         return NULL;
     rt_string s = (rt_string)rt_alloc(sizeof(*s));
+    if (!s)
+    {
+        rt_trap("rt_const_cstr: alloc");
+        return NULL;
+    }
     s->data = (char *)c;
     s->heap = NULL;
     s->literal_len = strlen(c);
