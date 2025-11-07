@@ -48,8 +48,8 @@ L30:
 L40:
   .loc 1 4 10
   %t10 = load i1, %t0
-  .loc 1 4 12
-  %t11 = trunc1 -1
+  .loc 1 4 15
+  %t11 = trunc1 1
   .loc 1 4 12
   %t12 = zext1 %t10
   .loc 1 4 12
@@ -69,7 +69,7 @@ L40:
   .loc 1 4 4
   br L50
 L50:
-  .loc 1 5 16
+  .loc 1 5 10
   %t18 = trunc1 0
   .loc 1 5 20
   %t19 = load i1, %t0
