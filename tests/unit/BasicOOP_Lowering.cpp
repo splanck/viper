@@ -218,6 +218,104 @@ TEST(BasicOOPLoweringTest, LoadsMemberAccessFromField)
     EXPECT_TRUE(sawLoad);
 }
 
+TEST(BasicOOPLoweringTest, MemberAccessOutsideMethodsStoresAndLoads)
+{
+    const std::string src = "10 CLASS D\n"
+                            "20   v AS INTEGER\n"
+                            "30 END CLASS\n"
+                            "40 DIM d AS D\n"
+                            "50 LET d = NEW D()\n"
+                            "60 LET d.v = 9\n"
+                            "70 PRINT d.v\n"
+                            "80 END\n";
+
+    SourceManager sm;
+    BasicCompilerInput input{src, "member_main.bas"};
+    BasicCompilerOptions options{};
+
+    auto result = compileBasic(input, options, sm);
+    ASSERT_TRUE(result.succeeded());
+
+    const il::core::Module &module = result.module;
+    const il::core::Function *mainFn = findFunctionCaseInsensitive(module, "main");
+    ASSERT_NE(mainFn, nullptr);
+
+    std::unordered_map<unsigned, long long> gepOffsets;
+    bool sawStore = false;
+    bool sawLoad = false;
+    for (const auto &block : mainFn->blocks)
+    {
+        for (const auto &instr : block.instructions)
+        {
+            if (instr.op == il::core::Opcode::GEP && instr.result && instr.operands.size() >= 2 &&
+                instr.operands[1].kind == il::core::Value::Kind::ConstInt)
+            {
+                gepOffsets.emplace(*instr.result, instr.operands[1].i64);
+            }
+            if (instr.op == il::core::Opcode::Store && instr.operands.size() >= 2 &&
+                instr.operands[0].kind == il::core::Value::Kind::Temp &&
+                instr.operands[1].kind == il::core::Value::Kind::ConstInt &&
+                instr.operands[1].i64 == 9)
+            {
+                auto it = gepOffsets.find(instr.operands[0].id);
+                if (it != gepOffsets.end() && it->second == 0)
+                    sawStore = true;
+            }
+            if (instr.op == il::core::Opcode::Load && !instr.operands.empty() &&
+                instr.operands[0].kind == il::core::Value::Kind::Temp)
+            {
+                auto it = gepOffsets.find(instr.operands[0].id);
+                if (it != gepOffsets.end() && it->second == 0)
+                    sawLoad = true;
+            }
+        }
+    }
+
+    EXPECT_TRUE(sawStore);
+    EXPECT_TRUE(sawLoad);
+}
+
+TEST(BasicOOPLoweringTest, MemberAccessStringFieldRetainsReferences)
+{
+    const std::string src = "10 CLASS P\n"
+                            "20   name AS STRING\n"
+                            "30 END CLASS\n"
+                            "40 DIM p AS P\n"
+                            "50 LET p = NEW P()\n"
+                            "60 LET p.name = \"hi\"\n"
+                            "70 LET p.name = \"bye\"\n"
+                            "80 END\n";
+
+    SourceManager sm;
+    BasicCompilerInput input{src, "member_string.bas"};
+    BasicCompilerOptions options{};
+
+    auto result = compileBasic(input, options, sm);
+    ASSERT_TRUE(result.succeeded());
+
+    const il::core::Module &module = result.module;
+    const il::core::Function *mainFn = findFunctionCaseInsensitive(module, "main");
+    ASSERT_NE(mainFn, nullptr);
+
+    bool sawRetain = false;
+    bool sawRelease = false;
+    for (const auto &block : mainFn->blocks)
+    {
+        for (const auto &instr : block.instructions)
+        {
+            if (instr.op != il::core::Opcode::Call)
+                continue;
+            if (equalsIgnoreCase(instr.callee, "rt_str_retain_maybe"))
+                sawRetain = true;
+            else if (equalsIgnoreCase(instr.callee, "rt_str_release_maybe"))
+                sawRelease = true;
+        }
+    }
+
+    EXPECT_TRUE(sawRetain);
+    EXPECT_TRUE(sawRelease);
+}
+
 TEST(BasicOOPLoweringTest, BareFieldNameBindsToInstance)
 {
     const std::string src = "10 CLASS C\n"
