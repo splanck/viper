@@ -231,7 +231,7 @@ void rt_file_init(RtFile *file)
 /// @param mode BASIC mode string (e.g., "r", "w", "a").
 /// @param out_err Optional error destination.
 /// @return `true` on success; otherwise `false` with @p out_err populated.
-bool rt_file_open(RtFile *file, const char *path, const char *mode, RtError *out_err)
+bool rt_file_open(RtFile *file, const char *path, const char *mode, int32_t basic_mode, RtError *out_err)
 {
     if (!file || !path || !mode)
     {
@@ -240,7 +240,7 @@ bool rt_file_open(RtFile *file, const char *path, const char *mode, RtError *out
     }
 
     int flags = 0;
-    if (!rt_file_mode_to_flags(mode, &flags))
+    if (!rt_file_mode_to_flags(mode, basic_mode, &flags))
     {
         file->fd = -1;
         rt_file_set_error(out_err, Err_InvalidOperation, 0);

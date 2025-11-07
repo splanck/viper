@@ -23,9 +23,10 @@ extern "C"
 
     /// @brief Parse an fopen-style @p mode string into POSIX open(2) flags.
     /// @param mode Null-terminated mode string such as "r", "w", "a", or variants with modifiers.
+    /// @param basic_mode BASIC OPEN mode enumerator when known; pass a negative value when not applicable.
     /// @param flags_out Receives resolved flag bits on success.
     /// @return True when the mode string is valid; false otherwise.
-    bool rt_file_mode_to_flags(const char *mode, int *flags_out);
+    bool rt_file_mode_to_flags(const char *mode, int32_t basic_mode, int *flags_out);
 
     /// @brief Extract a filesystem path pointer from a runtime string.
     /// @param path Runtime string containing the path; may be NULL.
