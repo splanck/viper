@@ -17,6 +17,7 @@
 #include "frontends/basic/Parser.hpp"
 #include "frontends/basic/ast/ExprNodes.hpp"
 
+#include <cctype>
 #include <cstdio>
 #include <string>
 #include <string_view>
@@ -260,15 +261,28 @@ Type Parser::parseTypeKeyword()
     }
     if (at(TokenKind::Identifier))
     {
+        auto toUpper = [](std::string_view text)
+        {
+            std::string result;
+            result.reserve(text.size());
+            for (char ch : text)
+            {
+                unsigned char byte = static_cast<unsigned char>(ch);
+                result.push_back(static_cast<char>(std::toupper(byte)));
+            }
+            return result;
+        };
+
         std::string name = peek().lexeme;
         consume();
-        if (name == "INTEGER")
+        std::string upperName = toUpper(name);
+        if (upperName == "INTEGER" || upperName == "INT" || upperName == "LONG")
             return Type::I64;
-        if (name == "DOUBLE")
+        if (upperName == "DOUBLE" || upperName == "FLOAT")
             return Type::F64;
-        if (name == "SINGLE")
+        if (upperName == "SINGLE")
             return Type::F64;
-        if (name == "STRING")
+        if (upperName == "STRING")
             return Type::Str;
     }
     return Type::I64;
