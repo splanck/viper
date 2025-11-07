@@ -9,6 +9,7 @@
 #include "frontends/basic/AST.hpp"
 #include "frontends/basic/BasicTypes.hpp"
 #include "frontends/basic/EmitCommon.hpp"
+#include "frontends/basic/IdentifierCase.hpp"
 #include "frontends/basic/LowerRuntime.hpp"
 #include "frontends/basic/NameMangler.hpp"
 #include "frontends/basic/Semantic_OOP.hpp"
@@ -634,7 +635,8 @@ class Lowerer
 
         [[nodiscard]] const Field *findField(std::string_view name) const
         {
-            auto it = fieldIndex.find(std::string(name));
+            std::string key = canonicalizeIdentifier(name);
+            auto it = fieldIndex.find(key);
             if (it == fieldIndex.end())
                 return nullptr;
             return &fields[it->second];

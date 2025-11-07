@@ -211,7 +211,7 @@ ProcedureLowering::LoweringContext::LoweringContext(
 /// @return Reference to the mutable symbol record.
 Lowerer::SymbolInfo &Lowerer::ensureSymbol(std::string_view name)
 {
-    std::string key(name);
+    std::string key = canonicalizeIdentifier(name);
     auto [it, inserted] = symbols.emplace(std::move(key), SymbolInfo{});
     if (inserted)
     {
@@ -233,7 +233,7 @@ Lowerer::SymbolInfo &Lowerer::ensureSymbol(std::string_view name)
 /// @return Mutable symbol metadata or @c nullptr when absent.
 Lowerer::SymbolInfo *Lowerer::findSymbol(std::string_view name)
 {
-    std::string key(name);
+    std::string key = canonicalizeIdentifier(name);
     if (auto it = symbols.find(key); it != symbols.end())
         return &it->second;
     for (auto scopeIt = fieldScopeStack_.rbegin(); scopeIt != fieldScopeStack_.rend(); ++scopeIt)
@@ -252,7 +252,7 @@ Lowerer::SymbolInfo *Lowerer::findSymbol(std::string_view name)
 /// @return Const symbol metadata or @c nullptr when absent.
 const Lowerer::SymbolInfo *Lowerer::findSymbol(std::string_view name) const
 {
-    std::string key(name);
+    std::string key = canonicalizeIdentifier(name);
     if (auto it = symbols.find(key); it != symbols.end())
         return &it->second;
     for (auto scopeIt = fieldScopeStack_.rbegin(); scopeIt != fieldScopeStack_.rend(); ++scopeIt)
@@ -291,6 +291,7 @@ void Lowerer::setSymbolObjectType(std::string_view name, std::string className)
         return;
     auto &info = ensureSymbol(name);
     info.isObject = true;
+    canonicalizeIdentifierInPlace(className);
     info.objectClass = std::move(className);
     info.hasType = true;
 }
@@ -333,7 +334,8 @@ void Lowerer::markArray(std::string_view name)
 void Lowerer::pushFieldScope(const std::string &className)
 {
     FieldScope scope;
-    if (auto it = classLayouts_.find(className); it != classLayouts_.end())
+    std::string classKey = canonicalizeIdentifier(className);
+    if (auto it = classLayouts_.find(classKey); it != classLayouts_.end())
     {
         scope.layout = &it->second;
         for (const auto &field : it->second.fields)
@@ -346,7 +348,8 @@ void Lowerer::pushFieldScope(const std::string &className)
             info.referenced = false;
             info.isObject = false;
             info.objectClass.clear();
-            scope.symbols.emplace(field.name, std::move(info));
+            std::string fieldKey = canonicalizeIdentifier(field.name);
+            scope.symbols.emplace(std::move(fieldKey), std::move(info));
         }
     }
     fieldScopeStack_.push_back(std::move(scope));
@@ -369,7 +372,7 @@ bool Lowerer::isFieldInScope(std::string_view name) const
 {
     if (name.empty())
         return false;
-    std::string key(name);
+    std::string key = canonicalizeIdentifier(name);
     for (auto it = fieldScopeStack_.rbegin(); it != fieldScopeStack_.rend(); ++it)
     {
         if (it->symbols.find(key) != it->symbols.end())
@@ -417,7 +420,8 @@ void Lowerer::resetSymbolState()
 Lowerer::SlotType Lowerer::getSlotType(std::string_view name) const
 {
     SlotType info;
-    AstType astTy = inferAstTypeFromName(name);
+    std::string canonical = canonicalizeIdentifier(name);
+    AstType astTy = inferAstTypeFromName(canonical);
     if (const auto *sym = findSymbol(name))
     {
         if (sym->isObject)

@@ -19,6 +19,7 @@
 
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/BasicTypes.hpp"
+#include "frontends/basic/IdentifierCase.hpp"
 #include "frontends/basic/LoweringPipeline.hpp"
 #include "frontends/basic/TypeSuffix.hpp"
 #include "frontends/basic/lower/Emitter.hpp"
@@ -71,7 +72,8 @@ std::optional<::il::frontends::basic::Type> Lowerer::findMethodReturnType(
     if (!info)
         return std::nullopt;
 
-    auto it = info->methods.find(std::string(methodName));
+    std::string methodKey = canonicalizeIdentifier(methodName);
+    auto it = info->methods.find(methodKey);
     if (it == info->methods.end())
         return std::nullopt;
     if (it->second.returnType)

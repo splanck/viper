@@ -19,6 +19,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/basic/Lexer.hpp"
+#include "frontends/basic/IdentifierCase.hpp"
 #include <array>
 #include <cctype>
 #include <cstddef>
@@ -138,23 +139,16 @@ static_assert(isKeywordTableSorted(), "Keyword table must be sorted lexicographi
 ///          corresponding token kind when a match is found.
 /// @param lexeme Uppercased identifier text to classify.
 /// @return Keyword kind when recognised; @ref TokenKind::Identifier otherwise.
-TokenKind lookupKeyword(std::string_view lexeme)
+TokenKind lookupKeyword(std::string_view canonicalLexeme)
 {
-    if (lexeme.size() == 2)
-    {
-        unsigned char first = static_cast<unsigned char>(lexeme[0]);
-        unsigned char second = static_cast<unsigned char>(lexeme[1]);
-        if (std::toupper(first) == 'M' && std::toupper(second) == 'E')
-            lexeme = "ME";
-    }
     auto first = kKeywordTable.begin();
     auto last = kKeywordTable.end();
     while (first < last)
     {
         auto mid = first + (last - first) / 2;
-        if (mid->lexeme == lexeme)
+        if (mid->lexeme == canonicalLexeme)
             return mid->kind;
-        if (mid->lexeme < lexeme)
+        if (mid->lexeme < canonicalLexeme)
         {
             first = mid + 1;
         }
@@ -351,11 +345,12 @@ Token Lexer::lexIdentifierOrKeyword()
     il::support::SourceLoc loc{file_id_, line_, column_};
     std::string s;
     while (std::isalnum(static_cast<unsigned char>(peek())) || peek() == '_')
-        s.push_back(std::toupper(static_cast<unsigned char>(get())));
+        s.push_back(get());
     if (peek() == '$' || peek() == '#' || peek() == '!' || peek() == '%' || peek() == '&')
-        s.push_back(std::toupper(static_cast<unsigned char>(get())));
-    TokenKind kind = lookupKeyword(s);
-    return {kind, s, loc};
+        s.push_back(get());
+    std::string canonical = canonicalizeIdentifier(s);
+    TokenKind kind = lookupKeyword(canonical);
+    return {kind, canonical, loc};
 }
 
 /// @brief Lex a string literal delimited by double quotes.

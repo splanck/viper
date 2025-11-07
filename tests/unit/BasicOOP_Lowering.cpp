@@ -167,6 +167,91 @@ TEST(BasicOOPLoweringTest, StoresMemberAssignmentIntoField)
     EXPECT_TRUE(storeUsesOffset);
 }
 
+TEST(BasicOOPLoweringTest, HandlesMeIdentifiersCaseInsensitively)
+{
+    const std::string src = "10 CLASS C\n"
+                            "20   v AS INTEGER\n"
+                            "30   SUB Seed()\n"
+                            "40     me.v = 1\n"
+                            "50   END SUB\n"
+                            "60   SUB Bump()\n"
+                            "70     ME.v = ME.v + 1\n"
+                            "80   END SUB\n"
+                            "90 END CLASS\n"
+                            "100 END\n";
+
+    SourceManager sm;
+    BasicCompilerInput input{src, "me_case_insensitive.bas"};
+    BasicCompilerOptions options{};
+
+    auto result = compileBasic(input, options, sm);
+    ASSERT_TRUE(result.succeeded());
+
+    const il::core::Module &module = result.module;
+
+    const il::core::Function *seedFn = findFunctionCaseInsensitive(module, "C.Seed");
+    ASSERT_NE(seedFn, nullptr);
+
+    std::unordered_map<unsigned, long long> gepOffsets;
+    bool sawSeedStore = false;
+    for (const auto &block : seedFn->blocks)
+    {
+        for (const auto &instr : block.instructions)
+        {
+            if (instr.op == il::core::Opcode::GEP && instr.result && instr.operands.size() >= 2 &&
+                instr.operands[1].kind == il::core::Value::Kind::ConstInt)
+            {
+                gepOffsets.emplace(*instr.result, instr.operands[1].i64);
+            }
+            if (instr.op == il::core::Opcode::Store && instr.operands.size() >= 2 &&
+                instr.operands[0].kind == il::core::Value::Kind::Temp &&
+                instr.operands[1].kind == il::core::Value::Kind::ConstInt && instr.operands[1].i64 == 1)
+            {
+                auto it = gepOffsets.find(instr.operands[0].id);
+                if (it != gepOffsets.end() && it->second == 0)
+                    sawSeedStore = true;
+            }
+        }
+    }
+
+    EXPECT_TRUE(sawSeedStore);
+
+    const il::core::Function *bumpFn = findFunctionCaseInsensitive(module, "C.Bump");
+    ASSERT_NE(bumpFn, nullptr);
+
+    gepOffsets.clear();
+    bool sawBumpLoad = false;
+    bool sawBumpStore = false;
+    for (const auto &block : bumpFn->blocks)
+    {
+        for (const auto &instr : block.instructions)
+        {
+            if (instr.op == il::core::Opcode::GEP && instr.result && instr.operands.size() >= 2 &&
+                instr.operands[1].kind == il::core::Value::Kind::ConstInt)
+            {
+                gepOffsets.emplace(*instr.result, instr.operands[1].i64);
+            }
+            if (instr.op == il::core::Opcode::Load && instr.operands.size() >= 1 &&
+                instr.operands[0].kind == il::core::Value::Kind::Temp)
+            {
+                auto it = gepOffsets.find(instr.operands[0].id);
+                if (it != gepOffsets.end() && it->second == 0)
+                    sawBumpLoad = true;
+            }
+            if (instr.op == il::core::Opcode::Store && instr.operands.size() >= 1 &&
+                instr.operands[0].kind == il::core::Value::Kind::Temp)
+            {
+                auto it = gepOffsets.find(instr.operands[0].id);
+                if (it != gepOffsets.end() && it->second == 0)
+                    sawBumpStore = true;
+            }
+        }
+    }
+
+    EXPECT_TRUE(sawBumpLoad);
+    EXPECT_TRUE(sawBumpStore);
+}
+
 TEST(BasicOOPLoweringTest, StoresImplicitMemberAssignmentIntoField)
 {
     const std::string src = "10 CLASS C\n"

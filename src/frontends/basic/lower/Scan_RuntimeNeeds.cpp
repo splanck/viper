@@ -694,7 +694,8 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
         if (className.empty())
             return;
 
-        auto layoutIt = lowerer_.classLayouts_.find(className);
+        std::string classKey = canonicalizeIdentifier(className);
+        auto layoutIt = lowerer_.classLayouts_.find(classKey);
         if (layoutIt == lowerer_.classLayouts_.end())
             return;
 

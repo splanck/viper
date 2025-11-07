@@ -331,7 +331,8 @@ void Lowerer::emitClassDestructor(const ClassDecl &klass, const DestructorDecl *
     curLoc = {};
 
     Value selfPtr = loadSelfPointer(selfSlotId);
-    auto layoutIt = classLayouts_.find(klass.name);
+    std::string classKey = canonicalizeIdentifier(klass.name);
+    auto layoutIt = classLayouts_.find(classKey);
     if (layoutIt != classLayouts_.end())
         emitFieldReleaseSequence(selfPtr, layoutIt->second);
 

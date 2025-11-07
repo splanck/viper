@@ -20,6 +20,7 @@
 ///          @ref Lowerer::ClassLayout table drives later IL emission.
 
 #include "frontends/basic/AstWalker.hpp"
+#include "frontends/basic/IdentifierCase.hpp"
 #include "frontends/basic/Lowerer.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
 
@@ -89,6 +90,7 @@ template <typename FieldRange>
         offset = alignTo(offset, kFieldAlignment);
         Lowerer::ClassLayout::Field info{};
         info.name = field.name;
+        canonicalizeIdentifierInPlace(info.name);
         info.type = field.type;
         info.offset = offset;
         info.size = fieldSize(field.type);
@@ -142,7 +144,7 @@ class OopScanWalker final : public BasicAstWalker<OopScanWalker>
     {
         auto layout = buildLayout(decl.fields);
         layout.classId = nextClassId_++;
-        layouts.emplace_back(decl.name, std::move(layout));
+        layouts.emplace_back(canonicalizeIdentifier(decl.name), std::move(layout));
     }
 
     /// @brief Capture metadata after visiting a type alias that behaves like a class.
@@ -153,7 +155,7 @@ class OopScanWalker final : public BasicAstWalker<OopScanWalker>
     {
         auto layout = buildLayout(decl.fields);
         layout.classId = nextClassId_++;
-        layouts.emplace_back(decl.name, std::move(layout));
+        layouts.emplace_back(canonicalizeIdentifier(decl.name), std::move(layout));
     }
 
     /// @brief Record the need for object allocation runtime support.

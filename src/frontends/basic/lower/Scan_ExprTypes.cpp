@@ -294,7 +294,8 @@ class ExprTypeScanner final : public BasicAstWalker<ExprTypeScanner>
         {
             consumeExpr(*expr.base);
             std::string className = lowerer_.resolveObjectClass(*expr.base);
-            auto layoutIt = lowerer_.classLayouts_.find(className);
+            std::string classKey = canonicalizeIdentifier(className);
+            auto layoutIt = lowerer_.classLayouts_.find(classKey);
             if (layoutIt != lowerer_.classLayouts_.end())
             {
                 if (const auto *field = layoutIt->second.findField(expr.member))

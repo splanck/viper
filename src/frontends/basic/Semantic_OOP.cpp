@@ -26,6 +26,7 @@
 #include "frontends/basic/AST.hpp"
 #include "frontends/basic/AstWalker.hpp"
 #include "frontends/basic/DiagnosticEmitter.hpp"
+#include "frontends/basic/IdentifierCase.hpp"
 #include "frontends/basic/TypeSuffix.hpp"
 
 #include "support/diagnostics.hpp"
@@ -53,7 +54,8 @@ class MemberShadowCheckWalker final : public BasicAstWalker<MemberShadowCheckWal
     {
         if (!emitter_ || stmt.name.empty())
             return;
-        if (!fields_.count(stmt.name))
+        std::string name = canonicalizeIdentifier(stmt.name);
+        if (!fields_.count(name))
             return;
 
         std::string qualifiedField = className_;
@@ -149,7 +151,8 @@ void emitMissingReturn(const ClassDecl &klass, const MethodDecl &method, Diagnos
 /// @return Pointer to the associated @ref ClassInfo or @c nullptr when absent.
 ClassInfo *OopIndex::findClass(const std::string &name)
 {
-    auto it = classes_.find(name);
+    std::string key = canonicalizeIdentifier(name);
+    auto it = classes_.find(key);
     if (it == classes_.end())
     {
         return nullptr;
@@ -165,7 +168,8 @@ ClassInfo *OopIndex::findClass(const std::string &name)
 /// @return Pointer to the stored @ref ClassInfo or @c nullptr when absent.
 const ClassInfo *OopIndex::findClass(const std::string &name) const
 {
-    auto it = classes_.find(name);
+    std::string key = canonicalizeIdentifier(name);
+    auto it = classes_.find(key);
     if (it == classes_.end())
     {
         return nullptr;
@@ -202,14 +206,15 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
         const auto &classDecl = static_cast<const ClassDecl &>(*stmtPtr);
 
         ClassInfo info;
-        info.name = classDecl.name;
+        info.name = canonicalizeIdentifier(classDecl.name);
         info.fields.reserve(classDecl.fields.size());
         std::unordered_set<std::string> classFieldNames;
         classFieldNames.reserve(classDecl.fields.size());
         for (const auto &field : classDecl.fields)
         {
-            info.fields.push_back(ClassInfo::FieldInfo{field.name, field.type});
-            classFieldNames.insert(field.name);
+            std::string canonicalField = canonicalizeIdentifier(field.name);
+            info.fields.push_back(ClassInfo::FieldInfo{canonicalField, field.type});
+            classFieldNames.insert(canonicalField);
         }
 
         for (const auto &member : classDecl.members)
@@ -263,7 +268,7 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
                     }
                     emitMissingReturn(classDecl, method, emitter);
                     checkMemberShadowing(method.body, classDecl, classFieldNames, emitter);
-                    info.methods[method.name] = std::move(sig);
+                    info.methods[canonicalizeIdentifier(method.name)] = std::move(sig);
                     break;
                 }
                 default:
