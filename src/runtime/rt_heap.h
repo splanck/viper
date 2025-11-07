@@ -49,6 +49,8 @@ extern "C"
                         size_t init_cap);
     void rt_heap_retain(void *payload);
     size_t rt_heap_release(void *payload);
+    size_t rt_heap_release_deferred(void *payload);
+    void rt_heap_free_zero_ref(void *payload);
     rt_heap_hdr_t *rt_heap_hdr(void *payload);
     void *rt_heap_data(rt_heap_hdr_t *h);
     size_t rt_heap_len(void *payload);

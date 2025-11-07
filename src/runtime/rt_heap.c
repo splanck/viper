@@ -140,6 +140,36 @@ void rt_heap_retain(void *payload)
 #endif
 }
 
+/// @brief Release bookkeeping for a heap header with optional deallocation.
+/// @details Shared helper that decrements the reference count and, when
+///          @p free_when_zero is true, clears and frees the header once the
+///          count reaches zero.  Debug builds log the resulting count when the
+///          retain/release tracing macro is enabled.
+/// @param hdr Heap header describing the allocation; may be `NULL`.
+/// @param payload Payload pointer associated with @p hdr; used for logging.
+/// @param free_when_zero Whether to free storage when the reference count hits
+///        zero.
+/// @return Updated reference count after the decrement, or zero when the block
+///         was deallocated.
+static size_t rt_heap_release_impl(rt_heap_hdr_t *hdr, void *payload, int free_when_zero)
+{
+    if (!hdr)
+        return 0;
+    rt_heap_validate_header(hdr);
+    assert(hdr->refcnt > 0);
+    size_t next = --hdr->refcnt;
+#ifdef VIPER_RC_DEBUG
+    fprintf(stderr, "rt_heap_release(%p) => %zu\n", payload, next);
+#endif
+    if (next == 0 && free_when_zero)
+    {
+        memset(hdr, 0, sizeof(*hdr));
+        free(hdr);
+        return 0;
+    }
+    return next;
+}
+
 /// @brief Decrement the reference count and free storage when it reaches zero.
 /// @details Drops the reference count after validating the header.  When the
 ///          count hits zero the header and payload are cleared and freed,
@@ -151,21 +181,39 @@ void rt_heap_retain(void *payload)
 size_t rt_heap_release(void *payload)
 {
     rt_heap_hdr_t *hdr = payload_to_hdr(payload);
+    return rt_heap_release_impl(hdr, payload, /*free_when_zero=*/1);
+}
+
+/// @brief Decrement the reference count without freeing the payload.
+/// @details Mirrors @ref rt_heap_release but preserves the header and payload
+///          even when the updated reference count reaches zero.  Callers can use
+///          this variant to run custom destructors while the allocation remains
+///          valid before finally handing control back to the heap for
+///          deallocation.
+/// @param payload Shared payload pointer; `NULL` pointers are ignored.
+/// @return Reference count after the decrement.
+size_t rt_heap_release_deferred(void *payload)
+{
+    rt_heap_hdr_t *hdr = payload_to_hdr(payload);
+    return rt_heap_release_impl(hdr, payload, /*free_when_zero=*/0);
+}
+
+/// @brief Free a heap allocation whose reference count already reached zero.
+/// @details Validates the header and, when the reference count is zero, clears
+///          and frees the allocation.  Non-zero reference counts leave the
+///          payload untouched so callers can safely invoke the helper after
+///          custom cleanup logic.
+/// @param payload Shared payload pointer; `NULL` pointers are ignored.
+void rt_heap_free_zero_ref(void *payload)
+{
+    rt_heap_hdr_t *hdr = payload_to_hdr(payload);
     if (!hdr)
-        return 0;
+        return;
     rt_heap_validate_header(hdr);
-    assert(hdr->refcnt > 0);
-    size_t next = --hdr->refcnt;
-#ifdef VIPER_RC_DEBUG
-    fprintf(stderr, "rt_heap_release(%p) => %zu\n", payload, next);
-#endif
-    if (next == 0)
-    {
-        memset(hdr, 0, sizeof(*hdr));
-        free(hdr);
-        return 0;
-    }
-    return next;
+    if (hdr->refcnt != 0)
+        return;
+    memset(hdr, 0, sizeof(*hdr));
+    free(hdr);
 }
 
 /// @brief Obtain a mutable header pointer for a payload.

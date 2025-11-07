@@ -26,5 +26,8 @@ int main()
 
     int32_t released = rt_obj_release_check0(payload);
     assert(released == 1);
+    assert(payload[0] == 0x12);
+    assert(payload[payload_size - 1] == 0x34);
+    rt_obj_free(payload);
     return 0;
 }
