@@ -213,6 +213,9 @@ class OopScanWalker final : public BasicAstWalker<OopScanWalker>
 void Lowerer::scanOOP(const Program &prog)
 {
     classLayouts_.clear();
+    oopIndex_.clear();
+
+    buildOopIndex(prog, oopIndex_, nullptr);
 
     OopScanWalker walker(*this);
     walker.evaluateProgram(prog);

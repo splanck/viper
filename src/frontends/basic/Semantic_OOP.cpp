@@ -140,6 +140,11 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter * 
             }
         }
 
+        if (!info.hasConstructor)
+        {
+            info.hasSynthCtor = true;
+        }
+
         index.classes()[info.name] = std::move(info);
     }
 }
