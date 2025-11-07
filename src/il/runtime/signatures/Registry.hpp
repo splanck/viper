@@ -47,6 +47,9 @@ struct Signature
     std::string name;             ///< Canonical runtime symbol name.
     std::vector<SigParam> params; ///< Parameter type sequence.
     std::vector<SigParam> rets;   ///< Result type sequence (empty for void).
+    bool nothrow = false;         ///< Helper is guaranteed not to throw.
+    bool readonly = false;        ///< Helper may read memory but performs no writes.
+    bool pure = false;            ///< Helper is free of side effects and memory access.
 };
 
 /// @brief Register an expected runtime signature in the debug registry.
@@ -64,7 +67,10 @@ const std::vector<Signature> &all_signatures();
 /// @return Materialised @ref Signature for registration.
 inline Signature make_signature(std::string name,
                                 std::initializer_list<SigParam::Kind> params,
-                                std::initializer_list<SigParam::Kind> returns = {})
+                                std::initializer_list<SigParam::Kind> returns = {},
+                                bool nothrow = false,
+                                bool readonly = false,
+                                bool pure = false)
 {
     Signature signature;
     signature.name = std::move(name);
@@ -74,6 +80,9 @@ inline Signature make_signature(std::string name,
     signature.rets.reserve(returns.size());
     for (auto kind : returns)
         signature.rets.push_back(SigParam{kind});
+    signature.nothrow = nothrow;
+    signature.readonly = readonly;
+    signature.pure = pure;
     return signature;
 }
 
