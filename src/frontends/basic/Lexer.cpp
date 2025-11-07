@@ -140,6 +140,13 @@ static_assert(isKeywordTableSorted(), "Keyword table must be sorted lexicographi
 /// @return Keyword kind when recognised; @ref TokenKind::Identifier otherwise.
 TokenKind lookupKeyword(std::string_view lexeme)
 {
+    if (lexeme.size() == 2)
+    {
+        unsigned char first = static_cast<unsigned char>(lexeme[0]);
+        unsigned char second = static_cast<unsigned char>(lexeme[1]);
+        if (std::toupper(first) == 'M' && std::toupper(second) == 'E')
+            lexeme = "ME";
+    }
     auto first = kKeywordTable.begin();
     auto last = kKeywordTable.end();
     while (first < last)
