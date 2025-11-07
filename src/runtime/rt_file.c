@@ -159,7 +159,7 @@ int32_t rt_open_err_vstr(ViperString *path, int32_t mode, int32_t channel)
 
     rt_file_init(&entry->file);
     RtError err = RT_ERROR_NONE;
-    if (!rt_file_open(&entry->file, path_str, mode_str, &err))
+    if (!rt_file_open(&entry->file, path_str, mode_str, mode, &err))
     {
         entry->in_use = false;
         return (int32_t)err.kind;
