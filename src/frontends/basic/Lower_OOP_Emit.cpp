@@ -353,8 +353,17 @@ void Lowerer::emitClassMethod(const ClassDecl &klass, const MethodDecl &method)
         }
     }
 
+    const bool returnsValue = method.ret.has_value();
+    Type methodRetType = Type(Type::Kind::Void);
+    std::optional<::il::frontends::basic::Type> methodRetAst;
+    if (returnsValue)
+    {
+        methodRetType = ilTypeForAstType(*method.ret);
+        methodRetAst = method.ret;
+    }
+
     std::string name = mangleMethod(klass.name, method.name);
-    Function &fn = builder->startFunction(name, Type(Type::Kind::Void), metadata.irParams);
+    Function &fn = builder->startFunction(name, methodRetType, metadata.irParams);
 
     auto &ctx = context();
     ctx.setFunction(&fn);
@@ -410,7 +419,28 @@ void Lowerer::emitClassMethod(const ClassDecl &klass, const MethodDecl &method)
     releaseArrayLocals(metadata.paramNames);
     releaseArrayParams(metadata.paramNames);
     curLoc = {};
-    emitRetVoid();
+    if (returnsValue)
+    {
+        Value retValue = Value::constInt(0);
+        switch (*methodRetAst)
+        {
+            case ::il::frontends::basic::Type::I64:
+                retValue = Value::constInt(0);
+                break;
+            case ::il::frontends::basic::Type::F64:
+                retValue = Value::constFloat(0.0);
+                break;
+            case ::il::frontends::basic::Type::Str:
+                retValue = emitConstStr(getStringLabel(""));
+                break;
+            case ::il::frontends::basic::Type::Bool:
+                retValue = emitBoolConst(false);
+                break;
+        }
+        emitRet(retValue);
+    }
+    else
+        emitRetVoid();
     ctx.blockNames().resetNamer();
 }
 

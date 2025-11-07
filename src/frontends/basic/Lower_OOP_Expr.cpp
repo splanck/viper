@@ -245,6 +245,14 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
 
     curLoc = expr.loc;
     std::string callee = className.empty() ? expr.method : mangleMethod(className, expr.method);
+
+    if (auto retType = findMethodReturnType(className, expr.method))
+    {
+        Type ilRetTy = ilTypeForAstType(*retType);
+        Value result = emitCallRet(ilRetTy, callee, args);
+        return {result, ilRetTy};
+    }
+
     emitCall(callee, args);
     return {Value::constInt(0), Type(Type::Kind::I64)};
 }
