@@ -696,6 +696,10 @@ class Lowerer
     /// @return Pointer to the signature when present, nullptr otherwise.
     const ProcedureSignature *findProcSignature(const std::string &name) const;
 
+    /// @brief Lookup the AST return type recorded for a class method.
+    std::optional<::il::frontends::basic::Type>
+    findMethodReturnType(std::string_view className, std::string_view methodName) const;
+
     [[nodiscard]] ProcedureContext &context() noexcept;
 
     [[nodiscard]] const ProcedureContext &context() const noexcept;
