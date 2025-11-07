@@ -5,12 +5,16 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Implements the diagnostic-oriented Expected helpers used across the support
-// library.  The utilities defined here wrap structured diagnostics around an
-// Expected<void> type, provide consistent severity-to-string mapping, and offer
-// helpers for printing diagnostics with optional source location context.  By
-// consolidating this behavior we ensure every subsystem reports errors in a
-// uniform format.
+// File: src/support/diag_expected.cpp
+// Purpose: Provide the Expected<void>-based diagnostic infrastructure shared by
+//          front ends, passes, and tooling.
+// Key invariants: Success is represented by an empty optional diagnostic; every
+//                 failure stores a fully-populated @ref Diag.  Severity strings
+//                 must remain lowercase to match existing command-line output.
+// Ownership/Lifetime: Expected instances own their diagnostic payloads by value;
+//                     printing helpers borrow output streams and optional source
+//                     managers supplied by the caller.
+// Links: src/support/diag_expected.hpp, docs/codemap.md#support-library
 //
 //===----------------------------------------------------------------------===//
 
@@ -81,9 +85,11 @@ namespace detail
 /// @brief Map a diagnostic severity to a lowercase string used for printing.
 ///
 /// @details The helper keeps the conversion in one location so diagnostic
-///          formatting stays consistent across the codebase.  New severity
-///          enumerators should extend this switch to maintain predictable
-///          wording across command-line tools.
+///          formatting stays consistent across the codebase.  Unrecognised
+///          enumerators fall back to an empty string, allowing call sites to
+///          continue emitting diagnostics even when future severities are added
+///          but not yet handled.  New severity enumerators should extend this
+///          switch to maintain predictable wording across command-line tools.
 ///
 /// @param severity Severity enumeration value to translate.
 /// @return Null-terminated string naming the severity level.
@@ -107,7 +113,9 @@ const char *diagSeverityToString(Severity severity)
 /// @details This convenience function standardises the error severity used by
 ///          several call sites.  The location is optional and defaults to an
 ///          unknown value when not supplied by the caller, preserving the
-///          invariant that missing source metadata is explicitly marked.
+///          invariant that missing source metadata is explicitly marked.  The
+///          message string is moved into the diagnostic to avoid needless copies
+///          when callers forward freshly constructed text.
 ///
 /// @param loc Source location that triggered the diagnostic, or unknown.
 /// @param msg Human-readable description of the problem.

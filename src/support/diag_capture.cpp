@@ -5,10 +5,16 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Provides the out-of-line helpers for the DiagCapture utility, which captures
-// diagnostics in string form and later materializes them as structured Diag
-// instances.  The helpers bridge legacy APIs that expect boolean success flags
-// with the modern Expected<void> diagnostics used by the rest of the library.
+// File: src/support/diag_capture.cpp
+// Purpose: Implement the deferred-diagnostic capture used by legacy-style APIs.
+// Key invariants: Captured diagnostics are stored as plain text until converted
+//                 back into @ref Diag objects; repeated conversions leave the
+//                 buffered message intact so callers can print diagnostics
+//                 multiple times.
+// Ownership/Lifetime: @ref DiagCapture owns its stringstream buffer and borrows
+//                     no external resources.  The bridging helper returns
+//                     @ref Expected<void> values that outlive the capture object.
+// Links: src/support/diag_capture.hpp, docs/codemap.md#support-library
 //
 //===----------------------------------------------------------------------===//
 
@@ -27,10 +33,11 @@ namespace il::support
 {
 /// @brief Write the given diagnostic to the supplied output stream.
 ///
-/// @details Delegates to `printDiag()` so formatting logic remains centralized
-///          in a single routine.  The capture's internal buffer is not
-///          mutated, allowing tooling to reprint the same diagnostic multiple
-///          times (for example, to stderr and to a log file) without reformatting.
+/// @details Simply forwards to @ref printDiag so all formatting (severity
+///          strings, source location prefixes, newline handling) remains
+///          centralised.  The capture's internal buffer is intentionally left
+///          untouched so that emitting to multiple streams—stderr, logs, etc.—
+///          is inexpensive and deterministic.
 ///
 /// @param out Destination stream that receives the formatted diagnostic text.
 /// @param diag Diagnostic instance to serialize.
@@ -41,12 +48,11 @@ void DiagCapture::printTo(std::ostream &out, const Diag &diag)
 
 /// @brief Convert the captured message into a Diagnostic value.
 ///
-/// @details The capture accumulates text in its stringstream as callers insert
-///          messages.  This method packages the resulting string into an error
-///          diagnostic and returns it by value so the caller can propagate it
-///          using the `Expected<void>` infrastructure.  The internal buffer
-///          remains intact, allowing the capture to continue gathering messages
-///          for later conversions.
+/// @details Packages the buffered string into a @ref Diag with error severity
+///          using @ref makeError.  Because the stringstream remains untouched,
+///          subsequent calls continue to observe the same captured payload—this
+///          is important for callers that convert the message into both an error
+///          return and a log entry.
 ///
 /// @return Diagnostic containing a copy of the captured text.
 Diag DiagCapture::toDiag() const
@@ -56,9 +62,12 @@ Diag DiagCapture::toDiag() const
 
 /// @brief Bridge a boolean success flag to an Expected<void> diagnostic result.
 ///
-/// Older APIs return a boolean to signal success.  This helper wraps that value
-/// by returning a default-constructed Expected on success or by converting the
-/// capture's buffered diagnostic into an error payload on failure.
+/// @details Normalises legacy APIs that report success with a boolean.  When
+///          @p ok is @c true the function returns a default-constructed (success)
+///          @ref Expected<void>.  Otherwise it invokes @ref DiagCapture::toDiag
+///          to convert buffered text into an error payload.  The capture remains
+///          unchanged so callers can still print or rewrap the diagnostic after
+///          propagating the failure.
 ///
 /// @param ok Boolean indicating whether the preceding operation succeeded.
 /// @param capture Capture containing any error text produced by the operation.
