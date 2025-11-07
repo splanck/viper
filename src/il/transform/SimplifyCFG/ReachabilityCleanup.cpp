@@ -5,16 +5,28 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Implements reachability analysis and cleanup utilities used by the SimplifyCFG
-// pass to prune unreachable blocks.
+// File: src/il/transform/SimplifyCFG/ReachabilityCleanup.cpp
+// Purpose: Perform reachability walks and erase unreachable blocks for the
+//          SimplifyCFG pass.
+// Key invariants: Entry block is always treated as reachable; EH-sensitive
+//                 blocks (entries/resume targets) are preserved even if the
+//                 reachability walk cannot find them; branch metadata (labels
+//                 and argument lists) remains consistent after block erasure.
+// Ownership/Lifetime: Operates on pass-owned il::core::Function instances and
+//                     mutates them in place; no new allocations escape the
+//                     function scope.
+// Perf/Threading notes: Uses O(N + E) breadth-first search with temporary
+//                       queues and bit-vectors; intended for single-threaded
+//                       pass execution.
+// Links: docs/il-passes.md#simplifycfg, docs/codemap.md#passes
 //
 //===----------------------------------------------------------------------===//
 //
 /// @file
 /// @brief Reachability-based cleanup helpers for SimplifyCFG.
-/// @details Provides graph traversal routines and block-pruning helpers that
-///          remove unreachable blocks while respecting exception-handling
-///          structure.
+/// @details Provides breadth-first search routines that compute a reachability
+///          mask and helpers that remove unreachable blocks while maintaining
+///          branch metadata and respecting exception-handling structure.
 
 #include "il/transform/SimplifyCFG/ReachabilityCleanup.hpp"
 
@@ -35,9 +47,19 @@ namespace
 {
 
 /// @brief Compute the set of blocks reachable from the entry block.
-/// @details Performs a breadth-first traversal following branch labels while
-///          respecting exception-handling terminators.  Returns a bit vector
-///          marking every block visited.
+///
+/// @details The helper performs a breadth-first traversal seeded from block
+///          index zero (the canonical entry).  For every visited block it:
+///          1. Locates the terminator with @ref findTerminator.
+///          2. Enumerates successor labels (for conditional/switch/resume).
+///          3. Resolves each label to a block index using
+///             @ref lookupBlockIndex and enqueues unseen successors via
+///             @ref enqueueSuccessor.
+///          Blocks that lack terminators are ignored, matching the verifier's
+///          assumption that such blocks implicitly fall off the function.
+///          The resulting bit vector contains a @c true entry for every block
+///          proven reachable.
+///
 /// @param function Function whose blocks should be analysed.
 /// @return Bit vector with bits set for reachable block indices.
 BitVector markReachable(il::core::Function &function)
@@ -94,9 +116,20 @@ BitVector markReachable(il::core::Function &function)
 } // namespace
 
 /// @brief Remove blocks that are not reachable according to @ref markReachable.
-/// @details Iterates unreachable blocks in reverse order, skipping those marked
-///          as EH-sensitive, updates branch targets to drop references to deleted
-///          blocks, erases the blocks, and updates statistics/logging hooks.
+///
+/// @details The cleanup routine executes in three phases:
+///          1. Build a reachability mask with @ref markReachable and collect
+///             indices of blocks that were never visited (excluding the entry).
+///          2. Iterate those indices in reverse so erasing blocks does not
+///             invalidate still-pending indices.  Each candidate is skipped when
+///             @ref SimplifyCFG::SimplifyCFGPassContext::isEHSensitive reports
+///             it participates in exception handling.
+///          3. For blocks that can be removed, walk every instruction in the
+///             function, erase branch labels/arguments that reference the doomed
+///             label, and finally erase the block from the function vector.
+///          When any block is removed the routine bumps the pass statistics and
+///          emits optional debug logging describing the number of pruned blocks.
+///
 /// @param ctx Pass context providing function, EH sensitivity checks, and stats.
 /// @return True when any block was removed.
 bool removeUnreachableBlocks(SimplifyCFG::SimplifyCFGPassContext &ctx)

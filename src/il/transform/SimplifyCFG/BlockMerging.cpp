@@ -5,10 +5,19 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Implements the SimplifyCFG block merging routines.  These helpers detect
-// blocks with a single predecessor and merge their contents into the predecessor
-// once branch arguments are substituted.  The transformation reduces the number
-// of basic blocks while keeping control flow and SSA operands consistent.
+// File: src/il/transform/SimplifyCFG/BlockMerging.cpp
+// Purpose: Merge trivial single-predecessor blocks to reduce CFG complexity in
+//          the SimplifyCFG pass.
+// Key invariants: Blocks are merged only when there is exactly one incoming
+//                 edge, branch argument arity matches block parameters, and
+//                 EH-sensitive regions remain untouched.  SSA uses inside the
+//                 merged block are rewritten to reference the incoming values.
+// Ownership/Lifetime: Mutates the pass-owned il::core::Function in place; no
+//                     persistent allocations escape the routine.
+// Perf/Threading notes: Uses linear scans over the block list and temporary
+//                       vectors for instruction splicing; intended for
+//                       single-threaded execution.
+// Links: docs/il-passes.md#simplifycfg, docs/codemap.md#passes
 //
 //===----------------------------------------------------------------------===//
 //
@@ -40,12 +49,25 @@ namespace
 
 /// @brief Merge a block into its sole predecessor when safe.
 ///
-/// @details Searches for a single predecessor edge targeting @p block, verifies
-///          that the predecessor terminator is a simple branch, and rewrites all
-///          SSA uses in @p block to reference the incoming arguments.  The
-///          routine then splices @p block's non-terminator instructions into the
-///          predecessor, rewrites the successor labels in the merged terminator,
-///          and finally erases the now-redundant block from the function.
+/// @details The merger proceeds cautiously to preserve SSA and EH invariants:
+///          1. Locate @p block inside the function and bail out if the pass
+///             marked it EH-sensitive.
+///          2. Scan all other blocks to count incoming edges, remembering the
+///             unique predecessor and its terminator when exactly one edge is
+///             found.
+///          3. Require the predecessor terminator to be an unconditional branch
+///             with a single label equal to @p block's label so the control-flow
+///             structure remains valid after splicing.
+///          4. Collect branch arguments from the predecessor and build a
+///             substitution map that replaces @p block's parameters with the
+///             incoming SSA values.  Every instruction and branch-argument list
+///             in the block is rewritten using @ref substituteValue.
+///          5. Move all non-terminator instructions from @p block into the
+///             predecessor, replace the predecessor's terminator with the merged
+///             block's terminator (after fixing self-references), and finally
+///             erase @p block from the function.
+///          A @c true return indicates the merge succeeded and the caller should
+///          treat block indices as potentially invalidated.
 ///
 /// @param ctx   SimplifyCFG context providing EH-sensitivity checks and
 ///              diagnostic hooks.
@@ -191,12 +213,17 @@ bool mergeSinglePred(SimplifyCFG::SimplifyCFGPassContext &ctx, il::core::BasicBl
 
 /// @brief Merge every eligible single-predecessor block in a function.
 ///
-/// @details Iterates blocks in order, attempting to merge each into its
-///          predecessor via @ref mergeSinglePred.  The walk repeats for the next
-///          block only when no merge occurred, ensuring indices remain valid as
-///          blocks are erased.  When merges succeed the helper updates
-///          statistics and emits optional debug output so callers can understand
-///          the transformations performed.
+/// @details Performs a forward walk over the function's block vector.  For each
+///          block the helper:
+///          - Captures the label (when debug logging is enabled) before any
+///            structural changes occur.
+///          - Invokes @ref mergeSinglePred to attempt the merge.
+///          - When a merge succeeds, increments statistics, emits optional debug
+///            output, and repeats the loop without advancing the index because
+///            the current position now refers to the successor of the removed
+///            block.
+///          - Otherwise increments the index and continues scanning.
+///          The function returns @c true if at least one merge was performed.
 ///
 /// @param ctx SimplifyCFG context owning the function under transformation.
 /// @returns True if any block was merged.

@@ -5,17 +5,27 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Implements the `ilc il-opt` subcommand. The driver loads a module, configures
-// a pass manager, and emits optimized IL according to user-selected pipelines.
-// The helpers registered here showcase how to compose transformation passes from
-// the public API.
+// File: src/tools/ilc/cmd_il_opt.cpp
+// Purpose: Implement the `ilc il-opt` subcommand that loads IL, runs
+//          transformations, and writes optimised output.
+// Key invariants: Pass pipelines always contain only registered identifiers;
+//                 instrumentation hooks mirror command-line flags; pass manager
+//                 state is reset for each invocation so successive runs remain
+//                 isolated.
+// Ownership/Lifetime: Operates on caller-owned command-line buffers and local
+//                     il::core::Module instances; no global state is mutated
+//                     beyond diagnostic streams.
+// Perf/Threading notes: Intended for single-shot CLI execution; pass execution
+//                       complexity is dictated by the chosen pipeline.
+// Links: docs/tools.md#ilc, docs/codemap.md#tools
 //
 //===----------------------------------------------------------------------===//
 
 /// @file
 /// @brief Implements the optimisation pipeline entry point for `ilc`.
-/// @details The routine demonstrates how to configure the pass manager and wire
-///          transformation passes together using the public API.
+/// @details Demonstrates how to configure the pass manager, wire transformation
+///          passes together via the public API, and honour user-specified
+///          pipelines.
 
 #include "cli.hpp"
 #include "viper/il/IO.hpp"
@@ -36,19 +46,25 @@ using namespace il;
 
 /// @brief Optimize an IL module using selected passes.
 ///
-/// @details Execution steps:
-///          1. Parse subcommand options, requiring an output file via `-o` and
-///             optionally collecting a custom `--passes` pipeline. Flags such as
-///             `--no-mem2reg` and `--mem2reg-stats` tweak the default pipeline.
-///          2. Load the input module from disk using
-///             @ref il::tools::common::loadModuleFromFile.
-///          3. Register transformation passes (`constfold`, `peephole`, `dce`,
-///             `mem2reg`) with a @ref transform::PassManager, wiring lambdas
-///             that call the public pass helpers.
-///          4. Execute either the requested pipeline or the default sequence and
-///             write the canonicalized IL to @p outFile.
-///          The function returns zero on success or one when argument parsing,
-///          file I/O, or pass execution fails.
+/// @details The driver orchestrates the `il-opt` workflow end-to-end:
+///          1. Parse CLI options, enforcing `-o` for the output path, decoding
+///             comma-separated `--passes` lists, and tracking feature toggles
+///             such as `--no-mem2reg`, instrumentation prints, and verifier
+///             hooks.
+///          2. Load the input module via
+///             @ref il::tools::common::loadModuleFromFile, emitting diagnostics
+///             on failure and aborting early when the parse does not succeed.
+///          3. Instantiate a @ref transform::PassManager, configure print/
+///             verification hooks, register the standard transformation passes,
+///             and seed a named default pipeline that mirrors the historical
+///             optimisation sequence.
+///          4. Resolve the actual pipeline to run (either the user-provided list
+///             or the default, minus @c mem2reg when explicitly disabled), then
+///             execute it over the module.
+///          5. Serialize the resulting module to the requested file in canonical
+///             form, surfacing file-system errors to stderr.
+///          Any failure along the path returns 1 so the top-level driver can
+///          report an error to the shell; otherwise the command exits with 0.
 ///
 /// @param argc Number of subcommand arguments (excluding `il-opt`).
 /// @param argv Argument list starting with the input IL file.
