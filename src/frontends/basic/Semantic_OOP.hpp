@@ -40,6 +40,7 @@ struct ClassInfo
     std::string name;                                   ///< Class identifier.
     std::vector<FieldInfo> fields;                      ///< Ordered field declarations.
     bool hasConstructor = false;                        ///< True if CLASS declares a constructor.
+    bool hasSynthCtor = false;                          ///< True when lowering must synthesise a constructor.
     bool hasDestructor = false;                         ///< True if CLASS declares a destructor.
     std::unordered_map<std::string, MethodSig> methods; ///< Declared methods indexed by name.
 };
