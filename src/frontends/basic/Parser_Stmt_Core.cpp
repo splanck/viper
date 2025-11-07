@@ -291,6 +291,18 @@ std::vector<Param> Parser::parseParamList()
             expect(TokenKind::RParen);
             p.is_array = true;
         }
+        if (at(TokenKind::KeywordAs))
+        {
+            consume();
+            if (at(TokenKind::KeywordBoolean) || at(TokenKind::Identifier))
+            {
+                p.type = parseTypeKeyword();
+            }
+            else
+            {
+                expect(TokenKind::Identifier);
+            }
+        }
         params.push_back(std::move(p));
         if (at(TokenKind::Comma))
         {
