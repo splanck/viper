@@ -339,6 +339,69 @@ TEST(BasicOOPLoweringTest, MethodParametersForwardedToCallee)
     EXPECT_TRUE(validatedCall);
 }
 
+TEST(BasicOOPLoweringTest, MethodFunctionEmitsReturnValue)
+{
+    const std::string src = "10 CLASS M\n"
+                             "20   FUNCTION Twice(n AS INTEGER) AS INTEGER\n"
+                             "30     RETURN n + n\n"
+                             "40   END FUNCTION\n"
+                             "50 END CLASS\n"
+                             "60 DIM m AS M\n"
+                             "70 LET m = NEW M()\n"
+                             "80 PRINT m.Twice(21)\n"
+                             "90 END\n";
+
+    SourceManager sm;
+    BasicCompilerInput input{src, "method_return.bas"};
+    BasicCompilerOptions options{};
+
+    auto result = compileBasic(input, options, sm);
+    ASSERT_TRUE(result.succeeded());
+
+    const il::core::Module &module = result.module;
+    const il::core::Function *method = findFunctionCaseInsensitive(module, "M.Twice");
+    ASSERT_NE(method, nullptr);
+    EXPECT_EQ(method->retType.kind, il::core::Type::Kind::I64);
+
+    bool sawRetWithValue = false;
+    for (const auto &block : method->blocks)
+    {
+        for (const auto &instr : block.instructions)
+        {
+            if (instr.op == il::core::Opcode::Ret && !instr.operands.empty())
+            {
+                sawRetWithValue = true;
+                break;
+            }
+        }
+        if (sawRetWithValue)
+            break;
+    }
+    EXPECT_TRUE(sawRetWithValue);
+
+    const il::core::Function *mainFn = findFunctionCaseInsensitive(module, "main");
+    ASSERT_NE(mainFn, nullptr);
+    bool sawCallResult = false;
+    for (const auto &block : mainFn->blocks)
+    {
+        for (const auto &instr : block.instructions)
+        {
+            if (instr.op != il::core::Opcode::Call)
+                continue;
+            if (!equalsIgnoreCase(instr.callee, "M.Twice"))
+                continue;
+            if (instr.result.has_value())
+            {
+                sawCallResult = true;
+                break;
+            }
+        }
+        if (sawCallResult)
+            break;
+    }
+    EXPECT_TRUE(sawCallResult);
+}
+
 int main(int argc, char **argv)
 {
     ::testing::InitGoogleTest(&argc, argv);

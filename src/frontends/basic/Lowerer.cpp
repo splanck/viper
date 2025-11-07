@@ -60,6 +60,25 @@ Lowerer::Type Lowerer::functionRetTypeFromHint(const std::string &fnName, BasicT
     return ilTypeForBasicRet(fnName, hint);
 }
 
+std::optional<::il::frontends::basic::Type>
+Lowerer::findMethodReturnType(std::string_view className, std::string_view methodName) const
+{
+    if (className.empty())
+        return std::nullopt;
+
+    const ClassInfo *info = oopIndex_.findClass(std::string(className));
+    if (!info)
+        return std::nullopt;
+
+    auto it = info->methods.find(std::string(methodName));
+    if (it == info->methods.end())
+        return std::nullopt;
+    if (!it->second.returnType)
+        return std::nullopt;
+
+    return it->second.returnType;
+}
+
 /// @brief Construct a lowering driver composed of specialised helper stages.
 /// @details Instantiates the program-, procedure-, and statement-level lowering
 ///          helpers together with the IL emitter facade.  The @p boundsChecks

@@ -317,7 +317,14 @@ class ExprTypeScanner final : public BasicAstWalker<ExprTypeScanner>
                 continue;
             consumeExpr(*arg);
         }
-        push(ExprType::I64);
+        ExprType result = ExprType::I64;
+        if (expr.base)
+        {
+            std::string className = lowerer_.resolveObjectClass(*expr.base);
+            if (auto retTy = lowerer_.findMethodReturnType(className, expr.method))
+                result = exprTypeFromAstType(*retTy);
+        }
+        push(result);
     }
 
   private:
