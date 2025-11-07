@@ -16,6 +16,7 @@
 #include "frontends/basic/AstWalker.hpp"
 #include "frontends/basic/BuiltinRegistry.hpp"
 #include "frontends/basic/Lowerer.hpp"
+#include "frontends/basic/IdentifierUtils.hpp"
 #include "frontends/basic/TypeRules.hpp"
 #include "frontends/basic/TypeSuffix.hpp"
 #include "frontends/basic/ast/StmtNodes.hpp"
@@ -694,11 +695,12 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
         if (className.empty())
             return;
 
-        auto layoutIt = lowerer_.classLayouts_.find(className);
+        auto layoutIt = lowerer_.classLayouts_.find(canonicalizeIdentifier(className));
         if (layoutIt == lowerer_.classLayouts_.end())
             return;
 
-        const auto *field = layoutIt->second.findField(access.member);
+        std::string canonicalMember = canonicalizeIdentifier(access.member);
+        const auto *field = layoutIt->second.findField(canonicalMember);
         if (!field)
             return;
 

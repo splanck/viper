@@ -17,6 +17,7 @@
 
 #include "frontends/basic/lower/Emitter.hpp"
 
+#include "frontends/basic/IdentifierUtils.hpp"
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/NameMangler_OOP.hpp"
 
@@ -446,11 +447,13 @@ void Emitter::releaseObjectLocals(const std::unordered_set<std::string> &paramNa
         emitStore(Type(Type::Kind::Ptr), slot, Value::null());
     };
 
+    const std::string canonicalMe = canonicalizeIdentifier("Me");
+
     for (auto &[name, info] : lowerer_.symbols)
     {
         if (!info.referenced || !info.isObject)
             continue;
-        if (name == "Me")
+        if (name == canonicalMe)
             continue;
         if (paramNames.contains(name))
             continue;
@@ -529,11 +532,13 @@ void Emitter::releaseObjectParams(const std::unordered_set<std::string> &paramNa
         emitStore(Type(Type::Kind::Ptr), slot, Value::null());
     };
 
+    const std::string canonicalMe = canonicalizeIdentifier("Me");
+
     for (auto &[name, info] : lowerer_.symbols)
     {
         if (!info.referenced || !info.isObject)
             continue;
-        if (name == "Me")
+        if (name == canonicalMe)
             continue;
         if (!paramNames.contains(name))
             continue;

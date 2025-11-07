@@ -25,6 +25,7 @@
 #include "frontends/basic/Semantic_OOP.hpp"
 #include "frontends/basic/AST.hpp"
 #include "frontends/basic/DiagnosticEmitter.hpp"
+#include "frontends/basic/IdentifierUtils.hpp"
 #include "frontends/basic/TypeSuffix.hpp"
 
 #include "support/diagnostics.hpp"
@@ -37,6 +38,98 @@ namespace il::frontends::basic
 
 namespace
 {
+template <typename FieldRange>
+void copyFields(const FieldRange &fields, ClassInfo &info)
+{
+    info.fields.reserve(fields.size());
+    for (const auto &field : fields)
+    {
+        info.fields.push_back(ClassInfo::FieldInfo{field.name, field.type});
+    }
+}
+
+void emitMissingReturn(const ClassDecl &klass, const MethodDecl &method, DiagnosticEmitter *emitter);
+
+ClassInfo buildClassInfo(const ClassDecl &classDecl, DiagnosticEmitter *emitter)
+{
+    ClassInfo info;
+    info.name = classDecl.name;
+    canonicalizeIdentifierInPlace(info.name);
+    copyFields(classDecl.fields, info);
+
+    for (const auto &member : classDecl.members)
+    {
+        if (!member)
+        {
+            continue;
+        }
+
+        switch (member->stmtKind())
+        {
+            case Stmt::Kind::ConstructorDecl:
+            {
+                const auto &ctor = static_cast<const ConstructorDecl &>(*member);
+                info.hasConstructor = true;
+                info.ctorParams.clear();
+                info.ctorParams.reserve(ctor.params.size());
+                for (const auto &param : ctor.params)
+                {
+                    ClassInfo::CtorParam sigParam;
+                    sigParam.type = param.type;
+                    sigParam.isArray = param.is_array;
+                    info.ctorParams.push_back(sigParam);
+                }
+                break;
+            }
+            case Stmt::Kind::DestructorDecl:
+            {
+                info.hasDestructor = true;
+                break;
+            }
+            case Stmt::Kind::MethodDecl:
+            {
+                const auto &method = static_cast<const MethodDecl &>(*member);
+                MethodSig sig;
+                sig.paramTypes.reserve(method.params.size());
+                for (const auto &param : method.params)
+                {
+                    sig.paramTypes.push_back(param.type);
+                }
+                if (method.ret.has_value())
+                {
+                    sig.returnType = method.ret;
+                }
+                else if (auto suffixType = inferAstTypeFromSuffix(method.name))
+                {
+                    sig.returnType = suffixType;
+                }
+                emitMissingReturn(classDecl, method, emitter);
+                std::string canonicalMethod = canonicalizeIdentifier(method.name);
+                info.methods[canonicalMethod] = std::move(sig);
+                break;
+            }
+            default:
+                break;
+        }
+    }
+
+    if (!info.hasConstructor)
+    {
+        info.hasSynthCtor = true;
+    }
+
+    return info;
+}
+
+ClassInfo buildTypeInfo(const TypeDecl &typeDecl)
+{
+    ClassInfo info;
+    info.name = typeDecl.name;
+    canonicalizeIdentifierInPlace(info.name);
+    copyFields(typeDecl.fields, info);
+    return info;
+}
+
 [[nodiscard]] bool methodMustReturn(const Stmt &stmt)
 {
     if (auto *lst = dynamic_cast<const StmtList *>(&stmt))
@@ -96,7 +189,7 @@ void emitMissingReturn(const ClassDecl &klass, const MethodDecl &method, Diagnos
 /// @return Pointer to the associated @ref ClassInfo or @c nullptr when absent.
 ClassInfo *OopIndex::findClass(const std::string &name)
 {
-    auto it = classes_.find(name);
+    auto it = classes_.find(canonicalizeIdentifier(name));
     if (it == classes_.end())
     {
         return nullptr;
@@ -112,7 +205,7 @@ ClassInfo *OopIndex::findClass(const std::string &name)
 /// @return Pointer to the stored @ref ClassInfo or @c nullptr when absent.
 const ClassInfo *OopIndex::findClass(const std::string &name) const
 {
-    auto it = classes_.find(name);
+    auto it = classes_.find(canonicalizeIdentifier(name));
     if (it == classes_.end())
     {
         return nullptr;
@@ -141,82 +234,25 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
             continue;
         }
 
-        if (stmtPtr->stmtKind() != Stmt::Kind::ClassDecl)
+        switch (stmtPtr->stmtKind())
         {
-            continue;
-        }
-
-        const auto &classDecl = static_cast<const ClassDecl &>(*stmtPtr);
-
-        ClassInfo info;
-        info.name = classDecl.name;
-        info.fields.reserve(classDecl.fields.size());
-        for (const auto &field : classDecl.fields)
-        {
-            info.fields.push_back(ClassInfo::FieldInfo{field.name, field.type});
-        }
-
-        for (const auto &member : classDecl.members)
-        {
-            if (!member)
+            case Stmt::Kind::ClassDecl:
             {
-                continue;
+                const auto &classDecl = static_cast<const ClassDecl &>(*stmtPtr);
+                ClassInfo info = buildClassInfo(classDecl, emitter);
+                index.classes()[info.name] = std::move(info);
+                break;
             }
-
-            switch (member->stmtKind())
+            case Stmt::Kind::TypeDecl:
             {
-                case Stmt::Kind::ConstructorDecl:
-                {
-                    const auto &ctor = static_cast<const ConstructorDecl &>(*member);
-                    info.hasConstructor = true;
-                    info.ctorParams.clear();
-                    info.ctorParams.reserve(ctor.params.size());
-                    for (const auto &param : ctor.params)
-                    {
-                        ClassInfo::CtorParam sigParam;
-                        sigParam.type = param.type;
-                        sigParam.isArray = param.is_array;
-                        info.ctorParams.push_back(sigParam);
-                    }
-                    break;
-                }
-                case Stmt::Kind::DestructorDecl:
-                {
-                    info.hasDestructor = true;
-                    break;
-                }
-                case Stmt::Kind::MethodDecl:
-                {
-                    const auto &method = static_cast<const MethodDecl &>(*member);
-                    MethodSig sig;
-                    sig.paramTypes.reserve(method.params.size());
-                    for (const auto &param : method.params)
-                    {
-                        sig.paramTypes.push_back(param.type);
-                    }
-                    if (method.ret.has_value())
-                    {
-                        sig.returnType = method.ret;
-                    }
-                    else if (auto suffixType = inferAstTypeFromSuffix(method.name))
-                    {
-                        sig.returnType = suffixType;
-                    }
-                    emitMissingReturn(classDecl, method, emitter);
-                    info.methods[method.name] = std::move(sig);
-                    break;
-                }
-                default:
-                    break;
+                const auto &typeDecl = static_cast<const TypeDecl &>(*stmtPtr);
+                ClassInfo info = buildTypeInfo(typeDecl);
+                index.classes()[info.name] = std::move(info);
+                break;
             }
+            default:
+                break;
         }
-
-        if (!info.hasConstructor)
-        {
-            info.hasSynthCtor = true;
-        }
-
-        index.classes()[info.name] = std::move(info);
     }
 }
 

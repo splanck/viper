@@ -16,6 +16,7 @@
 #include "frontends/basic/AstWalker.hpp"
 #include "frontends/basic/BuiltinRegistry.hpp"
 #include "frontends/basic/Lowerer.hpp"
+#include "frontends/basic/IdentifierUtils.hpp"
 #include "frontends/basic/TypeSuffix.hpp"
 #include "viper/il/Module.hpp"
 #include <cassert>
@@ -294,10 +295,11 @@ class ExprTypeScanner final : public BasicAstWalker<ExprTypeScanner>
         {
             consumeExpr(*expr.base);
             std::string className = lowerer_.resolveObjectClass(*expr.base);
-            auto layoutIt = lowerer_.classLayouts_.find(className);
+            auto layoutIt = lowerer_.classLayouts_.find(canonicalizeIdentifier(className));
             if (layoutIt != lowerer_.classLayouts_.end())
             {
-                if (const auto *field = layoutIt->second.findField(expr.member))
+                std::string canonicalMember = canonicalizeIdentifier(expr.member);
+                if (const auto *field = layoutIt->second.findField(canonicalMember))
                     result = exprTypeFromAstType(field->type);
             }
         }

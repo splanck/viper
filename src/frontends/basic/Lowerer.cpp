@@ -18,6 +18,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/basic/Lowerer.hpp"
+#include "frontends/basic/IdentifierUtils.hpp"
 #include "frontends/basic/BasicTypes.hpp"
 #include "frontends/basic/LoweringPipeline.hpp"
 #include "frontends/basic/TypeSuffix.hpp"
@@ -67,11 +68,13 @@ std::optional<::il::frontends::basic::Type> Lowerer::findMethodReturnType(
     if (className.empty())
         return std::nullopt;
 
-    const ClassInfo *info = oopIndex_.findClass(std::string(className));
+    std::string canonicalClass = canonicalizeIdentifier(className);
+    const ClassInfo *info = oopIndex_.findClass(canonicalClass);
     if (!info)
         return std::nullopt;
 
-    auto it = info->methods.find(std::string(methodName));
+    std::string canonicalMethod = canonicalizeIdentifier(methodName);
+    auto it = info->methods.find(canonicalMethod);
     if (it == info->methods.end())
         return std::nullopt;
     if (it->second.returnType)

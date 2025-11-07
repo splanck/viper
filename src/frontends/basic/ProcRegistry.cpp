@@ -18,6 +18,8 @@
 
 #include "frontends/basic/ProcRegistry.hpp"
 
+#include "frontends/basic/IdentifierUtils.hpp"
+
 #include <unordered_set>
 #include <utility>
 
@@ -52,7 +54,8 @@ ProcSignature ProcRegistry::buildSignature(const ProcDescriptor &descriptor)
     std::unordered_set<std::string> paramNames;
     for (const auto &p : descriptor.params)
     {
-        if (!paramNames.insert(p.name).second)
+        std::string canonicalParam = canonicalizeIdentifier(p.name);
+        if (!paramNames.insert(canonicalParam).second)
         {
             de.emit(diag::BasicDiag::DuplicateParameter,
                     p.loc,
@@ -83,18 +86,19 @@ void ProcRegistry::registerProcImpl(std::string_view name,
                                     const ProcDescriptor &descriptor,
                                     il::support::SourceLoc loc)
 {
-    std::string nameStr{name};
+    std::string canonicalName = canonicalizeIdentifier(name);
+    std::string displayName{name};
 
-    if (procs_.count(nameStr))
+    if (procs_.count(canonicalName))
     {
         de.emit(diag::BasicDiag::DuplicateProcedure,
                 loc,
-                static_cast<uint32_t>(nameStr.size()),
-                std::initializer_list<diag::Replacement>{diag::Replacement{"name", nameStr}});
+                static_cast<uint32_t>(displayName.size()),
+                std::initializer_list<diag::Replacement>{diag::Replacement{"name", displayName}});
         return;
     }
 
-    procs_.emplace(std::move(nameStr), buildSignature(descriptor));
+    procs_.emplace(std::move(canonicalName), buildSignature(descriptor));
 }
 
 /// @brief Register a FUNCTION declaration with its return type and parameters.
@@ -129,7 +133,8 @@ const ProcTable &ProcRegistry::procs() const
 /// @return Pointer to the stored signature when found; otherwise nullptr.
 const ProcSignature *ProcRegistry::lookup(const std::string &name) const
 {
-    auto it = procs_.find(name);
+    std::string canonicalName = canonicalizeIdentifier(name);
+    auto it = procs_.find(canonicalName);
     return it == procs_.end() ? nullptr : &it->second;
 }
 

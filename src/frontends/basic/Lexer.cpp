@@ -19,6 +19,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/basic/Lexer.hpp"
+#include "frontends/basic/IdentifierUtils.hpp"
 #include <array>
 #include <cctype>
 #include <cstddef>
@@ -140,21 +141,16 @@ static_assert(isKeywordTableSorted(), "Keyword table must be sorted lexicographi
 /// @return Keyword kind when recognised; @ref TokenKind::Identifier otherwise.
 TokenKind lookupKeyword(std::string_view lexeme)
 {
-    if (lexeme.size() == 2)
-    {
-        unsigned char first = static_cast<unsigned char>(lexeme[0]);
-        unsigned char second = static_cast<unsigned char>(lexeme[1]);
-        if (std::toupper(first) == 'M' && std::toupper(second) == 'E')
-            lexeme = "ME";
-    }
+    std::string canonical = canonicalizeIdentifier(lexeme);
+    std::string_view key = canonical;
     auto first = kKeywordTable.begin();
     auto last = kKeywordTable.end();
     while (first < last)
     {
         auto mid = first + (last - first) / 2;
-        if (mid->lexeme == lexeme)
+        if (mid->lexeme == key)
             return mid->kind;
-        if (mid->lexeme < lexeme)
+        if (mid->lexeme < key)
         {
             first = mid + 1;
         }
