@@ -1,0 +1,11 @@
+10 CLASS C
+20   v AS INTEGER
+30   SUB Show()
+40     LET Me.v = 42
+50     PRINT Me.v
+60   END SUB
+70 END CLASS
+80 DIM c AS C
+90 LET c = NEW C()
+100 c.Show()
+110 END
