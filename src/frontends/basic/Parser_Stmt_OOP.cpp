@@ -90,8 +90,16 @@ StmtPtr Parser::parseClassDecl()
             }
         }
 
-        if (!(at(TokenKind::Identifier) && peek(1).kind == TokenKind::KeywordAs))
+        const bool looksLikeFieldDecl =
+            (at(TokenKind::Identifier) && peek(1).kind == TokenKind::KeywordAs) ||
+            (at(TokenKind::KeywordDim) && peek(1).kind == TokenKind::Identifier &&
+             peek(2).kind == TokenKind::KeywordAs);
+
+        if (!looksLikeFieldDecl)
             break;
+
+        if (at(TokenKind::KeywordDim))
+            consume();
 
         Token fieldNameTok = expect(TokenKind::Identifier);
         if (fieldNameTok.kind != TokenKind::Identifier)
