@@ -133,6 +133,89 @@ std::vector<Opcode> all_opcodes()
     return ops;
 }
 
+/// @brief Provide a conservative memory classification for @p op.
+/// @details Primarily used by optimisation and analysis passes to quickly
+///          determine whether an instruction interacts with memory.  Only
+///          opcodes with well-understood semantics are marked as memory-free;
+///          everything else defaults to @ref MemoryEffects::Unknown.
+/// @param op Opcode being classified.
+/// @return Memory effect classification for @p op.
+MemoryEffects memoryEffects(Opcode op) noexcept
+{
+    switch (op)
+    {
+        case Opcode::Load:
+            return MemoryEffects::Read;
+        case Opcode::Store:
+            return MemoryEffects::Write;
+        case Opcode::Call:
+            return MemoryEffects::ReadWrite;
+
+        case Opcode::Add:
+        case Opcode::Sub:
+        case Opcode::Mul:
+        case Opcode::IAddOvf:
+        case Opcode::ISubOvf:
+        case Opcode::IMulOvf:
+        case Opcode::SDiv:
+        case Opcode::UDiv:
+        case Opcode::SRem:
+        case Opcode::URem:
+        case Opcode::SDivChk0:
+        case Opcode::UDivChk0:
+        case Opcode::SRemChk0:
+        case Opcode::URemChk0:
+        case Opcode::IdxChk:
+        case Opcode::And:
+        case Opcode::Or:
+        case Opcode::Xor:
+        case Opcode::Shl:
+        case Opcode::LShr:
+        case Opcode::AShr:
+        case Opcode::FAdd:
+        case Opcode::FSub:
+        case Opcode::FMul:
+        case Opcode::FDiv:
+        case Opcode::ICmpEq:
+        case Opcode::ICmpNe:
+        case Opcode::SCmpLT:
+        case Opcode::SCmpLE:
+        case Opcode::SCmpGT:
+        case Opcode::SCmpGE:
+        case Opcode::UCmpLT:
+        case Opcode::UCmpLE:
+        case Opcode::UCmpGT:
+        case Opcode::UCmpGE:
+        case Opcode::FCmpEQ:
+        case Opcode::FCmpNE:
+        case Opcode::FCmpGT:
+        case Opcode::FCmpLT:
+        case Opcode::FCmpLE:
+        case Opcode::FCmpGE:
+        case Opcode::Sitofp:
+        case Opcode::Fptosi:
+        case Opcode::CastFpToSiRteChk:
+        case Opcode::CastFpToUiRteChk:
+        case Opcode::CastSiNarrowChk:
+        case Opcode::CastUiNarrowChk:
+        case Opcode::CastSiToFp:
+        case Opcode::CastUiToFp:
+        case Opcode::Zext1:
+        case Opcode::Trunc1:
+        case Opcode::GEP:
+        case Opcode::AddrOf:
+        case Opcode::ConstStr:
+        case Opcode::ConstNull:
+            return MemoryEffects::None;
+
+        case Opcode::Alloca:
+            return MemoryEffects::Write;
+
+        default:
+            return MemoryEffects::Unknown;
+    }
+}
+
 /// @brief Check whether an operand count field encodes the variadic sentinel.
 /// @details Metadata tables use a sentinel value to represent "variadic"
 ///          operand counts.  This helper hides the comparison so callers remain
