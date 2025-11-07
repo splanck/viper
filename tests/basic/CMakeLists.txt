@@ -1020,6 +1020,13 @@ function(viper_add_basic_integration_tests)
             -DEXPECT_FILE=${CMAKE_SOURCE_DIR}/tests/basic/regress_fileio_write_ok.expect
             -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_expect.cmake)
 
+    viper_add_ctest(basic_regress_me_keyword
+            ${CMAKE_COMMAND}
+            -DILC=${_VIPER_BASIC_ILC}
+            -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/basic/regress_me_keyword.bas
+            -DEXPECT_FILE=${CMAKE_SOURCE_DIR}/tests/basic/regress_me_keyword.expect
+            -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_expect.cmake)
+
     viper_add_ctest(basic_select_case_relop
             ${CMAKE_COMMAND}
             -DILC=${_VIPER_BASIC_ILC}

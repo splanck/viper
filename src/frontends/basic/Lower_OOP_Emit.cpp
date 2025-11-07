@@ -116,8 +116,8 @@ class FieldScopeGuard
 unsigned Lowerer::materializeSelfSlot(const std::string &className, Function &fn)
 {
     curLoc = {};
-    setSymbolObjectType("Me", className);
-    auto &info = ensureSymbol("Me");
+    setSymbolObjectType("ME", className);
+    auto &info = ensureSymbol("ME");
     info.referenced = true;
     Value slot = emitAlloca(8);
     info.slotId = slot.id;
@@ -200,7 +200,7 @@ void Lowerer::emitClassConstructor(const ClassDecl &klass, const ConstructorDecl
     ProcedureMetadata metadata;
     metadata.paramCount = 1 + ctor.params.size();
     metadata.bodyStmts = body;
-    metadata.irParams.push_back({"Me", Type(Type::Kind::Ptr)});
+    metadata.irParams.push_back({"ME", Type(Type::Kind::Ptr)});
     for (const auto &param : ctor.params)
     {
         Type ilParamTy = param.is_array ? Type(Type::Kind::Ptr) : ilTypeForAstType(param.type);
@@ -297,7 +297,7 @@ void Lowerer::emitClassDestructor(const ClassDecl &klass, const DestructorDecl *
     ProcedureMetadata metadata;
     metadata.paramCount = 1;
     metadata.bodyStmts = body;
-    metadata.irParams.push_back({"Me", Type(Type::Kind::Ptr)});
+    metadata.irParams.push_back({"ME", Type(Type::Kind::Ptr)});
 
     std::string name = mangleClassDtor(klass.name);
     Function &fn = builder->startFunction(name, Type(Type::Kind::Void), metadata.irParams);
@@ -364,7 +364,7 @@ void Lowerer::emitClassMethod(const ClassDecl &klass, const MethodDecl &method)
     ProcedureMetadata metadata;
     metadata.paramCount = 1 + method.params.size();
     metadata.bodyStmts = body;
-    metadata.irParams.push_back({"Me", Type(Type::Kind::Ptr)});
+    metadata.irParams.push_back({"ME", Type(Type::Kind::Ptr)});
     for (const auto &param : method.params)
     {
         Type ilParamTy = param.is_array ? Type(Type::Kind::Ptr) : ilTypeForAstType(param.type);
