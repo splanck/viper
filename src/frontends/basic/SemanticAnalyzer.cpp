@@ -270,6 +270,8 @@ std::optional<BasicType> suffixBasicType(std::string_view name)
             return BasicType::String;
         case '#':
             return BasicType::Float;
+        case '%':
+            return BasicType::Int;
         default:
             break;
     }
@@ -304,9 +306,10 @@ std::optional<SemanticAnalyzer::Type> semanticTypeFromBasic(BasicType type)
 std::string uppercaseBasicTypeName(BasicType type)
 {
     std::string text{toString(type)};
-    std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) {
-        return static_cast<char>(std::toupper(c));
-    });
+    std::transform(text.begin(),
+                   text.end(),
+                   text.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
     return text;
 }
 
