@@ -109,6 +109,12 @@ viper_add_test(
 target_link_libraries(test_basic_lower_builtin_dispatch PRIVATE fe_basic)
 viper_add_ctest(test_basic_lower_builtin_dispatch test_basic_lower_builtin_dispatch)
 
+viper_add_test(
+        test_basic_semantic_new_ctor
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_basic_semantic_new_ctor.cpp)
+target_link_libraries(test_basic_semantic_new_ctor PRIVATE fe_basic)
+viper_add_ctest(test_basic_semantic_new_ctor test_basic_semantic_new_ctor)
+
 viper_add_test(test_run_process_quotes ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_run_process_quotes.cpp)
 target_link_libraries(test_run_process_quotes PRIVATE viper_common)
 viper_add_ctest(test_run_process_quotes test_run_process_quotes)
