@@ -450,7 +450,7 @@ void Emitter::releaseObjectLocals(const std::unordered_set<std::string> &paramNa
     {
         if (!info.referenced || !info.isObject)
             continue;
-        if (name == "Me")
+        if (name == "ME")
             continue;
         if (paramNames.contains(name))
             continue;
@@ -533,7 +533,7 @@ void Emitter::releaseObjectParams(const std::unordered_set<std::string> &paramNa
     {
         if (!info.referenced || !info.isObject)
             continue;
-        if (name == "Me")
+        if (name == "ME")
             continue;
         if (!paramNames.contains(name))
             continue;
