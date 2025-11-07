@@ -51,8 +51,8 @@ AST::ExprPtr fold_logical_not(const AST::Expr &operand)
     {
         if (numeric->isFloat)
             return nullptr;
-        auto out = std::make_unique<::il::frontends::basic::IntExpr>();
-        out->value = numeric->i == 0 ? 1 : 0;
+        auto out = std::make_unique<::il::frontends::basic::BoolExpr>();
+        out->value = numeric->i == 0;
         return out;
     }
     return nullptr;
