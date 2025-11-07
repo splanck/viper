@@ -174,20 +174,21 @@ Lowerer::RVal Lowerer::lowerMeExpr(const MeExpr &expr)
 ///
 /// @param expr AST node describing the member access.
 /// @return Runtime value of the selected field, or zero when unresolved.
-Lowerer::RVal Lowerer::lowerMemberAccessExpr(const MemberAccessExpr &expr)
+std::optional<Lowerer::MemberFieldAccess>
+Lowerer::resolveMemberField(const MemberAccessExpr &expr)
 {
     if (!expr.base)
-        return {Value::constInt(0), Type(Type::Kind::I64)};
+        return std::nullopt;
 
     RVal base = lowerExpr(*expr.base);
     std::string className = resolveObjectClass(*expr.base);
     auto layoutIt = classLayouts_.find(className);
     if (layoutIt == classLayouts_.end())
-        return {Value::constInt(0), Type(Type::Kind::I64)};
+        return std::nullopt;
 
     const ClassLayout::Field *field = layoutIt->second.findField(expr.member);
     if (!field)
-        return {Value::constInt(0), Type(Type::Kind::I64)};
+        return std::nullopt;
 
     curLoc = expr.loc;
     Value fieldPtr = emitBinary(Opcode::GEP,
@@ -195,8 +196,22 @@ Lowerer::RVal Lowerer::lowerMemberAccessExpr(const MemberAccessExpr &expr)
                                 base.value,
                                 Value::constInt(static_cast<long long>(field->offset)));
     Type fieldTy = ilTypeForAstType(field->type);
-    Value loaded = emitLoad(fieldTy, fieldPtr);
-    return {loaded, fieldTy};
+    MemberFieldAccess access;
+    access.ptr = fieldPtr;
+    access.ilType = fieldTy;
+    access.astType = field->type;
+    return access;
+}
+
+Lowerer::RVal Lowerer::lowerMemberAccessExpr(const MemberAccessExpr &expr)
+{
+    auto access = resolveMemberField(expr);
+    if (!access)
+        return {Value::constInt(0), Type(Type::Kind::I64)};
+
+    curLoc = expr.loc;
+    Value loaded = emitLoad(access->ilType, access->ptr);
+    return {loaded, access->ilType};
 }
 
 /// @brief Lower an instance method call, dispatching through the mangled name.

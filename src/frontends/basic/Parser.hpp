@@ -211,6 +211,10 @@ class Parser
     /// @return LET statement node.
     StmtPtr parseLetStatement();
 
+    /// @brief Parse the left-hand side of a LET assignment.
+    /// @return Parsed lvalue expression.
+    ExprPtr parseLetTarget();
+
     /// @brief Parse an IF statement starting at @p line.
     /// @param line Line number of the IF keyword.
     /// @return IF statement node.
