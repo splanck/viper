@@ -56,9 +56,9 @@ const char *rt_file_mode_string(int32_t mode)
         case RT_F_APPEND:
             return "a";
         case RT_F_BINARY:
-            return "rbc+";
+            return "rb+";
         case RT_F_RANDOM:
-            return "rbc+";
+            return "rb+";
         default:
             return NULL;
     }
@@ -75,7 +75,7 @@ const char *rt_file_mode_string(int32_t mode)
 ///                  must be non-null or the function fails.
 /// @return `true` when the mode string is valid and the flags were written;
 ///         otherwise `false`.
-bool rt_file_mode_to_flags(const char *mode, int *flags_out)
+bool rt_file_mode_to_flags(const char *mode, int32_t basic_mode, int *flags_out)
 {
     if (flags_out)
         *flags_out = 0;
@@ -99,7 +99,6 @@ bool rt_file_mode_to_flags(const char *mode, int *flags_out)
     }
 
     bool plus = false;
-    bool create = false;
     bool binary = false;
     for (const char *p = mode + 1; *p; ++p)
     {
@@ -109,8 +108,6 @@ bool rt_file_mode_to_flags(const char *mode, int *flags_out)
             binary = true;
         else if (*p == 't')
             continue;
-        else if (*p == 'c')
-            create = true;
         else
             return false;
     }
@@ -120,7 +117,7 @@ bool rt_file_mode_to_flags(const char *mode, int *flags_out)
         flags &= ~(O_RDONLY | O_WRONLY);
         flags |= O_RDWR;
     }
-    if (create)
+    if (basic_mode == RT_F_BINARY || basic_mode == RT_F_RANDOM)
         flags |= O_CREAT;
 #if defined(_WIN32)
     if (binary)
