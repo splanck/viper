@@ -17,14 +17,14 @@ ret_F:
   ret 0
 if_test_0_F:
   .loc 1 2 1
-  %t0 = trunc1 1
+  %t0 = trunc1 -1
   .loc 1 2 1
   cbr %t0, if_then_0_F, if_else_0_F
 if_then_0_F:
-  .loc 1 2 18
+  .loc 1 2 21
   ret 1
 if_else_0_F:
-  .loc 1 2 32
+  .loc 1 2 35
   ret 2
 }
 func @main() -> i64 {
