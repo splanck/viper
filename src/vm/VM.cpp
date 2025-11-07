@@ -329,6 +329,7 @@ bool VM::selectInstruction(ExecState &state, const Instr *&instr)
         state.pendingResult = zero;
         state.exitRequested = true;
         state.currentInstr = nullptr;
+        instr = nullptr;
         return false;
     }
 
@@ -340,6 +341,8 @@ bool VM::selectInstruction(ExecState &state, const Instr *&instr)
     {
         state.pendingResult = *pause;
         state.exitRequested = true;
+        state.currentInstr = nullptr;
+        instr = nullptr;
         return false;
     }
 

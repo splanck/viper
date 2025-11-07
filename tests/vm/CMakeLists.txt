@@ -154,6 +154,10 @@ function(viper_add_vm_unit_tests)
     target_link_libraries(test_vm_trap_invalid_cast PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
     viper_add_ctest(test_vm_trap_invalid_cast test_vm_trap_invalid_cast)
 
+    viper_add_test(test_vm_fetch_opcode_trap ${_VIPER_VM_DIR}/FetchOpcodeTrapTests.cpp)
+    target_link_libraries(test_vm_fetch_opcode_trap PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
+    viper_add_ctest(test_vm_fetch_opcode_trap test_vm_fetch_opcode_trap)
+
     viper_add_test(
             test_vm_unknown_opcode
             ${_VIPER_VM_DIR}/UnknownOpcodeTests.cpp
