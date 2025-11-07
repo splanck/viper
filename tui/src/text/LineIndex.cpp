@@ -30,7 +30,10 @@ namespace viper::tui::text
 {
 /// @brief Rebuild the line index from the provided text snapshot.
 /// @details Clears any existing offsets, reinstates the leading zero entry, and
-///          scans for newline characters to populate subsequent line starts.
+///          performs a single left-to-right scan that records the byte following
+///          every `\n`.  The trailing newline logic mirrors typical text editors
+///          by inserting an offset that points just past the newline so consumers
+///          can compute line lengths via simple subtraction.
 /// @param text Buffer contents used to initialise the index.
 void LineIndex::reset(std::string_view text)
 {
@@ -46,9 +49,13 @@ void LineIndex::reset(std::string_view text)
 }
 
 /// @brief Update offsets after an insertion at @p pos.
-/// @details Offsets beyond the insertion point are shifted by the inserted
-///          length, while newline characters in the inserted text create new
-///          line boundaries at the appropriate offsets.
+/// @details Two phases keep the cached offsets correct:
+///          1. All entries strictly after the insertion point are bumped forward
+///             by the inserted length so they continue to reference the same text.
+///          2. The inserted text is scanned for newline characters and new
+///             offsets are spliced into the vector in sorted order.  This ensures
+///             O(n) behaviour with respect to the number of affected lines while
+///             keeping unrelated offsets untouched.
 /// @param pos Byte offset where new text was inserted.
 /// @param text Inserted contents.
 void LineIndex::onInsert(std::size_t pos, std::string_view text)
@@ -77,8 +84,10 @@ void LineIndex::onInsert(std::size_t pos, std::string_view text)
 }
 
 /// @brief Adjust offsets to account for text removal.
-/// @details Removes any line starts that fall within the erased range and shifts
-///          subsequent offsets backwards by the erased length.
+/// @details Line starts that fall inside the erased span are deleted and the
+///          remaining offsets are shifted backward by the removed length.  The
+///          algorithm relies on @c lower_bound to identify the affected region,
+///          keeping the updates proportional to the number of lines that changed.
 /// @param pos Starting byte offset of the deletion.
 /// @param text Text fragment that was removed (used solely for length).
 void LineIndex::onErase(std::size_t pos, std::string_view text)

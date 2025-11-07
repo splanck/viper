@@ -35,11 +35,15 @@ constexpr size_t kMaxSearchSize = 1 << 20; // 1MB cap
 } // namespace
 
 /// @brief Locate every match for @p query within @p buf.
-/// @details Performs a literal scan when @p useRegex is false and otherwise uses
-///          @c std::regex to discover matches.  The buffer is truncated to
-///          @ref kMaxSearchSize characters before searching to keep runtime costs
-///          predictable.  Regex errors result in an empty match list rather than
-///          propagating exceptions to the caller.
+/// @details The helper implements two strategies:
+///          1. Literal scans use @c std::string::find in a loop, advancing by the
+///             match length to detect overlapping occurrences correctly when the
+///             pattern is empty.
+///          2. Regex searches compile @p query into @c std::regex and iterate the
+///             match results.  Compilation happens inside a @c try/@c catch block
+///             so malformed expressions simply yield no matches.
+///          In both cases the buffer is truncated to @ref kMaxSearchSize bytes to
+///          prevent unbounded work when the user searches enormous files.
 std::vector<Match> findAll(const TextBuffer &buf, std::string_view query, bool useRegex)
 {
     std::vector<Match> hits;
@@ -81,11 +85,12 @@ std::vector<Match> findAll(const TextBuffer &buf, std::string_view query, bool u
 }
 
 /// @brief Find the next match starting at @p from.
-/// @details Mirrors @ref findAll but stops at the first occurrence on or after
-///          the requested offset.  Literal searches delegate to
-///          @c std::string::find, while regex searches reuse the same truncated
-///          buffer strategy.  Regex failures yield @c std::nullopt so the caller
-///          can continue gracefully.
+/// @details Reuses the same literal-vs-regex split as @ref findAll while
+///          stopping after the first hit on or after the requested offset.  Regex
+///          searches adjust the returned position by the starting offset so the
+///          caller receives coordinates relative to the full buffer.  Failures to
+///          compile or execute the regular expression result in @c std::nullopt
+///          rather than throwing, allowing the UI to keep running.
 std::optional<Match> findNext(const TextBuffer &buf,
                               std::string_view query,
                               size_t from,
