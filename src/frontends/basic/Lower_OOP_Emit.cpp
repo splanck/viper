@@ -460,7 +460,20 @@ void Lowerer::emitOopDeclsAndBodies(const Program &prog)
         }
 
         if (ctor)
+        {
             emitClassConstructor(klass, *ctor);
+        }
+        else
+        {
+            const ClassInfo *info = oopIndex_.findClass(klass.name);
+            if (info && info->hasSynthCtor)
+            {
+                ConstructorDecl synthCtor;
+                synthCtor.loc = klass.loc;
+                synthCtor.line = klass.line;
+                emitClassConstructor(klass, synthCtor);
+            }
+        }
         emitClassDestructor(klass, dtor);
         for (const auto *method : methods)
             emitClassMethod(klass, *method);

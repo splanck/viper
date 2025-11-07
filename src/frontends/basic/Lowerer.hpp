@@ -11,6 +11,7 @@
 #include "frontends/basic/EmitCommon.hpp"
 #include "frontends/basic/LowerRuntime.hpp"
 #include "frontends/basic/NameMangler.hpp"
+#include "frontends/basic/Semantic_OOP.hpp"
 #include "frontends/basic/TypeRules.hpp"
 #include "viper/il/IRBuilder.hpp"
 #include "viper/il/Module.hpp"
@@ -654,6 +655,9 @@ class Lowerer
 
     /// @brief Cached layout table indexed by class or TYPE name.
     std::unordered_map<std::string, ClassLayout> classLayouts_;
+
+    /// @brief Indexed CLASS metadata collected during scanning.
+    OopIndex oopIndex_;
 
     /// @brief Determine the BASIC class associated with an object expression.
     [[nodiscard]] std::string resolveObjectClass(const Expr &expr) const;

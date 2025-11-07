@@ -152,6 +152,14 @@ function(viper_add_basic_main_tests)
     viper_add_ctest(
             test_frontends_basic_lowerer_select_case test_frontends_basic_lowerer_select_case)
 
+    viper_add_test(
+            test_frontends_basic_lowerer_oop_default_ctor
+            ${VIPER_TESTS_DIR}/frontends/basic/LowererOopConstructorTests.cpp)
+    target_link_libraries(test_frontends_basic_lowerer_oop_default_ctor PRIVATE ${VIPER_BASIC_LIBS})
+    viper_add_ctest(
+            test_frontends_basic_lowerer_oop_default_ctor
+            test_frontends_basic_lowerer_oop_default_ctor)
+
     viper_add_test(test_frontends_basic_parse_goto ${VIPER_TESTS_DIR}/frontends/basic/ParseGotoTests.cpp)
     target_link_libraries(test_frontends_basic_parse_goto PRIVATE ${VIPER_BASIC_LIBS})
     viper_add_ctest(test_frontends_basic_parse_goto test_frontends_basic_parse_goto)
