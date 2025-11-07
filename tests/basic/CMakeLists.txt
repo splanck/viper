@@ -168,6 +168,13 @@ function(viper_add_basic_main_tests)
     target_link_libraries(test_frontends_basic_parse_gosub PRIVATE ${VIPER_BASIC_LIBS})
     viper_add_ctest(test_frontends_basic_parse_gosub test_frontends_basic_parse_gosub)
 
+    viper_add_test(
+            test_frontends_basic_parse_type_alias
+            ${VIPER_TESTS_DIR}/frontends/basic/ParseTypeAliasTests.cpp)
+    target_link_libraries(test_frontends_basic_parse_type_alias PRIVATE ${VIPER_BASIC_LIBS})
+    viper_add_ctest(
+            test_frontends_basic_parse_type_alias test_frontends_basic_parse_type_alias)
+
     viper_add_test(test_frontends_basic_parse_select_case ${VIPER_TESTS_DIR}/frontends/basic/ParseSelectCaseTests.cpp)
     target_link_libraries(test_frontends_basic_parse_select_case PRIVATE ${VIPER_BASIC_LIBS})
     viper_add_ctest(
