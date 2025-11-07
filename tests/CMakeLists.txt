@@ -122,6 +122,9 @@ viper_add_ctest(test_run_process_quotes test_run_process_quotes)
 add_test(NAME smoke_basic_oop
         COMMAND $<TARGET_FILE:ilc> front basic -run ${CMAKE_CURRENT_SOURCE_DIR}/smoke/basic_oop.bas)
 
+add_test(NAME smoke_basic_point_ctor
+        COMMAND $<TARGET_FILE:ilc> front basic -run ${CMAKE_CURRENT_SOURCE_DIR}/smoke/basic_point_ctor.bas)
+
 viper_add_unit_support_tests()
 viper_add_il_core_tests()
 viper_add_basic_early_tests()
