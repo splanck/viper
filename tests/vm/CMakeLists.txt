@@ -284,6 +284,12 @@ function(viper_add_vm_unit_tests)
     target_link_libraries(test_vm_trace_bool_consts PRIVATE viper_il_full ${VIPER_VM_LIB} il_api)
     viper_add_ctest(test_vm_trace_bool_consts test_vm_trace_bool_consts)
 
+    viper_add_test(
+            test_vm_trace_unicode_path
+            ${VIPER_TESTS_DIR}/unit/test_vm_trace_unicode_path.cpp)
+    target_link_libraries(test_vm_trace_unicode_path PRIVATE viper_il_full ${VIPER_VM_LIB} il_api)
+    viper_add_ctest(test_vm_trace_unicode_path test_vm_trace_unicode_path)
+
     viper_add_test(test_vm_zext1_isub ${VIPER_TESTS_DIR}/unit/test_vm_zext1_isub.cpp)
     target_link_libraries(test_vm_zext1_isub PRIVATE viper_il_full ${VIPER_VM_LIB} il_api)
     viper_add_ctest(test_vm_zext1_isub test_vm_zext1_isub)
