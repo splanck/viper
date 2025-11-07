@@ -19,6 +19,7 @@
 ///          outermost scope while preserving mangled names.
 
 #include "frontends/basic/ScopeTracker.hpp"
+#include "frontends/basic/IdentifierUtils.hpp"
 
 namespace il::frontends::basic
 {
@@ -73,7 +74,7 @@ void ScopeTracker::popScope()
 void ScopeTracker::bind(const std::string &name, const std::string &mapped)
 {
     if (!stack_.empty())
-        stack_.back()[name] = mapped;
+        stack_.back()[canonicalizeIdentifier(name)] = mapped;
 }
 
 /// @brief Determine whether @p name already exists in the innermost scope.
@@ -82,7 +83,9 @@ void ScopeTracker::bind(const std::string &name, const std::string &mapped)
 /// @return True when the name is bound in the current scope.
 bool ScopeTracker::isDeclaredInCurrentScope(const std::string &name) const
 {
-    return !stack_.empty() && stack_.back().count(name);
+    if (stack_.empty())
+        return false;
+    return stack_.back().count(canonicalizeIdentifier(name)) != 0;
 }
 
 /// @brief Declare a new local symbol and generate a unique mangled identifier.
@@ -96,7 +99,7 @@ std::string ScopeTracker::declareLocal(const std::string &name)
 {
     std::string unique = name + "_" + std::to_string(nextId_++);
     if (!stack_.empty())
-        stack_.back()[name] = unique;
+        stack_.back()[canonicalizeIdentifier(name)] = unique;
     return unique;
 }
 
@@ -106,9 +109,10 @@ std::string ScopeTracker::declareLocal(const std::string &name)
 /// @return Mangled name when found; otherwise std::nullopt.
 std::optional<std::string> ScopeTracker::resolve(const std::string &name) const
 {
+    std::string key = canonicalizeIdentifier(name);
     for (auto it = stack_.rbegin(); it != stack_.rend(); ++it)
     {
-        auto found = it->find(name);
+        auto found = it->find(key);
         if (found != it->end())
             return found->second;
     }

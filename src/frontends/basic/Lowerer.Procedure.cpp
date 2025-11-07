@@ -211,7 +211,7 @@ ProcedureLowering::LoweringContext::LoweringContext(
 /// @return Reference to the mutable symbol record.
 Lowerer::SymbolInfo &Lowerer::ensureSymbol(std::string_view name)
 {
-    std::string key(name);
+    std::string key = canonicalizeIdentifier(name);
     auto [it, inserted] = symbols.emplace(std::move(key), SymbolInfo{});
     if (inserted)
     {
@@ -233,7 +233,7 @@ Lowerer::SymbolInfo &Lowerer::ensureSymbol(std::string_view name)
 /// @return Mutable symbol metadata or @c nullptr when absent.
 Lowerer::SymbolInfo *Lowerer::findSymbol(std::string_view name)
 {
-    std::string key(name);
+    std::string key = canonicalizeIdentifier(name);
     if (auto it = symbols.find(key); it != symbols.end())
         return &it->second;
     for (auto scopeIt = fieldScopeStack_.rbegin(); scopeIt != fieldScopeStack_.rend(); ++scopeIt)
@@ -252,7 +252,7 @@ Lowerer::SymbolInfo *Lowerer::findSymbol(std::string_view name)
 /// @return Const symbol metadata or @c nullptr when absent.
 const Lowerer::SymbolInfo *Lowerer::findSymbol(std::string_view name) const
 {
-    std::string key(name);
+    std::string key = canonicalizeIdentifier(name);
     if (auto it = symbols.find(key); it != symbols.end())
         return &it->second;
     for (auto scopeIt = fieldScopeStack_.rbegin(); scopeIt != fieldScopeStack_.rend(); ++scopeIt)
@@ -333,7 +333,7 @@ void Lowerer::markArray(std::string_view name)
 void Lowerer::pushFieldScope(const std::string &className)
 {
     FieldScope scope;
-    if (auto it = classLayouts_.find(className); it != classLayouts_.end())
+    if (auto it = classLayouts_.find(canonicalizeIdentifier(className)); it != classLayouts_.end())
     {
         scope.layout = &it->second;
         for (const auto &field : it->second.fields)
@@ -346,7 +346,7 @@ void Lowerer::pushFieldScope(const std::string &className)
             info.referenced = false;
             info.isObject = false;
             info.objectClass.clear();
-            scope.symbols.emplace(field.name, std::move(info));
+            scope.symbols.emplace(canonicalizeIdentifier(field.name), std::move(info));
         }
     }
     fieldScopeStack_.push_back(std::move(scope));
@@ -489,7 +489,8 @@ Lowerer::resolveVariableStorage(std::string_view name, il::support::SourceLoc lo
 /// @return Pointer to the cached signature or @c nullptr when unknown.
 const Lowerer::ProcedureSignature *Lowerer::findProcSignature(const std::string &name) const
 {
-    auto it = procSignatures.find(name);
+    std::string key = canonicalizeIdentifier(name);
+    auto it = procSignatures.find(key);
     if (it == procSignatures.end())
         return nullptr;
     return &it->second;
@@ -521,7 +522,7 @@ void ProcedureLowering::collectProcedureSignatures(const Program &prog)
                                                : coreTypeForAstType(p.type);
                 sig.paramTypes.push_back(ty);
             }
-            lowerer.procSignatures.emplace(fn->name, std::move(sig));
+            lowerer.procSignatures.emplace(canonicalizeIdentifier(fn->name), std::move(sig));
         }
         else if (auto *sub = dynamic_cast<const SubDecl *>(decl.get()))
         {
@@ -534,7 +535,7 @@ void ProcedureLowering::collectProcedureSignatures(const Program &prog)
                                                : coreTypeForAstType(p.type);
                 sig.paramTypes.push_back(ty);
             }
-            lowerer.procSignatures.emplace(sub->name, std::move(sig));
+            lowerer.procSignatures.emplace(canonicalizeIdentifier(sub->name), std::move(sig));
         }
     }
 }
@@ -707,7 +708,7 @@ Lowerer::ProcedureMetadata Lowerer::collectProcedureMetadata(const std::vector<P
     metadata.irParams.reserve(params.size());
     for (const auto &p : params)
     {
-        metadata.paramNames.insert(p.name);
+        metadata.paramNames.insert(canonicalizeIdentifier(p.name));
         Type ty = p.is_array ? Type(Type::Kind::Ptr) : coreTypeForAstType(p.type);
         metadata.irParams.push_back({p.name, ty});
         if (p.is_array)

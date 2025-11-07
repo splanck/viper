@@ -23,6 +23,7 @@
 ///          lowering passes.
 
 #include "frontends/basic/Semantic_OOP.hpp"
+#include "frontends/basic/IdentifierUtils.hpp"
 #include "frontends/basic/AST.hpp"
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/TypeSuffix.hpp"
@@ -96,7 +97,7 @@ void emitMissingReturn(const ClassDecl &klass, const MethodDecl &method, Diagnos
 /// @return Pointer to the associated @ref ClassInfo or @c nullptr when absent.
 ClassInfo *OopIndex::findClass(const std::string &name)
 {
-    auto it = classes_.find(name);
+    auto it = classes_.find(canonicalizeIdentifier(name));
     if (it == classes_.end())
     {
         return nullptr;
@@ -112,7 +113,7 @@ ClassInfo *OopIndex::findClass(const std::string &name)
 /// @return Pointer to the stored @ref ClassInfo or @c nullptr when absent.
 const ClassInfo *OopIndex::findClass(const std::string &name) const
 {
-    auto it = classes_.find(name);
+    auto it = classes_.find(canonicalizeIdentifier(name));
     if (it == classes_.end())
     {
         return nullptr;
@@ -203,7 +204,7 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
                         sig.returnType = suffixType;
                     }
                     emitMissingReturn(classDecl, method, emitter);
-                    info.methods[method.name] = std::move(sig);
+                    info.methods[canonicalizeIdentifier(method.name)] = std::move(sig);
                     break;
                 }
                 default:
@@ -216,7 +217,7 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
             info.hasSynthCtor = true;
         }
 
-        index.classes()[info.name] = std::move(info);
+        index.classes()[canonicalizeIdentifier(info.name)] = std::move(info);
     }
 }
 

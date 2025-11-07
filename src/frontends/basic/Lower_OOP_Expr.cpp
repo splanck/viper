@@ -116,7 +116,8 @@ Lowerer::RVal Lowerer::lowerNewExpr(const NewExpr &expr)
     curLoc = expr.loc;
     std::size_t objectSize = 0;
     std::int64_t classId = 0;
-    if (auto layoutIt = classLayouts_.find(expr.className); layoutIt != classLayouts_.end())
+    if (auto layoutIt = classLayouts_.find(canonicalizeIdentifier(expr.className));
+        layoutIt != classLayouts_.end())
     {
         objectSize = layoutIt->second.size;
         classId = layoutIt->second.classId;
@@ -182,7 +183,7 @@ Lowerer::resolveMemberField(const MemberAccessExpr &expr)
 
     RVal base = lowerExpr(*expr.base);
     std::string className = resolveObjectClass(*expr.base);
-    auto layoutIt = classLayouts_.find(className);
+    auto layoutIt = classLayouts_.find(canonicalizeIdentifier(className));
     if (layoutIt == classLayouts_.end())
         return std::nullopt;
 

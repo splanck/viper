@@ -226,7 +226,7 @@ void Lowerer::emitClassConstructor(const ClassDecl &klass, const ConstructorDecl
     for (std::size_t i = 0; i < ctor.params.size(); ++i)
     {
         const auto &param = ctor.params[i];
-        metadata.paramNames.insert(param.name);
+        metadata.paramNames.insert(canonicalizeIdentifier(param.name));
         curLoc = param.loc;
         Value slot = emitAlloca((!param.is_array && param.type == AstType::Bool) ? 1 : 8);
         if (param.is_array)
@@ -331,7 +331,7 @@ void Lowerer::emitClassDestructor(const ClassDecl &klass, const DestructorDecl *
     curLoc = {};
 
     Value selfPtr = loadSelfPointer(selfSlotId);
-    auto layoutIt = classLayouts_.find(klass.name);
+    auto layoutIt = classLayouts_.find(canonicalizeIdentifier(klass.name));
     if (layoutIt != classLayouts_.end())
         emitFieldReleaseSequence(selfPtr, layoutIt->second);
 
@@ -399,7 +399,7 @@ void Lowerer::emitClassMethod(const ClassDecl &klass, const MethodDecl &method)
     for (std::size_t i = 0; i < method.params.size(); ++i)
     {
         const auto &param = method.params[i];
-        metadata.paramNames.insert(param.name);
+        metadata.paramNames.insert(canonicalizeIdentifier(param.name));
         curLoc = param.loc;
         Value slot = emitAlloca((!param.is_array && param.type == AstType::Bool) ? 1 : 8);
         if (param.is_array)

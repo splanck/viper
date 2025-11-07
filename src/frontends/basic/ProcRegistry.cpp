@@ -17,6 +17,7 @@
 ///          performing lookups.
 
 #include "frontends/basic/ProcRegistry.hpp"
+#include "frontends/basic/IdentifierUtils.hpp"
 
 #include <unordered_set>
 #include <utility>
@@ -52,7 +53,8 @@ ProcSignature ProcRegistry::buildSignature(const ProcDescriptor &descriptor)
     std::unordered_set<std::string> paramNames;
     for (const auto &p : descriptor.params)
     {
-        if (!paramNames.insert(p.name).second)
+        std::string canonical = canonicalizeIdentifier(p.name);
+        if (!paramNames.insert(canonical).second)
         {
             de.emit(diag::BasicDiag::DuplicateParameter,
                     p.loc,
@@ -84,8 +86,9 @@ void ProcRegistry::registerProcImpl(std::string_view name,
                                     il::support::SourceLoc loc)
 {
     std::string nameStr{name};
+    std::string key = canonicalizeIdentifier(nameStr);
 
-    if (procs_.count(nameStr))
+    if (procs_.count(key))
     {
         de.emit(diag::BasicDiag::DuplicateProcedure,
                 loc,
@@ -94,7 +97,7 @@ void ProcRegistry::registerProcImpl(std::string_view name,
         return;
     }
 
-    procs_.emplace(std::move(nameStr), buildSignature(descriptor));
+    procs_.emplace(std::move(key), buildSignature(descriptor));
 }
 
 /// @brief Register a FUNCTION declaration with its return type and parameters.
@@ -129,7 +132,7 @@ const ProcTable &ProcRegistry::procs() const
 /// @return Pointer to the stored signature when found; otherwise nullptr.
 const ProcSignature *ProcRegistry::lookup(const std::string &name) const
 {
-    auto it = procs_.find(name);
+    auto it = procs_.find(canonicalizeIdentifier(name));
     return it == procs_.end() ? nullptr : &it->second;
 }
 

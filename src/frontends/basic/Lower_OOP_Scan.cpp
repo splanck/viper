@@ -93,7 +93,8 @@ template <typename FieldRange>
         info.offset = offset;
         info.size = fieldSize(field.type);
         layout.fields.push_back(std::move(info));
-        layout.fieldIndex.emplace(layout.fields.back().name, layout.fields.size() - 1);
+        layout.fieldIndex.emplace(canonicalizeIdentifier(layout.fields.back().name),
+                                  layout.fields.size() - 1);
         offset += layout.fields.back().size;
     }
     layout.size = alignTo(offset, kFieldAlignment);
@@ -222,7 +223,8 @@ void Lowerer::scanOOP(const Program &prog)
 
     for (auto &entry : walker.layouts)
     {
-        classLayouts_.emplace(std::move(entry.first), std::move(entry.second));
+        std::string key = canonicalizeIdentifier(entry.first);
+        classLayouts_.emplace(std::move(key), std::move(entry.second));
     }
 }
 

@@ -71,7 +71,7 @@ std::optional<::il::frontends::basic::Type> Lowerer::findMethodReturnType(
     if (!info)
         return std::nullopt;
 
-    auto it = info->methods.find(std::string(methodName));
+    auto it = info->methods.find(canonicalizeIdentifier(methodName));
     if (it == info->methods.end())
         return std::nullopt;
     if (it->second.returnType)
