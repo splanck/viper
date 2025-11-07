@@ -259,6 +259,18 @@ void Lowerer::lowerLet(const LetStmt &stmt)
     {
         assignArrayElement(*arr, std::move(value), stmt.loc);
     }
+    else if (auto *member = dynamic_cast<const MemberAccessExpr *>(stmt.target.get()))
+    {
+        if (auto access = resolveMemberField(*member))
+        {
+            SlotType slotInfo;
+            slotInfo.type = access->ilType;
+            slotInfo.isArray = false;
+            slotInfo.isBoolean = (access->astType == ::il::frontends::basic::Type::Bool);
+            slotInfo.isObject = false;
+            assignScalarSlot(slotInfo, access->ptr, std::move(value), stmt.loc);
+        }
+    }
 }
 
 /// @brief Emit runtime validation logic for array length expressions.

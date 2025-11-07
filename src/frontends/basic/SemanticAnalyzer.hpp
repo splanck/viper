@@ -178,6 +178,8 @@ class SemanticAnalyzer
     void analyzeVarAssignment(VarExpr &v, const LetStmt &s);
     /// @brief Analyze assignment to an array element in LET.
     void analyzeArrayAssignment(ArrayExpr &a, const LetStmt &s);
+    /// @brief Analyze assignment to an object field in LET.
+    void analyzeMemberAssignment(MemberAccessExpr &m, const LetStmt &s);
     /// @brief Report error for LET with a non-assignable left-hand side.
     void analyzeConstExpr(const LetStmt &s);
 
