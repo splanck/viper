@@ -48,12 +48,24 @@ Lowerer::RVal Lowerer::lowerVarExpr(const VarExpr &v)
 {
     curLoc = v.loc;
     const auto *sym = findSymbol(v.name);
-    assert(sym && sym->slotId);
-    Value ptr = Value::temp(*sym->slotId);
-    SlotType slotInfo = getSlotType(v.name);
-    Type ty = slotInfo.type;
-    Value val = emitLoad(ty, ptr);
-    return {val, ty};
+    if (sym && sym->slotId)
+    {
+        Value ptr = Value::temp(*sym->slotId);
+        SlotType slotInfo = getSlotType(v.name);
+        Type ty = slotInfo.type;
+        Value val = emitLoad(ty, ptr);
+        return {val, ty};
+    }
+
+    if (auto access = resolveImplicitField(v.name, v.loc))
+    {
+        Value loaded = emitLoad(access->ilType, access->ptr);
+        return {loaded, access->ilType};
+    }
+
+    curLoc = v.loc;
+    emitTrap();
+    return {Value::constInt(0), Type(Type::Kind::I64)};
 }
 
 /// @brief Lower a `UBOUND` query into an IL call and subtraction.

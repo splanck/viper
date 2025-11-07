@@ -20,6 +20,7 @@
 #include "il/runtime/RuntimeSignatures.hpp"
 
 #include <string>
+#include <span>
 #include <utility>
 #include <vector>
 
@@ -173,6 +174,7 @@ void Lowerer::emitFieldReleaseSequence(Value selfPtr, const ClassLayout &layout)
 void Lowerer::emitClassConstructor(const ClassDecl &klass, const ConstructorDecl &ctor)
 {
     resetLoweringState();
+    Lowerer::MemberScopeGuard memberScope(*this, klass, ctor.params);
     auto body = gatherBody(ctor.body);
     collectVars(body);
 
@@ -265,6 +267,7 @@ void Lowerer::emitClassConstructor(const ClassDecl &klass, const ConstructorDecl
 void Lowerer::emitClassDestructor(const ClassDecl &klass, const DestructorDecl *userDtor)
 {
     resetLoweringState();
+    Lowerer::MemberScopeGuard memberScope(*this, klass, std::span<const Param>{});
     std::vector<const Stmt *> body;
     if (userDtor)
     {
@@ -335,6 +338,7 @@ void Lowerer::emitClassDestructor(const ClassDecl &klass, const DestructorDecl *
 void Lowerer::emitClassMethod(const ClassDecl &klass, const MethodDecl &method)
 {
     resetLoweringState();
+    Lowerer::MemberScopeGuard memberScope(*this, klass, method.params);
     auto body = gatherBody(method.body);
     collectVars(body);
 

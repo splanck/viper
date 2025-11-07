@@ -22,6 +22,7 @@
 #include <cctype>
 #include <cstddef>
 #include <string_view>
+#include <unordered_set>
 
 using namespace il::frontends::basic;
 using namespace il::support;
@@ -217,6 +218,59 @@ TEST(BasicOOPLoweringTest, MethodParametersForwardedToCallee)
         }
     }
     EXPECT_TRUE(validatedCall);
+}
+
+TEST(BasicOOPLoweringTest, BareMemberAssignmentBindsField)
+{
+    const std::string src = "10 CLASS C\n"
+                             "20   v AS INTEGER\n"
+                             "30   SUB Inc()\n"
+                             "40     LET v = v + 1\n"
+                             "50   END SUB\n"
+                             "60 END CLASS\n"
+                             "70 END\n";
+
+    SourceManager sm;
+    BasicCompilerInput input{src, "bare_member.bas"};
+    BasicCompilerOptions options{};
+
+    auto result = compileBasic(input, options, sm);
+    ASSERT_TRUE(result.succeeded());
+
+    const il::core::Module &module = result.module;
+    const il::core::Function *method = findFunctionCaseInsensitive(module, "C.Inc");
+    ASSERT_NE(method, nullptr);
+
+    std::unordered_set<unsigned> gepResults;
+    for (const auto &block : method->blocks)
+    {
+        for (const auto &instr : block.instructions)
+        {
+            if (instr.op == il::core::Opcode::GEP && instr.result)
+                gepResults.insert(*instr.result);
+        }
+    }
+
+    bool storeUsesField = false;
+    for (const auto &block : method->blocks)
+    {
+        for (const auto &instr : block.instructions)
+        {
+            if (instr.op != il::core::Opcode::Store || instr.operands.empty())
+                continue;
+            const auto &ptr = instr.operands.front();
+            if (ptr.kind == il::core::Value::Kind::Temp && gepResults.count(ptr.id))
+            {
+                storeUsesField = true;
+                break;
+            }
+        }
+        if (storeUsesField)
+            break;
+    }
+
+    EXPECT_FALSE(gepResults.empty());
+    EXPECT_TRUE(storeUsesField);
 }
 
 int main(int argc, char **argv)

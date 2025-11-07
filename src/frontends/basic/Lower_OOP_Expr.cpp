@@ -20,6 +20,7 @@
 #include "frontends/basic/NameMangler_OOP.hpp"
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -212,6 +213,24 @@ Lowerer::RVal Lowerer::lowerMemberAccessExpr(const MemberAccessExpr &expr)
     curLoc = expr.loc;
     Value loaded = emitLoad(access->ilType, access->ptr);
     return {loaded, access->ilType};
+}
+
+std::optional<Lowerer::MemberFieldAccess>
+Lowerer::resolveImplicitField(std::string_view name, il::support::SourceLoc loc)
+{
+    if (!bindsToMemberField(name))
+        return std::nullopt;
+    const MemberScope *scope = activeMemberScope();
+    if (!scope || !scope->layout)
+        return std::nullopt;
+
+    MemberAccessExpr accessExpr;
+    accessExpr.member = std::string(name);
+    accessExpr.loc = loc;
+    auto me = std::make_unique<MeExpr>();
+    me->loc = loc;
+    accessExpr.base = std::move(me);
+    return resolveMemberField(accessExpr);
 }
 
 /// @brief Lower an instance method call, dispatching through the mangled name.

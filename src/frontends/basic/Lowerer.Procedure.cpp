@@ -273,6 +273,47 @@ void Lowerer::setSymbolObjectType(std::string_view name, std::string className)
     info.hasType = true;
 }
 
+void Lowerer::pushMemberScope(const ClassDecl &klass, std::span<const Param> params)
+{
+    MemberScope scope;
+    scope.className = klass.name;
+    if (auto it = classLayouts_.find(klass.name); it != classLayouts_.end())
+        scope.layout = &it->second;
+    scope.fields.reserve(klass.fields.size());
+    for (const auto &field : klass.fields)
+        scope.fields.insert(field.name);
+    scope.params.insert("ME");
+    for (const auto &param : params)
+        scope.params.insert(param.name);
+    memberScopeStack_.push_back(std::move(scope));
+}
+
+void Lowerer::popMemberScope()
+{
+    if (!memberScopeStack_.empty())
+        memberScopeStack_.pop_back();
+}
+
+const Lowerer::MemberScope *Lowerer::activeMemberScope() const noexcept
+{
+    if (memberScopeStack_.empty())
+        return nullptr;
+    return &memberScopeStack_.back();
+}
+
+bool Lowerer::bindsToMemberField(std::string_view name) const
+{
+    const auto *scope = activeMemberScope();
+    if (!scope || name.empty())
+        return false;
+    std::string key(name);
+    if (scope->params.count(key))
+        return false;
+    if (symbols.find(key) != symbols.end())
+        return false;
+    return scope->fields.count(key) != 0;
+}
+
 /// @brief Mark that a symbol has been referenced somewhere in the procedure.
 /// @details Lazily infers the type from the name suffix when absent, ensuring
 ///          later slot allocation chooses the appropriate storage width.  Empty
@@ -282,6 +323,8 @@ void Lowerer::setSymbolObjectType(std::string_view name, std::string className)
 void Lowerer::markSymbolReferenced(std::string_view name)
 {
     if (name.empty())
+        return;
+    if (bindsToMemberField(name))
         return;
     auto &info = ensureSymbol(name);
     if (!info.hasType)
@@ -301,6 +344,8 @@ void Lowerer::markSymbolReferenced(std::string_view name)
 void Lowerer::markArray(std::string_view name)
 {
     if (name.empty())
+        return;
+    if (bindsToMemberField(name))
         return;
     auto &info = ensureSymbol(name);
     info.isArray = true;

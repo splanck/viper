@@ -21,6 +21,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -643,6 +644,37 @@ class Lowerer
     };
 
   private:
+    struct MemberScope
+    {
+        std::string className;
+        const ClassLayout *layout{nullptr};
+        std::unordered_set<std::string> fields;
+        std::unordered_set<std::string> params;
+    };
+
+  public:
+    class MemberScopeGuard
+    {
+      public:
+        MemberScopeGuard(Lowerer &lowerer, const ClassDecl &klass, std::span<const Param> params)
+            : lowerer_(lowerer)
+        {
+            lowerer_.pushMemberScope(klass, params);
+        }
+
+        MemberScopeGuard(const MemberScopeGuard &) = delete;
+        MemberScopeGuard &operator=(const MemberScopeGuard &) = delete;
+
+        ~MemberScopeGuard()
+        {
+            lowerer_.popMemberScope();
+        }
+
+      private:
+        Lowerer &lowerer_;
+    };
+
+  private:
     /// @brief Scan program OOP constructs to populate class layouts and runtime requests.
     void scanOOP(const Program &prog);
 
@@ -667,11 +699,24 @@ class Lowerer
     /// @brief Indexed CLASS metadata collected during scanning.
     OopIndex oopIndex_;
 
+    std::vector<MemberScope> memberScopeStack_;
+
     /// @brief Determine the BASIC class associated with an object expression.
     [[nodiscard]] std::string resolveObjectClass(const Expr &expr) const;
 
     /// @brief Resolve pointer and type information for a member access expression.
     [[nodiscard]] std::optional<MemberFieldAccess> resolveMemberField(const MemberAccessExpr &expr);
+
+    void pushMemberScope(const ClassDecl &klass, std::span<const Param> params);
+
+    void popMemberScope();
+
+    [[nodiscard]] const MemberScope *activeMemberScope() const noexcept;
+
+    [[nodiscard]] bool bindsToMemberField(std::string_view name) const;
+
+    [[nodiscard]] std::optional<MemberFieldAccess>
+        resolveImplicitField(std::string_view name, il::support::SourceLoc loc);
 
   public:
     SymbolInfo &ensureSymbol(std::string_view name);
