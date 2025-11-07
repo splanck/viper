@@ -163,6 +163,10 @@ class Parser
     /// @return Parsed statement or empty optional when not applicable.
     StmtResult parseLet();
 
+    /// @brief Parse an assignment statement without an explicit LET keyword.
+    /// @return Parsed statement or empty optional when the pattern does not match.
+    StmtResult parseImplicitLet();
+
     /// @brief Parse a procedure call statement starting with an identifier.
     /// @param line Line metadata attached to the resulting statement.
     /// @return Parsed statement, null statement on error, or empty optional when
@@ -198,6 +202,10 @@ class Parser
     /// @param kind Token kind to classify.
     /// @return True when a handler or structural keyword marks the start of a new statement.
     bool isStatementStart(TokenKind kind) const;
+
+    /// @brief Detect whether the current token sequence begins an implicit assignment.
+    /// @return True when the current statement starts with an lvalue followed by '='.
+    bool isImplicitAssignmentStart() const;
 
     /// @brief Parse a PRINT statement.
     /// @return PRINT statement node.
