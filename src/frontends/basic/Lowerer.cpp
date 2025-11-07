@@ -17,9 +17,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "frontends/basic/BasicTypes.hpp"
 #include "frontends/basic/Lowerer.hpp"
+#include "frontends/basic/BasicTypes.hpp"
 #include "frontends/basic/LoweringPipeline.hpp"
+#include "frontends/basic/TypeSuffix.hpp"
 #include "frontends/basic/lower/Emitter.hpp"
 
 using il::core::Type;
@@ -60,8 +61,8 @@ Lowerer::Type Lowerer::functionRetTypeFromHint(const std::string &fnName, BasicT
     return ilTypeForBasicRet(fnName, hint);
 }
 
-std::optional<::il::frontends::basic::Type>
-Lowerer::findMethodReturnType(std::string_view className, std::string_view methodName) const
+std::optional<::il::frontends::basic::Type> Lowerer::findMethodReturnType(
+    std::string_view className, std::string_view methodName) const
 {
     if (className.empty())
         return std::nullopt;
@@ -73,10 +74,13 @@ Lowerer::findMethodReturnType(std::string_view className, std::string_view metho
     auto it = info->methods.find(std::string(methodName));
     if (it == info->methods.end())
         return std::nullopt;
-    if (!it->second.returnType)
-        return std::nullopt;
+    if (it->second.returnType)
+        return it->second.returnType;
 
-    return it->second.returnType;
+    if (auto suffixType = inferAstTypeFromSuffix(methodName))
+        return suffixType;
+
+    return std::nullopt;
 }
 
 /// @brief Construct a lowering driver composed of specialised helper stages.

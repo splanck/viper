@@ -14,8 +14,8 @@
 #include "frontends/basic/BasicCompiler.hpp"
 #include "il/core/Extern.hpp"
 #include "il/core/Function.hpp"
-#include "il/core/Opcode.hpp"
 #include "il/core/Module.hpp"
+#include "il/core/Opcode.hpp"
 #include "support/source_manager.hpp"
 
 #include <algorithm>
@@ -115,12 +115,12 @@ TEST(BasicOOPLoweringTest, EmitsRuntimeHelpersAndClassMembers)
 TEST(BasicOOPLoweringTest, StoresMemberAssignmentIntoField)
 {
     const std::string src = "10 CLASS C\n"
-                             "20   v AS INTEGER\n"
-                             "30   SUB Set7()\n"
-                             "40     LET Me.v = 7\n"
-                             "50   END SUB\n"
-                             "60 END CLASS\n"
-                             "70 END\n";
+                            "20   v AS INTEGER\n"
+                            "30   SUB Set7()\n"
+                            "40     LET Me.v = 7\n"
+                            "50   END SUB\n"
+                            "60 END CLASS\n"
+                            "70 END\n";
 
     SourceManager sm;
     BasicCompilerInput input{src, "member_set.bas"};
@@ -170,13 +170,13 @@ TEST(BasicOOPLoweringTest, StoresMemberAssignmentIntoField)
 TEST(BasicOOPLoweringTest, LoadsMemberAccessFromField)
 {
     const std::string src = "10 CLASS C\n"
-                             "20   v AS INTEGER\n"
-                             "30   SUB Show()\n"
-                             "40     LET Me.v = 42\n"
-                             "50     PRINT Me.v\n"
-                             "60   END SUB\n"
-                             "70 END CLASS\n"
-                             "80 END\n";
+                            "20   v AS INTEGER\n"
+                            "30   SUB Show()\n"
+                            "40     LET Me.v = 42\n"
+                            "50     PRINT Me.v\n"
+                            "60   END SUB\n"
+                            "70 END CLASS\n"
+                            "80 END\n";
 
     SourceManager sm;
     BasicCompilerInput input{src, "member_load.bas"};
@@ -221,12 +221,12 @@ TEST(BasicOOPLoweringTest, LoadsMemberAccessFromField)
 TEST(BasicOOPLoweringTest, BareFieldNameBindsToInstance)
 {
     const std::string src = "10 CLASS C\n"
-                             "20   v AS INTEGER\n"
-                             "30   SUB Inc()\n"
-                             "40     LET v = v + 1\n"
-                             "50   END SUB\n"
-                             "60 END CLASS\n"
-                             "70 END\n";
+                            "20   v AS INTEGER\n"
+                            "30   SUB Inc()\n"
+                            "40     LET v = v + 1\n"
+                            "50   END SUB\n"
+                            "60 END CLASS\n"
+                            "70 END\n";
 
     SourceManager sm;
     BasicCompilerInput input{src, "bare_field.bas"};
@@ -275,14 +275,14 @@ TEST(BasicOOPLoweringTest, BareFieldNameBindsToInstance)
 TEST(BasicOOPLoweringTest, MethodParametersForwardedToCallee)
 {
     const std::string src = "10 CLASS D\n"
-                             "20   SUB Echo(v AS INTEGER)\n"
-                             "30     PRINT v\n"
-                             "40   END SUB\n"
-                             "50 END CLASS\n"
-                             "60 DIM d AS D\n"
-                             "70 LET d = NEW D()\n"
-                             "80 d.Echo(123)\n"
-                             "90 END\n";
+                            "20   SUB Echo(v AS INTEGER)\n"
+                            "30     PRINT v\n"
+                            "40   END SUB\n"
+                            "50 END CLASS\n"
+                            "60 DIM d AS D\n"
+                            "70 LET d = NEW D()\n"
+                            "80 d.Echo(123)\n"
+                            "90 END\n";
 
     SourceManager sm;
     BasicCompilerInput input{src, "method_params.bas"};
@@ -342,14 +342,14 @@ TEST(BasicOOPLoweringTest, MethodParametersForwardedToCallee)
 TEST(BasicOOPLoweringTest, MethodFunctionEmitsReturnValue)
 {
     const std::string src = "10 CLASS M\n"
-                             "20   FUNCTION Twice(n AS INTEGER) AS INTEGER\n"
-                             "30     RETURN n + n\n"
-                             "40   END FUNCTION\n"
-                             "50 END CLASS\n"
-                             "60 DIM m AS M\n"
-                             "70 LET m = NEW M()\n"
-                             "80 PRINT m.Twice(21)\n"
-                             "90 END\n";
+                            "20   FUNCTION Twice(n AS INTEGER) AS INTEGER\n"
+                            "30     RETURN n + n\n"
+                            "40   END FUNCTION\n"
+                            "50 END CLASS\n"
+                            "60 DIM m AS M\n"
+                            "70 LET m = NEW M()\n"
+                            "80 PRINT m.Twice(21)\n"
+                            "90 END\n";
 
     SourceManager sm;
     BasicCompilerInput input{src, "method_return.bas"};
@@ -400,6 +400,77 @@ TEST(BasicOOPLoweringTest, MethodFunctionEmitsReturnValue)
             break;
     }
     EXPECT_TRUE(sawCallResult);
+}
+
+TEST(BasicOOPLoweringTest, MethodFunctionSuffixReturnTypes)
+{
+    const std::string src = "10 CLASS P\n"
+                            "20   FUNCTION Hello$()\n"
+                            "30     RETURN \"hi\"\n"
+                            "40   END FUNCTION\n"
+                            "50   FUNCTION Half#()\n"
+                            "60     RETURN 0.5\n"
+                            "70   END FUNCTION\n"
+                            "80   FUNCTION Count%()\n"
+                            "90     RETURN 3\n"
+                            "100  END FUNCTION\n"
+                            "110 END CLASS\n"
+                            "120 DIM p AS P\n"
+                            "130 LET p = NEW P()\n"
+                            "140 PRINT p.Hello$(), p.Half#(), p.Count%()\n"
+                            "150 END\n";
+
+    SourceManager sm;
+    BasicCompilerInput input{src, "method_suffix.bas"};
+    BasicCompilerOptions options{};
+
+    auto result = compileBasic(input, options, sm);
+    ASSERT_TRUE(result.succeeded());
+
+    const il::core::Module &module = result.module;
+
+    const il::core::Function *hello = findFunctionCaseInsensitive(module, "P.Hello$");
+    ASSERT_NE(hello, nullptr);
+    EXPECT_EQ(hello->retType.kind, il::core::Type::Kind::Str);
+
+    const il::core::Function *half = findFunctionCaseInsensitive(module, "P.Half#");
+    ASSERT_NE(half, nullptr);
+    EXPECT_EQ(half->retType.kind, il::core::Type::Kind::F64);
+
+    const il::core::Function *count = findFunctionCaseInsensitive(module, "P.Count%");
+    ASSERT_NE(count, nullptr);
+    EXPECT_EQ(count->retType.kind, il::core::Type::Kind::I64);
+
+    const il::core::Function *mainFn = findFunctionCaseInsensitive(module, "main");
+    ASSERT_NE(mainFn, nullptr);
+
+    bool sawHelloCall = false;
+    bool sawHalfCall = false;
+    bool sawCountCall = false;
+    for (const auto &block : mainFn->blocks)
+    {
+        for (const auto &instr : block.instructions)
+        {
+            if (instr.op != il::core::Opcode::Call)
+                continue;
+            if (equalsIgnoreCase(instr.callee, "P.Hello$"))
+            {
+                sawHelloCall = instr.result.has_value();
+            }
+            else if (equalsIgnoreCase(instr.callee, "P.Half#"))
+            {
+                sawHalfCall = instr.result.has_value();
+            }
+            else if (equalsIgnoreCase(instr.callee, "P.Count%"))
+            {
+                sawCountCall = instr.result.has_value();
+            }
+        }
+    }
+
+    EXPECT_TRUE(sawHelloCall);
+    EXPECT_TRUE(sawHalfCall);
+    EXPECT_TRUE(sawCountCall);
 }
 
 int main(int argc, char **argv)
