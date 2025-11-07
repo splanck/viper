@@ -383,7 +383,7 @@ std::string formatLogicalOperandMessage(BinaryExpr::Op op, Type lhs, Type rhs)
 /// @return Reference to the rule describing validation and result semantics.
 const ExprRule &exprRule(BinaryExpr::Op op)
 {
-    static const std::array<ExprRule, exprRuleCount()> rules = {{
+    static constexpr std::array<ExprRule, exprRuleCount()> rules = {{
         {BinaryExpr::Op::Add, &validateAddOperands, &addResult, "B2001"},
         {BinaryExpr::Op::Sub, &validateNumericOperands, &numericResult, "B2001"},
         {BinaryExpr::Op::Mul, &validateNumericOperands, &numericResult, "B2001"},
@@ -414,6 +414,35 @@ const ExprRule &exprRule(BinaryExpr::Op op)
          &booleanResult,
          SemanticAnalyzer::DiagNonBooleanLogicalOperand},
     }};
+
+    // Belt-and-suspenders: enforce that comparison operators always resolve to
+    // boolean semantics. The validator already ensures operand correctness, so
+    // this guards the rule table from accidental drift.
+    static_assert(rules[static_cast<std::size_t>(BinaryExpr::Op::Eq)].result == &booleanResult,
+                  "Equality comparison must return BOOL");
+    static_assert(rules[static_cast<std::size_t>(BinaryExpr::Op::Ne)].result == &booleanResult,
+                  "Inequality comparison must return BOOL");
+    static_assert(rules[static_cast<std::size_t>(BinaryExpr::Op::Lt)].result == &booleanResult,
+                  "Less-than comparison must return BOOL");
+    static_assert(rules[static_cast<std::size_t>(BinaryExpr::Op::Le)].result == &booleanResult,
+                  "Less-equal comparison must return BOOL");
+    static_assert(rules[static_cast<std::size_t>(BinaryExpr::Op::Gt)].result == &booleanResult,
+                  "Greater-than comparison must return BOOL");
+    static_assert(rules[static_cast<std::size_t>(BinaryExpr::Op::Ge)].result == &booleanResult,
+                  "Greater-equal comparison must return BOOL");
+
+    // Logical operators demand boolean inputs/outputs; ensure the result stays
+    // pinned to the boolean helper to match operand validation rules.
+    static_assert(rules[static_cast<std::size_t>(BinaryExpr::Op::LogicalAndShort)].result ==
+                      &booleanResult,
+                  "Short-circuit AND must return BOOL");
+    static_assert(rules[static_cast<std::size_t>(BinaryExpr::Op::LogicalOrShort)].result ==
+                      &booleanResult,
+                  "Short-circuit OR must return BOOL");
+    static_assert(rules[static_cast<std::size_t>(BinaryExpr::Op::LogicalAnd)].result == &booleanResult,
+                  "Logical AND must return BOOL");
+    static_assert(rules[static_cast<std::size_t>(BinaryExpr::Op::LogicalOr)].result == &booleanResult,
+                  "Logical OR must return BOOL");
 
     return rules.at(static_cast<std::size_t>(op));
 }
