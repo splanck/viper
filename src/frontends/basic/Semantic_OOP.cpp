@@ -24,6 +24,7 @@
 
 #include "frontends/basic/Semantic_OOP.hpp"
 #include "frontends/basic/AST.hpp"
+#include "frontends/basic/AstWalker.hpp"
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/TypeSuffix.hpp"
 
@@ -31,12 +32,64 @@
 
 #include <string>
 #include <utility>
+#include <unordered_set>
 
 namespace il::frontends::basic
 {
 
 namespace
 {
+class MemberShadowCheckWalker final : public BasicAstWalker<MemberShadowCheckWalker>
+{
+  public:
+    MemberShadowCheckWalker(const std::string &className,
+                            const std::unordered_set<std::string> &fields,
+                            DiagnosticEmitter *emitter) noexcept
+        : className_(className), fields_(fields), emitter_(emitter)
+    {
+    }
+
+    void before(const DimStmt &stmt)
+    {
+        if (!emitter_ || stmt.name.empty())
+            return;
+        if (!fields_.count(stmt.name))
+            return;
+
+        std::string qualifiedField = className_;
+        if (!qualifiedField.empty())
+            qualifiedField += '.';
+        qualifiedField += stmt.name;
+
+        std::string msg = "local '" + stmt.name + "' shadows field '" + qualifiedField +
+                          "'; use Me." + stmt.name + " to access the field";
+        emitter_->emit(il::support::Severity::Warning,
+                       "B2016",
+                       stmt.loc,
+                       static_cast<uint32_t>(stmt.name.size()),
+                       std::move(msg));
+    }
+
+  private:
+    std::string className_;
+    const std::unordered_set<std::string> &fields_;
+    DiagnosticEmitter *emitter_;
+};
+
+void checkMemberShadowing(const std::vector<StmtPtr> &body,
+                          const ClassDecl &klass,
+                          const std::unordered_set<std::string> &fieldNames,
+                          DiagnosticEmitter *emitter)
+{
+    if (!emitter || fieldNames.empty())
+        return;
+
+    MemberShadowCheckWalker walker(klass.name, fieldNames, emitter);
+    for (const auto &stmt : body)
+        if (stmt)
+            walker.walkStmt(*stmt);
+}
+
 [[nodiscard]] bool methodMustReturn(const Stmt &stmt)
 {
     if (auto *lst = dynamic_cast<const StmtList *>(&stmt))
@@ -151,9 +204,12 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
         ClassInfo info;
         info.name = classDecl.name;
         info.fields.reserve(classDecl.fields.size());
+        std::unordered_set<std::string> classFieldNames;
+        classFieldNames.reserve(classDecl.fields.size());
         for (const auto &field : classDecl.fields)
         {
             info.fields.push_back(ClassInfo::FieldInfo{field.name, field.type});
+            classFieldNames.insert(field.name);
         }
 
         for (const auto &member : classDecl.members)
@@ -178,11 +234,14 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
                         sigParam.isArray = param.is_array;
                         info.ctorParams.push_back(sigParam);
                     }
+                    checkMemberShadowing(ctor.body, classDecl, classFieldNames, emitter);
                     break;
                 }
                 case Stmt::Kind::DestructorDecl:
                 {
                     info.hasDestructor = true;
+                    const auto &dtor = static_cast<const DestructorDecl &>(*member);
+                    checkMemberShadowing(dtor.body, classDecl, classFieldNames, emitter);
                     break;
                 }
                 case Stmt::Kind::MethodDecl:
@@ -203,6 +262,7 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
                         sig.returnType = suffixType;
                     }
                     emitMissingReturn(classDecl, method, emitter);
+                    checkMemberShadowing(method.body, classDecl, classFieldNames, emitter);
                     info.methods[method.name] = std::move(sig);
                     break;
                 }
