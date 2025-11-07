@@ -228,7 +228,15 @@ const TraceSink::FileCacheEntry *TraceSink::getOrLoadFile(uint32_t file_id, std:
     if (entry.path.empty())
         return nullptr;
 
-    std::ifstream f(entry.path);
+    std::filesystem::path fsPath;
+#if defined(__cpp_char8_t)
+    const auto *raw = reinterpret_cast<const char8_t *>(entry.path.data());
+    const std::u8string u8Path(raw, raw + entry.path.size());
+    fsPath = std::filesystem::path(u8Path);
+#else
+    fsPath = std::filesystem::path(entry.path);
+#endif
+    std::ifstream f(fsPath);
     if (f)
     {
         std::string line;
