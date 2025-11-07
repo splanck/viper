@@ -5,10 +5,18 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Implements the SourceManager utility responsible for tracking source files
-// referenced by diagnostics and front-end components.  The manager assigns
-// stable numeric identifiers to file paths and resolves those identifiers back
-// to normalized strings when printing diagnostics.
+// File: src/support/source_manager.cpp
+// Purpose: Implement the diagnostic-aware source file registry used across the
+//          compiler pipeline.
+// Key invariants: File identifiers are assigned monotonically starting at one;
+//                 identifier zero is reserved to represent "unknown" locations.
+//                 Path normalisation produces stable, slash-separated strings so
+//                 diagnostics do not leak host-specific formatting.
+// Ownership/Lifetime: SourceManager owns all stored path strings and hands out
+//                     string_view references that remain valid for the lifetime
+//                     of the manager instance.  Callers are responsible for
+//                     respecting that lifetime.
+// Links: docs/codemap.md#support-library, docs/architecture.md#diagnostics
 //
 //===----------------------------------------------------------------------===//
 
@@ -33,11 +41,16 @@ namespace il::support
 namespace
 {
 /// @brief Normalise a filesystem path into the canonical representation used by diagnostics.
-/// @details Converts the path to a `std::filesystem::path`, performs lexical
-///          normalisation, and returns a forward-slash separated string so output
-///          remains stable across host platforms.
+/// @details The helper constructs a `std::filesystem::path` from the raw input,
+///          applies @ref std::filesystem::path::lexically_normal to collapse
+///          redundant components, and finally emits the generic (forward-slash
+///          separated) representation.  On Windows the routine additionally
+///          lowercases ASCII letters so diagnostic comparisons become
+///          case-insensitive, mirroring how the rest of the compiler treats
+///          paths.  The resulting string is suitable for persistent storage
+///          inside the @ref SourceManager.
 /// @param path Raw filesystem path supplied by the caller.
-/// @return Normalised path string.
+/// @return Normalised path string owned by the caller.
 std::string normalizePath(std::string path)
 {
     std::filesystem::path p(std::move(path));
@@ -57,15 +70,17 @@ std::string normalizePath(std::string path)
 
 /// @brief Register a file path and assign it a stable identifier.
 ///
-/// @details The path is normalized into a generic string so diagnostics print
-///          platform independent output regardless of OS path conventions.
-///          Identifiers start at one, leaving zero to represent an unknown
-///          location.  Ownership of the normalized string remains with the
-///          `SourceManager`, allowing callers to hold `std::string_view`
-///          references safely for the manager's lifetime.
+/// @details Normalises @p path using @ref normalizePath before deduplicating it
+///          against previously seen entries.  Identifiers start at one so that
+///          zero can unambiguously signal "unknown".  When the identifier space
+///          would overflow, the helper emits a diagnostic via
+///          @ref printDiag and returns zero so callers can surface a fatal
+///          configuration error.  Stored strings live inside the manager's
+///          @ref files_ container for the remainder of the manager's lifetime,
+///          making it safe to hand out @ref std::string_view references.
 ///
 /// @param path Filesystem path to normalize and store.
-/// @return Identifier (>0) representing the stored path.
+/// @return Identifier (>0) representing the stored path, or zero on overflow.
 uint32_t SourceManager::addFile(std::string path)
 {
     std::string normalized = normalizePath(std::move(path));
@@ -88,11 +103,12 @@ uint32_t SourceManager::addFile(std::string path)
 
 /// @brief Retrieve the canonical path associated with a file identifier.
 ///
-/// @details Identifiers outside the valid range, including the sentinel zero,
-///          yield an empty view.  Successful lookups return a view into the
-///          SourceManager's own storage; callers must not outlive the manager
-///          when holding the view.  The method is noexcept and inexpensive so it
-///          can appear on hot diagnostic paths.
+/// @details Performs range checks against the stored vector to guarantee that
+///          invalid identifiers (including zero) result in an empty view rather
+///          than undefined behaviour.  Successful lookups return an owning
+///          manager-backed string view, allowing diagnostics to print the path
+///          without copying.  Callers must ensure the @ref SourceManager outlives
+///          any view they retain.
 ///
 /// @param file_id 1-based identifier previously returned by addFile().
 /// @return Stored path, or empty string view if @p file_id is invalid.
