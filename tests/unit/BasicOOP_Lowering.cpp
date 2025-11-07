@@ -152,6 +152,73 @@ TEST(BasicOOPLoweringTest, StoresMemberAssignmentIntoField)
     EXPECT_TRUE(sawStore);
 }
 
+TEST(BasicOOPLoweringTest, MethodParametersForwardedToCallee)
+{
+    const std::string src = "10 CLASS D\n"
+                             "20   SUB Echo(v AS INTEGER)\n"
+                             "30     PRINT v\n"
+                             "40   END SUB\n"
+                             "50 END CLASS\n"
+                             "60 DIM d AS D\n"
+                             "70 LET d = NEW D()\n"
+                             "80 d.Echo(123)\n"
+                             "90 END\n";
+
+    SourceManager sm;
+    BasicCompilerInput input{src, "method_params.bas"};
+    BasicCompilerOptions options{};
+
+    auto result = compileBasic(input, options, sm);
+    ASSERT_TRUE(result.succeeded());
+
+    const il::core::Module &module = result.module;
+    const il::core::Function *method = findFunctionCaseInsensitive(module, "D.Echo");
+    ASSERT_NE(method, nullptr);
+    ASSERT_EQ(method->params.size(), 2u);
+    EXPECT_TRUE(equalsIgnoreCase(method->params[0].name, "ME"));
+    EXPECT_TRUE(equalsIgnoreCase(method->params[1].name, "v"));
+
+    bool sawSelfStore = false;
+    bool sawParamStore = false;
+    if (!method->blocks.empty())
+    {
+        const auto &entry = method->blocks.front();
+        for (const auto &instr : entry.instructions)
+        {
+            if (instr.op != il::core::Opcode::Store || instr.operands.size() < 2)
+                continue;
+            if (instr.operands[1].kind != il::core::Value::Kind::Temp)
+                continue;
+            if (instr.operands[1].id == method->params[0].id)
+                sawSelfStore = true;
+            if (instr.operands[1].id == method->params[1].id)
+                sawParamStore = true;
+        }
+    }
+    EXPECT_TRUE(sawSelfStore);
+    EXPECT_TRUE(sawParamStore);
+
+    const il::core::Function *mainFn = findFunctionCaseInsensitive(module, "main");
+    ASSERT_NE(mainFn, nullptr);
+
+    bool validatedCall = false;
+    for (const auto &block : mainFn->blocks)
+    {
+        for (const auto &instr : block.instructions)
+        {
+            if (instr.op != il::core::Opcode::Call)
+                continue;
+            if (!equalsIgnoreCase(instr.callee, "D.Echo"))
+                continue;
+            ASSERT_EQ(instr.operands.size(), 2u);
+            EXPECT_EQ(instr.operands[1].kind, il::core::Value::Kind::ConstInt);
+            EXPECT_EQ(instr.operands[1].i64, 123);
+            validatedCall = true;
+        }
+    }
+    EXPECT_TRUE(validatedCall);
+}
+
 int main(int argc, char **argv)
 {
     ::testing::InitGoogleTest(&argc, argv);
