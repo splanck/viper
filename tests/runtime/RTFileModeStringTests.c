@@ -25,11 +25,11 @@ int main(void)
 
     const char *binary_literal = rt_file_mode_string(RT_F_BINARY);
     assert(binary_literal != NULL);
-    assert(strcmp(binary_literal, "rbc+") == 0);
+    assert(strcmp(binary_literal, "rb+") == 0);
 
     const char *random_literal = rt_file_mode_string(RT_F_RANDOM);
     assert(random_literal != NULL);
-    assert(strcmp(random_literal, "rbc+") == 0);
+    assert(strcmp(random_literal, "rb+") == 0);
 
 #if defined(_WIN32)
     // Windows requires the binary modifier to avoid text translation of newlines.

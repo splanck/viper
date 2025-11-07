@@ -27,13 +27,14 @@ extern "C"
     /// @param file Handle to initialize; ignored when NULL.
     void rt_file_init(RtFile *file);
 
-    /// @brief Open @p path with the specified @p mode string.
+    /// @brief Open @p path with the specified @p mode string and BASIC semantics.
     /// @param file Output handle populated on success.
     /// @param path Null-terminated filesystem path.
     /// @param mode fopen-style mode string (e.g., "r", "w", "a", variants with '+').
+    /// @param basic_mode BASIC OPEN mode enumerator when available; pass RT_F_UNSPECIFIED for plain stdio semantics.
     /// @param out_err Optional error record receiving failure details.
     /// @return True on success; false when an error is reported via @p out_err.
-    bool rt_file_open(RtFile *file, const char *path, const char *mode, RtError *out_err);
+    bool rt_file_open(RtFile *file, const char *path, const char *mode, int32_t basic_mode, RtError *out_err);
 
     /// @brief Close @p file when open.
     /// @param file Handle to close; remains valid for reuse after success.
@@ -74,7 +75,8 @@ extern "C"
     /// @brief Enumerates BASIC OPEN modes understood by the runtime wrapper API.
     enum RtFileMode
     {
-        RT_F_INPUT = 0,  ///< OPEN ... FOR INPUT
+        RT_F_UNSPECIFIED = -1, ///< Mode not associated with BASIC OPEN semantics.
+        RT_F_INPUT = 0,        ///< OPEN ... FOR INPUT
         RT_F_OUTPUT = 1, ///< OPEN ... FOR OUTPUT
         RT_F_APPEND = 2, ///< OPEN ... FOR APPEND
         RT_F_BINARY = 3, ///< OPEN ... FOR BINARY
