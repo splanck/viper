@@ -26,6 +26,21 @@ int main()
         assert(var && var->name == "X");
     }
 
+    // Implicit assignment without LET uses the same AST nodes.
+    {
+        std::string src = "10 X = 5\n20 END\n";
+        SourceManager sm;
+        uint32_t fid = sm.addFile("test.bas");
+        Parser p(src, fid);
+        auto prog = p.parseProgram();
+        auto *let = dynamic_cast<LetStmt *>(prog->main[0].get());
+        assert(let);
+        auto *target = dynamic_cast<VarExpr *>(let->target.get());
+        auto *value = dynamic_cast<IntExpr *>(let->expr.get());
+        assert(target && target->name == "X");
+        assert(value && value->value == 5);
+    }
+
     // Array reference
     {
         std::string src = "10 DIM A(2)\n20 LET Y = A(1)\n30 END\n";
