@@ -16,8 +16,8 @@ L10:
   .loc 1 1 4
   br L20
 L20:
-  .loc 1 2 4
-  %t2 = trunc1 -1
+  .loc 1 2 12
+  %t2 = trunc1 1
   .loc 1 2 4
   store i1, %t0, %t2
   .loc 1 2 4
@@ -25,7 +25,7 @@ L20:
 L30:
   .loc 1 3 10
   %t3 = load i1, %t0
-  .loc 1 3 12
+  .loc 1 3 15
   %t4 = trunc1 0
   .loc 1 3 12
   %t5 = zext1 %t3

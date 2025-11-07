@@ -98,15 +98,16 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
     }
 
     /// @brief Lower a boolean literal expression.
-    /// @details Emits either `-1` or `0` according to BASIC truthiness rules and
-    ///          annotates the value with a 64-bit integer type so downstream
-    ///          coercions treat it as logical state.
+    /// @details Emits the VM's canonical predicate constant (`1` for true,
+    ///          `0` for false) while recording the IL boolean type. Numeric
+    ///          contexts will later widen the predicate through
+    ///          @ref Lowerer::coerceToI64 when BASIC expects `-1/0` values.
     /// @param expr Boolean literal node from the BASIC AST.
     void visit(const BoolExpr &expr) override
     {
         lowerer_.curLoc = expr.loc;
-        IlValue logical = lowerer_.emitConstI64(expr.value ? -1 : 0);
-        result_ = Lowerer::RVal{logical, IlType(IlType::Kind::I64)};
+        IlValue flag = lowerer_.emitBoolConst(expr.value);
+        result_ = Lowerer::RVal{flag, lowerer_.ilBoolTy()};
     }
 
     /// @brief Lower a variable reference expression.
