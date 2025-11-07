@@ -29,6 +29,7 @@ namespace il::frontends::basic::semantic_analyzer_detail
 namespace il::frontends::basic
 {
 
+using semantic_analyzer_detail::astToSemanticType;
 using semantic_analyzer_detail::levenshtein;
 using semantic_analyzer_detail::semanticTypeName;
 
@@ -118,10 +119,10 @@ class SemanticAnalyzerExprVisitor final : public MutExprVisitor
         result_ = analyzer_.analyzeCall(expr);
     }
 
-    /// @brief NEW expressions are not yet typed and produce Unknown.
-    void visit(NewExpr &) override
+    /// @brief NEW expressions analyse constructor signatures before returning Unknown.
+    void visit(NewExpr &expr) override
     {
-        result_ = SemanticAnalyzer::Type::Unknown;
+        result_ = analyzer_.analyzeNew(expr);
     }
 
     /// @brief ME references are currently untyped placeholders.
@@ -223,6 +224,78 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeUnary(const UnaryExpr &u)
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeBinary(const BinaryExpr &b)
 {
     return sem::analyzeBinaryExpr(*this, b);
+}
+
+/// @brief Analyse a constructor invocation for argument compatibility.
+///
+/// @details Evaluates each argument expression, then compares the resulting
+///          semantic types against the constructor signature recorded in the
+///          OOP index.  When the class is unknown or a synthetic constructor is
+///          used, the analyser treats the expression as producing an unknown
+///          type but still walks the argument expressions to preserve nested
+///          diagnostics.
+///
+/// @param expr NEW expression being analysed.
+/// @return Semantic type observed for the NEW expression (currently Unknown).
+SemanticAnalyzer::Type SemanticAnalyzer::analyzeNew(NewExpr &expr)
+{
+    std::vector<Type> argTypes;
+    argTypes.reserve(expr.args.size());
+    for (auto &arg : expr.args)
+        argTypes.push_back(arg ? visitExpr(*arg) : Type::Unknown);
+
+    const ClassInfo *klass = oopIndex_.findClass(expr.className);
+    if (!klass)
+        return Type::Unknown;
+
+    const std::size_t expectedCount = klass->ctorParams.size();
+    if (expr.args.size() != expectedCount)
+    {
+        std::string msg = "constructor for '" + expr.className + "' expects " +
+                          std::to_string(expectedCount) + " argument" +
+                          (expectedCount == 1 ? "" : "s") + ", got " +
+                          std::to_string(expr.args.size());
+        de.emit(il::support::Severity::Error,
+                "B2008",
+                expr.loc,
+                static_cast<uint32_t>(expr.className.size()),
+                std::move(msg));
+        return Type::Unknown;
+    }
+
+    for (std::size_t i = 0; i < expectedCount; ++i)
+    {
+        const auto &param = klass->ctorParams[i];
+        const Expr *argExpr = expr.args[i].get();
+        Type argTy = argTypes[i];
+
+        if (param.isArray)
+        {
+            const auto *var = dynamic_cast<const VarExpr *>(argExpr);
+            if (!var || !arrays_.count(var->name))
+            {
+                il::support::SourceLoc loc = argExpr ? argExpr->loc : expr.loc;
+                std::string msg = "constructor argument " + std::to_string(i + 1) + " for '" +
+                                  expr.className + "' must be an array variable (ByRef)";
+                de.emit(il::support::Severity::Error, "B2006", loc, 1, std::move(msg));
+            }
+            continue;
+        }
+
+        auto expectTy = param.type;
+        if (expectTy == ::il::frontends::basic::Type::F64 && argTy == Type::Int)
+            continue;
+
+        Type want = astToSemanticType(expectTy);
+        if (argTy != Type::Unknown && argTy != want)
+        {
+            il::support::SourceLoc loc = argExpr ? argExpr->loc : expr.loc;
+            std::string msg = "constructor argument type mismatch for '" + expr.className + "'";
+            de.emit(il::support::Severity::Error, "B2001", loc, 1, std::move(msg));
+        }
+    }
+
+    return Type::Unknown;
 }
 
 /// @brief Record that @p expr should be implicitly converted to @p targetType.

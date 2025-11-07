@@ -11,6 +11,7 @@
 #include "frontends/basic/ProcRegistry.hpp"
 #include "frontends/basic/ScopeTracker.hpp"
 #include "frontends/basic/SemanticDiagnostics.hpp"
+#include "frontends/basic/Semantic_OOP.hpp"
 #include "frontends/basic/ast/NodeFwd.hpp"
 #include <initializer_list>
 #include <optional>
@@ -362,6 +363,8 @@ class SemanticAnalyzer
     Type inferCallType(const CallExpr &c, const ProcSignature *sig);
     /// @brief Analyze user-defined procedure call.
     Type analyzeCall(const CallExpr &c);
+    /// @brief Analyze constructor invocation expression.
+    Type analyzeNew(NewExpr &expr);
     /// @brief Analyze array access expression.
     Type analyzeArray(ArrayExpr &a);
 
@@ -416,6 +419,7 @@ class SemanticAnalyzer
     SemanticDiagnostics de; ///< Diagnostic sink.
     ScopeTracker scopes_;
     ProcRegistry procReg_;
+    OopIndex oopIndex_;
     std::unordered_set<std::string> symbols_;
     std::unordered_map<std::string, Type> varTypes_;
     std::unordered_map<std::string, long long> arrays_; ///< array sizes if known (-1 if dynamic)

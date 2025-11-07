@@ -167,7 +167,17 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
             {
                 case Stmt::Kind::ConstructorDecl:
                 {
+                    const auto &ctor = static_cast<const ConstructorDecl &>(*member);
                     info.hasConstructor = true;
+                    info.ctorParams.clear();
+                    info.ctorParams.reserve(ctor.params.size());
+                    for (const auto &param : ctor.params)
+                    {
+                        ClassInfo::CtorParam sigParam;
+                        sigParam.type = param.type;
+                        sigParam.isArray = param.is_array;
+                        info.ctorParams.push_back(sigParam);
+                    }
                     break;
                 }
                 case Stmt::Kind::DestructorDecl:
