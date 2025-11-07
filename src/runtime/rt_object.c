@@ -77,17 +77,19 @@ int32_t rt_obj_release_check0(void *p)
 {
     if (!p)
         return 0;
-    return (int32_t)(rt_heap_release(p) == 0);
+    return (int32_t)(rt_heap_release_deferred(p) == 0);
 }
 
 /// @brief Compatibility shim matching the string free entry point.
-/// @details The runtime heap frees storage once the retain count reaches zero.
-///          This function exists to mirror the BASIC string API and therefore
-///          intentionally performs no action beyond null checking.
+/// @details Releases storage for objects whose reference count already dropped
+///          to zero.  The runtime heap performs the actual deallocation once
+///          @ref rt_heap_free_zero_ref observes the zero count, mirroring the
+///          BASIC string API while keeping the payload valid for user-defined
+///          destructors until this helper runs.
 /// @param p Object payload pointer; ignored when @c NULL.
 void rt_obj_free(void *p)
 {
     if (!p)
         return;
-    /* Heap will release storage when the reference count reaches zero. */
+    rt_heap_free_zero_ref(p);
 }
