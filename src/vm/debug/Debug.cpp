@@ -59,6 +59,14 @@ std::string DebugCtrl::normalizePath(std::string p)
     if (generic.empty())
         return p.front() == '/' ? std::string{"/"} : std::string{"."};
 
+#ifdef _WIN32
+    for (char &ch : generic)
+    {
+        if (ch >= 'A' && ch <= 'Z')
+            ch = static_cast<char>(ch - 'A' + 'a');
+    }
+#endif
+
     return generic;
 }
 
