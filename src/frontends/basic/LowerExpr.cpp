@@ -47,12 +47,10 @@ namespace il::frontends::basic
 Lowerer::RVal Lowerer::lowerVarExpr(const VarExpr &v)
 {
     curLoc = v.loc;
-    const auto *sym = findSymbol(v.name);
-    assert(sym && sym->slotId);
-    Value ptr = Value::temp(*sym->slotId);
-    SlotType slotInfo = getSlotType(v.name);
-    Type ty = slotInfo.type;
-    Value val = emitLoad(ty, ptr);
+    auto storage = resolveVariableStorage(v.name, v.loc);
+    assert(storage && "variable should have resolved storage");
+    Type ty = storage->slotInfo.type;
+    Value val = emitLoad(ty, storage->pointer);
     return {val, ty};
 }
 

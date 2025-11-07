@@ -1,11 +1,14 @@
 10 CLASS C
 20   v AS INTEGER
-30   SUB Show()
-40     LET Me.v = 42
-50     PRINT Me.v
-60   END SUB
-70 END CLASS
-80 DIM c AS C
-90 LET c = NEW C()
-100 c.Show()
-110 END
+30   SUB Inc()
+40     LET v = v + 1
+50   END SUB
+60   SUB Show()
+70     PRINT v
+80   END SUB
+90 END CLASS
+100 DIM c AS C
+110 LET c = NEW C()
+120 c.Inc()
+130 c.Show()
+140 END
