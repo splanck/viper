@@ -227,32 +227,43 @@ void Lowerer::lowerLet(const LetStmt &stmt)
     RVal value = lowerExpr(*stmt.expr);
     if (auto *var = dynamic_cast<const VarExpr *>(stmt.target.get()))
     {
-        const auto *info = findSymbol(var->name);
-        assert(info && info->slotId);
-        if (stmt.expr)
+        if (const auto *info = findSymbol(var->name))
         {
-            std::string className;
-            if (const auto *alloc = dynamic_cast<const NewExpr *>(stmt.expr.get()))
+            assert(info->slotId && "variable symbol missing slot identifier");
+            if (stmt.expr)
             {
-                className = alloc->className;
+                std::string className;
+                if (const auto *alloc = dynamic_cast<const NewExpr *>(stmt.expr.get()))
+                {
+                    className = alloc->className;
+                }
+                else
+                {
+                    className = resolveObjectClass(*stmt.expr);
+                }
+                if (!className.empty())
+                    setSymbolObjectType(var->name, className);
+            }
+            SlotType slotInfo = getSlotType(var->name);
+            Value slot = Value::temp(*info->slotId);
+            if (slotInfo.isArray)
+            {
+                curLoc = stmt.loc;
+                storeArray(slot, value.value);
             }
             else
             {
-                className = resolveObjectClass(*stmt.expr);
+                assignScalarSlot(slotInfo, slot, std::move(value), stmt.loc);
             }
-            if (!className.empty())
-                setSymbolObjectType(var->name, className);
         }
-        SlotType slotInfo = getSlotType(var->name);
-        Value slot = Value::temp(*info->slotId);
-        if (slotInfo.isArray)
+        else if (auto access = resolveSelfField(var->name, stmt.loc))
         {
-            curLoc = stmt.loc;
-            storeArray(slot, value.value);
-        }
-        else
-        {
-            assignScalarSlot(slotInfo, slot, std::move(value), stmt.loc);
+            SlotType slotInfo;
+            slotInfo.type = access->ilType;
+            slotInfo.isArray = false;
+            slotInfo.isBoolean = (access->astType == ::il::frontends::basic::Type::Bool);
+            slotInfo.isObject = false;
+            assignScalarSlot(slotInfo, access->ptr, std::move(value), stmt.loc);
         }
     }
     else if (auto *arr = dynamic_cast<const ArrayExpr *>(stmt.target.get()))

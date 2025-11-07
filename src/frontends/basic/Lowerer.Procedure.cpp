@@ -65,8 +65,11 @@ class VarCollectWalker final : public BasicAstWalker<VarCollectWalker>
     /// @param expr Variable expression encountered during traversal.
     void after(const VarExpr &expr)
     {
-        if (!expr.name.empty())
-            lowerer_.markSymbolReferenced(expr.name);
+        if (expr.name.empty())
+            return;
+        if (lowerer_.shouldTreatAsField(expr.name))
+            return;
+        lowerer_.markSymbolReferenced(expr.name);
     }
 
     /// @brief Record usage of an array element expression.
@@ -76,11 +79,12 @@ class VarCollectWalker final : public BasicAstWalker<VarCollectWalker>
     /// @param expr Array expression encountered during traversal.
     void after(const ArrayExpr &expr)
     {
-        if (!expr.name.empty())
-        {
-            lowerer_.markSymbolReferenced(expr.name);
-            lowerer_.markArray(expr.name);
-        }
+        if (expr.name.empty())
+            return;
+        if (lowerer_.shouldTreatAsField(expr.name))
+            return;
+        lowerer_.markSymbolReferenced(expr.name);
+        lowerer_.markArray(expr.name);
     }
 
     /// @brief Record usage of an array lower-bound expression.
@@ -89,11 +93,12 @@ class VarCollectWalker final : public BasicAstWalker<VarCollectWalker>
     /// @param expr Lower-bound expression inspected by the walker.
     void after(const LBoundExpr &expr)
     {
-        if (!expr.name.empty())
-        {
-            lowerer_.markSymbolReferenced(expr.name);
-            lowerer_.markArray(expr.name);
-        }
+        if (expr.name.empty())
+            return;
+        if (lowerer_.shouldTreatAsField(expr.name))
+            return;
+        lowerer_.markSymbolReferenced(expr.name);
+        lowerer_.markArray(expr.name);
     }
 
     /// @brief Record usage of an array upper-bound expression.
@@ -102,11 +107,12 @@ class VarCollectWalker final : public BasicAstWalker<VarCollectWalker>
     /// @param expr Upper-bound expression inspected by the walker.
     void after(const UBoundExpr &expr)
     {
-        if (!expr.name.empty())
-        {
-            lowerer_.markSymbolReferenced(expr.name);
-            lowerer_.markArray(expr.name);
-        }
+        if (expr.name.empty())
+            return;
+        if (lowerer_.shouldTreatAsField(expr.name))
+            return;
+        lowerer_.markSymbolReferenced(expr.name);
+        lowerer_.markArray(expr.name);
     }
 
     /// @brief Track variables introduced by DIM statements.
@@ -306,6 +312,45 @@ void Lowerer::markArray(std::string_view name)
     info.isArray = true;
     if (info.isBoolean)
         info.isBoolean = false;
+}
+
+void Lowerer::pushMemberScope(const ClassDecl &klass, std::span<const Param> params)
+{
+    MemberScope scope;
+    scope.className = klass.name;
+    scope.fields.reserve(klass.fields.size());
+    for (const auto &field : klass.fields)
+        scope.fields.emplace(field.name, field.type);
+    for (const auto &param : params)
+        scope.params.insert(param.name);
+    memberScopes_.push_back(std::move(scope));
+}
+
+void Lowerer::pushMemberScope(const ClassDecl &klass)
+{
+    pushMemberScope(klass, std::span<const Param>{});
+}
+
+void Lowerer::popMemberScope()
+{
+    if (!memberScopes_.empty())
+        memberScopes_.pop_back();
+}
+
+bool Lowerer::shouldTreatAsField(std::string_view name) const
+{
+    if (memberScopes_.empty())
+        return false;
+
+    const MemberScope &scope = memberScopes_.back();
+    std::string key(name);
+    if (scope.fields.find(key) == scope.fields.end())
+        return false;
+    if (scope.params.find(key) != scope.params.end())
+        return false;
+    if (symbols.find(key) != symbols.end())
+        return false;
+    return true;
 }
 
 /// @brief Reset symbol metadata between procedure lowering runs.
@@ -857,6 +902,7 @@ void Lowerer::resetLoweringState()
     context().reset();
     stmtVirtualLines_.clear();
     synthSeq_ = 0;
+    memberScopes_.clear();
 }
 
 /// @brief Allocate stack slots and store incoming arguments for parameters.

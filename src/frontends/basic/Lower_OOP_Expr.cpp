@@ -203,6 +203,39 @@ Lowerer::resolveMemberField(const MemberAccessExpr &expr)
     return access;
 }
 
+std::optional<Lowerer::MemberFieldAccess>
+Lowerer::resolveSelfField(std::string_view name, il::support::SourceLoc loc)
+{
+    if (memberScopes_.empty())
+        return std::nullopt;
+
+    const MemberScope &scope = memberScopes_.back();
+    auto layoutIt = classLayouts_.find(scope.className);
+    if (layoutIt == classLayouts_.end())
+        return std::nullopt;
+
+    const ClassLayout::Field *field = layoutIt->second.findField(name);
+    if (!field)
+        return std::nullopt;
+
+    const auto *selfInfo = findSymbol("ME");
+    if (!selfInfo || !selfInfo->slotId)
+        return std::nullopt;
+
+    Value selfPtr = loadSelfPointer(*selfInfo->slotId);
+    curLoc = loc;
+    Value fieldPtr = emitBinary(Opcode::GEP,
+                                Type(Type::Kind::Ptr),
+                                selfPtr,
+                                Value::constInt(static_cast<long long>(field->offset)));
+    Type fieldTy = ilTypeForAstType(field->type);
+    MemberFieldAccess access;
+    access.ptr = fieldPtr;
+    access.ilType = fieldTy;
+    access.astType = field->type;
+    return access;
+}
+
 Lowerer::RVal Lowerer::lowerMemberAccessExpr(const MemberAccessExpr &expr)
 {
     auto access = resolveMemberField(expr);

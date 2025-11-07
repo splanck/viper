@@ -47,13 +47,23 @@ namespace il::frontends::basic
 Lowerer::RVal Lowerer::lowerVarExpr(const VarExpr &v)
 {
     curLoc = v.loc;
-    const auto *sym = findSymbol(v.name);
-    assert(sym && sym->slotId);
-    Value ptr = Value::temp(*sym->slotId);
-    SlotType slotInfo = getSlotType(v.name);
-    Type ty = slotInfo.type;
-    Value val = emitLoad(ty, ptr);
-    return {val, ty};
+    if (const auto *sym = findSymbol(v.name))
+    {
+        assert(sym->slotId && "variable symbol missing slot identifier");
+        Value ptr = Value::temp(*sym->slotId);
+        SlotType slotInfo = getSlotType(v.name);
+        Type ty = slotInfo.type;
+        Value val = emitLoad(ty, ptr);
+        return {val, ty};
+    }
+
+    if (auto access = resolveSelfField(v.name, v.loc))
+    {
+        Value val = emitLoad(access->ilType, access->ptr);
+        return {val, access->ilType};
+    }
+
+    return {Value::constInt(0), Type(Type::Kind::I64)};
 }
 
 /// @brief Lower a `UBOUND` query into an IL call and subtraction.

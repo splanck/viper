@@ -21,6 +21,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -170,6 +171,14 @@ class Lowerer
         std::string stringLabel; ///< Cached label for deduplicated string literals.
         bool isObject{false};    ///< True when symbol references an object slot.
         std::string objectClass; ///< Class name for object symbols; empty otherwise.
+    };
+
+    /// @brief Tracks visible members while lowering a class body.
+    struct MemberScope
+    {
+        std::string className; ///< Owning BASIC class identifier.
+        std::unordered_map<std::string, ::il::frontends::basic::Type> fields; ///< Map of field names to types.
+        std::unordered_set<std::string> params; ///< Parameter names currently in scope.
     };
 
   private:
@@ -667,11 +676,16 @@ class Lowerer
     /// @brief Indexed CLASS metadata collected during scanning.
     OopIndex oopIndex_;
 
+    std::vector<MemberScope> memberScopes_;
+
     /// @brief Determine the BASIC class associated with an object expression.
     [[nodiscard]] std::string resolveObjectClass(const Expr &expr) const;
 
     /// @brief Resolve pointer and type information for a member access expression.
     [[nodiscard]] std::optional<MemberFieldAccess> resolveMemberField(const MemberAccessExpr &expr);
+    /// @brief Resolve field access on the implicit `ME` receiver by name.
+    [[nodiscard]] std::optional<MemberFieldAccess> resolveSelfField(std::string_view name,
+                                                                    il::support::SourceLoc loc);
 
   public:
     SymbolInfo &ensureSymbol(std::string_view name);
@@ -685,6 +699,14 @@ class Lowerer
     void markArray(std::string_view name);
 
     void setSymbolType(std::string_view name, AstType type);
+    /// @brief Push class member scope to allow field resolution within members.
+    void pushMemberScope(const ClassDecl &klass, std::span<const Param> params);
+    /// @brief Convenience overload for member scopes without explicit parameters.
+    void pushMemberScope(const ClassDecl &klass);
+    /// @brief Pop the most recent class member scope.
+    void popMemberScope();
+    /// @brief Determine whether a bare name should resolve to a field symbol.
+    [[nodiscard]] bool shouldTreatAsField(std::string_view name) const;
 
   private:
     SlotType getSlotType(std::string_view name) const;

@@ -219,6 +219,44 @@ TEST(BasicOOPLoweringTest, MethodParametersForwardedToCallee)
     EXPECT_TRUE(validatedCall);
 }
 
+TEST(BasicOOPLoweringTest, BareFieldNamesBindToFields)
+{
+    const std::string src = "10 CLASS C\n"
+                             "20   v AS INTEGER\n"
+                             "30   SUB Inc()\n"
+                             "40     LET v = v + 1\n"
+                             "50   END SUB\n"
+                             "60 END CLASS\n"
+                             "70 END\n";
+
+    SourceManager sm;
+    BasicCompilerInput input{src, "bare_field.bas"};
+    BasicCompilerOptions options{};
+
+    auto result = compileBasic(input, options, sm);
+    ASSERT_TRUE(result.succeeded());
+
+    const il::core::Module &module = result.module;
+    const il::core::Function *method = findFunctionCaseInsensitive(module, "C.Inc");
+    ASSERT_NE(method, nullptr);
+
+    std::size_t allocaCount = 0;
+    bool sawGep = false;
+    for (const auto &block : method->blocks)
+    {
+        for (const auto &instr : block.instructions)
+        {
+            if (instr.op == il::core::Opcode::Alloca)
+                ++allocaCount;
+            if (instr.op == il::core::Opcode::GEP)
+                sawGep = true;
+        }
+    }
+
+    EXPECT_EQ(allocaCount, 1u); // only the implicit ME slot should be allocated
+    EXPECT_TRUE(sawGep);
+}
+
 int main(int argc, char **argv)
 {
     ::testing::InitGoogleTest(&argc, argv);

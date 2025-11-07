@@ -173,6 +173,7 @@ void Lowerer::emitFieldReleaseSequence(Value selfPtr, const ClassLayout &layout)
 void Lowerer::emitClassConstructor(const ClassDecl &klass, const ConstructorDecl &ctor)
 {
     resetLoweringState();
+    pushMemberScope(klass, std::span<const Param>{ctor.params});
     auto body = gatherBody(ctor.body);
     collectVars(body);
 
@@ -250,6 +251,7 @@ void Lowerer::emitClassConstructor(const ClassDecl &klass, const ConstructorDecl
     curLoc = {};
     emitRetVoid();
     ctx.blockNames().resetNamer();
+    popMemberScope();
 }
 
 /// @brief Emit the IL body for a BASIC class destructor.
@@ -265,6 +267,7 @@ void Lowerer::emitClassConstructor(const ClassDecl &klass, const ConstructorDecl
 void Lowerer::emitClassDestructor(const ClassDecl &klass, const DestructorDecl *userDtor)
 {
     resetLoweringState();
+    pushMemberScope(klass);
     std::vector<const Stmt *> body;
     if (userDtor)
     {
@@ -320,6 +323,7 @@ void Lowerer::emitClassDestructor(const ClassDecl &klass, const DestructorDecl *
     curLoc = {};
     emitRetVoid();
     ctx.blockNames().resetNamer();
+    popMemberScope();
 }
 
 /// @brief Emit the IL body for a BASIC class method.
@@ -335,6 +339,7 @@ void Lowerer::emitClassDestructor(const ClassDecl &klass, const DestructorDecl *
 void Lowerer::emitClassMethod(const ClassDecl &klass, const MethodDecl &method)
 {
     resetLoweringState();
+    pushMemberScope(klass, std::span<const Param>{method.params});
     auto body = gatherBody(method.body);
     collectVars(body);
 
@@ -412,6 +417,7 @@ void Lowerer::emitClassMethod(const ClassDecl &klass, const MethodDecl &method)
     curLoc = {};
     emitRetVoid();
     ctx.blockNames().resetNamer();
+    popMemberScope();
 }
 
 /// @brief Lower all class declarations and their members within a program.
