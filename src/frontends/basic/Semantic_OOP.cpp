@@ -24,12 +24,68 @@
 
 #include "frontends/basic/Semantic_OOP.hpp"
 #include "frontends/basic/AST.hpp"
+#include "frontends/basic/DiagnosticEmitter.hpp"
 
+#include "support/diagnostics.hpp"
 
+#include <string>
 #include <utility>
 
 namespace il::frontends::basic
 {
+
+namespace
+{
+[[nodiscard]] bool methodMustReturn(const Stmt &stmt)
+{
+    if (auto *lst = dynamic_cast<const StmtList *>(&stmt))
+        return !lst->stmts.empty() && methodMustReturn(*lst->stmts.back());
+    if (auto *ret = dynamic_cast<const ReturnStmt *>(&stmt))
+        return ret->value != nullptr;
+    if (auto *ifs = dynamic_cast<const IfStmt *>(&stmt))
+    {
+        if (!ifs->then_branch || !methodMustReturn(*ifs->then_branch))
+            return false;
+        for (const auto &elifBranch : ifs->elseifs)
+            if (!elifBranch.then_branch || !methodMustReturn(*elifBranch.then_branch))
+                return false;
+        if (!ifs->else_branch)
+            return false;
+        return methodMustReturn(*ifs->else_branch);
+    }
+    if (dynamic_cast<const WhileStmt *>(&stmt) != nullptr ||
+        dynamic_cast<const ForStmt *>(&stmt) != nullptr)
+        return false;
+    return false;
+}
+
+[[nodiscard]] bool methodBodyMustReturn(const std::vector<StmtPtr> &stmts)
+{
+    if (stmts.empty())
+        return false;
+    const StmtPtr &tail = stmts.back();
+    return tail && methodMustReturn(*tail);
+}
+
+void emitMissingReturn(const ClassDecl &klass, const MethodDecl &method, DiagnosticEmitter *emitter)
+{
+    if (!emitter)
+        return;
+    if (!method.ret)
+        return;
+    if (methodBodyMustReturn(method.body))
+        return;
+
+    std::string qualified = klass.name;
+    if (!qualified.empty())
+        qualified += '.';
+    qualified += method.name;
+
+    std::string msg = "missing return in FUNCTION " + qualified;
+    emitter->emit(il::support::Severity::Error, "B1007", method.loc, 3, std::move(msg));
+}
+} // namespace
+
 
 /// @brief Look up a mutable class record by name.
 /// @details Searches the internal @c std::unordered_map for the requested class
@@ -69,12 +125,12 @@ const ClassInfo *OopIndex::findClass(const std::string &name) const
 ///          collecting class declarations.  For each class the helper captures
 ///          field metadata, method signatures, and constructor/destructor flags
 ///          so downstream passes can query structural details without revisiting
-///          the AST.  Diagnostic emission is currently unused but retained for
-///          future validation hooks.
+///          the AST.  When @p emitter is provided the helper reports missing
+///          return diagnostics for value-returning methods.
 /// @param program Parsed BASIC program supplying class declarations.
 /// @param index Index instance that receives the reconstructed metadata.
 /// @param emitter Optional diagnostics interface reserved for future checks.
-void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter * /*emitter*/)
+void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *emitter)
 {
     index.clear();
 
@@ -132,6 +188,7 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter * 
                     {
                         sig.returnType = method.ret;
                     }
+                    emitMissingReturn(classDecl, method, emitter);
                     info.methods[method.name] = std::move(sig);
                     break;
                 }

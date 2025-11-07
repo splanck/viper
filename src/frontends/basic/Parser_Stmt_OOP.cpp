@@ -198,6 +198,18 @@ StmtPtr Parser::parseClassDecl()
             method->name = fnNameTok.lexeme;
             method->ret = typeFromSuffix(fnNameTok.lexeme);
             method->params = parseParamList();
+            if (at(TokenKind::KeywordAs))
+            {
+                consume();
+                if (at(TokenKind::KeywordBoolean) || at(TokenKind::Identifier))
+                {
+                    method->ret = parseTypeKeyword();
+                }
+                else
+                {
+                    expect(TokenKind::Identifier);
+                }
+            }
             parseProcedureBody(TokenKind::KeywordFunction, method->body);
             decl->members.push_back(std::move(method));
             continue;
