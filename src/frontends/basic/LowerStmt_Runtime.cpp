@@ -227,9 +227,9 @@ void Lowerer::lowerLet(const LetStmt &stmt)
     RVal value = lowerExpr(*stmt.expr);
     if (auto *var = dynamic_cast<const VarExpr *>(stmt.target.get()))
     {
-        const auto *info = findSymbol(var->name);
-        assert(info && info->slotId);
-        if (stmt.expr)
+        auto storage = resolveVariableStorage(var->name, stmt.loc);
+        assert(storage && "LET target should have storage");
+        if (stmt.expr && !storage->isField)
         {
             std::string className;
             if (const auto *alloc = dynamic_cast<const NewExpr *>(stmt.expr.get()))
@@ -241,18 +241,20 @@ void Lowerer::lowerLet(const LetStmt &stmt)
                 className = resolveObjectClass(*stmt.expr);
             }
             if (!className.empty())
+            {
                 setSymbolObjectType(var->name, className);
+                storage->slotInfo = getSlotType(var->name);
+            }
         }
-        SlotType slotInfo = getSlotType(var->name);
-        Value slot = Value::temp(*info->slotId);
+        SlotType slotInfo = storage->slotInfo;
         if (slotInfo.isArray)
         {
             curLoc = stmt.loc;
-            storeArray(slot, value.value);
+            storeArray(storage->pointer, value.value);
         }
         else
         {
-            assignScalarSlot(slotInfo, slot, std::move(value), stmt.loc);
+            assignScalarSlot(slotInfo, storage->pointer, std::move(value), stmt.loc);
         }
     }
     else if (auto *arr = dynamic_cast<const ArrayExpr *>(stmt.target.get()))

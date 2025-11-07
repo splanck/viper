@@ -190,6 +190,13 @@ class Lowerer
         std::string objectClass;
     };
 
+    struct VariableStorage
+    {
+        SlotType slotInfo;
+        Value pointer;
+        bool isField{false};
+    };
+
     /// @brief Cached signature for a user-defined procedure.
     struct ProcedureSignature
     {
@@ -642,6 +649,12 @@ class Lowerer
         ::il::frontends::basic::Type astType{::il::frontends::basic::Type::I64}; ///< Original AST type.
     };
 
+    struct FieldScope
+    {
+        const ClassLayout *layout{nullptr};
+        std::unordered_map<std::string, SymbolInfo> symbols;
+    };
+
   private:
     /// @brief Scan program OOP constructs to populate class layouts and runtime requests.
     void scanOOP(const Program &prog);
@@ -667,11 +680,20 @@ class Lowerer
     /// @brief Indexed CLASS metadata collected during scanning.
     OopIndex oopIndex_;
 
+    /// @brief Stack of active field scopes while lowering class members.
+    std::vector<FieldScope> fieldScopeStack_;
+
     /// @brief Determine the BASIC class associated with an object expression.
     [[nodiscard]] std::string resolveObjectClass(const Expr &expr) const;
 
     /// @brief Resolve pointer and type information for a member access expression.
     [[nodiscard]] std::optional<MemberFieldAccess> resolveMemberField(const MemberAccessExpr &expr);
+
+    [[nodiscard]] std::optional<MemberFieldAccess> resolveImplicitField(std::string_view name,
+                                                                        il::support::SourceLoc loc);
+    [[nodiscard]] std::optional<VariableStorage> resolveVariableStorage(std::string_view name,
+                                                                        il::support::SourceLoc loc);
+    [[nodiscard]] const FieldScope *activeFieldScope() const;
 
   public:
     SymbolInfo &ensureSymbol(std::string_view name);
@@ -679,6 +701,11 @@ class Lowerer
     SymbolInfo *findSymbol(std::string_view name);
 
     const SymbolInfo *findSymbol(std::string_view name) const;
+
+    [[nodiscard]] bool isFieldInScope(std::string_view name) const;
+
+    void pushFieldScope(const std::string &className);
+    void popFieldScope();
 
     void markSymbolReferenced(std::string_view name);
 

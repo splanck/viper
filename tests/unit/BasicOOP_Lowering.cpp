@@ -218,6 +218,60 @@ TEST(BasicOOPLoweringTest, LoadsMemberAccessFromField)
     EXPECT_TRUE(sawLoad);
 }
 
+TEST(BasicOOPLoweringTest, BareFieldNameBindsToInstance)
+{
+    const std::string src = "10 CLASS C\n"
+                             "20   v AS INTEGER\n"
+                             "30   SUB Inc()\n"
+                             "40     LET v = v + 1\n"
+                             "50   END SUB\n"
+                             "60 END CLASS\n"
+                             "70 END\n";
+
+    SourceManager sm;
+    BasicCompilerInput input{src, "bare_field.bas"};
+    BasicCompilerOptions options{};
+
+    auto result = compileBasic(input, options, sm);
+    ASSERT_TRUE(result.succeeded());
+
+    const il::core::Module &module = result.module;
+    const il::core::Function *incFn = findFunctionCaseInsensitive(module, "C.Inc");
+    ASSERT_NE(incFn, nullptr);
+
+    std::unordered_map<unsigned, long long> gepOffsets;
+    bool sawLoad = false;
+    bool sawStore = false;
+    for (const auto &block : incFn->blocks)
+    {
+        for (const auto &instr : block.instructions)
+        {
+            if (instr.op == il::core::Opcode::GEP && instr.result && instr.operands.size() >= 2 &&
+                instr.operands[1].kind == il::core::Value::Kind::ConstInt)
+            {
+                gepOffsets.emplace(*instr.result, instr.operands[1].i64);
+            }
+            if (instr.op == il::core::Opcode::Load && !instr.operands.empty() &&
+                instr.operands[0].kind == il::core::Value::Kind::Temp)
+            {
+                auto it = gepOffsets.find(instr.operands[0].id);
+                if (it != gepOffsets.end() && it->second == 0)
+                    sawLoad = true;
+            }
+            if (instr.op == il::core::Opcode::Store && !instr.operands.empty() &&
+                instr.operands[0].kind == il::core::Value::Kind::Temp)
+            {
+                auto it = gepOffsets.find(instr.operands[0].id);
+                if (it != gepOffsets.end() && it->second == 0)
+                    sawStore = true;
+            }
+        }
+    }
+
+    EXPECT_TRUE(sawLoad);
+    EXPECT_TRUE(sawStore);
+}
+
 TEST(BasicOOPLoweringTest, MethodParametersForwardedToCallee)
 {
     const std::string src = "10 CLASS D\n"

@@ -79,6 +79,26 @@ using AstType = ::il::frontends::basic::Type;
     return out;
 }
 
+class FieldScopeGuard
+{
+  public:
+    FieldScopeGuard(Lowerer &lowerer, const std::string &className) noexcept : lowerer_(lowerer)
+    {
+        lowerer_.pushFieldScope(className);
+    }
+
+    FieldScopeGuard(const FieldScopeGuard &) = delete;
+    FieldScopeGuard &operator=(const FieldScopeGuard &) = delete;
+
+    ~FieldScopeGuard()
+    {
+        lowerer_.popFieldScope();
+    }
+
+  private:
+    Lowerer &lowerer_;
+};
+
 } // namespace
 
 /// @brief Allocate and initialise the implicit @c ME slot for a class member.
@@ -173,6 +193,7 @@ void Lowerer::emitFieldReleaseSequence(Value selfPtr, const ClassLayout &layout)
 void Lowerer::emitClassConstructor(const ClassDecl &klass, const ConstructorDecl &ctor)
 {
     resetLoweringState();
+    FieldScopeGuard fieldScope(*this, klass.name);
     auto body = gatherBody(ctor.body);
     collectVars(body);
 
@@ -265,6 +286,7 @@ void Lowerer::emitClassConstructor(const ClassDecl &klass, const ConstructorDecl
 void Lowerer::emitClassDestructor(const ClassDecl &klass, const DestructorDecl *userDtor)
 {
     resetLoweringState();
+    FieldScopeGuard fieldScope(*this, klass.name);
     std::vector<const Stmt *> body;
     if (userDtor)
     {
@@ -335,6 +357,7 @@ void Lowerer::emitClassDestructor(const ClassDecl &klass, const DestructorDecl *
 void Lowerer::emitClassMethod(const ClassDecl &klass, const MethodDecl &method)
 {
     resetLoweringState();
+    FieldScopeGuard fieldScope(*this, klass.name);
     auto body = gatherBody(method.body);
     collectVars(body);
 
