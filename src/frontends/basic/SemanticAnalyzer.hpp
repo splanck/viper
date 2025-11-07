@@ -412,6 +412,10 @@ class SemanticAnalyzer
     void analyzeProc(const FunctionDecl &f);
     /// @brief Analyze body of SUB @p s.
     void analyzeProc(const SubDecl &s);
+    /// @brief Analyze CLASS declaration and its members.
+    void analyzeClass(ClassDecl &klass);
+    /// @brief Analyze METHOD member declared within a CLASS.
+    void analyzeMethod(const ClassDecl &klass, MethodDecl &method);
 
     SemanticDiagnostics de; ///< Diagnostic sink.
     ScopeTracker scopes_;
@@ -430,6 +434,8 @@ class SemanticAnalyzer
     std::optional<int> errorHandlerTarget_;
     const FunctionDecl *activeFunction_{nullptr};
     BasicType activeFunctionExplicitRet_{BasicType::Unknown};
+    const MethodDecl *activeMethod_{nullptr};
+    std::optional<::il::frontends::basic::Type> activeMethodReturn_;
 };
 
 } // namespace il::frontends::basic

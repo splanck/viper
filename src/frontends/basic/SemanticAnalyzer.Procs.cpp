@@ -270,6 +270,71 @@ void SemanticAnalyzer::analyzeProc(const SubDecl &s)
     analyzeProcedureCommon(s, [](const SubDecl &) {});
 }
 
+void SemanticAnalyzer::analyzeClass(ClassDecl &klass)
+{
+    for (auto &member : klass.members)
+    {
+        if (!member)
+            continue;
+        if (auto *method = dynamic_cast<MethodDecl *>(member.get()))
+            analyzeMethod(klass, *method);
+    }
+}
+
+void SemanticAnalyzer::analyzeMethod(const ClassDecl &klass, MethodDecl &method)
+{
+    (void)klass;
+
+    const FunctionDecl *previousFunction = activeFunction_;
+    BasicType previousExplicit = activeFunctionExplicitRet_;
+    const MethodDecl *previousMethod = activeMethod_;
+    auto previousMethodRet = activeMethodReturn_;
+
+    activeFunction_ = nullptr;
+    activeFunctionExplicitRet_ = BasicType::Unknown;
+    activeMethod_ = &method;
+    activeMethodReturn_ = method.ret;
+
+    ProcedureScope procScope(*this);
+
+    Param selfParam;
+    selfParam.name = "Me";
+    selfParam.type = ::il::frontends::basic::Type::I64;
+    selfParam.loc = method.loc;
+    registerProcedureParam(selfParam);
+
+    for (const auto &p : method.params)
+        registerProcedureParam(p);
+
+    for (const auto &st : method.body)
+        if (st)
+        {
+            auto insertResult = labels_.insert(st->line);
+            if (insertResult.second && activeProcScope_)
+                activeProcScope_->noteLabelInserted(st->line);
+        }
+
+    for (const auto &st : method.body)
+        if (st)
+            visitStmt(*st);
+
+    if (method.ret && !mustReturn(method.body))
+    {
+        std::string msg = "missing return in METHOD ";
+        msg += method.name;
+        de.emit(il::support::Severity::Error,
+                "B1007",
+                method.loc,
+                3,
+                std::move(msg));
+    }
+
+    activeMethod_ = previousMethod;
+    activeMethodReturn_ = previousMethodRet;
+    activeFunction_ = previousFunction;
+    activeFunctionExplicitRet_ = previousExplicit;
+}
+
 /// @brief Determine whether a block of statements guarantees a return value.
 ///
 /// @param stmts Statement list to evaluate.

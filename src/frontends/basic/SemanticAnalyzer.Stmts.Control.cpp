@@ -207,10 +207,16 @@ void SemanticAnalyzer::analyzeReturn(ReturnStmt &stmt)
 
     if (!stmt.value)
         return;
-    if (!activeFunction_ || activeFunctionExplicitRet_ == BasicType::Unknown)
-        return;
+    std::optional<Type> expected;
+    if (activeFunction_ && activeFunctionExplicitRet_ != BasicType::Unknown)
+    {
+        expected = semantic_analyzer_detail::semanticTypeFromBasic(activeFunctionExplicitRet_);
+    }
+    else if (activeMethodReturn_)
+    {
+        expected = semantic_analyzer_detail::astToSemanticType(*activeMethodReturn_);
+    }
 
-    auto expected = semantic_analyzer_detail::semanticTypeFromBasic(activeFunctionExplicitRet_);
     if (!expected)
         return;
 

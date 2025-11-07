@@ -236,7 +236,10 @@ class SemanticAnalyzerStmtVisitor final : public MutStmtVisitor
 
     void visit(MethodDecl &) override {}
 
-    void visit(ClassDecl &) override {}
+    void visit(ClassDecl &stmt) override
+    {
+        analyzer_.analyzeClass(stmt);
+    }
 
     void visit(TypeDecl &) override {}
 

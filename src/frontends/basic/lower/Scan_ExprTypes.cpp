@@ -304,20 +304,33 @@ class ExprTypeScanner final : public BasicAstWalker<ExprTypeScanner>
         push(result);
     }
 
-    /// @brief Treat method calls as integer-returning after consuming arguments.
+    /// @brief Classify method call results using indexed method signatures.
     ///
     /// @param expr Method call expression encountered during scanning.
     void after(const MethodCallExpr &expr)
     {
+        ExprType result = ExprType::I64;
         if (expr.base)
+        {
+            std::string className = lowerer_.resolveObjectClass(*expr.base);
+            if (!className.empty())
+            {
+                if (const ClassInfo *info = lowerer_.oopIndex_.findClass(className))
+                {
+                    auto it = info->methods.find(expr.method);
+                    if (it != info->methods.end() && it->second.returnType)
+                        result = detail::exprTypeFromAstType(*it->second.returnType);
+                }
+            }
             consumeExpr(*expr.base);
+        }
         for (const auto &arg : expr.args)
         {
             if (!arg)
                 continue;
             consumeExpr(*arg);
         }
-        push(ExprType::I64);
+        push(result);
     }
 
   private:

@@ -20,6 +20,7 @@
 #include "frontends/basic/NameMangler_OOP.hpp"
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -245,6 +246,26 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
 
     curLoc = expr.loc;
     std::string callee = className.empty() ? expr.method : mangleMethod(className, expr.method);
+
+    std::optional<Type> returnType;
+    if (!className.empty())
+    {
+        if (const ClassInfo *info = oopIndex_.findClass(className))
+        {
+            auto it = info->methods.find(expr.method);
+            if (it != info->methods.end() && it->second.returnType)
+            {
+                returnType = ilTypeForAstType(*it->second.returnType);
+            }
+        }
+    }
+
+    if (returnType)
+    {
+        Value result = emitCallRet(*returnType, callee, args);
+        return {result, *returnType};
+    }
+
     emitCall(callee, args);
     return {Value::constInt(0), Type(Type::Kind::I64)};
 }

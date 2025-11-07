@@ -146,6 +146,14 @@ function(viper_add_basic_main_tests)
             test_frontends_basic_parse_method_call_stmt)
 
     viper_add_test(
+            test_frontends_basic_semantic_method_returns
+            ${VIPER_TESTS_DIR}/frontends/basic/SemanticAnalyzerMethodTests.cpp)
+    target_link_libraries(test_frontends_basic_semantic_method_returns PRIVATE ${VIPER_BASIC_LIBS})
+    viper_add_ctest(
+            test_frontends_basic_semantic_method_returns
+            test_frontends_basic_semantic_method_returns)
+
+    viper_add_test(
             test_frontends_basic_lowerer_select_case
             ${VIPER_TESTS_DIR}/frontends/basic/LowererSelectCaseTests.cpp)
     target_link_libraries(test_frontends_basic_lowerer_select_case PRIVATE ${VIPER_BASIC_LIBS})
@@ -159,6 +167,14 @@ function(viper_add_basic_main_tests)
     viper_add_ctest(
             test_frontends_basic_lowerer_oop_default_ctor
             test_frontends_basic_lowerer_oop_default_ctor)
+
+    viper_add_test(
+            test_frontends_basic_lowerer_oop_method_return
+            ${VIPER_TESTS_DIR}/frontends/basic/LowererOopMethodTests.cpp)
+    target_link_libraries(test_frontends_basic_lowerer_oop_method_return PRIVATE ${VIPER_BASIC_LIBS})
+    viper_add_ctest(
+            test_frontends_basic_lowerer_oop_method_return
+            test_frontends_basic_lowerer_oop_method_return)
 
     viper_add_test(test_frontends_basic_parse_goto ${VIPER_TESTS_DIR}/frontends/basic/ParseGotoTests.cpp)
     target_link_libraries(test_frontends_basic_parse_goto PRIVATE ${VIPER_BASIC_LIBS})
