@@ -305,6 +305,8 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
             handleLetVarTarget(*var, stmt.expr.get());
         else if (auto *arr = dynamic_cast<const ArrayExpr *>(stmt.target.get()))
             handleLetArrayTarget(*arr);
+        else if (auto *member = dynamic_cast<const MemberAccessExpr *>(stmt.target.get()))
+            handleLetMemberTarget(*member);
     }
 
     /// @brief Prime symbol tracking and runtime helpers for DIM statements.
@@ -681,6 +683,30 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
         lowerer_.requireArrayI32Len();
         lowerer_.requireArrayI32Set();
         lowerer_.requireArrayOobPanic();
+    }
+
+    void handleLetMemberTarget(const MemberAccessExpr &access)
+    {
+        if (!access.base)
+            return;
+
+        std::string className = lowerer_.resolveObjectClass(*access.base);
+        if (className.empty())
+            return;
+
+        auto layoutIt = lowerer_.classLayouts_.find(className);
+        if (layoutIt == lowerer_.classLayouts_.end())
+            return;
+
+        const auto *field = layoutIt->second.findField(access.member);
+        if (!field)
+            return;
+
+        if (field->type == Type::Str)
+        {
+            lowerer_.requireStrRetainMaybe();
+            lowerer_.requireStrReleaseMaybe();
+        }
     }
 
     /// @brief Track when the scanner descends into the lvalue side of LET.
