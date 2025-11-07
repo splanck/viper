@@ -54,6 +54,14 @@ END CLASS
 END
 )BASIC";
 
+constexpr std::string_view kDimFieldSnippet = R"BASIC(
+CLASS V
+  DIM a AS INTEGER
+  b AS INTEGER
+END CLASS
+END
+)BASIC";
+
 [[nodiscard]] bool equalsIgnoreCase(std::string_view lhs, std::string_view rhs)
 {
     if (lhs.size() != rhs.size())
@@ -161,6 +169,32 @@ TEST(BasicOOPParsingTest, ParsesMethodParametersWithExplicitTypes)
     EXPECT_TRUE(equalsIgnoreCase(method->params[1].name, "iy"));
     EXPECT_EQ(method->params[1].type, Type::I64);
     EXPECT_FALSE(method->params[1].is_array);
+}
+
+TEST(BasicOOPParsingTest, ParsesFieldsWithOptionalDimPrefix)
+{
+    SourceManager sourceManager;
+    uint32_t fileId = sourceManager.addFile("basic_oop_dim_field.bas");
+
+    DiagnosticEngine engine;
+    DiagnosticEmitter emitter(engine, sourceManager);
+    emitter.addSource(fileId, std::string(kDimFieldSnippet));
+
+    Parser parser(kDimFieldSnippet, fileId, &emitter);
+    std::unique_ptr<Program> program = parser.parseProgram();
+
+    ASSERT_TRUE(program);
+    EXPECT_EQ(emitter.errorCount(), 0u);
+    EXPECT_EQ(emitter.warningCount(), 0u);
+    ASSERT_FALSE(program->main.empty());
+
+    const auto *klass = dynamic_cast<const ClassDecl *>(program->main.front().get());
+    ASSERT_NE(klass, nullptr);
+    ASSERT_EQ(klass->fields.size(), 2u);
+    EXPECT_TRUE(equalsIgnoreCase(klass->fields[0].name, "a"));
+    EXPECT_EQ(klass->fields[0].type, Type::I64);
+    EXPECT_TRUE(equalsIgnoreCase(klass->fields[1].name, "b"));
+    EXPECT_EQ(klass->fields[1].type, Type::I64);
 }
 
 int main(int argc, char **argv)
