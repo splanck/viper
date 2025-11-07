@@ -224,6 +224,12 @@ rt_string rt_input_line(void)
         len--;
     buf[len] = '\0';
     rt_string s = (rt_string)rt_alloc(sizeof(*s));
+    if (!s)
+    {
+        free(buf);
+        rt_trap("rt_input_line: alloc");
+        return NULL;
+    }
     char *payload = (char *)rt_heap_alloc(RT_HEAP_STRING, RT_ELEM_NONE, 1, len, len + 1);
     if (!payload)
     {

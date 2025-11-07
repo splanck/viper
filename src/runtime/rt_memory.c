@@ -24,20 +24,7 @@
 #include "rt_internal.h"
 #include <stdlib.h>
 
-/// @brief Allocate zero-initialised storage for runtime subsystems.
-/// @details Performs a sequence of validation steps before delegating to
-///          @c calloc:
-///          - Rejects negative requests and values that do not fit into
-///            @c size_t so the platform allocator never observes undefined
-///            behaviour.
-///          - Promotes zero-byte requests to a single byte so callers never
-///            receive @c NULL on success.
-///          - Emits a runtime trap when the platform allocator fails, matching
-///            the VM's fatal error semantics.
-/// @param bytes Number of bytes requested by the caller.
-/// @return Pointer to zeroed storage on success; @c NULL after reporting a trap
-///         when the allocation fails.
-void *rt_alloc(int64_t bytes)
+static void *rt_alloc_impl(int64_t bytes)
 {
     if (bytes < 0)
         return rt_trap("negative allocation"), NULL;
@@ -53,4 +40,30 @@ void *rt_alloc(int64_t bytes)
     if (!p)
         rt_trap("out of memory");
     return p;
+}
+
+static rt_alloc_hook_fn g_rt_alloc_hook = NULL;
+
+/// @brief Install a hook that can override @ref rt_alloc for testing.
+/// @details The hook receives the requested byte count along with a pointer to
+///          the default implementation.  Passing @c NULL restores the default
+///          behaviour.  Intended for unit tests that need to simulate allocator
+///          failures without exhausting system memory.
+/// @param hook Replacement function or @c NULL to disable overrides.
+void rt_set_alloc_hook(rt_alloc_hook_fn hook)
+{
+    g_rt_alloc_hook = hook;
+}
+
+/// @brief Allocate zero-initialised storage for runtime subsystems.
+/// @details Delegates to the optional test hook when installed, otherwise calls
+///          the default implementation described above.
+/// @param bytes Number of bytes requested by the caller.
+/// @return Pointer to zeroed storage on success; @c NULL after reporting a trap
+///         when the allocation fails.
+void *rt_alloc(int64_t bytes)
+{
+    if (g_rt_alloc_hook)
+        return g_rt_alloc_hook(bytes, rt_alloc_impl);
+    return rt_alloc_impl(bytes);
 }

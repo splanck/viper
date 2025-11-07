@@ -91,6 +91,11 @@ static rt_string rt_string_wrap(char *payload)
     assert(hdr);
     assert(hdr->kind == RT_HEAP_STRING);
     rt_string s = (rt_string)rt_alloc(sizeof(*s));
+    if (!s)
+    {
+        rt_trap("rt_string_wrap: alloc");
+        return NULL;
+    }
     s->data = payload;
     s->heap = hdr;
     s->literal_len = 0;
@@ -144,6 +149,11 @@ static rt_string rt_empty_string(void)
         assert(hdr->kind == RT_HEAP_STRING);
         hdr->refcnt = kImmortalRefcnt;
         empty = (rt_string)rt_alloc(sizeof(*empty));
+        if (!empty)
+        {
+            rt_trap("rt_empty_string: alloc");
+            return NULL;
+        }
         empty->data = payload;
         empty->heap = hdr;
         empty->literal_len = 0;
