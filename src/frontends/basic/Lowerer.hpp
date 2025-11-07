@@ -634,6 +634,14 @@ class Lowerer
         }
     };
 
+    /// @brief Describes the address and type of a resolved member field.
+    struct MemberFieldAccess
+    {
+        Value ptr;                                 ///< Pointer to the field storage.
+        Type ilType{Type(Type::Kind::I64)};        ///< IL type used for loads/stores.
+        ::il::frontends::basic::Type astType{::il::frontends::basic::Type::I64}; ///< Original AST type.
+    };
+
   private:
     /// @brief Scan program OOP constructs to populate class layouts and runtime requests.
     void scanOOP(const Program &prog);
@@ -661,6 +669,9 @@ class Lowerer
 
     /// @brief Determine the BASIC class associated with an object expression.
     [[nodiscard]] std::string resolveObjectClass(const Expr &expr) const;
+
+    /// @brief Resolve pointer and type information for a member access expression.
+    [[nodiscard]] std::optional<MemberFieldAccess> resolveMemberField(const MemberAccessExpr &expr);
 
   public:
     SymbolInfo &ensureSymbol(std::string_view name);

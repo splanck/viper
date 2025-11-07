@@ -234,6 +234,14 @@ void SemanticAnalyzer::analyzeArrayAssignment(ArrayExpr &a, const LetStmt &l)
     }
 }
 
+void SemanticAnalyzer::analyzeMemberAssignment(MemberAccessExpr &m, const LetStmt &l)
+{
+    if (m.base)
+        visitExpr(*m.base);
+    if (l.expr)
+        visitExpr(*l.expr);
+}
+
 /// @brief Emit diagnostics when the left-hand side of a LET is not assignable.
 ///
 /// @param l LET statement with a non-variable target.
@@ -243,7 +251,7 @@ void SemanticAnalyzer::analyzeConstExpr(const LetStmt &l)
         visitExpr(*l.target);
     if (l.expr)
         visitExpr(*l.expr);
-    std::string msg = "left-hand side of LET must be a variable or array element";
+    std::string msg = "left-hand side of LET must be a variable, array element, or object field";
     de.emit(il::support::Severity::Error, "B2007", l.loc, 1, std::move(msg));
 }
 
@@ -261,6 +269,10 @@ void SemanticAnalyzer::analyzeLet(LetStmt &l)
     else if (auto *a = dynamic_cast<ArrayExpr *>(l.target.get()))
     {
         analyzeArrayAssignment(*a, l);
+    }
+    else if (auto *m = dynamic_cast<MemberAccessExpr *>(l.target.get()))
+    {
+        analyzeMemberAssignment(*m, l);
     }
     else
     {
