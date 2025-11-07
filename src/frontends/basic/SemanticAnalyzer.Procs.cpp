@@ -341,16 +341,15 @@ void SemanticAnalyzer::analyze(const Program &prog)
             else if (auto *s = dynamic_cast<SubDecl *>(p.get()))
                 analyzeProc(*s);
         }
+    oopIndex_.clear();
+    buildOopIndex(prog, oopIndex_, &de.emitter());
+
     for (const auto &stmt : prog.main)
         if (stmt)
             labels_.insert(stmt->line);
     for (const auto &stmt : prog.main)
         if (stmt)
             visitStmt(*stmt);
-
-    static OopIndex g_oopIndex;
-    g_oopIndex.classes().clear();
-    buildOopIndex(prog, g_oopIndex, &de.emitter());
 }
 
 /// @brief Resolve the signature for a procedure call and validate its kind.
