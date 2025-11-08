@@ -131,7 +131,8 @@ target_include_directories(il_api PUBLIC
 
 add_library(il_analysis STATIC
         il/analysis/CFG.cpp
-        il/analysis/Dominators.cpp)
+        il/analysis/Dominators.cpp
+        il/analysis/LoopInfo.cpp)
 target_link_libraries(il_analysis PUBLIC viper_il_core)
 target_include_directories(il_analysis PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>

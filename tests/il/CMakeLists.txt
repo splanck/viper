@@ -508,6 +508,7 @@ function(viper_add_il_analysis_tests)
     endif ()
 
     set(_VIPER_ANALYSIS_DIR ${VIPER_TESTS_DIR}/analysis)
+    set(_VIPER_ANALYSIS_UNIT_DIR ${VIPER_TESTS_DIR}/unit/il/analysis)
 
     viper_add_test(test_analysis_cfg ${_VIPER_ANALYSIS_DIR}/CFGTests.cpp)
     target_link_libraries(test_analysis_cfg PRIVATE ${VIPER_IL_ANALYSIS_LIBS})
@@ -528,6 +529,10 @@ function(viper_add_il_analysis_tests)
     viper_add_test(test_analysis_basic_aa ${_VIPER_ANALYSIS_DIR}/BasicAATests.cpp)
     target_link_libraries(test_analysis_basic_aa PRIVATE ${VIPER_IL_ANALYSIS_LIBS})
     viper_add_ctest(test_analysis_basic_aa test_analysis_basic_aa)
+
+    viper_add_test(test_analysis_loopinfo ${_VIPER_ANALYSIS_UNIT_DIR}/test_LoopInfo.cpp)
+    target_link_libraries(test_analysis_loopinfo PRIVATE ${VIPER_IL_ANALYSIS_LIBS})
+    viper_add_ctest(test_analysis_loopinfo test_analysis_loopinfo)
 endfunction()
 
 function(viper_add_il_verify_examples)

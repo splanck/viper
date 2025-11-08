@@ -24,6 +24,7 @@
 
 #include "il/analysis/CFG.hpp"
 #include "il/analysis/Dominators.hpp"
+#include "il/analysis/LoopInfo.hpp"
 #include "il/io/Serializer.hpp"
 #include "il/transform/PipelineExecutor.hpp"
 #include "il/transform/SimplifyCFG.hpp"
@@ -56,16 +57,24 @@ PassManager::PassManager()
     instrumentationStream_ = &std::cerr;
 
     analysisRegistry_.registerFunctionAnalysis<CFGInfo>(
-        "cfg", [](core::Module &module, core::Function &fn) { return buildCFG(module, fn); });
+        kCFGAnalysisId, [](core::Module &module, core::Function &fn) { return buildCFG(module, fn); });
     analysisRegistry_.registerFunctionAnalysis<viper::analysis::DomTree>(
-        "dominators",
+        kDominatorsAnalysisId,
         [](core::Module &module, core::Function &fn)
         {
             viper::analysis::CFGContext ctx(module);
             return viper::analysis::computeDominatorTree(ctx, fn);
         });
+    analysisRegistry_.registerFunctionAnalysis<viper::analysis::LoopInfo>(
+        kLoopInfoAnalysisId,
+        [](core::Module &module, core::Function &fn)
+        {
+            viper::analysis::CFGContext ctx(module);
+            auto dom = viper::analysis::computeDominatorTree(ctx, fn);
+            return viper::analysis::LoopInfo::compute(module, fn, dom);
+        });
     analysisRegistry_.registerFunctionAnalysis<LivenessInfo>(
-        "liveness",
+        kLivenessAnalysisId,
         [](core::Module &module, core::Function &fn) { return computeLiveness(module, fn); });
 }
 

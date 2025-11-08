@@ -18,6 +18,11 @@
 namespace il::transform
 {
 
+inline constexpr char kCFGAnalysisId[] = "cfg";
+inline constexpr char kDominatorsAnalysisId[] = "dominators";
+inline constexpr char kLoopInfoAnalysisId[] = "loopinfo";
+inline constexpr char kLivenessAnalysisId[] = "liveness";
+
 class PreservedAnalyses;
 class AnalysisCacheInvalidator;
 
