@@ -100,4 +100,6 @@ class PassRegistry
     std::unordered_map<std::string, detail::PassFactory> registry_;
 };
 
+void registerLoopSimplifyPass(PassRegistry &registry);
+
 } // namespace il::transform

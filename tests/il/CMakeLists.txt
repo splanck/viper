@@ -489,6 +489,13 @@ function(viper_add_il_utils_test)
     viper_add_ctest(
             test_il_simplifycfg_pass_manager_cfg_invalidation test_il_simplifycfg_pass_manager_cfg_invalidation)
 
+    viper_add_test(
+            test_il_loop_simplify_preheader
+            ${VIPER_TESTS_DIR}/unit/il/transform/test_LoopSimplify.cpp)
+    target_link_libraries(
+            test_il_loop_simplify_preheader PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
+    viper_add_ctest(test_il_loop_simplify_preheader test_il_loop_simplify_preheader)
+
     viper_add_test(test_il_opcode_info ${_VIPER_IL_DIR}/OpcodeInfoTests.cpp)
     target_link_libraries(test_il_opcode_info PRIVATE ${VIPER_IL_CORE_IO_LIBS})
     viper_add_ctest(test_il_opcode_info test_il_opcode_info)
