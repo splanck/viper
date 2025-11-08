@@ -75,6 +75,7 @@ PassManager::PassManager()
 
     registerLoopSimplifyPass(passRegistry_);
     registerLICMPass(passRegistry_);
+    registerSCCPPass(passRegistry_);
 }
 
 /// @brief Register the SimplifyCFG transform in the function pass registry.
