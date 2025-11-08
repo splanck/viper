@@ -517,6 +517,10 @@ function(viper_add_il_analysis_tests)
     viper_add_test(test_analysis_acyclic ${_VIPER_ANALYSIS_DIR}/AcyclicTests.cpp)
     target_link_libraries(test_analysis_acyclic PRIVATE ${VIPER_IL_ANALYSIS_LIBS})
     viper_add_ctest(test_analysis_acyclic test_analysis_acyclic)
+
+    viper_add_test(test_analysis_basic_aa ${_VIPER_ANALYSIS_DIR}/BasicAATests.cpp)
+    target_link_libraries(test_analysis_basic_aa PRIVATE ${VIPER_IL_ANALYSIS_LIBS})
+    viper_add_ctest(test_analysis_basic_aa test_analysis_basic_aa)
 endfunction()
 
 function(viper_add_il_verify_examples)
