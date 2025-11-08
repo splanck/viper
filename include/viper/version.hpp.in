@@ -1,0 +1,16 @@
+#pragma once
+
+// Toolchain (Viper) version as provided by CMake/configure_file.
+#define VIPER_VERSION_STR    "@VIPER_VERSION_STR@"
+
+// Numeric parts (derived from VIPER_VERSION_STR before any pre-release suffix)
+#define VIPER_VERSION_MAJOR  @VIPER_VERSION_MAJOR@
+#define VIPER_VERSION_MINOR  @VIPER_VERSION_MINOR@
+#define VIPER_VERSION_PATCH  @VIPER_VERSION_PATCH@
+
+// Optional snapshot/build metadata derived from `git describe`.
+// Empty if not in a git checkout or no matching tags.
+#define VIPER_SNAPSHOT_STR   "@VIPER_SNAPSHOT_STR@"
+
+// IL/spec version (single source of truth from IL_VERSION file)
+#define VIPER_IL_VERSION_STR "@VIPER_IL_VERSION_STR@"
