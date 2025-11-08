@@ -15,6 +15,7 @@
 #include "il/transform/PassRegistry.hpp"
 
 #include "il/transform/AnalysisManager.hpp"
+#include "il/transform/LICM.hpp"
 #include "il/transform/LoopSimplify.hpp"
 
 #include <utility>
@@ -337,6 +338,11 @@ void registerLoopSimplifyPass(PassRegistry &registry)
 {
     registry.registerFunctionPass(
         "loop-simplify", []() { return std::make_unique<LoopSimplify>(); });
+}
+
+void registerLICMPass(PassRegistry &registry)
+{
+    registry.registerFunctionPass("licm", []() { return std::make_unique<LICM>(); });
 }
 
 } // namespace il::transform
