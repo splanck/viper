@@ -15,6 +15,7 @@
 #include "il/transform/PassRegistry.hpp"
 
 #include "il/transform/AnalysisManager.hpp"
+#include "il/transform/LoopSimplify.hpp"
 
 #include <utility>
 
@@ -330,6 +331,12 @@ const detail::PassFactory *PassRegistry::lookup(std::string_view id) const
     if (it == registry_.end())
         return nullptr;
     return &it->second;
+}
+
+void registerLoopSimplifyPass(PassRegistry &registry)
+{
+    registry.registerFunctionPass(
+        "loop-simplify", []() { return std::make_unique<LoopSimplify>(); });
 }
 
 } // namespace il::transform
