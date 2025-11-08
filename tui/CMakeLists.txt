@@ -49,6 +49,11 @@ target_include_directories(tui PUBLIC
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>
 )
 
+target_link_libraries(tui
+        PUBLIC
+        viper_common_opts
+)
+
 if (VIPER_INSTALL_TUI)
     install(TARGETS tui
             EXPORT ViperTargets
