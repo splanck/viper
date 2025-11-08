@@ -21,14 +21,13 @@
 #include "cmd_codegen_x64.hpp"
 #include "frontends/basic/Intrinsics.hpp"
 #include "il/core/Module.hpp"
+#include "viper/version.hpp"
 #include <iostream>
 #include <string>
 #include <string_view>
 
 namespace
 {
-
-constexpr std::string_view kIlcVersion = "0.1.0";
 
 /// @brief Print the ilc version banner and runtime configuration summary.
 ///
@@ -38,9 +37,12 @@ constexpr std::string_view kIlcVersion = "0.1.0";
 ///          `--version` flags.
 void printVersion()
 {
-    std::cout << "ilc v" << kIlcVersion << "\n";
-    const il::core::Module module;
-    std::cout << "IL version: " << module.version << "\n";
+    // Version banner
+    std::cout << "ilc v" << VIPER_VERSION_STR << "\n";
+    if (std::string(VIPER_SNAPSHOT_STR).size())
+        std::cout << "snap: " << VIPER_SNAPSHOT_STR << "\n";
+    std::cout << "IL current: " << VIPER_IL_VERSION_STR << "\n";
+    std::cout << "IL supported: 0.1.0 – " << VIPER_IL_VERSION_STR << "\n";
     std::cout << "Precise Numerics: enabled\n";
 }
 
@@ -57,7 +59,7 @@ void printVersion()
 void usage()
 {
     std::cerr
-        << "ilc v" << kIlcVersion << "\n"
+        << "ilc v" << VIPER_VERSION_STR << "\n"
         << "Usage: ilc -run <file.il> [--trace=il|src] [--stdin-from <file>] [--max-steps N]"
            " [--break label|file:line]* [--break-src file:line]* [--watch name]* [--bounds-checks] "
            "[--count] [--time] [--dump-trap]\n"
