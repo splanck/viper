@@ -27,6 +27,7 @@
 #include "il/io/Serializer.hpp"
 #include "il/transform/PipelineExecutor.hpp"
 #include "il/transform/SimplifyCFG.hpp"
+#include "il/transform/LICM.hpp"
 #include "il/transform/analysis/Liveness.hpp"
 #include "il/transform/analysis/LoopInfo.hpp"
 #include "il/verify/Verifier.hpp"
@@ -73,6 +74,7 @@ PassManager::PassManager()
         [](core::Module &module, core::Function &fn) { return computeLiveness(module, fn); });
 
     registerLoopSimplifyPass(passRegistry_);
+    registerLICMPass(passRegistry_);
 }
 
 /// @brief Register the SimplifyCFG transform in the function pass registry.
