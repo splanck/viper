@@ -28,6 +28,7 @@
 #include "il/transform/PipelineExecutor.hpp"
 #include "il/transform/SimplifyCFG.hpp"
 #include "il/transform/analysis/Liveness.hpp"
+#include "il/transform/analysis/LoopInfo.hpp"
 #include "il/verify/Verifier.hpp"
 #include "support/diag_expected.hpp"
 #include "viper/pass/PassManager.hpp"
@@ -64,9 +65,14 @@ PassManager::PassManager()
             viper::analysis::CFGContext ctx(module);
             return viper::analysis::computeDominatorTree(ctx, fn);
         });
+    analysisRegistry_.registerFunctionAnalysis<LoopInfo>(
+        "loop-info",
+        [](core::Module &module, core::Function &fn) { return computeLoopInfo(module, fn); });
     analysisRegistry_.registerFunctionAnalysis<LivenessInfo>(
         "liveness",
         [](core::Module &module, core::Function &fn) { return computeLiveness(module, fn); });
+
+    registerLoopSimplifyPass(passRegistry_);
 }
 
 /// @brief Register the SimplifyCFG transform in the function pass registry.
