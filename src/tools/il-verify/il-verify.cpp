@@ -23,6 +23,7 @@
 #include "support/diag_expected.hpp"
 #include "support/source_manager.hpp"
 #include "tools/common/module_loader.hpp"
+#include "viper/version.hpp"
 #include <iostream>
 #include <ostream>
 #include <string>
@@ -41,7 +42,7 @@ int runCLI(
 {
     if (argc == 2 && std::string(argv[1]) == "--version")
     {
-        out << "IL v0.1.2\n";
+        out << "IL v" << VIPER_IL_VERSION_STR << "\n";
         return 0;
     }
     if (argc != 2)
