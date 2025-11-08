@@ -149,6 +149,7 @@ add_library(il_transform STATIC
         il/transform/Mem2Reg.cpp
         il/transform/LoopSimplify.cpp
         il/transform/LICM.cpp
+        il/transform/SCCP.cpp
         il/transform/SimplifyCFG.cpp
         il/transform/SimplifyCFG/BlockMerging.cpp
         il/transform/SimplifyCFG/BranchFolding.cpp

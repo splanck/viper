@@ -503,6 +503,13 @@ function(viper_add_il_utils_test)
             test_il_licm_basic PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
     viper_add_ctest(test_il_licm_basic test_il_licm_basic)
 
+    viper_add_test(
+            test_il_sccp_phi_branch
+            ${VIPER_TESTS_DIR}/unit/il/transform/test_SCCP.cpp)
+    target_link_libraries(
+            test_il_sccp_phi_branch PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
+    viper_add_ctest(test_il_sccp_phi_branch test_il_sccp_phi_branch)
+
     viper_add_test(test_il_opcode_info ${_VIPER_IL_DIR}/OpcodeInfoTests.cpp)
     target_link_libraries(test_il_opcode_info PRIVATE ${VIPER_IL_CORE_IO_LIBS})
     viper_add_ctest(test_il_opcode_info test_il_opcode_info)

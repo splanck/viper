@@ -101,5 +101,6 @@ class PassRegistry
 };
 
 void registerLoopSimplifyPass(PassRegistry &registry);
+void registerSCCPPass(PassRegistry &registry);
 
 } // namespace il::transform
