@@ -53,7 +53,7 @@ using Kind = SigParam::Kind;
 ///          registration obtain a process-wide view of the runtime string ABI.
 void register_string_signatures()
 {
-    register_signature(make_signature("rt_len", {Kind::Ptr}, {Kind::I64}));
+    register_signature(make_signature("rt_len", {Kind::Ptr}, {Kind::I64}, true, true));
     register_signature(make_signature("rt_substr", {Kind::Ptr, Kind::I64, Kind::I64}, {Kind::Ptr}));
     register_signature(make_signature("rt_trap", {Kind::Ptr}));
     register_signature(make_signature("rt_concat", {Kind::Ptr, Kind::Ptr}, {Kind::Ptr}));
@@ -78,8 +78,9 @@ void register_string_signatures()
     register_signature(make_signature("rt_right", {Kind::Ptr, Kind::I64}, {Kind::Ptr}));
     register_signature(make_signature("rt_mid2", {Kind::Ptr, Kind::I64}, {Kind::Ptr}));
     register_signature(make_signature("rt_mid3", {Kind::Ptr, Kind::I64, Kind::I64}, {Kind::Ptr}));
-    register_signature(make_signature("rt_instr2", {Kind::Ptr, Kind::Ptr}, {Kind::I64}));
-    register_signature(make_signature("rt_instr3", {Kind::I64, Kind::Ptr, Kind::Ptr}, {Kind::I64}));
+    register_signature(make_signature("rt_instr2", {Kind::Ptr, Kind::Ptr}, {Kind::I64}, true, true));
+    register_signature(
+        make_signature("rt_instr3", {Kind::I64, Kind::Ptr, Kind::Ptr}, {Kind::I64}, true, true));
     register_signature(make_signature("rt_ltrim", {Kind::Ptr}, {Kind::Ptr}));
     register_signature(make_signature("rt_rtrim", {Kind::Ptr}, {Kind::Ptr}));
     register_signature(make_signature("rt_trim", {Kind::Ptr}, {Kind::Ptr}));
@@ -87,7 +88,7 @@ void register_string_signatures()
     register_signature(make_signature("rt_lcase", {Kind::Ptr}, {Kind::Ptr}));
     register_signature(make_signature("rt_chr", {Kind::I64}, {Kind::Ptr}));
     register_signature(make_signature("rt_asc", {Kind::Ptr}, {Kind::I64}));
-    register_signature(make_signature("rt_str_eq", {Kind::Ptr, Kind::Ptr}, {Kind::I1}));
+    register_signature(make_signature("rt_str_eq", {Kind::Ptr, Kind::Ptr}, {Kind::I1}, true, true));
     register_signature(make_signature("rt_val", {Kind::Ptr}, {Kind::F64}));
     register_signature(make_signature("rt_val_to_double", {Kind::Ptr, Kind::Ptr}, {Kind::F64}));
     register_signature(make_signature("rt_string_cstr", {Kind::Ptr}, {Kind::Ptr}));

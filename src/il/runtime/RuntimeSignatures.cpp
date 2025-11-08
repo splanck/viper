@@ -24,6 +24,7 @@
 ///          calling conventions and the C ABI, and the lookup utilities used by
 ///          the verifier and code generator.
 
+#include "il/runtime/HelperEffects.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
 #include "il/runtime/RuntimeSignatureParser.hpp"
 #include "il/runtime/RuntimeSignaturesData.hpp"
@@ -135,7 +136,13 @@ const RuntimeSignature &signatureFor(RtSig sig)
     {
         std::array<RuntimeSignature, kRtSigCount> entries;
         for (std::size_t i = 0; i < kRtSigCount; ++i)
+        {
             entries[i] = parseSignatureSpec(data::kRtSigSpecs[i]);
+            const auto effects = classifyHelperEffects(data::kRtSigSymbolNames[i]);
+            entries[i].nothrow = effects.nothrow;
+            entries[i].readonly = effects.readonly;
+            entries[i].pure = effects.pure;
+        }
         return entries;
     }();
     return table[static_cast<std::size_t>(sig)];
@@ -1143,6 +1150,10 @@ RuntimeSignature buildSignature(const DescriptorRow &row)
         row.signatureId ? signatureFor(*row.signatureId) : parseSignatureSpec(row.spec);
     signature.hiddenParams.assign(row.hidden, row.hidden + row.hiddenCount);
     signature.trapClass = row.trapClass;
+    const auto effects = classifyHelperEffects(row.name);
+    signature.nothrow = signature.nothrow || effects.nothrow;
+    signature.readonly = signature.readonly || effects.readonly;
+    signature.pure = signature.pure || effects.pure;
     return signature;
 }
 
