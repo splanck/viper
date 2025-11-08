@@ -20,6 +20,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "il/runtime/HelperEffects.hpp"
 #include "il/runtime/signatures/Registry.hpp"
 
 /// @file
@@ -57,9 +58,18 @@ std::vector<Signature> &registry()
 ///          coordination.  Consumers that require uniqueness can deduplicate the
 ///          returned array themselves without mutating the canonical storage.
 /// @param signature Signature metadata describing a runtime helper.
+Signature apply_effect_overrides(Signature signature)
+{
+    const auto effects = il::runtime::classifyHelperEffects(signature.name);
+    signature.nothrow = signature.nothrow || effects.nothrow;
+    signature.readonly = signature.readonly || effects.readonly;
+    signature.pure = signature.pure || effects.pure;
+    return signature;
+}
+
 void register_signature(const Signature &signature)
 {
-    registry().push_back(signature);
+    registry().push_back(apply_effect_overrides(signature));
 }
 
 /// @brief Retrieve a stable view of all registered runtime signatures.
