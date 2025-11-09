@@ -19,6 +19,7 @@
 #include <array>
 #include <cctype>
 #include <exception>
+#include <limits>
 #include <optional>
 #include <sstream>
 #include <string_view>
