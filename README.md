@@ -5,6 +5,15 @@ High‑level frontends—like the included BASIC compiler—lower programs into 
 
 > Viper is an active, experimental project exploring IL design, multi‑frontend architectures, and interpreter micro‑architectures.
 
+## Documentation
+
+- IL Quickstart & Reference: [docs/il-guide.md](docs/il-guide.md)
+- BASIC Language Guide: [docs/basic-language.md](docs/basic-language.md)
+- BASIC OOP Guide: [docs/basic-oop.md](docs/basic-oop.md)
+- Architecture Overview: [docs/architecture.md#cpp-overview](docs/architecture.md#cpp-overview)
+- Code Map (components & roles): [docs/codemap.md](docs/codemap.md)
+- ViperTUI (experimental): [tui/](tui/)
+
 ---
 
 ## Why Viper?
@@ -167,6 +176,14 @@ Workloads dominated by I/O, syscalls, or heavy native library calls will see lit
 └─ .github/     # CI workflows
 ```
 
+- Browse key folders:
+  - Source tree: [src/](src/)
+  - Documentation: [docs/](docs/)
+  - Examples: [examples/](examples/)
+  - Tests: [tests/](tests/)
+  - CMake helpers: [cmake/](cmake/)
+  - Scripts: [scripts/](scripts/)
+
 ---
 
 ## Building, Installing, Uninstalling
@@ -283,18 +300,20 @@ Keep frontends thin: semantics live in the IL so the VM/backends can stay generi
 
 ---
 
-## Roadmap
+## Roadmap & Status
 
-| Area                             | Status        |
-|----------------------------------|---------------|
-| BASIC frontend + OOP             | ✅ Done       |
-| VM (switch/table/threaded)       | ✅ Done       |
-| Runtime libs (string/math/I/O)   | ✅ Done       |
-| IL verifier & diagnostics        | ✅ Done       |
-| TUI subsystem                    | 🧪 Experimental |
-| IL optimization passes           | 🧩 In progress |
-| Native codegen backends          | ⏳ Planned    |
-| Debugger/IDE                     | ⏳ Planned    |
+All components are under active development; icons reflect current maturity, not completion.
+
+| Area                             | Status                                      |
+|----------------------------------|---------------------------------------------|
+| BASIC frontend + OOP             | 🔧 Available (actively evolving)            |
+| VM (switch/table/threaded)       | 🔧 Available (actively evolving)            |
+| Runtime libs (string/math/I/O)   | 🔧 Available (actively evolving)            |
+| IL verifier & diagnostics        | 🔧 Available (actively evolving)            |
+| TUI subsystem                    | 🧪 Experimental                              |
+| IL optimization passes           | 🧩 In progress                               |
+| Native codegen backends          | 🧪 Experimental (basic implementation)       |
+| Debugger/IDE                     | ⏳ Planned                                   |
 
 ---
 
@@ -304,15 +323,7 @@ We’re glad you’re interested in Viper! This project is evolving quickly and 
 
 ---
 
-## Learn More
-
-- **BASIC Language Guide** — `docs/basic-language.md`
-- **BASIC OOP Guide** — `docs/basic-oop.md`
-- **IL Quickstart & Reference** — `docs/il-guide.md`
-- **Architecture Notes** — `docs/architecture.md`
-- **ViperTUI** — `tui/`
-
----
+ 
 
 ## License
 
