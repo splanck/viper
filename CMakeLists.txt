@@ -75,7 +75,8 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     list(APPEND IL_LINK_FLAGS -fsanitize=undefined)
   endif()
 elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-  # GCC-specific flags can be added here if needed
+  # Keep parity with Clang: suppress benign unused parameter warnings under -Werror
+  list(APPEND IL_COMPILE_FLAGS -Wno-unused-parameter)
 endif()
 
 if(IL_WARN_AS_ERROR)
