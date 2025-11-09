@@ -1,0 +1,23 @@
+.TH il-dis 1 "Viper" "Viper il-dis" "User Commands"
+.SH NAME
+il\-dis \- print a normalized textual representation of Viper IL
+.SH SYNOPSIS
+.B il\-dis
+ <file.il>
+.SH DESCRIPTION
+.B il\-dis
+reads a Viper IL module and prints a canonicalized textual form. This is
+useful for diffing IL, golden tests, and debugging.
+.SH EXIT STATUS
+Returns 0 on success; non-zero on I/O or parse failures.
+.SH EXAMPLES
+.PP
+Pretty-print IL to stdout:
+.RS
+.nf
+il-dis examples/hello.il
+.fi
+.RE
+.SH SEE ALSO
+.BR il\-verify (1),
+.BR ilc (1)

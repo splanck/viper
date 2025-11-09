@@ -1,0 +1,61 @@
+.TH ilc 1 "Viper" "Viper ilc" "User Commands"
+.SH NAME
+ilc \- Viper IL compiler, runner, and utilities
+.SH SYNOPSIS
+.B ilc
+ [\-\-version] [\-h] <command> [options]
+.SH DESCRIPTION
+.B ilc
+is the primary command for working with Viper IL. It can parse IL text,
+verify modules, run them on the VM, perform simple optimization pipelines,
+and drive frontends.
+.SH COMMANDS
+.TP
+.B run <file.il> [--trace]
+Parse and run the given IL file on the VM. Returns the program's exit value.
+.TP
+.B il-opt <file.il> [--pipeline <name>]
+Run one or more optimization/analysis passes over the input IL and print the
+resulting module to stdout. Pipelines are documented in project docs.
+.TP
+.B front basic --emit-il <file.bas>
+Use the BASIC frontend to compile a .bas file to IL text on stdout.
+.TP
+.B codegen x64 [--emit-asm|--assemble] <file.il>
+Lower the IL to x86_64 assembly (-\-emit-asm) or assemble it (-\-assemble)
+when the toolchain is available. Assembly/link steps are host dependent.
+.SH OPTIONS
+.TP
+.B \-\-version
+Print version and build information (ilc version, IL spec version).
+.TP
+.B \-h, \-\-help
+Show usage and the list of available commands.
+.SH EXIT STATUS
+Returns 0 on success; non-zero on errors (parsing, verification, runtime, or
+I/O failures).
+.SH EXAMPLES
+.PP
+Run an IL file on the VM:
+.RS
+.nf
+ilc run examples/hello.il
+.fi
+.RE
+.PP
+Optimize an IL file with a default pipeline:
+.RS
+.nf
+ilc il-opt examples/loop.il --pipeline simplifycfg
+.fi
+.RE
+.PP
+Compile BASIC to IL:
+.RS
+.nf
+ilc front basic --emit-il examples/hello.bas > hello.il
+.fi
+.RE
+.SH SEE ALSO
+.BR il\-verify (1),
+.BR il\-dis (1)

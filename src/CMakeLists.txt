@@ -272,6 +272,7 @@ target_link_libraries(ilc
         viper_codegen_x86_64)
 get_target_property(ILC_LINK_LIBS ilc LINK_LIBRARIES)
 message(STATUS "ilc LINK_LIBRARIES: ${ILC_LINK_LIBS}")
+install(TARGETS ilc RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 add_executable(il-verify tools/il-verify/il-verify.cpp)
 set_target_properties(il-verify PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/il-verify)
@@ -283,6 +284,7 @@ target_link_libraries(il-verify
         il_vm
         il_api
         il_tools_common)
+install(TARGETS il-verify RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 add_executable(il-dis tools/il-dis/main.cpp)
 set_target_properties(il-dis PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/il-dis)
@@ -291,6 +293,7 @@ target_link_libraries(il-dis
         viper_common_opts
         viper::il_full
         il_build)
+install(TARGETS il-dis RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 add_subdirectory(frontends/basic)
 

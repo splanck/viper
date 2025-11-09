@@ -40,6 +40,8 @@ configure_file(
   "${CMAKE_BINARY_DIR}/generated/viper/version.hpp"
   @ONLY
 )
+install(FILES "${CMAKE_BINARY_DIR}/generated/viper/version.hpp"
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/viper)
 
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 
@@ -284,6 +286,46 @@ if(VIPER_BUILD_TESTING)
   add_subdirectory(tests)
   viper_assert_no_directory_link_libraries("tests" "tests")
 endif()
+
+# Man pages (section 1)
+install(DIRECTORY ${CMAKE_SOURCE_DIR}/docs/man/
+        DESTINATION ${CMAKE_INSTALL_MANDIR}/man1
+        FILES_MATCHING PATTERN "*.1")
+
+# Uninstall convenience target (uses install_manifest.txt)
+if(NOT TARGET uninstall)
+  configure_file(
+    ${CMAKE_SOURCE_DIR}/cmake/cmake_uninstall.cmake.in
+    ${CMAKE_BINARY_DIR}/cmake_uninstall.cmake
+    @ONLY)
+  add_custom_target(uninstall
+    COMMAND ${CMAKE_COMMAND} -P ${CMAKE_BINARY_DIR}/cmake_uninstall.cmake
+    COMMENT "Uninstall installed files (from install_manifest.txt)")
+endif()
+
+# ---- Packaging (CPack) ----
+set(CPACK_PACKAGE_NAME "Viper")
+set(CPACK_PACKAGE_VENDOR "Viper Project")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Viper IL compiler toolchain and VM")
+set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
+set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_SOURCE_DIR}/LICENSE")
+set(CPACK_RESOURCE_FILE_README "${CMAKE_SOURCE_DIR}/README.md")
+set(CPACK_PACKAGE_CONTACT "viper@example.com")
+
+if(APPLE)
+  # Build a macOS installer package (.pkg) suitable for CLI tools
+  set(CPACK_GENERATOR "productbuild")
+  set(CPACK_PACKAGE_FILE_NAME "Viper-${PROJECT_VERSION}-macos")
+else()
+  if(UNIX)
+    # Build both DEB and RPM if possible; users can choose
+    set(CPACK_GENERATOR "DEB;RPM")
+    set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Viper Project")
+    set(CPACK_PACKAGE_FILE_NAME "viper-${PROJECT_VERSION}-${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
+  endif()
+endif()
+
+include(CPack)
 
 viper_assert_no_archive_link_paths()
 

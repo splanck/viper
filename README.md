@@ -169,15 +169,106 @@ Workloads dominated by I/O, syscalls, or heavy native library calls will see lit
 
 ---
 
-## Building & Installing
+## Building, Installing, Uninstalling
+
+### Build
 
 ```bash
-cmake -S . -B build -DVIPER_VM_THREADED=ON   # optional; enables threaded dispatch where supported
+# Configure (optional: enable direct‑threaded VM dispatch)
+cmake -S . -B build -DVIPER_VM_THREADED=ON
+
+# Build
 cmake --build build -j
-cmake --install build                        # installs libraries/tools if install rules are enabled
+
+# Test
+ctest --test-dir build --output-on-failure
+```
+
+### Install (macOS and Linux)
+
+The project provides standard CMake install rules for tools and headers.
+
+```bash
+# Install to /usr/local (default on macOS/Linux)
+sudo cmake --install build --prefix /usr/local
+
+# Or install to a custom prefix (no sudo if you own the prefix)
+cmake --install build --prefix "$HOME/.local"
+```
+
+What gets installed:
+- Binaries: `ilc`, `il-verify`, `il-dis` → `${prefix}/bin`
+- Headers (public): → `${prefix}/include/viper`
+- Generated header: `version.hpp` → `${prefix}/include/viper`
+- Man pages: `ilc(1)`, `il-verify(1)`, `il-dis(1)` → `${prefix}/share/man/man1`
+
+Notes
+- Add `${prefix}/bin` to your `PATH` and `${prefix}/share/man` to your `MANPATH` if needed.
+- The TUI demo is not installed.
+
+### Uninstall
+
+Uninstall removes files recorded in `install_manifest.txt` from your last `cmake --install`.
+
+```bash
+cmake --build build --target uninstall
+```
+
+### Cleaning
+
+```bash
+# Remove built objects in the current build tree + source‑generated artifacts
+cmake --build build --target clean-all
+
+# Stronger cleanup: also remove build tree binaries and CMake cache/files
+cmake --build build --target clean-dist
 ```
 
 > The project targets **C++20** and builds with modern **CMake**. Direct‑threaded dispatch requires **GCC/Clang** for labels‑as‑values; other toolchains fall back to portable modes.
+
+### Packages (macOS and Linux)
+
+You can create native packages using **CPack** after install rules are in place.
+
+```bash
+cmake -S . -B build
+cmake --build build -j
+
+# Build packages (generator auto-selects per platform)
+cmake --build build --target package
+```
+
+Outputs (in `build/`):
+- macOS: `Viper-<version>-macos.pkg`
+- Linux: `viper-<version>-<system>-<arch>.deb` and/or `.rpm` if the tooling is available
+
+Install a package with your OS’s standard tools (e.g., `sudo dpkg -i …` or `sudo rpm -i …`).
+
+---
+
+## Compiling on Different Platforms
+
+Viper is cross‑platform and uses standard CMake toolchain discovery. The canonical compiler is **Clang**; GCC is supported.
+
+### macOS
+- Use Apple Clang (installed with Xcode or Command Line Tools).
+- The build enables `lld` automatically when available; falls back to system linker otherwise.
+- On Apple Silicon (arm64), x86_64 codegen assemble/link tests are skipped by default.
+- Install to `/usr/local` or a custom prefix: `sudo cmake --install build --prefix /usr/local`.
+
+### Linux (Clang or GCC)
+- Clang is recommended; GCC 11+ is supported.
+- You can force a compiler with `CC`/`CXX`:
+  ```bash
+  CC=clang CXX=clang++ cmake -S . -B build
+  cmake --build build -j
+  ```
+- The install step is identical to macOS (`cmake --install build --prefix …`).
+
+### Windows
+- Clang‑CL is preferred; MSVC may work but is not the primary configuration.
+- POSIX‑specific tests and scripts are skipped or gated. If you primarily target Windows, consider building with LLVM’s `clang-cl` and Ninja.
+
 
 ---
 

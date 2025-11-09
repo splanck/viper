@@ -1,0 +1,28 @@
+.TH il-verify 1 "Viper" "Viper il-verify" "User Commands"
+.SH NAME
+il\-verify \- verify a Viper IL module
+.SH SYNOPSIS
+.B il\-verify
+ [\-\-version] <file.il>
+.SH DESCRIPTION
+.B il\-verify
+parses and verifies a Viper IL module from disk. It reports structural and
+semantic issues per the IL specification (types, control flow, memory, EH).
+.SH OPTIONS
+.TP
+.B \-\-version
+Print version and build information (tool and IL spec versions).
+.SH EXIT STATUS
+Returns 0 on success (verification passed); non-zero on any error, including
+I/O failures and verification diagnostics.
+.SH EXAMPLES
+.PP
+Verify a module:
+.RS
+.nf
+il-verify examples/hello.il
+.fi
+.RE
+.SH SEE ALSO
+.BR ilc (1),
+.BR il\-dis (1)
