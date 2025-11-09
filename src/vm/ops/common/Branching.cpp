@@ -103,48 +103,56 @@ Target select_case(Scalar scrutinee, std::span<const Case> table, Target default
 /// @param target Describes the branch instruction, destination map, and context.
 void jump(Frame &frame, Target target)
 {
-    assert(target.valid() && "attempted to jump to an invalid target");
-
-    auto it = target.blocks->find(target.instr->labels[target.labelIndex]);
-    assert(it != target.blocks->end() && "branch target must resolve to a basic block");
-    const il::core::BasicBlock *dest = it->second;
-    const il::core::BasicBlock *sourceBlock = *target.currentBlock;
-
-    const size_t expected = dest->params.size();
-    const size_t provided = target.labelIndex < target.instr->brArgs.size()
-                                ? target.instr->brArgs[target.labelIndex].size()
-                                : 0;
-    if (provided != expected)
-        reportBranchArgMismatch(*dest, sourceBlock, expected, provided, *target.instr, frame);
-
-    if (provided > 0)
+    try
     {
-        const auto &args = target.instr->brArgs[target.labelIndex];
-        for (size_t i = 0; i < provided; ++i)
+        assert(target.valid() && "attempted to jump to an invalid target");
+
+        auto it = target.blocks->find(target.instr->labels[target.labelIndex]);
+        assert(it != target.blocks->end() && "branch target must resolve to a basic block");
+        const il::core::BasicBlock *dest = it->second;
+        const il::core::BasicBlock *sourceBlock = *target.currentBlock;
+
+        const size_t expected = dest->params.size();
+        const size_t provided = target.labelIndex < target.instr->brArgs.size()
+                                    ? target.instr->brArgs[target.labelIndex].size()
+                                    : 0;
+        if (provided != expected)
+            reportBranchArgMismatch(*dest, sourceBlock, expected, provided, *target.instr, frame);
+
+        if (provided > 0)
         {
-            const auto &param = dest->params[i];
-            const auto id = param.id;
-            assert(id < frame.params.size());
-
-            Slot incoming = detail::VMAccess::eval(*target.vm, frame, args[i]);
-            auto &destSlot = frame.params[id];
-
-            if (param.type.kind == il::core::Type::Kind::Str)
+            const auto &args = target.instr->brArgs[target.labelIndex];
+            for (size_t i = 0; i < provided; ++i)
             {
-                if (destSlot)
-                    rt_str_release_maybe(destSlot->str);
+                const auto &param = dest->params[i];
+                const auto id = param.id;
+                assert(id < frame.params.size());
 
-                rt_str_retain_maybe(incoming.str);
+                Slot incoming = detail::VMAccess::eval(*target.vm, frame, args[i]);
+                auto &destSlot = frame.params[id];
+
+                if (param.type.kind == il::core::Type::Kind::Str)
+                {
+                    if (destSlot)
+                        rt_str_release_maybe(destSlot->str);
+
+                    rt_str_retain_maybe(incoming.str);
+                    destSlot = incoming;
+                    continue;
+                }
+
                 destSlot = incoming;
-                continue;
             }
-
-            destSlot = incoming;
         }
-    }
 
-    *target.currentBlock = dest;
-    *target.ip = 0;
+        *target.currentBlock = dest;
+        *target.ip = 0;
+    }
+    catch (const std::exception &ex)
+    {
+        std::fprintf(stderr, "[BRANCH] jump exception: %s\n", ex.what());
+        std::_Exit(1);
+    }
 }
 
 /// @brief Evaluate the scrutinee operand for switch-like opcodes.

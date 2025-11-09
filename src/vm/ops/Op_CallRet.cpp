@@ -16,6 +16,7 @@
 
 #include "il/runtime/RuntimeSignatures.hpp"
 #include "vm/Marshal.hpp"
+#include "vm/tco.hpp"
 #include "vm/RuntimeBridge.hpp"
 
 /// @file
@@ -147,6 +148,22 @@ VM::ExecResult handleCall(VM &vm,
     auto it = fnMap.find(in.callee);
     if (it != fnMap.end())
     {
+        // Tail-call optimisation: call immediately followed by ret
+#if defined(VIPER_VM_TAILCALL) && VIPER_VM_TAILCALL
+        if (bb && (ip + 1) < bb->instructions.size())
+        {
+            const auto &nextInstr = bb->instructions[ip + 1];
+            if (nextInstr.op == il::core::Opcode::Ret)
+            {
+                if (il::vm::tryTailCall(vm, it->second, std::span<const Slot>{args}))
+                {
+                    VM::ExecResult r{};
+                    r.jumped = true; // prevent ip++ so entry ip=0 is executed
+                    return r;
+                }
+            }
+        }
+#endif
         out = VMAccess::callFunction(vm, *it->second, args);
     }
     else

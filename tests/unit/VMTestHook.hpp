@@ -89,5 +89,10 @@ struct VMTestHook
     {
         return vm.runtimeContext;
     }
+
+    static std::size_t execDepth(const VM &vm)
+    {
+        return vm.execStack.size();
+    }
 };
 } // namespace il::vm

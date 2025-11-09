@@ -345,4 +345,19 @@ void TraceSink::onStep(const il::core::Instr &in, const Frame &fr)
     }
 }
 
+/// @brief Emit a trace line for a tail-call optimisation event.
+/// @details When tracing is enabled, prints a compact line describing the
+///          function tail-called from/to. Emission is mode-agnostic and always
+///          prints a single line to keep ordering relative to steps.
+/// @param from Caller function being replaced.
+/// @param to   Callee function entered via tail-call.
+void TraceSink::onTailCall(const il::core::Function *from, const il::core::Function *to)
+{
+    if (!cfg.enabled())
+        return;
+    std::cerr << "[IL] tailcall "
+              << (from ? from->name : std::string("<unknown>")) << " -> "
+              << (to ? to->name : std::string("<unknown>")) << '\n' << std::flush;
+}
+
 } // namespace il::vm

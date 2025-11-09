@@ -340,8 +340,33 @@ Slot VM::eval(Frame &fr, const il::core::Value &value)
 /// @return Optional slot containing the program result when execution finished.
 std::optional<Slot> VM::stepOnce(ExecState &state)
 {
+    ActiveVMGuard active(this);
     VMContext ctx(*this);
-    return ctx.stepOnce(state);
+    struct ExecStackGuard
+    {
+        VM &vm;
+        VM::ExecState *st;
+        ExecStackGuard(VM &vmRef, VM::ExecState &stateRef) : vm(vmRef), st(&stateRef)
+        {
+            vm.execStack.push_back(st);
+        }
+        ~ExecStackGuard()
+        {
+            if (!vm.execStack.empty() && vm.execStack.back() == st)
+                vm.execStack.pop_back();
+        }
+    } guard(*this, state);
+    try
+    {
+        return ctx.stepOnce(state);
+    }
+    catch (const VM::TrapDispatchSignal &signal)
+    {
+        if (!ctx.handleTrapDispatch(signal, state))
+            throw;
+        // Trap dispatched; no completed result yet.
+        return std::nullopt;
+    }
 }
 
 /// @brief Forward a trap dispatch signal to the shared context helpers.

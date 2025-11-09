@@ -457,6 +457,9 @@ class VM
     /// @brief Retrieve the formatted diagnostic for the most recent unhandled trap.
     /// @return Trap message when a trap terminated execution, or `std::nullopt` otherwise.
     std::optional<std::string> lastTrapMessage() const;
+
+    /// @brief Emit a tail-call debug/trace event.
+    void onTailCall(const il::core::Function *from, const il::core::Function *to);
 };
 
 } // namespace il::vm

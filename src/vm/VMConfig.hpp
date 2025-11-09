@@ -11,3 +11,26 @@
 #else
 #define VIPER_THREADING_SUPPORTED 0
 #endif
+
+// -----------------------------------------------------------------------------
+// Dispatch hook macros (compiled away by default)
+//
+// These macros are invoked immediately before and after executing each
+// instruction in the VM regardless of dispatch strategy (switch/labels/table).
+// They default to empty do-while blocks so the optimizer removes them entirely
+// when not overridden by the build or embedding application.
+// -----------------------------------------------------------------------------
+#ifndef VIPER_VM_DISPATCH_BEFORE
+#define VIPER_VM_DISPATCH_BEFORE(ST, OPCODE) do { } while (0)
+#endif
+
+#ifndef VIPER_VM_DISPATCH_AFTER
+#define VIPER_VM_DISPATCH_AFTER(ST, OPCODE)  do { } while (0)
+#endif
+
+// -----------------------------------------------------------------------------
+// Tail-call optimisation toggle
+// -----------------------------------------------------------------------------
+#ifndef VIPER_VM_TAILCALL
+#define VIPER_VM_TAILCALL 0
+#endif

@@ -51,6 +51,20 @@ namespace il::vm
 {
 struct Frame;
 
+/// @brief Discrete debugger events surfaced by the VM.
+enum class DebugEvent
+{
+    None = 0,
+    TailCall, ///< A tail-call reused the current frame (from -> to)
+};
+
+/// @brief Payload describing a tail-call optimisation event.
+struct TailCallInfo
+{
+    const il::core::Function *from = nullptr;
+    const il::core::Function *to = nullptr;
+};
+
 /// @brief Configuration for interpreter tracing.
 struct TraceConfig
 {
@@ -82,6 +96,9 @@ class TraceSink
 
     /// @brief Record execution of instruction @p in within frame @p fr.
     void onStep(const il::core::Instr &in, const Frame &fr);
+
+    /// @brief Emit a tail-call event trace when enabled.
+    void onTailCall(const il::core::Function *from, const il::core::Function *to);
 
   private:
     struct InstrLocation
@@ -214,4 +231,3 @@ class DebugScript
 };
 
 } // namespace il::vm
-

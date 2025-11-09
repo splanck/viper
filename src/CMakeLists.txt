@@ -191,6 +191,7 @@ target_include_directories(il_tools_common PUBLIC
 add_library(il_vm STATIC
         vm/Runner.cpp
         vm/VM.cpp
+        vm/tco.cpp
         vm/debug/VM_DebugUtils.cpp
         vm/VMInit.cpp
         vm/VMContext.cpp
@@ -227,6 +228,12 @@ target_link_libraries(il_vm
         viper_runtime
         PRIVATE
         viper_support)
+
+# Enable tail-call optimisation across the VM by default.
+option(IL_VM_ENABLE_TAILCALL "Enable VM tail-call optimization by default" ON)
+if (IL_VM_ENABLE_TAILCALL)
+    target_compile_definitions(il_vm PUBLIC VIPER_VM_TAILCALL=1)
+endif ()
 
 if (VIPER_VM_THREADED)
     target_compile_definitions(il_vm PUBLIC VIPER_VM_THREADED=1)

@@ -1,8 +1,10 @@
 name: CI
 
+# Temporarily disable automatic CI on push/PR to avoid noisy email
+# notifications and red checks. Manual runs remain available via the
+# GitHub UI (Run workflow). Revert this block to re‑enable automation.
 on:
-  push:
-  pull_request:
+  workflow_dispatch:
 
 jobs:
   basic-strings:

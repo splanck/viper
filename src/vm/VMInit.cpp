@@ -193,6 +193,23 @@ Frame VM::setupFrame(const Function &fn,
     // Pre-size register file to the function's SSA value count. This mirrors
     // the number of temporaries and parameters required by @p fn and avoids
     // incremental growth during execution.
+    if (isVmDebugLoggingEnabled())
+    {
+        std::fprintf(stderr,
+                     "[SETUP] fn=%s valueNames=%zu params=%zu blocks=%zu\n",
+                     fn.name.c_str(),
+                     fn.valueNames.size(),
+                     fn.params.size(),
+                     fn.blocks.size());
+    }
+    size_t maxParamId = 0;
+    for (const auto &p : fn.params)
+        maxParamId = std::max(maxParamId, static_cast<size_t>(p.id));
+    if (isVmDebugLoggingEnabled())
+    {
+        std::fprintf(stderr, "[SETUP] maxParamId=%zu\n", maxParamId);
+        std::fflush(stderr);
+    }
     fr.regs.resize(fn.valueNames.size());
     assert(fr.regs.size() == fn.valueNames.size());
     fr.params.assign(fr.regs.size(), std::nullopt);

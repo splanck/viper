@@ -521,6 +521,17 @@ uint64_t VM::getInstrCount() const
     return instrCount;
 }
 
+/// @brief Emit a tail-call event to the trace sink when enabled.
+void VM::onTailCall(const Function *from, const Function *to)
+{
+#if !defined(VIPER_VM_TRACE) || VIPER_VM_TRACE
+    tracer.onTailCall(from, to);
+#else
+    (void)from;
+    (void)to;
+#endif
+}
+
 /// @brief Record the currently executing instruction for diagnostics and traps.
 /// @param fr Active frame containing the instruction.
 /// @param bb Basic block housing the instruction.
@@ -582,12 +593,50 @@ bool VM::prepareTrap(VmError &error)
             Slot tokSlot{};
             tokSlot.ptr = &fr.resumeState;
 
+            // If the handler belongs to a different function than the active frame
+            // (possible after TCO), rebuild the frame register/param file and block map
+            // to match the handler's owning function to ensure parameter IDs are valid.
+            if (record.handler)
+            {
+                const Function *ownerFn = nullptr;
+                const auto &fnMap = detail::VMAccess::functionMap(*this);
+                for (const auto &kv : fnMap)
+                {
+                    const Function *fn = kv.second;
+                    for (const auto &blk : fn->blocks)
+                    {
+                        if (&blk == record.handler)
+                        {
+                            ownerFn = fn;
+                            break;
+                        }
+                    }
+                    if (ownerFn)
+                        break;
+                }
+
+                if (ownerFn && fr.func != ownerFn)
+                {
+                    fr.func = ownerFn;
+                    fr.regs.clear();
+                    fr.regs.resize(ownerFn->valueNames.size());
+                    fr.params.assign(fr.regs.size(), std::nullopt);
+                    st->blocks.clear();
+                    for (const auto &b : ownerFn->blocks)
+                        st->blocks[b.label] = &b;
+                }
+            }
+
             if (!record.handler->params.empty())
             {
                 const auto &params = record.handler->params;
-                fr.params[params[0].id] = errSlot;
+                if (params[0].id < fr.params.size())
+                    fr.params[params[0].id] = errSlot;
                 if (params.size() > 1)
-                    fr.params[params[1].id] = tokSlot;
+                {
+                    if (params[1].id < fr.params.size())
+                        fr.params[params[1].id] = tokSlot;
+                }
             }
 
             st->bb = record.handler;
