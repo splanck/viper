@@ -9,7 +9,6 @@ High‑level frontends—like the included BASIC compiler—lower programs into 
 
 - IL Quickstart & Reference: [docs/il-guide.md](docs/il-guide.md)
 - BASIC Language Guide: [docs/basic-language.md](docs/basic-language.md)
-- BASIC OOP Guide: [docs/basic-oop.md](docs/basic-oop.md)
 - Architecture Overview: [docs/architecture.md#cpp-overview](docs/architecture.md#cpp-overview)
 - Code Map (components & roles): [docs/codemap.md](docs/codemap.md)
 - ViperTUI (experimental): [tui/](tui/)
