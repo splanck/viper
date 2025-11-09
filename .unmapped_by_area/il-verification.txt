@@ -1,0 +1,6 @@
+src/il/verify/ControlFlowChecker.hpp
+src/il/verify/EhVerifier.cpp
+src/il/verify/EhVerifier.hpp
+src/il/verify/InstructionChecker.hpp
+src/il/verify/InstructionStrategies.cpp
+src/il/verify/InstructionStrategies.hpp

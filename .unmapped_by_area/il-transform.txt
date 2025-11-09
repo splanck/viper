@@ -1,0 +1,12 @@
+src/il/transform/analysis/Liveness.cpp
+src/il/transform/analysis/LoopInfo.cpp
+src/il/transform/ConstFold.hpp
+src/il/transform/Peephole.hpp
+src/il/transform/SimplifyCFG.cpp
+src/il/transform/SimplifyCFG.hpp
+src/il/transform/SimplifyCFG/BlockMerging.hpp
+src/il/transform/SimplifyCFG/BranchFolding.hpp
+src/il/transform/SimplifyCFG/ForwardingElimination.hpp
+src/il/transform/SimplifyCFG/ParamCanonicalization.hpp
+src/il/transform/SimplifyCFG/ReachabilityCleanup.hpp
+src/il/transform/SimplifyCFG/Utils.hpp

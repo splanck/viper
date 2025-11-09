@@ -135,3 +135,104 @@
 - **tui/src/widgets/tree_view.cpp**
 
   Implements a collapsible tree navigator that owns hierarchical nodes and surfaces keyboard navigation for expansion. A depth-first rebuild flattens the visible nodes vector whenever expansion state changes, and `paint` renders indentation, +/- markers, and selection chevrons using theme styles. Arrow keys traverse siblings or toggle expansion, while Enter flips the expanded flag, keeping cursor and parent pointers consistent for quick navigation. Dependencies include `tui/widgets/tree_view.hpp`, `tui/render/screen.hpp`, and `<algorithm>` for node searches.
+
+- **tui/include/tui/app.hpp**
+
+  Declares the headless application loop API coordinating focus, layout, and rendering across a widget tree with a backing renderer and terminal IO.
+
+- **tui/include/tui/version.hpp**, **tui/src/version.cpp**
+
+  Declares and implements the `viper_tui_version` API returning the library semantic version string for embedding and packaging integration.
+
+- **tui/include/tui/render/screen.hpp**
+
+  Declares the `ScreenBuffer` and diff machinery used by the renderer to compute minimal ANSI updates between frames.
+
+- **tui/include/tui/render/renderer.hpp**
+
+  Declares the ANSI renderer interface and style/cursor primitives used to draw buffers to a terminal via the `TermIO` abstraction.
+
+- **tui/include/tui/term/session.hpp**
+
+  Declares the RAII `TerminalSession` wrapper that toggles raw mode, alternate screen, and mouse reporting for interactive apps.
+
+- **tui/include/tui/term/term_io.hpp**
+
+  Declares the platform‑abstracted terminal IO interface used by the renderer to write bytes and control codes.
+
+- **tui/include/tui/term/CsiParser.hpp**
+
+  Declares a small CSI escape‑sequence parser used by input and rendering helpers to interpret terminal responses.
+
+- **tui/include/tui/term/input.hpp**
+
+  Declares terminal input helpers that convert raw device streams into key events and higher‑level actions.
+
+- **tui/include/tui/term/key_event.hpp**
+
+  Declares the `KeyEvent` structure and enums describing keys and modifiers.
+
+- **tui/include/tui/term/Utf8Decoder.hpp**, **tui/src/term/Utf8Decoder.cpp**
+
+  Declares and implements the incremental UTF‑8 decoder used by the terminal input pipeline.
+
+- **tui/include/tui/term/clipboard.hpp**, **tui/src/term/clipboard.cpp**
+
+  Declares and implements a basic clipboard abstraction with platform stubs used by the demo app and tests.
+
+- **tui/include/tui/text/text_buffer.hpp**, **tui/src/text/text_buffer.cpp**
+
+  Declares and implements a piece‑table text buffer with undo/redo and line indexing supporting the text view widget.
+
+- **tui/include/tui/text/EditHistory.hpp**, **tui/src/text/EditHistory.cpp**
+
+  Declares and implements grouped undo/redo tracking via transactions with replay callbacks for editor operations.
+
+- **tui/include/tui/text/PieceTable.hpp**, **tui/src/text/PieceTable.cpp**
+
+  Declares and implements the core piece‑table storage that underpins the `TextBuffer`.
+  Declares and implements the core piece‑table storage that underpins the `TextBuffer`.
+
+- **tui/include/tui/input/keymap.hpp**
+
+  Declares the keymap command registry and chord data structures used to map keyboard input to commands.
+
+- **tui/include/tui/style/theme.hpp**
+
+  Declares the theme palette types used across widgets and rendering.
+
+- **tui/include/tui/syntax/rules.hpp**
+
+  Declares the syntax rule representation and interfaces consumed by the highlighter.
+
+- **tui/include/tui/support/function_ref.hpp**
+
+  Declares a lightweight non‑owning function reference used throughout the UI stack to pass callbacks without allocations.
+
+- **tui/include/tui/text/LineIndex.hpp**, **tui/include/tui/text/search.hpp**
+
+  Declares line indexing and text search utilities used by the editor and text view.
+
+- **tui/include/tui/ui/container.hpp**, **tui/include/tui/ui/event.hpp**, **tui/include/tui/ui/focus.hpp**, **tui/include/tui/ui/modal.hpp**, **tui/include/tui/ui/widget.hpp**
+
+  Declares the UI framework building blocks: containers, event types, focus management, modal scaffolding, and the base widget interface.
+
+- **tui/include/tui/util/unicode.hpp**
+
+  Declares Unicode utilities used by input/rendering and text layout.
+
+- **tui/include/tui/views/text_view.hpp**
+
+  Declares the text view widget API used by the demo and tests.
+
+- **tui/include/tui/config/config.hpp**
+
+  Declares configuration schema and loader options (theme, keymap, editor settings).
+
+- **tui/include/tui/widgets/button.hpp**, **tui/include/tui/widgets/command_palette.hpp**, **tui/include/tui/widgets/label.hpp**, **tui/include/tui/widgets/list_view.hpp**, **tui/include/tui/widgets/search_bar.hpp**, **tui/include/tui/widgets/splitter.hpp**, **tui/include/tui/widgets/status_bar.hpp**, **tui/include/tui/widgets/tree_view.hpp**
+
+  Declares the widget APIs used by the demo; each pairs with the corresponding implementation already documented.
+
+- **tui/src/views/text_view_cursor.cpp**, **tui/src/views/text_view_input.cpp**, **tui/src/views/text_view_render.cpp**
+
+  Splits the text view implementation across cursor movement, input handling, and rendering for clarity.

@@ -15,3 +15,7 @@
 - **src/il/analysis/Dominators.hpp**
 
   Declares the `DomTree` structure that stores immediate dominator and child relationships for each block in an IL function. It provides convenience queries such as `dominates` and `immediateDominator` so optimization passes and verifiers can reason about control flow quickly. A standalone `computeDominatorTree` entry point promises a complete computation that the implementation backs with the Cooper–Harvey–Kennedy algorithm. Dependencies include IL core block/function types plus `<unordered_map>` and `<vector>` containers, and it pairs with `Dominators.cpp` which pulls in the CFG utilities.
+
+- **src/il/analysis/BasicAA.hpp**
+
+  Declares a minimal alias-analysis shim used by later passes to make conservative decisions about memory dependence in the absence of a full analysis. Exposes simple queries that treat most memory as potentially aliasing, suitable for early compiler phases.

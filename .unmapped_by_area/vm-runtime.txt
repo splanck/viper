@@ -1,0 +1,15 @@
+src/vm/debug/Debug.cpp
+src/vm/debug/DebugScript.cpp
+src/vm/debug/Trace.cpp
+src/vm/debug/VM_DebugUtils.cpp
+src/vm/debug/VMDebug.cpp
+src/vm/OpHandlers_Control.hpp
+src/vm/OpHandlers_Float.hpp
+src/vm/OpHandlers_Int.hpp
+src/vm/OpHandlers_Memory.hpp
+src/vm/ops/common/Branching.cpp
+src/vm/ops/common/Branching.hpp
+src/vm/ops/generated/OpSchema.hpp
+src/vm/ops/Op_BranchSwitch.cpp
+src/vm/ops/Op_CallRet.cpp
+src/vm/ops/Op_TrapEh.cpp

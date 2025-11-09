@@ -67,3 +67,31 @@
 - **src/il/core/Value.cpp**
 
   Provides constructors and formatting helpers for IL SSA values including temporaries, numeric literals, globals, and null pointers. The `toString` routine canonicalizes floating-point output by trimming trailing zeroes and ensuring deterministic formatting for the serializer, while helpers like `constInt` and `global` package values with the right tag. These utilities are widely used when building IR, pretty-printing modules, and interpreting values in the VM. The file depends on `il/core/Value.hpp` and the C++ standard library (`<sstream>`, `<iomanip>`, `<limits>`, `<utility>`) for string conversion.
+
+- **include/viper/il/Module.hpp**
+
+  Public aggregation header exposing IL core types to external clients; forwards the stable IL core definitions without leaking internals.
+
+- **include/viper/il/Verify.hpp**
+
+  Public umbrella header forwarding the IL verifier entry points so tools can depend on a stable include path.
+
+- **src/il/core/Opcode.hpp**
+
+  Declares the central `Opcode` enumeration listing all IL operations understood by the parser, verifier, VM, and codegen. Each mnemonic maps to an index used to look up metadata in `OpcodeInfo`, and the enum ordering is kept stable to preserve table initializers. The header also exposes helpers for casting and range checks. Dependencies are limited to `<cstdint>`.
+
+- **src/il/core/OpcodeNames.cpp**
+
+  Materializes the opcode→mnemonic and mnemonic→opcode conversion helpers separate from the metadata table. Keeping names distinct from `OpcodeInfo` lets tools render mnemonics without pulling in the full metadata definitions. Dependencies include `il/core/Opcode.hpp` and `<string_view>`/`<string>`.
+
+- **src/il/core/Param.hpp**
+
+  Defines the `il::core::Param` POD used to model function and block parameters. Fields capture a type and an optional name, and the struct is stored by value inside `Function` signatures and `BasicBlock` parameter lists. Dependencies include `il/core/Type.hpp` and `<string>`.
+
+- **src/il/core/Value.hpp**
+
+  Declares the tagged-union representation for IL SSA values, covering temporaries, integer/float constants, global references, and null pointers. The header provides constructors, inspectors, and a `toString` helper used by the serializer and diagnostics. Dependencies include `<cstdint>`, `<optional>`, and `<string>`.
+
+- **src/il/core/fwd.hpp**
+
+  Collects forward declarations for IL core aggregates to minimize header coupling. Including this header lets passes refer to `Module`, `Function`, `BasicBlock`, `Instr`, `Type`, and `Value` without pulling in full definitions. Dependencies are limited to standard forward-declaration syntax.

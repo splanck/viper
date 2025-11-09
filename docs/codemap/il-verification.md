@@ -35,3 +35,111 @@
 - **src/il/verify/Verifier.cpp**
 
   Validates whole modules by checking extern/global uniqueness, building block maps, and dispatching per-instruction structural and typing checks. It orchestrates control-flow validation, opcode contract enforcement, and type inference while collecting both hard errors and advisory diagnostics. Runtime signatures from the bridge are cross-checked against declared externs, and helper functions iterate each block to ensure terminators and branch arguments are well-formed. The verifier depends on `Verifier.hpp`, IL core data structures, the runtime signature catalog, analysis helpers (`TypeInference`, `ControlFlowChecker`, `InstructionChecker`), and the diagnostics framework (`support/diag_expected`).
+
+- **src/il/verify/Verifier.hpp**
+
+  Declares the top‑level verification APIs exposed to tools and passes. Provides both streaming and Expected‑based entry points and documents invariants on module structure and typing the verifier enforces.
+
+- **src/il/verify/FunctionVerifier.hpp**
+
+  Declares per‑function verification routines that coordinate block checks, label uniqueness, parameter arity, and instruction validation within a single function.
+
+- **src/il/verify/BranchVerifier.cpp**, **src/il/verify/BranchVerifier.hpp**
+
+  Validates branch successors and argument counts, ensuring block parameters match caller‑supplied arguments and that all targets exist. Exposes helpers to check individual instructions and whole functions.
+
+- **src/il/verify/OperandCountChecker.cpp**, **src/il/verify/OperandCountChecker.hpp**
+
+  Enforces per‑opcode operand count constraints using metadata from `OpcodeInfo`. Reports precise diagnostics when instructions provide too few or too many operands.
+
+- **src/il/verify/OperandTypeChecker.cpp**, **src/il/verify/OperandTypeChecker.hpp**
+
+  Enforces operand type categories per opcode, leveraging `TypeInference` to query actual operand types and verifying they satisfy required categories (integer, float, pointer, etc.).
+
+- **src/il/verify/ResultTypeChecker.cpp**, **src/il/verify/ResultTypeChecker.hpp**
+
+  Checks that instruction result types match opcode contracts and derived operand types, producing clear diagnostics on mismatches.
+
+- **src/il/verify/InstructionChecker_Arithmetic.cpp**
+
+  Implements arithmetic and comparison instruction checks beyond structural validation, including overflow and division‑by‑zero preconditions where specified by the IL.
+
+- **src/il/verify/InstructionChecker_Memory.cpp**
+
+  Verifies memory instructions (`alloca`, `load`, `store`, `gep`) for type correctness, alignment assumptions, and pointer provenance invariants.
+
+- **src/il/verify/InstructionChecker_Runtime.cpp**
+
+  Validates runtime call sites against declared externs and the runtime signature catalog, checking argument arity/types and result compatibility.
+
+- **src/il/verify/InstructionCheckerShared.hpp**
+
+  Declares shared helpers and small utilities reused across instruction checker translation units.
+
+- **src/il/verify/InstructionCheckUtils.cpp**, **src/il/verify/InstructionCheckUtils.hpp**
+
+  Utility functions for rendering instruction snippets, collecting uses, and other checker support tasks to keep individual checkers focused.
+
+- **src/il/verify/EhModel.cpp**, **src/il/verify/EhModel.hpp**
+
+  Captures the verifier’s model of exception handling constructs (try, catch, finally) so EH‑related checks can reason about permitted instruction sequences and nesting.
+
+- **src/il/verify/EhChecks.cpp**, **src/il/verify/EhChecks.hpp**
+
+  Implements verification of exception‑handling rules: balanced try/catch, legal control transfers, and result/operand typing inside protected regions.
+
+- **src/il/verify/ExceptionHandlerAnalysis.cpp**, **src/il/verify/ExceptionHandlerAnalysis.hpp**
+
+  Performs targeted analysis over functions to annotate blocks with exception handler metadata used by EH verifiers.
+
+- **src/il/verify/GlobalVerifier.cpp**, **src/il/verify/GlobalVerifier.hpp**
+
+  Ensures globals are unique and records a map for fast lookup by later checks.
+
+- **src/il/verify/ExternVerifier.cpp**, **src/il/verify/ExternVerifier.hpp**
+
+  Checks extern declaration uniqueness and alignment with runtime signatures; cross‑references the signature table for known helpers.
+
+- **src/il/verify/Rule.hpp**
+
+  Declares small rule descriptors and tags that help structure per‑opcode verification logic.
+
+- **src/il/verify/SpecTables.hpp**
+
+  Declares tables derived from the IL spec that drive verification (operand categories, result types, etc.). Used by generated sources and checkers.
+
+- **src/il/verify/VerifierTable.cpp**, **src/il/verify/VerifierTable.hpp**
+
+  Materializes and declares the consolidated verifier rule table mapping opcodes to composed checks. Generated or programmatically built from spec tables and hand‑written rules.
+
+- **src/il/verify/DiagFormat.cpp**, **src/il/verify/DiagFormat.hpp**
+
+  Unified diagnostic formatting helpers for the verifier: renders instruction snippets, block/function context, and spec‑driven messages.
+
+- **src/il/verify/DiagSink.hpp**
+
+  Declares the collecting sink used to aggregate diagnostics during verification passes, pairing with the implementation already documented.
+
+- **src/il/verify/VerifyCtx.hpp**
+
+  Declares the data structure passed through checkers carrying maps, type inference state, and configuration knobs for the verification run.
+
+- **src/il/verify/generated/SpecTables.cpp**
+
+  Generated source defining spec‑driven tables for verifier rules and categories. Consumers should not modify by hand; updated via spec tooling.
+
+- **src/il/verify/InstructionChecker.hpp**
+
+  Declares the main instruction checker interface used across the verifier.
+
+- **src/il/verify/InstructionStrategies.cpp**, **src/il/verify/InstructionStrategies.hpp**
+
+  Strategy helpers used by the verifier to route checks per opcode family.
+
+- **src/il/verify/ControlFlowChecker.hpp**
+
+  Header for the control‑flow checker implementation.
+
+- **src/il/verify/EhVerifier.cpp**, **src/il/verify/EhVerifier.hpp**
+
+  EH verifier front door and declaration.

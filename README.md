@@ -11,7 +11,6 @@ High‑level frontends—like the included BASIC compiler—lower programs into 
 - BASIC Language Guide: [docs/basic-language.md](docs/basic-language.md)
 - Architecture Overview: [docs/architecture.md#cpp-overview](docs/architecture.md#cpp-overview)
 - Code Map (components & roles): [docs/codemap.md](docs/codemap.md)
-- ViperTUI (experimental): [tui/](tui/)
 
 ---
 

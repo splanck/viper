@@ -45,3 +45,51 @@
 - **src/il/io/Serializer.cpp**
 
   Emits IL modules into textual form by traversing externs, globals, and function bodies with deterministic ordering when canonical mode is requested. It prints `.loc` metadata, rewrites operands using `Value::toString`, and honors opcode-specific formatting rules for calls, branches, loads/stores, and returns. Extern declarations can be sorted lexicographically to support diff-friendly output, and functions render their block parameters alongside instructions. Dependencies include the serializer interface, IL core containers (`Extern`, `Global`, `Function`, `BasicBlock`, `Instr`, `Module`, `Opcode`, `Value`), and the standard `<algorithm>`/`<sstream>` utilities.
+
+- **include/viper/il/IO.hpp**
+
+  Aggregates the public IL text I/O surface into a single stable include for consumers. It forwards the high‑level parser, serializer, and string‑escape helpers while keeping internal headers in `src/il/internal` hidden from downstreams, providing a compact entrypoint for tools and front ends. Dependencies are the public headers `il/io/Parser.hpp`, `il/io/Serializer.hpp`, and `il/io/StringEscape.hpp`.
+
+- **include/viper/il/io/FormatUtils.hpp**
+
+  Declares locale‑independent formatting helpers for IL and BASIC literals. `format_integer` renders 64‑bit integers in canonical decimal form and `format_float` prints doubles with round‑trip‑safe spellings, ensuring deterministic text regardless of host locale. Dependencies are limited to standard `<cstdint>` and `<string>`.
+
+- **include/viper/il/io/OperandParse.hpp**
+
+  Exposes operand‑level parsing helpers used by IL readers to translate textual fragments into `Value`, `Type`, or label payloads. The small `Context`/`ParseResult` structs carry parser state and results so helpers fit cleanly into the existing parser pipeline while preserving diagnostics. Dependencies include `il/core/Value.hpp`, `support/diag_expected.hpp`, and the reusable cursor in `viper/parse/Cursor.h`.
+
+- **src/il/io/FormatUtils.cpp**
+
+  Implements locale‑independent formatting routines used by serializer and tools. Integer formatting guarantees canonical decimal without locale; floating formatting preserves round‑trip fidelity for BASIC/IL literal spellings. Pairs with the public `FormatUtils.hpp`.
+
+- **src/il/io/StringEscape.hpp**, **src/il/io/StringEscape.cpp**
+
+  Declares and implements string escaping helpers for IL/BASIC textual forms. Utilities escape and unescape quotes, backslashes, and non‑printable characters using the project’s canonical escape sequences so round‑trips are stable.
+
+- **src/il/io/OperandParser.cpp**
+
+  Legacy monolithic operand parser kept for backwards‑compatibility while helpers are extracted. Parses operands by kind into `Value`, labels, and types, updating parser state with SSA ids and diagnostics.
+
+- **src/il/io/OperandParse_Value.cpp**, **src/il/io/OperandParse_ValueDetail.cpp**
+
+  Factor value‑operand parsing into focused translation units. The detail file contains token‑to‑`Value` decoding (constants, temps, globals) while the front file wires into the dispatcher and attaches diagnostics.
+
+- **src/il/io/OperandParse_Label.cpp**
+
+  Parses branch label operands, validating allowed identifier characters and capturing the text for later block resolution.
+
+- **src/il/io/OperandParse_Type.cpp**
+
+  Parses type literal operands (`i64`, `f64`, `ptr`, `str`), attaching the type payload to the instruction and propagating errors via the shared diagnostics channel.
+
+- **src/il/io/OperandParse_Const.cpp**
+
+  Parses constant literal operands for integers, floats, and null pointers, normalising spellings and producing the corresponding `Value`.
+
+- **src/il/io/Parser.hpp**, **src/il/io/Parser.cpp**, **src/il/io/ParserState.cpp**, **src/il/io/ParserUtil.cpp**, **src/il/io/Serializer.hpp**, **src/il/io/TypeParser.cpp**
+
+  Additional front‑door/utility translation units and headers that implement the IL text parser and serializer components documented above.
+
+- **src/il/internal/io/FunctionParser.hpp**, **src/il/internal/io/InstrParser.hpp**, **src/il/internal/io/OperandParser.hpp**, **src/il/internal/io/ParserUtil.hpp**, **src/il/internal/io/TypeParser.hpp**
+
+  Internal headers for the IL parser components; included here for discoverability but considered implementation details.

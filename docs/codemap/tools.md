@@ -38,3 +38,31 @@
 - **src/tools/il-verify/il-verify.cpp**
 
   Implements the standalone `il-verify` tool that parses and verifies IL modules from disk. The main routine handles `--version`, checks usage, opens the requested file, and routes diagnostics from the expected-based parse and verify helpers. It prints `OK` on success and returns non-zero when I/O, parsing, or verification fails. Dependencies include `il/api/expected_api.hpp`, `il/core/Module.hpp`, and `<fstream>`, `<iostream>`, `<string>` from the standard library.
+
+- **src/tools/common/module_loader.cpp**
+
+  Implements a shared helper to load IL modules from disk for multiple tools. It wraps the expected-based parse API, prints diagnostics on failure, and returns a pointer or error code to callers so they can reuse consistent file handling.
+
+- **src/tools/ilc/cmd_codegen_x64.cpp**
+
+  Provides the `ilc codegen-x64` subcommand that lowers IL to x86‑64 assembly using the Phase A backend. It parses flags, invokes the backend façade, and writes assembly to stdout or a file, surfacing diagnostics when the pipeline encounters unsupported features.
+
+- **src/tools/common/module_loader.hpp**
+
+  Declares the shared file‑loading helper used across tools to parse IL text into modules with consistent diagnostics and error returns.
+
+- **src/tools/basic/common.hpp**, **src/tools/basic/common.cpp**
+
+  Small helpers shared by BASIC tooling (AST/lex dumps): path loading, SourceManager registration, and utility printing.
+
+- **src/tools/ilc/break_spec.hpp**
+
+  Declares parsing utilities for the `--break` spec accepted by `ilc`, keeping validation logic reusable for tests and subcommands.
+
+- **src/tools/ilc/cli.hpp**
+
+  Declares CLI option parsing helpers and shared options struct used by `ilc` subcommands, including trace/debug toggles and stdin redirection.
+
+- **src/tools/ilc/cmd_codegen_x64.hpp**
+
+  Declares the driver entry for the `codegen-x64` subcommand so the main dispatcher can reference it without pulling implementation details.

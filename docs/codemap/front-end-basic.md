@@ -159,3 +159,211 @@
 - **src/frontends/basic/Token.cpp**
 
   Implements the token kind to string mapper used by BASIC lexer and tooling diagnostics to render human-readable token names. The switch enumerates every `TokenKind`, covering keywords, operators, and sentinel values so debuggers and golden tests stay in sync with the parser. Because the function omits a default case it triggers compiler warnings whenever new token kinds are introduced, keeping the mapping complete over time. Dependencies are limited to `frontends/basic/Token.hpp` and the standard language support already included there.
+
+- **src/frontends/basic/ast/DeclNodes.hpp**
+
+  Declares AST nodes for declarations (SUB/FUNCTION, DIM, etc.), factoring type and name metadata used by analysis and lowering.
+
+- **src/frontends/basic/ast/ExprNodes.hpp**
+
+  Declares all BASIC expression node variants with `accept` hooks and source locations, forming the backbone for visitors.
+
+- **src/frontends/basic/ast/StmtBase.hpp**, **src/frontends/basic/ast/StmtNodes.hpp**, **src/frontends/basic/ast/StmtNodesAll.hpp**
+
+  Declares the base statement class and aggregates all statement variants into a single include (`StmtNodesAll.hpp`) for convenience.
+
+- **src/frontends/basic/AstPrinter.hpp**, **src/frontends/basic/AstPrint_Expr.cpp**, **src/frontends/basic/AstPrint_Stmt.cpp**
+
+  Declares and implements s‑expression rendering for ASTs with expression/statement printers used by tools and tests.
+
+- **src/frontends/basic/AstWalker.hpp**, **src/frontends/basic/AstWalkerUtils.hpp**, **src/frontends/basic/AstWalkerUtils.cpp**
+
+  Visitor utilities for walking and transforming ASTs; helpers to traverse children, rebuild nodes, and apply callbacks.
+
+- **src/frontends/basic/Lowerer.hpp**, **src/frontends/basic/Lowerer.Program.cpp**, **src/frontends/basic/Lowerer.Procedure.cpp**, **src/frontends/basic/Lowerer.Statement.cpp**, **src/frontends/basic/LowererContext.hpp**
+
+  Declares and implements the main lowering engine from BASIC AST to IL, with per‑phase files for program, procedure, and statement lowering, plus shared context structures.
+
+- **src/frontends/basic/LowerStmt_Control.hpp**, **src/frontends/basic/LowerStmt_Control.cpp**
+
+  Control‑flow lowering helpers to map IF/WHILE/SELECT and jumps to IL blocks, parameters, and branches.
+
+- **src/frontends/basic/LowerStmt_IO.hpp**, **src/frontends/basic/LowerStmt_IO.cpp**
+
+  Lowers BASIC I/O statements to IL runtime calls with proper argument coercions and string handling.
+
+- **src/frontends/basic/LowerStmt_Runtime.hpp**, **src/frontends/basic/LowerStmt_Runtime.cpp**
+
+  Lowers runtime‑related statements (RANDOMIZE, ON ERROR, etc.) to the appropriate IL/runtime helper calls and control flow.
+
+- **src/frontends/basic/LowerExprNumeric.hpp**, **src/frontends/basic/LowerExprLogical.hpp**, **src/frontends/basic/LowerExprBuiltin.hpp**
+
+  Declares the expression lowering helpers for numeric/logical/builtin expressions used by statement lowering.
+
+- **src/frontends/basic/Lower_OOP_Scan.cpp**, **src/frontends/basic/Lower_OOP_Expr.cpp**, **src/frontends/basic/Lower_OOP_Stmt.cpp**, **src/frontends/basic/Lower_OOP_Emit.cpp**
+
+  Legacy OOP‑style lowering code maintained during the transition to the newer pipeline; useful for reference and parity tests.
+
+- **src/frontends/basic/EmitCommon.cpp**
+
+  Implements the `Emit` helper façade declared in `EmitCommon.hpp`, wiring IL instruction creation and overflow‑checked arithmetic helpers.
+
+- **src/frontends/basic/Parser_Stmt_Control.cpp**, **src/frontends/basic/Parser_Stmt_Core.cpp**, **src/frontends/basic/Parser_Stmt_If.cpp**, **src/frontends/basic/Parser_Stmt_IO.cpp**, **src/frontends/basic/Parser_Stmt_Jump.cpp**, **src/frontends/basic/Parser_Stmt_Loop.cpp**, **src/frontends/basic/Parser_Stmt_OOP.cpp**, **src/frontends/basic/Parser_Stmt_Runtime.cpp**, **src/frontends/basic/Parser_Stmt_Select.cpp**, **src/frontends/basic/Parser_Token.hpp**
+
+  Implements parsing for individual statement families and shared token utilities, keeping files focused and aiding testability.
+
+- **src/frontends/basic/SelectCaseLowering.hpp**, **src/frontends/basic/SelectCaseLowering.cpp**, **src/frontends/basic/SelectModel.hpp**, **src/frontends/basic/SelectModel.cpp**, **src/frontends/basic/SelectCaseRange.hpp**
+
+  Encapsulates SELECT CASE modelling and lowering logic, including range handling and decision structure representation.
+
+- **src/frontends/basic/BasicCompiler.hpp**, **src/frontends/basic/BasicTypes.hpp**, **src/frontends/basic/BasicDiagnosticMessages.hpp**
+
+  Public front‑end surface and shared type/diagnostic definitions used across parsing, analysis, and lowering.
+
+- **src/frontends/basic/Intrinsics.cpp**, **src/frontends/basic/Lexer.cpp**, **src/frontends/basic/DiagnosticEmitter.cpp**
+
+  Implement the declarations for intrinsic registry, lexer, and diagnostics façade; kept separate from headers for link hygiene.
+
+- **src/frontends/basic/builtins/MathBuiltins.cpp**, **StringBuiltins.cpp**, **src/frontends/basic/constfold/**{Dispatch.cpp,FoldArith.cpp,FoldCasts.cpp,FoldCompare.cpp,FoldLogical.cpp,FoldStrings.cpp}, **src/frontends/basic/constfold/**{ConstantUtils.hpp,Value.hpp}
+
+  Builtin lowering and constant‑folding helpers grouped by domain; enable eval of constant expressions and prepare data for lowering.
+
+- **src/frontends/basic/lower/builtins/**{Array.cpp,Common.cpp,IO.cpp,Math.cpp,String.cpp,Registrars.hpp}
+
+  Lowering implementations for BASIC builtins, with registrar utilities wiring them into the lowering pipeline.
+
+- **src/frontends/basic/lower/common/**{BuiltinUtils.cpp,BuiltinUtils.hpp,CommonLowering.cpp,CommonLowering.hpp}
+
+  Shared helpers and infrastructure reused across builtins and statement/expression lowering.
+
+- **src/frontends/basic/lower/**{AstVisitor.hpp,Emit_Builtin.cpp,Emit_Control.cpp,Emit_Expr.cpp,Emit_OOP.cpp,Emitter.cpp,Emitter.hpp,Lower_If.cpp,Lower_Loops.cpp,Lower_Switch.cpp,Lower_TryCatch.cpp,Lowerer_Errors.cpp,Lowerer_Expr.cpp,Lowerer_Stmt.cpp,Scan_ExprTypes.cpp,Scan_RuntimeNeeds.cpp}
+
+  Lowering building blocks and walkers for specific constructs; extend the main pipeline with focused files for clarity and testability.
+
+- **src/frontends/basic/Parser.cpp**, **Parser.hpp**, **Parser_Expr.cpp**, **Parser_Stmt.cpp**, **Parser_Token.cpp**, **Parser_Token.hpp**, **Parser_Stmt_*.cpp**, **Parser_Stmt_ControlHelpers.hpp**
+
+  Parser front door, token helpers, and per‑family statement parsers (CONTROL/IF/IO/JUMP/LOOP/OOP/RUNTIME/SELECT) kept in dedicated translation units.
+
+- **src/frontends/basic/LowerExpr.cpp**, **LowerExprNumeric.cpp**, **LowerExprLogical.cpp**, **LowerExprBuiltin.cpp**
+
+  Expression lowering implementations mirroring the declared helpers; route through the shared Lowerer.
+
+- **src/frontends/basic/LowerRuntime.cpp**, **LowerRuntime.hpp**, **LowerScan.hpp**, **LowerScan.cpp**
+
+  Runtime feature scanning and lowering glue for statements requiring runtime helpers.
+
+- **src/frontends/basic/NameMangler.cpp**, **NameMangler.hpp**, **NameMangler_OOP.cpp**, **NameMangler_OOP.hpp**, **LineUtils.hpp**
+
+  Name mangling and small string utilities used by parser/lowering; OOP variants maintained for legacy parity.
+
+- **src/frontends/basic/builtins/MathBuiltins.hpp**, **src/frontends/basic/builtins/StringBuiltins.hpp**, **src/frontends/basic/builtins/StringBuiltins.cpp**
+
+  Builtin registry helpers and string builtin lowering implementations.
+
+- **src/frontends/basic/constfold/ConstantUtils.hpp**, **src/frontends/basic/constfold/Dispatch.cpp**, **src/frontends/basic/constfold/Dispatch.hpp**, **src/frontends/basic/constfold/FoldArith.cpp**, **src/frontends/basic/constfold/FoldCasts.cpp**, **src/frontends/basic/constfold/FoldCompare.cpp**, **src/frontends/basic/constfold/FoldLogical.cpp**, **src/frontends/basic/constfold/FoldStrings.cpp**, **src/frontends/basic/constfold/Value.hpp**
+
+  Constant folding infrastructure and per‑domain folders; utilities and value representation for fold results.
+
+- **src/frontends/basic/lower/builtins/Array.cpp**, **src/frontends/basic/lower/builtins/Common.cpp**, **src/frontends/basic/lower/builtins/IO.cpp**, **src/frontends/basic/lower/builtins/Math.cpp**, **src/frontends/basic/lower/builtins/String.cpp**, **src/frontends/basic/lower/builtins/Registrars.hpp**
+
+  Lowering implementations for BASIC builtins and their registrars.
+
+- **src/frontends/basic/lower/common/BuiltinUtils.cpp**, **src/frontends/basic/lower/common/BuiltinUtils.hpp**, **src/frontends/basic/lower/common/CommonLowering.cpp**, **src/frontends/basic/lower/common/CommonLowering.hpp**
+
+  Shared utilities used across the lowering pipeline.
+
+- **src/frontends/basic/lower/Emit_Builtin.cpp**, **src/frontends/basic/lower/Emit_Control.cpp**, **src/frontends/basic/lower/Emit_Expr.cpp**, **src/frontends/basic/lower/Emit_OOP.cpp**, **src/frontends/basic/lower/Emitter.cpp**, **src/frontends/basic/lower/Emitter.hpp**
+
+  Emission helpers and front‑door to constructing IL from BASIC constructs across domains.
+
+- **src/frontends/basic/lower/Lower_If.cpp**, **src/frontends/basic/lower/Lower_Loops.cpp**, **src/frontends/basic/lower/Lower_Switch.cpp**, **src/frontends/basic/lower/Lower_TryCatch.cpp**, **src/frontends/basic/lower/Lowerer_Errors.cpp**, **src/frontends/basic/lower/Lowerer_Expr.cpp**, **src/frontends/basic/lower/Lowerer_Stmt.cpp**, **src/frontends/basic/lower/Scan_ExprTypes.cpp**, **src/frontends/basic/lower/Scan_RuntimeNeeds.cpp**
+
+  Focused lowering steps for particular constructs and scanning helpers used to prepare lowering.
+
+- **src/frontends/basic/LowerExprBuiltin.cpp**, **src/frontends/basic/LowerExprLogical.cpp**, **src/frontends/basic/LowerExprNumeric.cpp**
+
+  Implementations for expression lowering helpers.
+
+- **src/frontends/basic/LowerScan.hpp**, **src/frontends/basic/LowerStmt_Core.hpp**
+
+  Declarations for runtime scan and core statement lowering helpers.
+
+- **src/frontends/basic/print/Print_Stmt_Common.hpp**, **src/frontends/basic/print/Print_Stmt_Control.cpp**, **src/frontends/basic/print/Print_Stmt_Decl.cpp**, **src/frontends/basic/print/Print_Stmt_IO.cpp**, **src/frontends/basic/print/Print_Stmt_Jump.cpp**
+
+  AST printing helpers for statement families used by tools and debugging.
+
+- **src/frontends/basic/sem/Check_Common.hpp**, **src/frontends/basic/sem/Check_Expr_Binary.cpp**, **src/frontends/basic/sem/Check_Expr_Call.cpp**, **src/frontends/basic/sem/Check_Expr_Unary.cpp**, **src/frontends/basic/sem/Check_If.cpp**, **src/frontends/basic/sem/Check_Jumps.cpp**, **src/frontends/basic/sem/Check_Loops.cpp**, **src/frontends/basic/sem/Check_Select.cpp**, **src/frontends/basic/sem/Check_SelectDetail.hpp**
+
+  Semantic checkers across expressions and control‑flow statements.
+
+- **src/frontends/basic/Parser_Stmt_ControlHelpers.hpp**
+
+  Shared helpers for control statement parsing.
+
+- **src/frontends/basic/ProcRegistry.hpp**, **src/frontends/basic/ScopeTracker.hpp**
+
+  Procedure registry and scope tracking declarations consumed by semantic analysis.
+
+- **src/frontends/basic/ConstFolder.hpp**, **src/frontends/basic/Lexer.hpp**, **src/frontends/basic/LineUtils.hpp**, **src/frontends/basic/Token.hpp**, **src/frontends/basic/TypeRules.cpp**, **src/frontends/basic/TypeRules.hpp**, **src/frontends/basic/TypeSuffix.hpp**
+
+  Remaining public declarations and small utilities for constant folding, lexing, token types, and type rules/suffix handling.
+
+- **src/frontends/basic/lower/AstVisitor.hpp**, **src/frontends/basic/lower/BuiltinCommon.cpp**, **src/frontends/basic/lower/BuiltinCommon.hpp**
+
+  Visitor and shared builtin‑lowering glue used across the lowering pipeline.
+
+- **src/frontends/basic/NameMangler_OOP.cpp**, **src/frontends/basic/NameMangler_OOP.hpp**
+
+  Legacy OOP name mangler kept for reference and compatibility.
+
+- **src/frontends/basic/Semantic_OOP.cpp**, **src/frontends/basic/Semantic_OOP.hpp**
+
+  Legacy OOP semantic scaffolding maintained for comparison during the transition.
+
+- **src/frontends/basic/SemanticAnalyzer.Stmts.Control.cpp**, **src/frontends/basic/SemanticAnalyzer.Stmts.Control.hpp**, **src/frontends/basic/SemanticAnalyzer.Stmts.IO.cpp**, **src/frontends/basic/SemanticAnalyzer.Stmts.IO.hpp**, **src/frontends/basic/SemanticAnalyzer.Stmts.Runtime.cpp**, **src/frontends/basic/SemanticAnalyzer.Stmts.Runtime.hpp**, **src/frontends/basic/SemanticAnalyzer.Stmts.Shared.cpp**, **src/frontends/basic/SemanticAnalyzer.Stmts.Shared.hpp**, **src/frontends/basic/SemanticAnalyzer.Internal.hpp**, **src/frontends/basic/SemanticDiagnostics.hpp**
+
+  Statement‑family semantic analysers and shared helpers.
+
+- **src/frontends/basic/StatementSequencer.cpp**, **src/frontends/basic/StatementSequencer.hpp**
+
+  Groups adjacent statements into sequences with preserved ordering guarantees for lowering.
+
+- **src/frontends/basic/ProcRegistry.cpp**, **ProcRegistry.hpp**, **ScopeTracker.cpp**, **ScopeTracker.hpp**, **StatementSequencer.cpp**, **StatementSequencer.hpp**
+
+  Procedure and scope management helpers used by semantic analysis and lowering; statement sequencing preserves execution order.
+
+- **src/frontends/basic/SemanticAnalyzer.cpp**, **SemanticAnalyzer.Internal.hpp**, **SemanticAnalyzer.hpp**, **SemanticAnalyzer.Builtins.cpp**, **SemanticAnalyzer.Exprs.cpp**, **SemanticDiagnostics.cpp**, **SemanticDiagnostics.hpp**
+
+  Semantic analysis front door, helpers, and diagnostics; validates symbols, types, and control flow before lowering.
+
+- **src/frontends/basic/sem/Check_Common.hpp**, **src/frontends/basic/sem/Check_Expr_Binary.cpp**, **src/frontends/basic/sem/Check_Expr_Call.cpp**, **src/frontends/basic/sem/Check_Expr_Unary.cpp**, **src/frontends/basic/sem/Check_If.cpp**, **src/frontends/basic/sem/Check_Jumps.cpp**, **src/frontends/basic/sem/Check_Loops.cpp**, **src/frontends/basic/sem/Check_Select.cpp**, **src/frontends/basic/sem/Check_SelectDetail.hpp**
+
+  Semantic checkers for expressions and statements broken into focused files.
+
+- **src/frontends/basic/AST.cpp**, **src/frontends/basic/AST.hpp**, **src/frontends/basic/ast/DeclNodes.hpp**, **src/frontends/basic/ast/ExprNodes.hpp**, **src/frontends/basic/ast/NodeFwd.hpp**, **src/frontends/basic/ast/StmtBase.hpp**, **src/frontends/basic/ast/StmtControl.hpp**, **src/frontends/basic/ast/StmtDecl.hpp**, **src/frontends/basic/ast/StmtExpr.hpp**, **src/frontends/basic/ast/StmtNodes.hpp**, **src/frontends/basic/ast/StmtNodesAll.hpp**, **src/frontends/basic/AstPrinter.cpp**, **src/frontends/basic/AstPrinter.hpp**, **src/frontends/basic/AstPrint_Expr.cpp**, **src/frontends/basic/AstPrint_Stmt.cpp**, **src/frontends/basic/AstWalker.hpp**, **src/frontends/basic/AstWalkerUtils.cpp**, **src/frontends/basic/AstWalkerUtils.hpp**
+
+  AST model, printers, and walkers grouped for discoverability; provide the backbone for the whole front end.
+
+- **src/frontends/basic/EmitCommon.hpp**
+
+  Declares shared IL emission helpers used across the lowering pipeline to reduce boilerplate when constructing instructions. The `Emit` façade threads through the active `Lowerer` and offers typed helpers for integer conversions, overflow‑checked arithmetic, and logical ops while preserving `.loc` metadata. Dependencies include `viper/il/Module.hpp` and diagnostic location types from `support/source_location.hpp`.
+
+- **src/frontends/basic/Intrinsics.hpp**
+
+  Declares the BASIC intrinsic registry: a compile‑time table of names, return kinds, and parameter descriptors consumed by the parser and semantic analyzer. Lookups return descriptor records for arity/type checks and lowering decisions, while `dumpNames` streams the canonical names for help banners and tools. Dependencies are standard `<string_view>` and `<ostream>` facilities.
+
+- **src/frontends/basic/LoweringPipeline.hpp**
+
+  Outlines the modular statement/procedure/program lowering pipeline that turns a checked AST into IL. `ProgramLowering` seeds module state and drives procedure emission; `ProcedureLowering` caches signatures, collects variables, builds function skeletons, and emits blocks; `StatementLowering` handles per‑block control flow. Each helper borrows the shared `Lowerer`, and utilities translate AST types to IL core types. Dependencies span AST node headers and `viper/il/Module.hpp`.
+
+- **src/frontends/basic/LowerExprNumeric.hpp**
+
+  Declares numeric expression lowering helpers that normalise operand types, detect constant patterns, choose opcodes (including overflow‑checked forms), and emit the correct result/coercions. Exposes both a small object (`NumericExprLowering`) and free helpers used from statement lowering. Dependencies include `frontends/basic/Lowerer.hpp` and IL opcode/type definitions via the lowering context.
+
+- **src/frontends/basic/LowerExprLogical.hpp**
+
+  Declares helpers to lower BASIC logical operations into IL, producing canonical 0/1 integer results and preserving short‑circuit semantics when applicable. The helpers reuse `Lowerer` utilities and attach source locations so diagnostics remain precise. Dependencies include `frontends/basic/Lowerer.hpp`.
+
+- **src/frontends/basic/LowerExprBuiltin.hpp**
+
+  Declares builtin call lowering utilities that dispatch to rule‑driven emitters or dedicated handlers for I/O and file‑position intrinsics. The interface accepts AST `BuiltinCallExpr` nodes and threads through the `Lowerer` so runtime‑feature tracking stays in sync. Dependencies include `frontends/basic/Lowerer.hpp`.

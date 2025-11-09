@@ -43,3 +43,71 @@
 - **src/support/source_location.cpp**
 
   Implements the helper that reports whether a `SourceLoc` points at a registered file. The method checks for a nonzero file identifier so diagnostics and tools can ignore default-constructed locations. Dependencies include only `support/source_location.hpp`, which defines the lightweight value type.
+
+- **src/common/RunProcess.hpp**, **src/common/RunProcess.cpp**
+
+  Cross‑platform subprocess launcher used by developer tools and tests. `run_process` builds a shell command string from argv fragments, launches it via the host `popen` facility, captures stdout/stderr, and returns a `RunResult` with the exit status and output. The header defines the result record; the implementation normalises quoting across platforms and supports optional working directory and environment overrides. Dependencies are standard C/C++ headers and, on POSIX, `<sys/wait.h>`/`<unistd.h>`.
+
+- **src/common/IntegerHelpers.hpp**
+
+  Header‑only utilities for bit‑width‑aware integer math: widening/narrowing with selectable overflow policy (wrap, trap, saturate), common‑width promotion for binary ops, and min/max/mask helpers. The functions are used across the BASIC front end and VM to preserve two’s‑complement semantics and explicit trap behaviour for overflows. Dependencies are standard `<limits>`, `<bit>`/`<cstdint>`, and `<stdexcept>` where trapping is enabled.
+
+- **src/support/source_location.hpp**
+
+  Declares the `SourceLoc` value type (file id, line, column) and helpers to test for registration and default construction. Used across diagnostics, parser, and VM for precise error messages.
+
+- **src/support/source_manager.cpp**, **src/support/source_manager.hpp**
+
+  Owns loaded source buffers and assigns stable file ids. Provides APIs to register in‑memory text or files, query line/column mappings, and format ranges for diagnostics.
+
+- **src/support/diag_expected.cpp**, **src/support/diag_expected.hpp**
+
+  Expected/diagnostic wrapper bridging result‑style error handling with structured diagnostics. Lets layers return `Expected<T>` and stream diagnostics consistently.
+
+- **src/support/diagnostics.cpp**, **src/support/diagnostics.hpp**
+
+  Common diagnostics primitives and emitters (severity, codes, message formatting) used by front end, verifier, and tools.
+
+- **src/support/diag_capture.cpp**, **src/support/diag_capture.hpp**
+
+  Small utility to capture streamed diagnostics into a buffer for tests and tooling without changing production emitters.
+
+- **src/support/arena.cpp**, **src/support/arena.hpp**
+
+  Simple bump‑pointer arena used for short‑lived allocations in passes where allocation patterns are append‑only and reset en masse.
+
+- **src/support/result.hpp**
+
+  Minimal `Result<T>` helper used in limited places as a non‑exception transport for success/failure distinct from `Expected<T>`.
+
+- **src/support/options.hpp**
+
+  Central place for small global compile‑time options and feature toggles consumed by subsystems.
+
+- **src/support/string_interner.hpp**
+
+  Declares the `StringInterner` API; pairs with the implementation already documented to expose `intern`/`lookup` and the `Symbol` type.
+
+- **src/support/symbol.hpp**
+
+  Declares the `Symbol` wrapper type and its hash; used as stable ids for interned strings.
+
+- **include/viper/parse/Cursor.h**
+
+  Public reusable text cursor for IL/BASIC parsers operating over `std::string_view` without allocations.
+
+- **include/viper/pass/PassManager.hpp**
+
+  Public façade for pass registration/execution used by tools; complements internal pass managers.
+
+- **include/viper/runtime/rt.h**
+
+  Public umbrella header aggregating the runtime C headers for consumers of the C ABI from C++ code.
+
+- **src/parse/Cursor.cpp**
+
+  Implements small utilities for the public parsing cursor; pairs with `include/viper/parse/Cursor.h`.
+
+- **src/pass/PassManager.cpp**
+
+  Implements the public pass manager façade; complements `include/viper/pass/PassManager.hpp` for tools.

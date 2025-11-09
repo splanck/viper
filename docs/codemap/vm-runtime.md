@@ -4,7 +4,7 @@
 
   Implements interpreter handlers for branch, call, return, and trap opcodes, centralizing control-flow manipulation inside `OpHandlers`. A shared helper moves execution to successor blocks, seeds block parameters, and flags jumps in the `ExecResult`, while other handlers evaluate call operands and route extern invocations through the `RuntimeBridge`. The logic keeps frame state consistent so the main VM loop can honour returns and traps without manual bookkeeping. Dependencies include `vm/OpHandlers.hpp`, `vm/OpHandlerUtils.hpp`, `vm/RuntimeBridge.hpp`, and IL core definitions for `BasicBlock`, `Function`, `Instr`, and `Value`.
 
-- **src/vm/Debug.cpp**
+- **src/vm/debug/Debug.cpp**
 
   Implements the VM's debugging controller responsible for breakpoints, watches, and source lookup. It normalizes file paths to compare breakpoints across host platforms, interns block labels for quick lookup, and tracks recently triggered locations to avoid duplicate stops. The controller also emits watch output when observed variables change, integrating with the interpreter loop's store callbacks. Dependencies include `vm/Debug.hpp`, IL core instruction/block definitions, the diagnostics source management helpers, and standard containers and streams from `<vector>`, `<string>`, `<unordered_map>`, and `<iostream>`.
 
@@ -12,7 +12,7 @@
 
   Exposes the `il::vm::DebugCtrl` interface that the VM uses to register and query breakpoints. The class manages collections of block-level and source-level breakpoints, normalizes user-supplied paths, and remembers the last triggered source location to support coalescing. It also maintains a map of watched variables so the interpreter can emit change notifications with type-aware formatting. Dependencies include `support/string_interner.hpp`, `support/symbol.hpp`, forward declarations of IL core `BasicBlock`/`Instr`, and standard headers `<optional>`, `<string_view>`, `<unordered_map>`, `<unordered_set>`, and `<vector>`.
 
-- **src/vm/DebugScript.cpp**
+- **src/vm/debug/DebugScript.cpp**
 
   Parses debugger automation scripts so the VM can replay predetermined actions during execution. The constructor reads a text file, mapping commands like `continue`, `step`, and `step N` into queued `DebugAction` records while logging unexpected lines to `stderr` as `[DEBUG]` diagnostics. Helper methods let callers append step requests programmatically and retrieve the next action, defaulting to Continue when the queue empties. Dependencies include `vm/DebugScript.hpp` along with standard `<fstream>`, `<iostream>`, and `<sstream>` utilities for file handling.
 
@@ -34,6 +34,45 @@
 
 - **src/vm/OpHandlerUtils.cpp**
 
+- **src/vm/debug/Trace.cpp**
+
+  Implements the tracing sink and utilities that render per‑instruction execution logs based on `TraceConfig`, used by drivers and tests to inspect VM behaviour.
+
+- **src/vm/debug/VM_DebugUtils.cpp**, **src/vm/debug/VMDebug.cpp**
+
+  Implementation files providing debug helpers, breakpoint resolution glue, and integration points backing `DebugCtrl` and VM debug actions.
+
+- **src/vm/control_flow.hpp**
+
+  Declares shared helpers used by branch/call/return/trap handlers to perform block transitions and seed parameters.
+
+- **src/vm/OpHandlerAccess.hpp**
+
+  Exposes a restricted internal access layer to VM slots and operand evaluation shared by opcode handlers.
+
+- **src/vm/Marshal.cpp**
+
+  Implements marshalling of VM slot values to C ABI types for runtime calls; pairs with the header already mapped.
+
+- **src/vm/Trap.cpp**
+
+  Implements trap construction and reporting helpers declared in `Trap.hpp`.
+
+- **src/vm/OpHandlers_Control.hpp**, **src/vm/OpHandlers_Float.hpp**, **src/vm/OpHandlers_Int.hpp**, **src/vm/OpHandlers_Memory.hpp**
+
+  Declarations for per‑domain opcode handler groupings used by the VM dispatch.
+
+- **src/vm/ops/common/Branching.cpp**, **src/vm/ops/common/Branching.hpp**
+
+  Shared branching helpers for generated and hand‑written handlers.
+
+- **src/vm/ops/Op_BranchSwitch.cpp**, **src/vm/ops/Op_CallRet.cpp**, **src/vm/ops/Op_TrapEh.cpp**
+
+  Hand‑written opcode handlers complementing the generated table for complex control‑flow and trap/exception behaviour.
+
+- **src/vm/ops/generated/OpSchema.hpp**
+
+  Generated schema header describing opcode operand/result shapes consumed by op generators and validators.
   Provides shared helper routines used by opcode implementations to manipulate VM state. The `storeResult` utility grows the register vector as needed before writing an instruction's destination slot, ensuring the interpreter never reads uninitialized registers. Keeping the logic centralized prevents handlers from duplicating resize and assignment code and maintains invariant checks in one location. Dependencies include `vm/OpHandlerUtils.hpp` and IL instruction definitions from `il/core/Instr.hpp`.
 
 - **src/vm/OpHandlerUtils.hpp**
@@ -79,3 +118,71 @@
 - **src/vm/VMInit.cpp**
 
   Handles VM construction and per-function execution state initialization. The constructor captures module references, seeds lookup tables for functions and global strings, and wires tracing plus debugging facilities provided through `TraceConfig` and `DebugCtrl`. Supporting routines `setupFrame` and `prepareExecution` allocate register files, map block labels, and stage entry parameters so the main interpreter loop can run without additional setup. It depends on `VM.hpp`, IL core structures (`Module`, `Function`, `BasicBlock`, `Global`), runtime helpers like `rt_const_cstr`, and standard containers along with `<cassert>`.
+
+- **src/vm/control_flow.hpp**
+
+  Declares interfaces and small helpers used by the control‑flow handlers to perform block transitions and seed block parameters.
+
+- **src/vm/IntOpSupport.hpp**
+
+  Declares overflow and divide‑by‑zero helpers plus typed operand decoding utilities shared by integer opcode handlers.
+
+- **src/vm/OpHandlerAccess.hpp**
+
+  Exposes a restricted internal access layer that lets handlers read/write VM slot values and evaluate operands uniformly.
+
+- **src/vm/OpHelpers.cpp**
+
+  Implements small, frequently used VM helper routines not tied to a specific opcode domain (trap emission, slot utilities, etc.).
+
+- **src/vm/Marshal.hpp**, **src/vm/Marshal.cpp**
+
+  Declares and implements marshalling between IL `Value`/slot representations and C runtime ABI types used by the runtime bridge.
+
+- **src/vm/err_bridge.hpp**, **src/vm/err_bridge.cpp**
+
+  Small adapter layer that funnels runtime `vm_trap` calls into the VM's diagnostic system with consistent formatting/context.
+
+- **src/vm/Trap.hpp**, **src/vm/Trap.cpp**
+
+  Declares and implements trap kinds and reporting helpers used across the VM to signal error conditions to the embedding tools.
+
+- **src/vm/VMConfig.hpp**
+
+  Declares configuration flags and constants that control VM build/runtime behaviour (e.g., threaded dispatch availability).
+
+- **src/vm/VMContext.hpp**, **src/vm/VMContext.cpp**
+
+  Declares and implements the VM’s execution context bookkeeping (function/block maps, global string tables) used during init and execution.
+
+- **src/vm/Runner.cpp**
+
+  Implements a simple façade to run a module with provided config and query instruction counts and last trap; pairs with the public `include/viper/vm/VM.hpp`.
+
+- **include/viper/vm/VM.hpp**
+
+  Public header exposing a lightweight `Runner` façade and run helpers around the VM, suitable for tools embedding the interpreter without internals.
+
+- **include/viper/vm/debug/Debug.hpp**
+
+  Public header exposing debugger configuration and tracing types used to configure VM instances from tools.
+
+- **include/viper/vm/internal/OpHelpers.hpp**
+
+  Public inline helpers that provide typed operand load/store shims over VM slots for consumers that need to implement custom handlers or utilities.
+
+- **src/vm/ops/schema/ops.yaml**
+
+  Declarative opcode schema consumed by generator scripts to produce handler tables and inline dispatch macros; documents opcode→handler mapping.
+
+- **src/vm/ops/gen/opgen.py**
+
+  Code generation script that reads the opcode schema and emits handler tables and inline switch/threaded dispatch includes under `generated/`.
+
+- **src/vm/ops/generated/HandlerTable.hpp**
+
+  Generated header defining the compiled opcode→handler dispatch table consulted by the VM at runtime.
+
+- **src/vm/TargetX64.cpp**
+
+  (If present) target‑specific VM glue; otherwise omitted.
