@@ -3,6 +3,14 @@
 # Purpose: Build the x86-64 codegen smoke tests that exercise the adapter
 #          ILModule facade and verify minimal assembly output.
 
+# Gate x86_64-specific tests to x86_64 hosts to avoid cross-arch
+# assembler/runtime issues (e.g., Apple Silicon without Rosetta).
+string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" VIPER_HOST_ARCH)
+if (NOT VIPER_HOST_ARCH MATCHES "x86_64|amd64")
+    message(STATUS "Skipping x86_64 codegen tests on host arch: ${CMAKE_SYSTEM_PROCESSOR}")
+    return()
+endif ()
+
 set(_viper_codegen_x86_64_tests
         abi_probe
         add_ret

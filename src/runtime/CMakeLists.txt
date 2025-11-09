@@ -20,6 +20,7 @@ set(RT_SOURCES
         rt_debug.c
         rt_format.c
         rt_int_format.c
+        rt_printf_compat.c
         rt_term.c
         rt_object.c
 )
@@ -40,6 +41,7 @@ set(RT_PUBLIC_HEADERS
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_file.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_format.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_int_format.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/rt_printf_compat.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_string_builder.h
 )
 

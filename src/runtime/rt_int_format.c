@@ -18,6 +18,7 @@
 ///          preserve deterministic formatting regardless of the host locale.
 
 #include "rt_int_format.h"
+#include "rt_printf_compat.h"
 
 #include <inttypes.h>
 #include <stdio.h>
@@ -31,7 +32,7 @@ size_t rt_i64_to_cstr(int64_t value, char *buffer, size_t capacity)
 {
     if (!buffer || capacity == 0)
         return 0;
-    int written = snprintf(buffer, capacity, "%" PRId64, (int64_t)value);
+    int written = rt_snprintf(buffer, capacity, "%" PRId64, (int64_t)value);
     if (written < 0)
     {
         buffer[0] = '\0';
@@ -53,7 +54,7 @@ size_t rt_u64_to_cstr(uint64_t value, char *buffer, size_t capacity)
 {
     if (!buffer || capacity == 0)
         return 0;
-    int written = snprintf(buffer, capacity, "%" PRIu64, (uint64_t)value);
+    int written = rt_snprintf(buffer, capacity, "%" PRIu64, (uint64_t)value);
     if (written < 0)
     {
         buffer[0] = '\0';

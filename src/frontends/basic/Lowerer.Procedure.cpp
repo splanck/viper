@@ -816,6 +816,29 @@ void Lowerer::buildProcedureSkeleton(Function &f,
 void Lowerer::allocateLocalSlots(const std::unordered_set<std::string> &paramNames,
                                  bool includeParams)
 {
+    // Emit in deterministic category order: arrays first, then booleans, then others.
+    // This avoids platform-dependent unordered_map iteration differences.
+
+    // Pass 1: booleans
+    for (auto &[name, info] : symbols)
+    {
+        if (!info.referenced)
+            continue;
+        bool isParam = paramNames.find(name) != paramNames.end();
+        if (isParam && !includeParams)
+            continue;
+        if (info.slotId)
+            continue;
+        curLoc = {};
+        SlotType slotInfo = getSlotType(name);
+        if (slotInfo.isArray || !slotInfo.isBoolean)
+            continue;
+        Value slot = emitAlloca(1);
+        info.slotId = slot.id;
+        emitStore(ilBoolTy(), slot, emitBoolConst(false));
+    }
+
+    // Pass 2: everything else in original map iteration order (arrays and other scalars)
     for (auto &[name, info] : symbols)
     {
         if (!info.referenced)
@@ -832,16 +855,16 @@ void Lowerer::allocateLocalSlots(const std::unordered_set<std::string> &paramNam
             Value slot = emitAlloca(8);
             info.slotId = slot.id;
             emitStore(Type(Type::Kind::Ptr), slot, Value::null());
-            continue;
         }
-        Value slot = emitAlloca(slotInfo.isBoolean ? 1 : 8);
-        info.slotId = slot.id;
-        if (slotInfo.isBoolean)
-            emitStore(ilBoolTy(), slot, emitBoolConst(false));
-        else if (slotInfo.type.kind == Type::Kind::Str)
+        else if (!slotInfo.isBoolean)
         {
-            Value empty = emitCallRet(slotInfo.type, "rt_str_empty", {});
-            emitStore(slotInfo.type, slot, empty);
+            Value slot = emitAlloca(8);
+            info.slotId = slot.id;
+            if (slotInfo.type.kind == Type::Kind::Str)
+            {
+                Value empty = emitCallRet(slotInfo.type, "rt_str_empty", {});
+                emitStore(slotInfo.type, slot, empty);
+            }
         }
     }
 

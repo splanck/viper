@@ -146,6 +146,12 @@ add_custom_target(format
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 
+# Convenience cleanup: clean build tree and remove source-generated artifacts.
+add_custom_target(clean-all
+  COMMAND ${CMAKE_COMMAND} --build . --target clean
+  COMMAND ${CMAKE_COMMAND} -P ${CMAKE_SOURCE_DIR}/cmake/clean-source.cmake
+  COMMENT "Clean build tree and remove source-generated files")
+
 option(IL_ENABLE_X64_ASM_SYNTAX_CHECK "Check generated x86_64 asm syntax" ON)
 option(IL_ENABLE_X64_ASM_ASSEMBLE_LINK "Assemble+link x86_64 asm" ON)
 option(IL_ENABLE_X64_NATIVE_RUN "Run x86_64 binaries" ON)

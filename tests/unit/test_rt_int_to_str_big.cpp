@@ -11,7 +11,7 @@
 #include <cstring>
 #include <string>
 
-extern "C" int snprintf(char *str, size_t size, const char *fmt, ...)
+extern "C" int rt_snprintf(char *str, size_t size, const char *fmt, ...)
 {
     static bool reentered = false;
     va_list ap;

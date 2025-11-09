@@ -85,7 +85,7 @@ function(viper_add_e2e_vm_suite)
             -DLINE=1
             -DROOT=${CMAKE_SOURCE_DIR}
             -P ${_VIPER_E2E_DIR}/test_break_src_exact.cmake)
-    set_tests_properties(vm_break_src_exact PROPERTIES LABELS VM DISABLED TRUE)
+    set_tests_properties(vm_break_src_exact PROPERTIES LABELS VM)
 
     viper_add_ctest(vm_break_src_coalesce
             ${CMAKE_COMMAND}

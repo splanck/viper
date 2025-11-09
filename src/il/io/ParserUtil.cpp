@@ -108,6 +108,39 @@ std::string formatLineDiag(unsigned lineNo, std::string_view message)
 /// @return True when @p token represents a valid signed integer literal.
 bool parseIntegerLiteral(const std::string &token, long long &value)
 {
+    // Recognise optional sign
+    size_t pos = 0;
+    bool negative = false;
+    if (pos < token.size() && (token[pos] == '+' || token[pos] == '-'))
+    {
+        negative = (token[pos] == '-');
+        ++pos;
+    }
+
+    // Handle 0b/0B binary prefix explicitly for portability.
+    if (pos + 2 <= token.size() && token[pos] == '0' && (token[pos + 1] == 'b' || token[pos + 1] == 'B'))
+    {
+        pos += 2;
+        if (pos >= token.size())
+            return false;
+        long long acc = 0;
+        for (; pos < token.size(); ++pos)
+        {
+            char ch = token[pos];
+            if (ch == '_')
+                continue; // allow visual separators in the future (ignored)
+            if (ch != '0' && ch != '1')
+                return false;
+            int bit = (ch == '1') ? 1 : 0;
+            // Basic overflow-safe shift-add for signed range
+            if (acc > (std::numeric_limits<long long>::max() >> 1))
+                return false;
+            acc = (acc << 1) | bit;
+        }
+        value = negative ? -acc : acc;
+        return true;
+    }
+
     try
     {
         size_t idx = 0;
@@ -134,6 +167,33 @@ bool parseIntegerLiteral(const std::string &token, long long &value)
 /// @return True when @p token is a valid floating-point literal.
 bool parseFloatLiteral(const std::string &token, double &value)
 {
+    // Handle well-known spellings for special values explicitly so behaviour is
+    // consistent across libstdc++/libc++ and locales.
+    if (!token.empty())
+    {
+        std::string lower;
+        lower.reserve(token.size());
+        for (unsigned char ch : token)
+        {
+            lower.push_back(static_cast<char>(std::tolower(ch)));
+        }
+        if (lower == "nan")
+        {
+            value = std::numeric_limits<double>::quiet_NaN();
+            return true;
+        }
+        if (lower == "inf" || lower == "+inf")
+        {
+            value = std::numeric_limits<double>::infinity();
+            return true;
+        }
+        if (lower == "-inf")
+        {
+            value = -std::numeric_limits<double>::infinity();
+            return true;
+        }
+    }
+
     try
     {
         size_t idx = 0;
