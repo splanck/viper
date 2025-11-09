@@ -261,8 +261,11 @@ int main()
         ILInstr ret{}; ret.opcode = "ret"; ret.ops = {makeValueRef(3, ILValue::Kind::I64)};
         ILBlock entry{}; entry.name = "entry"; entry.paramIds = {buf.id, size.id}; entry.paramKinds = {buf.kind, size.kind}; entry.instrs = {call, ret};
         ILFunction fn{}; fn.name = "v0"; fn.blocks = {entry}; ILModule m{}; m.funcs = {fn};
-        const auto text = emitModuleToAssembly(m, {}).asmText; const auto callPos = text.find("call");
-        if (callPos == std::string::npos) return 9; const auto mov0 = text.rfind("movq $0, %rax", callPos);
+        const auto text = emitModuleToAssembly(m, {}).asmText;
+        const auto callPos = text.find("call");
+        if (callPos == std::string::npos)
+            return 9;
+        const auto mov0 = text.rfind("movq $0, %rax", callPos);
         if (mov0 == std::string::npos) return 10;
     }
     // 1 f64
@@ -275,8 +278,11 @@ int main()
         ILInstr ret{}; ret.opcode = "ret"; ret.ops = {makeValueRef(4, ILValue::Kind::I64)};
         ILBlock entry{}; entry.name = "entry"; entry.paramIds = {buf.id, size.id, f0.id}; entry.paramKinds = {buf.kind, size.kind, f0.kind}; entry.instrs = {call, ret};
         ILFunction fn{}; fn.name = "v1"; fn.blocks = {entry}; ILModule m{}; m.funcs = {fn};
-        const auto text = emitModuleToAssembly(m, {}).asmText; const auto callPos = text.find("call");
-        if (callPos == std::string::npos) return 11; const auto mov1 = text.rfind("movq $1, %rax", callPos);
+        const auto text = emitModuleToAssembly(m, {}).asmText;
+        const auto callPos = text.find("call");
+        if (callPos == std::string::npos)
+            return 11;
+        const auto mov1 = text.rfind("movq $1, %rax", callPos);
         if (mov1 == std::string::npos) return 12;
     }
     // Non-varargs should not set %al.
@@ -287,7 +293,10 @@ int main()
         ILInstr ret{}; ret.opcode = "ret"; ret.ops = {makeValueRef(1, ILValue::Kind::I64)};
         ILBlock entry{}; entry.name = "entry"; entry.paramIds = {x.id}; entry.paramKinds = {x.kind}; entry.instrs = {call, ret};
         ILFunction fn{}; fn.name = "nv"; fn.blocks = {entry}; ILModule m{}; m.funcs = {fn};
-        const auto text = emitModuleToAssembly(m, {}).asmText; const auto callPos = text.find("call"); if (callPos == std::string::npos) return 13;
+        const auto text = emitModuleToAssembly(m, {}).asmText;
+        const auto callPos = text.find("call");
+        if (callPos == std::string::npos)
+            return 13;
         const auto movAny = text.rfind("movq $", callPos);
         if (movAny != std::string::npos && text.find("%rax", movAny) != std::string::npos) return 14;
     }

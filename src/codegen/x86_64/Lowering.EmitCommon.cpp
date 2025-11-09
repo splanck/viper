@@ -121,14 +121,105 @@ Operand EmitCommon::materialise(Operand operand, RegClass cls)
 
 std::optional<Operand> EmitCommon::tryMakeIndexedMem(const ILInstr &addrProducer)
 {
-    (void)addrProducer;
-    // TODO: With richer IL def-use plumbing, recognise patterns like:
-    //   p2 = add ptr, (idx << k)
-    //   load [p2 + disp]
-    // and return makeMemOperand(baseReg, idxReg, scale, disp).
-    // For now, insufficient information is available in the placeholder IL to
-    // reliably match the producer, so decline.
-    return std::nullopt;
+    // Attempt to reconstruct (base + (idx << k) + disp) from MIR in the current block.
+    if (addrProducer.ops.empty())
+    {
+        return std::nullopt;
+    }
+
+    Operand addrOp = builder().makeOperandForValue(addrProducer.ops[0], RegClass::GPR);
+    const auto *addrReg = std::get_if<OpReg>(&addrOp);
+    if (!addrReg || addrReg->isPhys)
+    {
+        return std::nullopt;
+    }
+
+    const uint16_t addrVReg = addrReg->idOrPhys;
+    MBasicBlock &blk = builder().block();
+
+    std::size_t defIdx = static_cast<std::size_t>(-1);
+    for (std::size_t i = blk.instructions.size(); i > 0; --i)
+    {
+        const auto &mi = blk.instructions[i - 1];
+        if (mi.operands.empty())
+        {
+            continue;
+        }
+        if (const auto *dst = std::get_if<OpReg>(&mi.operands[0]); dst)
+        {
+            if (!dst->isPhys && dst->idOrPhys == addrVReg)
+            {
+                defIdx = i - 1;
+                break;
+            }
+        }
+    }
+    if (defIdx == static_cast<std::size_t>(-1))
+    {
+        return std::nullopt;
+    }
+
+    const MInstr &addInstr = blk.instructions[defIdx];
+    if (addInstr.opcode != MOpcode::ADDrr || addInstr.operands.size() < 2)
+    {
+        return std::nullopt;
+    }
+
+    const auto *idxReg = std::get_if<OpReg>(&addInstr.operands[1]);
+    if (!idxReg || idxReg->isPhys)
+    {
+        return std::nullopt;
+    }
+
+    OpReg baseReg{};
+    bool haveBase = false;
+    for (std::size_t i = defIdx; i > 0; --i)
+    {
+        const auto &mi = blk.instructions[i - 1];
+        if (mi.opcode == MOpcode::MOVrr && mi.operands.size() >= 2)
+        {
+            const auto *dst = std::get_if<OpReg>(&mi.operands[0]);
+            const auto *src = std::get_if<OpReg>(&mi.operands[1]);
+            if (dst && src && !dst->isPhys && dst->idOrPhys == addrVReg)
+            {
+                baseReg = *src;
+                haveBase = true;
+                break;
+            }
+        }
+    }
+    if (!haveBase)
+    {
+        return std::nullopt;
+    }
+
+    uint8_t scale = 1;
+    for (std::size_t i = defIdx; i > 0; --i)
+    {
+        const auto &mi = blk.instructions[i - 1];
+        if (mi.opcode == MOpcode::SHLri && mi.operands.size() >= 2)
+        {
+            const auto *dst = std::get_if<OpReg>(&mi.operands[0]);
+            const auto *imm = std::get_if<OpImm>(&mi.operands[1]);
+            if (dst && imm && !dst->isPhys && dst->idOrPhys == idxReg->idOrPhys)
+            {
+                const int sh = static_cast<int>(imm->val);
+                if (sh >= 0 && sh <= 3)
+                {
+                    scale = static_cast<uint8_t>(1U << sh);
+                }
+                break;
+            }
+        }
+    }
+
+    int32_t disp = 0;
+    if (addrProducer.ops.size() > 1)
+    {
+        disp = static_cast<int32_t>(addrProducer.ops[1].i64);
+    }
+
+    return makeMemOperand(baseReg, *idxReg, scale, disp);
 }
 
 /// @brief Ensure an operand is materialised in a general-purpose register.
