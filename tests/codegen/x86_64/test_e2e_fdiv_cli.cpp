@@ -4,7 +4,7 @@
 // Key invariants: Floating-point outputs are compared within a configurable
 //                 tolerance after trimming whitespace to avoid formatting noise.
 
-#include "tests/common/CodegenFixture.hpp"
+#include "common/CodegenFixture.hpp"
 
 #include <array>
 #include <cstdlib>

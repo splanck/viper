@@ -10,7 +10,7 @@
 // Links: src/codegen/x86_64/LowerDiv.cpp
 
 #include "codegen/x86_64/Backend.hpp"
-#include "tests/common/CodegenFixture.hpp"
+#include "common/CodegenFixture.hpp"
 
 #include <chrono>
 #include <cstdlib>

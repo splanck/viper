@@ -4,7 +4,7 @@
 // Key invariants: Shared codegen fixture handles filesystem orchestration while
 //                 the parameterized test compares exit codes and stdout.
 
-#include "tests/common/CodegenFixture.hpp"
+#include "common/CodegenFixture.hpp"
 
 #include <array>
 #include <cstdlib>

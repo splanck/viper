@@ -5,7 +5,7 @@
 //                 yield identical exit codes and stdout for both execution
 //                 paths.
 
-#include "tests/common/CodegenFixture.hpp"
+#include "common/CodegenFixture.hpp"
 
 #include <array>
 #include <cstdlib>
