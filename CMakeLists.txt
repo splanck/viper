@@ -192,6 +192,29 @@ add_custom_target(clean-all
   COMMAND ${CMAKE_COMMAND} -P ${CMAKE_SOURCE_DIR}/cmake/clean-source.cmake
   COMMENT "Clean build tree and remove source-generated files")
 
+# CI-safe helper: normalize IL headers to current IL_VERSION
+add_custom_target(bump_il
+  COMMAND "${CMAKE_SOURCE_DIR}/scripts/rel/bump_il_version.py"
+  WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+  COMMENT "Normalize IL headers to IL_VERSION"
+)
+
+# Stronger cleanup that also removes built binaries and CMake cache/files.
+add_custom_target(clean-dist
+  COMMAND ${CMAKE_COMMAND} --build . --target clean
+  COMMAND ${CMAKE_COMMAND} -E rm -rf
+          "${CMAKE_BINARY_DIR}/bin"
+          "${CMAKE_BINARY_DIR}/lib"
+          "${CMAKE_BINARY_DIR}/src"
+          "${CMAKE_BINARY_DIR}/tests"
+          "${CMAKE_BINARY_DIR}/tui"
+          "${CMAKE_BINARY_DIR}/generated"
+          "${CMAKE_BINARY_DIR}/compile_commands.json"
+  COMMAND ${CMAKE_COMMAND} -E rm -f "${CMAKE_BINARY_DIR}/CMakeCache.txt"
+  COMMAND ${CMAKE_COMMAND} -E rm -rf "${CMAKE_BINARY_DIR}/CMakeFiles"
+  COMMENT "Remove all build artifacts (including binaries) and CMake cache/files"
+)
+
 option(IL_ENABLE_X64_ASM_SYNTAX_CHECK "Check generated x86_64 asm syntax" ON)
 option(IL_ENABLE_X64_ASM_ASSEMBLE_LINK "Assemble+link x86_64 asm" ON)
 option(IL_ENABLE_X64_NATIVE_RUN "Run x86_64 binaries" ON)

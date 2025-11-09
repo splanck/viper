@@ -11,6 +11,7 @@
 #include <optional>
 #include <string>
 #include <vector>
+#include "viper/version.hpp"
 
 namespace il::core
 {
@@ -20,9 +21,9 @@ struct Module
 {
     /// @brief Module format version string.
     ///
-    /// Defaults to "0.1.2" for newly constructed modules and may be
-    /// overwritten by parsers when reading serialized IL.
-    std::string version = "0.1.2";
+    /// Defaults to configured IL spec version for newly constructed modules and
+    /// may be overwritten by parsers when reading serialized IL.
+    std::string version = VIPER_IL_VERSION_STR;
 
     /// @brief Optional target triple directive associated with the module.
     ///

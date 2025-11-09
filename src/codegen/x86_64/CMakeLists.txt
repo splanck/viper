@@ -30,7 +30,10 @@ add_library(viper_codegen_x86_64 STATIC
         passes/EmitPass.cpp
 )
 
-target_include_directories(viper_codegen_x86_64 PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(viper_codegen_x86_64 PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated>
+)
 
 target_link_libraries(viper_codegen_x86_64 PUBLIC viper_common)
 

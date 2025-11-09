@@ -29,6 +29,7 @@ add_library(viper_il_core STATIC
 target_include_directories(viper_il_core PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>
+        $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated>
 )
 target_link_libraries(viper_il_core PRIVATE viper_support)
 
