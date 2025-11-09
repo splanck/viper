@@ -28,6 +28,8 @@
 namespace il::vm
 {
 
+class Runner; // fwd for friend declaration of Runner::Impl
+
 class VMContext;
 
 namespace detail

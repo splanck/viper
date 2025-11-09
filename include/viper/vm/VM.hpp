@@ -24,6 +24,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include "support/source_location.hpp"
 
 namespace il::core
 {
@@ -62,6 +63,65 @@ class Runner
     /// @brief Retrieve the most recent trap message emitted by the VM, if any.
     [[nodiscard]] std::optional<std::string> lastTrapMessage() const;
 
+    //===------------------------------------------------------------------===//
+    // Single-step and continue APIs
+    //===------------------------------------------------------------------===//
+
+    /// @brief Result status for a single VM step.
+    enum class StepStatus
+    {
+        Advanced,      ///< Successfully executed one instruction; can continue.
+        Halted,        ///< Program finished (returned from main).
+        BreakpointHit, ///< Reached a breakpoint or step budget pause.
+        Trapped,       ///< Unhandled trap occurred.
+        Paused         ///< Paused for non-breakpoint reason (e.g., external pause).
+    };
+
+    /// @brief Payload returned by a single-step operation.
+    struct StepResult
+    {
+        StepStatus status; ///< Final status for this step.
+    };
+
+    /// @brief Aggregate status reported by continueRun.
+    enum class RunStatus
+    {
+        Halted,            ///< Program finished (returned from main).
+        BreakpointHit,     ///< Hit a breakpoint while running.
+        Trapped,           ///< Unhandled trap occurred.
+        Paused,            ///< Paused for non-breakpoint reason.
+        StepBudgetExceeded ///< Global step limit reached.
+    };
+
+    /// @brief Execute exactly one instruction of the program (initialising on first call).
+    StepResult step();
+
+    /// @brief Continue running until a terminal state (halt, trap, or breakpoint).
+    RunStatus continueRun();
+
+    /// @brief Set a source-line breakpoint using a concrete source location.
+    void setBreakpoint(const il::support::SourceLoc &);
+
+    /// @brief Clear all configured breakpoints.
+    void clearBreakpoints();
+
+    /// @brief Update the global step budget (0 disables the limit).
+    void setMaxSteps(uint64_t);
+
+    /// @brief Light-weight snapshot of the last trap for diagnostics.
+    struct TrapInfo
+    {
+        int32_t kind = 0;           ///< Trap kind as integer code.
+        int32_t code = 0;           ///< Secondary error code.
+        uint64_t ip = 0;            ///< Instruction index at trap.
+        int32_t line = -1;          ///< Source line or -1 if unknown.
+        std::string function;       ///< Function name when available.
+        std::string message;        ///< Formatted trap message.
+    };
+
+    /// @brief Retrieve a pointer to the last trap snapshot, if any; nullptr otherwise.
+    const TrapInfo *lastTrap() const;
+
   private:
     class Impl;
     std::unique_ptr<Impl> impl;
@@ -71,4 +131,3 @@ class Runner
 [[nodiscard]] int64_t runModule(const il::core::Module &module, RunConfig config = {});
 
 } // namespace il::vm
-

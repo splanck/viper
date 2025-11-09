@@ -48,5 +48,21 @@ struct VMAccess
     {
         return vm.execFunction(fn, args);
     }
+
+    // Stepping helpers for components that need controlled access -------------
+    static inline ExecState prepare(VM &vm, const il::core::Function &fn, const std::vector<Slot> &args)
+    {
+        return vm.prepareExecution(fn, args);
+    }
+
+    static inline std::optional<Slot> stepOnce(VM &vm, ExecState &st)
+    {
+        return vm.stepOnce(st);
+    }
+
+    static inline void setMaxSteps(VM &vm, uint64_t max)
+    {
+        vm.maxSteps = max;
+    }
 };
 } // namespace il::vm::detail

@@ -31,6 +31,21 @@ if (NOT TARGET test_vm_tailcall)
     viper_add_ctest(test_vm_tailcall test_vm_tailcall)
 endif ()
 
+# Runner stepping API tests
+if (NOT TARGET test_vm_step_api)
+    viper_add_test(test_vm_step_api ${VIPER_TESTS_DIR}/unit/VM_StepApiTests.cpp)
+    # Link directly to il_vm to avoid relying on VM vars ordering
+    target_link_libraries(test_vm_step_api PRIVATE il_build il_vm viper_support)
+    viper_add_ctest(test_vm_step_api test_vm_step_api)
+endif ()
+
+if (NOT TARGET test_vm_step_tco)
+    viper_add_test(test_vm_step_tco ${VIPER_TESTS_DIR}/unit/VM_StepTcoTests.cpp)
+    target_link_libraries(test_vm_step_tco PRIVATE il_build il_vm viper_support)
+    target_compile_definitions(test_vm_step_tco PRIVATE VIPER_VM_TAILCALL=1)
+    viper_add_ctest(test_vm_step_tco test_vm_step_tco)
+endif ()
+
 if (NOT TARGET test_vm_tailcall_eh)
     viper_add_test(test_vm_tailcall_eh ${VIPER_TESTS_DIR}/unit/VM_TailCallEhTests.cpp)
     target_link_libraries(test_vm_tailcall_eh PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)

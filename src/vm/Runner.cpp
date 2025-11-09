@@ -19,6 +19,9 @@
 #include "viper/vm/VM.hpp"
 
 #include "vm/VM.hpp"
+#include "vm/VMContext.hpp"
+#include "vm/OpHandlerAccess.hpp"
+#include "support/source_manager.hpp"
 
 #include <utility>
 
@@ -75,9 +78,104 @@ class Runner::Impl
         return vm.lastTrapMessage();
     }
 
+    // Single-step support ----------------------------------------------------
+    StepResult step()
+    {
+        ensurePrepared();
+        auto maybe = detail::VMAccess::stepOnce(vm, *state);
+        if (!maybe)
+            return {StepStatus::Advanced};
+
+        const auto code = maybe->i64;
+        if (code == 10)
+            return {StepStatus::BreakpointHit};
+        if (code == 1)
+            return {StepStatus::Paused};
+
+        // Any other concrete result means function returned (halted).
+        return {StepStatus::Halted};
+    }
+
+    RunStatus continueRun()
+    {
+        ensurePrepared();
+        while (true)
+        {
+            auto res = step();
+            switch (res.status)
+            {
+                case StepStatus::Advanced:
+                    continue;
+                case StepStatus::BreakpointHit:
+                    return RunStatus::BreakpointHit;
+                case StepStatus::Halted:
+                    return RunStatus::Halted;
+                case StepStatus::Trapped:
+                    return RunStatus::Trapped;
+                case StepStatus::Paused:
+                    // Interpret generic pause as step budget exhaustion for continue.
+                    return RunStatus::StepBudgetExceeded;
+            }
+        }
+    }
+
+    void setBreakpoint(const il::support::SourceLoc &loc)
+    {
+        auto &dbg = detail::VMAccess::debug(vm);
+        const auto *sm = dbg.getSourceManager();
+        if (!sm || !loc.hasFile() || !loc.hasLine())
+            return;
+        dbg.addBreakSrcLine(std::string(sm->getPath(loc.file_id)), loc.line);
+    }
+
+    void clearBreakpoints()
+    {
+        auto &dbg = detail::VMAccess::debug(vm);
+        const auto *sm = dbg.getSourceManager();
+        // Reconstruct a fresh controller but preserve the source manager.
+        DebugCtrl fresh{};
+        fresh.setSourceManager(sm);
+        dbg = std::move(fresh);
+    }
+
+    void setMaxSteps(uint64_t max)
+    {
+        detail::VMAccess::setMaxSteps(vm, max);
+    }
+
+    const TrapInfo *lastTrap() const
+    {
+        // Populate on demand from public trap message.
+        auto msg = vm.lastTrapMessage();
+        if (!msg)
+            return nullptr;
+        cachedTrap.message = *msg;
+        // Other fields remain defaults when not introspecting VM internals.
+        return &cachedTrap;
+    }
+
   private:
+    void ensurePrepared()
+    {
+        if (state)
+            return;
+        // Locate the entry function and prepare initial execution state.
+        const auto &fnMap = detail::VMAccess::functionMap(vm);
+        auto it = fnMap.find("main");
+        if (it == fnMap.end())
+        {
+            // No main; mark as halted by creating an empty state.
+            state = std::make_unique<detail::VMAccess::ExecState>();
+            return;
+        }
+        state = std::make_unique<detail::VMAccess::ExecState>(
+            detail::VMAccess::prepare(vm, *it->second, {}));
+    }
+
     DebugScript *script = nullptr; ///< Borrowed debug script used for breakpoints.
     VM vm;                         ///< Owning interpreter instance.
+    std::unique_ptr<detail::VMAccess::ExecState> state; // prepared on first step
+    mutable TrapInfo cachedTrap{};
 };
 
 /// @brief Create a runner façade for the supplied module and configuration.
@@ -127,6 +225,36 @@ std::optional<std::string> Runner::lastTrapMessage() const
     return impl->lastTrapMessage();
 }
 
+Runner::StepResult Runner::step()
+{
+    return impl->step();
+}
+
+Runner::RunStatus Runner::continueRun()
+{
+    return impl->continueRun();
+}
+
+void Runner::setBreakpoint(const il::support::SourceLoc &loc)
+{
+    impl->setBreakpoint(loc);
+}
+
+void Runner::clearBreakpoints()
+{
+    impl->clearBreakpoints();
+}
+
+void Runner::setMaxSteps(uint64_t max)
+{
+    impl->setMaxSteps(max);
+}
+
+const Runner::TrapInfo *Runner::lastTrap() const
+{
+    return impl->lastTrap();
+}
+
 /// @brief Convenience helper that constructs a runner, executes it, and returns the result.
 /// @details Used by CLI tooling and tests that only need to run a module once.
 ///          The helper ensures resources are released immediately after
@@ -141,4 +269,3 @@ int64_t runModule(const il::core::Module &module, RunConfig config)
 }
 
 } // namespace il::vm
-
