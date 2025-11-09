@@ -326,4 +326,13 @@ We’re glad you’re interested in Viper! This project is evolving quickly and 
 
 ## License
 
-MIT — see `LICENSE`.
+MIT License — a short summary:
+
+- Permissive: you may use, copy, modify, merge, publish, distribute,
+  sublicense, and/or sell copies of the software.
+- Conditions: include the copyright and permission notice in
+  all copies or substantial portions of the software.
+- Warranty: provided "AS IS", without warranty of any kind; the authors are
+  not liable for any claim, damages, or other liability.
+
+See the full text in [`LICENSE`](LICENSE).
