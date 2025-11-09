@@ -1,9 +1,45 @@
 cmake_minimum_required(VERSION 3.20)
-project(Viper LANGUAGES CXX VERSION 0.1.0)
+# ---- Begin: Viper version wiring (SSOT + snapshots) ----
+# Read SSOT files from repo root
+file(READ "${CMAKE_SOURCE_DIR}/VERSION"     VIPER_VERSION_STR)
+string(STRIP "${VIPER_VERSION_STR}"         VIPER_VERSION_STR)
+file(READ "${CMAKE_SOURCE_DIR}/IL_VERSION"  VIPER_IL_VERSION_STR)
+string(STRIP "${VIPER_IL_VERSION_STR}"      VIPER_IL_VERSION_STR)
+
+# Extract numeric MAJOR.MINOR.PATCH for CMake's project() VERSION
+string(REGEX REPLACE "^([0-9]+)\\.([0-9]+)\\.([0-9]+).*" "\\1" VIPER_VERSION_MAJOR "${VIPER_VERSION_STR}")
+string(REGEX REPLACE "^([0-9]+)\\.([0-9]+)\\.([0-9]+).*" "\\2" VIPER_VERSION_MINOR "${VIPER_VERSION_STR}")
+string(REGEX REPLACE "^([0-9]+)\\.([0-9]+)\\.([0-9]+).*" "\\3" VIPER_VERSION_PATCH "${VIPER_VERSION_STR}")
+set(VIPER_SEMVER_NUM "${VIPER_VERSION_MAJOR}.${VIPER_VERSION_MINOR}.${VIPER_VERSION_PATCH}")
+
+# Compute snapshot string from git (empty if unavailable)
+find_package(Git QUIET)
+set(VIPER_SNAPSHOT_STR "")
+if(GIT_FOUND)
+  execute_process(
+    COMMAND ${GIT_EXECUTABLE} describe --tags --match "v[0-9]*" --long --dirty
+    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+    RESULT_VARIABLE _git_r
+    OUTPUT_VARIABLE  _git_out
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+  )
+  if(_git_r EQUAL 0)
+    string(REGEX REPLACE "^v" "" VIPER_SNAPSHOT_STR "${_git_out}")  # drop leading 'v'
+  endif()
+endif()
+# ---- End: Viper version wiring ----
+project(Viper LANGUAGES CXX VERSION ${VIPER_SEMVER_NUM})
 enable_language(C)
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
+
+# Emit the generated version header
+configure_file(
+  "${CMAKE_SOURCE_DIR}/include/viper/version.hpp.in"
+  "${CMAKE_BINARY_DIR}/generated/viper/version.hpp"
+  @ONLY
+)
 
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 
@@ -63,6 +99,8 @@ if(IL_USE_LIBCXX AND CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND NOT APPLE)
 endif()
 
 add_library(viper_common_opts INTERFACE)
+# Generated headers live here (configured below)
+target_include_directories(viper_common_opts INTERFACE "${CMAKE_BINARY_DIR}/generated")
 target_compile_features(viper_common_opts INTERFACE cxx_std_20)
 if(IL_COMPILE_FLAGS)
   target_compile_options(viper_common_opts INTERFACE ${IL_COMPILE_FLAGS})

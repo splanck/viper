@@ -17,6 +17,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "tui/version.hpp"
+#include "viper/version.hpp"
 
 namespace viper::tui
 {
@@ -29,6 +30,6 @@ namespace viper::tui
 /// @return Null-terminated UTF-8 string literal describing the library version.
 const char *viper_tui_version() noexcept
 {
-    return "0.1.0";
+    return VIPER_VERSION_STR;
 }
 } // namespace viper::tui

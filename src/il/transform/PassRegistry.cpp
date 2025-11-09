@@ -15,6 +15,9 @@
 #include "il/transform/PassRegistry.hpp"
 
 #include "il/transform/AnalysisManager.hpp"
+#include "il/transform/LICM.hpp"
+#include "il/transform/LoopSimplify.hpp"
+#include "il/transform/SCCP.hpp"
 
 #include <utility>
 
@@ -330,6 +333,28 @@ const detail::PassFactory *PassRegistry::lookup(std::string_view id) const
     if (it == registry_.end())
         return nullptr;
     return &it->second;
+}
+
+void registerLoopSimplifyPass(PassRegistry &registry)
+{
+    registry.registerFunctionPass(
+        "loop-simplify", []() { return std::make_unique<LoopSimplify>(); });
+}
+
+void registerLICMPass(PassRegistry &registry)
+{
+    registry.registerFunctionPass("licm", []() { return std::make_unique<LICM>(); });
+}
+
+void registerSCCPPass(PassRegistry &registry)
+{
+    registry.registerModulePass(
+        "sccp",
+        [](core::Module &module, AnalysisManager &)
+        {
+            sccp(module);
+            return PreservedAnalyses::none();
+        });
 }
 
 } // namespace il::transform
