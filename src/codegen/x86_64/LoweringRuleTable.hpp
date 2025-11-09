@@ -47,6 +47,9 @@ void emitStore(const ILInstr &instr, MIRBuilder &builder);
 void emitZSTrunc(const ILInstr &instr, MIRBuilder &builder);
 void emitSIToFP(const ILInstr &instr, MIRBuilder &builder);
 void emitFPToSI(const ILInstr &instr, MIRBuilder &builder);
+void emitEhPush(const ILInstr &instr, MIRBuilder &builder);
+void emitEhPop(const ILInstr &instr, MIRBuilder &builder);
+void emitEhEntry(const ILInstr &instr, MIRBuilder &builder);
 
 enum class RuleFlags : std::uint8_t
 {
@@ -97,7 +100,7 @@ struct RuleSpec
     const char *name{nullptr};
 };
 
-inline constexpr auto kLoweringRuleTable = std::array<RuleSpec, 31>{
+inline constexpr auto kLoweringRuleTable = std::array<RuleSpec, 34>{
     RuleSpec{"add",
              OperandShape{2U,
                           2U,
@@ -439,6 +442,27 @@ inline constexpr auto kLoweringRuleTable = std::array<RuleSpec, 31>{
              RuleFlags::None,
              &emitFPToSI,
              "fptosi"},
+    RuleSpec{"eh.push",
+             OperandShape{1U,
+                          1U,
+                          1U,
+                          {OperandKindPattern::Label,
+                           OperandKindPattern::Any,
+                           OperandKindPattern::Any,
+                           OperandKindPattern::Any}},
+             RuleFlags::None,
+             &emitEhPush,
+             "eh.push"},
+    RuleSpec{"eh.pop",
+             OperandShape{0U, 0U, 0U, {}},
+             RuleFlags::None,
+             &emitEhPop,
+             "eh.pop"},
+    RuleSpec{"eh.entry",
+             OperandShape{0U, 0U, 0U, {}},
+             RuleFlags::None,
+             &emitEhEntry,
+             "eh.entry"},
 };
 
 } // namespace lowering

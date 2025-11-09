@@ -119,6 +119,18 @@ Operand EmitCommon::materialise(Operand operand, RegClass cls)
     return tmpOp;
 }
 
+std::optional<Operand> EmitCommon::tryMakeIndexedMem(const ILInstr &addrProducer)
+{
+    (void)addrProducer;
+    // TODO: With richer IL def-use plumbing, recognise patterns like:
+    //   p2 = add ptr, (idx << k)
+    //   load [p2 + disp]
+    // and return makeMemOperand(baseReg, idxReg, scale, disp).
+    // For now, insufficient information is available in the placeholder IL to
+    // reliably match the producer, so decline.
+    return std::nullopt;
+}
+
 /// @brief Ensure an operand is materialised in a general-purpose register.
 /// @details Convenience wrapper around @ref materialise that hard codes the GPR
 ///          register class, used when instructions require integer register
@@ -470,7 +482,12 @@ void EmitCommon::emitLoad(const ILInstr &instr, RegClass cls)
     const int32_t disp = instr.ops.size() > 1 ? static_cast<int32_t>(instr.ops[1].i64) : 0;
     const VReg destReg = builder().ensureVReg(instr.resultId, instr.resultKind);
     const Operand dest = makeVRegOperand(destReg.cls, destReg.id);
-    const Operand mem = makeMemOperand(*baseReg, disp);
+
+    Operand mem = makeMemOperand(*baseReg, disp);
+    if (const auto indexed = tryMakeIndexedMem(instr))
+    {
+        mem = *indexed;
+    }
 
     if (cls == RegClass::GPR)
     {
@@ -504,7 +521,11 @@ void EmitCommon::emitStore(const ILInstr &instr)
         return;
     }
     const int32_t disp = instr.ops.size() > 2 ? static_cast<int32_t>(instr.ops[2].i64) : 0;
-    const Operand mem = makeMemOperand(*baseReg, disp);
+    Operand mem = makeMemOperand(*baseReg, disp);
+    if (const auto indexed = tryMakeIndexedMem(instr))
+    {
+        mem = *indexed;
+    }
 
     if (std::holds_alternative<OpReg>(value))
     {

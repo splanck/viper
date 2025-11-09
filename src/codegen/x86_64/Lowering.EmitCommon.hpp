@@ -135,6 +135,14 @@ class EmitCommon
     ///          floating-point compare opcodes produced by the IL.
     [[nodiscard]] static std::optional<int> fcmpConditionCode(std::string_view opcode) noexcept;
 
+    /// @brief Try to recognise (base + (idx << shift) + disp) addressing.
+    /// @details Best-effort pattern matcher that returns an OpMem operand when
+    ///          the address producer encodes a base pointer plus a scaled index
+    ///          and optional displacement. Future improvements can plumb IL def
+    ///          chains; the current implementation conservatively declines when
+    ///          insufficient information is available.
+    [[nodiscard]] std::optional<Operand> tryMakeIndexedMem(const ILInstr &addrProducer);
+
   private:
     MIRBuilder *builder_{nullptr};
 };

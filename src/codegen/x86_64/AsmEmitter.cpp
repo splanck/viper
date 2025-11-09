@@ -1164,6 +1164,12 @@ std::string AsmEmitter::formatMem(const OpMem &mem, const TargetInfo &target)
     asmfmt::MemAddr addr{};
     addr.base = encodeRegister(mem.base);
     addr.disp = mem.disp;
+    if (mem.hasIndex)
+    {
+        addr.index = encodeRegister(mem.index);
+        addr.scale = mem.scale;
+        addr.has_index = true;
+    }
     return asmfmt::format_mem(addr);
 }
 

@@ -14,6 +14,8 @@ endif ()
 set(_viper_codegen_x86_64_tests
         abi_probe
         add_ret
+        addressing_modes
+        varargs_al
         diff_vm_native
         div_trap
         udiv_urem

@@ -46,6 +46,7 @@ struct CallLoweringPlan
     std::string calleeLabel{};   ///< Symbolic name of the callee.
     std::vector<CallArg> args{}; ///< Ordered list of call arguments.
     bool returnsF64{false};      ///< True when the call returns a double in XMM0.
+    bool isVarArg{false};        ///< True when the callee follows vararg SysV rules.
 };
 
 /// \brief Emit Machine IR that prepares arguments and issues a call instruction.

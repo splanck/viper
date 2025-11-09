@@ -41,6 +41,9 @@ class ISel
 
   private:
     const TargetInfo *target_{nullptr};
+
+    // Scans blocks and folds LEA bases into mem operands when the temp has a single use.
+    void foldLeaIntoMem(MFunction &func) const;
 };
 
 } // namespace viper::codegen::x64

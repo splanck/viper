@@ -30,6 +30,7 @@
 #include <utility>
 #include <variant>
 #include <vector>
+#include <unordered_map>
 
 namespace viper::codegen::x64
 {
@@ -528,6 +529,10 @@ void ISel::lowerArithmetic(MFunction &func) const
             }
         }
     }
+
+    // After normalising arithmetic, fold trivial address computations into
+    // users to reduce register pressure and improve addressing modes.
+    foldLeaIntoMem(func);
 }
 
 /// @brief Lower compare and branch constructs to legal encodings.
@@ -602,6 +607,106 @@ void ISel::lowerSelect(MFunction &func) const
             {
                 ensureMovzxAfterSetcc(block, idx);
             }
+        }
+    }
+}
+
+/// \brief Fold single-use LEA temps into memory operands.
+/// \details For each block, finds LEA-def'd virtual registers with a single use
+///          as a base in a memory operand and replaces the user with the LEA's
+///          addressing mode, erasing the defining LEA.
+void ISel::foldLeaIntoMem(MFunction &func) const
+{
+    (void)target_;
+    for (auto &block : func.blocks)
+    {
+        std::unordered_map<uint16_t, std::size_t> leaDefIdx; // vreg id -> instr idx
+        std::unordered_map<uint16_t, std::size_t> useCount;  // vreg id -> uses in block
+
+        // First pass: record LEA defs and count vreg uses (regs and mem bases/indexes).
+        for (std::size_t idx = 0; idx < block.instructions.size(); ++idx)
+        {
+            const auto &instr = block.instructions[idx];
+            if (instr.opcode == MOpcode::LEA && instr.operands.size() >= 2)
+            {
+                if (const auto *dst = asReg(instr.operands[0]))
+                {
+                    if (!dst->isPhys && dst->cls == RegClass::GPR)
+                    {
+                        leaDefIdx[dst->idOrPhys] = idx;
+                    }
+                }
+            }
+
+            for (const auto &op : instr.operands)
+            {
+                if (const auto *r = asReg(op))
+                {
+                    if (!r->isPhys)
+                    {
+                        ++useCount[r->idOrPhys];
+                    }
+                }
+                else if (const auto *mem = std::get_if<OpMem>(&op))
+                {
+                    if (!mem->base.isPhys)
+                    {
+                        ++useCount[mem->base.idOrPhys];
+                    }
+                    if (mem->hasIndex && !mem->index.isPhys)
+                    {
+                        ++useCount[mem->index.idOrPhys];
+                    }
+                }
+            }
+        }
+
+        // Second pass: try to fold at use sites and erase the LEA.
+        for (std::size_t idx = 0; idx < block.instructions.size(); ++idx)
+        {
+            auto &instr = block.instructions[idx];
+            bool foldedAny = false;
+            for (auto &op : instr.operands)
+            {
+                if (auto *mem = std::get_if<OpMem>(&op))
+                {
+                    const OpReg &base = mem->base;
+                    if (!base.isPhys && base.cls == RegClass::GPR)
+                    {
+                        const uint16_t v = base.idOrPhys;
+                        auto defIt = leaDefIdx.find(v);
+                        auto useIt = useCount.find(v);
+                        if (defIt != leaDefIdx.end() && useIt != useCount.end() && useIt->second == 1)
+                        {
+                            const std::size_t defIndex = defIt->second;
+                            if (defIndex < block.instructions.size())
+                            {
+                                const auto &defInstr = block.instructions[defIndex];
+                                if (defInstr.opcode == MOpcode::LEA && defInstr.operands.size() >= 2)
+                                {
+                                    if (const auto *srcMem = std::get_if<OpMem>(&defInstr.operands[1]))
+                                    {
+                                        // Replace the memory operand with the LEA's addressing mode.
+                                        *mem = *srcMem;
+                                        // Erase the defining LEA.
+                                        block.instructions.erase(block.instructions.begin() + static_cast<std::ptrdiff_t>(defIndex));
+                                        // Adjust current index when the erased def was before this instr.
+                                        if (defIndex < idx)
+                                        {
+                                            --idx;
+                                        }
+                                        foldedAny = true;
+                                        // Prevent re-use: remove from maps.
+                                        leaDefIdx.erase(defIt);
+                                        useCount.erase(useIt);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            (void)foldedAny;
         }
     }
 }

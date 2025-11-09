@@ -48,6 +48,16 @@ void emitCall(const ILInstr &instr, MIRBuilder &builder)
 
     CallLoweringPlan plan{};
     plan.calleeLabel = instr.ops.front().label;
+    // TODO: Replace with proper function type metadata once IL function types
+    //       are plumbed through lowering. For now, conservatively mark known
+    //       vararg-like runtime helpers.
+    if (!plan.calleeLabel.empty())
+    {
+        if (plan.calleeLabel == "rt_snprintf" || plan.calleeLabel == "rt_sb_printf")
+        {
+            plan.isVarArg = true;
+        }
+    }
 
     for (std::size_t idx = 1; idx < instr.ops.size(); ++idx)
     {

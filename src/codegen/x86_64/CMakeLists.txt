@@ -18,6 +18,7 @@ add_library(viper_codegen_x86_64 STATIC
         Lowering.Arith.cpp
         Lowering.Bitwise.cpp
         Lowering.Mem.cpp
+        Lowering.EH.cpp
         Lowering.CF.cpp
         LoweringRules.cpp
         Peephole.cpp

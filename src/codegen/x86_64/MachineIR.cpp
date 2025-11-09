@@ -276,7 +276,21 @@ Operand makeImmOperand(int64_t value)
 Operand makeMemOperand(OpReg base, int32_t disp)
 {
     assert(base.cls == RegClass::GPR && "Phase A expects GPR base registers");
-    return Operand{OpMem{std::move(base), disp}};
+    OpMem m{};
+    m.base = std::move(base);
+    m.disp = disp;
+    return Operand{m};
+}
+
+Operand makeMemOperand(OpReg base, OpReg index, uint8_t scale, int32_t disp)
+{
+    OpMem m{};
+    m.base = base;
+    m.index = index;
+    m.scale = (scale == 1 || scale == 2 || scale == 4 || scale == 8) ? scale : 1;
+    m.disp = disp;
+    m.hasIndex = true;
+    return Operand{m};
 }
 
 /// @brief Construct a label operand variant.
@@ -334,16 +348,18 @@ std::string toString(const OpMem &op)
 {
     std::ostringstream os;
     os << '[' << toString(op.base);
+    if (op.hasIndex)
+    {
+        os << " + " << toString(op.index);
+        if (op.scale != 1)
+        {
+            os << " * " << static_cast<int>(op.scale);
+        }
+    }
     if (op.disp != 0)
     {
-        if (op.disp > 0)
-        {
-            os << " + " << op.disp;
-        }
-        else
-        {
-            os << " - " << -op.disp;
-        }
+        if (op.disp > 0) os << " + " << op.disp;
+        else             os << " - " << -op.disp;
     }
     os << ']';
     return os.str();

@@ -507,6 +507,29 @@ ILModule convertToAdapterModule(const il::core::Module &module)
                         }
                         break;
                     }
+                    case il::core::Opcode::EhPush:
+                    {
+                        adaptedInstr.opcode = "eh.push";
+                        // Operand: handler label
+                        convertOperands(instr, {std::nullopt}, adaptedInstr);
+                        if (adaptedInstr.ops.size() > 1)
+                        {
+                            adaptedInstr.ops.resize(1);
+                        }
+                        break;
+                    }
+                    case il::core::Opcode::EhPop:
+                    {
+                        adaptedInstr.opcode = "eh.pop";
+                        adaptedInstr.resultKind = ILValue::Kind::I64; // unused
+                        break;
+                    }
+                    case il::core::Opcode::EhEntry:
+                    {
+                        adaptedInstr.opcode = "eh.entry";
+                        adaptedInstr.resultKind = ILValue::Kind::I64; // unused
+                        break;
+                    }
                     case il::core::Opcode::Load:
                     {
                         const ILValue::Kind resultKind = setResultKind(instr.type);

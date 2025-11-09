@@ -47,11 +47,14 @@ struct OpImm
     int64_t val{0};
 };
 
-/// \brief Memory operand using a base register plus displacement (RIP-less).
+/// \brief Memory operand using a base (+ optional index*scale) plus displacement (RIP-less).
 struct OpMem
 {
-    OpReg base{};    ///< Base register supplying the address.
-    int32_t disp{0}; ///< Signed displacement in bytes.
+    OpReg base{};            ///< Base register supplying the address.
+    OpReg index{};           ///< Optional index register (cls must be GPR when used).
+    uint8_t scale{1};        ///< Scale for the index (1, 2, 4, 8).
+    int32_t disp{0};         ///< Signed displacement in bytes.
+    bool hasIndex{false};    ///< True when index participates.
 };
 
 /// \brief Symbolic label operand (basic blocks, functions, jump targets).
@@ -192,6 +195,9 @@ struct MFunction
 
 /// \brief Construct a memory operand from base register and displacement.
 [[nodiscard]] Operand makeMemOperand(OpReg base, int32_t disp);
+
+/// Construct a scaled-index memory operand.
+[[nodiscard]] Operand makeMemOperand(OpReg base, OpReg index, uint8_t scale, int32_t disp);
 
 /// \brief Construct a label operand with the provided symbol name.
 [[nodiscard]] Operand makeLabelOperand(std::string name);

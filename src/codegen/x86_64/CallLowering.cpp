@@ -210,6 +210,48 @@ void lowerCall(MBasicBlock &block,
         ++insertIt;
     };
 
+    // Pre-scan to determine total bytes of stack-based arguments for this call.
+    std::size_t preGprUsed = 0;
+    std::size_t preXmmUsed = 0;
+    std::size_t preStackBytes = 0;
+    for (const auto &argScan : plan.args)
+    {
+        if (argScan.kind == CallArg::GPR)
+        {
+            if (preGprUsed < kGprArgLimit)
+            {
+                ++preGprUsed;
+            }
+            else
+            {
+                preStackBytes += kSlotSizeBytes;
+            }
+        }
+        else // XMM
+        {
+            if (preXmmUsed < kXmmArgLimit)
+            {
+                ++preXmmUsed;
+            }
+            else
+            {
+                preStackBytes += kSlotSizeBytes;
+            }
+        }
+    }
+
+    // When stack arguments are present (or when alignment demands), ensure the
+    // stack is 16-byte aligned at the call boundary by inserting a dynamic
+    // padding subtraction before writing stack slots and restoring it after the
+    // call. The padding accounts for the return address pushed by CALL.
+    const int32_t padBytes = static_cast<int32_t>((16 - ((preStackBytes + 8) % 16)) % 16);
+    if (padBytes != 0)
+    {
+        insertInstr(MInstr::make(
+            MOpcode::ADDri,
+            {makePhysOperand(RegClass::GPR, PhysReg::RSP), makeImmOperand(-static_cast<int64_t>(padBytes))}));
+    }
+
     std::size_t gprUsed = 0;
     std::size_t xmmUsed = 0;
     std::size_t stackBytes = 0;
@@ -327,6 +369,14 @@ void lowerCall(MBasicBlock &block,
     frame.outgoingArgArea =
         std::max(frame.outgoingArgArea, static_cast<int>(alignToSlot(stackBytes)));
 
+    // SysV AMD64 varargs: %al must carry the number of XMM registers used.
+    if (plan.isVarArg)
+    {
+        const Operand rax = makePhysOperand(RegClass::GPR, PhysReg::RAX);
+        insertInstr(MInstr::make(MOpcode::MOVri,
+                                 {rax, makeImmOperand(static_cast<int64_t>(xmmUsed))}));
+    }
+
 #ifndef NDEBUG
     const std::string callOkLabel = ".Lcall_ok_" + std::to_string(callAlignmentCheckCounter++);
     const Operand rax = makePhysOperand(RegClass::GPR, PhysReg::RAX);
@@ -338,6 +388,28 @@ void lowerCall(MBasicBlock &block,
     insertInstr(MInstr::make(MOpcode::UD2));
     insertInstr(MInstr::make(MOpcode::LABEL, {makeLabelOperand(callOkLabel)}));
 #endif
+
+    // If we inserted dynamic padding earlier, restore %rsp immediately after
+    // the CALL. Advance insertion point past the CALL placeholder and emit ADD.
+    if (padBytes != 0)
+    {
+        // Find the CALL at or after the current insertion position.
+        auto seekIt = insertIt;
+        while (seekIt != block.instructions.end() && seekIt->opcode != MOpcode::CALL)
+        {
+            ++seekIt;
+        }
+        if (seekIt != block.instructions.end())
+        {
+            ++seekIt; // position after CALL
+            seekIt = block.instructions.insert(seekIt,
+                                               MInstr::make(MOpcode::ADDri,
+                                                            {makePhysOperand(RegClass::GPR, PhysReg::RSP),
+                                                             makeImmOperand(static_cast<int64_t>(padBytes))}));
+            // Maintain insertIt validity if we inserted exactly at insertIt
+            // (not strictly required for remaining code paths).
+        }
+    }
 
     (void)plan;
 }
