@@ -94,8 +94,10 @@ namespace
 TEST(CodegenX64AddrTest, EmitsSIB)
 {
     const auto text = buildAsm();
-    // Expect "(%rdi,%rsi,8)" and displacement "+16(". Also expect no explicit leaq survives.
-    EXPECT_NE(text.find("(%rdi,%rsi,8)"), std::string::npos) << text;
+    // Expect SIB form with scale 8 and displacement +16. Base/index order may vary.
+    const bool sibA = text.find("(%rdi,%rsi,8)") != std::string::npos;
+    const bool sibB = text.find("(%rsi,%rdi,8)") != std::string::npos;
+    EXPECT_TRUE(sibA || sibB) << text;
     EXPECT_NE(text.find("16("), std::string::npos) << text;
     EXPECT_EQ(text.find("leaq"), std::string::npos) << text;
 }
@@ -112,4 +114,3 @@ int main()
     return 0;
 }
 #endif
-

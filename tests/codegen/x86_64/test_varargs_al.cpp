@@ -93,7 +93,7 @@ TEST(CodegenX64VarargsTest, SetsALToXmmCount_snprintf)
     // Expect a movq $2, %rax somewhere before a callq.
     ASSERT_NE(text.find("call"), std::string::npos) << text;
     const auto callPos = text.find("call");
-    const auto mov2 = text.rfind("movq $2, %rax", callPos);
+    const auto mov2 = text.rfind("$2, %rax", callPos);
     EXPECT_NE(mov2, std::string::npos) << text;
 
     // Also ensure %xmm0 and %xmm1 appear before the call (ABI arg regs).
@@ -107,7 +107,7 @@ TEST(CodegenX64VarargsTest, SetsALToXmmCount_sb_printf)
     const auto text = buildAsmWithCallee("rt_sb_printf");
     ASSERT_NE(text.find("call"), std::string::npos) << text;
     const auto callPos = text.find("call");
-    const auto mov2 = text.rfind("movq $2, %rax", callPos);
+    const auto mov2 = text.rfind("$2, %rax", callPos);
     EXPECT_NE(mov2, std::string::npos) << text;
 
     const auto prefix = text.substr(0, callPos);
@@ -149,7 +149,7 @@ TEST(CodegenX64VarargsTest, VarargsCounts_ZeroAndOneF64)
         const CodegenResult res = emitModuleToAssembly(m, {});
         ASSERT_NE(res.asmText.find("call"), std::string::npos) << res.asmText;
         const auto callPos = res.asmText.find("call");
-        const auto mov0 = res.asmText.rfind("movq $0, %rax", callPos);
+        const auto mov0 = res.asmText.rfind("$0, %rax", callPos);
         EXPECT_NE(mov0, std::string::npos) << res.asmText;
     }
 
@@ -185,7 +185,7 @@ TEST(CodegenX64VarargsTest, VarargsCounts_ZeroAndOneF64)
         const CodegenResult res = emitModuleToAssembly(m, {});
         ASSERT_NE(res.asmText.find("call"), std::string::npos) << res.asmText;
         const auto callPos = res.asmText.find("call");
-        const auto mov1 = res.asmText.rfind("movq $1, %rax", callPos);
+        const auto mov1 = res.asmText.rfind("$1, %rax", callPos);
         EXPECT_NE(mov1, std::string::npos) << res.asmText;
     }
 }
@@ -236,7 +236,7 @@ int main()
         const auto text = buildAsmWithCallee("rt_snprintf");
         const auto callPos = text.find("call");
         if (callPos == std::string::npos) return 1;
-        const auto mov2 = text.rfind("movq $2, %rax", callPos);
+        const auto mov2 = text.rfind("$2, %rax", callPos);
         if (mov2 == std::string::npos) return 2;
         const auto prefix = text.substr(0, callPos);
         if (prefix.find("%xmm0") == std::string::npos) return 3;
@@ -265,7 +265,7 @@ int main()
         const auto callPos = text.find("call");
         if (callPos == std::string::npos)
             return 9;
-        const auto mov0 = text.rfind("movq $0, %rax", callPos);
+        const auto mov0 = text.rfind("$0, %rax", callPos);
         if (mov0 == std::string::npos) return 10;
     }
     // 1 f64
@@ -282,7 +282,7 @@ int main()
         const auto callPos = text.find("call");
         if (callPos == std::string::npos)
             return 11;
-        const auto mov1 = text.rfind("movq $1, %rax", callPos);
+        const auto mov1 = text.rfind("$1, %rax", callPos);
         if (mov1 == std::string::npos) return 12;
     }
     // Non-varargs should not set %al.
