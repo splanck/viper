@@ -54,7 +54,8 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-option(IL_WARN_AS_ERROR "Treat warnings as errors" OFF)
+# Default to strict builds: treat warnings as errors unless opted out.
+option(IL_WARN_AS_ERROR "Treat warnings as errors" ON)
 option(IL_USE_LLD "Use lld linker if available" ON)
 option(IL_USE_LIBCXX "Use libc++ on Clang (Linux)" OFF)
 option(IL_SANITIZE_ADDRESS "Enable address sanitizer" OFF)

@@ -3,7 +3,7 @@
 // Key invariants: Trap helpers fork to isolate VM failures and ensure the parent
 //                 receives diagnostics over a pipe.
 
-#include "tests/common/VmFixture.hpp"
+#include "common/VmFixture.hpp"
 
 #include "vm/VM.hpp"
 

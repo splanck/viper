@@ -4,7 +4,7 @@
 // Ownership/Lifetime: Forks child VM process to capture trap output.
 // Links: docs/codemap.md
 
-#include "tests/common/TestIRBuilder.hpp"
+#include "common/TestIRBuilder.hpp"
 
 #include <cassert>
 #include <string>

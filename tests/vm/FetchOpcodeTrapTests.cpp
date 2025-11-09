@@ -6,8 +6,8 @@
 //                     VMTestHook utilities; no resources escape the test scope.
 // Links: docs/codemap.md
 
-#include "tests/common/TestIRBuilder.hpp"
-#include "tests/unit/VMTestHook.hpp"
+#include "common/TestIRBuilder.hpp"
+#include "unit/VMTestHook.hpp"
 #include "vm/VMContext.hpp"
 
 #include <cassert>

@@ -6,7 +6,7 @@
 // Ownership/Lifetime: The fixture owns a temporary directory and removes it on
 //                      destruction.
 
-#include "tests/common/CodegenFixture.hpp"
+#include "common/CodegenFixture.hpp"
 
 #include <algorithm>
 #include <cctype>

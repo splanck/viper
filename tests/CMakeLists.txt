@@ -50,7 +50,15 @@ add_library(viper_test_common STATIC
         ${CMAKE_CURRENT_LIST_DIR}/common/CodegenFixture.cpp
         ${CMAKE_CURRENT_LIST_DIR}/common/TestIRBuilder.cpp
         ${CMAKE_CURRENT_LIST_DIR}/common/VmFixture.cpp)
-target_include_directories(viper_test_common PUBLIC ${CMAKE_CURRENT_LIST_DIR} ${CMAKE_SOURCE_DIR})
+# Limit include paths to avoid clashing with the C++ <version> header on
+# case-insensitive filesystems (root contains a VERSION file).
+# Expose only tests dir, public headers, generated headers, and src as needed.
+target_include_directories(viper_test_common PUBLIC
+    ${CMAKE_CURRENT_LIST_DIR}
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_BINARY_DIR}/generated
+    ${CMAKE_SOURCE_DIR}/src
+)
 target_link_libraries(viper_test_common PUBLIC viper_testing il_vm il_build)
 
 if (IL_ENABLE_DOCS_LINT)

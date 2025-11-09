@@ -5,7 +5,7 @@
 // capture diagnostics. Links: docs/il-guide.md#reference
 
 #include "il/build/IRBuilder.hpp"
-#include "tests/common/VmFixture.hpp"
+#include "common/VmFixture.hpp"
 
 #include <cassert>
 #include <cerrno>

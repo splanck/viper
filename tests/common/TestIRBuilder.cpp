@@ -4,7 +4,7 @@
 // Ownership/Lifetime: Owns the IL module and VmFixture executing the program.
 // Links: docs/codemap.md
 
-#include "tests/common/TestIRBuilder.hpp"
+#include "common/TestIRBuilder.hpp"
 
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"

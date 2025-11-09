@@ -4,7 +4,7 @@
 // line. Ownership/Lifetime: Spawns child VM processes to capture stderr for each trap sample.
 // Links: docs/specs/errors.md
 
-#include "tests/common/TestIRBuilder.hpp"
+#include "common/TestIRBuilder.hpp"
 #include "vm/err_bridge.hpp"
 
 #include <array>

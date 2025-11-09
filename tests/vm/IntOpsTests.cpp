@@ -3,7 +3,7 @@
 // License: MIT License. See LICENSE in project root for details.
 
 #include "il/build/IRBuilder.hpp"
-#include "tests/common/VmFixture.hpp"
+#include "common/VmFixture.hpp"
 
 #include <cassert>
 #include <cstdint>

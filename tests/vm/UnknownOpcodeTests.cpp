@@ -4,7 +4,7 @@
 // Ownership/Lifetime: Builds an ephemeral module executed in a forked child to capture stderr.
 // Links: docs/il-guide.md#reference
 
-#include "tests/common/TestIRBuilder.hpp"
+#include "common/TestIRBuilder.hpp"
 
 #include <cassert>
 #include <string>

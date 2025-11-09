@@ -9,7 +9,7 @@
 #include "il/build/IRBuilder.hpp"
 #include "il/core/Instr.hpp"
 #include "support/source_location.hpp"
-#include "tests/common/VmFixture.hpp"
+#include "common/VmFixture.hpp"
 
 #include <cstddef>
 #include <cstdint>

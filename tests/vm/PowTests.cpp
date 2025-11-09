@@ -6,7 +6,7 @@
 
 #include "il/build/IRBuilder.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
-#include "tests/common/VmFixture.hpp"
+#include "common/VmFixture.hpp"
 #include "vm/Marshal.hpp"
 #include "vm/VM.hpp"
 

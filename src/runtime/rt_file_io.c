@@ -115,8 +115,15 @@ static bool rt_file_offset_in_range(int64_t offset)
     const int shift = bits - 1;
     if (shift <= 0)
         return offset == 0;
-    const int64_t max = (INT64_C(1) << shift) - 1;
-    const int64_t min = -((INT64_C(1) << shift));
+    if (shift >= 63)
+    {
+        const int64_t max = INT64_MAX;
+        const int64_t min = INT64_MIN;
+        return offset >= min && offset <= max;
+    }
+    const int64_t M = (INT64_MAX >> (63 - shift));
+    const int64_t max = M;
+    const int64_t min = -M - 1;
     return offset >= min && offset <= max;
 #endif
 }
