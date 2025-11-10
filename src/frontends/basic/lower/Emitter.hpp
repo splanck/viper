@@ -82,6 +82,12 @@ class Emitter
 
     void emitCall(const std::string &callee, const std::vector<Value> &args);
 
+    /// @brief Emit an indirect call with a return value.
+    Value emitCallIndirectRet(Type ty, Value callee, const std::vector<Value> &args);
+
+    /// @brief Emit an indirect call with no return value.
+    void emitCallIndirect(Value callee, const std::vector<Value> &args);
+
     Value emitConstStr(const std::string &globalName);
 
     void storeArray(Value slot, Value value);

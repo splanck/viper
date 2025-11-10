@@ -434,6 +434,18 @@ ExprPtr Parser::parsePrimary()
         return expr;
     }
 
+    // Support BASE-qualified member/method access by parsing BASE as a
+    // primary that behaves like an identifier named "BASE". Lowering
+    // detects VarExpr{"BASE"} to force direct base-class dispatch.
+    if (at(TokenKind::KeywordBase))
+    {
+        auto v = std::make_unique<VarExpr>();
+        v->loc = peek().loc;
+        v->name = "BASE";
+        consume();
+        return v;
+    }
+
     if (at(TokenKind::KeywordLbound) || at(TokenKind::KeywordUbound))
         return parseBoundIntrinsic(peek().kind);
 

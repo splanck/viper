@@ -287,6 +287,16 @@ void Emitter::emitCall(const std::string &callee, const std::vector<Value> &args
     common_.emitCall(callee, args);
 }
 
+Emitter::Value Emitter::emitCallIndirectRet(Type ty, Value callee, const std::vector<Value> &args)
+{
+    return common_.emitCallIndirectRet(ty, callee, args);
+}
+
+void Emitter::emitCallIndirect(Value callee, const std::vector<Value> &args)
+{
+    common_.emitCallIndirect(callee, args);
+}
+
 /// @brief Materialise a constant string handle from a global symbol.
 ///
 /// @details Emits a `const.str` instruction referencing the global string's

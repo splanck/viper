@@ -7,6 +7,7 @@
 
 #include "frontends/basic/ast/NodeFwd.hpp"
 #include "frontends/basic/BasicTypes.hpp"
+#include "support/source_location.hpp"
 
 #include <optional>
 #include <string>
@@ -51,12 +52,33 @@ struct ClassInfo
 
     std::string name;                  ///< Unqualified class identifier.
     std::string qualifiedName;         ///< Fully-qualified class name (namespaces + name).
+    std::string baseQualified;         ///< Fully-qualified base name (empty when none or unresolved).
+    bool isAbstract{false};            ///< True when class is abstract.
+    bool isFinal{false};               ///< True when class is final.
+    il::support::SourceLoc loc{};      ///< Location of the CLASS keyword.
     std::vector<FieldInfo> fields;     ///< Ordered field declarations.
     bool hasConstructor = false;       ///< True if CLASS declares a constructor.
     bool hasSynthCtor = false;         ///< True when lowering must synthesise a constructor.
     bool hasDestructor = false;        ///< True if CLASS declares a destructor.
     std::vector<CtorParam> ctorParams; ///< Constructor signature if declared.
-    std::unordered_map<std::string, MethodSig> methods; ///< Declared methods indexed by name.
+    /// @brief Extended method metadata used for vtable construction and checks.
+    struct MethodInfo
+    {
+        MethodSig sig;         ///< Signature (params/return/access).
+        bool isVirtual = false;///< Declared or implied virtual.
+        bool isAbstract = false;///< Declared abstract.
+        bool isFinal = false;  ///< Declared final.
+        int slot = -1;         ///< Virtual slot index; -1 for non-virtual.
+    };
+
+    /// Declared methods indexed by name.
+    std::unordered_map<std::string, MethodInfo> methods;
+
+    /// Ordered virtual method names by slot for deterministic ABI layout.
+    std::vector<std::string> vtable;
+
+    /// Method declaration source locations (for diagnostics).
+    std::unordered_map<std::string, il::support::SourceLoc> methodLocs;
 };
 
 /// @brief Container mapping class names to extracted metadata.
@@ -95,5 +117,12 @@ class OopIndex
 
 /// @brief Populate @p index with class metadata extracted from @p program.
 void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *emitter);
+
+/// @brief Query the virtual slot for a method if it is virtual.
+/// @param index OOP index containing class metadata.
+/// @param qualifiedClass Fully-qualified class name.
+/// @param methodName Method identifier.
+/// @return Slot index (>=0) when virtual; -1 for non-virtual or when not found.
+int getVirtualSlot(const OopIndex &index, const std::string &qualifiedClass, const std::string &methodName);
 
 } // namespace il::frontends::basic

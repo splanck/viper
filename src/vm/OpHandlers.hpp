@@ -69,6 +69,7 @@ using control::branchToTarget;
 using control::handleBr;
 using control::handleBrImpl;
 using control::handleCall;
+using control::handleCallIndirect;
 using control::handleCBr;
 using control::handleCBrImpl;
 using control::handleEhEntry;

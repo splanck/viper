@@ -23,6 +23,8 @@ set(RT_SOURCES
         rt_printf_compat.c
         rt_term.c
         rt_object.c
+        rt_oop_dispatch.c
+        rt_type_registry.c
 )
 
 set(RT_PUBLIC_HEADERS
@@ -37,6 +39,7 @@ set(RT_PUBLIC_HEADERS
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_array.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_heap.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_object.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/rt_oop.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_debug.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_file.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_format.h

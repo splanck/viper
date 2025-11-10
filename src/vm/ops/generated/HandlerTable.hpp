@@ -74,6 +74,7 @@ inline const VM::OpcodeHandlerTable &opcodeHandlers()
         &il::vm::detail::handleConstStr,
         &il::vm::detail::handleConstNull,
         &il::vm::detail::handleCall,
+        &il::vm::detail::handleCallIndirect,
         &il::vm::detail::handleSwitchI32,
         &il::vm::detail::handleBr,
         &il::vm::detail::handleCBr,

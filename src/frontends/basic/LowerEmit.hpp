@@ -163,6 +163,8 @@ void emitBr(BasicBlock *target);
 void emitCBr(Value cond, BasicBlock *t, BasicBlock *f);
 Value emitCallRet(Type ty, const std::string &callee, const std::vector<Value> &args);
 void emitCall(const std::string &callee, const std::vector<Value> &args);
+Value emitCallIndirectRet(Type ty, Value callee, const std::vector<Value> &args);
+void emitCallIndirect(Value callee, const std::vector<Value> &args);
 Value emitConstStr(const std::string &globalName);
 void emitTrap();
 void emitEhPush(BasicBlock *handler);

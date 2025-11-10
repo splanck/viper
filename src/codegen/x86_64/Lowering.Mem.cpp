@@ -102,6 +102,66 @@ void emitCall(const ILInstr &instr, MIRBuilder &builder)
         MInstr::make(MOpcode::CALL, std::vector<Operand>{builder.makeLabelOperand(instr.ops[0])}));
 }
 
+/// @brief Lower an IL call.indirect instruction into the backend call plan.
+/// @details Similar to emitCall but treats the first operand as a value holding
+///          the callee pointer (in a register or memory). Records the call plan
+///          for argument setup and appends a CALL with an indirect target.
+/// @param instr High-level IL instruction describing the indirect call.
+/// @param builder MIR construction context that owns register state.
+void emitCallIndirect(const ILInstr &instr, MIRBuilder &builder)
+{
+    if (instr.ops.empty())
+    {
+        return;
+    }
+
+    CallLoweringPlan plan{};
+    // No label for indirect calls; vararg detection is conservative here.
+
+    for (std::size_t idx = 1; idx < instr.ops.size(); ++idx)
+    {
+        const auto &argVal = instr.ops[idx];
+        CallArg arg{};
+        arg.kind = builder.regClassFor(argVal.kind) == RegClass::GPR ? CallArg::GPR : CallArg::XMM;
+
+        if (builder.isImmediate(argVal))
+        {
+            arg.isImm = true;
+            arg.imm = argVal.i64;
+        }
+        else
+        {
+            const Operand operand =
+                builder.makeOperandForValue(argVal, builder.regClassFor(argVal.kind));
+            if (const auto *reg = std::get_if<OpReg>(&operand))
+            {
+                arg.vreg = reg->idOrPhys;
+            }
+            else if (const auto *imm = std::get_if<OpImm>(&operand))
+            {
+                arg.isImm = true;
+                arg.imm = imm->val;
+            }
+        }
+
+        plan.args.push_back(arg);
+    }
+
+    if (instr.resultId >= 0)
+    {
+        (void)builder.ensureVReg(instr.resultId, instr.resultKind);
+        if (instr.resultKind == ILValue::Kind::F64)
+        {
+            plan.returnsF64 = true;
+        }
+    }
+
+    builder.recordCallPlan(std::move(plan));
+    // Use GPR as preferred class when materialising the callee pointer.
+    const Operand calleeOp = builder.makeOperandForValue(instr.ops[0], RegClass::GPR);
+    builder.append(MInstr::make(MOpcode::CALL, std::vector<Operand>{calleeOp}));
+}
+
 /// @brief Lower an automatic storage load instruction.
 /// @details Delegates to @ref EmitCommon::emitLoad so that addressing modes and
 ///          register class selection stay consistent with the rest of the

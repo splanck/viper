@@ -117,6 +117,7 @@ enum class VMDispatch : uint8_t
     ConstStr,
     ConstNull,
     Call,
+    CallIndirect,
     Sitofp,
     Fptosi,
     CastFpToSiRteChk,

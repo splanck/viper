@@ -401,6 +401,13 @@ VM::ExecResult handleCall(VM &vm,
                           const il::core::BasicBlock *&bb,
                           size_t &ip);
 
+VM::ExecResult handleCallIndirect(VM &vm,
+                                  Frame &fr,
+                                  const il::core::Instr &in,
+                                  const VM::BlockMap &blocks,
+                                  const il::core::BasicBlock *&bb,
+                                  size_t &ip);
+
 VM::ExecResult handleErrGet(VM &vm,
                             Frame &fr,
                             const il::core::Instr &in,

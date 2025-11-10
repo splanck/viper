@@ -185,6 +185,16 @@ Value Lowerer::emitCallRet(Type ty, const std::string &callee, const std::vector
     return emitter().emitCallRet(ty, callee, args);
 }
 
+Value Lowerer::emitCallIndirectRet(Type ty, Value callee, const std::vector<Value> &args)
+{
+    return emitter().emitCallIndirectRet(ty, callee, args);
+}
+
+void Lowerer::emitCallIndirect(Value callee, const std::vector<Value> &args)
+{
+    emitter().emitCallIndirect(callee, args);
+}
+
 Value Lowerer::emitConstStr(const std::string &globalName)
 {
     return emitter().emitConstStr(globalName);

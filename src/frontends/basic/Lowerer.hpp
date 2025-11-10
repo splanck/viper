@@ -489,6 +489,12 @@ class Lowerer
 
     void emitCall(const std::string &callee, const std::vector<Value> &args);
 
+    /// @brief Emit an indirect call where the callee is a value operand.
+    Value emitCallIndirectRet(Type ty, Value callee, const std::vector<Value> &args);
+
+    /// @brief Emit a void-typed indirect call where the callee is a value operand.
+    void emitCallIndirect(Value callee, const std::vector<Value> &args);
+
     Value emitConstStr(const std::string &globalName);
     void storeArray(Value slot, Value value);
     void releaseArrayLocals(const std::unordered_set<std::string> &paramNames);

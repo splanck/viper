@@ -19,6 +19,7 @@
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/NameMangler_OOP.hpp"
+#include "frontends/basic/Semantic_OOP.hpp"
 
 #include <cstdint>
 #include <string>
@@ -294,7 +295,26 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
         return {Value::constInt(0), Type(Type::Kind::I64)};
 
     std::string className = resolveObjectClass(*expr.base);
-    RVal base = lowerExpr(*expr.base);
+    // Compute the instance (self) argument. For BASE-qualified calls, use ME.
+    Value selfArg;
+    if (const auto *v = dynamic_cast<const VarExpr *>(expr.base.get()); v && v->name == "BASE")
+    {
+        const auto *sym = findSymbol("ME");
+        if (sym && sym->slotId)
+        {
+            curLoc = expr.loc;
+            selfArg = emitLoad(Type(Type::Kind::Ptr), Value::temp(*sym->slotId));
+        }
+        else
+        {
+            selfArg = Value::null();
+        }
+    }
+    else
+    {
+        RVal base = lowerExpr(*expr.base);
+        selfArg = base.value;
+    }
     // Access control for methods: Private may only be called within the declaring class.
     if (!className.empty())
     {
@@ -302,7 +322,7 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
         if (const ClassInfo *cinfo = oopIndex_.findClass(qname))
         {
             auto it = cinfo->methods.find(expr.method);
-            if (it != cinfo->methods.end() && it->second.access == Access::Private &&
+            if (it != cinfo->methods.end() && it->second.sig.access == Access::Private &&
                 currentClass() != cinfo->qualifiedName)
             {
                 if (auto *em = diagnosticEmitter())
@@ -328,7 +348,7 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
 
     std::vector<Value> args;
     args.reserve(expr.args.size() + 1);
-    args.push_back(base.value);
+    args.push_back(selfArg);
     for (const auto &arg : expr.args)
     {
         if (!arg)
@@ -338,16 +358,62 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
     }
 
     curLoc = expr.loc;
-    std::string callee = className.empty() ? expr.method : mangleMethod(qualify(className), expr.method);
+    const std::string qname = qualify(className);
 
-    if (auto retType = findMethodReturnType(className, expr.method))
+    // Detect BASE-qualified calls conservatively: treat `BASE` as a direct call cue.
+    bool baseQualified = false;
+    if (const auto *v = dynamic_cast<const VarExpr *>(expr.base.get()))
+        baseQualified = (v->name == "BASE");
+
+    // Determine if the target is virtual via OOP index.
+    int slot = -1;
+    if (!qname.empty())
+        slot = getVirtualSlot(oopIndex_, qname, expr.method);
+
+    // Determine the target class for direct dispatch. For BASE-qualified calls,
+    // we must resolve to the immediate base of the current lowering class.
+    std::string directQClass = qname;
+    if (baseQualified)
     {
-        Type ilRetTy = ilTypeForAstType(*retType);
-        Value result = emitCallRet(ilRetTy, callee, args);
-        return {result, ilRetTy};
+        const std::string cur = currentClass();
+        if (!cur.empty())
+        {
+            if (const ClassInfo *ci = oopIndex_.findClass(cur))
+            {
+                if (!ci->baseQualified.empty())
+                    directQClass = ci->baseQualified;
+            }
+        }
     }
 
-    emitCall(callee, args);
+    // Name of the direct callee when not using virtual dispatch.
+    std::string directCallee = directQClass.empty() ? expr.method : mangleMethod(directQClass, expr.method);
+
+    // If virtual and not BASE-qualified, emit call.indirect; otherwise direct call.
+    if (slot >= 0 && !baseQualified)
+    {
+        // Indirect callee operand uses the mangled method identifier as a global.
+        Value calleeOp = Value::global(directCallee);
+        if (auto retType = findMethodReturnType(className, expr.method))
+        {
+            Type ilRetTy = ilTypeForAstType(*retType);
+            Value result = emitCallIndirectRet(ilRetTy, calleeOp, args);
+            return {result, ilRetTy};
+        }
+        emitCallIndirect(calleeOp, args);
+        return {Value::constInt(0), Type(Type::Kind::I64)};
+    }
+
+    // Direct call path.
+    // For BASE-qualified direct calls, consult the resolved base class for return type.
+    const std::string retClassLookup = baseQualified ? directQClass : qname;
+    if (auto retType = findMethodReturnType(retClassLookup, expr.method))
+    {
+        Type ilRetTy = ilTypeForAstType(*retType);
+        Value result = emitCallRet(ilRetTy, directCallee, args);
+        return {result, ilRetTy};
+    }
+    emitCall(directCallee, args);
     return {Value::constInt(0), Type(Type::Kind::I64)};
 }
 

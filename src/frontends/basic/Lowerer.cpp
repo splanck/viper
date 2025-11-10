@@ -109,8 +109,8 @@ std::optional<::il::frontends::basic::Type> Lowerer::findMethodReturnType(
     auto it = info->methods.find(std::string(methodName));
     if (it == info->methods.end())
         return std::nullopt;
-    if (it->second.returnType)
-        return it->second.returnType;
+    if (it->second.sig.returnType)
+        return it->second.sig.returnType;
 
     if (auto suffixType = inferAstTypeFromSuffix(methodName))
         return suffixType;

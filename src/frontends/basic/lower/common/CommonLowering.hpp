@@ -93,6 +93,14 @@ class CommonLowering
 
     void emitCall(const std::string &callee, const std::vector<Value> &args);
 
+    /// @brief Emit an indirect call that returns a value.
+    /// @details Appends a `CallIndirect` instruction with the callee operand followed by args.
+    [[nodiscard]] Value emitCallIndirectRet(Type ty, Value callee, const std::vector<Value> &args);
+
+    /// @brief Emit an indirect call that does not return a value.
+    /// @details Appends a void-typed `CallIndirect` instruction with operands.
+    void emitCallIndirect(Value callee, const std::vector<Value> &args);
+
     [[nodiscard]] Value emitConstStr(const std::string &globalName);
 
     [[nodiscard]] std::string makeBlockLabel(std::string_view base) const;

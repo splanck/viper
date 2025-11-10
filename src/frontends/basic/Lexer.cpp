@@ -36,10 +36,12 @@ struct KeywordEntry
     TokenKind kind;
 };
 
-constexpr std::array<KeywordEntry, 75> kKeywordTable{{
-    {"ABS", TokenKind::KeywordAbs},         {"AND", TokenKind::KeywordAnd},
+constexpr std::array<KeywordEntry, 80> kKeywordTable{{
+    {"ABS", TokenKind::KeywordAbs},         {"ABSTRACT", TokenKind::KeywordAbstract},
+    {"AND", TokenKind::KeywordAnd},
     {"ANDALSO", TokenKind::KeywordAndAlso}, {"APPEND", TokenKind::KeywordAppend},
-    {"AS", TokenKind::KeywordAs},           {"BINARY", TokenKind::KeywordBinary},
+    {"AS", TokenKind::KeywordAs},           {"BASE", TokenKind::KeywordBase},
+    {"BINARY", TokenKind::KeywordBinary},
     {"BOOLEAN", TokenKind::KeywordBoolean}, {"CASE", TokenKind::KeywordCase},
     {"CEIL", TokenKind::KeywordCeil},       {"CLASS", TokenKind::KeywordClass},
     {"CLOSE", TokenKind::KeywordClose},     {"CLS", TokenKind::KeywordCls},
@@ -49,7 +51,8 @@ constexpr std::array<KeywordEntry, 75> kKeywordTable{{
     {"ELSE", TokenKind::KeywordElse},       {"ELSEIF", TokenKind::KeywordElseIf},
     {"END", TokenKind::KeywordEnd},         {"EOF", TokenKind::KeywordEof},
     {"ERROR", TokenKind::KeywordError},     {"EXIT", TokenKind::KeywordExit},
-    {"FALSE", TokenKind::KeywordFalse},     {"FLOOR", TokenKind::KeywordFloor},
+    {"FALSE", TokenKind::KeywordFalse},     {"FINAL", TokenKind::KeywordFinal},
+    {"FLOOR", TokenKind::KeywordFloor},
     {"FOR", TokenKind::KeywordFor},         {"FUNCTION", TokenKind::KeywordFunction},
     {"GOSUB", TokenKind::KeywordGosub},     {"GOTO", TokenKind::KeywordGoto},
     {"IF", TokenKind::KeywordIf},           {"INPUT", TokenKind::KeywordInput},
@@ -62,6 +65,7 @@ constexpr std::array<KeywordEntry, 75> kKeywordTable{{
     {"NOT", TokenKind::KeywordNot},         {"ON", TokenKind::KeywordOn},
     {"OPEN", TokenKind::KeywordOpen},       {"OR", TokenKind::KeywordOr},
     {"ORELSE", TokenKind::KeywordOrElse},   {"OUTPUT", TokenKind::KeywordOutput},
+    {"OVERRIDE", TokenKind::KeywordOverride},
     {"POW", TokenKind::KeywordPow},         {"PRINT", TokenKind::KeywordPrint},
     {"PRIVATE", TokenKind::KeywordPrivate}, {"PUBLIC", TokenKind::KeywordPublic},
     {"RANDOM", TokenKind::KeywordRandom},   {"RANDOMIZE", TokenKind::KeywordRandomize},
@@ -73,7 +77,8 @@ constexpr std::array<KeywordEntry, 75> kKeywordTable{{
     {"THEN", TokenKind::KeywordThen},       {"TO", TokenKind::KeywordTo},
     {"TRUE", TokenKind::KeywordTrue},       {"TYPE", TokenKind::KeywordType},
     {"UBOUND", TokenKind::KeywordUbound},   {"UNTIL", TokenKind::KeywordUntil},
-    {"WEND", TokenKind::KeywordWend},       {"WHILE", TokenKind::KeywordWhile},
+    {"VIRTUAL", TokenKind::KeywordVirtual}, {"WEND", TokenKind::KeywordWend},
+    {"WHILE", TokenKind::KeywordWhile},
     {"WRITE", TokenKind::KeywordWrite},
 }};
 

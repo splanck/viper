@@ -56,6 +56,31 @@ StmtPtr Parser::parseClassDecl()
     if (nameTok.kind == TokenKind::Identifier)
         decl->name = nameTok.lexeme;
 
+    // Optional single inheritance: CLASS B : A or CLASS B:A or CLASS B : Namespace.Base
+    if (at(TokenKind::Colon))
+    {
+        consume();
+        if (peek().kind == TokenKind::Identifier)
+        {
+            std::string base = peek().lexeme;
+            consume();
+            while (at(TokenKind::Dot))
+            {
+                consume();
+                Token seg = expect(TokenKind::Identifier);
+                if (seg.kind != TokenKind::Identifier)
+                    break;
+                base.push_back('.');
+                base.append(seg.lexeme);
+            }
+            decl->baseName = std::move(base);
+        }
+        else
+        {
+            expect(TokenKind::Identifier);
+        }
+    }
+
     auto equalsIgnoreCase = [](const std::string &lhs, std::string_view rhs)
     {
         if (lhs.size() != rhs.size())
@@ -70,6 +95,8 @@ StmtPtr Parser::parseClassDecl()
         return true;
     };
 
+    if (at(TokenKind::Colon))
+        consume();
     if (at(TokenKind::EndOfLine))
         consume();
 
@@ -93,7 +120,7 @@ StmtPtr Parser::parseClassDecl()
 
     while (!at(TokenKind::EndOfFile))
     {
-        while (at(TokenKind::EndOfLine))
+        while (at(TokenKind::EndOfLine) || at(TokenKind::Colon))
             consume();
 
         if (at(TokenKind::KeywordEnd) && peek(1).kind == TokenKind::KeywordClass)
@@ -159,7 +186,7 @@ StmtPtr Parser::parseClassDecl()
 
     while (!at(TokenKind::EndOfFile))
     {
-        while (at(TokenKind::EndOfLine))
+        while (at(TokenKind::EndOfLine) || at(TokenKind::Colon))
             consume();
 
         if (at(TokenKind::KeywordEnd) && peek(1).kind == TokenKind::KeywordClass)
@@ -174,6 +201,76 @@ StmtPtr Parser::parseClassDecl()
             {
                 consume();
                 continue;
+            }
+        }
+
+        // Parse optional access and method modifiers prefix.
+        auto parseAccessPrefix = [&]() -> std::optional<Access>
+        {
+            if (at(TokenKind::KeywordPublic))
+            {
+                consume();
+                return Access::Public;
+            }
+            if (at(TokenKind::KeywordPrivate))
+            {
+                consume();
+                return Access::Private;
+            }
+            return std::nullopt;
+        };
+
+        if (auto acc = parseAccessPrefix())
+            curAccess = acc;
+
+        struct Modifiers
+        {
+            bool virt = false;
+            bool over = false;
+            bool abstr = false;
+            bool fin = false;
+        } mods;
+
+        auto seenAnyModifier = [&]() {
+            return at(TokenKind::KeywordVirtual) || at(TokenKind::KeywordOverride) ||
+                   at(TokenKind::KeywordAbstract) || at(TokenKind::KeywordFinal);
+        };
+
+        while (seenAnyModifier())
+        {
+            auto tok = peek();
+            switch (tok.kind)
+            {
+                case TokenKind::KeywordVirtual:
+                    consume();
+                    if (mods.virt && emitter_)
+                        emitter_->emit(il::support::Severity::Warning, "B3005", tok.loc, 7,
+                                       "duplicate VIRTUAL modifier");
+                    mods.virt = true;
+                    break;
+                case TokenKind::KeywordOverride:
+                    consume();
+                    if (mods.over && emitter_)
+                        emitter_->emit(il::support::Severity::Warning, "B3006", tok.loc, 8,
+                                       "duplicate OVERRIDE modifier");
+                    mods.over = true;
+                    break;
+                case TokenKind::KeywordAbstract:
+                    consume();
+                    if (mods.abstr && emitter_)
+                        emitter_->emit(il::support::Severity::Warning, "B3007", tok.loc, 8,
+                                       "duplicate ABSTRACT modifier");
+                    mods.abstr = true;
+                    break;
+                case TokenKind::KeywordFinal:
+                    consume();
+                    if (mods.fin && emitter_)
+                        emitter_->emit(il::support::Severity::Warning, "B3008", tok.loc, 5,
+                                       "duplicate FINAL modifier");
+                    mods.fin = true;
+                    break;
+                default:
+                    break;
             }
         }
 
@@ -200,6 +297,12 @@ StmtPtr Parser::parseClassDecl()
                 auto ctor = std::make_unique<ConstructorDecl>();
                 ctor->loc = subLoc;
                 ctor->access = curAccess.value_or(Access::Public);
+                // Modifiers not allowed on constructors.
+                if ((mods.virt || mods.over || mods.abstr || mods.fin) && emitter_)
+                {
+                    emitter_->emit(il::support::Severity::Error, "B3002", subLoc, 3,
+                                   "modifiers not allowed on constructors");
+                }
                 ctor->params = parseParamList();
                 parseProcedureBody(TokenKind::KeywordSub, ctor->body);
                 decl->members.push_back(std::move(ctor));
@@ -212,7 +315,24 @@ StmtPtr Parser::parseClassDecl()
             method->name = subNameTok.lexeme;
             method->access = curAccess.value_or(Access::Public);
             method->params = parseParamList();
-            parseProcedureBody(TokenKind::KeywordSub, method->body);
+            method->isVirtual = mods.virt;
+            method->isOverride = mods.over;
+            method->isAbstract = mods.abstr;
+            method->isFinal = mods.fin;
+            if (method->isAbstract)
+            {
+                if (!at(TokenKind::EndOfLine))
+                {
+                    if (emitter_)
+                        emitter_->emit(il::support::Severity::Error, "B3001", subLoc, 3,
+                                       "ABSTRACT method must not have a body");
+                    parseProcedureBody(TokenKind::KeywordSub, method->body);
+                }
+            }
+            else
+            {
+                parseProcedureBody(TokenKind::KeywordSub, method->body);
+            }
             decl->members.push_back(std::move(method));
             curAccess.reset();
             continue;
@@ -244,7 +364,24 @@ StmtPtr Parser::parseClassDecl()
                     expect(TokenKind::Identifier);
                 }
             }
-            parseProcedureBody(TokenKind::KeywordFunction, method->body);
+            method->isVirtual = mods.virt;
+            method->isOverride = mods.over;
+            method->isAbstract = mods.abstr;
+            method->isFinal = mods.fin;
+            if (method->isAbstract)
+            {
+                if (!at(TokenKind::EndOfLine))
+                {
+                    if (emitter_)
+                        emitter_->emit(il::support::Severity::Error, "B3001", fnLoc, 8,
+                                       "ABSTRACT method must not have a body");
+                    parseProcedureBody(TokenKind::KeywordFunction, method->body);
+                }
+            }
+            else
+            {
+                parseProcedureBody(TokenKind::KeywordFunction, method->body);
+            }
             decl->members.push_back(std::move(method));
             curAccess.reset();
             continue;
@@ -266,7 +403,7 @@ StmtPtr Parser::parseClassDecl()
         break;
     }
 
-    while (at(TokenKind::EndOfLine))
+    while (at(TokenKind::EndOfLine) || at(TokenKind::Colon))
         consume();
 
     if (at(TokenKind::Number) && peek(1).kind == TokenKind::KeywordEnd &&

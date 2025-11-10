@@ -155,6 +155,13 @@ struct MethodDecl : Stmt
     /// Optional return type when method yields a value.
     std::optional<Type> ret;
 
+    /// OOP modifiers
+    /// @note Constructors cannot be virtual/override/abstract/final; only methods may carry these.
+    bool isVirtual{false};
+    bool isOverride{false};
+    bool isAbstract{false};
+    bool isFinal{false};
+
     /// Statements forming the method body.
     std::vector<StmtPtr> body;
     void accept(StmtVisitor &visitor) const override;
@@ -171,6 +178,13 @@ struct ClassDecl : Stmt
 
     /// Class name.
     std::string name;
+
+    /// Optional base class name (bare or qualified). Resolution happens in semantic analysis.
+    std::optional<std::string> baseName;
+
+    /// Class-level modifiers.
+    bool isAbstract{false};
+    bool isFinal{false};
 
     /// Field definition within the class.
     struct Field

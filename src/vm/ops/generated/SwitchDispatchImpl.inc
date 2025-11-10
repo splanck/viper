@@ -359,6 +359,12 @@ void VM::dispatchOpcodeSwitch(ExecState &state, const il::core::Instr &instr)
             inline_handle_Call(state);
             break;
         }
+        case il::core::Opcode::CallIndirect:
+        {
+            traceInstruction(instr, state.fr);
+            inline_handle_CallIndirect(state);
+            break;
+        }
         case il::core::Opcode::SwitchI32:
         {
             traceInstruction(instr, state.fr);

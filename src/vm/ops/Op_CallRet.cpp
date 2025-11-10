@@ -269,4 +269,60 @@ VM::ExecResult handleCall(VM &vm,
     return {};
 }
 
+/// @brief Indirect call via a callee operand (global symbol name).
+///
+/// @details The first operand supplies the callee identifier as a GlobalAddr
+///          value. Remaining operands (if any) are treated as arguments. This
+///          mirrors direct calls but allows frontends to funnel dynamic call
+///          sites through a uniform opcode. When the callee is not a VM-native
+///          function, the runtime bridge is used.
+VM::ExecResult handleCallIndirect(VM &vm,
+                                  Frame &fr,
+                                  const il::core::Instr &in,
+                                  const VM::BlockMap &blocks,
+                                  const il::core::BasicBlock *&bb,
+                                  size_t &ip)
+{
+    (void)blocks;
+    (void)ip;
+
+    VM::ExecResult result{};
+    if (in.operands.empty())
+        return result;
+
+    // Operand 0 is the callee identifier (GlobalAddr expected by verifier).
+    const il::core::Value &calleeVal = in.operands[0];
+    std::string calleeName = calleeVal.str;
+
+    // Evaluate remaining operands as arguments.
+    std::vector<Slot> args;
+    if (in.operands.size() > 1)
+    {
+        args.reserve(in.operands.size() - 1);
+        for (size_t i = 1; i < in.operands.size(); ++i)
+            args.push_back(VMAccess::eval(vm, fr, in.operands[i]));
+    }
+
+    // Try VM-native function first, else fall back to runtime bridge by name.
+    Slot out{};
+    const auto &fnMap = VMAccess::functionMap(vm);
+    auto it = fnMap.find(calleeName);
+    if (it != fnMap.end())
+    {
+        out = VMAccess::callFunction(vm, *it->second, args);
+    }
+    else
+    {
+        const std::string functionName = fr.func ? fr.func->name : std::string{};
+        const std::string blockLabel = bb ? bb->label : std::string{};
+        out = RuntimeBridge::call(
+            VMAccess::runtimeContext(vm), calleeName, args, in.loc, functionName, blockLabel);
+    }
+
+    if (!in.result && in.type.kind == il::core::Type::Kind::Str && out.str)
+        rt_str_release_maybe(out.str);
+    ops::storeResult(fr, in, out);
+    return {};
+}
+
 } // namespace il::vm::detail::control

@@ -754,6 +754,18 @@ inline constexpr std::array<InstructionSpec, il::core::kNumOpcodes> kSpecs = {{
         nullptr,
     },
     {
+        il::core::ResultArity::Optional,
+        il::core::TypeCategory::Dynamic,
+        static_cast<uint8_t>(1),
+        static_cast<uint8_t>(il::core::kVariadicOperandCount),
+        {il::core::TypeCategory::Any, il::core::TypeCategory::Any, il::core::TypeCategory::Any},
+        true,
+        static_cast<uint8_t>(0),
+        false,
+        VerifyStrategy::Call,
+        nullptr,
+    },
+    {
         il::core::ResultArity::None,
         il::core::TypeCategory::None,
         static_cast<uint8_t>(1),

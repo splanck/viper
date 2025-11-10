@@ -42,6 +42,7 @@ void emitBranch(const ILInstr &instr, MIRBuilder &builder);
 void emitCondBranch(const ILInstr &instr, MIRBuilder &builder);
 void emitReturn(const ILInstr &instr, MIRBuilder &builder);
 void emitCall(const ILInstr &instr, MIRBuilder &builder);
+void emitCallIndirect(const ILInstr &instr, MIRBuilder &builder);
 void emitLoadAuto(const ILInstr &instr, MIRBuilder &builder);
 void emitStore(const ILInstr &instr, MIRBuilder &builder);
 void emitZSTrunc(const ILInstr &instr, MIRBuilder &builder);
@@ -100,7 +101,7 @@ struct RuleSpec
     const char *name{nullptr};
 };
 
-inline constexpr auto kLoweringRuleTable = std::array<RuleSpec, 34>{
+inline constexpr auto kLoweringRuleTable = std::array<RuleSpec, 35>{
     RuleSpec{"add",
              OperandShape{2U,
                           2U,
@@ -365,6 +366,17 @@ inline constexpr auto kLoweringRuleTable = std::array<RuleSpec, 34>{
              RuleFlags::None,
              &emitCall,
              "call"},
+    RuleSpec{"call.indirect",
+             OperandShape{1U,
+                          std::numeric_limits<std::uint8_t>::max(),
+                          1U,
+                          {OperandKindPattern::Value,
+                           OperandKindPattern::Any,
+                           OperandKindPattern::Any,
+                           OperandKindPattern::Any}},
+             RuleFlags::None,
+             &emitCallIndirect,
+             "call.indirect"},
     RuleSpec{"load",
              OperandShape{1U,
                           2U,

@@ -371,6 +371,41 @@ void CommonLowering::emitCall(const std::string &callee, const std::vector<Value
     block->instructions.push_back(in);
 }
 
+CommonLowering::Value CommonLowering::emitCallIndirectRet(Type ty,
+                                                          Value callee,
+                                                          const std::vector<Value> &args)
+{
+    unsigned id = lowerer_->nextTempId();
+    Instr in;
+    in.result = id;
+    in.op = Opcode::CallIndirect;
+    in.type = ty;
+    in.operands.reserve(1 + args.size());
+    in.operands.push_back(callee);
+    for (const auto &a : args)
+        in.operands.push_back(a);
+    in.loc = lowerer_->curLoc;
+    BasicBlock *block = lowerer_->context().current();
+    assert(block && "emitCallIndirectRet requires an active block");
+    block->instructions.push_back(in);
+    return Value::temp(id);
+}
+
+void CommonLowering::emitCallIndirect(Value callee, const std::vector<Value> &args)
+{
+    Instr in;
+    in.op = Opcode::CallIndirect;
+    in.type = Type(Type::Kind::Void);
+    in.operands.reserve(1 + args.size());
+    in.operands.push_back(callee);
+    for (const auto &a : args)
+        in.operands.push_back(a);
+    in.loc = lowerer_->curLoc;
+    BasicBlock *block = lowerer_->context().current();
+    assert(block && "emitCallIndirect requires an active block");
+    block->instructions.push_back(in);
+}
+
 /// @brief Materialise a string constant reference.
 /// @details Emits a `ConstStr` instruction that refers to the global string
 ///          identified by @p globalName, producing a temporary that carries the

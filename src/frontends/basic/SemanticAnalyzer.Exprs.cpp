@@ -249,6 +249,19 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeNew(NewExpr &expr)
     if (!klass)
         return Type::Unknown;
 
+    // Instantiation of abstract classes is not allowed.
+    if (klass->isAbstract)
+    {
+        std::string msg = "cannot instantiate abstract class '" + expr.className + "'";
+        de.emit(il::support::Severity::Error,
+                "B2106",
+                expr.loc,
+                static_cast<uint32_t>(expr.className.size()),
+                std::move(msg));
+        // Still analyze arguments for nested diagnostics, but return Unknown.
+        return Type::Unknown;
+    }
+
     const std::size_t expectedCount = klass->ctorParams.size();
     if (expr.args.size() != expectedCount)
     {

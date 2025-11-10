@@ -257,28 +257,59 @@ Expected<void> checkRuntimeArrayCall(const VerifyCtx &ctx)
 /// @return Success when the call matches the signature; otherwise an error.
 Expected<void> checkCall(const VerifyCtx &ctx)
 {
-    if (auto result = checkRuntimeArrayCall(ctx); !result)
-        return result;
+    // Handle direct calls with special runtime array helpers; skip for indirect.
+    if (ctx.instr.op == il::core::Opcode::Call)
+    {
+        if (auto result = checkRuntimeArrayCall(ctx); !result)
+            return result;
+    }
+
+    // Resolve callee name and argument slice depending on opcode kind.
+    std::string calleeName;
+    size_t argStart = 0;
+    if (ctx.instr.op == il::core::Opcode::Call)
+    {
+        calleeName = ctx.instr.callee;
+        argStart = 0;
+    }
+    else if (ctx.instr.op == il::core::Opcode::CallIndirect)
+    {
+        if (ctx.instr.operands.empty())
+            return fail(ctx, "call.indirect missing callee operand");
+        const auto &calleeVal = ctx.instr.operands[0];
+        if (calleeVal.kind != il::core::Value::Kind::GlobalAddr)
+            return fail(ctx, "call.indirect callee must be a global name");
+        calleeName = calleeVal.str;
+        argStart = 1;
+    }
+    else
+    {
+        // Not a call; defer to default checker.
+        return {};
+    }
 
     const Extern *externSig = nullptr;
     const Function *fnSig = nullptr;
 
-    if (auto it = ctx.externs.find(ctx.instr.callee); it != ctx.externs.end())
+    if (auto it = ctx.externs.find(calleeName); it != ctx.externs.end())
         externSig = it->second;
-    else if (auto itFn = ctx.functions.find(ctx.instr.callee); itFn != ctx.functions.end())
+    else if (auto itFn = ctx.functions.find(calleeName); itFn != ctx.functions.end())
         fnSig = itFn->second;
 
     if (!externSig && !fnSig)
-        return fail(ctx, std::string("unknown callee @") + ctx.instr.callee);
+        return fail(ctx, std::string("unknown callee @") + calleeName);
 
     const size_t paramCount = externSig ? externSig->params.size() : fnSig->params.size();
-    if (ctx.instr.operands.size() != paramCount)
+    const size_t providedArgs = (ctx.instr.operands.size() >= argStart)
+                                    ? (ctx.instr.operands.size() - argStart)
+                                    : 0;
+    if (providedArgs != paramCount)
         return fail(ctx, "call arg count mismatch");
 
     for (size_t i = 0; i < paramCount; ++i)
     {
         const Type expected = externSig ? externSig->params[i] : fnSig->params[i].type;
-        if (ctx.types.valueType(ctx.instr.operands[i]).kind != expected.kind)
+        if (ctx.types.valueType(ctx.instr.operands[argStart + i]).kind != expected.kind)
             return fail(ctx, "call arg type mismatch");
     }
 

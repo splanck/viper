@@ -158,7 +158,9 @@ bool Parser::isImplicitAssignmentStart() const
 ///         present, or a null statement pointer when an error was reported.
 Parser::StmtResult Parser::parseCall(int)
 {
-    if (!at(TokenKind::Identifier))
+    // Allow calls starting with an identifier or OOP receivers like
+    // ME.Speak() or BASE.Speak().
+    if (!at(TokenKind::Identifier) && !at(TokenKind::KeywordMe) && !at(TokenKind::KeywordBase))
         return std::nullopt;
     const Token identTok = peek();
     const Token nextTok = peek(1);

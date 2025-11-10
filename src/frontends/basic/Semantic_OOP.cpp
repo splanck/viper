@@ -208,7 +208,10 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
         return prefix;
     };
 
-    // Recursive lambda to scan statements and populate the index.
+    // Track raw base names by class for later resolution and checking.
+    std::unordered_map<std::string, std::pair<std::string, il::support::SourceLoc>> rawBases;
+
+    // Recursive lambda to scan statements and populate the index (phase 1).
     std::function<void(const std::vector<StmtPtr>&)> scan;
     scan = [&](const std::vector<StmtPtr> &stmts) {
         for (const auto &stmtPtr : stmts)
@@ -231,11 +234,18 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
                     const auto &classDecl = static_cast<const ClassDecl &>(*stmtPtr);
                     ClassInfo info;
                     info.name = classDecl.name;
+                    info.loc = classDecl.loc;
+                    info.isAbstract = classDecl.isAbstract;
+                    info.isFinal = classDecl.isFinal;
                     std::string prefix = joinNs();
                     if (!prefix.empty())
                         info.qualifiedName = prefix + "." + classDecl.name;
                     else
                         info.qualifiedName = classDecl.name;
+
+                    if (classDecl.baseName)
+                        rawBases.emplace(info.qualifiedName,
+                                         std::make_pair(*classDecl.baseName, classDecl.loc));
 
                     info.fields.reserve(classDecl.fields.size());
                     std::unordered_set<std::string> classFieldNames;
@@ -295,7 +305,14 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
                                 sig.access = method.access;
                                 emitMissingReturn(classDecl, method, emitter);
                                 checkMemberShadowing(method.body, classDecl, classFieldNames, emitter);
-                                info.methods[method.name] = std::move(sig);
+                                ClassInfo::MethodInfo mi;
+                                mi.sig = std::move(sig);
+                                mi.isVirtual = method.isVirtual || method.isOverride;
+                                mi.isAbstract = method.isAbstract;
+                                mi.isFinal = method.isFinal;
+                                mi.slot = -1;
+                                info.methods[method.name] = std::move(mi);
+                                info.methodLocs[method.name] = method.loc;
                                 break;
                             }
                             default:
@@ -316,6 +333,231 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
     };
 
     scan(program.main);
+
+    // Helper to resolve a raw base name against current namespace prefix.
+    auto resolveBase = [&](const std::string &classQ, const std::string &raw) -> std::string {
+        if (raw.empty())
+            return {};
+        // Already qualified?
+        if (raw.find('.') != std::string::npos)
+        {
+            if (index.classes().count(raw))
+                return raw;
+        }
+        // Try sibling in same namespace as classQ.
+        auto lastDot = classQ.rfind('.');
+        std::string prefix = (lastDot == std::string::npos) ? std::string{} : classQ.substr(0, lastDot);
+        std::string candidate = prefix.empty() ? raw : (prefix + "." + raw);
+        if (index.classes().count(candidate))
+            return candidate;
+        // Fallback to raw as top-level name.
+        if (index.classes().count(raw))
+            return raw;
+        return {};
+    };
+
+    // Phase 2: resolve bases and detect missing bases.
+    for (auto &entry : index.classes())
+    {
+        ClassInfo &ci = entry.second;
+        auto it = rawBases.find(ci.qualifiedName);
+        if (it != rawBases.end())
+        {
+            const std::string &raw = it->second.first;
+            std::string resolved = resolveBase(ci.qualifiedName, raw);
+            if (resolved.empty())
+            {
+                if (emitter)
+                {
+                    std::string msg = std::string("base class not found: '") + raw + "'";
+                    emitter->emit(il::support::Severity::Error, "B2101", it->second.second, 1, std::move(msg));
+                }
+            }
+            ci.baseQualified = std::move(resolved);
+        }
+    }
+
+    // Phase 3: detect inheritance cycles via DFS over baseQualified edges.
+    enum State : uint8_t
+    {
+        kUnvisited = 0,
+        kVisiting = 1,
+        kVisited = 2,
+    };
+    std::unordered_map<std::string, State> state;
+    state.reserve(index.classes().size());
+
+    std::function<void(const std::string &)> detectCycle;
+    detectCycle = [&](const std::string &name) {
+        auto it = state.find(name);
+        if (it != state.end() && it->second != kUnvisited)
+            return; // already processed or in-progress handled by below
+        state[name] = kVisiting;
+        auto *cls = index.findClass(name);
+        if (cls && !cls->baseQualified.empty())
+        {
+            auto st = state[cls->baseQualified];
+            if (st == kVisiting)
+            {
+                // cycle detected
+                if (emitter)
+                {
+                    std::string msg = std::string("inheritance cycle involving '") + name + "'";
+                    emitter->emit(il::support::Severity::Error, "B2102", cls->loc, 1, std::move(msg));
+                }
+                // Break the cycle to avoid cascading issues.
+                cls->baseQualified.clear();
+            }
+            else if (st == kUnvisited)
+            {
+                detectCycle(cls->baseQualified);
+            }
+        }
+        state[name] = kVisited;
+    };
+
+    for (auto &entry : index.classes())
+        detectCycle(entry.first);
+
+    // Phase 4: build vtables and override checks in topological order.
+    std::unordered_map<std::string, bool> processed;
+    processed.reserve(index.classes().size());
+
+    auto findInBases = [&](const std::string &startClass, const std::string &methodName)
+        -> std::pair<ClassInfo *, ClassInfo::MethodInfo *>
+    {
+        ClassInfo *cur = index.findClass(startClass);
+        while (cur && !cur->baseQualified.empty())
+        {
+            ClassInfo *base = index.findClass(cur->baseQualified);
+            if (!base)
+                break;
+            auto mit = base->methods.find(methodName);
+            if (mit != base->methods.end())
+                return {base, &mit->second};
+            cur = base;
+        }
+        return {nullptr, nullptr};
+    };
+
+    std::function<void(const std::string &)> build;
+    build = [&](const std::string &name) {
+        if (processed[name])
+            return;
+        ClassInfo *ci = index.findClass(name);
+        if (!ci)
+            return;
+        // Ensure base built first
+        if (!ci->baseQualified.empty())
+            build(ci->baseQualified);
+
+        // Inherit base vtable
+        std::vector<std::string> vtable;
+        if (!ci->baseQualified.empty())
+        {
+            ClassInfo *base = index.findClass(ci->baseQualified);
+            if (base)
+            {
+                vtable = base->vtable; // copy
+                // Copy inherited abstractness if not overridden
+                for (const auto &mname : base->vtable)
+                {
+                    auto bit = base->methods.find(mname);
+                    if (bit != base->methods.end())
+                    {
+                        const auto &bm = bit->second;
+                        if (bm.isAbstract && ci->methods.find(mname) == ci->methods.end())
+                        {
+                            ci->isAbstract = true;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Assign slots and validate overrides
+        for (auto &mp : ci->methods)
+        {
+            const std::string &mname = mp.first;
+            auto &mi = mp.second;
+            // Non-virtual and non-override
+            if (!mi.isVirtual)
+                continue;
+
+            if (mi.isAbstract)
+                ci->isAbstract = true;
+
+            if (auto [base, bmi] = findInBases(name, mname); bmi != nullptr)
+            {
+                // Found in base; must be override-compatible.
+                if (bmi->slot < 0)
+                {
+                    if (emitter)
+                        emitter->emit(il::support::Severity::Error,
+                                      "B2104",
+                                      ci->methodLocs[mname],
+                                      static_cast<uint32_t>(mname.size()),
+                                      std::string("cannot override non-virtual '") + mname + "'");
+                }
+                else
+                {
+                    // Check final
+                    if (bmi->isFinal && emitter)
+                    {
+                        emitter->emit(il::support::Severity::Error,
+                                      "B2107",
+                                      ci->methodLocs[mname],
+                                      static_cast<uint32_t>(mname.size()),
+                                      std::string("cannot override final '") + mname + "'");
+                    }
+                    // Signature check
+                    const MethodSig &s1 = mi.sig;
+                    const MethodSig &s2 = bmi->sig;
+                    bool sigOk = (s1.paramTypes == s2.paramTypes) && (s1.returnType == s2.returnType);
+                    if (!sigOk && emitter)
+                    {
+                        emitter->emit(il::support::Severity::Error,
+                                      "B2103",
+                                      ci->methodLocs[mname],
+                                      static_cast<uint32_t>(mname.size()),
+                                      std::string("override signature mismatch for '") + mname + "'");
+                    }
+                    // Reuse slot
+                    mi.slot = bmi->slot;
+                    if (mi.slot >= 0 && static_cast<std::size_t>(mi.slot) < vtable.size())
+                        vtable[mi.slot] = mname;
+                }
+            }
+            else
+            {
+                // New virtual method; assign fresh slot
+                mi.slot = static_cast<int>(vtable.size());
+                vtable.push_back(mname);
+            }
+        }
+
+        ci->vtable = std::move(vtable);
+        processed[name] = true;
+    };
+
+    for (auto &entry : index.classes())
+        build(entry.first);
+}
+
+} // namespace il::frontends::basic
+
+namespace il::frontends::basic
+{
+
+int getVirtualSlot(const OopIndex &index, const std::string &qualifiedClass, const std::string &methodName)
+{
+    const ClassInfo *ci = index.findClass(qualifiedClass);
+    if (!ci)
+        return -1;
+    auto it = ci->methods.find(methodName);
+    if (it == ci->methods.end())
+        return -1;
+    return it->second.slot;
 }
 
 } // namespace il::frontends::basic

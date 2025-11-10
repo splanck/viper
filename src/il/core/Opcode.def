@@ -80,6 +80,23 @@ IL_OPCODE(AddrOf, "addr_of", ResultArity::One, TypeCategory::Ptr, 1, 1, TypeCate
 IL_OPCODE(ConstStr, "const_str", ResultArity::One, TypeCategory::Str, 1, 1, TypeCategory::Ptr, TypeCategory::None, TypeCategory::None, false, 0, false, VM_DISPATCH(ConstStr), makeParseSpec(OperandParseKind::Value), makeParseSpec(), makeParseSpec(), makeParseSpec())
 IL_OPCODE(ConstNull, "const_null", ResultArity::One, TypeCategory::Ptr, 0, 0, TypeCategory::None, TypeCategory::None, TypeCategory::None, false, 0, false, VM_DISPATCH(ConstNull), makeParseSpec(), makeParseSpec(), makeParseSpec(), makeParseSpec())
 IL_OPCODE(Call, "call", ResultArity::Optional, TypeCategory::Dynamic, 0, kVariadicOperandCount, TypeCategory::Any, TypeCategory::Any, TypeCategory::Any, true, 0, false, VM_DISPATCH(Call), makeParseSpec(OperandParseKind::Call), makeParseSpec(), makeParseSpec(), makeParseSpec())
+IL_OPCODE(CallIndirect,
+          "call.indirect",
+          ResultArity::Optional,
+          TypeCategory::Dynamic,
+          1,
+          kVariadicOperandCount,
+          TypeCategory::Any,
+          TypeCategory::Any,
+          TypeCategory::Any,
+          true,
+          0,
+          false,
+          VM_DISPATCH(CallIndirect),
+          makeParseSpec(OperandParseKind::Value, "callee"),
+          makeParseSpec(),
+          makeParseSpec(),
+          makeParseSpec())
 IL_OPCODE(SwitchI32,
           "switch.i32",
           ResultArity::None,

@@ -441,6 +441,25 @@ function(viper_add_golden_suite_tests)
             "-DEXPECT=${EXPECT_ARRAY_RESIZE_BREAKS_SHARE}"
             -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
 
+    # OOP virtual dispatch and base-qualified direct call
+    file(READ ${_VIPER_GOLDEN_DIR}/oop/virtual_dispatch.stdout EXPECT_OOP_VDISPATCH)
+    string(STRIP "${EXPECT_OOP_VDISPATCH}" EXPECT_OOP_VDISPATCH)
+    viper_add_ctest(oop_virtual_dispatch
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/oop/virtual_dispatch.bas
+            "-DEXPECT=${EXPECT_OOP_VDISPATCH}"
+            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
+
+    file(READ ${_VIPER_GOLDEN_DIR}/oop/base_qualifier.stdout EXPECT_OOP_BASE_QUAL)
+    string(STRIP "${EXPECT_OOP_BASE_QUAL}" EXPECT_OOP_BASE_QUAL)
+    viper_add_ctest(oop_base_qualifier
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/oop/base_qualifier.bas
+            "-DEXPECT=${EXPECT_OOP_BASE_QUAL}"
+            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
+
     file(READ ${_VIPER_GOLDEN_DIR}/basic/print_commas.stdout EXPECT_BASIC_PRINT_COMMAS)
     string(STRIP "${EXPECT_BASIC_PRINT_COMMAS}" EXPECT_BASIC_PRINT_COMMAS)
     viper_add_ctest(basic_print_commas_alignment
@@ -458,4 +477,52 @@ function(viper_add_golden_suite_tests)
             -DIL_FILE=${_VIPER_GOLDEN_DIR}/quickstart.il
             "-DEXPECT=${EXPECT_QUICKSTART}"
             -P ${_VIPER_GOLDEN_DIR}/check_run_output.cmake)
+
+    # OOP negative diagnostics
+    set(OOP_ERR_DIR ${_VIPER_GOLDEN_DIR}/oop_errors)
+
+    file(READ ${OOP_ERR_DIR}/override_nonvirtual.stderr EXPECT_OOP_ERR_OVR_NONV)
+    string(STRIP "${EXPECT_OOP_ERR_OVR_NONV}" EXPECT_OOP_ERR_OVR_NONV)
+    viper_add_ctest(oop_error_override_nonvirtual
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${OOP_ERR_DIR}/override_nonvirtual.bas
+            "-DEXPECT=${EXPECT_OOP_ERR_OVR_NONV}"
+            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
+
+    file(READ ${OOP_ERR_DIR}/signature_mismatch.stderr EXPECT_OOP_ERR_SIG_MISMATCH)
+    string(STRIP "${EXPECT_OOP_ERR_SIG_MISMATCH}" EXPECT_OOP_ERR_SIG_MISMATCH)
+    viper_add_ctest(oop_error_signature_mismatch
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${OOP_ERR_DIR}/signature_mismatch.bas
+            "-DEXPECT=${EXPECT_OOP_ERR_SIG_MISMATCH}"
+            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
+
+    file(READ ${OOP_ERR_DIR}/final_override.stderr EXPECT_OOP_ERR_FINAL)
+    string(STRIP "${EXPECT_OOP_ERR_FINAL}" EXPECT_OOP_ERR_FINAL)
+    viper_add_ctest(oop_error_final_override
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${OOP_ERR_DIR}/final_override.bas
+            "-DEXPECT=${EXPECT_OOP_ERR_FINAL}"
+            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
+
+    file(READ ${OOP_ERR_DIR}/abstract_instantiate.stderr EXPECT_OOP_ERR_ABSTRACT)
+    string(STRIP "${EXPECT_OOP_ERR_ABSTRACT}" EXPECT_OOP_ERR_ABSTRACT)
+    viper_add_ctest(oop_error_abstract_instantiate
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${OOP_ERR_DIR}/abstract_instantiate.bas
+            "-DEXPECT=${EXPECT_OOP_ERR_ABSTRACT}"
+            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
+
+    file(READ ${OOP_ERR_DIR}/base_not_found.stderr EXPECT_OOP_ERR_BASE_NOT_FOUND)
+    string(STRIP "${EXPECT_OOP_ERR_BASE_NOT_FOUND}" EXPECT_OOP_ERR_BASE_NOT_FOUND)
+    viper_add_ctest(oop_error_base_not_found
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${OOP_ERR_DIR}/base_not_found.bas
+            "-DEXPECT=${EXPECT_OOP_ERR_BASE_NOT_FOUND}"
+            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
 endfunction()

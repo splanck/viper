@@ -945,6 +945,22 @@ void VM::inline_handle_Call(ExecState &st)
     handleInlineResult(st, exec);
 }
 
+void VM::inline_handle_CallIndirect(ExecState &st)
+{
+    const Instr *instr = st.currentInstr;
+    if (!instr)
+    {
+        trapUnimplemented(Opcode::CallIndirect);
+    }
+    auto handler = &il::vm::detail::handleCallIndirect;
+    if (!handler)
+    {
+        trapUnimplemented(Opcode::CallIndirect);
+    }
+    ExecResult exec = handler(*this, st.fr, *instr, st.blocks, st.bb, st.ip);
+    handleInlineResult(st, exec);
+}
+
 void VM::inline_handle_SwitchI32(ExecState &st)
 {
     const Instr *instr = st.currentInstr;

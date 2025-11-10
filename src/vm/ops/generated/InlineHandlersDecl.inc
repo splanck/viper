@@ -60,6 +60,7 @@ void inline_handle_AddrOf(ExecState &st);
 void inline_handle_ConstStr(ExecState &st);
 void inline_handle_ConstNull(ExecState &st);
 void inline_handle_Call(ExecState &st);
+void inline_handle_CallIndirect(ExecState &st);
 void inline_handle_SwitchI32(ExecState &st);
 void inline_handle_Br(ExecState &st);
 void inline_handle_CBr(ExecState &st);
