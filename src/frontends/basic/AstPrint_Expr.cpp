@@ -260,6 +260,34 @@ struct AstPrinter::ExprPrinter final : ExprVisitor
         printer.os << ')';
     }
 
+    /// @brief Print an IS expression as (IS <expr> <dotted-type>).
+    void visit(const IsExpr &expr) override
+    {
+        printer.os << "(IS ";
+        expr.value->accept(*this);
+        printer.os << ' ';
+        for (size_t i = 0; i < expr.typeName.size(); ++i)
+        {
+            if (i) printer.os << '.';
+            printer.os << expr.typeName[i];
+        }
+        printer.os << ')';
+    }
+
+    /// @brief Print an AS expression as (AS <expr> <dotted-type>).
+    void visit(const AsExpr &expr) override
+    {
+        printer.os << "(AS ";
+        expr.value->accept(*this);
+        printer.os << ' ';
+        for (size_t i = 0; i < expr.typeName.size(); ++i)
+        {
+            if (i) printer.os << '.';
+            printer.os << expr.typeName[i];
+        }
+        printer.os << ')';
+    }
+
   private:
     Printer &printer;
 };

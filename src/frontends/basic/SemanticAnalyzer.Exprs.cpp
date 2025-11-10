@@ -143,6 +143,22 @@ class SemanticAnalyzerExprVisitor final : public MutExprVisitor
         result_ = SemanticAnalyzer::Type::Unknown;
     }
 
+    /// @brief IS expressions evaluate to boolean (basic checks only).
+    void visit(IsExpr &expr) override
+    {
+        // Minimal typing: ensure left is an object-like value when known.
+        // Current frontend tracks objects out-of-band, so accept and return Bool.
+        (void)analyzer_.visitExpr(*expr.value);
+        result_ = SemanticAnalyzer::Type::Bool;
+    }
+
+    /// @brief AS expressions yield the inner value's type when compatible; else unknown.
+    void visit(AsExpr &expr) override
+    {
+        // Preserve operand type; runtime returns NULL on failure.
+        result_ = analyzer_.visitExpr(*expr.value);
+    }
+
     /// @brief Retrieve the semantic type computed during visitation.
     [[nodiscard]] SemanticAnalyzer::Type result() const noexcept
     {

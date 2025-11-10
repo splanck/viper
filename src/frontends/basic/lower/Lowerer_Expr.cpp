@@ -260,6 +260,95 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
         result_ = lowerer_.lowerMethodCallExpr(expr);
     }
 
+    /// @brief Lower IS expression via RTTI helpers.
+    void visit(const IsExpr &expr) override
+    {
+        lowerer_.curLoc = expr.loc;
+        // Lower left value to an object pointer
+        Lowerer::RVal lhs = lowerer_.lowerExpr(*expr.value);
+        // Build type/interface key from dotted name
+        std::string dotted;
+        for (size_t i = 0; i < expr.typeName.size(); ++i)
+        {
+            if (i) dotted.push_back('.');
+            dotted += expr.typeName[i];
+        }
+        // Determine if target is an interface
+        bool isIface = false;
+        int targetId = -1;
+        // Interface lookup via OOP index
+        for (const auto &p : lowerer_.oopIndex_.interfacesByQname())
+        {
+            if (p.first == dotted)
+            {
+                isIface = true;
+                targetId = p.second.ifaceId;
+                break;
+            }
+        }
+        if (!isIface)
+        {
+            // Use last segment as class key for layout map
+            std::string cls = expr.typeName.empty() ? std::string{} : expr.typeName.back();
+            auto it = lowerer_.classLayouts_.find(cls);
+            if (it != lowerer_.classLayouts_.end())
+                targetId = static_cast<int>(it->second.classId);
+        }
+
+        // Call rt_typeid_of to get type id and then predicate helper
+        Lowerer::Value typeIdVal = lowerer_.emitCallRet(
+            Lowerer::Type(Lowerer::Type::Kind::I64), "rt_typeid_of", {lhs.value});
+        Lowerer::Value pred64 = isIface
+                                     ? lowerer_.emitCallRet(Lowerer::Type(Lowerer::Type::Kind::I64),
+                                                            "rt_type_implements",
+                                                            {typeIdVal, Lowerer::Value::constInt(targetId)})
+                                     : lowerer_.emitCallRet(Lowerer::Type(Lowerer::Type::Kind::I64),
+                                                            "rt_type_is_a",
+                                                            {typeIdVal, Lowerer::Value::constInt(targetId)});
+        Lowerer::Value cond = lowerer_.emitBinary(il::core::Opcode::ICmpNe, lowerer_.ilBoolTy(), pred64, Lowerer::Value::constInt(0));
+        result_ = Lowerer::RVal{cond, lowerer_.ilBoolTy()};
+    }
+
+    /// @brief Lower AS expression via RTTI helpers.
+    void visit(const AsExpr &expr) override
+    {
+        lowerer_.curLoc = expr.loc;
+        Lowerer::RVal lhs = lowerer_.lowerExpr(*expr.value);
+        // Dotted type name
+        std::string dotted;
+        for (size_t i = 0; i < expr.typeName.size(); ++i)
+        {
+            if (i) dotted.push_back('.');
+            dotted += expr.typeName[i];
+        }
+        bool isIface = false;
+        int targetId = -1;
+        for (const auto &p : lowerer_.oopIndex_.interfacesByQname())
+        {
+            if (p.first == dotted)
+            {
+                isIface = true;
+                targetId = p.second.ifaceId;
+                break;
+            }
+        }
+        if (!isIface)
+        {
+            std::string cls = expr.typeName.empty() ? std::string{} : expr.typeName.back();
+            auto it = lowerer_.classLayouts_.find(cls);
+            if (it != lowerer_.classLayouts_.end())
+                targetId = static_cast<int>(it->second.classId);
+        }
+        Lowerer::Value casted = isIface
+                                     ? lowerer_.emitCallRet(Lowerer::Type(Lowerer::Type::Kind::Ptr),
+                                                            "rt_cast_as_iface",
+                                                            {lhs.value, Lowerer::Value::constInt(targetId)})
+                                     : lowerer_.emitCallRet(Lowerer::Type(Lowerer::Type::Kind::Ptr),
+                                                            "rt_cast_as",
+                                                            {lhs.value, Lowerer::Value::constInt(targetId)});
+        result_ = Lowerer::RVal{casted, Lowerer::Type(Lowerer::Type::Kind::Ptr)};
+    }
+
     /// @brief Retrieve the IL value produced by the most recent visit.
     /// @details The visitor stores the result internally to avoid allocating on
     ///          every visit call; this accessor exposes the cached value to the
@@ -604,6 +693,21 @@ TypeRules::NumericType Lowerer::classifyNumericType(const Expr &expr)
         void visit(const MethodCallExpr &) override
         {
             result_ = NumericType::Long;
+        }
+
+        void visit(const IsExpr &) override
+        {
+            // Boolean result
+            result_ = NumericType::Long;
+        }
+
+        void visit(const AsExpr &as) override
+        {
+            // Classify underlying value
+            if (as.value)
+                result_ = lowerer_.classifyNumericType(*as.value);
+            else
+                result_ = NumericType::Long;
         }
 
       private:

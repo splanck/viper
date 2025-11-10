@@ -287,6 +287,30 @@ void MethodCallExpr::accept(MutExprVisitor &visitor)
     visitor.visit(*this);
 }
 
+/// @brief Forwards this IS expression node to the visitor.
+void IsExpr::accept(ExprVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+/// @brief Dispatch this IS expression node to a mutable visitor.
+void IsExpr::accept(MutExprVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+/// @brief Forwards this AS expression node to the visitor.
+void AsExpr::accept(ExprVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+/// @brief Dispatch this AS expression node to a mutable visitor.
+void AsExpr::accept(MutExprVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
 /// @brief Forwards this label statement node to the visitor for double dispatch.
 /// @param visitor Receives the node; ownership remains with the AST.
 void LabelStmt::accept(StmtVisitor &visitor) const
@@ -829,6 +853,18 @@ void TypeDecl::accept(StmtVisitor &visitor) const
 /// @brief Dispatch this TYPE declaration node to a mutable visitor.
 /// @param visitor Receives the node and may mutate field definitions.
 void TypeDecl::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+/// @brief Forwards this INTERFACE declaration node to the visitor.
+void InterfaceDecl::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+/// @brief Dispatch this INTERFACE declaration node to a mutable visitor.
+void InterfaceDecl::accept(MutStmtVisitor &visitor)
 {
     visitor.visit(*this);
 }

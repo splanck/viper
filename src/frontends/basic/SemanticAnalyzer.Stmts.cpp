@@ -240,6 +240,9 @@ class SemanticAnalyzerStmtVisitor final : public MutStmtVisitor
 
     void visit(TypeDecl &) override {}
 
+    /// @brief Interface declarations are analysed in dedicated OOP passes.
+    void visit(InterfaceDecl &) override {}
+
   private:
     SemanticAnalyzer &analyzer_;
 };

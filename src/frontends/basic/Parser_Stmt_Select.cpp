@@ -424,7 +424,7 @@ il::support::Expected<Parser::CaseArmSyntax> Parser::parseCaseArmSyntax(Cursor &
     bool bail = false;
     while (!bail)
     {
-        if (at(TokenKind::Identifier) && peek().lexeme == "IS")
+        if ((at(TokenKind::Identifier) && peek().lexeme == "IS") || at(TokenKind::KeywordIs))
         {
             consume();
             Cursor::Relation rel;

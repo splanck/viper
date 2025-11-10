@@ -219,6 +219,21 @@ void printClass(const ClassDecl &stmt, Context &ctx)
     auto &os = ctx.stream();
     os << "(CLASS " << stmt.name;
     printFields(stmt.fields, ctx);
+    // Implements list
+    if (!stmt.implementsQualifiedNames.empty())
+    {
+        os << " (IMPLEMENTS";
+        for (const auto &qn : stmt.implementsQualifiedNames)
+        {
+            os << ' ';
+            for (size_t i = 0; i < qn.size(); ++i)
+            {
+                if (i) os << '.';
+                os << qn[i];
+            }
+        }
+        os << ')';
+    }
     ctx.printNumberedBody(stmt.members);
 }
 
@@ -233,6 +248,22 @@ void printType(const TypeDecl &stmt, Context &ctx)
     os << "(TYPE " << stmt.name;
     printFields(stmt.fields, ctx);
     os << ')';
+}
+
+/// @brief Emit an INTERFACE declaration including abstract members.
+/// @details Prints `(INTERFACE A.B.I)` and then the numbered member body.
+/// @param stmt Interface declaration AST node.
+/// @param ctx Printer context handling nested emission.
+void printInterface(const InterfaceDecl &stmt, Context &ctx)
+{
+    auto &os = ctx.stream();
+    os << "(INTERFACE ";
+    for (size_t i = 0; i < stmt.qualifiedName.size(); ++i)
+    {
+        if (i) os << '.';
+        os << stmt.qualifiedName[i];
+    }
+    ctx.printNumberedBody(stmt.members);
 }
 
 /// @brief Print a DELETE statement targeting a specific expression.

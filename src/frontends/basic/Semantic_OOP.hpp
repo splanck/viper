@@ -19,6 +19,22 @@ namespace il::frontends::basic
 
 class DiagnosticEmitter;
 
+/// @brief Signature used for interface slots (parameters + return type).
+struct IfaceMethodSig
+{
+    std::string name;                 ///< Method name within the interface.
+    std::vector<Type> paramTypes;     ///< Parameter types in order.
+    std::optional<Type> returnType;   ///< Optional return type.
+};
+
+/// @brief Interface metadata including stable ID and slot layout.
+struct InterfaceInfo
+{
+    int ifaceId = -1;                        ///< Monotonic stable interface identifier.
+    std::string qualifiedName;               ///< Fully-qualified interface name (A.B.I).
+    std::vector<IfaceMethodSig> slots;       ///< Declared methods in slot order.
+};
+
 /// @brief Captures the signature of a CLASS method.
 struct MethodSig
 {
@@ -79,6 +95,15 @@ struct ClassInfo
 
     /// Method declaration source locations (for diagnostics).
     std::unordered_map<std::string, il::support::SourceLoc> methodLocs;
+
+    /// Interfaces implemented by this class (by stable ID).
+    std::vector<int> implementedInterfaces;
+
+    /// Mapping from interface id to concrete method mappings (slot -> method name).
+    std::unordered_map<int, std::vector<std::string>> ifaceSlotImpl;
+
+    /// Raw implements list captured during parsing (dotted names, unresolved).
+    std::vector<std::string> rawImplements;
 };
 
 /// @brief Container mapping class names to extracted metadata.
@@ -86,6 +111,7 @@ class OopIndex
 {
   public:
     using ClassTable = std::unordered_map<std::string, ClassInfo>;
+    using IfaceTable = std::unordered_map<std::string, InterfaceInfo>; // key: qualified name
 
     /// @brief Access the mutable class table.
     [[nodiscard]] ClassTable &classes() noexcept
@@ -103,6 +129,8 @@ class OopIndex
     void clear() noexcept
     {
         classes_.clear();
+        interfacesByQname_.clear();
+        nextInterfaceId_ = 0;
     }
 
     /// @brief Find a class by name.
@@ -113,6 +141,15 @@ class OopIndex
 
   private:
     ClassTable classes_;
+    IfaceTable interfacesByQname_;
+    int nextInterfaceId_ = 0;
+
+  public:
+    /// @brief Access the interface table by qualified name.
+    [[nodiscard]] IfaceTable &interfacesByQname() noexcept { return interfacesByQname_; }
+    [[nodiscard]] const IfaceTable &interfacesByQname() const noexcept { return interfacesByQname_; }
+    /// @brief Allocate the next stable interface ID.
+    int allocateInterfaceId() noexcept { return nextInterfaceId_++; }
 };
 
 /// @brief Populate @p index with class metadata extracted from @p program.

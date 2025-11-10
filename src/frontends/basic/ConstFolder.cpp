@@ -580,6 +580,18 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
             foldExpr(arg);
     }
 
+    /// @brief Fold inside IS expression (value only; type is metadata).
+    void visit(IsExpr &expr) override
+    {
+        foldExpr(expr.value);
+    }
+
+    /// @brief Fold inside AS expression (value only; type is metadata).
+    void visit(AsExpr &expr) override
+    {
+        foldExpr(expr.value);
+    }
+
     // MutStmtVisitor overrides ----------------------------------------------
     /// @brief Labels carry no expressions to fold.
     void visit(LabelStmt &) override {}
@@ -833,6 +845,13 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
 
     /// @brief TYPE declarations define shapes only and do not fold expressions.
     void visit(TypeDecl &) override {}
+
+    /// @brief Fold members inside INTERFACE declarations.
+    void visit(InterfaceDecl &stmt) override
+    {
+        for (auto &member : stmt.members)
+            foldStmt(member);
+    }
 
     ExprPtr *currentExpr_ = nullptr;
     StmtPtr *currentStmt_ = nullptr;

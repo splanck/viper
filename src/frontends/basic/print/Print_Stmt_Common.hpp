@@ -272,5 +272,8 @@ void printType(const TypeDecl &stmt, Context &ctx);
 /// @details Prints the `DELETE` keyword followed by the target expression, delegating expression
 ///          formatting to the context helpers so spacing stays consistent.
 void printDelete(const DeleteStmt &stmt, Context &ctx);
+/// @brief Emit INTERFACE declarations with abstract members.
+/// @details Prints the interface qualified name and numbered member body.
+void printInterface(const InterfaceDecl &stmt, Context &ctx);
 
 } // namespace il::frontends::basic::print_stmt

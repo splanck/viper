@@ -243,6 +243,26 @@ template <typename Derived> class BasicAstWalker : public ExprVisitor, public St
         callAfter(expr);
     }
 
+    void visit(const IsExpr &expr) override
+    {
+        callBefore(expr);
+        if (callShouldVisit(expr))
+        {
+            walker::detail::visitOptionalChild(*this, expr, expr.value);
+        }
+        callAfter(expr);
+    }
+
+    void visit(const AsExpr &expr) override
+    {
+        callBefore(expr);
+        if (callShouldVisit(expr))
+        {
+            walker::detail::visitOptionalChild(*this, expr, expr.value);
+        }
+        callAfter(expr);
+    }
+
     // Statement visitors ---------------------------------------------------
 
     void visit(const LabelStmt &stmt) override
@@ -611,6 +631,16 @@ template <typename Derived> class BasicAstWalker : public ExprVisitor, public St
         if (callShouldVisit(stmt))
         {
             // TYPE fields are simple declarations without nested AST nodes.
+        }
+        callAfter(stmt);
+    }
+
+    void visit(const InterfaceDecl &stmt) override
+    {
+        callBefore(stmt);
+        if (callShouldVisit(stmt))
+        {
+            walker::detail::visitChildRange(*this, stmt, stmt.members);
         }
         callAfter(stmt);
     }

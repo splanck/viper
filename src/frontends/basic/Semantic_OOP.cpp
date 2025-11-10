@@ -26,6 +26,7 @@
 #include "frontends/basic/AST.hpp"
 #include "frontends/basic/AstWalker.hpp"
 #include "frontends/basic/DiagnosticEmitter.hpp"
+#include "frontends/basic/SemanticDiagnostics.hpp"
 #include "frontends/basic/TypeSuffix.hpp"
 
 #include "support/diagnostics.hpp"
@@ -323,6 +324,19 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
                     if (!info.hasConstructor)
                         info.hasSynthCtor = true;
 
+                    // Capture raw implements list from AST when available
+                    for (const auto &implQN : classDecl.implementsQualifiedNames)
+                    {
+                        std::string dotted;
+                        for (size_t i = 0; i < implQN.size(); ++i)
+                        {
+                            if (i) dotted.push_back('.');
+                            dotted += implQN[i];
+                        }
+                        if (!dotted.empty())
+                            info.rawImplements.push_back(std::move(dotted));
+                    }
+
                     index.classes()[info.qualifiedName] = std::move(info);
                     break;
                 }
@@ -333,6 +347,69 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
     };
 
     scan(program.main);
+
+    // Phase 1b: scan interfaces and assign stable IDs
+    auto joinQualified = [](const std::vector<std::string> &segs) {
+        std::string out;
+        for (size_t i = 0; i < segs.size(); ++i)
+        {
+            if (i) out.push_back('.');
+            out += segs[i];
+        }
+        return out;
+    };
+
+    // We reuse the same scanner but intercept InterfaceDecl as we recurse bodies
+    std::function<void(const std::vector<StmtPtr>&)> scanInterfaces;
+    scanInterfaces = [&](const std::vector<StmtPtr> &stmts) {
+        for (const auto &stmt : stmts)
+        {
+            if (!stmt) continue;
+            if (auto *ns = dynamic_cast<const NamespaceDecl *>(stmt.get()))
+            {
+                scanInterfaces(ns->body);
+                continue;
+            }
+            if (auto *idecl = dynamic_cast<const InterfaceDecl *>(stmt.get()))
+            {
+                InterfaceInfo ii;
+                ii.qualifiedName = joinQualified(idecl->qualifiedName);
+                if (ii.qualifiedName.empty())
+                    continue;
+                ii.ifaceId = index.allocateInterfaceId();
+                // Collect method slots in declaration order
+                std::unordered_set<std::string> seen;
+                SemanticDiagnostics sde(*emitter);
+                for (const auto &mem : idecl->members)
+                {
+                    if (!mem) continue;
+                    if (auto *md = dynamic_cast<const MethodDecl *>(mem.get()))
+                    {
+                        if (seen.count(md->name))
+                        {
+                            sde.emit(diag::BasicDiag::IfaceDupMethod,
+                                     md->loc,
+                                     static_cast<uint32_t>(md->name.size()),
+                                     { {"method", md->name}, {"iface", ii.qualifiedName} });
+                            continue;
+                        }
+                        seen.insert(md->name);
+                        IfaceMethodSig slot;
+                        slot.name = md->name;
+                        for (const auto &p : md->params)
+                            slot.paramTypes.push_back(p.type);
+                        if (md->ret)
+                            slot.returnType = md->ret;
+                        else if (auto suffixType = inferAstTypeFromSuffix(md->name))
+                            slot.returnType = suffixType;
+                        ii.slots.push_back(std::move(slot));
+                    }
+                }
+                index.interfacesByQname()[ii.qualifiedName] = std::move(ii);
+            }
+        }
+    };
+    scanInterfaces(program.main);
 
     // Helper to resolve a raw base name against current namespace prefix.
     auto resolveBase = [&](const std::string &classQ, const std::string &raw) -> std::string {
@@ -356,7 +433,7 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
         return {};
     };
 
-    // Phase 2: resolve bases and detect missing bases.
+    // Phase 2: resolve bases and detect missing bases; collect implements list.
     for (auto &entry : index.classes())
     {
         ClassInfo &ci = entry.second;
@@ -374,6 +451,35 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
                 }
             }
             ci.baseQualified = std::move(resolved);
+        }
+
+        // Resolve implemented interfaces against class namespace
+        if (!ci.rawImplements.empty())
+        {
+            auto resolveIface = [&](const std::string &raw) -> std::string {
+                if (raw.find('.') != std::string::npos)
+                {
+                    if (index.interfacesByQname().count(raw))
+                        return raw;
+                }
+                auto lastDot = ci.qualifiedName.rfind('.');
+                std::string prefix = (lastDot == std::string::npos) ? std::string{} : ci.qualifiedName.substr(0, lastDot);
+                std::string candidate = prefix.empty() ? raw : (prefix + "." + raw);
+                if (index.interfacesByQname().count(candidate))
+                    return candidate;
+                if (index.interfacesByQname().count(raw))
+                    return raw;
+                return {};
+            };
+            for (const auto &raw : ci.rawImplements)
+            {
+                std::string resolved = resolveIface(raw);
+                if (!resolved.empty())
+                {
+                    const auto &iface = index.interfacesByQname().at(resolved);
+                    ci.implementedInterfaces.push_back(iface.ifaceId);
+                }
+            }
         }
     }
 
@@ -542,6 +648,91 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
 
     for (auto &entry : index.classes())
         build(entry.first);
+
+    // Phase 5: Interface conformance checks
+    auto findMethodInClassOrBases = [&](const std::string &classQ,
+                                        const std::string &name) -> const ClassInfo::MethodInfo *
+    {
+        const ClassInfo *cur = index.findClass(classQ);
+        if (!cur) return nullptr;
+        if (auto it = cur->methods.find(name); it != cur->methods.end())
+            return &it->second;
+        while (cur && !cur->baseQualified.empty())
+        {
+            cur = index.findClass(cur->baseQualified);
+            if (!cur) break;
+            if (auto it2 = cur->methods.find(name); it2 != cur->methods.end())
+                return &it2->second;
+        }
+        return nullptr;
+    };
+
+    auto sigsMatch = [](const MethodSig &cls, const IfaceMethodSig &iface) {
+        if (cls.paramTypes != iface.paramTypes)
+            return false;
+        if (cls.returnType.has_value() != iface.returnType.has_value())
+            return false;
+        if (cls.returnType && iface.returnType && *cls.returnType != *iface.returnType)
+            return false;
+        return true;
+    };
+
+    for (auto &entry2 : index.classes())
+    {
+        ClassInfo &ci = entry2.second;
+        if (ci.implementedInterfaces.empty())
+            continue;
+
+        // Build reverse lookup: interface id -> InterfaceInfo
+        std::unordered_map<int, const InterfaceInfo *> idToIface;
+        for (const auto &p : index.interfacesByQname())
+            idToIface[p.second.ifaceId] = &p.second;
+
+        SemanticDiagnostics sde(*emitter);
+        bool wasAbstract = ci.isAbstract;
+        for (int ifaceId : ci.implementedInterfaces)
+        {
+            auto itF = idToIface.find(ifaceId);
+            if (itF == idToIface.end())
+                continue;
+            const InterfaceInfo &iface = *itF->second;
+            std::vector<std::string> mapping;
+            mapping.resize(iface.slots.size());
+            for (size_t slot = 0; slot < iface.slots.size(); ++slot)
+            {
+                const auto &slotSig = iface.slots[slot];
+                const ClassInfo::MethodInfo *mi = findMethodInClassOrBases(ci.qualifiedName, slotSig.name);
+                if (!mi)
+                {
+                    ci.isAbstract = true;
+                    // If class was not previously abstract, emit error
+                    if (!wasAbstract && emitter)
+                    {
+                        sde.emit(diag::BasicDiag::ClassMissesIfaceMethod,
+                                 ci.loc,
+                                 static_cast<uint32_t>(ci.name.size()),
+                                 { {"class", ci.qualifiedName}, {"iface", iface.qualifiedName}, {"method", slotSig.name} });
+                    }
+                    continue;
+                }
+                // signature match
+                if (!sigsMatch(mi->sig, slotSig))
+                {
+                    ci.isAbstract = true;
+                    if (!wasAbstract && emitter)
+                    {
+                        sde.emit(diag::BasicDiag::ClassMissesIfaceMethod,
+                                 ci.loc,
+                                 static_cast<uint32_t>(ci.name.size()),
+                                 { {"class", ci.qualifiedName}, {"iface", iface.qualifiedName}, {"method", slotSig.name} });
+                    }
+                    continue;
+                }
+                mapping[slot] = slotSig.name;
+            }
+            ci.ifaceSlotImpl[ifaceId] = std::move(mapping);
+        }
+    }
 }
 
 } // namespace il::frontends::basic

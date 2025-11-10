@@ -409,6 +409,14 @@ struct AstPrinter::StmtPrinter final : StmtVisitor
         print_stmt::printType(stmt, ctx);
     }
 
+    /// @brief Render an INTERFACE declaration including abstract members.
+    ///
+    /// @param stmt Interface declaration node to print.
+    void visit(const InterfaceDecl &stmt) override
+    {
+        print_stmt::printInterface(stmt, ctx);
+    }
+
     Context ctx;
 };
 

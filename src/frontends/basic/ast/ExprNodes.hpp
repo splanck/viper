@@ -36,6 +36,8 @@ struct ExprVisitor
     virtual void visit(const MeExpr &) = 0;
     virtual void visit(const MemberAccessExpr &) = 0;
     virtual void visit(const MethodCallExpr &) = 0;
+    virtual void visit(const IsExpr &) = 0;
+    virtual void visit(const AsExpr &) = 0;
 };
 
 /// @brief Visitor interface for mutable BASIC expressions.
@@ -58,6 +60,8 @@ struct MutExprVisitor
     virtual void visit(MeExpr &) = 0;
     virtual void visit(MemberAccessExpr &) = 0;
     virtual void visit(MethodCallExpr &) = 0;
+    virtual void visit(IsExpr &) = 0;
+    virtual void visit(AsExpr &) = 0;
 };
 
 /// @brief Base class for all BASIC expressions.
@@ -316,6 +320,28 @@ struct MethodCallExpr : Expr
 
     /// Arguments passed to the method call.
     std::vector<ExprPtr> args;
+    void accept(ExprVisitor &visitor) const override;
+    void accept(MutExprVisitor &visitor) override;
+};
+
+/// @brief Runtime type check expression: `value IS Type.Name`.
+struct IsExpr : Expr
+{
+    /// Value being tested.
+    ExprPtr value;
+    /// Dotted type name segments.
+    std::vector<std::string> typeName;
+    void accept(ExprVisitor &visitor) const override;
+    void accept(MutExprVisitor &visitor) override;
+};
+
+/// @brief Type ascription/cast expression: `value AS Type.Name`.
+struct AsExpr : Expr
+{
+    /// Value being cast.
+    ExprPtr value;
+    /// Dotted type name segments.
+    std::vector<std::string> typeName;
     void accept(ExprVisitor &visitor) const override;
     void accept(MutExprVisitor &visitor) override;
 };

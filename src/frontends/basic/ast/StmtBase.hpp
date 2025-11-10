@@ -58,6 +58,7 @@ struct StmtVisitor
     virtual void visit(const MethodDecl &) = 0;
     virtual void visit(const ClassDecl &) = 0;
     virtual void visit(const TypeDecl &) = 0;
+    virtual void visit(const InterfaceDecl &) = 0;
 
     virtual void visit(const NamespaceDecl &) {}
 };
@@ -105,6 +106,7 @@ struct MutStmtVisitor
     virtual void visit(MethodDecl &) = 0;
     virtual void visit(ClassDecl &) = 0;
     virtual void visit(TypeDecl &) = 0;
+    virtual void visit(InterfaceDecl &) = 0;
 
     virtual void visit(NamespaceDecl &) {}
 };
@@ -154,6 +156,7 @@ struct Stmt
         MethodDecl,
         ClassDecl,
         TypeDecl,
+        InterfaceDecl,
         NamespaceDecl,
     };
 

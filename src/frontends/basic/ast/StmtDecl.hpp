@@ -200,6 +200,10 @@ struct ClassDecl : Stmt
 
     /// Members declared within the class (constructors, destructors, methods).
     std::vector<StmtPtr> members;
+
+    /// Interfaces implemented by this class, each as dotted qualified segments.
+    /// Example: implements A.B.I -> { {"A","B","I"} }
+    std::vector<std::vector<std::string>> implementsQualifiedNames;
     void accept(StmtVisitor &visitor) const override;
     void accept(MutStmtVisitor &visitor) override;
 };
@@ -254,6 +258,24 @@ struct NamespaceDecl : Stmt
     {
         visitor.visit(*this);
     }
+};
+
+/// @brief INTERFACE declaration grouping abstract member signatures.
+struct InterfaceDecl : Stmt
+{
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
+    {
+        return Kind::InterfaceDecl;
+    }
+
+    /// Qualified interface name segments, e.g. ["A","B","I"].
+    std::vector<std::string> qualifiedName;
+
+    /// Abstract members (method signatures only) declared inside the interface.
+    std::vector<StmtPtr> members;
+
+    void accept(StmtVisitor &visitor) const override;
+    void accept(MutStmtVisitor &visitor) override;
 };
 
 } // namespace il::frontends::basic

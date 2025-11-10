@@ -38,3 +38,12 @@
   code: B1003
   severity: error
   format: "unknown line {label}"
+# OOP / Interface diagnostics
+- id: BASIC_IFACE_DUP_METHOD
+  code: B2110
+  severity: error
+  format: "duplicate method '{method}' in interface '{iface}'"
+- id: BASIC_CLASS_MISSES_IFACE_METHOD
+  code: B2111
+  severity: error
+  format: "class '{class}' does not implement interface method '{method}' from '{iface}'"

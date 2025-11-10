@@ -29,6 +29,8 @@ struct NewExpr;
 struct MeExpr;
 struct MemberAccessExpr;
 struct MethodCallExpr;
+struct IsExpr;
+struct AsExpr;
 
 struct ExprVisitor;
 struct MutExprVisitor;
@@ -71,6 +73,7 @@ struct DestructorDecl;
 struct MethodDecl;
 struct ClassDecl;
 struct TypeDecl;
+struct InterfaceDecl;
 struct PrintItem;
 struct CaseArm;
 struct NameRef;
