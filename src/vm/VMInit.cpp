@@ -105,6 +105,28 @@ const char *dispatchKindName(VM::DispatchKind kind)
 VM::VM(const Module &m, TraceConfig tc, uint64_t ms, DebugCtrl dbg, DebugScript *script)
     : mod(m), tracer(tc), debug(std::move(dbg)), script(script), maxSteps(ms)
 {
+    // Runtime overrides via environment -------------------------------------
+    if (const char *envCounts = std::getenv("VIPER_ENABLE_OPCOUNTS"))
+    {
+        std::string v{envCounts};
+        std::transform(v.begin(), v.end(), v.begin(), [](unsigned char c) {
+            return static_cast<char>(std::tolower(c));
+        });
+        // Accept 1/true/on to enable; 0/false/off to disable.
+        if (v == "0" || v == "false" || v == "off")
+            enableOpcodeCounts = false;
+        else if (v == "1" || v == "true" || v == "on")
+            enableOpcodeCounts = true;
+        // Other values are ignored, preserving the build-time default.
+    }
+    if (const char *envEvery = std::getenv("VIPER_INTERRUPT_EVERY_N"))
+    {
+        char *end = nullptr;
+        unsigned long n = std::strtoul(envEvery, &end, 10);
+        if (end && *end == '\0')
+            pollEveryN_ = static_cast<uint32_t>(n);
+    }
+
     const char *switchModeEnv = std::getenv("VIPER_SWITCH_MODE");
     viper::vm::SwitchMode mode = viper::vm::SwitchMode::Auto;
     if (switchModeEnv != nullptr)

@@ -177,7 +177,14 @@ Workloads dominated by I/O, syscalls, or heavy native library calls will see lit
 - Browse key folders:
   - Source tree: [src/](src/)
   - Documentation: [docs/](docs/)
-  - Examples: [examples/](examples/)
+- Examples: [examples/](examples/)
+
+Related docs for new VM capabilities:
+
+- Stepping API: [docs/vm-stepping.md](docs/vm-stepping.md)
+- Profiling counters: [docs/vm-profiling.md](docs/vm-profiling.md)
+- Runtime bridge & externs: [docs/vm-runtime-bridge.md](docs/vm-runtime-bridge.md)
+- Periodic interrupts: [docs/vm-interrupts.md](docs/vm-interrupts.md)
   - Tests: [tests/](tests/)
   - CMake helpers: [cmake/](cmake/)
   - Scripts: [scripts/](scripts/)

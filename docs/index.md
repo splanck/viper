@@ -12,6 +12,10 @@ last-verified: 2025-09-23
 - [BASIC OOP Guide](basic-oop.md) — Object model syntax, lowering behavior, and runtime helpers.
 - [Intermediate Language (IL)](il-guide.md) — Consolidated quickstart, reference, lowering notes, passes, and examples.
 - [Runtime & VM](runtime-vm.md) — ABI reference plus interpreter internals and extern bridges.
+  - [VM Stepping API](vm-stepping.md)
+  - [VM Profiling (Opcode Counters)](vm-profiling.md)
+  - [VM Runtime Bridge and Externs](vm-runtime-bridge.md)
+  - [VM Periodic Interrupts](vm-interrupts.md)
 - [Tools](tools.md) — `ilc` command reference with usage, flags, and integration notes.
 - [Tutorials & Examples](tutorials-examples.md) — Newcomer walkthroughs and links to runnable sample programs.
 - [Contributor Guide](contributor-guide.md) — Style, testing, frontend internals, and debugging guidance for contributors.

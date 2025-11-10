@@ -43,8 +43,9 @@
 // -----------------------------------------------------------------------------
 // Tail-call optimisation toggle
 // -----------------------------------------------------------------------------
+// Tail-call is enabled by default; can be overridden via -D or env handled at runtime.
 #ifndef VIPER_VM_TAILCALL
-#define VIPER_VM_TAILCALL 0
+#define VIPER_VM_TAILCALL 1
 #endif
 
 // -----------------------------------------------------------------------------

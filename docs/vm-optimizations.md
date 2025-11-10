@@ -87,4 +87,19 @@ override the heuristic. Accepted values (case-insensitive) are:
 
 The chosen mode is global for the process and applies to all VM instances
 created afterwards.
+# Tail-Call Optimisation (TCO)
+
+The interpreter can perform tail-call optimisation (TCO) to reuse the current
+stack frame when a function tail-calls another. This reduces stack growth and
+matches the IL semantics for tail positions.
+
+- Build-time flag: `VIPER_VM_TAILCALL` (default ON). Set with
+  `-DVIPER_VM_TAILCALL=ON|OFF`.
+- Trace/debug: when tracing is enabled, TCO emits a one-line event:
+
+```
+[IL] tailcall from_fn -> to_fn
+```
+
+There are no semantic differences; only performance and stack usage change.
 

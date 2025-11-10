@@ -48,6 +48,8 @@ find_package(Python3 COMPONENTS Interpreter REQUIRED)
 option(VIPER_INSTALL_TUI "Install TUI apps/libraries" OFF)
 option(VIPER_BUILD_TESTING "Enable CTest-based tests" ON)
 option(VIPER_VM_THREADED "Enable threaded VM dispatch" OFF)
+option(VIPER_VM_TAILCALL "Enable tailcall" ON)
+option(VIPER_VM_OPCOUNTS "Enable op counters" ON)
 
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -95,6 +97,8 @@ endif()
 
 add_compile_definitions(
   VIPER_ENABLE_OOP=1
+  VIPER_VM_TAILCALL=$<BOOL:${VIPER_VM_TAILCALL}>
+  VIPER_VM_OPCOUNTS=$<BOOL:${VIPER_VM_OPCOUNTS}>
 )
 
 if(IL_USE_LIBCXX AND CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND NOT APPLE)
@@ -285,6 +289,22 @@ endif()
 if(VIPER_BUILD_TESTING)
   add_subdirectory(tests)
   viper_assert_no_directory_link_libraries("tests" "tests")
+endif()
+
+# ---- Examples ----
+option(BUILD_EXAMPLES "Build C++ examples" ON)
+if(BUILD_EXAMPLES)
+  add_executable(example_vm_stepping examples/stepping/stepping_example.cpp)
+  target_link_libraries(example_vm_stepping PRIVATE viper_common_opts il_build il_vm viper_support)
+  target_include_directories(example_vm_stepping PRIVATE ${CMAKE_SOURCE_DIR}/include ${CMAKE_BINARY_DIR}/generated)
+
+  add_executable(example_vm_register_times2 examples/externs/register_times2.cpp)
+  target_link_libraries(example_vm_register_times2 PRIVATE viper_common_opts il_build il_vm viper_support)
+  target_include_directories(example_vm_register_times2 PRIVATE ${CMAKE_SOURCE_DIR}/include ${CMAKE_BINARY_DIR}/generated)
+
+  add_executable(example_vm_smoke_combined examples/smoke/combined.cpp)
+  target_link_libraries(example_vm_smoke_combined PRIVATE viper_common_opts il_build il_vm viper_support)
+  target_include_directories(example_vm_smoke_combined PRIVATE ${CMAKE_SOURCE_DIR}/include ${CMAKE_BINARY_DIR}/generated)
 endif()
 
 # Man pages (section 1)

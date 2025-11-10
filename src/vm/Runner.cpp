@@ -47,8 +47,19 @@ class Runner::Impl
         : script(config.debugScript),
           vm(module, config.trace, config.maxSteps, std::move(config.debug), script)
     {
-        // Forward polling configuration to the underlying VM.
-        detail::VMAccess::setPollConfig(vm, config.interruptEveryN, std::move(config.pollCallback));
+        // Forward polling configuration to the underlying VM; allow env override.
+        uint32_t everyN = config.interruptEveryN;
+        if (everyN == 0)
+        {
+            if (const char *envEvery = std::getenv("VIPER_INTERRUPT_EVERY_N"))
+            {
+                char *end = nullptr;
+                unsigned long n = std::strtoul(envEvery, &end, 10);
+                if (end && *end == '\0')
+                    everyN = static_cast<uint32_t>(n);
+            }
+        }
+        detail::VMAccess::setPollConfig(vm, everyN, std::move(config.pollCallback));
         for (const auto &ext : config.externs)
             il::vm::RuntimeBridge::registerExtern(ext);
     }
