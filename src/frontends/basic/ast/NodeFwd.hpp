@@ -42,6 +42,7 @@ struct PrintChStmt;
 struct CallStmt;
 struct ClsStmt;
 struct ColorStmt;
+struct SleepStmt;
 struct LocateStmt;
 struct LetStmt;
 struct DimStmt;

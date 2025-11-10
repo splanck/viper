@@ -395,6 +395,20 @@ void ColorStmt::accept(MutStmtVisitor &visitor)
     visitor.visit(*this);
 }
 
+/// @brief Forwards this SLEEP statement node to the visitor for double dispatch.
+/// @param visitor Receives the node; ownership remains with the AST.
+void SleepStmt::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+/// @brief Dispatch this SLEEP statement node to a mutable visitor.
+/// @param visitor Receives the node and may update the duration expression.
+void SleepStmt::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
 /// @brief Forwards this LOCATE statement node to the visitor for double dispatch.
 /// @param visitor Receives the node; ownership remains with the AST.
 void LocateStmt::accept(StmtVisitor &visitor) const

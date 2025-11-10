@@ -22,6 +22,7 @@ set(RT_SOURCES
         rt_int_format.c
         rt_printf_compat.c
         rt_term.c
+        rt_time.c
         rt_object.c
         rt_oop_dispatch.c
         rt_type_registry.c

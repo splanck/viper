@@ -21,3 +21,15 @@
 #include "rt_string.h"
 #include "rt_string_builder.h"
 #include "rt_trap.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+// Sleep for the specified number of milliseconds.
+// Clamps negative values to zero; uses monotonic clock where available.
+void rt_sleep_ms(int32_t ms);
+
+#ifdef __cplusplus
+} // extern "C"
+#endif

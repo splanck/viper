@@ -117,6 +117,21 @@ struct ColorStmt : Stmt
     void accept(MutStmtVisitor &visitor) override;
 };
 
+/// @brief SLEEP statement blocking for a duration in milliseconds.
+struct SleepStmt : Stmt
+{
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
+    {
+        return Kind::Sleep;
+    }
+
+    /// Millisecond duration expression; owned and non-null.
+    ExprPtr ms;
+
+    void accept(StmtVisitor &visitor) const override;
+    void accept(MutStmtVisitor &visitor) override;
+};
+
 /// @brief LOCATE statement moving the cursor.
 struct LocateStmt : Stmt
 {

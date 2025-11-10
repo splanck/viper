@@ -61,6 +61,7 @@ constexpr std::array<KeywordEntry, 83> kKeywordTable{{
     {"LBOUND", TokenKind::KeywordLbound},   {"LET", TokenKind::KeywordLet},
     {"LINE", TokenKind::KeywordLine},       {"LOC", TokenKind::KeywordLoc},
     {"LOCATE", TokenKind::KeywordLocate},   {"LOF", TokenKind::KeywordLof},
+    {"SLEEP", TokenKind::KeywordSleep},
     {"LOOP", TokenKind::KeywordLoop},       {"ME", TokenKind::KeywordMe},
     {"MOD", TokenKind::KeywordMod},         {"NAMESPACE", TokenKind::KeywordNamespace},
     {"NEW", TokenKind::KeywordNew},         {"NEXT", TokenKind::KeywordNext},

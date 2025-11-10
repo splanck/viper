@@ -130,6 +130,16 @@ struct AstPrinter::StmtPrinter final : StmtVisitor
         ctx.stream() << ')';
     }
 
+    /// @brief Render a SLEEP statement showing its duration.
+    ///
+    /// @param stmt Statement referencing the sleep duration in ms.
+    void visit(const SleepStmt &stmt) override
+    {
+        ctx.stream() << "(SLEEP ";
+        ctx.printOptionalExpr(stmt.ms.get());
+        ctx.stream() << ')';
+    }
+
     /// @brief Render a LOCATE statement with optional coordinates.
     ///
     /// @param stmt Statement describing the cursor positioning request.
