@@ -90,6 +90,23 @@ void Lowerer::visit(const LocateStmt &s)
     emitCallRet(Type(Type::Kind::Void), "rt_term_locate_i32", {row32, col32});
 }
 
+/// @brief Lower the BASIC SLEEP statement to the runtime helper.
+///
+/// @details Evaluates the duration expression, coerces it to a 32-bit integer,
+///          and emits a call to `rt_sleep_ms`. Negative values are clamped by
+///          the runtime to zero. No runtime feature request is required.
+///
+/// @param s AST node describing the SLEEP statement.
+void Lowerer::visit(const SleepStmt &s)
+{
+    curLoc = s.loc;
+    auto ms = ensureI64(lowerExpr(*s.ms), s.loc);
+    auto emit = emitCommon(s.loc);
+    Value ms32 = emit.to_iN(ms.value, 32);
+    requireSleepMs();
+    emitCallRet(Type(Type::Kind::Void), "rt_sleep_ms", {ms32});
+}
+
 /// @brief Assign a value to a scalar slot with BASIC-compatible coercions.
 ///
 /// @details Handles boolean conversion, floating/integer promotion and

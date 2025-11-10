@@ -247,6 +247,11 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_chr_invalid PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_chr_invalid test_rt_chr_invalid)
 
+    # Sleep runtime test
+    viper_add_test(test_rt_sleep ${VIPER_TESTS_DIR}/runtime/RT_SleepTests.cpp)
+    target_link_libraries(test_rt_sleep PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_sleep test_rt_sleep)
+
     viper_add_test(test_rt_string_size_clamp ${VIPER_TESTS_DIR}/runtime/RTStringSizeClampTests.cpp)
     target_link_libraries(test_rt_string_size_clamp PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_string_size_clamp test_rt_string_size_clamp)
@@ -318,6 +323,13 @@ function(viper_add_runtime_tests)
     viper_add_test(test_rt_input_numeric_fail ${VIPER_TESTS_DIR}/runtime/RTInputNumericFailTests.cpp)
     target_link_libraries(test_rt_input_numeric_fail PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_input_numeric_fail test_rt_input_numeric_fail)
+
+    # Basic SLEEP lowering test
+    if (NOT TARGET test_basic_sleep_lowering)
+        viper_add_test(test_basic_sleep_lowering ${VIPER_TESTS_DIR}/unit/Basic_Sleep_Lowering.cpp)
+        target_link_libraries(test_basic_sleep_lowering PRIVATE fe_basic)
+        viper_add_ctest(test_basic_sleep_lowering test_basic_sleep_lowering)
+    endif ()
 
     viper_add_test(test_rt_split_fields ${VIPER_TESTS_DIR}/runtime/RTSplitFieldsTests.cpp)
     target_link_libraries(test_rt_split_fields PRIVATE ${VIPER_RUNTIME_TEST_LIBS})

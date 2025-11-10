@@ -46,6 +46,7 @@ void Parser::registerRuntimeParsers(StatementParserRegistry &registry)
     registry.registerHandler(TokenKind::KeywordCls, &Parser::parseClsStatement);
     registry.registerHandler(TokenKind::KeywordColor, &Parser::parseColorStatement);
     registry.registerHandler(TokenKind::KeywordLocate, &Parser::parseLocateStatement);
+    registry.registerHandler(TokenKind::KeywordSleep, &Parser::parseSleepStatement);
 }
 
 /// @brief Parse an @c ON ERROR GOTO statement.
@@ -280,6 +281,19 @@ StmtPtr Parser::parseLocateStatement()
         consume();
         stmt->col = parseExpression();
     }
+    return stmt;
+}
+
+/// @brief Parse a @c SLEEP statement.
+/// @details Parses the required millisecond duration expression and constructs
+///          a @ref SleepStmt capturing the operand.
+/// @return Newly constructed statement node.
+StmtPtr Parser::parseSleepStatement()
+{
+    auto loc = consume().loc; // SLEEP
+    auto stmt = std::make_unique<SleepStmt>();
+    stmt->loc = loc;
+    stmt->ms = parseExpression();
     return stmt;
 }
 

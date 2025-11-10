@@ -20,5 +20,6 @@ void lowerReDim(const ReDimStmt &stmt);
 void lowerRandomize(const RandomizeStmt &stmt);
 void visit(const ClsStmt &stmt);
 void visit(const ColorStmt &stmt);
+void visit(const SleepStmt &stmt);
 void visit(const LocateStmt &stmt);
 Value emitArrayLengthCheck(Value bound, il::support::SourceLoc loc, std::string_view labelBase);

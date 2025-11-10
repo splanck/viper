@@ -71,6 +71,12 @@ class SemanticAnalyzerStmtVisitor final : public MutStmtVisitor
         analyzer_.analyzeColor(stmt);
     }
 
+    /// @brief Forward SLEEP statements for duration validation.
+    void visit(SleepStmt &stmt) override
+    {
+        analyzer_.analyzeSleep(stmt);
+    }
+
     /// @brief Ensure LOCATE statements honour cursor bounds.
     void visit(LocateStmt &stmt) override
     {

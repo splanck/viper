@@ -36,7 +36,7 @@ struct KeywordEntry
     TokenKind kind;
 };
 
-constexpr std::array<KeywordEntry, 83> kKeywordTable{{
+constexpr std::array<KeywordEntry, 84> kKeywordTable{{
     {"ABS", TokenKind::KeywordAbs},         {"ABSTRACT", TokenKind::KeywordAbstract},
     {"AND", TokenKind::KeywordAnd},
     {"ANDALSO", TokenKind::KeywordAndAlso}, {"APPEND", TokenKind::KeywordAppend},
@@ -61,7 +61,6 @@ constexpr std::array<KeywordEntry, 83> kKeywordTable{{
     {"LBOUND", TokenKind::KeywordLbound},   {"LET", TokenKind::KeywordLet},
     {"LINE", TokenKind::KeywordLine},       {"LOC", TokenKind::KeywordLoc},
     {"LOCATE", TokenKind::KeywordLocate},   {"LOF", TokenKind::KeywordLof},
-    {"SLEEP", TokenKind::KeywordSleep},
     {"LOOP", TokenKind::KeywordLoop},       {"ME", TokenKind::KeywordMe},
     {"MOD", TokenKind::KeywordMod},         {"NAMESPACE", TokenKind::KeywordNamespace},
     {"NEW", TokenKind::KeywordNew},         {"NEXT", TokenKind::KeywordNext},
@@ -75,7 +74,8 @@ constexpr std::array<KeywordEntry, 83> kKeywordTable{{
     {"REDIM", TokenKind::KeywordRedim},     {"RESUME", TokenKind::KeywordResume},
     {"RETURN", TokenKind::KeywordReturn},   {"RND", TokenKind::KeywordRnd},
     {"SEEK", TokenKind::KeywordSeek},       {"SELECT", TokenKind::KeywordSelect},
-    {"SIN", TokenKind::KeywordSin},         {"SQR", TokenKind::KeywordSqr},
+    {"SIN", TokenKind::KeywordSin},         {"SLEEP", TokenKind::KeywordSleep},
+    {"SQR", TokenKind::KeywordSqr},
     {"STEP", TokenKind::KeywordStep},       {"SUB", TokenKind::KeywordSub},
     {"THEN", TokenKind::KeywordThen},       {"TO", TokenKind::KeywordTo},
     {"TRUE", TokenKind::KeywordTrue},       {"TYPE", TokenKind::KeywordType},

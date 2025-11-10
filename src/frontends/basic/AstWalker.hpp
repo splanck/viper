@@ -323,6 +323,16 @@ template <typename Derived> class BasicAstWalker : public ExprVisitor, public St
         callAfter(stmt);
     }
 
+    void visit(const SleepStmt &stmt) override
+    {
+        callBefore(stmt);
+        if (callShouldVisit(stmt))
+        {
+            walker::detail::visitOptionalChild(*this, stmt, stmt.ms);
+        }
+        callAfter(stmt);
+    }
+
     void visit(const LocateStmt &stmt) override
     {
         callBefore(stmt);

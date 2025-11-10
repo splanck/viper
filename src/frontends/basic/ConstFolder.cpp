@@ -647,6 +647,14 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
         foldExpr(stmt.bg);
     }
 
+    /// @brief Fold the millisecond duration in SLEEP statements.
+    /// @details The runtime clamps negatives; folding only simplifies literal
+    ///          arithmetic in the duration expression, leaving semantics to lowering/runtime.
+    void visit(SleepStmt &stmt) override
+    {
+        foldExpr(stmt.ms);
+    }
+
     /// @brief Fold cursor position expressions for LOCATE statements.
     void visit(LocateStmt &stmt) override
     {

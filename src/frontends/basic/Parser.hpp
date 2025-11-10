@@ -420,6 +420,10 @@ class Parser
     /// @return LOCATE statement node.
     StmtPtr parseLocateStatement();
 
+    /// @brief Parse a SLEEP statement blocking for milliseconds.
+    /// @return SLEEP statement node.
+    StmtPtr parseSleepStatement();
+
     /// @brief Parse a FUNCTION definition including body.
     /// @return FUNCTION statement node.
     StmtPtr parseFunctionStatement();

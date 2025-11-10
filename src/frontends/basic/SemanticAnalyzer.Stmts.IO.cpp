@@ -58,6 +58,14 @@ void SemanticAnalyzer::visit(const ColorStmt &s)
         requireNumeric(*s.bg, "COLOR background must be numeric");
 }
 
+/// @brief Validate SLEEP statement operand.
+/// @details Requires the duration expression to be numeric; narrowing occurs
+///          during lowering to a 32-bit integer as expected by the runtime.
+void SemanticAnalyzer::visit(const SleepStmt &s)
+{
+    requireNumeric(*s.ms, "SLEEP duration must be numeric");
+}
+
 /// @brief Validate LOCATE statement operands.
 /// @details Requires the row expression to be numeric and conditionally checks
 ///          the column expression when supplied, mirroring the runtime
@@ -101,6 +109,13 @@ void SemanticAnalyzer::analyzeCls(const ClsStmt &stmt)
 /// @brief Analyze the COLOR statement wrapper.
 /// @details Simply dispatches to the visitor implementation.
 void SemanticAnalyzer::analyzeColor(const ColorStmt &stmt)
+{
+    visit(stmt);
+}
+
+/// @brief Analyze the SLEEP statement wrapper.
+/// @details Delegates to the visitor for numeric validation.
+void SemanticAnalyzer::analyzeSleep(const SleepStmt &stmt)
 {
     visit(stmt);
 }

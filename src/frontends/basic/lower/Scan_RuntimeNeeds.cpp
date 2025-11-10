@@ -294,6 +294,12 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
         lowerer_.requestHelper(il::runtime::RuntimeFeature::TermLocate);
     }
 
+    /// @brief SLEEP requires the time helper to be declared.
+    void after(const SleepStmt &)
+    {
+        lowerer_.requireSleepMs();
+    }
+
     /// @brief Track runtime needs stemming from LET targets and values.
     ///
     /// @param stmt LET statement being analysed.

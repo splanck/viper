@@ -372,6 +372,13 @@ void Lowerer::requireStrReleaseMaybe()
     setManualHelperRequired(ManualRuntimeHelper::StrReleaseMaybe);
 }
 
+/// @brief Request the sleep helper used by the SLEEP statement.
+/// @details Flags the `rt_sleep_ms` helper for extern declaration.
+void Lowerer::requireSleepMs()
+{
+    setManualHelperRequired(ManualRuntimeHelper::SleepMs);
+}
+
 /// @brief Forward a runtime feature request to the shared tracker.
 /// @details Invokes @ref RuntimeHelperTracker::requestHelper so the
 ///          feature-specific helper is considered during extern emission.
@@ -444,6 +451,7 @@ void Lowerer::declareRequiredRuntime(build::IRBuilder &b)
         {"rt_str_release_maybe",
          ManualRuntimeHelper::StrReleaseMaybe,
          &Lowerer::requireStrReleaseMaybe},
+        {"rt_sleep_ms", ManualRuntimeHelper::SleepMs, &Lowerer::requireSleepMs},
     }};
 
     auto declareManual = [&](std::string_view name)

@@ -103,6 +103,14 @@ class LowererStmtVisitor final : public lower::AstVisitor, public StmtVisitor
         lowerer_.visit(stmt);
     }
 
+    /// @brief Lower the SLEEP statement.
+    /// @details Delegates to @ref Lowerer::visit to emit the runtime call.
+    /// @param stmt SLEEP statement node.
+    void visit(const SleepStmt &stmt) override
+    {
+        lowerer_.visit(stmt);
+    }
+
     /// @brief Lower the LOCATE statement.
     /// @details Uses @ref Lowerer::visit to emit runtime calls for cursor
     ///          positioning.

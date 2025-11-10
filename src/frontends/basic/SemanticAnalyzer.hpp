@@ -105,6 +105,8 @@ class SemanticAnalyzer
     void visit(const ClsStmt &s);
     /// @brief Perform semantic checks specific to COLOR statements.
     void visit(const ColorStmt &s);
+    /// @brief Perform semantic checks specific to SLEEP statements.
+    void visit(const SleepStmt &s);
     /// @brief Perform semantic checks specific to LOCATE statements.
     void visit(const LocateStmt &s);
 
@@ -120,6 +122,8 @@ class SemanticAnalyzer
     void analyzeCls(const ClsStmt &s);
     /// @brief Analyze COLOR statement @p s.
     void analyzeColor(const ColorStmt &s);
+    /// @brief Analyze SLEEP statement @p s.
+    void analyzeSleep(const SleepStmt &s);
     /// @brief Analyze LOCATE statement @p s.
     void analyzeLocate(const LocateStmt &s);
     /// @brief Analyze LET statement @p s.

@@ -583,6 +583,7 @@ class Lowerer
         LocCh,
         StrRetainMaybe,
         StrReleaseMaybe,
+        SleepMs,
         Count
     };
 
@@ -622,6 +623,7 @@ class Lowerer
     // --- end: require declarations ---
     void requireStrRetainMaybe();
     void requireStrReleaseMaybe();
+    void requireSleepMs();
     void requestHelper(RuntimeFeature feature);
 
     bool isHelperNeeded(RuntimeFeature feature) const;
