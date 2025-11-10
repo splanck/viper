@@ -9,8 +9,13 @@ extern @rt_to_int(str) -> i64
 extern @rt_str_empty() -> str
 extern @rt_str_release_maybe(str) -> void
 global const str @.L0 = "\n"
+func @__mod_init$oop() -> void {
+entry:
+  ret
+}
 func @main() -> i64 {
 entry:
+  call @__mod_init$oop()
   %t0 = alloca 1
   %t1 = trunc1 0
   store i1, %t0, %t1

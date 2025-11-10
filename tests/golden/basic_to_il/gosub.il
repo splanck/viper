@@ -15,8 +15,13 @@ global const str @.L5 = "After Inner"
 global const str @.L6 = "gosub: empty return stack"
 global const str @.L7 = "Second"
 global const str @.L8 = "Inner"
+func @__mod_init$oop() -> void {
+entry:
+  ret
+}
 func @main() -> i64 {
 entry:
+  call @__mod_init$oop()
   %t0 = alloca 8
   %t1 = alloca 8
   %t2 = alloca 8

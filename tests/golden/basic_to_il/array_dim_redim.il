@@ -9,8 +9,13 @@ extern @rt_arr_i32_new(i64) -> ptr
 extern @rt_arr_i32_resize(ptr, i64) -> ptr
 extern @rt_arr_i32_retain(ptr) -> void
 extern @rt_arr_i32_release(ptr) -> void
+func @__mod_init$oop() -> void {
+entry:
+  ret
+}
 func @main() -> i64 {
 entry:
+  call @__mod_init$oop()
   %t0 = alloca 8
   store ptr, %t0, null
   br L10

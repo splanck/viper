@@ -7,6 +7,10 @@ extern @rt_substr(str, i64, i64) -> str
 extern @rt_str_empty() -> str
 extern @rt_trap(str) -> void
 global const str @.L0 = "\n"
+func @__mod_init$oop() -> void {
+entry:
+  ret
+}
 func @F() -> i64 {
 entry_F:
   br L-1000000000_F
@@ -18,6 +22,7 @@ ret_F:
 }
 func @main() -> i64 {
 entry:
+  call @__mod_init$oop()
   br UL1000000000
 UL1000000000:
   .loc 1 4 7

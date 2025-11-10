@@ -8,8 +8,13 @@ extern @rt_str_empty() -> str
 extern @rt_open_err_vstr(str, i32, i32) -> i32
 extern @rt_close_err(i32) -> i32
 global const str @.L0 = "foo.txt"
+func @__mod_init$oop() -> void {
+entry:
+  ret
+}
 func @main() -> i64 {
 entry:
+  call @__mod_init$oop()
   br L10
 L10:
   .loc 1 1 9

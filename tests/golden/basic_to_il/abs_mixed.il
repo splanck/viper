@@ -8,8 +8,13 @@ extern @rt_str_empty() -> str
 extern @rt_abs_i64(i64) -> i64
 extern @rt_abs_f64(f64) -> f64
 global const str @.L0 = "\n"
+func @__mod_init$oop() -> void {
+entry:
+  ret
+}
 func @main() -> i64 {
 entry:
+  call @__mod_init$oop()
   br L10
 L10:
   .loc 1 1 10

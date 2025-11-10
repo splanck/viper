@@ -1,5 +1,7 @@
 [SRC] <unknown>  (fn=@main blk=entry ip=#0)
+[SRC] <unknown>  (fn=@__mod_init$oop blk=entry ip=#0)
 [SRC] <unknown>  (fn=@main blk=entry ip=#1)
+[SRC] <unknown>  (fn=@main blk=entry ip=#2)
 [SRC] trace_src.bas:1:4  (fn=@main blk=L10 ip=#0)  LET A = 1
 [SRC] trace_src.bas:1:4  (fn=@main blk=L10 ip=#1)  LET A = 1
 [SRC] trace_src.bas:2:10  (fn=@main blk=L20 ip=#0)  A

@@ -6,6 +6,10 @@ extern @rt_len(str) -> i64
 extern @rt_substr(str, i64, i64) -> str
 extern @rt_str_empty() -> str
 extern @rt_trap(str) -> void
+func @__mod_init$oop() -> void {
+entry:
+  ret
+}
 func @F() -> i64 {
 entry_F:
   %t0 = alloca 8
@@ -68,6 +72,7 @@ for_end_1_F:
 }
 func @main() -> i64 {
 entry:
+  call @__mod_init$oop()
   ret 0
 exit:
   ret 0

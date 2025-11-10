@@ -9,8 +9,13 @@ global const str @.L0 = "A"
 global const str @.L1 = "             "
 global const str @.L2 = "B"
 global const str @.L3 = "\n"
+func @__mod_init$oop() -> void {
+entry:
+  ret
+}
 func @main() -> i64 {
 entry:
+  call @__mod_init$oop()
   br L10
 L10:
   .loc 1 1 10

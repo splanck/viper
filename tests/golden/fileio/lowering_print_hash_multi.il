@@ -11,8 +11,13 @@ extern @rt_println_ch_err(i32, str) -> i32
 global const str @.L0 = "A"
 global const str @.L1 = "B"
 global const str @.L2 = "C"
+func @__mod_init$oop() -> void {
+entry:
+  ret
+}
 func @main() -> i64 {
 entry:
+  call @__mod_init$oop()
   br L10
 L10:
   .loc 1 1 4

@@ -6,8 +6,13 @@ extern @rt_len(str) -> i64
 extern @rt_substr(str, i64, i64) -> str
 extern @rt_str_empty() -> str
 extern @rt_randomize_i64(i64) -> void
+func @__mod_init$oop() -> void {
+entry:
+  ret
+}
 func @main() -> i64 {
 entry:
+  call @__mod_init$oop()
   br L10
 L10:
   .loc 1 1 4

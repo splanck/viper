@@ -9,8 +9,13 @@ global const str @.L0 = "ONE"
 global const str @.L1 = "\n"
 global const str @.L2 = "TWO"
 global const str @.L3 = "OTHER"
+func @__mod_init$oop() -> void {
+entry:
+  ret
+}
 func @main() -> i64 {
 entry:
+  call @__mod_init$oop()
   %t0 = alloca 8
   br L10
 L10:

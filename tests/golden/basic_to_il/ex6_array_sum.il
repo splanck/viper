@@ -16,8 +16,13 @@ extern @rt_arr_i32_release(ptr) -> void
 extern @rt_arr_oob_panic(i64, i64) -> void
 extern @rt_str_release_maybe(str) -> void
 global const str @.L0 = "\n"
+func @__mod_init$oop() -> void {
+entry:
+  ret
+}
 func @main() -> i64 {
 entry:
+  call @__mod_init$oop()
   %t0 = alloca 8
   %t1 = alloca 8
   %t2 = alloca 8

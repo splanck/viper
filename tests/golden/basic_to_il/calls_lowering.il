@@ -9,6 +9,10 @@ extern @rt_trap(str) -> void
 global const str @.L0 = ""
 global const str @.L1 = "\n"
 global const str @.L2 = "HI"
+func @__mod_init$oop() -> void {
+entry:
+  ret
+}
 func @F#(f64 %X#) -> f64 {
 entry_F#(%X#:f64):
   %t1 = alloca 8
@@ -128,6 +132,7 @@ if_end_0_SECOND#:
 }
 func @main() -> i64 {
 entry:
+  call @__mod_init$oop()
   br L10
 L10:
   .loc 1 15 10

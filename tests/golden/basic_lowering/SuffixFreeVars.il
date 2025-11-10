@@ -16,8 +16,13 @@ extern @rt_str_retain_maybe(str) -> void
 extern @rt_str_release_maybe(str) -> void
 global const str @.L0 = "ok"
 global const str @.L1 = "\n"
+func @__mod_init$oop() -> void {
+entry:
+  ret
+}
 func @main() -> i64 {
 entry:
+  call @__mod_init$oop()
   %t0 = alloca 8
   store ptr, %t0, null
   %t1 = alloca 8
