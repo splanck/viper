@@ -389,6 +389,80 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
     // Name of the direct callee when not using virtual dispatch.
     std::string directCallee = directQClass.empty() ? expr.method : mangleMethod(directQClass, expr.method);
 
+    // If virtual and not BASE-qualified, emit call.indirect; otherwise direct call or interface dispatch.
+    // Interface dispatch via (expr AS IFACE).Method: detect AS with interface target.
+    auto tryInterfaceDispatch = [&]() -> std::optional<RVal> {
+        const AsExpr *asBase = dynamic_cast<const AsExpr *>(expr.base.get());
+        if (!asBase)
+            return std::nullopt;
+        // Build dotted name for interface and locate InterfaceInfo
+        std::string dotted;
+        for (size_t i = 0; i < asBase->typeName.size(); ++i)
+        {
+            if (i) dotted.push_back('.');
+            dotted += asBase->typeName[i];
+        }
+        const InterfaceInfo *iface = nullptr;
+        for (const auto &p : oopIndex_.interfacesByQname())
+        {
+            if (p.first == dotted)
+            {
+                iface = &p.second;
+                break;
+            }
+        }
+        if (!iface)
+            return std::nullopt;
+        // Recover slot index by name match (and simple arity check when possible)
+        int slotIndex = -1;
+        std::size_t userArity = expr.args.size();
+        for (std::size_t idx = 0; idx < iface->slots.size(); ++idx)
+        {
+            const auto &sig = iface->slots[idx];
+            if (sig.name != expr.method)
+                continue;
+            if (sig.paramTypes.size() == userArity)
+            {
+                slotIndex = static_cast<int>(idx);
+                break;
+            }
+            // Fallback: pick first name match when arity differs (best-effort)
+            if (slotIndex < 0)
+                slotIndex = static_cast<int>(idx);
+        }
+        if (slotIndex < 0)
+            return std::nullopt;
+
+        // Lookup itable, load function pointer at slot, and call.indirect
+        Value itable = emitCallRet(Type(Type::Kind::Ptr),
+                                   "rt_itable_lookup",
+                                   {selfArg, Value::constInt(iface->ifaceId)});
+        const long long offset = static_cast<long long>(slotIndex * 8ULL);
+        Value entryPtr = emitBinary(Opcode::GEP, Type(Type::Kind::Ptr), itable, Value::constInt(offset));
+        Value fnPtr = emitLoad(Type(Type::Kind::Ptr), entryPtr);
+
+        // Determine return type from interface signature when available.
+        Type retTy = Type(Type::Kind::Void);
+        if (slotIndex >= 0 && static_cast<std::size_t>(slotIndex) < iface->slots.size())
+        {
+            if (iface->slots[static_cast<std::size_t>(slotIndex)].returnType)
+            {
+                retTy = ilTypeForAstType(*iface->slots[static_cast<std::size_t>(slotIndex)].returnType);
+            }
+        }
+
+        if (retTy.kind != Type(Type::Kind::Void).kind)
+        {
+            Value result = emitCallIndirectRet(retTy, fnPtr, args);
+            return RVal{result, retTy};
+        }
+        emitCallIndirect(fnPtr, args);
+        return RVal{Value::constInt(0), Type(Type::Kind::I64)};
+    };
+
+    if (auto dispatched = tryInterfaceDispatch())
+        return *dispatched;
+
     // If virtual and not BASE-qualified, emit call.indirect; otherwise direct call.
     if (slot >= 0 && !baseQualified)
     {

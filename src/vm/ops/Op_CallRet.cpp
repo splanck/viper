@@ -269,13 +269,14 @@ VM::ExecResult handleCall(VM &vm,
     return {};
 }
 
-/// @brief Indirect call via a callee operand (global symbol name).
+/// @brief Indirect call via a callee operand (global name or function pointer).
 ///
-/// @details The first operand supplies the callee identifier as a GlobalAddr
-///          value. Remaining operands (if any) are treated as arguments. This
-///          mirrors direct calls but allows frontends to funnel dynamic call
-///          sites through a uniform opcode. When the callee is not a VM-native
-///          function, the runtime bridge is used.
+/// @details The first operand supplies either a GlobalAddr (callee identifier)
+///          or a pointer value produced by loads (e.g., from an itable). When a
+///          name is provided, behaviour mirrors direct calls. When a function
+///          pointer is provided, the pointer must reference an IL function
+///          instance and the VM invokes it directly. Remaining operands (if
+///          any) are treated as arguments.
 VM::ExecResult handleCallIndirect(VM &vm,
                                   Frame &fr,
                                   const il::core::Instr &in,
@@ -290,33 +291,59 @@ VM::ExecResult handleCallIndirect(VM &vm,
     if (in.operands.empty())
         return result;
 
-    // Operand 0 is the callee identifier (GlobalAddr expected by verifier).
+    // Operand 0 may be a GlobalAddr or a function pointer value.
     const il::core::Value &calleeVal = in.operands[0];
-    std::string calleeName = calleeVal.str;
-
-    // Evaluate remaining operands as arguments.
-    std::vector<Slot> args;
-    if (in.operands.size() > 1)
-    {
-        args.reserve(in.operands.size() - 1);
-        for (size_t i = 1; i < in.operands.size(); ++i)
-            args.push_back(VMAccess::eval(vm, fr, in.operands[i]));
-    }
-
-    // Try VM-native function first, else fall back to runtime bridge by name.
     Slot out{};
-    const auto &fnMap = VMAccess::functionMap(vm);
-    auto it = fnMap.find(calleeName);
-    if (it != fnMap.end())
+    if (calleeVal.kind == il::core::Value::Kind::GlobalAddr)
     {
-        out = VMAccess::callFunction(vm, *it->second, args);
+        std::string calleeName = calleeVal.str;
+        std::vector<Slot> args;
+        if (in.operands.size() > 1)
+        {
+            args.reserve(in.operands.size() - 1);
+            for (size_t i = 1; i < in.operands.size(); ++i)
+                args.push_back(VMAccess::eval(vm, fr, in.operands[i]));
+        }
+
+        const auto &fnMap = VMAccess::functionMap(vm);
+        auto it = fnMap.find(calleeName);
+        if (it != fnMap.end())
+        {
+            out = VMAccess::callFunction(vm, *it->second, args);
+        }
+        else
+        {
+            const std::string functionName = fr.func ? fr.func->name : std::string{};
+            const std::string blockLabel = bb ? bb->label : std::string{};
+            out = RuntimeBridge::call(
+                VMAccess::runtimeContext(vm), calleeName, args, in.loc, functionName, blockLabel);
+        }
     }
     else
     {
-        const std::string functionName = fr.func ? fr.func->name : std::string{};
-        const std::string blockLabel = bb ? bb->label : std::string{};
-        out = RuntimeBridge::call(
-            VMAccess::runtimeContext(vm), calleeName, args, in.loc, functionName, blockLabel);
+        // Pointer-based indirect call
+        Slot callee = VMAccess::eval(vm, fr, calleeVal);
+        if (!callee.ptr)
+        {
+            const std::string blockLabel = bb ? bb->label : std::string{};
+            RuntimeBridge::trap(TrapKind::InvalidOperation,
+                                "null indirect callee",
+                                in.loc,
+                                fr.func ? fr.func->name : std::string(),
+                                blockLabel);
+            VM::ExecResult res{};
+            res.returned = true;
+            return res;
+        }
+        const auto *fn = reinterpret_cast<const il::core::Function *>(callee.ptr);
+        std::vector<Slot> args;
+        if (in.operands.size() > 1)
+        {
+            args.reserve(in.operands.size() - 1);
+            for (size_t i = 1; i < in.operands.size(); ++i)
+                args.push_back(VMAccess::eval(vm, fr, in.operands[i]));
+        }
+        out = VMAccess::callFunction(vm, *fn, args);
     }
 
     if (!in.result && in.type.kind == il::core::Type::Kind::Str && out.str)

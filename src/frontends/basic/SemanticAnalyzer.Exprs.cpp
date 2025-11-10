@@ -143,20 +143,111 @@ class SemanticAnalyzerExprVisitor final : public MutExprVisitor
         result_ = SemanticAnalyzer::Type::Unknown;
     }
 
-    /// @brief IS expressions evaluate to boolean (basic checks only).
+    /// @brief IS expressions evaluate to boolean; validate operands and type name.
     void visit(IsExpr &expr) override
     {
-        // Minimal typing: ensure left is an object-like value when known.
-        // Current frontend tracks objects out-of-band, so accept and return Bool.
-        (void)analyzer_.visitExpr(*expr.value);
+        // Check left operand type; reject obvious primitives.
+        SemanticAnalyzer::Type lhsType = analyzer_.visitExpr(*expr.value);
+        auto isPrimitive = [&](SemanticAnalyzer::Type t) {
+            using T = SemanticAnalyzer::Type;
+            return t == T::Int || t == T::Float || t == T::Bool || t == T::String || t == T::ArrayInt;
+        };
+
+        // Resolve right-hand dotted type to class or interface.
+        std::string dotted;
+        for (size_t i = 0; i < expr.typeName.size(); ++i)
+        {
+            if (i) dotted.push_back('.');
+            dotted += expr.typeName[i];
+        }
+        bool resolved = false;
+        // Interface lookup by qualified name
+        if (analyzer_.oopIndex_.interfacesByQname().count(dotted))
+            resolved = true;
+        // Class lookup by qualified name
+        if (!resolved)
+        {
+            for (const auto &entry : analyzer_.oopIndex_.classes())
+            {
+                if (entry.second.qualifiedName == dotted)
+                {
+                    resolved = true;
+                    break;
+                }
+            }
+        }
+
+        if (!resolved)
+        {
+            analyzer_.de.emit(il::frontends::basic::diag::BasicDiag::UnknownVariable,
+                              expr.loc,
+                              static_cast<uint32_t>(dotted.size()),
+                              { {"name", dotted} });
+        }
+        else if (isPrimitive(lhsType))
+        {
+            analyzer_.de.emit(il::support::Severity::Error,
+                              "B2121",
+                              expr.loc,
+                              2,
+                              "'IS' requires an object/interface value on the left");
+        }
+
         result_ = SemanticAnalyzer::Type::Bool;
     }
 
-    /// @brief AS expressions yield the inner value's type when compatible; else unknown.
+    /// @brief AS expressions yield the inner value's type; validate operands and type name.
     void visit(AsExpr &expr) override
     {
         // Preserve operand type; runtime returns NULL on failure.
-        result_ = analyzer_.visitExpr(*expr.value);
+        SemanticAnalyzer::Type lhsType = analyzer_.visitExpr(*expr.value);
+        auto isPrimitive = [&](SemanticAnalyzer::Type t) {
+            using T = SemanticAnalyzer::Type;
+            return t == T::Int || t == T::Float || t == T::Bool || t == T::String || t == T::ArrayInt;
+        };
+
+        std::string dotted;
+        for (size_t i = 0; i < expr.typeName.size(); ++i)
+        {
+            if (i) dotted.push_back('.');
+            dotted += expr.typeName[i];
+        }
+        bool resolved = false;
+        if (analyzer_.oopIndex_.interfacesByQname().count(dotted))
+            resolved = true;
+        if (!resolved)
+        {
+            for (const auto &entry : analyzer_.oopIndex_.classes())
+            {
+                if (entry.second.qualifiedName == dotted)
+                {
+                    resolved = true;
+                    break;
+                }
+            }
+        }
+
+        if (!resolved)
+        {
+            analyzer_.de.emit(il::frontends::basic::diag::BasicDiag::UnknownVariable,
+                              expr.loc,
+                              static_cast<uint32_t>(dotted.size()),
+                              { {"name", dotted} });
+        }
+        else if (isPrimitive(lhsType))
+        {
+            // E_CAST_INVALID: cannot cast value of type '{From}' to '{To}'.
+            std::string from = std::string(semantic_analyzer_detail::semanticTypeName(lhsType));
+            std::string to = dotted;
+            std::string msg = "cannot cast value of type '" + from + "' to '" + to + "'.";
+            analyzer_.de.emit(il::support::Severity::Error,
+                              "E_CAST_INVALID",
+                              expr.loc,
+                              2,
+                              std::move(msg));
+        }
+
+        result_ = lhsType;
     }
 
     /// @brief Retrieve the semantic type computed during visitation.

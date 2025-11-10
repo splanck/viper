@@ -502,6 +502,7 @@ void Lowerer::emitOopDeclsAndBodies(const Program &prog)
     if (!builder)
         return;
 
+    // Emit interface/class members first.
     for (const auto &stmt : prog.main)
     {
         if (!stmt || stmt->stmtKind() != Stmt::Kind::ClassDecl)
@@ -552,6 +553,134 @@ void Lowerer::emitOopDeclsAndBodies(const Program &prog)
         for (const auto *method : methods)
             emitClassMethod(klass, *method);
     }
+
+    // Synthesize interface registration and binding thunks, and a module init.
+    // 1) Interface registration thunks
+    std::vector<std::string> regThunks;
+    for (const auto &p : oopIndex_.interfacesByQname())
+    {
+        const std::string &qname = p.first;
+        const InterfaceInfo &iface = p.second;
+        const std::string fn = mangleIfaceRegThunk(qname);
+        regThunks.push_back(fn);
+        // fn(): void
+        Function &f = builder->startFunction(fn, Type(Type::Kind::Void), {});
+        context().setFunction(&f);
+        context().setNextTemp(f.valueNames.size());
+        // Create entry block for thunk body
+        builder->addBlock(f, "entry");
+        context().setCurrent(&f.blocks.front());
+        f.blocks.front().terminated = false;
+        // Call rt_register_interface_direct(ifaceId, "qname", slot_count)
+        emitCall("rt_register_interface_direct",
+                 {Value::constInt(iface.ifaceId), emitConstStr(qname), Value::constInt((long long)iface.slots.size())});
+        emitRetVoid();
+    }
+
+    // 2) Class->interface binding thunks (allocate + populate itable arrays)
+    std::vector<std::string> bindThunks;
+    for (const auto &entry : oopIndex_.classes())
+    {
+        const ClassInfo &ci = entry.second;
+        // Resolve type id from class layout cache (by unqualified name)
+        auto itLayout = classLayouts_.find(ci.name);
+        if (itLayout == classLayouts_.end())
+            continue;
+        const long long typeId = (long long)itLayout->second.classId;
+        for (int ifaceId : ci.implementedInterfaces)
+        {
+            // Find iface qname
+            const InterfaceInfo *iface = nullptr;
+            for (const auto &ip : oopIndex_.interfacesByQname())
+            {
+                if (ip.second.ifaceId == ifaceId)
+                {
+                    iface = &ip.second;
+                    break;
+                }
+            }
+            if (!iface)
+                continue;
+            const std::string thunk = mangleIfaceBindThunk(ci.qualifiedName, iface->qualifiedName);
+            bindThunks.push_back(thunk);
+            Function &fb = builder->startFunction(thunk, Type(Type::Kind::Void), {});
+            context().setFunction(&fb);
+            context().setNextTemp(fb.valueNames.size());
+            // Create entry block for thunk body
+            builder->addBlock(fb, "entry");
+            context().setCurrent(&fb.blocks.front());
+            fb.blocks.front().terminated = false;
+            // Allocate a persistent itable: slot_count * sizeof(void*)
+            const std::size_t slotCount = iface->slots.size();
+            const long long bytes = static_cast<long long>(slotCount * 8ULL);
+            Value itablePtr = emitCallRet(Type(Type::Kind::Ptr), "rt_alloc", {Value::constInt(bytes)});
+
+            // Helper: find concrete implementor along base chain for method @name
+            auto findImplementorQClass = [&](const std::string &startQ, const std::string &mname) -> std::string {
+                const ClassInfo *cur = oopIndex_.findClass(startQ);
+                while (cur)
+                {
+                    auto itM = cur->methods.find(mname);
+                    if (itM != cur->methods.end())
+                    {
+                        // Prefer non-abstract method implementation
+                        if (!itM->second.isAbstract)
+                            return cur->qualifiedName;
+                    }
+                    if (cur->baseQualified.empty())
+                        break;
+                    cur = oopIndex_.findClass(cur->baseQualified);
+                }
+                return startQ; // fallback
+            };
+
+            // Populate itable slots in interface slot order
+            auto mapIt = ci.ifaceSlotImpl.find(ifaceId);
+            for (std::size_t s = 0; s < slotCount; ++s)
+            {
+                const long long offset = static_cast<long long>(s * 8ULL);
+                Value slotPtr = emitBinary(Opcode::GEP, Type(Type::Kind::Ptr), itablePtr, Value::constInt(offset));
+                // Resolve method name for this slot; may be empty for abstract/missing
+                std::string mname;
+                if (mapIt != ci.ifaceSlotImpl.end() && s < mapIt->second.size())
+                    mname = mapIt->second[s];
+                if (mname.empty())
+                {
+                    // Store null for missing implementations (keeps layout deterministic)
+                    emitStore(Type(Type::Kind::Ptr), slotPtr, Value::null());
+                }
+                else
+                {
+                    const std::string implQ = findImplementorQClass(ci.qualifiedName, mname);
+                    const std::string targetLabel = mangleMethod(implQ, mname);
+                    emitStore(Type(Type::Kind::Ptr), slotPtr, Value::global(targetLabel));
+                }
+            }
+
+            // Bind the populated itable to (typeId, ifaceId)
+            emitCall("rt_bind_interface",
+                     {Value::constInt(typeId), Value::constInt((long long)ifaceId), itablePtr});
+            emitRetVoid();
+        }
+    }
+
+    // 3) Module init that calls reg thunks first, then bind thunks.
+    const std::string initName = mangleOopModuleInit();
+    Function &initF = builder->startFunction(initName, Type(Type::Kind::Void), {});
+    context().setFunction(&initF);
+    context().setNextTemp(initF.valueNames.size());
+    // Create entry block for module init body
+    builder->addBlock(initF, "entry");
+    context().setCurrent(&initF.blocks.front());
+    initF.blocks.front().terminated = false;
+    for (const auto &fn : regThunks)
+        emitCall(fn, {});
+    for (const auto &fn : bindThunks)
+        emitCall(fn, {});
+    emitRetVoid();
+
+    // Call module init at the start of main by emitting a call in program emission.
+    // Note: Program emission will run after this; ensure ProgramLowering invokes this init.
 }
 
 } // namespace il::frontends::basic

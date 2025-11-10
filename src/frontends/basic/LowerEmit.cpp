@@ -180,6 +180,10 @@ void Lowerer::emitProgram(const Program &prog)
     ProgramEmitContext state = collectProgramDeclarations(prog);
     buildMainFunctionSkeleton(state);
     collectMainVariables(state);
+    // Ensure OOP module init runs before main body (interfaces registered, bindings bound).
+    // Switch to main entry before invoking the module initializer.
+    context().setCurrent(state.entry);
+    emitCall("__mod_init$oop", {});
     allocateMainLocals(state);
     emitMainBodyAndEpilogue(state);
 }

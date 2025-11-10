@@ -111,4 +111,34 @@ std::string mangleMethod(std::string_view klass, std::string_view method)
     return joinWithDot(klass, method);
 }
 
+namespace
+{
+std::string sanitizeDots(std::string_view q)
+{
+    std::string out;
+    out.reserve(q.size());
+    for (char c : q)
+        out.push_back(c == '.' ? '$' : c);
+    return out;
+}
+} // namespace
+
+std::string mangleIfaceRegThunk(std::string_view qualifiedIface)
+{
+    std::string s = sanitizeDots(qualifiedIface);
+    return std::string("__iface_reg$") + s;
+}
+
+std::string mangleIfaceBindThunk(std::string_view qualifiedClass, std::string_view qualifiedIface)
+{
+    std::string cs = sanitizeDots(qualifiedClass);
+    std::string is = sanitizeDots(qualifiedIface);
+    return std::string("__iface_bind$") + cs + "$" + is;
+}
+
+std::string mangleOopModuleInit()
+{
+    return "__mod_init$oop";
+}
+
 } // namespace il::frontends::basic

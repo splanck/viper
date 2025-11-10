@@ -38,5 +38,16 @@ std::string mangleClassDtor(std::string_view klass);
 /// @brief Produce the mangled name for a method symbol scoped to @p klass.
 std::string mangleMethod(std::string_view klass, std::string_view method);
 
+/// @brief Produce a stable name for an interface registration thunk.
+/// Example: __iface_reg$A$B$I for interface A.B.I
+std::string mangleIfaceRegThunk(std::string_view qualifiedIface);
+
+/// @brief Produce a stable name for a class->interface bind thunk.
+/// Example: __iface_bind$A$C$A$B$I for class A.C binding A.B.I
+std::string mangleIfaceBindThunk(std::string_view qualifiedClass, std::string_view qualifiedIface);
+
+/// @brief Name for the combined OOP module initializer.
+std::string mangleOopModuleInit();
+
 
 } // namespace il::frontends::basic

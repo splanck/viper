@@ -277,10 +277,16 @@ Expected<void> checkCall(const VerifyCtx &ctx)
         if (ctx.instr.operands.empty())
             return fail(ctx, "call.indirect missing callee operand");
         const auto &calleeVal = ctx.instr.operands[0];
-        if (calleeVal.kind != il::core::Value::Kind::GlobalAddr)
-            return fail(ctx, "call.indirect callee must be a global name");
-        calleeName = calleeVal.str;
-        argStart = 1;
+        if (calleeVal.kind == il::core::Value::Kind::GlobalAddr)
+        {
+            calleeName = calleeVal.str;
+            argStart = 1;
+        }
+        else
+        {
+            // Pointer-based indirect call (e.g., interface dispatch). Skip static signature checks.
+            return {};
+        }
     }
     else
     {

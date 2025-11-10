@@ -145,11 +145,23 @@ Slot VMContext::eval(Frame &fr, const il::core::Value &value) const
     auto evalGlobalAddr = [&](const il::core::Value &v) -> Slot
     {
         Slot s{};
+        // Map to function pointer when name matches a function; also map to runtime string for globals.
+        auto fIt = vmInstance->fnMap.find(v.str);
+        if (fIt != vmInstance->fnMap.end())
+        {
+            s.ptr = const_cast<il::core::Function *>(fIt->second);
+            return s;
+        }
+
         auto it = vmInstance->strMap.find(v.str);
         if (it == vmInstance->strMap.end())
+        {
             RuntimeBridge::trap(TrapKind::DomainError, "unknown global", {}, fr.func->name, "");
+        }
         else
+        {
             s.str = it->second;
+        }
         return s;
     };
 

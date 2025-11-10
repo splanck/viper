@@ -387,11 +387,18 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
                     {
                         if (seen.count(md->name))
                         {
-                            sde.emit(diag::BasicDiag::IfaceDupMethod,
-                                     md->loc,
-                                     static_cast<uint32_t>(md->name.size()),
-                                     { {"method", md->name}, {"iface", ii.qualifiedName} });
-                            continue;
+                            // E_IFACE_DUP_METHOD: interface '{I}' declares duplicate method '{M}'.
+                            if (emitter)
+                            {
+                                std::string msg = "interface '" + ii.qualifiedName +
+                                                  "' declares duplicate method '" + md->name + "'.";
+                                emitter->emit(il::support::Severity::Error,
+                                              "E_IFACE_DUP_METHOD",
+                                              md->loc,
+                                              static_cast<uint32_t>(md->name.size()),
+                                              std::move(msg));
+                            }
+                             continue;
                         }
                         seen.insert(md->name);
                         IfaceMethodSig slot;
@@ -708,10 +715,17 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
                     // If class was not previously abstract, emit error
                     if (!wasAbstract && emitter)
                     {
-                        sde.emit(diag::BasicDiag::ClassMissesIfaceMethod,
-                                 ci.loc,
-                                 static_cast<uint32_t>(ci.name.size()),
-                                 { {"class", ci.qualifiedName}, {"iface", iface.qualifiedName}, {"method", slotSig.name} });
+                        if (emitter)
+                        {
+                            std::string msg = "class '" + ci.qualifiedName +
+                                              "' does not implement '" + iface.qualifiedName +
+                                              "." + slotSig.name + "'.";
+                            emitter->emit(il::support::Severity::Error,
+                                          "E_CLASS_MISSES_IFACE_METHOD",
+                                          ci.loc,
+                                          static_cast<uint32_t>(ci.name.size()),
+                                          std::move(msg));
+                        }
                     }
                     continue;
                 }
@@ -721,10 +735,17 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
                     ci.isAbstract = true;
                     if (!wasAbstract && emitter)
                     {
-                        sde.emit(diag::BasicDiag::ClassMissesIfaceMethod,
-                                 ci.loc,
-                                 static_cast<uint32_t>(ci.name.size()),
-                                 { {"class", ci.qualifiedName}, {"iface", iface.qualifiedName}, {"method", slotSig.name} });
+                        if (emitter)
+                        {
+                            std::string msg = "class '" + ci.qualifiedName +
+                                              "' does not implement '" + iface.qualifiedName +
+                                              "." + slotSig.name + "'.";
+                            emitter->emit(il::support::Severity::Error,
+                                          "E_CLASS_MISSES_IFACE_METHOD",
+                                          ci.loc,
+                                          static_cast<uint32_t>(ci.name.size()),
+                                          std::move(msg));
+                        }
                     }
                     continue;
                 }

@@ -6,6 +6,14 @@ last-verified: 2025-09-24
 
 # Documentation Changelog
 
+## 2025-11-10 — Milestone C: Interfaces and RTTI
+- Grammar: added `INTERFACE … END INTERFACE`, `IMPLEMENTS` on `CLASS`, and documented `IS`/`AS` expressions with class vs interface behavior; clarified inheritance syntax uses `:` (docs may reference `INHERITS` descriptively).
+- Semantics: nominal interfaces with per‑interface itables; slot assignment equals interface declaration order; classes bind one itable per implemented interface.
+- Dispatch: interface calls lower via itable lookup to `call.indirect` (diagram included); VM and native use identical indirect call semantics.
+- RTTI: `IS` tests dynamic type (class or interface conformance); `AS` returns the object on success or NULL on failure.
+- Runtime APIs: documented `rt_itable_lookup`, `rt_typeid_of`, `rt_type_is_a`, `rt_type_implements`, `rt_cast_as`, `rt_cast_as_iface`.
+- Tests: noted new/updated goldens for interface dispatch, conformance errors, and `IS`/`AS` behavior.
+
 ## 2025-10-24 — Milestone B: BASIC OOP (inheritance, virtual dispatch)
 - Grammar: documented `CLASS B : A` with single inheritance; per‑member modifiers `PUBLIC|PRIVATE`, `VIRTUAL`, `OVERRIDE`, `ABSTRACT`, `FINAL`; added `BASE.M(...)` for direct base calls.
 - Semantics: defined slot assignment (base‑first, append‑only), override rules and signature checks, abstract/final behavior, and dispatch rules (virtual vs direct/base‑qualified).
