@@ -5,6 +5,9 @@
 // Links: docs/il-guide.md#reference
 #pragma once
 
+#include "support/source_location.hpp"
+#include "support/diag_expected.hpp"
+
 #include <optional>
 #include <sstream>
 #include <string>
@@ -51,5 +54,17 @@ bool parseTrapKindToken(const std::string &token, long long &value);
 /// @param value Enumerated integral trap kind value.
 /// @return Identifier string when known; std::nullopt otherwise.
 std::optional<std::string_view> trapKindTokenFromValue(long long value);
+
+/// @brief Construct a Diag with a standard "line N: <message>" prefix.
+/// @param loc Optional source location for the diagnostic.
+/// @param lineNo Line number to embed in the message prefix.
+/// @param message Human-readable message body.
+/// @return Populated diagnostic object.
+inline il::support::Diag makeLineErrorDiag(il::support::SourceLoc loc,
+                                           unsigned lineNo,
+                                           std::string_view message)
+{
+    return il::support::makeError(loc, formatLineDiag(lineNo, message));
+}
 
 } // namespace il::io

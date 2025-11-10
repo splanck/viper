@@ -97,38 +97,67 @@ VMContext::VMContext(VM &vm) noexcept : vmInstance(&vm)
 /// @return Slot populated with the evaluated payload.
 Slot VMContext::eval(Frame &fr, const il::core::Value &value) const
 {
+    auto evalTemp = [&](const il::core::Value &v) -> Slot
+    {
+        Slot s{};
+        if (v.id < fr.regs.size())
+            return fr.regs[v.id];
+
+        const std::string fnName = fr.func ? fr.func->name : std::string("<unknown>");
+        const il::core::BasicBlock *block = vmInstance->currentContext.block;
+        const std::string blockLabel = block ? block->label : std::string();
+        const auto loc = vmInstance->currentContext.loc;
+
+        std::ostringstream os;
+        os << "temp %" << v.id << " out of range (regs=" << fr.regs.size() << ") in function "
+           << fnName;
+        if (!blockLabel.empty())
+            os << ", block " << blockLabel;
+        if (loc.hasLine())
+        {
+            os << ", at line " << loc.line;
+            if (loc.hasColumn())
+                os << ':' << loc.column;
+        }
+        else
+        {
+            os << ", at unknown location";
+        }
+        RuntimeBridge::trap(TrapKind::InvalidOperation, os.str(), loc, fnName, blockLabel);
+        return s;
+    };
+
+    auto evalConstStr = [&](const il::core::Value &v) -> Slot
+    {
+        Slot s{};
+        auto [it, inserted] = vmInstance->inlineLiteralCache.try_emplace(v.str);
+        if (inserted)
+        {
+            if (v.str.find('\0') == std::string::npos)
+                it->second = rt_const_cstr(v.str.c_str());
+            else
+                it->second = rt_string_from_bytes(v.str.data(), v.str.size());
+        }
+        s.str = it->second;
+        return s;
+    };
+
+    auto evalGlobalAddr = [&](const il::core::Value &v) -> Slot
+    {
+        Slot s{};
+        auto it = vmInstance->strMap.find(v.str);
+        if (it == vmInstance->strMap.end())
+            RuntimeBridge::trap(TrapKind::DomainError, "unknown global", {}, fr.func->name, "");
+        else
+            s.str = it->second;
+        return s;
+    };
+
     Slot slot{};
     switch (value.kind)
     {
         case il::core::Value::Kind::Temp:
-        {
-            if (value.id < fr.regs.size())
-                return fr.regs[value.id];
-
-            const std::string fnName = fr.func ? fr.func->name : std::string("<unknown>");
-            const il::core::BasicBlock *block = vmInstance->currentContext.block;
-            const std::string blockLabel = block ? block->label : std::string();
-            const auto loc = vmInstance->currentContext.loc;
-
-            std::ostringstream os;
-            os << "temp %" << value.id << " out of range (regs=" << fr.regs.size()
-               << ") in function " << fnName;
-            if (!blockLabel.empty())
-                os << ", block " << blockLabel;
-            if (loc.hasLine())
-            {
-                os << ", at line " << loc.line;
-                if (loc.hasColumn())
-                    os << ':' << loc.column;
-            }
-            else
-            {
-                os << ", at unknown location";
-            }
-
-            RuntimeBridge::trap(TrapKind::InvalidOperation, os.str(), loc, fnName, blockLabel);
-            return slot;
-        }
+            return evalTemp(value);
         case il::core::Value::Kind::ConstInt:
             slot.i64 = toI64(value);
             return slot;
@@ -136,27 +165,9 @@ Slot VMContext::eval(Frame &fr, const il::core::Value &value) const
             slot.f64 = toF64(value);
             return slot;
         case il::core::Value::Kind::ConstStr:
-        {
-            auto [it, inserted] = vmInstance->inlineLiteralCache.try_emplace(value.str);
-            if (inserted)
-            {
-                if (value.str.find('\0') == std::string::npos)
-                    it->second = rt_const_cstr(value.str.c_str());
-                else
-                    it->second = rt_string_from_bytes(value.str.data(), value.str.size());
-            }
-            slot.str = it->second;
-            return slot;
-        }
+            return evalConstStr(value);
         case il::core::Value::Kind::GlobalAddr:
-        {
-            auto it = vmInstance->strMap.find(value.str);
-            if (it == vmInstance->strMap.end())
-                RuntimeBridge::trap(TrapKind::DomainError, "unknown global", {}, fr.func->name, "");
-            else
-                slot.str = it->second;
-            return slot;
-        }
+            return evalGlobalAddr(value);
         case il::core::Value::Kind::NullPtr:
             slot.ptr = nullptr;
             return slot;

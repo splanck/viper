@@ -55,7 +55,7 @@ using Operand = Value;
 
 template <typename T> Expected<T> makeSyntaxError(ParserState &state, std::string message)
 {
-    return Expected<T>{makeError(state.curLoc, formatLineDiag(state.lineNo, std::move(message)))};
+    return Expected<T>{il::io::makeLineErrorDiag(state.curLoc, state.lineNo, std::move(message))};
 }
 
 } // namespace
@@ -104,9 +104,8 @@ Expected<std::vector<std::string>> OperandParser::splitCommaSeparated(const std:
 
     auto makeErrorWithMessage = [&](const std::string &message)
     {
-        std::ostringstream oss;
-        oss << "line " << state_.lineNo << ": " << message;
-        return Expected<std::vector<std::string>>{makeError(instr_.loc, oss.str())};
+        return Expected<std::vector<std::string>>{
+            il::io::makeLineErrorDiag(instr_.loc, state_.lineNo, message)};
     };
 
     auto malformedError = [&]()
@@ -199,9 +198,7 @@ Expected<void> OperandParser::parseCallOperands(const std::string &text)
     const size_t at = text.find('@');
     if (at == std::string::npos)
     {
-        std::ostringstream oss;
-        oss << "line " << state_.lineNo << ": malformed call";
-        return Expected<void>{makeError(instr_.loc, oss.str())};
+        return Expected<void>{makeError(instr_.loc, formatLineDiag(state_.lineNo, "malformed call"))};
     }
 
     size_t lp = std::string::npos;
@@ -270,16 +267,12 @@ Expected<void> OperandParser::parseCallOperands(const std::string &text)
 
     if (lp == std::string::npos || rp == std::string::npos || depth != 0 || mismatchedClose)
     {
-        std::ostringstream oss;
-        oss << "line " << state_.lineNo << ": malformed call";
-        return Expected<void>{makeError(instr_.loc, oss.str())};
+        return Expected<void>{il::io::makeLineErrorDiag(instr_.loc, state_.lineNo, "malformed call")};
     }
 
     if (!trim(text.substr(rp + 1)).empty())
     {
-        std::ostringstream oss;
-        oss << "line " << state_.lineNo << ": malformed call";
-        return Expected<void>{makeError(instr_.loc, oss.str())};
+        return Expected<void>{il::io::makeLineErrorDiag(instr_.loc, state_.lineNo, "malformed call")};
     }
 
     instr_.callee = trim(text.substr(at + 1, lp - at - 1));
@@ -417,16 +410,14 @@ Expected<void> OperandParser::parseBranchTarget(const std::string &segment,
 
     if (rp == std::string::npos || depth != 0 || inString)
     {
-        std::ostringstream oss;
-        oss << "line " << state_.lineNo << ": mismatched ')";
-        return Expected<void>{makeError(instr_.loc, oss.str())};
+        return Expected<void>{il::io::makeLineErrorDiag(instr_.loc, state_.lineNo, "mismatched ')'")};
     }
 
     if (!trim(text.substr(rp + 1)).empty())
     {
         std::ostringstream oss;
-        oss << "line " << state_.lineNo << ": malformed " << mnemonic;
-        return Expected<void>{makeError(instr_.loc, oss.str())};
+        oss << "malformed " << mnemonic;
+        return Expected<void>{il::io::makeLineErrorDiag(instr_.loc, state_.lineNo, oss.str())};
     }
 
     std::string labelText = trim(text.substr(0, lp));
@@ -469,8 +460,8 @@ Expected<void> OperandParser::checkBranchArgCount(const std::string &label, size
         if (it->second != argCount)
         {
             std::ostringstream oss;
-            oss << "line " << state_.lineNo << ": bad arg count";
-            return Expected<void>{makeError(instr_.loc, oss.str())};
+            oss << "bad arg count";
+            return Expected<void>{il::io::makeLineErrorDiag(instr_.loc, state_.lineNo, oss.str())};
         }
     }
     else
@@ -500,8 +491,8 @@ Expected<void> OperandParser::parseBranchTargets(const std::string &text, size_t
     if (segmentList.size() != expectedTargets)
     {
         std::ostringstream oss;
-        oss << "line " << state_.lineNo << ": malformed " << mnemonic;
-        return Expected<void>{makeError(instr_.loc, oss.str())};
+        oss << "malformed " << mnemonic;
+        return Expected<void>{il::io::makeLineErrorDiag(instr_.loc, state_.lineNo, oss.str())};
     }
 
     for (const auto &segment : segmentList)
@@ -582,9 +573,7 @@ Expected<void> OperandParser::parseSwitchTargets(const std::string &text)
             {
                 if (depth == 0)
                 {
-                    std::ostringstream oss;
-                    oss << "line " << state_.lineNo << ": mismatched ')";
-                    return Expected<void>{makeError(instr_.loc, oss.str())};
+                    return Expected<void>{il::io::makeLineErrorDiag(instr_.loc, state_.lineNo, "mismatched ')'")};
                 }
                 --depth;
             }
@@ -658,8 +647,8 @@ Expected<void> OperandParser::parseCaseSegment(const std::string &segment, const
     if (arrow == std::string::npos)
     {
         std::ostringstream oss;
-        oss << "line " << state_.lineNo << ": malformed " << mnemonic;
-        return Expected<void>{makeError(instr_.loc, oss.str())};
+        oss << "malformed " << mnemonic;
+        return Expected<void>{makeError(instr_.loc, formatLineDiag(state_.lineNo, oss.str()))};
     }
 
     std::string valueText = trim(segment.substr(0, arrow));
@@ -667,8 +656,8 @@ Expected<void> OperandParser::parseCaseSegment(const std::string &segment, const
     if (valueText.empty() || targetText.empty())
     {
         std::ostringstream oss;
-        oss << "line " << state_.lineNo << ": malformed " << mnemonic;
-        return Expected<void>{makeError(instr_.loc, oss.str())};
+        oss << "malformed " << mnemonic;
+        return Expected<void>{makeError(instr_.loc, formatLineDiag(state_.lineNo, oss.str()))};
     }
 
     auto caseValue = parseValueToken(valueText);

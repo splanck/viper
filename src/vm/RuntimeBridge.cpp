@@ -462,47 +462,53 @@ void RuntimeBridge::trap(TrapKind kind,
     ctx.vm = VM::activeInstance();
     if (ctx.vm)
     {
-        if (loc.hasFile())
-        {
-            ctx.vm->currentContext.loc = loc;
-            ctx.vm->runtimeContext.loc = loc;
-        }
-        else
-        {
-            ctx.vm->runtimeContext.loc = {};
-        }
-        if (!fn.empty())
-        {
-            ctx.vm->runtimeContext.function = fn;
-        }
-        else
-        {
-            ctx.vm->runtimeContext.function.clear();
-            ctx.vm->lastTrap.frame.function.clear();
-        }
-        if (!block.empty())
-        {
-            ctx.vm->runtimeContext.block = block;
-        }
-        else
-        {
-            ctx.vm->runtimeContext.block.clear();
-        }
-        if (!loc.hasLine())
-            ctx.vm->lastTrap.frame.line = -1;
+        auto populateVm = [](VM &vm, const SourceLoc &loc, const std::string &fn, const std::string &block) {
+            if (loc.hasFile())
+            {
+                vm.currentContext.loc = loc;
+                vm.runtimeContext.loc = loc;
+            }
+            else
+            {
+                vm.runtimeContext.loc = {};
+            }
+            if (!fn.empty())
+            {
+                vm.runtimeContext.function = fn;
+            }
+            else
+            {
+                vm.runtimeContext.function.clear();
+                vm.lastTrap.frame.function.clear();
+            }
+            if (!block.empty())
+            {
+                vm.runtimeContext.block = block;
+            }
+            else
+            {
+                vm.runtimeContext.block.clear();
+            }
+            if (!loc.hasLine())
+                vm.lastTrap.frame.line = -1;
+        };
+        populateVm(*ctx.vm, loc, fn, block);
         ctx.vm->runtimeContext.message = msg;
     }
     else
     {
-        ctx.error.kind = kind;
-        ctx.error.code = 0;
-        ctx.error.ip = 0;
-        ctx.error.line = loc.hasLine() ? static_cast<int32_t>(loc.line) : -1;
+        auto populateNoVm = [](TrapCtx &c, TrapKind kind, const SourceLoc &loc, const std::string &fn) {
+            c.error.kind = kind;
+            c.error.code = 0;
+            c.error.ip = 0;
+            c.error.line = loc.hasLine() ? static_cast<int32_t>(loc.line) : -1;
 
-        ctx.frame.function = fn.empty() ? std::string("<unknown>") : fn;
-        ctx.frame.ip = 0;
-        ctx.frame.line = ctx.error.line;
-        ctx.frame.handlerInstalled = false;
+            c.frame.function = fn.empty() ? std::string("<unknown>") : fn;
+            c.frame.ip = 0;
+            c.frame.line = c.error.line;
+            c.frame.handlerInstalled = false;
+        };
+        populateNoVm(ctx, kind, loc, fn);
     }
 
     constexpr Opcode trapOpcode = Opcode::Trap;

@@ -94,7 +94,8 @@ std::string readToken(std::istringstream &stream)
 std::string formatLineDiag(unsigned lineNo, std::string_view message)
 {
     std::ostringstream oss;
-    oss << "Line " << lineNo << ": " << message;
+    // Use lowercase "line" to match VM and parser diagnostics uniformly.
+    oss << "line " << lineNo << ": " << message;
     return oss.str();
 }
 

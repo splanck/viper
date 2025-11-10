@@ -44,8 +44,8 @@ using viper::parse::Cursor;
 ParseResult syntaxError(Context &ctx, std::string message)
 {
     ParseResult result;
-    result.status = ::il::support::Expected<void>{::il::support::makeError(
-        ctx.state.curLoc, ::il::io::formatLineDiag(ctx.state.lineNo, std::move(message)))};
+    result.status = ::il::support::Expected<void>{
+        ::il::io::makeLineErrorDiag(ctx.state.curLoc, ctx.state.lineNo, std::move(message))};
     return result;
 }
 

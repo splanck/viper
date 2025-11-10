@@ -57,8 +57,7 @@ using ::il::support::makeError;
 /// @return Error-valued @ref Expected propagating the formatted diagnostic.
 template <class T> Expected<T> makeSyntaxError(ParserState &state, std::string message)
 {
-    return Expected<T>{
-        makeError(state.curLoc, ::il::io::formatLineDiag(state.lineNo, std::move(message)))};
+    return Expected<T>{::il::io::makeLineErrorDiag(state.curLoc, state.lineNo, std::move(message))};
 }
 
 /// @brief Check whether a character can start an identifier.
@@ -312,21 +311,21 @@ Expected<Value> parseSymbolOperand(std::string_view &text, Context &ctx)
     while (!working.empty() && std::isspace(static_cast<unsigned char>(working.front())))
         working.remove_prefix(1);
     if (working.empty() || working.front() != '@')
-        return Expected<Value>{makeError(
-            ctx.state.curLoc, ::il::io::formatLineDiag(ctx.state.lineNo, "missing global name"))};
+        return Expected<Value>{::il::io::makeLineErrorDiag(
+            ctx.state.curLoc, ctx.state.lineNo, "missing global name")};
 
     working.remove_prefix(1);
     auto identCursor = working;
     auto ident = parseIdent(identCursor);
     if (!ident || ident->empty())
-        return Expected<Value>{makeError(
-            ctx.state.curLoc, ::il::io::formatLineDiag(ctx.state.lineNo, "missing global name"))};
+        return Expected<Value>{::il::io::makeLineErrorDiag(
+            ctx.state.curLoc, ctx.state.lineNo, "missing global name")};
 
     while (!identCursor.empty() && std::isspace(static_cast<unsigned char>(identCursor.front())))
         identCursor.remove_prefix(1);
     if (!identCursor.empty())
-        return Expected<Value>{makeError(
-            ctx.state.curLoc, ::il::io::formatLineDiag(ctx.state.lineNo, "malformed global name"))};
+        return Expected<Value>{::il::io::makeLineErrorDiag(
+            ctx.state.curLoc, ctx.state.lineNo, "malformed global name")};
 
     text = identCursor;
     return Value::global(std::string(ident->begin(), ident->end()));

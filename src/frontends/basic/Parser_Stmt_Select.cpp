@@ -176,17 +176,20 @@ StmtPtr Parser::parseSelectCaseStatement()
     auto state = parseSelectHeader();
     parseSelectArms(state);
 
-    SelectModelBuilder builder(state.diagnose);
-    state.stmt->model = builder.build(*state.stmt);
+    // Finalize the SELECT model and diagnose missing END SELECT in one place.
+    auto finalizeSelectCase = [&](SelectParseState &st) -> void {
+        SelectModelBuilder builder(st.diagnose);
+        st.stmt->model = builder.build(*st.stmt);
+        if (st.expectEndSelect)
+        {
+            st.diagnose(st.selectLoc,
+                        static_cast<uint32_t>(6),
+                        diag::ERR_SelectCase_MissingEndSelect.text,
+                        diag::ERR_SelectCase_MissingEndSelect.id);
+        }
+    };
 
-    if (state.expectEndSelect)
-    {
-        state.diagnose(state.selectLoc,
-                       static_cast<uint32_t>(6),
-                       diag::ERR_SelectCase_MissingEndSelect.text,
-                       diag::ERR_SelectCase_MissingEndSelect.id);
-    }
-
+    finalizeSelectCase(state);
     return std::move(state.stmt);
 }
 
