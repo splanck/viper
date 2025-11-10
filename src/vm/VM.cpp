@@ -373,6 +373,20 @@ void VM::traceInstruction(const Instr &instr, Frame &frame)
 /// @return True when execution of the enclosing function has completed.
 bool VM::finalizeDispatch(ExecState &state, const ExecResult &exec)
 {
+    // Allow embedders to perform post-dispatch polling and request pauses.
+    VIPER_VM_DISPATCH_AFTER(state, state.currentInstr ? state.currentInstr->op
+                                                      : il::core::Opcode::Trap);
+    if (state.exitRequested)
+    {
+        // Pause requested by hook; ensure a result is staged.
+        if (!state.pendingResult)
+        {
+            Slot s{};
+            s.i64 = 1;
+            state.pendingResult = s;
+        }
+        return true;
+    }
     if (exec.returned)
     {
         state.pendingResult = exec.value;

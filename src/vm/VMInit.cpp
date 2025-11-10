@@ -264,7 +264,11 @@ Frame VM::setupFrame(const Function &fn,
 VM::ExecState VM::prepareExecution(const Function &fn, const std::vector<Slot> &args)
 {
     ExecState st{};
+    st.owner = this;
     st.fr = setupFrame(fn, args, st.blocks, st.bb);
+    // Inherit polling configuration from VM.
+    st.config.interruptEveryN = pollEveryN_;
+    st.config.pollCallback = pollCallback_;
     tracer.onFramePrepared(st.fr);
     debug.resetLastHit();
     st.ip = 0;

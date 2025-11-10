@@ -60,11 +60,25 @@ if (NOT TARGET test_vm_opcode_counts)
     viper_add_ctest(test_vm_opcode_counts test_vm_opcode_counts)
 endif ()
 
+# Poll callback tests
+if (NOT TARGET test_vm_poll_callback)
+    viper_add_test(test_vm_poll_callback ${VIPER_TESTS_DIR}/unit/VM_PollCallbackTests.cpp)
+    target_link_libraries(test_vm_poll_callback PRIVATE il_build il_vm viper_support)
+    viper_add_ctest(test_vm_poll_callback test_vm_poll_callback)
+endif ()
+
 # Extern registry tests
 if (NOT TARGET test_vm_extern_registry)
     viper_add_test(test_vm_extern_registry ${VIPER_TESTS_DIR}/unit/VM_ExternRegistryTests.cpp)
     target_link_libraries(test_vm_extern_registry PRIVATE il_build il_vm viper_support)
     viper_add_ctest(test_vm_extern_registry test_vm_extern_registry)
+endif ()
+
+# Memory watch tests
+if (NOT TARGET test_vm_mem_watch)
+    viper_add_test(test_vm_mem_watch ${VIPER_TESTS_DIR}/unit/VM_MemWatchTests.cpp)
+    target_link_libraries(test_vm_mem_watch PRIVATE il_build il_vm viper_support)
+    viper_add_ctest(test_vm_mem_watch test_vm_mem_watch)
 endif ()
 
 if (NOT TARGET test_integer_helpers)

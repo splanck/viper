@@ -27,6 +27,7 @@
 #include <vector>
 #include <utility>
 #include <cstddef>
+#include <functional>
 #include "viper/vm/RuntimeBridge.hpp"
 #include "support/source_location.hpp"
 
@@ -37,6 +38,7 @@ class Module;
 
 namespace il::vm
 {
+class VM; // forward declaration for callbacks in RunConfig
 /// @brief Configuration parameters for executing an IL module.
 struct RunConfig
 {
@@ -45,6 +47,12 @@ struct RunConfig
     DebugCtrl debug;                  ///< Debug controller copied into the VM.
     DebugScript *debugScript = nullptr; ///< Optional script pointer; not owned.
     std::vector<ExternDesc> externs;  ///< Pre-registered extern helpers.
+
+    // Periodic host polling --------------------------------------------------
+    /// @brief Invoke a host callback every N instructions (0 disables).
+    uint32_t interruptEveryN = 0;
+    /// @brief Host callback; return false to request a VM pause.
+    std::function<bool(VM &)> pollCallback;
 };
 
 /// @brief Lightweight façade owning a VM instance for running IL modules.
@@ -135,6 +143,16 @@ class Runner
 
     /// @brief Retrieve a pointer to the last trap snapshot, if any; nullptr otherwise.
     const TrapInfo *lastTrap() const;
+
+    // Memory watch façade ----------------------------------------------------
+    /// @brief Register a memory watch range with a tag.
+    void addMemWatch(const void *addr, std::size_t size, std::string tag);
+
+    /// @brief Remove a previously registered memory watch range.
+    bool removeMemWatch(const void *addr, std::size_t size, std::string_view tag);
+
+    /// @brief Drain pending memory watch hit payloads.
+    std::vector<MemWatchHit> drainMemWatchHits();
 
   private:
     class Impl;

@@ -53,6 +53,24 @@ inline size_t minimumAlignmentFor(il::core::Type::Kind kind)
     return 1U;
 }
 
+inline size_t sizeOfKind(il::core::Type::Kind kind)
+{
+    switch (kind)
+    {
+        case il::core::Type::Kind::I1: return 1;
+        case il::core::Type::Kind::I16: return 2;
+        case il::core::Type::Kind::I32: return 4;
+        case il::core::Type::Kind::I64: return 8;
+        case il::core::Type::Kind::F64: return 8;
+        case il::core::Type::Kind::Str: return sizeof(rt_string);
+        case il::core::Type::Kind::Ptr: return sizeof(void *);
+        case il::core::Type::Kind::Error: return sizeof(void *);
+        case il::core::Type::Kind::ResumeTok: return sizeof(void *);
+        case il::core::Type::Kind::Void: return 0;
+    }
+    return 0;
+}
+
 inline Slot loadSlotFromPtr(il::core::Type::Kind kind, void *ptr)
 {
     Slot out{};
@@ -217,6 +235,15 @@ inline VM::ExecResult handleStoreImpl(VM &vm,
     }
 
     Slot value = VMAccess::eval(vm, fr, in.operands[1]);
+
+    // Memory watch hook: emit event on intersecting ranges with minimal overhead.
+    auto &dbg = VMAccess::debug(vm);
+    if (dbg.hasMemWatches())
+    {
+        const size_t writeSize = inline_impl::sizeOfKind(in.type.kind);
+        if (writeSize)
+            dbg.onMemWrite(ptr, writeSize);
+    }
 
     inline_impl::storeSlotToPtr(in.type.kind, ptr, value);
 

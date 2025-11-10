@@ -24,6 +24,7 @@
 #include "support/source_manager.hpp"
 
 #include <utility>
+#include <functional>
 
 namespace il::vm
 {
@@ -46,6 +47,8 @@ class Runner::Impl
         : script(config.debugScript),
           vm(module, config.trace, config.maxSteps, std::move(config.debug), script)
     {
+        // Forward polling configuration to the underlying VM.
+        detail::VMAccess::setPollConfig(vm, config.interruptEveryN, std::move(config.pollCallback));
         for (const auto &ext : config.externs)
             il::vm::RuntimeBridge::registerExtern(ext);
     }
@@ -132,8 +135,7 @@ class Runner::Impl
                 case StepStatus::Trapped:
                     return RunStatus::Trapped;
                 case StepStatus::Paused:
-                    // Interpret generic pause as step budget exhaustion for continue.
-                    return RunStatus::StepBudgetExceeded;
+                    return RunStatus::Paused;
             }
         }
     }
@@ -160,6 +162,21 @@ class Runner::Impl
     void setMaxSteps(uint64_t max)
     {
         detail::VMAccess::setMaxSteps(vm, max);
+    }
+
+    void addMemWatch(const void *addr, std::size_t size, std::string tag)
+    {
+        detail::VMAccess::debug(vm).addMemWatch(addr, size, std::move(tag));
+    }
+
+    bool removeMemWatch(const void *addr, std::size_t size, std::string_view tag)
+    {
+        return detail::VMAccess::debug(vm).removeMemWatch(addr, size, tag);
+    }
+
+    std::vector<MemWatchHit> drainMemWatchHits()
+    {
+        return detail::VMAccess::debug(vm).drainMemWatchEvents();
     }
 
     const TrapInfo *lastTrap() const
@@ -195,6 +212,7 @@ class Runner::Impl
     VM vm;                         ///< Owning interpreter instance.
     std::unique_ptr<detail::VMAccess::ExecState> state; // prepared on first step
     mutable TrapInfo cachedTrap{};
+
 };
 
 /// @brief Create a runner façade for the supplied module and configuration.
@@ -308,6 +326,21 @@ void Runner::setMaxSteps(uint64_t max)
 const Runner::TrapInfo *Runner::lastTrap() const
 {
     return impl->lastTrap();
+}
+
+void Runner::addMemWatch(const void *addr, std::size_t size, std::string tag)
+{
+    impl->addMemWatch(addr, size, std::move(tag));
+}
+
+bool Runner::removeMemWatch(const void *addr, std::size_t size, std::string_view tag)
+{
+    return impl->removeMemWatch(addr, size, tag);
+}
+
+std::vector<MemWatchHit> Runner::drainMemWatchHits()
+{
+    return impl->drainMemWatchHits();
 }
 
 /// @brief Convenience helper that constructs a runner, executes it, and returns the result.

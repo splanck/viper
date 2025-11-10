@@ -317,4 +317,56 @@ void DebugCtrl::resetLastHit()
     lastHitSrc_.reset();
 }
 
+/// @brief Register a memory watch entry consisting of an address range and tag.
+void DebugCtrl::addMemWatch(const void *addr, std::size_t size, std::string tag)
+{
+    if (!addr || size == 0)
+        return;
+    memWatches_.push_back(MemWatchRange{addr, size, std::move(tag)});
+}
+
+/// @brief Remove a memory watch entry matching the triple (addr,size,tag).
+bool DebugCtrl::removeMemWatch(const void *addr, std::size_t size, std::string_view tag)
+{
+    for (auto it = memWatches_.begin(); it != memWatches_.end(); ++it)
+    {
+        if (it->addr == addr && it->size == size && it->tag == tag)
+        {
+            memWatches_.erase(it);
+            return true;
+        }
+    }
+    return false;
+}
+
+bool DebugCtrl::hasMemWatches() const noexcept
+{
+    return !memWatches_.empty();
+}
+
+/// @brief Check memory write against installed ranges and enqueue hits.
+void DebugCtrl::onMemWrite(const void *addr, std::size_t size)
+{
+    if (memWatches_.empty() || !addr || size == 0)
+        return;
+    const auto start = reinterpret_cast<std::uintptr_t>(addr);
+    const auto end = start + size; // exclusive
+    for (const auto &w : memWatches_)
+    {
+        const auto wStart = reinterpret_cast<std::uintptr_t>(w.addr);
+        const auto wEnd = wStart + w.size;
+        const bool intersects = !(end <= wStart || wEnd <= start);
+        if (intersects)
+            memEvents_.push_back(MemWatchHit{addr, size, w.tag});
+    }
+}
+
+/// @brief Drain pending memory watch hit events for external consumption.
+std::vector<MemWatchHit> DebugCtrl::drainMemWatchEvents()
+{
+    std::vector<MemWatchHit> out;
+    out.swap(memEvents_);
+    return out;
+}
+
 } // namespace il::vm

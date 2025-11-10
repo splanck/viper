@@ -55,7 +55,8 @@ struct Frame;
 enum class DebugEvent
 {
     None = 0,
-    TailCall, ///< A tail-call reused the current frame (from -> to)
+    TailCall,     ///< A tail-call reused the current frame (from -> to)
+    MemWatchHit,  ///< A memory write intersected a watched range.
 };
 
 /// @brief Payload describing a tail-call optimisation event.
@@ -63,6 +64,14 @@ struct TailCallInfo
 {
     const il::core::Function *from = nullptr;
     const il::core::Function *to = nullptr;
+};
+
+/// @brief Payload describing a memory watch hit event.
+struct MemWatchHit
+{
+    const void *addr = nullptr; ///< Address of the write.
+    std::size_t size = 0;       ///< Number of bytes written.
+    std::string tag;            ///< User-provided tag for the watch range.
 };
 
 /// @brief Configuration for interpreter tracing.
@@ -174,6 +183,23 @@ class DebugCtrl
     /// @brief Reset coalesced source line state.
     void resetLastHit();
 
+    // Memory watch API -------------------------------------------------------
+    /// @brief Register a memory watch range [addr, addr+size) with a tag.
+    void addMemWatch(const void *addr, std::size_t size, std::string tag);
+
+    /// @brief Remove a previously registered memory watch range.
+    /// @return True when a matching entry was removed.
+    bool removeMemWatch(const void *addr, std::size_t size, std::string_view tag);
+
+    /// @brief Check whether any memory watches are installed.
+    [[nodiscard]] bool hasMemWatches() const noexcept;
+
+    /// @brief Record a memory write and enqueue hit events for intersecting ranges.
+    void onMemWrite(const void *addr, std::size_t size);
+
+    /// @brief Consume and return pending memory watch hit events.
+    std::vector<MemWatchHit> drainMemWatchEvents();
+
   private:
     static std::pair<std::string, std::string> normalizePathWithBase(std::string path);
 
@@ -200,6 +226,15 @@ class DebugCtrl
     };
 
     std::unordered_map<il::support::Symbol, WatchEntry> watches_;
+
+    struct MemWatchRange
+    {
+        const void *addr = nullptr;
+        std::size_t size = 0;
+        std::string tag;
+    };
+    std::vector<MemWatchRange> memWatches_;
+    std::vector<MemWatchHit> memEvents_;
 };
 
 /// @brief Action produced by a debugger script.

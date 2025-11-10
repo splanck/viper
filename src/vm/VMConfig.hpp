@@ -25,7 +25,19 @@
 #endif
 
 #ifndef VIPER_VM_DISPATCH_AFTER
-#define VIPER_VM_DISPATCH_AFTER(ST, OPCODE)  do { } while (0)
+#define VIPER_VM_DISPATCH_AFTER(ST, OPCODE)                                                      \
+    do                                                                                           \
+    {                                                                                            \
+        auto &cfg = (ST).config;                                                                 \
+        if (cfg.interruptEveryN &&                                                               \
+            ((++(ST).pollTick % cfg.interruptEveryN) == 0))                                      \
+        {                                                                                        \
+            if (cfg.pollCallback && !(cfg.pollCallback(*((ST).vm()))))                           \
+            {                                                                                    \
+                (ST).requestPause();                                                             \
+            }                                                                                    \
+        }                                                                                        \
+    } while (0)
 #endif
 
 // -----------------------------------------------------------------------------

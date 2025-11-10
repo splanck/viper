@@ -24,6 +24,7 @@
 #include <string_view>
 #include <unordered_map>
 #include <vector>
+#include <functional>
 
 namespace il::vm
 {
@@ -385,6 +386,28 @@ class VM
         const il::core::Instr *currentInstr =
             nullptr;                ///< Instruction under execution for inline dispatch
         bool exitRequested = false; ///< Whether the active loop should exit
+
+        // Host polling configuration/state ----------------------------------
+        struct PollConfig
+        {
+            uint32_t interruptEveryN = 0;
+            std::function<bool(VM &)> pollCallback;
+        } config;                   ///< Per-run polling configuration
+        uint64_t pollTick = 0;      ///< Instruction counter for polling cadence
+
+        VM *owner = nullptr;        ///< Owning VM used by callbacks
+
+        /// @brief Access the owning VM for this execution state.
+        VM *vm() { return owner; }
+
+        /// @brief Request the interpreter loop to pause at the next boundary.
+        void requestPause()
+        {
+            Slot s{};
+            s.i64 = 1; // generic pause sentinel
+            pendingResult = s;
+            exitRequested = true;
+        }
     };
 
     bool prepareTrap(VmError &error);
@@ -478,6 +501,10 @@ class VM
     /// @brief Return top-N opcodes by execution count as (opcode index, count).
     std::vector<std::pair<int, uint64_t>> topOpcodes(std::size_t n) const;
 #endif
+
+    // Polling configuration stored on VM and propagated to new ExecStates
+    uint32_t pollEveryN_ = 0;
+    std::function<bool(VM &)> pollCallback_{};
 };
 
 } // namespace il::vm

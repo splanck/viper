@@ -64,5 +64,11 @@ struct VMAccess
     {
         vm.maxSteps = max;
     }
+
+    static inline void setPollConfig(VM &vm, uint32_t everyN, std::function<bool(VM &)> cb)
+    {
+        vm.pollEveryN_ = everyN;
+        vm.pollCallback_ = std::move(cb);
+    }
 };
 } // namespace il::vm::detail
