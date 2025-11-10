@@ -46,7 +46,7 @@ using TransformKind = LowerRule::ArgTransform::Kind;
 using Feature = LowerRule::Feature;
 using FeatureAction = LowerRule::Feature::Action;
 
-constexpr std::size_t kBuiltinCount = static_cast<std::size_t>(B::Loc) + 1;
+constexpr std::size_t kBuiltinCount = static_cast<std::size_t>(B::Timer) + 1;
 
 /// @brief Convert a builtin enumerator into a dense array index.
 /// @details All tables in this file store entries densely in declaration order

@@ -170,6 +170,7 @@ void registerMathBuiltins()
     register_builtin(getBuiltinInfo(Builtin::Cos).name, &lowerMathBuiltin);
     register_builtin(getBuiltinInfo(Builtin::Pow).name, &lowerMathBuiltin);
     register_builtin(getBuiltinInfo(Builtin::Rnd).name, &lowerMathBuiltin);
+    register_builtin(getBuiltinInfo(Builtin::Timer).name, &lowerMathBuiltin);
 }
 
 /// @brief Register numeric conversion builtins with the lowering registry.

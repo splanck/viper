@@ -67,6 +67,7 @@ void registerMathBuiltinInfos(std::span<BuiltinInfo> infos)
     infos[idx(B::Cos)] = {"COS", nullptr};
     infos[idx(B::Pow)] = {"POW", nullptr};
     infos[idx(B::Rnd)] = {"RND", nullptr};
+    infos[idx(B::Timer)] = {"TIMER", nullptr};
 }
 
 /// @brief Describe semantic analysis requirements for BASIC math builtins.
@@ -207,6 +208,13 @@ void registerMathBuiltinScanRules(std::span<BuiltinScanRule> rules)
                  il::runtime::RuntimeFeature::Rnd,
                  0,
                  Lowerer::ExprType::I64}},
+    };
+
+    rules[idx(B::Timer)] = {
+        ResultSpec{ResultSpec::Kind::Fixed, Lowerer::ExprType::I64, 0},
+        BuiltinScanRule::ArgTraversal::Explicit,
+        {},
+        {},  // No runtime feature tracking needed; it's always available
     };
 }
 
@@ -378,6 +386,14 @@ void registerMathBuiltinLoweringRules(std::span<BuiltinLoweringRule> rules)
                  .runtime = "rt_rnd",
                  .features = {Feature{.action = Feature::Action::Track,
                                       .feature = il::runtime::RuntimeFeature::Rnd}}}},
+    };
+
+    rules[idx(B::Timer)] = {
+        ResultSpec{ResultSpec::Kind::Fixed, Lowerer::ExprType::I64, 0},
+        {Variant{.condition = Condition::Always,
+                 .kind = VariantKind::CallRuntime,
+                 .runtime = "rt_timer_ms",
+                 .features = {}}},
     };
 }
 

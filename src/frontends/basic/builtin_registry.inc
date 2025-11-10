@@ -566,4 +566,9 @@ BUILTIN(
                     BuiltinScanRule::ArgTraversal::Explicit,
                     {0},
                     {}}))
+BUILTIN(
+    Timer,
+    (BuiltinDescriptor{"TIMER", B::Timer, {0, 0}, TypeMask::I64, nullptr}),
+    (LowerRule{}),
+    (BuiltinScanRule{}))
 // clang-format on

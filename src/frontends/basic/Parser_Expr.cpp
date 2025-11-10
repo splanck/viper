@@ -270,7 +270,7 @@ ExprPtr Parser::parseBuiltinCall(BuiltinCallExpr::Builtin builtin, il::support::
 {
     expect(TokenKind::LParen);
     std::vector<ExprPtr> args;
-    if (builtin == BuiltinCallExpr::Builtin::Rnd)
+    if (builtin == BuiltinCallExpr::Builtin::Rnd || builtin == BuiltinCallExpr::Builtin::Timer)
     {
         expect(TokenKind::RParen);
     }

@@ -30,6 +30,10 @@ extern "C" {
 // Clamps negative values to zero; uses monotonic clock where available.
 void rt_sleep_ms(int32_t ms);
 
+// Return monotonic time in milliseconds since an unspecified epoch.
+// Uses a steady clock; values are non-decreasing and suitable for measuring durations.
+int64_t rt_timer_ms(void);
+
 #ifdef __cplusplus
 } // extern "C"
 #endif

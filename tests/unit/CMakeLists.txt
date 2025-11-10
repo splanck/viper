@@ -252,6 +252,11 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_sleep PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_sleep test_rt_sleep)
 
+    # Timer runtime test
+    viper_add_test(test_rt_timer ${VIPER_TESTS_DIR}/runtime/RT_TimerTests.cpp)
+    target_link_libraries(test_rt_timer PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_timer test_rt_timer)
+
     viper_add_test(test_rt_string_size_clamp ${VIPER_TESTS_DIR}/runtime/RTStringSizeClampTests.cpp)
     target_link_libraries(test_rt_string_size_clamp PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_string_size_clamp test_rt_string_size_clamp)
@@ -333,6 +338,13 @@ function(viper_add_runtime_tests)
         viper_add_test(test_basic_sleep_lowering ${VIPER_TESTS_DIR}/unit/Basic_Sleep_Lowering.cpp)
         target_link_libraries(test_basic_sleep_lowering PRIVATE fe_basic)
         viper_add_ctest(test_basic_sleep_lowering test_basic_sleep_lowering)
+    endif ()
+
+    # Basic TIMER lowering test
+    if (NOT TARGET test_basic_timer_lowering)
+        viper_add_test(test_basic_timer_lowering ${VIPER_TESTS_DIR}/unit/Basic_Timer_Lowering.cpp)
+        target_link_libraries(test_basic_timer_lowering PRIVATE fe_basic)
+        viper_add_ctest(test_basic_timer_lowering test_basic_timer_lowering)
     endif ()
 
     viper_add_test(test_rt_split_fields ${VIPER_TESTS_DIR}/runtime/RTSplitFieldsTests.cpp)

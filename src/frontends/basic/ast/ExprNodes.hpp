@@ -254,7 +254,8 @@ struct BuiltinCallExpr : Expr
         GetKey,
         Eof,
         Lof,
-        Loc
+        Loc,
+        Timer
     } builtin{Builtin::Len};
 
     /// Argument expressions passed to the builtin; owned.
