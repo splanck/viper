@@ -31,15 +31,15 @@
 
 #include <algorithm>
 #include <cassert>
-#include <cstdint>
 #include <cmath>
+#include <cstdint>
+#include <limits>
 #include <optional>
 #include <queue>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
-#include <limits>
 
 using namespace il::core;
 
@@ -666,7 +666,8 @@ class SCCPSolver
                     case Opcode::FMul:
                         return Value::constFloat(lhs * rhs);
                     case Opcode::FDiv:
-                        return rhs == 0.0 ? std::nullopt : std::optional<Value>(Value::constFloat(lhs / rhs));
+                        return rhs == 0.0 ? std::nullopt
+                                          : std::optional<Value>(Value::constFloat(lhs / rhs));
                     default:
                         break;
                 }
@@ -797,17 +798,21 @@ class SCCPSolver
                     return std::nullopt;
                 if (instr.op == Opcode::CastFpToSiRteChk)
                 {
-                    constexpr double kMin = static_cast<double>(std::numeric_limits<long long>::min());
-                    constexpr double kMax = static_cast<double>(std::numeric_limits<long long>::max());
+                    constexpr double kMin =
+                        static_cast<double>(std::numeric_limits<long long>::min());
+                    constexpr double kMax =
+                        static_cast<double>(std::numeric_limits<long long>::max());
                     if (rounded < kMin || rounded > kMax)
                         return std::nullopt;
                     return Value::constInt(static_cast<long long>(rounded));
                 }
                 constexpr double kMin = 0.0;
-                constexpr double kMax = static_cast<double>(std::numeric_limits<unsigned long long>::max());
+                constexpr double kMax =
+                    static_cast<double>(std::numeric_limits<unsigned long long>::max());
                 if (rounded < kMin || rounded > kMax)
                     return std::nullopt;
-                return Value::constInt(static_cast<long long>(static_cast<unsigned long long>(rounded)));
+                return Value::constInt(
+                    static_cast<long long>(static_cast<unsigned long long>(rounded)));
             }
             case Opcode::Zext1:
             {

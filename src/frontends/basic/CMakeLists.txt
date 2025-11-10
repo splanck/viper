@@ -7,9 +7,9 @@ add_custom_command(
         COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/generated/include/viper/diag
         COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/generated/src/frontends/basic/diag
         COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/gen_diagnostics.py
-                --spec ${BASIC_DIAG_SPEC}
-                --header ${BASIC_DIAG_HEADER}
-                --source ${BASIC_DIAG_SOURCE}
+        --spec ${BASIC_DIAG_SPEC}
+        --header ${BASIC_DIAG_HEADER}
+        --source ${BASIC_DIAG_SOURCE}
         DEPENDS ${BASIC_DIAG_SPEC} ${CMAKE_SOURCE_DIR}/scripts/gen_diagnostics.py
         COMMENT "Generating BASIC diagnostics catalog"
         VERBATIM)

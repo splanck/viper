@@ -22,9 +22,9 @@
 
 #include "vm/OpHandlers_Control.hpp"
 
+#include "viper/vm/internal/OpHelpers.hpp"
 #include "vm/RuntimeBridge.hpp"
 #include "vm/control_flow.hpp"
-#include "viper/vm/internal/OpHelpers.hpp"
 #include "vm/ops/common/Branching.hpp"
 
 #include <algorithm>

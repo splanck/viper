@@ -40,8 +40,8 @@ add_custom_command(
         OUTPUT ${RUNTIME_SIGNATURE_OUTPUT}
         COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/generated
         COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/gen_runtime_signatures.py
-                --spec ${RUNTIME_SIGNATURE_SPEC}
-                --output ${RUNTIME_SIGNATURE_OUTPUT}
+        --spec ${RUNTIME_SIGNATURE_SPEC}
+        --output ${RUNTIME_SIGNATURE_OUTPUT}
         DEPENDS ${RUNTIME_SIGNATURE_SPEC} ${CMAKE_SOURCE_DIR}/scripts/gen_runtime_signatures.py
         COMMENT "Generating runtime signature registry"
         VERBATIM)

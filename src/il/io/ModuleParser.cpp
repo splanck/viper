@@ -29,8 +29,8 @@
 
 #include "il/internal/io/FunctionParser.hpp"
 #include "il/internal/io/ParserUtil.hpp"
-#include "il/io/StringEscape.hpp"
 #include "il/internal/io/TypeParser.hpp"
+#include "il/io/StringEscape.hpp"
 
 #include "support/diag_expected.hpp"
 #include "viper/parse/Cursor.h"

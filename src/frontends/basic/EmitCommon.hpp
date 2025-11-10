@@ -18,8 +18,8 @@
 
 #pragma once
 
-#include "viper/il/Module.hpp"
 #include "support/source_location.hpp"
+#include "viper/il/Module.hpp"
 
 #include <cstdint>
 #include <optional>

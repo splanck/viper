@@ -5,11 +5,12 @@
 //
 //===----------------------------------------------------------------------===//
 // File: src/frontends/basic/Parser_Stmt_Core.cpp
-// Purpose: Implement parsing routines for core BASIC statements such as LET and procedure declarations.
-// Key invariants: Maintains the parser's registry of known procedures so CALL statements without parentheses can still be
+// Purpose: Implement parsing routines for core BASIC statements such as LET and procedure
+// declarations. Key invariants: Maintains the parser's registry of known procedures so CALL
+// statements without parentheses can still be
 //                 resolved and ensures assignment targets honour BASIC's typing conventions.
-// Ownership/Lifetime: Parser allocates AST nodes with std::unique_ptr and transfers ownership to the caller.
-// Links: docs/codemap.md, docs/basic-language.md#statements
+// Ownership/Lifetime: Parser allocates AST nodes with std::unique_ptr and transfers ownership to
+// the caller. Links: docs/codemap.md, docs/basic-language.md#statements
 //
 //===----------------------------------------------------------------------===//
 
@@ -107,7 +108,8 @@ bool Parser::isImplicitAssignmentStart() const
             ++offset;
             continue;
         }
-        if (tok.kind == TokenKind::EndOfLine || tok.kind == TokenKind::EndOfFile || tok.kind == TokenKind::Colon)
+        if (tok.kind == TokenKind::EndOfLine || tok.kind == TokenKind::EndOfFile ||
+            tok.kind == TokenKind::Colon)
             return false;
         if (tok.kind == TokenKind::LParen)
         {
@@ -218,12 +220,15 @@ void Parser::reportMissingCallParenthesis(const Token &identTok, const Token &ne
     uint32_t length = nextTok.lexeme.empty() ? 1 : static_cast<uint32_t>(nextTok.lexeme.size());
     if (emitter_)
     {
-        std::string message = "expected '(' after procedure name '" + identTok.lexeme + "' in procedure call statement";
+        std::string message = "expected '(' after procedure name '" + identTok.lexeme +
+                              "' in procedure call statement";
         emitter_->emit(il::support::Severity::Error, "B0001", diagLoc, length, std::move(message));
     }
     else
     {
-        std::fprintf(stderr, "expected '(' after procedure name '%s' in procedure call statement\n", identTok.lexeme.c_str());
+        std::fprintf(stderr,
+                     "expected '(' after procedure name '%s' in procedure call statement\n",
+                     identTok.lexeme.c_str());
     }
 }
 
@@ -247,7 +252,8 @@ void Parser::reportInvalidCallExpression(const Token &identTok)
     }
     else
     {
-        std::fprintf(stderr, "expected procedure call after identifier '%s'\n", identTok.lexeme.c_str());
+        std::fprintf(
+            stderr, "expected procedure call after identifier '%s'\n", identTok.lexeme.c_str());
     }
 }
 
@@ -486,4 +492,3 @@ StmtPtr Parser::parseSubStatement()
 }
 
 } // namespace il::frontends::basic
-

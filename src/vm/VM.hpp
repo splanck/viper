@@ -18,13 +18,13 @@
 #include <array>
 #include <cstdint>
 #include <exception>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
 #include <vector>
-#include <functional>
 
 namespace il::vm
 {
@@ -392,13 +392,17 @@ class VM
         {
             uint32_t interruptEveryN = 0;
             std::function<bool(VM &)> pollCallback;
-        } config;                   ///< Per-run polling configuration
-        uint64_t pollTick = 0;      ///< Instruction counter for polling cadence
+        } config; ///< Per-run polling configuration
 
-        VM *owner = nullptr;        ///< Owning VM used by callbacks
+        uint64_t pollTick = 0; ///< Instruction counter for polling cadence
+
+        VM *owner = nullptr; ///< Owning VM used by callbacks
 
         /// @brief Access the owning VM for this execution state.
-        VM *vm() { return owner; }
+        VM *vm()
+        {
+            return owner;
+        }
 
         /// @brief Request the interpreter loop to pause at the next boundary.
         void requestPause()

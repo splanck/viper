@@ -163,10 +163,10 @@ ParseResult parseNumericLiteral(const std::string &token, Context &ctx)
     ParseResult result;
 
     const bool hasDecimalPoint = token.find('.') != std::string::npos;
-    const bool isHexLiteral = token.size() >= 2 && token[0] == '0' &&
-                               (token[1] == 'x' || token[1] == 'X');
-    const bool hasExponent = (!isHexLiteral) &&
-                             (token.find('e') != std::string::npos || token.find('E') != std::string::npos);
+    const bool isHexLiteral =
+        token.size() >= 2 && token[0] == '0' && (token[1] == 'x' || token[1] == 'X');
+    const bool hasExponent = (!isHexLiteral) && (token.find('e') != std::string::npos ||
+                                                 token.find('E') != std::string::npos);
 
     auto handleFloat = [&](const std::string &literal) -> ParseResult
     {
@@ -181,8 +181,9 @@ ParseResult parseNumericLiteral(const std::string &token, Context &ctx)
         return syntaxError(ctx, oss.str());
     };
 
-    if (hasDecimalPoint || hasExponent || equalsIgnoreCase(token, "nan") || equalsIgnoreCase(token, "inf") ||
-        equalsIgnoreCase(token, "+inf") || equalsIgnoreCase(token, "-inf"))
+    if (hasDecimalPoint || hasExponent || equalsIgnoreCase(token, "nan") ||
+        equalsIgnoreCase(token, "inf") || equalsIgnoreCase(token, "+inf") ||
+        equalsIgnoreCase(token, "-inf"))
         return handleFloat(token);
 
     long long intValue = 0;
@@ -258,4 +259,3 @@ ParseResult parseConstOperand(viper::parse::Cursor &cur, Context &ctx)
 }
 
 } // namespace viper::il::io
-

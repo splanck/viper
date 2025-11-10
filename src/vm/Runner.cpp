@@ -18,13 +18,13 @@
 
 #include "viper/vm/VM.hpp"
 
+#include "support/source_manager.hpp"
+#include "vm/OpHandlerAccess.hpp"
 #include "vm/VM.hpp"
 #include "vm/VMContext.hpp"
-#include "vm/OpHandlerAccess.hpp"
-#include "support/source_manager.hpp"
 
-#include <utility>
 #include <functional>
+#include <utility>
 
 namespace il::vm
 {
@@ -223,7 +223,6 @@ class Runner::Impl
     VM vm;                         ///< Owning interpreter instance.
     std::unique_ptr<detail::VMAccess::ExecState> state; // prepared on first step
     mutable TrapInfo cachedTrap{};
-
 };
 
 /// @brief Create a runner façade for the supplied module and configuration.

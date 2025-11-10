@@ -229,11 +229,7 @@ void SemanticAnalyzer::analyzeReturn(ReturnStmt &stmt)
         msg += semantic_analyzer_detail::semanticTypeName(valueType);
         msg += " does not match declared AS ";
         msg += semantic_analyzer_detail::semanticTypeName(*expected);
-        de.emit(il::support::Severity::Warning,
-                "B4010",
-                stmt.value->loc,
-                1,
-                std::move(msg));
+        de.emit(il::support::Severity::Warning, "B4010", stmt.value->loc, 1, std::move(msg));
     }
 }
 

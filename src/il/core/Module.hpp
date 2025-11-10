@@ -8,10 +8,10 @@
 #include "il/core/Extern.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Global.hpp"
+#include "viper/version.hpp"
 #include <optional>
 #include <string>
 #include <vector>
-#include "viper/version.hpp"
 
 namespace il::core
 {

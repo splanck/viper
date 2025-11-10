@@ -39,10 +39,11 @@ void emitUnknownLabel(ControlCheckContext &context,
                       uint32_t width)
 {
     const std::string labelText = std::to_string(label);
-    context.diagnostics().emit(diag::BasicDiag::UnknownLineLabel,
-                               loc,
-                               width,
-                               std::initializer_list<diag::Replacement>{diag::Replacement{"label", labelText}});
+    context.diagnostics().emit(
+        diag::BasicDiag::UnknownLineLabel,
+        loc,
+        width,
+        std::initializer_list<diag::Replacement>{diag::Replacement{"label", labelText}});
 }
 } // namespace
 

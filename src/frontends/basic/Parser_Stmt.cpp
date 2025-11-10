@@ -17,9 +17,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/basic/BasicDiagnosticMessages.hpp"
-#include "viper/diag/BasicDiag.hpp"
 #include "frontends/basic/Parser.hpp"
 #include "frontends/basic/ast/ExprNodes.hpp"
+#include "viper/diag/BasicDiag.hpp"
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
@@ -45,6 +45,7 @@ void Parser::registerCoreParsers(StatementParserRegistry &registry)
     registry.registerHandler(TokenKind::KeywordLet, &Parser::parseLetStatement);
     registry.registerHandler(TokenKind::KeywordFunction, &Parser::parseFunctionStatement);
     registry.registerHandler(TokenKind::KeywordSub, &Parser::parseSubStatement);
+    registry.registerHandler(TokenKind::KeywordNamespace, &Parser::parseNamespaceDecl);
 }
 
 /// @brief Register object-oriented statement parsers when the feature set is enabled.
@@ -121,6 +122,41 @@ Parser::StmtResult Parser::parseRegisteredStatement(int line)
     return std::nullopt;
 }
 
+/// @brief Parse a NAMESPACE declaration with a dotted path and body.
+/// @details Consumes the NAMESPACE header, parses a dotted identifier path
+///          like `Foo.Bar.Baz`, tolerates an optional end-of-line, and then
+///          collects nested statements until `END NAMESPACE`.
+/// @return Newly allocated NamespaceDecl node.
+StmtPtr Parser::parseNamespaceDecl()
+{
+    auto loc = peek().loc;
+    consume(); // NAMESPACE
+
+    std::vector<std::string> path;
+    // Require at least one identifier.
+    Token first = expect(TokenKind::Identifier);
+    if (first.kind == TokenKind::Identifier)
+        path.push_back(first.lexeme);
+    // Parse optional `.Ident` segments.
+    while (at(TokenKind::Dot))
+    {
+        consume();
+        Token seg = expect(TokenKind::Identifier);
+        if (seg.kind != TokenKind::Identifier)
+            break;
+        path.push_back(seg.lexeme);
+    }
+
+    if (at(TokenKind::EndOfLine))
+        consume();
+
+    auto decl = std::make_unique<NamespaceDecl>();
+    decl->loc = loc;
+    decl->path = std::move(path);
+    parseProcedureBody(TokenKind::KeywordNamespace, decl->body);
+    return decl;
+}
+
 Parser::StmtResult Parser::parseIf(int line)
 {
     if (!at(TokenKind::KeywordIf))
@@ -176,7 +212,8 @@ void Parser::reportUnexpectedLineNumber(const Token &tok)
                        tok.loc,
                        static_cast<uint32_t>(tok.lexeme.size()),
                        diag::formatMessage(diagId,
-                                           std::initializer_list<diag::Replacement>{diag::Replacement{"token", tok.lexeme}}));
+                                           std::initializer_list<diag::Replacement>{
+                                               diag::Replacement{"token", tok.lexeme}}));
     }
     else
     {
@@ -194,7 +231,8 @@ void Parser::reportUnknownStatement(const Token &tok)
                        tok.loc,
                        static_cast<uint32_t>(tok.lexeme.size()),
                        diag::formatMessage(diagId,
-                                           std::initializer_list<diag::Replacement>{diag::Replacement{"token", tok.lexeme}}));
+                                           std::initializer_list<diag::Replacement>{
+                                               diag::Replacement{"token", tok.lexeme}}));
     }
     else
     {

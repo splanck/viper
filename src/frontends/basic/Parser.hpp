@@ -455,6 +455,10 @@ class Parser
     /// @return RETURN statement node.
     StmtPtr parseReturnStatement();
 
+    /// @brief Parse a NAMESPACE declaration with dotted path and body.
+    /// @return NamespaceDecl node owning path segments and nested statements.
+    StmtPtr parseNamespaceDecl();
+
     /// @brief Parse a comma-separated parameter list inside parentheses.
     /// @return Vector of parsed parameters.
     std::vector<Param> parseParamList();

@@ -7,8 +7,8 @@
 
 #include "rt.hpp"
 #include "support/source_location.hpp"
-#include "vm/Trap.hpp"
 #include "viper/vm/RuntimeBridge.hpp"
+#include "vm/Trap.hpp"
 
 #include <cstddef>
 #include <string>

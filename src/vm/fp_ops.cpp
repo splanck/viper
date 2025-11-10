@@ -17,9 +17,9 @@
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
+#include "viper/vm/internal/OpHelpers.hpp"
 #include "vm/OpHandlerUtils.hpp"
 #include "vm/RuntimeBridge.hpp"
-#include "viper/vm/internal/OpHelpers.hpp"
 
 #include <cmath>
 #include <cstdint>
@@ -132,10 +132,7 @@ VM::ExecResult handleFAdd(VM &vm,
     (void)bb;
     (void)ip;
     return il::vm::internal::binaryOp<double>(
-        vm,
-        fr,
-        in,
-        [](double lhs, double rhs) { return lhs + rhs; });
+        vm, fr, in, [](double lhs, double rhs) { return lhs + rhs; });
 }
 
 /// @brief Execute the `fsub` opcode by subtracting two floating-point operands.

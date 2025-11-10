@@ -27,10 +27,10 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <variant>
 #include <vector>
-#include <unordered_map>
 
 namespace viper::codegen::x64
 {
@@ -676,21 +676,28 @@ void ISel::foldLeaIntoMem(MFunction &func) const
                         const uint16_t v = base.idOrPhys;
                         auto defIt = leaDefIdx.find(v);
                         auto useIt = useCount.find(v);
-                        if (defIt != leaDefIdx.end() && useIt != useCount.end() && useIt->second == 1)
+                        if (defIt != leaDefIdx.end() && useIt != useCount.end() &&
+                            useIt->second == 1)
                         {
                             const std::size_t defIndex = defIt->second;
                             if (defIndex < block.instructions.size())
                             {
                                 const auto &defInstr = block.instructions[defIndex];
-                                if (defInstr.opcode == MOpcode::LEA && defInstr.operands.size() >= 2)
+                                if (defInstr.opcode == MOpcode::LEA &&
+                                    defInstr.operands.size() >= 2)
                                 {
-                                    if (const auto *srcMem = std::get_if<OpMem>(&defInstr.operands[1]))
+                                    if (const auto *srcMem =
+                                            std::get_if<OpMem>(&defInstr.operands[1]))
                                     {
-                                        // Replace the memory operand with the LEA's addressing mode.
+                                        // Replace the memory operand with the LEA's addressing
+                                        // mode.
                                         *mem = *srcMem;
                                         // Erase the defining LEA.
-                                        block.instructions.erase(block.instructions.begin() + static_cast<std::ptrdiff_t>(defIndex));
-                                        // Adjust current index when the erased def was before this instr.
+                                        block.instructions.erase(
+                                            block.instructions.begin() +
+                                            static_cast<std::ptrdiff_t>(defIndex));
+                                        // Adjust current index when the erased def was before this
+                                        // instr.
                                         if (defIndex < idx)
                                         {
                                             --idx;

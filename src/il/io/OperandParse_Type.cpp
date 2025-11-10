@@ -105,4 +105,3 @@ ParseResult parseTypeOperand(viper::parse::Cursor &cur, Context &ctx)
 }
 
 } // namespace viper::il::io
-

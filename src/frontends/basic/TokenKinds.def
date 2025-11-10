@@ -75,6 +75,10 @@ TOKEN(KeywordNew, "NEW")
 TOKEN(KeywordDelete, "DELETE")
 TOKEN(KeywordMe, "ME")
 
+TOKEN(KeywordNamespace, "NAMESPACE")
+TOKEN(KeywordPublic,    "PUBLIC")
+TOKEN(KeywordPrivate,   "PRIVATE")
+
 // Operators ----------------------------------------------------------------
 TOKEN(Plus, "+")
 TOKEN(Minus, "-")

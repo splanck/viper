@@ -66,10 +66,9 @@ std::string format_float(double value)
 
     std::ostringstream stream;
     stream.imbue(std::locale::classic());
-    stream << std::setprecision(std::numeric_limits<double>::max_digits10)
-           << std::defaultfloat << value;
+    stream << std::setprecision(std::numeric_limits<double>::max_digits10) << std::defaultfloat
+           << value;
     return stream.str();
 }
 
 } // namespace viper::il::io
-

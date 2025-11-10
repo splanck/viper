@@ -17,6 +17,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/basic/Lowerer.hpp"
+#include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/NameMangler_OOP.hpp"
 
 #include <cstdint>
@@ -174,14 +175,48 @@ Lowerer::RVal Lowerer::lowerMeExpr(const MeExpr &expr)
 ///
 /// @param expr AST node describing the member access.
 /// @return Runtime value of the selected field, or zero when unresolved.
-std::optional<Lowerer::MemberFieldAccess>
-Lowerer::resolveMemberField(const MemberAccessExpr &expr)
+std::optional<Lowerer::MemberFieldAccess> Lowerer::resolveMemberField(const MemberAccessExpr &expr)
 {
     if (!expr.base)
         return std::nullopt;
 
     RVal base = lowerExpr(*expr.base);
     std::string className = resolveObjectClass(*expr.base);
+    // Access control for fields: Private may only be accessed within the declaring class.
+    if (!className.empty())
+    {
+        std::string qname = qualify(className);
+        if (const ClassInfo *cinfo = oopIndex_.findClass(qname))
+        {
+            for (const auto &f : cinfo->fields)
+            {
+                if (f.name == expr.member)
+                {
+                    if (f.access == Access::Private && currentClass() != cinfo->qualifiedName)
+                    {
+                        if (auto *em = diagnosticEmitter())
+                        {
+                            std::string msg = "cannot access private member '" + expr.member +
+                                              "' of class '" + cinfo->qualifiedName + "'";
+                            em->emit(il::support::Severity::Error,
+                                     "B2021",
+                                     expr.loc,
+                                     static_cast<uint32_t>(expr.member.size()),
+                                     std::move(msg));
+                        }
+                        else
+                        {
+                            std::fprintf(stderr,
+                                         "B2021: cannot access private member '%s' of class '%s'\n",
+                                         expr.member.c_str(), qname.c_str());
+                        }
+                        return std::nullopt;
+                    }
+                    break;
+                }
+            }
+        }
+    }
     auto layoutIt = classLayouts_.find(className);
     if (layoutIt == classLayouts_.end())
         return std::nullopt;
@@ -203,8 +238,8 @@ Lowerer::resolveMemberField(const MemberAccessExpr &expr)
     return access;
 }
 
-std::optional<Lowerer::MemberFieldAccess>
-Lowerer::resolveImplicitField(std::string_view name, il::support::SourceLoc loc)
+std::optional<Lowerer::MemberFieldAccess> Lowerer::resolveImplicitField(std::string_view name,
+                                                                        il::support::SourceLoc loc)
 {
     const FieldScope *scope = activeFieldScope();
     if (!scope || !scope->layout)
@@ -260,6 +295,36 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
 
     std::string className = resolveObjectClass(*expr.base);
     RVal base = lowerExpr(*expr.base);
+    // Access control for methods: Private may only be called within the declaring class.
+    if (!className.empty())
+    {
+        std::string qname = qualify(className);
+        if (const ClassInfo *cinfo = oopIndex_.findClass(qname))
+        {
+            auto it = cinfo->methods.find(expr.method);
+            if (it != cinfo->methods.end() && it->second.access == Access::Private &&
+                currentClass() != cinfo->qualifiedName)
+            {
+                if (auto *em = diagnosticEmitter())
+                {
+                    std::string msg = "cannot access private member '" + expr.method +
+                                      "' of class '" + cinfo->qualifiedName + "'";
+                    em->emit(il::support::Severity::Error,
+                             "B2021",
+                             expr.loc,
+                             static_cast<uint32_t>(expr.method.size()),
+                             std::move(msg));
+                }
+                else
+                {
+                    std::fprintf(stderr,
+                                 "B2021: cannot access private member '%s' of class '%s'\n",
+                                 expr.method.c_str(), qname.c_str());
+                }
+                return {Value::constInt(0), Type(Type::Kind::I64)};
+            }
+        }
+    }
 
     std::vector<Value> args;
     args.reserve(expr.args.size() + 1);
@@ -273,7 +338,7 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
     }
 
     curLoc = expr.loc;
-    std::string callee = className.empty() ? expr.method : mangleMethod(className, expr.method);
+    std::string callee = className.empty() ? expr.method : mangleMethod(qualify(className), expr.method);
 
     if (auto retType = findMethodReturnType(className, expr.method))
     {

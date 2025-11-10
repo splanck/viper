@@ -451,8 +451,8 @@ Lowerer::SlotType Lowerer::getSlotType(std::string_view name) const
     return info;
 }
 
-std::optional<Lowerer::VariableStorage>
-Lowerer::resolveVariableStorage(std::string_view name, il::support::SourceLoc loc)
+std::optional<Lowerer::VariableStorage> Lowerer::resolveVariableStorage(std::string_view name,
+                                                                        il::support::SourceLoc loc)
 {
     if (name.empty())
         return std::nullopt;

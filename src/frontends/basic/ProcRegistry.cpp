@@ -61,9 +61,7 @@ ProcSignature ProcRegistry::buildSignature(const ProcDescriptor &descriptor)
         }
         if (p.is_array && p.type != Type::I64 && p.type != Type::Str)
         {
-            de.emit(diag::BasicDiag::ArrayParamType,
-                    p.loc,
-                    static_cast<uint32_t>(p.name.size()));
+            de.emit(diag::BasicDiag::ArrayParamType, p.loc, static_cast<uint32_t>(p.name.size()));
         }
         sig.params.push_back({p.type, p.is_array});
     }

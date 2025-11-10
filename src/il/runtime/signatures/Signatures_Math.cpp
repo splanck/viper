@@ -57,7 +57,8 @@ void register_math_signatures()
     register_signature(make_signature("rt_cint_from_double", {Kind::F64, Kind::Ptr}, {Kind::I64}));
     register_signature(make_signature("rt_clng_from_double", {Kind::F64, Kind::Ptr}, {Kind::I64}));
     register_signature(make_signature("rt_csng_from_double", {Kind::F64, Kind::Ptr}, {Kind::F64}));
-    register_signature(make_signature("rt_cdbl_from_any", {Kind::F64}, {Kind::F64}, true, false, true));
+    register_signature(
+        make_signature("rt_cdbl_from_any", {Kind::F64}, {Kind::F64}, true, false, true));
     register_signature(make_signature("rt_int_floor", {Kind::F64}, {Kind::F64}, true, false, true));
     register_signature(make_signature("rt_fix_trunc", {Kind::F64}, {Kind::F64}, true, false, true));
     register_signature(

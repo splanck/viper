@@ -18,13 +18,13 @@
 ///          transformation passes together using the public API.
 
 #include "cli.hpp"
-#include "viper/il/IO.hpp"
 #include "il/transform/ConstFold.hpp"
 #include "il/transform/DCE.hpp"
 #include "il/transform/Mem2Reg.hpp"
 #include "il/transform/PassManager.hpp"
 #include "il/transform/Peephole.hpp"
 #include "tools/common/module_loader.hpp"
+#include "viper/il/IO.hpp"
 #include <algorithm>
 #include <cctype>
 #include <fstream>

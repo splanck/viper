@@ -117,7 +117,8 @@ void seedInvariants(const Loop &loop, Function &function, std::unordered_set<uns
 
 bool operandsInvariant(const Instr &instr, const std::unordered_set<unsigned> &invariants)
 {
-    auto isInvariantValue = [&invariants](const Value &value) {
+    auto isInvariantValue = [&invariants](const Value &value)
+    {
         if (value.kind != Value::Kind::Temp)
             return true;
         return invariants.count(value.id) > 0;
@@ -208,9 +209,8 @@ PreservedAnalyses LICM::run(Function &function, AnalysisManager &analysis)
                 std::size_t insertIndex = preheader->instructions.size();
                 if (preheader->terminated && insertIndex > 0)
                     --insertIndex;
-                auto inserted =
-                    preheader->instructions.insert(preheader->instructions.begin() + insertIndex,
-                                                   std::move(hoisted));
+                auto inserted = preheader->instructions.insert(
+                    preheader->instructions.begin() + insertIndex, std::move(hoisted));
 
                 Instr &insertedInstr = *inserted;
                 if (insertedInstr.result)

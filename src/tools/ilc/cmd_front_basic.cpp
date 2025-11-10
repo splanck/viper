@@ -24,10 +24,10 @@
 #include "frontends/basic/BasicCompiler.hpp"
 #include "il/api/expected_api.hpp"
 #include "il/transform/SimplifyCFG.hpp"
-#include "viper/il/IO.hpp"
-#include "viper/il/Verify.hpp"
 #include "support/diag_expected.hpp"
 #include "support/source_manager.hpp"
+#include "viper/il/IO.hpp"
+#include "viper/il/Verify.hpp"
 #include "viper/vm/VM.hpp"
 #include <cstdint>
 #include <cstdio>

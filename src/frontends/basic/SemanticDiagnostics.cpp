@@ -64,7 +64,8 @@ void SemanticDiagnostics::emit(diag::BasicDiag diag,
                                std::initializer_list<diag::Replacement> replacements)
 {
     auto message = diag::formatMessage(diag, replacements);
-    emit(diag::getSeverity(diag), std::string(diag::getCode(diag)), loc, length, std::move(message));
+    emit(
+        diag::getSeverity(diag), std::string(diag::getCode(diag)), loc, length, std::move(message));
 }
 
 /// @brief Retrieve the number of error diagnostics recorded so far.

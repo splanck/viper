@@ -164,6 +164,25 @@ function(viper_add_golden_suite_tests)
             "-DEXPECT=${EXPECT_BAD_MATH_FUNCS}"
             -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
 
+    # PRIVATE member access errors
+    file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/private_method_access.stderr EXPECT_PRIVATE_METHOD)
+    string(STRIP "${EXPECT_PRIVATE_METHOD}" EXPECT_PRIVATE_METHOD)
+    viper_add_ctest(basic_error_private_method_access
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/private_method_access.bas
+            "-DEXPECT=${EXPECT_PRIVATE_METHOD}"
+            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
+
+    file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/private_field_access.stderr EXPECT_PRIVATE_FIELD)
+    string(STRIP "${EXPECT_PRIVATE_FIELD}" EXPECT_PRIVATE_FIELD)
+    viper_add_ctest(basic_error_private_field_access
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/private_field_access.bas
+            "-DEXPECT=${EXPECT_PRIVATE_FIELD}"
+            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
+
     file(READ ${_VIPER_GOLDEN_DIR}/vm_trap_loc.stderr EXPECT_VM_TRAP_LOC)
     string(STRIP "${EXPECT_VM_TRAP_LOC}" EXPECT_VM_TRAP_LOC)
     viper_add_ctest(vm_trap_loc

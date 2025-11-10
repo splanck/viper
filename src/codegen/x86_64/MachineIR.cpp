@@ -358,8 +358,10 @@ std::string toString(const OpMem &op)
     }
     if (op.disp != 0)
     {
-        if (op.disp > 0) os << " + " << op.disp;
-        else             os << " - " << -op.disp;
+        if (op.disp > 0)
+            os << " + " << op.disp;
+        else
+            os << " - " << -op.disp;
     }
     os << ']';
     return os.str();

@@ -6,9 +6,9 @@
 #pragma once
 
 #include "frontends/basic/DiagnosticEmitter.hpp"
-#include "viper/il/Module.hpp"
 #include "support/diagnostics.hpp"
 #include "support/source_manager.hpp"
+#include "viper/il/Module.hpp"
 #include <memory>
 #include <optional>
 #include <string>

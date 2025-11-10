@@ -23,6 +23,12 @@ if (NOT TARGET test_basic_terminal_scan)
     viper_add_ctest(test_basic_terminal_scan test_basic_terminal_scan)
 endif ()
 
+if (NOT TARGET test_basic_parse_namespace)
+    viper_add_test(test_basic_parse_namespace ${VIPER_TESTS_DIR}/unit/test_basic_parse_namespace.cpp)
+    target_link_libraries(test_basic_parse_namespace PRIVATE fe_basic)
+    viper_add_ctest(test_basic_parse_namespace test_basic_parse_namespace)
+endif ()
+
 # Tail-call tests (enable TCO for these targets)
 if (NOT TARGET test_vm_tailcall)
     viper_add_test(test_vm_tailcall ${VIPER_TESTS_DIR}/unit/VM_TailCallTests.cpp)

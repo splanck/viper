@@ -31,10 +31,12 @@ extern "C"
     /// @param file Output handle populated on success.
     /// @param path Null-terminated filesystem path.
     /// @param mode fopen-style mode string (e.g., "r", "w", "a", variants with '+').
-    /// @param basic_mode BASIC OPEN mode enumerator when available; pass RT_F_UNSPECIFIED for plain stdio semantics.
+    /// @param basic_mode BASIC OPEN mode enumerator when available; pass RT_F_UNSPECIFIED for plain
+    /// stdio semantics.
     /// @param out_err Optional error record receiving failure details.
     /// @return True on success; false when an error is reported via @p out_err.
-    bool rt_file_open(RtFile *file, const char *path, const char *mode, int32_t basic_mode, RtError *out_err);
+    bool rt_file_open(
+        RtFile *file, const char *path, const char *mode, int32_t basic_mode, RtError *out_err);
 
     /// @brief Close @p file when open.
     /// @param file Handle to close; remains valid for reuse after success.
@@ -77,10 +79,10 @@ extern "C"
     {
         RT_F_UNSPECIFIED = -1, ///< Mode not associated with BASIC OPEN semantics.
         RT_F_INPUT = 0,        ///< OPEN ... FOR INPUT
-        RT_F_OUTPUT = 1, ///< OPEN ... FOR OUTPUT
-        RT_F_APPEND = 2, ///< OPEN ... FOR APPEND
-        RT_F_BINARY = 3, ///< OPEN ... FOR BINARY
-        RT_F_RANDOM = 4, ///< OPEN ... FOR RANDOM
+        RT_F_OUTPUT = 1,       ///< OPEN ... FOR OUTPUT
+        RT_F_APPEND = 2,       ///< OPEN ... FOR APPEND
+        RT_F_BINARY = 3,       ///< OPEN ... FOR BINARY
+        RT_F_RANDOM = 4,       ///< OPEN ... FOR RANDOM
     };
 
     /// @brief Open @p path for the specified BASIC @p mode on @p channel.

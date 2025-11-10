@@ -184,11 +184,12 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeVar(VarExpr &v)
         {
             suggestion = "; did you mean '" + best + "'?";
         }
-        de.emit(diag::BasicDiag::UnknownVariable,
-                v.loc,
-                static_cast<uint32_t>(v.name.size()),
-                std::initializer_list<diag::Replacement>{
-                    diag::Replacement{"name", v.name}, diag::Replacement{"suggestion", suggestion}});
+        de.emit(
+            diag::BasicDiag::UnknownVariable,
+            v.loc,
+            static_cast<uint32_t>(v.name.size()),
+            std::initializer_list<diag::Replacement>{diag::Replacement{"name", v.name},
+                                                     diag::Replacement{"suggestion", suggestion}});
         return Type::Unknown;
     }
     auto it = varTypes_.find(v.name);

@@ -28,6 +28,7 @@
 #include <cctype>
 #include <string>
 #include <utility>
+
 namespace il::frontends::basic
 {
 
@@ -72,6 +73,24 @@ StmtPtr Parser::parseClassDecl()
     if (at(TokenKind::EndOfLine))
         consume();
 
+    // Helper to optionally consume PUBLIC/PRIVATE and return it.
+    auto parseAccessPrefix = [&]() -> std::optional<Access>
+    {
+        if (at(TokenKind::KeywordPublic))
+        {
+            consume();
+            return Access::Public;
+        }
+        if (at(TokenKind::KeywordPrivate))
+        {
+            consume();
+            return Access::Private;
+        }
+        return std::nullopt;
+    };
+
+    std::optional<Access> curAccess;
+
     while (!at(TokenKind::EndOfFile))
     {
         while (at(TokenKind::EndOfLine))
@@ -79,6 +98,14 @@ StmtPtr Parser::parseClassDecl()
 
         if (at(TokenKind::KeywordEnd) && peek(1).kind == TokenKind::KeywordClass)
             break;
+
+        // Single-use PUBLIC/PRIVATE prefix for next member/field.
+        if (auto acc = parseAccessPrefix())
+        {
+            curAccess = acc;
+            // Continue so the following token sequence forms the actual field.
+            continue;
+        }
 
         if (at(TokenKind::Number))
         {
@@ -122,6 +149,8 @@ StmtPtr Parser::parseClassDecl()
         ClassDecl::Field field;
         field.name = fieldNameTok.lexeme;
         field.type = fieldType;
+        field.access = curAccess.value_or(Access::Public);
+        curAccess.reset();
         decl->fields.push_back(std::move(field));
 
         if (at(TokenKind::EndOfLine))
@@ -170,18 +199,22 @@ StmtPtr Parser::parseClassDecl()
             {
                 auto ctor = std::make_unique<ConstructorDecl>();
                 ctor->loc = subLoc;
+                ctor->access = curAccess.value_or(Access::Public);
                 ctor->params = parseParamList();
                 parseProcedureBody(TokenKind::KeywordSub, ctor->body);
                 decl->members.push_back(std::move(ctor));
+                curAccess.reset();
                 continue;
             }
 
             auto method = std::make_unique<MethodDecl>();
             method->loc = subLoc;
             method->name = subNameTok.lexeme;
+            method->access = curAccess.value_or(Access::Public);
             method->params = parseParamList();
             parseProcedureBody(TokenKind::KeywordSub, method->body);
             decl->members.push_back(std::move(method));
+            curAccess.reset();
             continue;
         }
 
@@ -197,6 +230,7 @@ StmtPtr Parser::parseClassDecl()
             method->loc = fnLoc;
             method->name = fnNameTok.lexeme;
             method->ret = typeFromSuffix(fnNameTok.lexeme);
+            method->access = curAccess.value_or(Access::Public);
             method->params = parseParamList();
             if (at(TokenKind::KeywordAs))
             {
@@ -212,6 +246,7 @@ StmtPtr Parser::parseClassDecl()
             }
             parseProcedureBody(TokenKind::KeywordFunction, method->body);
             decl->members.push_back(std::move(method));
+            curAccess.reset();
             continue;
         }
 
@@ -221,8 +256,10 @@ StmtPtr Parser::parseClassDecl()
             consume(); // DESTRUCTOR
             auto dtor = std::make_unique<DestructorDecl>();
             dtor->loc = dtorLoc;
+            dtor->access = curAccess.value_or(Access::Public);
             parseProcedureBody(TokenKind::KeywordDestructor, dtor->body);
             decl->members.push_back(std::move(dtor));
+            curAccess.reset();
             continue;
         }
 
@@ -269,6 +306,8 @@ StmtPtr Parser::parseTypeDecl()
     if (at(TokenKind::EndOfLine))
         consume();
 
+    std::optional<Access> curAccess;
+
     while (!at(TokenKind::EndOfFile))
     {
         while (at(TokenKind::EndOfLine))
@@ -276,6 +315,13 @@ StmtPtr Parser::parseTypeDecl()
 
         if (at(TokenKind::KeywordEnd) && peek(1).kind == TokenKind::KeywordType)
             break;
+
+        // Access prefixes are not applied to TYPE fields; ignore if present.
+        // (Future ADR may define semantics for TYPE.)
+        if (at(TokenKind::KeywordPublic) || at(TokenKind::KeywordPrivate))
+        {
+            consume();
+        }
 
         if (at(TokenKind::Number))
         {
@@ -351,4 +397,3 @@ StmtPtr Parser::parseDeleteStatement()
 }
 
 } // namespace il::frontends::basic
-

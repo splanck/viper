@@ -247,9 +247,9 @@ void lowerCall(MBasicBlock &block,
     const int32_t padBytes = static_cast<int32_t>((16 - ((preStackBytes + 8) % 16)) % 16);
     if (padBytes != 0)
     {
-        insertInstr(MInstr::make(
-            MOpcode::ADDri,
-            {makePhysOperand(RegClass::GPR, PhysReg::RSP), makeImmOperand(-static_cast<int64_t>(padBytes))}));
+        insertInstr(MInstr::make(MOpcode::ADDri,
+                                 {makePhysOperand(RegClass::GPR, PhysReg::RSP),
+                                  makeImmOperand(-static_cast<int64_t>(padBytes))}));
     }
 
     std::size_t gprUsed = 0;
@@ -373,8 +373,8 @@ void lowerCall(MBasicBlock &block,
     if (plan.isVarArg)
     {
         const Operand rax = makePhysOperand(RegClass::GPR, PhysReg::RAX);
-        insertInstr(MInstr::make(MOpcode::MOVri,
-                                 {rax, makeImmOperand(static_cast<int64_t>(xmmUsed))}));
+        insertInstr(
+            MInstr::make(MOpcode::MOVri, {rax, makeImmOperand(static_cast<int64_t>(xmmUsed))}));
     }
 
 #ifndef NDEBUG
@@ -402,10 +402,11 @@ void lowerCall(MBasicBlock &block,
         if (seekIt != block.instructions.end())
         {
             ++seekIt; // position after CALL
-            seekIt = block.instructions.insert(seekIt,
-                                               MInstr::make(MOpcode::ADDri,
-                                                            {makePhysOperand(RegClass::GPR, PhysReg::RSP),
-                                                             makeImmOperand(static_cast<int64_t>(padBytes))}));
+            seekIt = block.instructions.insert(
+                seekIt,
+                MInstr::make(MOpcode::ADDri,
+                             {makePhysOperand(RegClass::GPR, PhysReg::RSP),
+                              makeImmOperand(static_cast<int64_t>(padBytes))}));
             // Maintain insertIt validity if we inserted exactly at insertIt
             // (not strictly required for remaining code paths).
         }

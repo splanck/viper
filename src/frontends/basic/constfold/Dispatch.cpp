@@ -24,8 +24,8 @@
 /// @file
 /// @brief Implements the central dispatch logic for constant folding.
 
-#include "frontends/basic/constfold/ConstantUtils.hpp"
 #include "frontends/basic/constfold/Dispatch.hpp"
+#include "frontends/basic/constfold/ConstantUtils.hpp"
 
 #include "frontends/basic/ast/ExprNodes.hpp"
 

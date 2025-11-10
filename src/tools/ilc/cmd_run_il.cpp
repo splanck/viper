@@ -459,8 +459,8 @@ int executeRunIL(const RunILConfig &config, il::support::SourceManager &sm)
     const auto intMax = std::numeric_limits<int>::max();
     if (runResult < intMin || runResult > intMax)
     {
-        std::cerr << "ilc run: program return value " << runResult
-                  << " outside host int range [" << intMin << ", " << intMax << "]\n";
+        std::cerr << "ilc run: program return value " << runResult << " outside host int range ["
+                  << intMin << ", " << intMax << "]\n";
         rc = 1;
     }
     else

@@ -33,8 +33,8 @@
 #include "il/core/Value.hpp"
 #include "il/internal/io/OperandParser.hpp"
 #include "il/internal/io/ParserUtil.hpp"
-#include "viper/il/io/OperandParse.hpp"
 #include "support/diag_expected.hpp"
+#include "viper/il/io/OperandParse.hpp"
 
 #include <optional>
 #include <sstream>
@@ -399,29 +399,29 @@ Expected<void> parseInstruction_E(const std::string &line, ParserState &st)
         }
         std::string res = trim(work.substr(1, eq - 1));
         size_t colon = res.find(':');
-            if (colon != std::string::npos)
+        if (colon != std::string::npos)
+        {
+            std::string tyTok = trim(res.substr(colon + 1));
+            res = trim(res.substr(0, colon));
+            if (res.empty())
             {
-                std::string tyTok = trim(res.substr(colon + 1));
-                res = trim(res.substr(0, colon));
-                if (res.empty())
-                {
-                    std::ostringstream oss;
-                    oss << "line " << st.lineNo << ": missing temp name before type annotation";
-                    return Expected<void>{makeError(in.loc, oss.str())};
-                }
-                viper::parse::Cursor annotCursor{tyTok, viper::parse::SourcePos{st.lineNo, 0}};
-                viper::il::io::Context annotCtx{st, in};
-                auto parsedType = viper::il::io::parseTypeOperand(annotCursor, annotCtx);
-                if (!parsedType.ok())
-                    return Expected<void>{parsedType.status.error()};
-                if (in.type.kind == Type::Kind::Void)
-                {
-                    std::ostringstream oss;
-                    oss << "line " << st.lineNo << ": result type cannot be void";
-                    return Expected<void>{makeError(in.loc, oss.str())};
-                }
-                annotatedType = in.type;
+                std::ostringstream oss;
+                oss << "line " << st.lineNo << ": missing temp name before type annotation";
+                return Expected<void>{makeError(in.loc, oss.str())};
             }
+            viper::parse::Cursor annotCursor{tyTok, viper::parse::SourcePos{st.lineNo, 0}};
+            viper::il::io::Context annotCtx{st, in};
+            auto parsedType = viper::il::io::parseTypeOperand(annotCursor, annotCtx);
+            if (!parsedType.ok())
+                return Expected<void>{parsedType.status.error()};
+            if (in.type.kind == Type::Kind::Void)
+            {
+                std::ostringstream oss;
+                oss << "line " << st.lineNo << ": result type cannot be void";
+                return Expected<void>{makeError(in.loc, oss.str())};
+            }
+            annotatedType = in.type;
+        }
         auto [it, inserted] = st.tempIds.emplace(res, st.nextTemp);
         if (!inserted)
         {

@@ -50,11 +50,11 @@ struct OpImm
 /// \brief Memory operand using a base (+ optional index*scale) plus displacement (RIP-less).
 struct OpMem
 {
-    OpReg base{};            ///< Base register supplying the address.
-    OpReg index{};           ///< Optional index register (cls must be GPR when used).
-    uint8_t scale{1};        ///< Scale for the index (1, 2, 4, 8).
-    int32_t disp{0};         ///< Signed displacement in bytes.
-    bool hasIndex{false};    ///< True when index participates.
+    OpReg base{};         ///< Base register supplying the address.
+    OpReg index{};        ///< Optional index register (cls must be GPR when used).
+    uint8_t scale{1};     ///< Scale for the index (1, 2, 4, 8).
+    int32_t disp{0};      ///< Signed displacement in bytes.
+    bool hasIndex{false}; ///< True when index participates.
 };
 
 /// \brief Symbolic label operand (basic blocks, functions, jump targets).

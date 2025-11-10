@@ -414,9 +414,8 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
         if (!numeric)
             return false;
 
-        std::string formatted = numeric->isFloat
-                                     ? viper::il::io::format_float(numeric->f)
-                                     : viper::il::io::format_integer(numeric->i);
+        std::string formatted = numeric->isFloat ? viper::il::io::format_float(numeric->f)
+                                                 : viper::il::io::format_integer(numeric->i);
         replaceWithStr(std::move(formatted), expr.loc);
         return true;
     }

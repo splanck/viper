@@ -31,8 +31,8 @@
 #include "support/diagnostics.hpp"
 
 #include <string>
-#include <utility>
 #include <unordered_set>
+#include <utility>
 
 namespace il::frontends::basic
 {
@@ -187,97 +187,135 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
 {
     index.clear();
 
-    for (const auto &stmtPtr : program.main)
-    {
-        if (!stmtPtr)
+    // Keep a simple namespace stack to form qualified names.
+    std::vector<std::string> nsStack;
+    auto joinNs = [&]() -> std::string {
+        if (nsStack.empty())
+            return {};
+        std::string prefix;
+        std::size_t size = 0;
+        for (const auto &s : nsStack)
+            size += s.size() + 1;
+        if (size)
+            size -= 1; // trailing dot not needed
+        prefix.reserve(size);
+        for (std::size_t i = 0; i < nsStack.size(); ++i)
         {
-            continue;
+            if (i)
+                prefix.push_back('.');
+            prefix += nsStack[i];
         }
+        return prefix;
+    };
 
-        if (stmtPtr->stmtKind() != Stmt::Kind::ClassDecl)
+    // Recursive lambda to scan statements and populate the index.
+    std::function<void(const std::vector<StmtPtr>&)> scan;
+    scan = [&](const std::vector<StmtPtr> &stmts) {
+        for (const auto &stmtPtr : stmts)
         {
-            continue;
-        }
-
-        const auto &classDecl = static_cast<const ClassDecl &>(*stmtPtr);
-
-        ClassInfo info;
-        info.name = classDecl.name;
-        info.fields.reserve(classDecl.fields.size());
-        std::unordered_set<std::string> classFieldNames;
-        classFieldNames.reserve(classDecl.fields.size());
-        for (const auto &field : classDecl.fields)
-        {
-            info.fields.push_back(ClassInfo::FieldInfo{field.name, field.type});
-            classFieldNames.insert(field.name);
-        }
-
-        for (const auto &member : classDecl.members)
-        {
-            if (!member)
-            {
+            if (!stmtPtr)
                 continue;
-            }
-
-            switch (member->stmtKind())
+            switch (stmtPtr->stmtKind())
             {
-                case Stmt::Kind::ConstructorDecl:
+                case Stmt::Kind::NamespaceDecl:
                 {
-                    const auto &ctor = static_cast<const ConstructorDecl &>(*member);
-                    info.hasConstructor = true;
-                    info.ctorParams.clear();
-                    info.ctorParams.reserve(ctor.params.size());
-                    for (const auto &param : ctor.params)
-                    {
-                        ClassInfo::CtorParam sigParam;
-                        sigParam.type = param.type;
-                        sigParam.isArray = param.is_array;
-                        info.ctorParams.push_back(sigParam);
-                    }
-                    checkMemberShadowing(ctor.body, classDecl, classFieldNames, emitter);
+                    const auto &ns = static_cast<const NamespaceDecl &>(*stmtPtr);
+                    for (const auto &seg : ns.path)
+                        nsStack.push_back(seg);
+                    scan(ns.body);
+                    nsStack.resize(nsStack.size() >= ns.path.size() ? nsStack.size() - ns.path.size() : 0);
                     break;
                 }
-                case Stmt::Kind::DestructorDecl:
+                case Stmt::Kind::ClassDecl:
                 {
-                    info.hasDestructor = true;
-                    const auto &dtor = static_cast<const DestructorDecl &>(*member);
-                    checkMemberShadowing(dtor.body, classDecl, classFieldNames, emitter);
-                    break;
-                }
-                case Stmt::Kind::MethodDecl:
-                {
-                    const auto &method = static_cast<const MethodDecl &>(*member);
-                    MethodSig sig;
-                    sig.paramTypes.reserve(method.params.size());
-                    for (const auto &param : method.params)
+                    const auto &classDecl = static_cast<const ClassDecl &>(*stmtPtr);
+                    ClassInfo info;
+                    info.name = classDecl.name;
+                    std::string prefix = joinNs();
+                    if (!prefix.empty())
+                        info.qualifiedName = prefix + "." + classDecl.name;
+                    else
+                        info.qualifiedName = classDecl.name;
+
+                    info.fields.reserve(classDecl.fields.size());
+                    std::unordered_set<std::string> classFieldNames;
+                    classFieldNames.reserve(classDecl.fields.size());
+                    for (const auto &field : classDecl.fields)
                     {
-                        sig.paramTypes.push_back(param.type);
+                        info.fields.push_back(ClassInfo::FieldInfo{field.name, field.type, field.access});
+                        classFieldNames.insert(field.name);
                     }
-                    if (method.ret.has_value())
+
+                    for (const auto &member : classDecl.members)
                     {
-                        sig.returnType = method.ret;
+                        if (!member)
+                            continue;
+                        switch (member->stmtKind())
+                        {
+                            case Stmt::Kind::ConstructorDecl:
+                            {
+                                const auto &ctor = static_cast<const ConstructorDecl &>(*member);
+                                info.hasConstructor = true;
+                                info.ctorParams.clear();
+                                info.ctorParams.reserve(ctor.params.size());
+                                for (const auto &param : ctor.params)
+                                {
+                                    ClassInfo::CtorParam sigParam;
+                                    sigParam.type = param.type;
+                                    sigParam.isArray = param.is_array;
+                                    info.ctorParams.push_back(sigParam);
+                                }
+                                checkMemberShadowing(ctor.body, classDecl, classFieldNames, emitter);
+                                break;
+                            }
+                            case Stmt::Kind::DestructorDecl:
+                            {
+                                info.hasDestructor = true;
+                                const auto &dtor = static_cast<const DestructorDecl &>(*member);
+                                checkMemberShadowing(dtor.body, classDecl, classFieldNames, emitter);
+                                break;
+                            }
+                            case Stmt::Kind::MethodDecl:
+                            {
+                                const auto &method = static_cast<const MethodDecl &>(*member);
+                                MethodSig sig;
+                                sig.paramTypes.reserve(method.params.size());
+                                for (const auto &param : method.params)
+                                {
+                                    sig.paramTypes.push_back(param.type);
+                                }
+                                if (method.ret.has_value())
+                                {
+                                    sig.returnType = method.ret;
+                                }
+                                else if (auto suffixType = inferAstTypeFromSuffix(method.name))
+                                {
+                                    sig.returnType = suffixType;
+                                }
+                                sig.access = method.access;
+                                emitMissingReturn(classDecl, method, emitter);
+                                checkMemberShadowing(method.body, classDecl, classFieldNames, emitter);
+                                info.methods[method.name] = std::move(sig);
+                                break;
+                            }
+                            default:
+                                break;
+                        }
                     }
-                    else if (auto suffixType = inferAstTypeFromSuffix(method.name))
-                    {
-                        sig.returnType = suffixType;
-                    }
-                    emitMissingReturn(classDecl, method, emitter);
-                    checkMemberShadowing(method.body, classDecl, classFieldNames, emitter);
-                    info.methods[method.name] = std::move(sig);
+
+                    if (!info.hasConstructor)
+                        info.hasSynthCtor = true;
+
+                    index.classes()[info.qualifiedName] = std::move(info);
                     break;
                 }
                 default:
                     break;
             }
         }
+    };
 
-        if (!info.hasConstructor)
-        {
-            info.hasSynthCtor = true;
-        }
-
-        index.classes()[info.name] = std::move(info);
-    }
+    scan(program.main);
 }
 
 } // namespace il::frontends::basic

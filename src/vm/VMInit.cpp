@@ -109,9 +109,10 @@ VM::VM(const Module &m, TraceConfig tc, uint64_t ms, DebugCtrl dbg, DebugScript 
     if (const char *envCounts = std::getenv("VIPER_ENABLE_OPCOUNTS"))
     {
         std::string v{envCounts};
-        std::transform(v.begin(), v.end(), v.begin(), [](unsigned char c) {
-            return static_cast<char>(std::tolower(c));
-        });
+        std::transform(v.begin(),
+                       v.end(),
+                       v.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
         // Accept 1/true/on to enable; 0/false/off to disable.
         if (v == "0" || v == "false" || v == "off")
             enableOpcodeCounts = false;

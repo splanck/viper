@@ -24,4 +24,3 @@ __attribute__((weak)) int rt_snprintf(char *str, size_t size, const char *fmt, .
     va_end(ap);
     return written;
 }
-

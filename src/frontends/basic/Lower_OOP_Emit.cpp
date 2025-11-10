@@ -101,6 +101,24 @@ class FieldScopeGuard
 
 } // namespace
 
+namespace
+{
+class ClassContextGuard
+{
+  public:
+    explicit ClassContextGuard(Lowerer &lowerer, const std::string &qualifiedName) : lowerer_(lowerer)
+    {
+        lowerer_.pushClass(qualifiedName);
+    }
+    ClassContextGuard(const ClassContextGuard &) = delete;
+    ClassContextGuard &operator=(const ClassContextGuard &) = delete;
+    ~ClassContextGuard() { lowerer_.popClass(); }
+
+  private:
+    Lowerer &lowerer_;
+};
+} // namespace
+
 /// @brief Allocate and initialise the implicit @c ME slot for a class member.
 ///
 /// @details BASIC object procedures implicitly capture @c ME, a pointer to the
@@ -193,6 +211,7 @@ void Lowerer::emitFieldReleaseSequence(Value selfPtr, const ClassLayout &layout)
 void Lowerer::emitClassConstructor(const ClassDecl &klass, const ConstructorDecl &ctor)
 {
     resetLoweringState();
+    ClassContextGuard classGuard(*this, qualify(klass.name));
     FieldScopeGuard fieldScope(*this, klass.name);
     auto body = gatherBody(ctor.body);
     collectVars(body);
@@ -212,7 +231,7 @@ void Lowerer::emitClassConstructor(const ClassDecl &klass, const ConstructorDecl
         }
     }
 
-    std::string name = mangleClassCtor(klass.name);
+    std::string name = mangleClassCtor(qualify(klass.name));
     Function &fn = builder->startFunction(name, Type(Type::Kind::Void), metadata.irParams);
 
     auto &ctx = context();
@@ -286,6 +305,7 @@ void Lowerer::emitClassConstructor(const ClassDecl &klass, const ConstructorDecl
 void Lowerer::emitClassDestructor(const ClassDecl &klass, const DestructorDecl *userDtor)
 {
     resetLoweringState();
+    ClassContextGuard classGuard(*this, qualify(klass.name));
     FieldScopeGuard fieldScope(*this, klass.name);
     std::vector<const Stmt *> body;
     if (userDtor)
@@ -299,7 +319,7 @@ void Lowerer::emitClassDestructor(const ClassDecl &klass, const DestructorDecl *
     metadata.bodyStmts = body;
     metadata.irParams.push_back({"ME", Type(Type::Kind::Ptr)});
 
-    std::string name = mangleClassDtor(klass.name);
+    std::string name = mangleClassDtor(qualify(klass.name));
     Function &fn = builder->startFunction(name, Type(Type::Kind::Void), metadata.irParams);
 
     auto &ctx = context();
@@ -357,6 +377,7 @@ void Lowerer::emitClassDestructor(const ClassDecl &klass, const DestructorDecl *
 void Lowerer::emitClassMethod(const ClassDecl &klass, const MethodDecl &method)
 {
     resetLoweringState();
+    ClassContextGuard classGuard(*this, qualify(klass.name));
     FieldScopeGuard fieldScope(*this, klass.name);
     auto body = gatherBody(method.body);
     collectVars(body);
@@ -385,7 +406,7 @@ void Lowerer::emitClassMethod(const ClassDecl &klass, const MethodDecl &method)
         methodRetAst = method.ret;
     }
 
-    std::string name = mangleMethod(klass.name, method.name);
+    std::string name = mangleMethod(qualify(klass.name), method.name);
     Function &fn = builder->startFunction(name, methodRetType, metadata.irParams);
 
     auto &ctx = context();

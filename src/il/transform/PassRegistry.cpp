@@ -337,8 +337,8 @@ const detail::PassFactory *PassRegistry::lookup(std::string_view id) const
 
 void registerLoopSimplifyPass(PassRegistry &registry)
 {
-    registry.registerFunctionPass(
-        "loop-simplify", []() { return std::make_unique<LoopSimplify>(); });
+    registry.registerFunctionPass("loop-simplify",
+                                  []() { return std::make_unique<LoopSimplify>(); });
 }
 
 void registerLICMPass(PassRegistry &registry)
@@ -348,13 +348,12 @@ void registerLICMPass(PassRegistry &registry)
 
 void registerSCCPPass(PassRegistry &registry)
 {
-    registry.registerModulePass(
-        "sccp",
-        [](core::Module &module, AnalysisManager &)
-        {
-            sccp(module);
-            return PreservedAnalyses::none();
-        });
+    registry.registerModulePass("sccp",
+                                [](core::Module &module, AnalysisManager &)
+                                {
+                                    sccp(module);
+                                    return PreservedAnalyses::none();
+                                });
 }
 
 } // namespace il::transform

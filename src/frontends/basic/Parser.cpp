@@ -176,7 +176,8 @@ Parser::StatementParserRegistry Parser::buildStatementRegistry()
 /// @return Parsed BASIC return type or @ref BasicType::Unknown when unrecognised.
 BasicType Parser::parseBasicType()
 {
-    const auto toUpper = [](std::string_view text) {
+    const auto toUpper = [](std::string_view text)
+    {
         std::string result;
         result.reserve(text.size());
         for (char c : text)

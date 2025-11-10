@@ -354,20 +354,24 @@ std::optional<Slot> VM::stepOnce(ExecState &state)
 {
     ActiveVMGuard active(this);
     VMContext ctx(*this);
+
     struct ExecStackGuard
     {
         VM &vm;
         VM::ExecState *st;
+
         ExecStackGuard(VM &vmRef, VM::ExecState &stateRef) : vm(vmRef), st(&stateRef)
         {
             vm.execStack.push_back(st);
         }
+
         ~ExecStackGuard()
         {
             if (!vm.execStack.empty() && vm.execStack.back() == st)
                 vm.execStack.pop_back();
         }
     } guard(*this, state);
+
     try
     {
         return ctx.stepOnce(state);

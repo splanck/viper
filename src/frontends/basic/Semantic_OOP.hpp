@@ -6,6 +6,7 @@
 #pragma once
 
 #include "frontends/basic/ast/NodeFwd.hpp"
+#include "frontends/basic/BasicTypes.hpp"
 
 #include <optional>
 #include <string>
@@ -25,6 +26,9 @@ struct MethodSig
 
     /// Optional return type for methods producing a value.
     std::optional<Type> returnType;
+
+    /// Access specifier for the method (default Public).
+    Access access{Access::Public};
 };
 
 /// @brief Aggregated information extracted from a CLASS declaration.
@@ -35,6 +39,7 @@ struct ClassInfo
     {
         std::string name;      ///< Declared field name.
         Type type = Type::I64; ///< Declared field type.
+        Access access{Access::Public}; ///< Field access control.
     };
 
     /// @brief Signature metadata for constructor parameters.
@@ -44,12 +49,13 @@ struct ClassInfo
         bool isArray = false;  ///< True when parameter declared with trailing ().
     };
 
-    std::string name;                                   ///< Class identifier.
-    std::vector<FieldInfo> fields;                      ///< Ordered field declarations.
-    bool hasConstructor = false;                        ///< True if CLASS declares a constructor.
-    bool hasSynthCtor = false;                          ///< True when lowering must synthesise a constructor.
-    bool hasDestructor = false;                         ///< True if CLASS declares a destructor.
-    std::vector<CtorParam> ctorParams;                  ///< Constructor signature if declared.
+    std::string name;                  ///< Unqualified class identifier.
+    std::string qualifiedName;         ///< Fully-qualified class name (namespaces + name).
+    std::vector<FieldInfo> fields;     ///< Ordered field declarations.
+    bool hasConstructor = false;       ///< True if CLASS declares a constructor.
+    bool hasSynthCtor = false;         ///< True when lowering must synthesise a constructor.
+    bool hasDestructor = false;        ///< True if CLASS declares a destructor.
+    std::vector<CtorParam> ctorParams; ///< Constructor signature if declared.
     std::unordered_map<std::string, MethodSig> methods; ///< Declared methods indexed by name.
 };
 

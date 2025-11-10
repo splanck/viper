@@ -37,4 +37,3 @@ void emitEhEntry(const ILInstr &, MIRBuilder &)
 }
 
 } // namespace viper::codegen::x64::lowering
-

@@ -95,7 +95,8 @@ std::string makeUniqueLabel(const Function &function, const std::string &base)
 {
     std::string candidate = base;
     unsigned suffix = 0;
-    auto labelExists = [&](const std::string &label) {
+    auto labelExists = [&](const std::string &label)
+    {
         for (const auto &block : function.blocks)
         {
             if (block.label == label)
@@ -117,17 +118,17 @@ bool valuesEqual(const Value &lhs, const Value &rhs)
         return false;
     switch (lhs.kind)
     {
-    case Value::Kind::Temp:
-        return lhs.id == rhs.id;
-    case Value::Kind::ConstInt:
-        return lhs.i64 == rhs.i64 && lhs.isBool == rhs.isBool;
-    case Value::Kind::ConstFloat:
-        return lhs.f64 == rhs.f64;
-    case Value::Kind::ConstStr:
-    case Value::Kind::GlobalAddr:
-        return lhs.str == rhs.str;
-    case Value::Kind::NullPtr:
-        return true;
+        case Value::Kind::Temp:
+            return lhs.id == rhs.id;
+        case Value::Kind::ConstInt:
+            return lhs.i64 == rhs.i64 && lhs.isBool == rhs.isBool;
+        case Value::Kind::ConstFloat:
+            return lhs.f64 == rhs.f64;
+        case Value::Kind::ConstStr:
+        case Value::Kind::GlobalAddr:
+            return lhs.str == rhs.str;
+        case Value::Kind::NullPtr:
+            return true;
     }
     return false;
 }
@@ -174,7 +175,8 @@ bool ensurePreheader(Function &function, const Loop &loop)
     {
         const auto &edge = outsideEdges.front();
         const Instr *term = getTerminator(*edge.pred);
-        hasDedicatedPreheader = term && term->labels.size() == 1 && term->labels.front() == header->label;
+        hasDedicatedPreheader =
+            term && term->labels.size() == 1 && term->labels.front() == header->label;
     }
 
     if (hasDedicatedPreheader)

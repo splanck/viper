@@ -7,12 +7,12 @@
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Type.hpp"
-#include "vm/VM.hpp"
-#include "vm/OpHandlerAccess.hpp"
 #include "rt.hpp"
+#include "vm/OpHandlerAccess.hpp"
+#include "vm/VM.hpp"
 
-#include <optional>
 #include <cstdio>
+#include <optional>
 #include <string>
 
 namespace il::vm

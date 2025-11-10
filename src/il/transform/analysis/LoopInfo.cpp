@@ -57,8 +57,7 @@ void LoopInfo::addLoop(Loop loop)
 
 namespace
 {
-std::vector<BasicBlock *> getPredecessors(const viper::analysis::CFGContext &ctx,
-                                          BasicBlock &block)
+std::vector<BasicBlock *> getPredecessors(const viper::analysis::CFGContext &ctx, BasicBlock &block)
 {
     auto it = ctx.blockPredecessors.find(&block);
     if (it != ctx.blockPredecessors.end())

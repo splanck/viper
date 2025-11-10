@@ -20,8 +20,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "il/runtime/HelperEffects.hpp"
 #include "il/runtime/signatures/Registry.hpp"
+#include "il/runtime/HelperEffects.hpp"
 
 /// @file
 /// @brief Defines the backing container for runtime signature metadata.

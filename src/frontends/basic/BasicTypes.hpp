@@ -1,6 +1,8 @@
 // src/frontends/basic/BasicTypes.hpp
 #pragma once
 
+#include <cstdint>
+
 /// @brief Shared BASIC front end value category enumeration.
 /// @invariant Enum values correspond to parser and lowerer expectations for BASIC
 ///            function return annotations.
@@ -39,5 +41,18 @@ inline const char *toString(BasicType t)
     }
     return "?";
 }
+
+} // namespace il::frontends::basic
+
+namespace il::frontends::basic
+{
+
+/// @brief Access control for declarations (default Public).
+/// @notes Applies to CLASS/TYPE fields and class members.
+enum class Access : std::uint8_t
+{
+    Public = 0,
+    Private = 1,
+};
 
 } // namespace il::frontends::basic

@@ -78,7 +78,8 @@ void register_string_signatures()
     register_signature(make_signature("rt_right", {Kind::Ptr, Kind::I64}, {Kind::Ptr}));
     register_signature(make_signature("rt_mid2", {Kind::Ptr, Kind::I64}, {Kind::Ptr}));
     register_signature(make_signature("rt_mid3", {Kind::Ptr, Kind::I64, Kind::I64}, {Kind::Ptr}));
-    register_signature(make_signature("rt_instr2", {Kind::Ptr, Kind::Ptr}, {Kind::I64}, true, true));
+    register_signature(
+        make_signature("rt_instr2", {Kind::Ptr, Kind::Ptr}, {Kind::I64}, true, true));
     register_signature(
         make_signature("rt_instr3", {Kind::I64, Kind::Ptr, Kind::Ptr}, {Kind::I64}, true, true));
     register_signature(make_signature("rt_ltrim", {Kind::Ptr}, {Kind::Ptr}));

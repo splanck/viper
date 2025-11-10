@@ -21,22 +21,24 @@
 // when not overridden by the build or embedding application.
 // -----------------------------------------------------------------------------
 #ifndef VIPER_VM_DISPATCH_BEFORE
-#define VIPER_VM_DISPATCH_BEFORE(ST, OPCODE) do { } while (0)
+#define VIPER_VM_DISPATCH_BEFORE(ST, OPCODE)                                                       \
+    do                                                                                             \
+    {                                                                                              \
+    } while (0)
 #endif
 
 #ifndef VIPER_VM_DISPATCH_AFTER
-#define VIPER_VM_DISPATCH_AFTER(ST, OPCODE)                                                      \
-    do                                                                                           \
-    {                                                                                            \
-        auto &cfg = (ST).config;                                                                 \
-        if (cfg.interruptEveryN &&                                                               \
-            ((++(ST).pollTick % cfg.interruptEveryN) == 0))                                      \
-        {                                                                                        \
-            if (cfg.pollCallback && !(cfg.pollCallback(*((ST).vm()))))                           \
-            {                                                                                    \
-                (ST).requestPause();                                                             \
-            }                                                                                    \
-        }                                                                                        \
+#define VIPER_VM_DISPATCH_AFTER(ST, OPCODE)                                                        \
+    do                                                                                             \
+    {                                                                                              \
+        auto &cfg = (ST).config;                                                                   \
+        if (cfg.interruptEveryN && ((++(ST).pollTick % cfg.interruptEveryN) == 0))                 \
+        {                                                                                          \
+            if (cfg.pollCallback && !(cfg.pollCallback(*((ST).vm()))))                             \
+            {                                                                                      \
+                (ST).requestPause();                                                               \
+            }                                                                                      \
+        }                                                                                          \
     } while (0)
 #endif
 
@@ -57,10 +59,10 @@
 
 #if VIPER_VM_OPCOUNTS
 #undef VIPER_VM_DISPATCH_BEFORE
-#define VIPER_VM_DISPATCH_BEFORE(ST, OPCODE)                                                     \
-    do                                                                                           \
-    {                                                                                            \
-        if ((ST).config.enableOpcodeCounts)                                                      \
-            ++((ST).vm()->opCounts_[static_cast<size_t>(OPCODE)]);                               \
+#define VIPER_VM_DISPATCH_BEFORE(ST, OPCODE)                                                       \
+    do                                                                                             \
+    {                                                                                              \
+        if ((ST).config.enableOpcodeCounts)                                                        \
+            ++((ST).vm()->opCounts_[static_cast<size_t>(OPCODE)]);                                 \
     } while (0)
 #endif

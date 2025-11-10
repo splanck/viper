@@ -371,6 +371,20 @@ class LowererStmtVisitor final : public lower::AstVisitor, public StmtVisitor
     ///          action is required here.
     void visit(const TypeDecl &) override {}
 
+    /// @brief Handle NAMESPACE blocks by adjusting the qualification stack.
+    /// @details Pushes the namespace segments, lowers the nested body, then pops
+    ///          the same number of segments to restore the previous scope.
+    void visit(const NamespaceDecl &stmt) override
+    {
+        lowerer_.pushNamespace(stmt.path);
+        for (const auto &child : stmt.body)
+        {
+            if (child)
+                lowerer_.lowerStmt(*child);
+        }
+        lowerer_.popNamespace(stmt.path.size());
+    }
+
   private:
     Lowerer &lowerer_;
 };

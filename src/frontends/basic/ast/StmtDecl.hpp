@@ -106,6 +106,9 @@ struct ConstructorDecl : Stmt
         return Kind::ConstructorDecl;
     }
 
+    /// Access specifier (PUBLIC/PRIVATE); defaults to PUBLIC.
+    Access access{Access::Public};
+
     /// Ordered parameters for the constructor.
     std::vector<Param> params;
 
@@ -123,6 +126,9 @@ struct DestructorDecl : Stmt
         return Kind::DestructorDecl;
     }
 
+    /// Access specifier (PUBLIC/PRIVATE); defaults to PUBLIC.
+    Access access{Access::Public};
+
     /// Statements forming the destructor body.
     std::vector<StmtPtr> body;
     void accept(StmtVisitor &visitor) const override;
@@ -139,6 +145,9 @@ struct MethodDecl : Stmt
 
     /// Method name.
     std::string name;
+
+    /// Access specifier (PUBLIC/PRIVATE); defaults to PUBLIC.
+    Access access{Access::Public};
 
     /// Ordered parameters for the method.
     std::vector<Param> params;
@@ -168,6 +177,8 @@ struct ClassDecl : Stmt
     {
         std::string name;
         Type type{Type::I64};
+        /// Access specifier (PUBLIC/PRIVATE); defaults to PUBLIC.
+        Access access{Access::Public};
     };
 
     /// Ordered fields declared on the class.
@@ -195,12 +206,40 @@ struct TypeDecl : Stmt
     {
         std::string name;
         Type type{Type::I64};
+        /// Access specifier (PUBLIC/PRIVATE); defaults to PUBLIC.
+        Access access{Access::Public};
     };
 
     /// Ordered fields declared on the type.
     std::vector<Field> fields;
     void accept(StmtVisitor &visitor) const override;
     void accept(MutStmtVisitor &visitor) override;
+};
+
+/// @brief NAMESPACE declaration grouping declarations under a qualified path.
+struct NamespaceDecl : Stmt
+{
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
+    {
+        return Kind::NamespaceDecl;
+    }
+
+    /// Qualified namespace path segments in declaration order.
+    std::vector<std::string> path;
+
+    /// Declarations/body within the namespace.
+    std::vector<StmtPtr> body;
+
+    /// Acceptors inline to avoid extra TU edits.
+    void accept(StmtVisitor &visitor) const override
+    {
+        visitor.visit(*this);
+    }
+
+    void accept(MutStmtVisitor &visitor) override
+    {
+        visitor.visit(*this);
+    }
 };
 
 } // namespace il::frontends::basic

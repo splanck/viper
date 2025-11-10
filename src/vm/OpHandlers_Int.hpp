@@ -5,10 +5,10 @@
 // Links: docs/il-guide.md#reference
 #pragma once
 
+#include "viper/vm/internal/OpHelpers.hpp"
 #include "vm/OpHandlerAccess.hpp"
 #include "vm/OpHandlerUtils.hpp"
 #include "vm/VM.hpp"
-#include "viper/vm/internal/OpHelpers.hpp"
 
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Instr.hpp"
@@ -30,10 +30,7 @@ inline VM::ExecResult handleAddImpl(VM &vm,
     (void)bb;
     (void)ip;
     return il::vm::internal::binaryOp<int64_t>(
-        vm,
-        fr,
-        in,
-        [](int64_t lhs, int64_t rhs) { return ops::wrap_add(lhs, rhs); });
+        vm, fr, in, [](int64_t lhs, int64_t rhs) { return ops::wrap_add(lhs, rhs); });
 }
 
 inline VM::ExecResult handleSubImpl(VM &vm,

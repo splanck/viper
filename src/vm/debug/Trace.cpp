@@ -355,9 +355,9 @@ void TraceSink::onTailCall(const il::core::Function *from, const il::core::Funct
 {
     if (!cfg.enabled())
         return;
-    std::cerr << "[IL] tailcall "
-              << (from ? from->name : std::string("<unknown>")) << " -> "
-              << (to ? to->name : std::string("<unknown>")) << '\n' << std::flush;
+    std::cerr << "[IL] tailcall " << (from ? from->name : std::string("<unknown>")) << " -> "
+              << (to ? to->name : std::string("<unknown>")) << '\n'
+              << std::flush;
 }
 
 } // namespace il::vm

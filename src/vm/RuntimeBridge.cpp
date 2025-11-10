@@ -28,11 +28,11 @@
 #include "vm/VM.hpp"
 
 #include <array>
+#include <mutex>
 #include <optional>
 #include <span>
 #include <sstream>
 #include <string>
-#include <mutex>
 #include <unordered_map>
 #include <vector>
 
@@ -43,6 +43,7 @@ namespace
 using il::core::Opcode;
 using il::runtime::RtSig;
 using il::runtime::RuntimeDescriptor;
+using il::vm::ExternDesc;
 using il::vm::FrameInfo;
 using il::vm::ResultBuffers;
 using il::vm::RuntimeBridge;
@@ -53,7 +54,6 @@ using il::vm::VM;
 using il::vm::vm_format_error;
 using il::vm::vm_raise;
 using il::vm::VmError;
-using il::vm::ExternDesc;
 
 /// @brief Thread-local pointer to the runtime call context for active trap reporting.
 ///
@@ -322,12 +322,18 @@ static il::core::Type mapKind(il::runtime::signatures::SigParam::Kind k)
     using il::core::Type;
     switch (k)
     {
-        case K::I1: return Type(Type::Kind::I1);
-        case K::I32: return Type(Type::Kind::I32);
-        case K::I64: return Type(Type::Kind::I64);
-        case K::F32: return Type(Type::Kind::F64);
-        case K::F64: return Type(Type::Kind::F64);
-        case K::Ptr: return Type(Type::Kind::Ptr);
+        case K::I1:
+            return Type(Type::Kind::I1);
+        case K::I32:
+            return Type(Type::Kind::I32);
+        case K::I64:
+            return Type(Type::Kind::I64);
+        case K::F32:
+            return Type(Type::Kind::F64);
+        case K::F64:
+            return Type(Type::Kind::F64);
+        case K::Ptr:
+            return Type(Type::Kind::Ptr);
     }
     return Type(Type::Kind::Void);
 }

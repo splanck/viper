@@ -453,16 +453,8 @@ inline constexpr auto kLoweringRuleTable = std::array<RuleSpec, 34>{
              RuleFlags::None,
              &emitEhPush,
              "eh.push"},
-    RuleSpec{"eh.pop",
-             OperandShape{0U, 0U, 0U, {}},
-             RuleFlags::None,
-             &emitEhPop,
-             "eh.pop"},
-    RuleSpec{"eh.entry",
-             OperandShape{0U, 0U, 0U, {}},
-             RuleFlags::None,
-             &emitEhEntry,
-             "eh.entry"},
+    RuleSpec{"eh.pop", OperandShape{0U, 0U, 0U, {}}, RuleFlags::None, &emitEhPop, "eh.pop"},
+    RuleSpec{"eh.entry", OperandShape{0U, 0U, 0U, {}}, RuleFlags::None, &emitEhEntry, "eh.entry"},
 };
 
 } // namespace lowering

@@ -101,4 +101,3 @@ bool PassManager::runPipeline(const Pipeline &pipeline) const
 }
 
 } // namespace viper::pass
-

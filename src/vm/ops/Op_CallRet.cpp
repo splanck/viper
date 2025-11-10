@@ -16,8 +16,8 @@
 
 #include "il/runtime/RuntimeSignatures.hpp"
 #include "vm/Marshal.hpp"
-#include "vm/tco.hpp"
 #include "vm/RuntimeBridge.hpp"
+#include "vm/tco.hpp"
 
 /// @file
 /// @brief Call and return opcode handlers for the VM interpreter.

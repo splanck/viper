@@ -119,7 +119,8 @@ bool parseIntegerLiteral(const std::string &token, long long &value)
     }
 
     // Handle 0b/0B binary prefix explicitly for portability.
-    if (pos + 2 <= token.size() && token[pos] == '0' && (token[pos + 1] == 'b' || token[pos + 1] == 'B'))
+    if (pos + 2 <= token.size() && token[pos] == '0' &&
+        (token[pos + 1] == 'b' || token[pos + 1] == 'B'))
     {
         pos += 2;
         if (pos >= token.size())

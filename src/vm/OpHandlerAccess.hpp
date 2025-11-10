@@ -50,7 +50,9 @@ struct VMAccess
     }
 
     // Stepping helpers for components that need controlled access -------------
-    static inline ExecState prepare(VM &vm, const il::core::Function &fn, const std::vector<Slot> &args)
+    static inline ExecState prepare(VM &vm,
+                                    const il::core::Function &fn,
+                                    const std::vector<Slot> &args)
     {
         return vm.prepareExecution(fn, args);
     }

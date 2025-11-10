@@ -67,7 +67,8 @@ std::string formatLineMessage(Context &ctx, std::string message)
 /// @return Expected error populated with the formatted diagnostic.
 template <class T> Expected<T> makeSyntaxError(ParserState &state, std::string message)
 {
-    return Expected<T>{makeError(state.curLoc, ::il::io::formatLineDiag(state.lineNo, std::move(message)))};
+    return Expected<T>{
+        makeError(state.curLoc, ::il::io::formatLineDiag(state.lineNo, std::move(message)))};
 }
 
 /// @brief Convenience wrapper that packages a syntax error into ParseResult.
@@ -79,7 +80,8 @@ template <class T> Expected<T> makeSyntaxError(ParserState &state, std::string m
 ParseResult syntaxError(Context &ctx, std::string message)
 {
     ParseResult result;
-    result.status = ::il::support::Expected<void>{makeError(ctx.state.curLoc, formatLineMessage(ctx, std::move(message)))};
+    result.status = ::il::support::Expected<void>{
+        makeError(ctx.state.curLoc, formatLineMessage(ctx, std::move(message)))};
     return result;
 }
 
@@ -157,4 +159,3 @@ ParseResult parseValueOperand(Cursor &cur, Context &ctx)
 }
 
 } // namespace viper::il::io
-

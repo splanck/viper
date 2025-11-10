@@ -1,6 +1,6 @@
 // File: src/il/transform/SCCP.hpp
 // Purpose: Declare the sparse conditional constant propagation pass for IL.
-// Key invariants: Pass conservatively assumes unknown values are overdefined until proven constant; 
+// Key invariants: Pass conservatively assumes unknown values are overdefined until proven constant;
 //                 operates on block parameters as SSA phi nodes.
 // Ownership/Lifetime: Pass mutates caller-owned modules in place.
 // Links: docs/codemap.md

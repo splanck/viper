@@ -439,9 +439,11 @@ const ExprRule &exprRule(BinaryExpr::Op op)
     static_assert(rules[static_cast<std::size_t>(BinaryExpr::Op::LogicalOrShort)].result ==
                       &booleanResult,
                   "Short-circuit OR must return BOOL");
-    static_assert(rules[static_cast<std::size_t>(BinaryExpr::Op::LogicalAnd)].result == &booleanResult,
+    static_assert(rules[static_cast<std::size_t>(BinaryExpr::Op::LogicalAnd)].result ==
+                      &booleanResult,
                   "Logical AND must return BOOL");
-    static_assert(rules[static_cast<std::size_t>(BinaryExpr::Op::LogicalOr)].result == &booleanResult,
+    static_assert(rules[static_cast<std::size_t>(BinaryExpr::Op::LogicalOr)].result ==
+                      &booleanResult,
                   "Logical OR must return BOOL");
 
     return rules.at(static_cast<std::size_t>(op));

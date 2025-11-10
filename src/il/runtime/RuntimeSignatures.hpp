@@ -135,9 +135,9 @@ struct RuntimeSignature
     std::vector<il::core::Type> paramTypes;       ///< Parameter types in declaration order.
     std::vector<RuntimeHiddenParam> hiddenParams; ///< Hidden arguments appended by the bridge.
     RuntimeTrapClass trapClass{RuntimeTrapClass::None}; ///< Trap semantics for the helper.
-    bool nothrow{false};                          ///< Helper is guaranteed not to throw.
-    bool readonly{false};                         ///< Helper may read from memory without writes.
-    bool pure{false};                             ///< Helper has no observable side effects.
+    bool nothrow{false};                                ///< Helper is guaranteed not to throw.
+    bool readonly{false}; ///< Helper may read from memory without writes.
+    bool pure{false};     ///< Helper has no observable side effects.
 };
 
 /// @brief Aggregated descriptor covering signature, handler, and lowering metadata.

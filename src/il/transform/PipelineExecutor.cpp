@@ -68,42 +68,44 @@ void PipelineExecutor::run(core::Module &module, const std::vector<std::string> 
 
     for (const auto &passId : pipeline)
     {
-        driver.registerPass(passId, [this, &module, &analysis, passId]() -> bool {
-            const detail::PassFactory *factory = registry_.lookup(passId);
-            if (!factory)
-                return false;
+        driver.registerPass(passId,
+                            [this, &module, &analysis, passId]() -> bool
+                            {
+                                const detail::PassFactory *factory = registry_.lookup(passId);
+                                if (!factory)
+                                    return false;
 
-            switch (factory->kind)
-            {
-                case detail::PassKind::Module:
-                {
-                    if (!factory->makeModule)
-                        return false;
-                    auto pass = factory->makeModule();
-                    if (!pass)
-                        return false;
-                    PreservedAnalyses preserved = pass->run(module, analysis);
-                    analysis.invalidateAfterModulePass(preserved);
-                    return true;
-                }
-                case detail::PassKind::Function:
-                {
-                    if (!factory->makeFunction)
-                        return false;
-                    for (auto &fn : module.functions)
-                    {
-                        auto pass = factory->makeFunction();
-                        if (!pass)
-                            continue;
-                        PreservedAnalyses preserved = pass->run(fn, analysis);
-                        analysis.invalidateAfterFunctionPass(preserved, fn);
-                    }
-                    return true;
-                }
-            }
+                                switch (factory->kind)
+                                {
+                                    case detail::PassKind::Module:
+                                    {
+                                        if (!factory->makeModule)
+                                            return false;
+                                        auto pass = factory->makeModule();
+                                        if (!pass)
+                                            return false;
+                                        PreservedAnalyses preserved = pass->run(module, analysis);
+                                        analysis.invalidateAfterModulePass(preserved);
+                                        return true;
+                                    }
+                                    case detail::PassKind::Function:
+                                    {
+                                        if (!factory->makeFunction)
+                                            return false;
+                                        for (auto &fn : module.functions)
+                                        {
+                                            auto pass = factory->makeFunction();
+                                            if (!pass)
+                                                continue;
+                                            PreservedAnalyses preserved = pass->run(fn, analysis);
+                                            analysis.invalidateAfterFunctionPass(preserved, fn);
+                                        }
+                                        return true;
+                                    }
+                                }
 
-            return false;
-        });
+                                return false;
+                            });
     }
 
     bool ok = driver.runPipeline(pipeline);

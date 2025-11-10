@@ -15,8 +15,8 @@
 // Requires the consolidated Lowerer interface for runtime tracking declarations.
 #include "frontends/basic/LowerRuntime.hpp"
 #include "frontends/basic/Lowerer.hpp"
-#include "viper/il/IRBuilder.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
+#include "viper/il/IRBuilder.hpp"
 #include <array>
 #include <cassert>
 #include <string>

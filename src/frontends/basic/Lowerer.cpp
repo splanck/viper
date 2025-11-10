@@ -61,6 +61,41 @@ Lowerer::Type Lowerer::functionRetTypeFromHint(const std::string &fnName, BasicT
     return ilTypeForBasicRet(fnName, hint);
 }
 
+void Lowerer::pushNamespace(const std::vector<std::string> &path)
+{
+    nsStack_.insert(nsStack_.end(), path.begin(), path.end());
+}
+
+void Lowerer::popNamespace(std::size_t count)
+{
+    if (count == 0 || nsStack_.empty())
+        return;
+    if (count > nsStack_.size())
+        count = nsStack_.size();
+    nsStack_.erase(nsStack_.end() - static_cast<std::ptrdiff_t>(count), nsStack_.end());
+}
+
+std::string Lowerer::qualify(const std::string &klass) const
+{
+    if (nsStack_.empty() || klass.empty())
+        return klass;
+    std::string out;
+    // Compute final size to reserve capacity conservatively.
+    std::size_t size = klass.size();
+    for (const auto &s : nsStack_)
+        size += s.size() + 1; // segment + dot
+    out.reserve(size);
+    for (std::size_t i = 0; i < nsStack_.size(); ++i)
+    {
+        if (i)
+            out.push_back('.');
+        out.append(nsStack_[i]);
+    }
+    out.push_back('.');
+    out.append(klass);
+    return out;
+}
+
 std::optional<::il::frontends::basic::Type> Lowerer::findMethodReturnType(
     std::string_view className, std::string_view methodName) const
 {

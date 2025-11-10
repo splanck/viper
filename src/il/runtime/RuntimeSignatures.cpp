@@ -24,8 +24,8 @@
 ///          calling conventions and the C ABI, and the lookup utilities used by
 ///          the verifier and code generator.
 
-#include "il/runtime/HelperEffects.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
+#include "il/runtime/HelperEffects.hpp"
 #include "il/runtime/RuntimeSignatureParser.hpp"
 #include "il/runtime/RuntimeSignaturesData.hpp"
 #ifndef NDEBUG
@@ -44,8 +44,8 @@ void register_array_signatures();
 #endif
 
 #include "rt.hpp"
-#include "viper/runtime/rt.h"
 #include "rt_internal.h"
+#include "viper/runtime/rt.h"
 #include <algorithm>
 #include <array>
 #include <cstdint>

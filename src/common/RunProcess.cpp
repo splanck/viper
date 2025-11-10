@@ -171,8 +171,7 @@ class ScopedEnvironmentAssignment
     ///          no additional work.
     /// @param other Guard supplying the override to adopt.
     ScopedEnvironmentAssignment(ScopedEnvironmentAssignment &&other) noexcept
-        : name_(std::move(other.name_)),
-          previous_(std::move(other.previous_)),
+        : name_(std::move(other.name_)), previous_(std::move(other.previous_)),
           override_(std::move(other.override_))
     {
         other.name_.clear();

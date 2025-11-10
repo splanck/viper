@@ -26,7 +26,7 @@ namespace il::runtime
 /// @brief Describe behavioural flags associated with a runtime helper.
 struct HelperEffects
 {
-    bool nothrow = false; ///< Helper cannot throw or trap under defined behaviour.
+    bool nothrow = false;  ///< Helper cannot throw or trap under defined behaviour.
     bool readonly = false; ///< Helper may read memory but performs no writes.
     bool pure = false;     ///< Helper has no observable side effects.
 };
@@ -66,4 +66,3 @@ inline HelperEffects classifyHelperEffects(std::string_view name)
 }
 
 } // namespace il::runtime
-

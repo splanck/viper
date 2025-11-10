@@ -13,9 +13,9 @@
 #include "frontends/basic/NameMangler.hpp"
 #include "frontends/basic/Semantic_OOP.hpp"
 #include "frontends/basic/TypeRules.hpp"
+#include "il/runtime/RuntimeSignatures.hpp"
 #include "viper/il/IRBuilder.hpp"
 #include "viper/il/Module.hpp"
-#include "il/runtime/RuntimeSignatures.hpp"
 #include <array>
 #include <cstdint>
 #include <functional>
@@ -106,6 +106,20 @@ class Lowerer
     {
         requestHelper(feature);
     }
+
+    // Namespace qualification support -------------------------------------------------
+    /// @brief Push a namespace path onto the current qualification stack.
+    /// @param path Ordered segments, e.g. {"A","B"} for A.B.
+    void pushNamespace(const std::vector<std::string> &path);
+
+    /// @brief Pop @p count segments from the namespace stack (best-effort clamp).
+    /// @param count Number of trailing segments to remove.
+    void popNamespace(std::size_t count);
+
+    /// @brief Qualify a class name with the active namespace path if any.
+    /// @param klass Unqualified BASIC class name.
+    /// @return Fully-qualified name like "A.B.Klass" or the original when no namespace active.
+    [[nodiscard]] std::string qualify(const std::string &klass) const;
 
   private:
     friend class LowererExprVisitor;
@@ -644,9 +658,10 @@ class Lowerer
     /// @brief Describes the address and type of a resolved member field.
     struct MemberFieldAccess
     {
-        Value ptr;                                 ///< Pointer to the field storage.
-        Type ilType{Type(Type::Kind::I64)};        ///< IL type used for loads/stores.
-        ::il::frontends::basic::Type astType{::il::frontends::basic::Type::I64}; ///< Original AST type.
+        Value ptr;                          ///< Pointer to the field storage.
+        Type ilType{Type(Type::Kind::I64)}; ///< IL type used for loads/stores.
+        ::il::frontends::basic::Type astType{
+            ::il::frontends::basic::Type::I64}; ///< Original AST type.
     };
 
     struct FieldScope
@@ -682,6 +697,12 @@ class Lowerer
 
     /// @brief Stack of active field scopes while lowering class members.
     std::vector<FieldScope> fieldScopeStack_;
+
+    /// @brief Active namespace path segments used for qualification during lowering.
+    std::vector<std::string> nsStack_;
+
+    /// @brief Stack of fully-qualified class names for access checking during lowering.
+    std::vector<std::string> classStack_;
 
     /// @brief Determine the BASIC class associated with an object expression.
     [[nodiscard]] std::string resolveObjectClass(const Expr &expr) const;
@@ -724,12 +745,29 @@ class Lowerer
     const ProcedureSignature *findProcSignature(const std::string &name) const;
 
     /// @brief Lookup the AST return type recorded for a class method.
-    std::optional<::il::frontends::basic::Type>
-    findMethodReturnType(std::string_view className, std::string_view methodName) const;
+    std::optional<::il::frontends::basic::Type> findMethodReturnType(
+        std::string_view className, std::string_view methodName) const;
 
     [[nodiscard]] ProcedureContext &context() noexcept;
 
     [[nodiscard]] const ProcedureContext &context() const noexcept;
+
+    // Class access control context -----------------------------------------------------
+    /// @brief Push the fully-qualified class name currently being lowered.
+    void pushClass(const std::string &qname) { classStack_.push_back(qname); }
+
+    /// @brief Pop the current class lowering context.
+    void popClass()
+    {
+        if (!classStack_.empty())
+            classStack_.pop_back();
+    }
+
+    /// @brief Return the active class lowering context, or empty when not in a class.
+    [[nodiscard]] std::string currentClass() const
+    {
+        return classStack_.empty() ? std::string() : classStack_.back();
+    }
 };
 
 } // namespace il::frontends::basic

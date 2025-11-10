@@ -20,14 +20,14 @@
 #include <stddef.h>
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
-int rt_snprintf(char *str, size_t size, const char *fmt, ...);
+    int rt_snprintf(char *str, size_t size, const char *fmt, ...);
 
 #ifdef __cplusplus
 }
 #endif
 
 #endif // RT_PRINTF_COMPAT_H
-
