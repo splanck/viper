@@ -50,10 +50,15 @@ class VMContext
 
     TraceSink &traceSink() const noexcept;
     DebugCtrl &debugController() const noexcept;
-    VM &vm() const noexcept;
+    VM *vm() const noexcept;
 
   private:
     VM *vmInstance = nullptr; ///< Bound VM instance.
+  public:
+    struct Config
+    {
+        bool enableOpcodeCounts = true;
+    } config; ///< Lightweight runtime config snapshot used by macros.
 };
 
 /// @brief Return the active VM associated with the current thread.

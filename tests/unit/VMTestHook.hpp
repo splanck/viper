@@ -94,5 +94,12 @@ struct VMTestHook
     {
         return vm.execStack.size();
     }
+
+#if VIPER_VM_OPCOUNTS
+    static void setOpcodeCountsEnabled(VM &vm, bool enabled)
+    {
+        vm.enableOpcodeCounts = enabled;
+    }
+#endif
 };
 } // namespace il::vm

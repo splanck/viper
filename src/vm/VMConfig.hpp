@@ -34,3 +34,20 @@
 #ifndef VIPER_VM_TAILCALL
 #define VIPER_VM_TAILCALL 0
 #endif
+
+// -----------------------------------------------------------------------------
+// Opcode execution counters (compile-time + runtime toggle)
+// -----------------------------------------------------------------------------
+#ifndef VIPER_VM_OPCOUNTS
+#define VIPER_VM_OPCOUNTS 1
+#endif
+
+#if VIPER_VM_OPCOUNTS
+#undef VIPER_VM_DISPATCH_BEFORE
+#define VIPER_VM_DISPATCH_BEFORE(ST, OPCODE)                                                     \
+    do                                                                                           \
+    {                                                                                            \
+        if ((ST).config.enableOpcodeCounts)                                                      \
+            ++((ST).vm()->opCounts_[static_cast<size_t>(OPCODE)]);                               \
+    } while (0)
+#endif

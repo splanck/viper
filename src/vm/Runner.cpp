@@ -78,6 +78,23 @@ class Runner::Impl
         return vm.lastTrapMessage();
     }
 
+#if VIPER_VM_OPCOUNTS
+    const std::array<uint64_t, il::core::kNumOpcodes> &opcodeCounts() const
+    {
+        return vm.opcodeCounts();
+    }
+
+    void resetOpcodeCounts()
+    {
+        vm.resetOpcodeCounts();
+    }
+
+    std::vector<std::pair<int, uint64_t>> topOpcodes(std::size_t n) const
+    {
+        return vm.topOpcodes(n);
+    }
+#endif
+
     // Single-step support ----------------------------------------------------
     StepResult step()
     {
@@ -223,6 +240,32 @@ uint64_t Runner::instructionCount() const
 std::optional<std::string> Runner::lastTrapMessage() const
 {
     return impl->lastTrapMessage();
+}
+
+const auto &Runner::opcodeCounts() const
+{
+#if VIPER_VM_OPCOUNTS
+    return impl->opcodeCounts();
+#else
+    static const std::array<uint64_t, 0> kEmpty{};
+    return kEmpty;
+#endif
+}
+
+void Runner::resetOpcodeCounts()
+{
+#if VIPER_VM_OPCOUNTS
+    impl->resetOpcodeCounts();
+#endif
+}
+
+std::vector<std::pair<int, uint64_t>> Runner::topOpcodes(std::size_t n) const
+{
+#if VIPER_VM_OPCOUNTS
+    return impl->topOpcodes(n);
+#else
+    return {};
+#endif
 }
 
 Runner::StepResult Runner::step()

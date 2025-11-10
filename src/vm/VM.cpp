@@ -91,7 +91,7 @@ class FnTableDispatchDriver final : public VM::DispatchDriver
     /// @param vm Virtual machine instance driving execution.
     /// @param state Execution state being advanced; the VM context is unused.
     /// @return True when the VM exited cleanly, false when a pause was requested.
-    bool run(VM &vm, VMContext &, VM::ExecState &state) override
+    bool run(VM &vm, VMContext &ctx, VM::ExecState &state) override
     {
         while (true)
         {
@@ -101,6 +101,7 @@ class FnTableDispatchDriver final : public VM::DispatchDriver
             if (!vm.selectInstruction(state, instr))
                 return state.exitRequested;
 
+            VIPER_VM_DISPATCH_BEFORE(ctx, instr->op);
             vm.traceInstruction(*instr, state.fr);
             auto exec = vm.executeOpcode(state.fr, *instr, state.blocks, state.bb, state.ip);
             if (vm.finalizeDispatch(state, exec))
@@ -119,7 +120,7 @@ class SwitchDispatchDriver final : public VM::DispatchDriver
     /// @param vm Virtual machine instance.
     /// @param state Execution state being advanced.
     /// @return True when the VM exited normally, false when paused.
-    bool run(VM &vm, VMContext &, VM::ExecState &state) override
+    bool run(VM &vm, VMContext &ctx, VM::ExecState &state) override
     {
         while (true)
         {
@@ -129,6 +130,7 @@ class SwitchDispatchDriver final : public VM::DispatchDriver
             if (!vm.selectInstruction(state, instr))
                 return state.exitRequested;
 
+            VIPER_VM_DISPATCH_BEFORE(ctx, instr->op);
             vm.dispatchOpcodeSwitch(state, *instr);
 
             if (state.exitRequested)
@@ -189,6 +191,7 @@ class ThreadedDispatchDriver final : public VM::DispatchDriver
                 il::core::Opcode opcode = fetchNext();
                 if (state.exitRequested)
                     return true;
+                VIPER_VM_DISPATCH_BEFORE(context, opcode);
                 DISPATCH_TO(opcode);
 
 #include "vm/ops/generated/ThreadedCases.inc"
@@ -531,6 +534,34 @@ void VM::onTailCall(const Function *from, const Function *to)
     (void)to;
 #endif
 }
+
+#if VIPER_VM_OPCOUNTS
+const std::array<uint64_t, il::core::kNumOpcodes> &VM::opcodeCounts() const
+{
+    return opCounts_;
+}
+
+void VM::resetOpcodeCounts()
+{
+    opCounts_.fill(0);
+}
+
+std::vector<std::pair<int, uint64_t>> VM::topOpcodes(std::size_t n) const
+{
+    std::vector<std::pair<int, uint64_t>> items;
+    items.reserve(opCounts_.size());
+    for (std::size_t i = 0; i < opCounts_.size(); ++i)
+        if (opCounts_[i] != 0)
+            items.emplace_back(static_cast<int>(i), opCounts_[i]);
+    std::partial_sort(items.begin(),
+                      items.begin() + std::min(n, items.size()),
+                      items.end(),
+                      [](const auto &a, const auto &b) { return a.second > b.second; });
+    if (items.size() > n)
+        items.resize(n);
+    return items;
+}
+#endif
 
 /// @brief Record the currently executing instruction for diagnostics and traps.
 /// @param fr Active frame containing the instruction.

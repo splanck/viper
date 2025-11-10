@@ -53,6 +53,13 @@ if (NOT TARGET test_vm_tailcall_eh)
     viper_add_ctest(test_vm_tailcall_eh test_vm_tailcall_eh)
 endif ()
 
+# Opcode counts tests
+if (NOT TARGET test_vm_opcode_counts)
+    viper_add_test(test_vm_opcode_counts ${VIPER_TESTS_DIR}/unit/VM_OpcodeCountsTests.cpp)
+    target_link_libraries(test_vm_opcode_counts PRIVATE il_build il_vm viper_support)
+    viper_add_ctest(test_vm_opcode_counts test_vm_opcode_counts)
+endif ()
+
 if (NOT TARGET test_integer_helpers)
     viper_add_test(test_integer_helpers ${VIPER_TESTS_DIR}/unit/test_integer_helpers.cpp)
     target_link_libraries(test_integer_helpers PRIVATE ${VIPER_UNIT_SUPPORT_LIBS})

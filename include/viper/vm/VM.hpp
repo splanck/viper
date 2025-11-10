@@ -24,6 +24,9 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
+#include <utility>
+#include <cstddef>
 #include "support/source_location.hpp"
 
 namespace il::core
@@ -62,6 +65,11 @@ class Runner
 
     /// @brief Retrieve the most recent trap message emitted by the VM, if any.
     [[nodiscard]] std::optional<std::string> lastTrapMessage() const;
+
+    // Opcode counting façade
+    [[nodiscard]] const auto &opcodeCounts() const;
+    void resetOpcodeCounts();
+    [[nodiscard]] std::vector<std::pair<int, uint64_t>> topOpcodes(std::size_t n) const;
 
     //===------------------------------------------------------------------===//
     // Single-step and continue APIs

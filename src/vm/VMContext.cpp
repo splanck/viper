@@ -77,7 +77,14 @@ ActiveVMGuard::~ActiveVMGuard()
 /// @details Stores the pointer to the owning VM so future helper calls can
 ///          delegate directly without incurring repeated lookups.
 /// @param vm VM whose helpers should be exposed via this context.
-VMContext::VMContext(VM &vm) noexcept : vmInstance(&vm) {}
+VMContext::VMContext(VM &vm) noexcept : vmInstance(&vm)
+{
+#if VIPER_VM_OPCOUNTS
+    config.enableOpcodeCounts = vm.enableOpcodeCounts;
+#else
+    config.enableOpcodeCounts = false;
+#endif
+}
 
 /// @brief Evaluate an IL value within the current frame.
 /// @details Resolves temporaries from the register file, marshals constants into
@@ -172,6 +179,11 @@ std::optional<Slot> VMContext::stepOnce(VM::ExecState &state) const
     const il::core::Instr *instr = nullptr;
     if (!vmInstance->selectInstruction(state, instr))
         return state.pendingResult;
+
+    // Dispatch hook before executing the opcode (counts, etc.).
+#if VIPER_VM_OPCOUNTS
+    VIPER_VM_DISPATCH_BEFORE((*this), instr->op);
+#endif
 
     vmInstance->traceInstruction(*instr, state.fr);
     auto result = vmInstance->executeOpcode(state.fr, *instr, state.blocks, state.bb, state.ip);
@@ -304,9 +316,9 @@ DebugCtrl &VMContext::debugController() const noexcept
 /// @details Serves as a convenience for helpers that need to reach escape hatches
 ///          on the owning VM.
 /// @return Reference to the VM bound to this context.
-VM &VMContext::vm() const noexcept
+VM *VMContext::vm() const noexcept
 {
-    return *vmInstance;
+    return vmInstance;
 }
 
 /// @brief Retrieve the currently active VM for the calling thread.

@@ -291,6 +291,13 @@ class VM
     TrapState lastTrap{};
     TrapToken trapToken{};
 
+#if VIPER_VM_OPCOUNTS
+    /// @brief Per-opcode execution counters (enabled via VIPER_VM_OPCOUNTS).
+    std::array<uint64_t, il::core::kNumOpcodes> opCounts_{};
+    /// @brief Runtime toggle for counting.
+    bool enableOpcodeCounts = true;
+#endif
+
     /// @brief Execute function @p fn with optional arguments.
     /// @param fn Function to execute.
     /// @param args Argument slots for the callee's entry block.
@@ -462,6 +469,15 @@ class VM
 
     /// @brief Emit a tail-call debug/trace event.
     void onTailCall(const il::core::Function *from, const il::core::Function *to);
+
+#if VIPER_VM_OPCOUNTS
+    /// @brief Access per-opcode execution counters.
+    const std::array<uint64_t, il::core::kNumOpcodes> &opcodeCounts() const;
+    /// @brief Reset all opcode execution counters to zero.
+    void resetOpcodeCounts();
+    /// @brief Return top-N opcodes by execution count as (opcode index, count).
+    std::vector<std::pair<int, uint64_t>> topOpcodes(std::size_t n) const;
+#endif
 };
 
 } // namespace il::vm
