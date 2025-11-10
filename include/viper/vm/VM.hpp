@@ -27,6 +27,7 @@
 #include <vector>
 #include <utility>
 #include <cstddef>
+#include "viper/vm/RuntimeBridge.hpp"
 #include "support/source_location.hpp"
 
 namespace il::core
@@ -43,6 +44,7 @@ struct RunConfig
     uint64_t maxSteps = 0;            ///< Step limit; zero disables the limit.
     DebugCtrl debug;                  ///< Debug controller copied into the VM.
     DebugScript *debugScript = nullptr; ///< Optional script pointer; not owned.
+    std::vector<ExternDesc> externs;  ///< Pre-registered extern helpers.
 };
 
 /// @brief Lightweight façade owning a VM instance for running IL modules.
@@ -70,6 +72,10 @@ class Runner
     [[nodiscard]] const auto &opcodeCounts() const;
     void resetOpcodeCounts();
     [[nodiscard]] std::vector<std::pair<int, uint64_t>> topOpcodes(std::size_t n) const;
+
+    // Extern registration façade
+    void registerExtern(const ExternDesc &);
+    bool unregisterExtern(std::string_view name);
 
     //===------------------------------------------------------------------===//
     // Single-step and continue APIs

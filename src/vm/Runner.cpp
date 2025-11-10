@@ -46,6 +46,8 @@ class Runner::Impl
         : script(config.debugScript),
           vm(module, config.trace, config.maxSteps, std::move(config.debug), script)
     {
+        for (const auto &ext : config.externs)
+            il::vm::RuntimeBridge::registerExtern(ext);
     }
 
     /// @brief Execute the loaded module until completion or trap.
@@ -266,6 +268,16 @@ std::vector<std::pair<int, uint64_t>> Runner::topOpcodes(std::size_t n) const
 #else
     return {};
 #endif
+}
+
+void Runner::registerExtern(const ExternDesc &ext)
+{
+    il::vm::RuntimeBridge::registerExtern(ext);
+}
+
+bool Runner::unregisterExtern(std::string_view name)
+{
+    return il::vm::RuntimeBridge::unregisterExtern(name);
 }
 
 Runner::StepResult Runner::step()

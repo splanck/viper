@@ -8,6 +8,7 @@
 #include "rt.hpp"
 #include "support/source_location.hpp"
 #include "vm/Trap.hpp"
+#include "viper/vm/RuntimeBridge.hpp"
 
 #include <cstddef>
 #include <string>
@@ -68,6 +69,11 @@ class RuntimeBridge
 
     /// @brief Indicate whether a VM instance is actively executing on this thread.
     static bool hasActiveVm();
+
+    // Runtime extern registry -------------------------------------------------
+    static void registerExtern(const ExternDesc &);
+    static bool unregisterExtern(std::string_view name);
+    static const ExternDesc *findExtern(std::string_view name);
 };
 
 } // namespace il::vm

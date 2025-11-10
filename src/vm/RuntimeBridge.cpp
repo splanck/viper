@@ -32,6 +32,8 @@
 #include <span>
 #include <sstream>
 #include <string>
+#include <mutex>
+#include <unordered_map>
 #include <vector>
 
 using il::support::SourceLoc;
@@ -51,6 +53,7 @@ using il::vm::VM;
 using il::vm::vm_format_error;
 using il::vm::vm_raise;
 using il::vm::VmError;
+using il::vm::ExternDesc;
 
 /// @brief Thread-local pointer to the runtime call context for active trap reporting.
 ///
@@ -292,6 +295,68 @@ extern "C" void vm_trap(const char *msg)
 
 namespace il::vm
 {
+namespace
+{
+struct ExtRecord
+{
+    ExternDesc pub;
+    il::runtime::RuntimeSignature runtimeSig;
+    il::runtime::RuntimeHandler handler = nullptr;
+};
+
+std::mutex &externMutex()
+{
+    static std::mutex mtx;
+    return mtx;
+}
+
+std::unordered_map<std::string, ExtRecord> &externRegistry()
+{
+    static std::unordered_map<std::string, ExtRecord> reg;
+    return reg;
+}
+
+static il::core::Type mapKind(il::runtime::signatures::SigParam::Kind k)
+{
+    using K = il::runtime::signatures::SigParam::Kind;
+    using il::core::Type;
+    switch (k)
+    {
+        case K::I1: return Type(Type::Kind::I1);
+        case K::I32: return Type(Type::Kind::I32);
+        case K::I64: return Type(Type::Kind::I64);
+        case K::F32: return Type(Type::Kind::F64);
+        case K::F64: return Type(Type::Kind::F64);
+        case K::Ptr: return Type(Type::Kind::Ptr);
+    }
+    return Type(Type::Kind::Void);
+}
+
+static il::runtime::RuntimeSignature toRuntimeSig(const Signature &sig)
+{
+    il::runtime::RuntimeSignature rs;
+    rs.paramTypes.reserve(sig.params.size());
+    for (const auto &p : sig.params)
+        rs.paramTypes.push_back(mapKind(p.kind));
+    if (!sig.rets.empty())
+        rs.retType = mapKind(sig.rets.front().kind);
+    else
+        rs.retType = il::core::Type(il::core::Type::Kind::Void);
+    rs.trapClass = il::runtime::RuntimeTrapClass::None;
+    rs.nothrow = sig.nothrow;
+    rs.readonly = sig.readonly;
+    rs.pure = sig.pure;
+    return rs;
+}
+} // namespace
+
+std::string canonicalizeExternName(std::string_view n)
+{
+    std::string out(n);
+    for (auto &ch : out)
+        ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+    return out;
+}
 
 /// @brief Invoke a runtime helper identified by name on behalf of the VM.
 ///
@@ -320,7 +385,23 @@ Slot RuntimeBridge::call(RuntimeCallContext &ctx,
     ContextGuard guard(ctx);
     Slot result{};
 
-    const auto *desc = il::runtime::findRuntimeDescriptor(name);
+    // Resolve against runtime extern registry first, then built-ins.
+    il::runtime::RuntimeDescriptor localDesc;
+    const il::runtime::RuntimeDescriptor *desc = nullptr;
+    {
+        std::unique_lock<std::mutex> lock(externMutex());
+        auto it = externRegistry().find(canonicalizeExternName(name));
+        if (it != externRegistry().end())
+        {
+            localDesc.name = it->second.pub.name;
+            localDesc.signature = it->second.runtimeSig;
+            localDesc.handler = it->second.handler;
+            localDesc.lowering = {};
+            desc = &localDesc;
+        }
+    }
+    if (!desc)
+        desc = il::runtime::findRuntimeDescriptor(name);
     if (!desc)
     {
         std::ostringstream os;
@@ -446,6 +527,32 @@ const RuntimeCallContext *RuntimeBridge::activeContext()
 bool RuntimeBridge::hasActiveVm()
 {
     return VM::activeInstance() != nullptr;
+}
+
+void RuntimeBridge::registerExtern(const ExternDesc &ext)
+{
+    ExtRecord rec;
+    rec.pub = ext;
+    rec.runtimeSig = toRuntimeSig(ext.signature);
+    rec.handler = reinterpret_cast<il::runtime::RuntimeHandler>(ext.fn);
+    const std::string key = canonicalizeExternName(ext.name);
+    std::lock_guard<std::mutex> lock(externMutex());
+    externRegistry()[key] = std::move(rec);
+}
+
+bool RuntimeBridge::unregisterExtern(std::string_view name)
+{
+    std::lock_guard<std::mutex> lock(externMutex());
+    return externRegistry().erase(canonicalizeExternName(name)) > 0;
+}
+
+const ExternDesc *RuntimeBridge::findExtern(std::string_view name)
+{
+    std::lock_guard<std::mutex> lock(externMutex());
+    auto it = externRegistry().find(canonicalizeExternName(name));
+    if (it == externRegistry().end())
+        return nullptr;
+    return &it->second.pub;
 }
 
 } // namespace il::vm

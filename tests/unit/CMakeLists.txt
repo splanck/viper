@@ -60,6 +60,13 @@ if (NOT TARGET test_vm_opcode_counts)
     viper_add_ctest(test_vm_opcode_counts test_vm_opcode_counts)
 endif ()
 
+# Extern registry tests
+if (NOT TARGET test_vm_extern_registry)
+    viper_add_test(test_vm_extern_registry ${VIPER_TESTS_DIR}/unit/VM_ExternRegistryTests.cpp)
+    target_link_libraries(test_vm_extern_registry PRIVATE il_build il_vm viper_support)
+    viper_add_ctest(test_vm_extern_registry test_vm_extern_registry)
+endif ()
+
 if (NOT TARGET test_integer_helpers)
     viper_add_test(test_integer_helpers ${VIPER_TESTS_DIR}/unit/test_integer_helpers.cpp)
     target_link_libraries(test_integer_helpers PRIVATE ${VIPER_UNIT_SUPPORT_LIBS})
