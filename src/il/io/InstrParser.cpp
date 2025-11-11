@@ -136,8 +136,8 @@ Expected<void> validateShape_E(const Instr &in, ParserState &st)
         if (in.labels.size() != info.numSuccessors)
         {
             std::ostringstream oss;
-            oss << info.name << " expects "
-                << static_cast<unsigned>(info.numSuccessors) << " label";
+            oss << info.name << " expects " << static_cast<unsigned>(info.numSuccessors)
+                << " label";
             if (info.numSuccessors != 1)
                 oss << 's';
             return Expected<void>{il::io::makeLineErrorDiag(in.loc, st.lineNo, oss.str())};
@@ -158,8 +158,8 @@ Expected<void> validateShape_E(const Instr &in, ParserState &st)
         if (in.brArgs.size() > info.numSuccessors)
         {
             std::ostringstream oss;
-            oss << info.name << " expects at most "
-                << static_cast<unsigned>(info.numSuccessors) << " branch argument list";
+            oss << info.name << " expects at most " << static_cast<unsigned>(info.numSuccessors)
+                << " branch argument list";
             if (info.numSuccessors != 1)
                 oss << 's';
             return Expected<void>{makeError(in.loc, formatLineDiag(st.lineNo, oss.str()))};
@@ -168,8 +168,8 @@ Expected<void> validateShape_E(const Instr &in, ParserState &st)
         if (!in.brArgs.empty() && in.brArgs.size() != info.numSuccessors)
         {
             std::ostringstream oss;
-            oss << info.name << " expects "
-                << static_cast<unsigned>(info.numSuccessors) << " branch argument list";
+            oss << info.name << " expects " << static_cast<unsigned>(info.numSuccessors)
+                << " branch argument list";
             if (info.numSuccessors != 1)
                 oss << 's';
             oss << ", or none";
@@ -306,7 +306,8 @@ Expected<void> parseWithMetadata(Opcode opcode, const std::string &rest, Instr &
                     {
                         std::ostringstream oss;
                         oss << "missing " << spec.role << " for " << info.name;
-                        return Expected<void>{il::io::makeLineErrorDiag(in.loc, st.lineNo, oss.str())};
+                        return Expected<void>{
+                            il::io::makeLineErrorDiag(in.loc, st.lineNo, oss.str())};
                     }
                     if (readFailed)
                     {
@@ -349,23 +350,23 @@ Expected<void> parseWithMetadata(Opcode opcode, const std::string &rest, Instr &
                     if (info.parse[j].kind == OperandParseKind::BranchTarget)
                         ++branchCount;
                 }
-            std::string remainder;
-            std::getline(ss, remainder);
-            remainder = trim(remainder);
-            auto parsed = operandParser.parseBranchTargets(remainder, branchCount);
-            if (!parsed)
-                return parsed;
-            return {};
+                std::string remainder;
+                std::getline(ss, remainder);
+                remainder = trim(remainder);
+                auto parsed = operandParser.parseBranchTargets(remainder, branchCount);
+                if (!parsed)
+                    return parsed;
+                return {};
             }
             case OperandParseKind::Switch:
             {
-            std::string remainder;
-            std::getline(ss, remainder);
-            remainder = trim(remainder);
-            auto parsed = operandParser.parseSwitchTargets(remainder);
-            if (!parsed)
-                return parsed;
-            return {};
+                std::string remainder;
+                std::getline(ss, remainder);
+                remainder = trim(remainder);
+                auto parsed = operandParser.parseSwitchTargets(remainder);
+                if (!parsed)
+                    return parsed;
+                return {};
             }
         }
     }
@@ -400,7 +401,8 @@ Expected<void> parseInstruction_E(const std::string &line, ParserState &st)
             res = trim(res.substr(0, colon));
             if (res.empty())
             {
-                return Expected<void>{il::io::makeLineErrorDiag(in.loc, st.lineNo, "missing temp name before type annotation")};
+                return Expected<void>{il::io::makeLineErrorDiag(
+                    in.loc, st.lineNo, "missing temp name before type annotation")};
             }
             viper::parse::Cursor annotCursor{tyTok, viper::parse::SourcePos{st.lineNo, 0}};
             viper::il::io::Context annotCtx{st, in};
@@ -409,7 +411,8 @@ Expected<void> parseInstruction_E(const std::string &line, ParserState &st)
                 return Expected<void>{parsedType.status.error()};
             if (in.type.kind == Type::Kind::Void)
             {
-                return Expected<void>{il::io::makeLineErrorDiag(in.loc, st.lineNo, "result type cannot be void")};
+                return Expected<void>{
+                    il::io::makeLineErrorDiag(in.loc, st.lineNo, "result type cannot be void")};
             }
             annotatedType = in.type;
         }

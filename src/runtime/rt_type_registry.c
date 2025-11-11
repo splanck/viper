@@ -10,18 +10,21 @@
 
 // Simple runtime registries for classes and interfaces.
 
-typedef struct {
+typedef struct
+{
     int type_id;
     const rt_class_info *ci;
     int base_type_id; // -1 if none
 } class_entry;
 
-typedef struct {
+typedef struct
+{
     int iface_id;
     rt_iface_reg reg;
 } iface_entry;
 
-typedef struct {
+typedef struct
+{
     int type_id;
     int iface_id;
     void **itable;
@@ -41,7 +44,7 @@ static void ensure_cap(void **buf, size_t *cap, size_t elem_size)
         *cap = 16;
         *buf = malloc((*cap) * elem_size);
     }
-    else if (*cap <  (size_t)-1 / 2)
+    else if (*cap < (size_t)-1 / 2)
     {
         *cap *= 2;
         *buf = realloc(*buf, (*cap) * elem_size);
@@ -174,8 +177,9 @@ void **rt_itable_lookup(void *obj, int iface_id)
 
 void rt_register_interface_direct(int iface_id, const char *qname, int slot_count)
 {
-    (void)qname; (void)slot_count; // stored in reg; currently unused by runtime
-    rt_iface_reg r = { iface_id, qname, slot_count };
+    (void)qname;
+    (void)slot_count; // stored in reg; currently unused by runtime
+    rt_iface_reg r = {iface_id, qname, slot_count};
     rt_register_interface(&r);
 }
 

@@ -148,16 +148,19 @@ class SemanticAnalyzerExprVisitor final : public MutExprVisitor
     {
         // Check left operand type; reject obvious primitives.
         SemanticAnalyzer::Type lhsType = analyzer_.visitExpr(*expr.value);
-        auto isPrimitive = [&](SemanticAnalyzer::Type t) {
+        auto isPrimitive = [&](SemanticAnalyzer::Type t)
+        {
             using T = SemanticAnalyzer::Type;
-            return t == T::Int || t == T::Float || t == T::Bool || t == T::String || t == T::ArrayInt;
+            return t == T::Int || t == T::Float || t == T::Bool || t == T::String ||
+                   t == T::ArrayInt;
         };
 
         // Resolve right-hand dotted type to class or interface.
         std::string dotted;
         for (size_t i = 0; i < expr.typeName.size(); ++i)
         {
-            if (i) dotted.push_back('.');
+            if (i)
+                dotted.push_back('.');
             dotted += expr.typeName[i];
         }
         bool resolved = false;
@@ -182,7 +185,7 @@ class SemanticAnalyzerExprVisitor final : public MutExprVisitor
             analyzer_.de.emit(il::frontends::basic::diag::BasicDiag::UnknownVariable,
                               expr.loc,
                               static_cast<uint32_t>(dotted.size()),
-                              { {"name", dotted} });
+                              {{"name", dotted}});
         }
         else if (isPrimitive(lhsType))
         {
@@ -201,15 +204,18 @@ class SemanticAnalyzerExprVisitor final : public MutExprVisitor
     {
         // Preserve operand type; runtime returns NULL on failure.
         SemanticAnalyzer::Type lhsType = analyzer_.visitExpr(*expr.value);
-        auto isPrimitive = [&](SemanticAnalyzer::Type t) {
+        auto isPrimitive = [&](SemanticAnalyzer::Type t)
+        {
             using T = SemanticAnalyzer::Type;
-            return t == T::Int || t == T::Float || t == T::Bool || t == T::String || t == T::ArrayInt;
+            return t == T::Int || t == T::Float || t == T::Bool || t == T::String ||
+                   t == T::ArrayInt;
         };
 
         std::string dotted;
         for (size_t i = 0; i < expr.typeName.size(); ++i)
         {
-            if (i) dotted.push_back('.');
+            if (i)
+                dotted.push_back('.');
             dotted += expr.typeName[i];
         }
         bool resolved = false;
@@ -232,7 +238,7 @@ class SemanticAnalyzerExprVisitor final : public MutExprVisitor
             analyzer_.de.emit(il::frontends::basic::diag::BasicDiag::UnknownVariable,
                               expr.loc,
                               static_cast<uint32_t>(dotted.size()),
-                              { {"name", dotted} });
+                              {{"name", dotted}});
         }
         else if (isPrimitive(lhsType))
         {
@@ -240,11 +246,8 @@ class SemanticAnalyzerExprVisitor final : public MutExprVisitor
             std::string from = std::string(semantic_analyzer_detail::semanticTypeName(lhsType));
             std::string to = dotted;
             std::string msg = "cannot cast value of type '" + from + "' to '" + to + "'.";
-            analyzer_.de.emit(il::support::Severity::Error,
-                              "E_CAST_INVALID",
-                              expr.loc,
-                              2,
-                              std::move(msg));
+            analyzer_.de.emit(
+                il::support::Severity::Error, "E_CAST_INVALID", expr.loc, 2, std::move(msg));
         }
 
         result_ = lhsType;

@@ -268,7 +268,8 @@ struct AstPrinter::ExprPrinter final : ExprVisitor
         printer.os << ' ';
         for (size_t i = 0; i < expr.typeName.size(); ++i)
         {
-            if (i) printer.os << '.';
+            if (i)
+                printer.os << '.';
             printer.os << expr.typeName[i];
         }
         printer.os << ')';
@@ -282,7 +283,8 @@ struct AstPrinter::ExprPrinter final : ExprVisitor
         printer.os << ' ';
         for (size_t i = 0; i < expr.typeName.size(); ++i)
         {
-            if (i) printer.os << '.';
+            if (i)
+                printer.os << '.';
             printer.os << expr.typeName[i];
         }
         printer.os << ')';

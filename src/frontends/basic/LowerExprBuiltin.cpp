@@ -65,7 +65,7 @@ constexpr std::size_t builtinIndex(BuiltinCallExpr::Builtin builtin) noexcept
 constexpr auto makeBuiltinEmitterTable()
 {
     using Lowering = BuiltinExprLowering;
-    std::array<Lowering::EmitFn, builtinIndex(BuiltinCallExpr::Builtin::Loc) + 1> table{};
+    std::array<Lowering::EmitFn, builtinIndex(BuiltinCallExpr::Builtin::Timer) + 1> table{};
     table.fill(&Lowering::emitRuleDrivenBuiltin);
     table[builtinIndex(BuiltinCallExpr::Builtin::Eof)] = &Lowering::emitEofBuiltin;
     table[builtinIndex(BuiltinCallExpr::Builtin::Lof)] = &Lowering::emitLofBuiltin;

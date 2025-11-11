@@ -190,7 +190,8 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
 
     // Keep a simple namespace stack to form qualified names.
     std::vector<std::string> nsStack;
-    auto joinNs = [&]() -> std::string {
+    auto joinNs = [&]() -> std::string
+    {
         if (nsStack.empty())
             return {};
         std::string prefix;
@@ -213,8 +214,9 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
     std::unordered_map<std::string, std::pair<std::string, il::support::SourceLoc>> rawBases;
 
     // Recursive lambda to scan statements and populate the index (phase 1).
-    std::function<void(const std::vector<StmtPtr>&)> scan;
-    scan = [&](const std::vector<StmtPtr> &stmts) {
+    std::function<void(const std::vector<StmtPtr> &)> scan;
+    scan = [&](const std::vector<StmtPtr> &stmts)
+    {
         for (const auto &stmtPtr : stmts)
         {
             if (!stmtPtr)
@@ -227,7 +229,8 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
                     for (const auto &seg : ns.path)
                         nsStack.push_back(seg);
                     scan(ns.body);
-                    nsStack.resize(nsStack.size() >= ns.path.size() ? nsStack.size() - ns.path.size() : 0);
+                    nsStack.resize(
+                        nsStack.size() >= ns.path.size() ? nsStack.size() - ns.path.size() : 0);
                     break;
                 }
                 case Stmt::Kind::ClassDecl:
@@ -253,7 +256,8 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
                     classFieldNames.reserve(classDecl.fields.size());
                     for (const auto &field : classDecl.fields)
                     {
-                        info.fields.push_back(ClassInfo::FieldInfo{field.name, field.type, field.access});
+                        info.fields.push_back(
+                            ClassInfo::FieldInfo{field.name, field.type, field.access});
                         classFieldNames.insert(field.name);
                     }
 
@@ -276,14 +280,16 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
                                     sigParam.isArray = param.is_array;
                                     info.ctorParams.push_back(sigParam);
                                 }
-                                checkMemberShadowing(ctor.body, classDecl, classFieldNames, emitter);
+                                checkMemberShadowing(
+                                    ctor.body, classDecl, classFieldNames, emitter);
                                 break;
                             }
                             case Stmt::Kind::DestructorDecl:
                             {
                                 info.hasDestructor = true;
                                 const auto &dtor = static_cast<const DestructorDecl &>(*member);
-                                checkMemberShadowing(dtor.body, classDecl, classFieldNames, emitter);
+                                checkMemberShadowing(
+                                    dtor.body, classDecl, classFieldNames, emitter);
                                 break;
                             }
                             case Stmt::Kind::MethodDecl:
@@ -305,7 +311,8 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
                                 }
                                 sig.access = method.access;
                                 emitMissingReturn(classDecl, method, emitter);
-                                checkMemberShadowing(method.body, classDecl, classFieldNames, emitter);
+                                checkMemberShadowing(
+                                    method.body, classDecl, classFieldNames, emitter);
                                 ClassInfo::MethodInfo mi;
                                 mi.sig = std::move(sig);
                                 mi.isVirtual = method.isVirtual || method.isOverride;
@@ -330,7 +337,8 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
                         std::string dotted;
                         for (size_t i = 0; i < implQN.size(); ++i)
                         {
-                            if (i) dotted.push_back('.');
+                            if (i)
+                                dotted.push_back('.');
                             dotted += implQN[i];
                         }
                         if (!dotted.empty())
@@ -349,22 +357,26 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
     scan(program.main);
 
     // Phase 1b: scan interfaces and assign stable IDs
-    auto joinQualified = [](const std::vector<std::string> &segs) {
+    auto joinQualified = [](const std::vector<std::string> &segs)
+    {
         std::string out;
         for (size_t i = 0; i < segs.size(); ++i)
         {
-            if (i) out.push_back('.');
+            if (i)
+                out.push_back('.');
             out += segs[i];
         }
         return out;
     };
 
     // We reuse the same scanner but intercept InterfaceDecl as we recurse bodies
-    std::function<void(const std::vector<StmtPtr>&)> scanInterfaces;
-    scanInterfaces = [&](const std::vector<StmtPtr> &stmts) {
+    std::function<void(const std::vector<StmtPtr> &)> scanInterfaces;
+    scanInterfaces = [&](const std::vector<StmtPtr> &stmts)
+    {
         for (const auto &stmt : stmts)
         {
-            if (!stmt) continue;
+            if (!stmt)
+                continue;
             if (auto *ns = dynamic_cast<const NamespaceDecl *>(stmt.get()))
             {
                 scanInterfaces(ns->body);
@@ -382,7 +394,8 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
                 SemanticDiagnostics sde(*emitter);
                 for (const auto &mem : idecl->members)
                 {
-                    if (!mem) continue;
+                    if (!mem)
+                        continue;
                     if (auto *md = dynamic_cast<const MethodDecl *>(mem.get()))
                     {
                         if (seen.count(md->name))
@@ -398,7 +411,7 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
                                               static_cast<uint32_t>(md->name.size()),
                                               std::move(msg));
                             }
-                             continue;
+                            continue;
                         }
                         seen.insert(md->name);
                         IfaceMethodSig slot;
@@ -419,7 +432,8 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
     scanInterfaces(program.main);
 
     // Helper to resolve a raw base name against current namespace prefix.
-    auto resolveBase = [&](const std::string &classQ, const std::string &raw) -> std::string {
+    auto resolveBase = [&](const std::string &classQ, const std::string &raw) -> std::string
+    {
         if (raw.empty())
             return {};
         // Already qualified?
@@ -430,7 +444,8 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
         }
         // Try sibling in same namespace as classQ.
         auto lastDot = classQ.rfind('.');
-        std::string prefix = (lastDot == std::string::npos) ? std::string{} : classQ.substr(0, lastDot);
+        std::string prefix =
+            (lastDot == std::string::npos) ? std::string{} : classQ.substr(0, lastDot);
         std::string candidate = prefix.empty() ? raw : (prefix + "." + raw);
         if (index.classes().count(candidate))
             return candidate;
@@ -454,7 +469,11 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
                 if (emitter)
                 {
                     std::string msg = std::string("base class not found: '") + raw + "'";
-                    emitter->emit(il::support::Severity::Error, "B2101", it->second.second, 1, std::move(msg));
+                    emitter->emit(il::support::Severity::Error,
+                                  "B2101",
+                                  it->second.second,
+                                  1,
+                                  std::move(msg));
                 }
             }
             ci.baseQualified = std::move(resolved);
@@ -463,14 +482,17 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
         // Resolve implemented interfaces against class namespace
         if (!ci.rawImplements.empty())
         {
-            auto resolveIface = [&](const std::string &raw) -> std::string {
+            auto resolveIface = [&](const std::string &raw) -> std::string
+            {
                 if (raw.find('.') != std::string::npos)
                 {
                     if (index.interfacesByQname().count(raw))
                         return raw;
                 }
                 auto lastDot = ci.qualifiedName.rfind('.');
-                std::string prefix = (lastDot == std::string::npos) ? std::string{} : ci.qualifiedName.substr(0, lastDot);
+                std::string prefix = (lastDot == std::string::npos)
+                                         ? std::string{}
+                                         : ci.qualifiedName.substr(0, lastDot);
                 std::string candidate = prefix.empty() ? raw : (prefix + "." + raw);
                 if (index.interfacesByQname().count(candidate))
                     return candidate;
@@ -497,11 +519,13 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
         kVisiting = 1,
         kVisited = 2,
     };
+
     std::unordered_map<std::string, State> state;
     state.reserve(index.classes().size());
 
     std::function<void(const std::string &)> detectCycle;
-    detectCycle = [&](const std::string &name) {
+    detectCycle = [&](const std::string &name)
+    {
         auto it = state.find(name);
         if (it != state.end() && it->second != kUnvisited)
             return; // already processed or in-progress handled by below
@@ -516,7 +540,8 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
                 if (emitter)
                 {
                     std::string msg = std::string("inheritance cycle involving '") + name + "'";
-                    emitter->emit(il::support::Severity::Error, "B2102", cls->loc, 1, std::move(msg));
+                    emitter->emit(
+                        il::support::Severity::Error, "B2102", cls->loc, 1, std::move(msg));
                 }
                 // Break the cycle to avoid cascading issues.
                 cls->baseQualified.clear();
@@ -536,8 +561,9 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
     std::unordered_map<std::string, bool> processed;
     processed.reserve(index.classes().size());
 
-    auto findInBases = [&](const std::string &startClass, const std::string &methodName)
-        -> std::pair<ClassInfo *, ClassInfo::MethodInfo *>
+    auto findInBases =
+        [&](const std::string &startClass,
+            const std::string &methodName) -> std::pair<ClassInfo *, ClassInfo::MethodInfo *>
     {
         ClassInfo *cur = index.findClass(startClass);
         while (cur && !cur->baseQualified.empty())
@@ -554,7 +580,8 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
     };
 
     std::function<void(const std::string &)> build;
-    build = [&](const std::string &name) {
+    build = [&](const std::string &name)
+    {
         if (processed[name])
             return;
         ClassInfo *ci = index.findClass(name);
@@ -626,14 +653,16 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
                     // Signature check
                     const MethodSig &s1 = mi.sig;
                     const MethodSig &s2 = bmi->sig;
-                    bool sigOk = (s1.paramTypes == s2.paramTypes) && (s1.returnType == s2.returnType);
+                    bool sigOk =
+                        (s1.paramTypes == s2.paramTypes) && (s1.returnType == s2.returnType);
                     if (!sigOk && emitter)
                     {
                         emitter->emit(il::support::Severity::Error,
                                       "B2103",
                                       ci->methodLocs[mname],
                                       static_cast<uint32_t>(mname.size()),
-                                      std::string("override signature mismatch for '") + mname + "'");
+                                      std::string("override signature mismatch for '") + mname +
+                                          "'");
                     }
                     // Reuse slot
                     mi.slot = bmi->slot;
@@ -661,20 +690,23 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
                                         const std::string &name) -> const ClassInfo::MethodInfo *
     {
         const ClassInfo *cur = index.findClass(classQ);
-        if (!cur) return nullptr;
+        if (!cur)
+            return nullptr;
         if (auto it = cur->methods.find(name); it != cur->methods.end())
             return &it->second;
         while (cur && !cur->baseQualified.empty())
         {
             cur = index.findClass(cur->baseQualified);
-            if (!cur) break;
+            if (!cur)
+                break;
             if (auto it2 = cur->methods.find(name); it2 != cur->methods.end())
                 return &it2->second;
         }
         return nullptr;
     };
 
-    auto sigsMatch = [](const MethodSig &cls, const IfaceMethodSig &iface) {
+    auto sigsMatch = [](const MethodSig &cls, const IfaceMethodSig &iface)
+    {
         if (cls.paramTypes != iface.paramTypes)
             return false;
         if (cls.returnType.has_value() != iface.returnType.has_value())
@@ -708,7 +740,8 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
             for (size_t slot = 0; slot < iface.slots.size(); ++slot)
             {
                 const auto &slotSig = iface.slots[slot];
-                const ClassInfo::MethodInfo *mi = findMethodInClassOrBases(ci.qualifiedName, slotSig.name);
+                const ClassInfo::MethodInfo *mi =
+                    findMethodInClassOrBases(ci.qualifiedName, slotSig.name);
                 if (!mi)
                 {
                     ci.isAbstract = true;
@@ -718,8 +751,8 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
                         if (emitter)
                         {
                             std::string msg = "class '" + ci.qualifiedName +
-                                              "' does not implement '" + iface.qualifiedName +
-                                              "." + slotSig.name + "'.";
+                                              "' does not implement '" + iface.qualifiedName + "." +
+                                              slotSig.name + "'.";
                             emitter->emit(il::support::Severity::Error,
                                           "E_CLASS_MISSES_IFACE_METHOD",
                                           ci.loc,
@@ -738,8 +771,8 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
                         if (emitter)
                         {
                             std::string msg = "class '" + ci.qualifiedName +
-                                              "' does not implement '" + iface.qualifiedName +
-                                              "." + slotSig.name + "'.";
+                                              "' does not implement '" + iface.qualifiedName + "." +
+                                              slotSig.name + "'.";
                             emitter->emit(il::support::Severity::Error,
                                           "E_CLASS_MISSES_IFACE_METHOD",
                                           ci.loc,
@@ -761,7 +794,9 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
 namespace il::frontends::basic
 {
 
-int getVirtualSlot(const OopIndex &index, const std::string &qualifiedClass, const std::string &methodName)
+int getVirtualSlot(const OopIndex &index,
+                   const std::string &qualifiedClass,
+                   const std::string &methodName)
 {
     const ClassInfo *ci = index.findClass(qualifiedClass);
     if (!ci)

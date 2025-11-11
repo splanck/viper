@@ -74,6 +74,7 @@ enum class RuntimeFeature : std::size_t
     RoundEven,
     RandomizeI64,
     Rnd,
+    Timer,
     TermCls,
     TermColor,
     TermLocate,

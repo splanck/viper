@@ -177,7 +177,8 @@ StmtPtr Parser::parseSelectCaseStatement()
     parseSelectArms(state);
 
     // Finalize the SELECT model and diagnose missing END SELECT in one place.
-    auto finalizeSelectCase = [&](SelectParseState &st) -> void {
+    auto finalizeSelectCase = [&](SelectParseState &st) -> void
+    {
         SelectModelBuilder builder(st.diagnose);
         st.stmt->model = builder.build(*st.stmt);
         if (st.expectEndSelect)

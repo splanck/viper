@@ -270,7 +270,8 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
         std::string dotted;
         for (size_t i = 0; i < expr.typeName.size(); ++i)
         {
-            if (i) dotted.push_back('.');
+            if (i)
+                dotted.push_back('.');
             dotted += expr.typeName[i];
         }
         // Determine if target is an interface
@@ -298,14 +299,15 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
         // Call rt_typeid_of to get type id and then predicate helper
         Lowerer::Value typeIdVal = lowerer_.emitCallRet(
             Lowerer::Type(Lowerer::Type::Kind::I64), "rt_typeid_of", {lhs.value});
-        Lowerer::Value pred64 = isIface
-                                     ? lowerer_.emitCallRet(Lowerer::Type(Lowerer::Type::Kind::I64),
-                                                            "rt_type_implements",
-                                                            {typeIdVal, Lowerer::Value::constInt(targetId)})
-                                     : lowerer_.emitCallRet(Lowerer::Type(Lowerer::Type::Kind::I64),
-                                                            "rt_type_is_a",
-                                                            {typeIdVal, Lowerer::Value::constInt(targetId)});
-        Lowerer::Value cond = lowerer_.emitBinary(il::core::Opcode::ICmpNe, lowerer_.ilBoolTy(), pred64, Lowerer::Value::constInt(0));
+        Lowerer::Value pred64 =
+            isIface ? lowerer_.emitCallRet(Lowerer::Type(Lowerer::Type::Kind::I64),
+                                           "rt_type_implements",
+                                           {typeIdVal, Lowerer::Value::constInt(targetId)})
+                    : lowerer_.emitCallRet(Lowerer::Type(Lowerer::Type::Kind::I64),
+                                           "rt_type_is_a",
+                                           {typeIdVal, Lowerer::Value::constInt(targetId)});
+        Lowerer::Value cond = lowerer_.emitBinary(
+            il::core::Opcode::ICmpNe, lowerer_.ilBoolTy(), pred64, Lowerer::Value::constInt(0));
         result_ = Lowerer::RVal{cond, lowerer_.ilBoolTy()};
     }
 
@@ -318,7 +320,8 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
         std::string dotted;
         for (size_t i = 0; i < expr.typeName.size(); ++i)
         {
-            if (i) dotted.push_back('.');
+            if (i)
+                dotted.push_back('.');
             dotted += expr.typeName[i];
         }
         bool isIface = false;
@@ -339,13 +342,13 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
             if (it != lowerer_.classLayouts_.end())
                 targetId = static_cast<int>(it->second.classId);
         }
-        Lowerer::Value casted = isIface
-                                     ? lowerer_.emitCallRet(Lowerer::Type(Lowerer::Type::Kind::Ptr),
-                                                            "rt_cast_as_iface",
-                                                            {lhs.value, Lowerer::Value::constInt(targetId)})
-                                     : lowerer_.emitCallRet(Lowerer::Type(Lowerer::Type::Kind::Ptr),
-                                                            "rt_cast_as",
-                                                            {lhs.value, Lowerer::Value::constInt(targetId)});
+        Lowerer::Value casted =
+            isIface ? lowerer_.emitCallRet(Lowerer::Type(Lowerer::Type::Kind::Ptr),
+                                           "rt_cast_as_iface",
+                                           {lhs.value, Lowerer::Value::constInt(targetId)})
+                    : lowerer_.emitCallRet(Lowerer::Type(Lowerer::Type::Kind::Ptr),
+                                           "rt_cast_as",
+                                           {lhs.value, Lowerer::Value::constInt(targetId)});
         result_ = Lowerer::RVal{casted, Lowerer::Type(Lowerer::Type::Kind::Ptr)};
     }
 

@@ -570,7 +570,7 @@ constexpr std::array<DescriptorRow, 92> kDescriptorRows{{
                   std::nullopt,
                   "i64()",
                   &DirectHandler<&rt_timer_ms, int64_t>::invoke,
-                  kManualLowering,
+                  kAlwaysLowering,
                   nullptr,
                   0,
                   RuntimeTrapClass::None},

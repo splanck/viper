@@ -1000,7 +1000,7 @@ Lowerer::RVal lowerDefaultBuiltin(BuiltinLowerContext &ctx)
 ///          lowering routines elsewhere.
 void registerDefaultBuiltins()
 {
-    for (std::size_t ordinal = 0; ordinal <= static_cast<std::size_t>(Builtin::Loc); ++ordinal)
+    for (std::size_t ordinal = 0; ordinal <= static_cast<std::size_t>(Builtin::Timer); ++ordinal)
     {
         auto builtin = static_cast<Builtin>(ordinal);
         switch (builtin)

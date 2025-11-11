@@ -16,8 +16,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/DiagnosticEmitter.hpp"
+#include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/NameMangler_OOP.hpp"
 #include "frontends/basic/Semantic_OOP.hpp"
 
@@ -209,7 +209,8 @@ std::optional<Lowerer::MemberFieldAccess> Lowerer::resolveMemberField(const Memb
                         {
                             std::fprintf(stderr,
                                          "B2021: cannot access private member '%s' of class '%s'\n",
-                                         expr.member.c_str(), qname.c_str());
+                                         expr.member.c_str(),
+                                         qname.c_str());
                         }
                         return std::nullopt;
                     }
@@ -339,7 +340,8 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
                 {
                     std::fprintf(stderr,
                                  "B2021: cannot access private member '%s' of class '%s'\n",
-                                 expr.method.c_str(), qname.c_str());
+                                 expr.method.c_str(),
+                                 qname.c_str());
                 }
                 return {Value::constInt(0), Type(Type::Kind::I64)};
             }
@@ -387,11 +389,13 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
     }
 
     // Name of the direct callee when not using virtual dispatch.
-    std::string directCallee = directQClass.empty() ? expr.method : mangleMethod(directQClass, expr.method);
+    std::string directCallee =
+        directQClass.empty() ? expr.method : mangleMethod(directQClass, expr.method);
 
-    // If virtual and not BASE-qualified, emit call.indirect; otherwise direct call or interface dispatch.
-    // Interface dispatch via (expr AS IFACE).Method: detect AS with interface target.
-    auto tryInterfaceDispatch = [&]() -> std::optional<RVal> {
+    // If virtual and not BASE-qualified, emit call.indirect; otherwise direct call or interface
+    // dispatch. Interface dispatch via (expr AS IFACE).Method: detect AS with interface target.
+    auto tryInterfaceDispatch = [&]() -> std::optional<RVal>
+    {
         const AsExpr *asBase = dynamic_cast<const AsExpr *>(expr.base.get());
         if (!asBase)
             return std::nullopt;
@@ -399,7 +403,8 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
         std::string dotted;
         for (size_t i = 0; i < asBase->typeName.size(); ++i)
         {
-            if (i) dotted.push_back('.');
+            if (i)
+                dotted.push_back('.');
             dotted += asBase->typeName[i];
         }
         const InterfaceInfo *iface = nullptr;
@@ -434,11 +439,11 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
             return std::nullopt;
 
         // Lookup itable, load function pointer at slot, and call.indirect
-        Value itable = emitCallRet(Type(Type::Kind::Ptr),
-                                   "rt_itable_lookup",
-                                   {selfArg, Value::constInt(iface->ifaceId)});
+        Value itable = emitCallRet(
+            Type(Type::Kind::Ptr), "rt_itable_lookup", {selfArg, Value::constInt(iface->ifaceId)});
         const long long offset = static_cast<long long>(slotIndex * 8ULL);
-        Value entryPtr = emitBinary(Opcode::GEP, Type(Type::Kind::Ptr), itable, Value::constInt(offset));
+        Value entryPtr =
+            emitBinary(Opcode::GEP, Type(Type::Kind::Ptr), itable, Value::constInt(offset));
         Value fnPtr = emitLoad(Type(Type::Kind::Ptr), entryPtr);
 
         // Determine return type from interface signature when available.
@@ -447,7 +452,8 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
         {
             if (iface->slots[static_cast<std::size_t>(slotIndex)].returnType)
             {
-                retTy = ilTypeForAstType(*iface->slots[static_cast<std::size_t>(slotIndex)].returnType);
+                retTy =
+                    ilTypeForAstType(*iface->slots[static_cast<std::size_t>(slotIndex)].returnType);
             }
         }
 

@@ -9,18 +9,21 @@
 #include <stdint.h>
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
-    typedef struct rt_class_info {
-        int type_id;                       // stable type id assigned by compiler
-        const char *qname;                 // fully-qualified class name, e.g. "A.B.C"
-        const struct rt_class_info *base;  // base class metadata, or NULL
-        void **vtable;                     // array of function pointers (slots)
-        uint32_t vtable_len;               // number of slots in vtable
+    typedef struct rt_class_info
+    {
+        int type_id;                      // stable type id assigned by compiler
+        const char *qname;                // fully-qualified class name, e.g. "A.B.C"
+        const struct rt_class_info *base; // base class metadata, or NULL
+        void **vtable;                    // array of function pointers (slots)
+        uint32_t vtable_len;              // number of slots in vtable
     } rt_class_info;
 
-    typedef struct rt_object {
+    typedef struct rt_object
+    {
         void **vptr; // points into class vtable (slot 0)
         // instance fields follow (layout defined by compiler)
     } rt_object;
@@ -35,10 +38,11 @@ extern "C" {
     const rt_class_info *rt_get_class_info_from_vptr(void **vptr);
 
     // Interface registration --------------------------------------------------
-    typedef struct {
-        int iface_id;          // stable interface id assigned by compiler
-        const char *qname;     // fully-qualified interface name
-        int slot_count;        // number of methods in interface slot table
+    typedef struct
+    {
+        int iface_id;      // stable interface id assigned by compiler
+        const char *qname; // fully-qualified interface name
+        int slot_count;    // number of methods in interface slot table
     } rt_iface_reg;
 
     // Register interface metadata

@@ -198,7 +198,8 @@ Expected<void> OperandParser::parseCallOperands(const std::string &text)
     const size_t at = text.find('@');
     if (at == std::string::npos)
     {
-        return Expected<void>{makeError(instr_.loc, formatLineDiag(state_.lineNo, "malformed call"))};
+        return Expected<void>{
+            makeError(instr_.loc, formatLineDiag(state_.lineNo, "malformed call"))};
     }
 
     size_t lp = std::string::npos;
@@ -267,12 +268,14 @@ Expected<void> OperandParser::parseCallOperands(const std::string &text)
 
     if (lp == std::string::npos || rp == std::string::npos || depth != 0 || mismatchedClose)
     {
-        return Expected<void>{il::io::makeLineErrorDiag(instr_.loc, state_.lineNo, "malformed call")};
+        return Expected<void>{
+            il::io::makeLineErrorDiag(instr_.loc, state_.lineNo, "malformed call")};
     }
 
     if (!trim(text.substr(rp + 1)).empty())
     {
-        return Expected<void>{il::io::makeLineErrorDiag(instr_.loc, state_.lineNo, "malformed call")};
+        return Expected<void>{
+            il::io::makeLineErrorDiag(instr_.loc, state_.lineNo, "malformed call")};
     }
 
     instr_.callee = trim(text.substr(at + 1, lp - at - 1));
@@ -410,7 +413,8 @@ Expected<void> OperandParser::parseBranchTarget(const std::string &segment,
 
     if (rp == std::string::npos || depth != 0 || inString)
     {
-        return Expected<void>{il::io::makeLineErrorDiag(instr_.loc, state_.lineNo, "mismatched ')'")};
+        return Expected<void>{
+            il::io::makeLineErrorDiag(instr_.loc, state_.lineNo, "mismatched ')'")};
     }
 
     if (!trim(text.substr(rp + 1)).empty())
@@ -573,7 +577,8 @@ Expected<void> OperandParser::parseSwitchTargets(const std::string &text)
             {
                 if (depth == 0)
                 {
-                    return Expected<void>{il::io::makeLineErrorDiag(instr_.loc, state_.lineNo, "mismatched ')'")};
+                    return Expected<void>{
+                        il::io::makeLineErrorDiag(instr_.loc, state_.lineNo, "mismatched ')'")};
                 }
                 --depth;
             }

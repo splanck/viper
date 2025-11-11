@@ -306,9 +306,8 @@ Expected<void> checkCall(const VerifyCtx &ctx)
         return fail(ctx, std::string("unknown callee @") + calleeName);
 
     const size_t paramCount = externSig ? externSig->params.size() : fnSig->params.size();
-    const size_t providedArgs = (ctx.instr.operands.size() >= argStart)
-                                    ? (ctx.instr.operands.size() - argStart)
-                                    : 0;
+    const size_t providedArgs =
+        (ctx.instr.operands.size() >= argStart) ? (ctx.instr.operands.size() - argStart) : 0;
     if (providedArgs != paramCount)
         return fail(ctx, "call arg count mismatch");
 

@@ -214,7 +214,7 @@ void registerMathBuiltinScanRules(std::span<BuiltinScanRule> rules)
         ResultSpec{ResultSpec::Kind::Fixed, Lowerer::ExprType::I64, 0},
         BuiltinScanRule::ArgTraversal::Explicit,
         {},
-        {},  // No runtime feature tracking needed; it's always available
+        {}, // No runtime feature tracking needed; it's always available
     };
 }
 

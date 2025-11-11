@@ -5,8 +5,8 @@
 // Links: docs/il-guide.md#reference
 #pragma once
 
-#include "support/source_location.hpp"
 #include "support/diag_expected.hpp"
+#include "support/source_location.hpp"
 
 #include <optional>
 #include <sstream>

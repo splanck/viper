@@ -311,15 +311,15 @@ Expected<Value> parseSymbolOperand(std::string_view &text, Context &ctx)
     while (!working.empty() && std::isspace(static_cast<unsigned char>(working.front())))
         working.remove_prefix(1);
     if (working.empty() || working.front() != '@')
-        return Expected<Value>{::il::io::makeLineErrorDiag(
-            ctx.state.curLoc, ctx.state.lineNo, "missing global name")};
+        return Expected<Value>{
+            ::il::io::makeLineErrorDiag(ctx.state.curLoc, ctx.state.lineNo, "missing global name")};
 
     working.remove_prefix(1);
     auto identCursor = working;
     auto ident = parseIdent(identCursor);
     if (!ident || ident->empty())
-        return Expected<Value>{::il::io::makeLineErrorDiag(
-            ctx.state.curLoc, ctx.state.lineNo, "missing global name")};
+        return Expected<Value>{
+            ::il::io::makeLineErrorDiag(ctx.state.curLoc, ctx.state.lineNo, "missing global name")};
 
     while (!identCursor.empty() && std::isspace(static_cast<unsigned char>(identCursor.front())))
         identCursor.remove_prefix(1);

@@ -762,7 +762,10 @@ class Lowerer
 
     // Class access control context -----------------------------------------------------
     /// @brief Push the fully-qualified class name currently being lowered.
-    void pushClass(const std::string &qname) { classStack_.push_back(qname); }
+    void pushClass(const std::string &qname)
+    {
+        classStack_.push_back(qname);
+    }
 
     /// @brief Pop the current class lowering context.
     void popClass()

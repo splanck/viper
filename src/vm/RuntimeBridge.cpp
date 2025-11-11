@@ -462,7 +462,9 @@ void RuntimeBridge::trap(TrapKind kind,
     ctx.vm = VM::activeInstance();
     if (ctx.vm)
     {
-        auto populateVm = [](VM &vm, const SourceLoc &loc, const std::string &fn, const std::string &block) {
+        auto populateVm =
+            [](VM &vm, const SourceLoc &loc, const std::string &fn, const std::string &block)
+        {
             if (loc.hasFile())
             {
                 vm.currentContext.loc = loc;
@@ -497,7 +499,9 @@ void RuntimeBridge::trap(TrapKind kind,
     }
     else
     {
-        auto populateNoVm = [](TrapCtx &c, TrapKind kind, const SourceLoc &loc, const std::string &fn) {
+        auto populateNoVm =
+            [](TrapCtx &c, TrapKind kind, const SourceLoc &loc, const std::string &fn)
+        {
             c.error.kind = kind;
             c.error.code = 0;
             c.error.ip = 0;

@@ -569,6 +569,16 @@ BUILTIN(
 BUILTIN(
     Timer,
     (BuiltinDescriptor{"TIMER", B::Timer, {0, 0}, TypeMask::I64, nullptr}),
-    (LowerRule{}),
-    (BuiltinScanRule{}))
+    (LowerRule{
+        .result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::I64},
+        .variants = {Variant{.condition = Condition::Always,
+                             .kind = VariantKind::CallRuntime,
+                             .runtime = "rt_timer_ms",
+                             .arguments = {}}}}),
+    (BuiltinScanRule{BuiltinScanRule::ResultSpec{BuiltinScanRule::ResultSpec::Kind::Fixed,
+                                                Lowerer::ExprType::I64,
+                                                0},
+                    BuiltinScanRule::ArgTraversal::Explicit,
+                    {},
+                    {}}))
 // clang-format on

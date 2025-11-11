@@ -173,7 +173,8 @@ Expected<void> parseGlobal_E(const std::string &line, ParserState &st)
         tokens.erase(tokens.begin());
         if (tokens.empty())
         {
-            return Expected<void>{il::io::makeLineErrorDiag({}, st.lineNo, "missing global type after 'const'")};
+            return Expected<void>{
+                il::io::makeLineErrorDiag({}, st.lineNo, "missing global type after 'const'")};
         }
     }
 
@@ -184,7 +185,8 @@ Expected<void> parseGlobal_E(const std::string &line, ParserState &st)
 
     if (tokens.size() != 1)
     {
-        return Expected<void>{il::io::makeLineErrorDiag({}, st.lineNo, "unexpected tokens before '@'")};
+        return Expected<void>{
+            il::io::makeLineErrorDiag({}, st.lineNo, "unexpected tokens before '@'")};
     }
 
     const std::string &typeToken = tokens.front();
@@ -222,7 +224,8 @@ Expected<void> parseGlobal_E(const std::string &line, ParserState &st)
         trailingBegin, trailingEnd, [](unsigned char ch) { return !std::isspace(ch); });
     if (nonWs != trailingEnd)
     {
-        return Expected<void>{il::io::makeLineErrorDiag({}, st.lineNo, "unexpected characters after closing '\"'")};
+        return Expected<void>{
+            il::io::makeLineErrorDiag({}, st.lineNo, "unexpected characters after closing '\"'")};
     }
     std::string decoded;
     std::string errMsg;
@@ -254,7 +257,8 @@ Expected<void> parseModuleHeader_E(std::istream &is, std::string &line, ParserSt
     {
         if (st.sawVersion)
         {
-            return Expected<void>{il::io::makeLineErrorDiag({}, st.lineNo, "duplicate 'il' version directive")};
+            return Expected<void>{
+                il::io::makeLineErrorDiag({}, st.lineNo, "duplicate 'il' version directive")};
         }
         std::istringstream ls(line);
         std::string kw;
@@ -266,14 +270,16 @@ Expected<void> parseModuleHeader_E(std::istream &is, std::string &line, ParserSt
         }
         else
         {
-            return Expected<void>{il::io::makeLineErrorDiag({}, st.lineNo, "missing version after 'il' directive")};
+            return Expected<void>{
+                il::io::makeLineErrorDiag({}, st.lineNo, "missing version after 'il' directive")};
         }
         st.sawVersion = true;
         return {};
     }
     if (!st.sawVersion)
     {
-        return Expected<void>{il::io::makeLineErrorDiag({}, st.lineNo, "missing 'il' version directive")};
+        return Expected<void>{
+            il::io::makeLineErrorDiag({}, st.lineNo, "missing 'il' version directive")};
     }
     if (line.rfind("target", 0) == 0)
     {
@@ -283,7 +289,8 @@ Expected<void> parseModuleHeader_E(std::istream &is, std::string &line, ParserSt
         ls >> std::ws;
         if (ls.peek() != '"')
         {
-            return Expected<void>{il::io::makeLineErrorDiag({}, st.lineNo, "missing quoted target triple")};
+            return Expected<void>{
+                il::io::makeLineErrorDiag({}, st.lineNo, "missing quoted target triple")};
         }
 
         std::string triple;
@@ -293,7 +300,8 @@ Expected<void> parseModuleHeader_E(std::istream &is, std::string &line, ParserSt
             return {};
         }
 
-        return Expected<void>{il::io::makeLineErrorDiag({}, st.lineNo, "missing quoted target triple")};
+        return Expected<void>{
+            il::io::makeLineErrorDiag({}, st.lineNo, "missing quoted target triple")};
     }
     if (line.rfind("extern", 0) == 0)
     {

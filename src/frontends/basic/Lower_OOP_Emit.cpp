@@ -106,13 +106,19 @@ namespace
 class ClassContextGuard
 {
   public:
-    explicit ClassContextGuard(Lowerer &lowerer, const std::string &qualifiedName) : lowerer_(lowerer)
+    explicit ClassContextGuard(Lowerer &lowerer, const std::string &qualifiedName)
+        : lowerer_(lowerer)
     {
         lowerer_.pushClass(qualifiedName);
     }
+
     ClassContextGuard(const ClassContextGuard &) = delete;
     ClassContextGuard &operator=(const ClassContextGuard &) = delete;
-    ~ClassContextGuard() { lowerer_.popClass(); }
+
+    ~ClassContextGuard()
+    {
+        lowerer_.popClass();
+    }
 
   private:
     Lowerer &lowerer_;
@@ -573,7 +579,9 @@ void Lowerer::emitOopDeclsAndBodies(const Program &prog)
         f.blocks.front().terminated = false;
         // Call rt_register_interface_direct(ifaceId, "qname", slot_count)
         emitCall("rt_register_interface_direct",
-                 {Value::constInt(iface.ifaceId), emitConstStr(qname), Value::constInt((long long)iface.slots.size())});
+                 {Value::constInt(iface.ifaceId),
+                  emitConstStr(qname),
+                  Value::constInt((long long)iface.slots.size())});
         emitRetVoid();
     }
 
@@ -613,10 +621,13 @@ void Lowerer::emitOopDeclsAndBodies(const Program &prog)
             // Allocate a persistent itable: slot_count * sizeof(void*)
             const std::size_t slotCount = iface->slots.size();
             const long long bytes = static_cast<long long>(slotCount * 8ULL);
-            Value itablePtr = emitCallRet(Type(Type::Kind::Ptr), "rt_alloc", {Value::constInt(bytes)});
+            Value itablePtr =
+                emitCallRet(Type(Type::Kind::Ptr), "rt_alloc", {Value::constInt(bytes)});
 
             // Helper: find concrete implementor along base chain for method @name
-            auto findImplementorQClass = [&](const std::string &startQ, const std::string &mname) -> std::string {
+            auto findImplementorQClass = [&](const std::string &startQ,
+                                             const std::string &mname) -> std::string
+            {
                 const ClassInfo *cur = oopIndex_.findClass(startQ);
                 while (cur)
                 {
@@ -639,7 +650,8 @@ void Lowerer::emitOopDeclsAndBodies(const Program &prog)
             for (std::size_t s = 0; s < slotCount; ++s)
             {
                 const long long offset = static_cast<long long>(s * 8ULL);
-                Value slotPtr = emitBinary(Opcode::GEP, Type(Type::Kind::Ptr), itablePtr, Value::constInt(offset));
+                Value slotPtr = emitBinary(
+                    Opcode::GEP, Type(Type::Kind::Ptr), itablePtr, Value::constInt(offset));
                 // Resolve method name for this slot; may be empty for abstract/missing
                 std::string mname;
                 if (mapIt != ci.ifaceSlotImpl.end() && s < mapIt->second.size())

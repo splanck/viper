@@ -228,7 +228,8 @@ void printClass(const ClassDecl &stmt, Context &ctx)
             os << ' ';
             for (size_t i = 0; i < qn.size(); ++i)
             {
-                if (i) os << '.';
+                if (i)
+                    os << '.';
                 os << qn[i];
             }
         }
@@ -260,7 +261,8 @@ void printInterface(const InterfaceDecl &stmt, Context &ctx)
     os << "(INTERFACE ";
     for (size_t i = 0; i < stmt.qualifiedName.size(); ++i)
     {
-        if (i) os << '.';
+        if (i)
+            os << '.';
         os << stmt.qualifiedName[i];
     }
     ctx.printNumberedBody(stmt.members);
