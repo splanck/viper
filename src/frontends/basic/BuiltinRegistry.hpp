@@ -191,8 +191,18 @@ struct BuiltinInfo
     SemanticAnalyzer::BuiltinAnalyzer analyze; ///< Optional semantic handler.
 };
 
+/// @brief Argument count constraints for a builtin.
+struct BuiltinArity
+{
+    std::size_t minArgs; ///< Minimum required arguments.
+    std::size_t maxArgs; ///< Maximum allowed arguments.
+};
+
 /// @brief Lookup builtin info by enum.
 const BuiltinInfo &getBuiltinInfo(BuiltinCallExpr::Builtin b);
+
+/// @brief Retrieve argument arity constraints for a builtin.
+BuiltinArity getBuiltinArity(BuiltinCallExpr::Builtin b);
 
 /// @brief Find builtin enum by BASIC name.
 std::optional<BuiltinCallExpr::Builtin> lookupBuiltin(std::string_view name);

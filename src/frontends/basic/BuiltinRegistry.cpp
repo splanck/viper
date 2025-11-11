@@ -235,6 +235,16 @@ const BuiltinInfo &getBuiltinInfo(BuiltinCallExpr::Builtin b)
     return kBuiltins[static_cast<std::size_t>(b)];
 }
 
+/// @brief Retrieve the argument arity constraints for a builtin.
+/// @param b Builtin enumerator to inspect.
+/// @return Structure containing minimum and maximum argument counts.
+/// @pre @p b must be a valid BuiltinCallExpr::Builtin enumerator.
+BuiltinArity getBuiltinArity(BuiltinCallExpr::Builtin b)
+{
+    const auto &desc = kBuiltinDescriptors[static_cast<std::size_t>(b)];
+    return BuiltinArity{desc.arity.minArgs, desc.arity.maxArgs};
+}
+
 /// @brief Resolve a BASIC built-in enum from its source spelling.
 /// @param name Canonical BASIC keyword spelling to look up. The string is
 ///        matched exactly; callers must provide the normalized uppercase form

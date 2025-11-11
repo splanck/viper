@@ -93,12 +93,6 @@ inline const InfixParselet *findInfix(TokenKind kind)
     return it == infixParselets.end() ? nullptr : &*it;
 }
 
-static inline bool isZeroArgBuiltin(il::frontends::basic::BuiltinCallExpr::Builtin b)
-{
-    using B = il::frontends::basic::BuiltinCallExpr::Builtin;
-    return b == B::Rnd || b == B::Timer || b == B::InKey || b == B::GetKey;
-}
-
 } // namespace
 
 /// @brief Determine the binding power for an operator token during Pratt parsing.
@@ -266,9 +260,9 @@ ExprPtr Parser::parseString()
 
 /// @brief Parse a call to a BASIC builtin function.
 /// @details Implements `builtin-call := BUILTIN '(' [expr {',' expr}] ')'` where the argument
-/// structure depends on @p builtin. Parentheses and separators are enforced via expect(), which
-/// reports diagnostics when tokens are missing but still attempts recovery so parsing can
-/// continue.
+/// structure is determined by the builtin's arity signature from the registry. Zero-argument
+/// builtins are enforced at parse time; all others accept a flexible comma-separated list and
+/// rely on semantic analysis for arity validation to provide clearer diagnostics.
 /// @param builtin Enumerated builtin resolved by lookupBuiltin().
 /// @param loc Source location of the builtin identifier.
 /// @return Newly allocated builtin call expression with parsed arguments.
@@ -276,27 +270,19 @@ ExprPtr Parser::parseBuiltinCall(BuiltinCallExpr::Builtin builtin, il::support::
 {
     expect(TokenKind::LParen);
     std::vector<ExprPtr> args;
-    if (isZeroArgBuiltin(builtin))
+
+    const auto arity = getBuiltinArity(builtin);
+
+    if (arity.maxArgs == 0)
     {
+        // Zero-argument builtins: RND(), TIMER(), INKEY$(), GETKEY$()
+        // Enforce empty argument list at parse time since this is unambiguous
         expect(TokenKind::RParen);
     }
-    else if (builtin == BuiltinCallExpr::Builtin::Pow)
+    else
     {
-        auto first = parseExpression();
-        expect(TokenKind::Comma);
-        auto second = parseExpression();
-        expect(TokenKind::RParen);
-        args.push_back(std::move(first));
-        args.push_back(std::move(second));
-    }
-    else if (builtin == BuiltinCallExpr::Builtin::Len || builtin == BuiltinCallExpr::Builtin::Mid ||
-             builtin == BuiltinCallExpr::Builtin::Left ||
-             builtin == BuiltinCallExpr::Builtin::Right ||
-             builtin == BuiltinCallExpr::Builtin::Str || builtin == BuiltinCallExpr::Builtin::Val ||
-             builtin == BuiltinCallExpr::Builtin::Int || builtin == BuiltinCallExpr::Builtin::Fix ||
-             builtin == BuiltinCallExpr::Builtin::Round ||
-             builtin == BuiltinCallExpr::Builtin::Instr)
-    {
+        // All other builtins: parse flexible comma-separated arguments
+        // The semantic analyzer will validate arity and provide specific diagnostics
         if (!at(TokenKind::RParen))
         {
             while (true)
@@ -310,11 +296,6 @@ ExprPtr Parser::parseBuiltinCall(BuiltinCallExpr::Builtin builtin, il::support::
                 break;
             }
         }
-        expect(TokenKind::RParen);
-    }
-    else
-    {
-        args.push_back(parseExpression());
         expect(TokenKind::RParen);
     }
     auto call = std::make_unique<BuiltinCallExpr>();
