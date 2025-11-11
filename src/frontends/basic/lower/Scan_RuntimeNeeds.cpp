@@ -590,6 +590,9 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
             case BuiltinCallExpr::Builtin::Loc:
                 lowerer_.requireLocCh();
                 break;
+            case BuiltinCallExpr::Builtin::Timer:
+                lowerer_.requireTimerMs();
+                break;
             default:
                 break;
         }

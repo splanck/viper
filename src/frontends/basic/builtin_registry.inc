@@ -574,11 +574,15 @@ BUILTIN(
         .variants = {Variant{.condition = Condition::Always,
                              .kind = VariantKind::CallRuntime,
                              .runtime = "rt_timer_ms",
-                             .arguments = {}}}}),
+                             .arguments = {},
+                             .features = {Feature{.action = FeatureAction::Request,
+                                                  .feature = il::runtime::RuntimeFeature::Timer}}}}}),
     (BuiltinScanRule{BuiltinScanRule::ResultSpec{BuiltinScanRule::ResultSpec::Kind::Fixed,
                                                 Lowerer::ExprType::I64,
                                                 0},
                     BuiltinScanRule::ArgTraversal::Explicit,
                     {},
-                    {}}))
+                    {BuiltinScanRule::Feature{BuiltinScanRule::Feature::Action::Request,
+                                              BuiltinScanRule::Feature::Condition::Always,
+                                              il::runtime::RuntimeFeature::Timer}}}))
 // clang-format on

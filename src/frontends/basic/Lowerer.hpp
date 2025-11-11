@@ -584,6 +584,7 @@ class Lowerer
         StrRetainMaybe,
         StrReleaseMaybe,
         SleepMs,
+        TimerMs,
         Count
     };
 
@@ -624,6 +625,7 @@ class Lowerer
     void requireStrRetainMaybe();
     void requireStrReleaseMaybe();
     void requireSleepMs();
+    void requireTimerMs();
     void requestHelper(RuntimeFeature feature);
 
     bool isHelperNeeded(RuntimeFeature feature) const;

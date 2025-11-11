@@ -379,6 +379,13 @@ void Lowerer::requireSleepMs()
     setManualHelperRequired(ManualRuntimeHelper::SleepMs);
 }
 
+/// @brief Request the timer helper used by the TIMER builtin.
+/// @details Flags the `rt_timer_ms` helper for extern declaration.
+void Lowerer::requireTimerMs()
+{
+    setManualHelperRequired(ManualRuntimeHelper::TimerMs);
+}
+
 /// @brief Forward a runtime feature request to the shared tracker.
 /// @details Invokes @ref RuntimeHelperTracker::requestHelper so the
 ///          feature-specific helper is considered during extern emission.
@@ -452,6 +459,7 @@ void Lowerer::declareRequiredRuntime(build::IRBuilder &b)
          ManualRuntimeHelper::StrReleaseMaybe,
          &Lowerer::requireStrReleaseMaybe},
         {"rt_sleep_ms", ManualRuntimeHelper::SleepMs, &Lowerer::requireSleepMs},
+        {"rt_timer_ms", ManualRuntimeHelper::TimerMs, &Lowerer::requireTimerMs},
     }};
 
     auto declareManual = [&](std::string_view name)

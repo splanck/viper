@@ -22,24 +22,32 @@
 ///          routines elsewhere in the frontend.
 
 #include "frontends/basic/lower/builtins/Registrars.hpp"
+#include "frontends/basic/lower/BuiltinCommon.hpp"
+#include "frontends/basic/BuiltinRegistry.hpp"
+#include "frontends/basic/Lowerer.hpp"
 
 namespace il::frontends::basic::lower::builtins
 {
+
+namespace
+{
+/// @brief Lower TIMER builtin using the generic rule-driven path.
+Lowerer::RVal lowerTimerBuiltin(BuiltinLowerContext &ctx)
+{
+    return lower::lowerGenericBuiltin(ctx);
+}
+} // namespace
+
 /// @brief Placeholder registrar for BASIC file I/O builtins.
 /// @details File I/O builtins interact with runtime channel state, so the BASIC
 ///          front end routes them through bespoke lowering routines today.
 ///          Nevertheless the shared registry expects every domain to expose a
-///          registrar.  Calling this function has three effects:
-///            - Guarantees the translation unit stays linked so future
-///              registration logic can be added without touching call sites.
-///            - Documents the intentional absence of shared lowering for file
-///              operations.
-///            - Keeps the registry interface uniform, simplifying tooling that
-///              iterates over builtin domains.
-///          The body is intentionally empty because all concrete lowering lives
-///          elsewhere for the time being.
+///          registrar.  Calling this function registers any I/O-related builtins
+///          that can use the generic lowering path.
 void registerIoBuiltins()
 {
-    // No I/O-specific builtin lowering is installed via the shared registry yet.
+    using Builtin = BuiltinCallExpr::Builtin;
+    // Register TIMER builtin to use the generic lowering path
+    register_builtin(getBuiltinInfo(Builtin::Timer).name, &lowerTimerBuiltin);
 }
 } // namespace il::frontends::basic::lower::builtins
