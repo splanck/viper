@@ -93,6 +93,12 @@ inline const InfixParselet *findInfix(TokenKind kind)
     return it == infixParselets.end() ? nullptr : &*it;
 }
 
+static inline bool isZeroArgBuiltin(il::frontends::basic::BuiltinCallExpr::Builtin b)
+{
+    using B = il::frontends::basic::BuiltinCallExpr::Builtin;
+    return b == B::Rnd || b == B::Timer || b == B::InKey || b == B::GetKey;
+}
+
 } // namespace
 
 /// @brief Determine the binding power for an operator token during Pratt parsing.
@@ -270,10 +276,7 @@ ExprPtr Parser::parseBuiltinCall(BuiltinCallExpr::Builtin builtin, il::support::
 {
     expect(TokenKind::LParen);
     std::vector<ExprPtr> args;
-    if (builtin == BuiltinCallExpr::Builtin::Rnd
-        || builtin == BuiltinCallExpr::Builtin::Timer
-        || builtin == BuiltinCallExpr::Builtin::InKey
-        || builtin == BuiltinCallExpr::Builtin::GetKey)
+    if (isZeroArgBuiltin(builtin))
     {
         expect(TokenKind::RParen);
     }
