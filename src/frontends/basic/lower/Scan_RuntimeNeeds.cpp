@@ -300,6 +300,12 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
         lowerer_.requestHelper(il::runtime::RuntimeFeature::TermCursor);
     }
 
+    /// @brief ALTSCREEN requires terminal alternate screen buffer helper support.
+    void after(const AltScreenStmt &)
+    {
+        lowerer_.requestHelper(il::runtime::RuntimeFeature::TermAltScreen);
+    }
+
     /// @brief SLEEP requires the time helper to be declared.
     void after(const SleepStmt &)
     {

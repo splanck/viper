@@ -130,6 +130,8 @@ class SemanticAnalyzer
     void analyzeLocate(const LocateStmt &s);
     /// @brief Analyze CURSOR statement @p s.
     void analyzeCursor(const CursorStmt &s);
+    /// @brief Analyze ALTSCREEN statement @p s.
+    void analyzeAltScreen(const AltScreenStmt &s);
     /// @brief Analyze LET statement @p s.
     void analyzeLet(LetStmt &s);
     /// @brief Analyze OPEN statement @p s.

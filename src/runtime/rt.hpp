@@ -98,6 +98,10 @@ extern "C"
     /// @param show Non-zero to show cursor, zero to hide cursor.
     void rt_term_cursor_visible_i32(int32_t show);
 
+    /// @brief Toggle alternate screen buffer using ANSI DEC Private Mode sequences.
+    /// @param enable Non-zero to enter alternate screen, zero to exit.
+    void rt_term_alt_screen_i32(int32_t enable);
+
     /// @brief Block until a single key is read and return it as a 1-character string.
     rt_string rt_getkey_str(void);
 

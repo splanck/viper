@@ -47,6 +47,7 @@ void Parser::registerRuntimeParsers(StatementParserRegistry &registry)
     registry.registerHandler(TokenKind::KeywordColor, &Parser::parseColorStatement);
     registry.registerHandler(TokenKind::KeywordLocate, &Parser::parseLocateStatement);
     registry.registerHandler(TokenKind::KeywordCursor, &Parser::parseCursorStatement);
+    registry.registerHandler(TokenKind::KeywordAltscreen, &Parser::parseAltScreenStatement);
     registry.registerHandler(TokenKind::KeywordSleep, &Parser::parseSleepStatement);
 }
 
@@ -303,6 +304,29 @@ StmtPtr Parser::parseCursorStatement()
     {
         expect(TokenKind::KeywordOff); // OFF
         stmt->visible = false;
+    }
+
+    return stmt;
+}
+
+/// @brief Parse an @c ALTSCREEN statement.
+/// @details Recognises @c ALTSCREEN ON or @c ALTSCREEN OFF to control alternate screen buffer.
+/// @return Newly constructed statement node.
+StmtPtr Parser::parseAltScreenStatement()
+{
+    auto loc = consume().loc; // ALTSCREEN
+    auto stmt = std::make_unique<AltScreenStmt>();
+    stmt->loc = loc;
+
+    if (at(TokenKind::KeywordOn))
+    {
+        consume(); // ON
+        stmt->enable = true;
+    }
+    else
+    {
+        expect(TokenKind::KeywordOff); // OFF
+        stmt->enable = false;
     }
 
     return stmt;

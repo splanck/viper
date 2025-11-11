@@ -126,6 +126,14 @@ struct AstPrinter::StmtPrinter final : StmtVisitor
         ctx.stream() << "(CURSOR " << (stmt.visible ? "ON" : "OFF") << ")";
     }
 
+    /// @brief Render the ALTSCREEN statement showing enable state.
+    ///
+    /// @param stmt ALTSCREEN statement with enable flag.
+    void visit(const AltScreenStmt &stmt) override
+    {
+        ctx.stream() << "(ALTSCREEN " << (stmt.enable ? "ON" : "OFF") << ")";
+    }
+
     /// @brief Render a COLOR statement showing optional foreground/background.
     ///
     /// @param stmt Statement referencing the target palette indices.

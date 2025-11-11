@@ -174,6 +174,21 @@ struct CursorStmt : Stmt
     void accept(MutStmtVisitor &visitor) override;
 };
 
+/// @brief ALTSCREEN statement controlling alternate screen buffer.
+struct AltScreenStmt : Stmt
+{
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
+    {
+        return Kind::AltScreen;
+    }
+
+    /// True for ALTSCREEN ON, false for ALTSCREEN OFF.
+    bool enable{true};
+
+    void accept(StmtVisitor &visitor) const override;
+    void accept(MutStmtVisitor &visitor) override;
+};
+
 /// @brief LET statement assigning to an lvalue.
 struct LetStmt : Stmt
 {

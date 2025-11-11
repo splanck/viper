@@ -85,6 +85,14 @@ void SemanticAnalyzer::visit(const CursorStmt &)
     // nothing to validate - ON/OFF is parsed as a boolean flag
 }
 
+/// @brief Validate the ALTSCREEN statement. No semantic checks are required.
+/// @details ALTSCREEN accepts only ON/OFF keywords which are validated during
+///          parsing, so no expression validation is needed here.
+void SemanticAnalyzer::analyzeAltScreen(const AltScreenStmt &)
+{
+    // nothing to validate - ON/OFF is parsed as a boolean flag
+}
+
 /// @brief Analyze a PRINT statement for semantic correctness.
 /// @details Traverses each printed expression (ignoring pure separators) so any
 ///          nested semantic issues are diagnosed before code generation.

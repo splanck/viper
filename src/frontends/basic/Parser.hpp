@@ -424,6 +424,10 @@ class Parser
     /// @return CURSOR statement node.
     StmtPtr parseCursorStatement();
 
+    /// @brief Parse an ALTSCREEN statement controlling alternate screen buffer.
+    /// @return ALTSCREEN statement node.
+    StmtPtr parseAltScreenStatement();
+
     /// @brief Parse a SLEEP statement blocking for milliseconds.
     /// @return SLEEP statement node.
     StmtPtr parseSleepStatement();

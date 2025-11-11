@@ -437,6 +437,20 @@ void CursorStmt::accept(MutStmtVisitor &visitor)
     visitor.visit(*this);
 }
 
+/// @brief Forwards this ALTSCREEN statement node to the visitor for double dispatch.
+/// @param visitor Receives the node; ownership remains with the AST.
+void AltScreenStmt::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+/// @brief Dispatch this ALTSCREEN statement node to a mutable visitor.
+/// @param visitor Receives the node and may update enable flag.
+void AltScreenStmt::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
 /// @brief Forwards this let statement node to the visitor for double dispatch.
 /// @param visitor Receives the node; ownership remains with the AST.
 void LetStmt::accept(StmtVisitor &visitor) const

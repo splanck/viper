@@ -45,6 +45,7 @@ struct ColorStmt;
 struct SleepStmt;
 struct LocateStmt;
 struct CursorStmt;
+struct AltScreenStmt;
 struct LetStmt;
 struct DimStmt;
 struct ReDimStmt;

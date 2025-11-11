@@ -23,4 +23,5 @@ void visit(const ColorStmt &stmt);
 void visit(const SleepStmt &stmt);
 void visit(const LocateStmt &stmt);
 void visit(const CursorStmt &stmt);
+void visit(const AltScreenStmt &stmt);
 Value emitArrayLengthCheck(Value bound, il::support::SourceLoc loc, std::string_view labelBase);

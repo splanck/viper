@@ -190,6 +190,18 @@ void rt_term_cursor_visible_i32(int32_t show)
     out_str(show ? "\x1b[?25h" : "\x1b[?25l");
 }
 
+/// @brief Toggle alternate screen buffer using ANSI DEC Private Mode sequences.
+/// @details Emits CSI ?1049h to enter the alternate screen buffer or CSI ?1049l
+///          to exit and restore the original screen.  The helper only outputs
+///          escape codes when stdout is a terminal so redirected output remains
+///          free of ANSI sequences.
+void rt_term_alt_screen_i32(int32_t enable)
+{
+    if (!stdout_isatty())
+        return;
+    out_str(enable ? "\x1b[?1049h" : "\x1b[?1049l");
+}
+
 #if defined(_WIN32)
 /// @brief Read a single key from the console, blocking until one is available.
 /// @details Uses `_getch` to obtain a byte without echoing it to the console.

@@ -107,6 +107,23 @@ void Lowerer::visit(const CursorStmt &s)
     emitCallRet(Type(Type::Kind::Void), "rt_term_cursor_visible_i32", {show32});
 }
 
+/// @brief Lower the BASIC @c ALTSCREEN statement to control alternate screen buffer.
+///
+/// @details Emits a request for the terminal-altscreen helper and dispatches the
+///          call with either 1 (enable) or 0 (disable) based on the parsed enable
+///          flag.  The current source location is preserved for diagnostics.
+///
+/// @param s AST node representing the @c ALTSCREEN statement.
+void Lowerer::visit(const AltScreenStmt &s)
+{
+    curLoc = s.loc;
+    auto emit = emitCommon(s.loc);
+    Value enable = Value::constInt(s.enable ? 1 : 0);
+    Value enable32 = emit.to_iN(enable, 32);
+    requestHelper(il::runtime::RuntimeFeature::TermAltScreen);
+    emitCallRet(Type(Type::Kind::Void), "rt_term_alt_screen_i32", {enable32});
+}
+
 /// @brief Lower the BASIC SLEEP statement to the runtime helper.
 ///
 /// @details Evaluates the duration expression, coerces it to a 32-bit integer,

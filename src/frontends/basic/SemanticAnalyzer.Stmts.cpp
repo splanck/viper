@@ -71,6 +71,12 @@ class SemanticAnalyzerStmtVisitor final : public MutStmtVisitor
         analyzer_.analyzeCursor(stmt);
     }
 
+    /// @brief Validate ALTSCREEN statements through the analyser.
+    void visit(AltScreenStmt &stmt) override
+    {
+        analyzer_.analyzeAltScreen(stmt);
+    }
+
     /// @brief Forward COLOR statements for palette validation.
     void visit(ColorStmt &stmt) override
     {

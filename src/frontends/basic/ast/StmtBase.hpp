@@ -28,6 +28,7 @@ struct StmtVisitor
     virtual void visit(const SleepStmt &) = 0;
     virtual void visit(const LocateStmt &) = 0;
     virtual void visit(const CursorStmt &) = 0;
+    virtual void visit(const AltScreenStmt &) = 0;
     virtual void visit(const LetStmt &) = 0;
     virtual void visit(const DimStmt &) = 0;
     virtual void visit(const ReDimStmt &) = 0;
@@ -78,6 +79,7 @@ struct MutStmtVisitor
     virtual void visit(SleepStmt &) = 0;
     virtual void visit(LocateStmt &) = 0;
     virtual void visit(CursorStmt &) = 0;
+    virtual void visit(AltScreenStmt &) = 0;
     virtual void visit(LetStmt &) = 0;
     virtual void visit(DimStmt &) = 0;
     virtual void visit(ReDimStmt &) = 0;
@@ -130,6 +132,7 @@ struct Stmt
         Sleep,
         Locate,
         Cursor,
+        AltScreen,
         Let,
         Dim,
         ReDim,

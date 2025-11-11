@@ -128,6 +128,14 @@ class LowererStmtVisitor final : public lower::AstVisitor, public StmtVisitor
         lowerer_.visit(stmt);
     }
 
+    /// @brief Lower an ALTSCREEN statement to control alternate screen buffer.
+    /// @details Delegates to @ref Lowerer::visit to emit the runtime helper call.
+    /// @param stmt ALTSCREEN statement node.
+    void visit(const AltScreenStmt &stmt) override
+    {
+        lowerer_.visit(stmt);
+    }
+
     /// @brief Lower a LET assignment statement.
     /// @details Delegates to @ref Lowerer::lowerLet which manages target storage
     ///          resolution and expression coercion.
