@@ -22,7 +22,9 @@
 ///          while exposing rich documentation for each folding primitive.
 
 #include "frontends/basic/ConstFolder.hpp"
+#include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/constfold/Dispatch.hpp"
+#include "frontends/basic/ASTUtils.hpp"
 
 #include "viper/il/io/FormatUtils.hpp"
 #include <array>
@@ -330,7 +332,7 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
     {
         if (expr.args.size() != 1 || !expr.args[0])
             return false;
-        if (auto *literal = dynamic_cast<StringExpr *>(expr.args[0].get()))
+        if (auto *literal = as<StringExpr>(*expr.args[0]))
         {
             auto parsed = parseValLiteral(*literal);
             if (!parsed)
@@ -495,7 +497,7 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
     {
         foldExpr(expr.lhs);
 
-        if (auto *lhsBool = dynamic_cast<BoolExpr *>(expr.lhs.get()))
+        if (auto *lhsBool = as<BoolExpr>(*expr.lhs))
         {
             if (auto shortCircuit = cf::try_short_circuit(expr.op, *lhsBool))
             {
@@ -623,14 +625,14 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
         if (!stmt.call)
             return;
 
-        if (auto *ce = dynamic_cast<CallExpr *>(stmt.call.get()))
+        if (auto *ce = as<CallExpr>(*stmt.call))
         {
             for (auto &arg : ce->args)
                 foldExpr(arg);
             return;
         }
 
-        if (auto *me = dynamic_cast<MethodCallExpr *>(stmt.call.get()))
+        if (auto *me = as<MethodCallExpr>(*stmt.call))
         {
             if (me->base)
                 foldExpr(me->base);

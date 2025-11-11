@@ -27,6 +27,7 @@
 #include "frontends/basic/constfold/ConstantUtils.hpp"
 #include "frontends/basic/constfold/Dispatch.hpp"
 
+#include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/ast/ExprNodes.hpp"
 #include <cassert>
 
@@ -41,9 +42,9 @@ namespace il::frontends::basic::constfold
 /// @return Folded expression node or @c nullptr when folding is not possible.
 AST::ExprPtr fold_logical_not(const AST::Expr &operand)
 {
-    if (auto *boolExpr = dynamic_cast<const ::il::frontends::basic::BoolExpr *>(&operand))
+    if (const auto *boolExpr = as<const BoolExpr>(operand))
     {
-        auto out = std::make_unique<::il::frontends::basic::BoolExpr>();
+        auto out = std::make_unique<BoolExpr>();
         out->value = !boolExpr->value;
         return out;
     }
@@ -104,12 +105,12 @@ bool is_short_circuit(AST::BinaryExpr::Op op)
 /// @return New boolean literal expression or @c nullptr when folding fails.
 AST::ExprPtr fold_boolean_binary(const AST::Expr &lhs, AST::BinaryExpr::Op op, const AST::Expr &rhs)
 {
-    auto *lhsBool = dynamic_cast<const ::il::frontends::basic::BoolExpr *>(&lhs);
-    auto *rhsBool = dynamic_cast<const ::il::frontends::basic::BoolExpr *>(&rhs);
+    const auto *lhsBool = as<const BoolExpr>(lhs);
+    const auto *rhsBool = as<const BoolExpr>(rhs);
     if (!lhsBool || !rhsBool)
         return nullptr;
 
-    auto out = std::make_unique<::il::frontends::basic::BoolExpr>();
+    auto out = std::make_unique<BoolExpr>();
     switch (op)
     {
         case AST::BinaryExpr::Op::LogicalAnd:

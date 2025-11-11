@@ -20,6 +20,7 @@
 ///          delegated to sibling translation units.
 
 #include "frontends/basic/Parser.hpp"
+#include "frontends/basic/ASTUtils.hpp"
 #include <array>
 #include <cctype>
 #include <cstdio>
@@ -280,7 +281,7 @@ std::unique_ptr<Program> Parser::parseProgram()
         auto root = seq.parseStatementLine();
         if (!root)
             continue;
-        if (dynamic_cast<FunctionDecl *>(root.get()) || dynamic_cast<SubDecl *>(root.get()))
+        if (is<FunctionDecl>(*root) || is<SubDecl>(*root))
         {
             prog->procs.push_back(std::move(root));
         }

@@ -12,7 +12,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/basic/LineUtils.hpp"
+#include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/Lowerer.hpp"
+#include "frontends/basic/ASTUtils.hpp"
 #include "viper/il/Module.hpp"
 
 #include <cassert>
@@ -38,9 +40,9 @@ Lowerer::ProgramEmitContext Lowerer::collectProgramDeclarations(const Program &p
     collectProcedureSignatures(prog);
     for (const auto &s : prog.procs)
     {
-        if (auto *fn = dynamic_cast<const FunctionDecl *>(s.get()))
+        if (auto *fn = as<const FunctionDecl>(*s))
             lowerFunctionDecl(*fn);
-        else if (auto *sub = dynamic_cast<const SubDecl *>(s.get()))
+        else if (auto *sub = as<const SubDecl>(*s))
             lowerSubDecl(*sub);
     }
 

@@ -16,8 +16,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/basic/Lowerer.hpp"
+#include "frontends/basic/ASTUtils.hpp"
 
 #include "frontends/basic/NameMangler_OOP.hpp"
+#include "frontends/basic/ASTUtils.hpp"
 
 #include <cassert>
 
@@ -289,14 +291,14 @@ void Lowerer::assignArrayElement(const ArrayExpr &target, RVal value, il::suppor
 void Lowerer::lowerLet(const LetStmt &stmt)
 {
     RVal value = lowerExpr(*stmt.expr);
-    if (auto *var = dynamic_cast<const VarExpr *>(stmt.target.get()))
+    if (auto *var = as<const VarExpr>(*stmt.target))
     {
         auto storage = resolveVariableStorage(var->name, stmt.loc);
         assert(storage && "LET target should have storage");
         if (stmt.expr && !storage->isField)
         {
             std::string className;
-            if (const auto *alloc = dynamic_cast<const NewExpr *>(stmt.expr.get()))
+            if (const auto *alloc = as<const NewExpr>(*stmt.expr))
             {
                 className = alloc->className;
             }
@@ -321,11 +323,11 @@ void Lowerer::lowerLet(const LetStmt &stmt)
             assignScalarSlot(slotInfo, storage->pointer, std::move(value), stmt.loc);
         }
     }
-    else if (auto *arr = dynamic_cast<const ArrayExpr *>(stmt.target.get()))
+    else if (auto *arr = as<const ArrayExpr>(*stmt.target))
     {
         assignArrayElement(*arr, std::move(value), stmt.loc);
     }
-    else if (auto *member = dynamic_cast<const MemberAccessExpr *>(stmt.target.get()))
+    else if (auto *member = as<const MemberAccessExpr>(*stmt.target))
     {
         if (auto access = resolveMemberField(*member))
         {

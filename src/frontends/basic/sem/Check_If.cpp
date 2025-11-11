@@ -28,8 +28,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/basic/sem/Check_Common.hpp"
+#include "frontends/basic/ASTUtils.hpp"
 
 #include "frontends/basic/BasicDiagnosticMessages.hpp"
+#include "frontends/basic/ASTUtils.hpp"
 
 #include <string>
 
@@ -53,7 +55,7 @@ void analyzeBranch(ControlCheckContext &context, const StmtPtr &branch)
         return;
 
     auto scope = context.pushScope();
-    if (const auto *list = dynamic_cast<const StmtList *>(branch.get()))
+    if (const auto *list = as<const StmtList>(*branch))
     {
         for (const auto &child : list->stmts)
         {

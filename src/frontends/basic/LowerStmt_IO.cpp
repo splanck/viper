@@ -18,6 +18,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/basic/Lowerer.hpp"
+#include "frontends/basic/ASTUtils.hpp"
 
 #include <algorithm>
 #include <cassert>
@@ -33,13 +34,13 @@ std::optional<std::size_t> estimatePrintWidth(const il::frontends::basic::Expr &
 {
     using namespace il::frontends::basic;
 
-    if (const auto *stringExpr = dynamic_cast<const StringExpr *>(&expr))
+    if (const auto *stringExpr = as<const StringExpr>(expr))
         return stringExpr->value.size();
 
-    if (const auto *intExpr = dynamic_cast<const IntExpr *>(&expr))
+    if (const auto *intExpr = as<const IntExpr>(expr))
         return std::to_string(intExpr->value).size();
 
-    if (const auto *floatExpr = dynamic_cast<const FloatExpr *>(&expr))
+    if (const auto *floatExpr = as<const FloatExpr>(expr))
     {
         char buffer[64];
         int written = std::snprintf(buffer, sizeof(buffer), "%.15g", floatExpr->value);
@@ -48,7 +49,7 @@ std::optional<std::size_t> estimatePrintWidth(const il::frontends::basic::Expr &
         return static_cast<std::size_t>(written);
     }
 
-    if (const auto *boolExpr = dynamic_cast<const BoolExpr *>(&expr))
+    if (const auto *boolExpr = as<const BoolExpr>(expr))
         return boolExpr->value ? std::size_t{2} : std::size_t{1};
 
     return std::nullopt;
@@ -451,7 +452,7 @@ void Lowerer::lowerInput(const InputStmt &stmt)
     curLoc = stmt.loc;
     if (stmt.prompt)
     {
-        if (auto *se = dynamic_cast<const StringExpr *>(stmt.prompt.get()))
+        if (auto *se = as<const StringExpr>(*stmt.prompt))
         {
             std::string lbl = getStringLabel(se->value);
             Value v = emitConstStr(lbl);
@@ -639,7 +640,7 @@ void Lowerer::lowerLineInputCh(const LineInputChStmt &stmt)
     curLoc = stmt.loc;
     Value line = emitLoad(Type(Type::Kind::Str), outSlot);
 
-    if (const auto *var = dynamic_cast<const VarExpr *>(stmt.targetVar.get()))
+    if (const auto *var = as<const VarExpr>(*stmt.targetVar))
     {
         auto storage = resolveVariableStorage(var->name, stmt.loc);
         if (!storage)

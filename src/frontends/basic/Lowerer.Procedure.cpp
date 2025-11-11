@@ -15,13 +15,20 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/basic/Lowerer.hpp"
+#include "frontends/basic/ASTUtils.hpp"
 
 #include "frontends/basic/AstWalker.hpp"
+#include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/EmitCommon.hpp"
+#include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/LineUtils.hpp"
+#include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/LoweringPipeline.hpp"
+#include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/TypeSuffix.hpp"
+#include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/lower/Emitter.hpp"
+#include "frontends/basic/ASTUtils.hpp"
 
 #include "viper/il/IRBuilder.hpp"
 
@@ -510,7 +517,7 @@ void ProcedureLowering::collectProcedureSignatures(const Program &prog)
     lowerer.procSignatures.clear();
     for (const auto &decl : prog.procs)
     {
-        if (auto *fn = dynamic_cast<const FunctionDecl *>(decl.get()))
+        if (auto *fn = as<const FunctionDecl>(*decl))
         {
             Lowerer::ProcedureSignature sig;
             sig.retType = lowerer.functionRetTypeFromHint(fn->name, fn->explicitRetType);
@@ -523,7 +530,7 @@ void ProcedureLowering::collectProcedureSignatures(const Program &prog)
             }
             lowerer.procSignatures.emplace(fn->name, std::move(sig));
         }
-        else if (auto *sub = dynamic_cast<const SubDecl *>(decl.get()))
+        else if (auto *sub = as<const SubDecl>(*decl))
         {
             Lowerer::ProcedureSignature sig;
             sig.retType = il::core::Type(il::core::Type::Kind::Void);

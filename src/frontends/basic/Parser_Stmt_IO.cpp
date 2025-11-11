@@ -19,7 +19,9 @@
 ///          emitter when malformed statements are encountered.
 
 #include "frontends/basic/BasicDiagnosticMessages.hpp"
+#include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/Parser.hpp"
+#include "frontends/basic/ASTUtils.hpp"
 
 #include <cstdio>
 #include <cstdlib>
@@ -306,7 +308,7 @@ StmtPtr Parser::parseLineInputStatement()
     expect(TokenKind::Comma);
     auto target = parseArrayOrVar();
     Expr *rawTarget = target.get();
-    if (rawTarget && !dynamic_cast<VarExpr *>(rawTarget) && !dynamic_cast<ArrayExpr *>(rawTarget))
+    if (rawTarget && !is<VarExpr>(*rawTarget) && !is<ArrayExpr>(*rawTarget))
     {
         il::support::SourceLoc diagLoc = rawTarget->loc.hasLine() ? rawTarget->loc : loc;
         if (emitter_)

@@ -27,6 +27,7 @@
 
 #include "frontends/basic/constfold/Dispatch.hpp"
 
+#include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/ast/ExprNodes.hpp"
 
 #include <algorithm>
@@ -40,9 +41,9 @@ namespace
 /// @brief Cast an expression to a string literal node when possible.
 /// @param expr Expression to inspect.
 /// @return Pointer to the string expression or @c nullptr when the cast fails.
-const ::il::frontends::basic::StringExpr *as_string(const AST::Expr &expr)
+const StringExpr *as_string(const AST::Expr &expr)
 {
-    return dynamic_cast<const ::il::frontends::basic::StringExpr *>(&expr);
+    return as<const StringExpr>(expr);
 }
 
 /// @brief Extract an integer index from a literal expression.

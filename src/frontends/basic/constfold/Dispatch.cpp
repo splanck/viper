@@ -27,6 +27,7 @@
 #include "frontends/basic/constfold/Dispatch.hpp"
 #include "frontends/basic/constfold/ConstantUtils.hpp"
 
+#include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/ast/ExprNodes.hpp"
 
 #include <cassert>
@@ -61,9 +62,9 @@ bool is_numeric(LiteralKind kind)
 /// @return Numeric summary or empty optional when conversion fails.
 std::optional<NumericValue> numeric_from_expr(const AST::Expr &expr)
 {
-    if (auto *i = dynamic_cast<const ::il::frontends::basic::IntExpr *>(&expr))
+    if (const auto *i = as<const IntExpr>(expr))
         return NumericValue{false, static_cast<double>(i->value), i->value};
-    if (auto *f = dynamic_cast<const ::il::frontends::basic::FloatExpr *>(&expr))
+    if (const auto *f = as<const FloatExpr>(expr))
         return NumericValue{true, f->value, static_cast<long long>(f->value)};
     return std::nullopt;
 }
@@ -94,23 +95,23 @@ namespace
 /// @return Populated constant or empty optional when @p expr is not a literal.
 std::optional<Constant> extract_constant(const AST::Expr &expr)
 {
-    if (auto *i = dynamic_cast<const ::il::frontends::basic::IntExpr *>(&expr))
+    if (const auto *i = as<const IntExpr>(expr))
     {
         Constant c;
         c.kind = LiteralKind::Int;
         c.numeric = NumericValue{false, static_cast<double>(i->value), i->value};
         return c;
     }
-    if (auto *f = dynamic_cast<const ::il::frontends::basic::FloatExpr *>(&expr))
+    if (const auto *f = as<const FloatExpr>(expr))
     {
         Constant c;
         c.kind = LiteralKind::Float;
         c.numeric = NumericValue{true, f->value, static_cast<long long>(f->value)};
         return c;
     }
-    if (auto *b = dynamic_cast<const ::il::frontends::basic::BoolExpr *>(&expr))
+    if (const auto *b = as<const BoolExpr>(expr))
         return make_bool_constant(b->value);
-    if (auto *s = dynamic_cast<const ::il::frontends::basic::StringExpr *>(&expr))
+    if (const auto *s = as<const StringExpr>(expr))
     {
         Constant c;
         c.kind = LiteralKind::String;
@@ -275,7 +276,7 @@ std::optional<Constant> dispatch_fold(FoldKind kind,
 /// @return True when folding would succeed.
 bool can_fold(const AST::Expr &expr)
 {
-    auto *binary = dynamic_cast<const ::il::frontends::basic::BinaryExpr *>(&expr);
+    const auto *binary = as<const BinaryExpr>(expr);
     if (!binary)
         return false;
     auto lhs = extract_constant(*binary->lhs);
@@ -297,7 +298,7 @@ bool can_fold(const AST::Expr &expr)
 /// @return New AST node containing the folded value or empty optional on failure.
 std::optional<AST::ExprPtr> fold_expr(const AST::Expr &expr)
 {
-    auto *binary = dynamic_cast<const ::il::frontends::basic::BinaryExpr *>(&expr);
+    const auto *binary = as<const BinaryExpr>(expr);
     if (!binary)
         return std::nullopt;
 

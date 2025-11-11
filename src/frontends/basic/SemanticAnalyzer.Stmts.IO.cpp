@@ -19,8 +19,10 @@
 ///          @ref SemanticDiagnostics when contracts are violated.
 
 #include "frontends/basic/SemanticAnalyzer.Stmts.IO.hpp"
+#include "frontends/basic/ASTUtils.hpp"
 
 #include "frontends/basic/SemanticAnalyzer.Internal.hpp"
+#include "frontends/basic/ASTUtils.hpp"
 
 namespace il::frontends::basic::semantic_analyzer_detail
 {
@@ -189,7 +191,7 @@ void SemanticAnalyzer::analyzeOpen(OpenStmt &stmt)
             de.emit(
                 il::support::Severity::Error, "B2001", stmt.channelExpr->loc, 1, std::move(msg));
         }
-        else if (auto *intExpr = dynamic_cast<IntExpr *>(stmt.channelExpr.get()))
+        else if (auto *intExpr = as<IntExpr>(*stmt.channelExpr))
         {
             long long channel = intExpr->value;
             bool wasOpen = openChannels_.count(channel) > 0;
@@ -233,7 +235,7 @@ void SemanticAnalyzer::analyzeClose(CloseStmt &stmt)
         return;
     }
 
-    if (auto *intExpr = dynamic_cast<IntExpr *>(stmt.channelExpr.get()))
+    if (auto *intExpr = as<IntExpr>(*stmt.channelExpr))
     {
         long long channel = intExpr->value;
         if (openChannels_.count(channel))

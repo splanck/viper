@@ -20,8 +20,10 @@
 ///          constant folding patterns.
 
 #include "frontends/basic/LowerExprNumeric.hpp"
+#include "frontends/basic/ASTUtils.hpp"
 
 #include "frontends/basic/TypeSuffix.hpp"
+#include "frontends/basic/ASTUtils.hpp"
 
 #include <functional>
 #include <limits>
@@ -108,7 +110,7 @@ Lowerer::RVal NumericExprLowering::lowerDivOrMod(const BinaryExpr &expr)
                 break;
         }
 
-        if (const auto *intLit = dynamic_cast<const IntExpr *>(&node))
+        if (const auto *intLit = as<const IntExpr>(node))
         {
             if (intLit->value >= std::numeric_limits<int16_t>::min() &&
                 intLit->value <= std::numeric_limits<int16_t>::max())
@@ -118,7 +120,7 @@ Lowerer::RVal NumericExprLowering::lowerDivOrMod(const BinaryExpr &expr)
                 return Kind::I32;
             return std::nullopt;
         }
-        if (const auto *var = dynamic_cast<const VarExpr *>(&node))
+        if (const auto *var = as<const VarExpr>(node))
         {
             if (const auto *info = lowerer.findSymbol(var->name))
             {
@@ -133,7 +135,7 @@ Lowerer::RVal NumericExprLowering::lowerDivOrMod(const BinaryExpr &expr)
                 return std::nullopt;
             return Kind::I16;
         }
-        if (const auto *unary = dynamic_cast<const UnaryExpr *>(&node))
+        if (const auto *unary = as<const UnaryExpr>(node))
         {
             if (unary->expr)
                 return classifyIntegerRank(*unary->expr, val);
@@ -250,8 +252,8 @@ NumericExprLowering::NumericOpConfig NumericExprLowering::normalizeNumericOperan
     config.arithmeticType = integerArithmeticType(lhs.type.kind, rhs.type.kind);
     config.resultType = config.arithmeticType;
 
-    const auto *lhsInt = dynamic_cast<const IntExpr *>(expr.lhs.get());
-    const auto *rhsInt = dynamic_cast<const IntExpr *>(expr.rhs.get());
+    const auto *lhsInt = as<const IntExpr>(*expr.lhs);
+    const auto *rhsInt = as<const IntExpr>(*expr.rhs);
     if (lhsInt && rhsInt)
     {
         const auto fits16 = [](long long v)
@@ -297,7 +299,7 @@ std::optional<Lowerer::RVal> NumericExprLowering::applySpecialConstantPatterns(
     if (expr.op != BinaryExpr::Op::Sub || config.isFloat)
         return std::nullopt;
 
-    const auto *lhsInt = dynamic_cast<const IntExpr *>(expr.lhs.get());
+    const auto *lhsInt = as<const IntExpr>(*expr.lhs);
     if (!lhsInt || lhsInt->value != 0)
         return std::nullopt;
 

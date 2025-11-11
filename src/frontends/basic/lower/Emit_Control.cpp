@@ -26,7 +26,9 @@
 /// preserves ownership of temporary values managed by the ProcedureContext.
 
 #include "frontends/basic/Lowerer.hpp"
+#include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/lower/Emitter.hpp"
+#include "frontends/basic/ASTUtils.hpp"
 
 #include "viper/il/Module.hpp"
 
@@ -93,7 +95,7 @@ void Lowerer::lowerCondBranch(const Expr &expr,
                               BasicBlock *falseBlk,
                               il::support::SourceLoc loc)
 {
-    if (const auto *bin = dynamic_cast<const BinaryExpr *>(&expr))
+    if (const auto *bin = as<const BinaryExpr>(expr))
     {
         const bool isAnd = bin->op == BinaryExpr::Op::LogicalAnd;
         const bool isOr = bin->op == BinaryExpr::Op::LogicalOr;

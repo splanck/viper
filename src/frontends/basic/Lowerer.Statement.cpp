@@ -18,7 +18,9 @@
 ///          and fallthrough logic while reusing the owning @ref Lowerer state.
 
 #include "frontends/basic/Lowerer.hpp"
+#include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/LoweringPipeline.hpp"
+#include "frontends/basic/ASTUtils.hpp"
 
 #include <cassert>
 
@@ -60,7 +62,7 @@ void StatementLowering::lowerSequence(const std::vector<const Stmt *> &stmts,
     bool hasGosub = false;
     for (size_t i = 0; i < stmts.size(); ++i)
     {
-        const auto *gosubStmt = dynamic_cast<const GosubStmt *>(stmts[i]);
+        const auto *gosubStmt = as<const GosubStmt>(*stmts[i]);
         if (!gosubStmt)
             continue;
 

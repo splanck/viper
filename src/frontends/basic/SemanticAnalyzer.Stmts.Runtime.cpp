@@ -21,10 +21,14 @@
 ///          procedure calls while maintaining the analyzer's bookkeeping.
 
 #include "frontends/basic/SemanticAnalyzer.Stmts.Runtime.hpp"
+#include "frontends/basic/ASTUtils.hpp"
 
 #include "frontends/basic/BasicDiagnosticMessages.hpp"
+#include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/SemanticAnalyzer.Internal.hpp"
+#include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/ast/ExprNodes.hpp"
+#include "frontends/basic/ASTUtils.hpp"
 
 namespace il::frontends::basic::semantic_analyzer_detail
 {
@@ -53,7 +57,7 @@ void SemanticAnalyzer::analyzeCallStmt(CallStmt &stmt)
     if (!stmt.call)
         return;
 
-    if (auto *ce = dynamic_cast<CallExpr *>(stmt.call.get()))
+    if (auto *ce = as<CallExpr>(*stmt.call))
     {
         // Statement calls must target SUBs (not FUNCTIONs)
         const ProcSignature *sig = resolveCallee(*ce, ProcSignature::Kind::Sub);
@@ -61,7 +65,7 @@ void SemanticAnalyzer::analyzeCallStmt(CallStmt &stmt)
         return;
     }
 
-    if (auto *me = dynamic_cast<MethodCallExpr *>(stmt.call.get()))
+    if (auto *me = as<MethodCallExpr>(*stmt.call))
     {
         // Best-effort analysis: visit receiver and args to trigger diagnostics.
         if (me->base)
@@ -116,7 +120,7 @@ void SemanticAnalyzer::analyzeVarAssignment(VarExpr &v, const LetStmt &l)
         bool allowFloatPromotion = false;
         if (l.expr)
         {
-            if (const auto *bin = dynamic_cast<const BinaryExpr *>(l.expr.get()))
+            if (const auto *bin = as<const BinaryExpr>(*l.expr))
             {
                 const bool hasExplicitIntSuffix =
                     !v.name.empty() && (v.name.back() == '%' || v.name.back() == '&');
@@ -187,7 +191,7 @@ void SemanticAnalyzer::analyzeArrayAssignment(ArrayExpr &a, const LetStmt &l)
     auto indexTy = visitExpr(*a.index);
     if (indexTy == Type::Float)
     {
-        if (auto *floatLiteral = dynamic_cast<FloatExpr *>(a.index.get()))
+        if (auto *floatLiteral = as<FloatExpr>(*a.index))
         {
             insertImplicitCast(*a.index, Type::Int);
             std::string msg = "narrowing conversion from FLOAT to INT in array index";
@@ -223,7 +227,7 @@ void SemanticAnalyzer::analyzeArrayAssignment(ArrayExpr &a, const LetStmt &l)
     auto it = arrays_.find(a.name);
     if (it != arrays_.end() && it->second >= 0)
     {
-        if (auto *ci = dynamic_cast<const IntExpr *>(a.index.get()))
+        if (auto *ci = as<const IntExpr>(*a.index))
         {
             if (ci->value < 0 || ci->value >= it->second)
             {
@@ -262,15 +266,15 @@ void SemanticAnalyzer::analyzeLet(LetStmt &l)
 {
     if (!l.target)
         return;
-    if (auto *v = dynamic_cast<VarExpr *>(l.target.get()))
+    if (auto *v = as<VarExpr>(*l.target))
     {
         analyzeVarAssignment(*v, l);
     }
-    else if (auto *a = dynamic_cast<ArrayExpr *>(l.target.get()))
+    else if (auto *a = as<ArrayExpr>(*l.target))
     {
         analyzeArrayAssignment(*a, l);
     }
-    else if (auto *m = dynamic_cast<MemberAccessExpr *>(l.target.get()))
+    else if (auto *m = as<MemberAccessExpr>(*l.target))
     {
         analyzeMemberAssignment(*m, l);
     }
@@ -310,7 +314,7 @@ void SemanticAnalyzer::analyzeDim(DimStmt &d)
             auto ty = visitExpr(*d.size);
             if (ty == Type::Float)
             {
-                floatLiteral = dynamic_cast<FloatExpr *>(d.size.get());
+                floatLiteral = as<FloatExpr>(*d.size);
                 if (floatLiteral != nullptr)
                 {
                     insertImplicitCast(*d.size, Type::Int);
@@ -336,7 +340,7 @@ void SemanticAnalyzer::analyzeDim(DimStmt &d)
                     de.emit(il::support::Severity::Error, "B2003", d.loc, 1, std::move(msg));
                 }
             }
-            else if (auto *ci = dynamic_cast<const IntExpr *>(d.size.get()))
+            else if (auto *ci = as<const IntExpr>(*d.size))
             {
                 sz = ci->value;
                 if (sz < 0)
@@ -423,7 +427,7 @@ void SemanticAnalyzer::analyzeReDim(ReDimStmt &d)
         auto ty = visitExpr(*d.size);
         if (ty == Type::Float)
         {
-            floatLiteral = dynamic_cast<FloatExpr *>(d.size.get());
+            floatLiteral = as<FloatExpr>(*d.size);
             if (floatLiteral != nullptr)
             {
                 insertImplicitCast(*d.size, Type::Int);
@@ -449,7 +453,7 @@ void SemanticAnalyzer::analyzeReDim(ReDimStmt &d)
                 de.emit(il::support::Severity::Error, "B2003", d.loc, 1, std::move(msg));
             }
         }
-        else if (auto *ci = dynamic_cast<const IntExpr *>(d.size.get()))
+        else if (auto *ci = as<const IntExpr>(*d.size))
         {
             sz = ci->value;
             if (sz < 0)

@@ -18,6 +18,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/basic/SemanticAnalyzer.Internal.hpp"
+#include "frontends/basic/ASTUtils.hpp"
 
 #include <limits>
 
@@ -395,7 +396,7 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeNew(NewExpr &expr)
 
         if (param.isArray)
         {
-            const auto *var = dynamic_cast<const VarExpr *>(argExpr);
+            const auto *var = as<const VarExpr>(*argExpr);
             if (!var || !arrays_.count(var->name))
             {
                 il::support::SourceLoc loc = argExpr ? argExpr->loc : expr.loc;
@@ -485,7 +486,7 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeArray(ArrayExpr &a)
     Type ty = visitExpr(*a.index);
     if (ty == Type::Float)
     {
-        if (auto *floatLiteral = dynamic_cast<FloatExpr *>(a.index.get()))
+        if (auto *floatLiteral = as<FloatExpr>(*a.index))
         {
             insertImplicitCast(*a.index, Type::Int);
             std::string msg = "narrowing conversion from FLOAT to INT in array index";
@@ -505,7 +506,7 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeArray(ArrayExpr &a)
     auto it = arrays_.find(a.name);
     if (it != arrays_.end() && it->second >= 0)
     {
-        if (auto *ci = dynamic_cast<const IntExpr *>(a.index.get()))
+        if (auto *ci = as<const IntExpr>(*a.index))
         {
             if (ci->value < 0 || ci->value >= it->second)
             {

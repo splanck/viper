@@ -29,6 +29,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/basic/sem/Check_Common.hpp"
+#include "frontends/basic/ASTUtils.hpp"
 
 #include <array>
 #include <sstream>
@@ -193,9 +194,9 @@ Type booleanResult(Type, Type) noexcept
 /// @return True when the RHS is an integer or float literal equal to zero.
 bool rhsIsLiteralZero(const BinaryExpr &expr)
 {
-    if (const auto *ri = dynamic_cast<const IntExpr *>(expr.rhs.get()); ri != nullptr)
+    if (const auto *ri = as<const IntExpr>(*expr.rhs); ri != nullptr)
         return ri->value == 0;
-    if (const auto *rf = dynamic_cast<const FloatExpr *>(expr.rhs.get()); rf != nullptr)
+    if (const auto *rf = as<const FloatExpr>(*expr.rhs); rf != nullptr)
         return rf->value == 0.0;
     return false;
 }

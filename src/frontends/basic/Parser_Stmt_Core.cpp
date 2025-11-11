@@ -15,8 +15,11 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/basic/BasicDiagnosticMessages.hpp"
+#include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/Parser.hpp"
+#include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/ast/ExprNodes.hpp"
+#include "frontends/basic/ASTUtils.hpp"
 
 #include <cctype>
 #include <cstdio>
@@ -171,7 +174,7 @@ Parser::StmtResult Parser::parseCall(int)
         if (t2.kind == TokenKind::Identifier && t3.kind == TokenKind::LParen)
         {
             auto expr = parseExpression(/*min_prec=*/0);
-            if (expr && dynamic_cast<MethodCallExpr *>(expr.get()) != nullptr)
+            if (expr && is<MethodCallExpr>(*expr))
             {
                 auto stmt = std::make_unique<CallStmt>();
                 stmt->loc = identTok.loc;
@@ -196,7 +199,7 @@ Parser::StmtResult Parser::parseCall(int)
     }
 
     auto expr = parseArrayOrVar();
-    if (expr && dynamic_cast<CallExpr *>(expr.get()) != nullptr)
+    if (expr && is<CallExpr>(*expr))
     {
         auto stmt = std::make_unique<CallStmt>();
         stmt->loc = identTok.loc;

@@ -26,6 +26,7 @@
 
 #include "frontends/basic/SemanticAnalyzer.Internal.hpp"
 
+#include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/Semantic_OOP.hpp"
 
 #include <algorithm>
@@ -287,11 +288,11 @@ bool SemanticAnalyzer::mustReturn(const std::vector<StmtPtr> &stmts) const
 /// @return True when execution of @p s guarantees a return.
 bool SemanticAnalyzer::mustReturn(const Stmt &s) const
 {
-    if (auto *lst = dynamic_cast<const StmtList *>(&s))
+    if (const auto *lst = as<const StmtList>(s))
         return !lst->stmts.empty() && mustReturn(*lst->stmts.back());
-    if (auto *ret = dynamic_cast<const ReturnStmt *>(&s))
+    if (const auto *ret = as<const ReturnStmt>(s))
         return ret->value != nullptr;
-    if (auto *ifs = dynamic_cast<const IfStmt *>(&s))
+    if (const auto *ifs = as<const IfStmt>(s))
     {
         if (!ifs->then_branch || !mustReturn(*ifs->then_branch))
             return false;
@@ -302,7 +303,7 @@ bool SemanticAnalyzer::mustReturn(const Stmt &s) const
             return false;
         return mustReturn(*ifs->else_branch);
     }
-    if (dynamic_cast<const WhileStmt *>(&s) || dynamic_cast<const ForStmt *>(&s))
+    if (is<WhileStmt>(s) || is<ForStmt>(s))
         return false;
     return false;
 }
@@ -328,17 +329,17 @@ void SemanticAnalyzer::analyze(const Program &prog)
     for (const auto &p : prog.procs)
         if (p)
         {
-            if (auto *f = dynamic_cast<FunctionDecl *>(p.get()))
+            if (auto *f = as<FunctionDecl>(*p))
                 procReg_.registerProc(*f);
-            else if (auto *s = dynamic_cast<SubDecl *>(p.get()))
+            else if (auto *s = as<SubDecl>(*p))
                 procReg_.registerProc(*s);
         }
     for (const auto &p : prog.procs)
         if (p)
         {
-            if (auto *f = dynamic_cast<FunctionDecl *>(p.get()))
+            if (auto *f = as<FunctionDecl>(*p))
                 analyzeProc(*f);
-            else if (auto *s = dynamic_cast<SubDecl *>(p.get()))
+            else if (auto *s = as<SubDecl>(*p))
                 analyzeProc(*s);
         }
     oopIndex_.clear();
@@ -431,7 +432,7 @@ std::vector<SemanticAnalyzer::Type> SemanticAnalyzer::checkCallArgs(const CallEx
         if (sig->params[i].is_array)
         {
             auto *argExpr = c.args[i].get();
-            auto *v = dynamic_cast<VarExpr *>(argExpr);
+            auto *v = as<VarExpr>(*argExpr);
             if (!v || !arrays_.count(v->name))
             {
                 il::support::SourceLoc loc = argExpr ? argExpr->loc : c.loc;

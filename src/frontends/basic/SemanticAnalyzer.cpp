@@ -22,8 +22,10 @@
 ///          reusable utilities to other translation units within the BASIC frontend.
 
 #include "frontends/basic/SemanticAnalyzer.Internal.hpp"
+#include "frontends/basic/ASTUtils.hpp"
 
 #include "frontends/basic/BasicTypes.hpp"
+#include "frontends/basic/ASTUtils.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -31,6 +33,7 @@
 #include <vector>
 
 #include "frontends/basic/BuiltinRegistry.hpp"
+#include "frontends/basic/ASTUtils.hpp"
 
 namespace il::frontends::basic
 {
@@ -234,19 +237,19 @@ const char *logicalOpName(BinaryExpr::Op op)
 /// @return String approximating the expression for diagnostics.
 std::string conditionExprText(const Expr &expr)
 {
-    if (auto *var = dynamic_cast<const VarExpr *>(&expr))
+    if (auto *var = as<const VarExpr>(expr))
         return var->name;
-    if (auto *intExpr = dynamic_cast<const IntExpr *>(&expr))
+    if (auto *intExpr = as<const IntExpr>(expr))
         return std::to_string(intExpr->value);
-    if (auto *floatExpr = dynamic_cast<const FloatExpr *>(&expr))
+    if (auto *floatExpr = as<const FloatExpr>(expr))
     {
         std::ostringstream oss;
         oss << floatExpr->value;
         return oss.str();
     }
-    if (auto *boolExpr = dynamic_cast<const BoolExpr *>(&expr))
+    if (auto *boolExpr = as<const BoolExpr>(expr))
         return boolExpr->value ? "TRUE" : "FALSE";
-    if (auto *strExpr = dynamic_cast<const StringExpr *>(&expr))
+    if (auto *strExpr = as<const StringExpr>(expr))
     {
         std::string text = "\"";
         text += strExpr->value;

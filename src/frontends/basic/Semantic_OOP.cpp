@@ -24,6 +24,7 @@
 
 #include "frontends/basic/Semantic_OOP.hpp"
 #include "frontends/basic/AST.hpp"
+#include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/AstWalker.hpp"
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/SemanticDiagnostics.hpp"
@@ -93,11 +94,11 @@ void checkMemberShadowing(const std::vector<StmtPtr> &body,
 
 [[nodiscard]] bool methodMustReturn(const Stmt &stmt)
 {
-    if (auto *lst = dynamic_cast<const StmtList *>(&stmt))
+    if (const auto *lst = as<const StmtList>(stmt))
         return !lst->stmts.empty() && methodMustReturn(*lst->stmts.back());
-    if (auto *ret = dynamic_cast<const ReturnStmt *>(&stmt))
+    if (const auto *ret = as<const ReturnStmt>(stmt))
         return ret->value != nullptr;
-    if (auto *ifs = dynamic_cast<const IfStmt *>(&stmt))
+    if (const auto *ifs = as<const IfStmt>(stmt))
     {
         if (!ifs->then_branch || !methodMustReturn(*ifs->then_branch))
             return false;
@@ -108,8 +109,7 @@ void checkMemberShadowing(const std::vector<StmtPtr> &body,
             return false;
         return methodMustReturn(*ifs->else_branch);
     }
-    if (dynamic_cast<const WhileStmt *>(&stmt) != nullptr ||
-        dynamic_cast<const ForStmt *>(&stmt) != nullptr)
+    if (is<WhileStmt>(stmt) || is<ForStmt>(stmt))
         return false;
     return false;
 }
@@ -377,12 +377,12 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
         {
             if (!stmt)
                 continue;
-            if (auto *ns = dynamic_cast<const NamespaceDecl *>(stmt.get()))
+            if (auto *ns = as<const NamespaceDecl>(*stmt))
             {
                 scanInterfaces(ns->body);
                 continue;
             }
-            if (auto *idecl = dynamic_cast<const InterfaceDecl *>(stmt.get()))
+            if (auto *idecl = as<const InterfaceDecl>(*stmt))
             {
                 InterfaceInfo ii;
                 ii.qualifiedName = joinQualified(idecl->qualifiedName);
@@ -396,7 +396,7 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
                 {
                     if (!mem)
                         continue;
-                    if (auto *md = dynamic_cast<const MethodDecl *>(mem.get()))
+                    if (auto *md = as<const MethodDecl>(*mem))
                     {
                         if (seen.count(md->name))
                         {

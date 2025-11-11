@@ -16,6 +16,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/NameMangler_OOP.hpp"
@@ -70,31 +71,31 @@ namespace
 /// @return Class name string or empty when no object type is associated.
 std::string Lowerer::resolveObjectClass(const Expr &expr) const
 {
-    if (const auto *var = dynamic_cast<const VarExpr *>(&expr))
+    if (const auto *var = as<const VarExpr>(expr))
     {
         SlotType slotInfo = getSlotType(var->name);
         if (slotInfo.isObject)
             return slotInfo.objectClass;
         return {};
     }
-    if (dynamic_cast<const MeExpr *>(&expr) != nullptr)
+    if (is<MeExpr>(expr))
     {
         SlotType slotInfo = getSlotType("ME");
         if (slotInfo.isObject)
             return slotInfo.objectClass;
         return {};
     }
-    if (const auto *alloc = dynamic_cast<const NewExpr *>(&expr))
+    if (const auto *alloc = as<const NewExpr>(expr))
     {
         return alloc->className;
     }
-    if (const auto *access = dynamic_cast<const MemberAccessExpr *>(&expr))
+    if (const auto *access = as<const MemberAccessExpr>(expr))
     {
         if (access->base)
             return resolveObjectClass(*access->base);
         return {};
     }
-    if (const auto *call = dynamic_cast<const MethodCallExpr *>(&expr))
+    if (const auto *call = as<const MethodCallExpr>(expr))
     {
         if (call->base)
             return resolveObjectClass(*call->base);
@@ -298,7 +299,7 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
     std::string className = resolveObjectClass(*expr.base);
     // Compute the instance (self) argument. For BASE-qualified calls, use ME.
     Value selfArg;
-    if (const auto *v = dynamic_cast<const VarExpr *>(expr.base.get()); v && v->name == "BASE")
+    if (const auto *v = as<const VarExpr>(*expr.base); v && v->name == "BASE")
     {
         const auto *sym = findSymbol("ME");
         if (sym && sym->slotId)
@@ -364,7 +365,7 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
 
     // Detect BASE-qualified calls conservatively: treat `BASE` as a direct call cue.
     bool baseQualified = false;
-    if (const auto *v = dynamic_cast<const VarExpr *>(expr.base.get()))
+    if (const auto *v = as<const VarExpr>(*expr.base))
         baseQualified = (v->name == "BASE");
 
     // Determine if the target is virtual via OOP index.
@@ -396,7 +397,7 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
     // dispatch. Interface dispatch via (expr AS IFACE).Method: detect AS with interface target.
     auto tryInterfaceDispatch = [&]() -> std::optional<RVal>
     {
-        const AsExpr *asBase = dynamic_cast<const AsExpr *>(expr.base.get());
+        const AsExpr *asBase = as<const AsExpr>(*expr.base);
         if (!asBase)
             return std::nullopt;
         // Build dotted name for interface and locate InterfaceInfo

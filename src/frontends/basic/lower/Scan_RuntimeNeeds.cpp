@@ -14,11 +14,17 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/basic/AstWalker.hpp"
+#include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/BuiltinRegistry.hpp"
+#include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/Lowerer.hpp"
+#include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/TypeRules.hpp"
+#include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/TypeSuffix.hpp"
+#include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/ast/StmtNodes.hpp"
+#include "frontends/basic/ASTUtils.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
 #include <array>
 #include <optional>
@@ -319,11 +325,11 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
     {
         if (!stmt.target)
             return;
-        if (auto *var = dynamic_cast<const VarExpr *>(stmt.target.get()))
+        if (auto *var = as<const VarExpr>(*stmt.target.get()))
             handleLetVarTarget(*var, stmt.expr.get());
-        else if (auto *arr = dynamic_cast<const ArrayExpr *>(stmt.target.get()))
+        else if (auto *arr = as<const ArrayExpr>(*stmt.target.get()))
             handleLetArrayTarget(*arr);
-        else if (auto *member = dynamic_cast<const MemberAccessExpr *>(stmt.target.get()))
+        else if (auto *member = as<const MemberAccessExpr>(*stmt.target))
             handleLetMemberTarget(*member);
     }
 
@@ -654,7 +660,7 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
         if (value)
         {
             std::string className;
-            if (const auto *alloc = dynamic_cast<const NewExpr *>(value))
+            if (const auto *alloc = as<const NewExpr>(*value))
                 className = alloc->className;
             else
                 className = lowerer_.resolveObjectClass(*value);
@@ -758,7 +764,7 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
     {
         if (!(stmt.targetVar && stmt.targetVar.get() == &child))
             return;
-        if (auto *var = dynamic_cast<const VarExpr *>(stmt.targetVar.get());
+        if (auto *var = as<const VarExpr>(*stmt.targetVar.get());
             var && !var->name.empty())
             lowerer_.setSymbolType(var->name, Type::Str);
     }
