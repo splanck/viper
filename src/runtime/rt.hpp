@@ -105,6 +105,10 @@ extern "C"
     /// @brief Block until a single key is read and return it as a 1-character string.
     rt_string rt_getkey_str(void);
 
+    /// @brief Block for a key with optional timeout; return empty string if timeout expires.
+    /// @param timeout_ms Maximum wait time in milliseconds; negative values block indefinitely.
+    rt_string rt_getkey_timeout_i32(int32_t timeout_ms);
+
     /// @brief Return a pending key as a 1-character string or empty string if none available.
     rt_string rt_inkey_str(void);
 

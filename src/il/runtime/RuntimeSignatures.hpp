@@ -82,6 +82,7 @@ enum class RuntimeFeature : std::size_t
     TermAltScreen,
     InKey,
     GetKey,
+    GetKeyTimeout,
     ObjNew,
     ObjRetainMaybe,
     ObjReleaseChk0,

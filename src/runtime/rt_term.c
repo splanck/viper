@@ -283,6 +283,95 @@ rt_string rt_getkey_str(void)
     return rt_chr((int64_t)code);
 }
 
+#if defined(_WIN32)
+/// @brief Wait for a keystroke with timeout; return "" if timeout expires.
+/// @details Uses WaitForSingleObject to poll the console input handle with the
+///          specified timeout. When a key arrives within the timeout window it is
+///          read via _getch and converted to a runtime string.
+rt_string rt_getkey_timeout_i32(int32_t timeout_ms)
+{
+    if (timeout_ms < 0)
+    {
+        // Negative timeout means block indefinitely
+        int code = readkey_blocking();
+        return rt_chr((int64_t)code);
+    }
+
+    HANDLE hInput = GetStdHandle(STD_INPUT_HANDLE);
+    if (hInput == INVALID_HANDLE_VALUE)
+        return rt_const_cstr("");
+
+    DWORD result = WaitForSingleObject(hInput, (DWORD)timeout_ms);
+    if (result == WAIT_OBJECT_0)
+    {
+        // Input is available
+        if (_kbhit())
+        {
+            int code = _getch() & 0xFF;
+            return rt_chr((int64_t)code);
+        }
+    }
+    // Timeout or error
+    return rt_const_cstr("");
+}
+#else
+/// @brief Wait for a keystroke with timeout; return "" if timeout expires.
+/// @details Places the terminal in raw mode and uses select() to wait for input
+///          with the specified timeout. When a key arrives before the deadline it
+///          is read and converted to a runtime string; otherwise the empty string
+///          is returned.
+rt_string rt_getkey_timeout_i32(int32_t timeout_ms)
+{
+    if (timeout_ms < 0)
+    {
+        // Negative timeout means block indefinitely
+        int code = readkey_blocking();
+        return rt_chr((int64_t)code);
+    }
+
+    struct termios orig, raw;
+    int fd = fileno(stdin);
+    if (tcgetattr(fd, &orig) != 0)
+        return rt_const_cstr("");
+
+    // Set raw mode
+    raw = orig;
+    raw.c_lflag &= ~(ICANON | ECHO);
+    raw.c_cc[VMIN] = 0;
+    raw.c_cc[VTIME] = 0;
+    if (tcsetattr(fd, TCSANOW, &raw) != 0)
+        return rt_const_cstr("");
+
+    // Use select to wait with timeout
+    fd_set readfds;
+    FD_ZERO(&readfds);
+    FD_SET(fd, &readfds);
+
+    struct timeval timeout;
+    timeout.tv_sec = timeout_ms / 1000;
+    timeout.tv_usec = (timeout_ms % 1000) * 1000;
+
+    int ret = select(fd + 1, &readfds, NULL, NULL, &timeout);
+
+    unsigned char ch = 0;
+    if (ret > 0 && FD_ISSET(fd, &readfds))
+    {
+        // Data is available
+        ssize_t n = read(fd, &ch, 1);
+        tcsetattr(fd, TCSANOW, &orig);
+        if (n == 1)
+            return rt_chr((int64_t)ch);
+    }
+    else
+    {
+        // Timeout or error
+        tcsetattr(fd, TCSANOW, &orig);
+    }
+
+    return rt_const_cstr("");
+}
+#endif
+
 /// @brief Non-blocking key read that returns "" when no key is pending.
 /// @details Uses @ref readkey_nonblocking to poll the console.  When a key is
 ///          available it is converted using @ref rt_chr; otherwise the canonical

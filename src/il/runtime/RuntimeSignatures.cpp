@@ -492,7 +492,7 @@ struct DescriptorRow
     RuntimeTrapClass trapClass;
 };
 
-constexpr std::array<DescriptorRow, 93> kDescriptorRows{{
+constexpr std::array<DescriptorRow, 94> kDescriptorRows{{
     DescriptorRow{"rt_abort",
                   std::nullopt,
                   "void(ptr)",
@@ -587,6 +587,14 @@ constexpr std::array<DescriptorRow, 93> kDescriptorRows{{
                   "string()",
                   &DirectHandler<&rt_getkey_str, rt_string>::invoke,
                   featureLowering(RuntimeFeature::GetKey),
+                  nullptr,
+                  0,
+                  RuntimeTrapClass::None},
+    DescriptorRow{"rt_getkey_timeout_i32",
+                  std::nullopt,
+                  "string(i32)",
+                  &DirectHandler<&rt_getkey_timeout_i32, rt_string, int32_t>::invoke,
+                  featureLowering(RuntimeFeature::GetKeyTimeout),
                   nullptr,
                   0,
                   RuntimeTrapClass::None},

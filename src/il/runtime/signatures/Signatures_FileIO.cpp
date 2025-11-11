@@ -67,6 +67,7 @@ void register_fileio_signatures()
     register_signature(make_signature("rt_term_locate_i32", {Kind::I32, Kind::I32}));
     register_signature(make_signature("rt_sleep_ms", {Kind::I32}));
     register_signature(make_signature("rt_getkey_str", {}, {Kind::Ptr}));
+    register_signature(make_signature("rt_getkey_timeout_i32", {Kind::I32}, {Kind::Ptr}));
     register_signature(make_signature("rt_inkey_str", {}, {Kind::Ptr}));
     register_signature(
         make_signature("rt_open_err_vstr", {Kind::Ptr, Kind::I32, Kind::I32}, {Kind::I32}));
