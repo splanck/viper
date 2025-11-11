@@ -10,12 +10,13 @@ This is the canonical reference for the Viper BASIC language. It describes **sta
 **expressions & operators**, **built-in functions**, **object features**, and **I/O**. Every statement includes
 a brief description and a minimal example.
 
-> **Key dialect facts**  
-> • Assignment requires **`LET`** (e.g., `LET X = 2`). A bare `X = 2` is not a statement.  
-> • There is **no `CALL` keyword**. Statement calls use `Name(args)` with parentheses.  
-> • Arrays are 1‑D, zero‑based; `DIM`/`REDIM` are required for arrays.  
-> • Booleans short‑circuit: `ANDALSO` / `ORELSE`.  
-> • Functions return with `RETURN`; SUBs are called as statements.  
+> **Key dialect facts**
+> • Assignment requires **`LET`** (e.g., `LET X = 2`). A bare `X = 2` is not a statement.
+> • There is **no `CALL` keyword**. Statement calls use `Name(args)` with parentheses.
+> • **Built-ins must be called with parentheses.** Zero-argument built-ins use empty parentheses, e.g., `INKEY$()`, `GETKEY$()`, `RND()`.
+> • Arrays are 1‑D, zero‑based; `DIM`/`REDIM` are required for arrays.
+> • Booleans short‑circuit: `ANDALSO` / `ORELSE`.
+> • Functions return with `RETURN`; SUBs are called as statements.
 > • OOP: `CLASS`, methods, fields, `ME`, `NEW`, `DELETE`, optional `DESTRUCTOR`.
 
 ## Statements A–Z
@@ -420,9 +421,9 @@ The following built-ins are available. Use them in expressions (e.g., `LET X = A
 
 **Keyboard**
 ```basic
-10 PRINT "Press any key..."
-20 LET K$ = INKEY$
-30 IF K$ <> "" THEN PRINT "You pressed: "; K$
+10 LET K$ = INKEY$()
+20 IF K$ = "" THEN K$ = GETKEY$()
+30 PRINT "Key: "; K$
 ```
 
 **File query**
