@@ -1,9 +1,0 @@
-include/viper/il/Module.hpp
-include/viper/il/Verify.hpp
-src/il/internal/io/FunctionParser.hpp
-src/il/internal/io/InstrParser.hpp
-src/il/internal/io/OperandParser.hpp
-src/il/internal/io/ParserUtil.hpp
-src/il/internal/io/TypeParser.hpp
-src/parse/Cursor.cpp
-src/pass/PassManager.cpp

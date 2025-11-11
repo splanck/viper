@@ -18,6 +18,7 @@ Thumbs.db
 # --- CMake / Ninja / Make build artifacts ---
 /build/
 /build-*/
+/build_clean/
 cmake-build-*/
 CMakeFiles/
 CMakeCache.txt
@@ -76,3 +77,20 @@ lcov.info
 # --- Project-specific test/run outputs (if created) ---
 tests/**/output/
 tests/**/out/
+
+# --- Code mapping / analysis temp files ---
+.all_code_files.txt
+all_code_files.txt
+.codemap_mapped.txt
+mapped.txt
+unmapped.txt
+.unmapped_all.txt
+.unmapped_by_area/
+.unmapped_counts.txt
+break.txt
+
+# --- Python bytecode ---
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
