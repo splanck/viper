@@ -109,6 +109,8 @@ class SemanticAnalyzer
     void visit(const SleepStmt &s);
     /// @brief Perform semantic checks specific to LOCATE statements.
     void visit(const LocateStmt &s);
+    /// @brief Perform semantic checks specific to CURSOR statements.
+    void visit(const CursorStmt &s);
 
     /// @brief Analyze statement list @p s.
     void analyzeStmtList(const StmtList &s);
@@ -126,6 +128,8 @@ class SemanticAnalyzer
     void analyzeSleep(const SleepStmt &s);
     /// @brief Analyze LOCATE statement @p s.
     void analyzeLocate(const LocateStmt &s);
+    /// @brief Analyze CURSOR statement @p s.
+    void analyzeCursor(const CursorStmt &s);
     /// @brief Analyze LET statement @p s.
     void analyzeLet(LetStmt &s);
     /// @brief Analyze OPEN statement @p s.

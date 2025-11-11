@@ -179,6 +179,17 @@ void rt_term_locate_i32(int32_t row, int32_t col)
     out_str(buf);
 }
 
+/// @brief Show or hide the terminal cursor using ANSI DEC Private Mode sequences.
+/// @details Emits CSI ?25h to show the cursor or CSI ?25l to hide it.  The
+///          helper only outputs escape codes when stdout is a terminal so
+///          redirected output remains free of ANSI sequences.
+void rt_term_cursor_visible_i32(int32_t show)
+{
+    if (!stdout_isatty())
+        return;
+    out_str(show ? "\x1b[?25h" : "\x1b[?25l");
+}
+
 #if defined(_WIN32)
 /// @brief Read a single key from the console, blocking until one is available.
 /// @details Uses `_getch` to obtain a byte without echoing it to the console.

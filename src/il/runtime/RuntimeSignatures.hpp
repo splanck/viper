@@ -77,6 +77,7 @@ enum class RuntimeFeature : std::size_t
     TermCls,
     TermColor,
     TermLocate,
+    TermCursor,
     InKey,
     GetKey,
     ObjNew,

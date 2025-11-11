@@ -77,6 +77,14 @@ void SemanticAnalyzer::visit(const LocateStmt &s)
         requireNumeric(*s.col, "LOCATE column must be numeric");
 }
 
+/// @brief Validate the CURSOR statement. No semantic checks are required.
+/// @details CURSOR accepts only ON/OFF keywords which are validated during
+///          parsing, so no expression validation is needed here.
+void SemanticAnalyzer::visit(const CursorStmt &)
+{
+    // nothing to validate - ON/OFF is parsed as a boolean flag
+}
+
 /// @brief Analyze a PRINT statement for semantic correctness.
 /// @details Traverses each printed expression (ignoring pure separators) so any
 ///          nested semantic issues are diagnosed before code generation.
@@ -123,6 +131,13 @@ void SemanticAnalyzer::analyzeSleep(const SleepStmt &stmt)
 /// @brief Analyze the LOCATE statement wrapper.
 /// @details Delegates to the visitor to reuse operand validation logic.
 void SemanticAnalyzer::analyzeLocate(const LocateStmt &stmt)
+{
+    visit(stmt);
+}
+
+/// @brief Analyze the CURSOR statement wrapper.
+/// @details Delegates to the visitor for consistency with other terminal statements.
+void SemanticAnalyzer::analyzeCursor(const CursorStmt &stmt)
 {
     visit(stmt);
 }

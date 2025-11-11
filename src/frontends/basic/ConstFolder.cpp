@@ -640,6 +640,9 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
     /// @brief CLS has no foldable expressions.
     void visit(ClsStmt &) override {}
 
+    /// @brief CURSOR has no foldable expressions.
+    void visit(CursorStmt &) override {}
+
     /// @brief Fold the foreground/background expressions for COLOR statements.
     void visit(ColorStmt &stmt) override
     {

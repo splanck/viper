@@ -90,6 +90,23 @@ void Lowerer::visit(const LocateStmt &s)
     emitCallRet(Type(Type::Kind::Void), "rt_term_locate_i32", {row32, col32});
 }
 
+/// @brief Lower the BASIC @c CURSOR statement to control cursor visibility.
+///
+/// @details Emits a request for the terminal-cursor helper and dispatches the
+///          call with either 1 (show) or 0 (hide) based on the parsed visibility
+///          flag.  The current source location is preserved for diagnostics.
+///
+/// @param s AST node representing the @c CURSOR statement.
+void Lowerer::visit(const CursorStmt &s)
+{
+    curLoc = s.loc;
+    auto emit = emitCommon(s.loc);
+    Value show = Value::constInt(s.visible ? 1 : 0);
+    Value show32 = emit.to_iN(show, 32);
+    requestHelper(il::runtime::RuntimeFeature::TermCursor);
+    emitCallRet(Type(Type::Kind::Void), "rt_term_cursor_visible_i32", {show32});
+}
+
 /// @brief Lower the BASIC SLEEP statement to the runtime helper.
 ///
 /// @details Evaluates the duration expression, coerces it to a 32-bit integer,

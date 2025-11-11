@@ -294,6 +294,12 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
         lowerer_.requestHelper(il::runtime::RuntimeFeature::TermLocate);
     }
 
+    /// @brief CURSOR requires terminal cursor visibility helper support.
+    void after(const CursorStmt &)
+    {
+        lowerer_.requestHelper(il::runtime::RuntimeFeature::TermCursor);
+    }
+
     /// @brief SLEEP requires the time helper to be declared.
     void after(const SleepStmt &)
     {

@@ -65,6 +65,12 @@ class SemanticAnalyzerStmtVisitor final : public MutStmtVisitor
         analyzer_.analyzeCls(stmt);
     }
 
+    /// @brief Validate CURSOR statements through the analyser.
+    void visit(CursorStmt &stmt) override
+    {
+        analyzer_.analyzeCursor(stmt);
+    }
+
     /// @brief Forward COLOR statements for palette validation.
     void visit(ColorStmt &stmt) override
     {

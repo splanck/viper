@@ -44,6 +44,7 @@ struct ClsStmt;
 struct ColorStmt;
 struct SleepStmt;
 struct LocateStmt;
+struct CursorStmt;
 struct LetStmt;
 struct DimStmt;
 struct ReDimStmt;

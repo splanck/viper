@@ -344,6 +344,12 @@ template <typename Derived> class BasicAstWalker : public ExprVisitor, public St
         callAfter(stmt);
     }
 
+    void visit(const CursorStmt &stmt) override
+    {
+        callBefore(stmt);
+        callAfter(stmt);
+    }
+
     void visit(const LetStmt &stmt) override
     {
         callBefore(stmt);

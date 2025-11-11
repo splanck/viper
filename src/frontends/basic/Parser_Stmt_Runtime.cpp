@@ -46,6 +46,7 @@ void Parser::registerRuntimeParsers(StatementParserRegistry &registry)
     registry.registerHandler(TokenKind::KeywordCls, &Parser::parseClsStatement);
     registry.registerHandler(TokenKind::KeywordColor, &Parser::parseColorStatement);
     registry.registerHandler(TokenKind::KeywordLocate, &Parser::parseLocateStatement);
+    registry.registerHandler(TokenKind::KeywordCursor, &Parser::parseCursorStatement);
     registry.registerHandler(TokenKind::KeywordSleep, &Parser::parseSleepStatement);
 }
 
@@ -281,6 +282,29 @@ StmtPtr Parser::parseLocateStatement()
         consume();
         stmt->col = parseExpression();
     }
+    return stmt;
+}
+
+/// @brief Parse a @c CURSOR statement.
+/// @details Recognises @c CURSOR ON or @c CURSOR OFF to control cursor visibility.
+/// @return Newly constructed statement node.
+StmtPtr Parser::parseCursorStatement()
+{
+    auto loc = consume().loc; // CURSOR
+    auto stmt = std::make_unique<CursorStmt>();
+    stmt->loc = loc;
+
+    if (at(TokenKind::KeywordOn))
+    {
+        consume(); // ON
+        stmt->visible = true;
+    }
+    else
+    {
+        expect(TokenKind::KeywordOff); // OFF
+        stmt->visible = false;
+    }
+
     return stmt;
 }
 

@@ -118,6 +118,14 @@ struct AstPrinter::StmtPrinter final : StmtVisitor
         ctx.stream() << "(CLS)";
     }
 
+    /// @brief Render the CURSOR statement showing visibility.
+    ///
+    /// @param stmt CURSOR statement with visibility flag.
+    void visit(const CursorStmt &stmt) override
+    {
+        ctx.stream() << "(CURSOR " << (stmt.visible ? "ON" : "OFF") << ")";
+    }
+
     /// @brief Render a COLOR statement showing optional foreground/background.
     ///
     /// @param stmt Statement referencing the target palette indices.

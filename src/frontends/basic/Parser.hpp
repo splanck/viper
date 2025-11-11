@@ -420,6 +420,10 @@ class Parser
     /// @return LOCATE statement node.
     StmtPtr parseLocateStatement();
 
+    /// @brief Parse a CURSOR statement controlling cursor visibility.
+    /// @return CURSOR statement node.
+    StmtPtr parseCursorStatement();
+
     /// @brief Parse a SLEEP statement blocking for milliseconds.
     /// @return SLEEP statement node.
     StmtPtr parseSleepStatement();

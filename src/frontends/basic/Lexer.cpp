@@ -36,7 +36,7 @@ struct KeywordEntry
     TokenKind kind;
 };
 
-constexpr std::array<KeywordEntry, 84> kKeywordTable{{
+constexpr std::array<KeywordEntry, 86> kKeywordTable{{
     {"ABS", TokenKind::KeywordAbs},         {"ABSTRACT", TokenKind::KeywordAbstract},
     {"AND", TokenKind::KeywordAnd},
     {"ANDALSO", TokenKind::KeywordAndAlso}, {"APPEND", TokenKind::KeywordAppend},
@@ -46,6 +46,7 @@ constexpr std::array<KeywordEntry, 84> kKeywordTable{{
     {"CEIL", TokenKind::KeywordCeil},       {"CLASS", TokenKind::KeywordClass},
     {"CLOSE", TokenKind::KeywordClose},     {"CLS", TokenKind::KeywordCls},
     {"COLOR", TokenKind::KeywordColor},     {"COS", TokenKind::KeywordCos},
+    {"CURSOR", TokenKind::KeywordCursor},
     {"DELETE", TokenKind::KeywordDelete},   {"DESTRUCTOR", TokenKind::KeywordDestructor},
     {"DIM", TokenKind::KeywordDim},         {"DO", TokenKind::KeywordDo},
     {"ELSE", TokenKind::KeywordElse},       {"ELSEIF", TokenKind::KeywordElseIf},
@@ -64,8 +65,9 @@ constexpr std::array<KeywordEntry, 84> kKeywordTable{{
     {"LOOP", TokenKind::KeywordLoop},       {"ME", TokenKind::KeywordMe},
     {"MOD", TokenKind::KeywordMod},         {"NAMESPACE", TokenKind::KeywordNamespace},
     {"NEW", TokenKind::KeywordNew},         {"NEXT", TokenKind::KeywordNext},
-    {"NOT", TokenKind::KeywordNot},         {"ON", TokenKind::KeywordOn},
-    {"OPEN", TokenKind::KeywordOpen},       {"OR", TokenKind::KeywordOr},
+    {"NOT", TokenKind::KeywordNot},         {"OFF", TokenKind::KeywordOff},
+    {"ON", TokenKind::KeywordOn},           {"OPEN", TokenKind::KeywordOpen},
+    {"OR", TokenKind::KeywordOr},
     {"ORELSE", TokenKind::KeywordOrElse},   {"OUTPUT", TokenKind::KeywordOutput},
     {"OVERRIDE", TokenKind::KeywordOverride},
     {"POW", TokenKind::KeywordPow},         {"PRINT", TokenKind::KeywordPrint},

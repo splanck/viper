@@ -159,6 +159,21 @@ struct LocateStmt : Stmt
     void accept(MutStmtVisitor &visitor) override;
 };
 
+/// @brief CURSOR statement controlling cursor visibility.
+struct CursorStmt : Stmt
+{
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
+    {
+        return Kind::Cursor;
+    }
+
+    /// True for CURSOR ON, false for CURSOR OFF.
+    bool visible{true};
+
+    void accept(StmtVisitor &visitor) const override;
+    void accept(MutStmtVisitor &visitor) override;
+};
+
 /// @brief LET statement assigning to an lvalue.
 struct LetStmt : Stmt
 {

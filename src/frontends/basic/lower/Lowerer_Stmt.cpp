@@ -120,6 +120,14 @@ class LowererStmtVisitor final : public lower::AstVisitor, public StmtVisitor
         lowerer_.visit(stmt);
     }
 
+    /// @brief Lower a CURSOR statement to control cursor visibility.
+    /// @details Delegates to @ref Lowerer::visit to emit the runtime helper call.
+    /// @param stmt CURSOR statement node.
+    void visit(const CursorStmt &stmt) override
+    {
+        lowerer_.visit(stmt);
+    }
+
     /// @brief Lower a LET assignment statement.
     /// @details Delegates to @ref Lowerer::lowerLet which manages target storage
     ///          resolution and expression coercion.
