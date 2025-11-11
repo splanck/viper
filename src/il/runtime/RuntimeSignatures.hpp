@@ -76,6 +76,7 @@ enum class RuntimeFeature : std::size_t
     Rnd,
     Timer,
     TermCls,
+    TermBell,
     TermColor,
     TermLocate,
     TermCursor,

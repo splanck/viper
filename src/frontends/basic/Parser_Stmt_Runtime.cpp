@@ -43,6 +43,7 @@ void Parser::registerRuntimeParsers(StatementParserRegistry &registry)
     registry.registerHandler(TokenKind::KeywordDim, &Parser::parseDimStatement);
     registry.registerHandler(TokenKind::KeywordRedim, &Parser::parseReDimStatement);
     registry.registerHandler(TokenKind::KeywordRandomize, &Parser::parseRandomizeStatement);
+    registry.registerHandler(TokenKind::KeywordBeep, &Parser::parseBeepStatement);
     registry.registerHandler(TokenKind::KeywordCls, &Parser::parseClsStatement);
     registry.registerHandler(TokenKind::KeywordColor, &Parser::parseColorStatement);
     registry.registerHandler(TokenKind::KeywordLocate, &Parser::parseLocateStatement);
@@ -235,6 +236,18 @@ StmtPtr Parser::parseRandomizeStatement()
     auto stmt = std::make_unique<RandomizeStmt>();
     stmt->loc = loc;
     stmt->seed = parseExpression();
+    return stmt;
+}
+
+/// @brief Parse a @c BEEP statement.
+/// @details Consumes the @c BEEP keyword and emits a @ref BeepStmt node that
+///          produces a beep/bell sound when executed.
+/// @return Newly constructed statement node.
+StmtPtr Parser::parseBeepStatement()
+{
+    auto loc = consume().loc; // BEEP
+    auto stmt = std::make_unique<BeepStmt>();
+    stmt->loc = loc;
     return stmt;
 }
 

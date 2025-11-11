@@ -72,6 +72,18 @@ struct PrintChStmt : Stmt
     void accept(MutStmtVisitor &visitor) override;
 };
 
+/// @brief BEEP statement emitting a bell/beep sound.
+struct BeepStmt : Stmt
+{
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
+    {
+        return Kind::Beep;
+    }
+
+    void accept(StmtVisitor &visitor) const override;
+    void accept(MutStmtVisitor &visitor) override;
+};
+
 /// @brief CALL statement invoking a user-defined SUB or instance method.
 struct CallStmt : Stmt
 {

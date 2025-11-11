@@ -22,6 +22,7 @@ struct StmtVisitor
     virtual void visit(const LabelStmt &) = 0;
     virtual void visit(const PrintStmt &) = 0;
     virtual void visit(const PrintChStmt &) = 0;
+    virtual void visit(const BeepStmt &) = 0;
     virtual void visit(const CallStmt &) = 0;
     virtual void visit(const ClsStmt &) = 0;
     virtual void visit(const ColorStmt &) = 0;
@@ -73,6 +74,7 @@ struct MutStmtVisitor
     virtual void visit(LabelStmt &) = 0;
     virtual void visit(PrintStmt &) = 0;
     virtual void visit(PrintChStmt &) = 0;
+    virtual void visit(BeepStmt &) = 0;
     virtual void visit(CallStmt &) = 0;
     virtual void visit(ClsStmt &) = 0;
     virtual void visit(ColorStmt &) = 0;
@@ -126,6 +128,7 @@ struct Stmt
         Label,
         Print,
         PrintCh,
+        Beep,
         Call,
         Cls,
         Color,

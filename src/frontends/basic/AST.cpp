@@ -353,6 +353,20 @@ void PrintChStmt::accept(MutStmtVisitor &visitor)
     visitor.visit(*this);
 }
 
+/// @brief Forwards this BEEP statement node to the visitor for double dispatch.
+/// @param visitor Receives the node; ownership remains with the AST.
+void BeepStmt::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+/// @brief Dispatch this BEEP statement node to a mutable visitor.
+/// @param visitor Receives the node.
+void BeepStmt::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
 /// @brief Forwards this CALL statement node to the visitor for double dispatch.
 /// @param visitor Receives the node; ownership remains with the AST.
 void CallStmt::accept(StmtVisitor &visitor) const

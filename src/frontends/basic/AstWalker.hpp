@@ -292,6 +292,13 @@ template <typename Derived> class BasicAstWalker : public ExprVisitor, public St
         callAfter(stmt);
     }
 
+    void visit(const BeepStmt &stmt) override
+    {
+        callBefore(stmt);
+        // BEEP has no child expressions.
+        callAfter(stmt);
+    }
+
     void visit(const CallStmt &stmt) override
     {
         callBefore(stmt);

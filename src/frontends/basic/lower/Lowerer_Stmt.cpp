@@ -76,6 +76,14 @@ class LowererStmtVisitor final : public lower::AstVisitor, public StmtVisitor
         lowerer_.lowerPrintCh(stmt);
     }
 
+    /// @brief Lower the BEEP statement.
+    /// @details Delegates to @ref Lowerer::visit which emits the runtime call.
+    /// @param stmt BEEP statement node.
+    void visit(const BeepStmt &stmt) override
+    {
+        lowerer_.visit(stmt);
+    }
+
     /// @brief Lower a call statement that invokes a procedure.
     /// @details Defers to @ref Lowerer::lowerCallStmt to reuse the call lowering
     ///          logic shared with expression contexts.

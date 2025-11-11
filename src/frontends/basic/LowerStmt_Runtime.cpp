@@ -26,6 +26,19 @@ using namespace il::core;
 namespace il::frontends::basic
 {
 
+/// @brief Lower the BASIC @c BEEP statement to a runtime helper call.
+///
+/// @details Emits a call to the bell/beep runtime function without arguments.
+///          The current source location is preserved for diagnostics.
+///
+/// @param s AST node representing the @c BEEP statement.
+void Lowerer::visit(const BeepStmt &s)
+{
+    curLoc = s.loc;
+    requestHelper(il::runtime::RuntimeFeature::TermBell);
+    emitCallRet(Type(Type::Kind::Void), "rt_bell", {});
+}
+
 /// @brief Lower the BASIC @c CLS statement to a runtime helper call.
 ///
 /// @details Emits a request for the terminal-clear helper and dispatches the

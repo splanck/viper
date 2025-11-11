@@ -53,6 +53,9 @@ class SemanticAnalyzerStmtVisitor final : public MutStmtVisitor
         analyzer_.analyzePrintCh(stmt);
     }
 
+    /// @brief BEEP statements require no semantic validation.
+    void visit(BeepStmt &) override {}
+
     /// @brief Resolve subroutine invocations via @ref SemanticAnalyzer::analyzeCallStmt.
     void visit(CallStmt &stmt) override
     {

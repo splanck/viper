@@ -408,6 +408,10 @@ class Parser
     /// @return RANDOMIZE statement node.
     StmtPtr parseRandomizeStatement();
 
+    /// @brief Parse a BEEP statement that emits a beep/bell sound.
+    /// @return BEEP statement node.
+    StmtPtr parseBeepStatement();
+
     /// @brief Parse a CLS statement clearing the display.
     /// @return CLS statement node.
     StmtPtr parseClsStatement();

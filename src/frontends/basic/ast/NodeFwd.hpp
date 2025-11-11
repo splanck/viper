@@ -39,6 +39,7 @@ struct Stmt;
 struct LabelStmt;
 struct PrintStmt;
 struct PrintChStmt;
+struct BeepStmt;
 struct CallStmt;
 struct ClsStmt;
 struct ColorStmt;

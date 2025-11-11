@@ -614,6 +614,9 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
             foldExpr(arg);
     }
 
+    /// @brief BEEP has no foldable expressions.
+    void visit(BeepStmt &) override {}
+
     /// @brief Fold arguments within CALL statements while leaving target intact.
     void visit(CallStmt &stmt) override
     {

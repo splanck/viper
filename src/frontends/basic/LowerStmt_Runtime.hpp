@@ -18,6 +18,7 @@ void assignArrayElement(const ArrayExpr &target, RVal value, il::support::Source
 void lowerDim(const DimStmt &stmt);
 void lowerReDim(const ReDimStmt &stmt);
 void lowerRandomize(const RandomizeStmt &stmt);
+void visit(const BeepStmt &stmt);
 void visit(const ClsStmt &stmt);
 void visit(const ColorStmt &stmt);
 void visit(const SleepStmt &stmt);

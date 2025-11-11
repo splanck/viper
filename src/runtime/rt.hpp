@@ -102,6 +102,11 @@ extern "C"
     /// @param enable Non-zero to enter alternate screen, zero to exit.
     void rt_term_alt_screen_i32(int32_t enable);
 
+    /// @brief Emit a bell/beep sound using BEL character or platform-specific API.
+    /// @details Writes ASCII BEL to stdout. On Windows, optionally calls Beep() API
+    ///          when VIPER_BEEP_WINAPI environment variable is set to "1".
+    void rt_bell(void);
+
     /// @brief Block until a single key is read and return it as a 1-character string.
     rt_string rt_getkey_str(void);
 

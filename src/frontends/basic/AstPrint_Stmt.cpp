@@ -96,6 +96,12 @@ struct AstPrinter::StmtPrinter final : StmtVisitor
         print_stmt::printPrintChannel(stmt, ctx);
     }
 
+    /// @brief Render the BEEP statement.
+    void visit(const BeepStmt &) override
+    {
+        ctx.stream() << "(BEEP)";
+    }
+
     /// @brief Render a CALL statement with optional call expression.
     ///
     /// @param stmt Statement referencing the procedure invocation.

@@ -24,6 +24,8 @@
 #include "rt.hpp"
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 #if defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
@@ -200,6 +202,29 @@ void rt_term_alt_screen_i32(int32_t enable)
     if (!stdout_isatty())
         return;
     out_str(enable ? "\x1b[?1049h" : "\x1b[?1049l");
+}
+
+/// @brief Emit a bell/beep sound using BEL character or platform-specific API.
+/// @details Writes ASCII BEL (0x07) to stdout and flushes. On Windows, when the
+///          VIPER_BEEP_WINAPI environment variable is set to "1", additionally
+///          calls the Beep() API with 800Hz frequency for 80ms duration. This
+///          provides a portable default (BEL) with optional platform-specific
+///          enhancement.
+void rt_bell(void)
+{
+    // Always emit BEL for portability
+    fputs("\a", stdout);
+    fflush(stdout);
+
+#if defined(_WIN32)
+    // On Windows, optionally use Beep API for a more audible tone
+    const char *env = getenv("VIPER_BEEP_WINAPI");
+    if (env && strcmp(env, "1") == 0)
+    {
+        // 800 Hz for 80 ms - a short, attention-getting beep
+        Beep(800, 80);
+    }
+#endif
 }
 
 #if defined(_WIN32)
