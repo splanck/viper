@@ -17,8 +17,10 @@ Thumbs.db
 
 # --- CMake / Ninja / Make build artifacts ---
 /build/
+/build*/
 /build-*/
-/build_clean/
+/build_*/
+cmake-build*/
 cmake-build-*/
 CMakeFiles/
 CMakeCache.txt
@@ -31,6 +33,15 @@ Makefile
 *.ninja
 .ninja_deps
 .ninja_log
+CPackConfig.cmake
+CPackSourceConfig.cmake
+*Config.cmake
+*ConfigVersion.cmake
+*Targets.cmake
+
+# --- Generated files ---
+/generated/
+*/generated/
 
 # --- Compilers / Linkers ---
 *.o
@@ -44,10 +55,16 @@ Makefile
 *.dll
 *.exe
 *.out
+*.app
 *.gch
 *.pch
 *.ilk
 *.dSYM/
+*.d
+*.depend
+*.exp
+*.lib
+*.pdb
 
 # --- Dependency / tool caches ---
 ccache/
