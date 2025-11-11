@@ -360,6 +360,31 @@ ilc front basic -run examples/basic/sine_cosine.bas \
   --break-src sine_cosine.bas:5 --trace=src
 ```
 
+### Verifying INKEY$/GETKEY$ Locally
+
+These built-in functions interact with the terminal and require manual testing to verify behavior.
+
+#### Non-blocking read (INKEY$)
+
+```sh
+ilc front basic -run examples/inkey_smoke.bas
+```
+
+Expected: Program polls once, prints "No key" (or the key code if pressed quickly), and exits immediately without blocking.
+
+#### Blocking read (GETKEY$)
+
+Create a temporary test file and run:
+
+```sh
+echo 'COLOR 7,0: PRINT "Press a key": k$ = GETKEY$(): PRINT "Got:"; ASC(k$)' > /tmp/getkey.bas
+ilc front basic -run /tmp/getkey.bas
+```
+
+Expected: Program waits for one keystroke, then prints the ASCII code and exits.
+
+**Note:** INKEY$ never blocks; GETKEY$ waits for input. Both functions require parentheses even though they take zero arguments.
+
 ### Debugging BASIC Recursion Failures
 
 Use the factorial example to inspect recursive calls.
