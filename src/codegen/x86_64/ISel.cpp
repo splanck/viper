@@ -22,6 +22,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "ISel.hpp"
+#include "OperandUtils.hpp"
 
 #include <algorithm>
 #include <cstddef>
@@ -37,81 +38,6 @@ namespace viper::codegen::x64
 
 namespace
 {
-
-/// @brief Produce a copy of a Machine IR operand.
-///
-/// @details Machine IR operands are small value types.  This helper exists to
-///          make clone intent explicit at call sites where code constructs new
-///          instructions from existing operands (for example inserting a
-///          `movzx` after a `setcc`).
-///
-/// @param operand Operand to copy.
-/// @return A value-equal copy of @p operand.
-[[nodiscard]] Operand cloneOperand(const Operand &operand)
-{
-    return operand;
-}
-
-/// @brief Determine whether an operand stores an immediate value.
-///
-/// @param operand Operand to classify.
-/// @return @c true when the operand holds an @ref OpImm payload.
-[[nodiscard]] bool isImm(const Operand &operand) noexcept
-{
-    return std::holds_alternative<OpImm>(operand);
-}
-
-/// @brief View an operand as an immediate when possible.
-///
-/// @details Wraps @ref std::get_if to centralise the cast and emphasise the
-///          nullable nature of the conversion.
-///
-/// @param operand Operand to reinterpret.
-/// @return Pointer to the @ref OpImm payload or @c nullptr on mismatch.
-[[nodiscard]] OpImm *asImm(Operand &operand) noexcept
-{
-    return std::get_if<OpImm>(&operand);
-}
-
-/// @brief View a mutable operand as a register reference.
-///
-/// @param operand Operand to reinterpret.
-/// @return Pointer to the @ref OpReg payload or @c nullptr when not a register.
-[[nodiscard]] OpReg *asReg(Operand &operand) noexcept
-{
-    return std::get_if<OpReg>(&operand);
-}
-
-/// @brief View a read-only operand as a register reference.
-///
-/// @param operand Operand to reinterpret.
-/// @return Pointer to the @ref OpReg payload or @c nullptr when not a register.
-[[nodiscard]] const OpReg *asReg(const Operand &operand) noexcept
-{
-    return std::get_if<OpReg>(&operand);
-}
-
-/// @brief Compare two operands for register identity.
-///
-/// @details The check covers both physical and virtual registers by comparing
-///          the register class, physical flag, and numeric identifier.  Used to
-///          detect whether two operands refer to the same register so peepholes
-///          can avoid duplicating work.
-///
-/// @param lhs First operand to compare.
-/// @param rhs Second operand to compare.
-/// @return @c true when both operands refer to the same register.
-[[nodiscard]] bool sameRegister(const Operand &lhs, const Operand &rhs) noexcept
-{
-    const auto *lhsReg = asReg(lhs);
-    const auto *rhsReg = asReg(rhs);
-    if (!lhsReg || !rhsReg)
-    {
-        return false;
-    }
-    return lhsReg->isPhys == rhsReg->isPhys && lhsReg->cls == rhsReg->cls &&
-           lhsReg->idOrPhys == rhsReg->idOrPhys;
-}
 
 /// @brief Ensure a zero-extension follows a @c setcc instruction.
 ///

@@ -29,6 +29,8 @@
 #include "CallLowering.hpp"
 
 #include "FrameLowering.hpp"
+#include "OperandUtils.hpp"
+#include "TargetX64.hpp"
 
 #include <algorithm>
 #include <cassert>
@@ -40,43 +42,12 @@ namespace viper::codegen::x64
 namespace
 {
 
-constexpr std::size_t kGprArgLimit = 6;
-constexpr std::size_t kXmmArgLimit = 8;
-constexpr std::size_t kSlotSizeBytes = 8;
 constexpr PhysReg kScratchGPR = PhysReg::R11;
 constexpr PhysReg kScratchXMM = PhysReg::XMM15;
 
 #ifndef NDEBUG
 int callAlignmentCheckCounter = 0;
 #endif
-
-/// @brief Create an operand referencing a concrete physical register.
-///
-/// @details Wraps @ref makePhysRegOperand to make call sites more readable when
-///          they need an @ref Operand representing a hardware register.  The
-///          helper preserves the register class supplied by the caller.
-///
-/// @param cls Register class describing the operand kind (GPR/XMM/etc.).
-/// @param reg Physical register enumerator chosen by the caller.
-/// @return Operand that refers to the requested physical register.
-[[nodiscard]] Operand makePhysOperand(RegClass cls, PhysReg reg)
-{
-    return makePhysRegOperand(cls, static_cast<uint16_t>(reg));
-}
-
-/// @brief Build an @ref OpReg operand anchored to a physical GPR base register.
-///
-/// @details The call-lowering logic frequently needs an addressing base for
-///          stack-relative memory operands.  This helper constructs the
-///          canonical @c OpReg representation referencing @c reg in the general
-///          purpose register class.
-///
-/// @param reg Physical register serving as the base of an address expression.
-/// @return Register operand pointing at the supplied physical register.
-[[nodiscard]] OpReg makePhysBase(PhysReg reg)
-{
-    return makePhysReg(RegClass::GPR, static_cast<uint16_t>(reg));
-}
 
 /// @brief Decide whether an instruction produces the boolean SSA value @p vreg.
 ///
@@ -158,23 +129,6 @@ int callAlignmentCheckCounter = 0;
     return makeMemOperand(makePhysBase(PhysReg::RSP), offset);
 }
 
-/// @brief Round @p bytes up to the nearest outbound argument slot size.
-///
-/// @details The SysV ABI requires outgoing arguments to be aligned on
-///          eight-byte boundaries.  This helper normalises size computations so
-///          stack reservations always honour that contract.
-///
-/// @param bytes Requested byte count.
-/// @return Smallest multiple of eight that is greater than or equal to @p bytes.
-[[nodiscard]] std::size_t alignToSlot(std::size_t bytes)
-{
-    if (bytes % kSlotSizeBytes == 0)
-    {
-        return bytes;
-    }
-    return bytes + (kSlotSizeBytes - (bytes % kSlotSizeBytes));
-}
-
 } // namespace
 
 /// @brief Lower a high-level call plan into concrete Machine IR instructions.
@@ -218,7 +172,7 @@ void lowerCall(MBasicBlock &block,
     {
         if (argScan.kind == CallArg::GPR)
         {
-            if (preGprUsed < kGprArgLimit)
+            if (preGprUsed < kMaxGPRArgs)
             {
                 ++preGprUsed;
             }
@@ -229,7 +183,7 @@ void lowerCall(MBasicBlock &block,
         }
         else // XMM
         {
-            if (preXmmUsed < kXmmArgLimit)
+            if (preXmmUsed < kMaxXMMArgs)
             {
                 ++preXmmUsed;
             }
@@ -265,7 +219,7 @@ void lowerCall(MBasicBlock &block,
         {
             case CallArg::GPR:
             {
-                if (gprUsed < kGprArgLimit)
+                if (gprUsed < kMaxGPRArgs)
                 {
                     const PhysReg destReg = target.intArgOrder[gprUsed++];
                     if (arg.isImm)
@@ -320,7 +274,7 @@ void lowerCall(MBasicBlock &block,
             }
             case CallArg::XMM:
             {
-                if (xmmUsed < kXmmArgLimit)
+                if (xmmUsed < kMaxXMMArgs)
                 {
                     const PhysReg destReg = target.f64ArgOrder[xmmUsed++];
                     if (arg.isImm)
@@ -367,7 +321,7 @@ void lowerCall(MBasicBlock &block,
     }
 
     frame.outgoingArgArea =
-        std::max(frame.outgoingArgArea, static_cast<int>(alignToSlot(stackBytes)));
+        std::max(frame.outgoingArgArea, static_cast<int>(roundUpSize(stackBytes, kSlotSizeBytes)));
 
     // SysV AMD64 varargs: %al must carry the number of XMM registers used.
     if (plan.isVarArg)

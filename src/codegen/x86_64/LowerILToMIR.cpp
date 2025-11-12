@@ -29,6 +29,7 @@
 #include "LowerILToMIR.hpp"
 
 #include "LoweringRules.hpp"
+#include "OperandUtils.hpp"
 
 #include <cassert>
 #include <cstdint>
@@ -42,13 +43,6 @@ namespace viper::codegen::x64
 
 namespace
 {
-/// @brief Produce a shallow copy of an operand for reuse in new instructions.
-/// @param operand Operand emitted by a lowering rule.
-/// @return Copy suitable for appending to additional instructions.
-[[nodiscard]] Operand cloneOperand(const Operand &operand)
-{
-    return operand;
-}
 
 /// @brief Emit a debug assertion when no lowering rule matches an instruction.
 /// @details In release builds the function is a no-op so the adapter can

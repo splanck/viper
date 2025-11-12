@@ -53,8 +53,6 @@ void lowerSignedDivRem(MFunction &fn);
 namespace
 {
 
-constexpr int kSpillSlotBytes = 8;
-
 /// @brief Emit a warning message when unsupported syntax options are requested.
 ///
 /// @details Phase A only supports AT&T syntax emission.  When callers request
@@ -161,8 +159,8 @@ void runFunctionPipeline(const ILFunction &ilFunc,
     const AllocationResult allocResult = allocate(machineFunc, target);
 
     assignSpillSlots(machineFunc, target, frame);
-    frame.spillAreaGPR = std::max(frame.spillAreaGPR, allocResult.spillSlotsGPR * kSpillSlotBytes);
-    frame.spillAreaXMM = std::max(frame.spillAreaXMM, allocResult.spillSlotsXMM * kSpillSlotBytes);
+    frame.spillAreaGPR = std::max(frame.spillAreaGPR, allocResult.spillSlotsGPR * kSlotSizeBytes);
+    frame.spillAreaXMM = std::max(frame.spillAreaXMM, allocResult.spillSlotsXMM * kSlotSizeBytes);
     // Phase A: outgoing argument area and dynamic allocations are not tracked yet.
 
     insertPrologueEpilogue(machineFunc, target, frame);

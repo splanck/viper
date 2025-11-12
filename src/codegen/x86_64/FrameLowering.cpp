@@ -24,6 +24,7 @@
 ///          sequences for Phase A of the x86-64 backend.
 
 #include "FrameLowering.hpp"
+#include "OperandUtils.hpp"
 
 #include <algorithm>
 #include <cassert>
@@ -38,9 +39,6 @@ namespace viper::codegen::x64
 
 namespace
 {
-
-/// @brief Size in bytes of a single spill slot addressed from %rbp.
-constexpr int kSlotSizeBytes = 8;
 
 /// @brief Composite key describing a spill slot's register class and index.
 struct SlotKey
@@ -66,43 +64,6 @@ struct SlotKeyHash
         return (idxVal << 1) ^ clsVal;
     }
 };
-
-/// @brief Round @p value up to the nearest multiple of @p align.
-/// @details Used when computing spill areas and outgoing argument space to
-///          maintain stack alignment.  Alignment is assumed to be positive.
-/// @param value Base value to round.
-/// @param align Required alignment in bytes.
-/// @return Smallest multiple of @p align that is greater than or equal to
-///         @p value.
-[[nodiscard]] int roundUp(int value, int align)
-{
-    assert(align > 0 && "alignment must be positive");
-    const int remainder = value % align;
-    if (remainder == 0)
-    {
-        return value;
-    }
-    return value + (align - remainder);
-}
-
-/// @brief Create a physical-register Machine IR operand.
-/// @details Wraps the helper exposed by MachineIR.hpp while retaining the
-///          register class information so callers avoid repeating casts.
-/// @param cls Register class that owns @p reg.
-/// @param reg Physical register identifier.
-/// @return Operand referencing the concrete register.
-[[nodiscard]] Operand makePhysOperand(RegClass cls, PhysReg reg)
-{
-    return makePhysRegOperand(cls, static_cast<uint16_t>(reg));
-}
-
-/// @brief Construct a base register operand for frame or stack pointers.
-/// @param reg Physical register to convert.
-/// @return Register operand tagged as a physical general-purpose register.
-[[nodiscard]] OpReg makePhysBase(PhysReg reg)
-{
-    return makePhysReg(RegClass::GPR, static_cast<uint16_t>(reg));
-}
 
 /// @brief Determine whether @p reg belongs to the callee-saved set.
 /// @details Consults the target's callee-saved lists for both GPR and XMM
@@ -275,10 +236,10 @@ void assignSpillSlots(MFunction &func, const TargetInfo &target, FrameInfo &fram
     {
         frame.outgoingArgArea = 0;
     }
-    frame.outgoingArgArea = roundUp(frame.outgoingArgArea, 16);
+    frame.outgoingArgArea = roundUp(frame.outgoingArgArea, kStackAlignment);
 
     const int rawFrameSize = runningOffset + frame.outgoingArgArea;
-    frame.frameSize = roundUp(rawFrameSize, 16);
+    frame.frameSize = roundUp(rawFrameSize, kStackAlignment);
 
     for (auto &block : func.blocks)
     {

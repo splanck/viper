@@ -62,6 +62,32 @@ enum class RegClass
     XMM
 };
 
+// -----------------------------------------------------------------------------
+// Architecture constants
+// -----------------------------------------------------------------------------
+
+/// \brief Size of a single spill slot or stack slot in bytes.
+/// \details All stack-based values (spills, outgoing arguments, etc.) are
+///          allocated in 8-byte increments to match the pointer size and
+///          maintain natural alignment for scalar values.
+inline constexpr int kSlotSizeBytes = 8;
+
+/// \brief Required stack alignment at function call boundaries (bytes).
+/// \details The SysV AMD64 ABI mandates 16-byte stack alignment immediately
+///          before a CALL instruction executes. This constant is used by
+///          frame lowering and call lowering to enforce alignment.
+inline constexpr int kStackAlignment = 16;
+
+/// \brief Maximum number of integer/pointer arguments passed in registers.
+/// \details The SysV AMD64 ABI allows up to 6 integer arguments in registers
+///          (RDI, RSI, RDX, RCX, R8, R9). Additional arguments go on the stack.
+inline constexpr std::size_t kMaxGPRArgs = 6;
+
+/// \brief Maximum number of floating-point arguments passed in registers.
+/// \details The SysV AMD64 ABI allows up to 8 floating-point arguments in
+///          XMM registers (XMM0-XMM7). Additional arguments go on the stack.
+inline constexpr std::size_t kMaxXMMArgs = 8;
+
 /// \brief Captures the architectural contract for the SysV AMD64 ABI.
 /// \invariant Vectors are populated once during singleton creation and remain constant.
 struct TargetInfo
