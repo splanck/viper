@@ -13,9 +13,9 @@ This page gathers the newcomer tutorials and the examples index in one place so 
 
 Start by running an existing BASIC program through the toolchain:
 
-1. Inspect [`examples/basic/hello.bas`](../examples/basic/hello.bas) to see a minimal program.
-2. Lower it to IL with `ilc front basic -emit-il examples/basic/hello.bas -o hello.il`.
-3. Execute the BASIC source directly with `ilc front basic -run examples/basic/hello.bas` or run the emitted IL via `ilc -run hello.il`.
+1. Inspect [`examples/basic/ex1_hello_cond.bas`](../examples/basic/ex1_hello_cond.bas) to see a minimal program.
+2. Lower it to IL with `ilc front basic -emit-il examples/basic/ex1_hello_cond.bas -o hello.il`.
+3. Execute the BASIC source directly with `ilc front basic -run examples/basic/ex1_hello_cond.bas` or run the emitted IL via `ilc -run hello.il`.
 4. Explore more scripts such as [`examples/basic/trace_src.bas`](../examples/basic/trace_src.bas) to observe source-level tracing.
 
 These steps mirror the archived BASIC tutorial stub and demonstrate the full BASIC → IL → VM loop.

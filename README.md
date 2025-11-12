@@ -42,8 +42,8 @@ High‑level frontends—like the included BASIC compiler—lower programs into 
 - **TUI subsystem** — experimental text‑UI widgets (`tui/`).
 
 ### In Progress / Planned
-- Optimization passes for the IL
-- Native code generation backends (e.g., x64)
+- Advanced optimization passes for the IL (mem2reg implemented)
+- Native x86-64 codegen (Phase A complete: instruction selection, linear-scan register allocation, frame lowering, assembly emission)
 - Debugger/IDE integration and richer developer tooling
 
 ---
@@ -317,7 +317,7 @@ All components are under active development; icons reflect current maturity, not
 | IL verifier & diagnostics        | 🔧 Available (actively evolving)            |
 | TUI subsystem                    | 🧪 Experimental                              |
 | IL optimization passes           | 🧩 In progress                               |
-| Native codegen backends          | 🧪 Experimental (basic implementation)       |
+| Native codegen (x86-64)          | 🔧 Active (Phase A complete)                 |
 | Debugger/IDE                     | ⏳ Planned                                   |
 
 ---

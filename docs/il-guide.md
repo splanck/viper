@@ -6,7 +6,7 @@ last-verified: 2025-09-23
 
 # Viper Intermediate Language (IL) Guide
 
-This guide consolidates the quickstart, normative reference, BASIC lowering rules, optimisation passes, and worked examples for Viper IL v0.1.2.
+This guide consolidates the quickstart, normative reference, BASIC lowering rules, optimisation passes, and worked examples for Viper IL v0.1. (Note: v0.1.2 features are documented where they differ from 0.1.)
 
 <a id="quickstart"></a>
 ## Quickstart
@@ -22,7 +22,7 @@ Why bother with a separate IL at all? Directly interpreting a high-level languag
 
 An IL module is plain text. Its top‑level layout is:
 
-1. **Version line** – `il 0.1.2` pins the expected IL grammar.
+1. **Version line** – `il 0.1` (or `il 0.1.2` for experimental features) pins the expected IL grammar.
 2. **Extern declarations** – `extern @name(signature) -> ret` describes functions provided by the runtime or other modules.
 3. **Global constants** – `global const str @.msg = "hi"` defines immutable data.
 4. **Functions** – `func @main() -> i64 { ... }` contains basic blocks and instructions.
@@ -40,7 +40,7 @@ Create a file `first.il` with the contents:
 
 ```il
 # Print the number 4 and exit.
-il 0.1.2
+il 0.1
 extern @rt_print_i64(i64) -> void
 func @main() -> i64 {
 entry:
@@ -64,7 +64,7 @@ Expected output:
 **Line by line**
 
 - `# Print the number 4 and exit.` – comments start with `#` and are ignored by the VM.
-- `il 0.1.2` – required version header.
+- `il 0.1` – required version header (use `il 0.1.2` for experimental features).
 - `extern @rt_print_i64(i64) -> void` – declare a runtime function taking an `i64` and returning `void`.
 - `func @main() -> i64 {` – define the `@main` function that returns an `i64` exit code.
 - `entry:` – the initial basic block label.
@@ -74,13 +74,13 @@ Expected output:
 
 **What just happened?** `rt_print_i64` is supplied by the runtime and prints its argument. Every function ends with a terminator such as `ret` giving the program's exit code.
 
-**Gotcha:** Every module must start with a version line (`il 0.1.2`).
+**Gotcha:** Every module must start with a version line (e.g., `il 0.1`).
 
 ### Values and types
 IL is statically typed and uses SSA-style virtual registers (`%v0`, `%t1`, ...). Primitive types include `i1` (bool), `i64`, `f64`, `ptr`, and `str`.
 
 ```il
-il 0.1.2
+il 0.1
 extern @rt_print_i64(i64) -> void
 func @main() -> i64 {
 entry:
@@ -108,7 +108,7 @@ entry:
 Functions declare typed parameters. Values are passed and returned explicitly.
 
 ```il
-il 0.1.2
+il 0.1
 extern @rt_print_i64(i64) -> void
 func @add(i64 %a, i64 %b) -> i64 {
 entry:
@@ -140,7 +140,7 @@ entry:
 ### Arithmetic and comparisons
 
 ```il
-il 0.1.2
+il 0.1
 extern @rt_print_i64(i64) -> void
 func @main() -> i64 {
 entry:
@@ -166,7 +166,7 @@ entry:
 Blocks end with a terminator. `cbr` chooses a target based on an `i1` value.
 
 ```il
-il 0.1.2
+il 0.1
 extern @rt_print_i64(i64) -> void
 func @main() -> i64 {
 entry:
@@ -205,7 +205,7 @@ done:
 Strings live in globals and use `rt_print_str` for output.
 
 ```il
-il 0.1.2
+il 0.1
 extern @rt_print_str(str) -> void
 global const str @.msg = "hello"  # immutable global
 func @main() -> i64 {
@@ -232,7 +232,7 @@ entry:
 Returning a non-zero `i64` sets the process exit code. `trap` reports an error and aborts.
 
 ```il
-il 0.1.2
+il 0.1
 func @main() -> i64 {
 entry:
   trap "boom"             # aborts with message
@@ -260,7 +260,7 @@ A tiny BASIC program:
 Lowered IL:
 
 ```il
-il 0.1.2
+il 0.1
 extern @rt_print_i64(i64) -> void
 func @main() -> i64 {
 entry:
@@ -324,13 +324,13 @@ Execution is organized as functions consisting of labelled basic blocks.  Module
 An IL module is a set of declarations and function definitions.  It starts with a version line:
 
 ```text
-il 0.1.2
+il 0.1
 ```
 
 An optional `target "..."` metadata line may follow.  The VM ignores it, but native back ends can use it as advisory information.
 
 ```text
-il 0.1.2
+il 0.1
 target "x86_64-sysv"
 ```
 
@@ -339,7 +339,7 @@ See [examples/il](examples/il/) for complete programs.
 Each function has the form:
 
 ```
-fn @name(param_list?) -> ret_type {
+func @name(param_list?) -> ret_type {
 entry:
   ...
 }
@@ -347,8 +347,8 @@ entry:
 
 ##### Minimal Function
 ```text
-il 0.1.2
-fn @main() -> i64 {
+il 0.1
+func @main() -> i64 {
 entry:
   ret 0
 }
@@ -358,9 +358,9 @@ entry:
 External functions are declared with `extern` and may be called like normal functions.
 
 ```text
-il 0.1.2
+il 0.1
 extern @rt_print_i64(i64) -> void
-fn @main() -> i64 {
+func @main() -> i64 {
 entry:
   call @rt_print_i64(42)
   ret 0
@@ -371,9 +371,9 @@ entry:
 Module-level constants bind a symbol to immutable data such as strings.
 
 ```text
-il 0.1.2
+il 0.1
 global const str @.msg = "hi"
-fn @main() -> i64 {
+func @main() -> i64 {
 entry:
   %s = const_str @.msg
   ret 0
@@ -397,8 +397,8 @@ Integers use decimal notation (`-?[0-9]+`).  Floats use decimal with optional fr
 Functions contain one or more labelled blocks.  Labels end in `:` and the first block is `entry`.  A block may declare parameters; each predecessor must supply matching arguments.  Omitting the argument list is shorthand for passing no values (for example, `br next` is the same as `br next()`).
 
 ```text
-il 0.1.2
-fn @loop(%n: i64) -> i64 {
+il 0.1
+func @loop(%n: i64) -> i64 {
 entry(%n: i64):
   br body(%n, 0)
 body(%i: i64, %acc: i64):
@@ -445,7 +445,7 @@ Return from the current function.
 Abort execution with an unconditional runtime trap.
 
 ```text
-fn @oops() -> void {
+func @oops() -> void {
 entry:
   trap
 }
@@ -471,8 +471,8 @@ Each non-terminator instruction optionally assigns to a `%temp` and produces a r
 `sdiv` and `srem` follow C semantics: the quotient is truncated toward zero and the remainder keeps the dividend's sign.  Front ends such as BASIC map `\` to `sdiv` and `MOD` to `srem`.
 
 ```text
-il 0.1.2
-fn @main() -> i64 {
+il 0.1
+func @main() -> i64 {
 entry:
   %t0 = add 2, 3
   ret %t0
@@ -545,7 +545,7 @@ Shift counts are masked modulo 64, matching the behaviour of x86-64 shifts.
 `i64`, `f64`, `ptr`, and `str` loads and stores require 8-byte alignment; misaligned or null accesses trap.  Stack allocations created by `alloca` are zero-initialized and live until the function returns.
 
 ```text
-fn @main() -> i64 {
+func @main() -> i64 {
 entry:
   %p = alloca 8
   store i64, %p, 7
@@ -981,7 +981,7 @@ block parameters and passing values along edges.
 Input IL:
 
 ```il
-il 0.1.2
+il 0.1
 func @main() -> i64 {
 entry:
   %t0 = alloca 8
@@ -1002,7 +1002,7 @@ Join:
 After `mem2reg`:
 
 ```il
-il 0.1.2
+il 0.1
 func @main() -> i64 {
 entry:
   %t1 = icmp_eq 0, 0
@@ -1024,7 +1024,7 @@ the value from each predecessor via branch arguments.
 Input IL:
 
 ```il
-il 0.1.2
+il 0.1
 func @main() -> i64 {
 entry:
   %t0 = alloca 8
@@ -1045,7 +1045,7 @@ Exit:
 After `mem2reg`:
 
 ```il
-il 0.1.2
+il 0.1
 func @main() -> i64 {
 entry:
   br L1(0)
@@ -1093,7 +1093,7 @@ The archived BASIC to IL gallery collected six small BASIC programs (≈10–20 
 **IL**
 
 ```il
-il 0.1.2
+il 0.1
 extern @rt_print_str(str) -> void
 extern @rt_print_i64(i64) -> void
 global const str @.L0 = "HELLO"
@@ -1149,7 +1149,7 @@ done:
 **IL**
 
 ```il
-il 0.1.2
+il 0.1
 extern @rt_print_str(str) -> void
 extern @rt_print_i64(i64) -> void
 global const str @.L0 = "SUM 1..10"
@@ -1207,7 +1207,7 @@ done:
 **IL**
 
 ```il
-il 0.1.2
+il 0.1
 extern @rt_print_str(str) -> void
 extern @rt_print_i64(i64) -> void
 global const str @.L0 = "TABLE 5x5"
@@ -1273,7 +1273,7 @@ outer_done:
 **IL**
 
 ```il
-il 0.1.2
+il 0.1
 extern @rt_print_str(str) -> void
 extern @rt_print_i64(i64) -> void
 extern @rt_input_line() -> str
@@ -1336,7 +1336,7 @@ done:
 **IL**
 
 ```il
-il 0.1.2
+il 0.1
 extern @rt_print_str(str) -> void
 extern @rt_print_i64(i64) -> void
 extern @rt_len(str) -> i64
@@ -1409,7 +1409,7 @@ exit:
 **IL**
 
 ```il
-il 0.1.2
+il 0.1
 extern @rt_alloc(i64) -> ptr
 extern @rt_print_f64(f64) -> void
 extern @rt_print_str(str) -> void

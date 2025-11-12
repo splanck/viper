@@ -31,8 +31,9 @@ cmake --install build --prefix ./_install
 After the build finishes, confirm the primary tools respond to `--help`:
 
 ```sh
-./build/bin/il-verify --help
-./build/bin/il-dis --help
+./build/src/tools/il-verify/il-verify --help
+./build/src/tools/il-dis/il-dis --help
+./build/src/tools/ilc/ilc --help
 ```
 
 Explore the [tutorials-examples.md#examples](tutorials-examples.md#examples) section to run a sample end-to-end once the binaries are in place.

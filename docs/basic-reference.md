@@ -52,6 +52,24 @@ Defines classes; construct with NEW, optionally free with DELETE.
 140 DELETE c
 ```
 
+### BEEP
+
+Emits a beep or bell sound.
+
+```basic
+10 BEEP
+20 PRINT "Alert!"
+```
+
+### CLS
+
+Clears the screen and moves the cursor home (1,1). No-op when stdout is not a TTY.
+
+```basic
+10 CLS
+20 PRINT "Clean screen"
+```
+
 ### CLOSE
 
 Closes an open file number.
@@ -60,6 +78,16 @@ Closes an open file number.
 10 OPEN "out.txt" FOR OUTPUT AS #1
 20 PRINT #1, "Hello"
 30 CLOSE #1
+```
+
+### COLOR
+
+Sets terminal foreground and background colors. Uses values 0-7 for normal colors, 8-15 for bright colors, or -1 to leave unchanged.
+
+```basic
+10 COLOR 15, 1   ' Bright white on blue
+20 PRINT "Colored text"
+30 COLOR -1, -1  ' Reset to defaults
 ```
 
 ### DESTRUCTOR
@@ -193,6 +221,16 @@ Reads an entire line into a string variable.
 20 PRINT "You typed: "; L$
 ```
 
+### LOCATE
+
+Moves the terminal cursor to a 1-based row and column position. No-op when stdout is not a TTY.
+
+```basic
+10 CLS
+20 LOCATE 10, 20
+30 PRINT "Centered"
+```
+
 ### ON ERROR GOTO
 
 Installs an error handler at a line label.
@@ -234,6 +272,20 @@ Writes to a file using PRINT formatting.
 10 OPEN "log.txt" FOR OUTPUT AS #1
 20 PRINT #1, "Started"
 30 CLOSE #1
+```
+
+### RANDOMIZE
+
+Seeds the random number generator with a given value or current time.
+
+```basic
+10 RANDOMIZE 12345    ' Use specific seed
+20 PRINT RND()        ' Reproducible sequence
+```
+
+```basic
+10 RANDOMIZE TIMER    ' Seed from current time
+20 PRINT RND()        ' Different each run
 ```
 
 ### REDIM

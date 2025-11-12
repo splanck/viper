@@ -121,8 +121,8 @@ The IL is a typed, block-structured representation with SSA-like virtual registe
 Example:
 
 ```il
-il 0.1.2
-fn @main() -> i64 {
+il 0.1
+func @main() -> i64 {
 entry:
   %v0 = add 2, 2
   ret %v0
@@ -352,10 +352,24 @@ Top-level CMake targets include `il_core`, `il_vm`, `il_codegen_x86_64`, `fronte
 
 ### Runtime library (/runtime, C, stable ABI)
 
-- Files: `rt_print.c`, `rt_string.c`, `rt_input.c`, `rt_mem.c`, `rt_math.c`.
-- Header `rt.hpp` declares console, string, math, and memory helpers.
-- String representation: ref-counted heap blocks (length + capacity + UTF-8 bytes).
-- Builds to static library `librt.a`, linked by both VM host shims and native outputs.
+The runtime provides a comprehensive C ABI with the following components:
+
+**Core modules:**
+- **I/O**: `rt_io.c` - console printing and line input
+- **Strings**: `rt_string.h`, `rt_string.c`, `rt_string_builder.c`, `rt_string_encode.c`, `rt_string_format.c`, `rt_string_ops.c` - string operations, conversion, formatting
+- **Memory**: `rt_memory.c`, `rt_heap.h`, `rt_heap.c` - allocation, reference counting, heap management
+- **Arrays**: `rt_array.h`, `rt_array.c` - dynamic arrays with copy-on-resize semantics
+- **Math**: `rt_math.c`, `rt_fp.c` - mathematical functions, floating-point utilities
+- **Files**: `rt_file.h`, `rt_file.c`, `rt_file_io.c` - file operations (open, read, write, seek)
+- **Terminal**: `rt_term.c` - ANSI terminal control (CLS, COLOR, LOCATE, cursor visibility)
+- **Time/Random**: `rt_time.c`, `rt_random.h`, `rt_random.c` - TIMER, RNG with seeding
+- **Errors**: `rt_trap.h`, `rt_trap.c`, `rt_error.h`, `rt_error.c` - trap and error handling
+- **OOP**: `rt_oop.h`, `rt_oop.c`, `rt_oop_vtable.c` - object system (vtables, method dispatch)
+- **Numerics**: `rt_numeric.c`, `rt_int_format.c`, `rt_format.c` - deterministic numeric conversions
+
+**Headers**: `rt.hpp` (VM bridge) and individual `.h` files declare the C ABI.
+**String representation**: ref-counted heap blocks (magic tag + refcount + length + capacity + UTF-8 bytes).
+**Build**: Compiles to static library `librt.a`, linked by both VM host and native codegen outputs.
 
 ### Interpreter (`il::vm`)
 

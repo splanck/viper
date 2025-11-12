@@ -22,86 +22,149 @@ Where possible, each instruction includes a minimal example taken from real test
 ## Functions & blocks
 
 ```
-fn @name(<typed args>) -> <type> {
-^entry:
+func @name(<typed args>) -> <type> {
+entry:
   ; instructions
 }
 ```
 
 - Functions have a symbol name `@name` and typed parameters.
-- Basic blocks are labeled `^label:` and end in a **terminator** (`ret`, `br`, `switch`).
+- Basic blocks are labeled `label:` (no caret prefix) and end in a **terminator** (`ret`, `br`, `switch`).
 - Values are in SSA: `%vX` is defined once, then used.
 
 ## Instruction catalog (by category)
 
 ### Arithmetic
 
-**`addr_of`** — Integer/float addition.
+**`add`** — Integer addition (no overflow check).
+
+```il
+%sum = add %a, %b
+%t0 = add 10, 20
+```
+
+**`sub`** — Integer subtraction (no overflow check).
+
+```il
+%diff = sub %a, %b
+%t0 = sub 10, 5
+```
+
+**`mul`** — Integer multiplication (no overflow check).
+
+```il
+%prod = mul %a, %b
+%t0 = mul 3, 7
+```
+
+**`addr_of`** — Take address of global variable or constant.
 
 ```il
 %t41 = addr_of @.Lstr
 ```
 
-**`fadd`** — Integer/float addition.
+**`fadd`** — Floating-point addition.
 
 ```il
 %t1 = fadd 1.2345678901234567, 2.5
-%t13 = fadd 1, 2.5
+%t13 = fadd 1.0, 2.5
 ```
 
-**`fdiv`** — Division (check signed/unsigned semantics).
+**`fdiv`** — Floating-point division.
 
 ```il
 %avg = fdiv %fsum, %fn
-%t16 = fdiv %t15, 2
+%t16 = fdiv %t15, 2.0
 ```
 
-**`fmul`** — Multiplication.
+**`fmul`** — Floating-point multiplication.
 
 ```il
-%t15 = fmul %t14, 4
+%t15 = fmul %t14, 4.0
 ```
 
-**`fsub`** — Subtraction.
+**`fsub`** — Floating-point subtraction.
 
 ```il
 %t14 = fsub %t13, 1.25
 %t10 = fsub %t8, %t9
 ```
 
-**`iadd.ovf`** — Integer/float addition.
+**`iadd.ovf`** — Integer addition with overflow check (traps on overflow).
 
 ```il
 %t0 = iadd.ovf 1, 2
-%t0 = iadd.ovf 1, 2
+%sum = iadd.ovf %a, %b
 ```
 
-**`imul.ovf`** — Multiplication.
+**`imul.ovf`** — Integer multiplication with overflow check (traps on overflow).
 
 ```il
 %t1 = imul.ovf %t0, 3
-%t2 = imul.ovf %t0, 3
+%prod = imul.ovf %a, %b
 ```
 
-**`isub.ovf`** — Subtraction.
+**`isub.ovf`** — Integer subtraction with overflow check (traps on overflow).
 
 ```il
 %n2 = isub.ovf %n1, 1
-%t1 = isub.ovf %lhs, %rhs
+%diff = isub.ovf %lhs, %rhs
 ```
 
-**`sdiv.chk0`** — Division (check signed/unsigned semantics).
+**`sdiv.chk0`** — Signed integer division with divide-by-zero check (traps if divisor is zero).
 
 ```il
 %t0 = sdiv.chk0 %a, %b
 %t3 = sdiv.chk0 %t2, 5
 ```
 
-**`udiv.chk0`** — Division (check signed/unsigned semantics).
+**`udiv.chk0`** — Unsigned integer division with divide-by-zero check (traps if divisor is zero).
 
 ```il
 %t2 = udiv.chk0 %a, %b
 %t4 = udiv.chk0 10, 2
+```
+
+**`sdiv`** — Signed integer division (no divide-by-zero check; undefined behavior on zero).
+
+```il
+%quot = sdiv %a, %b
+%t0 = sdiv 20, 4
+```
+
+**`udiv`** — Unsigned integer division (no divide-by-zero check; undefined behavior on zero).
+
+```il
+%quot = udiv %a, %b
+%t0 = udiv 20, 4
+```
+
+**`srem`** — Signed integer remainder (no divide-by-zero check; undefined behavior on zero).
+
+```il
+%rem = srem %a, %b
+%t0 = srem 17, 5
+```
+
+**`urem`** — Unsigned integer remainder (no divide-by-zero check; undefined behavior on zero).
+
+```il
+%rem = urem %a, %b
+%t0 = urem 17, 5
+```
+
+**`srem.chk0`** — Signed integer remainder with divide-by-zero check (traps if divisor is zero).
+
+```il
+%rem = srem.chk0 %a, %b
+%t0 = srem.chk0 17, 5
+```
+
+**`urem.chk0`** — Unsigned integer remainder with divide-by-zero check (traps if divisor is zero).
+
+```il
+%rem = urem.chk0 %a, %b
+%t0 = urem.chk0 17, 5
 ```
 
 ### Comparison
@@ -158,53 +221,53 @@ fn @name(<typed args>) -> <type> {
 %t6 = icmp_ne %t5, 0
 ```
 
-**`scmp_ge`** — Instruction.
+**`scmp_ge`** — Signed integer greater-than-or-equal comparison; returns i1 (0 or 1).
 
 ```il
 %cond = scmp_ge %i, 3
 %cond = scmp_ge %i, 10
 ```
 
-**`scmp_gt`** — Instruction.
+**`scmp_gt`** — Signed integer greater-than comparison; returns i1 (0 or 1).
 
 ```il
 %c = scmp_gt %n1, 1
 %cond = scmp_gt %yv1, 8
 ```
 
-**`scmp_le`** — Instruction.
+**`scmp_le`** — Signed integer less-than-or-equal comparison; returns i1 (0 or 1).
 
 ```il
 %c = scmp_le %i0, 10
 %oc = scmp_le %i0, %n0
 ```
 
-**`scmp_lt`** — Instruction.
+**`scmp_lt`** — Signed integer less-than comparison; returns i1 (0 or 1).
 
 ```il
 %c = scmp_lt %i0, %n1
 %c = scmp_lt %i, 10
 ```
 
-**`ucmp_ge`** — Instruction.
+**`ucmp_ge`** — Unsigned integer greater-than-or-equal comparison; returns i1 (0 or 1).
 
 ```il
 %t26 = ucmp_ge 3, 3
 ```
 
-**`ucmp_gt`** — Instruction.
+**`ucmp_gt`** — Unsigned integer greater-than comparison; returns i1 (0 or 1).
 
 ```il
 %t25 = ucmp_gt 3, 2
 ```
 
-**`ucmp_le`** — Instruction.
+**`ucmp_le`** — Unsigned integer less-than-or-equal comparison; returns i1 (0 or 1).
 
 ```il
 %t24 = ucmp_le 2, 2
 ```
 
-**`ucmp_lt`** — Instruction.
+**`ucmp_lt`** — Unsigned integer less-than comparison; returns i1 (0 or 1).
 
 ```il
 %t23 = ucmp_lt 1, 2
@@ -212,14 +275,14 @@ fn @name(<typed args>) -> <type> {
 
 ### Memory
 
-**`alloca`** — Allocate stack memory.
+**`alloca`** — Allocate stack memory; operand is size in bytes; returns pointer.
 
 ```il
 %a_slot = alloca 8
 %b_slot = alloca 8
 ```
 
-**`gep`** — Instruction.
+**`gep`** — Get element pointer; compute address offset from base pointer (base + offset).
 
 ```il
 %elem_ptr = gep %a0, %off
@@ -256,7 +319,14 @@ br label exit
 %c2 = call @rt_concat(%c1, %b0)
 ```
 
-**`cbr`** — Instruction.
+**`call.indirect`** — Call through a function pointer; first operand is the function pointer, followed by arguments.
+
+```il
+%result = call.indirect %fn_ptr(%arg1, %arg2)
+%val = call.indirect %callback(%data)
+```
+
+**`cbr`** — Conditional branch; takes a boolean condition and two target labels.
 
 ```il
 cbr %eq, label then1, label else0
@@ -286,49 +356,49 @@ switch.i32 %arg, ^default(%arg) junk, 0 -> ^case0(%arg)
 
 ### Exceptions
 
-**`eh.entry`** — Exception/Trap; integrates with runtime and verifier.
+**`eh.entry`** — Mark entry point of an error handler block.
 
 ```il
 eh.entry
 eh.entry
 ```
 
-**`eh.pop`** — Exception/Trap; integrates with runtime and verifier.
+**`eh.pop`** — Pop error handler from stack; restores previous error handler.
 
 ```il
 eh.pop
 eh.pop
 ```
 
-**`eh.push`** — Exception/Trap; integrates with runtime and verifier.
+**`eh.push`** — Push error handler onto stack; specifies label to branch to on error.
 
 ```il
-eh.push ^bad
-eh.push ^handler
+eh.push label bad
+eh.push label handler
 ```
 
-**`trap`** — Exception/Trap; integrates with runtime and verifier.
+**`trap`** — Unconditional trap; immediately terminates execution with error.
 
 ```il
 trap
 trap
 ```
 
-**`trap.err`** — Exception/Trap; integrates with runtime and verifier.
+**`trap.err`** — Create an error value from error code (i32) and message string.
 
 ```il
 %err0 = trap.err 7, %msg0
 %err1 = trap.err 9, %msg1
 ```
 
-**`trap.from_err`** — Exception/Trap; integrates with runtime and verifier.
+**`trap.from_err`** — Trap from error code; terminates with specified error type and code.
 
 ```il
 trap.from_err i32 7
 trap.from_err i32 6
 ```
 
-**`trap.kind`** — Exception/Trap; integrates with runtime and verifier.
+**`trap.kind`** — Read current trap kind from most recent error.
 
 ```il
 %kind = trap.kind
@@ -337,215 +407,210 @@ trap.from_err i32 6
 
 ### Misc
 
-**`and`** — Instruction.
+**`and`** — Bitwise AND operation on integer values.
 
 ```il
 %t7 = and 240, 15
 %t24 = and %t21, %t23
 ```
 
-**`ashr`** — Instruction.
+**`ashr`** — Arithmetic shift right; preserves sign bit for signed integers.
 
 ```il
 %t12 = ashr -8, 1
 ```
 
-**`cast.fp_to_si.rte.chk`** — Instruction.
+**`cast.fp_to_si.rte.chk`** — Cast float to signed integer with round-to-even and overflow check (traps on overflow).
 
 ```il
 %t0 = cast.fp_to_si.rte.chk %fp
 %t35 = cast.fp_to_si.rte.chk 5.5
 ```
 
-**`cast.fp_to_ui.rte.chk`** — Instruction.
+**`cast.fp_to_ui.rte.chk`** — Cast float to unsigned integer with round-to-even and overflow check (traps on overflow).
 
 ```il
 %t1 = cast.fp_to_ui.rte.chk %fp
 ```
 
-**`cast.si_narrow.chk`** — Instruction.
+**`cast.si_narrow.chk`** — Narrow signed integer with overflow check (e.g., i64 to i32; traps on overflow).
 
 ```il
 %t2 = cast.si_narrow.chk %si
 ```
 
-**`cast.si_to_fp`** — Instruction.
+**`cast.si_to_fp`** — Cast signed integer to floating-point.
 
 ```il
 %t4 = cast.si_to_fp %si
 ```
 
-**`cast.ui_narrow.chk`** — Instruction.
+**`cast.ui_narrow.chk`** — Narrow unsigned integer with overflow check (e.g., i64 to i32; traps on overflow).
 
 ```il
 %t3 = cast.ui_narrow.chk %ui
 ```
 
-**`cast.ui_to_fp`** — Instruction.
+**`cast.ui_to_fp`** — Cast unsigned integer to floating-point.
 
 ```il
 %t5 = cast.ui_to_fp %ui
 ```
 
-**`const_null`** — Instruction.
+**`const_null`** — Create null pointer constant.
 
 ```il
 %t43 = const_null
 %p = const_null
 ```
 
-**`const_str`** — Instruction.
+**`const_str`** — Load string constant from global string literal.
 
 ```il
 %sA = const_str @.L0
 %sB = const_str @.L1
 ```
 
-**`err.get_kind`** — Instruction.
+**`err.get_kind`** — Extract error kind from error value.
 
 ```il
 %k = err.get_kind %e
 %k = err.get_kind %err
 ```
 
-**`err.get_line`** — Instruction.
+**`err.get_code`** — Extract error code from error value.
+
+```il
+%code = err.get_code %err
+%c = err.get_code %e
+```
+
+**`err.get_ip`** — Extract instruction pointer from error value.
+
+```il
+%ip = err.get_ip %err
+%ptr = err.get_ip %e
+```
+
+**`err.get_line`** — Extract line number from error value.
 
 ```il
 %ln = err.get_line %e
+%line = err.get_line %err
 ```
 
-**`extern`** — Instruction.
+**`extern`** — Declare external function signature (from runtime or other modules).
 
 ```il
 extern @rt_print_str(str) -> void
 extern @rt_print_i64(i64) -> void
 ```
 
-**`fptosi`** — Instruction.
+**`fptosi`** — Convert floating-point to signed integer (truncates toward zero; may trap on overflow).
 
 ```il
 %t0 = fptosi %f
 %t34 = fptosi 5.5
 ```
 
-**`func`** — Instruction.
+**`func`** — Begin function definition with signature.
 
 ```il
 func @main() -> i64 {
-func @main() -> i64 {
+func @add(i64, i64) -> i64 {
 ```
 
-**`global`** — Instruction.
+**`global`** — Define global constant or variable.
 
 ```il
 global const str @.L0 = "JOHN"
 global const str @.L1 = "DOE"
 ```
 
-**`idx.chk`** — Instruction.
+**`idx.chk`** — Check array index bounds; traps if index is out of range [lo, hi].
 
 ```il
 %t0 = idx.chk %idx16, %lo16, %hi16
 %t1 = idx.chk %idx32, %lo32, %hi32
 ```
 
-**`il`** — Instruction.
+**`il`** — Specify IL version (header directive at top of file).
 
 ```il
 il 0.1
-il 0.1 ; // File: examples/il/random_three.il // Purpose: Prints three random numbers using the runtime PRNG. // Links: docs/runtime-abi.md#random
+il 0.1.2
 ```
 
-**`lshr`** — Instruction.
+**`lshr`** — Logical shift right; fills with zeros (unsigned shift).
 
 ```il
 %t11 = lshr %t10, 2
 ```
 
-**`or`** — Instruction.
+**`or`** — Bitwise OR operation on integer values.
 
 ```il
 %t8 = or %t7, 1
 %t16 = or %t13, %t15
 ```
 
-**`resume.label`** — Instruction.
+**`resume.label`** — Resume execution at specified label after error; used with ON ERROR GOTO/RESUME.
 
 ```il
-resume.label %tok, ^after(%err)
-resume.label %tok, ^after(%err)
+resume.label %tok, label after(%err)
+resume.label %tok, label target(%err)
 ```
 
-**`resume.next`** — Instruction.
+**`resume.next`** — Resume execution at next statement after error; used with RESUME NEXT.
 
 ```il
 resume.next %tok
 resume.next %token
 ```
 
-**`resume.same`** — Instruction.
+**`resume.same`** — Resume execution at same statement that caused error; used with RESUME 0.
 
 ```il
 resume.same %tok
 resume.same %tok
 ```
 
-**`shl`** — Instruction.
+**`shl`** — Shift left; fills with zeros.
 
 ```il
 %off = shl %i0, 3
 %t10 = shl %t9, 1
 ```
 
-**`sitofp`** — Instruction.
+**`sitofp`** — Convert signed integer to floating-point.
 
 ```il
 %fsum = sitofp %sum2
 %fn = sitofp %n2
 ```
 
-**`srem`** — Instruction.
-
-```il
-%t0 = srem %a, %b
-```
-
-**`srem.chk0`** — Instruction.
-
-```il
-%t1 = srem.chk0 %a, %b
-%t5 = srem.chk0 7, 3
-```
-
-**`target`** — Instruction.
+**`target`** — Specify target architecture or platform.
 
 ```il
 target wasm32-unknown-unknown
 target "wasm32-unknown-unknown"
 ```
 
-**`trunc1`** — Instruction.
+**`trunc1`** — Truncate integer to i1 (single bit boolean).
 
 ```il
 %t37 = trunc1 255
 %t1 = trunc1 0
 ```
 
-**`urem.chk0`** — Instruction.
-
-```il
-%t3 = urem.chk0 %a, %b
-%t6 = urem.chk0 9, 4
-```
-
-**`xor`** — Instruction.
+**`xor`** — Bitwise exclusive-OR.
 
 ```il
 %t9 = xor %t8, 3
 %t6 = xor %t5, 0
 ```
 
-**`zext1`** — Instruction.
+**`zext1`** — Zero-extend i1 (single bit) to i64 (0 becomes 0, 1 becomes 1).
 
 ```il
 %t36 = zext1 %t18
@@ -566,7 +631,7 @@ The verifier enforces structural and type rules. Typical checks include:
 
 - `il-verify <file.il>` — static checks with precise diagnostics.
 - `il-dis <file.il>` — pretty-printer / disassembler.
-- `ilc run <file.il>` — run on the VM (uses runtime bridges).
+- `ilc -run <file.il>` — run on the VM (uses runtime bridges).
 - `ilc opt <file.il> -p simplifycfg` — run transforms (e.g., SimplifyCFG).
 
 > Use `--help` on each tool for full options.
