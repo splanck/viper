@@ -136,6 +136,19 @@ class VarCollectWalker final : public BasicAstWalker<VarCollectWalker>
             lowerer_.markArray(stmt.name);
     }
 
+    /// @brief Track constant declarations.
+    /// @details CONST establishes the declared type and initializer of a constant symbol.
+    ///          The walker records type information so storage can be allocated.
+    ///          Constants are treated as variables with compile-time write protection.
+    /// @param stmt CONST statement encountered in the AST.
+    void before(const ConstStmt &stmt)
+    {
+        if (stmt.name.empty())
+            return;
+        lowerer_.setSymbolType(stmt.name, stmt.type);
+        lowerer_.markSymbolReferenced(stmt.name);
+    }
+
     /// @brief Track variables re-dimensioned at runtime.
     /// @details ReDim only conveys that a symbol is an array; type information is
     ///          left untouched to avoid clobbering DIM declarations.

@@ -572,3 +572,342 @@ The code generator produces invalid IL with incorrect block labels when generati
 
 ---
 
+### BUG-019: Float literals assigned to CONST are truncated to integers
+**Severity**: Medium
+**Status**: Confirmed
+**Test Case**: test_const_simple.bas, test_scientific_calc.bas
+**Discovered**: 2025-11-12 during comprehensive testing
+
+**Description**:
+When a float literal is assigned to a CONST declaration, the value is truncated to an integer rather than preserved as a float. This makes CONST unusable for mathematical constants like PI or E.
+
+**Reproduction**:
+```basic
+CONST PI = 3.14159
+PRINT PI  ' Output: 3 (expected 3.14159)
+
+CONST E = 2.71828
+PRINT E   ' Output: 3 (expected 2.71828)
+
+CONST HALF = 0.5
+PRINT HALF  ' Output: 0 (expected 0.5)
+```
+
+**Error Message**:
+None (compiles and runs, but with wrong value)
+
+**Workaround**:
+Use regular variables with type suffixes instead of CONST:
+```basic
+REM Instead of CONST PI = 3.14159 (which truncates to 3)
+PI! = 3.14159   ' Works correctly - type suffix ! for FLOAT
+PRINT PI!       ' Output: 3.14159
+
+E# = 2.71828    ' Works correctly - type suffix # for DOUBLE
+PRINT E#        ' Output: 2.71828
+```
+
+Note: Cannot use type suffixes directly on CONST due to BUG-024.
+
+**Analysis**:
+The type inference for CONST statements appears to default to INTEGER type when no explicit type suffix or AS clause is provided. Float literals are then converted to integers during assignment. This is related to BUG-022 (general float literal type inference issue). The CONST implementation in Parser.cpp and SemanticAnalyzer.cpp uses `typeFromSuffix()` which returns I64 by default. There's no mechanism to infer float type from the initializer expression.
+
+**Impact**:
+Cannot define accurate mathematical constants. All calculations using these constants will be incorrect. This severely limits the usefulness of CONST for scientific computing.
+
+---
+
+### BUG-020: String constants cause runtime error
+**Severity**: High
+**Status**: Confirmed
+**Test Case**: test_const.bas
+**Discovered**: 2025-11-12 during comprehensive testing
+
+**Description**:
+String constants compile successfully but cause a runtime error when the program executes. The code generator is missing a runtime function for string lifecycle management in constant contexts.
+
+**Reproduction**:
+```basic
+CONST MSG$ = "Hello"
+PRINT MSG$
+```
+
+**Error Message**:
+```
+/tmp/test_const.bas:4:1: error: main:entry: call %t11: unknown callee @rt_str_release_maybe
+```
+
+**Workaround**:
+Don't use string constants; use regular string variables instead:
+```basic
+DIM MSG$ AS STRING
+MSG$ = "Hello"
+PRINT MSG$  ' Works fine
+```
+
+**Analysis**:
+The code generator is missing the runtime function `@rt_str_release_maybe` needed for string lifecycle management in constant contexts. This is similar to BUG-015 (string properties in classes causing missing `@rt_str_retain_maybe`), suggesting incomplete string reference counting support throughout the codebase. The lowering code for CONST likely needs special handling for string types to manage reference counting properly.
+
+**Related Bugs**: BUG-015 (string properties in classes), BUG-016 (local strings in methods)
+
+---
+
+### BUG-021: SELECT CASE doesn't support negative integer literals
+**Severity**: Low
+**Status**: ✅ RESOLVED 2025-11-12 - See basic_resolved.md for details
+
+**Description**:
+SELECT CASE labels cannot use negative integer literals like `-1`. The parser treats the minus sign as a separate token rather than part of the literal, making it impossible to use SELECT CASE with functions like SGN() that return negative values.
+
+**Reproduction**:
+```basic
+x = -10
+sign = SGN(x)
+
+SELECT CASE sign
+    CASE -1       ' ERROR: parser doesn't accept this
+        PRINT "Negative"
+    CASE 0
+        PRINT "Zero"
+    CASE 1
+        PRINT "Positive"
+END SELECT
+```
+
+**Error Message**:
+```
+error[B0001]: SELECT CASE labels must be integer literals
+        CASE -1
+             ^
+error[B0001]: expected eol, got -
+        CASE -1
+             ^
+error[ERR_Case_EmptyLabelList]: CASE arm requires at least one label
+        CASE -1
+        ^^^^
+```
+
+**Workaround**:
+Use IF/ELSEIF statements instead of SELECT CASE for negative values:
+```basic
+IF sign < 0 THEN
+    PRINT "Negative"
+ELSEIF sign = 0 THEN
+    PRINT "Zero"
+ELSEIF sign > 0 THEN
+    PRINT "Positive"
+END IF
+```
+
+Or use positive values only with SELECT CASE:
+```basic
+absVal = ABS(value)
+SELECT CASE absVal
+    CASE 0
+        PRINT "Zero"
+    CASE 5
+        PRINT "Five"
+    CASE 100
+        PRINT "One hundred"
+END SELECT
+```
+
+**Analysis**:
+The parser expects CASE labels to be positive integer literals only. The minus sign is parsed as a separate operator token rather than being part of the integer literal. This is a limitation in Parser_Stmt_Core.cpp in the SELECT CASE parsing logic. The parser would need to be modified to accept unary minus expressions in CASE labels, or to recognize negative integer literals as a special token type.
+
+**Impact**:
+Limits the usefulness of SELECT CASE with functions like SGN() that naturally return negative values. Forces use of IF/ELSEIF chains which are more verbose.
+
+---
+
+### BUG-022: Float literals without explicit type default to INTEGER
+**Severity**: Medium
+**Status**: Confirmed
+**Test Cases**: test_float_literals.bas, test_scientific_calc.bas
+**Discovered**: 2025-11-12 during comprehensive testing
+
+**Description**:
+Float literals like `3.14159` are converted to integers (truncated) when assigned to variables without explicit type suffixes or AS clauses. The type inference system defaults to INTEGER for variables, causing loss of precision.
+
+**Reproduction**:
+```basic
+x = 3.14159
+PRINT x  ' Output: 3 (expected 3.14159)
+
+radius = 5.5
+PRINT radius  ' Output: 6 (expected 5.5)
+
+circumference = 2.0 * 3.14159 * 5.5
+PRINT circumference  ' Output: integer result, not 34.5575
+```
+
+**Warning Message**:
+```
+warning[B2002]: narrowing conversion from FLOAT to INT in assignment
+x = 3.14159
+^
+```
+
+**Workaround**:
+Use type suffixes or explicit AS clauses. All of the following work:
+```basic
+REM Method 1: Type suffixes (CONFIRMED WORKING)
+x! = 3.14159    ' ! suffix for FLOAT
+PRINT x!        ' Output: 3.14159
+
+pi# = 3.14159265359   ' # suffix for DOUBLE
+PRINT pi#       ' Output: 3.14159265359
+
+count% = 42     ' % suffix for INTEGER
+name$ = "Alice" ' $ suffix for STRING
+
+REM Method 2: Explicit AS clause (CONFIRMED WORKING)
+DIM radius AS FLOAT
+radius = 5.5
+PRINT radius    ' Output: 5.5
+
+DIM e AS DOUBLE
+e = 2.71828
+PRINT e         ' Output: 2.71828
+```
+
+**Analysis**:
+The type inference system in SemanticAnalyzer.cpp defaults to INTEGER (I64) for variables without explicit type markers. While the literal is parsed as FLOAT, it gets converted to INT during assignment because the target variable is typed as INT. This is a fundamental design decision in the type system that prioritizes INTEGER as the default type, similar to early BASIC dialects. However, it makes floating-point computation difficult without explicit type annotations.
+
+**Impact**:
+Makes floating-point mathematics nearly impossible without explicit type suffixes. Scientific computing, financial calculations, and any program requiring precision beyond integers cannot be written easily. Combined with BUG-019, this makes mathematical programming very limited.
+
+**Related Bugs**: BUG-019 (CONST float truncation)
+
+---
+
+### BUG-023: DIM with initializer not supported
+**Severity**: Low
+**Status**: Confirmed
+**Test Case**: test_float_literals.bas
+**Discovered**: 2025-11-12 during comprehensive testing
+
+**Description**:
+The syntax `DIM variable = value` for declaring and initializing a variable in one statement is not supported. DIM only accepts type declarations, not initializers.
+
+**Reproduction**:
+```basic
+DIM pi = 3.14159  ' ERROR: unknown statement
+DIM count = 0     ' ERROR: unknown statement
+DIM name$ = "Alice"  ' ERROR: unknown statement
+```
+
+**Error Message**:
+```
+error[B0001]: unknown statement '='; expected keyword or procedure call
+DIM pi = 3.14159
+       ^
+```
+
+**Workaround**:
+Declare then assign on separate lines:
+```basic
+DIM pi
+pi = 3.14159
+
+DIM count
+count = 0
+
+DIM name$ AS STRING
+name$ = "Alice"
+```
+
+**Analysis**:
+This is a syntax limitation in Parser_Stmt_Core.cpp. The DIM statement parser only expects:
+- `DIM name` (implicit type)
+- `DIM name AS type` (explicit type)
+- `DIM name$` (type suffix)
+- `DIM name(size)` (array)
+
+Some BASIC dialects (like Visual Basic) support `DIM x = value` for combined declaration and initialization, but Viper BASIC requires separate declaration and assignment statements. This is a parser limitation, not a semantic issue.
+
+**Impact**:
+Requires two lines instead of one for variable initialization. Minor inconvenience but not a blocking issue. More verbose code.
+
+---
+
+### BUG-024: CONST with type suffix causes assertion failure
+**Severity**: High
+**Status**: ✅ RESOLVED 2025-11-12 - See basic_resolved.md for details
+
+**Description**:
+Using type suffixes (%, !, #) with CONST declarations causes an assertion failure in the lowering code. The compiler crashes with an internal assertion error.
+
+**Reproduction**:
+```basic
+CONST MAX% = 100
+CONST PI! = 3.14159
+CONST E# = 2.71828
+```
+
+**Error Message**:
+```
+Assertion failed: (storage && "CONST target should have storage"), function lowerConst, file LowerStmt_Runtime.cpp, line 358.
+```
+
+**Workaround**:
+Don't use type suffixes with CONST, use AS clause or no type annotation:
+```basic
+CONST MAX = 100  ' Works (defaults to INTEGER)
+CONST PI = 3     ' Works but truncates
+```
+
+For float constants, use regular variables with type suffixes:
+```basic
+PI! = 3.14159   ' Use variable instead of CONST
+E# = 2.71828
+```
+
+**Analysis**:
+The lowering code for CONST in `LowerStmt_Runtime.cpp:358` expects every CONST to have allocated storage, but CONST declarations with type suffixes don't get storage allocated properly. This is a code generation bug where the storage allocation phase doesn't handle type suffixes on CONST declarations. The assertion failure suggests the code path for CONST with suffixes is incomplete.
+
+**Impact**:
+Cannot use CONST for typed constants. Must use regular variables for any constants that need explicit types. Combined with BUG-019 (float truncation), this makes CONST nearly useless for mathematical constants.
+
+**Related Bugs**: BUG-019 (float truncation in CONST), BUG-020 (string CONST runtime error)
+
+---
+
+### BUG-025: EXP of large values causes overflow trap
+**Severity**: Low
+**Status**: Confirmed
+**Test Case**: test_stress_arrays_loops.bas (first version)
+**Discovered**: 2025-11-12 during stress testing
+
+**Description**:
+Computing EXP of values greater than approximately 50 causes a floating-point overflow trap that terminates the program.
+
+**Reproduction**:
+```basic
+x% = 100
+result# = EXP(x%)  ' Trap: Overflow (code=0): fp overflow in cast.fp_to_si.rte.chk
+```
+
+**Error Message**:
+```
+Trap @main#7 line X: Overflow (code=0): fp overflow in cast.fp_to_si.rte.chk
+```
+
+**Workaround**:
+Check the input value before calling EXP:
+```basic
+IF x% <= 50 THEN
+    result# = EXP(x%)
+ELSE
+    PRINT "Value too large for EXP"
+END IF
+```
+
+**Analysis**:
+The exponential function grows extremely fast. EXP(50) ≈ 5.2e21, and EXP(100) would be approximately 2.7e43, which exceeds the range of double-precision floating point. The overflow occurs when the runtime tries to convert or cast the result. This is mathematically expected behavior, but the error handling could be more graceful (return infinity or NaN instead of trap).
+
+**Impact**:
+Low severity because this is expected mathematical behavior. Large exponentials are uncommon in typical programs. Programs that need to handle large exponentials should validate inputs.
+
+---
+

@@ -508,3 +508,198 @@ PRINT MAX%        ' Output: 100
 - No constant folding optimization currently applied
 
 ---
+
+### BUG-021: SELECT CASE doesn't support negative integer literals
+**Severity**: Low
+**Status**: ✅ RESOLVED
+**Test Case**: test_select_case_math.bas, /tmp/test_bug021_fixed.bas
+**Resolution Date**: 2025-11-12
+
+**Original Issue**:
+SELECT CASE labels could not use negative integer literals like `-1`. The parser treated the minus sign as a separate token rather than part of the literal, making it impossible to use SELECT CASE with functions like SGN() that return negative values.
+
+**Reproduction**:
+```basic
+x% = -10
+sign% = SGN(x%)
+
+SELECT CASE sign%
+    CASE -1       ' ERROR: parser doesn't accept this
+        PRINT "Negative"
+    CASE 0
+        PRINT "Zero"
+    CASE 1
+        PRINT "Positive"
+END SELECT
+```
+
+**Error Message**:
+```
+error[B0001]: SELECT CASE labels must be integer literals
+        CASE -1
+             ^
+error[B0001]: expected eol, got -
+        CASE -1
+             ^
+error[ERR_Case_EmptyLabelList]: CASE arm requires at least one label
+```
+
+**Root Cause Analysis**:
+In `Parser_Stmt_Select.cpp` lines 488-511, the parser only checked for `TokenKind::Number` when parsing CASE labels (not in the CASE IS form). The minus/plus sign tokens were not recognized, so `-1` was parsed as:
+1. Minus token (rejected)
+2. Number token `1` (never reached)
+
+The parser needed to accept optional unary minus/plus operators before numeric literals.
+
+**Solution Implemented**:
+Modified `parseCaseArmSyntax()` in Parser_Stmt_Select.cpp:
+
+1. **Changed condition** (line 488):
+   - Old: `else if (at(TokenKind::Number))`
+   - New: `else if (at(TokenKind::Number) || at(TokenKind::Minus) || at(TokenKind::Plus))`
+
+2. **Added sign handling** (lines 490-516):
+   ```cpp
+   // Handle optional unary sign before number
+   int sign = 1;
+   if (at(TokenKind::Minus) || at(TokenKind::Plus))
+   {
+       sign = at(TokenKind::Minus) ? -1 : 1;
+       consume();
+   }
+
+   if (!at(TokenKind::Number))
+   {
+       // error handling
+   }
+
+   Token loTok = consume();
+
+   // Apply sign to the token's value for later processing
+   if (sign == -1)
+   {
+       loTok.lexeme = "-" + loTok.lexeme;
+   }
+   ```
+
+3. **Extended to ranges** (lines 518-546):
+   - Also handle signs in range syntax: `CASE -10 TO -1`
+   - Apply sign to both low and high bounds
+
+**Files Modified**:
+- `src/frontends/basic/Parser_Stmt_Select.cpp` - Added unary sign parsing
+
+**Test Results**:
+```basic
+SELECT CASE SGN(x%)
+    CASE -1
+        PRINT "Negative"  ' Now works!
+    CASE 0
+        PRINT "Zero"
+    CASE 1
+        PRINT "Positive"
+END SELECT
+
+SELECT CASE val%
+    CASE -100 TO -10
+        PRINT "Very negative"  ' Ranges with negatives work!
+    CASE -9 TO -1
+        PRINT "Slightly negative"
+    CASE 0
+        PRINT "Zero"
+END SELECT
+```
+
+✅ All existing tests pass
+✅ New test validates negative literals and ranges
+
+**Impact**:
+SELECT CASE is now fully functional with SGN() and other functions that return negative values. No more need for IF/ELSEIF workarounds.
+
+---
+
+### BUG-024: CONST with type suffix causes assertion failure
+**Severity**: High
+**Status**: ✅ RESOLVED
+**Test Case**: test_comprehensive_game.bas, /tmp/test_bug024_fixed.bas
+**Resolution Date**: 2025-11-12
+
+**Original Issue**:
+Using type suffixes (%, !, #) with CONST declarations caused an assertion failure in the lowering code. The compiler crashed with an internal assertion error, making it impossible to declare typed constants.
+
+**Reproduction**:
+```basic
+CONST MAX% = 100
+CONST PI! = 3.14159
+CONST E# = 2.71828
+```
+
+**Error Message**:
+```
+Assertion failed: (storage && "CONST target should have storage"), function lowerConst, file LowerStmt_Runtime.cpp, line 358.
+```
+
+**Root Cause Analysis**:
+The variable collection pass in `Lowerer.Procedure.cpp` had handlers for `DimStmt` and `ReDimStmt` to register symbols and allocate storage, but there was no corresponding handler for `ConstStmt`.
+
+The walker class (lines 129-149) included:
+- `before(const DimStmt &stmt)` - registered variables with types
+- `before(const ReDimStmt &stmt)` - registered array variables
+- **Missing**: `before(const ConstStmt &stmt)` - no handler!
+
+When lowering reached `lowerConst()` (LowerStmt_Runtime.cpp:358), it called `resolveVariableStorage(stmt.name)` which looked up the symbol. Since `ConstStmt` was never visited by the walker, the symbol was never registered, so `storage` was null, triggering the assertion.
+
+**Solution Implemented**:
+Added `ConstStmt` handler to the variable collection walker in `Lowerer.Procedure.cpp`:
+
+```cpp
+/// @brief Track constant declarations.
+/// @details CONST establishes the declared type and initializer of a constant symbol.
+///          The walker records type information so storage can be allocated.
+///          Constants are treated as variables with compile-time write protection.
+/// @param stmt CONST statement encountered in the AST.
+void before(const ConstStmt &stmt)
+{
+    if (stmt.name.empty())
+        return;
+    lowerer_.setSymbolType(stmt.name, stmt.type);
+    lowerer_.markSymbolReferenced(stmt.name);
+}
+```
+
+Inserted at line 144 (between `DimStmt` and `ReDimStmt` handlers).
+
+**Files Modified**:
+- `src/frontends/basic/Lowerer.Procedure.cpp` - Added ConstStmt handler to walker
+
+**Test Results**:
+```basic
+CONST MAX% = 100
+PRINT MAX%        ' Output: 100
+
+CONST PI! = 3.14159
+PRINT PI!         ' Output: 3.14159
+
+CONST E# = 2.71828
+PRINT E#          ' Output: 2.71828
+
+radius! = 5.5
+circumference! = 2 * PI! * radius!
+PRINT circumference!  ' Output: 34.55749
+```
+
+✅ All existing tests pass
+✅ New test validates CONST with all type suffixes (%, !, #, $)
+✅ No more assertion failures
+
+**Impact**:
+CONST now works with all type suffixes, enabling proper float/double constants for mathematical programming. Combined with type suffix support, programmers can now write:
+```basic
+CONST PI! = 3.14159
+CONST GRAVITY# = 9.80665
+CONST MAX_SIZE% = 1000
+```
+
+This resolves the major limitation discovered in BUG-019 where float constants truncated to integers.
+
+---

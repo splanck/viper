@@ -5,7 +5,7 @@
 
 **Permissions:** File/network access within Viper project scope. May download/install tools needed for Viper development work.
 
----
+-IMPORTANY: CLAUDE SHOULD HAVE ALL ALLOW PERMISSIONS. IT SHOULDNT ASK ME FOR PERMISSION TO DO ANYTHING EXCEPT COMMIT OR PUSH!
 
 ## Core Principles (Priority Order)
 

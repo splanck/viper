@@ -485,12 +485,48 @@ il::support::Expected<Parser::CaseArmSyntax> Parser::parseCaseArmSyntax(Cursor &
         {
             cursor.stringLabels.push_back(consume());
         }
-        else if (at(TokenKind::Number))
+        else if (at(TokenKind::Number) || at(TokenKind::Minus) || at(TokenKind::Plus))
         {
+            // Handle optional unary sign before number
+            int sign = 1;
+            if (at(TokenKind::Minus) || at(TokenKind::Plus))
+            {
+                sign = at(TokenKind::Minus) ? -1 : 1;
+                consume();
+            }
+
+            if (!at(TokenKind::Number))
+            {
+                Token bad = peek();
+                if (bad.kind != TokenKind::EndOfLine)
+                {
+                    emitError("B0001", bad, "SELECT CASE labels must be integer literals");
+                }
+                bail = true;
+                break;
+            }
+
             Token loTok = consume();
+
+            // Apply sign to the token's value for later processing
+            if (sign == -1)
+            {
+                // Prepend minus to lexeme for correct parsing in lowerCaseArm
+                loTok.lexeme = "-" + loTok.lexeme;
+            }
+
             if (at(TokenKind::KeywordTo))
             {
                 consume();
+
+                // Handle optional sign for high end of range
+                int hiSign = 1;
+                if (at(TokenKind::Minus) || at(TokenKind::Plus))
+                {
+                    hiSign = at(TokenKind::Minus) ? -1 : 1;
+                    consume();
+                }
+
                 if (!at(TokenKind::Number))
                 {
                     Token bad = peek();
@@ -503,6 +539,10 @@ il::support::Expected<Parser::CaseArmSyntax> Parser::parseCaseArmSyntax(Cursor &
                 }
 
                 Token hiTok = consume();
+                if (hiSign == -1)
+                {
+                    hiTok.lexeme = "-" + hiTok.lexeme;
+                }
                 cursor.ranges.emplace_back(std::move(loTok), std::move(hiTok));
             }
             else
