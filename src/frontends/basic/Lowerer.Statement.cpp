@@ -20,7 +20,6 @@
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/LoweringPipeline.hpp"
-#include "frontends/basic/ASTUtils.hpp"
 
 #include <cassert>
 

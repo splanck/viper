@@ -25,6 +25,7 @@
 #include "il/core/Opcode.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
 #include "vm/Marshal.hpp"
+#include "vm/OpcodeHandlerHelpers.hpp"
 #include "vm/VM.hpp"
 
 #include <array>
@@ -70,7 +71,7 @@ using Thunk = VmResult (*)(VM &, FrameInfo &, const RuntimeCallContext &);
 ///
 /// @details Compares the descriptor's signature against the arguments assembled
 ///          by the VM.  Mismatches trigger a domain-error trap describing the
-///          offending call site.
+///          offending call site. Uses shared error formatting helper for consistency.
 ///
 /// @param desc Runtime descriptor describing the callee signature.
 /// @param name Human-readable name for diagnostics (e.g., "runtime call").
@@ -90,11 +91,9 @@ static bool validateArgumentCount(const RuntimeDescriptor &desc,
     if (args.size() == expected)
         return true;
 
-    std::ostringstream os;
-    os << name << ": expected " << expected << " argument(s), got " << args.size();
-    if (args.size() > expected)
-        os << " (excess runtime operands)";
-    RuntimeBridge::trap(TrapKind::DomainError, os.str(), loc, fn, block);
+    const std::string message =
+        il::vm::detail::formatArgumentCountError(name, expected, args.size());
+    RuntimeBridge::trap(TrapKind::DomainError, message, loc, fn, block);
     return false;
 }
 

@@ -39,7 +39,8 @@ namespace detail
 /// @param length Length reported by the runtime as a signed 64-bit value.
 /// @param limit Maximum representable size for the destination view type.
 /// @return True when @p length is non-negative and does not exceed @p limit.
-constexpr bool lengthWithinLimit(int64_t length, uint64_t limit)
+/// @note Constexpr for compile-time validation when possible.
+[[nodiscard]] constexpr bool lengthWithinLimit(int64_t length, uint64_t limit) noexcept
 {
     return length >= 0 && static_cast<uint64_t>(length) <= limit;
 }

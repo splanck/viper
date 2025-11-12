@@ -17,9 +17,7 @@
 #include "frontends/basic/BasicDiagnosticMessages.hpp"
 #include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/Parser.hpp"
-#include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/ast/ExprNodes.hpp"
-#include "frontends/basic/ASTUtils.hpp"
 
 #include <cctype>
 #include <cstdio>

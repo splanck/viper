@@ -75,11 +75,22 @@ class AnalysisRegistry
     FunctionAnalysisMap functionAnalyses_;
 };
 
+/// @brief Manages computation and caching of analysis results during pass execution.
+/// @details The AnalysisManager lazily computes analyses on demand, caches results,
+///          and invalidates stale caches based on PreservedAnalyses information
+///          from passes. Module and function analyses are tracked separately.
 class AnalysisManager
 {
   public:
+    /// @brief Construct an AnalysisManager for a module.
+    /// @param module Module this manager operates on.
+    /// @param registry Registry containing registered analysis factories.
     AnalysisManager(core::Module &module, const AnalysisRegistry &registry);
 
+    /// @brief Retrieve or compute a module-level analysis result.
+    /// @tparam Result Type of the analysis result.
+    /// @param id Identifier of the analysis to run.
+    /// @return Reference to the cached or freshly computed result.
     template <typename Result> Result &getModuleResult(const std::string &id)
     {
         assert(moduleAnalyses_ && "no module analyses registered");
@@ -95,6 +106,11 @@ class AnalysisManager
         return *value;
     }
 
+    /// @brief Retrieve or compute a function-level analysis result.
+    /// @tparam Result Type of the analysis result.
+    /// @param id Identifier of the analysis to run.
+    /// @param fn Function to analyze.
+    /// @return Reference to the cached or freshly computed result.
     template <typename Result> Result &getFunctionResult(const std::string &id, core::Function &fn)
     {
         assert(functionAnalyses_ && "no function analyses registered");
@@ -110,14 +126,24 @@ class AnalysisManager
         return *value;
     }
 
+    /// @brief Invalidate analyses not preserved by a module pass.
+    /// @param preserved Preservation info returned by the module pass.
     void invalidateAfterModulePass(const PreservedAnalyses &preserved);
+
+    /// @brief Invalidate analyses not preserved by a function pass.
+    /// @param preserved Preservation info returned by the function pass.
+    /// @param fn Function that was transformed.
     void invalidateAfterFunctionPass(const PreservedAnalyses &preserved, core::Function &fn);
 
+    /// @brief Get mutable access to the module.
+    /// @return Reference to the managed module.
     core::Module &module()
     {
         return module_;
     }
 
+    /// @brief Get const access to the module.
+    /// @return Const reference to the managed module.
     const core::Module &module() const
     {
         return module_;

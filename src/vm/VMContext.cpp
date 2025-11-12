@@ -20,6 +20,7 @@
 #include "il/core/OpcodeInfo.hpp"
 #include "il/core/Value.hpp"
 #include "vm/Marshal.hpp"
+#include "vm/OpcodeHandlerHelpers.hpp"
 #include "vm/RuntimeBridge.hpp"
 #include "vm/Trap.hpp"
 
@@ -108,22 +109,21 @@ Slot VMContext::eval(Frame &fr, const il::core::Value &value) const
         const std::string blockLabel = block ? block->label : std::string();
         const auto loc = vmInstance->currentContext.loc;
 
-        std::ostringstream os;
-        os << "temp %" << v.id << " out of range (regs=" << fr.regs.size() << ") in function "
-           << fnName;
-        if (!blockLabel.empty())
-            os << ", block " << blockLabel;
+        std::string message =
+            detail::formatRegisterRangeError(v.id, fr.regs.size(), fnName, blockLabel);
         if (loc.hasLine())
         {
-            os << ", at line " << loc.line;
+            std::ostringstream os;
+            os << message << ", at line " << loc.line;
             if (loc.hasColumn())
                 os << ':' << loc.column;
+            message = os.str();
         }
         else
         {
-            os << ", at unknown location";
+            message += ", at unknown location";
         }
-        RuntimeBridge::trap(TrapKind::InvalidOperation, os.str(), loc, fnName, blockLabel);
+        RuntimeBridge::trap(TrapKind::InvalidOperation, message, loc, fnName, blockLabel);
         return s;
     };
 

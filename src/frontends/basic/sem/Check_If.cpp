@@ -31,7 +31,6 @@
 #include "frontends/basic/ASTUtils.hpp"
 
 #include "frontends/basic/BasicDiagnosticMessages.hpp"
-#include "frontends/basic/ASTUtils.hpp"
 
 #include <string>
 

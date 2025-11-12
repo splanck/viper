@@ -28,7 +28,6 @@
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/lower/Emitter.hpp"
-#include "frontends/basic/ASTUtils.hpp"
 
 #include "viper/il/Module.hpp"
 

@@ -643,28 +643,35 @@ bool VM::prepareTrap(VmError &error)
             // to match the handler's owning function to ensure parameter IDs are valid.
             if (record.handler)
             {
+                // Use reverse map for O(1) lookup instead of O(N*M) linear scan
                 const Function *ownerFn = nullptr;
-                const auto &fnMap = detail::VMAccess::functionMap(*this);
-                for (const auto &kv : fnMap)
+                auto it = blockToFunction.find(record.handler);
+                if (it != blockToFunction.end())
                 {
-                    const Function *fn = kv.second;
-                    for (const auto &blk : fn->blocks)
-                    {
-                        if (&blk == record.handler)
-                        {
-                            ownerFn = fn;
-                            break;
-                        }
-                    }
-                    if (ownerFn)
-                        break;
+                    ownerFn = it->second;
                 }
 
                 if (ownerFn && fr.func != ownerFn)
                 {
                     fr.func = ownerFn;
                     fr.regs.clear();
-                    fr.regs.resize(ownerFn->valueNames.size());
+
+                    // Calculate maximum SSA value ID to properly pre-size register vector
+                    size_t maxSsaId = 0;
+                    for (const auto &p : ownerFn->params)
+                        maxSsaId = std::max(maxSsaId, static_cast<size_t>(p.id));
+                    for (const auto &block : ownerFn->blocks)
+                    {
+                        for (const auto &p : block.params)
+                            maxSsaId = std::max(maxSsaId, static_cast<size_t>(p.id));
+                        for (const auto &instr : block.instructions)
+                        {
+                            if (instr.result)
+                                maxSsaId = std::max(maxSsaId, static_cast<size_t>(*instr.result));
+                        }
+                    }
+
+                    fr.regs.resize(maxSsaId + 1);
                     fr.params.assign(fr.regs.size(), std::nullopt);
                     st->blocks.clear();
                     for (const auto &b : ownerFn->blocks)

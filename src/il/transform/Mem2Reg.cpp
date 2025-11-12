@@ -15,6 +15,7 @@
 
 #include "il/transform/Mem2Reg.hpp"
 #include "il/analysis/CFG.hpp"
+#include "il/utils/Utils.hpp"
 #include <algorithm>
 #include <functional>
 #include <optional>
@@ -37,67 +38,6 @@ struct AllocaInfo
     bool hasStore{false};
     bool singleBlock{true};
 };
-
-/// @brief Replace all uses of a temporary within a function.
-///
-/// @details Iterates every instruction and branch argument list, swapping
-/// occurrences of temporary @p id with the replacement value @p v.  The helper
-/// is used when @c load instructions are eliminated so all consumers see the SSA
-/// value instead of the removed temporary.
-///
-/// @param F Function whose instructions are rewritten.
-/// @param id Temporary identifier to replace.
-/// @param v Replacement value assigned to each occurrence.
-/// @sideeffect Mutates operands and branch arguments in place.
-static void replaceAllUses(Function &F, unsigned id, const Value &v)
-{
-    for (auto &B : F.blocks)
-        for (auto &I : B.instructions)
-        {
-            for (auto &Op : I.operands)
-                if (Op.kind == Value::Kind::Temp && Op.id == id)
-                    Op = v;
-            for (auto &argList : I.brArgs)
-                for (auto &Arg : argList)
-                    if (Arg.kind == Value::Kind::Temp && Arg.id == id)
-                        Arg = v;
-        }
-}
-
-/// @brief Compute the next unused temporary identifier in a function.
-///
-/// @details Inspects procedure parameters, block parameters, instruction
-/// results, operands, and branch arguments to find the highest-numbered
-/// temporary currently in use.  The returned value is one greater than that
-/// maximum and therefore safe to assign to newly introduced SSA values.
-///
-/// @param F Function to inspect.
-/// @return First unused temporary id.
-static unsigned nextTempId(Function &F)
-{
-    unsigned next = 0;
-    auto update = [&](unsigned v) { next = std::max(next, v + 1); };
-    for (auto &p : F.params)
-        update(p.id);
-    for (auto &B : F.blocks)
-    {
-        for (auto &p : B.params)
-            update(p.id);
-        for (auto &I : B.instructions)
-        {
-            if (I.result)
-                update(*I.result);
-            for (auto &Op : I.operands)
-                if (Op.kind == Value::Kind::Temp)
-                    update(Op.id);
-            for (auto &argList : I.brArgs)
-                for (auto &Arg : argList)
-                    if (Arg.kind == Value::Kind::Temp)
-                        update(Arg.id);
-        }
-    }
-    return next;
-}
 
 struct VarState
 {
@@ -388,7 +328,7 @@ static void promoteVariables(Function &F,
     if (vars.empty())
         return;
 
-    unsigned nextId = nextTempId(F);
+    unsigned nextId = viper::il::nextTempId(F);
 
     BlockMap blocks;
     for (auto &B : F.blocks)
@@ -426,7 +366,7 @@ static void promoteVariables(Function &F,
                 unsigned varId = I.operands[0].id;
                 Value v = renameUses(F, B, varId, vars, blocks, nextId, ctx);
                 if (I.result)
-                    replaceAllUses(F, *I.result, v);
+                    viper::il::replaceAllUses(F, *I.result, v);
                 B->instructions.erase(B->instructions.begin() + i);
                 if (stats)
                     stats->removedLoads++;

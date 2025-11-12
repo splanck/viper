@@ -105,31 +105,32 @@ void runLiteralCacheScenario(const std::string &literal, int64_t iterations)
     Module module = buildLoopModule(literal, iterations);
     il::vm::VM vm(module);
 
-    assert(il::vm::VMTestHook::literalCacheSize(vm) == 0);
-    assert(il::vm::VMTestHook::literalCacheLookup(vm, literal) == nullptr);
+    // After VM construction, the cache should be pre-populated with string literals
+    // found in the module to eliminate hot-path lookups during execution.
+    assert(il::vm::VMTestHook::literalCacheSize(vm) == 1);
+    rt_string prePopulated = il::vm::VMTestHook::literalCacheLookup(vm, literal);
+    assert(prePopulated != nullptr);
 
-    rt_string cachedHandle = nullptr;
+    // Verify the pre-populated string matches the literal
+    assert(rt_len(prePopulated) == static_cast<int64_t>(literal.size()));
+    const char *data = rt_string_cstr(prePopulated);
+    assert(data != nullptr);
+    assert(std::memcmp(data, literal.data(), literal.size()) == 0);
+
+    rt_string cachedHandle = prePopulated;
     for (int run = 0; run < 3; ++run)
     {
         int64_t result = vm.run();
         assert(result == iterations);
+
+        // Cache size should remain 1 throughout execution
         assert(il::vm::VMTestHook::literalCacheSize(vm) == 1);
 
         rt_string current = il::vm::VMTestHook::literalCacheLookup(vm, literal);
         assert(current != nullptr);
 
-        if (run == 0)
-        {
-            cachedHandle = current;
-            assert(rt_len(current) == static_cast<int64_t>(literal.size()));
-            const char *data = rt_string_cstr(current);
-            assert(data != nullptr);
-            assert(std::memcmp(data, literal.data(), literal.size()) == 0);
-        }
-        else
-        {
-            assert(current == cachedHandle);
-        }
+        // The same cached handle should be reused across all runs
+        assert(current == cachedHandle);
     }
 }
 } // namespace

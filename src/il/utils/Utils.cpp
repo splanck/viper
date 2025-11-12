@@ -20,8 +20,12 @@
 #include "il/utils/Utils.hpp"
 
 #include "il/core/BasicBlock.hpp"
+#include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
 #include "il/core/Opcode.hpp"
+#include "il/core/Value.hpp"
+
+#include <algorithm>
 
 namespace viper::il
 {
@@ -91,6 +95,113 @@ bool isTerminator(const Instruction &I)
         default:
             return false;
     }
+}
+
+/// @brief Replace all uses of temporary @p tempId with @p replacement in @p F.
+/// @details Iterates every instruction and branch argument list, swapping
+///          occurrences of temporary @p tempId with the replacement value.
+///          This helper is used when optimization passes eliminate instructions
+///          and need to redirect all consumers to a new SSA value.
+/// @param F Function whose instructions are rewritten.
+/// @param tempId Temporary identifier to replace.
+/// @param replacement Replacement value assigned to each occurrence.
+/// @sideeffect Mutates operands and branch arguments in place.
+void replaceAllUses(::il::core::Function &F, unsigned tempId, const ::il::core::Value &replacement)
+{
+    using ::il::core::Value;
+
+    for (auto &B : F.blocks)
+    {
+        for (auto &I : B.instructions)
+        {
+            // Replace in instruction operands
+            for (auto &Op : I.operands)
+            {
+                if (Op.kind == Value::Kind::Temp && Op.id == tempId)
+                {
+                    Op = replacement;
+                }
+            }
+
+            // Replace in branch arguments
+            for (auto &argList : I.brArgs)
+            {
+                for (auto &Arg : argList)
+                {
+                    if (Arg.kind == Value::Kind::Temp && Arg.id == tempId)
+                    {
+                        Arg = replacement;
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// @brief Compute the next unused temporary identifier in function @p F.
+/// @details Inspects procedure parameters, block parameters, instruction
+///          results, operands, and branch arguments to find the highest-numbered
+///          temporary currently in use.  The returned value is one greater than
+///          that maximum and therefore safe to assign to newly introduced SSA
+///          values.  Used by transformation passes that need to allocate fresh
+///          temporaries without causing identifier collisions.
+/// @param F Function to inspect.
+/// @return First unused temporary identifier (max + 1).
+unsigned nextTempId(const ::il::core::Function &F)
+{
+    using ::il::core::Value;
+
+    unsigned next = 0;
+    auto update = [&](unsigned v) { next = std::max(next, v + 1); };
+
+    // Scan function parameters
+    for (const auto &p : F.params)
+    {
+        update(p.id);
+    }
+
+    // Scan blocks
+    for (const auto &B : F.blocks)
+    {
+        // Scan block parameters
+        for (const auto &p : B.params)
+        {
+            update(p.id);
+        }
+
+        // Scan instructions
+        for (const auto &I : B.instructions)
+        {
+            // Check instruction result
+            if (I.result)
+            {
+                update(*I.result);
+            }
+
+            // Check operands
+            for (const auto &Op : I.operands)
+            {
+                if (Op.kind == Value::Kind::Temp)
+                {
+                    update(Op.id);
+                }
+            }
+
+            // Check branch arguments
+            for (const auto &argList : I.brArgs)
+            {
+                for (const auto &Arg : argList)
+                {
+                    if (Arg.kind == Value::Kind::Temp)
+                    {
+                        update(Arg.id);
+                    }
+                }
+            }
+        }
+    }
+
+    return next;
 }
 
 } // namespace viper::il

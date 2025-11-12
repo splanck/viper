@@ -9,6 +9,8 @@ namespace il::core
 {
 struct Instr;
 struct BasicBlock;
+struct Function;
+struct Value;
 } // namespace il::core
 
 namespace viper::il
@@ -32,5 +34,23 @@ Instruction *terminator(Block &B);
 /// @param I Instruction to inspect.
 /// @return True if @p I is br, cbr, ret, or trap.
 bool isTerminator(const Instruction &I);
+
+/// @brief Replace all uses of a temporary identifier with a new value.
+/// @details Scans all instructions and branch arguments in the function,
+///          replacing occurrences of temporary @p tempId with @p replacement.
+///          Used by optimization passes to substitute SSA values.
+/// @param F Function to modify.
+/// @param tempId Temporary identifier to replace.
+/// @param replacement New value to substitute.
+/// @sideeffect Mutates operands and branch arguments in place.
+void replaceAllUses(::il::core::Function &F, unsigned tempId, const ::il::core::Value &replacement);
+
+/// @brief Compute the next available temporary identifier in a function.
+/// @details Scans all parameters, block parameters, instruction results,
+///          operands, and branch arguments to find the highest temp ID in use.
+///          Returns one greater than the maximum, ensuring no collision.
+/// @param F Function to analyze.
+/// @return First unused temporary identifier.
+unsigned nextTempId(const ::il::core::Function &F);
 
 } // namespace viper::il

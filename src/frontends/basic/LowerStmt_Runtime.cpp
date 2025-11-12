@@ -19,7 +19,6 @@
 #include "frontends/basic/ASTUtils.hpp"
 
 #include "frontends/basic/NameMangler_OOP.hpp"
-#include "frontends/basic/ASTUtils.hpp"
 
 #include <cassert>
 

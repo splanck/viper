@@ -14,7 +14,6 @@
 #include "frontends/basic/LineUtils.hpp"
 #include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/Lowerer.hpp"
-#include "frontends/basic/ASTUtils.hpp"
 #include "viper/il/Module.hpp"
 
 #include <cassert>

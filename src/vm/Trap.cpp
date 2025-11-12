@@ -36,84 +36,8 @@
 namespace il::vm
 {
 
-/// @brief Convert a trap kind enumerator to a human-readable mnemonic.
-///
-/// @details Provides canonical string forms for log messages and diagnostics.
-///          Unknown enumerators degrade to "RuntimeError" so callers always
-///          receive a stable token even when future kinds are introduced.
-///
-/// @param kind Trap kind to stringify.
-/// @return Mnemonic describing @p kind.
-std::string_view toString(TrapKind kind)
-{
-    switch (kind)
-    {
-        case TrapKind::DivideByZero:
-            return "DivideByZero";
-        case TrapKind::Overflow:
-            return "Overflow";
-        case TrapKind::InvalidCast:
-            return "InvalidCast";
-        case TrapKind::DomainError:
-            return "DomainError";
-        case TrapKind::Bounds:
-            return "Bounds";
-        case TrapKind::FileNotFound:
-            return "FileNotFound";
-        case TrapKind::EOF:
-            return "EOF";
-        case TrapKind::IOError:
-            return "IOError";
-        case TrapKind::InvalidOperation:
-            return "InvalidOperation";
-        case TrapKind::RuntimeError:
-            return "RuntimeError";
-    }
-
-    // NOTE: Maintain graceful degradation when encountering unexpected enumerators.
-    return "RuntimeError";
-}
-
-/// @brief Map a raw runtime integer value to the corresponding trap kind.
-///
-/// @details Accepts the integer encoding emitted by the runtime and converts it
-///          back into the strongly typed enumeration.  Unexpected values fall
-///          back to @ref TrapKind::RuntimeError so defensive callers can treat
-///          out-of-range inputs as generic failures.
-///
-/// @param value Integer representation of a trap kind.
-/// @return Equivalent enumeration value.
-TrapKind trapKindFromValue(int32_t value)
-{
-    switch (value)
-    {
-        case static_cast<int32_t>(TrapKind::DivideByZero):
-            return TrapKind::DivideByZero;
-        case static_cast<int32_t>(TrapKind::Overflow):
-            return TrapKind::Overflow;
-        case static_cast<int32_t>(TrapKind::InvalidCast):
-            return TrapKind::InvalidCast;
-        case static_cast<int32_t>(TrapKind::DomainError):
-            return TrapKind::DomainError;
-        case static_cast<int32_t>(TrapKind::Bounds):
-            return TrapKind::Bounds;
-        case static_cast<int32_t>(TrapKind::FileNotFound):
-            return TrapKind::FileNotFound;
-        case static_cast<int32_t>(TrapKind::EOF):
-            return TrapKind::EOF;
-        case static_cast<int32_t>(TrapKind::IOError):
-            return TrapKind::IOError;
-        case static_cast<int32_t>(TrapKind::InvalidOperation):
-            return TrapKind::InvalidOperation;
-        case static_cast<int32_t>(TrapKind::RuntimeError):
-            return TrapKind::RuntimeError;
-        default:
-            break;
-    }
-
-    // NOTE: Legacy IL payloads may encode unexpected values; fall back to RuntimeError.
-    return TrapKind::RuntimeError;
-}
+// NOTE: toString() and trapKindFromValue() are now defined inline in Trap.hpp
+// as constexpr functions for compile-time evaluation
 
 #ifdef IL_VM_TRAP_CPP_RESTORE_EOF
 #pragma pop_macro("EOF")

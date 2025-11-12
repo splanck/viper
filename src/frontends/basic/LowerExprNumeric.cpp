@@ -23,7 +23,6 @@
 #include "frontends/basic/ASTUtils.hpp"
 
 #include "frontends/basic/TypeSuffix.hpp"
-#include "frontends/basic/ASTUtils.hpp"
 
 #include <functional>
 #include <limits>

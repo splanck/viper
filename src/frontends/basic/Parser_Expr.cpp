@@ -12,6 +12,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/BuiltinRegistry.hpp"
 #include "frontends/basic/Parser.hpp"
 #include "viper/il/IO.hpp"
@@ -202,25 +203,23 @@ ExprPtr Parser::parseNumber()
 
     if (isFloatLiteral)
     {
-        auto e = std::make_unique<FloatExpr>();
-        e->loc = loc;
-        e->value = std::strtod(lex.c_str(), nullptr);
+        auto e = makeFloatExpr(std::strtod(lex.c_str(), nullptr), loc);
+        auto *floatExpr = static_cast<FloatExpr *>(e.get());
         if (suffix == '!')
-            e->suffix = FloatExpr::Suffix::Single;
+            floatExpr->suffix = FloatExpr::Suffix::Single;
         else if (suffix == '#')
-            e->suffix = FloatExpr::Suffix::Double;
+            floatExpr->suffix = FloatExpr::Suffix::Double;
         consume();
         return e;
     }
 
     int64_t v = std::strtoll(lex.c_str(), nullptr, 10);
-    auto e = std::make_unique<IntExpr>();
-    e->loc = loc;
-    e->value = v;
+    auto e = makeIntExpr(v, loc);
+    auto *intExpr = static_cast<IntExpr *>(e.get());
     if (suffix == '%')
-        e->suffix = IntExpr::Suffix::Integer;
+        intExpr->suffix = IntExpr::Suffix::Integer;
     else if (suffix == '&')
-        e->suffix = IntExpr::Suffix::Long;
+        intExpr->suffix = IntExpr::Suffix::Long;
     consume();
     return e;
 }
@@ -233,8 +232,7 @@ ExprPtr Parser::parseNumber()
 /// @return Newly allocated string literal expression.
 ExprPtr Parser::parseString()
 {
-    auto e = std::make_unique<StringExpr>();
-    e->loc = peek().loc;
+    auto loc = peek().loc;
     std::string decoded;
     std::string err;
     if (!il::io::decodeEscapedString(peek().lexeme, decoded, &err))
@@ -243,7 +241,7 @@ ExprPtr Parser::parseString()
         {
             emitter_->emit(il::support::Severity::Error,
                            "B0003",
-                           peek().loc,
+                           loc,
                            static_cast<uint32_t>(peek().lexeme.size()),
                            err);
         }
@@ -253,9 +251,8 @@ ExprPtr Parser::parseString()
         }
         decoded = peek().lexeme;
     }
-    e->value = std::move(decoded);
     consume();
-    return e;
+    return makeStrExpr(std::move(decoded), loc);
 }
 
 /// @brief Parse a call to a BASIC builtin function.
@@ -403,11 +400,10 @@ ExprPtr Parser::parsePrimary()
 
     if (at(TokenKind::KeywordTrue) || at(TokenKind::KeywordFalse))
     {
-        auto boolean = std::make_unique<BoolExpr>();
-        boolean->loc = peek().loc;
-        boolean->value = at(TokenKind::KeywordTrue);
+        bool value = at(TokenKind::KeywordTrue);
+        auto loc = peek().loc;
         consume();
-        return boolean;
+        return makeBoolExpr(value, loc);
     }
 
     if (at(TokenKind::KeywordNew))
@@ -460,10 +456,7 @@ ExprPtr Parser::parsePrimary()
         return expr;
     }
 
-    auto fallback = std::make_unique<IntExpr>();
-    fallback->loc = peek().loc;
-    fallback->value = 0;
-    return fallback;
+    return makeIntExpr(0, peek().loc);
 }
 
 /// @brief Parse a NEW expression allocating a class instance.

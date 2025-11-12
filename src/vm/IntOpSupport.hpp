@@ -23,6 +23,15 @@
 
 namespace il::vm::detail::integer
 {
+/// @brief Emit a trap with context from the current instruction and frame.
+/// @details Thin wrapper that formats trap metadata for RuntimeBridge, ensuring
+///          all instruction traps include function, block, and source location
+///          information for better diagnostics.
+/// @param kind Classification of the trap (e.g., overflow, divide-by-zero).
+/// @param message Human-readable description of the failure.
+/// @param in Instruction that triggered the trap.
+/// @param fr Active frame containing function metadata.
+/// @param bb Current basic block pointer, may be null.
 inline void emitTrap(TrapKind kind,
                      const char *message,
                      const il::core::Instr &in,
@@ -224,7 +233,12 @@ template <typename T>
     return {true, static_cast<int64_t>(idx)};
 }
 
-template <typename NarrowT> [[nodiscard]] bool fitsSignedRange(int64_t value)
+/// @brief Check whether a signed 64-bit value fits in a narrower signed type.
+/// @tparam NarrowT Target narrow signed integer type.
+/// @param value Value to check.
+/// @return True if value fits within NarrowT's range.
+template <typename NarrowT>
+[[nodiscard]] constexpr bool fitsSignedRange(int64_t value) noexcept
 {
     return value >= static_cast<int64_t>(std::numeric_limits<NarrowT>::min()) &&
            value <= static_cast<int64_t>(std::numeric_limits<NarrowT>::max());
@@ -251,7 +265,12 @@ void applyUnsignedDivOrRem(const il::core::Instr &in,
     out.i64 = static_cast<int64_t>(compute(dividend, divisor));
 }
 
-template <typename NarrowT> [[nodiscard]] bool fitsUnsignedRange(uint64_t value)
+/// @brief Check whether an unsigned 64-bit value fits in a narrower unsigned type.
+/// @tparam NarrowT Target narrow unsigned integer type.
+/// @param value Value to check.
+/// @return True if value fits within NarrowT's range.
+template <typename NarrowT>
+[[nodiscard]] constexpr bool fitsUnsignedRange(uint64_t value) noexcept
 {
     return value <= static_cast<uint64_t>(std::numeric_limits<NarrowT>::max());
 }

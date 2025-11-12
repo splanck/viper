@@ -54,6 +54,11 @@ StatementSequencer Parser::statementSequencer()
     return StatementSequencer(*this);
 }
 
+/// @brief Allocate a unique synthetic label number not in use.
+/// @details Increments the synthetic label counter until finding an unused number,
+///          ensuring no collision with user-defined numeric labels.  Used during
+///          parsing to generate internal labels for unlabeled BASIC statements.
+/// @return Newly allocated label number guaranteed not to conflict with any used labels.
 int Parser::allocateSyntheticLabelNumber()
 {
     while (usedLabelNumbers_.count(nextSyntheticLabel_) != 0)
@@ -61,6 +66,13 @@ int Parser::allocateSyntheticLabelNumber()
     return nextSyntheticLabel_++;
 }
 
+/// @brief Ensure a named label has an assigned number, creating one if needed.
+/// @details Looks up the label name in the registry. If found, returns its existing
+///          number. Otherwise allocates a fresh synthetic number, registers it, and
+///          marks it as used to prevent collisions.  This allows forward references
+///          to labels that haven't been defined yet.
+/// @param name Label identifier from BASIC source.
+/// @return The label number (existing or newly allocated).
 int Parser::ensureLabelNumber(const std::string &name)
 {
     auto it = namedLabels_.find(name);
@@ -75,11 +87,23 @@ int Parser::ensureLabelNumber(const std::string &name)
     return labelNumber;
 }
 
+/// @brief Check whether a named label exists in the registry.
+/// @details Queries the parser's label registry without modifying it.  Returns
+///          true if the label has been registered (either via definition or
+///          reference), false otherwise.
+/// @param name Label identifier to query.
+/// @return True if the label has been registered; false if unknown.
 bool Parser::hasLabelName(const std::string &name) const
 {
     return namedLabels_.find(name) != namedLabels_.end();
 }
 
+/// @brief Look up the label number assigned to a named label.
+/// @details Searches the registry for the given label name.  If found, returns
+///          the associated label number.  Otherwise returns std::nullopt, allowing
+///          callers to distinguish between undefined labels and valid entries.
+/// @param name Label identifier to look up.
+/// @return Label number if the label exists, std::nullopt otherwise.
 std::optional<int> Parser::lookupLabelNumber(const std::string &name) const
 {
     auto it = namedLabels_.find(name);
@@ -88,6 +112,12 @@ std::optional<int> Parser::lookupLabelNumber(const std::string &name) const
     return it->second.number;
 }
 
+/// @brief Record the definition of a named label at a specific location.
+/// @details Marks the label as defined, records its source location, and adds it
+///          to the used label set.  If the label was already defined, emits a
+///          diagnostic error.  This enables detection of duplicate label definitions.
+/// @param tok Token containing the label name and source location.
+/// @param labelNumber The numeric label number associated with this named label.
 void Parser::noteNamedLabelDefinition(const Token &tok, int labelNumber)
 {
     usedLabelNumbers_.insert(labelNumber);
@@ -124,6 +154,13 @@ void Parser::noteNamedLabelDefinition(const Token &tok, int labelNumber)
     }
 }
 
+/// @brief Record a reference to a named label.
+/// @details Marks the label as referenced and records the source location of the
+///          reference.  If this is the first time the label is seen, creates a new
+///          entry in the label registry.  This supports forward references where a
+///          GOTO/GOSUB appears before the label definition.
+/// @param tok Token containing the label name and reference location.
+/// @param labelNumber The numeric label number associated with this named label.
 void Parser::noteNamedLabelReference(const Token &tok, int labelNumber)
 {
     usedLabelNumbers_.insert(labelNumber);
@@ -144,6 +181,11 @@ void Parser::noteNamedLabelReference(const Token &tok, int labelNumber)
         entry.referenceLoc = tok.loc;
 }
 
+/// @brief Record that a numeric label number is in use.
+/// @details Adds the label number to the set of used labels to prevent synthetic
+///          label allocation from colliding with user-defined numeric labels.  This
+///          is called for both label definitions and GOTO/GOSUB targets.
+/// @param labelNumber The numeric label being marked as used.
 void Parser::noteNumericLabelUsage(int labelNumber)
 {
     usedLabelNumbers_.insert(labelNumber);
@@ -313,6 +355,58 @@ std::unique_ptr<Program> Parser::parseProgram()
     if (hasUndefinedNamedLabel)
         return nullptr;
     return prog;
+}
+
+// ============================================================================
+// Error Reporting Helpers
+// ============================================================================
+
+void Parser::emitError(std::string_view code, const Token &tok, std::string message)
+{
+    if (emitter_)
+    {
+        emitter_->emit(il::support::Severity::Error,
+                      std::string(code),
+                      tok.loc,
+                      static_cast<uint32_t>(tok.lexeme.size()),
+                      std::move(message));
+    }
+    else
+    {
+        std::fprintf(stderr, "Error: %s\n", message.c_str());
+    }
+}
+
+void Parser::emitError(std::string_view code, il::support::SourceLoc loc, std::string message)
+{
+    if (emitter_)
+    {
+        emitter_->emit(il::support::Severity::Error,
+                      std::string(code),
+                      loc,
+                      0,
+                      std::move(message));
+    }
+    else
+    {
+        std::fprintf(stderr, "Error: %s\n", message.c_str());
+    }
+}
+
+void Parser::emitWarning(std::string_view code, const Token &tok, std::string message)
+{
+    if (emitter_)
+    {
+        emitter_->emit(il::support::Severity::Warning,
+                      std::string(code),
+                      tok.loc,
+                      static_cast<uint32_t>(tok.lexeme.size()),
+                      std::move(message));
+    }
+    else
+    {
+        std::fprintf(stderr, "Warning: %s\n", message.c_str());
+    }
 }
 
 } // namespace il::frontends::basic

@@ -29,6 +29,8 @@
 #include "vm/RuntimeBridge.hpp"
 #include "vm/Trap.hpp"
 
+#include <cassert>
+
 namespace il::vm::detail
 {
 namespace ops

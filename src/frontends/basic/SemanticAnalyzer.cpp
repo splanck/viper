@@ -25,7 +25,6 @@
 #include "frontends/basic/ASTUtils.hpp"
 
 #include "frontends/basic/BasicTypes.hpp"
-#include "frontends/basic/ASTUtils.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -33,7 +32,6 @@
 #include <vector>
 
 #include "frontends/basic/BuiltinRegistry.hpp"
-#include "frontends/basic/ASTUtils.hpp"
 
 namespace il::frontends::basic
 {

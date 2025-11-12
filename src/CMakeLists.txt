@@ -167,7 +167,8 @@ target_link_libraries(il_transform
         viper_pass
         PRIVATE
         viper_il_verify
-        il_analysis)
+        il_analysis
+        il_utils)
 target_include_directories(il_transform PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
         $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>

@@ -51,19 +51,33 @@ bool tryTailCall(VM &vm, const il::core::Function *callee, std::span<const Slot>
 
     fr.func = callee;
     fr.regs.clear();
-    const size_t regCount = callee->valueNames.size();
+
+    // Calculate maximum SSA value ID to properly pre-size register vector
+    size_t maxSsaId = 0;
+    for (const auto &p : callee->params)
+        maxSsaId = std::max(maxSsaId, static_cast<size_t>(p.id));
+    for (const auto &block : callee->blocks)
+    {
+        for (const auto &p : block.params)
+            maxSsaId = std::max(maxSsaId, static_cast<size_t>(p.id));
+        for (const auto &instr : block.instructions)
+        {
+            if (instr.result)
+                maxSsaId = std::max(maxSsaId, static_cast<size_t>(*instr.result));
+        }
+    }
+
+    const size_t regCount = maxSsaId + 1;
     if (callee->name == "fact" || callee->name == "f" || callee->name == "g")
     {
         std::fprintf(stderr,
-                     "[TCO] callee=%s valueNames=%zu params=%zu blocks=%zu\n",
+                     "[TCO] callee=%s maxSsaId=%zu regCount=%zu valueNames=%zu params=%zu blocks=%zu\n",
                      callee->name.c_str(),
+                     maxSsaId,
                      regCount,
+                     callee->valueNames.size(),
                      callee->params.size(),
                      callee->blocks.size());
-        size_t maxParamId = 0;
-        for (const auto &p : callee->params)
-            maxParamId = std::max(maxParamId, static_cast<size_t>(p.id));
-        std::fprintf(stderr, "[TCO] maxParamId=%zu\n", maxParamId);
         std::fflush(stderr);
     }
     fr.regs.resize(regCount);

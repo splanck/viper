@@ -21,7 +21,6 @@
 #include "frontends/basic/BasicDiagnosticMessages.hpp"
 #include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/Parser.hpp"
-#include "frontends/basic/ASTUtils.hpp"
 
 #include <cstdio>
 #include <cstdlib>
@@ -266,10 +265,7 @@ StmtPtr Parser::parseInputStatement()
     ExprPtr prompt;
     if (at(TokenKind::String))
     {
-        auto s = std::make_unique<StringExpr>();
-        s->loc = peek().loc;
-        s->value = peek().lexeme;
-        prompt = std::move(s);
+        prompt = makeStrExpr(peek().lexeme, peek().loc);
         consume();
         expect(TokenKind::Comma);
     }

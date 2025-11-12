@@ -10,6 +10,8 @@
 #include "frontends/basic/ast/ExprNodes.hpp"
 #include "frontends/basic/ast/StmtBase.hpp"
 
+#include <memory>
+#include <string>
 #include <type_traits>
 
 namespace il::frontends::basic
@@ -311,6 +313,74 @@ template <typename T>
 {
     static_assert(std::is_base_of_v<Stmt, T>, "T must be derived from Stmt");
     return static_cast<const T &>(stmt);
+}
+
+//===----------------------------------------------------------------------===//
+// AST Factory Helpers
+//===----------------------------------------------------------------------===//
+
+/// @brief Create an integer literal expression node.
+/// @details Allocates and initializes an IntExpr with the given value and location.
+///          Reduces boilerplate from 4 lines to 1 line.
+/// @param value Integer value for the literal.
+/// @param loc Source location for diagnostics.
+/// @return Unique pointer to the newly created IntExpr.
+/// @example
+/// ```cpp
+/// // Before:
+/// auto expr = std::make_unique<IntExpr>();
+/// expr->loc = loc;
+/// expr->value = 42;
+///
+/// // After:
+/// auto expr = makeIntExpr(42, loc);
+/// ```
+[[nodiscard]] inline ExprPtr makeIntExpr(long long value, il::support::SourceLoc loc)
+{
+    auto expr = std::make_unique<IntExpr>();
+    expr->loc = loc;
+    expr->value = value;
+    return expr;
+}
+
+/// @brief Create a boolean literal expression node.
+/// @details Allocates and initializes a BoolExpr with the given value and location.
+/// @param value Boolean value for the literal.
+/// @param loc Source location for diagnostics.
+/// @return Unique pointer to the newly created BoolExpr.
+[[nodiscard]] inline ExprPtr makeBoolExpr(bool value, il::support::SourceLoc loc)
+{
+    auto expr = std::make_unique<BoolExpr>();
+    expr->loc = loc;
+    expr->value = value;
+    return expr;
+}
+
+/// @brief Create a floating-point literal expression node.
+/// @details Allocates and initializes a FloatExpr with the given value and location.
+/// @param value Floating-point value for the literal.
+/// @param loc Source location for diagnostics.
+/// @return Unique pointer to the newly created FloatExpr.
+[[nodiscard]] inline ExprPtr makeFloatExpr(double value, il::support::SourceLoc loc)
+{
+    auto expr = std::make_unique<FloatExpr>();
+    expr->loc = loc;
+    expr->value = value;
+    return expr;
+}
+
+/// @brief Create a string literal expression node.
+/// @details Allocates and initializes a StringExpr with the given value and location.
+///          The string value is moved into the expression to avoid unnecessary copies.
+/// @param value String value for the literal (moved).
+/// @param loc Source location for diagnostics.
+/// @return Unique pointer to the newly created StringExpr.
+[[nodiscard]] inline ExprPtr makeStrExpr(std::string value, il::support::SourceLoc loc)
+{
+    auto expr = std::make_unique<StringExpr>();
+    expr->loc = loc;
+    expr->value = std::move(value);
+    return expr;
 }
 
 } // namespace il::frontends::basic

@@ -24,7 +24,6 @@
 #include "frontends/basic/ConstFolder.hpp"
 #include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/constfold/Dispatch.hpp"
-#include "frontends/basic/ASTUtils.hpp"
 
 #include "viper/il/io/FormatUtils.hpp"
 #include <array>
@@ -99,10 +98,7 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
     /// @param loc Source location propagated to the new node.
     void replaceWithInt(long long v, il::support::SourceLoc loc)
     {
-        auto ni = std::make_unique<IntExpr>();
-        ni->loc = loc;
-        ni->value = v;
-        exprSlot() = std::move(ni);
+        exprSlot() = makeIntExpr(v, loc);
     }
 
     /// @brief Replace the active expression with a boolean literal node.
@@ -110,10 +106,7 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
     /// @param loc Source location propagated to the new node.
     void replaceWithBool(bool v, il::support::SourceLoc loc)
     {
-        auto nb = std::make_unique<BoolExpr>();
-        nb->loc = loc;
-        nb->value = v;
-        exprSlot() = std::move(nb);
+        exprSlot() = makeBoolExpr(v, loc);
     }
 
     /// @brief Replace the active expression with a string literal node.
@@ -121,10 +114,7 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
     /// @param loc Source location propagated to the new node.
     void replaceWithStr(std::string s, il::support::SourceLoc loc)
     {
-        auto ns = std::make_unique<StringExpr>();
-        ns->loc = loc;
-        ns->value = std::move(s);
-        exprSlot() = std::move(ns);
+        exprSlot() = makeStrExpr(std::move(s), loc);
     }
 
     /// @brief Replace the active expression with a floating-point literal node.
@@ -132,10 +122,7 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
     /// @param loc Source location propagated to the new node.
     void replaceWithFloat(double v, il::support::SourceLoc loc)
     {
-        auto nf = std::make_unique<FloatExpr>();
-        nf->loc = loc;
-        nf->value = v;
-        exprSlot() = std::move(nf);
+        exprSlot() = makeFloatExpr(v, loc);
     }
 
     /// @brief Replace the active expression with an arbitrary expression node.

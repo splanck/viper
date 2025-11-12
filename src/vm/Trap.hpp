@@ -53,12 +53,66 @@ struct FrameInfo
 /// @brief Convert trap kind to canonical diagnostic string.
 /// @param kind Enumerated trap kind.
 /// @return Stable string view naming the trap category.
-std::string_view toString(TrapKind kind);
+/// @note Constexpr for compile-time string resolution when possible.
+constexpr std::string_view toString(TrapKind kind) noexcept
+{
+    switch (kind)
+    {
+        case TrapKind::DivideByZero:
+            return "DivideByZero";
+        case TrapKind::Overflow:
+            return "Overflow";
+        case TrapKind::InvalidCast:
+            return "InvalidCast";
+        case TrapKind::DomainError:
+            return "DomainError";
+        case TrapKind::Bounds:
+            return "Bounds";
+        case TrapKind::FileNotFound:
+            return "FileNotFound";
+        case TrapKind::EOF:
+            return "EOF";
+        case TrapKind::IOError:
+            return "IOError";
+        case TrapKind::InvalidOperation:
+            return "InvalidOperation";
+        case TrapKind::RuntimeError:
+            return "RuntimeError";
+    }
+    return "RuntimeError";
+}
 
 /// @brief Translate an integer payload into a TrapKind value.
 /// @param value Integer supplied by IL operands.
 /// @return Enumerated trap kind, defaulting to RuntimeError for unknown values.
-TrapKind trapKindFromValue(int32_t value);
+/// @note Constexpr for compile-time value resolution when possible.
+constexpr TrapKind trapKindFromValue(int32_t value) noexcept
+{
+    switch (value)
+    {
+        case static_cast<int32_t>(TrapKind::DivideByZero):
+            return TrapKind::DivideByZero;
+        case static_cast<int32_t>(TrapKind::Overflow):
+            return TrapKind::Overflow;
+        case static_cast<int32_t>(TrapKind::InvalidCast):
+            return TrapKind::InvalidCast;
+        case static_cast<int32_t>(TrapKind::DomainError):
+            return TrapKind::DomainError;
+        case static_cast<int32_t>(TrapKind::Bounds):
+            return TrapKind::Bounds;
+        case static_cast<int32_t>(TrapKind::FileNotFound):
+            return TrapKind::FileNotFound;
+        case static_cast<int32_t>(TrapKind::EOF):
+            return TrapKind::EOF;
+        case static_cast<int32_t>(TrapKind::IOError):
+            return TrapKind::IOError;
+        case static_cast<int32_t>(TrapKind::InvalidOperation):
+            return TrapKind::InvalidOperation;
+        case static_cast<int32_t>(TrapKind::RuntimeError):
+            return TrapKind::RuntimeError;
+    }
+    return TrapKind::RuntimeError;
+}
 
 /// @brief Obtain writable storage for constructing a trap token in the active VM.
 /// @return Pointer to a VmError slot owned by the VM or thread-local fallback when no VM is active.

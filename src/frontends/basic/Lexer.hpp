@@ -45,8 +45,25 @@ class Lexer
 
     /// @brief Skip spaces, tabs, and BASIC comments starting with `'` or REM.
     void skipWhitespaceAndComments();
+
+    /// @brief Lex a numeric literal including optional decimal point and exponent.
+    /// @details Consumes digit sequences, optional decimal fraction, optional
+    ///          exponent (E/e followed by optional +/- and digits), and optional
+    ///          type suffix (#, !, &, %). Returns a Number token.
+    /// @return Token of kind Number with the full lexeme captured.
     Token lexNumber();
+
+    /// @brief Lex an identifier or keyword.
+    /// @details Consumes an alphabetic character followed by alphanumerics or
+    ///          underscores, plus optional type suffix ($, #, !, &, %). Matches
+    ///          against keyword table to determine if the token is a keyword.
+    /// @return Token of kind Identifier or the corresponding KeywordXxx kind.
     Token lexIdentifierOrKeyword();
+
+    /// @brief Lex a string literal enclosed in double quotes.
+    /// @details Handles escape sequences and validates that the string is
+    ///          properly terminated. Reports error for unterminated strings.
+    /// @return Token of kind String with escape sequences in the lexeme.
     Token lexString();
 
     std::string_view src_; ///< Source code being tokenized.

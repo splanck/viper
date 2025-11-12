@@ -563,6 +563,28 @@ class Parser
     /// @param k Operator token kind.
     /// @return Numeric precedence used by the expression parser.
     int precedence(TokenKind k);
+
+    // ========================================================================
+    // Error Reporting Helpers
+    // ========================================================================
+
+    /// @brief Emit a diagnostic error with code and token location.
+    /// @param code Diagnostic code (e.g., "B0001").
+    /// @param tok Token providing source location.
+    /// @param message Error message text.
+    void emitError(std::string_view code, const Token &tok, std::string message);
+
+    /// @brief Emit a diagnostic error with code and explicit location.
+    /// @param code Diagnostic code (e.g., "B0001").
+    /// @param loc Source location.
+    /// @param message Error message text.
+    void emitError(std::string_view code, il::support::SourceLoc loc, std::string message);
+
+    /// @brief Emit a diagnostic warning with code and token location.
+    /// @param code Diagnostic code (e.g., "B9000").
+    /// @param tok Token providing source location.
+    /// @param message Warning message text.
+    void emitWarning(std::string_view code, const Token &tok, std::string message);
 };
 
 } // namespace il::frontends::basic
