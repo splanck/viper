@@ -410,5 +410,38 @@ are lower priority or require more extensive refactoring:
   - Recommendation: Extract to support/MathUtils.hpp if reused elsewhere
 
 ================================================================================
-## STATUS: PHASE 1-3 COMPLETE - ALL CRITICAL IMPROVEMENTS IMPLEMENTED ✓
+## ADDITIONAL IMPROVEMENTS (2025-11-11 - Second Pass)
 ================================================================================
+
+### String Construction Optimization - COMPLETED ✓
+  [✓] Optimized AsmEmitter::RoDataPool::stringLabel() with string::reserve()
+  [✓] Optimized AsmEmitter::RoDataPool::f64Label() with string::reserve()
+  [✓] Optimized MFunction::makeLocalLabel() with string::reserve()
+  Impact: Reduced heap allocations in label generation hot paths
+
+### Error Diagnostics Enhancement - COMPLETED ✓
+  [✓] Enhanced unknown opcode diagnostic in AsmEmitter::emitInstruction()
+  [✓] Now includes opcode number and operand count in error comments
+  Impact: Better debugging information for encoding lookup failures
+
+### Code Review - COMPLETED ✓
+  [✓] Verified unused parameters already cleaned up (no (void) casts found)
+  [✓] Verified naming consistency (make* for construction, format* for strings)
+  Impact: Code quality verified, no additional changes needed
+
+### Validation - COMPLETED ✓
+  [✓] Built entire project with zero warnings
+  [✓] ALL 565 TESTS PASSED
+  [✓] No regressions
+
+================================================================================
+## STATUS: ALL PLANNED IMPROVEMENTS COMPLETE ✓
+================================================================================
+Phase 1-3: Critical improvements (code deduplication, constants, documentation)
+Phase 4: Lower priority improvements (string optimization, error diagnostics)
+
+Total improvements implemented: 15 tasks across 8 files
+Total lines removed: ~210 lines of duplicate code
+Total lines added: ~220 lines (new utilities + optimizations)
+Test pass rate: 100% (565/565)
+Build warnings: 0

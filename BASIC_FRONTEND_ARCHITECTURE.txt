@@ -1,0 +1,282 @@
+================================================================================
+BASIC FRONTEND - ARCHITECTURE DIAGRAM
+================================================================================
+
+COMPILATION PIPELINE
+====================
+
+┌─────────────────┐
+│   BASIC Source  │
+│     Code        │
+└────────┬────────┘
+         │
+         v
+    ┌─────────────────────────────────────────────────────────────┐
+    │                   LEXER (Lexer.cpp/hpp)                     │
+    │  • Tokenization, keyword/identifier recognition             │
+    │  • Line/column tracking, numeric/string literal parsing      │
+    │  • Token buffer management for lookahead                     │
+    └─────────────────┬───────────────────────────────────────────┘
+                      │ Produces: Token stream
+                      v
+    ┌─────────────────────────────────────────────────────────────┐
+    │         PARSER (Parser.hpp/cpp + Parser_*.cpp)              │
+    │  • Registry-based statement dispatch                         │
+    │  • Recursive descent + precedence climbing (expressions)     │
+    │  • Error recovery & sync-on-error                           │
+    │  • Separated procedures from main statements                │
+    └─────────────────┬───────────────────────────────────────────┘
+                      │ Produces: Program AST
+                      v
+    ┌─────────────────────────────────────────────────────────────┐
+    │    SEMANTIC ANALYZER (SemanticAnalyzer.*.cpp + sem/*)       │
+    │  • Symbol table tracking                                     │
+    │  • Type inference (I64, F64, String, Bool)                  │
+    │  • Two-pass procedure registration                          │
+    │  • Control flow validation (FOR/NEXT, loop nesting)         │
+    │  • Label definition/reference checking                      │
+    │  • Operator type compatibility checking (sem/Check_*.cpp)   │
+    └─────────────────┬───────────────────────────────────────────┘
+                      │ Produces: Validated AST + type info
+                      v
+    ┌─────────────────────────────────────────────────────────────┐
+    │   CONSTANT FOLDER (ConstFolder.cpp + constfold/*)           │
+    │  • Optional compile-time constant folding                   │
+    │  • Visitor-based dispatch (Dispatch.cpp)                    │
+    │  • FoldArith, FoldCompare, FoldLogical, FoldStrings         │
+    └─────────────────┬───────────────────────────────────────────┘
+                      │ Produces: AST with folded constants
+                      v
+    ┌─────────────────────────────────────────────────────────────┐
+    │    LOWERER (Lowerer.hpp/cpp + lower/*.cpp)                  │
+    │  • Expression lowering (Lowerer_Expr.cpp)                   │
+    │    - Numeric ops (LowerExprNumeric.cpp)                     │
+    │    - Logical ops (LowerExprLogical.cpp)                     │
+    │    - Builtin calls (LowerExprBuiltin.cpp)                   │
+    │  • Statement lowering (Lowerer_Stmt.cpp)                    │
+    │    - Control flow (Lower_If.cpp, Lower_Loops.cpp)           │
+    │    - I/O (LowerStmt_IO.cpp)                                 │
+    │    - Runtime (LowerStmt_Runtime.cpp)                        │
+    │  • Analysis passes:                                         │
+    │    - Type scanning (Scan_ExprTypes.cpp)                     │
+    │    - Runtime needs (Scan_RuntimeNeeds.cpp)                  │
+    │  • IL Emission (lower/Emitter.cpp)                          │
+    └─────────────────┬───────────────────────────────────────────┘
+                      │ Produces: IL Module (instructions, blocks)
+                      v
+                   ┌─────────────┐
+                   │  IL Module  │
+                   │  (CoreIR)   │
+                   └─────────────┘
+
+
+SUBSYSTEM ORGANIZATION
+======================
+
+CORE INFRASTRUCTURE
+┌──────────────────────────────────────────────────────────────┐
+│ Token System               │ Type System      │ Diagnostics  │
+├────────────────────────────┼──────────────────┼──────────────┤
+│ Token.hpp/cpp              │ BasicTypes.hpp   │ Diagnostic   │
+│ Parser_Token.hpp           │ TypeRules.*.cpp  │ Emitter.*    │
+│ TokenKinds.def             │ TypeSuffix.*     │ SemanticDiag │
+├────────────────────────────┼──────────────────┼──────────────┤
+│ Symbol Management          │ AST Utilities    │              │
+├────────────────────────────┼──────────────────┤              │
+│ NameMangler.cpp/hpp        │ AST.cpp          │              │
+│ NameMangler_OOP.cpp/hpp    │ AstPrint_*.cpp   │              │
+│ ScopeTracker.cpp/hpp       │ AstWalker.hpp    │              │
+│ ProcRegistry.cpp/hpp       │ ASTUtils.hpp     │              │
+└────────────────────────────┴──────────────────┴──────────────┘
+
+AST DEFINITION (ast/)
+┌──────────────────────────────────────────┐
+│ ExprNodes.hpp (421 LOC)                  │
+│  18 expression kinds: IntExpr, VarExpr,  │
+│  BinaryExpr, CallExpr, BuiltinCallExpr,  │
+│  NewExpr, MemberAccessExpr, etc.         │
+├──────────────────────────────────────────┤
+│ StmtBase.hpp (190 LOC)                   │
+│  Statement base & visitor interfaces     │
+├──────────────────────────────────────────┤
+│ StmtControl.hpp (342 LOC)                │
+│  IF, SELECT CASE, FOR, WHILE, DO, NEXT  │
+├──────────────────────────────────────────┤
+│ StmtExpr.hpp (414 LOC)                   │
+│  LET, PRINT, CALL statements             │
+├──────────────────────────────────────────┤
+│ StmtDecl.hpp (281 LOC)                   │
+│  FUNCTION, SUB, DIM, CLASS, TYPE, etc.   │
+└──────────────────────────────────────────┘
+
+PARSER STRUCTURE (3,287 LOC)
+┌──────────────────────────────────────────────────────────┐
+│ Parser.hpp/cpp                                           │
+│  • Main parser class                                     │
+│  • Statement registry dispatch pattern                   │
+│  • Token management & lookahead                          │
+├──────────────────────────────────────────────────────────┤
+│ Parser_Expr.cpp (608 LOC)                               │
+│  Expression parsing (precedence climbing)               │
+├──────────────────────────────────────────────────────────┤
+│ Parser_Stmt*.cpp (2,400 LOC)                            │
+│  ├─ Parser_Stmt_Control.cpp: IF, SELECT, loops         │
+│  ├─ Parser_Stmt_If.cpp: IF/THEN/ELSE/END IF            │
+│  ├─ Parser_Stmt_Loop.cpp: FOR, WHILE, DO               │
+│  ├─ Parser_Stmt_Select.cpp: SELECT CASE (complex!)     │
+│  ├─ Parser_Stmt_IO.cpp: PRINT, INPUT, files            │
+│  ├─ Parser_Stmt_Jump.cpp: GOTO, GOSUB, RETURN          │
+│  ├─ Parser_Stmt_Runtime.cpp: DIM, REDIM, etc.          │
+│  └─ Parser_Stmt_OOP.cpp: CLASS, TYPE, INTERFACE        │
+└──────────────────────────────────────────────────────────┘
+
+SEMANTIC ANALYSIS (3,510 LOC)
+┌──────────────────────────────────────────────────────────┐
+│ SemanticAnalyzer.hpp (449 LOC)                          │
+│  Class definition, symbol/type/proc tracking            │
+├──────────────────────────────────────────────────────────┤
+│ SemanticAnalyzer*.cpp (2,150 LOC)                       │
+│  ├─ SemanticAnalyzer.cpp: main loop & program          │
+│  ├─ SemanticAnalyzer.Exprs.cpp: type inference         │
+│  ├─ SemanticAnalyzer.Procs.cpp: proc registration      │
+│  ├─ SemanticAnalyzer.Stmts.cpp: stmt dispatch          │
+│  ├─ SemanticAnalyzer.Stmts.Control.cpp: IF/loops       │
+│  ├─ SemanticAnalyzer.Stmts.IO.cpp: PRINT/INPUT         │
+│  ├─ SemanticAnalyzer.Stmts.Runtime.cpp: arrays         │
+│  └─ SemanticAnalyzer.Builtins.cpp: builtin sigs        │
+├──────────────────────────────────────────────────────────┤
+│ sem/Check_*.cpp (1,360 LOC)                             │
+│  ├─ Check_Expr_Binary.cpp: operator type compat        │
+│  ├─ Check_SelectDetail.hpp: SELECT CASE validation     │
+│  ├─ Check_Loops.cpp: FOR/NEXT nesting                  │
+│  └─ Check_Jumps.cpp: GOTO/GOSUB label checking         │
+└──────────────────────────────────────────────────────────┘
+
+LOWERING (5,000+ LOC)
+┌──────────────────────────────────────────────────────────┐
+│ Lowerer.hpp/cpp (788/190 LOC)                           │
+│  Main lowering orchestration                            │
+├──────────────────────────────────────────────────────────┤
+│ Lowerer.Procedure.cpp (1,147 LOC)                       │
+│  Procedure boundary handling, block creation            │
+├──────────────────────────────────────────────────────────┤
+│ lower/Lowerer_*.cpp (1,220 LOC)                         │
+│  ├─ Lowerer_Expr.cpp: general expr dispatch            │
+│  └─ Lowerer_Stmt.cpp: general stmt dispatch            │
+├──────────────────────────────────────────────────────────┤
+│ Expression Lowering (1,629 LOC)                         │
+│  ├─ LowerExprNumeric.cpp: arithmetic/comparison        │
+│  ├─ LowerExprLogical.cpp: AND/OR/NOT short-circuit     │
+│  ├─ LowerExprBuiltin.cpp: builtin calls                │
+│  └─ LowerExpr.cpp: var/array references                │
+├──────────────────────────────────────────────────────────┤
+│ Statement Lowering (1,574 LOC)                          │
+│  ├─ LowerStmt_Control.cpp: IF/loop expansion           │
+│  ├─ LowerStmt_IO.cpp: PRINT/INPUT codegen              │
+│  ├─ LowerStmt_Runtime.cpp: DIM/array codegen           │
+│  ├─ lower/Lower_Loops.cpp: FOR/WHILE/DO expansion     │
+│  └─ lower/Lower_If.cpp: IF block structure             │
+├──────────────────────────────────────────────────────────┤
+│ Builtin Lowering (1,451 LOC)                            │
+│  ├─ lower/builtins/Common.cpp: centralized (1,021 LOC) │
+│  ├─ lower/builtins/Math.cpp: math functions            │
+│  ├─ lower/builtins/String.cpp: string functions        │
+│  └─ lower/builtins/Array.cpp, IO.cpp                   │
+├──────────────────────────────────────────────────────────┤
+│ Analysis & Emission (1,708 LOC)                         │
+│  ├─ lower/Emitter.cpp: IL instruction emission         │
+│  ├─ lower/Scan_RuntimeNeeds.cpp: runtime identification│
+│  ├─ lower/Scan_ExprTypes.cpp: type inference           │
+│  └─ lower/common/CommonLowering.cpp: shared patterns   │
+└──────────────────────────────────────────────────────────┘
+
+SPECIAL FEATURES
+┌──────────────────────────────────────────────────────────┐
+│ OOP (1,503 LOC)                                          │
+│  Semantic_OOP.cpp/hpp, Lower_OOP_*.cpp, OOP name mangle│
+├──────────────────────────────────────────────────────────┤
+│ SELECT CASE (765 LOC)                                   │
+│  Parser_Stmt_Select.cpp, SelectCaseLowering.*.cpp       │
+├──────────────────────────────────────────────────────────┤
+│ Constant Folding (1,400+ LOC)                           │
+│  ConstFolder.cpp, constfold/Fold*.cpp                   │
+├──────────────────────────────────────────────────────────┤
+│ Utilities (700 LOC)                                      │
+│  Intrinsics, StatementSequencer, LineUtils, etc.        │
+└──────────────────────────────────────────────────────────┘
+
+DATA FLOW EXAMPLE: Variable Assignment
+==========================================
+
+BASIC:  X = Y + 3
+
+LEXER OUTPUT:
+  Token(IDENT, "X") Token(EQUAL) Token(IDENT, "Y") 
+  Token(PLUS) Token(NUMBER, "3")
+
+PARSER OUTPUT (AST):
+  LetStmt {
+    lhs: VarExpr(name="X")
+    rhs: BinaryExpr {
+      left: VarExpr(name="Y")
+      op: Plus
+      right: IntExpr(value=3)
+    }
+  }
+
+SEMANTIC OUTPUT:
+  LetStmt {
+    lhs: VarExpr(name="X", type=Int)
+    rhs: BinaryExpr {
+      left: VarExpr(name="Y", type=Int)
+      op: Plus
+      right: IntExpr(value=3, type=Int)
+    }
+  }
+  Symbol table: {X: Int, Y: Int}
+
+CONSTANT FOLD OUTPUT:
+  LetStmt {
+    lhs: VarExpr(name="X", type=Int)
+    rhs: BinaryExpr {
+      left: VarExpr(name="Y", type=Int)
+      op: Plus
+      right: IntExpr(value=3) → FOLDED TO CONSTANT 3
+    }
+  }
+
+LOWERER OUTPUT (IL):
+  @main:
+    %0 = load i64 @Y
+    %1 = binary add i64 %0, 3
+    store i64 %1 @X
+    return
+
+
+KEY DESIGN PATTERNS
+===================
+
+1. VISITOR PATTERN
+   - ExprVisitor, MutExprVisitor
+   - StmtVisitor, MutStmtVisitor
+   - Used for AST traversal, type checking, lowering
+
+2. REGISTRY PATTERN
+   - StatementParserRegistry: TokenKind → parser method
+   - BuiltinRegistry: builtin name → arity & type info
+
+3. TWO-PASS SEMANTIC ANALYSIS
+   - Pass 1: Register all procedure signatures
+   - Pass 2: Validate body implementations
+
+4. CONTEXT OBJECTS
+   - LowererContext: state during lowering
+   - LoweringContext: shared lowering info
+   - Various Check*Context classes for semantic checks
+
+5. DISPATCH-BASED LOWERING
+   - lower/Lowerer_Expr.cpp dispatches on expression kind
+   - lower/Lowerer_Stmt.cpp dispatches on statement kind
+   - Builtin lowering uses Common.cpp central dispatcher
+
+

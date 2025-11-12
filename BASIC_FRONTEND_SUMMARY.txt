@@ -1,0 +1,190 @@
+================================================================================
+BASIC FRONTEND CODEBASE - QUICK REFERENCE
+================================================================================
+
+OVERVIEW
+--------
+44,260 LOC across 151 files in a clean compiler pipeline architecture.
+
+PIPELINE FLOW
+=============
+Source Code
+    |
+    v
+  Lexer (519 LOC) → Tokens
+    |
+    v
+  Parser (2,570 LOC) → Program AST
+    |                (procedures + statements)
+    |
+    v
+  SemanticAnalyzer (2,680 LOC) → Symbol tables, type info
+    |                           (2-pass proc registration)
+    |
+    v
+  Lowerer (5,000+ LOC) → IL Module
+    |                  (instructions, blocks, CFG)
+    |
+    v
+  IL Backend (outside frontend)
+
+
+SUBSYSTEM BREAKDOWN
+===================
+
+1. LEXER & TOKENIZATION (578 LOC)
+   - Lexer.cpp/hpp: Tokenizes BASIC source
+   - Token.cpp/hpp: Token representation
+   - Parser_Token.hpp: Token handling utilities
+   - TokenKinds.def: Token enumeration
+
+2. PARSER (3,287 LOC)
+   - Parser.hpp/cpp: Main parser class (statement registry)
+   - Parser_Expr.cpp: Expression parsing (precedence climbing)
+   - Parser_Stmt*.cpp: Statement parsers (split by category)
+     * Control flow (IF, loops, SELECT)
+     * I/O (PRINT, INPUT, files)
+     * Jumps (GOTO, GOSUB, RETURN)
+     * Runtime (DIM, REDIM, RANDOMIZE)
+     * OOP (CLASS, TYPE, INTERFACE, NEW)
+
+3. SEMANTIC ANALYSIS (3,510 LOC)
+   - SemanticAnalyzer*.cpp: Main analysis (symbols, types, procs)
+   - sem/Check_*.cpp: Detailed validation (operators, control flow)
+   - Key features:
+     * Symbol table tracking
+     * Type inference for variables
+     * Two-pass procedure registration
+     * Control flow validation (FOR/NEXT, LOOP nesting)
+     * Label definition/reference tracking
+     * Builtin function signature checking
+
+4. LOWERING TO IL (5,000+ LOC)
+   - Lowerer.hpp/cpp: Main lowering orchestration
+   - Lowerer.Procedure.cpp: Procedure boundary & blocks
+   - lower/Lowerer_*.cpp: Expression/statement lowering
+   - lower/Emitter.cpp: IL instruction emission wrapper
+   - lower/Scan_*.cpp: Analysis passes (type scanning, runtime needs)
+   - lower/Lower_*.cpp: Specific construct lowering (IF, loops, etc)
+   - lower/builtins/Common.cpp: Centralized builtin codegen (1,021 LOC)
+   - Key features:
+     * Block name generation
+     * Jump target resolution
+     * Builtin function dispatch
+     * Runtime function injection
+     * OOP vtable generation
+     * SELECT CASE expansion
+
+5. AST NODES & PRINTING (1,590 LOC)
+   - ast/*.hpp: Expression, statement, declaration node types
+   - AST.cpp: Node implementations (visitor accept methods)
+   - AstPrint_*.cpp: Debug printing for AST nodes
+   - Comprehensive node types: 18 expression kinds, 25+ statement kinds
+
+6. TYPE SYSTEM & RULES (437 LOC)
+   - BasicTypes.hpp: BASIC type enum (I64, F64, String, Bool)
+   - TypeRules.cpp/hpp: Operator type compatibility
+   - TypeSuffix.cpp/hpp: Suffix-based type inference ($, %, &, !, #)
+
+7. SYMBOL & SCOPE MANAGEMENT (260 LOC)
+   - NameMangler.cpp/hpp: Symbol name mangling
+   - NameMangler_OOP.cpp/hpp: Class/method name mangling
+   - ScopeTracker.cpp/hpp: Procedure scope aliasing
+   - ProcRegistry.cpp/hpp: Procedure signature registry
+
+8. CONSTANT FOLDING (1,400+ LOC)
+   - ConstFolder.cpp: Main dispatch & orchestration
+   - constfold/Dispatch.cpp: Visitor-based folding
+   - constfold/Fold*.cpp: Operation-specific folding
+   - constfold/Value.hpp: Compile-time value representation
+
+9. SPECIAL FEATURES
+   - OOP Support (1,503 LOC): Classes, interfaces, vtables, inheritance
+   - SELECT CASE (765 LOC): Complex range handling & expansion
+   - File I/O: OPEN, CLOSE, SEEK, READ, WRITE operations
+   - Error Handling: ON ERROR GOTO, RESUME statements
+   - Arrays: Dynamic/static, multi-dimensional
+   - Builtins: Math, String, Array, I/O functions
+
+LARGEST FILES
+=============
+1. lower/builtins/Common.cpp        1,021 LOC  (builtin codegen)
+2. Lowerer.Procedure.cpp            1,147 LOC  (procedure lowering)
+3. AST.cpp                            928 LOC  (node implementations)
+4. ConstFolder.cpp                    889 LOC  (constant folding)
+5. lower/Scan_RuntimeNeeds.cpp        797 LOC  (runtime analysis)
+6. Lowerer.hpp                        788 LOC  (lowerer interface)
+7. lower/Lowerer_Expr.cpp             726 LOC  (expr lowering)
+8. Parser_Stmt_Select.cpp             726 LOC  (SELECT CASE parsing)
+9. builtins/StringBuiltins.cpp        731 LOC  (string functions)
+10. lower/Emitter.cpp                 737 LOC  (IL emission wrapper)
+
+COMPLEXITY HOTSPOTS
+===================
+1. SELECT CASE HANDLING
+   - Multi-file implementation (parsing, semantic checking, lowering)
+   - Complex arm range validation
+   - Expansion to IF/jump chains
+   
+2. BUILTIN FUNCTIONS
+   - 1,021 LOC centralized in Common.cpp
+   - 40+ builtin functions to handle
+   - Type dispatch based on arity & argument types
+   
+3. EXPRESSION LOWERING
+   - Multiple passes (type scan → constant fold → lower)
+   - Polymorphic codegen based on expression type
+   - Short-circuit evaluation for logical ops
+   
+4. OOP SUPPORT
+   - Spread across 6 files
+   - Vtable generation for methods
+   - Constructor/destructor injection
+   - Name mangling for class members
+
+QUALITY NOTES
+=============
+Strengths:
+- Clean layering: Lexer → Parser → Semantic → Lowering
+- Well-organized by statement/feature category
+- Comprehensive feature set (BASIC + OOP + error handling)
+- Pattern-based (visitor, registry, checker patterns)
+
+Issues:
+- Large files: Common.cpp (1,021), Lowerer.Procedure.cpp (1,147)
+- Scattered complexity: SELECT CASE across 3 subsystems
+- Expression lowering: split across 5 files
+- No obvious test coverage in this frontend dir (tests likely elsewhere)
+
+ENTRY POINTS
+============
+BasicCompiler::compileBasic() → 
+  Parser → SemanticAnalyzer → Lowerer → il::core::Module
+
+DEPENDENCIES
+============
+External:
+- IL Core (viper/il/): Module, IRBuilder, types
+- Support (support/): Diagnostics, SourceManager
+- Runtime (il/runtime/): RuntimeSignatures
+
+Internal:
+- Lexer → Parser → SemanticAnalyzer → Lowerer
+- ConstFolder (optional, used during lowering)
+- OopIndex (shared index for class/interface tracking)
+
+BUILD TARGET
+============
+CMake target: viper_frontends_basic
+Links: IL core, runtime signatures, support library
+Files compiled: All .cpp files in this directory tree
+
+TESTING STRATEGY
+================
+Recommend tests for:
+- Lexer: tokenization of all token kinds
+- Parser: all statement types, error recovery
+- Semantic: type checking, control flow, labels
+- Lowering: IR correctness for each statement/expr type
+- Integration: full BASIC programs → IL → execution
+

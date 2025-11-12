@@ -203,7 +203,9 @@ MBasicBlock &MFunction::addBlock(MBasicBlock block)
 /// @return New label string guaranteed unique within the function.
 std::string MFunction::makeLocalLabel(std::string_view prefix)
 {
-    std::string label(prefix);
+    std::string label;
+    label.reserve(prefix.size() + 12); // prefix + counter digits + null terminator
+    label = prefix;
     label += std::to_string(localLabelCounter++);
     return label;
 }

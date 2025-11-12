@@ -633,7 +633,11 @@ int AsmEmitter::RoDataPool::addF64Literal(double value)
 /// @return Mangled label suitable for use in assembly.
 std::string AsmEmitter::RoDataPool::stringLabel(int index) const
 {
-    return ".LC_str_" + std::to_string(index);
+    std::string label;
+    label.reserve(16); // ".LC_str_" (9 chars) + digits + null terminator
+    label = ".LC_str_";
+    label += std::to_string(index);
+    return label;
 }
 
 /// @brief Retrieve the byte length recorded for a string literal entry.
@@ -652,7 +656,11 @@ std::size_t AsmEmitter::RoDataPool::stringByteLength(int index) const
 /// @return Mangled label suitable for use in assembly.
 std::string AsmEmitter::RoDataPool::f64Label(int index) const
 {
-    return ".LC_f64_" + std::to_string(index);
+    std::string label;
+    label.reserve(16); // ".LC_f64_" (9 chars) + digits + null terminator
+    label = ".LC_f64_";
+    label += std::to_string(index);
+    return label;
 }
 
 /// @brief Emit the `.rodata` directives for all stored literals.
@@ -814,7 +822,9 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &instr, const Ta
     const auto *row = find_encoding(instr.opcode, operands);
     if (!row)
     {
-        os << "  # <unknown opcode>\n";
+        // Emit diagnostic comment with opcode number and operand count
+        os << "  # <unknown opcode: " << static_cast<int>(instr.opcode)
+           << ", operands: " << operands.size() << ">\n";
         return;
     }
 
