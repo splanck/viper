@@ -271,6 +271,48 @@ ExprPtr Parser::parseLetTarget()
     return parsePostfix(std::move(base));
 }
 
+/// @brief Parse a BASIC `CONST` constant declaration statement.
+/// @details Consumes the `CONST` keyword, parses an identifier, expects `=`,
+///          and then parses an initializer expression. The type is inferred from
+///          the identifier suffix or can be explicitly specified with AS.
+/// @return Newly constructed CONST statement node.
+StmtPtr Parser::parseConstStatement()
+{
+    auto loc = peek().loc;
+    consume(); // CONST keyword
+
+    if (!at(TokenKind::Identifier))
+    {
+        emitError("B0001", peek(), "expected identifier after CONST");
+        resyncAfterError();
+        return std::make_unique<LetStmt>(); // Return dummy statement
+    }
+
+    auto identTok = peek();
+    std::string name = identTok.lexeme;
+    consume();
+
+    Type type = typeFromSuffix(name);
+
+    // Check for explicit type with AS keyword
+    if (at(TokenKind::KeywordAs))
+    {
+        consume();
+        type = parseTypeKeyword();
+    }
+
+    expect(TokenKind::Equal);
+
+    auto initializer = parseExpression();
+
+    auto stmt = std::make_unique<ConstStmt>();
+    stmt->loc = loc;
+    stmt->name = std::move(name);
+    stmt->type = type;
+    stmt->initializer = std::move(initializer);
+    return stmt;
+}
+
 /// @brief Derive the default BASIC type from an identifier suffix.
 /// @details BASIC permits suffix characters (such as `$` or `%`) that encode a
 ///          variable's type.  This helper inspects the final character of the

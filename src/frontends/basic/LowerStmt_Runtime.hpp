@@ -13,6 +13,7 @@
 #include <string_view>
 
 void lowerLet(const LetStmt &stmt);
+void lowerConst(const ConstStmt &stmt);
 void assignScalarSlot(const SlotType &slotInfo, Value slot, RVal value, il::support::SourceLoc loc);
 void assignArrayElement(const ArrayExpr &target, RVal value, il::support::SourceLoc loc);
 void lowerDim(const DimStmt &stmt);

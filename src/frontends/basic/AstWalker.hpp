@@ -379,7 +379,7 @@ template <typename Derived> class BasicAstWalker : public ExprVisitor, public St
         callBefore(stmt);
         if (callShouldVisit(stmt))
         {
-            walker::detail::visitChild(*this, stmt, *stmt.initializer);
+            walker::detail::visitOptionalChild(*this, stmt, stmt.initializer);
         }
         callAfter(stmt);
     }

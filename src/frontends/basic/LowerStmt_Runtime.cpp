@@ -339,6 +339,36 @@ void Lowerer::lowerLet(const LetStmt &stmt)
     }
 }
 
+/// @brief Lower a BASIC @c CONST statement.
+///
+/// @details Evaluates the initializer expression and stores it into the constant's
+///          storage location. The lowering is similar to LET - constants are treated
+///          as read-only variables at compile-time (semantic analysis prevents reassignment).
+///
+/// @param stmt Parsed @c CONST statement.
+void Lowerer::lowerConst(const ConstStmt &stmt)
+{
+    LocationScope loc(*this, stmt.loc);
+
+    // Evaluate the initializer expression
+    RVal value = lowerExpr(*stmt.initializer);
+
+    // Resolve storage for the constant (same as variable)
+    auto storage = resolveVariableStorage(stmt.name, stmt.loc);
+    assert(storage && "CONST target should have storage");
+
+    // Store the value
+    SlotType slotInfo = storage->slotInfo;
+    if (slotInfo.isArray)
+    {
+        storeArray(storage->pointer, value.value);
+    }
+    else
+    {
+        assignScalarSlot(slotInfo, storage->pointer, std::move(value), stmt.loc);
+    }
+}
+
 /// @brief Emit runtime validation logic for array length expressions.
 ///
 /// @details Adjusts the requested bound to account for BASIC's inclusive array

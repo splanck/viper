@@ -41,6 +41,7 @@ void Parser::registerRuntimeParsers(StatementParserRegistry &registry)
     registry.registerHandler(TokenKind::KeywordResume, &Parser::parseResumeStatement);
     registry.registerHandler(TokenKind::KeywordEnd, &Parser::parseEndStatement);
     registry.registerHandler(TokenKind::KeywordDim, &Parser::parseDimStatement);
+    registry.registerHandler(TokenKind::KeywordConst, &Parser::parseConstStatement);
     registry.registerHandler(TokenKind::KeywordRedim, &Parser::parseReDimStatement);
     registry.registerHandler(TokenKind::KeywordRandomize, &Parser::parseRandomizeStatement);
     registry.registerHandler(TokenKind::KeywordSwap, &Parser::parseSwapStatement);

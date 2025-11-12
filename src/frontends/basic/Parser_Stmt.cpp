@@ -43,6 +43,7 @@ namespace il::frontends::basic
 void Parser::registerCoreParsers(StatementParserRegistry &registry)
 {
     registry.registerHandler(TokenKind::KeywordLet, &Parser::parseLetStatement);
+    registry.registerHandler(TokenKind::KeywordConst, &Parser::parseConstStatement);
     registry.registerHandler(TokenKind::KeywordFunction, &Parser::parseFunctionStatement);
     registry.registerHandler(TokenKind::KeywordSub, &Parser::parseSubStatement);
     registry.registerHandler(TokenKind::KeywordNamespace, &Parser::parseNamespaceDecl);

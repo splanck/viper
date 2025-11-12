@@ -223,6 +223,10 @@ void printResume(const Resume &stmt, Context &ctx);
 ///          source program contained it, keeping round-tripping faithful.
 void printLet(const LetStmt &stmt, Context &ctx);
 
+/// @brief Emit CONST declarations with initializer expressions.
+/// @details Prints the constant name, type, and initializer.
+void printConst(const ConstStmt &stmt, Context &ctx);
+
 /// @brief Emit DIM declarations, including array bounds lists.
 /// @details Iterates the declaration list and prints each variable with its dimension ranges
 ///          using canonical comma-separated formatting.

@@ -153,6 +153,15 @@ class LowererStmtVisitor final : public lower::AstVisitor, public StmtVisitor
         lowerer_.lowerLet(stmt);
     }
 
+    /// @brief Lower a CONST statement.
+    /// @details Delegates to @ref Lowerer::lowerConst which evaluates the
+    ///          initializer and stores it like a LET assignment.
+    /// @param stmt CONST statement node.
+    void visit(const ConstStmt &stmt) override
+    {
+        lowerer_.lowerConst(stmt);
+    }
+
     /// @brief Lower a DIM statement.
     /// @details Only array declarations require code generation; scalar DIM
     ///          statements are compile-time declarations and therefore skipped.

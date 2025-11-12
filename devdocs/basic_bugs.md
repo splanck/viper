@@ -205,7 +205,7 @@ The parser does not recognize PRESERVE as a keyword after REDIM. Interestingly, 
 
 ### BUG-009: CONST keyword not implemented
 **Severity**: Medium
-**Status**: Confirmed
+**Status**: ✅ RESOLVED 2025-11-12 - See basic_resolved.md for details
 **Test Case**: test033.bas
 
 **Description**:

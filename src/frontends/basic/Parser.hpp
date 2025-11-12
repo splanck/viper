@@ -219,6 +219,10 @@ class Parser
     /// @return LET statement node.
     StmtPtr parseLetStatement();
 
+    /// @brief Parse a CONST constant declaration statement.
+    /// @return CONST statement node.
+    StmtPtr parseConstStatement();
+
     /// @brief Parse the left-hand side of a LET assignment.
     /// @return Parsed lvalue expression.
     ExprPtr parseLetTarget();

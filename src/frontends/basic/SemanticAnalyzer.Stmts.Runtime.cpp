@@ -85,6 +85,14 @@ void SemanticAnalyzer::analyzeVarAssignment(VarExpr &v, const LetStmt &l)
 {
     RuntimeStmtContext ctx(*this);
 
+    // Check if trying to assign to a constant
+    if (constants_.find(v.name) != constants_.end())
+    {
+        std::string msg = "cannot assign to constant '" + v.name + "'";
+        de.emit(il::support::Severity::Error, "B2020", l.loc, 1, std::move(msg));
+        return;
+    }
+
     // BUG-003: Check if this is an assignment to the function name (VB-style implicit return)
     if (activeFunction_ && string_utils::iequals(v.name, activeFunction_->name))
     {
@@ -433,6 +441,37 @@ void SemanticAnalyzer::analyzeDim(DimStmt &d)
         }
         varTypes_[d.name] = astToSemanticType(d.type);
     }
+}
+
+/// @brief Validate CONST statements and track constant names.
+///
+/// @param c CONST statement declaring a constant.
+void SemanticAnalyzer::analyzeConst(ConstStmt &c)
+{
+    // Validate the initializer expression
+    if (c.initializer)
+    {
+        visitExpr(*c.initializer);
+    }
+
+    // Track this name as a constant
+    constants_.insert(c.name);
+
+    // Also track it as a symbol
+    auto insertResult = symbols_.insert(c.name);
+    if (insertResult.second && activeProcScope_)
+        activeProcScope_->noteSymbolInserted(c.name);
+
+    // Track the type
+    auto itType = varTypes_.find(c.name);
+    if (activeProcScope_)
+    {
+        std::optional<Type> previous;
+        if (itType != varTypes_.end())
+            previous = itType->second;
+        activeProcScope_->noteVarTypeMutation(c.name, previous);
+    }
+    varTypes_[c.name] = astToSemanticType(c.type);
 }
 
 /// @brief Validate REDIM statements for previously declared arrays.

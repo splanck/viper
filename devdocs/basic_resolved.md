@@ -450,3 +450,61 @@ PRINT s2$  ' Output: Hello
 ✅ All 228 BASIC/frontend tests pass
 
 ---
+
+### BUG-009: CONST keyword not implemented
+**Severity**: Medium
+**Status**: ✅ RESOLVED
+**Resolution Date**: 2025-11-12
+
+**Original Issue**:
+The CONST keyword for declaring named constants was not implemented, preventing definition of read-only values.
+
+**Solution Implemented**:
+Full CONST statement implementation across all compiler layers:
+
+1. **Keyword and AST**:
+   - Added `KeywordConst` to TokenKinds.def
+   - Added to Lexer.cpp keyword table (updated size to 92)
+   - Added `Const` to `Stmt::Kind` enum
+   - Created `ConstStmt` struct with `name`, `initializer`, and `type` fields
+
+2. **Parser** (Parser_Stmt_Core.cpp):
+   - Implemented `parseConstStatement()`
+   - Parses: `CONST name [AS type] = expression`
+   - Registered handler in statement parser registry
+
+3. **Semantic Analysis**:
+   - Added `constants_` set to track constant names
+   - Implemented `analyzeConst()` to validate initializer and store type
+   - Modified `analyzeVarAssignment()` to check `constants_` set
+   - Emits error B2020 when attempting to assign to a constant
+
+4. **Lowering** (LowerStmt_Runtime.cpp):
+   - Implemented `lowerConst()` similar to LET
+   - Evaluates initializer expression once and stores to variable slot
+   - Constants are allocated same as regular variables but protected by semantic checks
+
+5. **Visitor Pattern**:
+   - Implemented in AstWalker, AstPrint, ConstFolder, SemanticAnalyzer, Lowerer
+   - Accept methods added to AST.cpp
+
+**Test Results**:
+```basic
+CONST PI = 3.14159
+PRINT PI          ' Output: 3.14159
+
+PI = 3.0          ' Error: cannot assign to constant 'PI'
+' /tmp/test.bas:3:1: error[B2020]: cannot assign to constant 'PI'
+
+CONST MAX% = 100
+PRINT MAX%        ' Output: 100
+```
+
+✅ All 228 BASIC/frontend tests pass
+
+**Limitations**:
+- String constants work but may have runtime lifetime issues (separate concern)
+- Constants are not compile-time evaluated (evaluated at first execution like variables)
+- No constant folding optimization currently applied
+
+---

@@ -173,6 +173,8 @@ class SemanticAnalyzer
     void analyzeLineInputCh(LineInputChStmt &s);
     /// @brief Analyze DIM statement @p s.
     void analyzeDim(DimStmt &s);
+    /// @brief Analyze CONST statement @p s.
+    void analyzeConst(ConstStmt &s);
     /// @brief Analyze REDIM statement @p s.
     void analyzeReDim(ReDimStmt &s);
     /// @brief Analyze SWAP statement @p s.
@@ -449,6 +451,7 @@ class SemanticAnalyzer
     std::unique_ptr<TypeResolver> resolver_; ///< Type resolver (constructed after declare pass).
     bool sawDecl_{false}; ///< Track if any declarations seen (for USING placement).
     std::unordered_set<std::string> symbols_;
+    std::unordered_set<std::string> constants_; ///< Constant names declared with CONST.
     std::unordered_map<std::string, Type> varTypes_;
     std::unordered_map<std::string, long long> arrays_; ///< array sizes if known (-1 if dynamic)
     std::unordered_set<long long> openChannels_;        ///< Channels opened by literal handles.

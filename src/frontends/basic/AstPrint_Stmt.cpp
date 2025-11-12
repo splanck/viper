@@ -185,14 +185,17 @@ struct AstPrinter::StmtPrinter final : StmtVisitor
         print_stmt::printLet(stmt, ctx);
     }
 
-    /// @brief Render a DIM declaration.
+    /// @brief Render a CONST declaration.
     ///
-    /// @param stmt Declaration describing scalar or array binding.
+    /// @param stmt Declaration describing a constant.
     void visit(const ConstStmt &stmt) override
     {
         print_stmt::printConst(stmt, ctx);
     }
 
+    /// @brief Render a DIM declaration.
+    ///
+    /// @param stmt Declaration describing scalar or array binding.
     void visit(const DimStmt &stmt) override
     {
         print_stmt::printDim(stmt, ctx);
