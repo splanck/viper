@@ -13,8 +13,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "frontends/basic/AstWalker.hpp"
 #include "frontends/basic/ASTUtils.hpp"
+#include "frontends/basic/AstWalker.hpp"
 #include "frontends/basic/BuiltinRegistry.hpp"
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/TypeRules.hpp"
@@ -759,8 +759,7 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
     {
         if (!(stmt.targetVar && stmt.targetVar.get() == &child))
             return;
-        if (auto *var = as<const VarExpr>(*stmt.targetVar.get());
-            var && !var->name.empty())
+        if (auto *var = as<const VarExpr>(*stmt.targetVar.get()); var && !var->name.empty())
             lowerer_.setSymbolType(var->name, Type::Str);
     }
 

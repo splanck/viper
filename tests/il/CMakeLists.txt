@@ -65,20 +65,20 @@ function(viper_add_il_core_tests)
     viper_add_test(test_il_io_print_parse_roundtrip ${CMAKE_SOURCE_DIR}/tests/il/IOPrintParseRoundTrip.cpp)
     target_link_libraries(test_il_io_print_parse_roundtrip PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_api)
     set(_VIPER_IL_FIXTURE_DIRS
-        "${CMAKE_SOURCE_DIR}/examples/il"
-        "${CMAKE_SOURCE_DIR}/tests/il/roundtrip"
-        "${CMAKE_SOURCE_DIR}/tests/il/e2e"
-        "${CMAKE_SOURCE_DIR}/tests/data"
-        "${CMAKE_SOURCE_DIR}/tests/golden/arrays"
-        "${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il"
-        "${CMAKE_SOURCE_DIR}/tests/golden/constfold"
-        "${CMAKE_SOURCE_DIR}/tests/golden/eh_lowering"
-        "${CMAKE_SOURCE_DIR}/tests/golden/eh_runtime"
-        "${CMAKE_SOURCE_DIR}/tests/golden/fileio"
-        "${CMAKE_SOURCE_DIR}/tests/golden/float"
-        "${CMAKE_SOURCE_DIR}/tests/golden/il"
-        "${CMAKE_SOURCE_DIR}/tests/golden/il_opt"
-        "${CMAKE_SOURCE_DIR}/tests/golden/numerics_il")
+            "${CMAKE_SOURCE_DIR}/examples/il"
+            "${CMAKE_SOURCE_DIR}/tests/il/roundtrip"
+            "${CMAKE_SOURCE_DIR}/tests/il/e2e"
+            "${CMAKE_SOURCE_DIR}/tests/data"
+            "${CMAKE_SOURCE_DIR}/tests/golden/arrays"
+            "${CMAKE_SOURCE_DIR}/tests/golden/basic_to_il"
+            "${CMAKE_SOURCE_DIR}/tests/golden/constfold"
+            "${CMAKE_SOURCE_DIR}/tests/golden/eh_lowering"
+            "${CMAKE_SOURCE_DIR}/tests/golden/eh_runtime"
+            "${CMAKE_SOURCE_DIR}/tests/golden/fileio"
+            "${CMAKE_SOURCE_DIR}/tests/golden/float"
+            "${CMAKE_SOURCE_DIR}/tests/golden/il"
+            "${CMAKE_SOURCE_DIR}/tests/golden/il_opt"
+            "${CMAKE_SOURCE_DIR}/tests/golden/numerics_il")
     list(JOIN _VIPER_IL_FIXTURE_DIRS "|" _VIPER_IL_FIXTURE_DIRS_ESCAPED)
     target_compile_definitions(
             test_il_io_print_parse_roundtrip PRIVATE IL_FIXTURE_DIRS="${_VIPER_IL_FIXTURE_DIRS_ESCAPED}")

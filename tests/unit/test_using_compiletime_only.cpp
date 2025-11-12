@@ -2,17 +2,17 @@
 // Purpose: Verify that USING directives produce no runtime artifacts.
 // Ensures USING is purely compile-time (no externs, decls, or IL ops).
 
-#include "frontends/basic/Parser.hpp"
-#include "frontends/basic/SemanticAnalyzer.hpp"
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/Lowerer.hpp"
-#include "support/source_manager.hpp"
-#include "support/diagnostics.hpp"
+#include "frontends/basic/Parser.hpp"
+#include "frontends/basic/SemanticAnalyzer.hpp"
 #include "il/io/Serializer.hpp"
+#include "support/diagnostics.hpp"
+#include "support/source_manager.hpp"
 #include <cassert>
-#include <string>
-#include <sstream>
 #include <iostream>
+#include <sstream>
+#include <string>
 
 using namespace il::frontends::basic;
 using namespace il::support;
@@ -85,12 +85,10 @@ END
 
     // Verify IL is approximately the same size as empty program
     // Allow small delta for whitespace/formatting differences
-    size_t sizeDelta = (il.length() > baselineSize) ?
-                       (il.length() - baselineSize) :
-                       (baselineSize - il.length());
+    size_t sizeDelta =
+        (il.length() > baselineSize) ? (il.length() - baselineSize) : (baselineSize - il.length());
 
-    std::cout << "  Baseline IL: " << baselineSize << " bytes, "
-              << baselineFuncs << " functions\n";
+    std::cout << "  Baseline IL: " << baselineSize << " bytes, " << baselineFuncs << " functions\n";
     std::cout << "  With USING:  " << il.length() << " bytes\n";
     std::cout << "  Delta:       " << sizeDelta << " bytes\n";
 
@@ -158,8 +156,8 @@ END
     std::string il = il::io::Serializer::toString(module);
 
     // Main assertion: USING keyword should not appear in IL (it's compile-time only)
-    bool hasUsingKeyword = il.find("USING") != std::string::npos ||
-                           il.find("using") != std::string::npos;
+    bool hasUsingKeyword =
+        il.find("USING") != std::string::npos || il.find("using") != std::string::npos;
     assert(!hasUsingKeyword && "USING keyword should not appear in IL");
 
     // Should have produced some IL (not minimal)

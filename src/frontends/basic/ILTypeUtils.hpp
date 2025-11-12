@@ -81,11 +81,16 @@ namespace il::frontends::basic::il_utils
     using Kind = il::core::Type::Kind;
     switch (k)
     {
-        case Kind::I1: return 1;
-        case Kind::I16: return 16;
-        case Kind::I32: return 32;
-        case Kind::I64: return 64;
-        default: return 0;
+        case Kind::I1:
+            return 1;
+        case Kind::I16:
+            return 16;
+        case Kind::I32:
+            return 32;
+        case Kind::I64:
+            return 64;
+        default:
+            return 0;
     }
 }
 
@@ -97,9 +102,12 @@ namespace il::frontends::basic::il_utils
     using Kind = il::core::Type::Kind;
     switch (k)
     {
-        case Kind::F32: return 32;
-        case Kind::F64: return 64;
-        default: return 0;
+        case Kind::F32:
+            return 32;
+        case Kind::F64:
+            return 64;
+        default:
+            return 0;
     }
 }
 
@@ -109,7 +117,7 @@ namespace il::frontends::basic::il_utils
 /// @param rhs Right-hand side type.
 /// @return True if types are compatible.
 [[nodiscard]] constexpr bool areTypesCompatible(il::core::Type::Kind lhs,
-                                                 il::core::Type::Kind rhs) noexcept
+                                                il::core::Type::Kind rhs) noexcept
 {
     if (lhs == rhs)
         return true;

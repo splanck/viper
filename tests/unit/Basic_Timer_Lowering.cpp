@@ -13,8 +13,8 @@
 #include "frontends/basic/BasicCompiler.hpp"
 #include "il/core/Extern.hpp"
 #include "il/core/Module.hpp"
-#include "viper/il/IO.hpp"
 #include "support/source_manager.hpp"
+#include "viper/il/IO.hpp"
 
 #include <algorithm>
 #include <iostream>
@@ -26,7 +26,8 @@ namespace
 [[nodiscard]] bool hasExtern(const il::core::Module &module, std::string_view name)
 {
     const auto &externs = module.externs;
-    return std::any_of(externs.begin(), externs.end(),
+    return std::any_of(externs.begin(),
+                       externs.end(),
                        [&](const il::core::Extern &ext) { return ext.name == name; });
 }
 } // namespace
@@ -43,8 +44,10 @@ t = TIMER()
     il::frontends::basic::BasicCompilerOptions options{};
 
     auto result = il::frontends::basic::compileBasic(input, options, sourceManager);
-    if (!result.succeeded()) {
-        if (result.emitter) {
+    if (!result.succeeded())
+    {
+        if (result.emitter)
+        {
             result.emitter->printAll(std::cerr);
         }
     }
@@ -70,8 +73,10 @@ elapsed = TIMER() - TIMER()
     il::frontends::basic::BasicCompilerOptions options{};
 
     auto result = il::frontends::basic::compileBasic(input, options, sourceManager);
-    if (!result.succeeded()) {
-        if (result.emitter) {
+    if (!result.succeeded())
+    {
+        if (result.emitter)
+        {
             result.emitter->printAll(std::cerr);
         }
     }
@@ -83,7 +88,8 @@ elapsed = TIMER() - TIMER()
     size_t count = 0;
     size_t pos = 0;
     const std::string pattern = "call @rt_timer_ms";
-    while ((pos = ilText.find(pattern, pos)) != std::string::npos) {
+    while ((pos = ilText.find(pattern, pos)) != std::string::npos)
+    {
         ++count;
         pos += pattern.length();
     }

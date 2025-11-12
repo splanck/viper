@@ -23,8 +23,8 @@
 /// @details Implements validation rules for USING directives, namespace
 ///          declarations, and reserved-root enforcement per Track A spec.
 
-#include "frontends/basic/SemanticAnalyzer.Internal.hpp"
 #include "frontends/basic/ASTUtils.hpp"
+#include "frontends/basic/SemanticAnalyzer.Internal.hpp"
 #include <algorithm>
 #include <cctype>
 
@@ -36,10 +36,14 @@ static bool iequals(std::string_view a, std::string_view b)
 {
     if (a.size() != b.size())
         return false;
-    return std::equal(a.begin(), a.end(), b.begin(), [](char ca, char cb) {
-        return std::tolower(static_cast<unsigned char>(ca)) ==
-               std::tolower(static_cast<unsigned char>(cb));
-    });
+    return std::equal(a.begin(),
+                      a.end(),
+                      b.begin(),
+                      [](char ca, char cb)
+                      {
+                          return std::tolower(static_cast<unsigned char>(ca)) ==
+                                 std::tolower(static_cast<unsigned char>(cb));
+                      });
 }
 
 /// @brief Analyze namespace declaration.
@@ -80,8 +84,8 @@ void SemanticAnalyzer::analyzeClassDecl(ClassDecl &decl)
     // Resolve base class if present.
     if (decl.baseName)
     {
-        std::string resolvedBase =
-            resolveTypeRef(*decl.baseName, nsStack_, decl.loc, static_cast<uint32_t>(decl.baseName->size()));
+        std::string resolvedBase = resolveTypeRef(
+            *decl.baseName, nsStack_, decl.loc, static_cast<uint32_t>(decl.baseName->size()));
         // Store resolved base for later use (error recovery - continue even if unresolved).
     }
 
@@ -99,9 +103,10 @@ void SemanticAnalyzer::analyzeClassDecl(ClassDecl &decl)
 
         if (!ifaceName.empty())
         {
-            std::string resolvedIface =
-                resolveTypeRef(ifaceName, nsStack_, decl.loc, static_cast<uint32_t>(ifaceName.size()));
-            // Store resolved interface for later use (error recovery - continue even if unresolved).
+            std::string resolvedIface = resolveTypeRef(
+                ifaceName, nsStack_, decl.loc, static_cast<uint32_t>(ifaceName.size()));
+            // Store resolved interface for later use (error recovery - continue even if
+            // unresolved).
         }
     }
 }
@@ -158,10 +163,8 @@ void SemanticAnalyzer::analyzeUsingDecl(UsingDecl &decl)
     // E_NS_001: Namespace must exist in registry.
     if (!ns_.namespaceExists(nsPath))
     {
-        de.emit(diag::BasicDiag::NsUnknownNamespace,
-                decl.loc,
-                1,
-                {{diag::Replacement{"ns", nsPath}}});
+        de.emit(
+            diag::BasicDiag::NsUnknownNamespace, decl.loc, 1, {{diag::Replacement{"ns", nsPath}}});
         return;
     }
 
@@ -205,9 +208,9 @@ void SemanticAnalyzer::analyzeUsingDecl(UsingDecl &decl)
 /// @param length Source length for diagnostics.
 /// @return Fully-qualified type name if resolved; empty string on error.
 std::string SemanticAnalyzer::resolveTypeRef(const std::string &typeName,
-                                               const std::vector<std::string> &currentNsChain,
-                                               il::support::SourceLoc loc,
-                                               uint32_t length)
+                                             const std::vector<std::string> &currentNsChain,
+                                             il::support::SourceLoc loc,
+                                             uint32_t length)
 {
     if (!resolver_)
         return ""; // TypeResolver not initialized yet
@@ -235,11 +238,11 @@ std::string SemanticAnalyzer::resolveTypeRef(const std::string &typeName,
             candidates += result.contenders[i];
         }
 
-        de.emit(diag::BasicDiag::NsAmbiguousType,
-                loc,
-                length,
-                {{diag::Replacement{"type", typeName}},
-                 {diag::Replacement{"candidates", candidates}}});
+        de.emit(
+            diag::BasicDiag::NsAmbiguousType,
+            loc,
+            length,
+            {{diag::Replacement{"type", typeName}}, {diag::Replacement{"candidates", candidates}}});
         return "";
     }
 
@@ -259,8 +262,7 @@ std::string SemanticAnalyzer::resolveTypeRef(const std::string &typeName,
                 de.emit(diag::BasicDiag::NsTypeNotInNs,
                         loc,
                         length,
-                        {{diag::Replacement{"ns", nsPath}},
-                         {diag::Replacement{"type", typeOnly}}});
+                        {{diag::Replacement{"ns", nsPath}}, {diag::Replacement{"type", typeOnly}}});
                 return "";
             }
         }
@@ -278,19 +280,16 @@ std::string SemanticAnalyzer::resolveTypeRef(const std::string &typeName,
             candidates += result.contenders[i];
         }
 
-        de.emit(diag::BasicDiag::NsAmbiguousType,
-                loc,
-                length,
-                {{diag::Replacement{"type", typeName}},
-                 {diag::Replacement{"candidates", candidates}}});
+        de.emit(
+            diag::BasicDiag::NsAmbiguousType,
+            loc,
+            length,
+            {{diag::Replacement{"type", typeName}}, {diag::Replacement{"candidates", candidates}}});
         return "";
     }
 
     // E_NS_006: Type not found.
-    de.emit(diag::BasicDiag::NsTypeNotFound,
-            loc,
-            length,
-            {{diag::Replacement{"type", typeName}}});
+    de.emit(diag::BasicDiag::NsTypeNotFound, loc, length, {{diag::Replacement{"type", typeName}}});
     return "";
 }
 

@@ -43,9 +43,9 @@ namespace il::frontends::basic
 /// @param usings Context that receives USING directives.
 /// @param emitter Optional diagnostics interface reserved for future checks.
 void buildNamespaceRegistry(const Program &program,
-                             NamespaceRegistry &registry,
-                             UsingContext &usings,
-                             DiagnosticEmitter *emitter)
+                            NamespaceRegistry &registry,
+                            UsingContext &usings,
+                            DiagnosticEmitter *emitter)
 {
     // Clear previous state.
     usings.clear();

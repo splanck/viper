@@ -1,8 +1,8 @@
 // File: tests/unit/test_type_resolver.cpp
 // Purpose: Ensure TypeResolver resolves types using namespace registry and using context.
 
-#include "frontends/basic/sem/TypeResolver.hpp"
 #include "frontends/basic/sem/NamespaceRegistry.hpp"
+#include "frontends/basic/sem/TypeResolver.hpp"
 #include "frontends/basic/sem/UsingContext.hpp"
 #include <cassert>
 #include <string>
@@ -66,9 +66,9 @@ void test_current_namespace_chain_walkup()
     UsingContext uc;
 
     // Register types at different levels.
-    reg.registerClass("A", "ClassInA");         // A.ClassInA
-    reg.registerClass("A.B", "ClassInB");       // A.B.ClassInB
-    reg.registerClass("A.B.C", "ClassInC");     // A.B.C.ClassInC
+    reg.registerClass("A", "ClassInA");     // A.ClassInA
+    reg.registerClass("A.B", "ClassInB");   // A.B.ClassInB
+    reg.registerClass("A.B.C", "ClassInC"); // A.B.C.ClassInC
 
     TypeResolver resolver(reg, uc);
 

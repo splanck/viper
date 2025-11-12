@@ -11,17 +11,17 @@
 // - Ambiguity detection spans files
 // - Error locations correctly identify source files
 
-#include "frontends/basic/Parser.hpp"
-#include "frontends/basic/SemanticAnalyzer.hpp"
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/Lowerer.hpp"
-#include "support/source_manager.hpp"
-#include "support/diagnostics.hpp"
+#include "frontends/basic/Parser.hpp"
+#include "frontends/basic/SemanticAnalyzer.hpp"
 #include "il/io/Serializer.hpp"
+#include "support/diagnostics.hpp"
+#include "support/source_manager.hpp"
 #include <cassert>
-#include <string>
-#include <sstream>
 #include <iostream>
+#include <sstream>
+#include <string>
 #include <vector>
 
 using namespace il::frontends::basic;
@@ -32,7 +32,7 @@ using namespace il::support;
 /// @param shouldLower Whether to attempt IL lowering on success
 /// @return Number of errors encountered
 size_t runMultiFilePipeline(const std::vector<std::pair<std::string, std::string>> &files,
-                             bool shouldLower = true)
+                            bool shouldLower = true)
 {
     SourceManager sm;
     DiagnosticEngine de;
@@ -126,8 +126,8 @@ size_t runMultiFilePipeline(const std::vector<std::pair<std::string, std::string
 /// @param expectedFile Expected filename in diagnostic location
 /// @return True if diagnostic found with correct file location
 bool hasMultiFileDiagnostic(const std::vector<std::pair<std::string, std::string>> &files,
-                             const std::string &expectedMsg,
-                             const std::string &expectedFile = "")
+                            const std::string &expectedMsg,
+                            const std::string &expectedFile = "")
 {
     SourceManager sm;
     DiagnosticEngine de;
@@ -225,10 +225,8 @@ END NAMESPACE
 END
 )";
 
-    std::vector<std::pair<std::string, std::string>> files = {
-        {"foundation.bas", file1},
-        {"app.bas", file2}
-    };
+    std::vector<std::pair<std::string, std::string>> files = {{"foundation.bas", file1},
+                                                              {"app.bas", file2}};
 
     size_t errorCount = runMultiFilePipeline(files);
     if (errorCount != 0)
@@ -289,10 +287,7 @@ END
 )";
 
     std::vector<std::pair<std::string, std::string>> files = {
-        {"lib.bas", file1},
-        {"data.bas", file2},
-        {"app.bas", file3}
-    };
+        {"lib.bas", file1}, {"data.bas", file2}, {"app.bas", file3}};
 
     size_t errorCount = runMultiFilePipeline(files);
     assert(errorCount == 0);
@@ -343,24 +338,14 @@ END
 )";
 
     std::vector<std::pair<std::string, std::string>> files = {
-        {"a.bas", file1},
-        {"b.bas", file2},
-        {"app.bas", file3}
-    };
+        {"a.bas", file1}, {"b.bas", file2}, {"app.bas", file3}};
 
     // Should have exactly 1 error (E_NS_003)
-    bool hasAmbiguityError = hasMultiFileDiagnostic(
-        files,
-        "E_NS_003",
-        "app.bas"
-    );
+    bool hasAmbiguityError = hasMultiFileDiagnostic(files, "E_NS_003", "app.bas");
     assert(hasAmbiguityError);
 
     // Verify stable sorted candidate list
-    bool hasSortedCandidates = hasMultiFileDiagnostic(
-        files,
-        "A.THING, B.THING"
-    );
+    bool hasSortedCandidates = hasMultiFileDiagnostic(files, "A.THING, B.THING");
     assert(hasSortedCandidates);
 
     std::cout << "  PASS: Multi-file ambiguity detected with correct location\n";
@@ -409,10 +394,7 @@ END
 )";
 
     std::vector<std::pair<std::string, std::string>> files = {
-        {"collections.bas", file1},
-        {"app.bas", file2},
-        {"other.bas", file3}
-    };
+        {"collections.bas", file1}, {"app.bas", file2}, {"other.bas", file3}};
 
     size_t errorCount = runMultiFilePipeline(files);
     assert(errorCount == 0);
@@ -463,10 +445,7 @@ END
 )";
 
     std::vector<std::pair<std::string, std::string>> files = {
-        {"lib.bas", file1},
-        {"core.bas", file2},
-        {"ui.bas", file3}
-    };
+        {"lib.bas", file1}, {"core.bas", file2}, {"ui.bas", file3}};
 
     size_t errorCount = runMultiFilePipeline(files);
     assert(errorCount == 0);

@@ -4,15 +4,15 @@
 //       - USING must appear before all declarations (including NAMESPACE)
 //       - Cannot import namespaces defined in same file
 
-#include "frontends/basic/SemanticAnalyzer.hpp"
-#include "frontends/basic/Parser.hpp"
 #include "frontends/basic/DiagnosticEmitter.hpp"
-#include "support/source_manager.hpp"
+#include "frontends/basic/Parser.hpp"
+#include "frontends/basic/SemanticAnalyzer.hpp"
 #include "support/diagnostics.hpp"
+#include "support/source_manager.hpp"
 #include <cassert>
-#include <string>
-#include <sstream>
 #include <iostream>
+#include <sstream>
+#include <string>
 
 using namespace il::frontends::basic;
 using namespace il::support;
@@ -33,7 +33,8 @@ size_t parseAndAnalyze(const std::string &source, DiagnosticEngine &de, bool ver
     SemanticAnalyzer analyzer(emitter);
     analyzer.analyze(*program);
 
-    if (verbose && emitter.errorCount() > 0) {
+    if (verbose && emitter.errorCount() > 0)
+    {
         std::cerr << "Semantic errors: " << emitter.errorCount() << std::endl;
         de.printAll(std::cerr, &sm);
     }

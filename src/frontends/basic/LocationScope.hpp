@@ -56,8 +56,8 @@ class LocationScope
     LocationScope &operator=(LocationScope &&) = delete;
 
   private:
-    Lowerer &lowerer_;                      ///< Reference to the lowerer
-    il::support::SourceLoc previousLoc_;    ///< Location to restore on destruction
+    Lowerer &lowerer_;                   ///< Reference to the lowerer
+    il::support::SourceLoc previousLoc_; ///< Location to restore on destruction
 };
 
 } // namespace il::frontends::basic

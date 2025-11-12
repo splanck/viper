@@ -11,26 +11,26 @@
 
 namespace
 {
-    int g_trap_count = 0;
-    std::string g_last_trap;
-    bool g_fail_next_alloc = false;
+int g_trap_count = 0;
+std::string g_last_trap;
+bool g_fail_next_alloc = false;
 
-    extern "C" void vm_trap(const char *msg)
-    {
-        g_trap_count++;
-        g_last_trap = msg ? msg : "";
-    }
+extern "C" void vm_trap(const char *msg)
+{
+    g_trap_count++;
+    g_last_trap = msg ? msg : "";
+}
 
-    void *fail_rt_alloc_once(int64_t bytes, void *(*next)(int64_t))
+void *fail_rt_alloc_once(int64_t bytes, void *(*next)(int64_t))
+{
+    if (g_fail_next_alloc)
     {
-        if (g_fail_next_alloc)
-        {
-            g_fail_next_alloc = false;
-            (void)bytes;
-            return NULL;
-        }
-        return next ? next(bytes) : NULL;
+        g_fail_next_alloc = false;
+        (void)bytes;
+        return NULL;
     }
+    return next ? next(bytes) : NULL;
+}
 } // namespace
 
 int main()

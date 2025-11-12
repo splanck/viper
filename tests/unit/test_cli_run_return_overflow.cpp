@@ -1,8 +1,8 @@
 // File: tests/unit/test_cli_run_return_overflow.cpp
 // Purpose: Ensure cmdRunIL reports an error when VM return value exceeds int range.
-// Key invariants: Overflow must emit diagnostic mentioning "outside host int range" and return non-zero.
-// Ownership/Lifetime: Test owns temporary IL module written to disk.
-// Links: src/tools/ilc/cmd_run_il.cpp
+// Key invariants: Overflow must emit diagnostic mentioning "outside host int range" and return
+// non-zero. Ownership/Lifetime: Test owns temporary IL module written to disk. Links:
+// src/tools/ilc/cmd_run_il.cpp
 
 #include "tools/ilc/cli.hpp"
 
@@ -17,8 +17,7 @@
 
 namespace
 {
-const char kOverflowModule[] =
-    "il 0.1\n\nfunc @main() -> i64 {\nentry:\n  ret 4294967296\n}\n";
+const char kOverflowModule[] = "il 0.1\n\nfunc @main() -> i64 {\nentry:\n  ret 4294967296\n}\n";
 }
 
 // Stubbed usage() required by cmd_run_il.cpp.

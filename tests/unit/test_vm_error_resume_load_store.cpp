@@ -15,8 +15,8 @@
 
 int main()
 {
-    using il::core::Type;
     using il::core::Opcode;
+    using il::core::Type;
     using il::vm::Frame;
     using il::vm::Slot;
     using il::vm::VmError;

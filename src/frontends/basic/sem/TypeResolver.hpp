@@ -72,7 +72,7 @@ class TypeResolver
     /// @param currentNsChain Current namespace path segments (e.g., {"A", "B", "C"}).
     /// @return Result with found flag, qualified name, kind, and contenders if ambiguous.
     [[nodiscard]] Result resolve(std::string name,
-                                  const std::vector<std::string> &currentNsChain) const;
+                                 const std::vector<std::string> &currentNsChain) const;
 
   private:
     /// @brief Convert a string to lowercase for case-insensitive comparison.
@@ -87,7 +87,7 @@ class TypeResolver
     /// @brief Try to resolve name in a specific namespace.
     /// @return Fully-qualified name if found; empty otherwise.
     [[nodiscard]] std::string tryResolveInNamespace(const std::string &ns,
-                                                     const std::string &typeName) const;
+                                                    const std::string &typeName) const;
 
     /// @brief Convert NamespaceRegistry::TypeKind to TypeResolver::Kind.
     [[nodiscard]] static Kind convertKind(NamespaceRegistry::TypeKind nsk);

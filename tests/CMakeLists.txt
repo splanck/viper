@@ -54,10 +54,10 @@ add_library(viper_test_common STATIC
 # case-insensitive filesystems (root contains a VERSION file).
 # Expose only tests dir, public headers, generated headers, and src as needed.
 target_include_directories(viper_test_common PUBLIC
-    ${CMAKE_CURRENT_LIST_DIR}
-    ${CMAKE_SOURCE_DIR}/include
-    ${CMAKE_BINARY_DIR}/generated
-    ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_LIST_DIR}
+        ${CMAKE_SOURCE_DIR}/include
+        ${CMAKE_BINARY_DIR}/generated
+        ${CMAKE_SOURCE_DIR}/src
 )
 target_link_libraries(viper_test_common PUBLIC viper_testing il_vm il_build)
 

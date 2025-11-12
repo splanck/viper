@@ -11,8 +11,8 @@
 
 #include "VMTestHook.hpp"
 
-#include "viper/runtime/rt.h"
 #include "rt_internal.h"
+#include "viper/runtime/rt.h"
 
 #include <cassert>
 #include <chrono>

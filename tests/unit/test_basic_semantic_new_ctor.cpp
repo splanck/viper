@@ -47,12 +47,12 @@ int main()
 {
     {
         const std::string src = "10 CLASS P\n"
-                                 "20   SUB NEW(v AS INTEGER)\n"
-                                 "30   END SUB\n"
-                                 "40 END CLASS\n"
-                                 "50 DIM p AS P\n"
-                                 "60 LET p = NEW P(5)\n"
-                                 "70 END\n";
+                                "20   SUB NEW(v AS INTEGER)\n"
+                                "30   END SUB\n"
+                                "40 END CLASS\n"
+                                "50 DIM p AS P\n"
+                                "60 LET p = NEW P(5)\n"
+                                "70 END\n";
         AnalysisResult result = analyzeSource(src);
         assert(result.errors == 0 && "valid constructor call should succeed");
         assert(result.warnings == 0 && "no warnings expected for valid call");
@@ -60,24 +60,24 @@ int main()
 
     {
         const std::string src = "10 CLASS P\n"
-                                 "20   SUB NEW(v AS INTEGER)\n"
-                                 "30   END SUB\n"
-                                 "40 END CLASS\n"
-                                 "50 DIM p AS P\n"
-                                 "60 LET p = NEW P()\n"
-                                 "70 END\n";
+                                "20   SUB NEW(v AS INTEGER)\n"
+                                "30   END SUB\n"
+                                "40 END CLASS\n"
+                                "50 DIM p AS P\n"
+                                "60 LET p = NEW P()\n"
+                                "70 END\n";
         AnalysisResult result = analyzeSource(src);
         assert(result.errors == 1 && "constructor arity mismatch should be rejected");
     }
 
     {
         const std::string src = "10 CLASS P\n"
-                                 "20   SUB NEW(v AS INTEGER)\n"
-                                 "30   END SUB\n"
-                                 "40 END CLASS\n"
-                                 "50 DIM p AS P\n"
-                                 "60 LET p = NEW P(\"oops\")\n"
-                                 "70 END\n";
+                                "20   SUB NEW(v AS INTEGER)\n"
+                                "30   END SUB\n"
+                                "40 END CLASS\n"
+                                "50 DIM p AS P\n"
+                                "60 LET p = NEW P(\"oops\")\n"
+                                "70 END\n";
         AnalysisResult result = analyzeSource(src);
         assert(result.errors == 1 && "constructor argument type mismatch should error");
     }

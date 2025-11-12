@@ -4,8 +4,8 @@
 // Ownership/Lifetime: Spawns child process to capture VM stderr.
 // Links: docs/codemap.md
 
-#include "il/build/IRBuilder.hpp"
 #include "common/VmFixture.hpp"
+#include "il/build/IRBuilder.hpp"
 
 #include <cassert>
 #include <string>

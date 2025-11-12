@@ -5,15 +5,15 @@
 //   - Verify file:line:col positions
 //   - Verify contender list is sorted case-insensitively and comma-separated
 
-#include "frontends/basic/SemanticAnalyzer.hpp"
-#include "frontends/basic/Parser.hpp"
 #include "frontends/basic/DiagnosticEmitter.hpp"
-#include "support/source_manager.hpp"
+#include "frontends/basic/Parser.hpp"
+#include "frontends/basic/SemanticAnalyzer.hpp"
 #include "support/diagnostics.hpp"
+#include "support/source_manager.hpp"
 #include <cassert>
-#include <string>
-#include <sstream>
 #include <iostream>
+#include <sstream>
+#include <string>
 
 using namespace il::frontends::basic;
 using namespace il::support;
@@ -104,7 +104,8 @@ void test_ns_005_exact_message()
 120 USING System
 )";
     std::string msg = getFirstDiagnostic(source);
-    assert(msg.find("USING must appear before namespace or class declarations") != std::string::npos);
+    assert(msg.find("USING must appear before namespace or class declarations") !=
+           std::string::npos);
 }
 
 // Test E_NS_006: "cannot resolve type: '{type}'"
@@ -149,7 +150,8 @@ void test_ns_009_exact_message()
 110 END NAMESPACE
 )";
     std::string msg = getFirstDiagnostic(source);
-    assert(msg.find("reserved root namespace 'Viper' cannot be declared or imported") != std::string::npos);
+    assert(msg.find("reserved root namespace 'Viper' cannot be declared or imported") !=
+           std::string::npos);
 }
 
 // Test that contender list is comma-separated

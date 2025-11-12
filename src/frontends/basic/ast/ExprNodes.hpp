@@ -96,18 +96,21 @@ struct Expr
     virtual ~Expr() = default;
 
     /// @brief Retrieve the discriminator for this expression.
-    [[nodiscard]] constexpr Kind kind() const noexcept { return kind_; }
+    [[nodiscard]] constexpr Kind kind() const noexcept
+    {
+        return kind_;
+    }
 
     /// @brief Accept a visitor to process this expression.
     virtual void accept(ExprVisitor &visitor) const = 0;
     /// @brief Accept a mutable visitor to process this expression.
     virtual void accept(MutExprVisitor &visitor) = 0;
 
-protected:
+  protected:
     /// @brief Construct expression with specified kind.
     constexpr explicit Expr(Kind k) noexcept : kind_(k) {}
 
-private:
+  private:
     Kind kind_;
 };
 

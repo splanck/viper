@@ -80,4 +80,3 @@ int main()
     assert(rs == il::vm::Runner::RunStatus::Halted);
     return 0;
 }
-

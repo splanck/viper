@@ -4,9 +4,9 @@
 // Ownership/Lifetime: Builds ephemeral IL modules inside each test case.
 // Links: docs/specs/numerics.md
 
+#include "common/VmFixture.hpp"
 #include "il/build/IRBuilder.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
-#include "common/VmFixture.hpp"
 #include "vm/Marshal.hpp"
 #include "vm/VM.hpp"
 

@@ -28,11 +28,15 @@ namespace il::frontends::basic::string_utils
     if (a.size() != b.size())
         return false;
 
-    return std::equal(a.begin(), a.end(), b.begin(), b.end(),
-                     [](char ca, char cb) {
-                         return std::toupper(static_cast<unsigned char>(ca)) ==
-                                std::toupper(static_cast<unsigned char>(cb));
-                     });
+    return std::equal(a.begin(),
+                      a.end(),
+                      b.begin(),
+                      b.end(),
+                      [](char ca, char cb)
+                      {
+                          return std::toupper(static_cast<unsigned char>(ca)) ==
+                                 std::toupper(static_cast<unsigned char>(cb));
+                      });
 }
 
 /// @brief Check if a string starts with a prefix (case-insensitive).

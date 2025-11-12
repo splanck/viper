@@ -152,7 +152,8 @@ int main()
         }
 
         // Decode exit semantics portably: treat signaled termination as non-zero.
-        auto decodeExitCode = [](int raw) {
+        auto decodeExitCode = [](int raw)
+        {
             if (raw == -1)
                 return -1;
 #ifdef _WIN32

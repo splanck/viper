@@ -27,8 +27,8 @@
 ///
 //===----------------------------------------------------------------------===//
 
-#include "frontends/basic/sem/Check_Common.hpp"
 #include "frontends/basic/ASTUtils.hpp"
+#include "frontends/basic/sem/Check_Common.hpp"
 
 #include "frontends/basic/BasicDiagnosticMessages.hpp"
 

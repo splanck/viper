@@ -15,9 +15,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/LocationScope.hpp"
+#include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/NameMangler_OOP.hpp"
 
 #include <cassert>
@@ -49,7 +49,8 @@ void Lowerer::visit(const BeepStmt &s)
 void Lowerer::visit(const ClsStmt &s)
 {
     LocationScope loc(*this, s.loc);
-    emitRuntimeHelper(il::runtime::RuntimeFeature::TermCls, "rt_term_cls", Type(Type::Kind::Void), {});
+    emitRuntimeHelper(
+        il::runtime::RuntimeFeature::TermCls, "rt_term_cls", Type(Type::Kind::Void), {});
 }
 
 /// @brief Lower the BASIC @c COLOR statement to the runtime helper.
@@ -72,7 +73,10 @@ void Lowerer::visit(const ColorStmt &s)
     }
     Value fg32 = narrow32(fg.value, s.loc);
     Value bg32 = narrow32(bgv, s.loc);
-    emitRuntimeHelper(il::runtime::RuntimeFeature::TermColor, "rt_term_color_i32", Type(Type::Kind::Void), {fg32, bg32});
+    emitRuntimeHelper(il::runtime::RuntimeFeature::TermColor,
+                      "rt_term_color_i32",
+                      Type(Type::Kind::Void),
+                      {fg32, bg32});
 }
 
 /// @brief Lower the BASIC @c LOCATE statement that positions the cursor.
@@ -95,7 +99,10 @@ void Lowerer::visit(const LocateStmt &s)
     }
     Value row32 = narrow32(row.value, s.loc);
     Value col32 = narrow32(colv, s.loc);
-    emitRuntimeHelper(il::runtime::RuntimeFeature::TermLocate, "rt_term_locate_i32", Type(Type::Kind::Void), {row32, col32});
+    emitRuntimeHelper(il::runtime::RuntimeFeature::TermLocate,
+                      "rt_term_locate_i32",
+                      Type(Type::Kind::Void),
+                      {row32, col32});
 }
 
 /// @brief Lower the BASIC @c CURSOR statement to control cursor visibility.
@@ -110,7 +117,10 @@ void Lowerer::visit(const CursorStmt &s)
     LocationScope loc(*this, s.loc);
     Value show = Value::constInt(s.visible ? 1 : 0);
     Value show32 = narrow32(show, s.loc);
-    emitRuntimeHelper(il::runtime::RuntimeFeature::TermCursor, "rt_term_cursor_visible_i32", Type(Type::Kind::Void), {show32});
+    emitRuntimeHelper(il::runtime::RuntimeFeature::TermCursor,
+                      "rt_term_cursor_visible_i32",
+                      Type(Type::Kind::Void),
+                      {show32});
 }
 
 /// @brief Lower the BASIC @c ALTSCREEN statement to control alternate screen buffer.
@@ -125,7 +135,10 @@ void Lowerer::visit(const AltScreenStmt &s)
     LocationScope loc(*this, s.loc);
     Value enable = Value::constInt(s.enable ? 1 : 0);
     Value enable32 = narrow32(enable, s.loc);
-    emitRuntimeHelper(il::runtime::RuntimeFeature::TermAltScreen, "rt_term_alt_screen_i32", Type(Type::Kind::Void), {enable32});
+    emitRuntimeHelper(il::runtime::RuntimeFeature::TermAltScreen,
+                      "rt_term_alt_screen_i32",
+                      Type(Type::Kind::Void),
+                      {enable32});
 }
 
 /// @brief Lower the BASIC SLEEP statement to the runtime helper.

@@ -192,7 +192,8 @@ Lowerer::CtrlState Lowerer::emitIf(const IfStmt &stmt)
     func = ctx.function();
     auto *elseBlk = &func->blocks[blocks.elseIdx];
     // Pass index instead of pointer to avoid stale pointer after nested statement lowering
-    fallthrough = lowerIfBranch(stmt.else_branch.get(), elseBlk, blocks.exitIdx, stmt.loc) || fallthrough;
+    fallthrough =
+        lowerIfBranch(stmt.else_branch.get(), elseBlk, blocks.exitIdx, stmt.loc) || fallthrough;
 
     if (!fallthrough)
     {

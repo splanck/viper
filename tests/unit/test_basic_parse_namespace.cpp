@@ -11,13 +11,12 @@ using namespace il::support;
 
 int main()
 {
-    std::string src =
-        "NAMESPACE A.B\n"
-        "  CLASS C\n"
-        "    PUBLIC SUB M()\n"
-        "    END SUB\n"
-        "  END CLASS\n"
-        "END NAMESPACE\n";
+    std::string src = "NAMESPACE A.B\n"
+                      "  CLASS C\n"
+                      "    PUBLIC SUB M()\n"
+                      "    END SUB\n"
+                      "  END CLASS\n"
+                      "END NAMESPACE\n";
 
     SourceManager sm;
     uint32_t fid = sm.addFile("test.bas");
@@ -36,4 +35,3 @@ int main()
     assert(cls->name == "C");
     return 0;
 }
-

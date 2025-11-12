@@ -4,8 +4,8 @@
 // Ownership/Lifetime: Forks child VM process to capture trap diagnostics.
 // Links: docs/codemap.md
 
-#include "il/build/IRBuilder.hpp"
 #include "common/VmFixture.hpp"
+#include "il/build/IRBuilder.hpp"
 
 #include <cassert>
 #include <limits>

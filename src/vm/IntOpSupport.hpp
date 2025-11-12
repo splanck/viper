@@ -237,8 +237,7 @@ template <typename T>
 /// @tparam NarrowT Target narrow signed integer type.
 /// @param value Value to check.
 /// @return True if value fits within NarrowT's range.
-template <typename NarrowT>
-[[nodiscard]] constexpr bool fitsSignedRange(int64_t value) noexcept
+template <typename NarrowT> [[nodiscard]] constexpr bool fitsSignedRange(int64_t value) noexcept
 {
     return value >= static_cast<int64_t>(std::numeric_limits<NarrowT>::min()) &&
            value <= static_cast<int64_t>(std::numeric_limits<NarrowT>::max());
@@ -269,8 +268,7 @@ void applyUnsignedDivOrRem(const il::core::Instr &in,
 /// @tparam NarrowT Target narrow unsigned integer type.
 /// @param value Value to check.
 /// @return True if value fits within NarrowT's range.
-template <typename NarrowT>
-[[nodiscard]] constexpr bool fitsUnsignedRange(uint64_t value) noexcept
+template <typename NarrowT> [[nodiscard]] constexpr bool fitsUnsignedRange(uint64_t value) noexcept
 {
     return value <= static_cast<uint64_t>(std::numeric_limits<NarrowT>::max());
 }

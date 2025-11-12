@@ -21,10 +21,10 @@
 ///          consistent even though file I/O lowering is handled by bespoke
 ///          routines elsewhere in the frontend.
 
-#include "frontends/basic/lower/builtins/Registrars.hpp"
-#include "frontends/basic/lower/BuiltinCommon.hpp"
 #include "frontends/basic/BuiltinRegistry.hpp"
 #include "frontends/basic/Lowerer.hpp"
+#include "frontends/basic/lower/BuiltinCommon.hpp"
+#include "frontends/basic/lower/builtins/Registrars.hpp"
 
 namespace il::frontends::basic::lower::builtins
 {

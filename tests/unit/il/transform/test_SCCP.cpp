@@ -1,8 +1,8 @@
 // File: tests/unit/il/transform/test_SCCP.cpp
 // Purpose: Exercise sparse conditional constant propagation on block-parameter SSA.
-// Key invariants: Constants flowing through block parameters fold branches and prune unreachable blocks.
-// Ownership/Lifetime: Constructs a transient module within the test.
-// Links: docs/il-guide.md#reference
+// Key invariants: Constants flowing through block parameters fold branches and prune unreachable
+// blocks. Ownership/Lifetime: Constructs a transient module within the test. Links:
+// docs/il-guide.md#reference
 
 #include "il/transform/SCCP.hpp"
 #include "il/transform/SimplifyCFG.hpp"

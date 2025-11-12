@@ -3,8 +3,8 @@
 // Key invariants: Parsing stops at non-numeric; round-trip within tolerance.
 // Ownership: Uses runtime library.
 // Links: docs/codemap.md
-#include "viper/runtime/rt.h"
 #include "rt_internal.h"
+#include "viper/runtime/rt.h"
 #include <cassert>
 #include <cmath>
 #include <string>

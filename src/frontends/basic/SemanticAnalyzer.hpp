@@ -14,8 +14,8 @@
 #include "frontends/basic/Semantic_OOP.hpp"
 #include "frontends/basic/ast/NodeFwd.hpp"
 #include "frontends/basic/sem/NamespaceRegistry.hpp"
-#include "frontends/basic/sem/UsingContext.hpp"
 #include "frontends/basic/sem/TypeResolver.hpp"
+#include "frontends/basic/sem/UsingContext.hpp"
 #include <initializer_list>
 #include <optional>
 #include <span>
@@ -192,9 +192,9 @@ class SemanticAnalyzer
     /// @param length Source length for diagnostics.
     /// @return Fully-qualified type name if resolved; empty string on error.
     std::string resolveTypeRef(const std::string &typeName,
-                                const std::vector<std::string> &currentNsChain,
-                                il::support::SourceLoc loc,
-                                uint32_t length);
+                               const std::vector<std::string> &currentNsChain,
+                               il::support::SourceLoc loc,
+                               uint32_t length);
 
     /// @brief Analyze assignment to a simple variable in LET.
     void analyzeVarAssignment(VarExpr &v, const LetStmt &s);
@@ -441,11 +441,11 @@ class SemanticAnalyzer
     ScopeTracker scopes_;
     ProcRegistry procReg_;
     OopIndex oopIndex_;
-    NamespaceRegistry ns_;                         ///< Registry for declared namespaces and types.
-    UsingContext usings_;                          ///< File-scoped USING imports.
-    std::vector<std::string> nsStack_;             ///< Current namespace path during analysis.
-    std::unique_ptr<TypeResolver> resolver_;       ///< Type resolver (constructed after declare pass).
-    bool sawDecl_{false};                          ///< Track if any declarations seen (for USING placement).
+    NamespaceRegistry ns_;                   ///< Registry for declared namespaces and types.
+    UsingContext usings_;                    ///< File-scoped USING imports.
+    std::vector<std::string> nsStack_;       ///< Current namespace path during analysis.
+    std::unique_ptr<TypeResolver> resolver_; ///< Type resolver (constructed after declare pass).
+    bool sawDecl_{false}; ///< Track if any declarations seen (for USING placement).
     std::unordered_set<std::string> symbols_;
     std::unordered_map<std::string, Type> varTypes_;
     std::unordered_map<std::string, long long> arrays_; ///< array sizes if known (-1 if dynamic)

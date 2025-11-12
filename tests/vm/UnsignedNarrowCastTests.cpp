@@ -3,8 +3,8 @@
 // Key invariants: cast.ui_narrow.chk must succeed for values representable in the target width.
 // Ownership/Lifetime: Builds throwaway modules executed via VmFixture.
 
-#include "il/build/IRBuilder.hpp"
 #include "common/VmFixture.hpp"
+#include "il/build/IRBuilder.hpp"
 
 #include <cassert>
 #include <cstdint>

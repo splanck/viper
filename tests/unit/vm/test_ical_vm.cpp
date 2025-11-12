@@ -1,7 +1,7 @@
-#include "gtest/gtest.h"
-#include "vm/VM.hpp"
-#include "il/core/Module.hpp"
 #include "il/build/IRBuilder.hpp"
+#include "il/core/Module.hpp"
+#include "vm/VM.hpp"
+#include "gtest/gtest.h"
 
 // Minimal smoke: ensure call.indirect with function pointer executes.
 TEST(VM_InterfaceCall, IndirectFunctionPointerExecutes)
@@ -10,8 +10,10 @@ TEST(VM_InterfaceCall, IndirectFunctionPointerExecutes)
     il::build::IRBuilder b(m);
 
     // callee: func @callee(ptr) -> void { entry: ret }
-    auto &callee = b.startFunction("callee", il::core::Type(il::core::Type::Kind::Void),
-                                   std::vector<il::core::Param>{il::core::Param{"ME", il::core::Type(il::core::Type::Kind::Ptr)}});
+    auto &callee = b.startFunction("callee",
+                                   il::core::Type(il::core::Type::Kind::Void),
+                                   std::vector<il::core::Param>{il::core::Param{
+                                       "ME", il::core::Type(il::core::Type::Kind::Ptr)}});
     b.addBlock(callee, "entry");
     b.emitRet(std::nullopt, {});
 
@@ -35,4 +37,3 @@ TEST(VM_InterfaceCall, IndirectFunctionPointerExecutes)
     (void)result;
     SUCCEED();
 }
-

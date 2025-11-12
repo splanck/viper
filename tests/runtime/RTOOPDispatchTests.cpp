@@ -11,28 +11,19 @@
 
 // Mock vtable with 3 function pointers
 static void mock_func0(void) {}
+
 static void mock_func1(void) {}
+
 static void mock_func2(void) {}
 
-static void *mock_vtable[3] = {
-    (void *)mock_func0,
-    (void *)mock_func1,
-    (void *)mock_func2
-};
+static void *mock_vtable[3] = {(void *)mock_func0, (void *)mock_func1, (void *)mock_func2};
 
 // Mock class info
 static rt_class_info mock_class = {
-    .type_id = 1,
-    .qname = "TestClass",
-    .base = NULL,
-    .vtable = mock_vtable,
-    .vtable_len = 3
-};
+    .type_id = 1, .qname = "TestClass", .base = NULL, .vtable = mock_vtable, .vtable_len = 3};
 
 // Mock object
-static rt_object mock_obj = {
-    .vptr = mock_vtable
-};
+static rt_object mock_obj = {.vptr = mock_vtable};
 
 int main()
 {

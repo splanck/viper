@@ -81,7 +81,7 @@ std::vector<std::string> TypeResolver::splitPath(const std::string &path)
 }
 
 std::string TypeResolver::tryResolveInNamespace(const std::string &ns,
-                                                 const std::string &typeName) const
+                                                const std::string &typeName) const
 {
     std::string candidate = ns.empty() ? typeName : (ns + "." + typeName);
 
@@ -113,7 +113,7 @@ TypeResolver::Kind TypeResolver::convertKind(NamespaceRegistry::TypeKind nsk)
 }
 
 TypeResolver::Result TypeResolver::resolve(std::string name,
-                                            const std::vector<std::string> &currentNsChain) const
+                                           const std::vector<std::string> &currentNsChain) const
 {
     Result result;
 
@@ -217,9 +217,9 @@ TypeResolver::Result TypeResolver::resolve(std::string name,
     }
 
     // Ambiguous: sort candidates case-insensitively for stable diagnostics.
-    std::sort(candidates.begin(), candidates.end(), [](const std::string &a, const std::string &b) {
-        return toLower(a) < toLower(b);
-    });
+    std::sort(candidates.begin(),
+              candidates.end(),
+              [](const std::string &a, const std::string &b) { return toLower(a) < toLower(b); });
 
     result.found = false;
     result.contenders = std::move(candidates);

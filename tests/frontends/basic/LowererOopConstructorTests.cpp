@@ -50,17 +50,17 @@ bool functionCallsCtor(const il::core::Function &fn, const std::string &ctorName
 int main()
 {
     const std::string src = "10 CLASS C\n"
-                             "20   v AS INTEGER\n"
-                             "30   SUB SET()\n"
-                             "40     LET v = 7\n"
-                             "50   END SUB\n"
-                             "60   SUB SHOW()\n"
-                             "70     PRINT v\n"
-                             "80   END SUB\n"
-                             "90 END CLASS\n"
-                             "100 DIM c\n"
-                             "110 LET c = NEW C()\n"
-                             "120 END\n";
+                            "20   v AS INTEGER\n"
+                            "30   SUB SET()\n"
+                            "40     LET v = 7\n"
+                            "50   END SUB\n"
+                            "60   SUB SHOW()\n"
+                            "70     PRINT v\n"
+                            "80   END SUB\n"
+                            "90 END CLASS\n"
+                            "100 DIM c\n"
+                            "110 LET c = NEW C()\n"
+                            "120 END\n";
 
     SourceManager sm;
     uint32_t fid = sm.addFile("default_ctor.bas");
@@ -89,4 +89,3 @@ int main()
 
     return 0;
 }
-

@@ -18,8 +18,8 @@
 ///          AST nodes, and report diagnostics through the active diagnostic
 ///          emitter when malformed statements are encountered.
 
-#include "frontends/basic/BasicDiagnosticMessages.hpp"
 #include "frontends/basic/ASTUtils.hpp"
+#include "frontends/basic/BasicDiagnosticMessages.hpp"
 #include "frontends/basic/Parser.hpp"
 
 #include <cstdlib>

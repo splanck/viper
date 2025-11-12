@@ -46,10 +46,9 @@ void test_using_with_alias()
 
 void test_multiple_usings()
 {
-    std::string src =
-        "USING System\n"
-        "USING FB = Foo.Bar\n"
-        "USING A.B.C.D\n";
+    std::string src = "USING System\n"
+                      "USING FB = Foo.Bar\n"
+                      "USING A.B.C.D\n";
     SourceManager sm;
     uint32_t fid = sm.addFile("test.bas");
     Parser p(src, fid);
@@ -101,9 +100,8 @@ void test_using_trailing_dot_recovers()
 void test_using_with_statement()
 {
     // USING followed by other statements.
-    std::string src =
-        "USING Foo\n"
-        "PRINT 42\n";
+    std::string src = "USING Foo\n"
+                      "PRINT 42\n";
     SourceManager sm;
     uint32_t fid = sm.addFile("test.bas");
     Parser p(src, fid);

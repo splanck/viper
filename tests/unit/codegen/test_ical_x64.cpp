@@ -1,8 +1,8 @@
-#include "gtest/gtest.h"
-#include "codegen/x86_64/passes/LoweringPass.hpp"
 #include "codegen/x86_64/Backend.hpp"
-#include "il/core/Module.hpp"
+#include "codegen/x86_64/passes/LoweringPass.hpp"
 #include "il/build/IRBuilder.hpp"
+#include "il/core/Module.hpp"
+#include "gtest/gtest.h"
 
 // Ensure call.indirect lowers to an indirect CALL in MIR plan.
 TEST(Codegen_X64_InterfaceCall, IndirectCallLowering)
@@ -24,9 +24,10 @@ TEST(Codegen_X64_InterfaceCall, IndirectCallLowering)
     fn.blocks.front().instructions.push_back(ret);
 
     viper::codegen::x64::CodegenOptions opts{};
-    auto res = viper::codegen::x64::emitFunctionToAssembly(viper::codegen::x64::convertToAdapterFunction(fn), opts);
+    auto res = viper::codegen::x64::emitFunctionToAssembly(
+        viper::codegen::x64::convertToAdapterFunction(fn), opts);
     ASSERT_TRUE(res.ok);
-    // Simple smoke: assembly contains "call" mnemonic (indirect form depends on register allocation)
+    // Simple smoke: assembly contains "call" mnemonic (indirect form depends on register
+    // allocation)
     ASSERT_NE(res.asmText.find("call"), std::string::npos);
 }
-

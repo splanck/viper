@@ -4,8 +4,8 @@
 // callee block. Ownership/Lifetime: Constructs an in-memory module executed in a subprocess to
 // capture diagnostics. Links: docs/il-guide.md#reference
 
-#include "il/build/IRBuilder.hpp"
 #include "common/VmFixture.hpp"
+#include "il/build/IRBuilder.hpp"
 
 #include <cassert>
 #include <cerrno>

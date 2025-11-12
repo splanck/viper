@@ -220,7 +220,8 @@ VM::VM(const Module &m, TraceConfig tc, uint64_t ms, DebugCtrl dbg, DebugScript 
                         {
                             // Use same logic as evalConstStr in VMContext.cpp
                             if (operand.str.find('\0') == std::string::npos)
-                                inlineLiteralCache[operand.str] = rt_const_cstr(operand.str.c_str());
+                                inlineLiteralCache[operand.str] =
+                                    rt_const_cstr(operand.str.c_str());
                             else
                                 inlineLiteralCache[operand.str] =
                                     rt_string_from_bytes(operand.str.data(), operand.str.size());
@@ -238,7 +239,8 @@ VM::VM(const Module &m, TraceConfig tc, uint64_t ms, DebugCtrl dbg, DebugScript 
                             if (inlineLiteralCache.find(brArg.str) == inlineLiteralCache.end())
                             {
                                 if (brArg.str.find('\0') == std::string::npos)
-                                    inlineLiteralCache[brArg.str] = rt_const_cstr(brArg.str.c_str());
+                                    inlineLiteralCache[brArg.str] =
+                                        rt_const_cstr(brArg.str.c_str());
                                 else
                                     inlineLiteralCache[brArg.str] =
                                         rt_string_from_bytes(brArg.str.data(), brArg.str.size());

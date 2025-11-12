@@ -1,9 +1,9 @@
 // File: tests/unit/VM_ExternRegistryTests.cpp
 // Purpose: Test runtime extern registration, canonicalization, and error traps.
 
+#include "il/runtime/signatures/Registry.hpp"
 #include "vm/RuntimeBridge.hpp"
 #include "vm/VM.hpp"
-#include "il/runtime/signatures/Registry.hpp"
 
 #include <cassert>
 #include <cstring>
@@ -11,10 +11,13 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-using il::runtime::signatures::SigParam;
 using il::runtime::signatures::make_signature;
+using il::runtime::signatures::SigParam;
 
-static int64_t times2(int64_t x) { return x * 2; }
+static int64_t times2(int64_t x)
+{
+    return x * 2;
+}
 
 static void times2_handler(void **args, void *result)
 {

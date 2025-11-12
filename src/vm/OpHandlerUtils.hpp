@@ -28,8 +28,7 @@ namespace ops
 /// @param result Pointer receiving the computed value.
 /// @return True when the operation overflowed.
 /// @note Force-inlined for optimal performance in hot interpreter loops.
-template <typename T>
-[[nodiscard]] inline bool checked_add(T lhs, T rhs, T *result)
+template <typename T> [[nodiscard]] inline bool checked_add(T lhs, T rhs, T *result)
 {
     return __builtin_add_overflow(lhs, rhs, result);
 }
@@ -41,8 +40,7 @@ template <typename T>
 /// @param result Pointer receiving the computed value.
 /// @return True when the operation overflowed.
 /// @note Force-inlined for optimal performance in hot interpreter loops.
-template <typename T>
-[[nodiscard]] inline bool checked_sub(T lhs, T rhs, T *result)
+template <typename T> [[nodiscard]] inline bool checked_sub(T lhs, T rhs, T *result)
 {
     return __builtin_sub_overflow(lhs, rhs, result);
 }
@@ -54,8 +52,7 @@ template <typename T>
 /// @param result Pointer receiving the computed value.
 /// @return True when the operation overflowed.
 /// @note Force-inlined for optimal performance in hot interpreter loops.
-template <typename T>
-[[nodiscard]] inline bool checked_mul(T lhs, T rhs, T *result)
+template <typename T> [[nodiscard]] inline bool checked_mul(T lhs, T rhs, T *result)
 {
     return __builtin_mul_overflow(lhs, rhs, result);
 }

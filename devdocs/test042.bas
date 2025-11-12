@@ -1,0 +1,6 @@
+PRINT TRUE
+PRINT FALSE
+flag = TRUE
+PRINT flag
+flag = FALSE
+PRINT flag

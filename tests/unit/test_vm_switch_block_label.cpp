@@ -109,7 +109,8 @@ int main()
 
     int status = 0;
     waitpid(pid, &status, 0);
-    auto decodeExit = [](int raw) {
+    auto decodeExit = [](int raw)
+    {
 #ifdef _WIN32
         return raw;
 #else
@@ -124,21 +125,20 @@ int main()
     // Accept any non-zero termination in constrained environments.
     if (code == 0)
     {
-        std::fprintf(stderr, "switch-block-label: skipping (child exit code 0 in constrained env)\n");
+        std::fprintf(stderr,
+                     "switch-block-label: skipping (child exit code 0 in constrained env)\n");
         return 0;
     }
 
     if (diag.find("switch target out of range") == std::string::npos)
     {
-        std::fprintf(stderr,
-                     "switch-block-label: skipping (expected diagnostic not observed)\n");
+        std::fprintf(stderr, "switch-block-label: skipping (expected diagnostic not observed)\n");
         return 0;
     }
     // These context lines help ensure correct attribution; tolerate absence under constrained envs.
     if (diag.find("runtime-context: fn='main' block='trap'\n") == std::string::npos)
     {
-        std::fprintf(stderr,
-                     "switch-block-label: skipping (runtime context not captured)\n");
+        std::fprintf(stderr, "switch-block-label: skipping (runtime context not captured)\n");
         return 0;
     }
     if (diag.find("block='entry'") != std::string::npos)

@@ -17,9 +17,9 @@
 
 #include <cassert>
 
+using il::common::integer::narrow_to;
 using il::common::integer::OverflowPolicy;
 using il::common::integer::Value;
-using il::common::integer::narrow_to;
 
 int main()
 {

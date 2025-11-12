@@ -25,8 +25,8 @@
 ///          the active Lowerer state so nested statements observe consistent
 ///          control-flow graphs.
 
-#include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/LocationScope.hpp"
+#include "frontends/basic/Lowerer.hpp"
 
 #include <cassert>
 

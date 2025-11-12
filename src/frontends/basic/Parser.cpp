@@ -344,10 +344,10 @@ void Parser::emitError(std::string_view code, const Token &tok, std::string mess
     if (emitter_)
     {
         emitter_->emit(il::support::Severity::Error,
-                      std::string(code),
-                      tok.loc,
-                      static_cast<uint32_t>(tok.lexeme.size()),
-                      std::move(message));
+                       std::string(code),
+                       tok.loc,
+                       static_cast<uint32_t>(tok.lexeme.size()),
+                       std::move(message));
     }
     else
     {
@@ -359,11 +359,7 @@ void Parser::emitError(std::string_view code, il::support::SourceLoc loc, std::s
 {
     if (emitter_)
     {
-        emitter_->emit(il::support::Severity::Error,
-                      std::string(code),
-                      loc,
-                      0,
-                      std::move(message));
+        emitter_->emit(il::support::Severity::Error, std::string(code), loc, 0, std::move(message));
     }
     else
     {
@@ -376,10 +372,10 @@ void Parser::emitWarning(std::string_view code, const Token &tok, std::string me
     if (emitter_)
     {
         emitter_->emit(il::support::Severity::Warning,
-                      std::string(code),
-                      tok.loc,
-                      static_cast<uint32_t>(tok.lexeme.size()),
-                      std::move(message));
+                       std::string(code),
+                       tok.loc,
+                       static_cast<uint32_t>(tok.lexeme.size()),
+                       std::move(message));
     }
     else
     {

@@ -403,7 +403,8 @@ Lowerer::RVal BuiltinExprLowering::emitErrBuiltin(Lowerer &lowerer, const Builti
     BasicBlock *current = ctx.current();
 
     // Check if we're in a handler block by looking for Error parameter
-    if (func && current && !current->params.empty() && current->params[0].type.kind == IlKind::Error)
+    if (func && current && !current->params.empty() &&
+        current->params[0].type.kind == IlKind::Error)
     {
         // We're in a handler block, extract error code from %err parameter
         unsigned errId = current->params[0].id;
@@ -431,8 +432,10 @@ Lowerer::RVal BuiltinExprLowering::emitErrBuiltin(Lowerer &lowerer, const Builti
 
         // Sign-extend 32->64
         {
-            Value shl = lowerer.emitBinary(Opcode::Shl, IlType(IlKind::I64), code64, Value::constInt(32));
-            code64 = lowerer.emitBinary(Opcode::AShr, IlType(IlKind::I64), shl, Value::constInt(32));
+            Value shl =
+                lowerer.emitBinary(Opcode::Shl, IlType(IlKind::I64), code64, Value::constInt(32));
+            code64 =
+                lowerer.emitBinary(Opcode::AShr, IlType(IlKind::I64), shl, Value::constInt(32));
         }
 
         return {code64, IlType(IlKind::I64)};

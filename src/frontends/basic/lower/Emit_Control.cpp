@@ -25,8 +25,8 @@
 /// helper ensures terminators are emitted exactly once and that the lowerer
 /// preserves ownership of temporary values managed by the ProcedureContext.
 
-#include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/ASTUtils.hpp"
+#include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/lower/Emitter.hpp"
 
 #include "viper/il/Module.hpp"

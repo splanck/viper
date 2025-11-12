@@ -150,9 +150,11 @@ int main()
             return viper::analysis::computeDominatorTree(ctx, fnRef);
         });
     registry.registerFunctionAnalysis<il::transform::LoopInfo>(
-        "loop-info", [](Module &mod, Function &fnRef) { return il::transform::computeLoopInfo(mod, fnRef); });
+        "loop-info",
+        [](Module &mod, Function &fnRef) { return il::transform::computeLoopInfo(mod, fnRef); });
     registry.registerFunctionAnalysis<il::transform::LivenessInfo>(
-        "liveness", [](Module &mod, Function &fnRef) { return il::transform::computeLiveness(mod, fnRef); });
+        "liveness",
+        [](Module &mod, Function &fnRef) { return il::transform::computeLiveness(mod, fnRef); });
 
     il::transform::AnalysisManager analysisManager(module, registry);
 

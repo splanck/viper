@@ -72,8 +72,7 @@ int main()
 
     const std::string errText = errStream.str();
     const std::string cerrText = capturedCerr.str();
-    const std::string overflowMessage =
-        "source manager exhausted file identifier space";
+    const std::string overflowMessage = "source manager exhausted file identifier space";
     const std::size_t firstPos = cerrText.find(overflowMessage);
     const bool reportedOverflow =
         firstPos != std::string::npos || errText.find(overflowMessage) != std::string::npos;

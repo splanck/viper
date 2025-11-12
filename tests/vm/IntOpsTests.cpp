@@ -2,8 +2,8 @@
 // Purpose: Validate integer VM op semantics for mixed signed cases and traps.
 // License: MIT License. See LICENSE in project root for details.
 
-#include "il/build/IRBuilder.hpp"
 #include "common/VmFixture.hpp"
+#include "il/build/IRBuilder.hpp"
 
 #include <cassert>
 #include <cstdint>

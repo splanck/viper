@@ -6,8 +6,8 @@
 
 #include "il/api/expected_api.hpp"
 #include "il/core/Module.hpp"
-#include "viper/il/IO.hpp"
 #include "support/diag_expected.hpp"
+#include "viper/il/IO.hpp"
 
 #include <algorithm>
 #include <filesystem>

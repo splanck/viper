@@ -17,8 +17,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "frontends/basic/SemanticAnalyzer.Internal.hpp"
 #include "frontends/basic/ASTUtils.hpp"
+#include "frontends/basic/SemanticAnalyzer.Internal.hpp"
 
 #include <limits>
 

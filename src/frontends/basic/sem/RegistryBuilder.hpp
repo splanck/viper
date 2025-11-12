@@ -29,8 +29,8 @@ class DiagnosticEmitter;
 /// @param usings Context that receives USING directives.
 /// @param emitter Optional diagnostics interface for future checks.
 void buildNamespaceRegistry(const Program &program,
-                             NamespaceRegistry &registry,
-                             UsingContext &usings,
-                             DiagnosticEmitter *emitter);
+                            NamespaceRegistry &registry,
+                            UsingContext &usings,
+                            DiagnosticEmitter *emitter);
 
 } // namespace il::frontends::basic

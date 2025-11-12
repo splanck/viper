@@ -70,14 +70,15 @@ bool tryTailCall(VM &vm, const il::core::Function *callee, std::span<const Slot>
     const size_t regCount = maxSsaId + 1;
     if (callee->name == "fact" || callee->name == "f" || callee->name == "g")
     {
-        std::fprintf(stderr,
-                     "[TCO] callee=%s maxSsaId=%zu regCount=%zu valueNames=%zu params=%zu blocks=%zu\n",
-                     callee->name.c_str(),
-                     maxSsaId,
-                     regCount,
-                     callee->valueNames.size(),
-                     callee->params.size(),
-                     callee->blocks.size());
+        std::fprintf(
+            stderr,
+            "[TCO] callee=%s maxSsaId=%zu regCount=%zu valueNames=%zu params=%zu blocks=%zu\n",
+            callee->name.c_str(),
+            maxSsaId,
+            regCount,
+            callee->valueNames.size(),
+            callee->params.size(),
+            callee->blocks.size());
         std::fflush(stderr);
     }
     fr.regs.resize(regCount);

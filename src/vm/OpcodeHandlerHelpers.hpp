@@ -31,17 +31,18 @@ namespace il::vm::detail
 /// @brief Mark common unused control-flow parameters in opcode handlers.
 /// @details Many arithmetic and comparison handlers don't use blocks, bb, or ip
 ///          parameters. This macro provides a consistent way to suppress warnings.
-#define VM_HANDLER_UNUSED_CONTROL_PARAMS(blocks, bb, ip) \
-    do                                                    \
-    {                                                     \
-        (void)(blocks);                                   \
-        (void)(bb);                                       \
-        (void)(ip);                                       \
+#define VM_HANDLER_UNUSED_CONTROL_PARAMS(blocks, bb, ip)                                           \
+    do                                                                                             \
+    {                                                                                              \
+        (void)(blocks);                                                                            \
+        (void)(bb);                                                                                \
+        (void)(ip);                                                                                \
     } while (false)
 
 /// @brief Mark all unused parameters in a simple opcode handler.
 /// @details For handlers that only use vm, fr, and in parameters.
-#define VM_HANDLER_UNUSED_ALL_CONTROL(blocks, bb, ip) VM_HANDLER_UNUSED_CONTROL_PARAMS(blocks, bb, ip)
+#define VM_HANDLER_UNUSED_ALL_CONTROL(blocks, bb, ip)                                              \
+    VM_HANDLER_UNUSED_CONTROL_PARAMS(blocks, bb, ip)
 
 /// @brief Build a formatted error message for argument count mismatches.
 /// @param name Function or runtime name.
@@ -53,7 +54,7 @@ namespace il::vm::detail
 inline std::string formatArgumentCountError(std::string_view name, size_t expected, size_t actual)
 {
     std::string result;
-    result.reserve(name.size() + 64);  // Pre-allocate reasonable buffer
+    result.reserve(name.size() + 64); // Pre-allocate reasonable buffer
     result.append(name);
     result.append(": expected ");
     result.append(std::to_string(expected));

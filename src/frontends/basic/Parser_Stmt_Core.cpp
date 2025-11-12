@@ -14,8 +14,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "frontends/basic/BasicDiagnosticMessages.hpp"
 #include "frontends/basic/ASTUtils.hpp"
+#include "frontends/basic/BasicDiagnosticMessages.hpp"
 #include "frontends/basic/Parser.hpp"
 #include "frontends/basic/ast/ExprNodes.hpp"
 
@@ -219,8 +219,8 @@ Parser::StmtResult Parser::parseCall(int)
 void Parser::reportMissingCallParenthesis(const Token &identTok, const Token &nextTok)
 {
     auto diagLoc = nextTok.loc.hasLine() ? nextTok.loc : identTok.loc;
-    std::string message = "expected '(' after procedure name '" + identTok.lexeme +
-                          "' in procedure call statement";
+    std::string message =
+        "expected '(' after procedure name '" + identTok.lexeme + "' in procedure call statement";
     emitError("B0001", diagLoc, std::move(message));
 }
 

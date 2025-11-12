@@ -14,10 +14,10 @@
 //===----------------------------------------------------------------------===//
 
 // Requires the consolidated Lowerer interface for expression lowering helpers.
+#include "frontends/basic/LocationScope.hpp"
 #include "frontends/basic/LowerExprBuiltin.hpp"
 #include "frontends/basic/LowerExprLogical.hpp"
 #include "frontends/basic/LowerExprNumeric.hpp"
-#include "frontends/basic/LocationScope.hpp"
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/lower/Emitter.hpp"
 #include "viper/il/Module.hpp"

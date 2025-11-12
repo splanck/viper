@@ -33,4 +33,3 @@ int main()
     assert(t3 - t2 >= 0);
     return 0;
 }
-

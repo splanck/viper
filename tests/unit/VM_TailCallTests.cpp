@@ -21,13 +21,24 @@ static il::core::Module build_tail_fact_module()
         Type(Type::Kind::I64),
         {Param{"n", Type(Type::Kind::I64), 0}, Param{"acc", Type(Type::Kind::I64), 1}});
     // Create blocks first, then reacquire stable references
-    b.createBlock(fact, "entry", {Param{"n", Type(Type::Kind::I64), 0}, Param{"acc", Type(Type::Kind::I64), 1}});
+    b.createBlock(fact,
+                  "entry",
+                  {Param{"n", Type(Type::Kind::I64), 0}, Param{"acc", Type(Type::Kind::I64), 1}});
     b.createBlock(fact, "retb", {Param{"acc", Type(Type::Kind::I64), 0}});
-    b.createBlock(
-        fact, "recb", {Param{"n", Type(Type::Kind::I64), 0}, Param{"acc", Type(Type::Kind::I64), 1}});
-    BasicBlock *entry = nullptr; BasicBlock *retb = nullptr; BasicBlock *recb = nullptr;
-    for (auto &bb : fact.blocks) {
-        if (bb.label == "entry") entry = &bb; else if (bb.label == "retb") retb = &bb; else if (bb.label == "recb") recb = &bb;
+    b.createBlock(fact,
+                  "recb",
+                  {Param{"n", Type(Type::Kind::I64), 0}, Param{"acc", Type(Type::Kind::I64), 1}});
+    BasicBlock *entry = nullptr;
+    BasicBlock *retb = nullptr;
+    BasicBlock *recb = nullptr;
+    for (auto &bb : fact.blocks)
+    {
+        if (bb.label == "entry")
+            entry = &bb;
+        else if (bb.label == "retb")
+            retb = &bb;
+        else if (bb.label == "recb")
+            recb = &bb;
     }
     assert(entry && retb && recb);
     b.setInsertPoint(*entry);
@@ -39,7 +50,10 @@ static il::core::Module build_tail_fact_module()
     cmp.operands.push_back(b.blockParam(*entry, 0));
     cmp.operands.push_back(Value::constInt(0));
     entry->instructions.push_back(cmp);
-    b.cbr(Value::temp(*cmp.result), *retb, {b.blockParam(*entry, 1)}, *recb,
+    b.cbr(Value::temp(*cmp.result),
+          *retb,
+          {b.blockParam(*entry, 1)},
+          *recb,
           {b.blockParam(*entry, 0), b.blockParam(*entry, 1)});
 
     b.setInsertPoint(*retb);
@@ -69,10 +83,8 @@ static il::core::Module build_tail_fact_module()
     recb->instructions.push_back(sub);
     // call fact(n2, acc2)
     unsigned dst = b.reserveTempId();
-    b.emitCall("fact",
-               {Value::temp(*sub.result), Value::temp(*mul.result)},
-               Value::temp(dst),
-               {0, 1, 1});
+    b.emitCall(
+        "fact", {Value::temp(*sub.result), Value::temp(*mul.result)}, Value::temp(dst), {0, 1, 1});
     // ret (call result) — tail position
     Instr ret2;
     ret2.op = Opcode::Ret;
@@ -96,24 +108,42 @@ static il::core::Module build_mutual_module()
     Module m;
     il::build::IRBuilder b(m);
     // Register both functions to allow mutual recursion
-    b.startFunction(
-        "f",
-        Type(Type::Kind::I64),
-        {Param{"n", Type(Type::Kind::I64), 0}, Param{"acc", Type(Type::Kind::I64), 1}});
-    b.startFunction(
-        "g",
-        Type(Type::Kind::I64),
-        {Param{"n", Type(Type::Kind::I64), 0}, Param{"acc", Type(Type::Kind::I64), 1}});
+    b.startFunction("f",
+                    Type(Type::Kind::I64),
+                    {Param{"n", Type(Type::Kind::I64), 0}, Param{"acc", Type(Type::Kind::I64), 1}});
+    b.startFunction("g",
+                    Type(Type::Kind::I64),
+                    {Param{"n", Type(Type::Kind::I64), 0}, Param{"acc", Type(Type::Kind::I64), 1}});
     // Reacquire references after potential vector reallocation
-    Function *fRef = nullptr; Function *gRef = nullptr;
-    for (auto &fnc : m.functions) { if (fnc.name=="f") fRef=&fnc; else if (fnc.name=="g") gRef=&fnc; }
+    Function *fRef = nullptr;
+    Function *gRef = nullptr;
+    for (auto &fnc : m.functions)
+    {
+        if (fnc.name == "f")
+            fRef = &fnc;
+        else if (fnc.name == "g")
+            gRef = &fnc;
+    }
     assert(fRef && gRef);
-    Function &f = *fRef; Function &g = *gRef;
-    b.createBlock(f, "entry", {Param{"n", Type(Type::Kind::I64), 0}, Param{"acc", Type(Type::Kind::I64), 1}});
+    Function &f = *fRef;
+    Function &g = *gRef;
+    b.createBlock(
+        f, "entry", {Param{"n", Type(Type::Kind::I64), 0}, Param{"acc", Type(Type::Kind::I64), 1}});
     b.createBlock(f, "retb", {Param{"acc", Type(Type::Kind::I64), 0}});
-    b.createBlock(f, "recb", {Param{"n", Type(Type::Kind::I64), 0}, Param{"acc", Type(Type::Kind::I64), 1}});
-    BasicBlock *fe = nullptr; BasicBlock *fr = nullptr; BasicBlock *fn = nullptr;
-    for (auto &bb : f.blocks) { if (bb.label=="entry") fe=&bb; else if (bb.label=="retb") fr=&bb; else if (bb.label=="recb") fn=&bb; }
+    b.createBlock(
+        f, "recb", {Param{"n", Type(Type::Kind::I64), 0}, Param{"acc", Type(Type::Kind::I64), 1}});
+    BasicBlock *fe = nullptr;
+    BasicBlock *fr = nullptr;
+    BasicBlock *fn = nullptr;
+    for (auto &bb : f.blocks)
+    {
+        if (bb.label == "entry")
+            fe = &bb;
+        else if (bb.label == "retb")
+            fr = &bb;
+        else if (bb.label == "recb")
+            fn = &bb;
+    }
     assert(fe && fr && fn);
     b.setInsertPoint(*fe);
     Instr fcmp;
@@ -123,7 +153,10 @@ static il::core::Module build_mutual_module()
     fcmp.operands.push_back(b.blockParam(*fe, 0));
     fcmp.operands.push_back(Value::constInt(0));
     fe->instructions.push_back(fcmp);
-    b.cbr(Value::temp(*fcmp.result), *fr, {b.blockParam(*fe, 1)}, *fn,
+    b.cbr(Value::temp(*fcmp.result),
+          *fr,
+          {b.blockParam(*fe, 1)},
+          *fn,
           {b.blockParam(*fe, 0), b.blockParam(*fe, 1)});
     b.setInsertPoint(*fr);
     Instr fret;
@@ -148,7 +181,8 @@ static il::core::Module build_mutual_module()
     fdec.operands.push_back(Value::constInt(1));
     fn->instructions.push_back(fdec);
     unsigned fdst = b.reserveTempId();
-    b.emitCall("g", {Value::temp(*fdec.result), Value::temp(*finc.result)}, Value::temp(fdst), {0, 1, 1});
+    b.emitCall(
+        "g", {Value::temp(*fdec.result), Value::temp(*finc.result)}, Value::temp(fdst), {0, 1, 1});
     Instr fret2;
     fret2.op = Opcode::Ret;
     fret2.type = Type(Type::Kind::Void);
@@ -157,11 +191,23 @@ static il::core::Module build_mutual_module()
     fn->terminated = true;
 
     // g mirrors f (build body now that both are registered)
-    b.createBlock(g, "entry", {Param{"n", Type(Type::Kind::I64), 0}, Param{"acc", Type(Type::Kind::I64), 1}});
+    b.createBlock(
+        g, "entry", {Param{"n", Type(Type::Kind::I64), 0}, Param{"acc", Type(Type::Kind::I64), 1}});
     b.createBlock(g, "retb", {Param{"acc", Type(Type::Kind::I64), 0}});
-    b.createBlock(g, "recb", {Param{"n", Type(Type::Kind::I64), 0}, Param{"acc", Type(Type::Kind::I64), 1}});
-    BasicBlock *ge = nullptr; BasicBlock *gr = nullptr; BasicBlock *gn = nullptr;
-    for (auto &bb : g.blocks) { if (bb.label=="entry") ge=&bb; else if (bb.label=="retb") gr=&bb; else if (bb.label=="recb") gn=&bb; }
+    b.createBlock(
+        g, "recb", {Param{"n", Type(Type::Kind::I64), 0}, Param{"acc", Type(Type::Kind::I64), 1}});
+    BasicBlock *ge = nullptr;
+    BasicBlock *gr = nullptr;
+    BasicBlock *gn = nullptr;
+    for (auto &bb : g.blocks)
+    {
+        if (bb.label == "entry")
+            ge = &bb;
+        else if (bb.label == "retb")
+            gr = &bb;
+        else if (bb.label == "recb")
+            gn = &bb;
+    }
     assert(ge && gr && gn);
     b.setInsertPoint(*ge);
     Instr gcmp;
@@ -171,7 +217,10 @@ static il::core::Module build_mutual_module()
     gcmp.operands.push_back(b.blockParam(*ge, 0));
     gcmp.operands.push_back(Value::constInt(0));
     ge->instructions.push_back(gcmp);
-    b.cbr(Value::temp(*gcmp.result), *gr, {b.blockParam(*ge, 1)}, *gn,
+    b.cbr(Value::temp(*gcmp.result),
+          *gr,
+          {b.blockParam(*ge, 1)},
+          *gn,
           {b.blockParam(*ge, 0), b.blockParam(*ge, 1)});
     b.setInsertPoint(*gr);
     Instr gret;
@@ -196,7 +245,8 @@ static il::core::Module build_mutual_module()
     gdec.operands.push_back(Value::constInt(1));
     gn->instructions.push_back(gdec);
     unsigned gdst = b.reserveTempId();
-    b.emitCall("f", {Value::temp(*gdec.result), Value::temp(*ginc.result)}, Value::temp(gdst), {0, 1, 1});
+    b.emitCall(
+        "f", {Value::temp(*gdec.result), Value::temp(*ginc.result)}, Value::temp(gdst), {0, 1, 1});
     Instr gret2;
     gret2.op = Opcode::Ret;
     gret2.type = Type(Type::Kind::Void);
@@ -216,21 +266,27 @@ static il::core::Module build_mutual_module()
 
 int main()
 {
-    std::fprintf(stderr, "[TEST] VM_TailCallTests start\n"); std::fflush(stderr);
+    std::fprintf(stderr, "[TEST] VM_TailCallTests start\n");
+    std::fflush(stderr);
     // Tail-recursive factorial should keep depth constant at 1
     {
-        std::fprintf(stderr, "[TEST] build tail_fact module\n"); std::fflush(stderr);
+        std::fprintf(stderr, "[TEST] build tail_fact module\n");
+        std::fflush(stderr);
         Module m = build_tail_fact_module();
-        std::fprintf(stderr, "[TEST] module built\n"); std::fflush(stderr);
+        std::fprintf(stderr, "[TEST] module built\n");
+        std::fflush(stderr);
         il::vm::VM vm(m);
-        std::fprintf(stderr, "[TEST] VM constructed\n"); std::fflush(stderr);
-        auto it = std::find_if(m.functions.begin(), m.functions.end(), [](const Function &f) {
-            return f.name == "main";
-        });
+        std::fprintf(stderr, "[TEST] VM constructed\n");
+        std::fflush(stderr);
+        auto it = std::find_if(m.functions.begin(),
+                               m.functions.end(),
+                               [](const Function &f) { return f.name == "main"; });
         assert(it != m.functions.end());
-        std::fprintf(stderr, "[TEST] found main\n"); std::fflush(stderr);
+        std::fprintf(stderr, "[TEST] found main\n");
+        std::fflush(stderr);
         auto state = il::vm::VMTestHook::prepare(vm, *it);
-        std::fprintf(stderr, "[TEST] prepared state\n"); std::fflush(stderr);
+        std::fprintf(stderr, "[TEST] prepared state\n");
+        std::fflush(stderr);
         std::size_t maxDepth = 0;
         while (true)
         {
@@ -247,13 +303,15 @@ int main()
 
     // Mutual recursion f<->g should also keep depth constant at 1
     {
-        std::fprintf(stderr, "[TEST] build mutual module\n"); std::fflush(stderr);
+        std::fprintf(stderr, "[TEST] build mutual module\n");
+        std::fflush(stderr);
         Module m = build_mutual_module();
-        std::fprintf(stderr, "[TEST] mutual module built\n"); std::fflush(stderr);
+        std::fprintf(stderr, "[TEST] mutual module built\n");
+        std::fflush(stderr);
         il::vm::VM vm(m);
-        auto it = std::find_if(m.functions.begin(), m.functions.end(), [](const Function &f) {
-            return f.name == "main";
-        });
+        auto it = std::find_if(m.functions.begin(),
+                               m.functions.end(),
+                               [](const Function &f) { return f.name == "main"; });
         assert(it != m.functions.end());
         auto state = il::vm::VMTestHook::prepare(vm, *it);
         std::size_t maxDepth = 0;

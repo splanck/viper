@@ -4,8 +4,8 @@
 // Ownership/Lifetime: Uses forked VM process to capture stderr.
 // Links: docs/codemap.md
 
-#include "il/build/IRBuilder.hpp"
 #include "common/VmFixture.hpp"
+#include "il/build/IRBuilder.hpp"
 
 #include <cassert>
 #include <cmath>

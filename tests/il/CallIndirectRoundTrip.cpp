@@ -2,12 +2,12 @@
 // Purpose: Ensure call.indirect parses, prints, and executes via VM for a simple case.
 // Key invariants: Indirect calls resolve by global function name; no args required.
 
+#include "il/core/Module.hpp"
 #include "il/io/Parser.hpp"
 #include "il/io/Serializer.hpp"
-#include "il/core/Module.hpp"
-#include <sstream>
 #include "viper/vm/VM.hpp"
 #include <cassert>
+#include <sstream>
 #include <string>
 
 using namespace il::core;
@@ -39,7 +39,7 @@ entry:
     auto parsed2 = il::io::Parser::parse(iss2, m2);
     assert(parsed2 && "round-trip parse should succeed");
 
-        // Execute via public Runner façade; expect 7 as exit code
+    // Execute via public Runner façade; expect 7 as exit code
     il::vm::Runner r(m2, {});
     auto exit = r.run();
     assert(exit == 7);

@@ -8,8 +8,8 @@
 #include <cassert>
 #include <iostream>
 
-using il::vm::Runner;
 using il::vm::RunConfig;
+using il::vm::Runner;
 
 static il::core::Module makeTrivialModule()
 {
@@ -54,7 +54,8 @@ int main()
         RunConfig cfg{};
         cfg.interruptEveryN = 1;
         int calls = 0;
-        cfg.pollCallback = [&calls](il::vm::VM &) {
+        cfg.pollCallback = [&calls](il::vm::VM &)
+        {
             std::cerr << "poll #" << (calls + 1) << "\n";
             ++calls;
             return false; // request pause

@@ -1,14 +1,14 @@
 // File: tests/unit/test_using_semantics.cpp
 // Purpose: Test semantic validation of USING directives.
 
-#include "frontends/basic/SemanticAnalyzer.hpp"
-#include "frontends/basic/Parser.hpp"
 #include "frontends/basic/DiagnosticEmitter.hpp"
-#include "support/source_manager.hpp"
+#include "frontends/basic/Parser.hpp"
+#include "frontends/basic/SemanticAnalyzer.hpp"
 #include "support/diagnostics.hpp"
+#include "support/source_manager.hpp"
 #include <cassert>
-#include <string>
 #include <sstream>
+#include <string>
 
 using namespace il::frontends::basic;
 using namespace il::support;
@@ -84,7 +84,6 @@ USING NonExistent.Namespace
     DiagnosticEngine de;
     size_t errorCount = parseAndAnalyze(source, de);
     assert(errorCount > 0);
-
 }
 
 // Test: USING X = A then USING X = B → E_NS_004
@@ -102,7 +101,6 @@ USING X = B
     DiagnosticEngine de;
     size_t errorCount = parseAndAnalyze(source, de);
     assert(errorCount > 0);
-
 }
 
 // Test: USING alias that equals a namespace name (e.g., "A") → E_NS_007
@@ -119,7 +117,6 @@ USING A = B
     DiagnosticEngine de;
     size_t errorCount = parseAndAnalyze(source, de);
     assert(errorCount > 0);
-
 }
 
 // Test: NAMESPACE Viper … → E_NS_009
@@ -133,7 +130,6 @@ END NAMESPACE
     DiagnosticEngine de;
     size_t errorCount = parseAndAnalyze(source, de);
     assert(errorCount > 0);
-
 }
 
 // Test: USING Viper … → E_NS_009
@@ -148,7 +144,6 @@ USING Viper
     DiagnosticEngine de;
     size_t errorCount = parseAndAnalyze(source, de);
     assert(errorCount > 0);
-
 }
 
 // Test: Valid USING at file scope before declarations

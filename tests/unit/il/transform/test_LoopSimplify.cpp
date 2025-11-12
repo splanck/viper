@@ -128,7 +128,8 @@ int main()
             return viper::analysis::computeDominatorTree(ctx, fnRef);
         });
     registry.registerFunctionAnalysis<il::transform::LoopInfo>(
-        "loop-info", [](Module &mod, Function &fnRef) { return il::transform::computeLoopInfo(mod, fnRef); });
+        "loop-info",
+        [](Module &mod, Function &fnRef) { return il::transform::computeLoopInfo(mod, fnRef); });
 
     il::transform::AnalysisManager analysisManager(module, registry);
 

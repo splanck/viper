@@ -3,8 +3,8 @@
 // Key invariants: Binary modifier must set the platform-specific binary bit on Windows builds.
 // Ownership/Lifetime: Uses static mode strings; relies on runtime library for parsing.
 // Links: docs/codemap.md
-#include "rt_file_path.h"
 #include "rt_file.h"
+#include "rt_file_path.h"
 
 #include <assert.h>
 #include <fcntl.h>

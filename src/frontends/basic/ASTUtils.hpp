@@ -23,14 +23,12 @@ namespace il::frontends::basic
 
 /// @brief Type-to-Kind mapping for expression nodes.
 /// @details Provides compile-time mapping from AST node types to their Kind enum.
-template <typename T>
-struct ExprKindTraits;
+template <typename T> struct ExprKindTraits;
 
 #define EXPR_KIND_TRAIT(Type, KindValue)                                                           \
-    template <>                                                                                    \
-    struct ExprKindTraits<Type>                                                                    \
+    template <> struct ExprKindTraits<Type>                                                        \
     {                                                                                              \
-        static constexpr Expr::Kind kind = Expr::Kind::KindValue;                                 \
+        static constexpr Expr::Kind kind = Expr::Kind::KindValue;                                  \
     };
 
 EXPR_KIND_TRAIT(IntExpr, Int)
@@ -68,8 +66,7 @@ EXPR_KIND_TRAIT(AsExpr, As)
 ///     // use intExpr.value
 /// }
 /// ```
-template <typename T>
-[[nodiscard]] constexpr bool is(const Expr &expr) noexcept
+template <typename T> [[nodiscard]] constexpr bool is(const Expr &expr) noexcept
 {
     static_assert(std::is_base_of_v<Expr, T>, "T must be derived from Expr");
     return expr.kind() == ExprKindTraits<T>::kind;
@@ -89,12 +86,12 @@ template <typename T>
 ///     // use intExpr->value
 /// }
 /// ```
-template <typename T>
-[[nodiscard]] constexpr T *as(const Expr &expr) noexcept
+template <typename T> [[nodiscard]] constexpr T *as(const Expr &expr) noexcept
 {
     using BaseT = std::remove_cv_t<std::remove_pointer_t<T>>;
     static_assert(std::is_base_of_v<Expr, BaseT>, "T must be derived from Expr");
-    static_assert(std::is_const_v<T> || std::is_pointer_v<T>, "T must be const or pointer to const");
+    static_assert(std::is_const_v<T> || std::is_pointer_v<T>,
+                  "T must be const or pointer to const");
 
     if (expr.kind() == ExprKindTraits<BaseT>::kind)
     {
@@ -108,8 +105,7 @@ template <typename T>
 /// @tparam T Target expression type (non-const).
 /// @param expr Expression to cast.
 /// @return Pointer to T if kind matches, nullptr otherwise.
-template <typename T>
-[[nodiscard]] constexpr T *as(Expr &expr) noexcept
+template <typename T> [[nodiscard]] constexpr T *as(Expr &expr) noexcept
 {
     using BaseT = std::remove_cv_t<std::remove_pointer_t<T>>;
     static_assert(std::is_base_of_v<Expr, BaseT>, "T must be derived from Expr");
@@ -135,16 +131,14 @@ template <typename T>
 ///     const auto& intExpr = cast<IntExpr>(expr);  // Safe: kind checked above
 /// }
 /// ```
-template <typename T>
-[[nodiscard]] constexpr T &cast(Expr &expr) noexcept
+template <typename T> [[nodiscard]] constexpr T &cast(Expr &expr) noexcept
 {
     static_assert(std::is_base_of_v<Expr, T>, "T must be derived from Expr");
     return static_cast<T &>(expr);
 }
 
 /// @brief Unchecked cast to a specific expression type (const version).
-template <typename T>
-[[nodiscard]] constexpr const T &cast(const Expr &expr) noexcept
+template <typename T> [[nodiscard]] constexpr const T &cast(const Expr &expr) noexcept
 {
     static_assert(std::is_base_of_v<Expr, T>, "T must be derived from Expr");
     return static_cast<const T &>(expr);
@@ -155,14 +149,12 @@ template <typename T>
 //===----------------------------------------------------------------------===//
 
 /// @brief Type-to-Kind mapping for statement nodes.
-template <typename T>
-struct StmtKindTraits;
+template <typename T> struct StmtKindTraits;
 
 #define STMT_KIND_TRAIT(Type, KindValue)                                                           \
-    template <>                                                                                    \
-    struct StmtKindTraits<Type>                                                                    \
+    template <> struct StmtKindTraits<Type>                                                        \
     {                                                                                              \
-        static constexpr Stmt::Kind kind = Stmt::Kind::KindValue;                                 \
+        static constexpr Stmt::Kind kind = Stmt::Kind::KindValue;                                  \
     };
 
 // Forward declare statement types
@@ -264,16 +256,14 @@ STMT_KIND_TRAIT(NamespaceDecl, NamespaceDecl)
 /// @tparam T Target statement type.
 /// @param stmt Statement to check.
 /// @return True if stmt is of type T.
-template <typename T>
-[[nodiscard]] constexpr bool is(const Stmt &stmt) noexcept
+template <typename T> [[nodiscard]] constexpr bool is(const Stmt &stmt) noexcept
 {
     static_assert(std::is_base_of_v<Stmt, T>, "T must be derived from Stmt");
     return stmt.stmtKind() == StmtKindTraits<T>::kind;
 }
 
 /// @brief Safely cast a statement to a specific type (const version).
-template <typename T>
-[[nodiscard]] constexpr T *as(const Stmt &stmt) noexcept
+template <typename T> [[nodiscard]] constexpr T *as(const Stmt &stmt) noexcept
 {
     using BaseT = std::remove_cv_t<std::remove_pointer_t<T>>;
     static_assert(std::is_base_of_v<Stmt, BaseT>, "T must be derived from Stmt");
@@ -286,8 +276,7 @@ template <typename T>
 }
 
 /// @brief Safely cast a statement to a specific type (non-const version).
-template <typename T>
-[[nodiscard]] constexpr T *as(Stmt &stmt) noexcept
+template <typename T> [[nodiscard]] constexpr T *as(Stmt &stmt) noexcept
 {
     using BaseT = std::remove_cv_t<std::remove_pointer_t<T>>;
     static_assert(std::is_base_of_v<Stmt, BaseT>, "T must be derived from Stmt");
@@ -300,16 +289,14 @@ template <typename T>
 }
 
 /// @brief Unchecked cast to a specific statement type.
-template <typename T>
-[[nodiscard]] constexpr T &cast(Stmt &stmt) noexcept
+template <typename T> [[nodiscard]] constexpr T &cast(Stmt &stmt) noexcept
 {
     static_assert(std::is_base_of_v<Stmt, T>, "T must be derived from Stmt");
     return static_cast<T &>(stmt);
 }
 
 /// @brief Unchecked cast to a specific statement type (const version).
-template <typename T>
-[[nodiscard]] constexpr const T &cast(const Stmt &stmt) noexcept
+template <typename T> [[nodiscard]] constexpr const T &cast(const Stmt &stmt) noexcept
 {
     static_assert(std::is_base_of_v<Stmt, T>, "T must be derived from Stmt");
     return static_cast<const T &>(stmt);

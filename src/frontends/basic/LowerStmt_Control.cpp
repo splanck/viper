@@ -14,8 +14,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/LocationScope.hpp"
+#include "frontends/basic/Lowerer.hpp"
 
 #include <cassert>
 

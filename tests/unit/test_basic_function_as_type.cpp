@@ -1,13 +1,13 @@
 // File: tests/unit/test_basic_function_as_type.cpp
 // Purpose: Ensure BASIC functions with explicit return types lower to IL with correct signatures.
-// Key invariants: Parser accepts FUNCTION ... AS syntax and lowerer records string/double return kinds.
-// Ownership/Lifetime: Test owns SourceManager/Module instances within scopes.
-// Links: docs/codemap.md
+// Key invariants: Parser accepts FUNCTION ... AS syntax and lowerer records string/double return
+// kinds. Ownership/Lifetime: Test owns SourceManager/Module instances within scopes. Links:
+// docs/codemap.md
 
 #include "frontends/basic/DiagnosticEmitter.hpp"
+#include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/Parser.hpp"
 #include "frontends/basic/SemanticAnalyzer.hpp"
-#include "frontends/basic/Lowerer.hpp"
 #include "il/core/Module.hpp"
 #include "support/source_manager.hpp"
 #include <cassert>
@@ -23,10 +23,9 @@ int main()
     uint32_t fid = sm.addFile("t.bas");
     // String function case:
     {
-        std::string src =
-                "FUNCTION EXCL$(S$) AS STRING\n"
-                "  RETURN S$+\"!\"\n"
-                "END FUNCTION\n";
+        std::string src = "FUNCTION EXCL$(S$) AS STRING\n"
+                          "  RETURN S$+\"!\"\n"
+                          "END FUNCTION\n";
         Parser p(src, fid);
         auto prog = p.parseProgram();
         DiagnosticEngine de;
@@ -49,10 +48,9 @@ int main()
     }
     // Float function case:
     {
-        std::string src =
-                "FUNCTION F(X) AS DOUBLE\n"
-                "  RETURN X*2.5\n"
-                "END FUNCTION\n";
+        std::string src = "FUNCTION F(X) AS DOUBLE\n"
+                          "  RETURN X*2.5\n"
+                          "END FUNCTION\n";
         Parser p(src, fid);
         auto prog = p.parseProgram();
         DiagnosticEngine de;

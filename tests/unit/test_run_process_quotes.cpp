@@ -81,8 +81,8 @@ TEST(RunProcess, ScopedEnvironmentAssignmentSurvivesMove)
     const std::string varName = "VIPER_SCOPED_ENV_MOVE_TEST";
     const std::string varValue = "scoped-env-move-value";
 
-    const auto result =
-        viper::test_support::scoped_environment_assignment_move_preserves(varName, varValue, varValue);
+    const auto result = viper::test_support::scoped_environment_assignment_move_preserves(
+        varName, varValue, varValue);
 
     EXPECT_TRUE(result.value_visible_after_move_ctor);
     EXPECT_TRUE(result.value_visible_after_move_assign);

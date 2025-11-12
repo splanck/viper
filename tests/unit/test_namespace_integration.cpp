@@ -8,17 +8,17 @@
 //   (e) USING inside NAMESPACE (E_NS_008)
 //   (f) USING after first decl (E_NS_005)
 
-#include "frontends/basic/Parser.hpp"
-#include "frontends/basic/SemanticAnalyzer.hpp"
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/Lowerer.hpp"
-#include "support/source_manager.hpp"
-#include "support/diagnostics.hpp"
+#include "frontends/basic/Parser.hpp"
+#include "frontends/basic/SemanticAnalyzer.hpp"
 #include "il/io/Serializer.hpp"
+#include "support/diagnostics.hpp"
+#include "support/source_manager.hpp"
 #include <cassert>
-#include <string>
-#include <sstream>
 #include <iostream>
+#include <sstream>
+#include <string>
 
 using namespace il::frontends::basic;
 using namespace il::support;
@@ -177,7 +177,8 @@ void test_using_after_decl_error()
 )";
 
     // Should produce E_NS_005: "USING must appear before namespace or class declarations"
-    bool hasError = hasDiagnostic(source, "USING must appear before namespace or class declarations");
+    bool hasError =
+        hasDiagnostic(source, "USING must appear before namespace or class declarations");
     assert(hasError);
 }
 
@@ -226,7 +227,7 @@ void test_type_not_found_in_namespace()
 )";
 
     size_t errorCount = runPipeline(source, false); // Don't lower, expect errors
-    assert(errorCount > 0); // Should have at least one error
+    assert(errorCount > 0);                         // Should have at least one error
 }
 
 // Additional scenario: Reserved namespace Viper (E_NS_009)
@@ -240,7 +241,8 @@ void test_reserved_namespace_viper()
 )";
 
     // Should produce E_NS_009: "reserved root namespace 'Viper' cannot be declared or imported"
-    bool hasError = hasDiagnostic(source, "reserved root namespace 'Viper' cannot be declared or imported");
+    bool hasError =
+        hasDiagnostic(source, "reserved root namespace 'Viper' cannot be declared or imported");
     assert(hasError);
 }
 

@@ -4,12 +4,12 @@
 //   - UsingDecl produces no IL
 //   - qualify() handles FQ names, simple names, and global scope correctly
 
+#include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/Parser.hpp"
-#include "frontends/basic/DiagnosticEmitter.hpp"
-#include "support/source_manager.hpp"
-#include "support/diagnostics.hpp"
 #include "il/io/Serializer.hpp"
+#include "support/diagnostics.hpp"
+#include "support/source_manager.hpp"
 #include <cassert>
 #include <string>
 

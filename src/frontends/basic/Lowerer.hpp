@@ -507,9 +507,9 @@ class Lowerer
     /// @param args Arguments to pass to the runtime function.
     /// @return Value representing the call result.
     Value emitRuntimeHelper(il::runtime::RuntimeFeature feature,
-                           const std::string &callee,
-                           Type returnType,
-                           const std::vector<Value> &args);
+                            const std::string &callee,
+                            Type returnType,
+                            const std::vector<Value> &args);
 
     /// @brief Emit an indirect call where the callee is a value operand.
     Value emitCallIndirectRet(Type ty, Value callee, const std::vector<Value> &args);

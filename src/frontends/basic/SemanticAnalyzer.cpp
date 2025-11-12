@@ -21,8 +21,8 @@
 /// @details The definitions here back the analyzer's public API and expose
 ///          reusable utilities to other translation units within the BASIC frontend.
 
-#include "frontends/basic/SemanticAnalyzer.Internal.hpp"
 #include "frontends/basic/ASTUtils.hpp"
+#include "frontends/basic/SemanticAnalyzer.Internal.hpp"
 
 #include "frontends/basic/BasicTypes.hpp"
 

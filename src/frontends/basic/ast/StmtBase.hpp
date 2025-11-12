@@ -66,6 +66,7 @@ struct StmtVisitor
     virtual void visit(const InterfaceDecl &) = 0;
 
     virtual void visit(const NamespaceDecl &) {}
+
     virtual void visit(const UsingDecl &) = 0;
 };
 
@@ -119,6 +120,7 @@ struct MutStmtVisitor
     virtual void visit(InterfaceDecl &) = 0;
 
     virtual void visit(NamespaceDecl &) {}
+
     virtual void visit(UsingDecl &) = 0;
 };
 

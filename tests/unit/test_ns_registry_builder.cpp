@@ -1,11 +1,11 @@
 // File: tests/unit/test_ns_registry_builder.cpp
 // Purpose: Test buildNamespaceRegistry populates registry from AST.
 
-#include "frontends/basic/sem/RegistryBuilder.hpp"
-#include "frontends/basic/sem/NamespaceRegistry.hpp"
-#include "frontends/basic/sem/UsingContext.hpp"
 #include "frontends/basic/AST.hpp"
 #include "frontends/basic/DiagnosticEmitter.hpp"
+#include "frontends/basic/sem/NamespaceRegistry.hpp"
+#include "frontends/basic/sem/RegistryBuilder.hpp"
+#include "frontends/basic/sem/UsingContext.hpp"
 #include <cassert>
 #include <memory>
 #include <string>
