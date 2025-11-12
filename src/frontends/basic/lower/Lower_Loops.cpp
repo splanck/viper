@@ -26,6 +26,7 @@
 ///          control-flow graphs.
 
 #include "frontends/basic/Lowerer.hpp"
+#include "frontends/basic/LocationScope.hpp"
 
 #include <cassert>
 
@@ -63,6 +64,7 @@ void Lowerer::lowerLoopBody(const std::vector<StmtPtr> &body)
 /// @return Control-flow snapshot pointing at the loop's done block.
 Lowerer::CtrlState Lowerer::emitWhile(const WhileStmt &stmt)
 {
+    LocationScope loc(*this, stmt.loc);
     CtrlState state{};
     auto &ctx = context();
     auto *func = ctx.function();
@@ -99,14 +101,12 @@ Lowerer::CtrlState Lowerer::emitWhile(const WhileStmt &stmt)
     assert(ctx.current() == &func->blocks[curIdx] &&
            "lost active block after while block allocation");
 #endif
-    curLoc = stmt.loc;
     emitBr(head);
     func = ctx.function();
     head = &func->blocks[headIdx];
     body = &func->blocks[bodyIdx];
     done = &func->blocks[doneIdx];
     ctx.setCurrent(head);
-    curLoc = stmt.loc;
     lowerCondBranch(*stmt.cond, body, done, stmt.loc);
 
     func = ctx.function();
@@ -121,7 +121,6 @@ Lowerer::CtrlState Lowerer::emitWhile(const WhileStmt &stmt)
     {
         func = ctx.function();
         head = &func->blocks[headIdx];
-        curLoc = stmt.loc;
         emitBr(head);
     }
 
@@ -160,6 +159,7 @@ void Lowerer::lowerWhile(const WhileStmt &stmt)
 /// @return Control state capturing the block following the DO loop.
 Lowerer::CtrlState Lowerer::emitDo(const DoStmt &stmt)
 {
+    LocationScope loc(*this, stmt.loc);
     CtrlState state{};
     auto &ctx = context();
     auto *func = ctx.function();
@@ -196,7 +196,6 @@ Lowerer::CtrlState Lowerer::emitDo(const DoStmt &stmt)
             func->blocks[bodyIdx].label = bodyLbl;
         auto *head = &func->blocks[headIdx];
         ctx.setCurrent(head);
-        curLoc = stmt.loc;
         if (stmt.condKind == DoStmt::CondKind::None)
         {
             emitBr(&func->blocks[bodyIdx]);
@@ -219,7 +218,6 @@ Lowerer::CtrlState Lowerer::emitDo(const DoStmt &stmt)
     switch (stmt.testPos)
     {
         case DoStmt::TestPos::Pre:
-            curLoc = stmt.loc;
             if (func->blocks[headIdx].label.empty())
                 func->blocks[headIdx].label = headLbl;
             emitBr(&func->blocks[headIdx]);
@@ -227,7 +225,6 @@ Lowerer::CtrlState Lowerer::emitDo(const DoStmt &stmt)
             ctx.setCurrent(&func->blocks[bodyIdx]);
             break;
         case DoStmt::TestPos::Post:
-            curLoc = stmt.loc;
             if (func->blocks[bodyIdx].label.empty())
                 func->blocks[bodyIdx].label = bodyLbl;
             emitBr(&func->blocks[bodyIdx]);
@@ -242,7 +239,6 @@ Lowerer::CtrlState Lowerer::emitDo(const DoStmt &stmt)
 
     if (!term)
     {
-        curLoc = stmt.loc;
         func = ctx.function();
         if (func->blocks[headIdx].label.empty())
             func->blocks[headIdx].label = headLbl;
@@ -350,6 +346,7 @@ Lowerer::ForBlocks Lowerer::setupForBlocks(bool varStep)
 void Lowerer::lowerForConstStep(
     const ForStmt &stmt, Value slot, RVal end, RVal step, int64_t stepConst)
 {
+    LocationScope loc(*this, stmt.loc);
     ForBlocks fb = setupForBlocks(false);
     ProcedureContext &ctx = context();
     Function *func = ctx.function();
@@ -357,15 +354,11 @@ void Lowerer::lowerForConstStep(
     size_t doneIdx = fb.doneIdx;
     BasicBlock *done = &func->blocks[doneIdx];
     ctx.loopState().push(done);
-    curLoc = stmt.loc;
     emitBr(&func->blocks[fb.headIdx]);
     ctx.setCurrent(&func->blocks[fb.headIdx]);
-    curLoc = stmt.loc;
     Value curVal = emitLoad(Type(Type::Kind::I64), slot);
     Opcode cmp = stepConst >= 0 ? Opcode::SCmpLE : Opcode::SCmpGE;
-    curLoc = stmt.loc;
     Value cond = emitBinary(cmp, Type(Type::Kind::I1), curVal, end.value);
-    curLoc = stmt.loc;
     emitCBr(cond, &func->blocks[fb.bodyIdx], &func->blocks[fb.doneIdx]);
     ctx.setCurrent(&func->blocks[fb.bodyIdx]);
     lowerLoopBody(stmt.body);
@@ -374,12 +367,9 @@ void Lowerer::lowerForConstStep(
     bool term = current && current->terminated;
     if (!term)
     {
-        curLoc = stmt.loc;
         emitBr(&func->blocks[fb.incIdx]);
         ctx.setCurrent(&func->blocks[fb.incIdx]);
-        curLoc = stmt.loc;
         emitForStep(slot, step.value);
-        curLoc = stmt.loc;
         emitBr(&func->blocks[fb.headIdx]);
     }
     done = &func->blocks[doneIdx];
@@ -402,7 +392,7 @@ void Lowerer::lowerForConstStep(
 /// @param step Lowered step expression.
 void Lowerer::lowerForVarStep(const ForStmt &stmt, Value slot, RVal end, RVal step)
 {
-    curLoc = stmt.loc;
+    LocationScope loc(*this, stmt.loc);
     Value stepNonNeg =
         emitBinary(Opcode::SCmpGE, Type(Type::Kind::I1), step.value, Value::constInt(0));
     ForBlocks fb = setupForBlocks(true);
@@ -412,21 +402,14 @@ void Lowerer::lowerForVarStep(const ForStmt &stmt, Value slot, RVal end, RVal st
     size_t doneIdx = fb.doneIdx;
     BasicBlock *done = &func->blocks[doneIdx];
     ctx.loopState().push(done);
-    curLoc = stmt.loc;
     emitCBr(stepNonNeg, &func->blocks[fb.headPosIdx], &func->blocks[fb.headNegIdx]);
     ctx.setCurrent(&func->blocks[fb.headPosIdx]);
-    curLoc = stmt.loc;
     Value curVal = emitLoad(Type(Type::Kind::I64), slot);
-    curLoc = stmt.loc;
     Value cmpPos = emitBinary(Opcode::SCmpLE, Type(Type::Kind::I1), curVal, end.value);
-    curLoc = stmt.loc;
     emitCBr(cmpPos, &func->blocks[fb.bodyIdx], &func->blocks[fb.doneIdx]);
     ctx.setCurrent(&func->blocks[fb.headNegIdx]);
-    curLoc = stmt.loc;
     curVal = emitLoad(Type(Type::Kind::I64), slot);
-    curLoc = stmt.loc;
     Value cmpNeg = emitBinary(Opcode::SCmpGE, Type(Type::Kind::I1), curVal, end.value);
-    curLoc = stmt.loc;
     emitCBr(cmpNeg, &func->blocks[fb.bodyIdx], &func->blocks[fb.doneIdx]);
     ctx.setCurrent(&func->blocks[fb.bodyIdx]);
     lowerLoopBody(stmt.body);
@@ -435,12 +418,9 @@ void Lowerer::lowerForVarStep(const ForStmt &stmt, Value slot, RVal end, RVal st
     bool term = current && current->terminated;
     if (!term)
     {
-        curLoc = stmt.loc;
         emitBr(&func->blocks[fb.incIdx]);
         ctx.setCurrent(&func->blocks[fb.incIdx]);
-        curLoc = stmt.loc;
         emitForStep(slot, step.value);
-        curLoc = stmt.loc;
         emitCBr(stepNonNeg, &func->blocks[fb.headPosIdx], &func->blocks[fb.headNegIdx]);
     }
     done = &func->blocks[doneIdx];
@@ -479,6 +459,7 @@ Lowerer::CtrlState Lowerer::emitFor(const ForStmt &stmt, Value slot, RVal end, R
 /// @param stmt Source FOR statement to lower.
 void Lowerer::lowerFor(const ForStmt &stmt)
 {
+    LocationScope loc(*this, stmt.loc);
     RVal start = lowerScalarExpr(*stmt.start);
     RVal end = lowerScalarExpr(*stmt.end);
     RVal step =
@@ -486,7 +467,6 @@ void Lowerer::lowerFor(const ForStmt &stmt)
     const auto *info = findSymbol(stmt.var);
     assert(info && info->slotId);
     Value slot = Value::temp(*info->slotId);
-    curLoc = stmt.loc;
     emitStore(Type(Type::Kind::I64), slot, start.value);
 
     CtrlState state = emitFor(stmt, slot, end, step);
@@ -512,9 +492,9 @@ void Lowerer::lowerNext(const NextStmt &next)
 /// @param stmt EXIT statement to lower.
 void Lowerer::lowerExit(const ExitStmt &stmt)
 {
+    LocationScope loc(*this, stmt.loc);
     ProcedureContext &ctx = context();
     BasicBlock *target = ctx.loopState().current();
-    curLoc = stmt.loc;
     if (!target)
     {
         emitTrap();
