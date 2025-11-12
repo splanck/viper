@@ -117,10 +117,10 @@ void lowerCondBranch(const Expr &expr,
                      BasicBlock *falseBlk,
                      il::support::SourceLoc loc);
 /// @brief Lower a THEN/ELSE branch and link to exit.
-/// @return True if branch falls through to @p exitBlk.
+/// @return True if branch falls through to exit block.
 bool lowerIfBranch(const Stmt *stmt,
                    BasicBlock *thenBlk,
-                   BasicBlock *exitBlk,
+                   size_t exitIdx,
                    il::support::SourceLoc loc);
 void lowerIf(const IfStmt &stmt);
 void lowerWhile(const WhileStmt &stmt);

@@ -105,17 +105,19 @@ void Lowerer::lowerIfCondition(const Expr &cond,
 /// @brief Lower the body of an IF/ELSEIF/ELSE branch and ensure control-flow continuity.
 ///
 /// @details Sets the active block to @p thenBlk, lowers @p stmt when present,
-///          and emits a branch to @p exitBlk when the body finishes without a
-///          terminator.  The return value indicates whether control falls through
-///          to the exit block, guiding the caller's phi construction.
+///          and emits a branch to the exit block (resolved from @p exitIdx) when
+///          the body finishes without a terminator. The exit block is resolved
+///          AFTER lowering statements to avoid stale pointers from vector reallocation.
+///          The return value indicates whether control falls through to the exit block,
+///          guiding the caller's phi construction.
 /// @param stmt Statement tree executed when the branch is taken (may be null).
 /// @param thenBlk Block receiving the branch body.
-/// @param exitBlk Merge block for the entire IF construct.
+/// @param exitIdx Index of the merge block for the entire IF construct.
 /// @param loc Source location applied to any implicit branch.
-/// @return @c true if the lowered branch reaches @p exitBlk.
+/// @return @c true if the lowered branch reaches the exit block.
 bool Lowerer::lowerIfBranch(const Stmt *stmt,
                             BasicBlock *thenBlk,
-                            BasicBlock *exitBlk,
+                            size_t exitIdx,
                             il::support::SourceLoc loc)
 {
     context().setCurrent(thenBlk);
@@ -125,6 +127,10 @@ bool Lowerer::lowerIfBranch(const Stmt *stmt,
     if (current && !current->terminated)
     {
         curLoc = loc;
+        // Resolve exit block pointer AFTER lowering statements to avoid stale pointers
+        // from vector reallocation when nested statements add new blocks
+        Function *func = context().function();
+        BasicBlock *exitBlk = &func->blocks[exitIdx];
         emitBr(exitBlk);
         return true;
     }
@@ -179,14 +185,14 @@ Lowerer::CtrlState Lowerer::emitIf(const IfStmt &stmt)
 
         func = ctx.function();
         thenBlk = &func->blocks[blocks.thens[i]];
-        auto *exitBlk = &func->blocks[blocks.exitIdx];
-        fallthrough = lowerIfBranch(thenStmts[i], thenBlk, exitBlk, stmt.loc) || fallthrough;
+        // Pass index instead of pointer to avoid stale pointer after nested statement lowering
+        fallthrough = lowerIfBranch(thenStmts[i], thenBlk, blocks.exitIdx, stmt.loc) || fallthrough;
     }
 
     func = ctx.function();
     auto *elseBlk = &func->blocks[blocks.elseIdx];
-    auto *exitBlk = &func->blocks[blocks.exitIdx];
-    fallthrough = lowerIfBranch(stmt.else_branch.get(), elseBlk, exitBlk, stmt.loc) || fallthrough;
+    // Pass index instead of pointer to avoid stale pointer after nested statement lowering
+    fallthrough = lowerIfBranch(stmt.else_branch.get(), elseBlk, blocks.exitIdx, stmt.loc) || fallthrough;
 
     if (!fallthrough)
     {

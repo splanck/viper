@@ -39,7 +39,7 @@ void lowerCondBranch(const Expr &expr,
                      il::support::SourceLoc loc);
 bool lowerIfBranch(const Stmt *stmt,
                    BasicBlock *thenBlk,
-                   BasicBlock *exitBlk,
+                   size_t exitIdx,
                    il::support::SourceLoc loc);
 CtrlState emitIf(const IfStmt &stmt);
 void lowerIf(const IfStmt &stmt);
