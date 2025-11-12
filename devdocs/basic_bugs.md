@@ -65,8 +65,7 @@ The parser requires explicit parentheses for all procedure calls. This is more s
 
 ### BUG-005: SGN function not implemented
 **Severity**: Low
-**Status**: Confirmed
-**Test Case**: test020.bas (initial version)
+**Status**: ✅ RESOLVED 2025-11-12 - See basic_resolved.md for details
 
 **Description**:
 The SGN (sign) function, which returns -1, 0, or 1 depending on whether a number is negative, zero, or positive, is not implemented.
@@ -106,8 +105,7 @@ The SGN intrinsic function is not registered in the builtin registry. This is a 
 
 ### BUG-006: Limited trigonometric/math functions
 **Severity**: Medium
-**Status**: Confirmed
-**Test Case**: test021.bas (initial version)
+**Status**: ✅ RESOLVED 2025-11-12 - See basic_resolved.md for details
 
 **Description**:
 Several standard BASIC math functions are not implemented: TAN, ATN (arctangent), EXP (exponential), LOG (natural logarithm).
@@ -172,8 +170,7 @@ The parser does not support comma-separated dimensions in DIM statements or arra
 
 ### BUG-008: REDIM PRESERVE syntax not supported
 **Severity**: Low
-**Status**: Confirmed
-**Test Case**: test030.bas
+**Status**: ✅ RESOLVED 2025-11-12 - See basic_resolved.md for details
 
 **Description**:
 The `REDIM PRESERVE` syntax for resizing arrays while preserving contents is not recognized by the parser.
@@ -273,8 +270,7 @@ The STATIC keyword is not recognized in the parser. Static local variables maint
 
 ### BUG-011: SWAP statement not implemented
 **Severity**: Low
-**Status**: Confirmed
-**Test Case**: test035.bas
+**Status**: ✅ RESOLVED 2025-11-12 - See basic_resolved.md for details
 
 **Description**:
 The SWAP statement for exchanging values of two variables is not implemented.

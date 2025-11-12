@@ -459,4 +459,54 @@ void Lowerer::lowerRandomize(const RandomizeStmt &stmt)
     emitCall("rt_randomize_i64", {seed});
 }
 
+/// @brief Lower a @c SWAP statement to exchange two lvalue contents.
+///
+/// @details Emits IL instructions to: (1) load both lvalues, (2) store first
+///          value into second location, (3) store second value into first location.
+///          Uses a temporary slot to hold the first value during the exchange.
+///
+/// @param stmt Parsed @c SWAP statement.
+void Lowerer::lowerSwap(const SwapStmt &stmt)
+{
+    LocationScope loc(*this, stmt.loc);
+
+    // Lower both lvalues to get their RVals
+    RVal lhsVal = lowerExpr(*stmt.lhs);
+    RVal rhsVal = lowerExpr(*stmt.rhs);
+
+    // Store lhs value to temp
+    Value tempSlot = emitAlloca(8);
+    emitStore(lhsVal.type, tempSlot, lhsVal.value);
+
+    // Assign rhs to lhs
+    if (auto *var = as<const VarExpr>(*stmt.lhs))
+    {
+        auto storage = resolveVariableStorage(var->name, stmt.loc);
+        if (storage)
+        {
+            assignScalarSlot(storage->slotInfo, storage->pointer, rhsVal, stmt.loc);
+        }
+    }
+    else if (auto *arr = as<const ArrayExpr>(*stmt.lhs))
+    {
+        assignArrayElement(*arr, rhsVal, stmt.loc);
+    }
+
+    // Assign temp to rhs
+    Value tempVal = emitLoad(lhsVal.type, tempSlot);
+    RVal tempRVal{tempVal, lhsVal.type};
+    if (auto *var = as<const VarExpr>(*stmt.rhs))
+    {
+        auto storage = resolveVariableStorage(var->name, stmt.loc);
+        if (storage)
+        {
+            assignScalarSlot(storage->slotInfo, storage->pointer, tempRVal, stmt.loc);
+        }
+    }
+    else if (auto *arr = as<const ArrayExpr>(*stmt.rhs))
+    {
+        assignArrayElement(*arr, tempRVal, stmt.loc);
+    }
+}
+
 } // namespace il::frontends::basic

@@ -1,7 +1,7 @@
 # VIPER BASIC Resolved Bugs
 
 *Last Updated: 2025-11-12*
-*Source: Bug fixes during language improvement*
+*Source: Bug fixes during language improvement and hardening*
 
 ---
 
@@ -265,5 +265,188 @@ ret_ADD:
 - More intuitive for users familiar with traditional BASIC dialects
 - Backward compatible: explicit RETURN statements still work
 - No breaking changes to existing code
+
+---
+
+
+### BUG-005: SGN function not implemented
+**Severity**: Low
+**Status**: ✅ RESOLVED
+**Resolution Date**: 2025-11-12
+
+**Original Issue**:
+The SGN (sign) function was not implemented, making it impossible to determine the sign of a number.
+
+**Solution Implemented**:
+Added complete SGN function support across all compiler layers:
+
+1. **Runtime Functions** (rt_math.c/h):
+   - `rt_sgn_i64(long long v)`: Returns -1/0/1 for integer inputs
+   - `rt_sgn_f64(double v)`: Returns -1.0/0.0/1.0 for floats, handles NaN
+
+2. **AST Integration** (ExprNodes.hpp):
+   - Added `Sgn` to `BuiltinCallExpr::Builtin` enum
+
+3. **Builtin Registration** (MathBuiltins.cpp, builtin_registry.inc):
+   - Registered SGN with proper type inference (returns same type as input)
+   - Supports both integer and floating-point arguments
+
+4. **Runtime Features** (RuntimeSignatures.hpp/cpp):
+   - Added `SgnI64` and `SgnF64` runtime features
+   - Registered function signatures for VM and codegen
+
+5. **Semantic Analysis** (SemanticAnalyzer.Builtins.cpp):
+   - Added signature entry: 1 numeric arg → Int result
+   - Proper type checking and arity validation
+
+**Test Results**:
+```basic
+PRINT SGN(-10)  ' Output: -1
+PRINT SGN(0)    ' Output: 0
+PRINT SGN(10)   ' Output: 1
+```
+
+✅ All 228 BASIC/frontend tests pass
+
+---
+
+### BUG-006: Limited trigonometric/math functions  
+**Severity**: Medium
+**Status**: ✅ RESOLVED
+**Resolution Date**: 2025-11-12
+
+**Original Issue**:
+Only SIN and COS were implemented. TAN, ATN (arctangent), EXP (exponential), and LOG (natural logarithm) were missing.
+
+**Solution Implemented**:
+Added all four missing math functions following the same pattern as SIN/COS:
+
+1. **Runtime Functions** (rt_math.c/h):
+   - `rt_tan(double x)`: Wraps C `tan()`
+   - `rt_atan(double x)`: Wraps C `atan()`
+   - `rt_exp(double x)`: Wraps C `exp()`
+   - `rt_log(double x)`: Wraps C `log()` for natural logarithm
+
+2. **AST Integration** (ExprNodes.hpp):
+   - Added `Tan`, `Atn`, `Exp`, `Log` to builtin enum
+
+3. **Builtin Registration**:
+   - All four functions: 1 arg, F64 result type
+   - Automatic runtime feature tracking
+
+4. **Semantic Signatures** (SemanticAnalyzer.Builtins.cpp):
+   - Extended `kBuiltinSignatures` array from 36 to 41 entries
+   - Each function: 1 numeric arg → Float result
+
+**Test Results**:
+```basic
+PRINT TAN(0)              ' Output: 0
+PRINT ATN(1)              ' Output: 0.785398... (π/4)
+PRINT EXP(1)              ' Output: 2.71828... (e)
+PRINT LOG(2.718281828)    ' Output: 1.0
+```
+
+✅ All 228 BASIC/frontend tests pass
+
+---
+
+### BUG-008: REDIM PRESERVE syntax not supported
+**Severity**: Low  
+**Status**: ✅ RESOLVED
+**Resolution Date**: 2025-11-12
+
+**Original Issue**:
+The parser did not recognize `REDIM PRESERVE` syntax, even though REDIM already preserved contents by default.
+
+**Solution Implemented**:
+Made PRESERVE keyword optional in REDIM statements:
+
+1. **Keyword Registration**:
+   - Added `KeywordPreserve` to TokenKinds.def
+   - Added to Lexer.cpp keyword table (updated size to 90)
+
+2. **Parser Update** (Parser_Stmt_Runtime.cpp):
+   - Modified `parseReDimStatement()` to optionally consume PRESERVE keyword
+   - No semantic change needed (REDIM already preserves by default)
+
+**Test Results**:
+```basic
+DIM arr(5)
+arr(0) = 100
+arr(1) = 200
+REDIM PRESERVE arr(10)
+PRINT arr(0)  ' Output: 100
+PRINT arr(1)  ' Output: 200
+```
+
+Both `REDIM arr(10)` and `REDIM PRESERVE arr(10)` now work identically.
+
+✅ All 228 BASIC/frontend tests pass
+
+---
+
+### BUG-011: SWAP statement not implemented
+**Severity**: Low
+**Status**: ✅ RESOLVED  
+**Resolution Date**: 2025-11-12
+
+**Original Issue**:
+SWAP statement for exchanging two variable values was not recognized.
+
+**Solution Implemented**:
+Full SWAP statement implementation across all compiler layers:
+
+1. **Keyword and AST**:
+   - Added `KeywordSwap` to TokenKinds.def
+   - Added to Lexer.cpp (updated size to 91)
+   - Added `Swap` to `Stmt::Kind` enum
+   - Created `SwapStmt` struct with `lhs` and `rhs` LValuePtrs
+
+2. **Visitor Pattern**:
+   - Added `visit(SwapStmt&)` to all visitor interfaces
+   - Implemented in AstWalker, AstPrint, ConstFolder, SemanticAnalyzer, Lowerer
+
+3. **Parser** (Parser_Stmt_Runtime.cpp):
+   - Implemented `parseSwapStatement()`
+   - Parses: `SWAP lvalue, lvalue`
+   - Uses `parseLetTarget()` for lvalue parsing
+
+4. **Semantic Analysis** (SemanticAnalyzer.Stmts.Runtime.cpp):
+   - `analyzeSwap()` validates both lvalue expressions
+
+5. **Lowering** (LowerStmt_Runtime.cpp):
+   - `lowerSwap()` implements three-step swap:
+     1. Load both lvalues
+     2. Store lhs to temporary slot
+     3. Assign rhs to lhs  
+     4. Assign temporary to rhs
+   - Correctly handles scalars, arrays, and strings
+
+**Test Results**:
+```basic
+' Scalar variables
+x = 10
+y = 20
+SWAP x, y
+PRINT x  ' Output: 20
+PRINT y  ' Output: 10
+
+' Array elements  
+DIM a(5), b(5)
+a(5) = 100
+b(5) = 200
+SWAP a(5), b(5)
+PRINT a(5)  ' Output: 200
+PRINT b(5)  ' Output: 100
+
+' String variables
+s1$ = "Hello"
+s2$ = "World"
+SWAP s1$, s2$
+PRINT s1$  ' Output: World
+PRINT s2$  ' Output: Hello
+```
+
+✅ All 228 BASIC/frontend tests pass
 
 ---

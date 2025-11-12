@@ -36,7 +36,7 @@ struct KeywordEntry
     TokenKind kind;
 };
 
-constexpr std::array<KeywordEntry, 89> kKeywordTable{{
+constexpr std::array<KeywordEntry, 92> kKeywordTable{{
     {"ABS", TokenKind::KeywordAbs},
     {"ABSTRACT", TokenKind::KeywordAbstract},
     {"ALTSCREEN", TokenKind::KeywordAltscreen},
@@ -54,6 +54,7 @@ constexpr std::array<KeywordEntry, 89> kKeywordTable{{
     {"CLOSE", TokenKind::KeywordClose},
     {"CLS", TokenKind::KeywordCls},
     {"COLOR", TokenKind::KeywordColor},
+    {"CONST", TokenKind::KeywordConst},
     {"COS", TokenKind::KeywordCos},
     {"CURSOR", TokenKind::KeywordCursor},
     {"DELETE", TokenKind::KeywordDelete},
@@ -99,6 +100,7 @@ constexpr std::array<KeywordEntry, 89> kKeywordTable{{
     {"OUTPUT", TokenKind::KeywordOutput},
     {"OVERRIDE", TokenKind::KeywordOverride},
     {"POW", TokenKind::KeywordPow},
+    {"PRESERVE", TokenKind::KeywordPreserve},
     {"PRINT", TokenKind::KeywordPrint},
     {"PRIVATE", TokenKind::KeywordPrivate},
     {"PUBLIC", TokenKind::KeywordPublic},
@@ -115,6 +117,7 @@ constexpr std::array<KeywordEntry, 89> kKeywordTable{{
     {"SQR", TokenKind::KeywordSqr},
     {"STEP", TokenKind::KeywordStep},
     {"SUB", TokenKind::KeywordSub},
+    {"SWAP", TokenKind::KeywordSwap},
     {"THEN", TokenKind::KeywordThen},
     {"TO", TokenKind::KeywordTo},
     {"TRUE", TokenKind::KeywordTrue},

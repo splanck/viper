@@ -83,6 +83,22 @@ void printLet(const LetStmt &stmt, Context &ctx)
     os << ')';
 }
 
+/// @brief Emit a `CONST` statement describing constant declarations.
+/// @details Prints the constant name, initializer expression, and optional type.
+/// @param stmt CONST statement to render.
+/// @param ctx Printer context responsible for nested expressions.
+void printConst(const ConstStmt &stmt, Context &ctx)
+{
+    auto &os = ctx.stream();
+    os << "(CONST " << stmt.name << " = ";
+    ctx.printExpr(*stmt.initializer);
+    if (stmt.type != Type::I64)
+    {
+        os << " AS " << typeToString(stmt.type);
+    }
+    os << ')';
+}
+
 /// @brief Emit a `DIM` statement describing array or scalar declarations.
 /// @details Handles scalar declarations by appending `AS <type>` and array
 ///          declarations by optionally printing the size and explicit type when

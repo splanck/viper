@@ -70,6 +70,12 @@ void register_math_signatures()
     register_signature(make_signature("rt_ceil", {Kind::F64}, {Kind::F64}, true, false, true));
     register_signature(make_signature("rt_sin", {Kind::F64}, {Kind::F64}, true, false, true));
     register_signature(make_signature("rt_cos", {Kind::F64}, {Kind::F64}, true, false, true));
+    register_signature(make_signature("rt_tan", {Kind::F64}, {Kind::F64}, true, false, true));
+    register_signature(make_signature("rt_atan", {Kind::F64}, {Kind::F64}, true, false, true));
+    register_signature(make_signature("rt_exp", {Kind::F64}, {Kind::F64}, true, false, true));
+    register_signature(make_signature("rt_log", {Kind::F64}, {Kind::F64}, true, false, true));
+    register_signature(make_signature("rt_sgn_i64", {Kind::I64}, {Kind::I64}, true, false, true));
+    register_signature(make_signature("rt_sgn_f64", {Kind::F64}, {Kind::F64}, true, false, true));
     register_signature(make_signature("rt_pow_f64_chkdom", {Kind::F64, Kind::F64}, {Kind::F64}));
     register_signature(make_signature("rt_randomize_i64", {Kind::I64}));
     register_signature(make_signature("rt_rnd", {}, {Kind::F64}));

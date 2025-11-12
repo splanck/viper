@@ -43,6 +43,7 @@ void Parser::registerRuntimeParsers(StatementParserRegistry &registry)
     registry.registerHandler(TokenKind::KeywordDim, &Parser::parseDimStatement);
     registry.registerHandler(TokenKind::KeywordRedim, &Parser::parseReDimStatement);
     registry.registerHandler(TokenKind::KeywordRandomize, &Parser::parseRandomizeStatement);
+    registry.registerHandler(TokenKind::KeywordSwap, &Parser::parseSwapStatement);
     registry.registerHandler(TokenKind::KeywordBeep, &Parser::parseBeepStatement);
     registry.registerHandler(TokenKind::KeywordCls, &Parser::parseClsStatement);
     registry.registerHandler(TokenKind::KeywordColor, &Parser::parseColorStatement);
@@ -213,6 +214,9 @@ StmtPtr Parser::parseReDimStatement()
 {
     auto loc = peek().loc;
     consume(); // REDIM
+    // Optionally consume PRESERVE keyword (REDIM already preserves by default)
+    if (peek().kind == TokenKind::KeywordPreserve)
+        consume();
     Token nameTok = expect(TokenKind::Identifier);
     expect(TokenKind::LParen);
     auto size = parseExpression();
@@ -222,6 +226,26 @@ StmtPtr Parser::parseReDimStatement()
     stmt->name = nameTok.lexeme;
     stmt->size = std::move(size);
     arrays_.insert(stmt->name);
+    return stmt;
+}
+
+/// @brief Parse a @c SWAP statement.
+/// @details Constructs a @ref SwapStmt capturing two lvalue expressions that
+///          will be exchanged at runtime.  The parser consumes the @c SWAP
+///          keyword, parses the first lvalue, expects a comma separator, and
+///          then parses the second lvalue.
+/// @return Newly constructed statement node.
+StmtPtr Parser::parseSwapStatement()
+{
+    auto loc = peek().loc;
+    consume(); // SWAP
+    auto lhs = parseLetTarget();
+    expect(TokenKind::Comma);
+    auto rhs = parseLetTarget();
+    auto stmt = std::make_unique<SwapStmt>();
+    stmt->loc = loc;
+    stmt->lhs = std::move(lhs);
+    stmt->rhs = std::move(rhs);
     return stmt;
 }
 

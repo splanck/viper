@@ -87,6 +87,79 @@ extern "C"
         return cos(x);
     }
 
+    /// @brief Compute the tangent of an angle expressed in radians.
+    /// @details Delegates to @c tan from <math.h>, inheriting IEEE-754 behaviour
+    ///          for NaN and infinity.  The wrapper allows BASIC programs to compute
+    ///          tangents without explicit calls to sin/cos division.
+    /// @param x Angle in radians.
+    /// @return Tangent of @p x.
+    double rt_tan(double x)
+    {
+        return tan(x);
+    }
+
+    /// @brief Compute the arctangent of a value.
+    /// @details Uses @c atan from <math.h> to compute the principal value of the
+    ///          arctangent.  Result is in radians, in the range [-π/2, π/2].
+    /// @param x Input value.
+    /// @return Arctangent of @p x in radians.
+    double rt_atan(double x)
+    {
+        return atan(x);
+    }
+
+    /// @brief Compute the exponential function (e^x).
+    /// @details Delegates to @c exp from <math.h>, providing the natural
+    ///          exponential function for BASIC programs.  Overflow produces
+    ///          infinity per IEEE-754 semantics.
+    /// @param x Exponent value.
+    /// @return e raised to the power of @p x.
+    double rt_exp(double x)
+    {
+        return exp(x);
+    }
+
+    /// @brief Compute the natural logarithm (base e).
+    /// @details Uses @c log from <math.h> to compute the natural logarithm.
+    ///          Returns NaN for negative inputs and -infinity for zero input,
+    ///          following IEEE-754 semantics.
+    /// @param x Input value (must be positive for real result).
+    /// @return Natural logarithm of @p x.
+    double rt_log(double x)
+    {
+        return log(x);
+    }
+
+    /// @brief Compute the sign of a 64-bit signed integer.
+    /// @details Returns -1 for negative values, 0 for zero, and 1 for positive
+    ///          values.  This is the classic SGN function from BASIC.
+    /// @param v Signed integer input.
+    /// @return -1, 0, or 1 depending on the sign of @p v.
+    long long rt_sgn_i64(long long v)
+    {
+        if (v < 0)
+            return -1;
+        if (v > 0)
+            return 1;
+        return 0;
+    }
+
+    /// @brief Compute the sign of a double-precision floating-point value.
+    /// @details Returns -1.0 for negative values (including negative zero),
+    ///          0.0 for zero, and 1.0 for positive values.  NaN returns NaN.
+    /// @param v Floating-point input.
+    /// @return -1.0, 0.0, or 1.0 depending on the sign of @p v.
+    double rt_sgn_f64(double v)
+    {
+        if (isnan(v))
+            return v;
+        if (v < 0.0)
+            return -1.0;
+        if (v > 0.0)
+            return 1.0;
+        return 0.0;
+    }
+
     /// @brief Compute the absolute value of a 64-bit signed integer.
     /// @details Mirrors BASIC's overflow semantics by trapping when @p v equals
     ///          @c LLONG_MIN (whose absolute value cannot be represented).  Other

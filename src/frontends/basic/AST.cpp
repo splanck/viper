@@ -493,6 +493,20 @@ void DimStmt::accept(MutStmtVisitor &visitor)
     visitor.visit(*this);
 }
 
+/// @brief Forwards this CONST statement node to the visitor for double dispatch.
+/// @param visitor Receives the node; ownership remains with the AST.
+void ConstStmt::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+/// @brief Dispatch this CONST statement node to a mutable visitor.
+/// @param visitor Receives the node and may alter the declared constant metadata.
+void ConstStmt::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
 /// @brief Forwards this REDIM statement node to the visitor for double dispatch.
 /// @param visitor Receives the node; ownership remains with the AST.
 void ReDimStmt::accept(StmtVisitor &visitor) const
@@ -503,6 +517,20 @@ void ReDimStmt::accept(StmtVisitor &visitor) const
 /// @brief Dispatch this REDIM statement node to a mutable visitor.
 /// @param visitor Receives the node and may update extents or target symbol.
 void ReDimStmt::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
+/// @brief Dispatch this SWAP statement node to a visitor.
+/// @param visitor Visitor to receive this SWAP statement.
+void SwapStmt::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+/// @brief Dispatch this SWAP statement node to a mutable visitor.
+/// @param visitor Mutable visitor to receive this SWAP statement.
+void SwapStmt::accept(MutStmtVisitor &visitor)
 {
     visitor.visit(*this);
 }

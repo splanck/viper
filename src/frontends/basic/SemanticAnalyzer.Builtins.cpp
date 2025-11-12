@@ -178,7 +178,7 @@ static constexpr std::array<BuiltinArgSpec, 3> kInstrArgs{{
     BuiltinArgSpec{false, kStringType.data(), kStringType.size()},
 }};
 
-static constexpr std::array<BuiltinSignature, 36> kBuiltinSignatures{{
+static constexpr std::array<BuiltinSignature, 41> kBuiltinSignatures{{
     BuiltinSignature{1, 0, kSingleStringArg.data(), kSingleStringArg.size(), SemanticType::Int},
     BuiltinSignature{2, 1, kMidArgs.data(), kMidArgs.size(), SemanticType::String},
     BuiltinSignature{
@@ -201,6 +201,13 @@ static constexpr std::array<BuiltinSignature, 36> kBuiltinSignatures{{
     BuiltinSignature{1, 0, kSingleNumericArg.data(), kSingleNumericArg.size(), SemanticType::Float},
     BuiltinSignature{1, 0, kSingleNumericArg.data(), kSingleNumericArg.size(), SemanticType::Float},
     BuiltinSignature{1, 0, kSingleNumericArg.data(), kSingleNumericArg.size(), SemanticType::Float},
+    // Tan, Atn, Exp, Log - all take 1 numeric arg and return Float
+    BuiltinSignature{1, 0, kSingleNumericArg.data(), kSingleNumericArg.size(), SemanticType::Float},
+    BuiltinSignature{1, 0, kSingleNumericArg.data(), kSingleNumericArg.size(), SemanticType::Float},
+    BuiltinSignature{1, 0, kSingleNumericArg.data(), kSingleNumericArg.size(), SemanticType::Float},
+    BuiltinSignature{1, 0, kSingleNumericArg.data(), kSingleNumericArg.size(), SemanticType::Float},
+    // Sgn - takes 1 numeric arg and returns Int
+    BuiltinSignature{1, 0, kSingleNumericArg.data(), kSingleNumericArg.size(), SemanticType::Int},
     BuiltinSignature{
         2, 0, kNumericNumericArgs.data(), kNumericNumericArgs.size(), SemanticType::Float},
     BuiltinSignature{0, 0, nullptr, 0, SemanticType::Float},

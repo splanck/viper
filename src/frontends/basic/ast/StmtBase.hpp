@@ -32,8 +32,10 @@ struct StmtVisitor
     virtual void visit(const CursorStmt &) = 0;
     virtual void visit(const AltScreenStmt &) = 0;
     virtual void visit(const LetStmt &) = 0;
+    virtual void visit(const ConstStmt &) = 0;
     virtual void visit(const DimStmt &) = 0;
     virtual void visit(const ReDimStmt &) = 0;
+    virtual void visit(const SwapStmt &) = 0;
     virtual void visit(const RandomizeStmt &) = 0;
     virtual void visit(const IfStmt &) = 0;
     virtual void visit(const SelectCaseStmt &) = 0;
@@ -86,8 +88,10 @@ struct MutStmtVisitor
     virtual void visit(CursorStmt &) = 0;
     virtual void visit(AltScreenStmt &) = 0;
     virtual void visit(LetStmt &) = 0;
+    virtual void visit(ConstStmt &) = 0;
     virtual void visit(DimStmt &) = 0;
     virtual void visit(ReDimStmt &) = 0;
+    virtual void visit(SwapStmt &) = 0;
     virtual void visit(RandomizeStmt &) = 0;
     virtual void visit(IfStmt &) = 0;
     virtual void visit(SelectCaseStmt &) = 0;
@@ -142,8 +146,10 @@ struct Stmt
         Cursor,
         AltScreen,
         Let,
+        Const,
         Dim,
         ReDim,
+        Swap,
         Randomize,
         If,
         SelectCase,

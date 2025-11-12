@@ -986,7 +986,8 @@ void Lowerer::lowerFunctionDecl(const FunctionDecl &decl)
     config.retType = functionRetTypeFromHint(decl.name, decl.explicitRetType);
     config.postCollect = [&]() { setSymbolType(decl.name, decl.ret); };
     config.emitEmptyBody = [&]() { emitRet(defaultRet()); };
-    config.emitFinalReturn = [&]() {
+    config.emitFinalReturn = [&]()
+    {
         // BUG-003: Check if function name was assigned (VB-style implicit return)
         if (auto storage = resolveVariableStorage(decl.name, {}))
         {

@@ -291,6 +291,36 @@ BUILTIN(
     (BuiltinScanRule{}))
 
 BUILTIN(
+    Tan,
+    (BuiltinDescriptor{"TAN", B::Tan, {1, 1}, TypeMask::F64, nullptr}),
+    (LowerRule{}),
+    (BuiltinScanRule{}))
+
+BUILTIN(
+    Atn,
+    (BuiltinDescriptor{"ATN", B::Atn, {1, 1}, TypeMask::F64, nullptr}),
+    (LowerRule{}),
+    (BuiltinScanRule{}))
+
+BUILTIN(
+    Exp,
+    (BuiltinDescriptor{"EXP", B::Exp, {1, 1}, TypeMask::F64, nullptr}),
+    (LowerRule{}),
+    (BuiltinScanRule{}))
+
+BUILTIN(
+    Log,
+    (BuiltinDescriptor{"LOG", B::Log, {1, 1}, TypeMask::F64, nullptr}),
+    (LowerRule{}),
+    (BuiltinScanRule{}))
+
+BUILTIN(
+    Sgn,
+    (BuiltinDescriptor{"SGN", B::Sgn, {1, 1}, TypeMask::I64 | TypeMask::F64, nullptr}),
+    (LowerRule{}),
+    (BuiltinScanRule{}))
+
+BUILTIN(
     Pow,
     (BuiltinDescriptor{"POW", B::Pow, {2, 2}, TypeMask::F64, nullptr}),
     (LowerRule{}),

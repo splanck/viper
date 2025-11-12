@@ -188,6 +188,11 @@ struct AstPrinter::StmtPrinter final : StmtVisitor
     /// @brief Render a DIM declaration.
     ///
     /// @param stmt Declaration describing scalar or array binding.
+    void visit(const ConstStmt &stmt) override
+    {
+        print_stmt::printConst(stmt, ctx);
+    }
+
     void visit(const DimStmt &stmt) override
     {
         print_stmt::printDim(stmt, ctx);
@@ -199,6 +204,19 @@ struct AstPrinter::StmtPrinter final : StmtVisitor
     void visit(const ReDimStmt &stmt) override
     {
         print_stmt::printReDim(stmt, ctx);
+    }
+
+    /// @brief Render a SWAP statement.
+    void visit(const SwapStmt &stmt) override
+    {
+        auto &os = ctx.stream();
+        os << "(SWAP ";
+        if (stmt.lhs)
+            ctx.printExpr(*stmt.lhs);
+        os << " ";
+        if (stmt.rhs)
+            ctx.printExpr(*stmt.rhs);
+        os << ")";
     }
 
     /// @brief Render a RANDOMIZE call including the seed expression.

@@ -219,6 +219,28 @@ struct LetStmt : Stmt
     void accept(MutStmtVisitor &visitor) override;
 };
 
+/// @brief CONST statement declaring a constant.
+/// @invariant Initializer expression must be non-null.
+struct ConstStmt : Stmt
+{
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
+    {
+        return Kind::Const;
+    }
+
+    /// Constant name being declared.
+    std::string name;
+
+    /// Initializer expression; owned and non-null.
+    ExprPtr initializer;
+
+    /// Declared BASIC type for this constant.
+    Type type{Type::I64};
+
+    void accept(StmtVisitor &visitor) const override;
+    void accept(MutStmtVisitor &visitor) override;
+};
+
 /// @brief DIM statement declaring a variable or array.
 struct DimStmt : Stmt
 {
@@ -255,6 +277,24 @@ struct ReDimStmt : Stmt
 
     /// Number of elements in the resized array; owned and non-null.
     ExprPtr size;
+
+    void accept(StmtVisitor &visitor) const override;
+    void accept(MutStmtVisitor &visitor) override;
+};
+
+/// @brief SWAP statement for exchanging values of two variables.
+struct SwapStmt : Stmt
+{
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
+    {
+        return Kind::Swap;
+    }
+
+    /// First variable to swap.
+    LValuePtr lhs;
+
+    /// Second variable to swap.
+    LValuePtr rhs;
 
     void accept(StmtVisitor &visitor) const override;
     void accept(MutStmtVisitor &visitor) override;

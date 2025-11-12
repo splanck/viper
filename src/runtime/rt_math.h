@@ -17,6 +17,12 @@ extern "C"
     double rt_ceil(double);
     double rt_sin(double);
     double rt_cos(double);
+    double rt_tan(double);
+    double rt_atan(double);
+    double rt_exp(double);
+    double rt_log(double);
+    long long rt_sgn_i64(long long);
+    double rt_sgn_f64(double);
     long long rt_abs_i64(long long);
     double rt_abs_f64(double);
 

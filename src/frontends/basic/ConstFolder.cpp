@@ -667,6 +667,13 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
         foldExpr(stmt.expr);
     }
 
+    /// @brief Fold initializer expressions in CONST statements.
+    void visit(ConstStmt &stmt) override
+    {
+        if (stmt.initializer)
+            foldExpr(stmt.initializer);
+    }
+
     /// @brief Fold array size expressions in DIM statements when present.
     void visit(DimStmt &stmt) override
     {
@@ -679,6 +686,15 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
     {
         if (stmt.size)
             foldExpr(stmt.size);
+    }
+
+    /// @brief Fold expressions in SWAP statements when present.
+    void visit(SwapStmt &stmt) override
+    {
+        if (stmt.lhs)
+            foldExpr(stmt.lhs);
+        if (stmt.rhs)
+            foldExpr(stmt.rhs);
     }
 
     /// @brief RANDOMIZE statements carry no foldable expressions.

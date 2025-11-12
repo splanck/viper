@@ -65,6 +65,11 @@ void registerMathBuiltinInfos(std::span<BuiltinInfo> infos)
     infos[idx(B::Ceil)] = {"CEIL", nullptr};
     infos[idx(B::Sin)] = {"SIN", nullptr};
     infos[idx(B::Cos)] = {"COS", nullptr};
+    infos[idx(B::Tan)] = {"TAN", nullptr};
+    infos[idx(B::Atn)] = {"ATN", nullptr};
+    infos[idx(B::Exp)] = {"EXP", nullptr};
+    infos[idx(B::Log)] = {"LOG", nullptr};
+    infos[idx(B::Sgn)] = {"SGN", nullptr};
     infos[idx(B::Pow)] = {"POW", nullptr};
     infos[idx(B::Rnd)] = {"RND", nullptr};
     infos[idx(B::Timer)] = {"TIMER", nullptr};
@@ -186,6 +191,66 @@ void registerMathBuiltinScanRules(std::span<BuiltinScanRule> rules)
                  il::runtime::RuntimeFeature::Cos,
                  0,
                  Lowerer::ExprType::I64}},
+    };
+
+    rules[idx(B::Tan)] = {
+        ResultSpec{ResultSpec::Kind::Fixed, Lowerer::ExprType::F64, 0},
+        BuiltinScanRule::ArgTraversal::Explicit,
+        {0},
+        {Feature{Feature::Action::Track,
+                 Feature::Condition::Always,
+                 il::runtime::RuntimeFeature::Tan,
+                 0,
+                 Lowerer::ExprType::I64}},
+    };
+
+    rules[idx(B::Atn)] = {
+        ResultSpec{ResultSpec::Kind::Fixed, Lowerer::ExprType::F64, 0},
+        BuiltinScanRule::ArgTraversal::Explicit,
+        {0},
+        {Feature{Feature::Action::Track,
+                 Feature::Condition::Always,
+                 il::runtime::RuntimeFeature::Atan,
+                 0,
+                 Lowerer::ExprType::I64}},
+    };
+
+    rules[idx(B::Exp)] = {
+        ResultSpec{ResultSpec::Kind::Fixed, Lowerer::ExprType::F64, 0},
+        BuiltinScanRule::ArgTraversal::Explicit,
+        {0},
+        {Feature{Feature::Action::Track,
+                 Feature::Condition::Always,
+                 il::runtime::RuntimeFeature::Exp,
+                 0,
+                 Lowerer::ExprType::I64}},
+    };
+
+    rules[idx(B::Log)] = {
+        ResultSpec{ResultSpec::Kind::Fixed, Lowerer::ExprType::F64, 0},
+        BuiltinScanRule::ArgTraversal::Explicit,
+        {0},
+        {Feature{Feature::Action::Track,
+                 Feature::Condition::Always,
+                 il::runtime::RuntimeFeature::Log,
+                 0,
+                 Lowerer::ExprType::I64}},
+    };
+
+    rules[idx(B::Sgn)] = {
+        ResultSpec{ResultSpec::Kind::FromArg, Lowerer::ExprType::I64, 0},
+        BuiltinScanRule::ArgTraversal::Explicit,
+        {0},
+        {Feature{Feature::Action::Track,
+                 Feature::Condition::IfArgTypeIs,
+                 il::runtime::RuntimeFeature::SgnF64,
+                 0,
+                 Lowerer::ExprType::F64},
+         Feature{Feature::Action::Track,
+                 Feature::Condition::IfArgTypeIsNot,
+                 il::runtime::RuntimeFeature::SgnI64,
+                 0,
+                 Lowerer::ExprType::F64}},
     };
 
     rules[idx(B::Pow)] = {
@@ -363,6 +428,70 @@ void registerMathBuiltinLoweringRules(std::span<BuiltinLoweringRule> rules)
                      .index = 0, .transforms = {Transform{.kind = Transform::Kind::EnsureF64}}}},
                  .features = {Feature{.action = Feature::Action::Track,
                                       .feature = il::runtime::RuntimeFeature::Cos}}}},
+    };
+
+    rules[idx(B::Tan)] = {
+        ResultSpec{ResultSpec::Kind::Fixed, Lowerer::ExprType::F64, 0},
+        {Variant{.condition = Condition::Always,
+                 .kind = VariantKind::CallRuntime,
+                 .runtime = "rt_tan",
+                 .arguments = {Argument{
+                     .index = 0, .transforms = {Transform{.kind = Transform::Kind::EnsureF64}}}},
+                 .features = {Feature{.action = Feature::Action::Track,
+                                      .feature = il::runtime::RuntimeFeature::Tan}}}},
+    };
+
+    rules[idx(B::Atn)] = {
+        ResultSpec{ResultSpec::Kind::Fixed, Lowerer::ExprType::F64, 0},
+        {Variant{.condition = Condition::Always,
+                 .kind = VariantKind::CallRuntime,
+                 .runtime = "rt_atan",
+                 .arguments = {Argument{
+                     .index = 0, .transforms = {Transform{.kind = Transform::Kind::EnsureF64}}}},
+                 .features = {Feature{.action = Feature::Action::Track,
+                                      .feature = il::runtime::RuntimeFeature::Atan}}}},
+    };
+
+    rules[idx(B::Exp)] = {
+        ResultSpec{ResultSpec::Kind::Fixed, Lowerer::ExprType::F64, 0},
+        {Variant{.condition = Condition::Always,
+                 .kind = VariantKind::CallRuntime,
+                 .runtime = "rt_exp",
+                 .arguments = {Argument{
+                     .index = 0, .transforms = {Transform{.kind = Transform::Kind::EnsureF64}}}},
+                 .features = {Feature{.action = Feature::Action::Track,
+                                      .feature = il::runtime::RuntimeFeature::Exp}}}},
+    };
+
+    rules[idx(B::Log)] = {
+        ResultSpec{ResultSpec::Kind::Fixed, Lowerer::ExprType::F64, 0},
+        {Variant{.condition = Condition::Always,
+                 .kind = VariantKind::CallRuntime,
+                 .runtime = "rt_log",
+                 .arguments = {Argument{
+                     .index = 0, .transforms = {Transform{.kind = Transform::Kind::EnsureF64}}}},
+                 .features = {Feature{.action = Feature::Action::Track,
+                                      .feature = il::runtime::RuntimeFeature::Log}}}},
+    };
+
+    rules[idx(B::Sgn)] = {
+        ResultSpec{ResultSpec::Kind::FromArg, Lowerer::ExprType::I64, 0},
+        {Variant{.condition = Condition::IfArgTypeIs,
+                 .conditionArg = 0,
+                 .conditionType = Lowerer::ExprType::F64,
+                 .kind = VariantKind::CallRuntime,
+                 .runtime = "rt_sgn_f64",
+                 .arguments = {Argument{
+                     .index = 0, .transforms = {Transform{.kind = Transform::Kind::EnsureF64}}}},
+                 .features = {Feature{.action = Feature::Action::Track,
+                                      .feature = il::runtime::RuntimeFeature::SgnF64}}},
+         Variant{.condition = Condition::Always,
+                 .kind = VariantKind::CallRuntime,
+                 .runtime = "rt_sgn_i64",
+                 .arguments = {Argument{
+                     .index = 0, .transforms = {Transform{.kind = Transform::Kind::EnsureI64}}}},
+                 .features = {Feature{.action = Feature::Action::Track,
+                                      .feature = il::runtime::RuntimeFeature::SgnI64}}}},
     };
 
     rules[idx(B::Pow)] = {

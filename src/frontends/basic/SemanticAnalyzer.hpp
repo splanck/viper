@@ -175,6 +175,8 @@ class SemanticAnalyzer
     void analyzeDim(DimStmt &s);
     /// @brief Analyze REDIM statement @p s.
     void analyzeReDim(ReDimStmt &s);
+    /// @brief Analyze SWAP statement @p s.
+    void analyzeSwap(SwapStmt &s);
 
     /// @brief Analyze namespace declaration (sets sawDecl_).
     void analyzeNamespaceDecl(NamespaceDecl &decl);

@@ -180,6 +180,15 @@ class LowererStmtVisitor final : public lower::AstVisitor, public StmtVisitor
         lowerer_.lowerRandomize(stmt);
     }
 
+    /// @brief Lower a SWAP statement.
+    /// @details Delegates to @ref Lowerer::lowerSwap which emits temporary
+    ///          storage and exchange logic.
+    /// @param stmt SWAP statement node.
+    void visit(const SwapStmt &stmt) override
+    {
+        lowerer_.lowerSwap(stmt);
+    }
+
     /// @brief Lower an IF statement.
     /// @details Delegates to @ref Lowerer::lowerIf which constructs the control
     ///          flow graph for conditional execution.

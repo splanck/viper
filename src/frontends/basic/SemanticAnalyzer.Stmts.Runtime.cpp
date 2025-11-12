@@ -98,15 +98,13 @@ void SemanticAnalyzer::analyzeVarAssignment(VarExpr &v, const LetStmt &l)
         exprTy = visitExpr(*l.expr);
 
     // Check if variable has no type suffix (ends with alphanumeric, not $#!%&)
-    bool hasNoSuffix = !v.name.empty() &&
-                       std::isalnum(static_cast<unsigned char>(v.name.back()));
+    bool hasNoSuffix = !v.name.empty() && std::isalnum(static_cast<unsigned char>(v.name.back()));
 
     // Check if variable already exists
     bool isNewVariable = (varTypes_.find(v.name) == varTypes_.end());
 
     // If new variable with no suffix and RHS is String or Bool, pre-set the type
-    if (isNewVariable && hasNoSuffix &&
-        (exprTy == Type::String || exprTy == Type::Bool))
+    if (isNewVariable && hasNoSuffix && (exprTy == Type::String || exprTy == Type::Bool))
     {
         varTypes_[v.name] = exprTy;
     }
@@ -511,6 +509,21 @@ void SemanticAnalyzer::analyzeReDim(ReDimStmt &d)
         activeProcScope_->noteArrayMutation(d.name, itArray->second);
     }
     arrays_[d.name] = sz;
+}
+
+/// @brief Validate SWAP statements for compatible types.
+///
+/// @param s SWAP statement describing the two lvalues to exchange.
+void SemanticAnalyzer::analyzeSwap(SwapStmt &s)
+{
+    if (s.lhs)
+    {
+        visitExpr(*s.lhs);
+    }
+    if (s.rhs)
+    {
+        visitExpr(*s.rhs);
+    }
 }
 
 } // namespace il::frontends::basic

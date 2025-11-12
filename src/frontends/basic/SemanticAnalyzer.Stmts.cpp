@@ -102,6 +102,11 @@ class SemanticAnalyzerStmtVisitor final : public MutStmtVisitor
     }
 
     /// @brief Validate DIM declarations through the analyser.
+    void visit(ConstStmt &stmt) override
+    {
+        analyzer_.analyzeConst(stmt);
+    }
+
     void visit(DimStmt &stmt) override
     {
         analyzer_.analyzeDim(stmt);
@@ -111,6 +116,12 @@ class SemanticAnalyzerStmtVisitor final : public MutStmtVisitor
     void visit(ReDimStmt &stmt) override
     {
         analyzer_.analyzeReDim(stmt);
+    }
+
+    /// @brief SWAP statements validate that both operands are valid lvalues.
+    void visit(SwapStmt &stmt) override
+    {
+        analyzer_.analyzeSwap(stmt);
     }
 
     /// @brief RANDOMIZE statements evaluate seed expressions via the analyser.
