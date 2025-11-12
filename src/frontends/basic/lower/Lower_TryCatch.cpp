@@ -81,7 +81,7 @@ void Lowerer::lowerResume(const Resume &stmt)
     std::optional<size_t> handlerIndex;
 
     auto &handlersByLine = ctx.errorHandlers().blocks();
-    if (auto it = handlersByLine.find(stmt.line); it != handlersByLine.end())
+    if (auto it = handlersByLine.find(stmt.target); it != handlersByLine.end())
     {
         handlerIndex = it->second;
     }
@@ -101,6 +101,7 @@ void Lowerer::lowerResume(const Resume &stmt)
         return;
 
     unsigned tokId = handlerBlock.params[1].id;
+    // Ensure the parameter name is in the function's valueNames so it serializes correctly
     if (func->valueNames.size() <= tokId)
         func->valueNames.resize(tokId + 1);
     if (func->valueNames[tokId].empty())
