@@ -15,6 +15,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/basic/Lowerer.hpp"
+#include "frontends/basic/LocationScope.hpp"
 
 #include <cassert>
 
@@ -40,6 +41,7 @@ namespace il::frontends::basic
 /// @param stmt GOSUB statement providing the target line and source location.
 void Lowerer::lowerGosub(const GosubStmt &stmt)
 {
+    LocationScope loc(*this, stmt.loc);
     ProcedureContext &ctx = context();
     Function *func = ctx.function();
     BasicBlock *current = ctx.current();
@@ -53,7 +55,6 @@ void Lowerer::lowerGosub(const GosubStmt &stmt)
     if (!contIndex)
         contIndex = gosubState.registerContinuation(&stmt, ctx.exitIndex());
 
-    curLoc = stmt.loc;
     Value sp = emitLoad(Type(Type::Kind::I64), gosubState.spSlot());
 
     auto &lineBlocks = ctx.blockNames().lineBlocks();
@@ -84,7 +85,6 @@ void Lowerer::lowerGosub(const GosubStmt &stmt)
     emitCBr(overflow, overflowBlk, pushBlk);
 
     ctx.setCurrent(overflowBlk);
-    curLoc = stmt.loc;
     requireTrap();
     std::string overflowMsg = getStringLabel("gosub: stack overflow");
     Value overflowStr = emitConstStr(overflowMsg);
@@ -92,7 +92,6 @@ void Lowerer::lowerGosub(const GosubStmt &stmt)
     emitTrap();
 
     ctx.setCurrent(pushBlk);
-    curLoc = stmt.loc;
 
     Value offset = emitBinary(Opcode::IMulOvf, Type(Type::Kind::I64), sp, Value::constInt(4));
     Value slotPtr = emitBinary(Opcode::GEP, Type(Type::Kind::Ptr), gosubState.stackSlot(), offset);
@@ -114,11 +113,11 @@ void Lowerer::lowerGosub(const GosubStmt &stmt)
 /// @param stmt GOTO statement pointing at a target line label.
 void Lowerer::lowerGoto(const GotoStmt &stmt)
 {
+    LocationScope loc(*this, stmt.loc);
     auto &lineBlocks = context().blockNames().lineBlocks();
     auto it = lineBlocks.find(stmt.target);
     if (it != lineBlocks.end())
     {
-        curLoc = stmt.loc;
         Function *func = context().function();
         assert(func && "lowerGoto requires an active function");
         emitBr(&func->blocks[it->second]);
@@ -135,6 +134,7 @@ void Lowerer::lowerGoto(const GotoStmt &stmt)
 /// @param stmt RETURN statement appearing in GOSUB contexts.
 void Lowerer::lowerGosubReturn(const ReturnStmt &stmt)
 {
+    LocationScope loc(*this, stmt.loc);
     ProcedureContext &ctx = context();
     Function *func = ctx.function();
     BasicBlock *current = ctx.current();
@@ -145,7 +145,6 @@ void Lowerer::lowerGosubReturn(const ReturnStmt &stmt)
 
     auto &gosubState = ctx.gosub();
 
-    curLoc = stmt.loc;
     Value sp = emitLoad(Type(Type::Kind::I64), gosubState.spSlot());
 
     BlockNamer *blockNamer = ctx.blockNames().namer();
@@ -170,7 +169,6 @@ void Lowerer::lowerGosubReturn(const ReturnStmt &stmt)
     emitCBr(isEmpty, emptyBlk, contBlk);
 
     ctx.setCurrent(emptyBlk);
-    curLoc = stmt.loc;
     requireTrap();
     std::string emptyMsg = getStringLabel("gosub: empty return stack");
     Value emptyStr = emitConstStr(emptyMsg);
@@ -178,7 +176,6 @@ void Lowerer::lowerGosubReturn(const ReturnStmt &stmt)
     emitTrap();
 
     ctx.setCurrent(contBlk);
-    curLoc = stmt.loc;
 
     Value nextSp = emitBinary(Opcode::ISubOvf, Type(Type::Kind::I64), sp, Value::constInt(1));
     emitStore(Type(Type::Kind::I64), gosubState.spSlot(), nextSp);
@@ -218,7 +215,6 @@ void Lowerer::lowerGosubReturn(const ReturnStmt &stmt)
     contBlk->terminated = true;
 
     ctx.setCurrent(invalidBlk);
-    curLoc = stmt.loc;
     emitTrap();
 }
 
@@ -228,7 +224,7 @@ void Lowerer::lowerGosubReturn(const ReturnStmt &stmt)
 /// @param stmt END statement providing the source location.
 void Lowerer::lowerEnd(const EndStmt &stmt)
 {
-    curLoc = stmt.loc;
+    LocationScope loc(*this, stmt.loc);
     emitRet(Value::constInt(0));
 }
 
