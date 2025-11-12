@@ -18,6 +18,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/basic/Lowerer.hpp"
+#include "frontends/basic/LocationScope.hpp"
 #include "frontends/basic/ASTUtils.hpp"
 
 #include <algorithm>
@@ -94,13 +95,13 @@ void Lowerer::lowerOpen(const OpenStmt &stmt)
 /// @param stmt Parsed CLOSE statement.
 void Lowerer::lowerClose(const CloseStmt &stmt)
 {
+    LocationScope loc(*this, stmt.loc);
     if (!stmt.channelExpr)
         return;
 
     RVal channel = lowerExpr(*stmt.channelExpr);
     channel = normalizeChannelToI32(std::move(channel), stmt.loc);
 
-    curLoc = stmt.loc;
     Value err = emitCallRet(Type(Type::Kind::I32), "rt_close_err", {channel.value});
 
     emitRuntimeErrCheck(err, stmt.loc, "close", [&](Value code) { emitTrapFromErr(code); });
@@ -115,6 +116,7 @@ void Lowerer::lowerClose(const CloseStmt &stmt)
 /// @param stmt Parsed SEEK statement.
 void Lowerer::lowerSeek(const SeekStmt &stmt)
 {
+    LocationScope loc(*this, stmt.loc);
     if (!stmt.channelExpr || !stmt.positionExpr)
         return;
 
@@ -124,7 +126,6 @@ void Lowerer::lowerSeek(const SeekStmt &stmt)
     RVal position = lowerExpr(*stmt.positionExpr);
     position = ensureI64(std::move(position), stmt.loc);
 
-    curLoc = stmt.loc;
     Value err =
         emitCallRet(Type(Type::Kind::I32), "rt_seek_ch_err", {channel.value, position.value});
 
@@ -141,6 +142,7 @@ void Lowerer::lowerSeek(const SeekStmt &stmt)
 /// @param stmt Parsed PRINT statement with expression list.
 void Lowerer::lowerPrint(const PrintStmt &stmt)
 {
+    LocationScope loc(*this, stmt.loc);
     std::size_t column = 1;
     bool columnKnown = true;
 
@@ -171,7 +173,6 @@ void Lowerer::lowerPrint(const PrintStmt &stmt)
                     widthEstimate = estimatePrintWidth(*it.expr);
 
                 RVal value = lowerExpr(*it.expr);
-                curLoc = stmt.loc;
                 if (value.type.kind == Type::Kind::Str)
                 {
                     emitCall("rt_print_str", {value.value});
@@ -201,7 +202,6 @@ void Lowerer::lowerPrint(const PrintStmt &stmt)
                 std::string padding(spaces, ' ');
                 std::string spaceLbl = getStringLabel(padding);
                 Value sp = emitConstStr(spaceLbl);
-                curLoc = stmt.loc;
                 emitCall("rt_print_str", {sp});
                 break;
             }
@@ -215,7 +215,6 @@ void Lowerer::lowerPrint(const PrintStmt &stmt)
     {
         std::string nlLbl = getStringLabel("\n");
         Value nl = emitConstStr(nlLbl);
-        curLoc = stmt.loc;
         emitCall("rt_print_str", {nl});
         resetColumn();
     }
@@ -237,12 +236,12 @@ Lowerer::PrintChArgString Lowerer::lowerPrintChArgToString(const Expr &expr,
                                                            RVal value,
                                                            bool quoteStrings)
 {
+    LocationScope loc(*this, expr.loc);
     if (value.type.kind == Type::Kind::Str)
     {
         if (!quoteStrings)
             return {value.value, std::nullopt};
 
-        curLoc = expr.loc;
         Value quoted = emitCallRet(Type(Type::Kind::Str), "rt_csv_quote_alloc", {value.value});
         return {quoted, il::runtime::RuntimeFeature::CsvQuote};
     }
@@ -299,7 +298,6 @@ Lowerer::PrintChArgString Lowerer::lowerPrintChArgToString(const Expr &expr,
             break;
     }
 
-    curLoc = expr.loc;
     Value text = emitCallRet(Type(Type::Kind::Str), runtime, {value.value});
     return {text, feature};
 }
@@ -361,6 +359,7 @@ Value Lowerer::buildPrintChWriteRecord(const PrintChStmt &stmt)
 /// @param stmt Parsed PRINT#/WRITE# statement.
 void Lowerer::lowerPrintCh(const PrintChStmt &stmt)
 {
+    LocationScope loc(*this, stmt.loc);
     if (!stmt.channelExpr)
         return;
 
@@ -375,7 +374,6 @@ void Lowerer::lowerPrintCh(const PrintChStmt &stmt)
         {
             std::string emptyLbl = getStringLabel("");
             Value empty = emitConstStr(emptyLbl);
-            curLoc = stmt.loc;
             Value err =
                 emitCallRet(Type(Type::Kind::I32), "rt_println_ch_err", {channel.value, empty});
             const char *context = isWrite ? "write" : "printch";
@@ -387,7 +385,6 @@ void Lowerer::lowerPrintCh(const PrintChStmt &stmt)
     if (isWrite)
     {
         Value record = buildPrintChWriteRecord(stmt);
-        curLoc = stmt.loc;
         Value err =
             emitCallRet(Type(Type::Kind::I32), "rt_println_ch_err", {channel.value, record});
         emitRuntimeErrCheck(err, stmt.loc, "write", [&](Value code) { emitTrapFromErr(code); });
@@ -430,7 +427,6 @@ void Lowerer::lowerPrintCh(const PrintChStmt &stmt)
         {
             std::string emptyLbl = getStringLabel("");
             Value empty = emitConstStr(emptyLbl);
-            curLoc = stmt.loc;
             Value err =
                 emitCallRet(Type(Type::Kind::I32), "rt_println_ch_err", {channel.value, empty});
             emitRuntimeErrCheck(
@@ -449,7 +445,7 @@ void Lowerer::lowerPrintCh(const PrintChStmt &stmt)
 /// @param stmt Parsed INPUT statement.
 void Lowerer::lowerInput(const InputStmt &stmt)
 {
-    curLoc = stmt.loc;
+    LocationScope loc(*this, stmt.loc);
     if (stmt.prompt)
     {
         if (auto *se = as<const StringExpr>(*stmt.prompt))
@@ -472,7 +468,6 @@ void Lowerer::lowerInput(const InputStmt &stmt)
         Value target = storage->pointer;
         if (slotInfo.type.kind == Type::Kind::Str)
         {
-            curLoc = stmt.loc;
             emitStore(Type(Type::Kind::Str), target, field);
             return;
         }
@@ -480,10 +475,8 @@ void Lowerer::lowerInput(const InputStmt &stmt)
         if (slotInfo.type.kind == Type::Kind::F64)
         {
             Value f = emitCallRet(Type(Type::Kind::F64), "rt_to_double", {field});
-            curLoc = stmt.loc;
             emitStore(Type(Type::Kind::F64), target, f);
             requireStrReleaseMaybe();
-            curLoc = stmt.loc;
             emitCall("rt_str_release_maybe", {field});
             return;
         }
@@ -492,16 +485,13 @@ void Lowerer::lowerInput(const InputStmt &stmt)
         if (slotInfo.isBoolean)
         {
             Value b = coerceToBool({n, Type(Type::Kind::I64)}, stmt.loc).value;
-            curLoc = stmt.loc;
             emitStore(ilBoolTy(), target, b);
         }
         else
         {
-            curLoc = stmt.loc;
             emitStore(Type(Type::Kind::I64), target, n);
         }
         requireStrReleaseMaybe();
-        curLoc = stmt.loc;
         emitCall("rt_str_release_maybe", {field});
     };
 
@@ -516,7 +506,6 @@ void Lowerer::lowerInput(const InputStmt &stmt)
     emitCallRet(
         Type(Type::Kind::I64), "rt_split_fields", {line, fields, Value::constInt(fieldCount)});
     requireStrReleaseMaybe();
-    curLoc = stmt.loc;
     emitCall("rt_str_release_maybe", {line});
 
     for (std::size_t i = 0; i < stmt.vars.size(); ++i)
@@ -538,7 +527,7 @@ void Lowerer::lowerInput(const InputStmt &stmt)
 /// @param stmt Parsed INPUT# statement.
 void Lowerer::lowerInputCh(const InputChStmt &stmt)
 {
-    curLoc = stmt.loc;
+    LocationScope loc(*this, stmt.loc);
     Value outSlot = emitAlloca(8);
     emitStore(Type(Type::Kind::Ptr), outSlot, Value::null());
 
@@ -550,17 +539,14 @@ void Lowerer::lowerInputCh(const InputChStmt &stmt)
 
     emitRuntimeErrCheck(err, stmt.loc, "lineinputch", [&](Value code) { emitTrapFromErr(code); });
 
-    curLoc = stmt.loc;
     Value line = emitLoad(Type(Type::Kind::Str), outSlot);
 
     Value fieldSlot = emitAlloca(8);
     emitStore(Type(Type::Kind::Ptr), fieldSlot, Value::null());
     emitCallRet(Type(Type::Kind::I64), "rt_split_fields", {line, fieldSlot, Value::constInt(1)});
     requireStrReleaseMaybe();
-    curLoc = stmt.loc;
     emitCall("rt_str_release_maybe", {line});
 
-    curLoc = stmt.loc;
     Value field = emitLoad(Type(Type::Kind::Str), fieldSlot);
 
     auto storage = resolveVariableStorage(stmt.target.name, stmt.loc);
@@ -571,15 +557,12 @@ void Lowerer::lowerInputCh(const InputChStmt &stmt)
     Value slot = storage->pointer;
     if (slotInfo.type.kind == Type::Kind::Str)
     {
-        curLoc = stmt.loc;
         emitStore(Type(Type::Kind::Str), slot, field);
         return;
     }
 
-    curLoc = stmt.loc;
     Value fieldCstr = emitCallRet(Type(Type::Kind::Ptr), "rt_string_cstr", {field});
 
-    curLoc = stmt.loc;
     Value parsedSlot = emitAlloca(8);
 
     if (slotInfo.type.kind == Type::Kind::F64)
@@ -588,7 +571,6 @@ void Lowerer::lowerInputCh(const InputChStmt &stmt)
         emitRuntimeErrCheck(
             err, stmt.loc, "inputch_parse", [&](Value code) { emitTrapFromErr(code); });
         Value parsed = emitLoad(Type(Type::Kind::F64), parsedSlot);
-        curLoc = stmt.loc;
         emitStore(Type(Type::Kind::F64), slot, parsed);
     }
     else
@@ -600,17 +582,14 @@ void Lowerer::lowerInputCh(const InputChStmt &stmt)
         if (slotInfo.isBoolean)
         {
             Value b = coerceToBool({parsed, Type(Type::Kind::I64)}, stmt.loc).value;
-            curLoc = stmt.loc;
             emitStore(ilBoolTy(), slot, b);
         }
         else
         {
-            curLoc = stmt.loc;
             emitStore(Type(Type::Kind::I64), slot, parsed);
         }
     }
 
-    curLoc = stmt.loc;
     emitCall("rt_str_release_maybe", {field});
 }
 
@@ -622,13 +601,13 @@ void Lowerer::lowerInputCh(const InputChStmt &stmt)
 /// @param stmt Parsed LINE INPUT# statement.
 void Lowerer::lowerLineInputCh(const LineInputChStmt &stmt)
 {
+    LocationScope loc(*this, stmt.loc);
     if (!stmt.channelExpr || !stmt.targetVar)
         return;
 
     RVal channel = lowerExpr(*stmt.channelExpr);
     channel = normalizeChannelToI32(std::move(channel), stmt.loc);
 
-    curLoc = stmt.loc;
     Value outSlot = emitAlloca(8);
     emitStore(Type(Type::Kind::Ptr), outSlot, Value::null());
 
@@ -637,7 +616,6 @@ void Lowerer::lowerLineInputCh(const LineInputChStmt &stmt)
 
     emitRuntimeErrCheck(err, stmt.loc, "lineinputch", [&](Value code) { emitTrapFromErr(code); });
 
-    curLoc = stmt.loc;
     Value line = emitLoad(Type(Type::Kind::Str), outSlot);
 
     if (const auto *var = as<const VarExpr>(*stmt.targetVar))
@@ -646,7 +624,6 @@ void Lowerer::lowerLineInputCh(const LineInputChStmt &stmt)
         if (!storage)
             return;
         Value slot = storage->pointer;
-        curLoc = stmt.loc;
         emitStore(Type(Type::Kind::Str), slot, line);
     }
 }
