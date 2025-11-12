@@ -98,7 +98,7 @@ STATUS LEGEND:
       [ ] src/frontends/basic/LowerStmt_Runtime.cpp (primary)
 
 ### 2.3 Remove Semantic Analyzer Trivial Wrappers
-[ ] Remove indirection layer in semantic analysis
+[X] Remove indirection layer in semantic analysis
     - Impact: Eliminate 10+ trivial wrapper methods
     - Files to modify:
       [ ] src/frontends/basic/SemanticAnalyzer.Stmts.IO.cpp

@@ -65,37 +65,34 @@ class SemanticAnalyzerStmtVisitor final : public MutStmtVisitor
     /// @brief Validate CLS statements through the analyser.
     void visit(ClsStmt &stmt) override
     {
-        analyzer_.analyzeCls(stmt);
+        analyzer_.visit(stmt);
     }
 
     /// @brief Validate CURSOR statements through the analyser.
     void visit(CursorStmt &stmt) override
     {
-        analyzer_.analyzeCursor(stmt);
+        analyzer_.visit(stmt);
     }
 
-    /// @brief Validate ALTSCREEN statements through the analyser.
-    void visit(AltScreenStmt &stmt) override
-    {
-        analyzer_.analyzeAltScreen(stmt);
-    }
+    /// @brief ALTSCREEN statements require no semantic validation.
+    void visit(AltScreenStmt &) override {}
 
     /// @brief Forward COLOR statements for palette validation.
     void visit(ColorStmt &stmt) override
     {
-        analyzer_.analyzeColor(stmt);
+        analyzer_.visit(stmt);
     }
 
     /// @brief Forward SLEEP statements for duration validation.
     void visit(SleepStmt &stmt) override
     {
-        analyzer_.analyzeSleep(stmt);
+        analyzer_.visit(stmt);
     }
 
     /// @brief Ensure LOCATE statements honour cursor bounds.
     void visit(LocateStmt &stmt) override
     {
-        analyzer_.analyzeLocate(stmt);
+        analyzer_.visit(stmt);
     }
 
     /// @brief Defer LET assignment analysis to the analyser.

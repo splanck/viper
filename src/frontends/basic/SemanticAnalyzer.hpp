@@ -123,18 +123,6 @@ class SemanticAnalyzer
     void analyzePrintCh(const PrintChStmt &s);
     /// @brief Analyze CALL statement @p s.
     void analyzeCallStmt(CallStmt &s);
-    /// @brief Analyze CLS statement @p s.
-    void analyzeCls(const ClsStmt &s);
-    /// @brief Analyze COLOR statement @p s.
-    void analyzeColor(const ColorStmt &s);
-    /// @brief Analyze SLEEP statement @p s.
-    void analyzeSleep(const SleepStmt &s);
-    /// @brief Analyze LOCATE statement @p s.
-    void analyzeLocate(const LocateStmt &s);
-    /// @brief Analyze CURSOR statement @p s.
-    void analyzeCursor(const CursorStmt &s);
-    /// @brief Analyze ALTSCREEN statement @p s.
-    void analyzeAltScreen(const AltScreenStmt &s);
     /// @brief Analyze LET statement @p s.
     void analyzeLet(LetStmt &s);
     /// @brief Analyze OPEN statement @p s.

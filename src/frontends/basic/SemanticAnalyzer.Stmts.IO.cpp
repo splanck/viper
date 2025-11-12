@@ -86,14 +86,6 @@ void SemanticAnalyzer::visit(const CursorStmt &)
     // nothing to validate - ON/OFF is parsed as a boolean flag
 }
 
-/// @brief Validate the ALTSCREEN statement. No semantic checks are required.
-/// @details ALTSCREEN accepts only ON/OFF keywords which are validated during
-///          parsing, so no expression validation is needed here.
-void SemanticAnalyzer::analyzeAltScreen(const AltScreenStmt &)
-{
-    // nothing to validate - ON/OFF is parsed as a boolean flag
-}
-
 /// @brief Analyze a PRINT statement for semantic correctness.
 /// @details Traverses each printed expression (ignoring pure separators) so any
 ///          nested semantic issues are diagnosed before code generation.
@@ -114,41 +106,6 @@ void SemanticAnalyzer::analyzePrintCh(const PrintChStmt &p)
     for (const auto &arg : p.args)
         if (arg)
             visitExpr(*arg);
-}
-
-/// @brief Analyze the CLS statement wrapper.
-/// @details Delegates to the parameterless visitor for reuse.
-void SemanticAnalyzer::analyzeCls(const ClsStmt &stmt)
-{
-    visit(stmt);
-}
-
-/// @brief Analyze the COLOR statement wrapper.
-/// @details Simply dispatches to the visitor implementation.
-void SemanticAnalyzer::analyzeColor(const ColorStmt &stmt)
-{
-    visit(stmt);
-}
-
-/// @brief Analyze the SLEEP statement wrapper.
-/// @details Delegates to the visitor for numeric validation.
-void SemanticAnalyzer::analyzeSleep(const SleepStmt &stmt)
-{
-    visit(stmt);
-}
-
-/// @brief Analyze the LOCATE statement wrapper.
-/// @details Delegates to the visitor to reuse operand validation logic.
-void SemanticAnalyzer::analyzeLocate(const LocateStmt &stmt)
-{
-    visit(stmt);
-}
-
-/// @brief Analyze the CURSOR statement wrapper.
-/// @details Delegates to the visitor for consistency with other terminal statements.
-void SemanticAnalyzer::analyzeCursor(const CursorStmt &stmt)
-{
-    visit(stmt);
 }
 
 /// @brief Analyze an OPEN statement including type checks and channel tracking.
