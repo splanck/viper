@@ -191,3 +191,5 @@ clang-format -i <files>
 - Discovery-driven interrogation before specification
 - Strict architectural layering enforcement
 - VM/native determinism requirement
+
+NOTES: Never mention Claude in any commit messages or comments. Never commit changes, leave that to me.
