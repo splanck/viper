@@ -22,6 +22,7 @@
 #include "frontends/basic/LoweringPipeline.hpp"
 
 #include <cassert>
+#include <functional>
 
 namespace il::frontends::basic
 {
@@ -57,22 +58,42 @@ void StatementLowering::lowerSequence(const std::vector<const Stmt *> &stmts,
     assert(func && "lowerSequence requires an active function");
     auto &lineBlocks = ctx.blockNames().lineBlocks();
 
-    ctx.gosub().clearContinuations();
+    // Note: clearContinuations() removed - gosub continuations must persist
+    // across all sequences in a procedure since RETURN needs visibility of
+    // ALL gosub sites, not just those in the current sequence.
+
+    // Helper to recursively find GOSUB statements, including those nested in StmtList
+    std::function<void(const Stmt *, size_t)> scanForGosub;
+    scanForGosub = [&](const Stmt *stmt, size_t nextIdx)
+    {
+        if (const auto *gosubStmt = as<const GosubStmt>(*stmt))
+        {
+            ctx.gosub().registerContinuation(gosubStmt, nextIdx);
+        }
+        else if (const auto *stmtList = as<const StmtList>(*stmt))
+        {
+            // Recursively scan statements in the list
+            for (const auto &childStmt : stmtList->stmts)
+                scanForGosub(childStmt.get(), nextIdx);
+        }
+    };
+
     bool hasGosub = false;
     for (size_t i = 0; i < stmts.size(); ++i)
     {
-        const auto *gosubStmt = as<const GosubStmt>(*stmts[i]);
-        if (!gosubStmt)
-            continue;
-
-        hasGosub = true;
         size_t contIdx = ctx.exitIndex();
         if (i + 1 < stmts.size())
         {
             int nextLine = lowerer.virtualLine(*stmts[i + 1]);
             contIdx = lineBlocks[nextLine];
         }
-        ctx.gosub().registerContinuation(gosubStmt, contIdx);
+
+        // Check if this statement (or any nested statement) is a GOSUB
+        if (as<const GosubStmt>(*stmts[i]) || as<const StmtList>(*stmts[i]))
+        {
+            scanForGosub(stmts[i], contIdx);
+            hasGosub = true;
+        }
     }
 
     if (hasGosub)

@@ -145,7 +145,9 @@ Expected<void> checkRuntimeArrayCall(const VerifyCtx &ctx)
                << " result";
             return fail(ctx, ss.str());
         }
-        if (ctx.instr.type.kind != expected)
+        // Record the result type so IL parsed from text gets proper type inference.
+        ctx.types.recordResult(ctx.instr, Type(expected));
+        if (ctx.instr.type.kind != Type::Kind::Void && ctx.instr.type.kind != expected)
         {
             std::ostringstream ss;
             ss << "@" << ctx.instr.callee << " result must be " << kindToString(expected);
