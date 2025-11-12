@@ -109,7 +109,7 @@ STATUS LEGEND:
     - Update call sites to use visit() directly
 
 ### 2.4 Add narrow32() Helper for I32 Narrowing
-[ ] Extract repeated narrowing pattern
+[X] Extract repeated narrowing pattern
     - Impact: Simplify 8+ call sites
     - Add to EmitCommon or Lowerer:
       ```cpp

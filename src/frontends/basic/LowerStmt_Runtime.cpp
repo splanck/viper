@@ -70,9 +70,8 @@ void Lowerer::visit(const ColorStmt &s)
         auto bg = ensureI64(lowerExpr(*s.bg), s.loc);
         bgv = bg.value;
     }
-    auto emit = emitCommon(s.loc);
-    Value fg32 = emit.to_iN(fg.value, 32);
-    Value bg32 = emit.to_iN(bgv, 32);
+    Value fg32 = narrow32(fg.value, s.loc);
+    Value bg32 = narrow32(bgv, s.loc);
     emitRuntimeHelper(il::runtime::RuntimeFeature::TermColor, "rt_term_color_i32", Type(Type::Kind::Void), {fg32, bg32});
 }
 
@@ -94,9 +93,8 @@ void Lowerer::visit(const LocateStmt &s)
         auto col = ensureI64(lowerExpr(*s.col), s.loc);
         colv = col.value;
     }
-    auto emit = emitCommon(s.loc);
-    Value row32 = emit.to_iN(row.value, 32);
-    Value col32 = emit.to_iN(colv, 32);
+    Value row32 = narrow32(row.value, s.loc);
+    Value col32 = narrow32(colv, s.loc);
     emitRuntimeHelper(il::runtime::RuntimeFeature::TermLocate, "rt_term_locate_i32", Type(Type::Kind::Void), {row32, col32});
 }
 
@@ -110,9 +108,8 @@ void Lowerer::visit(const LocateStmt &s)
 void Lowerer::visit(const CursorStmt &s)
 {
     LocationScope loc(*this, s.loc);
-    auto emit = emitCommon(s.loc);
     Value show = Value::constInt(s.visible ? 1 : 0);
-    Value show32 = emit.to_iN(show, 32);
+    Value show32 = narrow32(show, s.loc);
     emitRuntimeHelper(il::runtime::RuntimeFeature::TermCursor, "rt_term_cursor_visible_i32", Type(Type::Kind::Void), {show32});
 }
 
@@ -126,9 +123,8 @@ void Lowerer::visit(const CursorStmt &s)
 void Lowerer::visit(const AltScreenStmt &s)
 {
     LocationScope loc(*this, s.loc);
-    auto emit = emitCommon(s.loc);
     Value enable = Value::constInt(s.enable ? 1 : 0);
-    Value enable32 = emit.to_iN(enable, 32);
+    Value enable32 = narrow32(enable, s.loc);
     emitRuntimeHelper(il::runtime::RuntimeFeature::TermAltScreen, "rt_term_alt_screen_i32", Type(Type::Kind::Void), {enable32});
 }
 
@@ -143,8 +139,7 @@ void Lowerer::visit(const SleepStmt &s)
 {
     curLoc = s.loc;
     auto ms = ensureI64(lowerExpr(*s.ms), s.loc);
-    auto emit = emitCommon(s.loc);
-    Value ms32 = emit.to_iN(ms.value, 32);
+    Value ms32 = narrow32(ms.value, s.loc);
     requireSleepMs();
     emitCallRet(Type(Type::Kind::Void), "rt_sleep_ms", {ms32});
 }

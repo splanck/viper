@@ -479,6 +479,14 @@ class Lowerer
     Emit emitCommon() noexcept;
     Emit emitCommon(il::support::SourceLoc loc) noexcept;
 
+    /// @brief Narrow a 64-bit value to 32 bits for runtime calls.
+    /// @details Convenience wrapper around emitCommon().to_iN(value, 32) that reduces
+    ///          boilerplate when preparing arguments for 32-bit runtime functions.
+    /// @param value The 64-bit value to narrow.
+    /// @param loc Source location for the narrowing operation.
+    /// @return Narrowed 32-bit value.
+    Value narrow32(Value value, il::support::SourceLoc loc);
+
     /// @brief Emit checked integer negation for @p val producing type @p ty.
     Value emitCheckedNeg(Type ty, Value val);
 

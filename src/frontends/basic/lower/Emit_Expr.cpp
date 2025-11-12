@@ -175,6 +175,19 @@ Value Lowerer::emitCheckedNeg(Type ty, Value val)
     return emitter().emitCheckedNeg(ty, val);
 }
 
+/// @brief Narrow a 64-bit value to 32 bits.
+/// @details Convenience helper that wraps emitCommon().to_iN(value, 32) to reduce
+///          boilerplate when preparing arguments for 32-bit runtime function calls.
+///          This pattern appears frequently in LowerStmt_Runtime.cpp when calling
+///          terminal control functions that expect i32 arguments.
+/// @param value The value to narrow (typically i64 from BASIC expressions).
+/// @param loc Source location for the narrowing instruction.
+/// @return Narrowed 32-bit value suitable for passing to runtime helpers.
+Value Lowerer::narrow32(Value value, il::support::SourceLoc loc)
+{
+    return emitCommon(loc).to_iN(value, 32);
+}
+
 void Lowerer::emitCall(const std::string &callee, const std::vector<Value> &args)
 {
     emitter().emitCall(callee, args);
