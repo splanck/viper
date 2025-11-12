@@ -21,7 +21,6 @@
 #include "frontends/basic/SelectModel.hpp"
 #include "viper/il/IO.hpp"
 
-#include <cstdio>
 #include <cstdlib>
 #include <string>
 #include <utility>
@@ -451,18 +450,7 @@ il::support::Expected<Parser::CaseArmSyntax> Parser::parseCaseArmSyntax(Cursor &
                 {
                     if (opTok.kind != TokenKind::EndOfLine)
                     {
-                        if (emitter_)
-                        {
-                            emitter_->emit(il::support::Severity::Error,
-                                           "B0001",
-                                           opTok.loc,
-                                           static_cast<uint32_t>(opTok.lexeme.size()),
-                                           "CASE IS requires a relational operator");
-                        }
-                        else
-                        {
-                            std::fprintf(stderr, "CASE IS requires a relational operator\n");
-                        }
+                        emitError("B0001", opTok, "CASE IS requires a relational operator");
                     }
                     bail = true;
                     break;
@@ -484,18 +472,7 @@ il::support::Expected<Parser::CaseArmSyntax> Parser::parseCaseArmSyntax(Cursor &
                 Token bad = peek();
                 if (bad.kind != TokenKind::EndOfLine)
                 {
-                    if (emitter_)
-                    {
-                        emitter_->emit(il::support::Severity::Error,
-                                       "B0001",
-                                       bad.loc,
-                                       static_cast<uint32_t>(bad.lexeme.size()),
-                                       "SELECT CASE labels must be integer literals");
-                    }
-                    else
-                    {
-                        std::fprintf(stderr, "SELECT CASE labels must be integer literals\n");
-                    }
+                    emitError("B0001", bad, "SELECT CASE labels must be integer literals");
                 }
                 bail = true;
                 break;
@@ -519,18 +496,7 @@ il::support::Expected<Parser::CaseArmSyntax> Parser::parseCaseArmSyntax(Cursor &
                     Token bad = peek();
                     if (bad.kind != TokenKind::EndOfLine)
                     {
-                        if (emitter_)
-                        {
-                            emitter_->emit(il::support::Severity::Error,
-                                           "B0001",
-                                           bad.loc,
-                                           static_cast<uint32_t>(bad.lexeme.size()),
-                                           "SELECT CASE labels must be integer literals");
-                        }
-                        else
-                        {
-                            std::fprintf(stderr, "SELECT CASE labels must be integer literals\n");
-                        }
+                        emitError("B0001", bad, "SELECT CASE labels must be integer literals");
                     }
                     bail = true;
                     break;
@@ -549,18 +515,7 @@ il::support::Expected<Parser::CaseArmSyntax> Parser::parseCaseArmSyntax(Cursor &
             Token bad = peek();
             if (bad.kind != TokenKind::EndOfLine)
             {
-                if (emitter_)
-                {
-                    emitter_->emit(il::support::Severity::Error,
-                                   "B0001",
-                                   bad.loc,
-                                   static_cast<uint32_t>(bad.lexeme.size()),
-                                   "SELECT CASE labels must be integer literals");
-                }
-                else
-                {
-                    std::fprintf(stderr, "SELECT CASE labels must be integer literals\n");
-                }
+                emitError("B0001", bad, "SELECT CASE labels must be integer literals");
             }
             break;
         }
@@ -626,18 +581,7 @@ il::support::Expected<CaseArm> Parser::lowerCaseArm(const CaseArmSyntax &syntax)
         std::string err;
         if (!il::io::decodeEscapedString(stringTok.lexeme, decoded, &err))
         {
-            if (emitter_)
-            {
-                emitter_->emit(il::support::Severity::Error,
-                               "B0003",
-                               stringTok.loc,
-                               static_cast<uint32_t>(stringTok.lexeme.size()),
-                               err);
-            }
-            else
-            {
-                std::fprintf(stderr, "%s\n", err.c_str());
-            }
+            emitError("B0003", stringTok, err);
             decoded = stringTok.lexeme;
         }
         arm.str_labels.push_back(std::move(decoded));

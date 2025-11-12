@@ -17,8 +17,6 @@
 #include "frontends/basic/Parser.hpp"
 #include "frontends/basic/Parser_Stmt_ControlHelpers.hpp"
 
-#include <cstdio>
-
 namespace il::frontends::basic
 {
 
@@ -88,18 +86,7 @@ StmtPtr Parser::parseDoStatement()
 
     if (hasPreTest && hasPostTest)
     {
-        if (emitter_)
-        {
-            emitter_->emit(il::support::Severity::Error,
-                           "B0001",
-                           postTok.loc,
-                           static_cast<uint32_t>(postTok.lexeme.size()),
-                           "DO loop cannot have both pre and post conditions");
-        }
-        else
-        {
-            std::fprintf(stderr, "DO loop cannot have both pre and post conditions\n");
-        }
+        emitError("B0001", postTok, "DO loop cannot have both pre and post conditions");
     }
     else if (hasPostTest)
     {
@@ -203,20 +190,7 @@ StmtPtr Parser::parseExitStatement()
         Token unexpected = peek();
         il::support::SourceLoc diagLoc =
             unexpected.kind == TokenKind::EndOfFile ? loc : unexpected.loc;
-        uint32_t length =
-            unexpected.lexeme.empty() ? 1u : static_cast<uint32_t>(unexpected.lexeme.size());
-        if (emitter_)
-        {
-            emitter_->emit(il::support::Severity::Error,
-                           "B0002",
-                           diagLoc,
-                           length,
-                           "expected FOR, WHILE, or DO after EXIT");
-        }
-        else
-        {
-            std::fprintf(stderr, "expected FOR, WHILE, or DO after EXIT\n");
-        }
+        emitError("B0002", diagLoc, "expected FOR, WHILE, or DO after EXIT");
         auto noop = std::make_unique<EndStmt>();
         noop->loc = loc;
         return noop;

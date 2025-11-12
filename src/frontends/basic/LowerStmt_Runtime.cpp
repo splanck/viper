@@ -17,7 +17,7 @@
 
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/ASTUtils.hpp"
-
+#include "frontends/basic/LocationScope.hpp"
 #include "frontends/basic/NameMangler_OOP.hpp"
 
 #include <cassert>
@@ -35,7 +35,7 @@ namespace il::frontends::basic
 /// @param s AST node representing the @c BEEP statement.
 void Lowerer::visit(const BeepStmt &s)
 {
-    curLoc = s.loc;
+    LocationScope loc(*this, s.loc);
     requestHelper(il::runtime::RuntimeFeature::TermBell);
     emitCallRet(Type(Type::Kind::Void), "rt_bell", {});
 }
@@ -49,7 +49,7 @@ void Lowerer::visit(const BeepStmt &s)
 /// @param s AST node representing the @c CLS statement.
 void Lowerer::visit(const ClsStmt &s)
 {
-    curLoc = s.loc;
+    LocationScope loc(*this, s.loc);
     requestHelper(il::runtime::RuntimeFeature::TermCls);
     emitCallRet(Type(Type::Kind::Void), "rt_term_cls", {});
 }
@@ -64,7 +64,7 @@ void Lowerer::visit(const ClsStmt &s)
 /// @param s AST node describing the @c COLOR statement.
 void Lowerer::visit(const ColorStmt &s)
 {
-    curLoc = s.loc;
+    LocationScope loc(*this, s.loc);
     auto fg = ensureI64(lowerExpr(*s.fg), s.loc);
     Value bgv = Value::constInt(-1);
     if (s.bg)

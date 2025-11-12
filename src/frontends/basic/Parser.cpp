@@ -139,19 +139,8 @@ void Parser::noteNamedLabelDefinition(const Token &tok, int labelNumber)
         return;
     }
 
-    if (emitter_)
-    {
-        std::string msg = "label '" + tok.lexeme + "' already defined";
-        emitter_->emit(il::support::Severity::Error,
-                       "B0001",
-                       tok.loc,
-                       static_cast<uint32_t>(tok.lexeme.size()),
-                       std::move(msg));
-    }
-    else
-    {
-        std::fprintf(stderr, "label '%s' already defined\n", tok.lexeme.c_str());
-    }
+    std::string msg = "label '" + tok.lexeme + "' already defined";
+    emitError("B0001", tok, std::move(msg));
 }
 
 /// @brief Record a reference to a named label.
@@ -338,19 +327,8 @@ std::unique_ptr<Program> Parser::parseProgram()
         if (!entry.referenced || entry.defined)
             continue;
         hasUndefinedNamedLabel = true;
-        if (emitter_)
-        {
-            std::string msg = "Undefined label: " + name;
-            emitter_->emit(il::support::Severity::Error,
-                           "B0002",
-                           entry.referenceLoc,
-                           static_cast<uint32_t>(name.size()),
-                           std::move(msg));
-        }
-        else
-        {
-            std::fprintf(stderr, "Undefined label: %s\n", name.c_str());
-        }
+        std::string msg = "Undefined label: " + name;
+        emitError("B0002", entry.referenceLoc, std::move(msg));
     }
     if (hasUndefinedNamedLabel)
         return nullptr;

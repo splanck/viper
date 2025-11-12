@@ -18,7 +18,6 @@
 #include "viper/il/IO.hpp"
 #include <algorithm>
 #include <array>
-#include <cstdio>
 #include <cstdlib>
 
 namespace il::frontends::basic
@@ -237,18 +236,7 @@ ExprPtr Parser::parseString()
     std::string err;
     if (!il::io::decodeEscapedString(peek().lexeme, decoded, &err))
     {
-        if (emitter_)
-        {
-            emitter_->emit(il::support::Severity::Error,
-                           "B0003",
-                           loc,
-                           static_cast<uint32_t>(peek().lexeme.size()),
-                           err);
-        }
-        else
-        {
-            std::fprintf(stderr, "%s\n", err.c_str());
-        }
+        emitError("B0003", loc, err);
         decoded = peek().lexeme;
     }
     consume();

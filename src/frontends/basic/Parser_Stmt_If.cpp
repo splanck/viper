@@ -18,7 +18,6 @@
 #include "frontends/basic/Parser.hpp"
 #include "frontends/basic/Parser_Stmt_ControlHelpers.hpp"
 
-#include <cstdio>
 #include <utility>
 #include <vector>
 
@@ -158,15 +157,7 @@ void Parser::parseIfBlock(IfParseState &state)
 
     if (term != BlockTerminator::EndIf)
     {
-        if (emitter_)
-        {
-            emitter_->emit(
-                il::support::Severity::Error, "B0004", state.stmt->loc, 2, "missing END IF");
-        }
-        else
-        {
-            std::fprintf(stderr, "missing END IF\n");
-        }
+        emitError("B0004", state.stmt->loc, "missing END IF");
         syncToStmtBoundary();
     }
 

@@ -22,7 +22,6 @@
 #include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/Parser.hpp"
 
-#include <cstdio>
 #include <cstdlib>
 
 namespace il::frontends::basic
@@ -242,18 +241,7 @@ StmtPtr Parser::parseInputStatement()
         if (at(TokenKind::Comma))
         {
             Token extra = peek();
-            if (emitter_)
-            {
-                emitter_->emit(il::support::Severity::Error,
-                               "B0001",
-                               extra.loc,
-                               1,
-                               "INPUT # with multiple targets not yet supported");
-            }
-            else
-            {
-                std::fprintf(stderr, "INPUT # with multiple targets not yet supported\n");
-            }
+            emitError("B0001", extra, "INPUT # with multiple targets not yet supported");
             while (!at(TokenKind::EndOfFile) && !at(TokenKind::EndOfLine) && !at(TokenKind::Colon))
             {
                 consume();
@@ -307,10 +295,7 @@ StmtPtr Parser::parseLineInputStatement()
     if (rawTarget && !is<VarExpr>(*rawTarget) && !is<ArrayExpr>(*rawTarget))
     {
         il::support::SourceLoc diagLoc = rawTarget->loc.hasLine() ? rawTarget->loc : loc;
-        if (emitter_)
-        {
-            emitter_->emit(il::support::Severity::Error, "B0001", diagLoc, 1, "expected variable");
-        }
+        emitError("B0001", diagLoc, "expected variable");
         auto fallback = std::make_unique<VarExpr>();
         fallback->loc = diagLoc;
         stmt->targetVar = std::move(fallback);

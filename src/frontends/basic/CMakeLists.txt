@@ -50,6 +50,7 @@ target_sources(fe_basic PRIVATE
         TypeSuffix.cpp
         TypeRules.cpp
         LoweringContext.cpp
+        LocationScope.cpp
         Lowerer.Program.cpp
         Lowerer.Procedure.cpp
         Lowerer.Statement.cpp

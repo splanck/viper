@@ -253,9 +253,9 @@ Parser::StmtResult Parser::parseLeadingLineNumberError()
 
 void Parser::reportUnexpectedLineNumber(const Token &tok)
 {
+    auto diagId = diag::BasicDiag::UnexpectedLineNumber;
     if (emitter_)
     {
-        auto diagId = diag::BasicDiag::UnexpectedLineNumber;
         emitter_->emit(diag::getSeverity(diagId),
                        std::string(diag::getCode(diagId)),
                        tok.loc,
@@ -272,9 +272,9 @@ void Parser::reportUnexpectedLineNumber(const Token &tok)
 
 void Parser::reportUnknownStatement(const Token &tok)
 {
+    auto diagId = diag::BasicDiag::UnknownStatement;
     if (emitter_)
     {
-        auto diagId = diag::BasicDiag::UnknownStatement;
         emitter_->emit(diag::getSeverity(diagId),
                        std::string(diag::getCode(diagId)),
                        tok.loc,

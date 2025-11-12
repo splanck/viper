@@ -122,6 +122,7 @@ class Lowerer
     [[nodiscard]] std::string qualify(const std::string &klass) const;
 
   private:
+    friend class LocationScope;
     friend class LowererExprVisitor;
     friend class LowererStmtVisitor;
     friend class lower::detail::ExprTypeScanner;

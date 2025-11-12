@@ -24,9 +24,7 @@
 
 #include "frontends/basic/Parser.hpp"
 
-#include <cstdio>
 #include <cstdlib>
-#include <string>
 
 namespace il::frontends::basic
 {
@@ -59,18 +57,7 @@ StmtPtr Parser::parseGotoStatement()
     else
     {
         Token unexpected = peek();
-        if (emitter_)
-        {
-            std::string msg = "expected label or number after GOTO";
-            uint32_t length =
-                unexpected.lexeme.empty() ? 1u : static_cast<uint32_t>(unexpected.lexeme.size());
-            emitter_->emit(
-                il::support::Severity::Error, "B0001", unexpected.loc, length, std::move(msg));
-        }
-        else
-        {
-            std::fprintf(stderr, "expected label or number after GOTO\n");
-        }
+        emitError("B0001", unexpected, "expected label or number after GOTO");
         syncToStmtBoundary();
         return nullptr;
     }
@@ -108,18 +95,7 @@ StmtPtr Parser::parseGosubStatement()
     else
     {
         Token unexpected = peek();
-        if (emitter_)
-        {
-            std::string msg = "expected label or number after GOSUB";
-            uint32_t length =
-                unexpected.lexeme.empty() ? 1u : static_cast<uint32_t>(unexpected.lexeme.size());
-            emitter_->emit(
-                il::support::Severity::Error, "B0001", unexpected.loc, length, std::move(msg));
-        }
-        else
-        {
-            std::fprintf(stderr, "expected label or number after GOSUB\n");
-        }
+        emitError("B0001", unexpected, "expected label or number after GOSUB");
         syncToStmtBoundary();
         return nullptr;
     }

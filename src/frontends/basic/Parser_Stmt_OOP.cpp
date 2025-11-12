@@ -244,42 +244,26 @@ StmtPtr Parser::parseClassDecl()
             {
                 case TokenKind::KeywordVirtual:
                     consume();
-                    if (mods.virt && emitter_)
-                        emitter_->emit(il::support::Severity::Warning,
-                                       "B3005",
-                                       tok.loc,
-                                       7,
-                                       "duplicate VIRTUAL modifier");
+                    if (mods.virt)
+                        emitWarning("B3005", tok, "duplicate VIRTUAL modifier");
                     mods.virt = true;
                     break;
                 case TokenKind::KeywordOverride:
                     consume();
-                    if (mods.over && emitter_)
-                        emitter_->emit(il::support::Severity::Warning,
-                                       "B3006",
-                                       tok.loc,
-                                       8,
-                                       "duplicate OVERRIDE modifier");
+                    if (mods.over)
+                        emitWarning("B3006", tok, "duplicate OVERRIDE modifier");
                     mods.over = true;
                     break;
                 case TokenKind::KeywordAbstract:
                     consume();
-                    if (mods.abstr && emitter_)
-                        emitter_->emit(il::support::Severity::Warning,
-                                       "B3007",
-                                       tok.loc,
-                                       8,
-                                       "duplicate ABSTRACT modifier");
+                    if (mods.abstr)
+                        emitWarning("B3007", tok, "duplicate ABSTRACT modifier");
                     mods.abstr = true;
                     break;
                 case TokenKind::KeywordFinal:
                     consume();
-                    if (mods.fin && emitter_)
-                        emitter_->emit(il::support::Severity::Warning,
-                                       "B3008",
-                                       tok.loc,
-                                       5,
-                                       "duplicate FINAL modifier");
+                    if (mods.fin)
+                        emitWarning("B3008", tok, "duplicate FINAL modifier");
                     mods.fin = true;
                     break;
                 default:
@@ -311,13 +295,9 @@ StmtPtr Parser::parseClassDecl()
                 ctor->loc = subLoc;
                 ctor->access = curAccess.value_or(Access::Public);
                 // Modifiers not allowed on constructors.
-                if ((mods.virt || mods.over || mods.abstr || mods.fin) && emitter_)
+                if (mods.virt || mods.over || mods.abstr || mods.fin)
                 {
-                    emitter_->emit(il::support::Severity::Error,
-                                   "B3002",
-                                   subLoc,
-                                   3,
-                                   "modifiers not allowed on constructors");
+                    emitError("B3002", subLoc, "modifiers not allowed on constructors");
                 }
                 ctor->params = parseParamList();
                 parseProcedureBody(TokenKind::KeywordSub, ctor->body);
@@ -339,12 +319,7 @@ StmtPtr Parser::parseClassDecl()
             {
                 if (!at(TokenKind::EndOfLine))
                 {
-                    if (emitter_)
-                        emitter_->emit(il::support::Severity::Error,
-                                       "B3001",
-                                       subLoc,
-                                       3,
-                                       "ABSTRACT method must not have a body");
+                    emitError("B3001", subLoc, "ABSTRACT method must not have a body");
                     parseProcedureBody(TokenKind::KeywordSub, method->body);
                 }
             }
@@ -391,12 +366,7 @@ StmtPtr Parser::parseClassDecl()
             {
                 if (!at(TokenKind::EndOfLine))
                 {
-                    if (emitter_)
-                        emitter_->emit(il::support::Severity::Error,
-                                       "B3001",
-                                       fnLoc,
-                                       8,
-                                       "ABSTRACT method must not have a body");
+                    emitError("B3001", fnLoc, "ABSTRACT method must not have a body");
                     parseProcedureBody(TokenKind::KeywordFunction, method->body);
                 }
             }

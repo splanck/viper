@@ -20,7 +20,6 @@
 #include "frontends/basic/ast/ExprNodes.hpp"
 
 #include <cctype>
-#include <cstdio>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -220,19 +219,9 @@ Parser::StmtResult Parser::parseCall(int)
 void Parser::reportMissingCallParenthesis(const Token &identTok, const Token &nextTok)
 {
     auto diagLoc = nextTok.loc.hasLine() ? nextTok.loc : identTok.loc;
-    uint32_t length = nextTok.lexeme.empty() ? 1 : static_cast<uint32_t>(nextTok.lexeme.size());
-    if (emitter_)
-    {
-        std::string message = "expected '(' after procedure name '" + identTok.lexeme +
-                              "' in procedure call statement";
-        emitter_->emit(il::support::Severity::Error, "B0001", diagLoc, length, std::move(message));
-    }
-    else
-    {
-        std::fprintf(stderr,
-                     "expected '(' after procedure name '%s' in procedure call statement\n",
-                     identTok.lexeme.c_str());
-    }
+    std::string message = "expected '(' after procedure name '" + identTok.lexeme +
+                          "' in procedure call statement";
+    emitError("B0001", diagLoc, std::move(message));
 }
 
 /// @brief Emit a diagnostic for identifiers that fail to form a valid call.
@@ -244,20 +233,8 @@ void Parser::reportMissingCallParenthesis(const Token &identTok, const Token &ne
 /// @param identTok Identifier token that initiated the failed parse.
 void Parser::reportInvalidCallExpression(const Token &identTok)
 {
-    if (emitter_)
-    {
-        std::string message = "expected procedure call after identifier '" + identTok.lexeme + "'";
-        emitter_->emit(il::support::Severity::Error,
-                       "B0001",
-                       identTok.loc,
-                       static_cast<uint32_t>(identTok.lexeme.size()),
-                       std::move(message));
-    }
-    else
-    {
-        std::fprintf(
-            stderr, "expected procedure call after identifier '%s'\n", identTok.lexeme.c_str());
-    }
+    std::string message = "expected procedure call after identifier '" + identTok.lexeme + "'";
+    emitError("B0001", identTok, std::move(message));
 }
 
 /// @brief Parse a BASIC `LET` assignment statement.
@@ -475,19 +452,7 @@ StmtPtr Parser::parseSubStatement()
         Token asTok = consume();
         if (!at(TokenKind::EndOfLine) && !at(TokenKind::EndOfFile))
             consume();
-        if (emitter_)
-        {
-            std::string message = "SUB cannot have 'AS <TYPE>'";
-            emitter_->emit(il::support::Severity::Error,
-                           "B4007",
-                           asTok.loc,
-                           static_cast<uint32_t>(asTok.lexeme.size()),
-                           std::move(message));
-        }
-        else
-        {
-            std::fprintf(stderr, "SUB cannot have 'AS <TYPE>'\n");
-        }
+        emitError("B4007", asTok, "SUB cannot have 'AS <TYPE>'");
     }
     noteProcedureName(sub->name);
     parseProcedureBody(TokenKind::KeywordSub, sub->body);
