@@ -4,16 +4,88 @@ This document records small grammar extensions supported by the BASIC frontend s
 
 ## Namespaces
 
+### NAMESPACE Declaration
+
 - Syntax:
-  
-  NAMESPACE A.B
+
+  NAMESPACE A.B.C
     … declarations …
   END NAMESPACE
 
 - Semantics:
-  - The dotted path `A.B` defines a nested namespace. Multiple `NAMESPACE` blocks may be nested and combined.
-  - Names declared inside a namespace are fully qualified as `"A.B.Name"`.
+  - The dotted path `A.B.C` defines a nested namespace hierarchy.
+  - Multiple `NAMESPACE` blocks with the same path contribute to the same namespace (merged namespaces).
+  - Names declared inside a namespace are fully qualified as `"A.B.C.Name"`.
+  - Namespaces can contain CLASS, INTERFACE, and nested NAMESPACE declarations.
+  - All namespace identifiers are case-insensitive (per BASIC semantics).
   - Mangled symbols include the full qualification, e.g. `A.B.C.__ctor`, `A.B.C.M`.
+
+- Examples:
+
+  NAMESPACE Graphics.Rendering
+    CLASS Renderer
+      DIM width AS I64
+    END CLASS
+  END NAMESPACE
+
+  NAMESPACE Graphics.Rendering
+    CLASS Camera
+      DIM position AS I64
+    END CLASS
+  END NAMESPACE
+
+  REM Both classes belong to Graphics.Rendering
+
+- Reserved namespace:
+  - The root namespace `Viper` is reserved for future built-in libraries and cannot be declared by user code.
+
+### USING Directive
+
+- Syntax (two forms):
+
+  1. Simple import:
+     USING NamespacePath
+
+  2. Aliased import:
+     USING Alias = NamespacePath
+
+- Placement rules:
+  - `USING` directives must appear at file scope (not inside NAMESPACE or CLASS blocks).
+  - `USING` directives must appear before any NAMESPACE, CLASS, or INTERFACE declarations.
+  - All `USING` directives are file-scoped and do not affect other compilation units.
+
+- Semantics:
+  - Simple form: Makes types from the specified namespace available for unqualified lookup.
+  - Alias form: Creates a shorthand alias for the namespace path, e.g. `USING Sys = Viper.System.IO`.
+  - Multiple `USING` directives accumulate; type resolution checks them in declaration order.
+  - If multiple imported namespaces contain the same type name, an unqualified reference is ambiguous (E_NS_003).
+  - Aliases must be unique within a file (E_NS_004).
+
+- Examples:
+
+  USING Collections
+  USING Utils.Helpers
+  USING DB = Application.Database
+
+  NAMESPACE Collections
+    CLASS List
+      DIM size AS I64
+    END CLASS
+  END NAMESPACE
+
+  REM Can now reference List unqualified (via USING Collections)
+  REM Or use DB.Connection (via alias)
+
+### Type Resolution Precedence
+
+When resolving an unqualified type reference, the compiler searches in this order:
+
+1. Current namespace
+2. Parent namespaces (walking up the hierarchy)
+3. Imported namespaces via USING (in declaration order)
+4. Global namespace
+
+Fully-qualified names (e.g. `A.B.Type`) bypass this search and resolve directly.
 
 ## Access Modifiers (CLASS members)
 

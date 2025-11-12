@@ -99,7 +99,133 @@ Suffixes: `$` string, `#`/`!` float, `&`/`%` integer.
 110 DELETE c
 ```
 
-## 6. Console and file I/O
+## 6. Organizing code with namespaces
+
+Namespaces help you organize classes and avoid name collisions in larger programs.
+
+### Declaring namespaces
+
+Use `NAMESPACE` blocks to group related types. Dotted paths create nested namespaces:
+
+```basic
+NAMESPACE Graphics.Rendering
+  CLASS Renderer
+    DIM width AS I64
+    DIM height AS I64
+  END CLASS
+
+  CLASS Camera
+    DIM position AS I64
+  END CLASS
+END NAMESPACE
+
+NAMESPACE Graphics.UI
+  CLASS Button
+    DIM label AS STR
+  END CLASS
+END NAMESPACE
+
+REM Reference types with fully-qualified names
+DIM r AS Graphics.Rendering.Renderer
+DIM b AS Graphics.UI.Button
+```
+
+Multiple `NAMESPACE` blocks with the same path contribute to the same namespace (merged namespaces).
+
+### Using the USING directive
+
+The `USING` directive imports types from a namespace, allowing unqualified references:
+
+```basic
+USING Graphics.Rendering
+
+NAMESPACE Application
+  CLASS GameEngine
+    DIM renderer AS Renderer    REM Unqualified via USING
+    DIM fps AS I64
+  END CLASS
+END NAMESPACE
+```
+
+**Placement rules:**
+- `USING` must appear at file scope (not inside `NAMESPACE` or `CLASS` blocks)
+- `USING` must appear before any `NAMESPACE`, `CLASS`, or `INTERFACE` declarations
+- Each file's `USING` directives are file-scoped and don't affect other files
+
+### Creating namespace aliases
+
+Use the alias form to create shorthand names for long namespace paths:
+
+```basic
+USING GR = Graphics.Rendering
+USING UI = Graphics.UI
+
+DIM renderer AS GR.Renderer
+DIM button AS UI.Button
+```
+
+This is especially useful for deeply nested namespaces.
+
+### Type resolution precedence
+
+When you reference a type without qualification, the compiler searches:
+
+1. Current namespace
+2. Parent namespaces (walking up the hierarchy)
+3. Imported namespaces via `USING` (in declaration order)
+4. Global namespace
+
+Fully-qualified names (e.g. `A.B.Type`) bypass this search.
+
+### Handling ambiguity
+
+If multiple imported namespaces contain the same type name, unqualified references are ambiguous:
+
+```basic
+USING Collections
+USING Utilities
+
+REM If both Collections and Utilities define "List":
+DIM myList AS List          REM Error: ambiguous reference
+
+REM Fix 1: Use fully-qualified name
+DIM myList AS Collections.List
+
+REM Fix 2: Use alias
+USING Coll = Collections
+DIM myList AS Coll.List
+```
+
+### Case insensitivity
+
+All namespace and type names are case-insensitive per BASIC semantics:
+
+```basic
+NAMESPACE MyLib
+  CLASS Helper
+  END CLASS
+END NAMESPACE
+
+REM All of these are equivalent:
+DIM h1 AS MyLib.Helper
+DIM h2 AS MYLIB.HELPER
+DIM h3 AS mylib.helper
+```
+
+### Built-in namespaces (future)
+
+The `Viper` root namespace is reserved for future built-in libraries:
+
+```basic
+REM Future Track B feature (illustrative):
+USING Viper.System.Text
+
+DIM builder AS StringBuilder
+```
+
+Currently, user code cannot declare namespaces under `Viper`.
+
+## 7. Console and file I/O
 
 ```basic
 10 INPUT "Name? ", N$
@@ -110,7 +236,7 @@ Suffixes: `$` string, `#`/`!` float, `&`/`%` integer.
 30 CLOSE #1
 ```
 
-## 7. Errors
+## 8. Errors
 
 ```basic
 10 ON ERROR GOTO 100
@@ -120,7 +246,7 @@ Suffixes: `$` string, `#`/`!` float, `&`/`%` integer.
 110 RESUME 0
 ```
 
-## 8. Mini-project A: number guess
+## 9. Mini-project A: number guess
 
 ```basic
 10 LET SECRET = 42
@@ -131,7 +257,7 @@ Suffixes: `$` string, `#`/`!` float, `&`/`%` integer.
 60 LOOP
 ```
 
-## 9. Mini-project B: file copy (lines)
+## 10. Mini-project B: file copy (lines)
 
 ```basic
 10 LINE INPUT "Source? ", S$
@@ -145,7 +271,7 @@ Suffixes: `$` string, `#`/`!` float, `&`/`%` integer.
 90 CLOSE #1: CLOSE #2
 ```
 
-## 10. Where to go next
+## 11. Where to go next
 
 - Skim the **Reference** for all statements and built-ins.
 - Review examples in `tests/golden/basic/` (if available).

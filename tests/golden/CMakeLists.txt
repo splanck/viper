@@ -183,6 +183,70 @@ function(viper_add_golden_suite_tests)
             "-DEXPECT=${EXPECT_PRIVATE_FIELD}"
             -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
 
+    # Namespace error diagnostics (Track A)
+    file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/namespace_notfound.stderr EXPECT_NS_NOTFOUND)
+    string(STRIP "${EXPECT_NS_NOTFOUND}" EXPECT_NS_NOTFOUND)
+    viper_add_ctest(basic_error_namespace_notfound
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/namespace_notfound.bas
+            "-DEXPECT=${EXPECT_NS_NOTFOUND}"
+            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
+
+    file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/namespace_ambiguous.stderr EXPECT_NS_AMBIGUOUS)
+    string(STRIP "${EXPECT_NS_AMBIGUOUS}" EXPECT_NS_AMBIGUOUS)
+    viper_add_ctest(basic_error_namespace_ambiguous
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/namespace_ambiguous.bas
+            "-DEXPECT=${EXPECT_NS_AMBIGUOUS}"
+            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
+
+    file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/namespace_duplicate_alias.stderr EXPECT_NS_DUP_ALIAS)
+    string(STRIP "${EXPECT_NS_DUP_ALIAS}" EXPECT_NS_DUP_ALIAS)
+    viper_add_ctest(basic_error_namespace_duplicate_alias
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/namespace_duplicate_alias.bas
+            "-DEXPECT=${EXPECT_NS_DUP_ALIAS}"
+            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
+
+    file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/using_in_namespace.stderr EXPECT_USING_IN_NS)
+    string(STRIP "${EXPECT_USING_IN_NS}" EXPECT_USING_IN_NS)
+    viper_add_ctest(basic_error_using_in_namespace
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/using_in_namespace.bas
+            "-DEXPECT=${EXPECT_USING_IN_NS}"
+            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
+
+    file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/using_after_decl.stderr EXPECT_USING_AFTER_DECL)
+    string(STRIP "${EXPECT_USING_AFTER_DECL}" EXPECT_USING_AFTER_DECL)
+    viper_add_ctest(basic_error_using_after_decl
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/using_after_decl.bas
+            "-DEXPECT=${EXPECT_USING_AFTER_DECL}"
+            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
+
+    file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/reserved_root_user_decl.stderr EXPECT_RESERVED_DECL)
+    string(STRIP "${EXPECT_RESERVED_DECL}" EXPECT_RESERVED_DECL)
+    viper_add_ctest(basic_error_reserved_root_user_decl
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/reserved_root_user_decl.bas
+            "-DEXPECT=${EXPECT_RESERVED_DECL}"
+            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
+
+    file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/reserved_root_user_using.stderr EXPECT_RESERVED_USING)
+    string(STRIP "${EXPECT_RESERVED_USING}" EXPECT_RESERVED_USING)
+    viper_add_ctest(basic_error_reserved_root_user_using
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/reserved_root_user_using.bas
+            "-DEXPECT=${EXPECT_RESERVED_USING}"
+            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
+
     file(READ ${_VIPER_GOLDEN_DIR}/vm_trap_loc.stderr EXPECT_VM_TRAP_LOC)
     string(STRIP "${EXPECT_VM_TRAP_LOC}" EXPECT_VM_TRAP_LOC)
     viper_add_ctest(vm_trap_loc
@@ -467,6 +531,43 @@ function(viper_add_golden_suite_tests)
             -DILC=${BASIC_ILC}
             -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic/print_commas.bas
             "-DEXPECT=${EXPECT_BASIC_PRINT_COMMAS}"
+            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
+
+    # Track A namespace golden tests
+    file(READ ${_VIPER_GOLDEN_DIR}/basic/namespace_simple.stdout EXPECT_NS_SIMPLE)
+    string(STRIP "${EXPECT_NS_SIMPLE}" EXPECT_NS_SIMPLE)
+    viper_add_ctest(basic_namespace_simple
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic/namespace_simple.bas
+            "-DEXPECT=${EXPECT_NS_SIMPLE}"
+            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
+
+    file(READ ${_VIPER_GOLDEN_DIR}/basic/namespace_using.stdout EXPECT_NS_USING)
+    string(STRIP "${EXPECT_NS_USING}" EXPECT_NS_USING)
+    viper_add_ctest(basic_namespace_using
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic/namespace_using.bas
+            "-DEXPECT=${EXPECT_NS_USING}"
+            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
+
+    file(READ ${_VIPER_GOLDEN_DIR}/basic/namespace_inheritance.stdout EXPECT_NS_INHERITANCE)
+    string(STRIP "${EXPECT_NS_INHERITANCE}" EXPECT_NS_INHERITANCE)
+    viper_add_ctest(basic_namespace_inheritance
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic/namespace_inheritance.bas
+            "-DEXPECT=${EXPECT_NS_INHERITANCE}"
+            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
+
+    file(READ ${_VIPER_GOLDEN_DIR}/basic/viper_root_example.stdout EXPECT_VIPER_ROOT)
+    string(STRIP "${EXPECT_VIPER_ROOT}" EXPECT_VIPER_ROOT)
+    viper_add_ctest(basic_viper_root_example
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic/viper_root_example.bas
+            "-DEXPECT=${EXPECT_VIPER_ROOT}"
             -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
 
     file(READ ${_VIPER_GOLDEN_DIR}/quickstart.stdout EXPECT_QUICKSTART)

@@ -91,6 +91,7 @@ TOKEN(KeywordIs,         "IS")
 TOKEN(KeywordNamespace, "NAMESPACE")
 TOKEN(KeywordPublic,    "PUBLIC")
 TOKEN(KeywordPrivate,   "PRIVATE")
+TOKEN(KeywordUsing,     "USING")
 
 // Operators ----------------------------------------------------------------
 TOKEN(Plus, "+")

@@ -28,6 +28,7 @@
 
 #include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/Semantic_OOP.hpp"
+#include "frontends/basic/sem/RegistryBuilder.hpp"
 
 #include <algorithm>
 #include <utility>
@@ -325,6 +326,7 @@ void SemanticAnalyzer::analyze(const Program &prog)
     errorHandlerTarget_.reset();
     procReg_.clear();
     scopes_.reset();
+    sawDecl_ = false;
 
     for (const auto &p : prog.procs)
         if (p)
@@ -344,6 +346,12 @@ void SemanticAnalyzer::analyze(const Program &prog)
         }
     oopIndex_.clear();
     buildOopIndex(prog, oopIndex_, &de.emitter());
+
+    // Build namespace registry and USING context.
+    buildNamespaceRegistry(prog, ns_, usings_, &de.emitter());
+
+    // Construct TypeResolver after declare pass completes.
+    resolver_ = std::make_unique<TypeResolver>(ns_, usings_);
 
     for (const auto &stmt : prog.main)
         if (stmt)

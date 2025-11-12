@@ -99,6 +99,7 @@ target_sources(fe_basic PRIVATE
         SemanticAnalyzer.Stmts.cpp
         SemanticAnalyzer.Stmts.Shared.cpp
         SemanticAnalyzer.Stmts.Control.cpp
+        SemanticAnalyzer.Namespace.cpp
         sem/Check_If.cpp
         sem/Check_Loops.cpp
         sem/Check_Jumps.cpp
@@ -106,6 +107,10 @@ target_sources(fe_basic PRIVATE
         sem/Check_Expr_Unary.cpp
         sem/Check_Expr_Binary.cpp
         sem/Check_Expr_Call.cpp
+        sem/NamespaceRegistry.cpp
+        sem/UsingContext.cpp
+        sem/TypeResolver.cpp
+        sem/RegistryBuilder.cpp
         SemanticAnalyzer.Stmts.IO.cpp
         SemanticAnalyzer.Stmts.Runtime.cpp
         Semantic_OOP.cpp

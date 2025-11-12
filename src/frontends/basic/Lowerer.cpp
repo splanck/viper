@@ -77,8 +77,19 @@ void Lowerer::popNamespace(std::size_t count)
 
 std::string Lowerer::qualify(const std::string &klass) const
 {
-    if (nsStack_.empty() || klass.empty())
+    // Empty name → return as-is.
+    if (klass.empty())
         return klass;
+
+    // Fully-qualified name (contains '.') → return unchanged.
+    if (klass.find('.') != std::string::npos)
+        return klass;
+
+    // No active namespace → return unqualified.
+    if (nsStack_.empty())
+        return klass;
+
+    // Qualify with current namespace: currentNs + "." + klass
     std::string out;
     // Compute final size to reserve capacity conservatively.
     std::size_t size = klass.size();

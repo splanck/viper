@@ -449,6 +449,14 @@ struct AstPrinter::StmtPrinter final : StmtVisitor
         print_stmt::printInterface(stmt, ctx);
     }
 
+    /// @brief Visit USING directive (no-op for printing).
+    ///
+    /// @param stmt USING declaration node (compile-time only).
+    void visit(const UsingDecl &) override
+    {
+        // USING is compile-time only and does not appear in printed output.
+    }
+
     Context ctx;
 };
 

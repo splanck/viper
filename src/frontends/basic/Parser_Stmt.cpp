@@ -46,6 +46,7 @@ void Parser::registerCoreParsers(StatementParserRegistry &registry)
     registry.registerHandler(TokenKind::KeywordFunction, &Parser::parseFunctionStatement);
     registry.registerHandler(TokenKind::KeywordSub, &Parser::parseSubStatement);
     registry.registerHandler(TokenKind::KeywordNamespace, &Parser::parseNamespaceDecl);
+    registry.registerHandler(TokenKind::KeywordUsing, &Parser::parseUsingDecl);
 }
 
 /// @brief Register object-oriented statement parsers when the feature set is enabled.
@@ -154,6 +155,54 @@ StmtPtr Parser::parseNamespaceDecl()
     decl->loc = loc;
     decl->path = std::move(path);
     parseProcedureBody(TokenKind::KeywordNamespace, decl->body);
+    return decl;
+}
+
+/// @brief Parse a USING directive with optional alias.
+/// @details Supports two forms:
+///          - "USING Foo.Bar.Baz" (no alias)
+///          - "USING FB = Foo.Bar" (with alias)
+///          Recovers from malformed syntax by building a UsingDecl with empty
+///          path so semantic analysis can emit precise diagnostics.
+/// @return Newly allocated UsingDecl node.
+StmtPtr Parser::parseUsingDecl()
+{
+    auto loc = peek().loc;
+    consume(); // USING
+
+    auto decl = std::make_unique<UsingDecl>();
+    decl->loc = loc;
+
+    // Check for alias form: "Identifier = ..."
+    if (at(TokenKind::Identifier) && peek(1).kind == TokenKind::Equal)
+    {
+        Token aliasTok = consume();
+        decl->alias = aliasTok.lexeme;
+        consume(); // =
+    }
+
+    // Parse dotted namespace path: Identifier ('.' Identifier)*
+    if (at(TokenKind::Identifier))
+    {
+        Token first = consume();
+        decl->namespacePath.push_back(first.lexeme);
+
+        while (at(TokenKind::Dot))
+        {
+            consume(); // .
+            if (at(TokenKind::Identifier))
+            {
+                Token seg = consume();
+                decl->namespacePath.push_back(seg.lexeme);
+            }
+            else
+            {
+                // Trailing dot or malformed path; stop and let semantics report error.
+                break;
+            }
+        }
+    }
+
     return decl;
 }
 

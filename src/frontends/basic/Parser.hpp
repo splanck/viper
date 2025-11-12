@@ -475,6 +475,11 @@ class Parser
     /// @return NamespaceDecl node owning path segments and nested statements.
     StmtPtr parseNamespaceDecl();
 
+    /// @brief Parse a USING directive with optional alias.
+    /// @details Supports "USING Foo.Bar.Baz" and "USING FB = Foo.Bar".
+    /// @return UsingDecl node capturing namespace path and alias.
+    StmtPtr parseUsingDecl();
+
     /// @brief Parse a comma-separated parameter list inside parentheses.
     /// @return Vector of parsed parameters.
     std::vector<Param> parseParamList();

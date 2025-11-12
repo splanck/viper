@@ -47,3 +47,40 @@
   code: B2111
   severity: error
   format: "class '{class}' does not implement interface method '{method}' from '{iface}'"
+# Namespace diagnostics
+- id: NS_UNKNOWN_NAMESPACE
+  code: E_NS_001
+  severity: error
+  format: "namespace not found: '{ns}'"
+- id: NS_TYPE_NOT_IN_NS
+  code: E_NS_002
+  severity: error
+  format: "type '{type}' not found in namespace '{ns}'"
+- id: NS_AMBIGUOUS_TYPE
+  code: E_NS_003
+  severity: error
+  format: "ambiguous reference to '{type}' (found in: {candidates})"
+- id: NS_DUPLICATE_ALIAS
+  code: E_NS_004
+  severity: error
+  format: "duplicate alias: '{alias}' already defined"
+- id: NS_USING_AFTER_DECL
+  code: E_NS_005
+  severity: error
+  format: "USING must appear before namespace or class declarations"
+- id: NS_TYPE_NOT_FOUND
+  code: E_NS_006
+  severity: error
+  format: "cannot resolve type: '{type}'"
+- id: NS_ALIAS_SHADOWS_NS
+  code: E_NS_007
+  severity: error
+  format: "alias '{alias}' conflicts with namespace name"
+- id: NS_USING_NOT_FILE_SCOPE
+  code: E_NS_008
+  severity: error
+  format: "USING cannot appear inside a namespace block"
+- id: NS_RESERVED_VIPER
+  code: E_NS_009
+  severity: error
+  format: "reserved root namespace 'Viper' cannot be declared or imported"

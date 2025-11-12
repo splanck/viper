@@ -407,6 +407,10 @@ class LowererStmtVisitor final : public lower::AstVisitor, public StmtVisitor
     /// @details Interface declarations produce no immediate IL.
     void visit(const InterfaceDecl &) override {}
 
+    /// @brief Ignore USING directives during statement lowering.
+    /// @details USING is compile-time only and produces no IL.
+    void visit(const UsingDecl &) override {}
+
     /// @brief Handle NAMESPACE blocks by adjusting the qualification stack.
     /// @details Pushes the namespace segments, lowers the nested body, then pops
     ///          the same number of segments to restore the previous scope.

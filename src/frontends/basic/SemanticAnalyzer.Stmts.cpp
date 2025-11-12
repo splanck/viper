@@ -257,12 +257,29 @@ class SemanticAnalyzerStmtVisitor final : public MutStmtVisitor
 
     void visit(MethodDecl &) override {}
 
-    void visit(ClassDecl &) override {}
+    void visit(NamespaceDecl &decl) override
+    {
+        analyzer_.analyzeNamespaceDecl(decl);
+    }
+
+    void visit(ClassDecl &decl) override
+    {
+        analyzer_.analyzeClassDecl(decl);
+    }
 
     void visit(TypeDecl &) override {}
 
     /// @brief Interface declarations are analysed in dedicated OOP passes.
-    void visit(InterfaceDecl &) override {}
+    void visit(InterfaceDecl &decl) override
+    {
+        analyzer_.analyzeInterfaceDecl(decl);
+    }
+
+    /// @brief USING directives will be processed by namespace semantic pass.
+    void visit(UsingDecl &decl) override
+    {
+        analyzer_.analyzeUsingDecl(decl);
+    }
 
   private:
     SemanticAnalyzer &analyzer_;

@@ -859,6 +859,10 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
             foldStmt(member);
     }
 
+    /// @brief Visit USING directive (no-op for constant folding).
+    /// @details USING is compile-time only and has no expressions to fold.
+    void visit(UsingDecl &) override {}
+
     ExprPtr *currentExpr_ = nullptr;
     StmtPtr *currentStmt_ = nullptr;
 };

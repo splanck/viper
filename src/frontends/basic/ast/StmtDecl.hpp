@@ -278,4 +278,29 @@ struct InterfaceDecl : Stmt
     void accept(MutStmtVisitor &visitor) override;
 };
 
+/// @brief USING directive importing a namespace at file scope.
+struct UsingDecl : Stmt
+{
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
+    {
+        return Kind::UsingDecl;
+    }
+
+    /// Namespace path segments, e.g. ["Foo","Bar","Baz"] for USING Foo.Bar.Baz.
+    std::vector<std::string> namespacePath;
+
+    /// Optional alias for the imported namespace; empty if no AS clause present.
+    std::string alias;
+
+    void accept(StmtVisitor &visitor) const override
+    {
+        visitor.visit(*this);
+    }
+
+    void accept(MutStmtVisitor &visitor) override
+    {
+        visitor.visit(*this);
+    }
+};
+
 } // namespace il::frontends::basic

@@ -674,6 +674,13 @@ template <typename Derived> class BasicAstWalker : public ExprVisitor, public St
         callAfter(stmt);
     }
 
+    void visit(const UsingDecl &stmt) override
+    {
+        callBefore(stmt);
+        // USING has no child statements or expressions to visit.
+        callAfter(stmt);
+    }
+
     void visit(const StmtList &stmt) override
     {
         callBefore(stmt);
