@@ -585,4 +585,17 @@ BUILTIN(
                     {BuiltinScanRule::Feature{BuiltinScanRule::Feature::Action::Request,
                                               BuiltinScanRule::Feature::Condition::Always,
                                               il::runtime::RuntimeFeature::Timer}}}))
+BUILTIN(
+    Err,
+    (BuiltinDescriptor{"ERR", B::Err, {0, 0}, TypeMask::I64, nullptr}),
+    (LowerRule{
+        .result = {.kind = ResultSpec::Kind::Fixed, .type = Lowerer::ExprType::I64},
+        .variants = {Variant{.condition = Condition::Always,
+                             .kind = VariantKind::Custom}}}),
+    (BuiltinScanRule{BuiltinScanRule::ResultSpec{BuiltinScanRule::ResultSpec::Kind::Fixed,
+                                                Lowerer::ExprType::I64,
+                                                0},
+                    BuiltinScanRule::ArgTraversal::Explicit,
+                    {},
+                    {}}))
 // clang-format on

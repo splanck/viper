@@ -25,6 +25,7 @@ struct BuiltinExprLowering
     static Lowerer::RVal emitLofBuiltin(Lowerer &lowerer, const BuiltinCallExpr &expr);
     static Lowerer::RVal emitEofBuiltin(Lowerer &lowerer, const BuiltinCallExpr &expr);
     static Lowerer::RVal emitLocBuiltin(Lowerer &lowerer, const BuiltinCallExpr &expr);
+    static Lowerer::RVal emitErrBuiltin(Lowerer &lowerer, const BuiltinCallExpr &expr);
     static Lowerer::RVal emitUnsupportedBuiltin(Lowerer &lowerer, const BuiltinCallExpr &expr);
 
   private:

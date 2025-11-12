@@ -65,11 +65,12 @@ constexpr std::size_t builtinIndex(BuiltinCallExpr::Builtin builtin) noexcept
 constexpr auto makeBuiltinEmitterTable()
 {
     using Lowering = BuiltinExprLowering;
-    std::array<Lowering::EmitFn, builtinIndex(BuiltinCallExpr::Builtin::Timer) + 1> table{};
+    std::array<Lowering::EmitFn, builtinIndex(BuiltinCallExpr::Builtin::Err) + 1> table{};
     table.fill(&Lowering::emitRuleDrivenBuiltin);
     table[builtinIndex(BuiltinCallExpr::Builtin::Eof)] = &Lowering::emitEofBuiltin;
     table[builtinIndex(BuiltinCallExpr::Builtin::Lof)] = &Lowering::emitLofBuiltin;
     table[builtinIndex(BuiltinCallExpr::Builtin::Loc)] = &Lowering::emitLocBuiltin;
+    table[builtinIndex(BuiltinCallExpr::Builtin::Err)] = &Lowering::emitErrBuiltin;
     return table;
 }
 
@@ -384,6 +385,66 @@ Lowerer::RVal BuiltinExprLowering::emitLocBuiltin(Lowerer &lowerer, const Builti
     Lowerer::RVal widened{raw32, IlType(IlKind::I32)};
     widened = lowerer.ensureI64(std::move(widened), expr.loc);
     return widened;
+}
+
+/// @brief Lower the ERR builtin that returns the current error code.
+///
+/// @details ERR extracts the error code from the handler block's %err parameter
+///          using the err.get_code instruction.  This builtin can only be called
+///          from within an error handler context; calling it elsewhere returns 0.
+///
+/// @param lowerer Owning lowering engine.
+/// @param expr AST node describing the builtin invocation.
+/// @return Lowered r-value representing the error code as I64.
+Lowerer::RVal BuiltinExprLowering::emitErrBuiltin(Lowerer &lowerer, const BuiltinCallExpr &expr)
+{
+    Lowerer::ProcedureContext &ctx = lowerer.context();
+    Function *func = ctx.function();
+    BasicBlock *current = ctx.current();
+
+    // Check if we're in a handler block by looking for Error parameter
+    if (func && current && !current->params.empty() && current->params[0].type.kind == IlKind::Error)
+    {
+        // We're in a handler block, extract error code from %err parameter
+        unsigned errId = current->params[0].id;
+        fprintf(stderr, "DEBUG emitErrBuiltin: errId=%u, paramName='%s'\n", errId, current->params[0].name.c_str());
+
+        // Ensure the parameter name is in the function's valueNames so it serializes correctly
+        if (func->valueNames.size() <= errId)
+            func->valueNames.resize(errId + 1);
+        if (func->valueNames[errId].empty())
+            func->valueNames[errId] = current->params[0].name;
+
+        fprintf(stderr, "DEBUG emitErrBuiltin: valueNames.size()=%zu, valueNames[%u]='%s'\n",
+                func->valueNames.size(), errId,
+                errId < func->valueNames.size() ? func->valueNames[errId].c_str() : "<out of range>");
+
+        Value errParam = Value::temp(errId);
+
+        lowerer.curLoc = expr.loc;
+        // Use err.get_code to extract the i32 code
+        Value code32 = lowerer.emitUnary(Opcode::ErrGetCode, IlType(IlKind::I32), errParam);
+
+        // Convert i32 to i64 using the same pattern as LOF
+        Value code64 = code32;
+        {
+            Value scratch = lowerer.emitAlloca(sizeof(int64_t));
+            lowerer.emitStore(IlType(IlKind::I64), scratch, Value::constInt(0));
+            lowerer.emitStore(IlType(IlKind::I32), scratch, code32);
+            code64 = lowerer.emitLoad(IlType(IlKind::I64), scratch);
+        }
+
+        // Sign-extend 32->64
+        {
+            Value shl = lowerer.emitBinary(Opcode::Shl, IlType(IlKind::I64), code64, Value::constInt(32));
+            code64 = lowerer.emitBinary(Opcode::AShr, IlType(IlKind::I64), shl, Value::constInt(32));
+        }
+
+        return {code64, IlType(IlKind::I64)};
+    }
+
+    // Not in an error handler, return 0
+    return {Value::constInt(0), IlType(IlKind::I64)};
 }
 
 /// @brief Fallback emitter used when no lowering rule exists for a builtin.

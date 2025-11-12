@@ -46,7 +46,7 @@ using TransformKind = LowerRule::ArgTransform::Kind;
 using Feature = LowerRule::Feature;
 using FeatureAction = LowerRule::Feature::Action;
 
-constexpr std::size_t kBuiltinCount = static_cast<std::size_t>(B::Timer) + 1;
+constexpr std::size_t kBuiltinCount = static_cast<std::size_t>(B::Err) + 1;
 
 /// @brief Convert a builtin enumerator into a dense array index.
 /// @details All tables in this file store entries densely in declaration order
@@ -241,7 +241,15 @@ const BuiltinInfo &getBuiltinInfo(BuiltinCallExpr::Builtin b)
 /// @pre @p b must be a valid BuiltinCallExpr::Builtin enumerator.
 BuiltinArity getBuiltinArity(BuiltinCallExpr::Builtin b)
 {
-    const auto &desc = kBuiltinDescriptors[static_cast<std::size_t>(b)];
+    const auto idx = static_cast<std::size_t>(b);
+    if (idx >= kBuiltinCount)
+    {
+        fprintf(stderr, "DEBUG: getBuiltinArity - index %zu out of range (max %zu)\n", idx, kBuiltinCount);
+        return BuiltinArity{0, 0};
+    }
+    const auto &desc = kBuiltinDescriptors[idx];
+    fprintf(stderr, "DEBUG: getBuiltinArity for builtin %zu (%s): minArgs=%u, maxArgs=%u\n",
+            idx, desc.name, desc.arity.minArgs, desc.arity.maxArgs);
     return BuiltinArity{desc.arity.minArgs, desc.arity.maxArgs};
 }
 

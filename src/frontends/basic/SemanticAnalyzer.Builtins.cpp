@@ -178,7 +178,7 @@ static constexpr std::array<BuiltinArgSpec, 3> kInstrArgs{{
     BuiltinArgSpec{false, kStringType.data(), kStringType.size()},
 }};
 
-static constexpr std::array<BuiltinSignature, 35> kBuiltinSignatures{{
+static constexpr std::array<BuiltinSignature, 36> kBuiltinSignatures{{
     BuiltinSignature{1, 0, kSingleStringArg.data(), kSingleStringArg.size(), SemanticType::Int},
     BuiltinSignature{2, 1, kMidArgs.data(), kMidArgs.size(), SemanticType::String},
     BuiltinSignature{
@@ -219,6 +219,7 @@ static constexpr std::array<BuiltinSignature, 35> kBuiltinSignatures{{
     BuiltinSignature{1, 0, kSingleIntArg.data(), kSingleIntArg.size(), SemanticType::Int},
     BuiltinSignature{1, 0, kSingleIntArg.data(), kSingleIntArg.size(), SemanticType::Int},
     BuiltinSignature{0, 0, nullptr, 0, SemanticType::Int},
+    BuiltinSignature{0, 0, nullptr, 0, SemanticType::Int}, // ERR
 }};
 
 } // namespace
