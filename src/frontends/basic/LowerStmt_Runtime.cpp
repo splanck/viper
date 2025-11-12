@@ -137,7 +137,7 @@ void Lowerer::visit(const AltScreenStmt &s)
 /// @param s AST node describing the SLEEP statement.
 void Lowerer::visit(const SleepStmt &s)
 {
-    curLoc = s.loc;
+    LocationScope loc(*this, s.loc);
     auto ms = ensureI64(lowerExpr(*s.ms), s.loc);
     Value ms32 = narrow32(ms.value, s.loc);
     requireSleepMs();
@@ -161,6 +161,7 @@ void Lowerer::assignScalarSlot(const SlotType &slotInfo,
                                RVal value,
                                il::support::SourceLoc loc)
 {
+    LocationScope location(*this, loc);
     Type targetTy = slotInfo.type;
     bool isStr = targetTy.kind == Type::Kind::Str;
     bool isF64 = targetTy.kind == Type::Kind::F64;
@@ -184,7 +185,6 @@ void Lowerer::assignScalarSlot(const SlotType &slotInfo,
         value = coerceToBool(std::move(value), loc);
     }
 
-    curLoc = loc;
     if (isStr)
     {
         requireStrReleaseMaybe();
@@ -225,11 +225,9 @@ void Lowerer::assignScalarSlot(const SlotType &slotInfo,
             BasicBlock *contBlk = &func->blocks[contIdx];
 
             ctx.setCurrent(&func->blocks[originIdx]);
-            curLoc = loc;
             emitCBr(shouldDestroy, destroyBlk, contBlk);
 
             ctx.setCurrent(destroyBlk);
-            curLoc = loc;
             if (!slotInfo.objectClass.empty())
                 emitCall(mangleClassDtor(slotInfo.objectClass), {oldValue});
             emitCall("rt_obj_free", {oldValue});
@@ -238,7 +236,6 @@ void Lowerer::assignScalarSlot(const SlotType &slotInfo,
             ctx.setCurrent(contBlk);
         }
 
-        curLoc = loc;
         emitCall("rt_obj_retain_maybe", {value.value});
         targetTy = Type(Type::Kind::Ptr);
     }
@@ -259,12 +256,12 @@ void Lowerer::assignScalarSlot(const SlotType &slotInfo,
 /// @param loc    Source location for diagnostics and helper invocations.
 void Lowerer::assignArrayElement(const ArrayExpr &target, RVal value, il::support::SourceLoc loc)
 {
+    LocationScope location(*this, loc);
     // Runtime ABI: rt_arr_i32_set expects its value operand as i64.
     // Always normalize the RHS to i64 (handles i1/i16/i32/f64).
     RVal coerced = ensureI64(std::move(value), loc);
 
     ArrayAccess access = lowerArrayAccess(target, ArrayAccessKind::Store);
-    curLoc = loc;
     emitCall("rt_arr_i32_set", {access.base, access.index, coerced.value});
 }
 
@@ -278,6 +275,7 @@ void Lowerer::assignArrayElement(const ArrayExpr &target, RVal value, il::suppor
 /// @param stmt Parsed @c LET statement.
 void Lowerer::lowerLet(const LetStmt &stmt)
 {
+    LocationScope loc(*this, stmt.loc);
     RVal value = lowerExpr(*stmt.expr);
     if (auto *var = as<const VarExpr>(*stmt.target))
     {
@@ -303,7 +301,6 @@ void Lowerer::lowerLet(const LetStmt &stmt)
         SlotType slotInfo = storage->slotInfo;
         if (slotInfo.isArray)
         {
-            curLoc = stmt.loc;
             storeArray(storage->pointer, value.value);
         }
         else
@@ -345,7 +342,7 @@ Value Lowerer::emitArrayLengthCheck(Value bound,
                                     il::support::SourceLoc loc,
                                     std::string_view labelBase)
 {
-    curLoc = loc;
+    LocationScope location(*this, loc);
     Value length = emitCommon(loc).add_checked(bound, Value::constInt(1), OverflowPolicy::Checked);
 
     ProcedureContext &ctx = context();
@@ -372,12 +369,10 @@ Value Lowerer::emitArrayLengthCheck(Value bound,
         BasicBlock *contBlk = &func->blocks[contIdx];
 
         ctx.setCurrent(&func->blocks[curIdx]);
-        curLoc = loc;
         Value isNeg = emitBinary(Opcode::SCmpLT, ilBoolTy(), length, Value::constInt(0));
         emitCBr(isNeg, failBlk, contBlk);
 
         ctx.setCurrent(failBlk);
-        curLoc = loc;
         emitTrap();
 
         ctx.setCurrent(contBlk);
@@ -397,10 +392,10 @@ Value Lowerer::emitArrayLengthCheck(Value bound,
 /// @param stmt Parsed @c DIM statement to lower.
 void Lowerer::lowerDim(const DimStmt &stmt)
 {
+    LocationScope loc(*this, stmt.loc);
     RVal bound = lowerExpr(*stmt.size);
     bound = ensureI64(std::move(bound), stmt.loc);
     Value length = emitArrayLengthCheck(bound.value, stmt.loc, "dim_len");
-    curLoc = stmt.loc;
     Value handle = emitCallRet(Type(Type::Kind::Ptr), "rt_arr_i32_new", {length});
     const auto *info = findSymbol(stmt.name);
     assert(info && info->slotId);
@@ -422,10 +417,10 @@ void Lowerer::lowerDim(const DimStmt &stmt)
 /// @param stmt Parsed @c REDIM statement describing the new bounds.
 void Lowerer::lowerReDim(const ReDimStmt &stmt)
 {
+    LocationScope loc(*this, stmt.loc);
     RVal bound = lowerExpr(*stmt.size);
     bound = ensureI64(std::move(bound), stmt.loc);
     Value length = emitArrayLengthCheck(bound.value, stmt.loc, "redim_len");
-    curLoc = stmt.loc;
     const auto *info = findSymbol(stmt.name);
     assert(info && info->slotId);
     Value slot = Value::temp(*info->slotId);
@@ -445,9 +440,9 @@ void Lowerer::lowerReDim(const ReDimStmt &stmt)
 /// @param stmt Parsed @c RANDOMIZE statement.
 void Lowerer::lowerRandomize(const RandomizeStmt &stmt)
 {
+    LocationScope loc(*this, stmt.loc);
     RVal s = lowerExpr(*stmt.seed);
     Value seed = coerceToI64(std::move(s), stmt.loc).value;
-    curLoc = stmt.loc;
     emitCall("rt_randomize_i64", {seed});
 }
 

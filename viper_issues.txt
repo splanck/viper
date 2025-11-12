@@ -66,7 +66,7 @@ STATUS LEGEND:
     - Files to refactor:
       [X] src/frontends/basic/LowerStmt_IO.cpp (31 instances removed, 2 arg->loc kept)
       [X] src/frontends/basic/lower/Lower_Loops.cpp (27 instances removed)
-      [>] src/frontends/basic/LowerStmt_Runtime.cpp (3 instances done, 8 remaining)
+      [X] src/frontends/basic/LowerStmt_Runtime.cpp (11 instances removed)
       [X] src/frontends/basic/LowerStmt_Control.cpp (9 instances removed)
       [ ] src/frontends/basic/LowerExpr.cpp (14 instances)
       [ ] src/frontends/basic/Lower_OOP_Expr.cpp (9 instances)
