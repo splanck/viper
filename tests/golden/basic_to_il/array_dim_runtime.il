@@ -56,7 +56,7 @@ L30:
   .loc 1 3 4
   cbr %t13, redim_len_fail, redim_len_cont
 L40:
-  .loc 1 4 16
+  .loc 1 4 4
   %t17 = load ptr, %t2
   .loc 1 4 10
   %t18 = load i64, %t1
@@ -100,22 +100,22 @@ L50:
 L60:
   .loc 1 6 10
   %t36 = load i64, %t1
-  .loc 1 6 4
+  .loc 1 6 10
   call @rt_print_i64(%t36)
-  .loc 1 6 4
+  .loc 1 6 10
   %t37 = const_str @.L0
-  .loc 1 6 4
+  .loc 1 6 10
   call @rt_print_str(%t37)
   .loc 1 6 4
   br L70
 L70:
   .loc 1 7 10
   %t38 = load i64, %t0
-  .loc 1 7 4
+  .loc 1 7 10
   call @rt_print_i64(%t38)
-  .loc 1 7 4
+  .loc 1 7 10
   %t39 = const_str @.L0
-  .loc 1 7 4
+  .loc 1 7 10
   call @rt_print_str(%t39)
   .loc 1 7 4
   br L80
@@ -131,15 +131,15 @@ dim_len_fail:
   .loc 1 1 4
   trap
 dim_len_cont:
-  .loc 1 1 4
+  .loc 1 1 10
   %t5 = call @rt_arr_i32_new(%t3)
-  .loc 1 1 4
+  .loc 1 1 10
   call @rt_arr_i32_retain(%t5)
-  .loc 1 1 4
+  .loc 1 1 10
   %t6 = load ptr, %t2
-  .loc 1 1 4
+  .loc 1 1 10
   call @rt_arr_i32_release(%t6)
-  .loc 1 1 4
+  .loc 1 1 10
   store ptr, %t2, %t5
   .loc 1 1 4
   br L20
@@ -147,22 +147,22 @@ redim_len_fail:
   .loc 1 3 4
   trap
 redim_len_cont:
-  .loc 1 3 4
+  .loc 1 3 15
   %t14 = load ptr, %t2
-  .loc 1 3 4
+  .loc 1 3 15
   %t15 = call @rt_arr_i32_resize(%t14, %t12)
-  .loc 1 3 4
+  .loc 1 3 15
   call @rt_arr_i32_retain(%t15)
-  .loc 1 3 4
+  .loc 1 3 15
   %t16 = load ptr, %t2
-  .loc 1 3 4
+  .loc 1 3 15
   call @rt_arr_i32_release(%t16)
-  .loc 1 3 4
+  .loc 1 3 15
   store ptr, %t2, %t15
   .loc 1 3 4
   br L40
 bc_ok0:
-  .loc 1 4 4
+  .loc 1 4 8
   call @rt_arr_i32_set(%t17, %t18, 7)
   .loc 1 4 4
   br L50

@@ -65,11 +65,11 @@ L40:
   %t15 = isub.ovf 0, %t14
   .loc 1 4 12
   %t16 = or %t13, %t15
-  .loc 1 4 4
+  .loc 1 4 12
   call @rt_print_i64(%t16)
-  .loc 1 4 4
+  .loc 1 4 12
   %t17 = const_str @.L0
-  .loc 1 4 4
+  .loc 1 4 12
   call @rt_print_str(%t17)
   .loc 1 4 4
   br L50
@@ -88,11 +88,11 @@ L50:
   %t23 = isub.ovf 0, %t22
   .loc 1 5 16
   %t24 = and %t21, %t23
-  .loc 1 5 4
+  .loc 1 5 16
   call @rt_print_i64(%t24)
-  .loc 1 5 4
+  .loc 1 5 16
   %t25 = const_str @.L0
-  .loc 1 5 4
+  .loc 1 5 16
   call @rt_print_str(%t25)
   .loc 1 5 4
   br exit

@@ -44,11 +44,11 @@ L20:
   %t5 = const_str @.L1
   .loc 1 2 20
   %t6 = call @rt_instr2(%t4, %t5)
-  .loc 1 2 4
+  .loc 1 2 20
   call @rt_print_i64(%t6)
-  .loc 1 2 4
+  .loc 1 2 20
   %t7 = const_str @.L2
-  .loc 1 2 4
+  .loc 1 2 20
   call @rt_print_str(%t7)
   .loc 1 2 4
   br L30
@@ -61,11 +61,11 @@ L30:
   %t10 = const_str @.L3
   .loc 1 3 23
   %t11 = call @rt_instr3(%t8, %t9, %t10)
-  .loc 1 3 4
+  .loc 1 3 23
   call @rt_print_i64(%t11)
-  .loc 1 3 4
+  .loc 1 3 23
   %t12 = const_str @.L2
-  .loc 1 3 4
+  .loc 1 3 23
   call @rt_print_str(%t12)
   .loc 1 3 4
   br L40

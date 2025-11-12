@@ -55,7 +55,7 @@ constexpr std::array<PrefixParselet, 3> prefixParselets{
     PrefixParselet{TokenKind::Minus, UnaryExpr::Op::Negate, 4},
 };
 
-constexpr std::array<InfixParselet, 17> infixParselets{
+constexpr std::array<InfixParselet, 18> infixParselets{
     InfixParselet{TokenKind::Caret, BinaryExpr::Op::Pow, 7, Assoc::Right},
     InfixParselet{TokenKind::Star, BinaryExpr::Op::Mul, 5, Assoc::Left},
     InfixParselet{TokenKind::Slash, BinaryExpr::Op::Div, 5, Assoc::Left},
@@ -63,6 +63,7 @@ constexpr std::array<InfixParselet, 17> infixParselets{
     InfixParselet{TokenKind::KeywordMod, BinaryExpr::Op::Mod, 5, Assoc::Left},
     InfixParselet{TokenKind::Plus, BinaryExpr::Op::Add, 4, Assoc::Left},
     InfixParselet{TokenKind::Minus, BinaryExpr::Op::Sub, 4, Assoc::Left},
+    InfixParselet{TokenKind::Ampersand, BinaryExpr::Op::Add, 4, Assoc::Left},
     InfixParselet{TokenKind::Equal, BinaryExpr::Op::Eq, 3, Assoc::Left},
     InfixParselet{TokenKind::NotEqual, BinaryExpr::Op::Ne, 3, Assoc::Left},
     InfixParselet{TokenKind::Less, BinaryExpr::Op::Lt, 3, Assoc::Left},

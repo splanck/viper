@@ -82,11 +82,11 @@ L70:
   %t28 = zext1 %t27
   .loc 1 7 4
   %t29 = isub.ovf 0, %t28
-  .loc 1 7 4
+  .loc 1 7 10
   call @rt_print_i64(%t29)
-  .loc 1 7 4
+  .loc 1 7 10
   %t30 = const_str @.L0
-  .loc 1 7 4
+  .loc 1 7 10
   call @rt_print_str(%t30)
   .loc 1 7 4
   br exit

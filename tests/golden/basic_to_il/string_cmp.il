@@ -59,14 +59,14 @@ if_test_0:
   %t8 = isub.ovf 0, %t7
   .loc 1 2 4
   %t9 = trunc1 %t8
-  .loc 1 2 4
+  .loc 1 2 10
   cbr %t9, if_then_0, if_else
 if_then_0:
-  .loc 1 2 25
+  .loc 1 2 31
   call @rt_print_i64(1)
-  .loc 1 2 25
+  .loc 1 2 31
   %t10 = const_str @.L1
-  .loc 1 2 25
+  .loc 1 2 31
   call @rt_print_str(%t10)
   .loc 1 2 4
   br if_exit
@@ -91,14 +91,14 @@ if_test_01:
   %t16 = xor %t15, -1
   .loc 1 3 4
   %t17 = trunc1 %t16
-  .loc 1 3 4
+  .loc 1 3 10
   cbr %t17, if_then_01, if_else1
 if_then_01:
-  .loc 1 3 22
+  .loc 1 3 28
   call @rt_print_i64(2)
-  .loc 1 3 22
+  .loc 1 3 28
   %t18 = const_str @.L1
-  .loc 1 3 22
+  .loc 1 3 28
   call @rt_print_str(%t18)
   .loc 1 3 4
   br if_exit1

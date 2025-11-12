@@ -17,7 +17,7 @@ entry:
   %t1 = alloca 8
   br L10
 L10:
-  .loc 1 1 4
+  .loc 1 1 17
   store i64, %t1, 1
   .loc 1 1 4
   %t2 = scmp_ge 1, 0
@@ -40,20 +40,20 @@ for_head_neg:
   .loc 1 1 4
   cbr %t6, for_body, for_done
 for_body:
-  .loc 1 2 4
+  .loc 1 2 17
   store i64, %t0, 1
   .loc 1 2 4
   %t7 = scmp_ge 1, 0
   .loc 1 2 4
   cbr %t7, for_head_pos1, for_head_neg1
 for_inc:
-  .loc 1 1 4
+  .loc 1 2 4
   %t18 = load i64, %t1
-  .loc 1 1 4
+  .loc 1 2 4
   %t19 = iadd.ovf %t18, 1
-  .loc 1 1 4
+  .loc 1 2 4
   store i64, %t1, %t19
-  .loc 1 1 4
+  .loc 1 2 4
   cbr %t2, for_head_pos, for_head_neg
 for_done:
   .loc 1 1 4
@@ -79,24 +79,24 @@ for_body1:
   %t13 = load i64, %t0
   .loc 1 3 12
   %t14 = imul.ovf %t12, %t13
-  .loc 1 3 4
+  .loc 1 3 12
   call @rt_print_i64(%t14)
-  .loc 1 3 4
+  .loc 1 3 12
   %t15 = const_str @.L0
-  .loc 1 3 4
+  .loc 1 3 12
   call @rt_print_str(%t15)
-  .loc 1 2 4
+  .loc 1 3 4
   br for_inc1
 for_inc1:
-  .loc 1 2 4
+  .loc 1 3 4
   %t16 = load i64, %t0
-  .loc 1 2 4
+  .loc 1 3 4
   %t17 = iadd.ovf %t16, 1
-  .loc 1 2 4
+  .loc 1 3 4
   store i64, %t0, %t17
-  .loc 1 2 4
+  .loc 1 3 4
   cbr %t7, for_head_pos1, for_head_neg1
 for_done1:
-  .loc 1 1 4
+  .loc 1 2 4
   br for_inc
 }

@@ -120,6 +120,7 @@ BasicCompilerResult compileBasic(const BasicCompilerInput &input,
 
     Lowerer lower(options.boundsChecks);
     lower.setDiagnosticEmitter(result.emitter.get());
+    lower.setSemanticAnalyzer(&sema);
     result.module = lower.lower(*program);
     return result;
 }

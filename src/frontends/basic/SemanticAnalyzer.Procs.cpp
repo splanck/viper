@@ -225,8 +225,10 @@ void SemanticAnalyzer::analyzeProc(const FunctionDecl &f)
 {
     const FunctionDecl *previousFunction = activeFunction_;
     BasicType previousExplicit = activeFunctionExplicitRet_;
+    bool previousNameAssigned = activeFunctionNameAssigned_;
     activeFunction_ = &f;
     activeFunctionExplicitRet_ = f.explicitRetType;
+    activeFunctionNameAssigned_ = false; // BUG-003: Reset for each function
 
     if (f.explicitRetType != BasicType::Unknown)
     {
@@ -262,6 +264,7 @@ void SemanticAnalyzer::analyzeProc(const FunctionDecl &f)
 
     activeFunction_ = previousFunction;
     activeFunctionExplicitRet_ = previousExplicit;
+    activeFunctionNameAssigned_ = previousNameAssigned; // BUG-003: Restore state
 }
 
 /// @brief Analyze a SUB declaration.
@@ -278,6 +281,10 @@ void SemanticAnalyzer::analyzeProc(const SubDecl &s)
 /// @return True when the final statement must return.
 bool SemanticAnalyzer::mustReturn(const std::vector<StmtPtr> &stmts) const
 {
+    // BUG-003: Check if function name was assigned (VB-style implicit return)
+    if (activeFunctionNameAssigned_)
+        return true;
+
     if (stmts.empty())
         return false;
     return mustReturn(*stmts.back());

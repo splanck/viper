@@ -15,7 +15,7 @@ entry:
   call @__mod_init$oop()
   br L10
 L10:
-  .loc 1 1 4
+  .loc 1 1 14
   call @rt_randomize_i64(42)
   .loc 1 1 4
   br exit

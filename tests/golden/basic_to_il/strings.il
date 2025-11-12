@@ -42,11 +42,11 @@ L20:
   %t4 = load str, %t0
   .loc 1 2 10
   %t5 = call @rt_len(%t4)
-  .loc 1 2 4
+  .loc 1 2 10
   call @rt_print_i64(%t5)
-  .loc 1 2 4
+  .loc 1 2 10
   %t6 = const_str @.L1
-  .loc 1 2 4
+  .loc 1 2 10
   call @rt_print_str(%t6)
   .loc 1 2 4
   br L30
@@ -57,11 +57,11 @@ L30:
   %t8 = iadd.ovf 2, -1
   .loc 1 3 22
   %t9 = call @rt_mid3(%t7, %t8, 3)
-  .loc 1 3 4
+  .loc 1 3 22
   call @rt_print_str(%t9)
-  .loc 1 3 4
+  .loc 1 3 22
   %t10 = const_str @.L1
-  .loc 1 3 4
+  .loc 1 3 22
   call @rt_print_str(%t10)
   .loc 1 3 4
   br L40
@@ -72,11 +72,11 @@ L40:
   %t12 = iadd.ovf 3, -1
   .loc 1 4 10
   %t13 = call @rt_mid2(%t11, %t12)
-  .loc 1 4 4
+  .loc 1 4 10
   call @rt_print_str(%t13)
-  .loc 1 4 4
+  .loc 1 4 10
   %t14 = const_str @.L1
-  .loc 1 4 4
+  .loc 1 4 10
   call @rt_print_str(%t14)
   .loc 1 4 4
   br L50
@@ -85,11 +85,11 @@ L50:
   %t15 = load str, %t0
   .loc 1 5 10
   %t16 = call @rt_left(%t15, 2)
-  .loc 1 5 4
+  .loc 1 5 10
   call @rt_print_str(%t16)
-  .loc 1 5 4
+  .loc 1 5 10
   %t17 = const_str @.L1
-  .loc 1 5 4
+  .loc 1 5 10
   call @rt_print_str(%t17)
   .loc 1 5 4
   br L60
@@ -98,11 +98,11 @@ L60:
   %t18 = load str, %t0
   .loc 1 6 10
   %t19 = call @rt_right(%t18, 2)
-  .loc 1 6 4
+  .loc 1 6 10
   call @rt_print_str(%t19)
-  .loc 1 6 4
+  .loc 1 6 10
   %t20 = const_str @.L1
-  .loc 1 6 4
+  .loc 1 6 10
   call @rt_print_str(%t20)
   .loc 1 6 4
   br L70

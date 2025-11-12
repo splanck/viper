@@ -65,11 +65,11 @@ L50:
 L100:
   .loc 1 10 11
   %t43 = load i64, %t0
-  .loc 1 10 5
+  .loc 1 10 11
   call @rt_print_i64(%t43)
-  .loc 1 10 5
+  .loc 1 10 11
   %t44 = const_str @.L0
-  .loc 1 10 5
+  .loc 1 10 11
   call @rt_print_str(%t44)
   .loc 1 10 5
   br L110
@@ -85,15 +85,15 @@ dim_len_fail:
   .loc 1 2 4
   trap
 dim_len_cont:
-  .loc 1 2 4
+  .loc 1 2 10
   %t9 = call @rt_arr_i32_new(%t7)
-  .loc 1 2 4
+  .loc 1 2 10
   call @rt_arr_i32_retain(%t9)
-  .loc 1 2 4
+  .loc 1 2 10
   %t10 = load ptr, %t2
-  .loc 1 2 4
+  .loc 1 2 10
   call @rt_arr_i32_release(%t10)
-  .loc 1 2 4
+  .loc 1 2 10
   store ptr, %t2, %t9
   .loc 1 2 4
   br L30
@@ -110,7 +110,7 @@ loop_head:
   %t15 = isub.ovf 0, %t14
   .loc 1 5 4
   %t16 = trunc1 %t15
-  .loc 1 5 4
+  .loc 1 5 12
   cbr %t16, loop_body, done
 loop_body:
   .loc 1 6 17
@@ -119,7 +119,7 @@ loop_body:
   %t18 = load i64, %t1
   .loc 1 6 19
   %t19 = imul.ovf %t17, %t18
-  .loc 1 6 19
+  .loc 1 6 6
   %t20 = load ptr, %t2
   .loc 1 6 12
   %t21 = load i64, %t1
@@ -143,7 +143,7 @@ done:
   .loc 1 5 4
   br L100
 bc_ok0:
-  .loc 1 6 6
+  .loc 1 6 10
   call @rt_arr_i32_set(%t20, %t21, %t19)
   .loc 1 7 14
   %t29 = load i64, %t0
@@ -185,7 +185,7 @@ bc_ok1:
   %t42 = iadd.ovf %t41, 1
   .loc 1 8 6
   store i64, %t1, %t42
-  .loc 1 5 4
+  .loc 1 8 6
   br loop_head
 bc_oob1:
   .loc 1 7 18

@@ -18,11 +18,11 @@ entry:
 L10:
   .loc 1 1 10
   %t0 = call @rt_rnd()
-  .loc 1 1 4
+  .loc 1 1 10
   call @rt_print_f64(%t0)
-  .loc 1 1 4
+  .loc 1 1 10
   %t1 = const_str @.L0
-  .loc 1 1 4
+  .loc 1 1 10
   call @rt_print_str(%t1)
   .loc 1 1 4
   br exit

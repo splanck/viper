@@ -70,7 +70,7 @@ if_test_0_FIRST#:
   %t5 = isub.ovf 0, %t4
   .loc 1 8 1
   %t6 = trunc1 %t5
-  .loc 1 8 1
+  .loc 1 8 6
   cbr %t6, if_then_0_FIRST#, if_else_0_FIRST#
 if_then_0_FIRST#:
   .loc 1 8 23
@@ -118,7 +118,7 @@ if_test_0_SECOND#:
   %t6 = isub.ovf 0, %t5
   .loc 1 12 1
   %t7 = trunc1 %t6
-  .loc 1 12 1
+  .loc 1 12 7
   cbr %t7, if_then_0_SECOND#, if_else_0_SECOND#
 if_then_0_SECOND#:
   .loc 1 12 24
@@ -139,11 +139,11 @@ L10:
   %t0 = sitofp 1
   .loc 1 15 10
   %t1 = call @F#(%t0)
-  .loc 1 15 4
+  .loc 1 15 10
   call @rt_print_f64(%t1)
-  .loc 1 15 4
+  .loc 1 15 10
   %t2 = const_str @.L1
-  .loc 1 15 4
+  .loc 1 15 10
   call @rt_print_str(%t2)
   .loc 1 15 4
   br L20
@@ -152,22 +152,22 @@ L20:
   %t3 = const_str @.L2
   .loc 1 16 10
   %t4 = call @ID$(%t3)
-  .loc 1 16 4
+  .loc 1 16 10
   call @rt_print_str(%t4)
-  .loc 1 16 4
+  .loc 1 16 10
   %t5 = const_str @.L1
-  .loc 1 16 4
+  .loc 1 16 10
   call @rt_print_str(%t5)
   .loc 1 16 4
   br L30
 L30:
   .loc 1 17 10
   %t6 = call @FIRST#(2)
-  .loc 1 17 4
+  .loc 1 17 10
   call @rt_print_f64(%t6)
-  .loc 1 17 4
+  .loc 1 17 10
   %t7 = const_str @.L1
-  .loc 1 17 4
+  .loc 1 17 10
   call @rt_print_str(%t7)
   .loc 1 17 4
   br L40

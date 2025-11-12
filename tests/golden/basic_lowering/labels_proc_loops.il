@@ -18,7 +18,7 @@ L-1000000000_F:
   .loc 1 2 1
   br while_head_0_F
 L-999999999_F:
-  .loc 1 4 1
+  .loc 1 4 14
   store i64, %t0, 1
   .loc 1 4 1
   %t2 = scmp_ge 1, 0
@@ -35,7 +35,7 @@ while_head_0_F:
   .loc 1 2 7
   cbr %t1, while_body_0_F, while_end_0_F
 while_body_0_F:
-  .loc 1 2 1
+  .loc 1 2 7
   br while_head_0_F
 while_end_0_F:
   .loc 1 2 1

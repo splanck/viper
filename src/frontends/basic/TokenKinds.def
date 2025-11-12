@@ -106,6 +106,7 @@ TOKEN(Less, "<")
 TOKEN(LessEqual, "<=")
 TOKEN(Greater, ">")
 TOKEN(GreaterEqual, ">=")
+TOKEN(Ampersand, "&")
 
 // Punctuation --------------------------------------------------------------
 TOKEN(LParen, "(")

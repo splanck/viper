@@ -17,6 +17,7 @@
 #include "frontends/basic/AstWalker.hpp"
 #include "frontends/basic/BuiltinRegistry.hpp"
 #include "frontends/basic/Lowerer.hpp"
+#include "frontends/basic/SemanticAnalyzer.hpp"
 #include "frontends/basic/TypeRules.hpp"
 #include "frontends/basic/TypeSuffix.hpp"
 #include "frontends/basic/ast/StmtNodes.hpp"
@@ -375,7 +376,7 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
         {
             const auto *info = lowerer_.findSymbol(stmt.var);
             if (!info || !info->hasType)
-                lowerer_.setSymbolType(stmt.var, inferAstTypeFromName(stmt.var));
+                lowerer_.setSymbolType(stmt.var, inferVariableType(stmt.var));
         }
     }
 
@@ -418,7 +419,7 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
         {
             if (name.empty())
                 continue;
-            Type astTy = inferAstTypeFromName(name);
+            Type astTy = inferVariableType(name);
             switch (astTy)
             {
                 case Type::Str:
@@ -457,7 +458,7 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
         if (name.empty())
             return;
 
-        Type astTy = inferAstTypeFromName(name);
+        Type astTy = inferVariableType(name);
         switch (astTy)
         {
             case Type::Str:
@@ -633,6 +634,47 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
         return idx < kMap.size() ? kMap[idx] : Feature::StrFromDouble;
     }
 
+    /// @brief Convert semantic analyzer type to AST type.
+    ///
+    /// @param semaType Semantic analyzer type enum.
+    /// @return Corresponding AST type, or std::nullopt if not convertible.
+    std::optional<Type> convertSemanticType(SemanticAnalyzer::Type semaType)
+    {
+        using SemaType = SemanticAnalyzer::Type;
+        switch (semaType)
+        {
+            case SemaType::Int:
+                return Type::I64;
+            case SemaType::Float:
+                return Type::F64;
+            case SemaType::String:
+                return Type::Str;
+            case SemaType::Bool:
+                return Type::Bool;
+            default:
+                return std::nullopt;
+        }
+    }
+
+    /// @brief Infer variable type from semantic analyzer, then suffix, then fallback.
+    ///
+    /// @param name Variable name to query.
+    /// @return Best-effort type derived from semantic analysis or naming convention.
+    Type inferVariableType(const std::string &name)
+    {
+        // BUG-001 FIX: Query semantic analyzer for value-based type inference
+        if (lowerer_.semanticAnalyzer_)
+        {
+            if (auto semaType = lowerer_.semanticAnalyzer_->lookupVarType(name))
+            {
+                if (auto astType = convertSemanticType(*semaType))
+                    return *astType;
+            }
+        }
+        // Fall back to suffix-based inference
+        return inferAstTypeFromName(name);
+    }
+
     /// @brief Ensure a symbol has a known AST type, defaulting to @p fallback.
     ///
     /// @param name Symbol to update.
@@ -677,7 +719,7 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
             lowerer_.requestRuntimeFeature(Feature::ObjReleaseChk0);
             lowerer_.requestRuntimeFeature(Feature::ObjFree);
         }
-        ensureSymbolType(var.name, inferAstTypeFromName(var.name));
+        ensureSymbolType(var.name, inferVariableType(var.name));
         if (const auto *info = lowerer_.findSymbol(var.name); info && info->isArray)
         {
             lowerer_.requireArrayI32Retain();
@@ -685,7 +727,7 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
             return;
         }
         const auto *symInfo = lowerer_.findSymbol(var.name);
-        if ((symInfo ? symInfo->type : inferAstTypeFromName(var.name)) == Type::Str)
+        if ((symInfo ? symInfo->type : inferVariableType(var.name)) == Type::Str)
         {
             lowerer_.requireStrRetainMaybe();
             lowerer_.requireStrReleaseMaybe();
@@ -699,7 +741,7 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
     {
         if (arr.name.empty())
             return;
-        ensureSymbolType(arr.name, inferAstTypeFromName(arr.name));
+        ensureSymbolType(arr.name, inferVariableType(arr.name));
         lowerer_.markSymbolReferenced(arr.name);
         lowerer_.markArray(arr.name);
         lowerer_.requireArrayI32Len();

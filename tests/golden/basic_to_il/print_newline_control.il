@@ -19,18 +19,18 @@ entry:
 L10:
   .loc 1 1 10
   %t0 = const_str @.L0
-  .loc 1 1 4
+  .loc 1 1 10
   call @rt_print_str(%t0)
   .loc 1 1 4
   br L20
 L20:
   .loc 1 2 10
   %t1 = const_str @.L1
-  .loc 1 2 4
+  .loc 1 2 10
   call @rt_print_str(%t1)
-  .loc 1 2 4
+  .loc 1 2 10
   %t2 = const_str @.L2
-  .loc 1 2 4
+  .loc 1 2 10
   call @rt_print_str(%t2)
   .loc 1 2 4
   br exit

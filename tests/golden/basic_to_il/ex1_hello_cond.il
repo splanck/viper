@@ -35,33 +35,33 @@ L20:
 L30:
   .loc 1 3 10
   %t4 = const_str @.L0
-  .loc 1 3 4
+  .loc 1 3 10
   call @rt_print_str(%t4)
-  .loc 1 3 4
+  .loc 1 3 10
   %t5 = const_str @.L1
-  .loc 1 3 4
+  .loc 1 3 10
   call @rt_print_str(%t5)
   .loc 1 3 4
   br L40
 L40:
   .loc 1 4 10
   %t6 = const_str @.L2
-  .loc 1 4 4
+  .loc 1 4 10
   call @rt_print_str(%t6)
-  .loc 1 4 4
+  .loc 1 4 10
   %t7 = const_str @.L1
-  .loc 1 4 4
+  .loc 1 4 10
   call @rt_print_str(%t7)
   .loc 1 4 4
   br L50
 L50:
   .loc 1 5 10
   %t8 = load i64, %t0
-  .loc 1 5 4
+  .loc 1 5 10
   call @rt_print_i64(%t8)
-  .loc 1 5 4
+  .loc 1 5 10
   %t9 = const_str @.L1
-  .loc 1 5 4
+  .loc 1 5 10
   call @rt_print_str(%t9)
   .loc 1 5 4
   br L60
@@ -84,25 +84,25 @@ if_test_0:
   %t13 = isub.ovf 0, %t12
   .loc 1 6 4
   %t14 = trunc1 %t13
-  .loc 1 6 4
+  .loc 1 6 9
   cbr %t14, if_then_0, if_else
 if_then_0:
   .loc 1 6 24
   %t15 = load i64, %t0
-  .loc 1 6 18
+  .loc 1 6 24
   call @rt_print_i64(%t15)
-  .loc 1 6 18
+  .loc 1 6 24
   %t16 = const_str @.L1
-  .loc 1 6 18
+  .loc 1 6 24
   call @rt_print_str(%t16)
   .loc 1 6 4
   br if_exit
 if_else:
-  .loc 1 6 31
+  .loc 1 6 37
   call @rt_print_i64(4)
-  .loc 1 6 31
+  .loc 1 6 37
   %t17 = const_str @.L1
-  .loc 1 6 31
+  .loc 1 6 37
   call @rt_print_str(%t17)
   .loc 1 6 4
   br if_exit

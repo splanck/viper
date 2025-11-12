@@ -43,11 +43,11 @@ if_test_0:
   .loc 1 2 7
   cbr %t2, bool_then, bool_else
 if_then_0:
-  .loc 1 2 18
+  .loc 1 2 24
   call @rt_print_i64(1)
-  .loc 1 2 18
+  .loc 1 2 24
   %t10 = const_str @.L0
-  .loc 1 2 18
+  .loc 1 2 24
   call @rt_print_str(%t10)
   .loc 1 2 4
   br if_exit
@@ -74,13 +74,13 @@ bool_else:
 bool_join:
   .loc 1 2 7
   %t6 = load i1, %t3
-  .loc 1 2 7
+  .loc 1 2 11
   %t7 = zext1 %t6
-  .loc 1 2 7
+  .loc 1 2 11
   %t8 = isub.ovf 0, %t7
   .loc 1 2 4
   %t9 = trunc1 %t8
-  .loc 1 2 4
+  .loc 1 2 7
   cbr %t9, if_then_0, if_else
 bool_then1:
   .loc 1 3 12
@@ -99,9 +99,9 @@ bool_else1:
 bool_join1:
   .loc 1 3 12
   %t15 = load i1, %t12
-  .loc 1 3 12
+  .loc 1 3 16
   %t16 = zext1 %t15
-  .loc 1 3 12
+  .loc 1 3 16
   %t17 = isub.ovf 0, %t16
   .loc 1 3 4
   %t18 = trunc1 %t17
@@ -117,11 +117,11 @@ if_test_01:
   .loc 1 4 7
   cbr %t19, bool_then2, bool_else2
 if_then_01:
-  .loc 1 4 18
+  .loc 1 4 24
   call @rt_print_i64(0)
-  .loc 1 4 18
+  .loc 1 4 24
   %t27 = const_str @.L0
-  .loc 1 4 18
+  .loc 1 4 24
   call @rt_print_str(%t27)
   .loc 1 4 4
   br if_exit1
@@ -148,12 +148,12 @@ bool_else2:
 bool_join2:
   .loc 1 4 7
   %t23 = load i1, %t20
-  .loc 1 4 7
+  .loc 1 4 11
   %t24 = zext1 %t23
-  .loc 1 4 7
+  .loc 1 4 11
   %t25 = isub.ovf 0, %t24
   .loc 1 4 4
   %t26 = trunc1 %t25
-  .loc 1 4 4
+  .loc 1 4 7
   cbr %t26, if_then_01, if_else1
 }

@@ -19,22 +19,22 @@ entry:
 L10:
   .loc 1 1 10
   %t0 = call @rt_abs_i64(-1)
-  .loc 1 1 4
+  .loc 1 1 10
   call @rt_print_i64(%t0)
-  .loc 1 1 4
+  .loc 1 1 10
   %t1 = const_str @.L0
-  .loc 1 1 4
+  .loc 1 1 10
   call @rt_print_str(%t1)
   .loc 1 1 4
   br L20
 L20:
   .loc 1 2 10
   %t2 = call @rt_abs_f64(-1.5)
-  .loc 1 2 4
+  .loc 1 2 10
   call @rt_print_f64(%t2)
-  .loc 1 2 4
+  .loc 1 2 10
   %t3 = const_str @.L0
-  .loc 1 2 4
+  .loc 1 2 10
   call @rt_print_str(%t3)
   .loc 1 2 4
   br exit

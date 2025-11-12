@@ -48,21 +48,21 @@ L30:
   %t7:i32 = cast.si_narrow.chk %t6
   .loc 1 3 10
   %t8 = call @rt_str_i32_alloc(%t7)
-  .loc 1 3 4
+  .loc 1 3 10
   call @rt_print_str(%t8)
-  .loc 1 3 4
+  .loc 1 3 10
   %t9 = const_str @.L0
-  .loc 1 3 4
+  .loc 1 3 10
   call @rt_print_str(%t9)
   .loc 1 3 24
   %t10 = load f64, %t4
   .loc 1 3 19
   %t11 = call @rt_str_d_alloc(%t10)
-  .loc 1 3 4
+  .loc 1 3 19
   call @rt_print_str(%t11)
-  .loc 1 3 4
+  .loc 1 3 19
   %t12 = const_str @.L1
-  .loc 1 3 4
+  .loc 1 3 19
   call @rt_print_str(%t12)
   .loc 1 3 4
   br L40
@@ -107,21 +107,21 @@ L80:
   %t24 = load f64, %t1
   .loc 1 8 10
   %t25 = call @rt_int_floor(%t24)
-  .loc 1 8 4
+  .loc 1 8 10
   call @rt_print_f64(%t25)
-  .loc 1 8 4
+  .loc 1 8 10
   %t26 = const_str @.L0
-  .loc 1 8 4
+  .loc 1 8 10
   call @rt_print_str(%t26)
   .loc 1 8 23
   %t27 = load f64, %t0
   .loc 1 8 19
   %t28 = call @rt_int_floor(%t27)
-  .loc 1 8 4
+  .loc 1 8 19
   call @rt_print_f64(%t28)
-  .loc 1 8 4
+  .loc 1 8 19
   %t29 = const_str @.L1
-  .loc 1 8 4
+  .loc 1 8 19
   call @rt_print_str(%t29)
   .loc 1 8 4
   br L90
@@ -131,11 +131,11 @@ L90:
 exit:
   ret 0
 val_ok:
-  .loc 1 5 4
+  .loc 1 5 14
   call @rt_print_f64(%t18)
-  .loc 1 5 4
+  .loc 1 5 14
   %t23 = const_str @.L1
-  .loc 1 5 4
+  .loc 1 5 14
   call @rt_print_str(%t23)
   .loc 1 5 4
   br L60

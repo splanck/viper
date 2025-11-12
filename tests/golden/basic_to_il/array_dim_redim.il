@@ -45,15 +45,15 @@ dim_len_fail:
   .loc 1 1 4
   trap
 dim_len_cont:
-  .loc 1 1 4
+  .loc 1 1 10
   %t3 = call @rt_arr_i32_new(%t1)
-  .loc 1 1 4
+  .loc 1 1 10
   call @rt_arr_i32_retain(%t3)
-  .loc 1 1 4
+  .loc 1 1 10
   %t4 = load ptr, %t0
-  .loc 1 1 4
+  .loc 1 1 10
   call @rt_arr_i32_release(%t4)
-  .loc 1 1 4
+  .loc 1 1 10
   store ptr, %t0, %t3
   .loc 1 1 4
   br L20
@@ -61,17 +61,17 @@ redim_len_fail:
   .loc 1 2 4
   trap
 redim_len_cont:
-  .loc 1 2 4
+  .loc 1 2 12
   %t7 = load ptr, %t0
-  .loc 1 2 4
+  .loc 1 2 12
   %t8 = call @rt_arr_i32_resize(%t7, %t5)
-  .loc 1 2 4
+  .loc 1 2 12
   call @rt_arr_i32_retain(%t8)
-  .loc 1 2 4
+  .loc 1 2 12
   %t9 = load ptr, %t0
-  .loc 1 2 4
+  .loc 1 2 12
   call @rt_arr_i32_release(%t9)
-  .loc 1 2 4
+  .loc 1 2 12
   store ptr, %t0, %t8
   .loc 1 2 4
   br L30

@@ -64,7 +64,7 @@ UL999999996:
 UL999999995:
   .loc 1 6 17
   %t10 = load i64, %t1
-  .loc 1 6 17
+  .loc 1 6 1
   %t11 = load ptr, %t0
   .loc 1 6 5
   %t12 = call @rt_arr_i32_len(%t11)
@@ -85,22 +85,22 @@ UL999999995:
 UL999999994:
   .loc 1 7 7
   %t19 = load str, %t2
-  .loc 1 7 1
+  .loc 1 7 7
   call @rt_print_str(%t19)
-  .loc 1 7 1
+  .loc 1 7 7
   %t20 = const_str @.L1
-  .loc 1 7 1
+  .loc 1 7 7
   call @rt_print_str(%t20)
   .loc 1 7 1
   br UL999999993
 UL999999993:
   .loc 1 8 7
   %t21 = load i64, %t1
-  .loc 1 8 1
+  .loc 1 8 7
   call @rt_print_i64(%t21)
-  .loc 1 8 1
+  .loc 1 8 7
   %t22 = const_str @.L1
-  .loc 1 8 1
+  .loc 1 8 7
   call @rt_print_str(%t22)
   .loc 1 8 1
   br UL999999992
@@ -132,20 +132,20 @@ dim_len_fail:
   .loc 1 3 1
   trap
 dim_len_cont:
-  .loc 1 3 1
+  .loc 1 3 12
   %t6 = call @rt_arr_i32_new(%t4)
-  .loc 1 3 1
+  .loc 1 3 12
   call @rt_arr_i32_retain(%t6)
-  .loc 1 3 1
+  .loc 1 3 12
   %t7 = load ptr, %t0
-  .loc 1 3 1
+  .loc 1 3 12
   call @rt_arr_i32_release(%t7)
-  .loc 1 3 1
+  .loc 1 3 12
   store ptr, %t0, %t6
   .loc 1 3 1
   br UL999999997
 bc_ok0:
-  .loc 1 6 1
+  .loc 1 6 5
   call @rt_arr_i32_set(%t11, 0, %t10)
   .loc 1 6 1
   br UL999999994
@@ -157,11 +157,11 @@ bc_oob0:
 bc_ok1:
   .loc 1 9 7
   %t31 = call @rt_arr_i32_get(%t23, 0)
-  .loc 1 9 1
+  .loc 1 9 7
   call @rt_print_i64(%t31)
-  .loc 1 9 1
+  .loc 1 9 7
   %t32 = const_str @.L1
-  .loc 1 9 1
+  .loc 1 9 7
   call @rt_print_str(%t32)
   .loc 1 9 1
   br exit

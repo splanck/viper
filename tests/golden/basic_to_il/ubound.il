@@ -34,11 +34,11 @@ L20:
   %t6 = call @rt_arr_i32_len(%t5)
   .loc 1 2 10
   %t7 = isub.ovf %t6, 1
-  .loc 1 2 4
+  .loc 1 2 10
   call @rt_print_i64(%t7)
-  .loc 1 2 4
+  .loc 1 2 10
   %t8 = const_str @.L0
-  .loc 1 2 4
+  .loc 1 2 10
   call @rt_print_str(%t8)
   .loc 1 2 4
   br exit
@@ -51,15 +51,15 @@ dim_len_fail:
   .loc 1 1 4
   trap
 dim_len_cont:
-  .loc 1 1 4
+  .loc 1 1 10
   %t3 = call @rt_arr_i32_new(%t1)
-  .loc 1 1 4
+  .loc 1 1 10
   call @rt_arr_i32_retain(%t3)
-  .loc 1 1 4
+  .loc 1 1 10
   %t4 = load ptr, %t0
-  .loc 1 1 4
+  .loc 1 1 10
   call @rt_arr_i32_release(%t4)
-  .loc 1 1 4
+  .loc 1 1 10
   store ptr, %t0, %t3
   .loc 1 1 4
   br L20

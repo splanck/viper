@@ -1,112 +1,26 @@
 # VIPER BASIC Known Bugs and Issues
 
-*Generated: 2025-11-12*
+*Last Updated: 2025-11-12*
 *Source: Empirical testing during language audit*
 
 ---
 
 ## BUG REPORTS
 
+**Note**: See `basic_resolved.md` for details on resolved bugs.
+
 ### BUG-001: String concatenation requires $ suffix for type inference
-**Severity**: Medium
-**Status**: Confirmed
-**Test Case**: test010.bas (initial version)
-
-**Description**:
-String variables without the `$` suffix cannot be concatenated using the `+` operator. The compiler reports "operand type mismatch" error.
-
-**Reproduction**:
-```basic
-s1 = "Hello"
-s2 = "World"
-s3 = s1 + " " + s2  ' ERROR: operand type mismatch
-PRINT s3
-```
-
-**Error Message**:
-```
-error[B2001]: operand type mismatch
-s3 = s1 + " " + s2
-        ^
-```
-
-**Workaround**:
-Use the `$` suffix for string variables:
-```basic
-s1$ = "Hello"
-s2$ = "World"
-s3$ = s1$ + " " + s2$  ' WORKS
-PRINT s3$
-```
-
-**Analysis**:
-The type inference system appears to default variables without type suffixes to integer type. Without explicit `$` suffix, the compiler treats `s1` and `s2` as integers despite being assigned string literals. This suggests the type system is based on variable naming convention rather than value-based inference.
+**Status**: ✅ RESOLVED 2025-11-12 - See basic_resolved.md for details
 
 ---
 
 ### BUG-002: & operator for string concatenation not supported
-**Severity**: Low
-**Status**: Confirmed
-**Test Case**: test010.bas (attempted workaround)
-
-**Description**:
-The `&` operator commonly used for string concatenation in VB-style BASIC is not recognized by the parser.
-
-**Reproduction**:
-```basic
-s1$ = "Hello"
-s2$ = "World"
-s3$ = s1$ & " " & s2$  ' ERROR: unknown statement
-PRINT s3$
-```
-
-**Error Message**:
-```
-error[B0001]: unknown statement '&'; expected keyword or procedure call
-s3$ = s1$ & " " & s2$
-        ^
-```
-
-**Workaround**:
-Use `+` operator with properly typed string variables (with `$` suffix).
-
-**Analysis**:
-The `&` operator is not implemented in the lexer/parser. Only `+` is supported for string concatenation.
+**Status**: ✅ RESOLVED 2025-11-12 - See basic_resolved.md for details
 
 ---
 
 ### BUG-003: FUNCTION name assignment syntax not supported
-**Severity**: Low
-**Status**: Confirmed
-**Test Case**: test009.bas (initial version)
-
-**Description**:
-The traditional BASIC syntax of assigning a return value to the function name (VB-style) is not supported. An explicit RETURN statement is required.
-
-**Reproduction**:
-```basic
-FUNCTION Add(a, b)
-    Add = a + b  ' This syntax doesn't work
-END FUNCTION
-```
-
-**Error Message**:
-```
-error[B1007]: missing return in FUNCTION ADD
-FUNCTION Add(a, b)
-^^^
-```
-
-**Workaround**:
-Use explicit RETURN statement:
-```basic
-FUNCTION Add(a, b)
-    RETURN a + b  ' WORKS
-END FUNCTION
-```
-
-**Analysis**:
-The semantic analyzer requires an explicit RETURN statement in all code paths. The VB-style implicit return by assigning to the function name is not implemented.
+**Status**: ✅ RESOLVED 2025-11-12 - See basic_resolved.md for details
 
 ---
 

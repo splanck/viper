@@ -24,11 +24,11 @@ func @S() -> void {
 entry_S:
   br L-1000000000_S
 L-1000000000_S:
-  .loc 1 5 1
+  .loc 1 5 7
   call @rt_print_i64(1)
-  .loc 1 5 1
+  .loc 1 5 7
   %t0 = const_str @.L0
-  .loc 1 5 1
+  .loc 1 5 7
   call @rt_print_str(%t0)
   .loc 1 5 1
   br ret_S

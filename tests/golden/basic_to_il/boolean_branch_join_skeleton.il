@@ -42,11 +42,11 @@ L30:
   %t8 = isub.ovf 0, %t7
   .loc 1 3 12
   %t9 = or %t6, %t8
-  .loc 1 3 4
+  .loc 1 3 12
   call @rt_print_i64(%t9)
-  .loc 1 3 4
+  .loc 1 3 12
   %t10 = const_str @.L0
-  .loc 1 3 4
+  .loc 1 3 12
   call @rt_print_str(%t10)
   .loc 1 3 4
   br exit

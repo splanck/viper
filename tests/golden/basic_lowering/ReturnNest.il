@@ -38,11 +38,11 @@ entry:
 UL1000000000:
   .loc 1 4 7
   %t0 = call @F()
-  .loc 1 4 1
+  .loc 1 4 7
   call @rt_print_i64(%t0)
-  .loc 1 4 1
+  .loc 1 4 7
   %t1 = const_str @.L0
-  .loc 1 4 1
+  .loc 1 4 7
   call @rt_print_str(%t1)
   .loc 1 4 1
   br exit

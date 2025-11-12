@@ -20,11 +20,11 @@ L10:
   .loc 1 1 4
   br L20
 L20:
-  .loc 1 2 4
+  .loc 1 2 10
   call @rt_print_i64(1)
-  .loc 1 2 4
+  .loc 1 2 10
   %t2 = const_str @.L0
-  .loc 1 2 4
+  .loc 1 2 10
   call @rt_print_str(%t2)
   .loc 1 2 4
   br L30
@@ -35,13 +35,7 @@ L30:
   ret 0
 L100:
   .loc 1 4 5
-  call @rt_print_i64(2)
-  .loc 1 4 5
-  %t3 = const_str @.L0
-  .loc 1 4 5
-  call @rt_print_str(%t3)
-  .loc 1 4 5
-  br L110
+  trap
 L110:
   .loc 1 5 5
   eh.pop
@@ -52,4 +46,10 @@ exit:
   ret 0
 handler ^handler_L100(%err:Error, %tok:ResumeTok):
   eh.entry
+  .loc 1 4 11
+  call @rt_print_i64(2)
+  .loc 1 4 11
+  %t3 = const_str @.L0
+  .loc 1 4 11
+  call @rt_print_str(%t3)
 }

@@ -53,15 +53,15 @@ bool_else:
 bool_join:
   .loc 1 3 10
   %t7 = load i1, %t4
-  .loc 1 3 10
+  .loc 1 3 14
   %t8 = zext1 %t7
-  .loc 1 3 10
+  .loc 1 3 14
   %t9 = isub.ovf 0, %t8
-  .loc 1 3 4
+  .loc 1 3 10
   call @rt_print_i64(%t9)
-  .loc 1 3 4
+  .loc 1 3 10
   %t10 = const_str @.L0
-  .loc 1 3 4
+  .loc 1 3 10
   call @rt_print_str(%t10)
   .loc 1 3 4
   br exit

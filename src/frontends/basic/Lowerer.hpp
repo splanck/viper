@@ -37,6 +37,7 @@ struct ProcedureLowering;
 struct StatementLowering;
 class DiagnosticEmitter;
 class SelectCaseLowering;
+class SemanticAnalyzer;
 
 struct LogicalExprLowering;
 struct NumericExprLowering;
@@ -94,6 +95,13 @@ class Lowerer
 
     /// @brief Access the diagnostic emitter when present.
     [[nodiscard]] DiagnosticEmitter *diagnosticEmitter() const noexcept;
+
+    /// @brief Attach semantic analyzer for type information lookup during lowering.
+    /// @param analyzer Semantic analyzer providing variable type information; may be nullptr.
+    void setSemanticAnalyzer(const SemanticAnalyzer *analyzer) noexcept;
+
+    /// @brief Access the semantic analyzer when present.
+    [[nodiscard]] const SemanticAnalyzer *semanticAnalyzer() const noexcept;
 
     /// @brief Mark a symbol as storing an object reference.
     /// @param name BASIC symbol name tracked in the symbol table.
@@ -577,6 +585,7 @@ class Lowerer
     std::unique_ptr<lower::Emitter> emitter_;
 
     DiagnosticEmitter *diagnosticEmitter_{nullptr};
+    const SemanticAnalyzer *semanticAnalyzer_{nullptr};
 
     // runtime requirement tracking
     using RuntimeFeature = il::runtime::RuntimeFeature;

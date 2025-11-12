@@ -455,6 +455,8 @@ Token Lexer::next()
             return {TokenKind::Backslash, "\\", loc};
         case '^':
             return {TokenKind::Caret, "^", loc};
+        case '&':
+            return {TokenKind::Ampersand, "&", loc};
         case '=':
             return {TokenKind::Equal, "=", loc};
         case '<':

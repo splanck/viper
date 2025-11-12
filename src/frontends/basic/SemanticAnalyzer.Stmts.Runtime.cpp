@@ -25,6 +25,7 @@
 
 #include "frontends/basic/BasicDiagnosticMessages.hpp"
 #include "frontends/basic/SemanticAnalyzer.Internal.hpp"
+#include "frontends/basic/StringUtils.hpp"
 #include "frontends/basic/ast/ExprNodes.hpp"
 
 namespace il::frontends::basic::semantic_analyzer_detail
@@ -83,6 +84,33 @@ void SemanticAnalyzer::analyzeCallStmt(CallStmt &stmt)
 void SemanticAnalyzer::analyzeVarAssignment(VarExpr &v, const LetStmt &l)
 {
     RuntimeStmtContext ctx(*this);
+
+    // BUG-003: Check if this is an assignment to the function name (VB-style implicit return)
+    if (activeFunction_ && string_utils::iequals(v.name, activeFunction_->name))
+    {
+        activeFunctionNameAssigned_ = true;
+    }
+
+    // BUG-001 FIX: Evaluate RHS expression BEFORE resolving variable
+    // This allows us to infer the variable's type from the RHS
+    Type exprTy = Type::Unknown;
+    if (l.expr)
+        exprTy = visitExpr(*l.expr);
+
+    // Check if variable has no type suffix (ends with alphanumeric, not $#!%&)
+    bool hasNoSuffix = !v.name.empty() &&
+                       std::isalnum(static_cast<unsigned char>(v.name.back()));
+
+    // Check if variable already exists
+    bool isNewVariable = (varTypes_.find(v.name) == varTypes_.end());
+
+    // If new variable with no suffix and RHS is String or Bool, pre-set the type
+    if (isNewVariable && hasNoSuffix &&
+        (exprTy == Type::String || exprTy == Type::Bool))
+    {
+        varTypes_[v.name] = exprTy;
+    }
+
     resolveAndTrackSymbol(v.name, SymbolKind::Definition);
     if (ctx.isLoopVariable(v.name))
         ctx.reportLoopVariableMutation(v.name, l.loc, static_cast<uint32_t>(v.name.size()));
@@ -90,9 +118,6 @@ void SemanticAnalyzer::analyzeVarAssignment(VarExpr &v, const LetStmt &l)
     Type varTy = Type::Int;
     if (auto itType = varTypes_.find(v.name); itType != varTypes_.end())
         varTy = itType->second;
-    Type exprTy = Type::Unknown;
-    if (l.expr)
-        exprTy = visitExpr(*l.expr);
 
     if (varTy == Type::ArrayInt)
     {

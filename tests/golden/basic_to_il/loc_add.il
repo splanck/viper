@@ -15,11 +15,11 @@ entry:
   call @__mod_init$oop()
   br UL1000000000
 UL1000000000:
-  .loc 1 1 1
+  .loc 1 1 8
   call @rt_print_i64(3)
-  .loc 1 1 1
+  .loc 1 1 8
   %t0 = const_str @.L0
-  .loc 1 1 1
+  .loc 1 1 8
   call @rt_print_str(%t0)
   .loc 1 1 1
   br exit

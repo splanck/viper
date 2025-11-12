@@ -39,7 +39,7 @@ L40:
   ret 0
 L100:
   .loc 1 5 5
-  br L110
+  trap
 L110:
   .loc 1 6 5
   eh.pop
@@ -47,7 +47,7 @@ L110:
   ret 0
 L200:
   .loc 1 7 5
-  br L210
+  trap
 L210:
   .loc 1 8 5
   eh.pop
@@ -55,7 +55,7 @@ L210:
   ret 0
 L300:
   .loc 1 9 5
-  br L310
+  trap
 L310:
   .loc 1 10 5
   eh.pop
@@ -71,14 +71,10 @@ exit:
   ret 0
 handler ^handler_L100(%err:Error, %tok:ResumeTok):
   eh.entry
-  .loc 1 5 5
-  resume.same %t1
 handler ^handler_L200(%err:Error, %tok:ResumeTok):
   eh.entry
-  .loc 1 7 5
-  resume.next %t3
 handler ^handler_L300(%err:Error, %tok:ResumeTok):
   eh.entry
-  .loc 1 9 5
-  resume.label %t5, ^L400
+  .loc 1 5 5
+  resume.same %t5
 }

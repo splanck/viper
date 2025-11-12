@@ -14,32 +14,35 @@ func @main() -> i64 {
 entry:
   call @__mod_init$oop()
   %t0 = alloca 8
+  %t1 = alloca 8
+  %t2 = alloca 512
+  store i64, %t1, 0
   br L10
 L10:
   .loc 1 1 4
   store i64, %t0, 1
   .loc 1 1 22
-  %t1 = load i64, %t0
-  .loc 1 1 16
-  call @rt_print_i64(%t1)
-  .loc 1 1 16
-  %t2 = const_str @.L0
-  .loc 1 1 16
-  call @rt_print_str(%t2)
-  .loc 1 1 34
   %t3 = load i64, %t0
-  .loc 1 1 36
-  %t4 = iadd.ovf %t3, 1
-  .loc 1 1 26
-  store i64, %t0, %t4
-  .loc 1 1 48
+  .loc 1 1 22
+  call @rt_print_i64(%t3)
+  .loc 1 1 22
+  %t4 = const_str @.L0
+  .loc 1 1 22
+  call @rt_print_str(%t4)
+  .loc 1 1 34
   %t5 = load i64, %t0
-  .loc 1 1 42
-  call @rt_print_i64(%t5)
-  .loc 1 1 42
-  %t6 = const_str @.L0
-  .loc 1 1 42
-  call @rt_print_str(%t6)
+  .loc 1 1 36
+  %t6 = iadd.ovf %t5, 1
+  .loc 1 1 26
+  store i64, %t0, %t6
+  .loc 1 1 48
+  %t7 = load i64, %t0
+  .loc 1 1 48
+  call @rt_print_i64(%t7)
+  .loc 1 1 48
+  %t8 = const_str @.L0
+  .loc 1 1 48
+  call @rt_print_str(%t8)
   .loc 1 1 4
   br exit
 exit:

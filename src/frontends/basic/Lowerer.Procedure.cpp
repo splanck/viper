@@ -21,6 +21,7 @@
 #include "frontends/basic/EmitCommon.hpp"
 #include "frontends/basic/LineUtils.hpp"
 #include "frontends/basic/LoweringPipeline.hpp"
+#include "frontends/basic/SemanticAnalyzer.hpp"
 #include "frontends/basic/TypeSuffix.hpp"
 #include "frontends/basic/lower/Emitter.hpp"
 
@@ -296,11 +297,44 @@ void Lowerer::setSymbolObjectType(std::string_view name, std::string className)
     info.hasType = true;
 }
 
+/// @brief Infer variable type from semantic analyzer, then suffix, then fallback.
+/// @details BUG-001 FIX: Queries semantic analyzer for value-based type inference
+///          before falling back to suffix-based naming convention.
+/// @param lowerer Lowerer instance providing access to semantic analyzer.
+/// @param name Variable name to query.
+/// @return Best-effort type derived from semantic analysis or naming convention.
+static Type inferVariableTypeForLowering(const Lowerer &lowerer, std::string_view name)
+{
+    // Query semantic analyzer for value-based type inference
+    if (const auto *sema = lowerer.semanticAnalyzer())
+    {
+        if (auto semaType = sema->lookupVarType(std::string{name}))
+        {
+            using SemaType = SemanticAnalyzer::Type;
+            switch (*semaType)
+            {
+                case SemaType::Int:
+                    return Type::I64;
+                case SemaType::Float:
+                    return Type::F64;
+                case SemaType::String:
+                    return Type::Str;
+                case SemaType::Bool:
+                    return Type::Bool;
+                default:
+                    break;
+            }
+        }
+    }
+    // Fall back to suffix-based inference
+    return inferAstTypeFromName(name);
+}
+
 /// @brief Mark that a symbol has been referenced somewhere in the procedure.
-/// @details Lazily infers the type from the name suffix when absent, ensuring
-///          later slot allocation chooses the appropriate storage width.  Empty
-///          names are ignored because they arise from parse errors handled
-///          elsewhere.
+/// @details Lazily infers the type from semantic analysis or name suffix when
+///          absent, ensuring later slot allocation chooses the appropriate
+///          storage width.  Empty names are ignored because they arise from
+///          parse errors handled elsewhere.
 /// @param name Identifier encountered during AST traversal.
 void Lowerer::markSymbolReferenced(std::string_view name)
 {
@@ -309,7 +343,7 @@ void Lowerer::markSymbolReferenced(std::string_view name)
     auto &info = ensureSymbol(name);
     if (!info.hasType)
     {
-        info.type = inferAstTypeFromName(name);
+        info.type = inferVariableTypeForLowering(*this, name);
         info.hasType = true;
         info.isBoolean = !info.isArray && info.type == AstType::Bool;
     }
@@ -952,7 +986,20 @@ void Lowerer::lowerFunctionDecl(const FunctionDecl &decl)
     config.retType = functionRetTypeFromHint(decl.name, decl.explicitRetType);
     config.postCollect = [&]() { setSymbolType(decl.name, decl.ret); };
     config.emitEmptyBody = [&]() { emitRet(defaultRet()); };
-    config.emitFinalReturn = [&]() { emitRet(defaultRet()); };
+    config.emitFinalReturn = [&]() {
+        // BUG-003: Check if function name was assigned (VB-style implicit return)
+        if (auto storage = resolveVariableStorage(decl.name, {}))
+        {
+            // Function name was assigned, return its value
+            Value val = emitLoad(storage->slotInfo.type, storage->pointer);
+            emitRet(val);
+        }
+        else
+        {
+            // No assignment, return default value
+            emitRet(defaultRet());
+        }
+    };
 
     lowerProcedure(decl.name, decl.params, decl.body, config);
 }

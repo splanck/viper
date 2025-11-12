@@ -64,6 +64,27 @@ DiagnosticEmitter *Lowerer::diagnosticEmitter() const noexcept
     return diagnosticEmitter_;
 }
 
+/// @brief Attach semantic analyzer to provide variable type information.
+/// @details Stores the supplied @p analyzer for later use during lowering to
+///          query variable types determined during semantic analysis. This allows
+///          the lowerer to use value-based type inference instead of only
+///          suffix-based inference. Passing `nullptr` detaches the analyzer.
+/// @param analyzer Optional semantic analyzer providing type information.
+void Lowerer::setSemanticAnalyzer(const SemanticAnalyzer *analyzer) noexcept
+{
+    semanticAnalyzer_ = analyzer;
+}
+
+/// @brief Retrieve the semantic analyzer associated with the lowering pass.
+/// @details Returns the previously installed analyzer without transferring
+///          ownership.  A null result indicates that semantic type information
+///          is not available.
+/// @return Pointer to the active semantic analyzer or `nullptr`.
+const SemanticAnalyzer *Lowerer::semanticAnalyzer() const noexcept
+{
+    return semanticAnalyzer_;
+}
+
 /// @brief Coerce a BASIC I/O channel value to the 32-bit integer domain.
 /// @details Accepts either 32-bit or 64-bit integer expressions.  When a
 ///          64-bit value is supplied, it inserts a narrowing conversion into the

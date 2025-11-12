@@ -27,22 +27,22 @@ L20:
   %t2 = zext1 %t1
   .loc 1 2 4
   %t3 = isub.ovf 0, %t2
-  .loc 1 2 4
+  .loc 1 2 12
   call @rt_print_i64(%t3)
-  .loc 1 2 4
+  .loc 1 2 12
   %t4 = const_str @.L0
-  .loc 1 2 4
+  .loc 1 2 12
   call @rt_print_str(%t4)
   .loc 1 2 4
   br L30
 L30:
   .loc 1 3 10
   %t5 = load f64, %t0
-  .loc 1 3 4
+  .loc 1 3 10
   call @rt_print_f64(%t5)
-  .loc 1 3 4
+  .loc 1 3 10
   %t6 = const_str @.L0
-  .loc 1 3 4
+  .loc 1 3 10
   call @rt_print_str(%t6)
   .loc 1 3 4
   br exit

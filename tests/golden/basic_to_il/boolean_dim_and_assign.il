@@ -37,11 +37,11 @@ L40:
   %t6 = zext1 %t5
   .loc 1 4 4
   %t7 = isub.ovf 0, %t6
-  .loc 1 4 4
+  .loc 1 4 10
   call @rt_print_i64(%t7)
-  .loc 1 4 4
+  .loc 1 4 10
   %t8 = const_str @.L0
-  .loc 1 4 4
+  .loc 1 4 10
   call @rt_print_str(%t8)
   .loc 1 4 4
   br exit
@@ -53,11 +53,11 @@ if_test_0:
   .loc 1 3 7
   cbr %t3, if_then_0, if_else
 if_then_0:
-  .loc 1 3 14
+  .loc 1 3 20
   call @rt_print_i64(1)
-  .loc 1 3 14
+  .loc 1 3 20
   %t4 = const_str @.L0
-  .loc 1 3 14
+  .loc 1 3 20
   call @rt_print_str(%t4)
   .loc 1 3 4
   br if_exit

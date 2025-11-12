@@ -59,28 +59,28 @@ dim_len_fail:
   .loc 1 1 4
   trap
 dim_len_cont:
-  .loc 1 1 4
+  .loc 1 1 10
   %t4 = call @rt_arr_i32_new(%t2)
-  .loc 1 1 4
+  .loc 1 1 10
   call @rt_arr_i32_retain(%t4)
-  .loc 1 1 4
+  .loc 1 1 10
   %t5 = load ptr, %t0
-  .loc 1 1 4
+  .loc 1 1 10
   call @rt_arr_i32_release(%t5)
-  .loc 1 1 4
+  .loc 1 1 10
   store ptr, %t0, %t4
-  .loc 1 1 4
+  .loc 1 1 10
   store i64, %t1, %t2
   .loc 1 1 4
   br L20
 bc_ok0:
   .loc 1 2 10
   %t14 = call @rt_arr_i32_get(%t6, 1)
-  .loc 1 2 4
+  .loc 1 2 10
   call @rt_print_i64(%t14)
-  .loc 1 2 4
+  .loc 1 2 10
   %t15 = const_str @.L0
-  .loc 1 2 4
+  .loc 1 2 10
   call @rt_print_str(%t15)
   .loc 1 2 4
   br exit
