@@ -68,7 +68,7 @@ STATUS LEGEND:
       [X] src/frontends/basic/lower/Lower_Loops.cpp (27 instances removed)
       [X] src/frontends/basic/LowerStmt_Runtime.cpp (11 instances removed)
       [X] src/frontends/basic/LowerStmt_Control.cpp (9 instances removed)
-      [ ] src/frontends/basic/LowerExpr.cpp (14 instances)
+      [X] src/frontends/basic/LowerExpr.cpp (12 of 14 removed, 2 kept in lambdas)
       [ ] src/frontends/basic/Lower_OOP_Expr.cpp (9 instances)
       [ ] src/frontends/basic/Lower_OOP_Stmt.cpp (4 instances)
       [ ] src/frontends/basic/LowerExprNumeric.cpp (7 instances)

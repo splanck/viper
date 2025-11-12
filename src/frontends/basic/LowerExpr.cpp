@@ -17,6 +17,7 @@
 #include "frontends/basic/LowerExprBuiltin.hpp"
 #include "frontends/basic/LowerExprLogical.hpp"
 #include "frontends/basic/LowerExprNumeric.hpp"
+#include "frontends/basic/LocationScope.hpp"
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/lower/Emitter.hpp"
 #include "viper/il/Module.hpp"
@@ -46,7 +47,7 @@ namespace il::frontends::basic
 ///   instructions are tagged with @p v's source location.
 Lowerer::RVal Lowerer::lowerVarExpr(const VarExpr &v)
 {
-    curLoc = v.loc;
+    LocationScope loc(*this, v.loc);
     auto storage = resolveVariableStorage(v.name, v.loc);
     assert(storage && "variable should have resolved storage");
     Type ty = storage->slotInfo.type;
@@ -65,12 +66,11 @@ Lowerer::RVal Lowerer::lowerVarExpr(const VarExpr &v)
 /// @return Pair containing the computed upper bound and its integer type.
 Lowerer::RVal Lowerer::lowerUBoundExpr(const UBoundExpr &expr)
 {
-    curLoc = expr.loc;
+    LocationScope loc(*this, expr.loc);
     const auto *sym = findSymbol(expr.name);
     assert(sym && sym->slotId && "UBOUND requires materialized array slot");
     Value slot = Value::temp(*sym->slotId);
     Value base = emitLoad(Type(Type::Kind::Ptr), slot);
-    curLoc = expr.loc;
     Value len = emitCallRet(Type(Type::Kind::I64), "rt_arr_i32_len", {base});
     Value upper = emitBinary(Opcode::ISubOvf, Type(Type::Kind::I64), len, Value::constInt(1));
     return {upper, Type(Type::Kind::I64)};
@@ -103,6 +103,7 @@ Lowerer::RVal Lowerer::lowerBoolBranchExpr(Value cond,
                                            std::string_view elseLabelBase,
                                            std::string_view joinLabelBase)
 {
+    LocationScope location(*this, loc);
     ProcedureContext &ctx = context();
     BasicBlock *origin = ctx.current();
     BasicBlock *thenBlk = nullptr;
@@ -135,10 +136,8 @@ Lowerer::RVal Lowerer::lowerBoolBranchExpr(Value cond,
     BasicBlock *joinBlk = ctx.current();
 
     ctx.setCurrent(origin);
-    curLoc = loc;
     emitCBr(cond, thenBlk, elseBlk);
     ctx.setCurrent(joinBlk);
-    curLoc = loc;
     return {result, ilBoolTy()};
 }
 
@@ -197,9 +196,9 @@ Lowerer::RVal Lowerer::lowerUnaryExpr(const UnaryExpr &u)
     {
         case UnaryExpr::Op::LogicalNot:
         {
+            LocationScope loc(*this, u.loc);
             RVal val = lowerExpr(*u.expr);
             RVal condVal = coerceToBool(std::move(val), u.loc);
-            curLoc = u.loc;
             Value cond = condVal.value;
             RVal negated = lowerBoolBranchExpr(
                 cond,
@@ -215,7 +214,6 @@ Lowerer::RVal Lowerer::lowerUnaryExpr(const UnaryExpr &u)
                     emitStore(ilBoolTy(), slot, emitBoolConst(true));
                 });
 
-            curLoc = u.loc;
             Value logical = emitBasicLogicalI64(negated.value);
             return {logical, Type(Type::Kind::I64)};
         }
@@ -223,10 +221,10 @@ Lowerer::RVal Lowerer::lowerUnaryExpr(const UnaryExpr &u)
             return lowerExpr(*u.expr);
         case UnaryExpr::Op::Negate:
         {
+            LocationScope loc(*this, u.loc);
             RVal value = lowerExpr(*u.expr);
             if (value.type.kind == Type::Kind::I1)
                 value = coerceToI64(std::move(value), u.loc);
-            curLoc = u.loc;
             if (value.type.kind == Type::Kind::F64)
             {
                 Value neg = emitBinary(
@@ -305,19 +303,18 @@ Lowerer::RVal Lowerer::lowerBinaryExpr(const BinaryExpr &b)
 /// @return Updated value guaranteed to have `i64` type when conversion occurs.
 Lowerer::RVal Lowerer::coerceToI64(RVal v, il::support::SourceLoc loc)
 {
+    LocationScope location(*this, loc);
     switch (v.type.kind)
     {
         case Type::Kind::I64:
             return v;
 
         case Type::Kind::I1:
-            curLoc = loc;
             v.value = emitBasicLogicalI64(v.value);
             v.type = Type(Type::Kind::I64);
             return v;
 
         case Type::Kind::F64:
-            curLoc = loc;
             v.value = emitUnary(Opcode::CastFpToSiRteChk, Type(Type::Kind::I64), v.value);
             v.type = Type(Type::Kind::I64);
             return v;
@@ -342,12 +339,12 @@ Lowerer::RVal Lowerer::coerceToI64(RVal v, il::support::SourceLoc loc)
 /// @return Updated value guaranteed to have `f64` type when conversion occurs.
 Lowerer::RVal Lowerer::coerceToF64(RVal v, il::support::SourceLoc loc)
 {
+    LocationScope location(*this, loc);
     if (v.type.kind == Type::Kind::F64)
         return v;
     v = coerceToI64(std::move(v), loc);
     if (v.type.kind == Type::Kind::I64)
     {
-        curLoc = loc;
         v.value = emitUnary(Opcode::Sitofp, Type(Type::Kind::F64), v.value);
         v.type = Type(Type::Kind::F64);
     }
@@ -360,6 +357,7 @@ Lowerer::RVal Lowerer::coerceToF64(RVal v, il::support::SourceLoc loc)
 /// @return Updated value guaranteed to have `i1` type when conversion occurs.
 Lowerer::RVal Lowerer::coerceToBool(RVal v, il::support::SourceLoc loc)
 {
+    LocationScope location(*this, loc);
     if (v.type.kind == Type::Kind::I1)
         return v;
     if (v.type.kind == Type::Kind::F64 || v.type.kind == Type::Kind::I16 ||
@@ -367,7 +365,6 @@ Lowerer::RVal Lowerer::coerceToBool(RVal v, il::support::SourceLoc loc)
         v = coerceToI64(std::move(v), loc);
     if (v.type.kind != Type::Kind::I1)
     {
-        curLoc = loc;
         v.value = emitUnary(Opcode::Trunc1, ilBoolTy(), v.value);
         v.type = ilBoolTy();
     }
