@@ -490,6 +490,19 @@ class Lowerer
 
     void emitCall(const std::string &callee, const std::vector<Value> &args);
 
+    /// @brief Request runtime helper and emit call in a single operation.
+    /// @details Combines requestHelper() and emitCallRet() to reduce boilerplate in
+    ///          lowering code that needs to call runtime functions.
+    /// @param feature Runtime feature to request (ensures helper is linked).
+    /// @param callee Name of the runtime function to call.
+    /// @param returnType Return type of the runtime function.
+    /// @param args Arguments to pass to the runtime function.
+    /// @return Value representing the call result.
+    Value emitRuntimeHelper(il::runtime::RuntimeFeature feature,
+                           const std::string &callee,
+                           Type returnType,
+                           const std::vector<Value> &args);
+
     /// @brief Emit an indirect call where the callee is a value operand.
     Value emitCallIndirectRet(Type ty, Value callee, const std::vector<Value> &args);
 

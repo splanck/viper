@@ -75,7 +75,7 @@ STATUS LEGEND:
       [ ] src/frontends/basic/LowerExprBuiltin.cpp (4 instances)
 
 ### 2.2 Runtime Helper Call Consolidation
-[ ] Add emitRuntimeHelper() wrapper method to Lowerer
+[X] Add emitRuntimeHelper() wrapper method to Lowerer
     - Impact: Simplify 9+ call sites in LowerStmt_Runtime.cpp
     - Add to Lowerer.hpp:
       ```cpp

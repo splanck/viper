@@ -36,8 +36,7 @@ namespace il::frontends::basic
 void Lowerer::visit(const BeepStmt &s)
 {
     LocationScope loc(*this, s.loc);
-    requestHelper(il::runtime::RuntimeFeature::TermBell);
-    emitCallRet(Type(Type::Kind::Void), "rt_bell", {});
+    emitRuntimeHelper(il::runtime::RuntimeFeature::TermBell, "rt_bell", Type(Type::Kind::Void), {});
 }
 
 /// @brief Lower the BASIC @c CLS statement to a runtime helper call.
@@ -50,8 +49,7 @@ void Lowerer::visit(const BeepStmt &s)
 void Lowerer::visit(const ClsStmt &s)
 {
     LocationScope loc(*this, s.loc);
-    requestHelper(il::runtime::RuntimeFeature::TermCls);
-    emitCallRet(Type(Type::Kind::Void), "rt_term_cls", {});
+    emitRuntimeHelper(il::runtime::RuntimeFeature::TermCls, "rt_term_cls", Type(Type::Kind::Void), {});
 }
 
 /// @brief Lower the BASIC @c COLOR statement to the runtime helper.
@@ -75,8 +73,7 @@ void Lowerer::visit(const ColorStmt &s)
     auto emit = emitCommon(s.loc);
     Value fg32 = emit.to_iN(fg.value, 32);
     Value bg32 = emit.to_iN(bgv, 32);
-    requestHelper(il::runtime::RuntimeFeature::TermColor);
-    emitCallRet(Type(Type::Kind::Void), "rt_term_color_i32", {fg32, bg32});
+    emitRuntimeHelper(il::runtime::RuntimeFeature::TermColor, "rt_term_color_i32", Type(Type::Kind::Void), {fg32, bg32});
 }
 
 /// @brief Lower the BASIC @c LOCATE statement that positions the cursor.
@@ -89,7 +86,7 @@ void Lowerer::visit(const ColorStmt &s)
 /// @param s AST node describing the @c LOCATE statement.
 void Lowerer::visit(const LocateStmt &s)
 {
-    curLoc = s.loc;
+    LocationScope loc(*this, s.loc);
     auto row = ensureI64(lowerExpr(*s.row), s.loc);
     Value colv = Value::constInt(1);
     if (s.col)
@@ -100,8 +97,7 @@ void Lowerer::visit(const LocateStmt &s)
     auto emit = emitCommon(s.loc);
     Value row32 = emit.to_iN(row.value, 32);
     Value col32 = emit.to_iN(colv, 32);
-    requestHelper(il::runtime::RuntimeFeature::TermLocate);
-    emitCallRet(Type(Type::Kind::Void), "rt_term_locate_i32", {row32, col32});
+    emitRuntimeHelper(il::runtime::RuntimeFeature::TermLocate, "rt_term_locate_i32", Type(Type::Kind::Void), {row32, col32});
 }
 
 /// @brief Lower the BASIC @c CURSOR statement to control cursor visibility.
@@ -113,12 +109,11 @@ void Lowerer::visit(const LocateStmt &s)
 /// @param s AST node representing the @c CURSOR statement.
 void Lowerer::visit(const CursorStmt &s)
 {
-    curLoc = s.loc;
+    LocationScope loc(*this, s.loc);
     auto emit = emitCommon(s.loc);
     Value show = Value::constInt(s.visible ? 1 : 0);
     Value show32 = emit.to_iN(show, 32);
-    requestHelper(il::runtime::RuntimeFeature::TermCursor);
-    emitCallRet(Type(Type::Kind::Void), "rt_term_cursor_visible_i32", {show32});
+    emitRuntimeHelper(il::runtime::RuntimeFeature::TermCursor, "rt_term_cursor_visible_i32", Type(Type::Kind::Void), {show32});
 }
 
 /// @brief Lower the BASIC @c ALTSCREEN statement to control alternate screen buffer.
@@ -130,12 +125,11 @@ void Lowerer::visit(const CursorStmt &s)
 /// @param s AST node representing the @c ALTSCREEN statement.
 void Lowerer::visit(const AltScreenStmt &s)
 {
-    curLoc = s.loc;
+    LocationScope loc(*this, s.loc);
     auto emit = emitCommon(s.loc);
     Value enable = Value::constInt(s.enable ? 1 : 0);
     Value enable32 = emit.to_iN(enable, 32);
-    requestHelper(il::runtime::RuntimeFeature::TermAltScreen);
-    emitCallRet(Type(Type::Kind::Void), "rt_term_alt_screen_i32", {enable32});
+    emitRuntimeHelper(il::runtime::RuntimeFeature::TermAltScreen, "rt_term_alt_screen_i32", Type(Type::Kind::Void), {enable32});
 }
 
 /// @brief Lower the BASIC SLEEP statement to the runtime helper.
