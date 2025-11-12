@@ -407,17 +407,12 @@ Lowerer::RVal BuiltinExprLowering::emitErrBuiltin(Lowerer &lowerer, const Builti
     {
         // We're in a handler block, extract error code from %err parameter
         unsigned errId = current->params[0].id;
-        fprintf(stderr, "DEBUG emitErrBuiltin: errId=%u, paramName='%s'\n", errId, current->params[0].name.c_str());
 
         // Ensure the parameter name is in the function's valueNames so it serializes correctly
         if (func->valueNames.size() <= errId)
             func->valueNames.resize(errId + 1);
         if (func->valueNames[errId].empty())
             func->valueNames[errId] = current->params[0].name;
-
-        fprintf(stderr, "DEBUG emitErrBuiltin: valueNames.size()=%zu, valueNames[%u]='%s'\n",
-                func->valueNames.size(), errId,
-                errId < func->valueNames.size() ? func->valueNames[errId].c_str() : "<out of range>");
 
         Value errParam = Value::temp(errId);
 

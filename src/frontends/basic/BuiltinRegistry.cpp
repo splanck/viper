@@ -243,13 +243,8 @@ BuiltinArity getBuiltinArity(BuiltinCallExpr::Builtin b)
 {
     const auto idx = static_cast<std::size_t>(b);
     if (idx >= kBuiltinCount)
-    {
-        fprintf(stderr, "DEBUG: getBuiltinArity - index %zu out of range (max %zu)\n", idx, kBuiltinCount);
         return BuiltinArity{0, 0};
-    }
     const auto &desc = kBuiltinDescriptors[idx];
-    fprintf(stderr, "DEBUG: getBuiltinArity for builtin %zu (%s): minArgs=%u, maxArgs=%u\n",
-            idx, desc.name, desc.arity.minArgs, desc.arity.maxArgs);
     return BuiltinArity{desc.arity.minArgs, desc.arity.maxArgs};
 }
 
