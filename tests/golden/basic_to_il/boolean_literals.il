@@ -53,47 +53,35 @@ L30:
 L40:
   .loc 1 4 10
   %t10 = load i1, %t0
-  .loc 1 4 15
-  %t11 = trunc1 1
   .loc 1 4 12
-  %t12 = zext1 %t10
+  %t11 = zext1 %t10
   .loc 1 4 12
-  %t13 = isub.ovf 0, %t12
+  %t12 = isub.ovf 0, %t11
   .loc 1 4 12
-  %t14 = zext1 %t11
+  %t13 = or %t12, -1
   .loc 1 4 12
-  %t15 = isub.ovf 0, %t14
+  call @rt_print_i64(%t13)
   .loc 1 4 12
-  %t16 = or %t13, %t15
+  %t14 = const_str @.L0
   .loc 1 4 12
-  call @rt_print_i64(%t16)
-  .loc 1 4 12
-  %t17 = const_str @.L0
-  .loc 1 4 12
-  call @rt_print_str(%t17)
+  call @rt_print_str(%t14)
   .loc 1 4 4
   br L50
 L50:
-  .loc 1 5 10
-  %t18 = trunc1 0
   .loc 1 5 20
-  %t19 = load i1, %t0
+  %t15 = load i1, %t0
   .loc 1 5 16
-  %t20 = zext1 %t18
+  %t16 = zext1 %t15
   .loc 1 5 16
-  %t21 = isub.ovf 0, %t20
+  %t17 = isub.ovf 0, %t16
   .loc 1 5 16
-  %t22 = zext1 %t19
+  %t18 = and 0, %t17
   .loc 1 5 16
-  %t23 = isub.ovf 0, %t22
+  call @rt_print_i64(%t18)
   .loc 1 5 16
-  %t24 = and %t21, %t23
+  %t19 = const_str @.L0
   .loc 1 5 16
-  call @rt_print_i64(%t24)
-  .loc 1 5 16
-  %t25 = const_str @.L0
-  .loc 1 5 16
-  call @rt_print_str(%t25)
+  call @rt_print_str(%t19)
   .loc 1 5 4
   br exit
 exit:

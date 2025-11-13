@@ -83,7 +83,7 @@ SemanticAnalyzer::Type analyzeUnaryExpr(SemanticAnalyzer &analyzer, const UnaryE
     switch (expr.op)
     {
         case UnaryExpr::Op::LogicalNot:
-            // Classic BASIC: NOT accepts INTEGER or BOOLEAN (which is an INT alias)
+            // NOT accepts BOOLEAN or INTEGER
             if (operandType != Type::Unknown && operandType != Type::Bool && operandType != Type::Int)
             {
                 std::ostringstream oss;
@@ -95,8 +95,8 @@ SemanticAnalyzer::Type analyzeUnaryExpr(SemanticAnalyzer &analyzer, const UnaryE
                                  3,
                                  oss.str());
             }
-            // Classic BASIC: NOT returns INTEGER (BOOLEAN is an INT alias)
-            return Type::Int;
+            // NOT returns BOOLEAN when applied to BOOLEAN, INT otherwise
+            return (operandType == Type::Bool) ? Type::Bool : Type::Int;
 
         case UnaryExpr::Op::Plus:
         case UnaryExpr::Op::Negate:

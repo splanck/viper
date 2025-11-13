@@ -174,14 +174,13 @@ Type integerResult(Type, Type) noexcept
 
 /// @brief Compute the result type for boolean-producing operations.
 ///
-/// Comparisons and logical operations evaluate to integer results in classic
-/// BASIC (TRUE=-1, FALSE=0). The validator component ensures operands meet
-/// the requirements.
+/// Comparisons and logical operations evaluate to BOOLEAN results.
+/// The validator component ensures operands meet the requirements.
 ///
-/// @return Always @c Type::Int (BOOLEAN is an alias for INTEGER in classic BASIC).
+/// @return Always @c Type::Bool.
 Type booleanResult(Type, Type) noexcept
 {
-    return Type::Int;
+    return Type::Bool;
 }
 
 /// @brief Check whether the RHS of a binary expression is a literal zero value.
