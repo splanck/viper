@@ -564,8 +564,25 @@ const Lowerer::ProcedureSignature *Lowerer::findProcSignature(const std::string 
 {
     auto it = procSignatures.find(name);
     if (it == procSignatures.end())
+    {
+        auto aliasIt = procNameAliases.find(name);
+        if (aliasIt != procNameAliases.end())
+        {
+            auto it2 = procSignatures.find(aliasIt->second);
+            if (it2 != procSignatures.end())
+                return &it2->second;
+        }
         return nullptr;
+    }
     return &it->second;
+}
+
+std::string Lowerer::resolveCalleeName(const std::string &name) const
+{
+    auto it = procNameAliases.find(name);
+    if (it != procNameAliases.end())
+        return it->second;
+    return name;
 }
 
 /// @brief Construct procedure-lowering helpers bound to a parent Lowerer.
@@ -581,6 +598,7 @@ ProcedureLowering::ProcedureLowering(Lowerer &lowerer) : lowerer(lowerer) {}
 void ProcedureLowering::collectProcedureSignatures(const Program &prog)
 {
     lowerer.procSignatures.clear();
+    lowerer.procNameAliases.clear();
     for (const auto &decl : prog.procs)
     {
         if (auto *fn = as<const FunctionDecl>(*decl))
@@ -594,7 +612,10 @@ void ProcedureLowering::collectProcedureSignatures(const Program &prog)
                                                : coreTypeForAstType(p.type);
                 sig.paramTypes.push_back(ty);
             }
-            lowerer.procSignatures.emplace(fn->name, std::move(sig));
+            const std::string key = fn->qualifiedName.empty() ? fn->name : fn->qualifiedName;
+            lowerer.procSignatures.emplace(key, std::move(sig));
+            if (!fn->qualifiedName.empty())
+                lowerer.procNameAliases.emplace(fn->name, fn->qualifiedName);
         }
         else if (auto *sub = as<const SubDecl>(*decl))
         {
@@ -607,9 +628,70 @@ void ProcedureLowering::collectProcedureSignatures(const Program &prog)
                                                : coreTypeForAstType(p.type);
                 sig.paramTypes.push_back(ty);
             }
-            lowerer.procSignatures.emplace(sub->name, std::move(sig));
+            const std::string key = sub->qualifiedName.empty() ? sub->name : sub->qualifiedName;
+            lowerer.procSignatures.emplace(key, std::move(sig));
+            if (!sub->qualifiedName.empty())
+                lowerer.procNameAliases.emplace(sub->name, sub->qualifiedName);
         }
     }
+
+    // Also scan namespace blocks in main for nested procedures.
+    std::function<void(const std::vector<StmtPtr> &)> scan;
+    scan = [&](const std::vector<StmtPtr> &stmts)
+    {
+        for (const auto &stmtPtr : stmts)
+        {
+            if (!stmtPtr)
+                continue;
+            switch (stmtPtr->stmtKind())
+            {
+                case Stmt::Kind::NamespaceDecl:
+                    scan(static_cast<const NamespaceDecl &>(*stmtPtr).body);
+                    break;
+                case Stmt::Kind::FunctionDecl:
+                {
+                    const auto &fn = static_cast<const FunctionDecl &>(*stmtPtr);
+                    Lowerer::ProcedureSignature sig;
+                    sig.retType = lowerer.functionRetTypeFromHint(fn.name, fn.explicitRetType);
+                    sig.paramTypes.reserve(fn.params.size());
+                    for (const auto &p : fn.params)
+                    {
+                        il::core::Type ty = p.is_array ? il::core::Type(il::core::Type::Kind::Ptr)
+                                                       : coreTypeForAstType(p.type);
+                        sig.paramTypes.push_back(ty);
+                    }
+                    if (!fn.qualifiedName.empty())
+                    {
+                        lowerer.procSignatures.emplace(fn.qualifiedName, std::move(sig));
+                        lowerer.procNameAliases.emplace(fn.name, fn.qualifiedName);
+                    }
+                    break;
+                }
+                case Stmt::Kind::SubDecl:
+                {
+                    const auto &sub = static_cast<const SubDecl &>(*stmtPtr);
+                    Lowerer::ProcedureSignature sig;
+                    sig.retType = il::core::Type(il::core::Type::Kind::Void);
+                    sig.paramTypes.reserve(sub.params.size());
+                    for (const auto &p : sub.params)
+                    {
+                        il::core::Type ty = p.is_array ? il::core::Type(il::core::Type::Kind::Ptr)
+                                                       : coreTypeForAstType(p.type);
+                        sig.paramTypes.push_back(ty);
+                    }
+                    if (!sub.qualifiedName.empty())
+                    {
+                        lowerer.procSignatures.emplace(sub.qualifiedName, std::move(sig));
+                        lowerer.procNameAliases.emplace(sub.name, sub.qualifiedName);
+                    }
+                    break;
+                }
+                default:
+                    break;
+            }
+        }
+    };
+    scan(prog.main);
 }
 
 /// @brief Discover variable usage across a list of statements.
@@ -1044,7 +1126,8 @@ void Lowerer::lowerFunctionDecl(const FunctionDecl &decl)
         }
     };
 
-    lowerProcedure(decl.name, decl.params, decl.body, config);
+    const std::string ilName = decl.qualifiedName.empty() ? decl.name : decl.qualifiedName;
+    lowerProcedure(ilName, decl.params, decl.body, config);
 }
 
 /// @brief Lower a BASIC SUB declaration into IL.
@@ -1059,7 +1142,8 @@ void Lowerer::lowerSubDecl(const SubDecl &decl)
     config.emitEmptyBody = [&]() { emitRetVoid(); };
     config.emitFinalReturn = [&]() { emitRetVoid(); };
 
-    lowerProcedure(decl.name, decl.params, decl.body, config);
+    const std::string ilName = decl.qualifiedName.empty() ? decl.name : decl.qualifiedName;
+    lowerProcedure(ilName, decl.params, decl.body, config);
 }
 
 /// @brief Clear all procedure-specific lowering state.

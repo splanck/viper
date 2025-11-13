@@ -245,6 +245,13 @@ function(viper_add_basic_main_tests)
     target_link_libraries(test_frontends_basic_semantic_calls PRIVATE ${VIPER_BASIC_LIBS})
     viper_add_ctest(test_frontends_basic_semantic_calls test_frontends_basic_semantic_calls)
 
+    # Case-insensitive namespace/proc resolution tests
+    if (NOT TARGET test_frontends_basic_semantic_case_insensitive)
+        viper_add_test(test_frontends_basic_semantic_case_insensitive ${VIPER_TESTS_DIR}/frontends/basic/SemanticAnalyzerCaseInsensitiveTests.cpp)
+        target_link_libraries(test_frontends_basic_semantic_case_insensitive PRIVATE ${VIPER_BASIC_LIBS})
+        viper_add_ctest(test_frontends_basic_semantic_case_insensitive test_frontends_basic_semantic_case_insensitive)
+    endif ()
+
     viper_add_test(
             test_frontends_basic_builtin_registry
             ${VIPER_TESTS_DIR}/frontends/basic/BuiltinRegistryTests.cpp)
@@ -1052,5 +1059,64 @@ function(viper_add_basic_integration_tests)
             -DILC=${_VIPER_BASIC_ILC}
             -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/basic/select_case_double_else.bas
             "-DEXPECT=${EXPECT_SELECT_CASE_DOUBLE_ELSE}"
+            -P ${_VIPER_GOLDEN_ERRORS_DIR}/check_error.cmake)
+endfunction()
+
+function(viper_add_basic_namespace_tests)
+    if (TEST basic_ns_t01_flatten)
+        return()
+    endif ()
+
+    set(_VIPER_BASIC_ILC $<TARGET_FILE:ilc>)
+    set(_VIPER_BASIC_NS_DIR ${VIPER_TESTS_DIR}/basic/namespaces)
+    set(_VIPER_BASIC_SEMANTICS_DIR ${VIPER_TESTS_DIR}/basic/semantics)
+    set(_VIPER_GOLDEN_ERRORS_DIR ${VIPER_TESTS_DIR}/golden/basic_errors)
+
+    # t01: Flattened namespace call
+    viper_add_ctest(basic_ns_t01_flatten
+            ${CMAKE_COMMAND}
+            -DILC=${_VIPER_BASIC_ILC}
+            -DBAS_FILE=${_VIPER_BASIC_NS_DIR}/t01_flatten.bas
+            -DEXPECT_FILE=${_VIPER_BASIC_NS_DIR}/t01_flatten.expect
+            -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_expect.cmake)
+
+    # t02: Nested namespace call
+    viper_add_ctest(basic_ns_t02_nested
+            ${CMAKE_COMMAND}
+            -DILC=${_VIPER_BASIC_ILC}
+            -DBAS_FILE=${_VIPER_BASIC_NS_DIR}/t02_nested.bas
+            -DEXPECT_FILE=${_VIPER_BASIC_NS_DIR}/t02_nested.expect
+            -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_expect.cmake)
+
+    # t03: Parent-walk resolution within nested namespace
+    viper_add_ctest(basic_ns_t03_parent_walk
+            ${CMAKE_COMMAND}
+            -DILC=${_VIPER_BASIC_ILC}
+            -DBAS_FILE=${_VIPER_BASIC_NS_DIR}/t03_parent_walk.bas
+            -DEXPECT_FILE=${_VIPER_BASIC_NS_DIR}/t03_parent_walk.expect
+            -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_expect.cmake)
+
+    # t04_1: Cross-file defines only (no output)
+    viper_add_ctest(basic_ns_t04_cross_file_1
+            ${CMAKE_COMMAND}
+            -DILC=${_VIPER_BASIC_ILC}
+            -DBAS_FILE=${_VIPER_BASIC_NS_DIR}/t04_cross_file_1.bas
+            -DEXPECT_FILE=${_VIPER_BASIC_NS_DIR}/t04_cross_file_1.expect
+            -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_expect.cmake)
+
+    # t04_2: Cross-file usage without imports should fail with unknown procedure 'lib.ping'
+    viper_add_ctest(basic_ns_t04_cross_file_2_fail
+            ${CMAKE_COMMAND}
+            -DILC=${_VIPER_BASIC_ILC}
+            -DBAS_FILE=${_VIPER_BASIC_NS_DIR}/t04_cross_file_2.bas
+            "-DEXPECT=unknown procedure 'lib\\.ping'"
+            -P ${_VIPER_GOLDEN_ERRORS_DIR}/check_error.cmake)
+
+    # t05: Unqualified unknown with attempted candidates listed
+    viper_add_ctest(basic_ns_t05_unknown_parent_walk
+            ${CMAKE_COMMAND}
+            -DILC=${_VIPER_BASIC_ILC}
+            -DBAS_FILE=${_VIPER_BASIC_NS_DIR}/t05_unknown_parent_walk.bas
+            "-DEXPECT=unknown procedure 'f' \(tried: a\\.b\\.f, a\\.f, f\)"
             -P ${_VIPER_GOLDEN_ERRORS_DIR}/check_error.cmake)
 endfunction()

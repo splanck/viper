@@ -189,4 +189,17 @@ size_t DiagnosticEmitter::warningCount() const
     return de_.warningCount();
 }
 
+/// @brief Format a path:line string for a source location.
+/// @details Uses SourceManager to convert file_id into a path and appends the line.
+///          Returns empty string when path or line are unavailable.
+std::string DiagnosticEmitter::formatFileLine(il::support::SourceLoc loc) const
+{
+    if (!loc.hasFile() || !loc.hasLine())
+        return {};
+    std::string path = std::string(sm_.getPath(loc.file_id));
+    if (path.empty())
+        return {};
+    return path + ":" + std::to_string(loc.line);
+}
+
 } // namespace il::frontends::basic

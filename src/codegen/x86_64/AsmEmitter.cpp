@@ -20,6 +20,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "AsmEmitter.hpp"
+#include "common/Mangle.hpp"
 #include "asmfmt/Format.hpp"
 
 #include <algorithm>
@@ -705,8 +706,9 @@ void AsmEmitter::emitFunction(std::ostream &os,
                               const TargetInfo &target) const
 {
     os << ".text\n";
-    os << ".globl " << func.name << "\n";
-    os << func.name << ":\n";
+    const std::string linkName = viper::common::MangleLink(func.name);
+    os << ".globl " << linkName << "\n";
+    os << linkName << ":\n";
 
     for (std::size_t i = 0; i < func.blocks.size(); ++i)
     {
@@ -1242,7 +1244,9 @@ std::string AsmEmitter::formatLeaSource(const Operand &operand, const TargetInfo
 std::string AsmEmitter::formatCallTarget(const Operand &operand, const TargetInfo &target)
 {
     return std::visit(
-        Overload{[&](const OpLabel &label) { return asmfmt::format_label(label.name); },
+        Overload{[&](const OpLabel &label) {
+                     return asmfmt::format_label(viper::common::MangleLink(label.name));
+                 },
                  [&](const OpReg &reg) { return std::string{"*"} + formatReg(reg, target); },
                  [&](const OpMem &mem) { return std::string{"*"} + formatMem(mem, target); },
                  [&](const OpImm &imm) { return formatImm(imm); },

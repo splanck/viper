@@ -44,6 +44,14 @@ struct FunctionDecl : Stmt
     /// Function name including suffix.
     Identifier name;
 
+    /// Qualified namespace path segments for this procedure.
+    /// Example: for A.B.C.Foo, path = {"A","B","C"}.
+    std::vector<std::string> namespacePath;
+
+    /// Canonical, fully-qualified name for this procedure (dot-joined).
+    /// Example: "a.b.c.foo" (lowercased for case-insensitive language).
+    std::string qualifiedName;
+
     /// Return type derived from name suffix.
     Type ret{Type::I64};
 
@@ -74,6 +82,14 @@ struct SubDecl : Stmt
 
     /// Subroutine name including suffix.
     Identifier name;
+
+    /// Qualified namespace path segments for this procedure.
+    /// Example: for A.B.C.Bar, path = {"A","B","C"}.
+    std::vector<std::string> namespacePath;
+
+    /// Canonical, fully-qualified name for this procedure (dot-joined).
+    /// Example: "a.b.c.bar" (lowercased for case-insensitive language).
+    std::string qualifiedName;
 
     /// Ordered parameter list.
     std::vector<Param> params;
@@ -178,6 +194,14 @@ struct ClassDecl : Stmt
 
     /// Class name.
     std::string name;
+
+    /// Qualified namespace path segments for this type.
+    /// Example: for A.B.C.Point, path = {"A","B","C"}.
+    std::vector<std::string> namespacePath;
+
+    /// Canonical, fully-qualified name for this type (dot-joined).
+    /// Example: "a.b.c.point" (lowercased for case-insensitive language).
+    std::string qualifiedName;
 
     /// Optional base class name (bare or qualified). Resolution happens in semantic analysis.
     std::optional<std::string> baseName;

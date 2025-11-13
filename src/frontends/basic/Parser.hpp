@@ -538,6 +538,10 @@ class Parser
     /// @return Newly allocated expression node.
     ExprPtr parseNewExpression();
 
+    /// @brief Parse a dotted qualified identifier into segments.
+    /// @return Pair of segments and starting SourceLoc; empty segments on failure.
+    std::pair<std::vector<std::string>, il::support::SourceLoc> parseQualifiedIdentSegments();
+
     /// @brief Parse LBOUND/UBOUND intrinsics.
     /// @param keyword Token identifying which bound to read.
     /// @return Parsed intrinsic expression node.

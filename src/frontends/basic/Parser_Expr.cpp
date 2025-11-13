@@ -458,7 +458,49 @@ ExprPtr Parser::parsePrimary()
     }
 
     if (at(TokenKind::Identifier))
+    {
+        // Try to parse a qualified identifier followed by a call.
+        // Save stream state to backtrack on non-call.
+        size_t saveIndex = 0;
+        if (!tokens_.empty())
+            saveIndex = 0; // token buffer owns full stream; noop marker
+        auto [segs, startLoc] = parseQualifiedIdentSegments();
+        if (!segs.empty() && at(TokenKind::LParen))
+        {
+            // Parse argument list
+            consume(); // '('
+            std::vector<ExprPtr> args;
+            if (!at(TokenKind::RParen))
+            {
+                while (true)
+                {
+                    args.push_back(parseExpression());
+                    if (!at(TokenKind::Comma))
+                        break;
+                    consume();
+                }
+            }
+            expect(TokenKind::RParen);
+
+            auto call = std::make_unique<CallExpr>();
+            call->loc = startLoc;
+            call->calleeQualified = segs;
+            // Keep callee joined for compatibility
+            std::string joined;
+            for (size_t i = 0; i < segs.size(); ++i)
+            {
+                if (i)
+                    joined.push_back('.');
+                joined += segs[i];
+            }
+            call->callee = std::move(joined);
+            call->args = std::move(args);
+            return call;
+        }
+
+        // Not a qualified call; fall back to array/var handling.
         return parseArrayOrVar();
+    }
 
     if (at(TokenKind::LParen))
     {
@@ -479,9 +521,28 @@ ExprPtr Parser::parseNewExpression()
     consume();
 
     std::string className;
-    Token classTok = expect(TokenKind::Identifier);
-    if (classTok.kind == TokenKind::Identifier)
-        className = classTok.lexeme;
+    std::vector<std::string> qual;
+    if (at(TokenKind::Identifier))
+    {
+        auto [segs, start] = parseQualifiedIdentSegments();
+        (void)start;
+        if (!segs.empty())
+        {
+            qual = std::move(segs);
+            for (size_t i = 0; i < qual.size(); ++i)
+            {
+                if (i)
+                    className.push_back('.');
+                className += qual[i];
+            }
+        }
+        else
+        {
+            Token classTok = expect(TokenKind::Identifier);
+            if (classTok.kind == TokenKind::Identifier)
+                className = classTok.lexeme;
+        }
+    }
 
     expect(TokenKind::LParen);
     std::vector<ExprPtr> args;
@@ -500,8 +561,30 @@ ExprPtr Parser::parseNewExpression()
     auto expr = std::make_unique<NewExpr>();
     expr->loc = loc;
     expr->className = std::move(className);
+    expr->qualifiedType = std::move(qual);
     expr->args = std::move(args);
     return expr;
+}
+
+std::pair<std::vector<std::string>, il::support::SourceLoc> Parser::parseQualifiedIdentSegments()
+{
+    std::vector<std::string> segs;
+    il::support::SourceLoc startLoc{};
+    if (!at(TokenKind::Identifier))
+        return {segs, startLoc};
+    Token first = peek();
+    startLoc = first.loc;
+    consume();
+    segs.push_back(first.lexeme);
+    while (at(TokenKind::Dot))
+    {
+        consume();
+        Token ident = expect(TokenKind::Identifier);
+        if (ident.kind != TokenKind::Identifier)
+            break;
+        segs.push_back(ident.lexeme);
+    }
+    return {segs, startLoc};
 }
 
 /// @brief Parse LBOUND/UBOUND intrinsic expressions.

@@ -204,7 +204,19 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
     /// @param expr Call expression node from the BASIC AST.
     void visit(const CallExpr &expr) override
     {
-        const auto *signature = lowerer_.findProcSignature(expr.callee);
+        // Resolve callee (supports qualified call syntax)
+        std::string calleeResolved;
+        if (!expr.calleeQualified.empty())
+        {
+            for (size_t i = 0; i < expr.calleeQualified.size(); ++i)
+            {
+                if (i)
+                    calleeResolved.push_back('.');
+                calleeResolved += expr.calleeQualified[i];
+            }
+        }
+        const std::string &calleeKey = calleeResolved.empty() ? expr.callee : calleeResolved;
+        const auto *signature = lowerer_.findProcSignature(calleeKey);
         std::vector<IlValue> args;
         args.reserve(expr.args.size());
         for (size_t i = 0; i < expr.args.size(); ++i)
@@ -225,14 +237,15 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
             args.push_back(arg.value);
         }
         lowerer_.curLoc = expr.loc;
+        const std::string calleeName = lowerer_.resolveCalleeName(calleeKey);
         if (signature && signature->retType.kind != IlType::Kind::Void)
         {
-            IlValue res = lowerer_.emitCallRet(signature->retType, expr.callee, args);
+            IlValue res = lowerer_.emitCallRet(signature->retType, calleeName, args);
             result_ = Lowerer::RVal{res, signature->retType};
         }
         else
         {
-            lowerer_.emitCall(expr.callee, args);
+            lowerer_.emitCall(calleeName, args);
             result_ = Lowerer::RVal{IlValue::constInt(0), IlType(IlType::Kind::I64)};
         }
     }

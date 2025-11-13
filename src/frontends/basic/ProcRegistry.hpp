@@ -45,6 +45,12 @@ class ProcRegistry
 
     void clear();
 
+    struct ProcEntry
+    {
+        const void *node{nullptr};
+        il::support::SourceLoc loc{};
+    };
+
     void registerProc(const FunctionDecl &f);
 
     void registerProc(const SubDecl &s);
@@ -52,6 +58,10 @@ class ProcRegistry
     const ProcTable &procs() const;
 
     const ProcSignature *lookup(const std::string &name) const;
+
+    // P1.3 API additions
+    void AddProc(const FunctionDecl *fn, il::support::SourceLoc loc);
+    const ProcEntry *LookupExact(std::string_view qualified) const;
 
   private:
     struct ProcDescriptor
@@ -70,6 +80,7 @@ class ProcRegistry
 
     SemanticDiagnostics &de;
     ProcTable procs_;
+    std::unordered_map<std::string, ProcEntry> byQualified_;
 };
 
 } // namespace il::frontends::basic

@@ -25,6 +25,8 @@
 ///          diagnostics for CALL statements.
 
 #include "frontends/basic/SemanticAnalyzer.Internal.hpp"
+#include "frontends/basic/Diag.hpp"
+#include "frontends/basic/IdentifierUtil.hpp"
 
 #include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/Semantic_OOP.hpp"
@@ -365,6 +367,36 @@ void SemanticAnalyzer::analyze(const Program &prog)
                 procReg_.registerProc(*s);
         }
 
+    // Also register procedures declared inside namespace blocks using their
+    // fully-qualified names (assigned by CollectProcedures).
+    std::function<void(const std::vector<StmtPtr> &)> scan;
+    scan = [&](const std::vector<StmtPtr> &stmts)
+    {
+        for (const auto &stmtPtr : stmts)
+        {
+            if (!stmtPtr)
+                continue;
+            switch (stmtPtr->stmtKind())
+            {
+                case Stmt::Kind::NamespaceDecl:
+                {
+                    const auto &ns = static_cast<const NamespaceDecl &>(*stmtPtr);
+                    scan(ns.body);
+                    break;
+                }
+                case Stmt::Kind::FunctionDecl:
+                    procReg_.registerProc(static_cast<const FunctionDecl &>(*stmtPtr));
+                    break;
+                case Stmt::Kind::SubDecl:
+                    procReg_.registerProc(static_cast<const SubDecl &>(*stmtPtr));
+                    break;
+                default:
+                    break;
+            }
+        }
+    };
+    scan(prog.main);
+
     oopIndex_.clear();
     buildOopIndex(prog, oopIndex_, &de.emitter());
 
@@ -403,13 +435,104 @@ void SemanticAnalyzer::analyze(const Program &prog)
 const ProcSignature *SemanticAnalyzer::resolveCallee(const CallExpr &c,
                                                      ProcSignature::Kind expectedKind)
 {
-    const ProcSignature *sig = procReg_.lookup(c.callee);
+    auto stripSuffix = [](std::string_view name) -> std::string_view
+    {
+        if (name.empty())
+            return name;
+        char last = name.back();
+        switch (last)
+        {
+            case '$':
+            case '#':
+            case '!':
+            case '&':
+            case '%':
+                return name.substr(0, name.size() - 1);
+            default:
+                return name;
+        }
+    };
+
+    // Build candidate list.
+    std::vector<std::string> attempts;
+    const ProcSignature *sig = nullptr;
+
+    if (!c.calleeQualified.empty())
+    {
+        // Canonicalize each segment and strip type suffix from the final segment.
+        std::vector<std::string> canonSegs;
+        canonSegs.reserve(c.calleeQualified.size());
+        for (size_t i = 0; i < c.calleeQualified.size(); ++i)
+        {
+            std::string seg = c.calleeQualified[i];
+            if (i + 1 == c.calleeQualified.size())
+            {
+                // Strip BASIC type suffix.
+                if (!seg.empty())
+                {
+                    char last = seg.back();
+                    if (last == '$' || last == '#' || last == '!' || last == '&' || last == '%')
+                        seg.pop_back();
+                }
+            }
+            std::string cseg = CanonicalizeIdent(seg);
+            if (cseg.empty() && !seg.empty())
+            {
+                canonSegs.clear();
+                break; // signal failure to canonicalize
+            }
+            canonSegs.emplace_back(std::move(cseg));
+        }
+        std::string q;
+        if (!canonSegs.empty())
+            q = JoinQualified(canonSegs);
+        if (q.empty())
+        {
+            q = c.callee; // fallback to original text when canonicalization fails
+        }
+        attempts.push_back(q);
+        sig = procReg_.lookup(q);
+    }
+    else
+    {
+        // Parent-walk resolution based on current namespace stack.
+        std::vector<std::string> prefixCanon;
+        prefixCanon.reserve(nsStack_.size());
+        for (const auto &seg : nsStack_)
+        {
+            std::string canon = CanonicalizeIdent(seg);
+            prefixCanon.push_back(canon.empty() ? seg : canon);
+        }
+        std::string ident = std::string{stripSuffix(c.callee)};
+        ident = CanonicalizeIdent(ident);
+        // Try from deepest to global
+        for (std::size_t n = prefixCanon.size(); n > 0; --n)
+        {
+            std::vector<std::string> parts(prefixCanon.begin(), prefixCanon.begin() + static_cast<std::ptrdiff_t>(n));
+            parts.push_back(ident);
+            std::string q = JoinQualified(parts);
+            attempts.push_back(q);
+            if ((sig = procReg_.lookup(q)))
+                break;
+        }
+        if (!sig)
+        {
+            // Finally try just the unqualified ident
+            attempts.push_back(ident);
+            sig = procReg_.lookup(ident);
+        }
+    }
     if (!sig)
     {
-        de.emit(diag::BasicDiag::UnknownProcedure,
-                c.loc,
-                static_cast<uint32_t>(c.callee.size()),
-                std::initializer_list<diag::Replacement>{diag::Replacement{"name", c.callee}});
+        if (!c.calleeQualified.empty())
+        {
+            std::string q = CanonicalizeQualified(c.calleeQualified);
+            diagx::ErrorUnknownProcQualified(de.emitter(), c.loc, q.empty() ? c.callee : q);
+        }
+        else
+        {
+            diagx::ErrorUnknownProc(de.emitter(), c.loc, c.callee, attempts);
+        }
         return nullptr;
     }
     if (sig->kind != expectedKind)

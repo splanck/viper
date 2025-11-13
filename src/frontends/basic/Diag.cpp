@@ -1,0 +1,77 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/frontends/basic/Diag.cpp
+// Purpose: Implement centralized diagnostics helpers for BASIC frontend.
+//
+//===----------------------------------------------------------------------===//
+
+#include "frontends/basic/Diag.hpp"
+#include "frontends/basic/IdentifierUtil.hpp"
+
+namespace il::frontends::basic::diagx
+{
+
+void ErrorDuplicateProc(DiagnosticEmitter &emitter,
+                        std::string_view qname,
+                        il::support::SourceLoc first,
+                        il::support::SourceLoc second)
+{
+    // Compose single actionable message including both definition locations.
+    std::string whereFirst = emitter.formatFileLine(first);
+    std::string whereSecond = emitter.formatFileLine(second);
+    std::string msg = std::string("duplicate procedure '") + std::string(qname) +
+                      "' first defined at " + (whereFirst.empty() ? "?" : whereFirst) +
+                      ", again at " + (whereSecond.empty() ? "?" : whereSecond);
+    emitter.emit(il::support::Severity::Error,
+                 "B1004",
+                 second,
+                 static_cast<uint32_t>(qname.size()),
+                 std::move(msg));
+}
+
+void ErrorUnknownProc(DiagnosticEmitter &emitter,
+                      il::support::SourceLoc loc,
+                      std::string_view ident,
+                      const std::vector<std::string> &tried)
+{
+    // Canonicalize head identifier if possible to maintain consistency.
+    std::string head = CanonicalizeIdent(ident);
+    if (head.empty())
+        head.assign(ident.begin(), ident.end());
+
+    std::string msg = std::string("unknown procedure '") + head + "'";
+    if (!tried.empty())
+    {
+        msg += " (tried: ";
+        for (std::size_t i = 0; i < tried.size(); ++i)
+        {
+            if (i)
+                msg += ", ";
+            msg += tried[i];
+        }
+        msg += ')';
+    }
+    emitter.emit(il::support::Severity::Error,
+                 "B1006",
+                 loc,
+                 static_cast<uint32_t>(head.size() > 0 ? head.size() : ident.size()),
+                 std::move(msg));
+}
+
+void ErrorUnknownProcQualified(DiagnosticEmitter &emitter,
+                               il::support::SourceLoc loc,
+                               std::string_view qname)
+{
+    emitter.emit(il::support::Severity::Error,
+                 "B1006",
+                 loc,
+                 static_cast<uint32_t>(qname.size()),
+                 std::string("unknown procedure '") + std::string(qname) + "'");
+}
+
+} // namespace il::frontends::basic::diagx

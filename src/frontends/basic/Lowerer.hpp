@@ -576,6 +576,7 @@ class Lowerer
     size_t nextStringId{0};
     size_t nextFallbackBlockId{0};
     std::unordered_map<std::string, ProcedureSignature> procSignatures;
+    std::unordered_map<std::string, std::string> procNameAliases;
 
     std::unordered_map<const Stmt *, int> stmtVirtualLines_;
     int synthLineBase_{-1000000000};
@@ -798,6 +799,9 @@ class Lowerer
     /// @brief Lookup a cached procedure signature by BASIC name.
     /// @return Pointer to the signature when present, nullptr otherwise.
     const ProcedureSignature *findProcSignature(const std::string &name) const;
+
+    /// @brief Resolve the emitted callee name to a qualified form when known.
+    [[nodiscard]] std::string resolveCalleeName(const std::string &name) const;
 
     /// @brief Lookup the AST return type recorded for a class method.
     std::optional<::il::frontends::basic::Type> findMethodReturnType(

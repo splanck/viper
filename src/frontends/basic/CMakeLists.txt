@@ -118,6 +118,7 @@ target_sources(fe_basic PRIVATE
         SemanticAnalyzer.Exprs.cpp
         SemanticAnalyzer.Builtins.cpp
         ScopeTracker.cpp
+        passes/CollectProcs.cpp
         constfold/Dispatch.cpp
         constfold/FoldArith.cpp
         constfold/FoldLogical.cpp
@@ -126,6 +127,7 @@ target_sources(fe_basic PRIVATE
         constfold/FoldCasts.cpp
         ConstFolder.cpp
         Intrinsics.cpp
+        Diag.cpp
         DiagnosticEmitter.cpp
         BasicCompiler.cpp
         Lower_OOP_Expr.cpp

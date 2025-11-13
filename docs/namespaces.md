@@ -17,6 +17,105 @@ Namespaces organize types (classes and interfaces) into hierarchical groups, pre
 - **Namespace aliases**: Create shorthand names for long namespace paths
 - **Type resolution**: Automatic search through namespace hierarchy and imports
 
+## Phase 1 (Track A) — Minimal Behavior
+
+Phase 1 implements a minimal, deterministic subset focused on syntax, fully-qualified names, parent-walk for unqualified calls, and case-insensitivity. Imports/aliases are intentionally deferred to Phase 2.
+
+- Syntax: `NAMESPACE A.B ... END NAMESPACE` (dotted segments form a nested hierarchy)
+- Declarations: procedures (SUB/FUNCTION) and types inside a namespace are considered fully-qualified at that path (e.g., `A.B.F`, `A.Point`)
+- Calls:
+  - Qualified: `A.B.F()` calls the exact fully-qualified procedure
+  - Unqualified: parent-walk only within the current namespace chain (e.g., inside `NAMESPACE A.B`, `F()` resolves to `A.B.F` if present, then `A.F` if present, then global)
+- Case-insensitive: all segments and identifiers are matched ignoring case. The following are equivalent: `Namespace`, `NAMESPACE`, `nameSpace`; and `A.B.F` ≡ `a.b.f` for lookup and duplicate checks
+- Not included yet: `USING` directives, aliases, and cross-file unqualified resolution via imports (see Phase 2)
+
+### Phase 1 Examples (mirroring tests t01–t04)
+
+1) Flattened namespace call (t01)
+
+```basic
+NAMESPACE A
+  SUB F: PRINT "ok": END SUB
+END NAMESPACE
+
+A.F()   ' qualified call
+```
+
+Output:
+
+```
+ok
+```
+
+2) Nested namespace call (t02)
+
+```basic
+NAMESPACE A.B
+  SUB F: PRINT "ok": END SUB
+END NAMESPACE
+
+A.B.F() ' fully-qualified call
+```
+
+Output:
+
+```
+ok
+```
+
+3) Parent-walk resolution within nested namespace (t03)
+
+```basic
+NAMESPACE A.B
+  SUB F: PRINT "ok": END SUB
+  SUB Main
+    F()   ' unqualified; resolves to A.B.F via parent-walk
+  END SUB
+END NAMESPACE
+
+A.B.Main()
+```
+
+Output:
+
+```
+ok
+```
+
+4) Cross-file usage without imports (t04)
+
+File 1 defines only:
+
+```basic
+NAMESPACE Lib
+  SUB Ping: PRINT "pong": END SUB
+END NAMESPACE
+```
+
+File 2 attempts to call without imports:
+
+```basic
+Lib.Ping()
+```
+
+Behavior: Fails to resolve with an error like `unknown procedure 'lib.ping'` in Phase 1 (no USING/aliases yet).
+
+### Notes on Case-Insensitivity
+
+- Identifiers and each segment of qualified names are compared case-insensitively
+- Canonicalization uses ASCII lowercase for resolution and duplicate checks
+- Examples (all equivalent): `A.B.F`, `a.b.f`, `A.b.f`, `a.B.F`
+
+## What’s Next (Phase 2)
+
+Phase 2 will add:
+
+- `USING` directives and namespace aliases
+- Full unqualified resolution that considers imported namespaces (in declaration order)
+- Enhanced diagnostics for ambiguous unqualified references across imports
+
+Until Phase 2 lands, write qualified calls (e.g., `A.B.F()`) or rely on parent-walk inside the active namespace block.
+
 ## NAMESPACE Declaration
 
 ### Syntax

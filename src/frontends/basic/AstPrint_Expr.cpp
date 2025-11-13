@@ -210,7 +210,20 @@ struct AstPrinter::ExprPrinter final : ExprVisitor
     ///          recorded in the AST.
     void visit(const CallExpr &expr) override
     {
-        printer.os << '(' << expr.callee;
+        printer.os << '(';
+        if (!expr.calleeQualified.empty())
+        {
+            for (size_t i = 0; i < expr.calleeQualified.size(); ++i)
+            {
+                if (i)
+                    printer.os << '.';
+                printer.os << expr.calleeQualified[i];
+            }
+        }
+        else
+        {
+            printer.os << expr.callee;
+        }
         for (const auto &arg : expr.args)
         {
             printer.os << ' ';
@@ -224,7 +237,20 @@ struct AstPrinter::ExprPrinter final : ExprVisitor
     ///          pipeline's expectations when parsing dumps.
     void visit(const NewExpr &expr) override
     {
-        printer.os << "(NEW " << expr.className;
+        printer.os << "(NEW ";
+        if (!expr.qualifiedType.empty())
+        {
+            for (size_t i = 0; i < expr.qualifiedType.size(); ++i)
+            {
+                if (i)
+                    printer.os << '.';
+                printer.os << expr.qualifiedType[i];
+            }
+        }
+        else
+        {
+            printer.os << expr.className;
+        }
         for (const auto &arg : expr.args)
         {
             printer.os << ' ';

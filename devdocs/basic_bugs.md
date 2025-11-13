@@ -21,6 +21,9 @@
 - ✅ **BUG-034 RESOLVED**: MID$ float argument conversion now works
 - ✅ **BUG-036 RESOLVED**: String comparison in OR conditions now works
 
+**Behavior Tweaks (2025-11-13)**:
+- ▶️ Partial: BUG-012 — IF/ELSEIF conditions now accept INTEGER as truthy (non-zero = true, 0 = false) in addition to BOOLEAN. Prior negative tests expecting an error on `IF 2 THEN` were updated. Remaining BUG-012 items (BOOLEAN compatibility with TRUE/FALSE constants, EOF() returning INT, broader logical operator rules) are still open and tracked below.
+
 **Boolean Type System Changes**: Modified `isBooleanType()` to only accept `Type::Bool` (not `Type::Int`) for logical operators (AND/ANDALSO/OR/ORELSE). This makes the type system stricter and fixes some test cases.
 
 **Bug Statistics**: 27 resolved, 9 outstanding, 2 partially resolved (36 total documented)
@@ -117,7 +120,7 @@ The STATIC keyword is not recognized in the parser. Static local variables maint
 ### BUG-012: BOOLEAN type
 **Difficulty**: 🔴 HARD incompatible with TRUE/FALSE and integer comparisons
 **Severity**: Medium
-**Status**: Confirmed
+**Status**: Partial — IF/ELSEIF accept INT truthiness; other inconsistencies remain
 **Test Case**: test042.bas (extended version), test037.bas
 
 **Description**:
@@ -141,7 +144,7 @@ IF flag = FALSE THEN
 
 **Additional Issue - EOF returns INT not BOOLEAN**:
 ```basic
-DO WHILE NOT EOF(#1)  ' ERROR: NOT requires BOOLEAN operand, got INT
+DO WHILE NOT EOF(#1)  ' Known limitation: NOT accepts BOOL/INT but EOF returns INT; behavior to be reconciled
     LINE INPUT #1, line$
 LOOP
 ```
@@ -174,13 +177,15 @@ There's a type system inconsistency where:
 1. BOOLEAN is a distinct type incompatible with INT
 2. TRUE/FALSE are INT constants (-1 and 0)
 3. Logical functions (EOF, etc.) return INT rather than BOOLEAN
-4. IF statements accept both INT and BOOLEAN in conditions
+4. IF/ELSEIF conditions now accept both INT and BOOLEAN (fixed on 2025‑11‑13)
 
-This makes BOOLEAN type unusable in practice. The type system needs to either:
+This makes BOOLEAN type hard to use consistently. The type system needs to either:
 - Allow implicit conversion between BOOLEAN and INT
 - Make TRUE/FALSE actual BOOLEAN constants
 - Make EOF() and similar functions return BOOLEAN
 - Or eliminate BOOLEAN type entirely and use INT for all boolean operations (traditional BASIC approach)
+
+**Notes (2025-11-13):** We adopted classic BASIC truthiness for IF/ELSEIF only. Broader convergence (NOT/AND/OR rules and builtin return types) remains a future change and may require an ADR if it affects public semantics.
 
 ---
 

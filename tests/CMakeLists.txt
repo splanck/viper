@@ -157,6 +157,7 @@ viper_add_basic_semantics_golden_tests()
 viper_add_basic_proc_tests()
 viper_add_basic_call_tests()
 viper_add_basic_integration_tests()
+viper_add_basic_namespace_tests()
 viper_add_e2e_codegen_tests()
 viper_add_golden_suite_tests()
 

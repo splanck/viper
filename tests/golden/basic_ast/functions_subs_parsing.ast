@@ -1,2 +1,2 @@
-0: (FUNCTION F# RET F64 (X Y# S$ A()) {10:(LET X (+ X 1)) 0:(PRINT X) 0:(WHILE Y# {20:(PRINT S$) 30:(IF X THEN (PRINT Y#)) 40:(LET Y# (- Y# 1))}) 0:(RETURN Y#)})
-0: (SUB P (A() B$) {5:(PRINT "P") 0:(PRINT B$) 15:(FOR I = 1 TO 2 {20:(PRINT B$) 25:(PRINT (A 0))}) 0:(RETURN)})
+0: (FUNCTION F# qualifiedName: <null> RET F64 (X Y# S$ A()) {10:(LET X (+ X 1)) 0:(PRINT X) 0:(WHILE Y# {20:(PRINT S$) 30:(IF X THEN (PRINT Y#)) 40:(LET Y# (- Y# 1))}) 0:(RETURN Y#)})
+0: (SUB P qualifiedName: <null> (A() B$) {5:(PRINT "P") 0:(PRINT B$) 15:(FOR I = 1 TO 2 {20:(PRINT B$) 25:(PRINT (A 0))}) 0:(RETURN)})

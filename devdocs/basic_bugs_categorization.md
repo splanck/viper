@@ -19,7 +19,7 @@
 - **BUG-004**: Optional parentheses - Parser grammar change, ambiguity resolution
 - **BUG-007**: Multi-dimensional arrays - Major runtime/semantic changes
 - **BUG-010**: STATIC keyword - Storage model changes, lifetime management
-- **BUG-012**: BOOLEAN type system - Type compatibility overhaul
+- **BUG-012**: BOOLEAN type system - Type compatibility overhaul (Partial: IF/ELSEIF accept INT truthiness as of 2025-11-13; remaining work: TRUE/FALSE constants as BOOL, EOF() return type, logical operator coercions)
 - **BUG-013**: SHARED keyword - Scope system redesign
 - **BUG-014**: String arrays - Runtime array system extension
 - **BUG-015**: String properties in classes - Runtime string lifecycle for OOP

@@ -60,6 +60,13 @@ class DiagnosticEmitter
     /// @brief Number of warnings reported.
     size_t warningCount() const;
 
+    /// @brief Format a file:line string for a SourceLoc using SourceManager paths.
+    /// @details Returns "<path>:<line>" when file and line are available, otherwise
+    ///          returns an empty string.
+    /// @param loc Source location to format.
+    /// @return String with path and line or empty string when unavailable.
+    std::string formatFileLine(il::support::SourceLoc loc) const;
+
   private:
     /// @brief Diagnostic record captured for later printing.
     struct Entry

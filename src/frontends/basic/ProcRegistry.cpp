@@ -17,6 +17,8 @@
 ///          performing lookups.
 
 #include "frontends/basic/ProcRegistry.hpp"
+#include "frontends/basic/IdentifierUtil.hpp"
+#include "frontends/basic/Diag.hpp"
 
 #include <unordered_set>
 #include <utility>
@@ -33,6 +35,7 @@ ProcRegistry::ProcRegistry(SemanticDiagnostics &d) : de(d) {}
 void ProcRegistry::clear()
 {
     procs_.clear();
+    byQualified_.clear();
 }
 
 /// @brief Build a canonical signature from a descriptor collected during analysis.
@@ -77,14 +80,82 @@ ProcSignature ProcRegistry::buildSignature(const ProcDescriptor &descriptor)
 /// @param name Name of the procedure to register.
 /// @param descriptor Metadata describing the procedure signature.
 /// @param loc Source location of the declaration for diagnostics.
+static std::string stripSuffix(std::string_view name)
+{
+    if (name.empty())
+        return std::string{};
+    char last = name.back();
+    if (last == '$' || last == '#' || last == '!' || last == '&' || last == '%')
+        name = name.substr(0, name.size() - 1);
+    return std::string{name};
+}
+
+static std::string canonicalizeQualifiedFlat(std::string_view dotted)
+{
+    // Split on '.' and canonicalize each segment (ASCII lowercase).
+    // For the final segment only, strip BASIC type suffix before canonicalization.
+    std::vector<std::string> parts;
+    parts.reserve(4);
+    std::string segment;
+    std::vector<std::string> raw;
+    for (size_t i = 0; i <= dotted.size(); ++i)
+    {
+        if (i == dotted.size() || dotted[i] == '.')
+        {
+            raw.emplace_back(std::move(segment));
+            segment.clear();
+        }
+        else
+        {
+            segment.push_back(dotted[i]);
+        }
+    }
+
+    parts.reserve(raw.size());
+    for (size_t i = 0; i < raw.size(); ++i)
+    {
+        std::string_view seg = raw[i];
+        if (seg.empty())
+        {
+            parts.emplace_back(std::string{});
+            continue;
+        }
+        // Strip type suffix from the final identifier segment, if present.
+        if (i + 1 == raw.size())
+        {
+            char last = seg.back();
+            if (last == '$' || last == '#' || last == '!' || last == '&' || last == '%')
+            {
+                seg = seg.substr(0, seg.size() - 1);
+            }
+        }
+        std::string canon = CanonicalizeIdent(seg);
+        if (canon.empty() && !seg.empty())
+        {
+            // Invalid character encountered; signal failure.
+            return std::string{};
+        }
+        parts.emplace_back(std::move(canon));
+    }
+    return JoinQualified(parts);
+}
+
 void ProcRegistry::registerProcImpl(std::string_view name,
                                     const ProcDescriptor &descriptor,
                                     il::support::SourceLoc loc)
 {
-    std::string nameStr{name};
+    // Derive canonical qualified key. Lowercase all segments and strip suffix
+    // from the final segment for unqualified or dotted names alike.
+    std::string key;
+    if (name.find('.') != std::string_view::npos)
+        key = canonicalizeQualifiedFlat(name);
+    else
+        key = CanonicalizeIdent(stripSuffix(name));
 
-    if (procs_.count(nameStr))
+    if (key.empty())
     {
+        // Fallback to original for error text, but avoid inserting.
+        std::string nameStr{name};
         de.emit(diag::BasicDiag::DuplicateProcedure,
                 loc,
                 static_cast<uint32_t>(nameStr.size()),
@@ -92,7 +163,20 @@ void ProcRegistry::registerProcImpl(std::string_view name,
         return;
     }
 
-    procs_.emplace(std::move(nameStr), buildSignature(descriptor));
+    auto it = byQualified_.find(key);
+    if (it != byQualified_.end())
+    {
+        // Duplicate: emit centralized error + note.
+        diagx::ErrorDuplicateProc(de.emitter(), key, it->second.loc, loc);
+        return;
+    }
+
+    byQualified_.emplace(key, ProcEntry{nullptr, loc});
+    // Build signature once, then insert under both original and canonical keys for lookup.
+    ProcSignature sig = buildSignature(descriptor);
+    std::string nameStr{name};
+    procs_.emplace(std::move(nameStr), sig);
+    procs_.emplace(key, sig);
 }
 
 /// @brief Register a FUNCTION declaration with its return type and parameters.
@@ -102,7 +186,9 @@ void ProcRegistry::registerProc(const FunctionDecl &f)
 {
     const ProcDescriptor descriptor{
         ProcSignature::Kind::Function, f.ret, std::span<const Param>{f.params}, f.loc};
-    registerProcImpl(f.name, descriptor, f.loc);
+    std::string_view nm = f.qualifiedName.empty() ? std::string_view{f.name}
+                                                  : std::string_view{f.qualifiedName};
+    registerProcImpl(nm, descriptor, f.loc);
 }
 
 /// @brief Register a SUB declaration with its parameter list.
@@ -112,7 +198,9 @@ void ProcRegistry::registerProc(const SubDecl &s)
 {
     const ProcDescriptor descriptor{
         ProcSignature::Kind::Sub, std::nullopt, std::span<const Param>{s.params}, s.loc};
-    registerProcImpl(s.name, descriptor, s.loc);
+    std::string_view nm = s.qualifiedName.empty() ? std::string_view{s.name}
+                                                  : std::string_view{s.qualifiedName};
+    registerProcImpl(nm, descriptor, s.loc);
 }
 
 /// @brief Access the internal procedure table for iteration.
@@ -129,6 +217,23 @@ const ProcSignature *ProcRegistry::lookup(const std::string &name) const
 {
     auto it = procs_.find(name);
     return it == procs_.end() ? nullptr : &it->second;
+}
+
+void ProcRegistry::AddProc(const FunctionDecl *fn, il::support::SourceLoc loc)
+{
+    if (!fn)
+        return;
+    const ProcDescriptor descriptor{
+        ProcSignature::Kind::Function, fn->ret, std::span<const Param>{fn->params}, loc};
+    std::string_view nm = fn->qualifiedName.empty() ? std::string_view{fn->name}
+                                                    : std::string_view{fn->qualifiedName};
+    registerProcImpl(nm, descriptor, loc);
+}
+
+const ProcRegistry::ProcEntry *ProcRegistry::LookupExact(std::string_view qualified) const
+{
+    auto it = byQualified_.find(std::string{qualified});
+    return it == byQualified_.end() ? nullptr : &it->second;
 }
 
 } // namespace il::frontends::basic

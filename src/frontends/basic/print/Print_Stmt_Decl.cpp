@@ -155,7 +155,17 @@ void printReDim(const ReDimStmt &stmt, Context &ctx)
 void printFunction(const FunctionDecl &stmt, Context &ctx)
 {
     auto &os = ctx.stream();
-    os << "(FUNCTION " << stmt.name << " RET " << typeToString(stmt.ret) << " (";
+    os << "(FUNCTION " << stmt.name;
+    os << " qualifiedName: ";
+    if (!stmt.qualifiedName.empty())
+    {
+        os << stmt.qualifiedName;
+    }
+    else
+    {
+        os << "<null>";
+    }
+    os << " RET " << typeToString(stmt.ret) << " (";
     printParamList(stmt.params, ctx);
     os << ")";
     if (stmt.explicitRetType != BasicType::Unknown && stmt.explicitRetType != BasicType::Void)
@@ -173,7 +183,17 @@ void printFunction(const FunctionDecl &stmt, Context &ctx)
 void printSub(const SubDecl &stmt, Context &ctx)
 {
     auto &os = ctx.stream();
-    os << "(SUB " << stmt.name << " (";
+    os << "(SUB " << stmt.name;
+    os << " qualifiedName: ";
+    if (!stmt.qualifiedName.empty())
+    {
+        os << stmt.qualifiedName;
+    }
+    else
+    {
+        os << "<null>";
+    }
+    os << " (";
     printParamList(stmt.params, ctx);
     os << ")";
     ctx.printNumberedBody(stmt.body);
@@ -234,6 +254,15 @@ void printClass(const ClassDecl &stmt, Context &ctx)
 {
     auto &os = ctx.stream();
     os << "(CLASS " << stmt.name;
+    os << " qualifiedName: ";
+    if (!stmt.qualifiedName.empty())
+    {
+        os << stmt.qualifiedName;
+    }
+    else
+    {
+        os << "<null>";
+    }
     printFields(stmt.fields, ctx);
     // Implements list
     if (!stmt.implementsQualifiedNames.empty())

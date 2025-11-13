@@ -28,6 +28,7 @@
 #include "frontends/basic/BasicCompiler.hpp"
 
 #include "frontends/basic/ConstFolder.hpp"
+#include "frontends/basic/passes/CollectProcs.hpp"
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/Parser.hpp"
 #include "frontends/basic/SemanticAnalyzer.hpp"
@@ -107,6 +108,11 @@ BasicCompilerResult compileBasic(const BasicCompilerInput &input,
     {
         return result;
     }
+
+    // Post-parse: assign qualified names to procedures inside namespaces.
+    // This enables semantic analysis to register nested procedures by their
+    // fully-qualified names.
+    CollectProcedures(*program);
 
     foldConstants(*program);
 

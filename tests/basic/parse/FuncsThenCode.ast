@@ -1,2 +1,2 @@
-0: (FUNCTION F RET I64 () {0:(RETURN 1)})
+0: (FUNCTION F qualifiedName: <null> RET I64 () {0:(RETURN 1)})
 0: (PRINT (F))

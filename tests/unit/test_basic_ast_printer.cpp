@@ -277,8 +277,8 @@ int main()
 
     AstPrinter printer;
     std::string dump = printer.dump(prog);
-    const std::string expected = "5: (FUNCTION FNRESULT RET F64 (A ARR()) {501:(RETURN A)})\n"
-                                 "6: (SUB DOIT (MSG$ VALUES()) {601:(PRINT \"HELLO\")})\n"
+    const std::string expected = "5: (FUNCTION FNRESULT qualifiedName: <null> RET F64 (A ARR()) {501:(RETURN A)})\n"
+                                 "6: (SUB DOIT qualifiedName: <null> (MSG$ VALUES()) {601:(PRINT \"HELLO\")})\n"
                                  "10: (PRINT 42 , 3.5 \"HI\" ;)\n"
                                  "20: (LET ARR(I) (SQR (+ 1 2.5)))\n"
                                  "30: (DIM ARR 10 AS F64)\n"

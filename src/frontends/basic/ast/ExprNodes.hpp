@@ -16,6 +16,13 @@
 namespace il::frontends::basic
 {
 
+/// @brief Qualified identifier with dotted segments and source location.
+struct QualifiedName
+{
+    std::vector<std::string> segments; ///< Dotted path in declaration order.
+    il::support::SourceLoc loc{};      ///< Source location of the first segment.
+};
+
 /// @brief Visitor interface for BASIC expressions.
 struct ExprVisitor
 {
@@ -345,6 +352,11 @@ struct CallExpr : Expr
     /// Procedure name to invoke.
     Identifier callee;
 
+    /// Optional qualified callee path when a dotted name was parsed.
+    /// When non-empty, `callee` contains the dot-joined string as well for
+    /// backward compatibility with existing passes.
+    std::vector<std::string> calleeQualified;
+
     /// Ordered argument expressions; owned.
     std::vector<ExprPtr> args;
 
@@ -361,6 +373,10 @@ struct NewExpr : Expr
 
     /// Name of the class type to instantiate.
     std::string className;
+
+    /// Optional qualified class/type name segments. When non-empty, className
+    /// stores the dot-joined form for compatibility with existing passes.
+    std::vector<std::string> qualifiedType;
 
     /// Arguments passed to the constructor.
     std::vector<ExprPtr> args;

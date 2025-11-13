@@ -222,6 +222,16 @@ function(viper_add_golden_suite_tests)
             "-DEXPECT=${EXPECT_USING_AFTER_DECL}"
             -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
 
+    # Duplicate procedures detect regardless of case variation
+    file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/namespace_case_insensitive_duplicate.stderr EXPECT_NS_DUP_PROC)
+    string(STRIP "${EXPECT_NS_DUP_PROC}" EXPECT_NS_DUP_PROC)
+    viper_add_ctest(basic_error_namespace_case_insensitive_duplicate
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/namespace_case_insensitive_duplicate.bas
+            "-DEXPECT=${EXPECT_NS_DUP_PROC}"
+            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
+
     file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/reserved_root_user_decl.stderr EXPECT_RESERVED_DECL)
     string(STRIP "${EXPECT_RESERVED_DECL}" EXPECT_RESERVED_DECL)
     viper_add_ctest(basic_error_reserved_root_user_decl
@@ -546,6 +556,16 @@ function(viper_add_golden_suite_tests)
             "-DEXPECT=${EXPECT_NS_SIMPLE}"
             -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
 
+    # Case-insensitive qualified call resolution
+    file(READ ${_VIPER_GOLDEN_DIR}/basic/namespace_case_insensitive.stdout EXPECT_NS_CASE_INS)
+    string(STRIP "${EXPECT_NS_CASE_INS}" EXPECT_NS_CASE_INS)
+    viper_add_ctest(basic_namespace_case_insensitive
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic/namespace_case_insensitive.bas
+            "-DEXPECT=${EXPECT_NS_CASE_INS}"
+            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
+
     file(READ ${_VIPER_GOLDEN_DIR}/basic/namespace_using.stdout EXPECT_NS_USING)
     string(STRIP "${EXPECT_NS_USING}" EXPECT_NS_USING)
     viper_add_ctest(basic_namespace_using
@@ -591,6 +611,27 @@ function(viper_add_golden_suite_tests)
             -DILC=${BASIC_ILC}
             -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic/int_truthy.bas
             "-DEXPECT=${EXPECT_INT_TRUTHY}"
+            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
+
+
+    # SHARED statement acceptance/behavior
+    file(READ ${_VIPER_GOLDEN_DIR}/basic/shared_var.stdout EXPECT_SHARED_VAR)
+    string(STRIP "${EXPECT_SHARED_VAR}" EXPECT_SHARED_VAR)
+    viper_add_ctest(basic_shared_var
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic/shared_var.bas
+            "-DEXPECT=${EXPECT_SHARED_VAR}"
+            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
+
+    # DO WHILE NOT EOF(#) truthiness
+    file(READ ${_VIPER_GOLDEN_DIR}/basic/not_eof_loop.stdout EXPECT_NOT_EOF)
+    string(STRIP "${EXPECT_NOT_EOF}" EXPECT_NOT_EOF)
+    viper_add_ctest(basic_not_eof_loop
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic/not_eof_loop.bas
+            "-DEXPECT=${EXPECT_NOT_EOF}"
             -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
 
 
