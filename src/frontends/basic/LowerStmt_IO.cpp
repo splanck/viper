@@ -175,7 +175,27 @@ void Lowerer::lowerPrint(const PrintStmt &stmt)
                 RVal value = lowerExpr(*it.expr);
                 if (value.type.kind == Type::Kind::Str)
                 {
+                    // Check if expr is an lvalue (borrowed reference that needs retaining)
+                    bool isLvalue = as<const VarExpr>(*it.expr) ||
+                                    as<const MemberAccessExpr>(*it.expr) ||
+                                    as<const ArrayExpr>(*it.expr);
+
+                    if (isLvalue)
+                    {
+                        // Retain borrowed value before passing to print
+                        requireStrRetainMaybe();
+                        emitCall("rt_str_retain_maybe", {value.value});
+                    }
+
                     emitCall("rt_print_str", {value.value});
+
+                    if (isLvalue)
+                    {
+                        // Release the temporary after print
+                        requireStrReleaseMaybe();
+                        emitCall("rt_str_release_maybe", {value.value});
+                    }
+
                     updateColumn(widthEstimate);
                     break;
                 }
