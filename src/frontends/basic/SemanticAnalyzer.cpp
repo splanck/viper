@@ -73,6 +73,17 @@ const ProcTable &SemanticAnalyzer::procs() const
     return procReg_.procs();
 }
 
+/// @brief Lookup array metadata for a given array name.
+///
+/// @param name Array identifier to look up.
+/// @return Pointer to ArrayMetadata if found, nullptr otherwise.
+const ArrayMetadata *SemanticAnalyzer::lookupArrayMetadata(const std::string &name) const
+{
+    if (auto it = arrays_.find(name); it != arrays_.end())
+        return &it->second;
+    return nullptr;
+}
+
 /// @brief Query the inferred type for a variable by canonical name.
 ///
 /// @param name Variable name after scope resolution.

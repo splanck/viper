@@ -453,9 +453,51 @@ Value Lowerer::emitArrayLengthCheck(Value bound,
 void Lowerer::lowerDim(const DimStmt &stmt)
 {
     LocationScope loc(*this, stmt.loc);
-    RVal bound = lowerExpr(*stmt.size);
-    bound = ensureI64(std::move(bound), stmt.loc);
-    Value length = emitArrayLengthCheck(bound.value, stmt.loc, "dim_len");
+
+    // Collect dimension expressions (backward compat: check 'size' first, then 'dimensions')
+    std::vector<const ExprPtr *> dimExprs;
+    if (stmt.size)
+    {
+        dimExprs.push_back(&stmt.size);
+    }
+    else
+    {
+        for (const auto &dimExpr : stmt.dimensions)
+        {
+            if (dimExpr)
+                dimExprs.push_back(&dimExpr);
+        }
+    }
+    assert(!dimExprs.empty() && "DIM array must have at least one dimension");
+
+    // For single-dimensional arrays, use the dimension directly
+    Value length;
+    if (dimExprs.size() == 1)
+    {
+        RVal bound = lowerExpr(**dimExprs[0]);
+        bound = ensureI64(std::move(bound), stmt.loc);
+        length = emitArrayLengthCheck(bound.value, stmt.loc, "dim_len");
+    }
+    else
+    {
+        // For multi-dimensional arrays, compute total size = product of all extents
+        // Start with first dimension
+        RVal bound = lowerExpr(**dimExprs[0]);
+        bound = ensureI64(std::move(bound), stmt.loc);
+        Value firstLen = emitArrayLengthCheck(bound.value, stmt.loc, "dim_len");
+
+        // Multiply by remaining dimensions
+        Value totalSize = firstLen;
+        for (size_t i = 1; i < dimExprs.size(); ++i)
+        {
+            RVal dimBound = lowerExpr(**dimExprs[i]);
+            dimBound = ensureI64(std::move(dimBound), stmt.loc);
+            Value dimLen = emitArrayLengthCheck(dimBound.value, stmt.loc, "dim_len");
+            totalSize = emitBinary(Opcode::IMulOvf, Type(Type::Kind::I64), totalSize, dimLen);
+        }
+        length = totalSize;
+    }
+
     Value handle = emitCallRet(Type(Type::Kind::Ptr), "rt_arr_i32_new", {length});
     const auto *info = findSymbol(stmt.name);
     assert(info && info->slotId);

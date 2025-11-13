@@ -29,6 +29,7 @@
 
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/lower/Emitter.hpp"
+#include "frontends/basic/SemanticAnalyzer.hpp"
 
 #include "viper/il/Module.hpp"
 
@@ -105,10 +106,78 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
     assert(info && info->slotId);
     Value slot = Value::temp(*info->slotId);
     Value base = emitLoad(Type(Type::Kind::Ptr), slot);
-    RVal idx = lowerExpr(*expr.index);
-    idx = coerceToI64(std::move(idx), expr.loc);
-    Value index = idx.value;
+
+    // Collect all index expressions (backward compat: check 'index' first, then 'indices')
+    std::vector<const ExprPtr *> indexExprs;
+    if (expr.index)
+    {
+        indexExprs.push_back(&expr.index);
+    }
+    else
+    {
+        for (const auto &idxExpr : expr.indices)
+        {
+            if (idxExpr)
+                indexExprs.push_back(&idxExpr);
+        }
+    }
+    assert(!indexExprs.empty() && "array access must have at least one index");
+
+    // Lower all index expressions to i64
+    std::vector<Value> indices;
+    for (const ExprPtr *idxPtr : indexExprs)
+    {
+        RVal idx = lowerExpr(**idxPtr);
+        idx = coerceToI64(std::move(idx), expr.loc);
+        indices.push_back(idx.value);
+    }
     curLoc = expr.loc;
+
+    // Compute flattened index for multi-dimensional arrays using row-major order
+    // For N dimensions with extents [E0, E1, ..., E_{N-1}] and indices [i0, i1, ..., i_{N-1}]:
+    // flat_index = i0*E1*E2*...*E_{N-1} + i1*E2*...*E_{N-1} + ... + i_{N-2}*E_{N-1} + i_{N-1}
+    Value index;
+    if (indices.size() == 1)
+    {
+        // Single-dimensional: use index directly
+        index = indices[0];
+    }
+    else
+    {
+        // Multi-dimensional: compute row-major flattened index
+        const SemanticAnalyzer *sema = semanticAnalyzer();
+        const ArrayMetadata *metadata = sema ? sema->lookupArrayMetadata(expr.name) : nullptr;
+
+        if (metadata && metadata->extents.size() == indices.size())
+        {
+            // We have extent information - use it for row-major indexing
+            const std::vector<long long> &extents = metadata->extents;
+
+            // Start with first index: i0 * (E1 * E2 * ... * E_{N-1})
+            long long stride = 1;
+            for (size_t i = 1; i < extents.size(); ++i)
+                stride *= extents[i];
+
+            index = emitBinary(Opcode::IMulOvf, Type(Type::Kind::I64), indices[0], Value::constInt(stride));
+
+            // Add remaining dimensions: i_k * (E_{k+1} * ... * E_{N-1})
+            for (size_t k = 1; k < indices.size(); ++k)
+            {
+                stride = 1;
+                for (size_t i = k + 1; i < extents.size(); ++i)
+                    stride *= extents[i];
+
+                Value term = emitBinary(Opcode::IMulOvf, Type(Type::Kind::I64), indices[k], Value::constInt(stride));
+                index = emitBinary(Opcode::IAddOvf, Type(Type::Kind::I64), index, term);
+            }
+        }
+        else
+        {
+            // Fallback: if we don't have metadata or dimension mismatch, just use first index
+            // This maintains backward compatibility
+            index = indices[0];
+        }
+    }
 
     Value len = emitCallRet(Type(Type::Kind::I64), "rt_arr_i32_len", {base});
     Value isNeg = emitBinary(Opcode::SCmpLT, ilBoolTy(), index, Value::constInt(0));

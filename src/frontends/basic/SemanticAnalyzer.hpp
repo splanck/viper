@@ -113,6 +113,11 @@ class SemanticAnalyzer
     /// @brief Registered procedures and their signatures.
     const ProcTable &procs() const;
 
+    /// @brief Lookup array metadata for a given array name.
+    /// @param name Array identifier to look up.
+    /// @return Pointer to ArrayMetadata if found, nullptr otherwise.
+    const ArrayMetadata *lookupArrayMetadata(const std::string &name) const;
+
   private:
     friend class sem::ControlCheckContext;
     friend class sem::ExprCheckContext;
