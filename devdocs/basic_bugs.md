@@ -24,7 +24,8 @@
 
 ---
 
-### BUG-004: Procedure calls require parentheses even with no arguments
+### BUG-004: Procedure calls
+**Difficulty**: 🟡 MEDIUM require parentheses even with no arguments
 **Severity**: Low
 **Status**: Confirmed
 **Test Case**: test008.bas (initial version)
@@ -64,77 +65,17 @@ The parser requires explicit parentheses for all procedure calls. This is more s
 ---
 
 ### BUG-005: SGN function not implemented
-**Severity**: Low
 **Status**: ✅ RESOLVED 2025-11-12 - See basic_resolved.md for details
-
-**Description**:
-The SGN (sign) function, which returns -1, 0, or 1 depending on whether a number is negative, zero, or positive, is not implemented.
-
-**Reproduction**:
-```basic
-PRINT SGN(-10)
-PRINT SGN(0)
-PRINT SGN(10)
-```
-
-**Error Message**:
-```
-error[B1006]: unknown procedure 'SGN'
-PRINT SGN(-10)
-      ^^^
-```
-
-**Workaround**:
-Implement SGN manually using IF statements:
-```basic
-FUNCTION SGN(x)
-    IF x < 0 THEN
-        RETURN -1
-    ELSEIF x = 0 THEN
-        RETURN 0
-    ELSE
-        RETURN 1
-    END IF
-END FUNCTION
-```
-
-**Analysis**:
-The SGN intrinsic function is not registered in the builtin registry. This is a standard BASIC function that should be implemented.
 
 ---
 
 ### BUG-006: Limited trigonometric/math functions
-**Severity**: Medium
 **Status**: ✅ RESOLVED 2025-11-12 - See basic_resolved.md for details
-
-**Description**:
-Several standard BASIC math functions are not implemented: TAN, ATN (arctangent), EXP (exponential), LOG (natural logarithm).
-
-**Reproduction**:
-```basic
-PRINT TAN(0)
-PRINT ATN(1)
-PRINT EXP(1)
-PRINT LOG(2.718281828)
-```
-
-**Error Message**:
-```
-error[B1006]: unknown procedure 'TAN'
-error[B1006]: unknown procedure 'ATN'
-error[B1006]: unknown procedure 'EXP'
-error[B1006]: unknown procedure 'LOG'
-```
-
-**Workaround**:
-None available without implementing these functions.
-
-**Analysis**:
-Only SIN and COS are implemented. The builtin registry is missing TAN, ATN, EXP, and LOG functions which are standard in most BASIC implementations.
 
 ---
 
-### BUG-007: Multi-dimensional arrays not supported
+### BUG-007: Multi-dimensional
+**Difficulty**: 🔴 HARD arrays not supported
 **Severity**: High
 **Status**: Confirmed
 **Test Case**: test027.bas
@@ -169,74 +110,17 @@ The parser does not support comma-separated dimensions in DIM statements or arra
 ---
 
 ### BUG-008: REDIM PRESERVE syntax not supported
-**Severity**: Low
 **Status**: ✅ RESOLVED 2025-11-12 - See basic_resolved.md for details
-
-**Description**:
-The `REDIM PRESERVE` syntax for resizing arrays while preserving contents is not recognized by the parser.
-
-**Reproduction**:
-```basic
-DIM arr(5)
-arr(0) = 100
-REDIM PRESERVE arr(10)
-```
-
-**Error Message**:
-```
-error[B0001]: expected (, got ident
-REDIM PRESERVE arr(10)
-               ^
-```
-
-**Workaround**:
-Use REDIM without PRESERVE - testing shows that REDIM already preserves array contents by default:
-```basic
-DIM arr(5)
-arr(0) = 100
-REDIM arr(10)  ' Contents are preserved
-PRINT arr(0)   ' Outputs: 100
-```
-
-**Analysis**:
-The parser does not recognize PRESERVE as a keyword after REDIM. Interestingly, the runtime behavior of REDIM already preserves array contents, so PRESERVE appears to be the default behavior. This is actually beneficial but differs from traditional BASIC where REDIM without PRESERVE would clear the array.
 
 ---
 
 ### BUG-009: CONST keyword not implemented
-**Severity**: Medium
 **Status**: ✅ RESOLVED 2025-11-12 - See basic_resolved.md for details
-**Test Case**: test033.bas
-
-**Description**:
-The CONST keyword for declaring named constants is not implemented.
-
-**Reproduction**:
-```basic
-CONST PI = 3.14159
-PRINT PI
-```
-
-**Error Message**:
-```
-error[B0001]: unknown statement 'CONST'; expected keyword or procedure call
-CONST PI = 3.14159
-^^^^^
-```
-
-**Workaround**:
-Use regular variables (though they can be modified):
-```basic
-PI = 3.14159
-PRINT PI
-```
-
-**Analysis**:
-The CONST keyword is not recognized in the parser. This prevents defining true constants that cannot be modified after declaration. The semantic analyzer would need to track constant status and prevent reassignment.
 
 ---
 
-### BUG-010: STATIC keyword not implemented
+### BUG-010: STATIC keyword
+**Difficulty**: 🔴 HARD not implemented
 **Severity**: Low
 **Status**: Confirmed
 **Test Case**: test034.bas
@@ -269,40 +153,12 @@ The STATIC keyword is not recognized in the parser. Static local variables maint
 ---
 
 ### BUG-011: SWAP statement not implemented
-**Severity**: Low
 **Status**: ✅ RESOLVED 2025-11-12 - See basic_resolved.md for details
-
-**Description**:
-The SWAP statement for exchanging values of two variables is not implemented.
-
-**Reproduction**:
-```basic
-x = 10
-y = 20
-SWAP x, y
-```
-
-**Error Message**:
-```
-error[B0001]: unknown statement 'SWAP'; expected keyword or procedure call
-SWAP x, y
-^^^^
-```
-
-**Workaround**:
-Use a temporary variable:
-```basic
-temp = x
-x = y
-y = temp
-```
-
-**Analysis**:
-The SWAP keyword is not recognized in the parser. This is a convenience feature that could be easily lowered to use a temporary variable during code generation.
 
 ---
 
-### BUG-012: BOOLEAN type incompatible with TRUE/FALSE and integer comparisons
+### BUG-012: BOOLEAN type
+**Difficulty**: 🔴 HARD incompatible with TRUE/FALSE and integer comparisons
 **Severity**: Medium
 **Status**: Confirmed
 **Test Case**: test042.bas (extended version), test037.bas
@@ -371,7 +227,8 @@ This makes BOOLEAN type unusable in practice. The type system needs to either:
 
 ---
 
-### BUG-013: SHARED keyword not supported
+### BUG-013: SHARED keyword
+**Difficulty**: 🔴 HARD not supported
 **Severity**: High
 **Status**: Confirmed
 **Test Case**: database.bas v0.3 (attempted)
@@ -406,6 +263,7 @@ Without SHARED, procedures are completely isolated from module-level variables. 
 ---
 
 ### BUG-014: String arrays not supported
+**Difficulty**: 🔴 HARD (duplicate of BUG-032)
 **Severity**: Critical
 **Status**: Confirmed
 **Test Case**: test_array_string.bas, database.bas
@@ -442,6 +300,7 @@ This is a critical limitation that prevents building many types of practical pro
 
 
 ### BUG-015: String properties in classes cause runtime error
+**Difficulty**: 🔴 HARD (requires OOP implementation)
 **Severity**: Critical
 **Status**: Confirmed
 **Test Case**: db_oop.bas (early versions), test_oop_string_param.bas
@@ -475,6 +334,7 @@ The code generator is missing a critical runtime function for string reference c
 ---
 
 ### BUG-016: Local string variables in methods cause compilation error
+**Difficulty**: 🔴 HARD (requires OOP implementation)
 **Severity**: Critical
 **Status**: Confirmed
 **Test Case**: db_oop.bas (v1.0), test_oop_string_param.bas
@@ -506,6 +366,7 @@ The code generator fails to properly handle local string variable declarations w
 ---
 
 ### BUG-017: Accessing global strings from methods causes segfault
+**Difficulty**: 🔴 HARD (requires OOP implementation)
 **Severity**: Critical
 **Status**: Confirmed
 **Test Case**: db_oop.bas (v2.0)
@@ -543,6 +404,7 @@ Exit code 139 indicates a segmentation fault. The generated code for accessing g
 ---
 
 ### BUG-018: FUNCTION methods in classes cause code generation error
+**Difficulty**: 🔴 HARD (requires OOP implementation)
 **Severity**: High
 **Status**: Confirmed
 **Test Case**: db_oop.bas (attempted FUNCTION GetCount())
@@ -573,6 +435,7 @@ The code generator produces invalid IL with incorrect block labels when generati
 ---
 
 ### BUG-019: Float literals assigned to CONST are truncated to integers
+**Difficulty**: 🟡 MEDIUM (type inference/constant folding issue)
 **Severity**: Medium
 **Status**: Confirmed
 **Test Case**: test_const_simple.bas, test_scientific_calc.bas
@@ -618,6 +481,7 @@ Cannot define accurate mathematical constants. All calculations using these cons
 ---
 
 ### BUG-020: String constants cause runtime error
+**Difficulty**: 🔴 HARD (runtime string lifecycle management)
 **Severity**: High
 **Status**: Confirmed
 **Test Case**: test_const.bas
@@ -653,74 +517,12 @@ The code generator is missing the runtime function `@rt_str_release_maybe` neede
 ---
 
 ### BUG-021: SELECT CASE doesn't support negative integer literals
-**Severity**: Low
 **Status**: ✅ RESOLVED 2025-11-12 - See basic_resolved.md for details
-
-**Description**:
-SELECT CASE labels cannot use negative integer literals like `-1`. The parser treats the minus sign as a separate token rather than part of the literal, making it impossible to use SELECT CASE with functions like SGN() that return negative values.
-
-**Reproduction**:
-```basic
-x = -10
-sign = SGN(x)
-
-SELECT CASE sign
-    CASE -1       ' ERROR: parser doesn't accept this
-        PRINT "Negative"
-    CASE 0
-        PRINT "Zero"
-    CASE 1
-        PRINT "Positive"
-END SELECT
-```
-
-**Error Message**:
-```
-error[B0001]: SELECT CASE labels must be integer literals
-        CASE -1
-             ^
-error[B0001]: expected eol, got -
-        CASE -1
-             ^
-error[ERR_Case_EmptyLabelList]: CASE arm requires at least one label
-        CASE -1
-        ^^^^
-```
-
-**Workaround**:
-Use IF/ELSEIF statements instead of SELECT CASE for negative values:
-```basic
-IF sign < 0 THEN
-    PRINT "Negative"
-ELSEIF sign = 0 THEN
-    PRINT "Zero"
-ELSEIF sign > 0 THEN
-    PRINT "Positive"
-END IF
-```
-
-Or use positive values only with SELECT CASE:
-```basic
-absVal = ABS(value)
-SELECT CASE absVal
-    CASE 0
-        PRINT "Zero"
-    CASE 5
-        PRINT "Five"
-    CASE 100
-        PRINT "One hundred"
-END SELECT
-```
-
-**Analysis**:
-The parser expects CASE labels to be positive integer literals only. The minus sign is parsed as a separate operator token rather than being part of the integer literal. This is a limitation in Parser_Stmt_Core.cpp in the SELECT CASE parsing logic. The parser would need to be modified to accept unary minus expressions in CASE labels, or to recognize negative integer literals as a special token type.
-
-**Impact**:
-Limits the usefulness of SELECT CASE with functions like SGN() that naturally return negative values. Forces use of IF/ELSEIF chains which are more verbose.
 
 ---
 
 ### BUG-022: Float literals without explicit type default to INTEGER
+**Difficulty**: 🟡 MEDIUM (type inference rules)
 **Severity**: Medium
 **Status**: Confirmed
 **Test Cases**: test_float_literals.bas, test_scientific_calc.bas
@@ -781,7 +583,8 @@ Makes floating-point mathematics nearly impossible without explicit type suffixe
 
 ---
 
-### BUG-023: DIM with initializer not supported
+### BUG-023: DIM with initializer
+**Difficulty**: 🟡 MEDIUM not supported
 **Severity**: Low
 **Status**: Confirmed
 **Test Case**: test_float_literals.bas
@@ -832,48 +635,12 @@ Requires two lines instead of one for variable initialization. Minor inconvenien
 ---
 
 ### BUG-024: CONST with type suffix causes assertion failure
-**Severity**: High
 **Status**: ✅ RESOLVED 2025-11-12 - See basic_resolved.md for details
-
-**Description**:
-Using type suffixes (%, !, #) with CONST declarations causes an assertion failure in the lowering code. The compiler crashes with an internal assertion error.
-
-**Reproduction**:
-```basic
-CONST MAX% = 100
-CONST PI! = 3.14159
-CONST E# = 2.71828
-```
-
-**Error Message**:
-```
-Assertion failed: (storage && "CONST target should have storage"), function lowerConst, file LowerStmt_Runtime.cpp, line 358.
-```
-
-**Workaround**:
-Don't use type suffixes with CONST, use AS clause or no type annotation:
-```basic
-CONST MAX = 100  ' Works (defaults to INTEGER)
-CONST PI = 3     ' Works but truncates
-```
-
-For float constants, use regular variables with type suffixes:
-```basic
-PI! = 3.14159   ' Use variable instead of CONST
-E# = 2.71828
-```
-
-**Analysis**:
-The lowering code for CONST in `LowerStmt_Runtime.cpp:358` expects every CONST to have allocated storage, but CONST declarations with type suffixes don't get storage allocated properly. This is a code generation bug where the storage allocation phase doesn't handle type suffixes on CONST declarations. The assertion failure suggests the code path for CONST with suffixes is incomplete.
-
-**Impact**:
-Cannot use CONST for typed constants. Must use regular variables for any constants that need explicit types. Combined with BUG-019 (float truncation), this makes CONST nearly useless for mathematical constants.
-
-**Related Bugs**: BUG-019 (float truncation in CONST), BUG-020 (string CONST runtime error)
 
 ---
 
-### BUG-025: EXP of large values causes overflow trap
+### BUG-025: EXP of large
+**Difficulty**: 🔴 HARD values causes overflow trap
 **Severity**: Low
 **Status**: Confirmed
 **Test Case**: test_stress_arrays_loops.bas (first version)
@@ -911,3 +678,238 @@ Low severity because this is expected mathematical behavior. Large exponentials 
 
 ---
 
+
+### BUG-026: DO WHILE loops
+**Difficulty**: 🟡 MEDIUM with GOSUB cause "empty block" error
+**Severity**: High
+**Status**: Confirmed
+**Test Case**: test_do_gosub.bas, dungeon_quest.bas
+**Discovered**: 2025-11-12 during text adventure game development
+
+**Description**:
+DO WHILE loops that contain only GOSUB statements (or perhaps any control flow that doesn't generate local code) cause a code generation error "empty block". The loop body is not recognized as having content.
+
+**Reproduction**:
+```basic
+count% = 0
+DO WHILE count% < 3
+    GOSUB Increment
+LOOP
+END
+
+Increment:
+    count% = count% + 1
+RETURN
+```
+
+**Error Message**:
+```
+error: main:do_done: empty block
+```
+
+**Workaround**:
+Add inline code before/after the GOSUB:
+```basic
+DO WHILE count% < 3
+    x% = count%    REM Add inline statement
+    GOSUB Increment
+LOOP
+```
+
+Or use FOR loops instead of DO WHILE.
+
+**Analysis**:
+The code generator for DO WHILE loops may be checking if the loop body generated any IL code. GOSUB statements might not count as "content" for this check, or there's an issue with how GOSUB is lowered within DO WHILE loops specifically.
+
+**Impact**:
+Cannot structure programs with DO WHILE loops calling subroutines. This is a major limitation for building modular, complex programs.
+
+---
+
+### BUG-027: MOD operator doesn't work with INTEGER type (%)
+**Difficulty**: 🟢 EASY
+**Severity**: High
+**Status**: Confirmed
+**Test Case**: test_mod_operator.bas, dungeon_quest_v3.bas
+**Discovered**: 2025-11-12 during comprehensive math testing
+
+**Description**:
+The MOD (modulo) operator fails with a type mismatch error when used with INTEGER variables (% suffix). The IL verifier reports "operand type mismatch: operand 0 must be i64" for the srem.chk0 instruction.
+
+**Reproduction**:
+```basic
+a% = 100
+b% = 7
+c% = a% MOD b%  ' ERROR: type mismatch
+PRINT c%
+```
+
+**Error Message**:
+```
+error: main:entry: %9 = srem.chk0 %t7 %t8: operand type mismatch: operand 0 must be i64
+```
+
+**Analysis**:
+The BASIC frontend is likely lowering INTEGER (i32) variables to the srem.chk0 IL instruction, but that instruction expects i64 operands. The frontend needs to either:
+1. Promote i32 operands to i64 before MOD operation
+2. Use a different IL instruction for i32 modulo
+3. Store the srem.chk0 instruction should accept i32 operands
+
+**Impact**:
+Cannot perform modulo operations on INTEGER variables. This is a fundamental arithmetic operation that should work with all numeric types.
+
+**Workaround**:
+None known. Avoid using MOD operator with INTEGER type until fixed.
+
+---
+
+### BUG-028: Integer division
+**Difficulty**: 🟢 EASY (same fix as BUG-027) operator (\\) doesn't work with INTEGER type (%)
+**Severity**: High
+**Status**: Confirmed
+**Test Case**: test_int_division.bas
+**Discovered**: 2025-11-12 during comprehensive math testing
+**Related**: BUG-027 (same root cause)
+
+**Description**:
+The integer division operator (\\) fails with a type mismatch error when used with INTEGER variables (% suffix). The IL verifier reports "operand type mismatch: operand 0 must be i64" for the sdiv.chk0 instruction. This is the same root cause as BUG-027.
+
+**Reproduction**:
+```basic
+a% = 100
+b% = 7
+c% = a% \ b%  ' ERROR: type mismatch
+PRINT c%
+```
+
+**Error Message**:
+```
+error: main:entry: %7 = sdiv.chk0 %t5 %t6: operand type mismatch: operand 0 must be i64
+```
+
+**Analysis**:
+Same issue as MOD operator (BUG-027). The BASIC frontend is lowering INTEGER (i32) variables to IL instructions (sdiv.chk0) that expect i64 operands. This affects both MOD (srem.chk0) and integer division (sdiv.chk0) operators.
+
+**Impact**:
+Cannot perform integer division on INTEGER variables. Combined with BUG-027, this means two fundamental integer arithmetic operations are broken for the INTEGER type.
+
+**Workaround**:
+Use regular division operator (/) instead of integer division (\\), though this may produce different results.
+
+---
+
+### BUG-029: EXIT FUNCTION and EXIT SUB support — ✅ **RESOLVED** — See [basic_resolved.md](basic_resolved.md#bug-029)
+
+---
+
+### BUG-030: SUBs and FUNCTIONs
+**Difficulty**: 🔴 HARD cannot access global variables
+**Severity**: Critical
+**Status**: Confirmed
+**Test Case**: dungeon_quest_v4.bas (multiple locations)
+**Discovered**: 2025-11-12
+
+**Description**:
+Variables declared at module level (global scope) are not accessible inside SUB or FUNCTION procedures. Each SUB/FUNCTION has its own isolated scope and cannot read or write global variables. This makes it impossible to create properly modular programs that share state.
+
+**Reproduction**:
+```basic
+DIM globalVar% AS INTEGER
+globalVar% = 42
+
+SUB TestSub()
+    PRINT globalVar%  ' ERROR: unknown variable 'GLOBALVAR%'
+END SUB
+
+TestSub()
+```
+
+**Error Message**:
+```
+error[B1001]: unknown variable 'GLOBALVAR%'
+```
+
+**Analysis**:
+This appears to be a fundamental scoping issue in the BASIC frontend. Traditional BASIC allows procedures to access module-level variables. The current implementation treats each SUB/FUNCTION as completely isolated, which severely limits their usefulness.
+
+**Impact**:
+**CRITICAL**: Cannot write modular programs with SUBs and FUNCTIONs that share state. This essentially makes SUB/FUNCTION unusable for any non-trivial program. The only workaround is to pass every variable as a parameter (not possible for arrays) or use GOSUB instead (which has its own limitations per BUG-026).
+
+**Workaround**:
+Use GOSUB/RETURN instead of SUB/FUNCTION, which uses the same scope as the main program. However, this conflicts with BUG-026 (DO WHILE + GOSUB).
+
+**CRITICAL NOTE**: The combination of BUG-026 and BUG-030 creates a "modularity crisis":
+- Cannot use DO WHILE + GOSUB (BUG-026)
+- Cannot use SUB/FUNCTION to access globals (BUG-030)
+- Large inline FOR loops trigger IL verifier issues (IL-BUG-001)
+- Result: NO viable way to write modular, complex programs in current VIPER BASIC
+
+---
+
+### BUG-031: String comparison
+**Difficulty**: 🟡 MEDIUM operators (<, >, <=, >=) not supported
+**Severity**: Medium
+**Status**: Confirmed
+**Test Case**: test_strings_comprehensive.bas
+**Discovered**: 2025-11-12
+
+**Description**:
+Relational comparison operators (<, >, <=, >=) do not work with STRING types. Only equality (=) and inequality (<>) work.
+
+**Reproduction**:
+```basic
+s1$ = "apple"
+s2$ = "banana"
+IF s1$ < s2$ THEN  ' ERROR: operand type mismatch
+    PRINT "Less"
+END IF
+```
+
+**Error Message**:
+```
+error[B2001]: operand type mismatch
+IF cmp1$ < cmp2$ THEN
+         ^
+```
+
+**Impact**:
+Cannot perform lexicographic string comparisons. This limits sorting and string ordering operations.
+
+**Workaround**:
+None known for true lexicographic comparison. Could potentially use ASC() on individual characters for custom comparison.
+
+---
+
+### BUG-032: String arrays
+**Difficulty**: 🔴 HARD not supported
+**Severity**: High
+**Status**: Confirmed
+**Test Case**: test_strings_comprehensive.bas
+**Discovered**: 2025-11-12
+
+**Description**:
+Arrays of strings cannot be created or used. DIM names$(5) compiles, but any assignment to array elements fails with "array element type mismatch".
+
+**Reproduction**:
+```basic
+DIM names$(5)
+names$(0) = "Alice"  ' ERROR: array element type mismatch
+```
+
+**Error Message**:
+```
+error[B2001]: array element type mismatch
+names$(0) = "Alice"
+^
+```
+
+**Analysis**:
+The runtime only provides integer array functions (@rt_arr_i32_*). There appear to be no string array functions in the runtime, so the BASIC frontend cannot lower string arrays to IL.
+
+**Impact**:
+Cannot create collections of strings. This severely limits data structure possibilities. Common patterns like lists of names, menu options, command tables, etc. are impossible.
+
+**Workaround**:
+None known. Could potentially use multiple individual string variables, but this doesn't scale.
+
+---

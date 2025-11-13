@@ -1,0 +1,1 @@
+PRINT TAN(0)

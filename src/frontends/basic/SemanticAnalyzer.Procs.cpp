@@ -198,10 +198,21 @@ void SemanticAnalyzer::registerProcedureParam(const Param &param)
 /// @tparam BodyCallback Callable invoked after statement analysis for final checks.
 /// @param proc Procedure declaration being analyzed.
 /// @param bodyCheck Callback that performs procedure-specific validation.
+/// @param loopKind Optional loop kind for EXIT statement validation.
 template <typename Proc, typename BodyCallback>
-void SemanticAnalyzer::analyzeProcedureCommon(const Proc &proc, BodyCallback &&bodyCheck)
+void SemanticAnalyzer::analyzeProcedureCommon(const Proc &proc, BodyCallback &&bodyCheck,
+                                               std::optional<LoopKind> loopKind)
 {
     ProcedureScope procScope(*this);
+
+    // Push loop context if this is a SUB or FUNCTION (for EXIT SUB/FUNCTION support)
+    std::optional<std::pair<LoopKind, size_t>> loopState;
+    if (loopKind)
+    {
+        loopStack_.push_back(*loopKind);
+        loopState = std::make_pair(*loopKind, loopStack_.size() - 1);
+    }
+
     for (const auto &p : proc.params)
         registerProcedureParam(p);
     for (const auto &st : proc.body)
@@ -216,6 +227,12 @@ void SemanticAnalyzer::analyzeProcedureCommon(const Proc &proc, BodyCallback &&b
             visitStmt(*st);
 
     std::forward<BodyCallback>(bodyCheck)(proc);
+
+    // Pop loop context
+    if (loopState)
+    {
+        loopStack_.pop_back();
+    }
 }
 
 /// @brief Analyze a FUNCTION declaration and ensure it produces a return value.
@@ -260,7 +277,8 @@ void SemanticAnalyzer::analyzeProc(const FunctionDecl &f)
                                        func.endLoc.isValid() ? func.endLoc : func.loc,
                                        3,
                                        std::move(msg));
-                           });
+                           },
+                           LoopKind::Function);
 
     activeFunction_ = previousFunction;
     activeFunctionExplicitRet_ = previousExplicit;
@@ -272,7 +290,7 @@ void SemanticAnalyzer::analyzeProc(const FunctionDecl &f)
 /// @param s SUB declaration node.
 void SemanticAnalyzer::analyzeProc(const SubDecl &s)
 {
-    analyzeProcedureCommon(s, [](const SubDecl &) {});
+    analyzeProcedureCommon(s, [](const SubDecl &) {}, LoopKind::Sub);
 }
 
 /// @brief Determine whether a block of statements guarantees a return value.

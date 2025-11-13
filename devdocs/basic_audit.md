@@ -1520,3 +1520,136 @@ Combined with the previous 8 fixes, VIPER BASIC now has:
 
 **VIPER BASIC is production-ready for mathematical and scientific computing!**
 
+---
+
+## COMPREHENSIVE TESTING SESSION 2: Text Adventure Game (2025-11-12)
+
+### Objective
+Build a 500-800 line text adventure game to comprehensively test VIPER BASIC boundaries, discover bugs, and test complex program structures.
+
+### Test Programs Created
+- `dungeon_quest.bas` (296 lines) - Initial version
+- `dungeon_quest_v2.bas` (447 lines) - **WORKING VERSION**
+- `dungeon_quest_v3.bas` (725 lines) - Extended with math/combat
+- `dungeon_quest_v4.bas` (791 lines) - Attempted SUB/FUNCTION refactor
+- `test_strings_comprehensive.bas` (217 lines) - String operations test
+- Various minimal reproduction test cases
+
+### Bugs Discovered
+
+#### BUG-026: DO WHILE loops with GOSUB cause "empty block" error
+**Severity**: High
+**Impact**: Cannot use GOSUB inside DO WHILE loops
+
+#### BUG-027: MOD operator doesn't work with INTEGER type (%)
+**Severity**: High
+**Root Cause**: BASIC frontend lowers i32 to srem.chk0 which expects i64
+
+#### BUG-028: Integer division (\\) doesn't work with INTEGER type (%)
+**Severity**: High
+**Related**: BUG-027 (same root cause)
+
+#### BUG-029: EXIT FUNCTION not supported
+**Severity**: Medium
+**Impact**: Cannot exit early from FUNCTION
+
+#### BUG-030: SUBs and FUNCTIONs cannot access global variables
+**Severity**: **CRITICAL**
+**Impact**: Makes SUB/FUNCTION essentially unusable for non-trivial programs
+**Analysis**: Each SUB/FUNCTION has isolated scope, cannot access module-level variables
+
+#### BUG-031: String comparison operators (<, >, <=, >=) not supported
+**Severity**: Medium
+**Impact**: Cannot perform lexicographic string comparisons
+
+#### BUG-032: String arrays not supported
+**Severity**: High
+**Impact**: Cannot create collections of strings
+**Analysis**: Runtime only has @rt_arr_i32_* functions, no string array support
+
+#### IL-BUG-001: IL verifier error with complex nested IF-ELSEIF structures
+**Component**: IL Verifier / BASIC Frontend
+**Severity**: High
+**Pattern**: Large IF-ELSEIF chain (6+ branches) with multiple nested IF-ELSE statements
+**Error**: `expected 2 branch argument bundles, or none`
+
+### The "Modularity Crisis"
+
+The combination of BUG-026 and BUG-030 creates a fundamental problem:
+
+| Approach | Problem |
+|----------|---------|
+| DO WHILE + GOSUB | BUG-026: Causes "empty block" error |
+| SUB/FUNCTION | BUG-030: Cannot access globals (useless) |
+| FOR + inline code | IL-BUG-001: Triggers verifier errors when complex |
+| FOR + GOSUB | Works, but limited to ~500 lines before hitting issues |
+
+**Conclusion**: There is currently NO viable way to write modular, complex programs (>500 lines) in VIPER BASIC.
+
+### String Operations Test Results
+
+✅ **WORKING**:
+- String concatenation with +
+- LEN(), LEFT$(), RIGHT$(), MID$()
+- UCASE$(), LCASE$()
+- LTRIM$(), RTRIM$(), TRIM$()
+- INSTR()
+- CHR$(), ASC()
+- VAL(), STR$()
+- String equality (=) and inequality (<>)
+- Empty string handling
+- Complex string expressions
+- String building in loops
+
+❌ **NOT WORKING**:
+- String comparison (<, >, <=, >=) - BUG-031
+- String arrays - BUG-032
+
+### Production Readiness Assessment
+
+**For Simple Programs (<300 lines, no procedures)**:
+- ✅ Excellent - Most features work well
+- ✅ Good math support
+- ✅ Strong string function library
+- ✅ Arrays (integer only)
+- ✅ Control flow (loops, conditionals)
+
+**For Complex Programs (500+ lines, modular)**:
+- ❌ **NOT PRODUCTION READY**
+- Critical blocker: BUG-030 (SUB/FUNCTION scope)
+- High severity: BUG-026 (DO WHILE + GOSUB)
+- High severity: BUG-032 (No string arrays)
+- Architecture limitation: IL verifier issues with complex nesting
+
+### Recommendations for Production Use
+
+**CRITICAL FIXES NEEDED**:
+1. **BUG-030** - SUB/FUNCTION must access module-level variables
+2. **BUG-026** - DO WHILE + GOSUB must work
+3. **BUG-032** - String arrays are essential for real programs
+
+**HIGH PRIORITY**:
+- BUG-027/028 - MOD and \\ operators with INTEGER type
+- BUG-029 - EXIT FUNCTION support
+- BUG-031 - String comparison operators
+- IL-BUG-001 - Complex nested structure verifier issue
+
+### Files Created
+All test programs saved to `/devdocs/basic/`:
+- 97 BASIC test programs total
+- Comprehensive test suite covering all language features
+- Minimal reproduction cases for all bugs
+- Working 447-line game demonstrating viable complexity
+
+### Summary
+
+This comprehensive testing session successfully:
+- ✅ Created working 447-line text adventure game
+- ✅ Discovered 7 new bugs (6 BASIC frontend + 1 IL/verifier)
+- ✅ Comprehensively tested string operations
+- ✅ Identified "modularity crisis" preventing complex program development
+- ✅ Documented all bugs with minimal reproduction cases
+- ✅ Provided production readiness assessment
+
+**Overall Assessment**: VIPER BASIC works well for simple programs but needs critical fixes to support modular, complex applications.
+

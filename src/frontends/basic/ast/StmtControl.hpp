@@ -235,9 +235,11 @@ struct ExitStmt : Stmt
     /// Loop type targeted by this EXIT.
     enum class LoopKind
     {
-        For,   ///< EXIT FOR
-        While, ///< EXIT WHILE
-        Do,    ///< EXIT DO
+        For,      ///< EXIT FOR
+        While,    ///< EXIT WHILE
+        Do,       ///< EXIT DO
+        Sub,      ///< EXIT SUB
+        Function, ///< EXIT FUNCTION
     } kind{LoopKind::While};
 
     void accept(StmtVisitor &visitor) const override;

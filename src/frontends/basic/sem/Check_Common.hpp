@@ -118,6 +118,16 @@ class ControlCheckContext
         return {*analyzer_, SemanticAnalyzer::LoopKind::For};
     }
 
+    semantic_analyzer_detail::ControlStmtContext::LoopGuard subLoopGuard()
+    {
+        return {*analyzer_, SemanticAnalyzer::LoopKind::Sub};
+    }
+
+    semantic_analyzer_detail::ControlStmtContext::LoopGuard functionLoopGuard()
+    {
+        return {*analyzer_, SemanticAnalyzer::LoopKind::Function};
+    }
+
     semantic_analyzer_detail::ControlStmtContext::ForLoopGuard trackForVariable(std::string name)
     {
         return {*analyzer_, std::move(name)};
@@ -133,6 +143,10 @@ class ControlCheckContext
                 return SemanticAnalyzer::LoopKind::While;
             case ExitStmt::LoopKind::Do:
                 return SemanticAnalyzer::LoopKind::Do;
+            case ExitStmt::LoopKind::Sub:
+                return SemanticAnalyzer::LoopKind::Sub;
+            case ExitStmt::LoopKind::Function:
+                return SemanticAnalyzer::LoopKind::Function;
         }
         return SemanticAnalyzer::LoopKind::While;
     }
@@ -147,6 +161,10 @@ class ControlCheckContext
                 return "WHILE";
             case SemanticAnalyzer::LoopKind::Do:
                 return "DO";
+            case SemanticAnalyzer::LoopKind::Sub:
+                return "SUB";
+            case SemanticAnalyzer::LoopKind::Function:
+                return "FUNCTION";
         }
         return "WHILE";
     }
@@ -191,6 +209,11 @@ class ControlCheckContext
     [[nodiscard]] bool hasActiveProcScope() const noexcept
     {
         return analyzer_->activeProcScope_ != nullptr;
+    }
+
+    [[nodiscard]] bool hasLoopOfKind(SemanticAnalyzer::LoopKind kind) const noexcept
+    {
+        return analyzer_->hasLoopOfKind(kind);
     }
 
     [[nodiscard]] SemanticDiagnostics &diagnostics() noexcept

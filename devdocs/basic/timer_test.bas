@@ -1,0 +1,2 @@
+DIM t AS LONG
+t = TIMER()

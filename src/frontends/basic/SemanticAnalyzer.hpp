@@ -293,7 +293,9 @@ class SemanticAnalyzer
     {
         For,
         While,
-        Do
+        Do,
+        Sub,
+        Function
     };
 
     /// @brief Resolve @p name in current scope and update symbol/type tables.
@@ -428,10 +430,13 @@ class SemanticAnalyzer
     void popForVariable();
     /// @brief Determine if @p name is currently an active FOR loop variable.
     bool isLoopVariableActive(std::string_view name) const noexcept;
+    /// @brief Check if a specific loop kind exists anywhere in the loop stack.
+    bool hasLoopOfKind(LoopKind kind) const noexcept;
 
     /// @brief Shared setup/teardown for analyzing procedures.
     template <typename Proc, typename BodyCallback>
-    void analyzeProcedureCommon(const Proc &proc, BodyCallback &&bodyCheck);
+    void analyzeProcedureCommon(const Proc &proc, BodyCallback &&bodyCheck,
+                                std::optional<LoopKind> loopKind = std::nullopt);
 
     /// @brief Register parameter @p param in the current procedure scope.
     void registerProcedureParam(const Param &param);

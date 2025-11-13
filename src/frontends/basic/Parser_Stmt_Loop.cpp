@@ -185,12 +185,22 @@ StmtPtr Parser::parseExitStatement()
         consume();
         kind = ExitStmt::LoopKind::Do;
     }
+    else if (at(TokenKind::KeywordSub))
+    {
+        consume();
+        kind = ExitStmt::LoopKind::Sub;
+    }
+    else if (at(TokenKind::KeywordFunction))
+    {
+        consume();
+        kind = ExitStmt::LoopKind::Function;
+    }
     else
     {
         Token unexpected = peek();
         il::support::SourceLoc diagLoc =
             unexpected.kind == TokenKind::EndOfFile ? loc : unexpected.loc;
-        emitError("B0002", diagLoc, "expected FOR, WHILE, or DO after EXIT");
+        emitError("B0002", diagLoc, "expected FOR, WHILE, DO, SUB, or FUNCTION after EXIT");
         auto noop = std::make_unique<EndStmt>();
         noop->loc = loc;
         return noop;
