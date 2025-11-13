@@ -465,7 +465,7 @@ void Lowerer::resetSymbolState()
 Lowerer::SlotType Lowerer::getSlotType(std::string_view name) const
 {
     SlotType info;
-    AstType astTy = inferAstTypeFromName(name);
+    AstType astTy = inferVariableTypeForLowering(*this, name);
     if (const auto *sym = findSymbol(name))
     {
         if (sym->isObject)

@@ -111,8 +111,8 @@ void SemanticAnalyzer::analyzeVarAssignment(VarExpr &v, const LetStmt &l)
     // Check if variable already exists
     bool isNewVariable = (varTypes_.find(v.name) == varTypes_.end());
 
-    // If new variable with no suffix and RHS is String or Bool, pre-set the type
-    if (isNewVariable && hasNoSuffix && (exprTy == Type::String || exprTy == Type::Bool))
+    // If new variable with no suffix and RHS is String, Bool, or Float, pre-set the type
+    if (isNewVariable && hasNoSuffix && (exprTy == Type::String || exprTy == Type::Bool || exprTy == Type::Float))
     {
         varTypes_[v.name] = exprTy;
     }
@@ -448,10 +448,11 @@ void SemanticAnalyzer::analyzeDim(DimStmt &d)
 /// @param c CONST statement declaring a constant.
 void SemanticAnalyzer::analyzeConst(ConstStmt &c)
 {
-    // Validate the initializer expression
+    // Evaluate the initializer expression to determine its type
+    Type initializerTy = Type::Unknown;
     if (c.initializer)
     {
-        visitExpr(*c.initializer);
+        initializerTy = visitExpr(*c.initializer);
     }
 
     // Track this name as a constant
@@ -462,6 +463,18 @@ void SemanticAnalyzer::analyzeConst(ConstStmt &c)
     if (insertResult.second && activeProcScope_)
         activeProcScope_->noteSymbolInserted(c.name);
 
+    // Determine final type: infer from initializer if no explicit suffix/AS clause
+    // Check if constant name has no type suffix (ends with alphanumeric)
+    bool hasNoSuffix = !c.name.empty() && std::isalnum(static_cast<unsigned char>(c.name.back()));
+
+    Type finalType = astToSemanticType(c.type);
+
+    // If no suffix and initializer is Float, infer Float type (BUG-019 fix)
+    if (hasNoSuffix && c.type == ::il::frontends::basic::Type::I64 && initializerTy == Type::Float)
+    {
+        finalType = Type::Float;
+    }
+
     // Track the type
     auto itType = varTypes_.find(c.name);
     if (activeProcScope_)
@@ -471,7 +484,7 @@ void SemanticAnalyzer::analyzeConst(ConstStmt &c)
             previous = itType->second;
         activeProcScope_->noteVarTypeMutation(c.name, previous);
     }
-    varTypes_[c.name] = astToSemanticType(c.type);
+    varTypes_[c.name] = finalType;
 }
 
 /// @brief Validate REDIM statements for previously declared arrays.

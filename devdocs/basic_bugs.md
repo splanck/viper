@@ -400,9 +400,9 @@ The code generator produces invalid IL with incorrect block labels when generati
 ---
 
 ### BUG-019: Float literals assigned to CONST are truncated to integers
-**Difficulty**: 🟡 MEDIUM (type inference/constant folding issue)
+**Difficulty**: 🔴 HARD (module-level type inference)
 **Severity**: Medium
-**Status**: Confirmed
+**Status**: Partial - BUG-022 (procedure-level) fixed, module-level remains
 **Test Case**: test_const_simple.bas, test_scientific_calc.bas
 **Discovered**: 2025-11-12 during comprehensive testing
 
@@ -438,10 +438,12 @@ PRINT E#        ' Output: 2.71828
 Note: Cannot use type suffixes directly on CONST due to BUG-024.
 
 **Analysis**:
-The type inference for CONST statements appears to default to INTEGER type when no explicit type suffix or AS clause is provided. Float literals are then converted to integers during assignment. This is related to BUG-022 (general float literal type inference issue). The CONST implementation in Parser.cpp and SemanticAnalyzer.cpp uses `typeFromSuffix()` which returns I64 by default. There's no mechanism to infer float type from the initializer expression.
+BUG-022 fixed float literal type inference for regular LET assignments within procedures. However, CONST declarations are evaluated at module level before the semantic analyzer's type inference runs. The lowering phase queries the semantic analyzer but module-level symbols haven't been analyzed yet. Need to either: (1) run semantic analysis on module-level declarations before lowering, or (2) add special handling for CONST in the lowering phase to infer from initializer type.
+
+This is a deeper architectural issue than initially assessed - upgrading difficulty to HARD.
 
 **Impact**:
-Cannot define accurate mathematical constants. All calculations using these constants will be incorrect. This severely limits the usefulness of CONST for scientific computing.
+Cannot define accurate mathematical constants at module level. Regular variables with float literals work fine (BUG-022 resolved). This limits the usefulness of CONST for scientific computing, but workaround exists using regular variables.
 
 ---
 
@@ -487,9 +489,7 @@ The code generator is missing the runtime function `@rt_str_release_maybe` neede
 ---
 
 ### BUG-022: Float literals without explicit type default to INTEGER
-**Difficulty**: 🟡 MEDIUM (type inference rules)
-**Severity**: Medium
-**Status**: Confirmed
+**Status**: ✅ RESOLVED 2025-11-12 - See basic_resolved.md for details
 **Test Cases**: test_float_literals.bas, test_scientific_calc.bas
 **Discovered**: 2025-11-12 during comprehensive testing
 

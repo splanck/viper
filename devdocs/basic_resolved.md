@@ -1297,3 +1297,73 @@ PRINT a%; " div "; b%; " = "; result%; " remainder "; remainder%
 ```
 
 ---
+
+---
+
+### BUG-022: Float literals without explicit type default to INTEGER
+**Difficulty**: 🟡 MEDIUM  
+**Resolved**: 2025-11-12  
+**Files Modified**:
+- src/frontends/basic/SemanticAnalyzer.Stmts.Runtime.cpp (analyzeVarAssignment)
+- src/frontends/basic/Lowerer.Procedure.cpp (getSlotType)
+
+**Problem**:
+Float literals like `3.14159` were converted to integers (truncated) when assigned to variables without explicit type suffixes or AS clauses. The type inference system defaulted to INTEGER for variables, causing loss of precision.
+
+**Reproduction**:
+```basic
+x = 3.14159
+PRINT x  ' Output: 3 (expected 3.14159)
+```
+
+**Root Cause**:
+The semantic analyzer had type inference logic for String and Bool types in `analyzeVarAssignment()` (lines 114-118), but Float was not included. Additionally, the lowering phase's `getSlotType()` function used only suffix-based type inference and didn't query the semantic analyzer for inferred types.
+
+**Solution**:
+Two changes implemented:
+
+1. **Semantic Analysis** (SemanticAnalyzer.Stmts.Runtime.cpp:115):
+   Extended the type inference condition from:
+   ```cpp
+   if (isNewVariable && hasNoSuffix && (exprTy == Type::String || exprTy == Type::Bool))
+   ```
+   To:
+   ```cpp
+   if (isNewVariable && hasNoSuffix && (exprTy == Type::String || exprTy == Type::Bool || exprTy == Type::Float))
+   ```
+
+2. **Lowering** (Lowerer.Procedure.cpp:468):
+   Changed `getSlotType()` to query semantic analyzer before falling back to suffix inference:
+   ```cpp
+   // Before:
+   AstType astTy = inferAstTypeFromName(name);
+
+   // After:
+   AstType astTy = inferVariableTypeForLowering(*this, name);
+   ```
+
+The existing `inferVariableTypeForLowering()` helper (lines 319-344) already implemented the correct pattern: query semantic analyzer first, then fall back to suffix-based inference.
+
+**Test Cases**:
+```basic
+REM All of these now work correctly:
+x = 3.14159
+PRINT x         ' Output: 3.14159 ✓
+
+pi = 3.14159265359
+area = pi * 5.0 * 5.0
+PRINT area      ' Output: 78.53975 ✓
+
+result = 2.5 * 2.0
+PRINT result    ' Output: 5 ✓
+```
+
+**Impact**:
+- Float literals now correctly infer as Float type in LET assignments
+- No explicit type suffixes (!, #) or AS clauses needed for basic floating-point math
+- Makes scientific computing and mathematical programs practical
+- Type suffixes still work for explicit type control
+
+**Related**:
+- BUG-019 remains unresolved for module-level CONST (different architecture issue)
+- BUG-001, BUG-003 previously implemented similar semantic analysis type inference

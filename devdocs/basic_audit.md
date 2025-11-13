@@ -1671,3 +1671,20 @@ This comprehensive testing session successfully:
 
 **Overall Assessment**: VIPER BASIC works well for simple programs but needs critical fixes to support modular, complex applications.
 
+
+### Test 003c: Float Literal Type Inference (BUG-022 RESOLVED)
+**File**: `/tmp/test_bug022_comprehensive.bas`
+**Status**: ✅ WORKS (resolved 2025-11-12)
+```basic
+REM Float literals now correctly infer as Float type
+x = 3.14159
+PRINT x           ' Output: 3.14159
+
+pi = 3.14159265359
+area = pi * 5.0 * 5.0
+PRINT area        ' Output: 78.53975
+
+result = 2.5 * 2.0
+PRINT result      ' Output: 5.0
+```
+**Notes**: Variables assigned float literals without type suffixes now correctly infer as Float type. Previously truncated to integers (BUG-022). Type suffixes (!, #) still work for explicit control.
