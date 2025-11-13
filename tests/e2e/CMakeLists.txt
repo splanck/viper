@@ -207,6 +207,14 @@ function(viper_add_e2e_vm_suite)
             -P ${_VIPER_E2E_DIR}/test_basic_math_phase1.cmake)
     set_tests_properties(basic_oop_field_access PROPERTIES LABELS VM)
 
+    viper_add_ctest(basic_oop_string_property
+            ${CMAKE_COMMAND}
+            -DILC=$<TARGET_FILE:ilc>
+            -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/e2e/test_oop_string_property.bas
+            -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/e2e/test_oop_string_property.bas.out
+            -P ${_VIPER_E2E_DIR}/test_basic_math_phase1.cmake)
+    set_tests_properties(basic_oop_string_property PROPERTIES LABELS VM)
+
     viper_add_ctest(basic_oop_method_return
             ${CMAKE_COMMAND}
             -DILC=$<TARGET_FILE:ilc>

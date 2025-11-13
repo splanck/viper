@@ -106,8 +106,8 @@ void ProgramLowering::run(const Program &prog, il::core::Module &module)
     lowerer.runtimeTracker.reset();
     lowerer.resetManualHelpers();
 
-    lowerer.scanProgram(prog);
-    lowerer.scanOOP(prog);
+    lowerer.scanOOP(prog);          // Must scan OOP first to populate classLayouts_
+    lowerer.scanProgram(prog);       // Then scan program (needs classLayouts_ for field assignments)
     lowerer.emitOopDeclsAndBodies(prog);
     lowerer.declareRequiredRuntime(builder);
     lowerer.emitProgram(prog);
