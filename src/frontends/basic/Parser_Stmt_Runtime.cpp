@@ -144,15 +144,16 @@ StmtPtr Parser::parseResumeStatement()
 /// @brief Parse a @c DIM statement.
 /// @details Captures the declared name, optional array bounds, and optional type
 ///          annotation.  Array declarations update the parser's array tracking so
-///          later phases can generate runtime allocation requests.
+///          later phases can generate runtime allocation requests. Supports optional
+///          initializer syntax: DIM name = value
 /// @return Newly constructed statement node.
 StmtPtr Parser::parseDimStatement()
 {
     auto loc = peek().loc;
     consume(); // DIM
 
-    // Parse a single DIM item: <name> [ ( <size> ) ] [ AS <type> ]
-    auto parseOne = [&](Token firstNameTok = Token{}) -> std::unique_ptr<DimStmt>
+    // Parse a single DIM item: <name> [ ( <size> ) ] [ AS <type> ] [ = <expr> ]
+    auto parseOne = [&](Token firstNameTok = Token{}) -> StmtPtr
     {
         Token nameTok = firstNameTok.kind == TokenKind::Identifier ? firstNameTok
                                                                    : expect(TokenKind::Identifier);
@@ -184,6 +185,33 @@ StmtPtr Parser::parseDimStatement()
                 node->type = parseTypeKeyword();
             }
         }
+
+        // Check for optional initializer: DIM name = value
+        if (at(TokenKind::Equal))
+        {
+            consume(); // '='
+            auto initExpr = parseExpression();
+
+            // Create a VarExpr lvalue for the assignment
+            auto varExpr = std::make_unique<VarExpr>();
+            varExpr->loc = nameTok.loc;
+            varExpr->Expr::loc = nameTok.loc;
+            varExpr->name = nameTok.lexeme;
+
+            // Create assignment statement
+            auto assignStmt = std::make_unique<LetStmt>();
+            assignStmt->loc = nameTok.loc;
+            assignStmt->target = std::move(varExpr);
+            assignStmt->expr = std::move(initExpr);
+
+            // Return both DIM and assignment wrapped in a StmtList
+            auto list = std::make_unique<StmtList>();
+            list->loc = loc;
+            list->stmts.push_back(std::move(node));
+            list->stmts.push_back(std::move(assignStmt));
+            return list;
+        }
+
         return node;
     };
 

@@ -1003,3 +1003,137 @@ apple >= apple: TRUE
 - No breaking changes to existing code
 
 ---
+
+### BUG-023: DIM with initializer not supported
+**Severity**: Low
+**Status**: ✅ RESOLVED
+**Test Case**: /tmp/test_bug023.bas, /tmp/test_bug023_comprehensive.bas
+**Resolution Date**: 2025-11-12
+
+**Original Issue**:
+The syntax `DIM variable = value` for declaring and initializing a variable in one statement was not supported. DIM only accepted type declarations, not initializers.
+
+**Reproduction**:
+```basic
+DIM pi = 3.14159      ' ERROR: unknown statement
+DIM count = 0         ' ERROR: unknown statement
+DIM name$ = "Alice"   ' ERROR: unknown statement
+```
+
+**Error Message**:
+```
+error[B0001]: unknown statement '='; expected keyword or procedure call
+DIM pi = 3.14159
+       ^
+```
+
+**Root Cause**:
+Parser limitation in `Parser_Stmt_Runtime.cpp`. The `parseDimStatement()` function only handled:
+- `DIM name` (implicit type)
+- `DIM name AS type` (explicit type)
+- `DIM name$` (type suffix)
+- `DIM name(size)` (array declaration)
+
+It did not check for an optional `= expression` initializer after the variable declaration.
+
+**Resolution**:
+Extended `parseDimStatement()` in `Parser_Stmt_Runtime.cpp` to support optional initializer syntax. When `=` token is encountered after the variable declaration, the parser now:
+1. Consumes the `=` token
+2. Parses the initializer expression
+3. Creates a `VarExpr` lvalue for the variable
+4. Generates a `LetStmt` assignment node
+5. Wraps both the `DimStmt` and `LetStmt` in a `StmtList`
+
+**Implementation Details**:
+
+Modified `parseDimStatement()` in `src/frontends/basic/Parser_Stmt_Runtime.cpp` (lines 144-236):
+
+```cpp
+// Check for optional initializer: DIM name = value
+if (at(TokenKind::Equal))
+{
+    consume(); // '='
+    auto initExpr = parseExpression();
+
+    // Create a VarExpr lvalue for the assignment
+    auto varExpr = std::make_unique<VarExpr>();
+    varExpr->loc = nameTok.loc;
+    varExpr->Expr::loc = nameTok.loc;
+    varExpr->name = nameTok.lexeme;
+
+    // Create assignment statement
+    auto assignStmt = std::make_unique<LetStmt>();
+    assignStmt->loc = nameTok.loc;
+    assignStmt->target = std::move(varExpr);
+    assignStmt->expr = std::move(initExpr);
+
+    // Return both DIM and assignment wrapped in a StmtList
+    auto list = std::make_unique<StmtList>();
+    list->loc = loc;
+    list->stmts.push_back(std::move(node));
+    list->stmts.push_back(std::move(assignStmt));
+    return list;
+}
+```
+
+**Files Changed**:
+- `src/frontends/basic/Parser_Stmt_Runtime.cpp` - Extended `parseDimStatement()` to handle optional initializers
+
+**Test Results**:
+```bash
+# Basic test
+$ ./build/src/tools/ilc/ilc front basic -run /tmp/test_bug023.bas
+x = 42
+name = Alice
+pi = 3.14159
+
+# Comprehensive test (integers, strings, floats, AS types, mixed)
+$ ./build/src/tools/ilc/ilc front basic -run /tmp/test_bug023_comprehensive.bas
+a = 10
+b = 20
+s = Hello
+t = World
+pi = 3.14159
+e = 2.71828
+count = 100
+price = 19.99
+msg = Test
+x = 1
+y = 2
+z = 3
+```
+
+All 586 tests pass (1 pre-existing unrelated failure).
+
+**Supported Syntax**:
+```basic
+' Integer variables
+DIM a = 10
+DIM b% = 20
+
+' String variables
+DIM s$ = "Hello"
+DIM t$ = "World"
+
+' Float variables
+DIM pi! = 3.14159
+DIM e# = 2.71828
+
+' Variables with AS type annotation
+DIM count AS INTEGER = 100
+DIM price AS DOUBLE = 19.99
+DIM msg AS STRING = "Test"
+
+' Original syntax still supported
+DIM x
+DIM y AS INTEGER
+DIM arr(10)
+```
+
+**Benefits**:
+- More concise code - declaration and initialization in one line
+- Matches common BASIC dialect syntax (QBasic, Visual Basic)
+- No breaking changes - all existing code continues to work
+- Parser change only - no semantic or lowering changes needed
+
+---

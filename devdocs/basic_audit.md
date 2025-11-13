@@ -462,6 +462,22 @@ PRINT s
 **Output**: `42` `Hello`
 **Notes**: DIM AS INTEGER and DIM AS STRING work for explicit type declarations
 
+### Test 032b: DIM with Initializer (BUG-023 RESOLVED)
+**File**: `/tmp/test_bug023.bas`
+**Status**: ✅ WORKS (resolved 2025-11-12)
+```basic
+DIM x = 42
+DIM name$ = "Alice"
+DIM pi! = 3.14159
+DIM count AS INTEGER = 100
+PRINT "x = "; x
+PRINT "name = "; name$
+PRINT "pi = "; pi!
+PRINT "count = "; count
+```
+**Output**: `x = 42` `name = Alice` `pi = 3.14159` `count = 100`
+**Notes**: DIM with initializer syntax now fully supported - declaration and initialization in one statement
+
 ### Test 033: CONST Declarations
 **File**: `test033.bas`
 **Status**: ❌ DOES NOT WORK
@@ -1271,31 +1287,21 @@ x = 3.14159  ' Still might truncate?
 
 ### BUG-023: DIM with initializer not supported
 **Severity**: Low
-**Status**: Confirmed
-**Test Case**: test_float_literals.bas
+**Status**: ✅ RESOLVED 2025-11-12
+**Test Case**: /tmp/test_bug023.bas, /tmp/test_bug023_comprehensive.bas
 
 **Description**:
-The syntax `DIM variable = value` is not supported. DIM only accepts type declarations, not initializers.
+The syntax `DIM variable = value` for declaring and initializing in one statement is now supported.
 
-**Reproduction**:
+**Example**:
 ```basic
-DIM pi = 3.14159  ' ERROR
+DIM pi = 3.14159      ' ✅ Works now
+DIM count = 0         ' ✅ Works now
+DIM name$ = "Alice"   ' ✅ Works now
 ```
 
-**Error Message**:
-```
-error[B0001]: unknown statement '='; expected keyword or procedure call
-```
-
-**Workaround**:
-Declare then assign:
-```basic
-DIM pi
-pi = 3.14159
-```
-
-**Analysis**:
-This is a syntax limitation. Some BASIC dialects support `DIM x = value`, but Viper BASIC requires separate declaration and assignment statements.
+**Resolution**:
+Extended parser to support optional initializer syntax. See basic_resolved.md for details.
 
 ---
 
@@ -1450,7 +1456,6 @@ The following bugs require architectural changes and are beyond simple fixes:
 - BUG-015-018: OOP string issues (4 related bugs, runtime string lifecycle)
 - BUG-019, 022: Type inference policies (design decisions)
 - BUG-020: String CONST runtime (string lifecycle)
-- BUG-023: DIM initializer (parser extension)
 - BUG-025: EXP overflow (runtime trap handling)
 
 ### Test Results After Fixes

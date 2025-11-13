@@ -583,54 +583,8 @@ Makes floating-point mathematics nearly impossible without explicit type suffixe
 
 ---
 
-### BUG-023: DIM with initializer
-**Difficulty**: 🟡 MEDIUM not supported
-**Severity**: Low
-**Status**: Confirmed
-**Test Case**: test_float_literals.bas
-**Discovered**: 2025-11-12 during comprehensive testing
-
-**Description**:
-The syntax `DIM variable = value` for declaring and initializing a variable in one statement is not supported. DIM only accepts type declarations, not initializers.
-
-**Reproduction**:
-```basic
-DIM pi = 3.14159  ' ERROR: unknown statement
-DIM count = 0     ' ERROR: unknown statement
-DIM name$ = "Alice"  ' ERROR: unknown statement
-```
-
-**Error Message**:
-```
-error[B0001]: unknown statement '='; expected keyword or procedure call
-DIM pi = 3.14159
-       ^
-```
-
-**Workaround**:
-Declare then assign on separate lines:
-```basic
-DIM pi
-pi = 3.14159
-
-DIM count
-count = 0
-
-DIM name$ AS STRING
-name$ = "Alice"
-```
-
-**Analysis**:
-This is a syntax limitation in Parser_Stmt_Core.cpp. The DIM statement parser only expects:
-- `DIM name` (implicit type)
-- `DIM name AS type` (explicit type)
-- `DIM name$` (type suffix)
-- `DIM name(size)` (array)
-
-Some BASIC dialects (like Visual Basic) support `DIM x = value` for combined declaration and initialization, but Viper BASIC requires separate declaration and assignment statements. This is a parser limitation, not a semantic issue.
-
-**Impact**:
-Requires two lines instead of one for variable initialization. Minor inconvenience but not a blocking issue. More verbose code.
+### BUG-023: DIM with initializer not supported
+**Status**: ✅ RESOLVED 2025-11-12 - See basic_resolved.md for details
 
 ---
 
