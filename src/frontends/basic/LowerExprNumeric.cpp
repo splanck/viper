@@ -437,14 +437,48 @@ Lowerer::RVal NumericExprLowering::lowerStringBinary(const BinaryExpr &expr,
         Value res = lowerer.emitCallRet(IlType(IlKind::Str), "rt_concat", {lhs.value, rhs.value});
         return {res, IlType(IlKind::Str)};
     }
-    Value eq = lowerer.emitCallRet(lowerer.ilBoolTy(), "rt_str_eq", {lhs.value, rhs.value});
-    Value eqLogical = lowerer.emitBasicLogicalI64(eq);
-    if (expr.op == BinaryExpr::Op::Ne)
+
+    // String comparison operators - select appropriate runtime function
+    const char *rtFunc = nullptr;
+    bool needsNegation = false;
+
+    switch (expr.op)
     {
-        Value res = lowerer.emitCommon(expr.loc).logical_xor(eqLogical, lowerer.emitConstI64(-1));
+        case BinaryExpr::Op::Eq:
+            rtFunc = "rt_str_eq";
+            break;
+        case BinaryExpr::Op::Ne:
+            rtFunc = "rt_str_eq";
+            needsNegation = true;
+            break;
+        case BinaryExpr::Op::Lt:
+            rtFunc = "rt_str_lt";
+            break;
+        case BinaryExpr::Op::Le:
+            rtFunc = "rt_str_le";
+            break;
+        case BinaryExpr::Op::Gt:
+            rtFunc = "rt_str_gt";
+            break;
+        case BinaryExpr::Op::Ge:
+            rtFunc = "rt_str_ge";
+            break;
+        default:
+            // Should not reach here - validated by semantic analysis
+            rtFunc = "rt_str_eq";
+            break;
+    }
+
+    Value cmp = lowerer.emitCallRet(lowerer.ilBoolTy(), rtFunc, {lhs.value, rhs.value});
+    Value cmpLogical = lowerer.emitBasicLogicalI64(cmp);
+
+    if (needsNegation)
+    {
+        Value res = lowerer.emitCommon(expr.loc).logical_xor(cmpLogical, lowerer.emitConstI64(-1));
         return {res, IlType(IlKind::I64)};
     }
-    return {eqLogical, IlType(IlKind::I64)};
+
+    return {cmpLogical, IlType(IlKind::I64)};
 }
 
 /// @brief Lower arithmetic or comparison operators on numeric operands.

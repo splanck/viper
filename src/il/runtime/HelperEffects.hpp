@@ -42,7 +42,7 @@ inline HelperEffects classifyHelperEffects(std::string_view name)
         HelperEffects effects;
     };
 
-    constexpr std::array<Entry, 14> kEntries{{
+    constexpr std::array<Entry, 18> kEntries{{
         Entry{"rt_cdbl_from_any", HelperEffects{true, false, true}},
         Entry{"rt_int_floor", HelperEffects{true, false, true}},
         Entry{"rt_fix_trunc", HelperEffects{true, false, true}},
@@ -57,6 +57,10 @@ inline HelperEffects classifyHelperEffects(std::string_view name)
         Entry{"rt_instr2", HelperEffects{true, true, false}},
         Entry{"rt_instr3", HelperEffects{true, true, false}},
         Entry{"rt_str_eq", HelperEffects{true, true, false}},
+        Entry{"rt_str_lt", HelperEffects{true, true, false}},
+        Entry{"rt_str_le", HelperEffects{true, true, false}},
+        Entry{"rt_str_gt", HelperEffects{true, true, false}},
+        Entry{"rt_str_ge", HelperEffects{true, true, false}},
     }};
 
     for (const auto &entry : kEntries)

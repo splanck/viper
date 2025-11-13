@@ -667,3 +667,63 @@ int64_t rt_str_eq(rt_string a, rt_string b)
         return 0;
     return memcmp(a->data, b->data, alen) == 0;
 }
+
+int64_t rt_str_lt(rt_string a, rt_string b)
+{
+    if (!a || !b)
+        return 0;
+    if (a == b)
+        return 0;
+    size_t alen = rt_string_len_bytes(a);
+    size_t blen = rt_string_len_bytes(b);
+    size_t minlen = alen < blen ? alen : blen;
+    int cmp = memcmp(a->data, b->data, minlen);
+    if (cmp != 0)
+        return cmp < 0;
+    return alen < blen;
+}
+
+int64_t rt_str_le(rt_string a, rt_string b)
+{
+    if (!a || !b)
+        return a == b;
+    if (a == b)
+        return 1;
+    size_t alen = rt_string_len_bytes(a);
+    size_t blen = rt_string_len_bytes(b);
+    size_t minlen = alen < blen ? alen : blen;
+    int cmp = memcmp(a->data, b->data, minlen);
+    if (cmp != 0)
+        return cmp < 0;
+    return alen <= blen;
+}
+
+int64_t rt_str_gt(rt_string a, rt_string b)
+{
+    if (!a || !b)
+        return 0;
+    if (a == b)
+        return 0;
+    size_t alen = rt_string_len_bytes(a);
+    size_t blen = rt_string_len_bytes(b);
+    size_t minlen = alen < blen ? alen : blen;
+    int cmp = memcmp(a->data, b->data, minlen);
+    if (cmp != 0)
+        return cmp > 0;
+    return alen > blen;
+}
+
+int64_t rt_str_ge(rt_string a, rt_string b)
+{
+    if (!a || !b)
+        return a == b;
+    if (a == b)
+        return 1;
+    size_t alen = rt_string_len_bytes(a);
+    size_t blen = rt_string_len_bytes(b);
+    size_t minlen = alen < blen ? alen : blen;
+    int cmp = memcmp(a->data, b->data, minlen);
+    if (cmp != 0)
+        return cmp > 0;
+    return alen >= blen;
+}

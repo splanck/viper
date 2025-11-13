@@ -82,14 +82,7 @@ function(viper_add_golden_suite_tests)
             "-DEXPECT=${EXPECT_STRING_ARITH}"
             -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
 
-    file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/string_cmp_order.stderr EXPECT_STRING_CMP_ORDER)
-    string(STRIP "${EXPECT_STRING_CMP_ORDER}" EXPECT_STRING_CMP_ORDER)
-    viper_add_ctest(basic_error_string_cmp_order
-            ${CMAKE_COMMAND}
-            -DILC=${BASIC_ILC}
-            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/string_cmp_order.bas
-            "-DEXPECT=${EXPECT_STRING_CMP_ORDER}"
-            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
+    # String comparison operators are now supported, so string_cmp_order test removed
 
     file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/const_div_zero.stderr EXPECT_CONST_DIV_ZERO)
     string(STRIP "${EXPECT_CONST_DIV_ZERO}" EXPECT_CONST_DIV_ZERO)

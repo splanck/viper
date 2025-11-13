@@ -142,6 +142,30 @@ extern "C"
     /// @return 1 when equal, 0 otherwise.
     int64_t rt_str_eq(rt_string a, rt_string b);
 
+    /// @brief Compare @p a < @p b lexicographically.
+    /// @param a First operand.
+    /// @param b Second operand.
+    /// @return 1 when a < b, 0 otherwise.
+    int64_t rt_str_lt(rt_string a, rt_string b);
+
+    /// @brief Compare @p a <= @p b lexicographically.
+    /// @param a First operand.
+    /// @param b Second operand.
+    /// @return 1 when a <= b, 0 otherwise.
+    int64_t rt_str_le(rt_string a, rt_string b);
+
+    /// @brief Compare @p a > @p b lexicographically.
+    /// @param a First operand.
+    /// @param b Second operand.
+    /// @return 1 when a > b, 0 otherwise.
+    int64_t rt_str_gt(rt_string a, rt_string b);
+
+    /// @brief Compare @p a >= @p b lexicographically.
+    /// @param a First operand.
+    /// @param b Second operand.
+    /// @return 1 when a >= b, 0 otherwise.
+    int64_t rt_str_ge(rt_string a, rt_string b);
+
     /// @brief Parse decimal integer from @p s.
     /// @param s Source string.
     /// @return Parsed integer value or 0 when missing.

@@ -138,9 +138,9 @@ int main()
     }
 
     {
+        // String comparison operators are now supported
         auto result = analyzeSnippet(makeSnippet("\"A\" < \"B\""));
-        assert(result.errors == 1);
-        assert(result.output.find("error[B2001]") != std::string::npos);
+        assert(result.errors == 0);
     }
 
     {

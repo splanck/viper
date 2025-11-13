@@ -307,9 +307,9 @@ void validateComparisonOperands(sem::ExprCheckContext &context,
                                 Type rhs,
                                 std::string_view diagId)
 {
-    const bool allowStrings = expr.op == BinaryExpr::Op::Eq || expr.op == BinaryExpr::Op::Ne;
+    // All comparison operators support strings for lexicographic comparison
     const bool numericOk = isNumericType(lhs) && isNumericType(rhs);
-    const bool stringOk = allowStrings && isStringType(lhs) && isStringType(rhs);
+    const bool stringOk = isStringType(lhs) && isStringType(rhs);
     if (!numericOk && !stringOk)
         sem::emitOperandTypeMismatch(context.diagnostics(), expr, diagId);
 }

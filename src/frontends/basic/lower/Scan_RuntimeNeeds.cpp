@@ -511,12 +511,25 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
                 lowerer_.requestHelper(Lowerer::RuntimeFeature::Concat);
             return;
         }
-        if (expr.op == Op::Eq || expr.op == Op::Ne)
+        if (expr.op == Op::Eq || expr.op == Op::Ne || expr.op == Op::Lt ||
+            expr.op == Op::Le || expr.op == Op::Gt || expr.op == Op::Ge)
         {
             auto lhsType = expr.lhs ? lowerer_.scanExpr(*expr.lhs) : Lowerer::ExprType::I64;
             auto rhsType = expr.rhs ? lowerer_.scanExpr(*expr.rhs) : Lowerer::ExprType::I64;
             if (lhsType == Lowerer::ExprType::Str || rhsType == Lowerer::ExprType::Str)
-                lowerer_.requestHelper(Lowerer::RuntimeFeature::StrEq);
+            {
+                // Request appropriate string comparison helper based on operator
+                if (expr.op == Op::Eq || expr.op == Op::Ne)
+                    lowerer_.requestHelper(Lowerer::RuntimeFeature::StrEq);
+                else if (expr.op == Op::Lt)
+                    lowerer_.requestHelper(Lowerer::RuntimeFeature::StrLt);
+                else if (expr.op == Op::Le)
+                    lowerer_.requestHelper(Lowerer::RuntimeFeature::StrLe);
+                else if (expr.op == Op::Gt)
+                    lowerer_.requestHelper(Lowerer::RuntimeFeature::StrGt);
+                else if (expr.op == Op::Ge)
+                    lowerer_.requestHelper(Lowerer::RuntimeFeature::StrGe);
+            }
         }
     }
 
