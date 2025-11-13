@@ -128,7 +128,13 @@ Lowerer::CtrlState Lowerer::emitWhile(const WhileStmt &stmt)
     done = &func->blocks[doneIdx];
     ctx.loopState().refresh(done);
     ctx.setCurrent(done);
-    done->terminated = exitTaken ? false : term;
+    // Do not mark the done block as terminated here. The statement sequencer
+    // will emit the fallthrough branch to the next line block. Marking this
+    // block terminated without emitting a terminator causes IL verifier
+    // "empty block" errors when the loop body consisted solely of control
+    // transfers (e.g., GOSUB). Keep the block open; callers append next.
+    (void)exitTaken;
+    (void)term;
     ctx.loopState().pop();
 
     state.cur = ctx.current();
@@ -254,14 +260,12 @@ Lowerer::CtrlState Lowerer::emitDo(const DoStmt &stmt)
     ctx.loopState().refresh(done);
     ctx.setCurrent(done);
     const bool postTest = stmt.testPos == DoStmt::TestPos::Post;
-    if (postTest)
-    {
-        done->terminated = false;
-    }
-    else
-    {
-        done->terminated = exitTaken ? false : term;
-    }
+    // Leave the done block unterminated here so the statement sequencer
+    // can wire a fallthrough edge to the subsequent line. Setting
+    // done->terminated without emitting an instruction leads to verifier
+    // failures (empty block) for loops whose bodies generate only branches.
+    (void)exitTaken;
+    (void)term;
     ctx.loopState().pop();
 
     state.cur = ctx.current();
@@ -375,7 +379,9 @@ void Lowerer::lowerForConstStep(
     done = &func->blocks[doneIdx];
     ctx.loopState().refresh(done);
     ctx.setCurrent(done);
-    done->terminated = exitTaken ? false : term;
+    // Keep done block open; the sequencer will branch to the next line.
+    (void)exitTaken;
+    (void)term;
     ctx.loopState().pop();
 }
 
@@ -426,7 +432,9 @@ void Lowerer::lowerForVarStep(const ForStmt &stmt, Value slot, RVal end, RVal st
     done = &func->blocks[doneIdx];
     ctx.loopState().refresh(done);
     ctx.setCurrent(done);
-    done->terminated = exitTaken ? false : term;
+    // Keep done block open; the sequencer will branch to the next line.
+    (void)exitTaken;
+    (void)term;
     ctx.loopState().pop();
 }
 

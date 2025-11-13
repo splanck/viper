@@ -530,7 +530,7 @@ Low severity because this is expected mathematical behavior. Large exponentials 
 ### BUG-026: DO WHILE loops
 **Difficulty**: 🟡 MEDIUM with GOSUB cause "empty block" error
 **Severity**: High
-**Status**: Confirmed
+**Status**: ✅ RESOLVED 2025-11-13 - See basic_resolved.md for details
 **Test Case**: test_do_gosub.bas, dungeon_quest.bas
 **Discovered**: 2025-11-12 during text adventure game development
 
@@ -567,7 +567,7 @@ LOOP
 Or use FOR loops instead of DO WHILE.
 
 **Analysis**:
-The code generator for DO WHILE loops may be checking if the loop body generated any IL code. GOSUB statements might not count as "content" for this check, or there's an issue with how GOSUB is lowered within DO WHILE loops specifically.
+Fixed by keeping loop done blocks open (unterminated) and letting the statement sequencer emit the fallthrough edge to the next line. Previously, lowering marked done blocks as terminated without emitting a terminator when bodies consisted solely of control transfers (e.g., GOSUB), triggering IL verifier "empty block" errors. A golden test was added (basic/do_gosub_loop.bas).
 
 **Impact**:
 Cannot structure programs with DO WHILE loops calling subroutines. This is a major limitation for building modular, complex programs.
@@ -714,4 +714,3 @@ END IF
 **Analysis**: The lowering code for OR expressions with string comparisons generates incorrect IL for the conditional branch. The branch instruction is missing the required argument bundles for proper control flow. This is likely a bug in how short-circuit OR evaluation is lowered when the operands involve string comparisons rather than numeric comparisons.
 
 ---
-

@@ -563,6 +563,16 @@ function(viper_add_golden_suite_tests)
             "-DEXPECT=${EXPECT_VIPER_ROOT}"
             -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
 
+    # BUG-026: DO WHILE with only GOSUB should not produce empty block
+    file(READ ${_VIPER_GOLDEN_DIR}/basic/do_gosub_loop.stdout EXPECT_DO_GOSUB_LOOP)
+    string(STRIP "${EXPECT_DO_GOSUB_LOOP}" EXPECT_DO_GOSUB_LOOP)
+    viper_add_ctest(basic_do_gosub_loop
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic/do_gosub_loop.bas
+            "-DEXPECT=${EXPECT_DO_GOSUB_LOOP}"
+            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
+
     file(READ ${_VIPER_GOLDEN_DIR}/quickstart.stdout EXPECT_QUICKSTART)
     string(STRIP "${EXPECT_QUICKSTART}" EXPECT_QUICKSTART)
     viper_add_ctest(il_quickstart_example

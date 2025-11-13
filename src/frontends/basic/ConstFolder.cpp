@@ -684,6 +684,9 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
     /// @brief STATIC variables have no expressions to fold.
     void visit(StaticStmt &) override {}
 
+    /// @brief SHARED is a declaration-only compatibility statement; no folding.
+    void visit(SharedStmt &) override {}
+
     /// @brief Fold new bounds in REDIM statements when present.
     void visit(ReDimStmt &stmt) override
     {

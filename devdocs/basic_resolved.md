@@ -40,3 +40,13 @@ This document records bugs from devdocs/basic_bugs.md that have been verified an
 ## Notes
 - Related resolved issues: BUG-032/033 (string arrays), BUG-034 (MID$ float indices + one-based start) are tracked in devdocs/basic_bugs2.md and reflected in goldens.
 
+---
+
+## BUG-026: DO WHILE with GOSUB causes "empty block" error
+- Status: RESOLVED (loop lowering fix + golden)
+- Summary: DO/WHILE/FOR lowering previously marked the loop done block as terminated without emitting a terminator instruction when the loop body ended in a terminator (e.g., a GOSUB that generates branches). This produced IL verifier failures: `error: main:do_done: empty block`. The fix leaves the done block unterminated and lets the statement sequencer emit a fallthrough branch to the next line block, ensuring every block contains a terminator only when an instruction is emitted.
+- Key paths:
+  - src/frontends/basic/lower/Lower_Loops.cpp: stop setting `done->terminated` in `emitDo`, `emitWhile`, and FOR lowering; keep the done block open for the sequencer to wire fallthrough.
+  - tests/golden/basic/do_gosub_loop.bas: new golden reproducing DO + GOSUB body with no extra statements; previously failed with IL verifier, now runs cleanly (empty stdout).
+- Validation: Golden test added; prior to fix it triggered `empty block` in verifier, after fix it lowers and runs with no diagnostics. Broader loops continue to function; fallthrough to subsequent statements is handled by the sequencer.
+
