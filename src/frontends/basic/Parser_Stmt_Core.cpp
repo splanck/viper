@@ -188,6 +188,31 @@ Parser::StmtResult Parser::parseCall(int)
     {
         if (isKnownProcedureName(identTok.lexeme))
         {
+            // Traditional BASIC allows procedure calls without parentheses
+            // for zero-argument procedures. Only allow this when followed by
+            // end-of-statement markers (EOL, EOF, :, or line number).
+            bool isEndOfStmt = nextTok.kind == TokenKind::EndOfLine ||
+                               nextTok.kind == TokenKind::EndOfFile ||
+                               nextTok.kind == TokenKind::Colon ||
+                               nextTok.kind == TokenKind::Number;
+
+            if (isEndOfStmt)
+            {
+                consume(); // consume the identifier token
+                auto call = std::make_unique<CallExpr>();
+                call->loc = identTok.loc;
+                call->Expr::loc = identTok.loc;
+                call->callee = identTok.lexeme;
+                // call->args is already an empty vector by default
+
+                auto stmt = std::make_unique<CallStmt>();
+                stmt->loc = identTok.loc;
+                stmt->call = std::move(call);
+                return StmtResult(std::move(stmt));
+            }
+
+            // Not end-of-statement, so this is likely an attempt to call
+            // a procedure with arguments without parentheses - report error.
             reportMissingCallParenthesis(identTok, nextTok);
             resyncAfterError();
             return StmtResult(StmtPtr{});
