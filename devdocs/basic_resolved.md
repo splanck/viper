@@ -268,6 +268,93 @@ ret_ADD:
 
 ---
 
+### BUG-004: Procedure calls require parentheses even with no arguments
+**Severity**: Low
+**Status**: ✅ RESOLVED
+**Test Case**: test008.bas (initial version), /tmp/test_bug004.bas
+**Resolution Date**: 2025-11-12
+
+**Original Issue**:
+Calling a SUB or FUNCTION required parentheses even when there were no arguments. The traditional BASIC syntax of calling without parentheses was not supported.
+
+**Reproduction**:
+```basic
+SUB PrintHello
+    PRINT "Hello"
+END SUB
+
+PrintHello  ' ERROR: expected '(' after procedure name
+```
+
+**Error Message**:
+```
+error[B0001]: expected '(' after procedure name 'PRINTHELLO' in procedure call statement
+PrintHello
+          ^
+```
+
+**Root Cause Analysis**:
+The `parseCall()` function in `Parser_Stmt_Core.cpp` strictly enforced parentheses for all procedure calls. When a known procedure name was not followed by `(`, it immediately reported an error rather than allowing the traditional BASIC syntax for zero-argument calls.
+
+**Solution Implemented**:
+Modified `parseCall()` to allow bare procedure names when followed by end-of-statement markers:
+
+1. **Modified `Parser_Stmt_Core.cpp`** (lines 187-221):
+   - When `nextTok.kind != TokenKind::LParen` and procedure name is known:
+   - Check if next token is an end-of-statement marker (EOL, EOF, `:`, or line number)
+   - If yes: create CallExpr with empty args vector and return CallStmt
+   - If no: report original error (likely calling with args without parens)
+
+2. **End-of-statement detection** includes:
+   - `TokenKind::EndOfLine` - normal end of statement
+   - `TokenKind::EndOfFile` - program end
+   - `TokenKind::Colon` - statement separator
+   - `TokenKind::Number` - next line number
+
+**Files Changed**:
+- `src/frontends/basic/Parser_Stmt_Core.cpp`
+
+**Test Results**:
+✅ Zero-argument calls without parentheses now work:
+```basic
+SUB PrintHello
+    PRINT "Hello"
+END SUB
+
+PrintHello  ' Works!
+PrintHello()  ' Also still works
+```
+Output: `Hello` (twice)
+
+✅ Calls with arguments still require parentheses (error as expected):
+```basic
+SUB Greet(name$)
+    PRINT "Hello, "; name$
+END SUB
+
+Greet "Alice"  ' ERROR: expected '('
+```
+
+✅ Generated IL creates proper call with empty arg list:
+```
+func @main() -> i64 {
+  ...
+  call @PRINTHELLO()  // Zero-argument call
+  ...
+}
+```
+
+✅ 586 out of 587 tests pass (vm_trace_src failure pre-existing, unrelated)
+
+**Impact**:
+- Traditional BASIC zero-argument call syntax now supported
+- More intuitive for users familiar with classic BASIC dialects
+- Backward compatible: parentheses still work
+- Error message preserved for likely mistakes (calling with args without parens)
+- No breaking changes to existing code
+
+---
+
 
 ### BUG-005: SGN function not implemented
 **Severity**: Low

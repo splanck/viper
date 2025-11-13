@@ -27,7 +27,7 @@
 ### BUG-004: Procedure calls
 **Difficulty**: 🟡 MEDIUM require parentheses even with no arguments
 **Severity**: Low
-**Status**: Confirmed
+**Status**: ✅ RESOLVED 2025-11-12 - See basic_resolved.md for details
 **Test Case**: test008.bas (initial version)
 
 **Description**:
