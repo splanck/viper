@@ -5,7 +5,7 @@
 //   - First-seen spelling is preserved as canonical for diagnostics.
 //   - Repeated namespace declarations are merged into one logical namespace.
 // Ownership/Lifetime: Registry is owned by semantic analyzer; lives for compilation.
-// Links: docs/codemap.md
+// Links: docs/codemap.md, CLAUDE.md
 
 #pragma once
 

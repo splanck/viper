@@ -200,8 +200,9 @@ void SemanticAnalyzer::registerProcedureParam(const Param &param)
 /// @param bodyCheck Callback that performs procedure-specific validation.
 /// @param loopKind Optional loop kind for EXIT statement validation.
 template <typename Proc, typename BodyCallback>
-void SemanticAnalyzer::analyzeProcedureCommon(const Proc &proc, BodyCallback &&bodyCheck,
-                                               std::optional<LoopKind> loopKind)
+void SemanticAnalyzer::analyzeProcedureCommon(const Proc &proc,
+                                              BodyCallback &&bodyCheck,
+                                              std::optional<LoopKind> loopKind)
 {
     ProcedureScope procScope(*this);
 
@@ -265,20 +266,21 @@ void SemanticAnalyzer::analyzeProc(const FunctionDecl &f)
         }
     }
 
-    analyzeProcedureCommon(f,
-                           [this](const FunctionDecl &func)
-                           {
-                               if (mustReturn(func.body))
-                                   return;
+    analyzeProcedureCommon(
+        f,
+        [this](const FunctionDecl &func)
+        {
+            if (mustReturn(func.body))
+                return;
 
-                               std::string msg = "missing return in FUNCTION " + func.name;
-                               de.emit(il::support::Severity::Error,
-                                       "B1007",
-                                       func.endLoc.isValid() ? func.endLoc : func.loc,
-                                       3,
-                                       std::move(msg));
-                           },
-                           LoopKind::Function);
+            std::string msg = "missing return in FUNCTION " + func.name;
+            de.emit(il::support::Severity::Error,
+                    "B1007",
+                    func.endLoc.isValid() ? func.endLoc : func.loc,
+                    3,
+                    std::move(msg));
+        },
+        LoopKind::Function);
 
     activeFunction_ = previousFunction;
     activeFunctionExplicitRet_ = previousExplicit;

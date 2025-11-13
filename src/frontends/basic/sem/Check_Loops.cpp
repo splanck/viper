@@ -203,7 +203,8 @@ void analyzeExit(SemanticAnalyzer &analyzer, const ExitStmt &stmt)
         msg += targetName;
         msg += " used outside of any ";
         msg += targetName;
-        context.diagnostics().emit(il::support::Severity::Error, "B1011", stmt.loc, 4, std::move(msg));
+        context.diagnostics().emit(
+            il::support::Severity::Error, "B1011", stmt.loc, 4, std::move(msg));
         return;
     }
 

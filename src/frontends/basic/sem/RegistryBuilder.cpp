@@ -11,7 +11,7 @@
 //   - Maintains nsStack for qualified name construction.
 //   - Records USING directives in declaration order.
 // Ownership/Lifetime: Does not own registry or usings.
-// Links: docs/codemap.md
+// Links: docs/codemap.md, CLAUDE.md
 //
 //===----------------------------------------------------------------------===//
 

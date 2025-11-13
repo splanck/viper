@@ -11,7 +11,7 @@
 //   - Simple names use precedence: current NS chain → USING imports.
 //   - Ambiguity produces sorted contender lists for stable diagnostics.
 // Ownership/Lifetime: TypeResolver does not own registry or context.
-// Links: docs/codemap.md
+// Links: docs/codemap.md, CLAUDE.md
 //
 //===----------------------------------------------------------------------===//
 

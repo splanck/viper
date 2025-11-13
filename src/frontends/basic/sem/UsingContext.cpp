@@ -11,7 +11,7 @@
 //   - alias_ map uses lowercase keys for case-insensitive lookups.
 //   - Empty alias string in Import indicates no AS clause.
 // Ownership/Lifetime: Owned by per-file semantic context.
-// Links: docs/codemap.md
+// Links: docs/codemap.md, CLAUDE.md
 //
 //===----------------------------------------------------------------------===//
 

@@ -11,7 +11,7 @@
 //   - First-seen spellings are preserved in NamespaceInfo::full.
 //   - Repeated namespace registrations are merged.
 // Ownership/Lifetime: Registry is owned by semantic analyzer.
-// Links: docs/codemap.md
+// Links: docs/codemap.md, CLAUDE.md
 //
 //===----------------------------------------------------------------------===//
 

@@ -5,7 +5,7 @@
 //   - Alias lookups are case-insensitive.
 //   - Empty alias string indicates namespace import without alias.
 // Ownership/Lifetime: Owned by per-file semantic analysis context.
-// Links: docs/codemap.md
+// Links: docs/codemap.md, CLAUDE.md
 
 #pragma once
 

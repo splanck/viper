@@ -5,7 +5,7 @@
 //   - Records USING directives in UsingContext.
 //   - Case-insensitive registration with canonical spelling preservation.
 // Ownership/Lifetime: Does not own registry or usings; caller ensures lifetime.
-// Links: docs/codemap.md
+// Links: docs/codemap.md, CLAUDE.md
 
 #pragma once
 
