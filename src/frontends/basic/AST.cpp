@@ -521,6 +521,8 @@ void StaticStmt::accept(MutStmtVisitor &visitor)
     visitor.visit(*this);
 }
 
+// SharedStmt accept methods are defined inline in the header.
+
 /// @brief Forwards this REDIM statement node to the visitor for double dispatch.
 /// @param visitor Receives the node; ownership remains with the AST.
 void ReDimStmt::accept(StmtVisitor &visitor) const

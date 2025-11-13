@@ -51,6 +51,7 @@ struct LetStmt;
 struct ConstStmt;
 struct DimStmt;
 struct StaticStmt;
+struct SharedStmt;
 struct ReDimStmt;
 struct SwapStmt;
 struct RandomizeStmt;

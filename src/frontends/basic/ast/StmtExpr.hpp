@@ -289,6 +289,23 @@ struct StaticStmt : Stmt
     void accept(MutStmtVisitor &visitor) override;
 };
 
+/// @brief SHARED statement declaring that names refer to module-level storage.
+/// @details Classic BASIC uses SHARED within procedures to indicate that listed
+///          variables refer to module-level bindings. In this implementation the
+///          analyser already allows accessing module-level variables from
+///          procedures, so this statement is effectively a no-op and primarily
+///          exists for compatibility and better diagnostics.
+struct SharedStmt : Stmt
+{
+    std::vector<std::string> names; ///< Names listed in the SHARED statement.
+
+    SharedStmt() : Stmt(Kind::Shared) {}
+
+    [[nodiscard]] Kind stmtKind() const noexcept override { return Kind::Shared; }
+    void accept(StmtVisitor &visitor) const override { visitor.visit(*this); }
+    void accept(MutStmtVisitor &visitor) override { visitor.visit(*this); }
+};
+
 /// @brief REDIM statement resizing an existing array.
 struct ReDimStmt : Stmt
 {

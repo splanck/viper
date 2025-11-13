@@ -112,6 +112,7 @@ constexpr std::array<KeywordEntry, 93> kKeywordTable{{
     {"RND", TokenKind::KeywordRnd},
     {"SEEK", TokenKind::KeywordSeek},
     {"SELECT", TokenKind::KeywordSelect},
+    {"SHARED", TokenKind::KeywordShared},
     {"SIN", TokenKind::KeywordSin},
     {"SLEEP", TokenKind::KeywordSleep},
     {"SQR", TokenKind::KeywordSqr},

@@ -204,6 +204,7 @@ class SemanticAnalyzer
     void analyzeConst(ConstStmt &s);
     /// @brief Analyze STATIC statement @p s.
     void analyzeStatic(StaticStmt &s);
+    void analyzeShared(SharedStmt &s);
     /// @brief Analyze REDIM statement @p s.
     void analyzeReDim(ReDimStmt &s);
     /// @brief Analyze SWAP statement @p s.

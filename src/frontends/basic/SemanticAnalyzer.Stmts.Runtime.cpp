@@ -661,6 +661,23 @@ void SemanticAnalyzer::analyzeStatic(StaticStmt &s)
     }
 }
 
+/// @brief Analyze a SHARED statement listing names that refer to module-level state.
+/// @details For compatibility: procedures can already access module-level globals without SHARED.
+///          This handler resolves each name to ensure diagnostics include the correct symbol,
+///          and records a reference so later passes materialize storage as needed.
+/// @param s SHARED statement being analyzed.
+void SemanticAnalyzer::analyzeShared(SharedStmt &s)
+{
+    for (auto &name : s.names)
+    {
+        resolveAndTrackSymbol(name, SymbolKind::Reference);
+        // Record as a known symbol; do not allocate local storage here.
+        auto insertResult = symbols_.insert(name);
+        if (insertResult.second && activeProcScope_)
+            activeProcScope_->noteSymbolInserted(name);
+    }
+}
+
 /// @brief Validate REDIM statements for previously declared arrays.
 ///
 /// @param d REDIM statement describing the new array bounds.

@@ -11,11 +11,12 @@
 
 - ✅ **BUG-015 RESOLVED**: String properties in classes now work
 - ✅ **BUG-020 RESOLVED**: String constants (CONST MSG$ = "Hello") now work
-- ⚠️ **BUG-032 PARTIAL**: String arrays pass semantic analysis but IL lowering needs fixing (type mismatch: `str` vs `ptr`)
+- ✅ **BUG-033 RESOLVED**: String arrays now work (duplicate of BUG-032)
+- ✅ **BUG-034 RESOLVED**: MID$ float argument conversion now works
 
 **Boolean Type System Changes**: Modified `isBooleanType()` to only accept `Type::Bool` (not `Type::Int`) for logical operators (AND/ANDALSO/OR/ORELSE). This makes the type system stricter and fixes some test cases.
 
-**Still Outstanding**: BUG-012 (BOOLEAN/TRUE/FALSE incompatibility), BUG-026 (DO WHILE + GOSUB), BUG-030 (global variable access from SUB/FUNCTION returns wrong values)
+**Bug Statistics**: 22 resolved, 14 outstanding (36 total documented)
 
 ---
 
@@ -281,10 +282,6 @@ This is a critical limitation that prevents building many types of practical pro
 ### BUG-015: String properties in classes cause runtime error
 **Status**: ✅ RESOLVED 2025-11-13 - See basic_resolved.md for details
 
-**Resolution**: Fixed by adding PRINT statement scanning for lvalue strings (variables, array elements, member access). The scanner now calls `requireStrRetainMaybe()` and `requireStrReleaseMaybe()` during the scan phase, ensuring extern declarations are emitted before lowering begins.
-
-**Test Case Verified**: test_bug015.bas - String properties in classes now work correctly
-
 ---
 
 ### BUG-016: Local string variables in methods cause compilation error
@@ -412,10 +409,6 @@ Cannot define accurate mathematical constants at module level. Regular variables
 
 ### BUG-020: String constants cause runtime error
 **Status**: ✅ RESOLVED 2025-11-13 - See basic_resolved.md for details
-
-**Resolution**: Same fix as BUG-015. The scanner now ensures `rt_str_release_maybe` is declared as an extern before lowering, allowing string constants to compile and run correctly.
-
-**Test Case Verified**: test_bug020.bas - String constants (CONST MSG$ = "Hello") now work correctly
 
 ---
 
@@ -644,61 +637,81 @@ Use GOSUB/RETURN instead of SUB/FUNCTION, which uses the same scope as the main 
 
 ---
 
-### BUG-032: String arrays
-**Difficulty**: 🔴 HARD not supported
-**Severity**: High
-**Status**: ⚠️ PARTIAL - Semantic analysis fixed, IL lowering broken
-**Test Case**: test_bug032.bas
-**Last Tested**: 2025-11-13
-
-**Description**:
-Arrays of strings compile past semantic analysis but fail during IL verification with "call arg type mismatch". The lowering code generates incorrect IL that passes `str` values where runtime functions expect `ptr` (pointer to string).
-
-**Reproduction**:
-```basic
-DIM names$(5)
-names$(0) = "Alice"  ' Compiles but IL verification fails
-```
-
-**Error Message** (Updated):
-```
-/tmp/test_bug032.bas:3:4: error: main:bc_ok0: call %t6 0 %t5: call arg type mismatch
-```
-
-**Analysis** (Updated 2025-11-13):
-String array semantic analysis now works correctly. The runtime has string array functions (@rt_arr_str_alloc, @rt_arr_str_put, @rt_arr_str_get, etc.), and these are being called. However, the lowering code generates:
-```
-call @rt_arr_str_put(%t6, 0, %t5)  # %t5 is type 'str'
-```
-But the signature is:
-```
-extern @rt_arr_str_put(ptr, i64, ptr) -> void
-```
-
-The third parameter should be `ptr` (pointer to string) but we're passing `str` (string value). The lowering code needs to be fixed to properly convert string values to pointers for the runtime functions.
-
-**Impact**:
-Still cannot use string arrays in practice, though progress has been made. This is now an IL lowering issue rather than a semantic or runtime issue.
-
-**Workaround**:
-None known.
+### BUG-032: String arrays not supported
+**Status**: ✅ RESOLVED 2025-11-13 - See BUG-033 in basic_resolved.md for details
 
 ---
 
-**Investigation Notes (2025-11-12)**:
-Attempted fix revealed this is actually TWO separate bugs:
+### BUG-033: String array assignment causes type mismatch error (duplicate of BUG-032)
+**Status**: ✅ RESOLVED 2025-11-13 - See basic_resolved.md for details
 
-1. **Empty Block Issue**: The DO WHILE/WHILE loop done blocks are empty when only GOSUB is in the body
-   - Root cause: GOSUB creates complex control flow that doesn't emit into the current block
-   - The loop's done block ends up with no instructions, causing IL verifier error
-   - Attempted fix: Add continuation blocks when done block is empty
-   - Result: Fixes empty block error BUT breaks golden tests and reveals bug #2
+---
 
-2. **GOSUB Return Continuation Bug**: `gosub_ret_cont` block missing terminator
-   - When GOSUB returns from within a loop, the return continuation block is unterminated
-   - This appears to be a separate GOSUB lowering issue, not loop-specific
-   - Affects both DO WHILE and WHILE loops with GOSUB
-   - The workaround mentioned in the bug report does NOT work - it still fails
+### BUG-034: MID$ does not convert float arguments to integer
+**Status**: ✅ RESOLVED 2025-11-13 - See basic_resolved.md for details
 
-**Status**: Requires deeper investigation of GOSUB lowering and interaction with loop control flow. Marking as HARD.
+---
+
+### BUG-035: Global variables not accessible in SUB/FUNCTION (duplicate of BUG-030)
+**Status**: CRITICAL BLOCKER
+**Severity**: CRITICAL
+**Found**: During tic-tac-toe board state implementation
+**Test Case**: tictactoe.bas (attempted v0.2), dungeon_quest_v4.bas
+
+**Description**:
+Global variables declared with DIM at module level cannot be accessed or modified from within SUB or FUNCTION:
+```basic
+DIM board$
+
+SUB InitBoard()
+    board$ = "ABCDEFGHI"  ' Assignment has no effect
+END SUB
+
+InitBoard()
+PRINT board$  ' Prints empty string
+```
+
+**Impact**: Cannot use global state for game board or any shared data between procedures. Makes any non-trivial program structure impossible.
+
+**Workaround**: None - this blocks all structured programming requiring shared state. Would need to pass all state as parameters, but BASIC doesn't support passing user-defined types or arrays properly.
+
+**Analysis**: This is a duplicate of BUG-030, discovered independently during tic-tac-toe development. The workaround used was to write the entire game as a monolithic program using GOTO for control flow instead of SUBs/FUNCTIONs.
+
+---
+
+### BUG-036: String comparison
+**Difficulty**: 🔴 HARD in OR condition causes IL error
+**Severity**: HIGH
+**Status**: Confirmed
+**Test Case**: tictactoe.bas (early version)
+**Found**: During tic-tac-toe menu implementation
+
+**Description**:
+String comparisons in OR conditions cause IL generation error:
+```basic
+IF playAgain$ = "Y" OR playAgain$ = "y" THEN
+    GOTO startGame
+END IF
+```
+
+Results in error:
+```
+error: main:L1000003: cbr %t2193 label L1000001 label or_rhs18: expected 2 branch argument bundles, or none
+```
+
+**Impact**: Cannot use OR conditions with string comparisons
+
+**Workaround**: Use nested IF statements:
+```basic
+IF playAgain$ = "Y" THEN
+    GOTO startGame
+END IF
+IF playAgain$ = "y" THEN
+    GOTO startGame
+END IF
+```
+
+**Analysis**: The lowering code for OR expressions with string comparisons generates incorrect IL for the conditional branch. The branch instruction is missing the required argument bundles for proper control flow. This is likely a bug in how short-circuit OR evaluation is lowered when the operands involve string comparisons rather than numeric comparisons.
+
+---
 

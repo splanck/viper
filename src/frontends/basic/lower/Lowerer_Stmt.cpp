@@ -180,6 +180,14 @@ class LowererStmtVisitor final : public lower::AstVisitor, public StmtVisitor
         lowerer_.lowerStatic(stmt);
     }
 
+    /// @brief Lower a SHARED statement (no-op; semantics handled by analyzer).
+    /// @param stmt SHARED statement node.
+    void visit(const SharedStmt &stmt) override
+    {
+        (void)stmt;
+        // No code emission required; SHARED affects name resolution only.
+    }
+
     /// @brief Lower a REDIM statement.
     /// @details Delegates to @ref Lowerer::lowerReDim to emit runtime reallocation logic.
     /// @param stmt REDIM statement node.

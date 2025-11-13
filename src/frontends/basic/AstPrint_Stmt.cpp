@@ -213,6 +213,16 @@ struct AstPrinter::StmtPrinter final : StmtVisitor
         os << ")";
     }
 
+    /// @brief Render a SHARED statement listing names.
+    void visit(const SharedStmt &stmt) override
+    {
+        auto &os = ctx.stream();
+        os << "(SHARED";
+        for (const auto &n : stmt.names)
+            os << ' ' << n;
+        os << ")";
+    }
+
     /// @brief Render a REDIM statement for resizing arrays.
     ///
     /// @param stmt Resizing directive paired with bounds.

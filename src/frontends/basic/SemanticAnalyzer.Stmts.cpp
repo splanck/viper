@@ -118,6 +118,12 @@ class SemanticAnalyzerStmtVisitor final : public MutStmtVisitor
         analyzer_.analyzeStatic(stmt);
     }
 
+    /// @brief SHARED statements list names that should refer to module-level bindings.
+    void visit(SharedStmt &stmt) override
+    {
+        analyzer_.analyzeShared(stmt);
+    }
+
     /// @brief Re-DIM statements re-use the analyser's array checks.
     void visit(ReDimStmt &stmt) override
     {

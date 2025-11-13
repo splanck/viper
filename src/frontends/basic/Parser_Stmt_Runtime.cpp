@@ -41,6 +41,7 @@ void Parser::registerRuntimeParsers(StatementParserRegistry &registry)
     registry.registerHandler(TokenKind::KeywordResume, &Parser::parseResumeStatement);
     registry.registerHandler(TokenKind::KeywordEnd, &Parser::parseEndStatement);
     registry.registerHandler(TokenKind::KeywordDim, &Parser::parseDimStatement);
+    registry.registerHandler(TokenKind::KeywordShared, &Parser::parseSharedStatement);
     registry.registerHandler(TokenKind::KeywordStatic, &Parser::parseStaticStatement);
     registry.registerHandler(TokenKind::KeywordConst, &Parser::parseConstStatement);
     registry.registerHandler(TokenKind::KeywordRedim, &Parser::parseReDimStatement);
@@ -273,6 +274,29 @@ StmtPtr Parser::parseStaticStatement()
         node->type = parseTypeKeyword();
     }
 
+    return node;
+}
+
+/// @brief Parse a @c SHARED statement.
+/// @details Declares that one or more names refer to module-level variables.
+///          Syntax: SHARED name (, name)*
+/// @return Newly constructed statement node.
+StmtPtr Parser::parseSharedStatement()
+{
+    auto loc = peek().loc;
+    consume(); // SHARED
+
+    auto node = std::make_unique<SharedStmt>();
+    node->loc = loc;
+    // At least one identifier
+    Token nameTok = expect(TokenKind::Identifier);
+    node->names.push_back(nameTok.lexeme);
+    while (at(TokenKind::Comma))
+    {
+        consume();
+        Token more = expect(TokenKind::Identifier);
+        node->names.push_back(more.lexeme);
+    }
     return node;
 }
 

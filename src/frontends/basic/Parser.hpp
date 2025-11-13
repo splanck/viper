@@ -407,6 +407,8 @@ class Parser
     /// @brief Parse a STATIC statement declaring persistent procedure-local variables.
     /// @return STATIC statement node.
     StmtPtr parseStaticStatement();
+    /// @brief Parse a SHARED statement listing variables that map to module-level state.
+    StmtPtr parseSharedStatement();
 
     /// @brief Parse a REDIM statement resizing arrays.
     /// @return REDIM statement node.
