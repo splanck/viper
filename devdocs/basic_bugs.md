@@ -369,33 +369,7 @@ Exit code 139 indicates a segmentation fault. The generated code for accessing g
 ---
 
 ### BUG-018: FUNCTION methods in classes cause code generation error
-**Difficulty**: 🔴 HARD (requires OOP implementation)
-**Severity**: High
-**Status**: Confirmed
-**Test Case**: db_oop.bas (attempted FUNCTION GetCount())
-
-**Description**:
-Defining a FUNCTION (method with return value) inside a class causes a code generation error.
-
-**Reproduction**:
-```basic
-CLASS Test
-    FUNCTION GetValue() AS INTEGER
-        RETURN 42
-    END FUNCTION
-END CLASS
-```
-
-**Error Message**:
-```
-error: main: unknown label bb_0
-```
-
-**Workaround**:
-Only use SUB methods (no return value) in classes. To return values, modify object properties and read them afterward.
-
-**Analysis**:
-The code generator produces invalid IL with incorrect block labels when generating code for FUNCTION methods within classes. This suggests that class method code generation doesn't properly handle the FUNCTION return mechanism.
+**Status**: ✅ RESOLVED 2025-11-12 - See basic_resolved.md for details
 
 ---
 

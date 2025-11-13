@@ -1367,3 +1367,68 @@ PRINT result    ' Output: 5 ✓
 **Related**:
 - BUG-019 remains unresolved for module-level CONST (different architecture issue)
 - BUG-001, BUG-003 previously implemented similar semantic analysis type inference
+
+---
+
+### BUG-018: FUNCTION methods in classes cause code generation error
+**Difficulty**: 🔴 HARD (OOP implementation)
+**Resolved**: Already fixed (likely by commit 00ab74e5 "feat: VB-style function returns")
+**Test**: tests/e2e/test_oop_function_return.bas
+
+**Problem**:
+Defining a FUNCTION (method with return value) inside a class caused the error:
+```
+error: main: unknown label bb_0
+```
+
+**Reproduction**:
+```basic
+CLASS Test
+    FUNCTION GetValue() AS INTEGER
+        RETURN 42
+    END FUNCTION
+END CLASS
+```
+
+**Root Cause**:
+Historical issue with IL block label generation for class methods with return values. The error "unknown label bb_0" suggested that a forward reference to a basic block was being generated before the block was created, or the block naming was inconsistent between definition and reference.
+
+**Resolution**:
+The bug was already fixed in the current codebase. Testing shows that class FUNCTION methods work correctly with both RETURN statements and EXIT FUNCTION. The fix was likely implemented as part of commit 00ab74e5 which added "VB-style function returns" support.
+
+**Verification**:
+```basic
+CLASS K
+    FUNCTION GetValue() AS INTEGER
+        RETURN 42
+    END FUNCTION
+END CLASS
+
+DIM k AS K
+k = NEW K()
+PRINT k.GetValue()  ' Output: 42
+END
+```
+
+**Generated IL**:
+The method is correctly lowered with:
+- Entry block that stores the ME parameter
+- Proper line-labeled blocks for statements
+- Direct `ret` instruction for RETURN statements
+- Exit block (`ret_K.GETVALUE`) that returns default value if reached
+
+**Test Results**:
+- Test passes with output "42"
+- No "unknown label" errors
+- Works with RETURN, EXIT FUNCTION, and default returns
+- Proper cleanup of object resources via destructor
+
+**Working Features**:
+- ✅ FUNCTION methods in classes
+- ✅ RETURN with value in class methods
+- ✅ EXIT FUNCTION in class methods
+- ✅ Default return values (0 for INTEGER, 0.0 for FLOAT, "" for STRING, FALSE for BOOL)
+- ✅ Method invocation via object.method() syntax
+- ✅ Integration with object lifecycle (constructor/destructor)
+
+**Status**: Regression test added (tests/e2e/test_oop_function_return.bas) to prevent future breakage.

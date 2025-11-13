@@ -1,0 +1,10 @@
+CLASS K
+    FUNCTION GetValue() AS INTEGER
+        RETURN 42
+    END FUNCTION
+END CLASS
+
+DIM k AS K
+k = NEW K()
+PRINT k.GetValue()
+END
