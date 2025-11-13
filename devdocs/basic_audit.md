@@ -1559,8 +1559,8 @@ Build a 500-800 line text adventure game to comprehensively test VIPER BASIC bou
 **Analysis**: Each SUB/FUNCTION has isolated scope, cannot access module-level variables
 
 #### BUG-031: String comparison operators (<, >, <=, >=) not supported
-**Severity**: Medium
-**Impact**: Cannot perform lexicographic string comparisons
+**Status**: ✅ RESOLVED 2025-11-12
+**Resolution**: Full lexicographic string comparison now supported for all relational operators
 
 #### BUG-032: String arrays not supported
 **Severity**: High
@@ -1600,9 +1600,9 @@ The combination of BUG-026 and BUG-030 creates a fundamental problem:
 - Empty string handling
 - Complex string expressions
 - String building in loops
+- String comparison (<, >, <=, >=) - ✅ RESOLVED 2025-11-12
 
 ❌ **NOT WORKING**:
-- String comparison (<, >, <=, >=) - BUG-031
 - String arrays - BUG-032
 
 ### Production Readiness Assessment
@@ -1630,8 +1630,8 @@ The combination of BUG-026 and BUG-030 creates a fundamental problem:
 
 **HIGH PRIORITY**:
 - BUG-027/028 - MOD and \\ operators with INTEGER type
-- BUG-029 - EXIT FUNCTION support
-- BUG-031 - String comparison operators
+- ~~BUG-029 - EXIT FUNCTION support~~ ✅ RESOLVED
+- ~~BUG-031 - String comparison operators~~ ✅ RESOLVED
 - IL-BUG-001 - Complex nested structure verifier issue
 
 ### Files Created

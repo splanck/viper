@@ -846,37 +846,8 @@ Use GOSUB/RETURN instead of SUB/FUNCTION, which uses the same scope as the main 
 
 ---
 
-### BUG-031: String comparison
-**Difficulty**: 🟡 MEDIUM operators (<, >, <=, >=) not supported
-**Severity**: Medium
-**Status**: Confirmed
-**Test Case**: test_strings_comprehensive.bas
-**Discovered**: 2025-11-12
-
-**Description**:
-Relational comparison operators (<, >, <=, >=) do not work with STRING types. Only equality (=) and inequality (<>) work.
-
-**Reproduction**:
-```basic
-s1$ = "apple"
-s2$ = "banana"
-IF s1$ < s2$ THEN  ' ERROR: operand type mismatch
-    PRINT "Less"
-END IF
-```
-
-**Error Message**:
-```
-error[B2001]: operand type mismatch
-IF cmp1$ < cmp2$ THEN
-         ^
-```
-
-**Impact**:
-Cannot perform lexicographic string comparisons. This limits sorting and string ordering operations.
-
-**Workaround**:
-None known for true lexicographic comparison. Could potentially use ASC() on individual characters for custom comparison.
+### BUG-031: String comparison operators (<, >, <=, >=) not supported
+**Status**: ✅ RESOLVED 2025-11-12 - See basic_resolved.md for details
 
 ---
 

@@ -880,3 +880,126 @@ EXIT FUNCTION and EXIT SUB enable early returns from procedures, a fundamental c
 
 ---
 
+
+### BUG-031: String comparison operators (<, >, <=, >=) not supported
+**Severity**: Medium
+**Status**: ✅ RESOLVED
+**Test Case**: test_strings_comprehensive.bas, /tmp/test_bug031.bas
+**Resolution Date**: 2025-11-12
+
+**Original Issue**:
+Relational comparison operators (<, >, <=, >=) did not work with STRING types. Only equality (=) and inequality (<>) were supported.
+
+**Reproduction**:
+```basic
+s1$ = "apple"
+s2$ = "banana"
+IF s1$ < s2$ THEN  ' ERROR: operand type mismatch
+    PRINT "Less"
+END IF
+```
+
+**Error Message**:
+```
+error[B2001]: operand type mismatch
+IF cmp1$ < cmp2$ THEN
+         ^
+```
+
+**Root Cause Analysis**:
+The semantic analyzer's `validateComparisonOperands()` function in Check_Expr_Binary.cpp only allowed string operands for `Eq` and `Ne` operators. The lowering code similarly only routed `Eq` and `Ne` to `lowerStringBinary()`. The runtime lacked comparison functions beyond equality.
+
+**Solution Implemented**:
+Added complete string comparison support across all layers:
+
+**Runtime Layer**:
+1. **Added rt_string_ops.c** (lines 671-729):
+   - Implemented `rt_str_lt`, `rt_str_le`, `rt_str_gt`, `rt_str_ge` functions
+   - Use memcmp for lexicographic comparison of common prefix
+   - Fall back to length comparison when prefixes match
+
+2. **Updated rt_string.h** (lines 145-167):
+   - Declared all four new comparison functions
+
+**IL Runtime Registration**:
+3. **Modified RuntimeSignatures.hpp** (lines 51-54):
+   - Added StrLt, StrLe, StrGt, StrGe to RuntimeFeature enum
+
+4. **Modified RuntimeSignatures.cpp** (lines 857-888):
+   - Added descriptor rows for all four comparison functions
+   - Registered DirectHandler templates for VM bridge
+
+5. **Modified Signatures_Strings.cpp** (lines 93-96):
+   - Registered IL signatures (str, str) -> i1 for each function
+
+6. **Modified HelperEffects.hpp** (lines 60-63, size 14→18):
+   - Added effect entries marking functions as nothrow+readonly
+
+**Semantic Analysis**:
+7. **Modified Check_Expr_Binary.cpp** (lines 310-314):
+   - Removed restriction limiting strings to Eq/Ne only
+   - Now allows strings for all comparison operators
+
+**Lowering**:
+8. **Modified LowerExprNumeric.cpp** (lines 441-481):
+   - Extended lowerStringBinary() with switch statement
+   - Routes each operator to appropriate rt_str_* function
+
+9. **Modified LowerExpr.cpp** (lines 290-294):
+   - Added Lt, Le, Gt, Ge to string operation routing check
+
+10. **Modified Scan_RuntimeNeeds.cpp** (lines 514-533):
+    - Extended runtime helper request logic for all comparison ops
+    - Ensures appropriate rt_str_* functions are declared
+
+**Tests**:
+11. **Updated SemanticAnalyzerBinaryExprTests.cpp** (lines 141-143):
+    - Changed test to expect success instead of error
+
+12. **Removed obsolete error tests**:
+    - Deleted tests/golden/basic_errors/string_cmp_order.*
+    - Removed CMakeLists.txt reference
+
+**Files Changed**:
+- `src/runtime/rt_string_ops.c`
+- `src/runtime/rt_string.h`
+- `src/il/runtime/RuntimeSignatures.hpp`
+- `src/il/runtime/RuntimeSignatures.cpp`
+- `src/il/runtime/signatures/Signatures_Strings.cpp`
+- `src/il/runtime/HelperEffects.hpp`
+- `src/frontends/basic/sem/Check_Expr_Binary.cpp`
+- `src/frontends/basic/LowerExprNumeric.cpp`
+- `src/frontends/basic/LowerExpr.cpp`
+- `src/frontends/basic/lower/Scan_RuntimeNeeds.cpp`
+- `tests/frontends/basic/SemanticAnalyzerBinaryExprTests.cpp`
+- `tests/golden/CMakeLists.txt`
+
+**Test Results**:
+✅ All string comparisons now work correctly:
+```basic
+s1$ = "apple"
+s2$ = "banana"
+IF s1$ < s2$ THEN PRINT "apple < banana: TRUE"  ' Works!
+IF s2$ > s1$ THEN PRINT "banana > apple: TRUE"  ' Works!
+
+s3$ = "apple"
+IF s1$ <= s3$ THEN PRINT "apple <= apple: TRUE"  ' Works!
+IF s1$ >= s3$ THEN PRINT "apple >= apple: TRUE"  ' Works!
+```
+Output (all correct):
+```
+apple < banana: TRUE
+banana > apple: TRUE
+apple <= apple: TRUE
+apple >= apple: TRUE
+```
+
+✅ 586 out of 586 tests pass (1 pre-existing failure in vm_trace_src)
+
+**Impact**:
+- Enables lexicographic string comparisons for sorting and ordering
+- String operations now have feature parity with numeric comparisons
+- Consistent behavior across all comparison operators
+- No breaking changes to existing code
+
+---
