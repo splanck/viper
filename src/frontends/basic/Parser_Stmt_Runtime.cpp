@@ -168,7 +168,22 @@ StmtPtr Parser::parseDimStatement()
         {
             node->isArray = true;
             consume();
-            node->size = parseExpression();
+
+            // Parse comma-separated dimension sizes: DIM a(2,3,4)
+            node->dimensions.push_back(parseExpression());
+            while (at(TokenKind::Comma))
+            {
+                consume(); // ','
+                node->dimensions.push_back(parseExpression());
+            }
+
+            // For backward compatibility with single-dimensional arrays,
+            // move the first dimension to 'size' field if there's only one
+            if (node->dimensions.size() == 1)
+            {
+                node->size = std::move(node->dimensions[0]);
+            }
+
             expect(TokenKind::RParen);
             if (at(TokenKind::KeywordAs))
             {

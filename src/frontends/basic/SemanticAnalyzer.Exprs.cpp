@@ -483,7 +483,7 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeArray(ArrayExpr &a)
         return Type::Unknown;
     }
     if (auto itType = varTypes_.find(a.name);
-        itType != varTypes_.end() && itType->second != Type::ArrayInt)
+        itType != varTypes_.end() && itType->second != Type::ArrayInt && itType->second != Type::ArrayString)
     {
         de.emit(diag::BasicDiag::NotAnArray,
                 a.loc,
@@ -575,6 +575,11 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeArray(ArrayExpr &a)
         }
         // TODO: Bounds check for multi-dimensional arrays
     }
+
+    // Return element type based on array type
+    auto itType = varTypes_.find(a.name);
+    if (itType != varTypes_.end() && itType->second == Type::ArrayString)
+        return Type::String;
 
     return Type::Int;
 }

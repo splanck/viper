@@ -148,7 +148,17 @@ template <typename Derived> class BasicAstWalker : public ExprVisitor, public St
         callBefore(expr);
         if (callShouldVisit(expr))
         {
-            walker::detail::visitOptionalChild(*this, expr, expr.index);
+            // For backward compatibility: visit 'index' for single-dim, 'indices' for multi-dim
+            if (expr.index)
+            {
+                // Single-dimensional array: visit deprecated 'index' field
+                walker::detail::visitOptionalChild(*this, expr, expr.index);
+            }
+            else
+            {
+                // Multi-dimensional array: visit all indices in 'indices' vector
+                walker::detail::visitChildRange(*this, expr, expr.indices);
+            }
         }
         callAfter(expr);
     }

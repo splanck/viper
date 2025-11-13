@@ -273,6 +273,46 @@ void Lowerer::requireArrayI32Release()
     setManualHelperRequired(ManualRuntimeHelper::ArrayI32Release);
 }
 
+/// @brief Request the manual helper that allocates string arrays.
+/// @details Sets the manual-helper toggle so the allocation routine for new
+///          string arrays is emitted alongside other runtime externs.
+void Lowerer::requireArrayStrAlloc()
+{
+    setManualHelperRequired(ManualRuntimeHelper::ArrayStrAlloc);
+}
+
+/// @brief Request the manual helper that releases a string array reference.
+/// @details Marks the release helper so decrements of reference counts reuse the
+///          runtime-provided implementation.
+void Lowerer::requireArrayStrRelease()
+{
+    setManualHelperRequired(ManualRuntimeHelper::ArrayStrRelease);
+}
+
+/// @brief Request the manual helper that loads an element from a string array.
+/// @details Flags the helper so bounds-checked element loads can be lowered to
+///          the shared runtime routine.
+void Lowerer::requireArrayStrGet()
+{
+    setManualHelperRequired(ManualRuntimeHelper::ArrayStrGet);
+}
+
+/// @brief Request the manual helper that stores an element into a string array.
+/// @details Marks the store routine as required so writes funnel through the
+///          shared runtime implementation with consistent bounds checks.
+void Lowerer::requireArrayStrPut()
+{
+    setManualHelperRequired(ManualRuntimeHelper::ArrayStrPut);
+}
+
+/// @brief Request the manual helper that reads the length of string arrays.
+/// @details Ensures the length-query routine is declared for clients that need
+///          to observe the current logical size of a runtime array.
+void Lowerer::requireArrayStrLen()
+{
+    setManualHelperRequired(ManualRuntimeHelper::ArrayStrLen);
+}
+
 /// @brief Request the helper that reports array out-of-bounds panics.
 /// @details Ensures the trap routine used for bounds failures is available when
 ///          lowering explicit checks.
@@ -438,6 +478,13 @@ void Lowerer::declareRequiredRuntime(build::IRBuilder &b)
         {"rt_arr_i32_release",
          ManualRuntimeHelper::ArrayI32Release,
          &Lowerer::requireArrayI32Release},
+        {"rt_arr_str_alloc", ManualRuntimeHelper::ArrayStrAlloc, &Lowerer::requireArrayStrAlloc},
+        {"rt_arr_str_release",
+         ManualRuntimeHelper::ArrayStrRelease,
+         &Lowerer::requireArrayStrRelease},
+        {"rt_arr_str_get", ManualRuntimeHelper::ArrayStrGet, &Lowerer::requireArrayStrGet},
+        {"rt_arr_str_put", ManualRuntimeHelper::ArrayStrPut, &Lowerer::requireArrayStrPut},
+        {"rt_arr_str_len", ManualRuntimeHelper::ArrayStrLen, &Lowerer::requireArrayStrLen},
         {"rt_arr_oob_panic", ManualRuntimeHelper::ArrayOobPanic, &Lowerer::requireArrayOobPanic},
         {"rt_open_err_vstr", ManualRuntimeHelper::OpenErrVstr, &Lowerer::requireOpenErrVstr},
         {"rt_close_err", ManualRuntimeHelper::CloseErr, &Lowerer::requireCloseErr},

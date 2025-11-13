@@ -270,12 +270,25 @@ void Lowerer::assignScalarSlot(const SlotType &slotInfo,
 void Lowerer::assignArrayElement(const ArrayExpr &target, RVal value, il::support::SourceLoc loc)
 {
     LocationScope location(*this, loc);
-    // Runtime ABI: rt_arr_i32_set expects its value operand as i64.
-    // Always normalize the RHS to i64 (handles i1/i16/i32/f64).
-    RVal coerced = ensureI64(std::move(value), loc);
 
     ArrayAccess access = lowerArrayAccess(target, ArrayAccessKind::Store);
-    emitCall("rt_arr_i32_set", {access.base, access.index, coerced.value});
+
+    // Determine array element type and use appropriate runtime function
+    const auto *info = findSymbol(target.name);
+    if (info && info->type == AstType::Str)
+    {
+        // String array: use rt_arr_str_put (handles retain/release)
+        // Value must be a string handle
+        emitCall("rt_arr_str_put", {access.base, access.index, value.value});
+    }
+    else
+    {
+        // Integer/numeric array: use rt_arr_i32_set
+        // Runtime ABI: rt_arr_i32_set expects its value operand as i64.
+        // Always normalize the RHS to i64 (handles i1/i16/i32/f64).
+        RVal coerced = ensureI64(std::move(value), loc);
+        emitCall("rt_arr_i32_set", {access.base, access.index, coerced.value});
+    }
 }
 
 /// @brief Lower a BASIC @c LET statement.
@@ -498,10 +511,23 @@ void Lowerer::lowerDim(const DimStmt &stmt)
         length = totalSize;
     }
 
-    Value handle = emitCallRet(Type(Type::Kind::Ptr), "rt_arr_i32_new", {length});
     const auto *info = findSymbol(stmt.name);
     assert(info && info->slotId);
-    storeArray(Value::temp(*info->slotId), handle);
+
+    // Determine array element type and call appropriate runtime allocator
+    Value handle;
+    if (info->type == AstType::Str)
+    {
+        // String array: use rt_arr_str_alloc
+        handle = emitCallRet(Type(Type::Kind::Ptr), "rt_arr_str_alloc", {length});
+    }
+    else
+    {
+        // Integer/numeric array: use rt_arr_i32_new
+        handle = emitCallRet(Type(Type::Kind::Ptr), "rt_arr_i32_new", {length});
+    }
+
+    storeArray(Value::temp(*info->slotId), handle, info->type);
     if (boundsChecks)
     {
         if (info && info->arrayLengthSlot)

@@ -355,6 +355,70 @@ void invokeRtArrI32Resize(void **args, void *result)
         *reinterpret_cast<void **>(result) = resized;
 }
 
+/// @brief Wrapper for @ref rt_arr_str_alloc that allocates string arrays.
+///
+/// @details Converts VM argument to @c size_t and returns the allocated array handle.
+void invokeRtArrStrAlloc(void **args, void *result)
+{
+    const auto lenPtr = args ? reinterpret_cast<const int64_t *>(args[0]) : nullptr;
+    const size_t len = lenPtr ? static_cast<size_t>(*lenPtr) : 0;
+    rt_string *arr = rt_arr_str_alloc(len);
+    if (result)
+        *reinterpret_cast<void **>(result) = arr;
+}
+
+/// @brief Wrapper for @ref rt_arr_str_release that releases string arrays.
+///
+/// @details Converts VM arguments and releases each non-null element, then releases the array.
+void invokeRtArrStrRelease(void **args, void * /*result*/)
+{
+    const auto arrPtr = args ? reinterpret_cast<rt_string *const *>(args[0]) : nullptr;
+    const auto sizePtr = args ? reinterpret_cast<const int64_t *>(args[1]) : nullptr;
+    rt_string *arr = arrPtr ? *arrPtr : nullptr;
+    const size_t size = sizePtr ? static_cast<size_t>(*sizePtr) : 0;
+    rt_arr_str_release(arr, size);
+}
+
+/// @brief Wrapper for @ref rt_arr_str_get that reads string array elements.
+///
+/// @details Returns a retained string handle from the specified array index.
+void invokeRtArrStrGet(void **args, void *result)
+{
+    const auto arrPtr = args ? reinterpret_cast<rt_string *const *>(args[0]) : nullptr;
+    const auto idxPtr = args ? reinterpret_cast<const int64_t *>(args[1]) : nullptr;
+    rt_string *arr = arrPtr ? *arrPtr : nullptr;
+    const size_t idx = idxPtr ? static_cast<size_t>(*idxPtr) : 0;
+    rt_string value = rt_arr_str_get(arr, idx);
+    if (result)
+        *reinterpret_cast<void **>(result) = value;
+}
+
+/// @brief Wrapper for @ref rt_arr_str_put that writes string array elements.
+///
+/// @details Retains the new value, releases the old value, then stores.
+void invokeRtArrStrPut(void **args, void * /*result*/)
+{
+    const auto arrPtr = args ? reinterpret_cast<rt_string *const *>(args[0]) : nullptr;
+    const auto idxPtr = args ? reinterpret_cast<const int64_t *>(args[1]) : nullptr;
+    const auto valuePtr = args ? reinterpret_cast<const rt_string *>(args[2]) : nullptr;
+    rt_string *arr = arrPtr ? *arrPtr : nullptr;
+    const size_t idx = idxPtr ? static_cast<size_t>(*idxPtr) : 0;
+    rt_string value = valuePtr ? *valuePtr : nullptr;
+    rt_arr_str_put(arr, idx, value);
+}
+
+/// @brief Wrapper for @ref rt_arr_str_len that returns string array length.
+///
+/// @details Queries the logical length from the heap header.
+void invokeRtArrStrLen(void **args, void *result)
+{
+    const auto arrPtr = args ? reinterpret_cast<rt_string *const *>(args[0]) : nullptr;
+    rt_string *arr = arrPtr ? *arrPtr : nullptr;
+    const size_t len = rt_arr_str_len(arr);
+    if (result)
+        *reinterpret_cast<int64_t *>(result) = static_cast<int64_t>(len);
+}
+
 /// @brief Wrapper that forwards out-of-bounds diagnostics to the runtime.
 ///
 /// @details Converts VM-provided index and length operands to @c size_t before
@@ -492,7 +556,7 @@ struct DescriptorRow
     RuntimeTrapClass trapClass;
 };
 
-constexpr std::array<DescriptorRow, 105> kDescriptorRows{{
+constexpr std::array<DescriptorRow, 110> kDescriptorRows{{
     DescriptorRow{"rt_abort",
                   std::nullopt,
                   "void(ptr)",
@@ -738,6 +802,46 @@ constexpr std::array<DescriptorRow, 105> kDescriptorRows{{
                   std::nullopt,
                   "void(i64,i64)",
                   &invokeRtArrOobPanic,
+                  kManualLowering,
+                  nullptr,
+                  0,
+                  RuntimeTrapClass::None},
+    DescriptorRow{"rt_arr_str_alloc",
+                  std::nullopt,
+                  "ptr(i64)",
+                  &invokeRtArrStrAlloc,
+                  kManualLowering,
+                  nullptr,
+                  0,
+                  RuntimeTrapClass::None},
+    DescriptorRow{"rt_arr_str_release",
+                  std::nullopt,
+                  "void(ptr,i64)",
+                  &invokeRtArrStrRelease,
+                  kManualLowering,
+                  nullptr,
+                  0,
+                  RuntimeTrapClass::None},
+    DescriptorRow{"rt_arr_str_get",
+                  std::nullopt,
+                  "ptr(ptr,i64)",
+                  &invokeRtArrStrGet,
+                  kManualLowering,
+                  nullptr,
+                  0,
+                  RuntimeTrapClass::None},
+    DescriptorRow{"rt_arr_str_put",
+                  std::nullopt,
+                  "void(ptr,i64,ptr)",
+                  &invokeRtArrStrPut,
+                  kManualLowering,
+                  nullptr,
+                  0,
+                  RuntimeTrapClass::None},
+    DescriptorRow{"rt_arr_str_len",
+                  std::nullopt,
+                  "i64(ptr)",
+                  &invokeRtArrStrLen,
                   kManualLowering,
                   nullptr,
                   0,

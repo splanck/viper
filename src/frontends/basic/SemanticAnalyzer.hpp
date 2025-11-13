@@ -247,6 +247,7 @@ class SemanticAnalyzer
         String,
         Bool,
         ArrayInt,
+        ArrayString,
         Unknown
     };
 

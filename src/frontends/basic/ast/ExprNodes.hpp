@@ -183,15 +183,22 @@ struct VarExpr : Expr
     void accept(MutExprVisitor &visitor) override;
 };
 
-/// @brief Array element access A(i).
+/// @brief Array element access A(i) or A(i,j) for multi-dimensional arrays.
 struct ArrayExpr : Expr
 {
     ArrayExpr() : Expr(Kind::Array) {}
 
     /// Name of the array variable being indexed.
     std::string name;
-    /// Zero-based index expression; owned and non-null.
+
+    /// Zero-based index expression for single-dimensional arrays; owned and non-null.
+    /// @deprecated Use @ref indices for multi-dimensional support.
     ExprPtr index;
+
+    /// Index expressions for multi-dimensional arrays (owned).
+    /// For single-dimensional arrays, this contains one element (backward compatible).
+    std::vector<ExprPtr> indices;
+
     void accept(ExprVisitor &visitor) const override;
     void accept(MutExprVisitor &visitor) override;
 };

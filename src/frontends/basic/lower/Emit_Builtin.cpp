@@ -41,9 +41,9 @@ namespace il::frontends::basic
 ///
 /// @param slot Address where the array handle should be written.
 /// @param value Array value produced by the lowering routine.
-void Lowerer::storeArray(Value slot, Value value)
+void Lowerer::storeArray(Value slot, Value value, AstType elementType)
 {
-    emitter().storeArray(slot, value);
+    emitter().storeArray(slot, value, elementType);
 }
 
 /// @brief Release any array locals that were materialised within the current procedure.

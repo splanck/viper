@@ -253,7 +253,14 @@ struct DimStmt : Stmt
     std::string name;
 
     /// Number of elements to allocate when @ref isArray is true; may be null for scalars.
+    /// For multi-dimensional arrays, use @ref dimensions instead.
+    /// @deprecated Use @ref dimensions for multi-dimensional support.
     ExprPtr size;
+
+    /// Dimension sizes for multi-dimensional arrays (owned).
+    /// For single-dimensional arrays, this contains one element (backward compatible).
+    /// Empty for scalar declarations.
+    std::vector<ExprPtr> dimensions;
 
     /// Declared BASIC type for this DIM.
     Type type{Type::I64};

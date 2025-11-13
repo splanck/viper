@@ -209,7 +209,7 @@ void SemanticAnalyzer::analyzeArrayAssignment(ArrayExpr &a, const LetStmt &l)
                 std::initializer_list<diag::Replacement>{diag::Replacement{"name", a.name}});
     }
     if (auto itType = varTypes_.find(a.name);
-        itType != varTypes_.end() && itType->second != Type::ArrayInt)
+        itType != varTypes_.end() && itType->second != Type::ArrayInt && itType->second != Type::ArrayString)
     {
         de.emit(diag::BasicDiag::NotAnArray,
                 a.loc,
@@ -276,16 +276,40 @@ void SemanticAnalyzer::analyzeArrayAssignment(ArrayExpr &a, const LetStmt &l)
     if (l.expr)
     {
         valueTy = visitExpr(*l.expr);
-        if (valueTy == Type::Float)
+
+        // Determine expected element type based on array type
+        Type expectedElementType = Type::Int;  // default for integer arrays
+        if (auto itType = varTypes_.find(a.name); itType != varTypes_.end())
         {
-            markImplicitConversion(*l.expr, Type::Int);
-            std::string msg = "narrowing conversion from FLOAT to INT in array assignment";
-            de.emit(il::support::Severity::Warning, "B2002", l.loc, 1, std::move(msg));
+            if (itType->second == Type::ArrayString)
+                expectedElementType = Type::String;
         }
-        else if (valueTy != Type::Unknown && valueTy != Type::Int)
+
+        if (expectedElementType == Type::Int)
         {
-            std::string msg = "array element type mismatch";
-            de.emit(il::support::Severity::Error, "B2001", l.loc, 1, std::move(msg));
+            // Integer array: allow Int or Float (with warning for Float)
+            if (valueTy == Type::Float)
+            {
+                markImplicitConversion(*l.expr, Type::Int);
+                std::string msg = "narrowing conversion from FLOAT to INT in array assignment";
+                de.emit(il::support::Severity::Warning, "B2002", l.loc, 1, std::move(msg));
+            }
+            else if (valueTy != Type::Unknown && valueTy != Type::Int)
+            {
+                std::string msg = "array element type mismatch: expected INT, got ";
+                msg += semanticTypeName(valueTy);
+                de.emit(il::support::Severity::Error, "B2001", l.loc, 1, std::move(msg));
+            }
+        }
+        else if (expectedElementType == Type::String)
+        {
+            // String array: require String type
+            if (valueTy != Type::Unknown && valueTy != Type::String)
+            {
+                std::string msg = "array element type mismatch: expected STRING, got ";
+                msg += semanticTypeName(valueTy);
+                de.emit(il::support::Severity::Error, "B2001", l.loc, 1, std::move(msg));
+            }
         }
     }
     auto it = arrays_.find(a.name);
@@ -539,7 +563,11 @@ void SemanticAnalyzer::analyzeDim(DimStmt &d)
                 previous = itType->second;
             activeProcScope_->noteVarTypeMutation(d.name, previous);
         }
-        varTypes_[d.name] = Type::ArrayInt;
+        // Determine array element type from name suffix
+        if (!d.name.empty() && d.name.back() == '$')
+            varTypes_[d.name] = Type::ArrayString;
+        else
+            varTypes_[d.name] = Type::ArrayInt;
     }
     else
     {

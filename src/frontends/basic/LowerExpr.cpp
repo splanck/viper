@@ -71,7 +71,14 @@ Lowerer::RVal Lowerer::lowerUBoundExpr(const UBoundExpr &expr)
     assert(sym && sym->slotId && "UBOUND requires materialized array slot");
     Value slot = Value::temp(*sym->slotId);
     Value base = emitLoad(Type(Type::Kind::Ptr), slot);
-    Value len = emitCallRet(Type(Type::Kind::I64), "rt_arr_i32_len", {base});
+
+    // Use appropriate length function based on array element type
+    Value len;
+    if (sym->type == AstType::Str)
+        len = emitCallRet(Type(Type::Kind::I64), "rt_arr_str_len", {base});
+    else
+        len = emitCallRet(Type(Type::Kind::I64), "rt_arr_i32_len", {base});
+
     Value upper = emitBinary(Opcode::ISubOvf, Type(Type::Kind::I64), len, Value::constInt(1));
     return {upper, Type(Type::Kind::I64)};
 }

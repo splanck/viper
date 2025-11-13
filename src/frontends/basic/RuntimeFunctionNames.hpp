@@ -60,6 +60,13 @@ constexpr std::string_view ArrI32Release = "rt_arr_i32_release";
 constexpr std::string_view ArrI32Get = "rt_arr_i32_get";
 constexpr std::string_view ArrI32Put = "rt_arr_i32_put";
 
+/// String array operations
+constexpr std::string_view ArrStrAlloc = "rt_arr_str_alloc";
+constexpr std::string_view ArrStrRelease = "rt_arr_str_release";
+constexpr std::string_view ArrStrGet = "rt_arr_str_get";
+constexpr std::string_view ArrStrPut = "rt_arr_str_put";
+constexpr std::string_view ArrStrLen = "rt_arr_str_len";
+
 /// IO operations
 constexpr std::string_view Print = "rt_print";
 constexpr std::string_view PrintLn = "rt_print_ln";

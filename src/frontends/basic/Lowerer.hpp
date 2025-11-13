@@ -527,7 +527,7 @@ class Lowerer
     void emitCallIndirect(Value callee, const std::vector<Value> &args);
 
     Value emitConstStr(const std::string &globalName);
-    void storeArray(Value slot, Value value);
+    void storeArray(Value slot, Value value, AstType elementType = AstType::I64);
     void releaseArrayLocals(const std::unordered_set<std::string> &paramNames);
     void releaseArrayParams(const std::unordered_set<std::string> &paramNames);
     void releaseObjectLocals(const std::unordered_set<std::string> &paramNames);
@@ -603,6 +603,11 @@ class Lowerer
         ArrayI32Set,
         ArrayI32Retain,
         ArrayI32Release,
+        ArrayStrAlloc,
+        ArrayStrRelease,
+        ArrayStrGet,
+        ArrayStrPut,
+        ArrayStrLen,
         ArrayOobPanic,
         OpenErrVstr,
         CloseErr,
@@ -643,6 +648,12 @@ class Lowerer
     void requireArrayI32Retain();
     void requireArrayI32Release();
     void requireArrayOobPanic();
+
+    void requireArrayStrAlloc();
+    void requireArrayStrRelease();
+    void requireArrayStrGet();
+    void requireArrayStrPut();
+    void requireArrayStrLen();
     void requireOpenErrVstr();
     void requireCloseErr();
     void requireSeekChErr();

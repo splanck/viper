@@ -107,8 +107,21 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
             return;
         lowerer_.markSymbolReferenced(expr.name);
         lowerer_.markArray(expr.name);
-        lowerer_.requireArrayI32Len();
-        lowerer_.requireArrayI32Get();
+
+        // Determine array element type and require appropriate runtime functions
+        const auto *info = lowerer_.findSymbol(expr.name);
+        if (info && info->type == Type::Str)
+        {
+            // String array
+            lowerer_.requireArrayStrLen();
+            lowerer_.requireArrayStrGet();
+        }
+        else
+        {
+            // Integer/numeric array
+            lowerer_.requireArrayI32Len();
+            lowerer_.requireArrayI32Get();
+        }
         lowerer_.requireArrayOobPanic();
     }
 
@@ -341,9 +354,19 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
         if (stmt.isArray)
         {
             lowerer_.markArray(stmt.name);
-            lowerer_.requireArrayI32New();
-            lowerer_.requireArrayI32Retain();
-            lowerer_.requireArrayI32Release();
+            if (stmt.type == Type::Str)
+            {
+                // String array
+                lowerer_.requireArrayStrAlloc();
+                lowerer_.requireArrayStrRelease();
+            }
+            else
+            {
+                // Integer/numeric array
+                lowerer_.requireArrayI32New();
+                lowerer_.requireArrayI32Retain();
+                lowerer_.requireArrayI32Release();
+            }
         }
     }
 
@@ -773,8 +796,22 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
         ensureSymbolType(arr.name, inferVariableType(arr.name));
         lowerer_.markSymbolReferenced(arr.name);
         lowerer_.markArray(arr.name);
-        lowerer_.requireArrayI32Len();
-        lowerer_.requireArrayI32Set();
+
+        // Determine array element type and require appropriate runtime functions
+        const auto *info = lowerer_.findSymbol(arr.name);
+        if (info && info->type == Type::Str)
+        {
+            // String array
+            lowerer_.requireArrayStrLen();
+            lowerer_.requireArrayStrPut();
+            lowerer_.requireStrRetainMaybe();
+        }
+        else
+        {
+            // Integer/numeric array
+            lowerer_.requireArrayI32Len();
+            lowerer_.requireArrayI32Set();
+        }
         lowerer_.requireArrayOobPanic();
     }
 

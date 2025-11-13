@@ -306,22 +306,45 @@ ExprPtr Parser::parseVariableRef(std::string name, il::support::SourceLoc loc)
     return v;
 }
 
-/// @brief Parse an array element reference of the form `name(expr)`.
-/// @details After consuming the identifier, this helper expects an opening parenthesis, parses a
-/// single index expression, and requires a closing parenthesis. The expect() calls emit diagnostics
-/// on mismatched tokens but still advance so the parser can continue.
+/// @brief Parse an array element reference of the form `name(expr)` or `name(i,j,k)`.
+/// @details After consuming the identifier, this helper expects an opening parenthesis, parses
+/// comma-separated index expressions, and requires a closing parenthesis. The expect() calls emit
+/// diagnostics on mismatched tokens but still advance so the parser can continue.
+/// Supports multi-dimensional arrays: name(i,j,k).
 /// @param name Array identifier.
 /// @param loc Source location of the identifier.
-/// @return Array reference expression with the parsed index.
+/// @return Array reference expression with the parsed indices.
 ExprPtr Parser::parseArrayRef(std::string name, il::support::SourceLoc loc)
 {
     expect(TokenKind::LParen);
-    auto index = parseExpression();
+
+    // Parse comma-separated indices: arr(i,j,k)
+    std::vector<ExprPtr> indexList;
+    indexList.push_back(parseExpression());
+    while (at(TokenKind::Comma))
+    {
+        consume(); // ','
+        indexList.push_back(parseExpression());
+    }
+
     expect(TokenKind::RParen);
+
     auto arr = std::make_unique<ArrayExpr>();
     arr->loc = loc;
     arr->name = std::move(name);
-    arr->index = std::move(index);
+
+    // For backward compatibility with single-dimensional arrays:
+    // - Keep both 'index' (deprecated) and 'indices' populated
+    // - For single-dim: move expr to 'index', indices vector remains valid but holds moved-from ptr
+    // - For multi-dim: only 'indices' is populated, 'index' is null
+    if (indexList.size() == 1)
+    {
+        // Single-dimensional: populate deprecated 'index' field for backward compatibility
+        arr->index = std::move(indexList[0]);
+    }
+    // Always populate indices vector (may contain moved-from ptr at [0] for single-dim)
+    arr->indices = std::move(indexList);
+
     return arr;
 }
 

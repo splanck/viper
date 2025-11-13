@@ -104,13 +104,22 @@ struct AstPrinter::ExprPrinter final : ExprVisitor
         printer.os << expr.name;
     }
 
-    /// @brief Print an array element access with its index expression.
-    /// @details Emits `name(expr)` preserving the syntactic order of the
-    ///          original index expression.
+    /// @brief Print an array element access with its index expression(s).
+    /// @details Emits `name(expr)` or `name(i,j,k)` preserving the syntactic
+    ///          order of the original index expressions.
     void visit(const ArrayExpr &expr) override
     {
         printer.os << expr.name << '(';
-        expr.index->accept(*this);
+        bool first = true;
+        for (const auto &indexPtr : expr.indices)
+        {
+            if (!indexPtr)
+                continue;
+            if (!first)
+                printer.os << ',';
+            first = false;
+            indexPtr->accept(*this);
+        }
         printer.os << ')';
     }
 

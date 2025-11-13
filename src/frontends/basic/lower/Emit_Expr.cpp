@@ -94,16 +94,32 @@ Lowerer::IlValue Lowerer::emitBoolFromBranches(const std::function<void(Value)> 
 /// @return Metadata describing the computed address and optional result slot.
 Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAccessKind kind)
 {
-    requireArrayI32Len();
-    requireArrayOobPanic();
-    if (kind == ArrayAccessKind::Load)
-        requireArrayI32Get();
-    else
-        requireArrayI32Set();
-
-    ProcedureContext &ctx = context();
     const auto *info = findSymbol(expr.name);
     assert(info && info->slotId);
+
+    // Require appropriate runtime functions based on array element type
+    if (info->type == AstType::Str)
+    {
+        requireArrayStrLen();
+        if (kind == ArrayAccessKind::Load)
+            requireArrayStrGet();
+        else
+        {
+            requireArrayStrPut();
+            requireStrRetainMaybe();
+        }
+    }
+    else
+    {
+        requireArrayI32Len();
+        if (kind == ArrayAccessKind::Load)
+            requireArrayI32Get();
+        else
+            requireArrayI32Set();
+    }
+    requireArrayOobPanic();
+
+    ProcedureContext &ctx = context();
     Value slot = Value::temp(*info->slotId);
     Value base = emitLoad(Type(Type::Kind::Ptr), slot);
 
@@ -179,7 +195,12 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
         }
     }
 
-    Value len = emitCallRet(Type(Type::Kind::I64), "rt_arr_i32_len", {base});
+    // Use appropriate length function based on array element type
+    Value len;
+    if (info->type == AstType::Str)
+        len = emitCallRet(Type(Type::Kind::I64), "rt_arr_str_len", {base});
+    else
+        len = emitCallRet(Type(Type::Kind::I64), "rt_arr_i32_len", {base});
     Value isNeg = emitBinary(Opcode::SCmpLT, ilBoolTy(), index, Value::constInt(0));
     Value tooHigh = emitBinary(Opcode::SCmpGE, ilBoolTy(), index, len);
     auto emit = emitCommon(expr.loc);

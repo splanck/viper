@@ -247,6 +247,8 @@ const char *semanticTypeName(SemanticAnalyzer::Type type)
             return "BOOLEAN";
         case Type::ArrayInt:
             return "ARRAY(INT)";
+        case Type::ArrayString:
+            return "ARRAY(STRING)";
         case Type::Unknown:
             return "UNKNOWN";
     }

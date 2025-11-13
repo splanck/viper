@@ -121,17 +121,32 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
     /// @brief Lower an array access expression.
     /// @details Computes the base pointer and index using
     ///          @ref Lowerer::lowerArrayAccess, then emits a runtime call to load
-    ///          the indexed element. The result is tagged as a 64-bit integer
-    ///          because BASIC integer arrays currently map to that representation.
+    ///          the indexed element. Uses rt_arr_str_get for string arrays or
+    ///          rt_arr_i32_get for integer arrays. The result type is determined
+    ///          by the array element type.
     /// @param expr Array access node from the BASIC AST.
     void visit(const ArrayExpr &expr) override
     {
         Lowerer::ArrayAccess access =
             lowerer_.lowerArrayAccess(expr, Lowerer::ArrayAccessKind::Load);
         lowerer_.curLoc = expr.loc;
-        IlValue val = lowerer_.emitCallRet(
-            IlType(IlType::Kind::I64), "rt_arr_i32_get", {access.base, access.index});
-        result_ = Lowerer::RVal{val, IlType(IlType::Kind::I64)};
+
+        // Determine array element type and use appropriate runtime function
+        const auto *info = lowerer_.findSymbol(expr.name);
+        if (info && info->type == ::il::frontends::basic::Type::Str)
+        {
+            // String array: use rt_arr_str_get (returns retained handle)
+            IlValue val = lowerer_.emitCallRet(
+                IlType(IlType::Kind::Str), "rt_arr_str_get", {access.base, access.index});
+            result_ = Lowerer::RVal{val, IlType(IlType::Kind::Str)};
+        }
+        else
+        {
+            // Integer/numeric array: use rt_arr_i32_get
+            IlValue val = lowerer_.emitCallRet(
+                IlType(IlType::Kind::I64), "rt_arr_i32_get", {access.base, access.index});
+            result_ = Lowerer::RVal{val, IlType(IlType::Kind::I64)};
+        }
     }
 
     /// @brief Lower a unary operator expression.

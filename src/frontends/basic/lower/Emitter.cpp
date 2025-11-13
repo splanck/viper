@@ -319,14 +319,26 @@ Emitter::Value Emitter::emitConstStr(const std::string &globalName)
 ///
 /// @param slot Pointer to the stack slot storing the array reference.
 /// @param value New array handle to record.
-void Emitter::storeArray(Value slot, Value value)
+void Emitter::storeArray(Value slot, Value value, AstType elementType)
 {
-    lowerer_.requireArrayI32Retain();
-    emitCall("rt_arr_i32_retain", {value});
-    Value oldValue = emitLoad(Type(Type::Kind::Ptr), slot);
-    lowerer_.requireArrayI32Release();
-    emitCall("rt_arr_i32_release", {oldValue});
-    emitStore(Type(Type::Kind::Ptr), slot, value);
+    if (elementType == AstType::Str)
+    {
+        // String array: no retain needed (rt_arr_str_alloc returns unretained)
+        Value oldValue = emitLoad(Type(Type::Kind::Ptr), slot);
+        lowerer_.requireArrayStrRelease();
+        emitCall("rt_arr_str_release", {oldValue, Value::constInt(0)});
+        emitStore(Type(Type::Kind::Ptr), slot, value);
+    }
+    else
+    {
+        // Integer/numeric array
+        lowerer_.requireArrayI32Retain();
+        emitCall("rt_arr_i32_retain", {value});
+        Value oldValue = emitLoad(Type(Type::Kind::Ptr), slot);
+        lowerer_.requireArrayI32Release();
+        emitCall("rt_arr_i32_release", {oldValue});
+        emitStore(Type(Type::Kind::Ptr), slot, value);
+    }
 }
 
 /// @brief Release array locals that fall out of scope.
@@ -339,7 +351,8 @@ void Emitter::storeArray(Value slot, Value value)
 /// @param paramNames Names of parameters that should remain alive.
 void Emitter::releaseArrayLocals(const std::unordered_set<std::string> &paramNames)
 {
-    bool requested = false;
+    bool requestedI32 = false;
+    bool requestedStr = false;
     for (auto &[name, info] : lowerer_.symbols)
     {
         if (!info.referenced || !info.slotId || !info.isArray)
@@ -348,12 +361,26 @@ void Emitter::releaseArrayLocals(const std::unordered_set<std::string> &paramNam
             continue;
         Value slot = Value::temp(*info.slotId);
         Value handle = emitLoad(Type(Type::Kind::Ptr), slot);
-        if (!requested)
+        if (info.type == AstType::Str)
         {
-            lowerer_.requireArrayI32Release();
-            requested = true;
+            // String array
+            if (!requestedStr)
+            {
+                lowerer_.requireArrayStrRelease();
+                requestedStr = true;
+            }
+            emitCall("rt_arr_str_release", {handle, Value::constInt(0)});
         }
-        emitCall("rt_arr_i32_release", {handle});
+        else
+        {
+            // Integer/numeric array
+            if (!requestedI32)
+            {
+                lowerer_.requireArrayI32Release();
+                requestedI32 = true;
+            }
+            emitCall("rt_arr_i32_release", {handle});
+        }
         emitStore(Type(Type::Kind::Ptr), slot, Value::null());
     }
 }
@@ -370,7 +397,8 @@ void Emitter::releaseArrayParams(const std::unordered_set<std::string> &paramNam
 {
     if (paramNames.empty())
         return;
-    bool requested = false;
+    bool requestedI32 = false;
+    bool requestedStr = false;
     for (auto &[name, info] : lowerer_.symbols)
     {
         if (!info.referenced || !info.slotId || !info.isArray)
@@ -379,12 +407,26 @@ void Emitter::releaseArrayParams(const std::unordered_set<std::string> &paramNam
             continue;
         Value slot = Value::temp(*info.slotId);
         Value handle = emitLoad(Type(Type::Kind::Ptr), slot);
-        if (!requested)
+        if (info.type == AstType::Str)
         {
-            lowerer_.requireArrayI32Release();
-            requested = true;
+            // String array
+            if (!requestedStr)
+            {
+                lowerer_.requireArrayStrRelease();
+                requestedStr = true;
+            }
+            emitCall("rt_arr_str_release", {handle, Value::constInt(0)});
         }
-        emitCall("rt_arr_i32_release", {handle});
+        else
+        {
+            // Integer/numeric array
+            if (!requestedI32)
+            {
+                lowerer_.requireArrayI32Release();
+                requestedI32 = true;
+            }
+            emitCall("rt_arr_i32_release", {handle});
+        }
         emitStore(Type(Type::Kind::Ptr), slot, Value::null());
     }
 }

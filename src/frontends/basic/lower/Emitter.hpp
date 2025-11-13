@@ -5,6 +5,7 @@
 // Links: docs/codemap.md
 #pragma once
 
+#include "frontends/basic/ast/NodeFwd.hpp"
 #include "frontends/basic/lower/common/CommonLowering.hpp"
 
 #include "viper/il/Module.hpp"
@@ -41,6 +42,7 @@ class Emitter
     using BasicBlock = il::core::BasicBlock;
     using Function = il::core::Function;
     using Opcode = il::core::Opcode;
+    using AstType = il::frontends::basic::Type;
 
     explicit Emitter(Lowerer &lowerer) noexcept;
 
@@ -90,7 +92,7 @@ class Emitter
 
     Value emitConstStr(const std::string &globalName);
 
-    void storeArray(Value slot, Value value);
+    void storeArray(Value slot, Value value, AstType elementType = AstType::I64);
 
     void releaseArrayLocals(const std::unordered_set<std::string> &paramNames);
 

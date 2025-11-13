@@ -37,7 +37,8 @@ struct SigParam
         I64, ///< 64-bit integral value.
         F32, ///< 32-bit floating-point value.
         F64, ///< 64-bit floating-point value.
-        Ptr  ///< Pointer-like value, including runtime strings.
+        Ptr, ///< Generic pointer value.
+        Str  ///< String value (IL str type, runtime rt_string).
     } kind;  ///< Active type classification.
 };
 
