@@ -93,7 +93,7 @@ correctness.
 **Locations:** Various headers may be missing invariants or ownership notes
 **Issue:** Some files may not fully document invariants
 **Impact:** Unclear contracts for callers
-**Fix:** Review and enhance file-level comments per CLAUDE.md §6
+**Fix:** Review and enhance file-level comments per project guidelines
 **Priority:** MEDIUM
 
 ================================================================================
@@ -296,7 +296,7 @@ correctness.
 ## NOTES
 ================================================================================
 
-- Follow CLAUDE.md guidelines strictly
+- Follow project guidelines strictly
 - All changes must maintain spec compliance
 - Prefer many small commits over large changes
 - Test after each logical change

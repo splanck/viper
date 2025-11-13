@@ -5,7 +5,7 @@
 //   - Ambiguity detection produces sorted, stable contender lists.
 //   - Qualified names bypass USING; simple names use precedence rules.
 // Ownership/Lifetime: TypeResolver does not own registry or context; caller ensures lifetime.
-// Links: docs/codemap.md, CLAUDE.md
+// Links: docs/codemap.md
 
 #pragma once
 
