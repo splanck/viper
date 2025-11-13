@@ -913,3 +913,21 @@ Cannot create collections of strings. This severely limits data structure possib
 None known. Could potentially use multiple individual string variables, but this doesn't scale.
 
 ---
+
+**Investigation Notes (2025-11-12)**:
+Attempted fix revealed this is actually TWO separate bugs:
+
+1. **Empty Block Issue**: The DO WHILE/WHILE loop done blocks are empty when only GOSUB is in the body
+   - Root cause: GOSUB creates complex control flow that doesn't emit into the current block
+   - The loop's done block ends up with no instructions, causing IL verifier error
+   - Attempted fix: Add continuation blocks when done block is empty
+   - Result: Fixes empty block error BUT breaks golden tests and reveals bug #2
+
+2. **GOSUB Return Continuation Bug**: `gosub_ret_cont` block missing terminator
+   - When GOSUB returns from within a loop, the return continuation block is unterminated
+   - This appears to be a separate GOSUB lowering issue, not loop-specific
+   - Affects both DO WHILE and WHILE loops with GOSUB
+   - The workaround mentioned in the bug report does NOT work - it still fails
+
+**Status**: Requires deeper investigation of GOSUB lowering and interaction with loop control flow. Marking as HARD.
+
