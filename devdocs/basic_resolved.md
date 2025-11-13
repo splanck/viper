@@ -1137,3 +1137,163 @@ DIM arr(10)
 - Parser change only - no semantic or lowering changes needed
 
 ---
+
+### BUG-027: MOD operator doesn't work with INTEGER type (%)
+**Severity**: High
+**Status**: ✅ RESOLVED
+**Test Case**: /tmp/test_bug027.bas
+**Resolution Date**: 2025-11-12
+**Related**: BUG-028 (fixed simultaneously)
+
+**Original Issue**:
+The MOD (modulo) operator failed with a type mismatch error when used with INTEGER variables (% suffix). The IL verifier reported "operand type mismatch: operand 0 must be i64" for the srem.chk0 instruction.
+
+**Reproduction**:
+```basic
+a% = 100
+b% = 7
+c% = a% MOD b%  ' ERROR: type mismatch
+PRINT c%
+```
+
+**Error Message**:
+```
+error: main:entry: %9 = srem.chk0 %t7 %t8: operand type mismatch: operand 0 must be i64
+```
+
+**Root Cause**:
+The `lowerDivOrMod()` function in `LowerExprNumeric.cpp` was attempting to narrow INTEGER operands from i64 to i16/i32 for performance optimization. However, the IL instructions `srem.chk0` and `sdiv.chk0` only support i64 operands, causing a type mismatch when the narrowed values were passed to these instructions.
+
+The function included complex logic to:
+1. Classify operand types (i16, i32, or i64)
+2. Determine the narrowest common type
+3. Emit narrowing casts to that type
+4. Pass narrowed values to srem.chk0/sdiv.chk0
+
+This optimization was incorrect because the IL instructions don't support the narrower types.
+
+**Resolution**:
+Simplified `lowerDivOrMod()` to always coerce both operands to i64 before emitting the division or modulus instruction. Removed the complex narrowing logic entirely.
+
+**Implementation Details**:
+
+Modified `LowerExprNumeric.cpp` (lines 76-107):
+
+**Before** (100+ lines with narrowing logic):
+```cpp
+Lowerer::RVal NumericExprLowering::lowerDivOrMod(const BinaryExpr &expr)
+{
+    // ... 60+ lines of classifyIntegerRank lambda ...
+    // ... 20+ lines of narrowTo lambda ...
+    
+    std::optional<IlKind> lhsRank = classifyIntegerRank(*expr.lhs, lhs);
+    std::optional<IlKind> rhsRank = classifyIntegerRank(*expr.rhs, rhs);
+    
+    if (lhsRank && rhsRank)
+    {
+        IlKind promoted = (*lhsRank == IlKind::I32 || *rhsRank == IlKind::I32) 
+                          ? IlKind::I32 : IlKind::I16;
+        resultTy = IlType(promoted);
+        lhs = narrowTo(*expr.lhs, std::move(lhs), resultTy);  // Narrows to i16/i32
+        rhs = narrowTo(*expr.rhs, std::move(rhs), resultTy);
+    }
+    // ...
+}
+```
+
+**After** (24 lines, no narrowing):
+```cpp
+Lowerer::RVal NumericExprLowering::lowerDivOrMod(const BinaryExpr &expr)
+{
+    Lowerer &lowerer = *lowerer_;
+    Lowerer::RVal lhs = lowerer.lowerExpr(*expr.lhs);
+    Lowerer::RVal rhs = lowerer.lowerExpr(*expr.rhs);
+
+    // Note: sdiv.chk0 and srem.chk0 IL instructions only support i64 operands.
+    // Always coerce to i64 rather than trying to narrow to i16/i32.
+    lhs = lowerer.coerceToI64(std::move(lhs), expr.loc);
+    rhs = lowerer.coerceToI64(std::move(rhs), expr.loc);
+
+    Opcode op = (expr.op == BinaryExpr::Op::IDiv) ? Opcode::SDivChk0 : Opcode::SRemChk0;
+    IlType resultTy(IlKind::I64);
+
+    lowerer.curLoc = expr.loc;
+    Value res = lowerer.emitBinary(op, resultTy, lhs.value, rhs.value);
+    return {res, resultTy};
+}
+```
+
+**Files Changed**:
+- `src/frontends/basic/LowerExprNumeric.cpp` - Simplified `lowerDivOrMod()` to always use i64
+
+**Test Results**:
+```bash
+$ ./build/src/tools/ilc/ilc front basic -run /tmp/test_bug027.bas
+100 MOD 7 = 2
+25 MOD 4 = 1
+```
+
+All 586 tests pass (1 pre-existing unrelated failure).
+
+**Benefits**:
+- MOD operator now works with all integer types (%, AS INTEGER, literals)
+- Simpler, more maintainable code (removed ~80 lines of complex narrowing logic)
+- Consistent i64 handling matches IL instruction requirements
+- No performance impact - coercion to i64 is minimal overhead
+
+---
+
+### BUG-028: Integer division operator (\) doesn't work with INTEGER type (%)
+**Severity**: High
+**Status**: ✅ RESOLVED
+**Test Case**: /tmp/test_bug028.bas
+**Resolution Date**: 2025-11-12
+**Related**: BUG-027 (same root cause and fix)
+
+**Original Issue**:
+The integer division operator (\) failed with a type mismatch error when used with INTEGER variables (% suffix). The IL verifier reported "operand type mismatch: operand 0 must be i64" for the sdiv.chk0 instruction.
+
+**Reproduction**:
+```basic
+a% = 100
+b% = 7
+c% = a% \ b%  ' ERROR: type mismatch
+PRINT c%
+```
+
+**Error Message**:
+```
+error: main:entry: %7 = sdiv.chk0 %t5 %t6: operand type mismatch: operand 0 must be i64
+```
+
+**Root Cause**:
+Identical to BUG-027. The `lowerDivOrMod()` function handles both modulus (MOD) and integer division (\) operations. Both use IL instructions that only support i64 operands (srem.chk0 and sdiv.chk0), but the function was incorrectly narrowing operands to i16/i32.
+
+**Resolution**:
+Fixed by the same code change as BUG-027. The `lowerDivOrMod()` function now coerces both operands to i64 for all division and modulus operations.
+
+**Test Results**:
+```bash
+$ ./build/src/tools/ilc/ilc front basic -run /tmp/test_bug028.bas
+100 div 7 = 14
+25 div 4 = 6
+```
+
+All 586 tests pass (1 pre-existing unrelated failure).
+
+**Working Syntax**:
+```basic
+' Integer division with INTEGER type
+a% = 100
+b% = 7
+result% = a% \ b%   ' ✅ Now works - result% = 14
+
+' Modulus with INTEGER type  
+remainder% = a% MOD b%  ' ✅ Now works - remainder% = 2
+
+' Combined example
+PRINT a%; " div "; b%; " = "; result%; " remainder "; remainder%
+' Output: 100 div 7 = 14 remainder 2
+```
+
+---

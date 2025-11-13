@@ -44,6 +44,20 @@ PRINT z
 **Output**: `15` `30` `20`
 **Notes**: Addition (+), multiplication (*), subtraction (-) all work
 
+### Test 003b: MOD and Integer Division with INTEGER Type (BUG-027, BUG-028 RESOLVED)
+**File**: `/tmp/test_bug027.bas`, `/tmp/test_bug028.bas`
+**Status**: ✅ WORKS (resolved 2025-11-12)
+```basic
+a% = 100
+b% = 7
+c% = a% MOD b%
+PRINT "100 MOD 7 = "; c%
+d% = a% \ b%
+PRINT "100 \ 7 = "; d%
+```
+**Output**: `100 MOD 7 = 2` `100 \ 7 = 14`
+**Notes**: MOD and integer division (\) now work correctly with INTEGER type (% suffix)
+
 ### Test 004: IF/THEN/ELSE
 **File**: `test004.bas`
 **Status**: ✅ WORKS
@@ -1547,12 +1561,12 @@ Build a 500-800 line text adventure game to comprehensively test VIPER BASIC bou
 **Impact**: Cannot use GOSUB inside DO WHILE loops
 
 #### BUG-027: MOD operator doesn't work with INTEGER type (%)
-**Severity**: High
-**Root Cause**: BASIC frontend lowers i32 to srem.chk0 which expects i64
+**Status**: ✅ RESOLVED 2025-11-12
+**Resolution**: Simplified lowerDivOrMod() to always coerce operands to i64
 
 #### BUG-028: Integer division (\\) doesn't work with INTEGER type (%)
-**Severity**: High
-**Related**: BUG-027 (same root cause)
+**Status**: ✅ RESOLVED 2025-11-12
+**Resolution**: Same fix as BUG-027 - both operators now work with INTEGER type
 
 #### BUG-029: EXIT FUNCTION not supported
 **Severity**: Medium
@@ -1634,7 +1648,7 @@ The combination of BUG-026 and BUG-030 creates a fundamental problem:
 3. **BUG-032** - String arrays are essential for real programs
 
 **HIGH PRIORITY**:
-- BUG-027/028 - MOD and \\ operators with INTEGER type
+- ~~BUG-027/028 - MOD and \\ operators with INTEGER type~~ ✅ RESOLVED
 - ~~BUG-029 - EXIT FUNCTION support~~ ✅ RESOLVED
 - ~~BUG-031 - String comparison operators~~ ✅ RESOLVED
 - IL-BUG-001 - Complex nested structure verifier issue

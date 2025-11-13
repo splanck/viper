@@ -77,7 +77,10 @@ NumericExprLowering::NumericExprLowering(Lowerer &lowerer) noexcept : lowerer_(&
 ///
 /// @details Examines operand types to see whether a narrower integer variant can
 ///          be used (to match legacy semantics) and emits the appropriate IL
-///          opcode with divide-by-zero guards.
+///          opcode with divide-by-zero guards. Integer division (\\) and modulus (MOD)
+///          operations use the sdiv.chk0 and srem.chk0 IL instructions, which only
+///          support i64 operands. This function coerces both operands to i64 before
+///          emitting the operation.
 ///
 /// @param expr Binary expression node representing IDIV or MOD.
 /// @return Lowered r-value carrying the operation result.
@@ -87,104 +90,13 @@ Lowerer::RVal NumericExprLowering::lowerDivOrMod(const BinaryExpr &expr)
     Lowerer::RVal lhs = lowerer.lowerExpr(*expr.lhs);
     Lowerer::RVal rhs = lowerer.lowerExpr(*expr.rhs);
 
-    std::function<std::optional<IlKind>(const Expr &, const Lowerer::RVal &)> classifyIntegerRank;
-    classifyIntegerRank = [&](const Expr &node, const Lowerer::RVal &val) -> std::optional<IlKind>
-    {
-        using Kind = IlKind;
-        switch (val.type.kind)
-        {
-            case Kind::I16:
-                return Kind::I16;
-            case Kind::I32:
-                return Kind::I32;
-            case Kind::F64:
-            case Kind::Str:
-            case Kind::Ptr:
-            case Kind::I1:
-            case Kind::Error:
-            case Kind::ResumeTok:
-            case Kind::Void:
-                return std::nullopt;
-            case Kind::I64:
-                break;
-        }
-
-        if (const auto *intLit = as<const IntExpr>(node))
-        {
-            if (intLit->value >= std::numeric_limits<int16_t>::min() &&
-                intLit->value <= std::numeric_limits<int16_t>::max())
-                return Kind::I16;
-            if (intLit->value >= std::numeric_limits<int32_t>::min() &&
-                intLit->value <= std::numeric_limits<int32_t>::max())
-                return Kind::I32;
-            return std::nullopt;
-        }
-        if (const auto *var = as<const VarExpr>(node))
-        {
-            if (const auto *info = lowerer.findSymbol(var->name))
-            {
-                if (info->hasType)
-                {
-                    if (info->type == Lowerer::AstType::F64)
-                        return std::nullopt;
-                }
-            }
-            Lowerer::AstType astTy = inferAstTypeFromName(var->name);
-            if (astTy == Lowerer::AstType::F64)
-                return std::nullopt;
-            return Kind::I16;
-        }
-        if (const auto *unary = as<const UnaryExpr>(node))
-        {
-            if (unary->expr)
-                return classifyIntegerRank(*unary->expr, val);
-        }
-        return std::nullopt;
-    };
-
-    auto narrowTo = [&](const Expr &node, Lowerer::RVal value, IlType target)
-    {
-        if (value.type.kind == target.kind)
-            return value;
-        value = lowerer.coerceToI64(std::move(value), node.loc);
-        int bits = 64;
-        switch (target.kind)
-        {
-            case IlKind::I16:
-                bits = 16;
-                break;
-            case IlKind::I32:
-                bits = 32;
-                break;
-            default:
-                bits = 64;
-                break;
-        }
-        value.value = lowerer.emitCommon(node.loc).narrow_to(value.value, 64, bits);
-        value.type = target;
-        return value;
-    };
-
-    std::optional<IlKind> lhsRank = classifyIntegerRank(*expr.lhs, lhs);
-    std::optional<IlKind> rhsRank = classifyIntegerRank(*expr.rhs, rhs);
+    // Note: sdiv.chk0 and srem.chk0 IL instructions only support i64 operands.
+    // Always coerce to i64 rather than trying to narrow to i16/i32.
+    lhs = lowerer.coerceToI64(std::move(lhs), expr.loc);
+    rhs = lowerer.coerceToI64(std::move(rhs), expr.loc);
 
     Opcode op = (expr.op == BinaryExpr::Op::IDiv) ? Opcode::SDivChk0 : Opcode::SRemChk0;
     IlType resultTy(IlKind::I64);
-
-    if (lhsRank && rhsRank)
-    {
-        IlKind promoted =
-            (*lhsRank == IlKind::I32 || *rhsRank == IlKind::I32) ? IlKind::I32 : IlKind::I16;
-        resultTy = IlType(promoted);
-        lhs = narrowTo(*expr.lhs, std::move(lhs), resultTy);
-        rhs = narrowTo(*expr.rhs, std::move(rhs), resultTy);
-    }
-    else
-    {
-        lhs = lowerer.coerceToI64(std::move(lhs), expr.loc);
-        rhs = lowerer.coerceToI64(std::move(rhs), expr.loc);
-        resultTy = IlType(IlKind::I64);
-    }
 
     lowerer.curLoc = expr.loc;
     Value res = lowerer.emitBinary(op, resultTy, lhs.value, rhs.value);

@@ -681,74 +681,12 @@ Cannot structure programs with DO WHILE loops calling subroutines. This is a maj
 ---
 
 ### BUG-027: MOD operator doesn't work with INTEGER type (%)
-**Difficulty**: 🟢 EASY
-**Severity**: High
-**Status**: Confirmed
-**Test Case**: test_mod_operator.bas, dungeon_quest_v3.bas
-**Discovered**: 2025-11-12 during comprehensive math testing
-
-**Description**:
-The MOD (modulo) operator fails with a type mismatch error when used with INTEGER variables (% suffix). The IL verifier reports "operand type mismatch: operand 0 must be i64" for the srem.chk0 instruction.
-
-**Reproduction**:
-```basic
-a% = 100
-b% = 7
-c% = a% MOD b%  ' ERROR: type mismatch
-PRINT c%
-```
-
-**Error Message**:
-```
-error: main:entry: %9 = srem.chk0 %t7 %t8: operand type mismatch: operand 0 must be i64
-```
-
-**Analysis**:
-The BASIC frontend is likely lowering INTEGER (i32) variables to the srem.chk0 IL instruction, but that instruction expects i64 operands. The frontend needs to either:
-1. Promote i32 operands to i64 before MOD operation
-2. Use a different IL instruction for i32 modulo
-3. Store the srem.chk0 instruction should accept i32 operands
-
-**Impact**:
-Cannot perform modulo operations on INTEGER variables. This is a fundamental arithmetic operation that should work with all numeric types.
-
-**Workaround**:
-None known. Avoid using MOD operator with INTEGER type until fixed.
+**Status**: ✅ RESOLVED 2025-11-12 - See basic_resolved.md for details
 
 ---
 
-### BUG-028: Integer division
-**Difficulty**: 🟢 EASY (same fix as BUG-027) operator (\\) doesn't work with INTEGER type (%)
-**Severity**: High
-**Status**: Confirmed
-**Test Case**: test_int_division.bas
-**Discovered**: 2025-11-12 during comprehensive math testing
-**Related**: BUG-027 (same root cause)
-
-**Description**:
-The integer division operator (\\) fails with a type mismatch error when used with INTEGER variables (% suffix). The IL verifier reports "operand type mismatch: operand 0 must be i64" for the sdiv.chk0 instruction. This is the same root cause as BUG-027.
-
-**Reproduction**:
-```basic
-a% = 100
-b% = 7
-c% = a% \ b%  ' ERROR: type mismatch
-PRINT c%
-```
-
-**Error Message**:
-```
-error: main:entry: %7 = sdiv.chk0 %t5 %t6: operand type mismatch: operand 0 must be i64
-```
-
-**Analysis**:
-Same issue as MOD operator (BUG-027). The BASIC frontend is lowering INTEGER (i32) variables to IL instructions (sdiv.chk0) that expect i64 operands. This affects both MOD (srem.chk0) and integer division (sdiv.chk0) operators.
-
-**Impact**:
-Cannot perform integer division on INTEGER variables. Combined with BUG-027, this means two fundamental integer arithmetic operations are broken for the INTEGER type.
-
-**Workaround**:
-Use regular division operator (/) instead of integer division (\\), though this may produce different results.
+### BUG-028: Integer division operator (\\) doesn't work with INTEGER type (%)
+**Status**: ✅ RESOLVED 2025-11-12 - See basic_resolved.md for details (same fix as BUG-027)
 
 ---
 
