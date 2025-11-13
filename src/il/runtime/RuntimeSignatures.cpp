@@ -1426,6 +1426,8 @@ const char *sigParamKindName(signatures::SigParam::Kind kind)
             return "f64";
         case SigParam::Kind::Ptr:
             return "ptr";
+        case SigParam::Kind::Str:
+            return "str";
     }
     return "unknown";
 }

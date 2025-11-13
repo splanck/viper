@@ -188,6 +188,12 @@ void printExit(const ExitStmt &stmt, Context &ctx)
         case ExitStmt::LoopKind::Do:
             os << "DO";
             break;
+        case ExitStmt::LoopKind::Sub:
+            os << "SUB";
+            break;
+        case ExitStmt::LoopKind::Function:
+            os << "FUNCTION";
+            break;
     }
     os << ')';
 }

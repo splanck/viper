@@ -6,6 +6,7 @@
 
 #include "frontends/basic/AstPrinter.hpp"
 #include <cassert>
+#include <iostream>
 #include <string>
 #include <utility>
 
@@ -53,7 +54,7 @@ ExprPtr makeArray(std::string name, ExprPtr index)
 {
     auto expr = std::make_unique<ArrayExpr>();
     expr->name = std::move(name);
-    expr->index = std::move(index);
+    expr->indices.push_back(std::move(index));
     return expr;
 }
 
@@ -295,5 +296,8 @@ int main()
                                  "100: (GOTO 200)\n"
                                  "110: (RETURN (FNRESULT B ARR(I)))\n"
                                  "120: (END)\n";
+    if (dump != expected) {
+        std::cerr << "ACTUAL:\n" << dump << "\nEXPECTED:\n" << expected << "\n";
+    }
     assert(dump == expected);
 }

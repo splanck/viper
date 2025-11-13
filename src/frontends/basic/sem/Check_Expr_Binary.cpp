@@ -79,15 +79,15 @@ constexpr bool isIntegerType(Type type) noexcept
 
 /// @brief Determine whether an operand is acceptable for boolean-only rules.
 ///
-/// In classic BASIC, BOOLEAN is an alias for INTEGER, so logical operators
-/// accept both Bool and Int types, plus unknown placeholders. The helper is
+/// Logical operators require strict Boolean types. Unknown placeholders are
+/// accepted to allow continued validation after earlier errors. The helper is
 /// used by logical operator validators and diagnostic messaging.
 ///
 /// @param type Semantic type of the operand expression.
-/// @return True for boolean, integer, or unknown operands.
+/// @return True for boolean or unknown operands.
 constexpr bool isBooleanType(Type type) noexcept
 {
-    return type == Type::Bool || type == Type::Int || type == Type::Unknown;
+    return type == Type::Bool || type == Type::Unknown;
 }
 
 /// @brief Check whether the semantic type maps to a BASIC string value.

@@ -23,6 +23,7 @@
 #include "frontends/basic/constfold/Dispatch.hpp"
 
 #include <cctype>
+#include <cerrno>
 #include <charconv>
 #include <cmath>
 #include <limits>
@@ -101,10 +102,15 @@ inline ParsedNumber parseNumericLiteral(std::string_view sv) noexcept
 
     auto parseFloat = [&](std::string_view view) -> bool
     {
-        double value = 0.0;
-        auto fc = std::from_chars(
-            view.data(), view.data() + view.size(), value, std::chars_format::general);
-        if (fc.ec == std::errc{} && fc.ptr == view.data() + view.size())
+        // Use strtod instead of from_chars since Apple Clang doesn't support
+        // from_chars for floating-point in C++20
+        std::string temp(view.data(), view.size());
+        char* end = nullptr;
+        errno = 0;
+        double value = std::strtod(temp.c_str(), &end);
+
+        // Check if entire string was consumed and no error occurred
+        if (end == temp.c_str() + temp.size() && errno == 0)
         {
             if (!std::isfinite(value))
                 return false;

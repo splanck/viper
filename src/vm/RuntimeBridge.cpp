@@ -333,6 +333,8 @@ static il::core::Type mapKind(il::runtime::signatures::SigParam::Kind k)
             return Type(Type::Kind::F64);
         case K::Ptr:
             return Type(Type::Kind::Ptr);
+        case K::Str:
+            return Type(Type::Kind::Ptr);
     }
     return Type(Type::Kind::Void);
 }

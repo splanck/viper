@@ -247,17 +247,18 @@ int main()
     }
 
     {
+        // Float type inference: A = 1.5 now infers A as Float (no warning)
         const std::string src = "10 LET A = 1.5\n20 END\n";
         auto result = analyzeSnippet(src);
         assert(result.errors == 0);
-        assert(result.warnings == 1);
-        assert(result.output.find("warning[B2002]") != std::string::npos);
+        assert(result.warnings == 0);
     }
 
     {
+        // Float type inference: Verify A is inferred as Float, not Int
         const std::string src = "10 LET A = 1.5\n20 END\n";
         SourceManager sm;
-        uint32_t fid = sm.addFile("narrow_float_to_int.bas");
+        uint32_t fid = sm.addFile("float_literal_inference.bas");
         DiagnosticEngine de;
         DiagnosticEmitter emitter(de, sm);
         emitter.addSource(fid, src);
@@ -269,7 +270,7 @@ int main()
         analyzer.analyze(*program);
         auto aType = analyzer.lookupVarType("A");
         assert(aType.has_value());
-        assert(*aType == SemanticAnalyzer::Type::Int);
+        assert(*aType == SemanticAnalyzer::Type::Float);
     }
 
     {
