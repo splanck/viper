@@ -377,6 +377,10 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_array_i32_refcount PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_array_i32_refcount test_rt_array_i32_refcount)
 
+    viper_add_test(test_rt_array_str ${VIPER_TESTS_DIR}/runtime/RTArrayStrTests.cpp)
+    target_link_libraries(test_rt_array_str PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_array_str test_rt_array_str)
+
     viper_add_test(test_rt_input_line ${VIPER_TESTS_DIR}/runtime/RTInputLineTests.cpp)
     target_link_libraries(test_rt_input_line PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_input_line test_rt_input_line)

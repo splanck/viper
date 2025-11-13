@@ -7,6 +7,7 @@
 #pragma once
 
 #include "rt_array.h"
+#include "rt_array_str.h"
 #include "rt_debug.h"
 #include "rt_error.h"
 #include "rt_file.h"

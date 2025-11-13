@@ -14,6 +14,7 @@ set(RT_SOURCES
         rt_math.c
         rt_random.c
         rt_array.c
+        rt_array_str.c
         rt_heap.c
         rt_numeric.c
         rt_numeric_conv.c
@@ -38,6 +39,7 @@ set(RT_PUBLIC_HEADERS
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_random.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_string.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_array.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/rt_array_str.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_heap.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_object.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_oop.h
