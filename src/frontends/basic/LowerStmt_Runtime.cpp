@@ -278,8 +278,11 @@ void Lowerer::assignArrayElement(const ArrayExpr &target, RVal value, il::suppor
     if (info && info->type == AstType::Str)
     {
         // String array: use rt_arr_str_put (handles retain/release)
-        // Value must be a string handle
-        emitCall("rt_arr_str_put", {access.base, access.index, value.value});
+        // ABI expects a pointer to the string handle for the value operand.
+        // Materialize a temporary slot, store the string handle, and pass its address.
+        Value tmp = emitAlloca(8);
+        emitStore(Type(Type::Kind::Str), tmp, value.value);
+        emitCall("rt_arr_str_put", {access.base, access.index, tmp});
     }
     else
     {

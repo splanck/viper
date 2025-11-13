@@ -73,8 +73,11 @@ Value lowerMid(LowerCtx &ctx, ArrayRef<Value> args)
     Value source = ctx.argValue(0);
     const bool hasLength = ctx.hasArg(2);
     const il::support::SourceLoc startLoc = ctx.argLoc(1);
+    // BASIC MID$ uses one-based start positions and the runtime helpers
+    // (rt_mid2/rt_mid3) already interpret the start argument as one-based.
+    // Coerce to i64 but do NOT subtract 1 here; leave index normalization to
+    // the runtime to avoid double-adjusting and triggering start==0 traps.
     ctx.ensureI64(1, startLoc);
-    ctx.addConst(1, -1, startLoc);
 
     std::vector<Value> callArgs;
     callArgs.reserve(hasLength ? 3 : 2);

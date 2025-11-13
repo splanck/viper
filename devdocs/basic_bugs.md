@@ -1,7 +1,21 @@
 # VIPER BASIC Known Bugs and Issues
 
-*Last Updated: 2025-11-12*
+*Last Updated: 2025-11-13*
 *Source: Empirical testing during language audit*
+
+---
+
+## RECENT UPDATES (2025-11-13)
+
+**String Lifecycle Management Fixes**: Fixed missing extern declarations for `rt_str_retain_maybe` and `rt_str_release_maybe` by adding PRINT statement scanning during the scan phase. This resolved multiple bugs:
+
+- ✅ **BUG-015 RESOLVED**: String properties in classes now work
+- ✅ **BUG-020 RESOLVED**: String constants (CONST MSG$ = "Hello") now work
+- ⚠️ **BUG-032 PARTIAL**: String arrays pass semantic analysis but IL lowering needs fixing (type mismatch: `str` vs `ptr`)
+
+**Boolean Type System Changes**: Modified `isBooleanType()` to only accept `Type::Bool` (not `Type::Int`) for logical operators (AND/ANDALSO/OR/ORELSE). This makes the type system stricter and fixes some test cases.
+
+**Still Outstanding**: BUG-012 (BOOLEAN/TRUE/FALSE incompatibility), BUG-026 (DO WHILE + GOSUB), BUG-030 (global variable access from SUB/FUNCTION returns wrong values)
 
 ---
 
@@ -265,36 +279,11 @@ This is a critical limitation that prevents building many types of practical pro
 
 
 ### BUG-015: String properties in classes cause runtime error
-**Difficulty**: 🔴 HARD (requires OOP implementation)
-**Severity**: Critical
-**Status**: Confirmed
-**Test Case**: db_oop.bas (early versions), test_oop_string_param.bas
+**Status**: ✅ RESOLVED 2025-11-13 - See basic_resolved.md for details
 
-**Description**:
-String properties can be declared in classes but attempting to assign or access them causes a runtime error about a missing runtime function.
+**Resolution**: Fixed by adding PRINT statement scanning for lvalue strings (variables, array elements, member access). The scanner now calls `requireStrRetainMaybe()` and `requireStrReleaseMaybe()` during the scan phase, ensuring extern declarations are emitted before lowering begins.
 
-**Reproduction**:
-```basic
-CLASS Contact
-    DIM name$ AS STRING
-    DIM phone$ AS STRING
-END CLASS
-
-DIM c AS Contact
-c = NEW Contact()
-c.name$ = "Alice Smith"  ' Runtime error!
-```
-
-**Error Message**:
-```
-error: main:obj_assign_cont: call %t12: unknown callee @rt_str_retain_maybe
-```
-
-**Workaround**:
-Only use integer properties in classes. Pass strings as method parameters instead of storing them as properties.
-
-**Analysis**:
-The code generator is missing a critical runtime function for string reference counting in object contexts. This makes string properties completely unusable. The missing function `@rt_str_retain_maybe` suggests the runtime doesn't support string lifecycle management for class members.
+**Test Case Verified**: test_bug015.bas - String properties in classes now work correctly
 
 ---
 
@@ -422,38 +411,11 @@ Cannot define accurate mathematical constants at module level. Regular variables
 ---
 
 ### BUG-020: String constants cause runtime error
-**Difficulty**: 🔴 HARD (runtime string lifecycle management)
-**Severity**: High
-**Status**: Confirmed
-**Test Case**: test_const.bas
-**Discovered**: 2025-11-12 during comprehensive testing
+**Status**: ✅ RESOLVED 2025-11-13 - See basic_resolved.md for details
 
-**Description**:
-String constants compile successfully but cause a runtime error when the program executes. The code generator is missing a runtime function for string lifecycle management in constant contexts.
+**Resolution**: Same fix as BUG-015. The scanner now ensures `rt_str_release_maybe` is declared as an extern before lowering, allowing string constants to compile and run correctly.
 
-**Reproduction**:
-```basic
-CONST MSG$ = "Hello"
-PRINT MSG$
-```
-
-**Error Message**:
-```
-/tmp/test_const.bas:4:1: error: main:entry: call %t11: unknown callee @rt_str_release_maybe
-```
-
-**Workaround**:
-Don't use string constants; use regular string variables instead:
-```basic
-DIM MSG$ AS STRING
-MSG$ = "Hello"
-PRINT MSG$  ' Works fine
-```
-
-**Analysis**:
-The code generator is missing the runtime function `@rt_str_release_maybe` needed for string lifecycle management in constant contexts. This is similar to BUG-015 (string properties in classes causing missing `@rt_str_retain_maybe`), suggesting incomplete string reference counting support throughout the codebase. The lowering code for CONST likely needs special handling for string types to manage reference counting properly.
-
-**Related Bugs**: BUG-015 (string properties in classes), BUG-016 (local strings in methods)
+**Test Case Verified**: test_bug020.bas - String constants (CONST MSG$ = "Hello") now work correctly
 
 ---
 
@@ -685,34 +647,41 @@ Use GOSUB/RETURN instead of SUB/FUNCTION, which uses the same scope as the main 
 ### BUG-032: String arrays
 **Difficulty**: 🔴 HARD not supported
 **Severity**: High
-**Status**: Confirmed
-**Test Case**: test_strings_comprehensive.bas
-**Discovered**: 2025-11-12
+**Status**: ⚠️ PARTIAL - Semantic analysis fixed, IL lowering broken
+**Test Case**: test_bug032.bas
+**Last Tested**: 2025-11-13
 
 **Description**:
-Arrays of strings cannot be created or used. DIM names$(5) compiles, but any assignment to array elements fails with "array element type mismatch".
+Arrays of strings compile past semantic analysis but fail during IL verification with "call arg type mismatch". The lowering code generates incorrect IL that passes `str` values where runtime functions expect `ptr` (pointer to string).
 
 **Reproduction**:
 ```basic
 DIM names$(5)
-names$(0) = "Alice"  ' ERROR: array element type mismatch
+names$(0) = "Alice"  ' Compiles but IL verification fails
 ```
 
-**Error Message**:
+**Error Message** (Updated):
 ```
-error[B2001]: array element type mismatch
-names$(0) = "Alice"
-^
+/tmp/test_bug032.bas:3:4: error: main:bc_ok0: call %t6 0 %t5: call arg type mismatch
 ```
 
-**Analysis**:
-The runtime only provides integer array functions (@rt_arr_i32_*). There appear to be no string array functions in the runtime, so the BASIC frontend cannot lower string arrays to IL.
+**Analysis** (Updated 2025-11-13):
+String array semantic analysis now works correctly. The runtime has string array functions (@rt_arr_str_alloc, @rt_arr_str_put, @rt_arr_str_get, etc.), and these are being called. However, the lowering code generates:
+```
+call @rt_arr_str_put(%t6, 0, %t5)  # %t5 is type 'str'
+```
+But the signature is:
+```
+extern @rt_arr_str_put(ptr, i64, ptr) -> void
+```
+
+The third parameter should be `ptr` (pointer to string) but we're passing `str` (string value). The lowering code needs to be fixed to properly convert string values to pointers for the runtime functions.
 
 **Impact**:
-Cannot create collections of strings. This severely limits data structure possibilities. Common patterns like lists of names, menu options, command tables, etc. are impossible.
+Still cannot use string arrays in practice, though progress has been made. This is now an IL lowering issue rather than a semantic or runtime issue.
 
 **Workaround**:
-None known. Could potentially use multiple individual string variables, but this doesn't scale.
+None known.
 
 ---
 

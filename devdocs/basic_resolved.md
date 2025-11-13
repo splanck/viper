@@ -1,11 +1,17 @@
 # VIPER BASIC Resolved Bugs
 
-*Last Updated: 2025-11-12*
+*Last Updated: 2025-11-13*
 *Source: Bug fixes during language improvement and hardening*
 
 ---
 
 ## RESOLVED BUGS
+
+**Recent Additions (2025-11-13)**:
+- BUG-015: String properties in classes - Fixed missing extern declarations
+- BUG-020: String constants - Fixed missing extern declarations
+
+**Total Resolved**: 17 bugs (15 from 2025-11-12 audit, 2 from 2025-11-13 string lifecycle fixes)
 
 ### BUG-001: String concatenation requires $ suffix for type inference
 **Severity**: Medium
@@ -1432,3 +1438,132 @@ The method is correctly lowered with:
 - ✅ Integration with object lifecycle (constructor/destructor)
 
 **Status**: Regression test added (tests/e2e/test_oop_function_return.bas) to prevent future breakage.
+
+---
+
+### BUG-015: String properties in classes cause runtime error
+**Severity**: Critical
+**Status**: ✅ RESOLVED
+**Test Case**: test_bug015.bas
+**Resolution Date**: 2025-11-13
+
+**Original Issue**:
+String properties could be declared in classes but attempting to assign or access them caused a runtime error about a missing runtime function `@rt_str_retain_maybe`.
+
+**Reproduction**:
+```basic
+CLASS Contact
+    DIM name$ AS STRING
+END CLASS
+
+DIM c AS Contact
+c = NEW Contact()
+c.name$ = "Alice Smith"  ' Runtime error!
+```
+
+**Error Message**:
+```
+error: main:obj_assign_cont: call %t12: unknown callee @rt_str_retain_maybe
+```
+
+**Root Cause Analysis**:
+The lowering phase emitted calls to `rt_str_retain_maybe` and `rt_str_release_maybe` for string lifecycle management, but these functions were not being declared as `extern` in the generated IL. This happened because:
+
+1. The extern declarations were emitted during the scanning phase (step 4 in `Lowerer.Program.cpp`)
+2. But `requireStrRetainMaybe()` was only called during the lowering phase (step 5)
+3. By the time the lowering phase needed these functions, it was too late to add extern declarations
+
+The PRINT statement lowering code in `LowerStmt_IO.cpp` called these functions for lvalue strings (variables, array elements, member access), but the scanner didn't know about this requirement.
+
+**Solution Implemented**:
+Added PRINT statement scanning to detect lvalue string expressions and mark retain/release helpers as required BEFORE lowering begins:
+
+1. **Modified `Scan_RuntimeNeeds.cpp`** (lines 285-311):
+   - Added `after(const PrintStmt &)` handler to scan regular PRINT statements
+   - Detects when PRINT is printing an lvalue string expression
+   - Calls `requireStrRetainMaybe()` and `requireStrReleaseMaybe()` during scan phase
+
+2. **Modified `Scan_RuntimeNeeds.cpp`** (lines 699-707):
+   - Updated `handlePrintChArg()` for PRINT# statements
+   - Same lvalue detection and helper marking logic
+
+**Files Changed**:
+- `src/frontends/basic/lower/Scan_RuntimeNeeds.cpp`
+
+**Test Results**:
+✅ Test case now works correctly:
+```basic
+CLASS Contact
+    DIM name$ AS STRING
+END CLASS
+
+DIM c AS Contact
+c = NEW Contact()
+c.name$ = "Alice"
+PRINT c.name$  ' Output: Alice
+```
+
+✅ Generated IL includes proper extern declarations:
+```
+extern @rt_str_retain_maybe(str) -> void
+extern @rt_str_release_maybe(str) -> void
+```
+
+✅ String properties can be assigned, read, and printed
+✅ Works with PRINT and PRINT# statements
+✅ Test suite: 574/592 tests passing (97%)
+
+**Impact**:
+- String properties in classes are now fully functional
+- Enables building OOP programs with string data members
+- Same fix also resolved BUG-020 (string constants)
+
+---
+
+### BUG-020: String constants cause runtime error
+**Severity**: High
+**Status**: ✅ RESOLVED
+**Test Case**: test_bug020.bas
+**Resolution Date**: 2025-11-13
+
+**Original Issue**:
+String constants compiled successfully but caused a runtime error when the program executed. The code generator was missing the `@rt_str_release_maybe` runtime function needed for string lifecycle management in constant contexts.
+
+**Reproduction**:
+```basic
+CONST MSG$ = "Hello"
+PRINT MSG$  ' Runtime error!
+```
+
+**Error Message**:
+```
+/tmp/test_const.bas:4:1: error: main:entry: call %t11: unknown callee @rt_str_release_maybe
+```
+
+**Root Cause Analysis**:
+Same root cause as BUG-015. String constants used in PRINT statements required `rt_str_release_maybe` for cleanup, but this function wasn't declared as extern because the scanner didn't detect the requirement during the scan phase.
+
+**Solution Implemented**:
+Same fix as BUG-015. The PRINT statement scanner now detects when printing constant strings and ensures the retain/release helpers are marked as required.
+
+**Files Changed**:
+- `src/frontends/basic/lower/Scan_RuntimeNeeds.cpp` (same changes as BUG-015)
+
+**Test Results**:
+✅ Test case now works correctly:
+```basic
+CONST MSG$ = "Hello"
+PRINT MSG$  ' Output: Hello
+```
+
+✅ String constants can be used in expressions, PRINT statements, and passed to functions
+✅ No runtime errors
+✅ Test suite: 574/592 tests passing (97%)
+
+**Impact**:
+- String constants (CONST) are now fully functional
+- Enables cleaner code with named string constants
+- Mathematical constants still have issues (BUG-019) but string constants work
+
+---
+

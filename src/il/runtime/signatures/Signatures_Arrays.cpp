@@ -74,6 +74,7 @@ void register_array_signatures()
     // String array operations
     register_signature(make_signature("rt_arr_str_alloc", {Kind::I64}, {Kind::Ptr}));
     register_signature(make_signature("rt_arr_str_release", {Kind::Ptr, Kind::I64}));
+    // String array element access uses pointer ABI for handles.
     register_signature(make_signature("rt_arr_str_get", {Kind::Ptr, Kind::I64}, {Kind::Ptr}));
     register_signature(make_signature("rt_arr_str_put", {Kind::Ptr, Kind::I64, Kind::Ptr}));
     register_signature(make_signature("rt_arr_str_len", {Kind::Ptr}, {Kind::I64}));
