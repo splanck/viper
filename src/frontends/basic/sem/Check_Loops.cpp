@@ -190,25 +190,6 @@ void analyzeExit(SemanticAnalyzer &analyzer, const ExitStmt &stmt)
     }
 
     const auto activeLoop = context.currentLoop();
-
-    // For EXIT SUB/FUNCTION, we need to search the loop stack to find the procedure context.
-    // Regular EXIT statements (FOR/WHILE/DO) must match the innermost loop exactly.
-    if (stmt.kind == ExitStmt::LoopKind::Function || stmt.kind == ExitStmt::LoopKind::Sub)
-    {
-        // Search the loop stack for a matching SUB or FUNCTION
-        if (context.hasLoopOfKind(targetLoop))
-            return;
-
-        std::string msg = "EXIT ";
-        msg += targetName;
-        msg += " used outside of any ";
-        msg += targetName;
-        context.diagnostics().emit(
-            il::support::Severity::Error, "B1011", stmt.loc, 4, std::move(msg));
-        return;
-    }
-
-    // Regular loops must match exactly
     if (activeLoop == targetLoop)
         return;
 

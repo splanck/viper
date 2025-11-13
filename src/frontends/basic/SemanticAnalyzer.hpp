@@ -435,8 +435,7 @@ class SemanticAnalyzer
 
     /// @brief Shared setup/teardown for analyzing procedures.
     template <typename Proc, typename BodyCallback>
-    void analyzeProcedureCommon(const Proc &proc,
-                                BodyCallback &&bodyCheck,
+    void analyzeProcedureCommon(const Proc &proc, BodyCallback &&bodyCheck,
                                 std::optional<LoopKind> loopKind = std::nullopt);
 
     /// @brief Register parameter @p param in the current procedure scope.

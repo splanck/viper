@@ -200,9 +200,8 @@ void SemanticAnalyzer::registerProcedureParam(const Param &param)
 /// @param bodyCheck Callback that performs procedure-specific validation.
 /// @param loopKind Optional loop kind for EXIT statement validation.
 template <typename Proc, typename BodyCallback>
-void SemanticAnalyzer::analyzeProcedureCommon(const Proc &proc,
-                                              BodyCallback &&bodyCheck,
-                                              std::optional<LoopKind> loopKind)
+void SemanticAnalyzer::analyzeProcedureCommon(const Proc &proc, BodyCallback &&bodyCheck,
+                                               std::optional<LoopKind> loopKind)
 {
     ProcedureScope procScope(*this);
 
