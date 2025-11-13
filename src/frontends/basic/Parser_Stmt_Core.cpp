@@ -166,23 +166,21 @@ Parser::StmtResult Parser::parseCall(int)
     const Token nextTok = peek(1);
     if (nextTok.kind == TokenKind::Dot)
     {
-        const Token t2 = peek(2);
-        const Token t3 = peek(3);
-        if (t2.kind == TokenKind::Identifier && t3.kind == TokenKind::LParen)
+        // Generalized support: allow any qualified call expression beginning
+        // with an identifier to form a call statement (e.g., A.B.F(), obj.M()).
+        // Parse the full expression and accept either MethodCallExpr or CallExpr.
+        auto expr = parseExpression(/*min_prec=*/0);
+        if (expr && (is<MethodCallExpr>(*expr) || is<CallExpr>(*expr)))
         {
-            auto expr = parseExpression(/*min_prec=*/0);
-            if (expr && is<MethodCallExpr>(*expr))
-            {
-                auto stmt = std::make_unique<CallStmt>();
-                stmt->loc = identTok.loc;
-                stmt->call = std::move(expr);
-                return StmtResult(std::move(stmt));
-            }
-            reportUnknownStatement(identTok);
-            resyncAfterError();
-            return StmtResult(StmtPtr{});
+            auto stmt = std::make_unique<CallStmt>();
+            stmt->loc = identTok.loc;
+            stmt->call = std::move(expr);
+            return StmtResult(std::move(stmt));
         }
-        return std::nullopt;
+        // Not a call — treat as an error for statement context to match legacy behaviour.
+        reportUnknownStatement(identTok);
+        resyncAfterError();
+        return StmtResult(StmtPtr{});
     }
     if (nextTok.kind != TokenKind::LParen)
     {

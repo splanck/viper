@@ -357,6 +357,8 @@ void SemanticAnalyzer::analyze(const Program &prog)
     procReg_.clear();
     scopes_.reset();
     sawDecl_ = false;
+    usingStack_.clear();
+    usingStack_.push_back(UsingScope{}); // root scope
 
     // Register procedure signatures first (needed for call resolution)
     for (const auto &p : prog.procs)
@@ -403,6 +405,28 @@ void SemanticAnalyzer::analyze(const Program &prog)
 
     // Build namespace registry and USING context.
     buildNamespaceRegistry(prog, ns_, usings_, &de.emitter());
+
+    // Seed root USING scope from file-scoped UsingContext (declaration order preserved).
+    if (!usings_.imports().empty())
+    {
+        UsingScope &root = usingStack_.front();
+        for (const auto &imp : usings_.imports())
+        {
+            // Alias entries populate alias map; non-alias populate import set.
+            if (!imp.alias.empty())
+            {
+                std::string aliasCanon = CanonicalizeIdent(imp.alias);
+                std::string nsCanon = CanonicalizeQualified(SplitDots(imp.ns));
+                root.aliases.emplace(std::move(aliasCanon), std::move(nsCanon));
+                root.aliasLoc.emplace(CanonicalizeIdent(imp.alias), imp.loc);
+            }
+            else
+            {
+                std::string nsCanon = CanonicalizeQualified(SplitDots(imp.ns));
+                root.imports.insert(std::move(nsCanon));
+            }
+        }
+    }
 
     // Construct TypeResolver after declare pass completes.
     resolver_ = std::make_unique<TypeResolver>(ns_, usings_);
@@ -460,27 +484,49 @@ const ProcSignature *SemanticAnalyzer::resolveCallee(const CallExpr &c,
 
     if (!c.calleeQualified.empty())
     {
-        // Canonicalize each segment and strip type suffix from the final segment.
-        std::vector<std::string> canonSegs;
-        canonSegs.reserve(c.calleeQualified.size());
-        for (size_t i = 0; i < c.calleeQualified.size(); ++i)
+        // Prepare raw segments with last-suffix stripped, then expand alias if present.
+        std::vector<std::string> segs = c.calleeQualified;
+        if (!segs.empty())
         {
-            std::string seg = c.calleeQualified[i];
-            if (i + 1 == c.calleeQualified.size())
+            std::string &last = segs.back();
+            if (!last.empty())
             {
-                // Strip BASIC type suffix.
-                if (!seg.empty())
-                {
-                    char last = seg.back();
-                    if (last == '$' || last == '#' || last == '!' || last == '&' || last == '%')
-                        seg.pop_back();
-                }
+                char t = last.back();
+                if (t == '$' || t == '#' || t == '!' || t == '&' || t == '%')
+                    last.pop_back();
             }
+        }
+
+        // Alias expansion: if first segment matches an alias, replace it with the target path.
+        bool usedAlias = false;
+        std::string usedAliasName;
+        std::string usedAliasTarget;
+        if (!segs.empty() && !usingStack_.empty())
+        {
+            std::string firstCanon = CanonicalizeIdent(segs[0]);
+            const auto &aliases = usingStack_.back().aliases;
+            auto itAlias = aliases.find(firstCanon);
+            if (itAlias != aliases.end())
+            {
+                std::vector<std::string> expanded = SplitDots(itAlias->second);
+                expanded.insert(expanded.end(), segs.begin() + 1, segs.end());
+                segs = std::move(expanded);
+                usedAlias = true;
+                usedAliasName = firstCanon;
+                usedAliasTarget = itAlias->second;
+            }
+        }
+
+        // Canonicalize
+        std::vector<std::string> canonSegs;
+        canonSegs.reserve(segs.size());
+        for (const auto &seg : segs)
+        {
             std::string cseg = CanonicalizeIdent(seg);
             if (cseg.empty() && !seg.empty())
             {
                 canonSegs.clear();
-                break; // signal failure to canonicalize
+                break;
             }
             canonSegs.emplace_back(std::move(cseg));
         }
@@ -493,10 +539,17 @@ const ProcSignature *SemanticAnalyzer::resolveCallee(const CallExpr &c,
         }
         attempts.push_back(q);
         sig = procReg_.lookup(q);
+        if (!sig && usedAlias)
+        {
+            // Unknown after alias expansion: show canonical and note alias mapping.
+            diagx::ErrorUnknownProcQualified(de.emitter(), c.loc, q);
+            diagx::NoteAliasExpansion(de.emitter(), usedAliasName, usedAliasTarget);
+            return nullptr;
+        }
     }
     else
     {
-        // Parent-walk resolution based on current namespace stack.
+        // Unqualified resolution: parent-walk, then USING imports.
         std::vector<std::string> prefixCanon;
         prefixCanon.reserve(nsStack_.size());
         for (const auto &seg : nsStack_)
@@ -506,22 +559,56 @@ const ProcSignature *SemanticAnalyzer::resolveCallee(const CallExpr &c,
         }
         std::string ident = std::string{stripSuffix(c.callee)};
         ident = CanonicalizeIdent(ident);
-        // Try from deepest to global
-        for (std::size_t n = prefixCanon.size(); n > 0; --n)
+
+        // Parent-walk precedence: choose the nearest match only. Do not
+        // accumulate multiple hits along the chain; if multiple levels define
+        // the same name, the nearest wins deterministically.
+        for (std::size_t n = prefixCanon.size(); n > 0 && !sig; --n)
         {
             std::vector<std::string> parts(prefixCanon.begin(),
                                            prefixCanon.begin() + static_cast<std::ptrdiff_t>(n));
             parts.push_back(ident);
             std::string q = JoinQualified(parts);
             attempts.push_back(q);
-            if ((sig = procReg_.lookup(q)))
-                break;
+            if (const auto *s = procReg_.lookup(q))
+            {
+                sig = s;
+            }
         }
         if (!sig)
         {
-            // Finally try just the unqualified ident
+            // Try global unqualified ident.
             attempts.push_back(ident);
             sig = procReg_.lookup(ident);
+        }
+
+        if (!sig)
+        {
+            // No parent/global hit: try imported namespaces (USING imports only, no aliases).
+            std::vector<std::string> importHits;
+            if (!usingStack_.empty())
+            {
+                const UsingScope &cur = usingStack_.back();
+                for (const auto &ns : cur.imports)
+                {
+                    std::string q = ns;
+                    if (!q.empty())
+                        q.push_back('.');
+                    q += ident;
+                    attempts.push_back(q);
+                    if (procReg_.lookup(q))
+                        importHits.push_back(q);
+                }
+            }
+            if (importHits.size() == 1)
+            {
+                sig = procReg_.lookup(importHits[0]);
+            }
+            else if (importHits.size() > 1)
+            {
+                diagx::ErrorAmbiguousProc(de.emitter(), c.loc, c.callee, importHits);
+                return nullptr;
+            }
         }
     }
     if (!sig)
@@ -533,7 +620,7 @@ const ProcSignature *SemanticAnalyzer::resolveCallee(const CallExpr &c,
         }
         else
         {
-            diagx::ErrorUnknownProc(de.emitter(), c.loc, c.callee, attempts);
+            diagx::ErrorUnknownProcWithTries(de.emitter(), c.loc, c.callee, attempts);
         }
         return nullptr;
     }

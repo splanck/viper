@@ -1,8 +1,41 @@
-// File: src/il/core/Instr.hpp
-// Purpose: Defines IL instruction representation.
-// Key invariants: Opcode determines operand layout.
-// Ownership/Lifetime: Instructions stored by value in basic blocks.
-// Links: docs/il-guide.md#reference
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file declares the Instr struct, which represents a single IL instruction
+// within a basic block. Instructions are the atomic units of computation in
+// Viper IL, implementing operations ranging from arithmetic to control flow.
+//
+// The Instr struct uses a flexible design to accommodate the diverse needs of
+// different instruction types:
+// - Standard operations (add, mul, load, etc.) use the operands vector
+// - Call instructions additionally store a callee name
+// - Branch instructions store target labels and per-target arguments
+// - All instructions can have an optional result temporary
+//
+// Instructions follow SSA form: each instruction that produces a value assigns
+// it to a unique temporary ID within the function scope. The result field holds
+// this temporary ID when present. Instructions without results (stores, branches)
+// leave result empty.
+//
+// Special Instruction Types:
+// - Calls: Use callee field for function name, CallAttr for optimization hints
+// - Branches: Use labels vector for targets, brArgs for per-target arguments
+// - Switch: Special operand/label/arg layout accessed via helper functions
+//
+// The source location field (loc) enables precise error reporting and debugging.
+// Line and column numbers start at 1; {0,0} indicates unknown location.
+//
+// Ownership Model:
+// - BasicBlock owns Instructions by value in a std::vector
+// - Instruction owns all operands, labels, and branch arguments
+// - String fields (callee, labels) use std::string value semantics
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "il/core/Opcode.hpp"

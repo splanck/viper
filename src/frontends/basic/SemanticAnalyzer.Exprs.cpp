@@ -19,6 +19,7 @@
 
 #include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/SemanticAnalyzer.Internal.hpp"
+#include "frontends/basic/IdentifierUtil.hpp"
 
 #include <limits>
 
@@ -157,36 +158,78 @@ class SemanticAnalyzerExprVisitor final : public MutExprVisitor
         };
 
         // Resolve right-hand dotted type to class or interface.
+        auto existsQ = [&](const std::string &q) -> bool
+        {
+            if (analyzer_.oopIndex_.interfacesByQname().count(q))
+                return true;
+            return analyzer_.oopIndex_.findClass(q) != nullptr;
+        };
+
         std::string dotted;
-        for (size_t i = 0; i < expr.typeName.size(); ++i)
+        if (!expr.typeName.empty())
         {
-            if (i)
-                dotted.push_back('.');
-            dotted += expr.typeName[i];
-        }
-        bool resolved = false;
-        // Interface lookup by qualified name
-        if (analyzer_.oopIndex_.interfacesByQname().count(dotted))
-            resolved = true;
-        // Class lookup by qualified name
-        if (!resolved)
-        {
-            for (const auto &entry : analyzer_.oopIndex_.classes())
+            if (expr.typeName.size() == 1)
             {
-                if (entry.second.qualifiedName == dotted)
+                // Unqualified: resolve with parent-walk then imports.
+                std::string ident = Canon(expr.typeName[0]);
+                std::vector<std::string> prefix;
+                for (const auto &seg : analyzer_.nsStack_)
+                    prefix.push_back(Canon(seg));
+                std::vector<std::string> hits;
+                for (std::size_t n = prefix.size(); n > 0; --n)
                 {
-                    resolved = true;
-                    break;
+                    std::vector<std::string> parts(prefix.begin(), prefix.begin() + static_cast<std::ptrdiff_t>(n));
+                    parts.push_back(ident);
+                    std::string q = JoinDots(parts);
+                    if (existsQ(q))
+                        hits.push_back(q);
+                }
+                if (existsQ(ident))
+                    hits.push_back(ident);
+                if (hits.size() == 1)
+                    dotted = hits[0];
+                else if (hits.empty())
+                {
+                    if (!analyzer_.usingStack_.empty())
+                    {
+                        const auto &cur = analyzer_.usingStack_.back();
+                        for (const auto &ns : cur.imports)
+                        {
+                            std::string q = ns + "." + ident;
+                            if (existsQ(q))
+                                hits.push_back(q);
+                        }
+                    }
+                    if (hits.size() == 1)
+                        dotted = hits[0];
+                }
+                if (dotted.empty())
+                {
+                    // Default to single ident (unknown handling occurs below)
+                    dotted = ident;
+                }
+            }
+            else
+            {
+                // Qualified: join as-is
+                for (size_t i = 0; i < expr.typeName.size(); ++i)
+                {
+                    if (i)
+                        dotted.push_back('.');
+                    dotted += expr.typeName[i];
                 }
             }
         }
+        bool resolved = existsQ(dotted);
 
         if (!resolved)
         {
-            analyzer_.de.emit(il::frontends::basic::diag::BasicDiag::UnknownVariable,
+            std::string msg = std::string("unknown type '") + dotted + "'";
+            analyzer_.de.emit(il::support::Severity::Error,
+                              "B2111",
                               expr.loc,
                               static_cast<uint32_t>(dotted.size()),
-                              {{"name", dotted}});
+                              std::move(msg));
         }
         else if (isPrimitive(lhsType))
         {
@@ -213,11 +256,74 @@ class SemanticAnalyzerExprVisitor final : public MutExprVisitor
         };
 
         std::string dotted;
-        for (size_t i = 0; i < expr.typeName.size(); ++i)
+        if (!expr.typeName.empty())
         {
-            if (i)
-                dotted.push_back('.');
-            dotted += expr.typeName[i];
+            if (expr.typeName.size() == 1)
+            {
+                std::string ident = Canon(expr.typeName[0]);
+                std::vector<std::string> prefix;
+                for (const auto &seg : analyzer_.nsStack_)
+                    prefix.push_back(Canon(seg));
+                std::vector<std::string> hits;
+                auto existsQ = [&](const std::string &q) -> bool
+                {
+                    if (analyzer_.oopIndex_.interfacesByQname().count(q))
+                        return true;
+                    return analyzer_.oopIndex_.findClass(q) != nullptr;
+                };
+                for (std::size_t n = prefix.size(); n > 0; --n)
+                {
+                    std::vector<std::string> parts(prefix.begin(), prefix.begin() + static_cast<std::ptrdiff_t>(n));
+                    parts.push_back(ident);
+                    std::string q = JoinDots(parts);
+                    if (existsQ(q))
+                        hits.push_back(q);
+                }
+                if (existsQ(ident))
+                    hits.push_back(ident);
+                if (hits.size() == 1)
+                    dotted = hits[0];
+                else if (hits.empty())
+                {
+                    if (!analyzer_.usingStack_.empty())
+                    {
+                        const auto &cur = analyzer_.usingStack_.back();
+                        for (const auto &ns : cur.imports)
+                        {
+                            std::string q = ns + "." + ident;
+                            if (existsQ(q))
+                                hits.push_back(q);
+                        }
+                    }
+                    if (hits.size() == 1)
+                        dotted = hits[0];
+                }
+                if (dotted.empty())
+                    dotted = ident;
+            }
+            else
+            {
+                // Qualified: apply alias expansion to the first segment, if present.
+                std::vector<std::string> segs = expr.typeName;
+                if (!analyzer_.usingStack_.empty() && !segs.empty())
+                {
+                    std::string firstCanon = Canon(segs[0]);
+                    const auto &aliases = analyzer_.usingStack_.back().aliases;
+                    auto it = aliases.find(firstCanon);
+                    if (it != aliases.end())
+                    {
+                        std::vector<std::string> expanded = SplitDots(it->second);
+                        expanded.insert(expanded.end(), segs.begin() + 1, segs.end());
+                        segs = std::move(expanded);
+                    }
+                }
+                for (size_t i = 0; i < segs.size(); ++i)
+                {
+                    if (i)
+                        dotted.push_back('.');
+                    dotted += segs[i];
+                }
+            }
         }
         bool resolved = false;
         if (analyzer_.oopIndex_.interfacesByQname().count(dotted))
@@ -236,10 +342,12 @@ class SemanticAnalyzerExprVisitor final : public MutExprVisitor
 
         if (!resolved)
         {
-            analyzer_.de.emit(il::frontends::basic::diag::BasicDiag::UnknownVariable,
+            std::string msg = std::string("unknown type '") + dotted + "'";
+            analyzer_.de.emit(il::support::Severity::Error,
+                              "B2111",
                               expr.loc,
                               static_cast<uint32_t>(dotted.size()),
-                              {{"name", dotted}});
+                              std::move(msg));
         }
         else if (isPrimitive(lhsType))
         {
@@ -351,6 +459,137 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeBinary(const BinaryExpr &b)
 /// @return Semantic type observed for the NEW expression (currently Unknown).
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeNew(NewExpr &expr)
 {
+    // Apply alias expansion for qualified type, if present.
+    if (!expr.qualifiedType.empty() && !usingStack_.empty())
+    {
+        std::string firstCanon = Canon(expr.qualifiedType[0]);
+        const auto &aliases = usingStack_.back().aliases;
+        auto it = aliases.find(firstCanon);
+        if (it != aliases.end())
+        {
+            std::vector<std::string> expanded = SplitDots(it->second);
+            expanded.insert(expanded.end(), expr.qualifiedType.begin() + 1, expr.qualifiedType.end());
+            // Rebuild className from canonicalized expanded segments.
+            expr.className = CanonJoin(expanded);
+        }
+    }
+
+    // If unqualified type, resolve using parent-walk then USING imports.
+    if (expr.qualifiedType.empty())
+    {
+        std::vector<std::string> attempts;
+        auto existsQ = [&](const std::string &q) -> bool
+        {
+            if (oopIndex_.interfacesByQname().count(q))
+                return true;
+            return oopIndex_.findClass(q) != nullptr;
+        };
+
+        std::string ident = Canon(expr.className);
+        // Parent-walk: A.B.Point -> A.Point -> Point
+        std::vector<std::string> prefixCanon;
+        prefixCanon.reserve(nsStack_.size());
+        for (const auto &seg : nsStack_)
+        {
+            std::string cseg = Canon(seg);
+            prefixCanon.push_back(cseg.empty() ? seg : cseg);
+        }
+        std::vector<std::string> hits;
+        for (std::size_t n = prefixCanon.size(); n > 0; --n)
+        {
+            std::vector<std::string> parts(prefixCanon.begin(), prefixCanon.begin() + static_cast<std::ptrdiff_t>(n));
+            parts.push_back(ident);
+            std::string q = JoinDots(parts);
+            attempts.push_back(q);
+            if (existsQ(q))
+                hits.push_back(q);
+        }
+        // Try global
+        attempts.push_back(ident);
+        if (existsQ(ident))
+            hits.push_back(ident);
+
+        auto reportAmbiguous = [&](const std::vector<std::string> &cands)
+        {
+            std::vector<std::string> sorted = cands;
+            std::sort(sorted.begin(), sorted.end());
+            std::string msg = std::string("ambiguous type '") + expr.className + "' (candidates: ";
+            for (size_t i = 0; i < sorted.size(); ++i)
+            {
+                if (i)
+                    msg += ", ";
+                msg += sorted[i];
+            }
+            msg += ")";
+            de.emit(il::support::Severity::Error, "B2110", expr.loc, static_cast<uint32_t>(expr.className.size()), std::move(msg));
+        };
+
+        if (hits.size() == 1)
+        {
+            expr.className = hits[0];
+        }
+        else if (hits.size() > 1)
+        {
+            reportAmbiguous(hits);
+            return Type::Unknown;
+        }
+        else
+        {
+            // Try USING imports
+            std::vector<std::string> importHits;
+            if (!usingStack_.empty())
+            {
+                const UsingScope &cur = usingStack_.back();
+                for (const auto &ns : cur.imports)
+                {
+                    std::string q = ns;
+                    if (!q.empty())
+                        q.push_back('.');
+                    q += ident;
+                    attempts.push_back(q);
+                    if (existsQ(q))
+                        importHits.push_back(q);
+                }
+            }
+            if (importHits.size() == 1)
+            {
+                expr.className = importHits[0];
+            }
+            else if (importHits.size() > 1)
+            {
+                reportAmbiguous(importHits);
+                return Type::Unknown;
+            }
+            else
+            {
+                // Unknown type with tried list
+                std::string msg = std::string("unknown type '") + expr.className + "'";
+                if (!attempts.empty())
+                {
+                    msg += " (tried: ";
+                    size_t limit = std::min<std::size_t>(attempts.size(), 8);
+                    for (size_t i = 0; i < limit; ++i)
+                    {
+                        if (i)
+                            msg += ", ";
+                        msg += attempts[i];
+                    }
+                    if (attempts.size() > limit)
+                    {
+                        msg += ", +" + std::to_string(attempts.size() - limit) + " more";
+                    }
+                    msg += ")";
+                }
+                de.emit(il::support::Severity::Error,
+                        "B2111",
+                        expr.loc,
+                        static_cast<uint32_t>(expr.className.size()),
+                        std::move(msg));
+                return Type::Unknown;
+            }
+        }
+    }
+
     std::vector<Type> argTypes;
     argTypes.reserve(expr.args.size());
     for (auto &arg : expr.args)

@@ -9,8 +9,7 @@
 // Purpose: Implements namespace semantic checking including USING placement
 //          and reserved-root validation.
 // Key invariants:
-//   - USING must appear at file scope (not inside namespaces).
-//   - USING must appear before any declarations.
+//   - USING applies at file scope or inside NAMESPACE blocks; not inside procedures.
 //   - "Viper" root namespace is reserved.
 //   - Alias names cannot duplicate existing aliases or namespace names.
 // Ownership/Lifetime: Borrows DiagnosticEmitter; no AST ownership.
@@ -24,6 +23,7 @@
 ///          declarations, and reserved-root enforcement per Track A spec.
 
 #include "frontends/basic/ASTUtils.hpp"
+#include "frontends/basic/IdentifierUtil.hpp"
 #include "frontends/basic/SemanticAnalyzer.Internal.hpp"
 #include <algorithm>
 #include <cctype>
@@ -64,15 +64,43 @@ void SemanticAnalyzer::analyzeNamespaceDecl(NamespaceDecl &decl)
     for (const auto &seg : decl.path)
         nsStack_.push_back(seg);
 
-    // Visit body statements.
+    // Inherit USING context from parent scope and then apply local USINGs.
+    UsingScope child;
+    if (!usingStack_.empty())
+    {
+        // Inherit imports; aliases can be shadowed so keep local alias map empty.
+        child.imports = usingStack_.back().imports;
+    }
+    usingStack_.push_back(std::move(child));
+
+    // First pass: apply USING directives in this namespace to the current using scope.
     for (const auto &stmt : decl.body)
-        if (stmt)
+    {
+        if (!stmt)
+            continue;
+        if (stmt->stmtKind() == Stmt::Kind::UsingDecl)
+        {
+            analyzeUsingDecl(static_cast<UsingDecl &>(*stmt));
+        }
+    }
+
+    // Second pass: analyze remaining statements (children see combined parent + local using).
+    for (const auto &stmt : decl.body)
+    {
+        if (!stmt)
+            continue;
+        if (stmt->stmtKind() != Stmt::Kind::UsingDecl)
             visitStmt(*stmt);
+    }
 
     // Pop segments.
     size_t popCount = decl.path.size();
     if (nsStack_.size() >= popCount)
         nsStack_.resize(nsStack_.size() - popCount);
+
+    // Pop USING scope.
+    if (!usingStack_.empty())
+        usingStack_.pop_back();
 }
 
 /// @brief Analyze class declaration.
@@ -120,35 +148,24 @@ void SemanticAnalyzer::analyzeInterfaceDecl(InterfaceDecl &decl)
 
 /// @brief Analyze USING directive with full validation.
 /// @details Enforces:
-///          - USING must be at file scope (nsStack_ empty).
-///          - USING must precede all declarations (sawDecl_ false).
+///          - USING cannot appear inside procedure bodies.
 ///          - Referenced namespace must exist.
 ///          - Aliases must be unique and not shadow namespaces.
 ///          - "Viper" root is reserved.
 void SemanticAnalyzer::analyzeUsingDecl(UsingDecl &decl)
 {
-    // E_NS_008: USING must be at file scope.
-    if (!nsStack_.empty())
+    // Disallow inside procedures (Phase 2 rule).
+    if (activeProcScope_ != nullptr)
     {
+        // Reuse existing diagnostic category for placement; message text may refer to scope.
         de.emit(diag::BasicDiag::NsUsingNotFileScope, decl.loc, 1, {});
         return;
     }
 
-    // E_NS_005: USING must appear before any declarations.
-    if (sawDecl_)
-    {
-        de.emit(diag::BasicDiag::NsUsingAfterDecl, decl.loc, 1, {});
-        return;
-    }
-
-    // Build namespace path from segments.
+    // Build canonical lowercase namespace path from segments.
     std::string nsPath;
-    for (std::size_t i = 0; i < decl.namespacePath.size(); ++i)
-    {
-        if (i > 0)
-            nsPath.push_back('.');
-        nsPath += decl.namespacePath[i];
-    }
+    if (!decl.namespacePath.empty())
+        nsPath = CanonJoin(decl.namespacePath);
 
     if (nsPath.empty())
         return;
@@ -161,40 +178,70 @@ void SemanticAnalyzer::analyzeUsingDecl(UsingDecl &decl)
     }
 
     // E_NS_001: Namespace must exist in registry.
-    if (!ns_.namespaceExists(nsPath))
+    if (!nsPath.empty())
     {
-        de.emit(
-            diag::BasicDiag::NsUnknownNamespace, decl.loc, 1, {{diag::Replacement{"ns", nsPath}}});
-        return;
+        if (!ns_.namespaceExists(nsPath))
+        {
+            // P2.4: Optional early validation (best-effort). Emit a warning but do not halt.
+            std::string msg = std::string("unknown namespace '") + nsPath + "' in USING";
+            de.emit(il::support::Severity::Warning, "W_NS_USING_UNKNOWN", decl.loc, 1, std::move(msg));
+        }
     }
 
     // Validate alias if present.
-    if (!decl.alias.empty())
+    if (!usingStack_.empty())
     {
-        // E_NS_004: Alias must not duplicate an existing alias.
-        if (usings_.hasAlias(decl.alias))
-        {
-            de.emit(diag::BasicDiag::NsDuplicateAlias,
-                    decl.loc,
-                    1,
-                    {{diag::Replacement{"alias", decl.alias}}});
-            return;
-        }
+        UsingScope &cur = usingStack_.back();
 
-        // E_NS_007: Alias must not shadow an existing namespace name.
-        if (ns_.namespaceExists(decl.alias))
+        if (!decl.alias.empty())
         {
-            de.emit(diag::BasicDiag::NsAliasShadowsNs,
-                    decl.loc,
-                    1,
-                    {{diag::Replacement{"alias", decl.alias}}});
-            return;
+            // Canonicalize alias to lowercase.
+            std::string aliasLower = Canon(decl.alias);
+            if (aliasLower.find('.') != std::string::npos)
+            {
+                // Should not happen (parser enforces single identifier).
+                de.emit(diag::BasicDiag::NsDuplicateAlias,
+                        decl.loc,
+                        1,
+                        {{diag::Replacement{"alias", decl.alias}}});
+                return;
+            }
+
+            // E_NS_004: Duplicate alias in the same scope is not allowed unless
+            // it refers to the same target namespace (idempotent seeding).
+            if (auto itDup = cur.aliases.find(aliasLower); itDup != cur.aliases.end())
+            {
+                if (itDup->second == nsPath)
+                {
+                    // Ignore duplicate that maps to the same target.
+                    return;
+                }
+                de.emit(diag::BasicDiag::NsDuplicateAlias,
+                        decl.loc,
+                        1,
+                        {{diag::Replacement{"alias", decl.alias}}});
+                return;
+            }
+
+            // E_NS_007: Alias must not shadow a namespace name (only check exact alias).
+            if (ns_.namespaceExists(aliasLower))
+            {
+                de.emit(diag::BasicDiag::NsAliasShadowsNs,
+                        decl.loc,
+                        1,
+                        {{diag::Replacement{"alias", decl.alias}}});
+                return;
+            }
+
+            cur.aliases.emplace(aliasLower, nsPath);
+            cur.aliasLoc.emplace(aliasLower, decl.loc);
+        }
+        else
+        {
+            if (!nsPath.empty())
+                cur.imports.insert(nsPath);
         }
     }
-
-    // All checks passed - add to UsingContext.
-    // Note: usings_ is populated during buildNamespaceRegistry,
-    // but we could also add here if needed for incremental analysis.
 }
 
 /// @brief Resolve a type reference and emit diagnostics if not found.

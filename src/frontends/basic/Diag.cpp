@@ -74,4 +74,79 @@ void ErrorUnknownProcQualified(DiagnosticEmitter &emitter,
                  std::string("unknown procedure '") + std::string(qname) + "'");
 }
 
+static std::string formatTriedList(const std::vector<std::string> &tried,
+                                   std::size_t limit = 8)
+{
+    if (tried.empty())
+        return {};
+    std::string s = " (tried: ";
+    std::size_t n = std::min(tried.size(), limit);
+    for (std::size_t i = 0; i < n; ++i)
+    {
+        if (i)
+            s += ", ";
+        s += tried[i];
+    }
+    if (tried.size() > limit)
+    {
+        s += ", +" + std::to_string(tried.size() - limit) + " more";
+    }
+    s += ")";
+    return s;
+}
+
+void ErrorUnknownProcWithTries(DiagnosticEmitter &emitter,
+                               il::support::SourceLoc loc,
+                               std::string_view ident,
+                               const std::vector<std::string> &tried)
+{
+    std::string head = CanonicalizeIdent(ident);
+    if (head.empty())
+        head.assign(ident.begin(), ident.end());
+    std::string msg = std::string("unknown procedure '") + head + "'" + formatTriedList(tried);
+    emitter.emit(il::support::Severity::Error,
+                 "B1006",
+                 loc,
+                 static_cast<uint32_t>(head.size() > 0 ? head.size() : ident.size()),
+                 std::move(msg));
+}
+
+void ErrorAmbiguousProc(DiagnosticEmitter &emitter,
+                        il::support::SourceLoc loc,
+                        std::string_view ident,
+                        std::vector<std::string> matches)
+{
+    std::sort(matches.begin(), matches.end());
+    std::string msg = std::string("ambiguous procedure '") + std::string(ident) + "' — matches: ";
+    for (std::size_t i = 0; i < matches.size(); ++i)
+    {
+        if (i)
+            msg += ", ";
+        msg += matches[i];
+    }
+    emitter.emit(il::support::Severity::Error, "B2009", loc, static_cast<uint32_t>(ident.size()), std::move(msg));
+}
+
+void ErrorUnknownTypeWithTries(DiagnosticEmitter &emitter,
+                               il::support::SourceLoc loc,
+                               std::string_view ident,
+                               const std::vector<std::string> &tried)
+{
+    std::string head(ident.begin(), ident.end());
+    std::string msg = std::string("unknown type '") + head + "'" + formatTriedList(tried);
+    emitter.emit(il::support::Severity::Error,
+                 "B2111",
+                 loc,
+                 static_cast<uint32_t>(head.size()),
+                 std::move(msg));
+}
+
+void NoteAliasExpansion(DiagnosticEmitter &emitter,
+                        std::string_view alias,
+                        std::string_view targetQn)
+{
+    std::string msg = std::string("alias '") + std::string(alias) + "' -> " + std::string(targetQn);
+    emitter.emit(il::support::Severity::Note, "N0001", {}, 0, std::move(msg));
+}
+
 } // namespace il::frontends::basic::diagx

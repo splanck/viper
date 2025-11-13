@@ -45,6 +45,33 @@ Lowerer::ProgramEmitContext Lowerer::collectProgramDeclarations(const Program &p
             lowerSubDecl(*sub);
     }
 
+    // Also predeclare and lower procedures declared inside namespace blocks in the main body
+    // so fully-qualified calls can resolve at runtime.
+    std::function<void(const std::vector<StmtPtr> &)> scan;
+    scan = [&](const std::vector<StmtPtr> &stmts)
+    {
+        for (const auto &stmtPtr : stmts)
+        {
+            if (!stmtPtr)
+                continue;
+            switch (stmtPtr->stmtKind())
+            {
+                case Stmt::Kind::NamespaceDecl:
+                    scan(static_cast<const NamespaceDecl &>(*stmtPtr).body);
+                    break;
+                case Stmt::Kind::FunctionDecl:
+                    lowerFunctionDecl(static_cast<const FunctionDecl &>(*stmtPtr));
+                    break;
+                case Stmt::Kind::SubDecl:
+                    lowerSubDecl(static_cast<const SubDecl &>(*stmtPtr));
+                    break;
+                default:
+                    break;
+            }
+        }
+    };
+    scan(prog.main);
+
     ProgramEmitContext state;
     state.mainStmts.reserve(prog.main.size());
     for (const auto &stmt : prog.main)

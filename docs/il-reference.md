@@ -11,8 +11,8 @@ Where possible, each instruction includes a minimal example taken from real test
 
 ## Types
 
-- **Integers:** `i1`, `i8`, `i16`, `i32`, `i64` (frontends typically use `i64`).
-- **Floats:** `f32`, `f64`.
+- **Integers:** `i1`, `i16`, `i32`, `i64` (frontends typically use `i64`).
+- **Floats:** `f64` only.
 - **Pointers/handles:** `ptr` (opaque), or typed pointers if present in your build.
 - **Strings:** `str` (runtime handle), produced/consumed by runtime calls.
 - **Void:** `void` for procedures.
@@ -338,12 +338,6 @@ cbr %c, label loop_body, label done
 ```il
 ret 0
 ret 0
-```
-
-**`ret_void`** — Instruction.
-
-```il
-ret_void
 ```
 
 **`switch.i32`** — Multi-way branch.

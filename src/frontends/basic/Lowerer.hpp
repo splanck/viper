@@ -13,6 +13,7 @@
 #include "frontends/basic/NameMangler.hpp"
 #include "frontends/basic/Semantic_OOP.hpp"
 #include "frontends/basic/TypeRules.hpp"
+#include "frontends/basic/IdentifierUtil.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
 #include "viper/il/IRBuilder.hpp"
 #include "viper/il/Module.hpp"

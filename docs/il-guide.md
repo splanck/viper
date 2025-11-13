@@ -483,6 +483,19 @@ entry:
 }
 ```
 
+##### Checked Integer Arithmetic
+| Instr | Form | Result | Notes |
+|-------|------|--------|-------|
+| `iadd.ovf` | `iadd.ovf x, y` | `i64` | trap on signed overflow |
+| `isub.ovf` | `isub.ovf x, y` | `i64` | trap on signed overflow |
+| `imul.ovf` | `imul.ovf x, y` | `i64` | trap on signed overflow |
+| `sdiv.chk0` | `sdiv.chk0 x, y` | `i64` | trap on divide-by-zero or overflow |
+| `udiv.chk0` | `udiv.chk0 x, y` | `i64` | trap on divide-by-zero |
+| `srem.chk0` | `srem.chk0 x, y` | `i64` | trap on divide-by-zero |
+| `urem.chk0` | `urem.chk0 x, y` | `i64` | trap on divide-by-zero |
+
+The `.ovf` variants detect signed overflow and trap before producing a wrapped result. The `.chk0` variants explicitly check for zero divisors.
+
 ##### Bitwise and Shifts
 | Instr | Form | Result |
 |-------|------|--------|
@@ -524,15 +537,24 @@ Shift counts are masked modulo 64, matching the behaviour of x86-64 shifts.
 ```
 
 ##### Conversions
-| Instr | Form | Result |
-|-------|------|--------|
-| `sitofp` | `sitofp x` | `f64` |
-| `fptosi` | `fptosi x` | `i64` (trap on NaN or overflow) |
-| `zext1`  | `zext1 x`  | `i64` |
-| `trunc1` | `trunc1 x` | `i1` |
+| Instr | Form | Result | Notes |
+|-------|------|--------|-------|
+| `sitofp` | `sitofp x` | `f64` | signed int to float |
+| `fptosi` | `fptosi x` | `i64` | trap on NaN or overflow |
+| `cast.si_to_fp` | `cast.si_to_fp i16 x` | `f64` | signed int (any size) to float |
+| `cast.ui_to_fp` | `cast.ui_to_fp i16 x` | `f64` | unsigned int to float |
+| `cast.fp_to_si.rte.chk` | `cast.fp_to_si.rte.chk i32 x` | `i32` | float to signed int (round-to-even, trap on overflow) |
+| `cast.fp_to_ui.rte.chk` | `cast.fp_to_ui.rte.chk i32 x` | `i32` | float to unsigned int (round-to-even, trap on overflow) |
+| `cast.si_narrow.chk` | `cast.si_narrow.chk i16 x` | `i16` | narrow signed int, trap on overflow |
+| `cast.ui_narrow.chk` | `cast.ui_narrow.chk i16 x` | `i16` | narrow unsigned int, trap on overflow |
+| `zext1`  | `zext1 x`  | `i64` | zero-extend i1 to i64 |
+| `trunc1` | `trunc1 x` | `i1` | truncate i64 to i1 |
+
+The `cast.*` family provides type-aware conversions with explicit overflow and rounding behavior. The `.rte` suffix denotes round-to-even (IEEE 754 default). The `.chk` suffix indicates trap-on-overflow.
 
 ```text
 %f = sitofp 42
+%i = cast.fp_to_si.rte.chk i32 3.7
 ```
 
 ##### Memory Operations
@@ -540,11 +562,14 @@ Shift counts are masked modulo 64, matching the behaviour of x86-64 shifts.
 |-------|------|--------|
 | `alloca` | `alloca size` | `ptr` (size < 0 traps; memory zero-initialized) |
 | `gep`    | `gep ptr, offs` | `ptr` (no bounds checks) |
+| `idx.chk` | `idx.chk idx, bound` | — (trap if idx < 0 or idx >= bound) |
 | `load`   | `load type, ptr` | `type` (null or misaligned trap) |
 | `store`  | `store type, ptr, value` | — (null or misaligned trap) |
 | `addr_of`| `addr_of @global` | `ptr` |
 | `const_str` | `const_str @label` | `str` |
 | `const_null`| `const_null` | `ptr` |
+
+`idx.chk` performs bounds checking for array accesses, trapping if the index is out of range.
 
 `i64`, `f64`, `ptr`, and `str` loads and stores require 8-byte alignment; misaligned or null accesses trap.  Stack allocations created by `alloca` are zero-initialized and live until the function returns.
 
@@ -559,10 +584,70 @@ entry:
 ```
 
 ##### Calls
-Call a function or extern; verifier checks arity and types.
+| Instr | Form | Result |
+|-------|------|--------|
+| `call` | `call @f(%x, %y)` | return type of `@f` |
+| `call.indirect` | `call.indirect %fn_ptr(%x, %y)` | return type from pointer |
+
+Direct calls use `@symbol` references. Indirect calls use a function pointer as the first operand, followed by arguments. The verifier checks arity and types for both forms.
 
 ```text
 call @f(%x, %y)
+%result = call.indirect %fn_ptr(%arg)
+```
+
+##### Error Handling
+
+IL provides a structured error handling system with error values, handler stacks, and resumption points.
+
+**Error Types:**
+- `error` — Opaque error value containing kind, code, IP, and line number
+- `resumetok` — Token identifying a resumption point in the error handler stack
+
+**Handler Stack Operations:**
+| Instr | Form | Notes |
+|-------|------|-------|
+| `eh.push` | `eh.push ^handler` | Push error handler block onto stack |
+| `eh.pop` | `eh.pop` | Pop error handler from stack |
+| `eh.entry` | `eh.entry` | Mark entry to error handler block |
+
+**Trap Operations:**
+| Instr | Form | Notes |
+|-------|------|-------|
+| `trap` | `trap` | Unconditional trap (abort) |
+| `trap.kind` | `trap.kind kind_code` | Trap with specific kind |
+| `trap.err` | `trap.err %error_val` | Trap with error value |
+| `trap.from_err` | `trap.from_err type value` | Create and trap with new error |
+
+**Resume Operations:**
+| Instr | Form | Notes |
+|-------|------|-------|
+| `resume.same` | `resume.same %tok` | Resume at same instruction |
+| `resume.next` | `resume.next %tok` | Resume at next instruction |
+| `resume.label` | `resume.label %tok, ^label` | Resume at specific label |
+
+**Error Value Accessors:**
+| Instr | Form | Result |
+|-------|------|--------|
+| `err.get_kind` | `err.get_kind %err` | `i32` |
+| `err.get_code` | `err.get_code %err` | `i32` |
+| `err.get_ip` | `err.get_ip %err` | `ptr` |
+| `err.get_line` | `err.get_line %err` | `i32` |
+
+**Example:**
+```il
+func @divide(a: i64, b: i64) -> i64 {
+entry:
+  eh.push ^handler
+  %result = sdiv.chk0 %a, %b
+  eh.pop
+  ret %result
+handler:
+  eh.entry
+  %err = err.get_kind %error
+  ; handle error...
+  trap
+}
 ```
 
 #### Runtime ABI

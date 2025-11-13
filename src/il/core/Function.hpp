@@ -1,8 +1,40 @@
-// File: src/il/core/Function.hpp
-// Purpose: Represents an IL function definition and its basic blocks.
-// Key invariants: Parameter list matches return type; blocks form a valid CFG.
-// Ownership/Lifetime: Module owns Function; Function owns parameters, blocks, and value names.
-// Links: docs/il-guide.md#reference#functions
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file declares the Function struct, which represents an IL function
+// definition along with its parameters and basic blocks. Functions are the
+// primary unit of code organization in Viper IL, containing executable
+// instructions organized into a control flow graph.
+//
+// Each Function consists of:
+// - A unique name within its containing Module
+// - A return type and ordered parameter list
+// - A sequence of BasicBlocks forming the function body
+// - Optional metadata for diagnostics (SSA value names)
+// - Semantic attributes (nothrow, readonly, pure) for optimization
+//
+// Functions use Static Single Assignment (SSA) form for values. Each instruction
+// that produces a value is assigned a unique SSA ID within its function scope.
+// The valueNames vector provides optional debug information mapping SSA IDs
+// to source-level variable names.
+//
+// Key Invariants:
+// - Functions must contain at least one basic block
+// - Block labels must be unique within the function
+// - Parameter types and count must match the function signature
+// - All control flow paths must terminate with proper terminators
+//
+// Ownership Model:
+// - Module owns Functions by value in a std::vector
+// - Function owns all BasicBlocks, Params, and metadata
+// - Functions can be moved but are expensive to copy (deep copy of all blocks)
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "il/core/BasicBlock.hpp"

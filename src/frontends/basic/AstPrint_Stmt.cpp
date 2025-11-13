@@ -492,12 +492,23 @@ struct AstPrinter::StmtPrinter final : StmtVisitor
         print_stmt::printInterface(stmt, ctx);
     }
 
-    /// @brief Visit USING directive (no-op for printing).
+    /// @brief Render a USING directive with original casing.
     ///
-    /// @param stmt USING declaration node (compile-time only).
-    void visit(const UsingDecl &) override
+    /// @param stmt USING declaration node (compile-time only for semantics).
+    void visit(const UsingDecl &stmt) override
     {
-        // USING is compile-time only and does not appear in printed output.
+        ctx.stream() << "(USING ";
+        if (!stmt.alias.empty())
+        {
+            ctx.stream() << stmt.alias << " = ";
+        }
+        for (std::size_t i = 0; i < stmt.namespacePath.size(); ++i)
+        {
+            if (i)
+                ctx.stream() << '.';
+            ctx.stream() << stmt.namespacePath[i];
+        }
+        ctx.stream() << ')';
     }
 
     Context ctx;

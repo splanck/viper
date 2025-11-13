@@ -493,6 +493,13 @@ class SemanticAnalyzer
     OopIndex oopIndex_;
     NamespaceRegistry ns_;                   ///< Registry for declared namespaces and types.
     UsingContext usings_;                    ///< File-scoped USING imports.
+    struct UsingScope
+    {
+        std::unordered_set<std::string> imports; ///< Canonical lowercase qualified namespaces
+        std::unordered_map<std::string, std::string> aliases; ///< alias (lower) -> qualified ns
+        std::unordered_map<std::string, il::support::SourceLoc> aliasLoc; ///< alias -> loc
+    };
+    std::vector<UsingScope> usingStack_; ///< Scoped USING contexts (inherit on namespace entry)
     std::vector<std::string> nsStack_;       ///< Current namespace path during analysis.
     std::unique_ptr<TypeResolver> resolver_; ///< Type resolver (constructed after declare pass).
     bool sawDecl_{false}; ///< Track if any declarations seen (for USING placement).

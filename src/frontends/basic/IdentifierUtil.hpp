@@ -39,6 +39,12 @@ inline std::string CanonicalizeIdent(std::string_view ident)
     return out;
 }
 
+/// @brief Canonicalize a single identifier (alias of CanonicalizeIdent).
+inline std::string Canon(std::string_view ident)
+{
+    return CanonicalizeIdent(ident);
+}
+
 /// @brief Join qualified name segments with '.' separators.
 /// @param parts Qualified path segments in declaration order.
 /// @return Dot-joined name; empty when @p parts is empty.
@@ -62,6 +68,12 @@ inline std::string JoinQualified(const std::vector<std::string> &parts)
     return out;
 }
 
+/// @brief Join qualified name segments with '.' (alias of JoinQualified).
+inline std::string JoinDots(const std::vector<std::string> &parts)
+{
+    return JoinQualified(parts);
+}
+
 /// @brief Canonicalize each segment then join as a fully-qualified name.
 /// @details Each segment is validated via @ref CanonicalizeIdent. If any
 ///          segment is invalid, returns an empty string.
@@ -81,6 +93,40 @@ inline std::string CanonicalizeQualified(const std::vector<std::string> &parts)
         canon.emplace_back(std::move(c));
     }
     return JoinQualified(canon);
+}
+
+/// @brief Canonicalize each segment and join with '.' separators.
+/// @details Equivalent to CanonicalizeQualified.
+inline std::string CanonJoin(const std::vector<std::string> &parts)
+{
+    return CanonicalizeQualified(parts);
+}
+
+/// @brief Split a dot-joined string into segments (empties ignored).
+/// @param dotted Qualified path like "A.B.C".
+/// @return Vector of non-empty segments in order.
+inline std::vector<std::string> SplitDots(std::string_view dotted)
+{
+    std::vector<std::string> out;
+    std::string cur;
+    for (char ch : dotted)
+    {
+        if (ch == '.')
+        {
+            if (!cur.empty())
+            {
+                out.emplace_back(std::move(cur));
+                cur.clear();
+            }
+        }
+        else
+        {
+            cur.push_back(ch);
+        }
+    }
+    if (!cur.empty())
+        out.emplace_back(std::move(cur));
+    return out;
 }
 
 } // namespace il::frontends::basic

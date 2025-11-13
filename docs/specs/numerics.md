@@ -10,6 +10,9 @@ This document is the single source of truth for numeric behaviour across the BAS
 front end, IL constant-folder, and the runtime/VM. All language layers must agree
 with these rules.
 
+> **⚠️ IMPLEMENTATION NOTE (2025-11-13):**
+> The `f32` (SINGLE) type is documented throughout this specification but **does not currently exist** in the IL type system (see `src/il/core/Type.hpp`). All SINGLE values are currently widened to `f64` (DOUBLE) during lowering. The CSNG function and SINGLE type suffixes (`!`) are parsed but effectively promote values to DOUBLE. This affects BASIC programs expecting true 32-bit float precision and memory layout.
+
 ## Primitive Types and Ranges
 
 | BASIC type | Internal representation | Range |

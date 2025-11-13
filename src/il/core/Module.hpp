@@ -1,8 +1,33 @@
-// File: src/il/core/Module.hpp
-// Purpose: Container for IL externs, globals, and functions.
-// Key invariants: Names are unique within a module.
-// Ownership/Lifetime: Module owns contained objects by value.
-// Links: docs/il-guide.md#reference
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file declares the Module struct, which serves as the top-level container
+// for an IL compilation unit. A Module aggregates all externs (runtime function
+// declarations), globals (constant data and variables), and function definitions
+// that make up a complete program or library.
+//
+// The Module is the primary abstraction for IL code. It owns all contained
+// entities by value through std::vector containers. During compilation, frontends
+// construct Module instances using the IRBuilder API, parsers deserialize them
+// from IL text files, and backends consume them to generate native code or
+// execute in the VM.
+//
+// Key Responsibilities:
+// - Version tracking: Records the IL spec version for format compatibility
+// - Target specification: Optional target triple for platform-specific code
+// - Name uniqueness: Enforces that function, extern, and global names are unique
+// - Ownership: Contains all program entities with clear lifetime semantics
+//
+// The Module struct is designed for simple value semantics. It can be moved
+// efficiently but copying is expensive (deep copy of all contained functions).
+// Most code works with Module by reference or pointer.
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "il/core/Extern.hpp"

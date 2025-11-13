@@ -38,4 +38,27 @@ void ErrorUnknownProcQualified(DiagnosticEmitter &emitter,
                                il::support::SourceLoc loc,
                                std::string_view qname);
 
+/// @brief Emit unknown unqualified procedure with a possibly long tried list (truncated).
+void ErrorUnknownProcWithTries(DiagnosticEmitter &emitter,
+                               il::support::SourceLoc loc,
+                               std::string_view ident,
+                               const std::vector<std::string> &tried);
+
+/// @brief Emit ambiguous procedure diagnostic with sorted matches.
+void ErrorAmbiguousProc(DiagnosticEmitter &emitter,
+                        il::support::SourceLoc loc,
+                        std::string_view ident,
+                        std::vector<std::string> matches);
+
+/// @brief Emit unknown type with tried list (truncated when long).
+void ErrorUnknownTypeWithTries(DiagnosticEmitter &emitter,
+                               il::support::SourceLoc loc,
+                               std::string_view ident,
+                               const std::vector<std::string> &tried);
+
+/// @brief Emit a note showing that an alias expanded to a qualified namespace.
+void NoteAliasExpansion(DiagnosticEmitter &emitter,
+                        std::string_view alias,
+                        std::string_view targetQn);
+
 } // namespace il::frontends::basic::diagx

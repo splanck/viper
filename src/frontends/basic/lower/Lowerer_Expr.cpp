@@ -19,6 +19,7 @@
 #include "frontends/basic/LowerExprLogical.hpp"
 #include "frontends/basic/LowerExprNumeric.hpp"
 #include "frontends/basic/Lowerer.hpp"
+#include "frontends/basic/IdentifierUtil.hpp"
 #include "frontends/basic/TypeSuffix.hpp"
 #include "frontends/basic/lower/AstVisitor.hpp"
 
@@ -204,16 +205,16 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
     /// @param expr Call expression node from the BASIC AST.
     void visit(const CallExpr &expr) override
     {
-        // Resolve callee (supports qualified call syntax)
+        // Resolve callee (supports qualified call syntax). Canonicalize to
+        // maintain case-insensitive semantics for lookups.
         std::string calleeResolved;
         if (!expr.calleeQualified.empty())
         {
-            for (size_t i = 0; i < expr.calleeQualified.size(); ++i)
-            {
-                if (i)
-                    calleeResolved.push_back('.');
-                calleeResolved += expr.calleeQualified[i];
-            }
+            calleeResolved = CanonicalizeQualified(expr.calleeQualified);
+        }
+        else
+        {
+            calleeResolved = CanonicalizeIdent(expr.callee);
         }
         const std::string &calleeKey = calleeResolved.empty() ? expr.callee : calleeResolved;
         const auto *signature = lowerer_.findProcSignature(calleeKey);

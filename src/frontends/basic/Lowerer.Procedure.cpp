@@ -572,6 +572,18 @@ const Lowerer::ProcedureSignature *Lowerer::findProcSignature(const std::string 
             if (it2 != procSignatures.end())
                 return &it2->second;
         }
+        // Try case-insensitive alias: canonicalize key
+        std::string canon = CanonicalizeIdent(name);
+        if (!canon.empty())
+        {
+            auto itAlias2 = procNameAliases.find(canon);
+            if (itAlias2 != procNameAliases.end())
+            {
+                auto it3 = procSignatures.find(itAlias2->second);
+                if (it3 != procSignatures.end())
+                    return &it3->second;
+            }
+        }
         return nullptr;
     }
     return &it->second;
@@ -615,7 +627,7 @@ void ProcedureLowering::collectProcedureSignatures(const Program &prog)
             const std::string key = fn->qualifiedName.empty() ? fn->name : fn->qualifiedName;
             lowerer.procSignatures.emplace(key, std::move(sig));
             if (!fn->qualifiedName.empty())
-                lowerer.procNameAliases.emplace(fn->name, fn->qualifiedName);
+                lowerer.procNameAliases.emplace(CanonicalizeIdent(fn->name), fn->qualifiedName);
         }
         else if (auto *sub = as<const SubDecl>(*decl))
         {
@@ -631,7 +643,7 @@ void ProcedureLowering::collectProcedureSignatures(const Program &prog)
             const std::string key = sub->qualifiedName.empty() ? sub->name : sub->qualifiedName;
             lowerer.procSignatures.emplace(key, std::move(sig));
             if (!sub->qualifiedName.empty())
-                lowerer.procNameAliases.emplace(sub->name, sub->qualifiedName);
+                lowerer.procNameAliases.emplace(CanonicalizeIdent(sub->name), sub->qualifiedName);
         }
     }
 
@@ -663,7 +675,7 @@ void ProcedureLowering::collectProcedureSignatures(const Program &prog)
                     if (!fn.qualifiedName.empty())
                     {
                         lowerer.procSignatures.emplace(fn.qualifiedName, std::move(sig));
-                        lowerer.procNameAliases.emplace(fn.name, fn.qualifiedName);
+                        lowerer.procNameAliases.emplace(CanonicalizeIdent(fn.name), fn.qualifiedName);
                     }
                     break;
                 }
@@ -682,7 +694,7 @@ void ProcedureLowering::collectProcedureSignatures(const Program &prog)
                     if (!sub.qualifiedName.empty())
                     {
                         lowerer.procSignatures.emplace(sub.qualifiedName, std::move(sig));
-                        lowerer.procNameAliases.emplace(sub.name, sub.qualifiedName);
+                        lowerer.procNameAliases.emplace(CanonicalizeIdent(sub.name), sub.qualifiedName);
                     }
                     break;
                 }

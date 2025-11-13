@@ -90,6 +90,12 @@ class Parser
         namedLabels_;                    ///< Mapping from label names to ids.
     int nextSyntheticLabel_ = 1'000'000; ///< Next synthesised label id candidate.
 
+    /// @brief Nesting depth of procedure bodies currently being parsed.
+    /// @details Incremented while collecting statements for FUNCTION/SUB and OOP
+    ///          member bodies so statement parsers can reject procedure-scoped
+    ///          constructs such as USING.
+    int procDepth_ = 0;
+
     /// @brief Registry that maps statement-leading tokens to parser callbacks.
     class StatementParserRegistry
     {

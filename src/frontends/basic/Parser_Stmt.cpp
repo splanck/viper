@@ -171,6 +171,18 @@ StmtPtr Parser::parseUsingDecl()
     auto loc = peek().loc;
     consume(); // USING
 
+    // Reject inside procedures at parse time per Phase 2 rules.
+    if (procDepth_ > 0)
+    {
+        emitError("B0001", loc, "USING is not allowed inside procedures");
+        // Attempt to recover by skipping to end of line.
+        while (!at(TokenKind::EndOfFile) && !at(TokenKind::EndOfLine))
+            consume();
+        if (at(TokenKind::EndOfLine))
+            consume();
+        return nullptr;
+    }
+
     auto decl = std::make_unique<UsingDecl>();
     decl->loc = loc;
 
@@ -202,6 +214,16 @@ StmtPtr Parser::parseUsingDecl()
                 break;
             }
         }
+    }
+
+    // Enforce no trailing tokens prior to end-of-line (other than ':' which is handled
+    // by the statement sequencer as a separator).
+    if (!(at(TokenKind::EndOfLine) || at(TokenKind::EndOfFile) || at(TokenKind::Colon)))
+    {
+        emitError("B0001", peek(), "unexpected tokens after USING directive");
+        // best-effort recovery: consume until EOL
+        while (!at(TokenKind::EndOfFile) && !at(TokenKind::EndOfLine))
+            consume();
     }
 
     return decl;
@@ -364,6 +386,9 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionHeader()
 il::support::SourceLoc Parser::parseProcedureBody(TokenKind endKind, std::vector<StmtPtr> &body)
 {
     auto ctx = statementSequencer();
+    const bool isProcBody = (endKind != TokenKind::KeywordNamespace);
+    if (isProcBody)
+        ++procDepth_;
     auto info =
         ctx.collectStatements([&](int, il::support::SourceLoc)
                               { return at(TokenKind::KeywordEnd) && peek(1).kind == endKind; },
@@ -373,6 +398,8 @@ il::support::SourceLoc Parser::parseProcedureBody(TokenKind endKind, std::vector
                                   consume();
                               },
                               body);
+    if (isProcBody)
+        --procDepth_;
     return info.loc;
 }
 
