@@ -404,6 +404,10 @@ class Parser
     /// @return DIM statement node.
     StmtPtr parseDimStatement();
 
+    /// @brief Parse a STATIC statement declaring persistent procedure-local variables.
+    /// @return STATIC statement node.
+    StmtPtr parseStaticStatement();
+
     /// @brief Parse a REDIM statement resizing arrays.
     /// @return REDIM statement node.
     StmtPtr parseReDimStatement();

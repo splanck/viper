@@ -84,14 +84,49 @@ std::optional<SemanticAnalyzer::Type> SemanticAnalyzer::lookupVarType(const std:
     return std::nullopt;
 }
 
+/// @brief Check if a symbol is registered at module level.
+///
+/// @details Returns true if the symbol exists in the module-level symbol table.
+///          This helps the lowerer distinguish between module-level globals
+///          (which should not get procedure-local slots) and procedure-local
+///          variables (which need local allocation).
+///
+/// @param name Symbol identifier to check.
+/// @return True when the symbol is registered at module scope.
+bool SemanticAnalyzer::isModuleLevelSymbol(const std::string &name) const
+{
+    return symbols_.count(name) > 0;
+}
+
 /// @brief Resolve a symbol through the scope stack and update default type tracking.
+///
+/// @details First searches local scopes via the scope tracker. If not found locally
+///          and we're in a procedure scope, checks if the name exists at module level.
+///          This enables procedures to access module-level globals without explicit
+///          parameters. Local declarations shadow module globals.
 ///
 /// @param name Symbol name, updated in-place when aliasing occurs.
 /// @param kind Classification describing how the symbol is being used.
 void SemanticAnalyzer::resolveAndTrackSymbol(std::string &name, SymbolKind kind)
 {
+    // First, try to resolve in local scopes (innermost to outermost)
     if (auto mapped = scopes_.resolve(name))
+    {
         name = *mapped;
+    }
+    else if (scopes_.hasScope())
+    {
+        // In a procedure scope but name not found locally.
+        // Check if it exists at module level - if so, procedures can access it directly.
+        // This implements the baseline behavior: procedures can read/write module globals
+        // without passing them as parameters, unless shadowed by a local.
+        if (symbols_.count(name) > 0)
+        {
+            // Name exists at module level and is not shadowed by a local.
+            // Keep the original name - it will resolve to the module-level variable.
+            // No action needed, name stays unchanged.
+        }
+    }
 
     if (kind == SymbolKind::Reference)
         return;

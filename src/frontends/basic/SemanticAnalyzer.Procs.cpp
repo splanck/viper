@@ -354,6 +354,7 @@ void SemanticAnalyzer::analyze(const Program &prog)
     scopes_.reset();
     sawDecl_ = false;
 
+    // Register procedure signatures first (needed for call resolution)
     for (const auto &p : prog.procs)
         if (p)
         {
@@ -362,14 +363,7 @@ void SemanticAnalyzer::analyze(const Program &prog)
             else if (auto *s = as<SubDecl>(*p))
                 procReg_.registerProc(*s);
         }
-    for (const auto &p : prog.procs)
-        if (p)
-        {
-            if (auto *f = as<FunctionDecl>(*p))
-                analyzeProc(*f);
-            else if (auto *s = as<SubDecl>(*p))
-                analyzeProc(*s);
-        }
+
     oopIndex_.clear();
     buildOopIndex(prog, oopIndex_, &de.emitter());
 
@@ -379,12 +373,25 @@ void SemanticAnalyzer::analyze(const Program &prog)
     // Construct TypeResolver after declare pass completes.
     resolver_ = std::make_unique<TypeResolver>(ns_, usings_);
 
+    // Analyze main module body FIRST so module-level variables are registered
+    // in symbols_ before procedures are analyzed. This allows procedures to
+    // reference module-level globals without explicit parameters.
     for (const auto &stmt : prog.main)
         if (stmt)
             labels_.insert(stmt->line);
     for (const auto &stmt : prog.main)
         if (stmt)
             visitStmt(*stmt);
+
+    // Now analyze procedure bodies - they can reference module-level symbols
+    for (const auto &p : prog.procs)
+        if (p)
+        {
+            if (auto *f = as<FunctionDecl>(*p))
+                analyzeProc(*f);
+            else if (auto *s = as<SubDecl>(*p))
+                analyzeProc(*s);
+        }
 }
 
 /// @brief Resolve the signature for a procedure call and validate its kind.

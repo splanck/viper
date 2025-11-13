@@ -64,6 +64,7 @@ class VarCollectWalker final : public BasicAstWalker<VarCollectWalker>
     /// @details Marks the referenced symbol so a stack slot can be allocated
     ///          later in lowering.  Empty names are ignored because they
     ///          represent parse errors handled elsewhere.
+    ///
     /// @param expr Variable expression encountered during traversal.
     void after(const VarExpr &expr)
     {
@@ -71,6 +72,9 @@ class VarCollectWalker final : public BasicAstWalker<VarCollectWalker>
         {
             if (lowerer_.isFieldInScope(expr.name))
                 return;
+            // NOTE: Currently all referenced variables get local slots.
+            // TODO: Skip allocation for module-level globals once IL supports
+            //       mutable module-level globals (not just string constants).
             lowerer_.markSymbolReferenced(expr.name);
         }
     }
@@ -147,6 +151,19 @@ class VarCollectWalker final : public BasicAstWalker<VarCollectWalker>
             return;
         lowerer_.setSymbolType(stmt.name, stmt.type);
         lowerer_.markSymbolReferenced(stmt.name);
+    }
+
+    /// @brief Track STATIC variable declarations.
+    /// @details STATIC declares a persistent procedure-local variable with module-level storage.
+    ///          The walker records type information for lowering.
+    /// @param stmt STATIC statement encountered in the AST.
+    void before(const StaticStmt &stmt)
+    {
+        if (stmt.name.empty())
+            return;
+        lowerer_.setSymbolType(stmt.name, stmt.type);
+        lowerer_.markSymbolReferenced(stmt.name);
+        lowerer_.markStatic(stmt.name);  // Mark as static for special handling
     }
 
     /// @brief Track variables re-dimensioned at runtime.
@@ -376,6 +393,14 @@ void Lowerer::markArray(std::string_view name)
     info.isArray = true;
     if (info.isBoolean)
         info.isBoolean = false;
+}
+
+void Lowerer::markStatic(std::string_view name)
+{
+    if (name.empty())
+        return;
+    auto &info = ensureSymbol(name);
+    info.isStatic = true;
 }
 
 void Lowerer::pushFieldScope(const std::string &className)
@@ -872,6 +897,8 @@ void Lowerer::allocateLocalSlots(const std::unordered_set<std::string> &paramNam
     {
         if (!info.referenced)
             continue;
+        if (info.isStatic)
+            continue; // Static variables are module-level, not stack locals
         bool isParam = paramNames.find(name) != paramNames.end();
         if (isParam && !includeParams)
             continue;
@@ -891,6 +918,8 @@ void Lowerer::allocateLocalSlots(const std::unordered_set<std::string> &paramNam
     {
         if (!info.referenced)
             continue;
+        if (info.isStatic)
+            continue; // Static variables are module-level, not stack locals
         bool isParam = paramNames.find(name) != paramNames.end();
         if (isParam && !includeParams)
             continue;

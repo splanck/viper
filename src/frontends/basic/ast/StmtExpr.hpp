@@ -264,6 +264,24 @@ struct DimStmt : Stmt
     void accept(MutStmtVisitor &visitor) override;
 };
 
+/// @brief STATIC statement declaring a persistent procedure-local variable.
+struct StaticStmt : Stmt
+{
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
+    {
+        return Kind::Static;
+    }
+
+    /// Variable name being declared.
+    std::string name;
+
+    /// Declared BASIC type for this STATIC variable.
+    Type type{Type::I64};
+
+    void accept(StmtVisitor &visitor) const override;
+    void accept(MutStmtVisitor &visitor) override;
+};
+
 /// @brief REDIM statement resizing an existing array.
 struct ReDimStmt : Stmt
 {

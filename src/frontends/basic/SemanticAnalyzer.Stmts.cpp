@@ -112,6 +112,12 @@ class SemanticAnalyzerStmtVisitor final : public MutStmtVisitor
         analyzer_.analyzeDim(stmt);
     }
 
+    /// @brief STATIC statements declare procedure-local persistent variables.
+    void visit(StaticStmt &stmt) override
+    {
+        analyzer_.analyzeStatic(stmt);
+    }
+
     /// @brief Re-DIM statements re-use the analyser's array checks.
     void visit(ReDimStmt &stmt) override
     {

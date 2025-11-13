@@ -187,6 +187,7 @@ class Lowerer
         bool isArray{false};            ///< True when symbol refers to an array.
         bool isBoolean{false};          ///< True when scalar bool storage is required.
         bool referenced{false};         ///< Tracks whether lowering observed the symbol.
+        bool isStatic{false};           ///< True when symbol is a STATIC procedure-local variable.
         std::optional<unsigned> slotId; ///< Stack slot id for the variable when materialized.
         std::optional<unsigned>
             arrayLengthSlot;     ///< Optional slot for array length (bounds checks).
@@ -772,6 +773,8 @@ class Lowerer
     void markSymbolReferenced(std::string_view name);
 
     void markArray(std::string_view name);
+
+    void markStatic(std::string_view name);
 
     void setSymbolType(std::string_view name, AstType type);
 

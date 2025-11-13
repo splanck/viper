@@ -369,6 +369,23 @@ void Lowerer::lowerConst(const ConstStmt &stmt)
     }
 }
 
+/// @brief Lower BASIC @c STATIC statements declaring procedure-local persistent variables.
+///
+/// @details STATIC variables are allocated at module scope rather than as stack locals.
+///          The actual storage allocation happens during variable collection and is
+///          materialized as a module-level global. This lowering method is a no-op
+///          because the declaration itself doesn't generate runtime code - only
+///          uses of the variable will reference the module-level storage.
+///
+/// @param stmt Parsed @c STATIC statement identifying the variable name and type.
+void Lowerer::lowerStatic(const StaticStmt &stmt)
+{
+    // No code emission needed - storage is allocated as module-level global
+    // during variable collection phase, and variable references will resolve
+    // to that global storage automatically.
+    (void)stmt;
+}
+
 /// @brief Emit runtime validation logic for array length expressions.
 ///
 /// @details Adjusts the requested bound to account for BASIC's inclusive array

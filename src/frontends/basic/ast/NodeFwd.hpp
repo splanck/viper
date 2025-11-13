@@ -50,6 +50,7 @@ struct AltScreenStmt;
 struct LetStmt;
 struct ConstStmt;
 struct DimStmt;
+struct StaticStmt;
 struct ReDimStmt;
 struct SwapStmt;
 struct RandomizeStmt;

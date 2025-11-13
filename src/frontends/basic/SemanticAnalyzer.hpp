@@ -175,6 +175,8 @@ class SemanticAnalyzer
     void analyzeDim(DimStmt &s);
     /// @brief Analyze CONST statement @p s.
     void analyzeConst(ConstStmt &s);
+    /// @brief Analyze STATIC statement @p s.
+    void analyzeStatic(StaticStmt &s);
     /// @brief Analyze REDIM statement @p s.
     void analyzeReDim(ReDimStmt &s);
     /// @brief Analyze SWAP statement @p s.
@@ -225,6 +227,15 @@ class SemanticAnalyzer
     /// @param name Symbol whose type should be queried.
     /// @return Inferred type when recorded; std::nullopt otherwise.
     std::optional<Type> lookupVarType(const std::string &name) const;
+
+    /// @brief Check if a symbol is registered at module level.
+    ///
+    /// @details Used by the lowerer to determine whether a variable referenced
+    ///          in a procedure should get a local slot or resolve to module storage.
+    ///
+    /// @param name Symbol identifier to query.
+    /// @return True if the symbol exists in the module-level symbol table.
+    [[nodiscard]] bool isModuleLevelSymbol(const std::string &name) const;
 
   private:
     class ProcedureScope

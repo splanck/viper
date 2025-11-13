@@ -34,6 +34,7 @@ struct StmtVisitor
     virtual void visit(const LetStmt &) = 0;
     virtual void visit(const ConstStmt &) = 0;
     virtual void visit(const DimStmt &) = 0;
+    virtual void visit(const StaticStmt &) = 0;
     virtual void visit(const ReDimStmt &) = 0;
     virtual void visit(const SwapStmt &) = 0;
     virtual void visit(const RandomizeStmt &) = 0;
@@ -90,6 +91,7 @@ struct MutStmtVisitor
     virtual void visit(LetStmt &) = 0;
     virtual void visit(ConstStmt &) = 0;
     virtual void visit(DimStmt &) = 0;
+    virtual void visit(StaticStmt &) = 0;
     virtual void visit(ReDimStmt &) = 0;
     virtual void visit(SwapStmt &) = 0;
     virtual void visit(RandomizeStmt &) = 0;
@@ -148,6 +150,7 @@ struct Stmt
         Let,
         Const,
         Dim,
+        Static,
         ReDim,
         Swap,
         Randomize,

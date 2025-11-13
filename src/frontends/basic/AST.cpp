@@ -507,6 +507,20 @@ void ConstStmt::accept(MutStmtVisitor &visitor)
     visitor.visit(*this);
 }
 
+/// @brief Forwards this STATIC statement node to the visitor for double dispatch.
+/// @param visitor Receives the node; ownership remains with the AST.
+void StaticStmt::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+/// @brief Dispatch this STATIC statement node to a mutable visitor.
+/// @param visitor Receives the node and may alter the declared variable metadata.
+void StaticStmt::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
 /// @brief Forwards this REDIM statement node to the visitor for double dispatch.
 /// @param visitor Receives the node; ownership remains with the AST.
 void ReDimStmt::accept(StmtVisitor &visitor) const

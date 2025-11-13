@@ -172,6 +172,14 @@ class LowererStmtVisitor final : public lower::AstVisitor, public StmtVisitor
             lowerer_.lowerDim(stmt);
     }
 
+    /// @brief Lower a STATIC statement.
+    /// @details STATIC variables are allocated in module-level storage, not on the stack.
+    /// @param stmt STATIC statement node.
+    void visit(const StaticStmt &stmt) override
+    {
+        lowerer_.lowerStatic(stmt);
+    }
+
     /// @brief Lower a REDIM statement.
     /// @details Delegates to @ref Lowerer::lowerReDim to emit runtime reallocation logic.
     /// @param stmt REDIM statement node.

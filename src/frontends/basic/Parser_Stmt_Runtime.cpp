@@ -41,6 +41,7 @@ void Parser::registerRuntimeParsers(StatementParserRegistry &registry)
     registry.registerHandler(TokenKind::KeywordResume, &Parser::parseResumeStatement);
     registry.registerHandler(TokenKind::KeywordEnd, &Parser::parseEndStatement);
     registry.registerHandler(TokenKind::KeywordDim, &Parser::parseDimStatement);
+    registry.registerHandler(TokenKind::KeywordStatic, &Parser::parseStaticStatement);
     registry.registerHandler(TokenKind::KeywordConst, &Parser::parseConstStatement);
     registry.registerHandler(TokenKind::KeywordRedim, &Parser::parseReDimStatement);
     registry.registerHandler(TokenKind::KeywordRandomize, &Parser::parseRandomizeStatement);
@@ -233,6 +234,31 @@ StmtPtr Parser::parseDimStatement()
     }
 
     return first;
+}
+
+/// @brief Parse a @c STATIC statement.
+/// @details Declares a persistent procedure-local variable with module-level storage.
+///          Supports: STATIC name [AS type]
+/// @return Newly constructed statement node.
+StmtPtr Parser::parseStaticStatement()
+{
+    auto loc = peek().loc;
+    consume(); // STATIC
+
+    Token nameTok = expect(TokenKind::Identifier);
+
+    auto node = std::make_unique<StaticStmt>();
+    node->loc = loc;
+    node->name = nameTok.lexeme;
+    node->type = typeFromSuffix(nameTok.lexeme);
+
+    if (at(TokenKind::KeywordAs))
+    {
+        consume();
+        node->type = parseTypeKeyword();
+    }
+
+    return node;
 }
 
 /// @brief Parse a @c REDIM statement.

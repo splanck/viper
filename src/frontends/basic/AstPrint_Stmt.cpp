@@ -201,6 +201,18 @@ struct AstPrinter::StmtPrinter final : StmtVisitor
         print_stmt::printDim(stmt, ctx);
     }
 
+    /// @brief Render a STATIC statement for persistent procedure-local variables.
+    ///
+    /// @param stmt Static variable declaration.
+    void visit(const StaticStmt &stmt) override
+    {
+        auto &os = ctx.stream();
+        os << "(STATIC " << stmt.name;
+        if (stmt.type != Type::I64)
+            os << " AS " << print_stmt::typeToString(stmt.type);
+        os << ")";
+    }
+
     /// @brief Render a REDIM statement for resizing arrays.
     ///
     /// @param stmt Resizing directive paired with bounds.

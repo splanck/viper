@@ -487,6 +487,40 @@ void SemanticAnalyzer::analyzeConst(ConstStmt &c)
     varTypes_[c.name] = finalType;
 }
 
+/// @brief Analyze a STATIC statement declaring procedure-local persistent variables.
+/// @details STATIC variables are procedure-scoped like DIM, but their storage persists
+///          between calls. This analyzer registers the variable name in the current scope.
+/// @param s STATIC statement to validate and register.
+void SemanticAnalyzer::analyzeStatic(StaticStmt &s)
+{
+    if (scopes_.hasScope())
+    {
+        if (scopes_.isDeclaredInCurrentScope(s.name))
+        {
+            std::string msg = "duplicate local '" + s.name + "'";
+            de.emit(il::support::Severity::Error,
+                    "B1006",
+                    s.loc,
+                    static_cast<uint32_t>(s.name.size()),
+                    std::move(msg));
+        }
+        else
+        {
+            std::string unique = scopes_.declareLocal(s.name);
+            s.name = unique;
+            auto insertResult = symbols_.insert(unique);
+            if (insertResult.second && activeProcScope_)
+                activeProcScope_->noteSymbolInserted(unique);
+        }
+    }
+    else
+    {
+        auto insertResult = symbols_.insert(s.name);
+        if (insertResult.second && activeProcScope_)
+            activeProcScope_->noteSymbolInserted(s.name);
+    }
+}
+
 /// @brief Validate REDIM statements for previously declared arrays.
 ///
 /// @param d REDIM statement describing the new array bounds.
