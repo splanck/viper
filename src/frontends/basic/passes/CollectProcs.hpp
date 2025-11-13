@@ -21,4 +21,3 @@ namespace il::frontends::basic
 void CollectProcedures(Program &prog);
 
 } // namespace il::frontends::basic
-

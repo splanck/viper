@@ -277,26 +277,28 @@ int main()
 
     AstPrinter printer;
     std::string dump = printer.dump(prog);
-    const std::string expected = "5: (FUNCTION FNRESULT qualifiedName: <null> RET F64 (A ARR()) {501:(RETURN A)})\n"
-                                 "6: (SUB DOIT qualifiedName: <null> (MSG$ VALUES()) {601:(PRINT \"HELLO\")})\n"
-                                 "10: (PRINT 42 , 3.5 \"HI\" ;)\n"
-                                 "20: (LET ARR(I) (SQR (+ 1 2.5)))\n"
-                                 "30: (DIM ARR 10 AS F64)\n"
-                                 "35: (DIM S$ AS STR)\n"
-                                 "37: (REDIM ARR 20)\n"
-                                 "40: (RANDOMIZE 123)\n"
-                                 "50: (INPUT \"Value?\", N)\n"
-                                 "60: (IF (> A 0) THEN (SEQ (LET B TRUE) (GOTO 100)) ELSEIF (< A "
-                                 "0) THEN (PRINT \"NEG\") ELSE (PRINT \"ZERO\"))\n"
-                                 "70: (WHILE (NOT DONE) {71:(PRINT 1)})\n"
-                                 "80: (FOR I = 1 TO 5 STEP 2 {81:(PRINT I)})\n"
-                                 "85: (DO post UNTIL DONE {86:(PRINT \"LOOP\")})\n"
-                                 "87: (EXIT DO)\n"
-                                 "90: (NEXT I)\n"
-                                 "100: (GOTO 200)\n"
-                                 "110: (RETURN (FNRESULT B ARR(I)))\n"
-                                 "120: (END)\n";
-    if (dump != expected) {
+    const std::string expected =
+        "5: (FUNCTION FNRESULT qualifiedName: <null> RET F64 (A ARR()) {501:(RETURN A)})\n"
+        "6: (SUB DOIT qualifiedName: <null> (MSG$ VALUES()) {601:(PRINT \"HELLO\")})\n"
+        "10: (PRINT 42 , 3.5 \"HI\" ;)\n"
+        "20: (LET ARR(I) (SQR (+ 1 2.5)))\n"
+        "30: (DIM ARR 10 AS F64)\n"
+        "35: (DIM S$ AS STR)\n"
+        "37: (REDIM ARR 20)\n"
+        "40: (RANDOMIZE 123)\n"
+        "50: (INPUT \"Value?\", N)\n"
+        "60: (IF (> A 0) THEN (SEQ (LET B TRUE) (GOTO 100)) ELSEIF (< A "
+        "0) THEN (PRINT \"NEG\") ELSE (PRINT \"ZERO\"))\n"
+        "70: (WHILE (NOT DONE) {71:(PRINT 1)})\n"
+        "80: (FOR I = 1 TO 5 STEP 2 {81:(PRINT I)})\n"
+        "85: (DO post UNTIL DONE {86:(PRINT \"LOOP\")})\n"
+        "87: (EXIT DO)\n"
+        "90: (NEXT I)\n"
+        "100: (GOTO 200)\n"
+        "110: (RETURN (FNRESULT B ARR(I)))\n"
+        "120: (END)\n";
+    if (dump != expected)
+    {
         std::cerr << "ACTUAL:\n" << dump << "\nEXPECTED:\n" << expected << "\n";
     }
     assert(dump == expected);

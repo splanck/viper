@@ -27,4 +27,3 @@ std::string MangleLink(std::string_view qualified);
 std::string DemangleLink(std::string_view symbol);
 
 } // namespace viper::common
-

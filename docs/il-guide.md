@@ -77,7 +77,7 @@ Expected output:
 **Gotcha:** Every module must start with a version line (e.g., `il 0.1`).
 
 ### Values and types
-IL is statically typed and uses SSA-style virtual registers (`%v0`, `%t1`, ...). Primitive types include `i1` (bool), `i64`, `f64`, `ptr`, and `str`.
+IL is statically typed and uses SSA-style virtual registers (`%v0`, `%t1`, ...). Primitive types include `i1` (bool), `i16`, `i32`, `i64`, `f64`, `ptr`, and `str`, plus specialized types `error` and `resumetok` for exception handling.
 
 ```il
 il 0.1
@@ -385,10 +385,14 @@ entry:
 |------|---------|-----------|-------|
 | `void` | no value | — | function return only |
 | `i1` | boolean | 1 | produced by comparisons and `trunc1` |
+| `i16` | 16-bit signed int | 2 | wrap on overflow |
+| `i32` | 32-bit signed int | 4 | wrap on overflow |
 | `i64` | 64-bit signed int | 8 | wrap on overflow |
 | `f64` | 64-bit IEEE float | 8 | NaN/Inf propagate |
 | `ptr` | untyped pointer | 8 | byte-addressed |
 | `str` | opaque string handle | 8 | managed by runtime |
+| `error` | error value | 8 | exception handling only |
+| `resumetok` | resume token | 8 | exception handling only |
 
 #### Constants & Literals
 Integers use decimal notation (`-?[0-9]+`).  Floats use decimal with optional fraction (`-?[0-9]+(\.[0-9]+)?`) and permit `NaN`, `Inf`, and `-Inf`.  Booleans `true`/`false` sugar to `i1` values `1`/`0`.  Strings appear in quotes with escapes `\"`, `\\`, `\n`, `\t`, `\xNN`.  `const_null` yields a `ptr` null.
@@ -647,7 +651,7 @@ decl        ::= extern | global | func
 extern      ::= "extern" SYMBOL "(" type_list? ")" "->" type
 global      ::= "global" ("const")? type SYMBOL "=" ginit
 ginit       ::= STRING | INT | FLOAT | "null" | SYMBOL
-func        ::= "fn" SYMBOL "(" params? ")" "->" type "{" block+ "}"
+func        ::= "func" SYMBOL "(" params? ")" "->" type "{" block+ "}"
 params      ::= param ("," param)*
 param       ::= IDENT ":" type
 type_list   ::= type ("," type)*
@@ -676,7 +680,7 @@ args        ::= value ("," value)*
 value_list  ::= value ("," value)*
 value       ::= TEMP | SYMBOL | literal
 literal     ::= INT | FLOAT | STRING | "true" | "false" | "null"
-type        ::= "void" | "i1" | "i64" | "f64" | "ptr" | "str"
+type        ::= "void" | "i1" | "i16" | "i32" | "i64" | "f64" | "ptr" | "str" | "error" | "resumetok"
 ```
 
 #### Calling Convention (SysV x64)

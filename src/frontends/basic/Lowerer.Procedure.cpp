@@ -163,7 +163,7 @@ class VarCollectWalker final : public BasicAstWalker<VarCollectWalker>
             return;
         lowerer_.setSymbolType(stmt.name, stmt.type);
         lowerer_.markSymbolReferenced(stmt.name);
-        lowerer_.markStatic(stmt.name);  // Mark as static for special handling
+        lowerer_.markStatic(stmt.name); // Mark as static for special handling
     }
 
     /// @brief Track variables re-dimensioned at runtime.

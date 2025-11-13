@@ -84,7 +84,8 @@ SemanticAnalyzer::Type analyzeUnaryExpr(SemanticAnalyzer &analyzer, const UnaryE
     {
         case UnaryExpr::Op::LogicalNot:
             // NOT accepts BOOLEAN or INTEGER
-            if (operandType != Type::Unknown && operandType != Type::Bool && operandType != Type::Int)
+            if (operandType != Type::Unknown && operandType != Type::Bool &&
+                operandType != Type::Int)
             {
                 std::ostringstream oss;
                 oss << "NOT requires a BOOLEAN operand, got "

@@ -299,9 +299,20 @@ struct SharedStmt : Stmt
 {
     std::vector<std::string> names; ///< Names listed in the SHARED statement.
 
-    [[nodiscard]] Kind stmtKind() const noexcept override { return Kind::Shared; }
-    void accept(StmtVisitor &visitor) const override { visitor.visit(*this); }
-    void accept(MutStmtVisitor &visitor) override { visitor.visit(*this); }
+    [[nodiscard]] Kind stmtKind() const noexcept override
+    {
+        return Kind::Shared;
+    }
+
+    void accept(StmtVisitor &visitor) const override
+    {
+        visitor.visit(*this);
+    }
+
+    void accept(MutStmtVisitor &visitor) override
+    {
+        visitor.visit(*this);
+    }
 };
 
 /// @brief REDIM statement resizing an existing array.

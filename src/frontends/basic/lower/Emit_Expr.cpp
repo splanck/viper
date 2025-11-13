@@ -28,8 +28,8 @@
 ///          ProcedureContext.
 
 #include "frontends/basic/Lowerer.hpp"
-#include "frontends/basic/lower/Emitter.hpp"
 #include "frontends/basic/SemanticAnalyzer.hpp"
+#include "frontends/basic/lower/Emitter.hpp"
 
 #include "viper/il/Module.hpp"
 
@@ -174,7 +174,8 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
             for (size_t i = 1; i < extents.size(); ++i)
                 stride *= extents[i];
 
-            index = emitBinary(Opcode::IMulOvf, Type(Type::Kind::I64), indices[0], Value::constInt(stride));
+            index = emitBinary(
+                Opcode::IMulOvf, Type(Type::Kind::I64), indices[0], Value::constInt(stride));
 
             // Add remaining dimensions: i_k * (E_{k+1} * ... * E_{N-1})
             for (size_t k = 1; k < indices.size(); ++k)
@@ -183,7 +184,8 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
                 for (size_t i = k + 1; i < extents.size(); ++i)
                     stride *= extents[i];
 
-                Value term = emitBinary(Opcode::IMulOvf, Type(Type::Kind::I64), indices[k], Value::constInt(stride));
+                Value term = emitBinary(
+                    Opcode::IMulOvf, Type(Type::Kind::I64), indices[k], Value::constInt(stride));
                 index = emitBinary(Opcode::IAddOvf, Type(Type::Kind::I64), index, term);
             }
         }

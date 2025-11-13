@@ -9,9 +9,9 @@
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/Parser.hpp"
 #include "frontends/basic/SemanticAnalyzer.hpp"
+#include "frontends/basic/passes/CollectProcs.hpp"
 #include "support/diagnostics.hpp"
 #include "support/source_manager.hpp"
-#include "frontends/basic/passes/CollectProcs.hpp"
 
 #include <cassert>
 #include <sstream>
@@ -43,15 +43,14 @@ static std::string getAllOutput(const std::string &source, const char *filename 
 static void test_duplicate_proc_message()
 {
     // Two SUB declarations of the same name inside A.B
-    const std::string src =
-        "100 NAMESPACE A\n"
-        "110 NAMESPACE B\n"
-        "120 SUB F()\n"
-        "130 END SUB\n"
-        "140 SUB F()\n"
-        "150 END SUB\n"
-        "160 END NAMESPACE\n"
-        "170 END NAMESPACE\n";
+    const std::string src = "100 NAMESPACE A\n"
+                            "110 NAMESPACE B\n"
+                            "120 SUB F()\n"
+                            "130 END SUB\n"
+                            "140 SUB F()\n"
+                            "150 END SUB\n"
+                            "160 END NAMESPACE\n"
+                            "170 END NAMESPACE\n";
     std::string out = getAllOutput(src);
     // Expect canonical qualified name and both locations formatted in some diagnostic.
     // We do not assert exact line numbers here beyond presence of the pattern
@@ -64,8 +63,7 @@ static void test_duplicate_proc_message()
 static void test_unknown_qualified_proc()
 {
     // Directly call a qualified non-existent procedure.
-    const std::string src =
-        "100 PRINT A.B.F()\n";
+    const std::string src = "100 PRINT A.B.F()\n";
     std::string out = getAllOutput(src);
     assert(out.find("unknown procedure 'a.b.f'") != std::string::npos);
 }

@@ -3,8 +3,8 @@
 // Key invariants: Lowering uses decl.qualifiedName; serializer prints names verbatim.
 // Ownership/Lifetime: Local parser/emitter; no persistent state.
 
-#include "viper/il/IRBuilder.hpp"
 #include "viper/il/IO.hpp"
+#include "viper/il/IRBuilder.hpp"
 
 #include <cassert>
 #include <sstream>

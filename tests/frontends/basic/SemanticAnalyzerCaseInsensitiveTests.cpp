@@ -54,29 +54,27 @@ int main()
 {
     // Decl uppercase, call lowercase, qualified
     {
-        const std::string src =
-            "10 NAMESPACE A.B\n"
-            "20   FUNCTION F$()\n"
-            "30   END FUNCTION\n"
-            "40 END NAMESPACE\n"
-            "50 LET S$ = a.b.f()\n"
-            "60 END\n";
+        const std::string src = "10 NAMESPACE A.B\n"
+                                "20   FUNCTION F$()\n"
+                                "30   END FUNCTION\n"
+                                "40 END NAMESPACE\n"
+                                "50 LET S$ = a.b.f()\n"
+                                "60 END\n";
         auto result = analyzeSnippet(src);
         assert(result.errors == 0);
     }
 
     // Duplicate across case variants should error once
     {
-        const std::string src =
-            "10 NAMESPACE A.B\n"
-            "20   SUB F()\n"
-            "30   END SUB\n"
-            "40 END NAMESPACE\n"
-            "50 NAMESPACE a.b\n"
-            "60   SUB f()\n"
-            "70   END SUB\n"
-            "80 END NAMESPACE\n"
-            "90 END\n";
+        const std::string src = "10 NAMESPACE A.B\n"
+                                "20   SUB F()\n"
+                                "30   END SUB\n"
+                                "40 END NAMESPACE\n"
+                                "50 NAMESPACE a.b\n"
+                                "60   SUB f()\n"
+                                "70   END SUB\n"
+                                "80 END NAMESPACE\n"
+                                "90 END\n";
         auto result = analyzeSnippet(src);
         assert(result.errors >= 1);
         assert(result.output.find("duplicate procedure 'a.b.f'") != std::string::npos);

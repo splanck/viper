@@ -62,4 +62,3 @@ std::string DemangleLink(std::string_view symbol)
 }
 
 } // namespace viper::common
-

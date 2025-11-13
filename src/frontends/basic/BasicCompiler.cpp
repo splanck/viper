@@ -28,10 +28,10 @@
 #include "frontends/basic/BasicCompiler.hpp"
 
 #include "frontends/basic/ConstFolder.hpp"
-#include "frontends/basic/passes/CollectProcs.hpp"
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/Parser.hpp"
 #include "frontends/basic/SemanticAnalyzer.hpp"
+#include "frontends/basic/passes/CollectProcs.hpp"
 
 namespace il::frontends::basic
 {

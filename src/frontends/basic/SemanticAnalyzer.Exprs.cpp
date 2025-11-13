@@ -481,8 +481,9 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeArray(ArrayExpr &a)
         }
         return Type::Unknown;
     }
-    if (auto itType = varTypes_.find(a.name);
-        itType != varTypes_.end() && itType->second != Type::ArrayInt && itType->second != Type::ArrayString)
+    if (auto itType = varTypes_.find(a.name); itType != varTypes_.end() &&
+                                              itType->second != Type::ArrayInt &&
+                                              itType->second != Type::ArrayString)
     {
         de.emit(diag::BasicDiag::NotAnArray,
                 a.loc,

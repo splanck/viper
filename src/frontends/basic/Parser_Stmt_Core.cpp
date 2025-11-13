@@ -191,10 +191,9 @@ Parser::StmtResult Parser::parseCall(int)
             // Traditional BASIC allows procedure calls without parentheses
             // for zero-argument procedures. Only allow this when followed by
             // end-of-statement markers (EOL, EOF, :, or line number).
-            bool isEndOfStmt = nextTok.kind == TokenKind::EndOfLine ||
-                               nextTok.kind == TokenKind::EndOfFile ||
-                               nextTok.kind == TokenKind::Colon ||
-                               nextTok.kind == TokenKind::Number;
+            bool isEndOfStmt =
+                nextTok.kind == TokenKind::EndOfLine || nextTok.kind == TokenKind::EndOfFile ||
+                nextTok.kind == TokenKind::Colon || nextTok.kind == TokenKind::Number;
 
             if (isEndOfStmt)
             {

@@ -1,6 +1,6 @@
 // File: tests/unit/test_basic_ns_case_insensitive.cpp
-// Purpose: Verify ProcRegistry canonicalizes qualified names case-insensitively and strips suffixes.
-// Key invariants: Duplicate detection and lookup operate on lowercase dotted keys.
+// Purpose: Verify ProcRegistry canonicalizes qualified names case-insensitively and strips
+// suffixes. Key invariants: Duplicate detection and lookup operate on lowercase dotted keys.
 // Ownership/Lifetime: Local diagnostics/emitter/registry.
 
 #include "frontends/basic/DiagnosticEmitter.hpp"
@@ -24,7 +24,7 @@ int main()
 
     // Register a qualified FUNCTION with mixed case segments and suffix.
     FunctionDecl fn;
-    fn.name = "F$"; // suffix should be ignored for canonical key
+    fn.name = "F$";                             // suffix should be ignored for canonical key
     fn.qualifiedName = "NameSpace.SubSpace.F$"; // simulate CollectProcedures result
     fn.ret = Type::Str;
     reg.registerProc(fn);
@@ -46,4 +46,3 @@ int main()
 
     return 0;
 }
-

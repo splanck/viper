@@ -580,8 +580,8 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
                 lowerer_.requestHelper(Lowerer::RuntimeFeature::Concat);
             return;
         }
-        if (expr.op == Op::Eq || expr.op == Op::Ne || expr.op == Op::Lt ||
-            expr.op == Op::Le || expr.op == Op::Gt || expr.op == Op::Ge)
+        if (expr.op == Op::Eq || expr.op == Op::Ne || expr.op == Op::Lt || expr.op == Op::Le ||
+            expr.op == Op::Gt || expr.op == Op::Ge)
         {
             auto lhsType = expr.lhs ? lowerer_.scanExpr(*expr.lhs) : Lowerer::ExprType::I64;
             auto rhsType = expr.rhs ? lowerer_.scanExpr(*expr.rhs) : Lowerer::ExprType::I64;

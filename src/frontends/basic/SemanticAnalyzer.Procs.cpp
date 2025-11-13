@@ -24,9 +24,9 @@
 ///          state, register SUB/FUNCTION signatures, and perform signature-based
 ///          diagnostics for CALL statements.
 
-#include "frontends/basic/SemanticAnalyzer.Internal.hpp"
 #include "frontends/basic/Diag.hpp"
 #include "frontends/basic/IdentifierUtil.hpp"
+#include "frontends/basic/SemanticAnalyzer.Internal.hpp"
 
 #include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/Semantic_OOP.hpp"
@@ -203,8 +203,9 @@ void SemanticAnalyzer::registerProcedureParam(const Param &param)
 /// @param bodyCheck Callback that performs procedure-specific validation.
 /// @param loopKind Optional loop kind for EXIT statement validation.
 template <typename Proc, typename BodyCallback>
-void SemanticAnalyzer::analyzeProcedureCommon(const Proc &proc, BodyCallback &&bodyCheck,
-                                               std::optional<LoopKind> loopKind)
+void SemanticAnalyzer::analyzeProcedureCommon(const Proc &proc,
+                                              BodyCallback &&bodyCheck,
+                                              std::optional<LoopKind> loopKind)
 {
     ProcedureScope procScope(*this);
 
@@ -508,7 +509,8 @@ const ProcSignature *SemanticAnalyzer::resolveCallee(const CallExpr &c,
         // Try from deepest to global
         for (std::size_t n = prefixCanon.size(); n > 0; --n)
         {
-            std::vector<std::string> parts(prefixCanon.begin(), prefixCanon.begin() + static_cast<std::ptrdiff_t>(n));
+            std::vector<std::string> parts(prefixCanon.begin(),
+                                           prefixCanon.begin() + static_cast<std::ptrdiff_t>(n));
             parts.push_back(ident);
             std::string q = JoinQualified(parts);
             attempts.push_back(q);

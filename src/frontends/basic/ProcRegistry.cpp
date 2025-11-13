@@ -17,8 +17,8 @@
 ///          performing lookups.
 
 #include "frontends/basic/ProcRegistry.hpp"
-#include "frontends/basic/IdentifierUtil.hpp"
 #include "frontends/basic/Diag.hpp"
+#include "frontends/basic/IdentifierUtil.hpp"
 
 #include <unordered_set>
 #include <utility>
@@ -186,8 +186,8 @@ void ProcRegistry::registerProc(const FunctionDecl &f)
 {
     const ProcDescriptor descriptor{
         ProcSignature::Kind::Function, f.ret, std::span<const Param>{f.params}, f.loc};
-    std::string_view nm = f.qualifiedName.empty() ? std::string_view{f.name}
-                                                  : std::string_view{f.qualifiedName};
+    std::string_view nm =
+        f.qualifiedName.empty() ? std::string_view{f.name} : std::string_view{f.qualifiedName};
     registerProcImpl(nm, descriptor, f.loc);
 }
 
@@ -198,8 +198,8 @@ void ProcRegistry::registerProc(const SubDecl &s)
 {
     const ProcDescriptor descriptor{
         ProcSignature::Kind::Sub, std::nullopt, std::span<const Param>{s.params}, s.loc};
-    std::string_view nm = s.qualifiedName.empty() ? std::string_view{s.name}
-                                                  : std::string_view{s.qualifiedName};
+    std::string_view nm =
+        s.qualifiedName.empty() ? std::string_view{s.name} : std::string_view{s.qualifiedName};
     registerProcImpl(nm, descriptor, s.loc);
 }
 

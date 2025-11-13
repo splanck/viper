@@ -112,7 +112,8 @@ void SemanticAnalyzer::analyzeVarAssignment(VarExpr &v, const LetStmt &l)
     bool isNewVariable = (varTypes_.find(v.name) == varTypes_.end());
 
     // If new variable with no suffix and RHS is String, Bool, or Float, pre-set the type
-    if (isNewVariable && hasNoSuffix && (exprTy == Type::String || exprTy == Type::Bool || exprTy == Type::Float))
+    if (isNewVariable && hasNoSuffix &&
+        (exprTy == Type::String || exprTy == Type::Bool || exprTy == Type::Float))
     {
         varTypes_[v.name] = exprTy;
     }
@@ -208,8 +209,9 @@ void SemanticAnalyzer::analyzeArrayAssignment(ArrayExpr &a, const LetStmt &l)
                 static_cast<uint32_t>(a.name.size()),
                 std::initializer_list<diag::Replacement>{diag::Replacement{"name", a.name}});
     }
-    if (auto itType = varTypes_.find(a.name);
-        itType != varTypes_.end() && itType->second != Type::ArrayInt && itType->second != Type::ArrayString)
+    if (auto itType = varTypes_.find(a.name); itType != varTypes_.end() &&
+                                              itType->second != Type::ArrayInt &&
+                                              itType->second != Type::ArrayString)
     {
         de.emit(diag::BasicDiag::NotAnArray,
                 a.loc,
@@ -278,7 +280,7 @@ void SemanticAnalyzer::analyzeArrayAssignment(ArrayExpr &a, const LetStmt &l)
         valueTy = visitExpr(*l.expr);
 
         // Determine expected element type based on array type
-        Type expectedElementType = Type::Int;  // default for integer arrays
+        Type expectedElementType = Type::Int; // default for integer arrays
         if (auto itType = varTypes_.find(a.name); itType != varTypes_.end())
         {
             if (itType->second == Type::ArrayString)
@@ -313,7 +315,8 @@ void SemanticAnalyzer::analyzeArrayAssignment(ArrayExpr &a, const LetStmt &l)
         }
     }
     auto it = arrays_.find(a.name);
-    if (it != arrays_.end() && !it->second.extents.empty() && it->second.extents.size() == 1 && a.index)
+    if (it != arrays_.end() && !it->second.extents.empty() && it->second.extents.size() == 1 &&
+        a.index)
     {
         // Bounds check for single-dimensional arrays
         long long arraySize = it->second.extents[0];

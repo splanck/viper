@@ -285,8 +285,8 @@ Lowerer::RVal Lowerer::lowerBinaryExpr(const BinaryExpr &b)
         return lowerPowBinary(b, std::move(lhs), std::move(rhs));
     // Route string operations to string-specific lowering
     if ((b.op == BinaryExpr::Op::Add || b.op == BinaryExpr::Op::Eq || b.op == BinaryExpr::Op::Ne ||
-         b.op == BinaryExpr::Op::Lt || b.op == BinaryExpr::Op::Le ||
-         b.op == BinaryExpr::Op::Gt || b.op == BinaryExpr::Op::Ge) &&
+         b.op == BinaryExpr::Op::Lt || b.op == BinaryExpr::Op::Le || b.op == BinaryExpr::Op::Gt ||
+         b.op == BinaryExpr::Op::Ge) &&
         lhs.type.kind == Type::Kind::Str && rhs.type.kind == Type::Kind::Str)
         return lowerStringBinary(b, lhs, rhs);
     return lowerNumericBinary(b, lhs, rhs);

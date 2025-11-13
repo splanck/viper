@@ -105,7 +105,7 @@ inline ParsedNumber parseNumericLiteral(std::string_view sv) noexcept
         // Use strtod instead of from_chars since Apple Clang doesn't support
         // from_chars for floating-point in C++20
         std::string temp(view.data(), view.size());
-        char* end = nullptr;
+        char *end = nullptr;
         errno = 0;
         double value = std::strtod(temp.c_str(), &end);
 

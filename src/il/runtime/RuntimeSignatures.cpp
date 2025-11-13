@@ -402,7 +402,8 @@ void invokeRtArrStrPut(void **args, void * /*result*/)
     rt_string *arr = args ? *reinterpret_cast<rt_string **>(args[0]) : nullptr;
     const auto idxPtr = args ? reinterpret_cast<const int64_t *>(args[1]) : nullptr;
     // Param 2 (ptr to rt_string in caller memory): args[2] -> storage holding a pointer value
-    // First read the pointer value (address of the temporary slot), then read the rt_string from it.
+    // First read the pointer value (address of the temporary slot), then read the rt_string from
+    // it.
     void *tmpAddr = args ? *reinterpret_cast<void **>(args[2]) : nullptr;
     rt_string value = tmpAddr ? *reinterpret_cast<rt_string *>(tmpAddr) : nullptr;
     const size_t idx = idxPtr ? static_cast<size_t>(*idxPtr) : 0;

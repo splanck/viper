@@ -84,4 +84,3 @@ inline std::string CanonicalizeQualified(const std::vector<std::string> &parts)
 }
 
 } // namespace il::frontends::basic
-

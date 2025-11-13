@@ -23,7 +23,7 @@ typedef enum
     RT_ELEM_I64 = 2,
     RT_ELEM_F64 = 3,
     RT_ELEM_U8 = 4,
-    RT_ELEM_STR = 5,  // String pointer (rt_string) requiring reference counting
+    RT_ELEM_STR = 5, // String pointer (rt_string) requiring reference counting
 } rt_elem_kind_t;
 
 typedef struct rt_heap_hdr

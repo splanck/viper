@@ -475,7 +475,8 @@ class SemanticAnalyzer
 
     /// @brief Shared setup/teardown for analyzing procedures.
     template <typename Proc, typename BodyCallback>
-    void analyzeProcedureCommon(const Proc &proc, BodyCallback &&bodyCheck,
+    void analyzeProcedureCommon(const Proc &proc,
+                                BodyCallback &&bodyCheck,
                                 std::optional<LoopKind> loopKind = std::nullopt);
 
     /// @brief Register parameter @p param in the current procedure scope.
@@ -498,8 +499,9 @@ class SemanticAnalyzer
     std::unordered_set<std::string> symbols_;
     std::unordered_set<std::string> constants_; ///< Constant names declared with CONST.
     std::unordered_map<std::string, Type> varTypes_;
-    std::unordered_map<std::string, ArrayMetadata> arrays_; ///< Array metadata with extents and total size
-    std::unordered_set<long long> openChannels_;             ///< Channels opened by literal handles.
+    std::unordered_map<std::string, ArrayMetadata>
+        arrays_;                                 ///< Array metadata with extents and total size
+    std::unordered_set<long long> openChannels_; ///< Channels opened by literal handles.
     std::unordered_set<int> labels_;
     std::unordered_set<int> labelRefs_;
     std::vector<std::string> forStack_; ///< Active FOR loop variables.

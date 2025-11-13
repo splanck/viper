@@ -20,8 +20,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "AsmEmitter.hpp"
-#include "common/Mangle.hpp"
 #include "asmfmt/Format.hpp"
+#include "common/Mangle.hpp"
 
 #include <algorithm>
 #include <array>
@@ -1244,9 +1244,8 @@ std::string AsmEmitter::formatLeaSource(const Operand &operand, const TargetInfo
 std::string AsmEmitter::formatCallTarget(const Operand &operand, const TargetInfo &target)
 {
     return std::visit(
-        Overload{[&](const OpLabel &label) {
-                     return asmfmt::format_label(viper::common::MangleLink(label.name));
-                 },
+        Overload{[&](const OpLabel &label)
+                 { return asmfmt::format_label(viper::common::MangleLink(label.name)); },
                  [&](const OpReg &reg) { return std::string{"*"} + formatReg(reg, target); },
                  [&](const OpMem &mem) { return std::string{"*"} + formatMem(mem, target); },
                  [&](const OpImm &imm) { return formatImm(imm); },
