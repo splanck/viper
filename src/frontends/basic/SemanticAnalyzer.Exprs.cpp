@@ -69,7 +69,8 @@ class SemanticAnalyzerExprVisitor final : public MutExprVisitor
     /// @brief Boolean literals propagate the boolean semantic type.
     void visit(BoolExpr &) override
     {
-        result_ = SemanticAnalyzer::Type::Bool;
+        // Classic BASIC: BOOLEAN is an alias for INTEGER (TRUE=-1, FALSE=0)
+        result_ = SemanticAnalyzer::Type::Int;
     }
 
     /// @brief Variables defer to SemanticAnalyzer for resolution.

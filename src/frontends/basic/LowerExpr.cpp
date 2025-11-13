@@ -198,24 +198,14 @@ Lowerer::RVal Lowerer::lowerUnaryExpr(const UnaryExpr &u)
         {
             LocationScope loc(*this, u.loc);
             RVal val = lowerExpr(*u.expr);
-            RVal condVal = coerceToBool(std::move(val), u.loc);
-            Value cond = condVal.value;
-            RVal negated = lowerBoolBranchExpr(
-                cond,
-                u.loc,
-                [&](Value slot)
-                {
-                    curLoc = u.loc;
-                    emitStore(ilBoolTy(), slot, emitBoolConst(false));
-                },
-                [&](Value slot)
-                {
-                    curLoc = u.loc;
-                    emitStore(ilBoolTy(), slot, emitBoolConst(true));
-                });
-
-            Value logical = emitBasicLogicalI64(negated.value);
-            return {logical, Type(Type::Kind::I64)};
+            // Classic BASIC NOT: bitwise complement (XOR with all bits set)
+            // NOT 0 = -1, NOT -1 = 0, NOT n = ~n
+            if (val.type.kind != Type::Kind::I64)
+                val = coerceToI64(std::move(val), u.loc);
+            curLoc = u.loc;
+            Value allBitsSet = Value::constInt(-1);
+            Value result = emitCommon(u.loc).logical_xor(val.value, allBitsSet);
+            return {result, Type(Type::Kind::I64)};
         }
         case UnaryExpr::Op::Plus:
             return lowerExpr(*u.expr);

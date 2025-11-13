@@ -135,27 +135,28 @@ Lowerer::RVal LogicalExprLowering::lower(const BinaryExpr &expr)
 
     if (expr.op == BinaryExpr::Op::LogicalAnd)
     {
-        Value lhsBool = toBool(lhs);
+        // Classic BASIC AND: bitwise AND on integers
+        // Operands already i64 (from BoolExpr or numeric expressions)
+        if (lhs.type.kind != IlKind::I64)
+            lhs = {lowerer.coerceToI64(std::move(lhs), expr.loc).value, IlType(IlKind::I64)};
         Lowerer::RVal rhs = lowerer.lowerExpr(*expr.rhs);
-        Value rhsBool = toBool(std::move(rhs));
+        if (rhs.type.kind != IlKind::I64)
+            rhs = {lowerer.coerceToI64(std::move(rhs), expr.loc).value, IlType(IlKind::I64)};
         lowerer.curLoc = expr.loc;
-        Value lhsLogical = lowerer.emitBasicLogicalI64(lhsBool);
-        lowerer.curLoc = expr.loc;
-        Value rhsLogical = lowerer.emitBasicLogicalI64(rhsBool);
-        Value res = lowerer.emitCommon(expr.loc).logical_and(lhsLogical, rhsLogical);
+        Value res = lowerer.emitCommon(expr.loc).logical_and(lhs.value, rhs.value);
         return {res, IlType(IlKind::I64)};
     }
 
     if (expr.op == BinaryExpr::Op::LogicalOr)
     {
-        Value lhsBool = toBool(lhs);
+        // Classic BASIC OR: bitwise OR on integers
+        if (lhs.type.kind != IlKind::I64)
+            lhs = {lowerer.coerceToI64(std::move(lhs), expr.loc).value, IlType(IlKind::I64)};
         Lowerer::RVal rhs = lowerer.lowerExpr(*expr.rhs);
-        Value rhsBool = toBool(std::move(rhs));
+        if (rhs.type.kind != IlKind::I64)
+            rhs = {lowerer.coerceToI64(std::move(rhs), expr.loc).value, IlType(IlKind::I64)};
         lowerer.curLoc = expr.loc;
-        Value lhsLogical = lowerer.emitBasicLogicalI64(lhsBool);
-        lowerer.curLoc = expr.loc;
-        Value rhsLogical = lowerer.emitBasicLogicalI64(rhsBool);
-        Value res = lowerer.emitCommon(expr.loc).logical_or(lhsLogical, rhsLogical);
+        Value res = lowerer.emitCommon(expr.loc).logical_or(lhs.value, rhs.value);
         return {res, IlType(IlKind::I64)};
     }
 

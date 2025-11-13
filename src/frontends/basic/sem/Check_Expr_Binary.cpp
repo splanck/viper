@@ -79,15 +79,15 @@ constexpr bool isIntegerType(Type type) noexcept
 
 /// @brief Determine whether an operand is acceptable for boolean-only rules.
 ///
-/// Boolean rules accept true boolean operands and unknown placeholders.  The
-/// helper is used both by the logical operator validators and by diagnostic
-/// messaging.
+/// In classic BASIC, BOOLEAN is an alias for INTEGER, so logical operators
+/// accept both Bool and Int types, plus unknown placeholders. The helper is
+/// used by logical operator validators and diagnostic messaging.
 ///
 /// @param type Semantic type of the operand expression.
-/// @return True for boolean or unknown operands.
+/// @return True for boolean, integer, or unknown operands.
 constexpr bool isBooleanType(Type type) noexcept
 {
-    return type == Type::Bool || type == Type::Unknown;
+    return type == Type::Bool || type == Type::Int || type == Type::Unknown;
 }
 
 /// @brief Check whether the semantic type maps to a BASIC string value.
@@ -174,13 +174,14 @@ Type integerResult(Type, Type) noexcept
 
 /// @brief Compute the result type for boolean-producing operations.
 ///
-/// Comparisons and logical operations evaluate to boolean results when operands
-/// are valid.  The validator component ensures operands meet the requirements.
+/// Comparisons and logical operations evaluate to integer results in classic
+/// BASIC (TRUE=-1, FALSE=0). The validator component ensures operands meet
+/// the requirements.
 ///
-/// @return Always @c Type::Bool.
+/// @return Always @c Type::Int (BOOLEAN is an alias for INTEGER in classic BASIC).
 Type booleanResult(Type, Type) noexcept
 {
-    return Type::Bool;
+    return Type::Int;
 }
 
 /// @brief Check whether the RHS of a binary expression is a literal zero value.
