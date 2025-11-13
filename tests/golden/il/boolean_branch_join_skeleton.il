@@ -21,8 +21,8 @@ L10:
   .loc 1 1 4
   br L20
 L20:
-  .loc 1 2 12
-  %t2 = trunc1 1
+  .loc 1 2 4
+  %t2 = trunc1 -1
   .loc 1 2 4
   store i1, %t0, %t2
   .loc 1 2 4
@@ -30,24 +30,18 @@ L20:
 L30:
   .loc 1 3 10
   %t3 = load i1, %t0
-  .loc 1 3 15
-  %t4 = trunc1 0
   .loc 1 3 12
-  %t5 = zext1 %t3
+  %t4 = zext1 %t3
   .loc 1 3 12
-  %t6 = isub.ovf 0, %t5
+  %t5 = isub.ovf 0, %t4
   .loc 1 3 12
-  %t7 = zext1 %t4
+  %t6 = or %t5, 0
   .loc 1 3 12
-  %t8 = isub.ovf 0, %t7
+  call @rt_print_i64(%t6)
   .loc 1 3 12
-  %t9 = or %t6, %t8
+  %t7 = const_str @.L0
   .loc 1 3 12
-  call @rt_print_i64(%t9)
-  .loc 1 3 12
-  %t10 = const_str @.L0
-  .loc 1 3 12
-  call @rt_print_str(%t10)
+  call @rt_print_str(%t7)
   .loc 1 3 4
   br exit
 exit:

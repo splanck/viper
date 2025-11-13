@@ -20,8 +20,8 @@ L-1000000000_F:
 ret_F:
   ret 0
 if_test_0_F:
-  .loc 1 2 4
-  %t0 = trunc1 1
+  .loc 1 2 1
+  %t0 = trunc1 -1
   .loc 1 2 4
   cbr %t0, if_then_0_F, if_else_0_F
 if_then_0_F:

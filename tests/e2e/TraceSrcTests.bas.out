@@ -5,8 +5,8 @@
 [SRC] trace_src.bas:1:4  (fn=@main blk=L10 ip=#0)  LET A = 1
 [SRC] trace_src.bas:1:4  (fn=@main blk=L10 ip=#1)  LET A = 1
 [SRC] trace_src.bas:2:10  (fn=@main blk=L20 ip=#0)  A
-[SRC] trace_src.bas:2:4  (fn=@main blk=L20 ip=#1)  PRINT A
-[SRC] trace_src.bas:2:4  (fn=@main blk=L20 ip=#2)  PRINT A
-[SRC] trace_src.bas:2:4  (fn=@main blk=L20 ip=#3)  PRINT A
+[SRC] trace_src.bas:2:10  (fn=@main blk=L20 ip=#1)  A
+[SRC] trace_src.bas:2:10  (fn=@main blk=L20 ip=#2)  A
+[SRC] trace_src.bas:2:10  (fn=@main blk=L20 ip=#3)  A
 [SRC] trace_src.bas:2:4  (fn=@main blk=L20 ip=#4)  PRINT A
 [SRC] trace_src.bas:3:4  (fn=@main blk=L30 ip=#0)  END

@@ -279,6 +279,36 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
             lowerer_.requestHelper(Lowerer::RuntimeFeature::Concat);
     }
 
+    /// @brief Analyse PRINT arguments (non-channel variant) for runtime helpers.
+    ///
+    /// @param stmt PRINT statement containing arguments.
+    void after(const PrintStmt &stmt)
+    {
+        for (const auto &item : stmt.items)
+        {
+            if (item.kind != PrintItem::Kind::Expr || !item.expr)
+                continue;
+            auto ty = lowerer_.scanExpr(*item.expr);
+
+            if (ty == Lowerer::ExprType::Str)
+            {
+                // Check if this is an lvalue (variable, array element, or member access)
+                // If so, we'll need retain/release helpers during lowering
+                const bool isLvalue = as<const VarExpr>(*item.expr) ||
+                                      as<const ArrayExpr>(*item.expr) ||
+                                      as<const MemberAccessExpr>(*item.expr);
+                if (isLvalue)
+                {
+                    lowerer_.requireStrRetainMaybe();
+                    lowerer_.requireStrReleaseMaybe();
+                }
+            }
+            // Note: Numeric values in regular PRINT are printed directly via
+            // rt_print_i64/rt_print_f64, not converted to strings, so we don't
+            // need to request string conversion helpers here.
+        }
+    }
+
     /// @brief GOSUB needs trap handling when used with error recovery.
     void before(const GosubStmt &)
     {
@@ -664,6 +694,16 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
         {
             if (mode == PrintChStmt::Mode::Write)
                 lowerer_.requestHelper(Lowerer::RuntimeFeature::CsvQuote);
+
+            // Check if this is an lvalue (variable, array element, or member access)
+            // If so, we'll need retain/release helpers during lowering
+            const bool isLvalue = as<const VarExpr>(expr) || as<const ArrayExpr>(expr) ||
+                                  as<const MemberAccessExpr>(expr);
+            if (isLvalue)
+            {
+                lowerer_.requireStrRetainMaybe();
+                lowerer_.requireStrReleaseMaybe();
+            }
             return;
         }
         lowerer_.requestHelper(strFeatureForNumeric(lowerer_.classifyNumericType(expr)));

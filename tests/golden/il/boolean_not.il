@@ -21,8 +21,8 @@ L10:
   .loc 1 1 4
   br L20
 L20:
-  .loc 1 2 12
-  %t2 = trunc1 1
+  .loc 1 2 4
+  %t2 = trunc1 -1
   .loc 1 2 4
   store i1, %t0, %t2
   .loc 1 2 4
@@ -31,38 +31,19 @@ L30:
   .loc 1 3 14
   %t3 = load i1, %t0
   .loc 1 3 10
-  %t4 = alloca 1
+  %t4 = zext1 %t3
   .loc 1 3 10
-  cbr %t3, bool_then, bool_else
-exit:
-  ret 0
-bool_then:
+  %t5 = isub.ovf 0, %t4
   .loc 1 3 10
-  %t5 = trunc1 0
+  %t6 = xor %t5, -1
   .loc 1 3 10
-  store i1, %t4, %t5
+  call @rt_print_i64(%t6)
   .loc 1 3 10
-  br bool_join
-bool_else:
+  %t7 = const_str @.L0
   .loc 1 3 10
-  %t6 = trunc1 1
-  .loc 1 3 10
-  store i1, %t4, %t6
-  .loc 1 3 10
-  br bool_join
-bool_join:
-  .loc 1 3 10
-  %t7 = load i1, %t4
-  .loc 1 3 14
-  %t8 = zext1 %t7
-  .loc 1 3 14
-  %t9 = isub.ovf 0, %t8
-  .loc 1 3 10
-  call @rt_print_i64(%t9)
-  .loc 1 3 10
-  %t10 = const_str @.L0
-  .loc 1 3 10
-  call @rt_print_str(%t10)
+  call @rt_print_str(%t7)
   .loc 1 3 4
   br exit
+exit:
+  ret 0
 }
