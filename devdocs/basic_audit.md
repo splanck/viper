@@ -292,7 +292,7 @@ PRINT ASC("A")
 
 ### Test 020: Math Functions
 **File**: `test020.bas`
-**Status**: ✅ WORKS (partial)
+**Status**: ✅ WORKS
 ```basic
 PRINT ABS(-5)
 PRINT ABS(10)
@@ -305,19 +305,18 @@ PRINT FIX(-3.7)
 **Output**: `5` `10` `4` `3` `-4` `3` `-3`
 **Notes**:
 - ABS, SQR, INT, FIX all work
-- SGN is NOT supported (see BUG-005)
+- SGN is also supported (BUG-005 resolved)
 
 ### Test 021: Trigonometric Functions
 **File**: `test021.bas`
-**Status**: ✅ WORKS (partial)
+**Status**: ✅ WORKS
 ```basic
 PRINT SIN(0)
 PRINT COS(0)
 ```
 **Output**: `0` `1`
 **Notes**:
-- SIN and COS work
-- TAN, ATN, EXP, LOG are NOT supported (see BUG-006)
+- SIN, COS, TAN, ATN, EXP, LOG all work (BUG-006 resolved)
 
 ### Test 022: Random Numbers
 **File**: `test022.bas`
@@ -1569,8 +1568,8 @@ Build a 500-800 line text adventure game to comprehensively test VIPER BASIC bou
 **Resolution**: Same fix as BUG-027 - both operators now work with INTEGER type
 
 #### BUG-029: EXIT FUNCTION not supported
-**Severity**: Medium
-**Impact**: Cannot exit early from FUNCTION
+**Status**: ✅ RESOLVED 2025-11-12
+**Resolution**: EXIT FUNCTION and EXIT SUB now fully supported
 
 #### BUG-030: SUBs and FUNCTIONs cannot access global variables
 **Severity**: **CRITICAL**

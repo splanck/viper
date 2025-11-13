@@ -24,43 +24,8 @@
 
 ---
 
-### BUG-004: Procedure calls
-**Difficulty**: 🟡 MEDIUM require parentheses even with no arguments
-**Severity**: Low
+### BUG-004: Procedure calls require parentheses even with no arguments
 **Status**: ✅ RESOLVED 2025-11-12 - See basic_resolved.md for details
-**Test Case**: test008.bas (initial version)
-
-**Description**:
-Calling a SUB or FUNCTION requires parentheses even when there are no arguments. The traditional BASIC syntax of calling without parentheses is not supported.
-
-**Reproduction**:
-```basic
-SUB PrintHello
-    PRINT "Hello"
-END SUB
-
-PrintHello  ' ERROR: expected '(' after procedure name
-```
-
-**Error Message**:
-```
-error[B0001]: expected '(' after procedure name 'PRINTHELLO' in procedure call statement
-PrintHello
-          ^
-```
-
-**Workaround**:
-Always use parentheses:
-```basic
-SUB PrintHello()
-    PRINT "Hello"
-END SUB
-
-PrintHello()  ' WORKS
-```
-
-**Analysis**:
-The parser requires explicit parentheses for all procedure calls. This is more similar to modern language conventions but differs from traditional BASIC where parentheses were optional for zero-argument calls.
 
 ---
 
