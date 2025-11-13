@@ -36,6 +36,28 @@ class ControlCheckContext;
 class ExprCheckContext;
 } // namespace sem
 
+/// @brief Metadata for multi-dimensional arrays.
+/// @details Stores extent values and computed total size for array allocation.
+struct ArrayMetadata
+{
+    /// Extent values for each dimension (empty for dynamic/unknown size).
+    std::vector<long long> extents;
+
+    /// Total number of elements (product of extents), or -1 if dynamic/unknown.
+    long long totalSize{-1};
+
+    /// Construct with unknown size (for dynamic arrays or runtime-computed extents).
+    ArrayMetadata() = default;
+
+    /// Construct with single dimension (backward compatible).
+    explicit ArrayMetadata(long long size) : extents{size}, totalSize{size} {}
+
+    /// Construct with multiple dimensions and pre-computed total.
+    ArrayMetadata(std::vector<long long> exts, long long total)
+        : extents(std::move(exts)), totalSize(total)
+    {
+    }
+};
 
 class SemanticAnalyzerExprVisitor;
 class SemanticAnalyzerStmtVisitor;
@@ -250,7 +272,7 @@ class SemanticAnalyzer
 
         void noteSymbolInserted(const std::string &name);
         void noteVarTypeMutation(const std::string &name, std::optional<Type> previous);
-        void noteArrayMutation(const std::string &name, std::optional<long long> previous);
+        void noteArrayMutation(const std::string &name, std::optional<ArrayMetadata> previous);
         void noteChannelMutation(long long channel, bool previouslyOpen);
         void noteLabelInserted(int label);
         void noteLabelRefInserted(int label);
@@ -265,7 +287,7 @@ class SemanticAnalyzer
         struct ArrayDelta
         {
             std::string name;
-            std::optional<long long> previous;
+            std::optional<ArrayMetadata> previous;
         };
 
         struct ChannelDelta
@@ -469,8 +491,8 @@ class SemanticAnalyzer
     std::unordered_set<std::string> symbols_;
     std::unordered_set<std::string> constants_; ///< Constant names declared with CONST.
     std::unordered_map<std::string, Type> varTypes_;
-    std::unordered_map<std::string, long long> arrays_; ///< array sizes if known (-1 if dynamic)
-    std::unordered_set<long long> openChannels_;        ///< Channels opened by literal handles.
+    std::unordered_map<std::string, ArrayMetadata> arrays_; ///< Array metadata with extents and total size
+    std::unordered_set<long long> openChannels_;             ///< Channels opened by literal handles.
     std::unordered_set<int> labels_;
     std::unordered_set<int> labelRefs_;
     std::vector<std::string> forStack_; ///< Active FOR loop variables.

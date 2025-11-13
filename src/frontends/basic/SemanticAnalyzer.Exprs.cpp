@@ -471,7 +471,15 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeArray(ArrayExpr &a)
                 a.loc,
                 static_cast<uint32_t>(a.name.size()),
                 std::initializer_list<diag::Replacement>{diag::Replacement{"name", a.name}});
-        visitExpr(*a.index);
+        // Visit all indices for type checking even on error path
+        // For backward compatibility, check deprecated 'index' field first
+        if (a.index)
+            visitExpr(*a.index);
+        for (auto &indexPtr : a.indices)
+        {
+            if (indexPtr)
+                visitExpr(*indexPtr);
+        }
         return Type::Unknown;
     }
     if (auto itType = varTypes_.find(a.name);
@@ -481,41 +489,93 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeArray(ArrayExpr &a)
                 a.loc,
                 static_cast<uint32_t>(a.name.size()),
                 std::initializer_list<diag::Replacement>{diag::Replacement{"name", a.name}});
-        visitExpr(*a.index);
+        // Visit all indices for type checking even on error path
+        // For backward compatibility, check deprecated 'index' field first
+        if (a.index)
+            visitExpr(*a.index);
+        for (auto &indexPtr : a.indices)
+        {
+            if (indexPtr)
+                visitExpr(*indexPtr);
+        }
         return Type::Unknown;
     }
-    Type ty = visitExpr(*a.index);
-    if (ty == Type::Float)
+
+    // Validate each index expression (supports multi-dimensional arrays)
+    // For backward compatibility: use 'index' for single-dim, 'indices' for multi-dim
+    if (a.index)
     {
-        if (auto *floatLiteral = as<FloatExpr>(*a.index))
+        // Single-dimensional array (backward compatible path)
+        Type ty = visitExpr(*a.index);
+        if (ty == Type::Float)
         {
-            insertImplicitCast(*a.index, Type::Int);
-            std::string msg = "narrowing conversion from FLOAT to INT in array index";
-            de.emit(il::support::Severity::Warning, "B2002", a.loc, 1, std::move(msg));
+            if (auto *floatLiteral = as<FloatExpr>(*a.index))
+            {
+                insertImplicitCast(*a.index, Type::Int);
+                std::string msg = "narrowing conversion from FLOAT to INT in array index";
+                de.emit(il::support::Severity::Warning, "B2002", a.loc, 1, std::move(msg));
+            }
+            else
+            {
+                std::string msg = "index type mismatch";
+                de.emit(il::support::Severity::Error, "B2001", a.loc, 1, std::move(msg));
+            }
         }
-        else
+        else if (ty != Type::Unknown && ty != Type::Int)
         {
             std::string msg = "index type mismatch";
             de.emit(il::support::Severity::Error, "B2001", a.loc, 1, std::move(msg));
         }
-    }
-    else if (ty != Type::Unknown && ty != Type::Int)
-    {
-        std::string msg = "index type mismatch";
-        de.emit(il::support::Severity::Error, "B2001", a.loc, 1, std::move(msg));
-    }
-    auto it = arrays_.find(a.name);
-    if (it != arrays_.end() && it->second >= 0)
-    {
-        if (auto *ci = as<const IntExpr>(*a.index))
+
+        // Bounds check for single-dimensional arrays
+        auto it = arrays_.find(a.name);
+        if (it != arrays_.end() && !it->second.extents.empty() && it->second.extents.size() == 1)
         {
-            if (ci->value < 0 || ci->value >= it->second)
+            long long arraySize = it->second.extents[0];
+            if (arraySize >= 0)
             {
-                std::string msg = "index out of bounds";
-                de.emit(il::support::Severity::Warning, "B3001", a.loc, 1, std::move(msg));
+                if (auto *ci = as<const IntExpr>(*a.index))
+                {
+                    if (ci->value < 0 || ci->value >= arraySize)
+                    {
+                        std::string msg = "index out of bounds";
+                        de.emit(il::support::Severity::Warning, "B3001", a.loc, 1, std::move(msg));
+                    }
+                }
             }
         }
     }
+    else
+    {
+        // Multi-dimensional array (new path)
+        for (auto &indexPtr : a.indices)
+        {
+            if (!indexPtr)
+                continue;
+            Type ty = visitExpr(*indexPtr);
+            if (ty == Type::Float)
+            {
+                if (auto *floatLiteral = as<FloatExpr>(*indexPtr))
+                {
+                    insertImplicitCast(*indexPtr, Type::Int);
+                    std::string msg = "narrowing conversion from FLOAT to INT in array index";
+                    de.emit(il::support::Severity::Warning, "B2002", a.loc, 1, std::move(msg));
+                }
+                else
+                {
+                    std::string msg = "index type mismatch";
+                    de.emit(il::support::Severity::Error, "B2001", a.loc, 1, std::move(msg));
+                }
+            }
+            else if (ty != Type::Unknown && ty != Type::Int)
+            {
+                std::string msg = "index type mismatch";
+                de.emit(il::support::Severity::Error, "B2001", a.loc, 1, std::move(msg));
+            }
+        }
+        // TODO: Bounds check for multi-dimensional arrays
+    }
+
     return Type::Int;
 }
 

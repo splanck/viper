@@ -118,9 +118,9 @@ void SemanticAnalyzer::ProcedureScope::noteVarTypeMutation(const std::string &na
 /// @brief Track that an array binding changed size or allocation state.
 ///
 /// @param name Array identifier being mutated.
-/// @param previous Previous extent when available.
+/// @param previous Previous metadata when available.
 void SemanticAnalyzer::ProcedureScope::noteArrayMutation(const std::string &name,
-                                                         std::optional<long long> previous)
+                                                         std::optional<ArrayMetadata> previous)
 {
     if (!trackedArrays_.insert(name).second)
         return;
@@ -179,12 +179,13 @@ void SemanticAnalyzer::registerProcedureParam(const Param &param)
         auto itArray = arrays_.find(paramName);
         if (activeProcScope_)
         {
-            std::optional<long long> previous;
+            std::optional<ArrayMetadata> previous;
             if (itArray != arrays_.end())
                 previous = itArray->second;
             activeProcScope_->noteArrayMutation(paramName, previous);
         }
-        arrays_[paramName] = -1;
+        // Array parameters have unknown size
+        arrays_[paramName] = ArrayMetadata();
     }
 
     resolveAndTrackSymbol(paramName, SymbolKind::Definition);

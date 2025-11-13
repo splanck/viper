@@ -216,26 +216,62 @@ void SemanticAnalyzer::analyzeArrayAssignment(ArrayExpr &a, const LetStmt &l)
                 static_cast<uint32_t>(a.name.size()),
                 std::initializer_list<diag::Replacement>{diag::Replacement{"name", a.name}});
     }
-    auto indexTy = visitExpr(*a.index);
-    if (indexTy == Type::Float)
+    // Validate each index expression (supports multi-dimensional arrays)
+    // For backward compatibility: use 'index' for single-dim, 'indices' for multi-dim
+    if (a.index)
     {
-        if (auto *floatLiteral = as<FloatExpr>(*a.index))
+        // Single-dimensional array (backward compatible path)
+        auto indexTy = visitExpr(*a.index);
+        if (indexTy == Type::Float)
         {
-            insertImplicitCast(*a.index, Type::Int);
-            std::string msg = "narrowing conversion from FLOAT to INT in array index";
-            de.emit(il::support::Severity::Warning, "B2002", a.loc, 1, std::move(msg));
+            if (auto *floatLiteral = as<FloatExpr>(*a.index))
+            {
+                insertImplicitCast(*a.index, Type::Int);
+                std::string msg = "narrowing conversion from FLOAT to INT in array index";
+                de.emit(il::support::Severity::Warning, "B2002", a.loc, 1, std::move(msg));
+            }
+            else
+            {
+                std::string msg = "index type mismatch";
+                de.emit(il::support::Severity::Error, "B2001", a.loc, 1, std::move(msg));
+            }
         }
-        else
+        else if (indexTy != Type::Unknown && indexTy != Type::Int)
         {
             std::string msg = "index type mismatch";
             de.emit(il::support::Severity::Error, "B2001", a.loc, 1, std::move(msg));
         }
     }
-    else if (indexTy != Type::Unknown && indexTy != Type::Int)
+    else
     {
-        std::string msg = "index type mismatch";
-        de.emit(il::support::Severity::Error, "B2001", a.loc, 1, std::move(msg));
+        // Multi-dimensional array (new path)
+        for (auto &indexPtr : a.indices)
+        {
+            if (!indexPtr)
+                continue;
+            auto indexTy = visitExpr(*indexPtr);
+            if (indexTy == Type::Float)
+            {
+                if (auto *floatLiteral = as<FloatExpr>(*indexPtr))
+                {
+                    insertImplicitCast(*indexPtr, Type::Int);
+                    std::string msg = "narrowing conversion from FLOAT to INT in array index";
+                    de.emit(il::support::Severity::Warning, "B2002", a.loc, 1, std::move(msg));
+                }
+                else
+                {
+                    std::string msg = "index type mismatch";
+                    de.emit(il::support::Severity::Error, "B2001", a.loc, 1, std::move(msg));
+                }
+            }
+            else if (indexTy != Type::Unknown && indexTy != Type::Int)
+            {
+                std::string msg = "index type mismatch";
+                de.emit(il::support::Severity::Error, "B2001", a.loc, 1, std::move(msg));
+            }
+        }
     }
+
     Type valueTy = Type::Unknown;
     if (l.expr)
     {
@@ -253,14 +289,19 @@ void SemanticAnalyzer::analyzeArrayAssignment(ArrayExpr &a, const LetStmt &l)
         }
     }
     auto it = arrays_.find(a.name);
-    if (it != arrays_.end() && it->second >= 0)
+    if (it != arrays_.end() && !it->second.extents.empty() && it->second.extents.size() == 1 && a.index)
     {
-        if (auto *ci = as<const IntExpr>(*a.index))
+        // Bounds check for single-dimensional arrays
+        long long arraySize = it->second.extents[0];
+        if (arraySize >= 0)
         {
-            if (ci->value < 0 || ci->value >= it->second)
+            if (auto *ci = as<const IntExpr>(*a.index))
             {
-                std::string msg = "index out of bounds";
-                de.emit(il::support::Severity::Warning, "B3001", a.loc, 1, std::move(msg));
+                if (ci->value < 0 || ci->value >= arraySize)
+                {
+                    std::string msg = "index out of bounds";
+                    de.emit(il::support::Severity::Warning, "B3001", a.loc, 1, std::move(msg));
+                }
             }
         }
     }
@@ -333,19 +374,42 @@ void SemanticAnalyzer::analyzeRandomize(const RandomizeStmt &r)
 /// @param d DIM statement describing variable or array declarations.
 void SemanticAnalyzer::analyzeDim(DimStmt &d)
 {
-    long long sz = -1;
+    ArrayMetadata metadata;
+
     if (d.isArray)
     {
+        // Collect dimension expressions: check 'size' first (backward compat), then 'dimensions'
+        std::vector<const ExprPtr *> dimExprs;
         if (d.size)
         {
+            dimExprs.push_back(&d.size);
+        }
+        else if (!d.dimensions.empty())
+        {
+            for (const auto &dimExpr : d.dimensions)
+            {
+                if (dimExpr)
+                    dimExprs.push_back(&dimExpr);
+            }
+        }
+
+        // Validate and extract extent values
+        std::vector<long long> extents;
+        bool allConstant = true;
+
+        for (const ExprPtr *dimExprPtr : dimExprs)
+        {
+            const ExprPtr &dimExpr = *dimExprPtr;
             FloatExpr *floatLiteral = nullptr;
-            auto ty = visitExpr(*d.size);
+            auto ty = visitExpr(*dimExpr);
+
+            // Type checking
             if (ty == Type::Float)
             {
-                floatLiteral = as<FloatExpr>(*d.size);
+                floatLiteral = as<FloatExpr>(*dimExpr);
                 if (floatLiteral != nullptr)
                 {
-                    insertImplicitCast(*d.size, Type::Int);
+                    insertImplicitCast(*dimExpr, Type::Int);
                     std::string msg = "narrowing conversion from FLOAT to INT in array size";
                     de.emit(il::support::Severity::Warning, "B2002", d.loc, 1, std::move(msg));
                 }
@@ -360,24 +424,72 @@ void SemanticAnalyzer::analyzeDim(DimStmt &d)
                 std::string msg = "size type mismatch";
                 de.emit(il::support::Severity::Error, "B2001", d.loc, 1, std::move(msg));
             }
+
+            // Extract constant extent value
             if (floatLiteral)
             {
                 if (floatLiteral->value < 0.0)
                 {
-                    std::string msg = "array size must be non-negative";
+                    std::string msg = "array extent must be non-negative";
                     de.emit(il::support::Severity::Error, "B2003", d.loc, 1, std::move(msg));
+                }
+                else
+                {
+                    extents.push_back(static_cast<long long>(floatLiteral->value));
                 }
             }
-            else if (auto *ci = as<const IntExpr>(*d.size))
+            else if (auto *ci = as<const IntExpr>(*dimExpr))
             {
-                sz = ci->value;
-                if (sz < 0)
+                long long extent = ci->value;
+                if (extent < 0)
                 {
-                    std::string msg = "array size must be non-negative";
+                    std::string msg = "array extent must be non-negative";
                     de.emit(il::support::Severity::Error, "B2003", d.loc, 1, std::move(msg));
                 }
+                extents.push_back(extent);
+            }
+            else
+            {
+                // Runtime-computed extent
+                allConstant = false;
             }
         }
+
+        // Compute total size if all extents are constant
+        if (allConstant && !extents.empty())
+        {
+            long long totalSize = 1;
+            bool overflow = false;
+
+            for (long long extent : extents)
+            {
+                // Check for overflow: totalSize * extent > LLONG_MAX
+                if (extent > 0 && totalSize > LLONG_MAX / extent)
+                {
+                    overflow = true;
+                    break;
+                }
+                totalSize *= extent;
+            }
+
+            if (overflow)
+            {
+                std::string msg = "array size computation overflows";
+                de.emit(il::support::Severity::Error, "B2004", d.loc, 1, std::move(msg));
+                metadata = ArrayMetadata(); // dynamic/unknown
+            }
+            else
+            {
+                metadata = ArrayMetadata(std::move(extents), totalSize);
+            }
+        }
+        else if (!extents.empty())
+        {
+            // Partial constant extents - store what we know but mark total as dynamic
+            metadata.extents = std::move(extents);
+            metadata.totalSize = -1;
+        }
+        // else: all dynamic, leave metadata as default (empty extents, totalSize=-1)
     }
 
     if (scopes_.hasScope())
@@ -412,12 +524,12 @@ void SemanticAnalyzer::analyzeDim(DimStmt &d)
         auto itArray = arrays_.find(d.name);
         if (activeProcScope_)
         {
-            std::optional<long long> previous;
+            std::optional<ArrayMetadata> previous;
             if (itArray != arrays_.end())
                 previous = itArray->second;
             activeProcScope_->noteArrayMutation(d.name, previous);
         }
-        arrays_[d.name] = sz;
+        arrays_[d.name] = metadata;
 
         auto itType = varTypes_.find(d.name);
         if (activeProcScope_)
@@ -594,7 +706,8 @@ void SemanticAnalyzer::analyzeReDim(ReDimStmt &d)
     {
         activeProcScope_->noteArrayMutation(d.name, itArray->second);
     }
-    arrays_[d.name] = sz;
+    // REDIM changes size - update metadata with new single-dimension size
+    arrays_[d.name] = ArrayMetadata(sz);
 }
 
 /// @brief Validate SWAP statements for compatible types.
