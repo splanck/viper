@@ -1,0 +1,1 @@
+PRINT INSTR("hello", "lo")

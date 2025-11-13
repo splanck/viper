@@ -1,0 +1,3 @@
+DIM x AS INTEGER
+x = ERR()
+PRINT x

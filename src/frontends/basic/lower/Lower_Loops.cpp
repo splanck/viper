@@ -494,6 +494,23 @@ void Lowerer::lowerExit(const ExitStmt &stmt)
 {
     LocationScope loc(*this, stmt.loc);
     ProcedureContext &ctx = context();
+
+    // EXIT FUNCTION/SUB should branch directly to the procedure's exit block,
+    // not to the current loop's exit block.
+    if (stmt.kind == ExitStmt::LoopKind::Function || stmt.kind == ExitStmt::LoopKind::Sub)
+    {
+        Function *func = ctx.function();
+        if (!func || ctx.exitIndex() >= func->blocks.size())
+        {
+            emitTrap();
+            return;
+        }
+        BasicBlock *target = &func->blocks[ctx.exitIndex()];
+        emitBr(target);
+        return;
+    }
+
+    // For regular loops (FOR/WHILE/DO), use the loop exit target
     BasicBlock *target = ctx.loopState().current();
     if (!target)
     {

@@ -87,6 +87,14 @@ bool SemanticAnalyzer::isLoopVariableActive(std::string_view name) const noexcep
     return std::find(forStack_.begin(), forStack_.end(), name) != forStack_.end();
 }
 
+/// @brief Check if a specific loop kind exists anywhere in the loop stack.
+/// @param kind Loop kind to search for (e.g., Function, Sub).
+/// @return True when @p kind appears anywhere in the active loop stack.
+bool SemanticAnalyzer::hasLoopOfKind(LoopKind kind) const noexcept
+{
+    return std::find(loopStack_.begin(), loopStack_.end(), kind) != loopStack_.end();
+}
+
 } // namespace il::frontends::basic
 
 namespace il::frontends::basic::semantic_analyzer_detail
