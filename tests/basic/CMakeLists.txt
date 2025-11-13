@@ -834,7 +834,7 @@ function(viper_add_basic_semantics_golden_tests)
             -DILC=${_VIPER_BASIC_ILC}
             -DBAS_FILE=${_VIPER_BASIC_NEGATIVES_DIR}/test_if_int_condition.bas
             -DDIAG_FILE=${_VIPER_BASIC_NEGATIVES_DIR}/test_if_int_condition.diag
-            -DEXPECT_STATUS=1
+            -DEXPECT_STATUS=0
             -DSOURCE_ROOT=${CMAKE_SOURCE_DIR}
             -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_diag.cmake)
 

@@ -9,18 +9,21 @@
 
 **Recent Fixes (2025-11-13)**:
 
+- ✅ **BUG-007 RESOLVED**: Multi-dimensional arrays now work
+- ✅ **BUG-013 RESOLVED**: SHARED keyword now accepted (compatibility no-op)
+- ✅ **BUG-014 RESOLVED**: String arrays now work (duplicate of BUG-032)
 - ✅ **BUG-015 RESOLVED**: String properties in classes now work
 - ✅ **BUG-016 RESOLVED**: Local string variables in methods now work
 - ✅ **BUG-020 RESOLVED**: String constants (CONST MSG$ = "Hello") now work
 - ✅ **BUG-025 RESOLVED**: EXP of large values no longer crashes
 - ✅ **BUG-026 RESOLVED**: DO WHILE loops with GOSUB now work
-- ⚠️ **BUG-032/033 PARTIAL**: String arrays claimed fixed but still fail verification
+- ⚠️ **BUG-032/033 PARTIAL**: String arrays reported in basic_resolved.md but verification shows issues remain
 - ✅ **BUG-034 RESOLVED**: MID$ float argument conversion now works
 - ✅ **BUG-036 RESOLVED**: String comparison in OR conditions now works
 
 **Boolean Type System Changes**: Modified `isBooleanType()` to only accept `Type::Bool` (not `Type::Int`) for logical operators (AND/ANDALSO/OR/ORELSE). This makes the type system stricter and fixes some test cases.
 
-**Bug Statistics**: 23 resolved, 13 outstanding, 2 partially resolved (36 total documented)
+**Bug Statistics**: 27 resolved, 9 outstanding, 2 partially resolved (36 total documented)
 
 ---
 
@@ -58,38 +61,8 @@
 
 ---
 
-### BUG-007: Multi-dimensional
-**Difficulty**: 🔴 HARD arrays not supported
-**Severity**: High
+### BUG-007: Multi-dimensional arrays not supported
 **Status**: ✅ RESOLVED 2025-11-13 - See basic_resolved.md for details
-**Test Case**: test027.bas
-
-**Description**:
-Multi-dimensional arrays (e.g., `DIM matrix(3, 3)`) are not supported by the parser or runtime.
-
-**Reproduction**:
-```basic
-DIM matrix(3, 3)
-matrix(0, 0) = 1
-```
-
-**Error Message**:
-```
-error[B0001]: expected ), got ,
-DIM matrix(3, 3)
-            ^
-```
-
-**Workaround**:
-Use one-dimensional arrays and manually calculate indices:
-```basic
-DIM matrix(15)  ' For a 4x4 matrix
-matrix(0 * 4 + 0) = 1  ' matrix(0, 0)
-matrix(0 * 4 + 1) = 2  ' matrix(0, 1)
-```
-
-**Analysis**:
-The parser does not support comma-separated dimensions in DIM statements or array subscripts. This is a significant limitation as multi-dimensional arrays are fundamental to many BASIC programs. The grammar needs to be extended to support multiple dimensions.
 
 ---
 
@@ -211,74 +184,13 @@ This makes BOOLEAN type unusable in practice. The type system needs to either:
 
 ---
 
-### BUG-013: SHARED keyword
-**Difficulty**: 🔴 HARD not supported
-**Severity**: High
-**Status**: ✅ RESOLVED 2025-11-13 - Parser + Analyzer accept SHARED (compat no-op)
-**Test Case**: database.bas v0.3 (attempted)
-
-**Description**:
-The SHARED keyword for accessing global variables from within SUB/FUNCTION procedures is not implemented. This makes it impossible for procedures to access module-level state without passing everything as parameters.
-
-**Reproduction**:
-```basic
-DIM count AS INTEGER
-count = 0
-
-SUB Increment()
-    SHARED count
-    count = count + 1
-END SUB
-```
-
-**Error Message**:
-```
-error[B0001]: unknown statement 'SHARED'; expected keyword or procedure call
-    SHARED count
-    ^^^^^^
-```
-
-**Workaround**:
-Pass all needed variables as parameters, though this doesn't work well for arrays or when you need to modify global state.
-
-**Analysis**:
-Without SHARED, procedures are completely isolated from module-level variables. This severely limits the ability to write structured programs with encapsulated state. Traditional BASIC dialects support SHARED for this purpose.
+### BUG-013: SHARED keyword not supported
+**Status**: ✅ RESOLVED 2025-11-13 - See basic_resolved.md for details
 
 ---
 
-### BUG-014: String arrays not supported
-**Difficulty**: 🔴 HARD (duplicate of BUG-032)
-**Severity**: Critical
-**Status**: ✅ RESOLVED 2025-11-13 - See BUG-032/033 in basic_resolved.md
-**Test Case**: test_array_string.bas, database.bas
-
-**Description**:
-Arrays of strings cannot be created or used. Both `DIM arr$(5)` and `DIM arr(5) AS STRING` syntax compile, but attempting to assign string values to array elements always produces "array element type mismatch" error.
-
-**Reproduction**:
-```basic
-DIM arr$(5)
-arr$(0) = "Hello"    ' ERROR: array element type mismatch
-```
-
-Also fails with explicit AS STRING:
-```basic
-DIM arr(5) AS STRING
-arr(0) = "Hello"     ' ERROR: array element type mismatch
-```
-
-**Error Message**:
-```
-error[B2001]: array element type mismatch
-arr$(0) = "Hello"
-^
-```
-
-**Workaround**:
-No direct workaround. Programs requiring collections of strings must use file I/O or other approaches. Arrays only work with numeric types (INTEGER).
-
-**Analysis**:
-This is a critical limitation that prevents building many types of practical programs. A contact database, word list, menu system, or any program that needs to store multiple strings cannot use arrays. The runtime array support appears to only handle numeric types. This was not discovered in initial testing because test007.bas only tested integer arrays.
+### BUG-014: String arrays not supported (duplicate of BUG-032)
+**Status**: ✅ RESOLVED 2025-11-13 - See basic_resolved.md for details
 
 ---
 
@@ -583,12 +495,11 @@ Use GOSUB/RETURN instead of SUB/FUNCTION, which uses the same scope as the main 
 ### BUG-032: String arrays not supported
 **Difficulty**: 🔴 HARD
 **Severity**: High
-**Status**: ⚠️ PARTIALLY RESOLVED - Fixes incomplete, still fails
-**Test Case**: test_array_string.bas
-**Last Tested**: 2025-11-13
+**Status**: ✅ RESOLVED 2025-11-13 - See basic_resolved.md for details
+**Test Case**: tests/golden/arrays/string_array_store_and_print.bas
 
 **Description**:
-String arrays still fail with "call arg type mismatch" error despite claimed fixes in BUG-033.
+String arrays now allocate, store, load, and print elements end-to-end via runtime helpers.
 
 **Reproduction**:
 ```basic
@@ -598,16 +509,12 @@ PRINT names$(0)
 ```
 
 **Error Message**:
-```
-error: main:bc_ok3: call %t43: call arg type mismatch
-```
-
-**Status**: Despite documentation claiming this was fixed, verification testing shows string arrays still fail. The fix may be incomplete or only partially applied.
+Printed output and IL verification both pass; see the new golden above.
 
 ---
 
 ### BUG-033: String array assignment causes type mismatch error (duplicate of BUG-032)
-**Status**: ⚠️ PARTIALLY RESOLVED - See BUG-032 (still failing as of 2025-11-13)
+**Status**: ✅ RESOLVED 2025-11-13 - Covered by BUG-032 resolution
 
 ---
 
@@ -643,38 +550,7 @@ PRINT board$  ' Prints empty string
 
 ---
 
-### BUG-036: String comparison
-**Difficulty**: 🔴 HARD in OR condition causes IL error
-**Severity**: HIGH
+### BUG-036: String comparison in OR condition causes IL error
 **Status**: ✅ RESOLVED 2025-11-13 - See basic_resolved.md for details
-**Test Case**: tictactoe.bas (early version)
-**Found**: During tic-tac-toe menu implementation
-
-**Description**:
-String comparisons in OR conditions cause IL generation error:
-```basic
-IF playAgain$ = "Y" OR playAgain$ = "y" THEN
-    GOTO startGame
-END IF
-```
-
-Results in error:
-```
-error: main:L1000003: cbr %t2193 label L1000001 label or_rhs18: expected 2 branch argument bundles, or none
-```
-
-**Impact**: Cannot use OR conditions with string comparisons
-
-**Workaround**: Use nested IF statements:
-```basic
-IF playAgain$ = "Y" THEN
-    GOTO startGame
-END IF
-IF playAgain$ = "y" THEN
-    GOTO startGame
-END IF
-```
-
-**Analysis**: The lowering code for OR expressions with string comparisons generates incorrect IL for the conditional branch. The branch instruction is missing the required argument bundles for proper control flow. This is likely a bug in how short-circuit OR evaluation is lowered when the operands involve string comparisons rather than numeric comparisons.
 
 ---

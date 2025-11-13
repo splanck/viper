@@ -84,8 +84,8 @@ void checkConditionExpr(SemanticAnalyzer &analyzer, Expr &expr)
     const auto condTy = context.evaluateExpr(expr);
     using Type = SemanticAnalyzer::Type;
 
-    // Only BOOLEAN conditions are allowed
-    if (condTy == Type::Unknown || condTy == Type::Bool)
+    // Accept BOOLEAN and INTEGER conditions; unknown defers to earlier diagnostics
+    if (condTy == Type::Unknown || condTy == Type::Bool || condTy == Type::Int)
         return;
 
     std::string exprText = semantic_analyzer_detail::conditionExprText(expr);

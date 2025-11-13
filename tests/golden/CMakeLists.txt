@@ -498,6 +498,16 @@ function(viper_add_golden_suite_tests)
             "-DEXPECT=${EXPECT_ARRAY_RESIZE_BREAKS_SHARE}"
             -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
 
+    # BUG-032/033: String arrays end-to-end validation
+    file(READ ${_VIPER_GOLDEN_DIR}/arrays/string_array_store_and_print.stdout EXPECT_STRING_ARRAY_STORE_PRINT)
+    string(STRIP "${EXPECT_STRING_ARRAY_STORE_PRINT}" EXPECT_STRING_ARRAY_STORE_PRINT)
+    viper_add_ctest(basic_arrays_string_store_print
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/arrays/string_array_store_and_print.bas
+            "-DEXPECT=${EXPECT_STRING_ARRAY_STORE_PRINT}"
+            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
+
     # OOP virtual dispatch and base-qualified direct call
     file(READ ${_VIPER_GOLDEN_DIR}/oop/virtual_dispatch.stdout EXPECT_OOP_VDISPATCH)
     string(STRIP "${EXPECT_OOP_VDISPATCH}" EXPECT_OOP_VDISPATCH)
@@ -571,6 +581,16 @@ function(viper_add_golden_suite_tests)
             -DILC=${BASIC_ILC}
             -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic/do_gosub_loop.bas
             "-DEXPECT=${EXPECT_DO_GOSUB_LOOP}"
+            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
+
+    # Integer truthiness in IF conditions (BUG-012 compatibility)
+    file(READ ${_VIPER_GOLDEN_DIR}/basic/int_truthy.stdout EXPECT_INT_TRUTHY)
+    string(STRIP "${EXPECT_INT_TRUTHY}" EXPECT_INT_TRUTHY)
+    viper_add_ctest(basic_int_truthy_condition
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic/int_truthy.bas
+            "-DEXPECT=${EXPECT_INT_TRUTHY}"
             -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
 
 

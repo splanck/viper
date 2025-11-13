@@ -372,9 +372,9 @@ void invokeRtArrStrAlloc(void **args, void *result)
 /// @details Converts VM arguments and releases each non-null element, then releases the array.
 void invokeRtArrStrRelease(void **args, void * /*result*/)
 {
-    const auto arrPtr = args ? reinterpret_cast<rt_string *const *>(args[0]) : nullptr;
+    // Param 0 is a pointer-typed IL value; args[0] points to storage containing the pointer.
+    rt_string *arr = args ? *reinterpret_cast<rt_string **>(args[0]) : nullptr;
     const auto sizePtr = args ? reinterpret_cast<const int64_t *>(args[1]) : nullptr;
-    rt_string *arr = arrPtr ? *arrPtr : nullptr;
     const size_t size = sizePtr ? static_cast<size_t>(*sizePtr) : 0;
     rt_arr_str_release(arr, size);
 }
@@ -384,13 +384,13 @@ void invokeRtArrStrRelease(void **args, void * /*result*/)
 /// @details Returns a retained string handle from the specified array index.
 void invokeRtArrStrGet(void **args, void *result)
 {
-    const auto arrPtr = args ? reinterpret_cast<rt_string *const *>(args[0]) : nullptr;
+    // Param 0 (ptr): args[0] -> storage holding the array payload pointer
+    rt_string *arr = args ? *reinterpret_cast<rt_string **>(args[0]) : nullptr;
     const auto idxPtr = args ? reinterpret_cast<const int64_t *>(args[1]) : nullptr;
-    rt_string *arr = arrPtr ? *arrPtr : nullptr;
     const size_t idx = idxPtr ? static_cast<size_t>(*idxPtr) : 0;
     rt_string value = rt_arr_str_get(arr, idx);
     if (result)
-        *reinterpret_cast<void **>(result) = value;
+        *reinterpret_cast<rt_string *>(result) = value;
 }
 
 /// @brief Wrapper for @ref rt_arr_str_put that writes string array elements.
@@ -398,12 +398,14 @@ void invokeRtArrStrGet(void **args, void *result)
 /// @details Retains the new value, releases the old value, then stores.
 void invokeRtArrStrPut(void **args, void * /*result*/)
 {
-    const auto arrPtr = args ? reinterpret_cast<rt_string *const *>(args[0]) : nullptr;
+    // Param 0 (ptr): args[0] -> storage holding the array payload pointer
+    rt_string *arr = args ? *reinterpret_cast<rt_string **>(args[0]) : nullptr;
     const auto idxPtr = args ? reinterpret_cast<const int64_t *>(args[1]) : nullptr;
-    const auto valuePtr = args ? reinterpret_cast<const rt_string *>(args[2]) : nullptr;
-    rt_string *arr = arrPtr ? *arrPtr : nullptr;
+    // Param 2 (ptr to rt_string in caller memory): args[2] -> storage holding a pointer value
+    // First read the pointer value (address of the temporary slot), then read the rt_string from it.
+    void *tmpAddr = args ? *reinterpret_cast<void **>(args[2]) : nullptr;
+    rt_string value = tmpAddr ? *reinterpret_cast<rt_string *>(tmpAddr) : nullptr;
     const size_t idx = idxPtr ? static_cast<size_t>(*idxPtr) : 0;
-    rt_string value = valuePtr ? *valuePtr : nullptr;
     rt_arr_str_put(arr, idx, value);
 }
 
@@ -412,8 +414,8 @@ void invokeRtArrStrPut(void **args, void * /*result*/)
 /// @details Queries the logical length from the heap header.
 void invokeRtArrStrLen(void **args, void *result)
 {
-    const auto arrPtr = args ? reinterpret_cast<rt_string *const *>(args[0]) : nullptr;
-    rt_string *arr = arrPtr ? *arrPtr : nullptr;
+    // Param 0 (ptr): args[0] -> storage holding the array payload pointer
+    rt_string *arr = args ? *reinterpret_cast<rt_string **>(args[0]) : nullptr;
     const size_t len = rt_arr_str_len(arr);
     if (result)
         *reinterpret_cast<int64_t *>(result) = static_cast<int64_t>(len);
@@ -824,7 +826,7 @@ constexpr std::array<DescriptorRow, 110> kDescriptorRows{{
                   RuntimeTrapClass::None},
     DescriptorRow{"rt_arr_str_get",
                   std::nullopt,
-                  "ptr(ptr,i64)",
+                  "string(ptr,i64)",
                   &invokeRtArrStrGet,
                   kManualLowering,
                   nullptr,

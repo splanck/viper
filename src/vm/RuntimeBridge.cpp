@@ -286,10 +286,19 @@ extern "C" void vm_trap(const char *msg)
     const auto *ctx = il::vm::RuntimeBridge::activeContext();
     const char *trapMsg = msg ? msg : "trap";
     if (ctx)
+    {
         il::vm::RuntimeBridge::trap(
             TrapKind::DomainError, trapMsg, ctx->loc, ctx->function, ctx->block);
-    else
-        il::vm::RuntimeBridge::trap(TrapKind::DomainError, trapMsg, {}, "", "");
+        return;
+    }
+    // No active runtime call context. Avoid re-entering RuntimeBridge::trap which
+    // would attempt to format and route a second trap and can cause recursion when
+    // the formatting path calls back into rt_abort/vm_trap. Instead, emit a minimal
+    // diagnostic and terminate the process with a non-zero status so tests that
+    // expect failure (via fork) observe a failing exit code.
+    if (trapMsg && *trapMsg)
+        std::fprintf(stderr, "%s\n", trapMsg);
+    std::_Exit(1);
 }
 
 namespace il::vm

@@ -80,3 +80,13 @@ PRINT result#  ' Output: 2.68811714181614e+43
   - tests/golden/basic/do_gosub_loop.bas: new golden reproducing DO + GOSUB body with no extra statements; previously failed with IL verifier, now runs cleanly (empty stdout).
 - Validation: Golden test added; prior to fix it triggered `empty block` in verifier, after fix it lowers and runs with no diagnostics. Broader loops continue to function; fallthrough to subsequent statements is handled by the sequencer.
 
+---
+
+## BUG-032/033: String arrays end-to-end support
+- Status: RESOLVED (verified 2025-11-13)
+- Summary: BASIC string arrays now work through allocation, assignment, element load, and printing. The root cause was a mismatch between IL-visible signatures and VM marshalling for string array helpers: `rt_arr_str_get` returned `ptr` instead of `string`, and `rt_arr_str_put` value marshalling dereferenced the wrong level (passing the address of the temporary rather than the string handle).
+- Key paths:
+  - src/il/runtime/RuntimeSignatures.cpp: signatures updated (`rt_arr_str_get` returns `string`) and wrappers fixed to correctly dereference pointer-typed operands for `rt_arr_str_{get,put,len,release}`.
+  - src/frontends/basic/LowerStmt_Runtime.cpp: store path already passed a pointer to a temporary slot for `rt_arr_str_put`; now matches the corrected marshalling.
+  - tests/golden/arrays/string_array_store_and_print.bas: new golden validates allocate → store → get → print.
+- Validation: Golden passes; existing runtime/string tests remain green. Ownership semantics: `rt_arr_str_get` retains on read; `rt_arr_str_put` retains the new value and releases the previous.
