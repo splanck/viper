@@ -1,0 +1,3 @@
+CONST MSG$ = "Hello"
+PRINT MSG$
+END

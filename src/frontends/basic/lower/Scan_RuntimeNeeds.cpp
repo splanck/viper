@@ -361,6 +361,22 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
         lowerer_.requireArrayI32Release();
     }
 
+    /// @brief Track helpers needed for CONST string declarations.
+    ///
+    /// @param stmt CONST statement with initializer.
+    void before(const ConstStmt &stmt)
+    {
+        if (stmt.name.empty())
+            return;
+        lowerer_.setSymbolType(stmt.name, stmt.type);
+        lowerer_.markSymbolReferenced(stmt.name);
+        if (stmt.type == Type::Str)
+        {
+            lowerer_.requireStrRetainMaybe();
+            lowerer_.requireStrReleaseMaybe();
+        }
+    }
+
     /// @brief RANDOMIZE requires the random number helper.
     void before(const RandomizeStmt &)
     {
