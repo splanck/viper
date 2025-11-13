@@ -1,8 +1,58 @@
-// File: src/frontends/basic/TypeRules.hpp
-// Purpose: Declares BASIC numeric type promotion and operator result rules.
-// Key invariants: Operator tables implement the INTEGER/LONG/SINGLE/DOUBLE lattice.
-// Ownership/Lifetime: Pure stateless utility; no retained resources.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file declares the TypeRules class, which implements BASIC's numeric
+// type promotion and operator result type computation rules.
+//
+// BASIC Numeric Type Lattice:
+// BASIC defines a type promotion hierarchy for numeric operations:
+//   Integer (16-bit) → Long (32-bit) → Single (32-bit float) → Double (64-bit float)
+//
+// Type Promotion Rules:
+// When binary operators combine operands of different numeric types, BASIC
+// promotes the result to the wider type:
+//   Integer + Long   → Long
+//   Long + Single    → Single
+//   Single + Double  → Double
+//   Integer * Double → Double
+//
+// These rules ensure that precision is never lost implicitly in numeric
+// expressions, matching the behavior of classic BASIC implementations.
+//
+// Key Responsibilities:
+// - Type promotion: Determines the result type of binary numeric operations
+// - Operator validation: Checks whether a given operator is valid for the
+//   operand types (e.g., MOD requires integer types)
+// - Error reporting: Generates descriptive type error messages when operations
+//   are invalid (e.g., using MOD with floating-point operands)
+// - Division semantics: Distinguishes between integer division (\) and
+//   floating-point division (/)
+//
+// Operator-Specific Rules:
+// - Arithmetic (+, -, *, /): Follow standard promotion lattice
+// - Integer division (\): Requires both operands to be Integer or Long;
+//   result is always Integer or Long
+// - Modulo (MOD): Requires both operands to be Integer or Long
+// - Exponentiation (^): Promotes to Single or Double based on operands
+// - Comparison (=, <, >, <=, >=, <>): Operands promoted for comparison,
+//   result is always Boolean (represented as Integer in BASIC)
+//
+// Integration:
+// - Used by: SemanticAnalyzer during expression type checking
+// - Used by: Lowerer to determine IL type for operation results
+// - Consulted during: Binary expression validation in the semantic pass
+//
+// Design Notes:
+// - Stateless utility class; all methods are pure functions
+// - No retained resources or mutable state
+// - Lookup tables enable efficient type promotion computation
+// - Error messages provide context for fixing type mismatches
+//
+//===----------------------------------------------------------------------===//
 #pragma once
 
 #include <functional>

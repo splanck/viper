@@ -1,8 +1,43 @@
-// File: src/frontends/basic/StatementSequencer.hpp
-// Purpose: Declares helper coordinating BASIC statement sequencing semantics.
-// Key invariants: Maintains separator classification and pending line labels.
-// Ownership/Lifetime: Helper borrows Parser token stream; no ownership transfer.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file declares the StatementSequencer, a helper class that coordinates
+// BASIC statement sequencing semantics during parsing.
+//
+// BASIC Statement Sequencing:
+// BASIC supports multiple statement sequencing modes:
+// - Line-oriented: Traditional BASIC where newlines separate statements
+// - Colon-separated: Multiple statements on one line (PRINT "A" : PRINT "B")
+// - Structured blocks: Modern BASIC with IF...END IF, FOR...NEXT blocks
+//
+// The StatementSequencer manages these different modes and handles:
+// - Statement separator classification (newline vs. colon)
+// - Line label tracking (for GOTO/GOSUB targets)
+// - Statement boundary detection
+// - Implicit statement termination rules
+//
+// Key Responsibilities:
+// - Separator classification: Determines whether a separator (newline, colon)
+//   ends the current statement or is optional
+// - Label management: Tracks pending line labels that precede statements
+// - Lookahead coordination: Works with parser lookahead to handle multi-token
+//   statement boundaries
+//
+// Integration:
+// - Used by: Parser during statement parsing
+// - Borrows: Parser token stream for lookahead
+// - No ownership: Does not own AST nodes or tokens
+//
+// Design Notes:
+// - Stateful helper that maintains current sequencing context
+// - Coordinates with Parser for token consumption
+// - Handles both classic and modern BASIC syntax variations
+//
+//===----------------------------------------------------------------------===//
 #pragma once
 
 #include "frontends/basic/Token.hpp"

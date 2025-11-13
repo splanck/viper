@@ -1,8 +1,64 @@
-// File: src/runtime/rt_error.h
-// Purpose: Defines runtime error codes shared across runtime helpers.
-// Key invariants: Err_None represents success; other kinds encode failure classes.
-// Ownership/Lifetime: Plain value type with no dynamic resources.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file declares the runtime error system used for error reporting across
+// all runtime library functions. The error system provides a structured,
+// language-agnostic way to communicate failures from C runtime code back to
+// IL programs and BASIC ON ERROR handlers.
+//
+// The Viper runtime uses explicit error handling through out-parameters rather
+// than C++ exceptions or errno. This design ensures:
+// - C compatibility: Pure C runtime works in all environments
+// - Predictable performance: No exception unwinding overhead
+// - Clear error paths: Errors are explicit in function signatures
+// - BASIC semantics: Maps cleanly to BASIC's ON ERROR mechanism
+//
+// Error Reporting Model:
+// Runtime functions that can fail accept an optional RtError* out-parameter.
+// On success, the function returns true and leaves the error unmodified. On
+// failure, it returns false and populates the error structure with diagnostic
+// information.
+//
+// RtError Structure:
+// - kind: High-level error category (Err_FileNotFound, Err_Overflow, etc.)
+// - code: Platform-specific detail code (errno, Win32 error code, etc.)
+//
+// The kind field provides portable error classification that BASIC programs
+// can test in ON ERROR handlers (ERR function). The code field preserves
+// platform-specific details for diagnostic logging but isn't exposed to
+// user programs.
+//
+// Error Categories:
+// - Err_None: Success (not an error)
+// - Err_FileNotFound: File operations when file doesn't exist
+// - Err_EOF: Read operations at end of file
+// - Err_IOError: Generic I/O failures (permission denied, device error)
+// - Err_Overflow: Numeric overflow or underflow
+// - Err_InvalidCast: Type conversion out of range
+// - Err_DomainError: Math function domain errors (sqrt negative, log zero)
+// - Err_Bounds: Array subscript out of range
+// - Err_InvalidOperation: Operation invalid in current state
+// - Err_RuntimeError: Catch-all for unclassified errors
+//
+// Usage Pattern:
+//   RtError err;
+//   if (!rt_file_open(&file, path, "r", 0, &err)) {
+//     // Handle error based on err.kind
+//     if (err.kind == Err_FileNotFound) { ... }
+//   }
+//
+// Integration with IL Traps:
+// When BASIC code calls a runtime function that fails, the IL lowering
+// translates the error into a trap instruction. The VM's trap mechanism
+// then invokes the appropriate ON ERROR handler or terminates execution
+// with a diagnostic message.
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include <stdbool.h>

@@ -1,8 +1,60 @@
-// File: src/frontends/basic/DiagnosticEmitter.hpp
-// Purpose: Wraps DiagnosticEngine to format BASIC diagnostics with codes and carets.
-// Key invariants: Stored diagnostics maintain emission order.
-// Ownership/Lifetime: Borrows DiagnosticEngine and SourceManager; owns source copies.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file declares the DiagnosticEmitter class, which formats and reports
+// BASIC frontend diagnostics with rich context and source location information.
+//
+// The DiagnosticEmitter provides user-friendly error reporting throughout the
+// BASIC compilation pipeline, transforming raw diagnostic messages into
+// formatted output with:
+// - Source file location (filename, line number, column)
+// - Error codes for programmatic error handling
+// - Source line context with caret (^) highlighting
+// - Severity levels (error, warning, note)
+// - Diagnostic message text
+//
+// Output Format:
+//   program.bas:10:5: error: undefined variable 'counter' [E1001]
+//   FOR counter = 1 TO 10
+//       ^
+//
+// Key Responsibilities:
+// - Diagnostic formatting: Converts internal diagnostic representations into
+//   human-readable messages with source context
+// - Source line extraction: Retrieves the relevant source line for each
+//   diagnostic location to show the error in context
+// - Caret positioning: Computes column offsets to place the ^ marker under
+//   the problematic token or expression
+// - Diagnostic ordering: Maintains emission order for stable, predictable
+//   output across compilation runs
+// - Source caching: Stores source text per file ID to enable efficient
+//   repeated line lookups during diagnostic reporting
+//
+// Integration:
+// - Used by: Lexer, Parser, SemanticAnalyzer, Lowerer to report errors
+// - Wraps: DiagnosticEngine for diagnostic collection and counting
+// - Queries: SourceManager for file paths and locations
+// - Outputs to: std::ostream (typically std::cerr for error messages)
+//
+// Design Notes:
+// - Borrows DiagnosticEngine and SourceManager; does not own them
+// - Caches source text per file ID to avoid repeated file I/O
+// - Diagnostics are accumulated and can be emitted in batch or individually
+// - Thread-safe for diagnostic emission (though not typically used concurrently)
+//
+// Usage:
+//   DiagnosticEmitter emitter(diagnosticEngine, sourceManager);
+//   emitter.registerSource(fileId, sourceText);
+//   // During compilation:
+//   emitter.error(location, "Undefined variable", "E1001");
+//   // After compilation:
+//   emitter.flush(std::cerr);
+//
+//===----------------------------------------------------------------------===//
 #pragma once
 
 #include "frontends/basic/Token.hpp"

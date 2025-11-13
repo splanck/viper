@@ -1,8 +1,33 @@
-// File: src/il/verify/InstructionCheckUtils.hpp
-// Purpose: Declares reusable helpers shared across instruction verification routines.
-// Key invariants: Utility functions operate on fundamental IL metadata enums and kinds.
-// Ownership/Lifetime: Stateless helpers that do not manage resources.
-// Links: docs/il-guide.md#reference
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file declares low-level utility functions used throughout instruction
+// verification. These helpers provide common operations on IL type metadata and
+// literal value validation that are needed by multiple verification strategies.
+//
+// Instruction verification requires checking that literal operands fit within
+// their declared types and that opcode metadata correctly describes instruction
+// semantics. Rather than duplicating these checks across verification strategies,
+// this file centralizes them as reusable building blocks.
+//
+// Key Responsibilities:
+// - Validate integer literals fit within their declared integer kind
+// - Map opcode type categories to concrete type kinds when possible
+// - Provide type metadata queries used across verification strategies
+//
+// Design Notes:
+// All functions in this file are stateless pure functions operating on IL type
+// metadata. They form a utility layer below the main verification logic, providing
+// primitive operations used to implement higher-level verification rules. The
+// functions are in the il::verify::detail namespace to indicate they are internal
+// helpers not part of the public verification API.
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "il/core/OpcodeInfo.hpp"

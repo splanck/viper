@@ -1,8 +1,37 @@
-// File: src/il/verify/InstructionCheckerShared.hpp
-// Purpose: Provides shared helpers and declarations for instruction verification submodules.
-// Key invariants: Helpers operate on the current verification context without modifying ownership.
-// Ownership/Lifetime: Functions reference caller-managed context and diagnostics only for the call
-// duration. Links: docs/il-guide.md#reference
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file declares shared utilities and specialized checkers used by table-driven
+// instruction verification. It provides the common infrastructure that implements
+// the verification strategies referenced by the SpecTables metadata.
+//
+// The table-driven verification system separates opcode metadata (operand counts,
+// type categories, verification strategies) from the implementation of those
+// strategies. This file contains the strategy implementations - specialized checking
+// functions for memory operations, arithmetic instructions, casts, bounds checks,
+// and runtime calls - referenced by the VerifyStrategy enum in SpecTables.
+//
+// Key Responsibilities:
+// - Provide diagnostic formatting helpers for consistent error messages
+// - Implement specialized checkers for memory operations (alloca, load, store, gep)
+// - Validate runtime call instructions (call.extern, call.func)
+// - Check runtime error handling operations (trap, trap.err, trap.from.err)
+// - Verify arithmetic and cast operations with proper type constraints
+// - Implement the default checker for simple instructions
+//
+// Design Rationale:
+// The il::verify::checker namespace groups strategy implementations separately from
+// the dispatch logic. Each checker accepts a VerifyCtx containing all verification
+// state (function, block, instruction, type environment, diagnostics) and returns
+// Expected<void> for uniform error propagation. Helper functions like formatDiag()
+// and fail() reduce boilerplate in checker implementations.
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "il/core/Instr.hpp"

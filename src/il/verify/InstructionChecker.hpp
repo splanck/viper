@@ -1,8 +1,36 @@
-// File: src/il/verify/InstructionChecker.hpp
-// Purpose: Declares helpers that validate IL instructions during verification.
-// Key invariants: Operates on instructions within a single basic block context.
-// Ownership/Lifetime: Stateless functions relying on caller-managed storage.
-// Links: docs/il-guide.md#reference
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file declares the core instruction verification function used by the IL
+// verifier to validate non-control-flow instructions. It provides the main entry
+// point for opcode-specific semantic validation after structural checks pass.
+//
+// The IL verifier performs verification in stages: first structural validation
+// (operand counts, result presence, successor structure), then semantic validation
+// (type compatibility, reference validity, side effect constraints). This file
+// provides the semantic validation layer that dispatches to specialized checkers
+// based on opcode category (arithmetic, memory, calls, etc.).
+//
+// Key Responsibilities:
+// - Validate instruction operands are well-typed for the opcode
+// - Verify call.extern and call.func reference valid targets
+// - Check memory operations (alloca, load, store, gep) for type safety
+// - Ensure runtime helpers (trap, cast, bounds checks) have correct structure
+// - Record result types in the type environment for downstream uses
+//
+// Design Notes:
+// The verifyInstruction function coordinates opcode metadata lookup with specialized
+// checking logic. It first validates the instruction against its opcode signature
+// using verifyOpcodeSignature, then dispatches to category-specific validators.
+// The boolean return convention (true = success, false = failure with diagnostics
+// already emitted) enables caller error handling without exception overhead.
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "il/core/fwd.hpp"

@@ -1,11 +1,58 @@
-// File: src/frontends/basic/IdentifierUtil.hpp
-// Purpose: Common helpers for canonicalizing identifiers and qualified names
-//          in the BASIC front end (case-insensitive language semantics).
-// Invariants: Canonical forms are ASCII lowercase; segments are validated to
-//             contain only [A-Za-z0-9_]. Joining uses '.' between segments.
-// Ownership/Lifetime: Header-only utilities; no dynamic state.
-// Notes: Validation is conservative and returns an empty string on failure,
-//        leaving error handling to callers in semantic or parsing layers.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file provides utilities for canonicalizing BASIC identifiers and
+// qualified names according to BASIC's case-insensitive language semantics.
+//
+// BASIC Identifier Rules:
+// BASIC is a case-insensitive language where identifiers like "Counter",
+// "COUNTER", and "counter" all refer to the same variable. The frontend
+// canonicalizes all identifiers to lowercase for consistent symbol table
+// lookups and IL name generation.
+//
+// Key Utilities:
+// - canonicalizeIdentifier: Converts a single identifier to lowercase,
+//   validating that it contains only [A-Za-z0-9_]
+// - qualifiedName: Joins namespace/module segments with '.' separator
+// - validateIdentifier: Checks identifier validity without conversion
+//
+// Canonicalization:
+// All identifiers are canonicalized to ASCII lowercase for:
+// - Symbol table lookups (case-insensitive matching)
+// - IL name generation (deterministic output)
+// - Namespace resolution (consistent qualified names)
+//
+// Validation:
+// Identifiers must contain only [A-Za-z0-9_] characters. Type suffixes
+// (%, &, !, #, $) are handled separately and not part of the base identifier.
+//
+// Qualified Names:
+// For namespace support (NAMESPACE...END NAMESPACE), qualified names use
+// dot notation:
+//   MyNamespace.MyModule.MyFunction
+//
+// The canonicalization preserves namespace hierarchy while applying lowercase
+// conversion to each segment.
+//
+// Error Handling:
+// Validation is conservative: functions return empty string on failure,
+// leaving detailed error reporting to callers (parser, semantic analyzer).
+//
+// Integration:
+// - Used by: Parser for identifier processing
+// - Used by: SemanticAnalyzer for symbol table operations
+// - Used by: Lowerer for IL name generation
+//
+// Design Notes:
+// - Header-only implementation for zero overhead
+// - No dynamic state; all functions are pure
+// - Validation failures return empty string for caller handling
+//
+//===----------------------------------------------------------------------===//
 #pragma once
 
 #include <cctype>

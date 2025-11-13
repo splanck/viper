@@ -1,8 +1,58 @@
-// File: src/runtime/rt_string.h
-// Purpose: Declares string runtime APIs shared between C and C++ callers.
-// Key invariants: Strings use reference-counted heap headers with immortal literals.
-// Ownership/Lifetime: Callers manage retains/releases; returned strings follow transfer rules.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file declares the runtime library's string API, providing reference-counted
+// string objects accessible from both C and C++ code. The runtime string type
+// (rt_string) is the foundational text representation used by Viper IL programs,
+// particularly those compiled from BASIC source code with extensive string
+// manipulation requirements.
+//
+// Viper's runtime strings use automatic memory management through reference counting.
+// Each string object maintains a reference count in its heap header; retain operations
+// increment the count, release operations decrement it, and the string is freed when
+// the count reaches zero. This design provides deterministic memory management without
+// garbage collection overhead.
+//
+// Key Design Features:
+// - Reference counting: Automatic memory management with deterministic lifetime
+// - Immortal literals: String constants are marked immortal and never freed
+// - UTF-8 encoding: All strings store UTF-8 byte sequences
+// - Null-termination: Internal strings are null-terminated for C interop
+// - Opaque handles: Callers work with opaque rt_string pointers, not raw bytes
+//
+// Memory Layout:
+// Each runtime string consists of a heap header (reference count, capacity, flags)
+// followed by the UTF-8 byte payload and a null terminator. The rt_string type
+// points to the payload portion, with the header located at a negative offset.
+//
+// String Operations:
+// - Creation: rt_string_from_bytes, rt_str_empty, rt_concat
+// - Manipulation: rt_str_mid, rt_str_left, rt_str_right, rt_str_upper/lower
+// - Comparison: rt_str_eq, rt_str_lt, rt_str_le, rt_str_gt, rt_str_ge
+// - Conversion: rt_str_str (integer to string), rt_val (string to number)
+// - Inspection: rt_str_len, rt_str_data
+//
+// Lifetime Management:
+// Functions that create new strings return them with a reference count of 1.
+// Callers are responsible for releasing strings when done. Functions that accept
+// string arguments do not change ownership unless explicitly documented. This
+// follows "create rule" semantics common in C APIs.
+//
+// Thread Safety:
+// String operations are thread-safe for read-only access to immortal strings.
+// Mutable operations or reference count modifications require external synchronization.
+//
+// C/C++ Interoperability:
+// The API uses C linkage (extern "C") and plain C types to ensure compatibility
+// across language boundaries. C++ code can use the same functions through the
+// extern "C" declarations.
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include <stddef.h>

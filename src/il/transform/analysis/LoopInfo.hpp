@@ -1,8 +1,32 @@
-// File: src/il/transform/analysis/LoopInfo.hpp
-// Purpose: Describe loop structure summaries derived from CFG and dominators.
-// Key invariants: Loop membership is computed per function and stored by label for stability.
-// Ownership/Lifetime: Returned summaries borrow labels and operate on caller-owned IL objects.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file declares data structures and analysis routines for discovering and
+// representing natural loops within IL functions. Loop information is fundamental
+// to loop optimizations like LICM, loop unrolling, and induction variable analysis.
+//
+// Natural loop detection relies on the control flow graph and dominator tree.
+// A natural loop is defined by a back edge (B → H where H dominates B): the loop
+// consists of H (the header) and all blocks that can reach B without going through H.
+// This file provides algorithms to identify such loops, compute loop membership,
+// detect nesting relationships, and extract structural properties.
+//
+// Key Components:
+// - Loop structure: Each Loop object represents a single natural loop, storing
+//   the header block label, member block labels, latch blocks, and exit edges
+// - Loop hierarchy: Nested loops form a tree structure where inner loops are
+//   children of their immediately enclosing loop
+// - Loop queries: Functions to test block membership, find loop preheaders,
+//   identify exits, and compute loop depth
+//
+// The analysis stores loop information using block labels rather than pointers,
+// maintaining stability across IL transformations that may reallocate blocks.
+//
+//===----------------------------------------------------------------------===//
 #pragma once
 
 #include "il/core/fwd.hpp"

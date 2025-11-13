@@ -1,8 +1,36 @@
-// File: src/runtime/rt_oop.h
-// Purpose: Define minimal runtime ABI for objects and class metadata (OOP).
-// Key invariants: vptr is stored at offset 0 of every object; vtable entries are stable.
-// Ownership/Lifetime: Runtime holds class metadata; objects embed a vptr to class vtable.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file defines the minimal runtime ABI for object-oriented programming
+// features in BASIC, including class metadata, virtual dispatch, and interface
+// support. The design provides vtable-based polymorphism with stable ABI for
+// compiled IL programs.
+//
+// Viper's OOP runtime uses C-compatible structures and calling conventions to
+// enable seamless interoperation between IL-generated code and runtime libraries.
+// Each object instance begins with a vptr (virtual pointer) that points into
+// the class's vtable, enabling efficient virtual method dispatch. Class metadata
+// structures store type information, inheritance relationships, and method tables.
+//
+// Key Design Elements:
+// - vtable-based dispatch: Each class has a stable vtable with fixed slot assignments
+//   for virtual methods, computed at compile time
+// - vptr at offset 0: Every object's first field is the vptr, enabling trivial
+//   virtual dispatch with a single memory dereference and indirect call
+// - Class metadata: rt_class_info structures store type ID, qualified name,
+//   base class pointer, and vtable pointer for runtime type queries
+// - Interface support: Dynamic interface casting and method resolution for
+//   interface-based polymorphism
+//
+// The runtime maintains a registry of class metadata that the compiler populates
+// during module initialization. This enables runtime type checking, dynamic casts,
+// and reflection-like queries while maintaining efficient compiled dispatch.
+//
+//===----------------------------------------------------------------------===//
 
 #pragma once
 

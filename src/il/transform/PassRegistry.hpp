@@ -1,8 +1,36 @@
-// File: src/il/transform/PassRegistry.hpp
-// Purpose: Declare pass registration primitives and preservation tracking for IL transforms.
-// Key invariants: Pass identifiers are unique within the registry; preservation queries are
-// idempotent. Ownership/Lifetime: Factories and callbacks stored in PassRegistry outlive the pass
-// manager. Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file declares the pass registration infrastructure and preservation
+// tracking mechanisms for the IL transformation pipeline. The pass registry
+// maintains factories for creating pass instances and tracks which analyses
+// remain valid after each transformation.
+//
+// Viper's optimization pipeline follows the LLVM pass manager design: passes
+// are registered with unique identifiers, pipelines specify pass sequences,
+// and preservation metadata enables intelligent caching of analysis results.
+// The registry provides the foundation for extensible, modular optimization
+// infrastructure.
+//
+// Key Components:
+// - PreservedAnalyses: Communicates which analysis results remain valid after
+//   a pass executes, enabling the pass manager to avoid redundant recomputation
+// - PassRegistry: Maps pass names to factory functions, supporting dynamic
+//   pipeline construction from textual pass specifications
+// - Pass identity: Each pass has a unique identifier used for registration,
+//   preservation queries, and diagnostic output
+//
+// Preservation Model:
+// Passes return PreservedAnalyses objects indicating which analyses are still
+// valid. The pass manager uses this information to invalidate cached results
+// only when necessary. Passes can preserve all analyses, no analyses, or
+// specific named analyses based on their transformation behavior.
+//
+//===----------------------------------------------------------------------===//
 #pragma once
 
 #include "il/core/fwd.hpp"

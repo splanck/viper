@@ -1,8 +1,47 @@
-// File: src/frontends/basic/Lexer.hpp
-// Purpose: Declares BASIC token lexer with single-line comment support.
-// Key invariants: Current position always within source buffer.
-// Ownership/Lifetime: Lexer does not own the source buffer.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file declares the Lexer class, which performs lexical analysis of BASIC
+// source code and produces a stream of tokens for the parser.
+//
+// The lexer is the first stage of the BASIC frontend compilation pipeline:
+//   Lexer → Parser → AST → Semantic → Lowerer → IL
+//
+// Key Responsibilities:
+// - Tokenizes BASIC source text into lexical tokens (keywords, identifiers,
+//   literals, operators, punctuation)
+// - Recognizes BASIC-specific constructs including:
+//   * Keywords (IF, THEN, FOR, NEXT, DIM, SUB, FUNCTION, etc.)
+//   * Type suffixes (%, &, !, #, $) for integer, long, single, double, string
+//   * Numeric literals (integer, floating-point, scientific notation)
+//   * String literals with escape sequences
+//   * Line numbers and labels
+//   * Comment syntax (REM statements and ' single-line comments)
+// - Maintains source location information for diagnostic reporting
+// - Provides efficient single-pass scanning with minimal lookahead
+//
+// Design Notes:
+// - The lexer does not own the source buffer; callers must ensure the buffer
+//   remains valid for the lexer's lifetime
+// - Character position tracking enables accurate error reporting during parsing
+//   and semantic analysis
+// - Whitespace (spaces, tabs) is skipped, but newlines are preserved as tokens
+//   since BASIC uses line-oriented syntax
+// - The lexer handles both traditional BASIC line numbers and modern label-based
+//   control flow
+//
+// Usage:
+//   Lexer lex(sourceText, fileId);
+//   Token tok;
+//   while ((tok = lex.next()).kind != TokenKind::Eof) {
+//     // Process token
+//   }
+//
+//===----------------------------------------------------------------------===//
 #pragma once
 
 #include "frontends/basic/Token.hpp"

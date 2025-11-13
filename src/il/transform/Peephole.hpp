@@ -1,8 +1,36 @@
-// File: src/il/transform/Peephole.hpp
-// Purpose: Declares a peephole optimizer for IL modules.
-// Key invariants: Applies local simplifications preserving semantics.
-// Ownership/Lifetime: Operates in place on the provided module.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file declares the peephole optimization pass for IL modules. Peephole
+// optimization applies local pattern-based simplifications that replace instruction
+// sequences with more efficient equivalent forms.
+//
+// Peephole optimization identifies small, localized patterns (instruction with
+// specific constant operands) and replaces them with simpler forms. For example,
+// adding zero to a value can be replaced with the value itself, multiplying by
+// one is an identity operation, and shifts by zero are no-ops. This file defines
+// a table-driven peephole framework with rules matching opcode + constant patterns.
+//
+// Key Responsibilities:
+// - Match instructions against registered peephole patterns
+// - Verify pattern preconditions (opcode, operand index, constant value)
+// - Replace matched instructions with simpler equivalents (operand forwarding)
+// - Support algebraic simplifications (identity, annihilation, commutativity)
+// - Maintain SSA form and correct value uses
+//
+// Design Notes:
+// The peephole system is table-driven using a compile-time rule registry (kRules).
+// Each rule specifies a Match pattern (opcode, operand position, constant value)
+// and a Replace action (which operand to forward as the result). The pass scans
+// instructions linearly, applies matching rules, and updates uses. This design
+// makes it easy to add new peephole rules without modifying the core pass logic.
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include <array>

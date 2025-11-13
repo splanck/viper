@@ -1,8 +1,40 @@
-// File: src/il/transform/PipelineExecutor.hpp
-// Purpose: Declare a helper that executes registered pass pipelines on IL modules.
-// Key invariants: Pass ordering matches the provided pipeline sequence.
-// Ownership/Lifetime: Executor borrows registries owned by the pass manager and never outlives
-// them. Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file declares the PipelineExecutor class, which coordinates execution of
+// optimization pass pipelines on IL modules. The executor resolves pass names to
+// registered pass instances, manages analysis caching and invalidation, and provides
+// instrumentation hooks for debugging and verification.
+//
+// A pass pipeline is an ordered sequence of transformation and analysis passes.
+// The PipelineExecutor takes a pipeline specification (list of pass names), looks
+// up each pass in the registry, instantiates pass objects, executes them in order,
+// and maintains analysis results between passes based on preservation information.
+// Instrumentation hooks enable printing IR before/after passes and verifying
+// correctness after each transformation.
+//
+// Key Responsibilities:
+// - Resolve pass names to registered pass factories
+// - Instantiate module and function passes for pipeline execution
+// - Execute passes in specified order on the module
+// - Manage analysis caching and invalidation based on PreservedAnalyses
+// - Invoke instrumentation hooks (print before/after, verification)
+// - Coordinate between module-level and function-level passes
+//
+// Design Notes:
+// The executor is configured with const references to registries (passes and
+// analyses) and instrumentation callbacks. It doesn't own the registries, only
+// borrows them during pipeline execution. The executor creates a single
+// AnalysisManager per module for the pipeline run, enabling analysis result
+// sharing across passes. The instrumentation structure allows customizable
+// debugging without coupling the executor to specific output mechanisms.
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "il/core/fwd.hpp"

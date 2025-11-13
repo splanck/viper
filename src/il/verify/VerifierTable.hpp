@@ -1,8 +1,37 @@
-// File: src/il/verify/VerifierTable.hpp
-// Purpose: Declares lookup helpers for opcode verification properties.
-// Key invariants: Table entries cover only opcodes with simple arithmetic rules.
-// Ownership/Lifetime: Returned data references static storage.
-// Links: docs/il-guide.md#reference
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file declares lookup tables and type classification enums used by the IL
+// verifier to validate instruction structure and semantics. These tables provide
+// a lightweight metadata layer for opcodes with simple, regular verification rules.
+//
+// The IL verifier needs to know basic properties of each opcode: how many operands
+// it accepts, what types those operands must have, whether it produces a result,
+// and whether it has side effects. For instructions with regular patterns (like
+// arithmetic and comparison opcodes), this file provides compact table-driven
+// metadata that avoids duplicating verification logic across similar instructions.
+//
+// Key Responsibilities:
+// - Define TypeClass enum mapping verifier type constraints to IL types
+// - Provide OpProps describing arity, operand/result types, and trap behavior
+// - Declare OpCheckSpec with detailed operand/result validation constraints
+// - Offer lookup functions for querying opcode verification metadata
+// - Support side-effect queries for optimization and reordering safety
+//
+// Design Notes:
+// The tables in this file complement but don't replace the comprehensive SpecTables.
+// SpecTables contains generated metadata for ALL opcodes, while VerifierTable
+// provides legacy lookup interfaces for opcodes with simple regular structure.
+// The lookup() functions return std::optional to indicate when an opcode requires
+// specialized verification logic beyond table-driven validation. Over time, more
+// verification may migrate to the SpecTables-based approach.
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "il/core/Opcode.hpp"

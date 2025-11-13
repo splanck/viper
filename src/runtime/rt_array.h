@@ -1,8 +1,68 @@
-// File: src/runtime/rt_array.h
-// Purpose: Declares dynamic int32 array helpers for the BASIC runtime.
-// Key invariants: Array length never exceeds capacity; storage is contiguous.
-// Ownership/Lifetime: Arrays are reference-counted; retain/release manage shared ownership.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file declares the runtime library's dynamic array API for 32-bit integer
+// arrays. These functions provide the foundation for BASIC's DIM statements and
+// array manipulation operations, enabling variable-length arrays with automatic
+// memory management through reference counting.
+//
+// Viper's runtime arrays are designed specifically for BASIC language semantics,
+// supporting dynamic resizing (via REDIM), bounds checking, and multi-dimensional
+// indexing. Each array type (i32, i64, f64, str) has its own specialized API
+// following the same design patterns.
+//
+// Array Architecture:
+// Runtime arrays use the same heap header system as strings, storing reference
+// count, capacity, and length metadata in a header that precedes the payload.
+// The API functions accept and return payload pointers, with the header accessible
+// at a negative offset. This design allows efficient C interop while maintaining
+// automatic memory management.
+//
+// Memory Layout:
+//   [rt_heap_hdr_t header | int32_t elements[capacity]]
+//                            ^
+//                            payload pointer
+//
+// The header contains:
+// - refcount: Number of live references to this array
+// - capacity: Total allocated element slots
+// - length: Number of valid elements (length <= capacity)
+// - flags: Array attributes (immortal, resizable, etc.)
+//
+// Key Operations:
+// - Allocation: rt_arr_i32_new(len) creates array with specified length
+// - Lifetime: rt_arr_i32_retain/release manage reference counts
+// - Access: rt_arr_i32_get/set with bounds checking
+// - Resizing: rt_arr_i32_resize for REDIM operations
+// - Inspection: rt_arr_i32_len/capacity query array dimensions
+//
+// Bounds Checking:
+// All indexed access functions perform bounds checking and trap on out-of-range
+// indices. This enforces BASIC's safety guarantees and provides clear error
+// messages for common programming mistakes.
+//
+// Multi-Dimensional Arrays:
+// BASIC multi-dimensional arrays are linearized into single-dimension storage
+// using row-major order. The frontend computes linear indices from subscripts
+// before calling these APIs.
+//
+// Reference Counting Semantics:
+// - New arrays start with refcount = 1 (caller owns the initial reference)
+// - retain increments refcount (shares ownership)
+// - release decrements refcount and frees when reaching zero
+// - Arrays can be safely shared across IL temporaries and function calls
+//
+// Resizing and REDIM:
+// The resize operation may allocate a new backing array if the requested size
+// exceeds capacity. REDIM PRESERVE copies existing elements; plain REDIM zeros
+// the array. Resizing updates the length field; growing beyond capacity reallocates.
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "rt_heap.h"

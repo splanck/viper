@@ -1,8 +1,35 @@
-// File: src/il/runtime/RuntimeSignatures.hpp
-// Purpose: Declares the shared registry of runtime helper signatures.
-// Key invariants: Entries mirror the runtime C ABI and remain stable for consumers.
-// Ownership/Lifetime: Registry data lives for the duration of the process.
-// Links: docs/il-guide.md#reference
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file declares the runtime helper signature registry, which provides type
+// and side effect information for all runtime library functions callable from IL
+// programs. The registry enables the compiler to generate type-correct IL for
+// runtime calls and provides optimization metadata for analysis passes.
+//
+// Viper's runtime library provides essential services: memory management, string
+// operations, array access, file I/O, and mathematical functions. Each runtime
+// helper has a stable C ABI signature that IL programs must respect. This file
+// defines the canonical registry mapping helper names to their signatures and
+// side effect annotations.
+//
+// Registry Structure:
+// - RtSig enumeration: Each runtime helper has a unique enumeration constant
+//   generated from the RuntimeSigs.def macro file
+// - RuntimeSignature: Structured representation of a helper's return type,
+//   parameter types, and effect annotations (readonly, noalias, etc.)
+// - Lookup functions: Query helpers by name or enumeration constant to retrieve
+//   signature information
+//
+// Integration:
+// The BASIC frontend uses this registry when lowering builtin functions to IL
+// runtime calls. Optimization passes consult effect annotations to determine
+// whether runtime calls can be reordered, eliminated, or moved.
+//
+//===----------------------------------------------------------------------===//
 #pragma once
 
 #include "il/core/Type.hpp"

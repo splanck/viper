@@ -1,8 +1,33 @@
-// File: src/il/transform/analysis/Liveness.hpp
-// Purpose: Declare CFG adjacency summaries and liveness analysis helpers.
-// Key invariants: Liveness bitsets track dense SSA identifiers sized per function.
-// Ownership/Lifetime: Returned summaries borrow basic block pointers owned by the module.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file declares liveness analysis infrastructure for IL functions, computing
+// live-in and live-out sets for SSA temporaries at each basic block. Liveness
+// information is essential for register allocation, dead code elimination, and
+// understanding variable lifetimes.
+//
+// Liveness analysis determines which SSA temporaries hold values that may be
+// used along some path from a given program point. The analysis computes live-in
+// sets (temporaries that must be available at block entry) and live-out sets
+// (temporaries that must be preserved at block exit). These sets enable optimizations
+// to identify unused values and guide resource allocation.
+//
+// Algorithm:
+// - CFG construction: Build successor and predecessor relationships for all blocks
+// - Use-def analysis: Identify which temporaries each instruction uses and defines
+// - Backward dataflow: Propagate liveness information backward through the CFG
+//   using iterative fixpoint computation
+// - Bitset representation: Use dense bitsets indexed by SSA temporary IDs for
+//   efficient set operations during fixpoint iteration
+//
+// The analysis uses block pointers for adjacency information but stores liveness
+// as temporary ID bitsets, enabling efficient queries and compact representation.
+//
+//===----------------------------------------------------------------------===//
 #pragma once
 
 #include "il/core/fwd.hpp"

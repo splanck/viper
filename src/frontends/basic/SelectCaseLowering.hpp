@@ -1,8 +1,68 @@
-// File: src/frontends/basic/SelectCaseLowering.hpp
-// Purpose: Declares helper responsible for lowering BASIC SELECT CASE statements.
-// Key invariants: Maintains block structure compatible with Lowerer control flow.
-// Ownership/Lifetime: Operates on a Lowerer instance without owning AST or IR.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file declares the SelectCaseLowering helper class, which is responsible
+// for lowering BASIC SELECT CASE statements to IL control flow.
+//
+// SELECT CASE Lowering:
+// The SELECT CASE statement provides multi-way branching based on the value
+// of a test expression:
+//
+//   SELECT CASE score
+//     CASE IS < 60
+//       PRINT "F"
+//     CASE 60 TO 69
+//       PRINT "D"
+//     CASE 70, 80, 90
+//       PRINT "C, B, or A"
+//     CASE ELSE
+//       PRINT "Invalid"
+//   END SELECT
+//
+// This is lowered to a series of IL conditional branches and basic blocks.
+//
+// Lowering Strategy:
+// The lowerer generates IL code that:
+// 1. Evaluates the SELECT expression once and stores it in a temporary
+// 2. For each CASE clause, generates comparison(s) against the temporary
+// 3. Branches to the appropriate CASE body or continues to the next test
+// 4. CASE ELSE provides a default branch if no cases match
+// 5. All CASE bodies branch to a common exit block at END SELECT
+//
+// CASE Clause Types:
+// - CASE IS <op> <expr>: Relational test (IS < 60, IS >= 100)
+// - CASE <expr> TO <expr>: Range test (60 TO 69)
+// - CASE <expr>, <expr>, ...: Value list (70, 80, 90)
+// - CASE ELSE: Default clause (matches if no other case matches)
+//
+// IL Block Structure:
+//   entry:
+//     %temp = <select-expr>
+//   case1_test:
+//     if (<case1-condition>) goto case1_body else goto case2_test
+//   case1_body:
+//     <case1-statements>
+//     goto exit
+//   case2_test:
+//     ...
+//   exit:
+//     <continue>
+//
+// Integration:
+// - Used by: Lowerer when lowering SelectStmt AST nodes
+// - Operates on: Lowerer instance state (IRBuilder, NameMangler)
+// - No ownership: Does not own AST or IL module
+//
+// Design Notes:
+// - Maintains block structure compatible with Lowerer control flow
+// - Generates efficient IL by evaluating select expression once
+// - Properly handles fallthrough and CASE ELSE semantics
+//
+//===----------------------------------------------------------------------===//
 #pragma once
 
 #include "frontends/basic/SelectModel.hpp"

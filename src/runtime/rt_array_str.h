@@ -1,9 +1,35 @@
-// File: src/runtime/rt_array_str.h
-// Purpose: Declares dynamic string array helpers for the BASIC runtime.
-// Key invariants: Array elements are reference-counted strings; each slot retains its value.
-// Ownership/Lifetime: Arrays are reference-counted; retain/release manage shared ownership.
-//                     Each string element has independent reference count.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file declares dynamic string array operations for the BASIC runtime,
+// providing specialized array implementations for string-typed collections.
+// String arrays have unique ownership semantics where both the array container
+// and individual string elements are independently reference-counted.
+//
+// BASIC's string arrays (DIM names$(100)) store references to string objects,
+// not the strings themselves. Each array element is a pointer to a reference-counted
+// string. The array itself is also reference-counted, enabling arrays to be
+// passed by reference without copying. This creates a two-level reference counting
+// scheme: the array container and the element strings.
+//
+// Memory Management Model:
+// - Array allocation: Creates a new array container with specified capacity,
+//   all slots initialized to NULL
+// - Element assignment: rt_arr_str_put releases the old element (if any),
+//   retains the new element, and stores the new reference
+// - Element access: rt_arr_str_get returns a retained reference that caller
+//   must release when done
+// - Array destruction: rt_arr_str_release releases all non-null elements
+//   before freeing the array container
+//
+// This design ensures proper cleanup of string resources while supporting
+// efficient sharing and assignment patterns common in BASIC programs.
+//
+//===----------------------------------------------------------------------===//
 #pragma once
 
 #include "rt_heap.h"

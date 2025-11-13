@@ -1,8 +1,34 @@
-// File: src/il/verify/OperandCountChecker.hpp
-// Purpose: Declares a helper that validates operand counts against opcode metadata.
-// Key invariants: Operates on the verification context for a single instruction.
-// Ownership/Lifetime: Non-owning references to verification data structures.
-// Links: docs/il-guide.md#reference
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file declares the OperandCountChecker helper class, which validates that
+// an instruction provides the correct number of operands as specified by its opcode
+// metadata. This is a structural verification check performed before type checking.
+//
+// IL opcodes have varying operand requirements: fixed arity (exactly N operands),
+// variadic (any number of operands meeting some minimum), or ranged (between min
+// and max operands). The OperandCountChecker encapsulates the logic for validating
+// these constraints using the InstructionSpec from SpecTables.
+//
+// Key Responsibilities:
+// - Verify fixed-arity instructions provide exactly the required operand count
+// - Validate variadic instructions meet minimum operand requirements
+// - Ensure ranged-arity instructions fall within the specified bounds
+// - Generate precise error messages identifying count mismatches
+//
+// Design Notes:
+// OperandCountChecker follows the construct-and-execute pattern used throughout
+// the detail verification helpers. It's initialized with the verification context
+// and opcode spec, then immediately executed via run(). This keeps the checker
+// stateless and focused on a single validation concern. The checker is in the
+// il::verify::detail namespace as an internal component of table-driven verification.
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "il/verify/SpecTables.hpp"

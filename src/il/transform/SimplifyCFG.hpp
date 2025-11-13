@@ -1,8 +1,39 @@
-// File: src/il/transform/SimplifyCFG.hpp
-// Purpose: Control-flow graph simplification pass scaffold for IL functions.
-// Key invariants: Mutates functions in place while preserving observable behavior.
-// Ownership/Lifetime: Pass operates on caller-owned functions; no heap ownership.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file declares the Control Flow Graph Simplification (SimplifyCFG) pass.
+// SimplifyCFG canonicalizes and simplifies control flow patterns, removing
+// redundant blocks, folding trivial branches, and cleaning up CFG structure
+// to improve code quality and enable downstream optimizations.
+//
+// The SimplifyCFG pass applies a suite of local CFG transformations: folding
+// conditional branches with constant conditions, removing empty forwarding blocks,
+// merging blocks with single predecessors, eliminating unreachable code, and
+// canonicalizing block parameters. These transformations reduce code size, simplify
+// the CFG structure, and create optimization opportunities for other passes.
+//
+// Key Responsibilities:
+// - Fold conditional branches/switches with constant conditions to unconditional
+// - Remove empty blocks that only forward to successors
+// - Merge blocks when predecessor has single successor and vice versa
+// - Eliminate unreachable basic blocks using reachability analysis
+// - Canon icalize block parameters by removing unused parameters
+// - Simplify parameter passing when all arguments are identical
+//
+// Design Notes:
+// The pass uses a fixed-point iteration strategy, applying transformations until
+// no more changes occur. Each transformation is implemented in a separate module
+// under SimplifyCFG/ subdirectory. The pass tracks statistics about performed
+// transformations and supports debug logging. An aggressive mode enables more
+// speculative optimizations. The pass is EH-aware and preserves exception handling
+// semantics by avoiding transformations on handler blocks.
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "il/core/BasicBlock.hpp"

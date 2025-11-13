@@ -1,8 +1,34 @@
-// File: src/runtime/rt_format.h
-// Purpose: Declares deterministic formatting helpers for runtime numeric types.
-// Key invariants: Formatting is locale-independent and normalizes special values.
-// Ownership/Lifetime: Callers provide output buffers and own their storage.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file declares deterministic formatting utilities for runtime values,
+// particularly focused on numeric-to-string conversion with reproducible output.
+// The BASIC language requires specific formatting behavior for PRINT statements
+// and file I/O that differs from standard C library functions.
+//
+// Standard library formatting functions like printf and sprintf are locale-dependent
+// and have platform-specific behavior for special floating-point values (NaN, infinity).
+// Viper programs compiled from BASIC source must produce identical output regardless
+// of the system locale or platform conventions. This file provides locale-independent
+// formatters with well-defined handling of edge cases.
+//
+// Key Responsibilities:
+// - Floating-point formatting: rt_format_f64 converts doubles to strings with
+//   consistent precision, special value handling, and no locale dependencies
+// - CSV escaping: rt_csv_quote_alloc handles WRITE # statement string escaping,
+//   implementing BASIC's CSV format with doubled quotes and proper delimiters
+// - Caller-managed buffers: Functions accept pre-allocated buffers, avoiding
+//   hidden allocation and supporting stack-based usage in performance-critical paths
+//
+// These formatters are used by the PRINT and WRITE # statement lowering in the
+// BASIC frontend, ensuring deterministic output for golden test validation and
+// cross-platform compatibility.
+//
+//===----------------------------------------------------------------------===//
 
 #pragma once
 

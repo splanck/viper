@@ -1,8 +1,55 @@
-// File: src/frontends/basic/LoweringPipeline.hpp
-// Purpose: Declares modular lowering helpers composing the BASIC lowering pipeline.
-// Key invariants: Helpers operate on Lowerer state without taking ownership.
-// Ownership/Lifetime: Helper structs borrow a Lowerer instance for the duration of calls.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file declares the modular lowering helper components that compose the
+// BASIC lowering pipeline, transforming AST nodes into IL instructions.
+//
+// Lowering Pipeline Architecture:
+// The BASIC lowering process is decomposed into specialized helper components,
+// each responsible for a specific category of AST nodes or operations:
+//
+// - ProgramLowering: Top-level program structure, global initialization
+// - ProcedureLowering: SUB/FUNCTION declarations and procedure bodies
+// - StatementLowering: Statement-level lowering dispatch
+// - LowerExprNumeric: Arithmetic and numeric expressions
+// - LowerExprLogical: Boolean and comparison expressions
+// - LowerExprBuiltin: Built-in function calls
+// - LowerStmt_Core: Assignment and basic statements
+// - LowerStmt_Control: Control flow (IF, FOR, WHILE, SELECT)
+// - LowerStmt_IO: I/O operations (PRINT, INPUT)
+// - LowerRuntime: Runtime library function declarations
+//
+// Design Philosophy:
+// Rather than a monolithic Lowerer class, the pipeline is decomposed into
+// focused helper components that:
+// - Encapsulate specific lowering concerns
+// - Share common Lowerer state (IRBuilder, NameMangler, symbol tables)
+// - Can be tested independently
+// - Are easier to understand and maintain
+//
+// Helper Coordination:
+// All helpers:
+// - Borrow a Lowerer instance for state access
+// - Do not take ownership of AST or IL module
+// - Use IRBuilder for IL instruction emission
+// - Use NameMangler for deterministic symbol naming
+// - Return IL values or register names as appropriate
+//
+// Integration:
+// - Composed by: Lowerer class to handle different AST node types
+// - Shared state: All helpers access Lowerer state
+// - Modular testing: Each helper can be tested in isolation
+//
+// Design Notes:
+// - Helpers are structs with operator() or named methods
+// - No ownership transfer; all state is borrowed
+// - Consistent interface across helper types
+//
+//===----------------------------------------------------------------------===//
 #pragma once
 
 #include "frontends/basic/ast/DeclNodes.hpp"

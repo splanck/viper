@@ -1,8 +1,55 @@
-// File: src/frontends/basic/LowerRuntime.hpp
-// Purpose: Declares runtime tracking and declaration helpers for BASIC lowering.
-// Key invariants: Runtime declarations are emitted exactly once per function.
-// Ownership/Lifetime: Operates on Lowerer state without owning AST or module.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file declares runtime tracking and declaration helpers for BASIC
+// lowering, managing the interface between generated IL and the Viper runtime
+// library.
+//
+// Runtime Library Integration:
+// Many BASIC operations cannot be expressed directly in IL and require calls
+// to runtime library functions:
+//
+// - String operations: Concatenation, comparison, substring extraction
+// - I/O operations: PRINT, INPUT, file operations
+// - Array operations: Dynamic allocation, bounds checking, element access
+// - Built-in functions: Mathematical functions (SIN, COS), string functions
+//   (LEFT$, MID$), type conversions
+//
+// Runtime Declaration Management:
+// The LowerRuntime helper ensures that:
+// - Runtime functions are declared in IL before use
+// - Each runtime function is declared exactly once per IL module
+// - Runtime function signatures match the actual runtime library exports
+// - Calls to runtime functions use correct calling conventions
+//
+// Runtime Function Categories:
+// - viper_string_*: String manipulation (concat, compare, substring, etc.)
+// - viper_io_*: I/O operations (print, input, file operations)
+// - viper_array_*: Array operations (alloc, get, set, bounds check)
+// - viper_math_*: Mathematical functions (sin, cos, tan, sqrt, etc.)
+// - viper_convert_*: Type conversion (int to string, string to int, etc.)
+//
+// Declaration Tracking:
+// To ensure each runtime function is declared exactly once:
+// - First use of a runtime function triggers declaration
+// - Subsequent uses reference the existing declaration
+// - Bitset tracks which runtime functions have been declared
+//
+// Integration:
+// - Used by: Lowering helpers (LowerExprBuiltin, LowerStmt_IO, etc.)
+// - Operates on: Lowerer state (IRBuilder, IL module)
+// - Coordinates with: RuntimeSignatures for function signatures
+//
+// Design Notes:
+// - Runtime declarations are module-scoped, not per-function
+// - Tracking prevents duplicate declarations
+// - Signature validation ensures ABI compatibility
+//
+//===----------------------------------------------------------------------===//
 #pragma once
 
 #include "il/runtime/RuntimeSignatures.hpp"

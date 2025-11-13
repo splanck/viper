@@ -1,8 +1,55 @@
-// File: src/frontends/basic/RuntimeFunctionNames.hpp
-// Purpose: Centralized runtime function name constants for IL code generation
-// Key invariants: Names must match runtime library exports exactly
-// Ownership/Lifetime: Static constants with program lifetime
-// Links: src/runtime/, docs/runtime-api.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file provides centralized constants for Viper runtime library function
+// names used during IL code generation.
+//
+// Runtime Function Names:
+// When lowering BASIC code to IL, many operations require calls to the Viper
+// runtime library. This header defines the canonical names for these runtime
+// functions, ensuring consistency between IL code generation and the actual
+// runtime library exports.
+//
+// Name Categories:
+// - String operations: rt_concat, rt_str_eq, rt_str_cmp, rt_substring, etc.
+// - I/O operations: rt_print, rt_input, rt_read_file, rt_write_file, etc.
+// - Array operations: rt_array_alloc, rt_array_get, rt_array_set, etc.
+// - Math functions: rt_sin, rt_cos, rt_tan, rt_sqrt, rt_pow, etc.
+// - Type conversion: rt_int_to_str, rt_str_to_int, rt_float_to_str, etc.
+//
+// ABI Contract:
+// The names defined in this header MUST match the actual runtime library
+// exports exactly. Any mismatch will result in:
+// - Link-time errors (undefined symbols)
+// - Runtime crashes (calling wrong functions)
+// - ABI incompatibility between IL and runtime
+//
+// Usage:
+// During lowering, these constants are used to generate IL calls:
+//   builder.call(viper::basic::runtime::Concat, {lhs, rhs})
+//
+// This ensures:
+// - No typos in runtime function names
+// - Centralized name management
+// - Easy refactoring if runtime API changes
+// - Type-safe constant access
+//
+// Integration:
+// - Used by: Lowering helpers (LowerExprBuiltin, LowerStmt_IO, LowerRuntime)
+// - Must match: Runtime library exports in src/runtime/
+// - Documented in: docs/runtime-api.md (runtime API specification)
+//
+// Design Notes:
+// - Static constexpr constants for zero overhead
+// - std::string_view avoids unnecessary allocations
+// - Names use consistent prefix convention (rt_)
+// - Grouped by functional category for organization
+//
+//===----------------------------------------------------------------------===//
 #pragma once
 
 #include <string_view>

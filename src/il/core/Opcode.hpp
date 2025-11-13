@@ -1,8 +1,38 @@
-// File: src/il/core/Opcode.hpp
-// Purpose: Enumerates IL instruction opcodes.
-// Key invariants: Enumeration values match IL spec.
-// Ownership/Lifetime: Not applicable.
-// Links: docs/il-guide.md#reference
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file declares the Opcode enumeration, which defines all instruction
+// operation codes supported by Viper IL. The opcode determines the semantics
+// of each instruction and drives instruction selection, verification, and
+// execution in the VM and native backends.
+//
+// Opcodes are generated from a canonical definition file (Opcode.def) using
+// X-macro techniques. This ensures that opcode metadata (names, categories,
+// operand counts) remains synchronized across the parser, verifier, serializer,
+// and execution engines.
+//
+// The IL supports opcodes for:
+// - Arithmetic: add, sub, mul, div variants with overflow/trap semantics
+// - Comparisons: integer and floating-point relational operators
+// - Memory: alloca, load, store, gep for stack/heap access
+// - Control flow: br, cbr, ret, switch for CFG construction
+// - Calls: call and call.indirect for function invocation
+// - Type conversions: casts between integer, float, and pointer types
+// - Exception handling: eh.push, eh.pop, trap family for error propagation
+// - Bitwise: and, or, xor, shifts for integer manipulation
+//
+// Design Rationale:
+// - Enumeration-based: Simple switch-based dispatch without virtual calls
+// - X-macro generation: Single source of truth for opcode definitions
+// - Count sentinel: Opcode::Count enables compile-time table sizing
+// - String conversion: toString() provides spec-compliant mnemonics
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include <cstddef>

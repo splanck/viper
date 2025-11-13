@@ -1,8 +1,36 @@
-// File: src/runtime/rt_file_path.h
-// Purpose: Declare internal helpers for runtime file path and mode handling.
-// Key invariants: Paths and mode strings are validated before invoking I/O helpers.
-// Ownership/Lifetime: Callers retain ownership of provided string handles and buffers.
-// Links: docs/specs/errors.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file declares internal helpers for processing file paths and mode strings
+// in the runtime's file I/O implementation. BASIC's OPEN statement uses numeric
+// mode codes and string paths that must be validated and converted to platform
+// file API parameters.
+//
+// The runtime must bridge BASIC's file I/O model to platform file APIs (fopen on
+// POSIX, platform-specific APIs on Windows). This involves converting BASIC's
+// mode enumeration (INPUT, OUTPUT, APPEND, RANDOM, BINARY) to C file mode strings
+// or POSIX flags, extracting path strings from runtime objects, and validating
+// all parameters before invoking system calls.
+//
+// Key Responsibilities:
+// - Mode translation: rt_file_mode_string converts BASIC mode enumerations to
+//   fopen-compatible mode strings ("r", "w", "a", etc.)
+// - Flag conversion: rt_file_mode_to_flags maps mode strings to POSIX open() flags
+//   for platforms requiring lower-level file control
+// - Path extraction: rt_file_path_from_vstr extracts null-terminated UTF-8 paths
+//   from runtime string objects, validating encoding and null-termination
+// - Buffer management: Helpers provide views into string data suitable for
+//   direct system call usage without additional copying
+//
+// These internal helpers are part of the runtime implementation and not exposed
+// to IL programs. They provide a validated, platform-neutral interface that the
+// file I/O implementation builds upon.
+//
+//===----------------------------------------------------------------------===//
 #pragma once
 
 #include "rt_string.h"

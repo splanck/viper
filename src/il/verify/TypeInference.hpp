@@ -1,8 +1,38 @@
-// File: src/il/verify/TypeInference.hpp
-// Purpose: Declares utilities for IL verifier type inference and operand validation.
-// Key invariants: Tracks temporary definitions and exposes queries for operand types.
-// Ownership/Lifetime: Non-owning views over caller-provided maps/sets.
-// Links: docs/il-guide.md#reference
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file declares the TypeInference class, which maintains the type environment
+// during IL verification. As the verifier processes instructions sequentially, it
+// must track which temporary values are defined and their inferred types to validate
+// subsequent uses of those temporaries.
+//
+// IL uses SSA (Static Single Assignment) form where each temporary is defined
+// exactly once. The verifier must ensure that every use of a temporary refers to
+// a previously defined value with a compatible type. TypeInference provides the
+// mechanism for recording definitions and querying types during verification,
+// enabling type-safe validation of data flow.
+//
+// Key Responsibilities:
+// - Track which temporaries are currently defined in the type environment
+// - Record the inferred type of each temporary as instructions are verified
+// - Provide type queries for operands (literals, temporaries, block parameters)
+// - Validate that instruction operands refer to defined temporaries
+// - Support temporary injection/removal for block parameter handling
+//
+// Design Rationale:
+// The TypeInference class wraps caller-provided storage (maps and sets) rather
+// than owning its data structures. This design enables the FunctionVerifier to
+// reuse storage across blocks while TypeInference provides a typed interface for
+// verification logic. The separation between definition tracking (set of IDs) and
+// type tracking (map from IDs to types) supports efficient def/use validation
+// independently from type checking.
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "il/core/Type.hpp"

@@ -1,8 +1,35 @@
-// File: src/il/verify/InstructionStrategies.hpp
-// Purpose: Declare factory helpers that register instruction verification strategies.
-// Key invariants: Strategies partition opcode handling between control-flow and generic instruction
-// checks. Ownership/Lifetime: Returns unique_ptr-owned strategies transferred to the caller
-// (FunctionVerifier). Links: docs/il-guide.md#reference
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file declares the factory function for constructing the default set of
+// instruction verification strategies used by the FunctionVerifier. The strategy
+// pattern enables modular, extensible verification logic organized by instruction
+// category.
+//
+// The FunctionVerifier uses a pluggable strategy architecture where each strategy
+// handles a specific category of instructions (control flow, generic opcodes, etc.).
+// This file provides the factory that instantiates the standard strategy set,
+// allowing future extension with additional strategies without modifying the core
+// verifier infrastructure.
+//
+// Key Responsibilities:
+// - Instantiate the default control-flow terminator verification strategy
+// - Instantiate the default generic instruction verification strategy
+// - Return strategies with proper ownership transfer to the caller
+//
+// Design Notes:
+// The factory returns a vector of unique_ptr to InstructionStrategy, transferring
+// ownership to the FunctionVerifier. Each strategy implements the matches() and
+// verify() interface, enabling the verifier to dispatch instructions to the
+// appropriate checker based on opcode properties. The separation between strategy
+// construction and usage allows testing individual strategies in isolation.
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "il/verify/FunctionVerifier.hpp"

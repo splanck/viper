@@ -1,8 +1,49 @@
-// File: src/il/build/IRBuilder.hpp
-// Purpose: Declares helper class for building IL modules.
-// Key invariants: None.
-// Ownership/Lifetime: Does not own the module it modifies.
-// Links: docs/il-guide.md#reference
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file declares the IRBuilder class, which provides a high-level API for
+// constructing IL modules programmatically. IRBuilder is the primary interface
+// used by frontend compilers to generate IL code from source languages.
+//
+// The IRBuilder class manages the insertion point (current basic block) and
+// provides fluent methods for emitting instructions, managing control flow,
+// and tracking SSA temporaries. It enforces structural invariants like block
+// termination and simplifies common patterns like creating branches, calls,
+// and arithmetic operations.
+//
+// Key Capabilities:
+// - Module construction: Add externs, globals, and functions
+// - Block management: Create blocks, set insertion points, track terminators
+// - Instruction emission: Arithmetic, comparisons, memory ops, control flow
+// - SSA management: Automatic temporary ID assignment and tracking
+// - Type safety: Type-aware instruction constructors
+// - Source locations: Attach line/column info for diagnostics
+//
+// Typical Usage Pattern:
+//   Module m;
+//   IRBuilder builder(m);
+//   auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
+//   auto &entry = builder.createBlock(fn, "entry");
+//   builder.setInsertPoint(entry);
+//   auto result = builder.add(builder.constInt(10), builder.constInt(32));
+//   builder.ret(result);
+//
+// Design Philosophy:
+// - Stateful: Maintains insertion point for sequential code generation
+// - Fluent: Methods return values that can be immediately used as operands
+// - Safe: Validates block termination and SSA invariants
+// - Minimal: Focused on IR construction, not analysis or transformation
+//
+// The IRBuilder does NOT own the Module it operates on. The caller must ensure
+// the Module outlives all builder operations. This allows multiple builders to
+// work on the same module (though not concurrently on the same function).
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "il/core/BasicBlock.hpp"

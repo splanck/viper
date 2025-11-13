@@ -1,8 +1,34 @@
-// File: src/il/verify/DiagFormat.hpp
-// Purpose: Declare shared helpers for formatting IL verifier diagnostics.
-// Key invariants: Formatting helpers only inspect immutable IL structures.
-// Ownership/Lifetime: Non-owning references to IL structures provided by callers.
-// Links: docs/il-guide.md#reference
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file declares diagnostic formatting utilities for the IL verifier. These
+// helpers generate human-readable error messages that provide context about where
+// verification failures occurred within the IL module hierarchy.
+//
+// Effective error reporting requires identifying not just what failed, but where
+// the failure occurred. IL programs are organized as modules containing functions
+// containing basic blocks containing instructions. The formatting utilities in
+// this file construct diagnostic messages that include this hierarchical context,
+// making verification errors easier to locate and fix.
+//
+// Key Responsibilities:
+// - Format block-level diagnostics with function and block label context
+// - Format instruction-level diagnostics with function, block, and instruction
+// - Generate compact instruction snippets for error message inclusion
+// - Provide consistent diagnostic formatting across all verifier components
+//
+// Design Notes:
+// All formatters are stateless pure functions accepting const references to IL
+// structures. They never modify the IL or take ownership. The formatted strings
+// are designed for command-line output and follow a consistent pattern:
+// "function 'name' block 'label': instruction 'snippet': message".
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "il/core/fwd.hpp"

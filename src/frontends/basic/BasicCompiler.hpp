@@ -1,8 +1,84 @@
-// File: src/frontends/basic/BasicCompiler.hpp
-// Purpose: Declares the BASIC front-end driver that compiles source text into IL.
-// Key invariants: Diagnostics are captured before emitting the final module.
-// Ownership/Lifetime: Result owns diagnostics; borrows SourceManager for source mapping.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file declares the BasicCompiler driver class, which orchestrates the
+// complete BASIC-to-IL compilation pipeline.
+//
+// The BasicCompiler provides the top-level entry point for compiling BASIC
+// source code into Viper Intermediate Language (IL) modules, coordinating all
+// compilation stages:
+//   Lexer → Parser → AST → Semantic → Lowerer → IL
+//
+// Key Responsibilities:
+// - Pipeline orchestration: Coordinates the lexer, parser, semantic analyzer,
+//   and lowerer to produce a valid IL module from BASIC source code
+// - Diagnostic management: Collects and reports errors/warnings from all
+//   compilation stages via a unified DiagnosticEngine
+// - Source management: Integrates with the SourceManager for file tracking
+//   and location-based error reporting
+// - Configuration: Applies compilation options (bounds checking, optimization
+//   settings) to control lowering behavior
+// - Result packaging: Returns a structured result containing the IL module,
+//   diagnostics, and compilation metadata
+//
+// Compilation Flow:
+// 1. Lexical Analysis: Tokenize BASIC source text
+// 2. Syntax Analysis: Parse tokens into AST
+// 3. Semantic Analysis: Validate AST, resolve symbols, check types
+// 4. IL Generation: Lower AST to IL instructions
+// 5. Module Finalization: Return IL module with diagnostics
+//
+// Compilation Options:
+// - Bounds checking: Enable/disable runtime array bounds checks (default: off)
+// - Debug info: Control source location preservation in IL (future)
+// - Optimization level: Configure lowering optimizations (future)
+//
+// Input Specification:
+// - Source code: BASIC program text as string_view
+// - Path: Source file path for diagnostic messages (optional)
+// - File ID: Existing file identifier in SourceManager (optional)
+//
+// Output Structure:
+// The compiler returns a BasicCompilerResult containing:
+// - IL module: The lowered program ready for VM execution or codegen
+// - Diagnostics: All errors, warnings, and notes from compilation
+// - Emitter: Configured DiagnosticEmitter for formatting messages
+// - File ID: Source file identifier for cross-referencing
+//
+// Error Handling:
+// - Compilation may produce diagnostics at any stage
+// - The IL module may be null if parsing or semantic analysis fails
+// - Diagnostics are accumulated and available even on failure
+// - The result always includes the DiagnosticEngine for error reporting
+//
+// Design Notes:
+// - The compiler owns the DiagnosticEngine and DiagnosticEmitter
+// - Source management is borrowed via SourceManager reference
+// - The returned IL module transfers ownership to the caller
+// - Multiple compilations can share a single SourceManager
+//
+// Usage:
+//   support::SourceManager srcMgr;
+//   BasicCompilerInput input{
+//     .source = sourceCode,
+//     .path = "program.bas"
+//   };
+//   BasicCompilerOptions opts{
+//     .boundsChecks = true
+//   };
+//   auto result = compileBasicProgram(input, srcMgr, opts);
+//   if (result.module) {
+//     // Compilation succeeded, use IL module
+//   } else {
+//     // Report diagnostics
+//     result.emitter->report(result.diagnostics);
+//   }
+//
+//===----------------------------------------------------------------------===//
 #pragma once
 
 #include "frontends/basic/DiagnosticEmitter.hpp"

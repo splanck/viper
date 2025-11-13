@@ -1,10 +1,35 @@
-// File: src/il/verify/ExceptionHandlerAnalysis.hpp
-// Purpose: Declare helpers that analyse exception-handler blocks and signatures.
-// Key invariants: Handler blocks must declare (%err:Error, %tok:ResumeTok) with
-// the expected parameter identifiers.
-// Ownership/Lifetime: Operates on verifier-supplied IL references without owning
-// them.
-// Links: docs/il-guide.md#reference
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file declares analysis utilities for identifying and validating exception
+// handler basic blocks within IL functions. Handler blocks have a special signature
+// structure that must be verified to ensure correct exception handling semantics.
+//
+// The IL exception handling model requires that handler blocks (targets of eh.push
+// instructions) declare exactly two parameters: an Error value representing the
+// caught exception and a ResumeTok enabling resume operations. These parameters
+// must follow a specific naming convention (%err and %tok) to support runtime
+// exception dispatch.
+//
+// Key Responsibilities:
+// - Identify handler blocks by analyzing their parameter structure
+// - Validate handler blocks have exactly two parameters with correct types
+// - Verify handler parameters use the required identifiers (%err, %tok)
+// - Extract parameter IDs for use in exception handling verification
+//
+// Design Notes:
+// The analyzeHandlerBlock function returns an optional HandlerSignature, using
+// std::nullopt to indicate a block is not a handler and Expected<>::error() to
+// indicate a handler with invalid structure. This three-way result enables the
+// verifier to distinguish between non-handlers, valid handlers, and malformed
+// handlers requiring different verification logic.
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "support/diag_expected.hpp"

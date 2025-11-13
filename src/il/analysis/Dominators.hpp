@@ -1,8 +1,34 @@
-// File: src/il/analysis/Dominators.hpp
-// Purpose: Dominator tree computation and queries.
-// Key invariants: Dominator tree is computed eagerly and remains constant; no incremental updates.
-// Ownership/Lifetime: Operates on IL blocks owned by the caller.
-// Links: docs/dev/analysis.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file declares the dominator tree analysis for IL functions. The dominator
+// tree captures dominance relationships in the control flow graph: block A dominates
+// block B if every path from the function entry to B must pass through A. This
+// fundamental analysis enables many optimizations including SSA construction,
+// loop analysis, and code motion.
+//
+// Dominator Tree Properties:
+// - A block dominates itself
+// - The entry block dominates all reachable blocks
+// - The immediate dominator (idom) of a block B is the unique dominator that is
+//   closest to B in the CFG
+// - The dominator tree has the entry block as root, with edges from each block
+//   to its immediate dominator
+//
+// This analysis uses the Lengauer-Tarjan algorithm for efficient dominator tree
+// construction with near-linear time complexity. The tree is computed eagerly when
+// analysis is requested and cached until invalidated by transformations.
+//
+// Key Queries:
+// - dominates(A, B): Returns true if A dominates B
+// - getImmediateDominator(B): Returns the immediate dominator of B
+// - dominanceFrontier(B): Computes blocks where B's dominance ends
+//
+//===----------------------------------------------------------------------===//
 #pragma once
 
 #include <unordered_map>

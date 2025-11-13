@@ -156,8 +156,10 @@ void buildNamespaceRegistry(const Program &program,
                         nsPath += usingDecl.namespacePath[i];
                     }
 
-                    // Record USING directive.
-                    if (!nsPath.empty())
+                    // Record only file-scoped USING directives in UsingContext.
+                    // USING inside NAMESPACE blocks is handled by SemanticAnalyzer's
+                    // scoped usingStack_ and must not leak into file-scoped context.
+                    if (nsStack.empty() && !nsPath.empty())
                         usings.add(std::move(nsPath), usingDecl.alias, usingDecl.loc);
                     break;
                 }

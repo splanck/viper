@@ -1,8 +1,33 @@
-// File: src/runtime/rt_fp.h
-// Purpose: Declares floating-point helpers enforcing BASIC domain semantics.
-// Key invariants: Helpers preserve IEEE-754 defaults and report domain errors via ok flags.
-// Ownership/Lifetime: None.
-// Links: docs/specs/numerics.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file declares floating-point arithmetic helpers that enforce BASIC language
+// domain and error semantics. While the underlying implementation uses IEEE-754
+// arithmetic, BASIC requires explicit error handling for domain violations that
+// would produce NaN or infinity in C.
+//
+// BASIC's mathematical functions have well-defined error conditions: negative
+// bases with fractional exponents, logarithms of negative numbers, square roots
+// of negative values. Standard C library functions return NaN or infinity for
+// these cases, propagating special values through subsequent calculations. BASIC
+// requires immediate traps for domain errors.
+//
+// The helpers in this file wrap standard math operations and provide out-parameters
+// to signal domain or overflow conditions. The IL lowering from BASIC generates
+// code that checks these flags and branches to trap handlers when errors occur,
+// maintaining BASIC's error semantics while using efficient floating-point hardware.
+//
+// Key Design Points:
+// - Domain checking: Functions validate inputs and set error flags before computation
+// - IEEE-754 preservation: When inputs are valid, results match standard C math library
+// - Trap coordination: Error flags integrate with IL's branch-on-condition patterns
+//   for efficient error handling without exception overhead
+//
+//===----------------------------------------------------------------------===//
 #pragma once
 
 #include <stdbool.h>

@@ -1,8 +1,38 @@
-// File: src/il/verify/DiagSink.hpp
-// Purpose: Declares diagnostic sinks used by verifier components to collect warnings.
-// Key invariants: Sinks accept diagnostics in the order reported and decide ownership policy.
-// Ownership/Lifetime: Implementations own stored diagnostics or forward them immediately.
-// Links: docs/il-guide.md#reference
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file declares the diagnostic infrastructure for the IL verifier, providing
+// interfaces for reporting and collecting verification errors and warnings. The
+// DiagSink abstraction decouples verification logic from diagnostic storage and
+// output strategies.
+//
+// The IL verifier must report both hard errors (verification failures) and
+// warnings (suspicious patterns that don't violate the spec). Rather than coupling
+// verification code to specific output mechanisms, this file defines a sink
+// interface that verification passes can report to. Different sink implementations
+// can collect diagnostics for batch processing, forward them immediately to stderr,
+// or integrate with IDE error reporting systems.
+//
+// Key Responsibilities:
+// - Define structured diagnostic codes for verifier-specific errors
+// - Provide DiagSink interface for decoupled diagnostic reporting
+// - Implement CollectingDiagSink for in-memory diagnostic accumulation
+// - Offer factory functions for constructing verifier diagnostics
+//
+// Design Rationale:
+// The DiagSink pattern follows the observer pattern, allowing verification passes
+// to remain agnostic about diagnostic consumption. The VerifyDiagCode enum provides
+// structured error identification enabling programmatic diagnostic filtering and
+// tooling integration. The distinction between errors (verification failures) and
+// warnings (potential issues) supports both strict validation and best-practice
+// linting workflows.
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "support/diag_expected.hpp"

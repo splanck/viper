@@ -1,9 +1,31 @@
-// File: src/il/runtime/RuntimeSignatureParser.hpp
-// License: MIT License. See LICENSE in the project root for full license information.
-// Purpose: Declares helpers for parsing runtime signature specifications.
-// Key invariants: Parsing utilities interpret specifications used in runtime data tables.
-// Ownership/Lifetime: Stateless free functions operating on provided string views.
-// Links: docs/il-guide.md#reference
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file declares parsing utilities for runtime helper signature specifications.
+// Runtime helpers (memory allocation, string operations, math functions) have
+// signatures encoded as compact string specifications that must be parsed into
+// structured type information for IL generation and optimization.
+//
+// The runtime signature system uses a domain-specific notation to describe function
+// signatures compactly: return type, parameter types, and side effect annotations.
+// These specifications are stored in data tables and parsed during compiler initialization
+// to build the runtime helper registry. This file provides the parsing infrastructure
+// that interprets these specifications.
+//
+// Specification Format:
+// Signatures use a simple text format: "RetType(ParamType1, ParamType2, ...)"
+// with type names matching IL core types (i32, f64, ptr, etc.). Effect annotations
+// like "noalias" and "readonly" may be attached to parameters.
+//
+// The parser handles whitespace, validates type names, splits parameter lists,
+// and constructs RuntimeSignature objects that the compiler uses to generate
+// correct IL for runtime helper calls.
+//
+//===----------------------------------------------------------------------===//
 #pragma once
 
 #include "il/runtime/RuntimeSignatures.hpp"

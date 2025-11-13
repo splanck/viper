@@ -1,8 +1,50 @@
-// File: src/il/io/Serializer.hpp
-// Purpose: Declares text serializer for IL modules.
-// Key invariants: None.
-// Ownership/Lifetime: Serializer operates on provided modules.
-// Links: docs/il-guide.md#reference
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file declares the Serializer class, which converts IL modules to their
+// textual representation. The serializer is the inverse of the Parser, producing
+// human-readable IL code that can be saved to files, inspected for debugging,
+// or transmitted between compilation stages.
+//
+// The Serializer supports two output modes:
+// - Pretty mode: Human-readable with indentation, comments, and whitespace
+// - Canonical mode: Minimal whitespace for deterministic output and diffing
+//
+// Serialization is used throughout the Viper toolchain:
+// - ilc -emit-il: Output IL from frontend compilation
+// - il-dis: Disassemble binary IL to text
+// - Test golden files: Canonical output for regression testing
+// - Debugging: Inspect intermediate optimization results
+// - Error messages: Show context around verification failures
+//
+// The serializer produces output conforming to the IL grammar defined in
+// docs/il-guide.md. All serialized IL should parse back to an equivalent module
+// structure (modulo whitespace and comments in Pretty mode).
+//
+// Key Responsibilities:
+// - Module structure: Version header, target triple, extern declarations
+// - Global data: String constants and numeric globals with initializers
+// - Functions: Signatures, parameters, basic blocks, and instructions
+// - Instructions: Opcodes, operands, types, and optional metadata
+// - Values: Temporaries (%N), constants, global addresses (@name)
+// - Control flow: Branch targets, arguments, switch cases
+//
+// Design Decisions:
+// - Stateless: No persistent state between serialize calls
+// - Static methods: No need to instantiate Serializer objects
+// - Stream-based: Output to std::ostream for flexibility (files, strings, stdout)
+// - Format control: Mode parameter allows callers to choose output style
+//
+// Thread Safety:
+// The Serializer is thread-safe because it's stateless. Multiple threads can
+// serialize different modules concurrently without synchronization.
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "il/core/fwd.hpp"

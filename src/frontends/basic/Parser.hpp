@@ -1,9 +1,55 @@
-// File: src/frontends/basic/Parser.hpp
-// Purpose: Declares BASIC parser producing Program with separate procedure and
-//          main statement lists.
-// Key invariants: Maintains token lookahead buffer.
-// Ownership/Lifetime: Parser owns lexer and token buffer.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file declares the Parser class, which performs syntax analysis of BASIC
+// source code and constructs an Abstract Syntax Tree (AST).
+//
+// The parser is the second stage of the BASIC frontend compilation pipeline:
+//   Lexer → Parser → AST → Semantic → Lowerer → IL
+//
+// Key Responsibilities:
+// - Consumes tokens from the lexer and builds a structured AST representation
+// - Parses BASIC language constructs including:
+//   * Declarations (DIM for variables/arrays, SUB/FUNCTION definitions)
+//   * Statements (assignments, control flow, I/O operations)
+//   * Expressions (arithmetic, logical, string operations, function calls)
+// - Produces a Program node containing:
+//   * Main statement sequence (top-level executable code)
+//   * Procedure definitions (SUB/FUNCTION bodies)
+//   * Global declarations (shared variables, module-level state)
+// - Performs syntax validation and reports parse errors via DiagnosticEmitter
+// - Maintains lookahead buffer for efficient recursive descent parsing
+//
+// Design Notes:
+// - Implements recursive descent parsing with operator precedence for expressions
+// - The parser owns its lexer and manages the token stream internally
+// - AST nodes are heap-allocated and returned via std::unique_ptr for ownership
+//   transfer to the semantic analyzer
+// - Error recovery: The parser attempts to synchronize on statement boundaries
+//   (newlines, keywords) to report multiple errors in a single pass
+// - Statement sequencing: Handles both line-number-based and modern structured
+//   BASIC code, properly sequencing statements across line boundaries
+//
+// BASIC Language Features Supported:
+// - Variables with type suffixes (%, &, !, #, $)
+// - Multi-dimensional arrays with optional explicit bounds
+// - Procedures (SUB) and functions (FUNCTION) with parameters and return values
+// - Control flow: IF/THEN/ELSE, FOR/NEXT, DO/LOOP, WHILE/WEND, SELECT CASE
+// - I/O: PRINT, INPUT, READ/DATA, file operations
+// - Built-in functions: mathematical, string manipulation, type conversion
+//
+// Usage:
+//   Parser parser(sourceText, fileId, &diagnosticEmitter);
+//   auto program = parser.parseProgram();
+//   if (program) {
+//     // Proceed to semantic analysis
+//   }
+//
+//===----------------------------------------------------------------------===//
 #pragma once
 
 #include "frontends/basic/DiagnosticEmitter.hpp"

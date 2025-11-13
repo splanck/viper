@@ -1,8 +1,35 @@
-// File: src/il/transform/AnalysisManager.hpp
-// Purpose: Declare analysis registration and caching utilities for IL transforms.
-// Key invariants: Cached results are invalidated according to preservation summaries.
-// Ownership/Lifetime: AnalysisManager borrows module references and owns transient caches per run.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file declares the analysis manager, which handles registration, caching,
+// and invalidation of analysis results during pass pipeline execution. Analyses
+// compute properties of IL modules (CFG, dominators, liveness) that multiple
+// passes can reuse without redundant computation.
+//
+// Optimization passes often depend on common analyses like control flow graphs
+// or dominator trees. Computing these analyses is expensive; recomputing them
+// after each pass would be wasteful. The analysis manager caches analysis results
+// and tracks which passes invalidate which analyses, enabling efficient reuse
+// of expensive computations.
+//
+// Caching and Invalidation Model:
+// - Registration: Each analysis registers a compute function that produces results
+//   from a module or function
+// - On-demand computation: When a pass requests an analysis, the manager checks
+//   the cache. If results exist and are valid, they're returned. Otherwise, the
+//   analysis is computed and cached.
+// - Preservation-based invalidation: After each pass, the manager consults the
+//   pass's PreservedAnalyses metadata. Only analyses not marked as preserved are
+//   invalidated and removed from the cache.
+//
+// This design enables optimal performance while maintaining correctness: analyses
+// are computed exactly once until a transformation invalidates them.
+//
+//===----------------------------------------------------------------------===//
 #pragma once
 
 #include "il/core/fwd.hpp"

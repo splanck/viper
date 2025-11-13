@@ -1,8 +1,44 @@
-// File: src/il/verify/FunctionVerifier.hpp
-// Purpose: Declares the verifier responsible for validating module functions and their bodies.
-// Key invariants: Function, block, and instruction checks follow IL specification invariants.
-// Ownership/Lifetime: Holds pointers into the inspected module for the duration of verification
-// only. Links: docs/il-guide.md#reference
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file declares the FunctionVerifier class, which orchestrates comprehensive
+// validation of IL function definitions. The FunctionVerifier is the central
+// coordinator for verifying function bodies, dispatching to specialized strategies
+// for different instruction categories.
+//
+// Functions are the primary unit of code in IL modules. Each function contains
+// zero or more basic blocks, each block contains zero or more instructions. The
+// FunctionVerifier ensures that every function adheres to IL specification rules
+// including proper control flow structure, type safety, and exception handling
+// semantics.
+//
+// Key Responsibilities:
+// - Validate function signature (name, parameters, return type)
+// - Build basic block symbol tables for control flow edge validation
+// - Verify basic block structure (parameters, terminator presence)
+// - Dispatch instruction verification to registered strategies
+// - Maintain type inference context across instruction verification
+// - Validate exception handler blocks and their signatures
+//
+// Design Rationale:
+// The strategy pattern enables extensible instruction verification. Each opcode
+// category (arithmetic, memory, control flow, exceptions) has dedicated strategy
+// implementations. The FunctionVerifier coordinates strategy execution while
+// maintaining the shared verification context (type environment, block maps,
+// extern/function tables) needed by all strategies.
+//
+// Ownership and Lifetime:
+// The FunctionVerifier holds const pointers into the module being verified. These
+// pointers are valid only during the run() method execution and must not be
+// retained afterward. The verifier builds temporary maps and type environments
+// that exist only for the duration of a single function's verification.
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "il/verify/DiagSink.hpp"

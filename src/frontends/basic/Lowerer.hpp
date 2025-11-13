@@ -1,9 +1,74 @@
-// File: src/frontends/basic/Lowerer.hpp
-// Purpose: Declares lowering from BASIC AST to IL with helper routines and
-// centralized runtime declarations.
-// Key invariants: Procedure block labels are deterministic.
-// Ownership/Lifetime: Lowerer does not own AST or module.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file declares the Lowerer class, which transforms validated BASIC AST
+// nodes into Viper Intermediate Language (IL) instructions.
+//
+// The lowerer is the final stage of the BASIC frontend compilation pipeline:
+//   Lexer → Parser → AST → Semantic → Lowerer → IL
+//
+// Key Responsibilities:
+// - AST-to-IL translation: Converts high-level BASIC constructs into IL
+//   instructions that can be executed by the Viper VM or compiled to native code
+// - Expression lowering: Transforms BASIC expressions (arithmetic, logical,
+//   string operations) into IL register operations and value computations
+// - Statement lowering: Converts BASIC statements (assignments, control flow,
+//   I/O) into IL basic blocks with appropriate control flow edges
+// - Runtime integration: Emits calls to the Viper runtime library for:
+//   * String operations (concatenation, comparison, substring)
+//   * I/O operations (PRINT, INPUT)
+//   * Array operations (dynamic allocation, bounds checking)
+//   * Built-in functions (mathematical, string manipulation, type conversion)
+// - Memory management: Generates IL for variable allocation, array storage,
+//   and string lifetime management
+// - Control flow: Constructs IL basic blocks for:
+//   * Conditional branches (IF/THEN/ELSE)
+//   * Loops (FOR/NEXT, DO/LOOP, WHILE/WEND)
+//   * Select statements (SELECT CASE)
+//   * Procedure calls and returns
+//
+// IL Generation Strategy:
+// - Procedures: Each BASIC SUB/FUNCTION becomes an IL function with proper
+//   parameter passing and return value handling
+// - Variables: BASIC variables map to IL locals (stack allocation) or globals
+// - Arrays: Multi-dimensional arrays are lowered to runtime library calls
+//   for allocation and element access with bounds checking
+// - Labels and GOTO: BASIC labels become IL basic block labels with
+//   appropriate branch instructions
+// - Type system: BASIC type suffixes map to IL primitive types (i32, i64,
+//   f32, f64, string)
+//
+// Runtime Library Integration:
+// The lowerer generates calls to runtime functions for operations not directly
+// expressible in IL:
+// - String operations: viper_string_concat, viper_string_compare, etc.
+// - I/O: viper_print, viper_input, viper_read, etc.
+// - Arrays: viper_array_alloc, viper_array_get, viper_array_set
+// - Built-ins: viper_math_sin, viper_string_left, etc.
+//
+// Design Notes:
+// - The lowerer does not own the AST or IL module; it receives them as
+//   parameters and populates the module with IL functions
+// - Uses IRBuilder for efficient IL instruction emission
+// - Maintains deterministic block label generation for reproducible output
+// - Coordinates with NameMangler for consistent symbol naming across
+//   compilation units
+// - Supports optional bounds checking for array operations (debug mode)
+//
+// Lowering Pipeline Components:
+// - LowerExprNumeric: Arithmetic and numeric operations
+// - LowerExprLogical: Boolean and comparison operations
+// - LowerExprBuiltin: Built-in function calls
+// - LowerStmt_Core: Assignment and basic statements
+// - LowerStmt_Control: Control flow (IF, FOR, WHILE, SELECT)
+// - LowerStmt_IO: I/O operations (PRINT, INPUT)
+// - LowerRuntime: Runtime library function declarations
+//
+//===----------------------------------------------------------------------===//
 #pragma once
 
 #include "frontends/basic/AST.hpp"

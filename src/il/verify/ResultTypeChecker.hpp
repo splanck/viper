@@ -1,8 +1,35 @@
-// File: src/il/verify/ResultTypeChecker.hpp
-// Purpose: Declares a helper that validates result presence and types against opcode metadata.
-// Key invariants: Operates on the verification context for a single instruction.
-// Ownership/Lifetime: Non-owning references to verification data structures.
-// Links: docs/il-guide.md#reference
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file declares the ResultTypeChecker helper class, which validates that an
+// instruction's result (if any) matches the requirements specified by its opcode
+// metadata. This is part of the structural verification phase that precedes
+// semantic type checking.
+//
+// IL instructions have varying result requirements: some produce no result (void),
+// some must produce exactly one result, and the result must match the type category
+// declared in the opcode metadata. The ResultTypeChecker encapsulates the logic
+// for validating these result constraints using the InstructionSpec from SpecTables.
+//
+// Key Responsibilities:
+// - Verify instructions with no result (ResultArity::Zero) have no result ID
+// - Ensure instructions requiring a result (ResultArity::One) declare a result
+// - Validate the result type matches or is compatible with metadata requirements
+// - Generate precise error messages for result presence/type mismatches
+//
+// Design Notes:
+// ResultTypeChecker is a stateless helper constructed with the verification context
+// and spec, then immediately executed via run(). This design pattern (construct and
+// execute) provides a focused API while keeping validation logic grouped with its
+// data dependencies. The checker is in il::verify::detail as it's an internal
+// component of the table-driven verification system.
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "il/verify/SpecTables.hpp"

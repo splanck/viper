@@ -1,8 +1,55 @@
-// File: src/frontends/basic/ProcRegistry.hpp
-// Purpose: Manages BASIC procedure signatures and registration diagnostics.
-// Key invariants: Each procedure name maps to a unique signature.
-// Ownership/Lifetime: Borrows SemanticDiagnostics; no AST ownership.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file declares the ProcRegistry class, which manages BASIC procedure
+// (SUB and FUNCTION) signatures and validates procedure declarations and calls.
+//
+// Procedure Management:
+// The ProcRegistry tracks all user-defined procedures in a BASIC program,
+// maintaining their signatures for:
+// - Forward reference validation: Ensuring calls to procedures declared later
+//   in the program are valid
+// - Signature checking: Verifying that procedure calls match the declared
+//   parameter count and types
+// - Duplicate detection: Reporting errors when procedures are defined multiple
+//   times with conflicting signatures
+//
+// Two-Pass Processing:
+// The registry supports the semantic analyzer's two-pass approach:
+// 1. Declaration pass: Collects all SUB and FUNCTION signatures from the AST
+// 2. Validation pass: Checks that all calls match registered signatures
+//
+// Procedure Signature Information:
+// For each procedure, the registry stores:
+// - Name: Procedure identifier (case-insensitive in BASIC)
+// - Parameters: List of parameter types (Integer, Long, Single, Double, String)
+// - Return type: For FUNCTION declarations, the return type; SUB has Void
+// - Declaration location: Source location for error reporting
+//
+// Call Validation:
+// When validating a procedure call, the registry checks:
+// - The procedure name is defined
+// - The argument count matches the parameter count
+// - Argument types are compatible with parameter types
+// - Functions are called in expression context
+// - SUBs are called as statements
+//
+// Integration:
+// - Used by: SemanticAnalyzer during both passes
+// - Borrows: SemanticDiagnostics for error reporting
+// - No AST ownership: The registry only stores signature metadata
+//
+// Design Notes:
+// - Procedure names are stored in canonical form (uppercase) for
+//   case-insensitive lookup
+// - Each procedure name maps to exactly one signature; redefinitions are errors
+// - The registry does not own AST nodes; it only references declaration metadata
+//
+//===----------------------------------------------------------------------===//
 #pragma once
 
 #include <optional>

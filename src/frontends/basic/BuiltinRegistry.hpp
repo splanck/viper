@@ -1,9 +1,54 @@
-// File: src/frontends/basic/BuiltinRegistry.hpp
-// Purpose: Central registry of BASIC built-in functions mapping names to
-//          semantic and lowering hooks.
-// Key invariants: Table order matches BuiltinCallExpr::Builtin enum.
-// Ownership/Lifetime: Static compile-time data only; no dynamic allocation.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file declares the BuiltinRegistry, a central registry of BASIC built-in
+// functions that maps function names to their semantic and lowering hooks.
+//
+// BASIC Built-in Functions:
+// BASIC provides a rich set of built-in functions for common operations:
+// - Mathematical: SIN, COS, TAN, ATN, EXP, LOG, SQR, ABS, SGN, INT
+// - String: LEFT$, RIGHT$, MID$, LEN, CHR$, ASC, STR$, VAL
+// - Type conversion: CINT, CLNG, CSNG, CDBL
+// - I/O: EOF, LOF, INPUT$
+//
+// Registry Structure:
+// The registry maintains a table of BuiltinInfo entries, each containing:
+// - Function name (e.g., "SIN", "LEFT$")
+// - Semantic checker: Validates arguments during semantic analysis
+// - Lowering hook: Generates IL code during lowering
+// - Builtin enum value: Unique identifier for the function
+//
+// Key Responsibilities:
+// - Name lookup: Maps BASIC function names to builtin identifiers
+// - Semantic validation: Provides type-checking hooks for each builtin
+// - IL generation: Connects each builtin to its lowering implementation
+// - Extensibility: Enables addition of new built-ins without modifying
+//   core parser or semantic analyzer logic
+//
+// Two-Stage Processing:
+// 1. Semantic Analysis: The registry's semantic hooks validate argument counts
+//    and types, reporting errors for invalid calls
+// 2. Lowering: The registry's lowering hooks generate appropriate IL:
+//    - Runtime calls for complex operations (string manipulation)
+//    - Inline IL for simple operations (ABS, SGN)
+//    - Math library calls for transcendental functions (SIN, COS)
+//
+// Integration:
+// - Used by: Parser to recognize built-in function calls
+// - Used by: SemanticAnalyzer to validate builtin arguments
+// - Used by: Lowerer to generate IL for builtin invocations
+//
+// Design Notes:
+// - Static compile-time data only; no dynamic allocation
+// - Table order must match BuiltinCallExpr::Builtin enum for O(1) lookup
+// - Each builtin has independent semantic and lowering implementations
+// - Registry is immutable after initialization
+//
+//===----------------------------------------------------------------------===//
 #pragma once
 
 #include "frontends/basic/Lowerer.hpp"

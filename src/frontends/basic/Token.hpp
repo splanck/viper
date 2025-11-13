@@ -1,8 +1,41 @@
-// File: src/frontends/basic/Token.hpp
-// Purpose: Defines token types for BASIC lexer.
-// Key invariants: Tokens carry source locations.
-// Ownership/Lifetime: Tokens are value types.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file defines the Token structure and TokenKind enumeration used by the
+// BASIC frontend lexer.
+//
+// Tokens are the fundamental units produced by lexical analysis and consumed by
+// the parser. Each token represents a classified lexeme (sequence of characters)
+// from the source code, along with its source location for diagnostic purposes.
+//
+// Token Categories:
+// - Markers: EOF, Unknown, Error
+// - Literals: Integer, Float, String
+// - Identifiers: Plain identifiers and those with type suffixes (%, &, !, #, $)
+// - Keywords: Language keywords (IF, THEN, FOR, DIM, SUB, FUNCTION, etc.)
+// - Operators: Arithmetic (+, -, *, /, ^), comparison (=, <, >, <=, >=, <>),
+//   logical (AND, OR, NOT), string (&)
+// - Punctuation: Parentheses, comma, colon, semicolon
+// - Structure: Newline (significant in BASIC's line-oriented syntax)
+//
+// Design Notes:
+// - Tokens are value types (copyable, movable) and own their lexeme string
+// - Source locations are stored as SourceLoc references to the source manager
+// - The TokenKind enumeration is generated from TokenKinds.def to enable
+//   table-driven parsing and easy maintenance
+// - Type suffixes (%, &, !, #, $) are part of identifier tokens, preserving
+//   BASIC's implicit type declaration semantics
+//
+// Integration:
+// - Produced by: Lexer::next()
+// - Consumed by: Parser for syntax analysis and AST construction
+// - Used throughout: Diagnostic messages for error reporting
+//
+//===----------------------------------------------------------------------===//
 #pragma once
 
 #include "support/source_location.hpp"

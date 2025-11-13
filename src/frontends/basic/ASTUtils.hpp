@@ -1,10 +1,52 @@
-// File: src/frontends/basic/ASTUtils.hpp
-// Purpose: Provides type-safe AST node checking and casting utilities that replace
-//          dynamic_cast with O(1) discriminator-based lookups.
-// Key invariants: All node type checks rely on the Kind discriminator which must
-//                 accurately reflect the concrete type.
-// Ownership/Lifetime: Utilities do not own nodes; they merely provide safe access.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file provides type-safe utilities for checking and casting BASIC AST
+// nodes, replacing dynamic_cast with efficient O(1) discriminator-based lookups.
+//
+// AST Node Type System:
+// BASIC AST nodes use a discriminator-based type system where each node carries
+// a Kind enum value that identifies its concrete type. This enables efficient
+// type checking and casting without RTTI overhead.
+//
+// Key Utilities:
+// - isa<T>(node): Check if a node is of type T (O(1) discriminator check)
+// - cast<T>(node): Cast a node to type T (debug assertion on type)
+// - dyn_cast<T>(node): Attempt to cast, returning nullptr on failure
+//
+// These utilities mirror LLVM's casting infrastructure and provide:
+// - Type safety: Compile-time type checking for AST traversal code
+// - Performance: O(1) discriminator checks instead of dynamic_cast overhead
+// - Debugging: Assertions catch incorrect casts during development
+//
+// Example Usage:
+//   if (isa<IfStmt>(stmt)) {
+//     auto* ifStmt = cast<IfStmt>(stmt);
+//     // Process if statement
+//   }
+//
+//   if (auto* binExpr = dyn_cast<BinaryExpr>(expr)) {
+//     // Process binary expression
+//   }
+//
+// Integration:
+// - Used by: Parser for AST node classification
+// - Used by: SemanticAnalyzer for type-specific validation
+// - Used by: Lowerer for node type dispatch
+// - Used by: AST traversal and visitor patterns
+//
+// Design Notes:
+// - All type checks rely on the Kind discriminator accurately reflecting the
+//   concrete node type
+// - Utilities do not own nodes; they merely provide safe access
+// - Header-only implementation for zero-cost abstraction
+// - Compatible with std::unique_ptr and raw pointer access patterns
+//
+//===----------------------------------------------------------------------===//
 #pragma once
 
 #include "frontends/basic/ast/ExprNodes.hpp"

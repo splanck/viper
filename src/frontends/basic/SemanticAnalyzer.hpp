@@ -1,10 +1,62 @@
-// File: src/frontends/basic/SemanticAnalyzer.hpp
-// Purpose: Declares BASIC semantic analyzer for symbol and label tracking,
-//          basic validation, and two-pass procedure registration.
-// Key invariants: Analyzer tracks defined symbols and reports unknown
-//                 references.
-// Ownership/Lifetime: Analyzer borrows DiagnosticEmitter; no AST ownership.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file declares the SemanticAnalyzer class, which performs semantic
+// analysis and validation of BASIC AST nodes.
+//
+// The semantic analyzer is the third stage of the BASIC compilation pipeline:
+//   Lexer → Parser → AST → Semantic → Lowerer → IL
+//
+// Key Responsibilities:
+// - Symbol resolution: Validates that all referenced variables, procedures,
+//   and labels are properly declared before use
+// - Type checking: Ensures type compatibility in expressions, assignments,
+//   and procedure calls according to BASIC's type system
+// - Scope management: Tracks local/global scopes, procedure parameters,
+//   and nested block structures
+// - Name resolution: Resolves identifiers to their declarations, handling
+//   BASIC's implicit type suffix rules (%, &, !, #, $)
+// - Array validation: Checks array dimension counts and bounds specifications
+// - Control flow validation: Ensures proper nesting of FOR/NEXT, DO/LOOP,
+//   WHILE/WEND, SELECT CASE constructs
+// - Procedure validation: Verifies RETURN statements, parameter counts,
+//   and function return value requirements
+//
+// Two-Pass Analysis:
+// The analyzer operates in two passes to handle forward references:
+// 1. Declaration pass: Collects all SUB/FUNCTION declarations and global
+//    variables to build the symbol table
+// 2. Validation pass: Checks statement bodies, resolves references, and
+//    validates type consistency
+//
+// Type System Integration:
+// - Implicit typing: Variables without explicit DIM use type suffixes
+//   (%, &, !, #, $) or default to single-precision floating point
+// - Explicit typing: DIM statements declare variable types explicitly
+// - Type promotion: Numeric operations may promote integer types to
+//   floating-point following BASIC's coercion rules
+// - String operations: Validated separately from numeric operations
+//
+// Error Reporting:
+// - Emits structured diagnostics via DiagnosticEmitter for:
+//   * Undefined variables and procedures
+//   * Type mismatches in expressions and assignments
+//   * Invalid control flow (NEXT without FOR, etc.)
+//   * Duplicate declarations
+//   * Invalid array usage (wrong dimension count, bounds errors)
+//
+// Design Notes:
+// - The analyzer does not modify the AST; it only validates and annotates
+//   the symbol table for use by the lowering stage
+// - Borrows DiagnosticEmitter for error reporting; does not own it
+// - Uses ProcRegistry for tracking procedure signatures
+// - Uses ScopeTracker for managing lexical scopes during analysis
+//
+//===----------------------------------------------------------------------===//
 #pragma once
 
 #include "frontends/basic/BasicTypes.hpp"

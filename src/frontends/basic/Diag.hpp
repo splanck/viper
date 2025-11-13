@@ -1,7 +1,43 @@
-// File: src/frontends/basic/Diag.hpp
-// Purpose: Centralized diagnostics helpers for BASIC frontend.
-// Key invariants: Messages are actionable and consistent across callers.
-// Ownership/Lifetime: Helpers emit through a caller-provided DiagnosticEmitter.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file provides centralized diagnostic helper functions for the BASIC
+// frontend, ensuring consistent and actionable error messages across all
+// compilation stages.
+//
+// Diagnostic Helpers:
+// These functions provide high-level diagnostic emission for common error
+// scenarios throughout the BASIC frontend:
+// - Duplicate procedure definitions
+// - Type mismatches in expressions and assignments
+// - Invalid control flow constructs
+// - Undefined symbol references
+// - Array dimension mismatches
+//
+// Key Benefits:
+// - Consistency: Standardized error message formatting across the frontend
+// - Actionability: Messages include context and suggestions for fixes
+// - Reusability: Common diagnostic patterns are centralized rather than
+//   duplicated throughout parser, semantic analyzer, and lowerer code
+// - Maintainability: Error message updates can be made in one place
+//
+// Integration:
+// - Used by: Parser, SemanticAnalyzer, Lowerer
+// - Emits through: DiagnosticEmitter (passed as parameter)
+// - Message format: Consistent with BASIC frontend diagnostic conventions
+//
+// Design Notes:
+// - Helpers are stateless functions that emit through caller-provided emitter
+// - Each function encapsulates a specific diagnostic scenario with appropriate
+//   severity level and message text
+// - Functions may format multi-part diagnostics (e.g., showing both definition
+//   locations for duplicate symbols)
+//
+//===----------------------------------------------------------------------===//
 
 #pragma once
 

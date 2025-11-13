@@ -1,8 +1,34 @@
-// File: src/runtime/rt_random.h
-// Purpose: Declares deterministic random number helpers.
-// Key invariants: 64-bit linear congruential generator; reproducible across platforms.
-// Ownership/Lifetime: Uses internal global state; single-threaded.
-// Links: docs/runtime-vm.md#runtime-abi
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file declares the runtime's deterministic pseudo-random number generator,
+// implementing BASIC's RND and RANDOMIZE functions. The generator uses a 64-bit
+// linear congruential generator (LCG) that produces identical sequences across
+// all platforms for a given seed.
+//
+// BASIC programs depend on reproducible random number sequences for testing and
+// deterministic simulation. Unlike C's rand() which varies across implementations,
+// Viper's RNG uses a fixed algorithm that generates the same sequence on all
+// platforms given the same seed value.
+//
+// Implementation Design:
+// - 64-bit LCG: Uses the multiplier and increment constants from Knuth's MMIX
+//   for full period and good statistical properties
+// - Floating-point output: Maps the 64-bit state to [0, 1) using the high 53 bits
+//   for maximum precision in double representation
+// - Global state: Maintains a single generator state for the entire program
+//   (BASIC's random functions are inherently global, not per-thread)
+// - Deterministic seeding: RANDOMIZE sets the state explicitly, enabling
+//   reproducible sequences in tests and simulations
+//
+// The generator is designed for BASIC compatibility and determinism, not
+// cryptographic security or advanced statistical applications.
+//
+//===----------------------------------------------------------------------===//
 #pragma once
 
 #include <stdint.h>

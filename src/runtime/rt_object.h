@@ -1,8 +1,37 @@
-// File: src/runtime/rt_object.h
-// Purpose: Declares allocation and reference counting helpers for runtime-managed objects.
-// Key invariants: Reference counts never underflow; allocation size matches runtime metadata.
-// Ownership/Lifetime: Callers receive owned pointers and must balance retain/release calls.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file declares the runtime's object allocation and reference counting
+// infrastructure. These functions provide the foundation for heap-allocated objects
+// with automatic memory management through reference counting, used by strings,
+// arrays, and user-defined types in BASIC programs.
+//
+// Viper's runtime uses reference counting for deterministic, low-latency memory
+// management without garbage collection pauses. Each allocated object has a header
+// containing its reference count and class identifier. Reference count increments
+// (retain) and decrements (release) maintain object lifetime, with deallocation
+// occurring when the count reaches zero.
+//
+// Object Lifecycle:
+// 1. Allocation: rt_obj_new_i64 allocates an object with initial reference count of 1
+// 2. Sharing: rt_obj_retain_maybe increments count when object is copied or stored
+// 3. Release: rt_obj_release_check0 decrements count and returns whether object should be freed
+// 4. Deallocation: rt_obj_free releases object memory after final release
+//
+// The class identifier enables runtime type checking and dispatches to appropriate
+// destructors for objects with owned resources. This design supports polymorphic
+// memory management while maintaining C-compatible ABI for IL-generated code.
+//
+// Key Invariants:
+// - Reference counts never underflow (debug builds include assertions)
+// - Allocation size matches class metadata and includes header overhead
+// - Release/retain calls are balanced for correct lifetime management
+//
+//===----------------------------------------------------------------------===//
 
 #pragma once
 

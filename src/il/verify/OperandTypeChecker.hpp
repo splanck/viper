@@ -1,8 +1,37 @@
-// File: src/il/verify/OperandTypeChecker.hpp
-// Purpose: Declares a helper that validates operand types against opcode metadata.
-// Key invariants: Operates on the verification context for a single instruction.
-// Ownership/Lifetime: Non-owning references to verification data structures.
-// Links: docs/il-guide.md#reference
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file declares the OperandTypeChecker helper class, which validates that
+// instruction operands have types compatible with the requirements specified by
+// opcode metadata. This is the type-checking layer of structural verification.
+//
+// IL opcodes declare type category constraints for their operands: some require
+// specific concrete types (i32, ptr, etc.), others require categories that match
+// the instruction's declared type, and some accept any type. The OperandTypeChecker
+// enforces these constraints using the InstructionSpec metadata and the type
+// environment maintained during verification.
+//
+// Key Responsibilities:
+// - Resolve actual operand types from literals, temporaries, and block parameters
+// - Match operand types against metadata type category requirements
+// - Handle InstrType category (operand type must match instruction's result type)
+// - Validate literal values fit within their declared type constraints
+// - Generate precise type mismatch diagnostics
+//
+// Design Notes:
+// OperandTypeChecker is the most complex of the structural verification helpers
+// because it must coordinate between the type environment (TypeInference), opcode
+// metadata (InstructionSpec), and actual operand values. It follows the same
+// construct-and-execute pattern as other detail checkers, with the run() method
+// orchestrating per-operand type validation. The checker is internal to the
+// table-driven verification system.
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "il/verify/SpecTables.hpp"

@@ -459,6 +459,34 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeBinary(const BinaryExpr &b)
 /// @return Semantic type observed for the NEW expression (currently Unknown).
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeNew(NewExpr &expr)
 {
+    // Helper: map canonical qualified name to declared-case name in OOP index.
+    auto mapCanonicalToDeclared = [&](const std::string &qcanon) -> std::string
+    {
+        if (const ClassInfo *ci = oopIndex_.findClass(qcanon))
+            return ci->qualifiedName;
+        auto toCanonQ = [](const std::string &q) -> std::string
+        {
+            std::vector<std::string> segs = SplitDots(q);
+            return CanonJoin(segs);
+        };
+        std::string want = toCanonQ(qcanon);
+        for (const auto &kv : oopIndex_.classes())
+        {
+            const std::string &decl = kv.second.qualifiedName;
+            if (toCanonQ(decl) == want)
+                return decl;
+        }
+        return qcanon;
+    };
+
+    // Treat a single qualified segment as an unqualified type name so USING and
+    // parent-walk resolution apply.
+    if (expr.qualifiedType.size() == 1)
+    {
+        expr.className = expr.qualifiedType.front();
+        expr.qualifiedType.clear();
+    }
+
     // Apply alias expansion for qualified type, if present.
     if (!expr.qualifiedType.empty() && !usingStack_.empty())
     {
@@ -470,7 +498,7 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeNew(NewExpr &expr)
             std::vector<std::string> expanded = SplitDots(it->second);
             expanded.insert(expanded.end(), expr.qualifiedType.begin() + 1, expr.qualifiedType.end());
             // Rebuild className from canonicalized expanded segments.
-            expr.className = CanonJoin(expanded);
+            expr.className = mapCanonicalToDeclared(CanonJoin(expanded));
         }
     }
 
@@ -480,9 +508,10 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeNew(NewExpr &expr)
         std::vector<std::string> attempts;
         auto existsQ = [&](const std::string &q) -> bool
         {
-            if (oopIndex_.interfacesByQname().count(q))
+            std::string decl = mapCanonicalToDeclared(q);
+            if (oopIndex_.interfacesByQname().count(decl))
                 return true;
-            return oopIndex_.findClass(q) != nullptr;
+            return oopIndex_.findClass(decl) != nullptr;
         };
 
         std::string ident = Canon(expr.className);
@@ -526,7 +555,7 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeNew(NewExpr &expr)
 
         if (hits.size() == 1)
         {
-            expr.className = hits[0];
+            expr.className = mapCanonicalToDeclared(hits[0]);
         }
         else if (hits.size() > 1)
         {
@@ -553,7 +582,7 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeNew(NewExpr &expr)
             }
             if (importHits.size() == 1)
             {
-                expr.className = importHits[0];
+                expr.className = mapCanonicalToDeclared(importHits[0]);
             }
             else if (importHits.size() > 1)
             {

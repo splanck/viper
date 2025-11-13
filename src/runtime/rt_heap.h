@@ -1,8 +1,62 @@
-// File: src/runtime/rt_heap.h
-// Purpose: Declare shared heap metadata utilities for runtime reference types.
-// Key invariants: Heap allocations include a header preceding payload with magic validation.
-// Ownership/Lifetime: Reference-counted; retain/release manage shared ownership.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file declares the unified heap allocation system used by all runtime
+// reference types (strings, arrays, objects). The heap API provides a common
+// foundation for memory management, reference counting, and metadata tracking
+// across different runtime data structures.
+//
+// All heap-allocated runtime objects share a common memory layout:
+//   [rt_heap_hdr_t header | element payload data]
+//                           ^
+//                           returned pointer
+//
+// The header precedes the payload and contains:
+// - magic: Validation marker (0x52504956 = "VIPR") for corruption detection
+// - kind: Object type (string, array, object) for type-safe operations
+// - elem_kind: Element type for arrays (i32, i64, f64, str, etc.)
+// - refcnt: Reference count for automatic memory management
+// - len: Current logical length (number of valid elements)
+// - cap: Total capacity (maximum elements before reallocation)
+//
+// Reference Counting Architecture:
+// The heap system implements automatic memory management through reference
+// counting. Each heap object tracks how many references (pointers) exist to
+// it. When the count drops to zero, the object is automatically freed.
+//
+// Reference counting operations:
+// - rt_heap_retain: Increment refcount (share ownership)
+// - rt_heap_release: Decrement refcount, free when zero
+// - rt_heap_release_deferred: Decrement without immediate free (batch cleanup)
+// - rt_heap_free_zero_ref: Explicit free of zero-refcount objects
+//
+// Type Safety:
+// The kind and elem_kind fields enable runtime type checking. Arrays track
+// their element type to ensure type-safe access and proper cleanup of nested
+// references (e.g., string arrays must release each string element).
+//
+// Memory Management Strategy:
+// The heap allocator uses malloc/free with header metadata. Future implementations
+// may add pooling, generational collection, or arena allocation for performance.
+// The current design prioritizes simplicity and correctness over optimization.
+//
+// Corruption Detection:
+// The magic field provides basic heap corruption detection. Invalid magic values
+// indicate memory corruption, use-after-free, or wild pointers. This catches
+// common memory safety bugs during development and testing.
+//
+// Integration with Runtime Types:
+// - Strings (rt_string): Use RT_HEAP_STRING, elem_kind = RT_ELEM_U8
+// - Int arrays: Use RT_HEAP_ARRAY, elem_kind = RT_ELEM_I32/I64
+// - Float arrays: Use RT_HEAP_ARRAY, elem_kind = RT_ELEM_F64
+// - String arrays: Use RT_HEAP_ARRAY, elem_kind = RT_ELEM_STR (requires special cleanup)
+// - Objects: Use RT_HEAP_OBJECT for OOP runtime support
+//
+//===----------------------------------------------------------------------===//
 
 #pragma once
 

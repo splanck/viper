@@ -1,8 +1,51 @@
-// File: src/frontends/basic/Intrinsics.hpp
-// Purpose: Declare registry of BASIC intrinsic functions.
-// Key invariants: Table entries are immutable and cover all supported intrinsics.
-// Ownership/Lifetime: Intrinsic descriptors are static; callers must not free.
-// Links: docs/codemap.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file declares the registry of BASIC intrinsic functions, providing
+// metadata for validation and code generation.
+//
+// BASIC Intrinsics:
+// BASIC provides a set of intrinsic (built-in) functions that are part of
+// the language specification rather than library functions. These include:
+// - Mathematical: ABS, SIN, COS, TAN, ATN, EXP, LOG, SQR, INT, RND
+// - String: LEN, ASC, CHR$, LEFT$, RIGHT$, MID$, INSTR, STR$, VAL
+// - Type conversion: CINT, CLNG, CSNG, CDBL, HEX$, OCT$
+// - System: EOF, LOF, TIMER, INPUT$
+//
+// Intrinsic Registry:
+// Each intrinsic is described by static metadata:
+// - Name: Function identifier (e.g., "SIN", "LEFT$")
+// - Parameter types: Expected argument types
+// - Return type: Result type of the function
+// - Arity: Fixed or variable argument count
+//
+// This registry provides type information for:
+// - Semantic validation during analysis
+// - IL generation during lowering
+// - Error message generation for invalid calls
+//
+// Type System:
+// Intrinsics use BASIC's type system:
+// - Int: Integer values (64-bit in this implementation)
+// - Float: Floating-point values (64-bit double precision)
+// - String: Variable-length character sequences
+//
+// Integration:
+// - Used by: Parser to recognize intrinsic function calls
+// - Used by: SemanticAnalyzer to validate intrinsic arguments
+// - Used by: Lowerer to generate appropriate IL (inline or runtime call)
+//
+// Design Notes:
+// - Intrinsic descriptors are immutable static data
+// - Table covers all supported BASIC intrinsics
+// - Callers must not free or modify descriptor entries
+// - Separate from BuiltinRegistry which handles extension functions
+//
+//===----------------------------------------------------------------------===//
 
 #pragma once
 

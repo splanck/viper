@@ -1,11 +1,35 @@
-// File: src/il/analysis/BasicAA.hpp
-// Purpose: Provide a minimal alias analysis and call-side effect classifier for IL.
-// Key invariants: Alias queries reason about SSA temporaries tied to allocas and
-//                 noalias parameters; call ModRef results fold callee metadata
-//                 from IL attributes and runtime registries.
-// Ownership/Lifetime: BasicAA holds non-owning references to the analysed
-//                     function/module and caches derived identifier sets.
-// Links: docs/dev/analysis.md
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// This file declares BasicAA, a fundamental alias analysis pass that provides
+// conservative memory disambiguation for IL optimizations. Alias analysis determines
+// whether two memory references may point to the same location, enabling optimizations
+// like load/store elimination, code motion, and memory optimization.
+//
+// BasicAA implements alias analysis using SSA-based reasoning about allocas,
+// function parameters, and pointer arithmetic. The analysis tracks allocation
+// sites (alloca instructions, parameters marked noalias) and uses flow-insensitive
+// reasoning to determine when two references definitely alias, definitely don't alias,
+// or may alias.
+//
+// Analysis Capabilities:
+// - Alloca-based reasoning: Stack allocations from distinct alloca instructions
+//   are known to not alias each other
+// - Parameter annotations: Function parameters marked with noalias attribute are
+//   treated as distinct from other allocations
+// - Call side effects: Determines which memory locations a call instruction may
+//   read or modify (ModRef analysis) using function attributes and runtime metadata
+// - Conservative defaults: When precise analysis is unavailable, assumes may-alias
+//
+// The analysis integrates with the runtime signature system to obtain side effect
+// information for runtime library calls, enabling optimization of code calling
+// intrinsics and helper functions.
+//
+//===----------------------------------------------------------------------===//
 #pragma once
 
 #include "il/core/Function.hpp"
