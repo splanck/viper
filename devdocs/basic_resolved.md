@@ -37,8 +37,38 @@ This document records bugs from devdocs/basic_bugs.md that have been verified an
 
 ---
 
+## BUG-016: Local string variables in methods cause compilation error
+- Status: RESOLVED (verified 2025-11-13)
+- Summary: Local string variable declarations inside class methods now work correctly. The previous "empty block" error has been fixed.
+- Test case:
+```basic
+CLASS Test
+    SUB ShowMessage()
+        DIM msg$ AS STRING
+        msg$ = "Hello"
+        PRINT msg$
+    END SUB
+END CLASS
+```
+- Validation: Test runs successfully and prints "Hello". String variables can now be declared and used within class methods without compilation errors.
+
+---
+
+## BUG-025: EXP of large values causes overflow trap
+- Status: RESOLVED (verified 2025-11-13)
+- Summary: EXP function no longer traps on large values. Instead of crashing with "fp overflow in cast.fp_to_si.rte.chk", it now returns the correct floating-point result (including infinity representation for very large values).
+- Test case:
+```basic
+x% = 100
+result# = EXP(x%)
+PRINT result#  ' Output: 2.68811714181614e+43
+```
+- Validation: EXP(100) runs successfully and returns approximately 2.688e43, which is the mathematically correct result. No more runtime traps.
+
+---
+
 ## Notes
-- Related resolved issues: BUG-032/033 (string arrays), BUG-034 (MID$ float indices + one-based start) are tracked in devdocs/basic_bugs2.md and reflected in goldens.
+- Related resolved issues: BUG-032/033 (string arrays - NOTE: still failing verification as of 2025-11-13), BUG-034 (MID$ float indices + one-based start) are tracked in devdocs/basic_bugs2.md and reflected in goldens.
 
 ---
 

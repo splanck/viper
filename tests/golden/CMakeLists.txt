@@ -573,6 +573,7 @@ function(viper_add_golden_suite_tests)
             "-DEXPECT=${EXPECT_DO_GOSUB_LOOP}"
             -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
 
+
     file(READ ${_VIPER_GOLDEN_DIR}/quickstart.stdout EXPECT_QUICKSTART)
     string(STRIP "${EXPECT_QUICKSTART}" EXPECT_QUICKSTART)
     viper_add_ctest(il_quickstart_example

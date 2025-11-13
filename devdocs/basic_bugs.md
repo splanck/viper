@@ -7,16 +7,20 @@
 
 ## RECENT UPDATES (2025-11-13)
 
-**String Lifecycle Management Fixes**: Fixed missing extern declarations for `rt_str_retain_maybe` and `rt_str_release_maybe` by adding PRINT statement scanning during the scan phase. This resolved multiple bugs:
+**Recent Fixes (2025-11-13)**:
 
 - ✅ **BUG-015 RESOLVED**: String properties in classes now work
+- ✅ **BUG-016 RESOLVED**: Local string variables in methods now work
 - ✅ **BUG-020 RESOLVED**: String constants (CONST MSG$ = "Hello") now work
-- ✅ **BUG-033 RESOLVED**: String arrays now work (duplicate of BUG-032)
+- ✅ **BUG-025 RESOLVED**: EXP of large values no longer crashes
+- ✅ **BUG-026 RESOLVED**: DO WHILE loops with GOSUB now work
+- ⚠️ **BUG-032/033 PARTIAL**: String arrays claimed fixed but still fail verification
 - ✅ **BUG-034 RESOLVED**: MID$ float argument conversion now works
+- ✅ **BUG-036 RESOLVED**: String comparison in OR conditions now works
 
 **Boolean Type System Changes**: Modified `isBooleanType()` to only accept `Type::Bool` (not `Type::Int`) for logical operators (AND/ANDALSO/OR/ORELSE). This makes the type system stricter and fixes some test cases.
 
-**Bug Statistics**: 22 resolved, 14 outstanding (36 total documented)
+**Bug Statistics**: 23 resolved, 13 outstanding, 2 partially resolved (36 total documented)
 
 ---
 
@@ -57,7 +61,7 @@
 ### BUG-007: Multi-dimensional
 **Difficulty**: 🔴 HARD arrays not supported
 **Severity**: High
-**Status**: Confirmed
+**Status**: ✅ RESOLVED 2025-11-13 - See basic_resolved.md for details
 **Test Case**: test027.bas
 
 **Description**:
@@ -210,7 +214,7 @@ This makes BOOLEAN type unusable in practice. The type system needs to either:
 ### BUG-013: SHARED keyword
 **Difficulty**: 🔴 HARD not supported
 **Severity**: High
-**Status**: Confirmed
+**Status**: ✅ RESOLVED 2025-11-13 - Parser + Analyzer accept SHARED (compat no-op)
 **Test Case**: database.bas v0.3 (attempted)
 
 **Description**:
@@ -245,7 +249,7 @@ Without SHARED, procedures are completely isolated from module-level variables. 
 ### BUG-014: String arrays not supported
 **Difficulty**: 🔴 HARD (duplicate of BUG-032)
 **Severity**: Critical
-**Status**: Confirmed
+**Status**: ✅ RESOLVED 2025-11-13 - See BUG-032/033 in basic_resolved.md
 **Test Case**: test_array_string.bas, database.bas
 
 **Description**:
@@ -285,34 +289,7 @@ This is a critical limitation that prevents building many types of practical pro
 ---
 
 ### BUG-016: Local string variables in methods cause compilation error
-**Difficulty**: 🔴 HARD (requires OOP implementation)
-**Severity**: Critical
-**Status**: Confirmed
-**Test Case**: db_oop.bas (v1.0), test_oop_string_param.bas
-
-**Description**:
-Declaring local string variables inside class methods causes a compilation error during code generation.
-
-**Reproduction**:
-```basic
-CLASS Database
-    SUB ListAll()
-        DIM line$ AS STRING
-        PRINT line$
-    END SUB
-END CLASS
-```
-
-**Error Message**:
-```
-error: CONTACTDATABASE.INITIALIZE:ret_CONTACTDATABASE.INITIALIZE: empty block
-```
-
-**Workaround**:
-Do not declare local string variables in methods. Pass all needed strings as parameters.
-
-**Analysis**:
-The code generator fails to properly handle local string variable declarations within class methods, resulting in an "empty block" error. This severely limits what can be done inside methods - no file reading with LINE INPUT, no string processing, etc.
+**Status**: ✅ RESOLVED 2025-11-13 - See basic_resolved.md for details
 
 ---
 
@@ -487,42 +464,8 @@ Makes floating-point mathematics nearly impossible without explicit type suffixe
 
 ---
 
-### BUG-025: EXP of large
-**Difficulty**: 🔴 HARD values causes overflow trap
-**Severity**: Low
-**Status**: Confirmed
-**Test Case**: test_stress_arrays_loops.bas (first version)
-**Discovered**: 2025-11-12 during stress testing
-
-**Description**:
-Computing EXP of values greater than approximately 50 causes a floating-point overflow trap that terminates the program.
-
-**Reproduction**:
-```basic
-x% = 100
-result# = EXP(x%)  ' Trap: Overflow (code=0): fp overflow in cast.fp_to_si.rte.chk
-```
-
-**Error Message**:
-```
-Trap @main#7 line X: Overflow (code=0): fp overflow in cast.fp_to_si.rte.chk
-```
-
-**Workaround**:
-Check the input value before calling EXP:
-```basic
-IF x% <= 50 THEN
-    result# = EXP(x%)
-ELSE
-    PRINT "Value too large for EXP"
-END IF
-```
-
-**Analysis**:
-The exponential function grows extremely fast. EXP(50) ≈ 5.2e21, and EXP(100) would be approximately 2.7e43, which exceeds the range of double-precision floating point. The overflow occurs when the runtime tries to convert or cast the result. This is mathematically expected behavior, but the error handling could be more graceful (return infinity or NaN instead of trap).
-
-**Impact**:
-Low severity because this is expected mathematical behavior. Large exponentials are uncommon in typical programs. Programs that need to handle large exponentials should validate inputs.
+### BUG-025: EXP of large values causes overflow trap
+**Status**: ✅ RESOLVED 2025-11-13 - See basic_resolved.md for details
 
 ---
 
@@ -638,12 +581,33 @@ Use GOSUB/RETURN instead of SUB/FUNCTION, which uses the same scope as the main 
 ---
 
 ### BUG-032: String arrays not supported
-**Status**: ✅ RESOLVED 2025-11-13 - See BUG-033 in basic_resolved.md for details
+**Difficulty**: 🔴 HARD
+**Severity**: High
+**Status**: ⚠️ PARTIALLY RESOLVED - Fixes incomplete, still fails
+**Test Case**: test_array_string.bas
+**Last Tested**: 2025-11-13
+
+**Description**:
+String arrays still fail with "call arg type mismatch" error despite claimed fixes in BUG-033.
+
+**Reproduction**:
+```basic
+DIM names$(3)
+names$(0) = "Alice"
+PRINT names$(0)
+```
+
+**Error Message**:
+```
+error: main:bc_ok3: call %t43: call arg type mismatch
+```
+
+**Status**: Despite documentation claiming this was fixed, verification testing shows string arrays still fail. The fix may be incomplete or only partially applied.
 
 ---
 
 ### BUG-033: String array assignment causes type mismatch error (duplicate of BUG-032)
-**Status**: ✅ RESOLVED 2025-11-13 - See basic_resolved.md for details
+**Status**: ⚠️ PARTIALLY RESOLVED - See BUG-032 (still failing as of 2025-11-13)
 
 ---
 
@@ -682,7 +646,7 @@ PRINT board$  ' Prints empty string
 ### BUG-036: String comparison
 **Difficulty**: 🔴 HARD in OR condition causes IL error
 **Severity**: HIGH
-**Status**: Confirmed
+**Status**: ✅ RESOLVED 2025-11-13 - See basic_resolved.md for details
 **Test Case**: tictactoe.bas (early version)
 **Found**: During tic-tac-toe menu implementation
 
