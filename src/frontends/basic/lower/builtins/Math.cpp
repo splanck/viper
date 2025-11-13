@@ -168,6 +168,11 @@ void registerMathBuiltins()
     register_builtin(getBuiltinInfo(Builtin::Ceil).name, &lowerMathBuiltin);
     register_builtin(getBuiltinInfo(Builtin::Sin).name, &lowerMathBuiltin);
     register_builtin(getBuiltinInfo(Builtin::Cos).name, &lowerMathBuiltin);
+    register_builtin(getBuiltinInfo(Builtin::Tan).name, &lowerMathBuiltin);
+    register_builtin(getBuiltinInfo(Builtin::Atn).name, &lowerMathBuiltin);
+    register_builtin(getBuiltinInfo(Builtin::Exp).name, &lowerMathBuiltin);
+    register_builtin(getBuiltinInfo(Builtin::Log).name, &lowerMathBuiltin);
+    register_builtin(getBuiltinInfo(Builtin::Sgn).name, &lowerMathBuiltin);
     register_builtin(getBuiltinInfo(Builtin::Pow).name, &lowerMathBuiltin);
     register_builtin(getBuiltinInfo(Builtin::Rnd).name, &lowerMathBuiltin);
     register_builtin(getBuiltinInfo(Builtin::Timer).name, &lowerMathBuiltin);
