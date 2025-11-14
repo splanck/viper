@@ -169,6 +169,11 @@ class Lowerer
     /// @brief Access the semantic analyzer when present.
     [[nodiscard]] const SemanticAnalyzer *semanticAnalyzer() const noexcept;
 
+    /// @brief Map a canonical (case-insensitive) qualified class name to its declared casing.
+    /// @details Uses the OOP index to find the class by case-insensitive match and returns
+    ///          the qualified name as declared. Falls back to the input when not found.
+    std::string resolveQualifiedClassCasing(const std::string &qname) const;
+
     /// @brief Mark a symbol as storing an object reference.
     /// @param name BASIC symbol name tracked in the symbol table.
     /// @param className Fully-qualified BASIC class name associated with the object.
@@ -594,10 +599,18 @@ class Lowerer
 
     Value emitConstStr(const std::string &globalName);
     void storeArray(Value slot, Value value, AstType elementType = AstType::I64);
+    void storeArray(Value slot,
+                    Value value,
+                    AstType elementType,
+                    bool isObjectArray);
     void releaseArrayLocals(const std::unordered_set<std::string> &paramNames);
     void releaseArrayParams(const std::unordered_set<std::string> &paramNames);
     void releaseObjectLocals(const std::unordered_set<std::string> &paramNames);
     void releaseObjectParams(const std::unordered_set<std::string> &paramNames);
+    void releaseDeferredTemps();
+    // Defer releases for temporaries
+    void deferReleaseStr(Value v);
+    void deferReleaseObj(Value v, const std::string &className = {});
 
     void emitTrap();
 
@@ -655,6 +668,17 @@ class Lowerer
     DiagnosticEmitter *diagnosticEmitter_{nullptr};
     const SemanticAnalyzer *semanticAnalyzer_{nullptr};
 
+    // Names of module-level variables referenced inside procedures; used to
+    // route main's accesses to runtime-backed storage for cross-proc sharing.
+    std::unordered_set<std::string> crossProcGlobals_;
+
+  public:
+    void markCrossProcGlobal(const std::string &name) { crossProcGlobals_.insert(name); }
+    bool isCrossProcGlobal(const std::string &name) const
+    {
+        return crossProcGlobals_.find(name) != crossProcGlobals_.end();
+    }
+
     // runtime requirement tracking
     using RuntimeFeature = il::runtime::RuntimeFeature;
 
@@ -675,6 +699,13 @@ class Lowerer
         ArrayStrGet,
         ArrayStrPut,
         ArrayStrLen,
+        // Object arrays (ptr elements)
+        ArrayObjNew,
+        ArrayObjLen,
+        ArrayObjGet,
+        ArrayObjPut,
+        ArrayObjResize,
+        ArrayObjRelease,
         ArrayOobPanic,
         OpenErrVstr,
         CloseErr,
@@ -689,6 +720,12 @@ class Lowerer
         StrReleaseMaybe,
         SleepMs,
         TimerMs,
+        // Module-level variable address helpers
+        ModvarAddrI64,
+        ModvarAddrF64,
+        ModvarAddrI1,
+        ModvarAddrPtr,
+        ModvarAddrStr,
         Count
     };
 
@@ -721,6 +758,13 @@ class Lowerer
     void requireArrayStrGet();
     void requireArrayStrPut();
     void requireArrayStrLen();
+    // Object array helpers
+    void requireArrayObjNew();
+    void requireArrayObjLen();
+    void requireArrayObjGet();
+    void requireArrayObjPut();
+    void requireArrayObjResize();
+    void requireArrayObjRelease();
     void requireOpenErrVstr();
     void requireCloseErr();
     void requireSeekChErr();
@@ -731,6 +775,12 @@ class Lowerer
     void requireEofCh();
     void requireLofCh();
     void requireLocCh();
+    // Module-level globals helpers
+    void requireModvarAddrI64();
+    void requireModvarAddrF64();
+    void requireModvarAddrI1();
+    void requireModvarAddrPtr();
+    void requireModvarAddrStr();
     // --- end: require declarations ---
     void requireStrRetainMaybe();
     void requireStrReleaseMaybe();

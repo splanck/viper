@@ -40,7 +40,6 @@ void Parser::registerIoParsers(StatementParserRegistry &registry)
     registry.registerHandler(TokenKind::KeywordClose, &Parser::parseCloseStatement);
     registry.registerHandler(TokenKind::KeywordSeek, &Parser::parseSeekStatement);
     registry.registerHandler(TokenKind::KeywordInput, &Parser::parseInputStatement);
-    registry.registerHandler(TokenKind::KeywordLine, &Parser::parseLineInputStatement);
 }
 
 /// @brief Parse the PRINT statement, supporting both console and channel forms.

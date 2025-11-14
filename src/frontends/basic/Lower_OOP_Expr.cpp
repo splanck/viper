@@ -89,6 +89,14 @@ std::string Lowerer::resolveObjectClass(const Expr &expr) const
     {
         return alloc->className;
     }
+    if (const auto *arr = as<const ArrayExpr>(expr))
+    {
+        // Array element access inherits the element's class from the array symbol
+        const auto *info = findSymbol(arr->name);
+        if (info && info->isObject && !info->objectClass.empty())
+            return info->objectClass;
+        return {};
+    }
     if (const auto *access = as<const MemberAccessExpr>(expr))
     {
         if (access->base)
@@ -390,8 +398,13 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
     }
 
     // Name of the direct callee when not using virtual dispatch.
-    std::string directCallee =
-        directQClass.empty() ? expr.method : mangleMethod(directQClass, expr.method);
+    std::string emitClassName = directQClass;
+    if (!directQClass.empty())
+    {
+        if (const ClassInfo *ci = oopIndex_.findClass(directQClass))
+            emitClassName = ci->qualifiedName;
+    }
+    std::string directCallee = emitClassName.empty() ? expr.method : mangleMethod(emitClassName, expr.method);
 
     // If virtual and not BASE-qualified, emit call.indirect; otherwise direct call or interface
     // dispatch. Interface dispatch via (expr AS IFACE).Method: detect AS with interface target.
@@ -461,6 +474,10 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
         if (retTy.kind != Type(Type::Kind::Void).kind)
         {
             Value result = emitCallIndirectRet(retTy, fnPtr, args);
+            if (retTy.kind == Type::Kind::Str)
+                deferReleaseStr(result);
+            else if (retTy.kind == Type::Kind::Ptr && !className.empty())
+                deferReleaseObj(result, className);
             return RVal{result, retTy};
         }
         emitCallIndirect(fnPtr, args);
@@ -492,6 +509,10 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
     {
         Type ilRetTy = ilTypeForAstType(*retType);
         Value result = emitCallRet(ilRetTy, directCallee, args);
+        if (ilRetTy.kind == Type::Kind::Str)
+            deferReleaseStr(result);
+        else if (ilRetTy.kind == Type::Kind::Ptr && !className.empty())
+            deferReleaseObj(result, className);
         return {result, ilRetTy};
     }
     emitCall(directCallee, args);

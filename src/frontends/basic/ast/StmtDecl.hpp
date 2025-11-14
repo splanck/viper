@@ -60,6 +60,10 @@ struct FunctionDecl : Stmt
     /// For FUNCTION without AS, keep at BasicType::Unknown.
     BasicType explicitRetType{BasicType::Unknown};
 
+    /// Optional explicit class return type from "AS <Class>".
+    /// Stored as a qualified, canonical lowercase name when present.
+    std::vector<std::string> explicitClassRetQname;
+
     /// Ordered parameter list.
     std::vector<Param> params;
 

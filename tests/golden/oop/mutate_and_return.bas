@@ -1,0 +1,9 @@
+CLASS C
+  DIM k AS INT
+  FUNCTION IncAndGet() AS INT: k = k + 1: RETURN k: END FUNCTION
+END CLASS
+DIM c AS C
+c = NEW C()
+PRINT c.IncAndGet()
+PRINT c.IncAndGet()
+

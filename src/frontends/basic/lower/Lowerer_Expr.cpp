@@ -139,7 +139,19 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
             // String array: use rt_arr_str_get (returns retained handle)
             IlValue val = lowerer_.emitCallRet(
                 IlType(IlType::Kind::Str), "rt_arr_str_get", {access.base, access.index});
+            lowerer_.deferReleaseStr(val);
             result_ = Lowerer::RVal{val, IlType(IlType::Kind::Str)};
+        }
+        else if (info && info->isObject)
+        {
+            // Object array: rt_arr_obj_get returns retained ptr
+            IlValue val = lowerer_.emitCallRet(
+                IlType(IlType::Kind::Ptr), "rt_arr_obj_get", {access.base, access.index});
+            if (info && !info->objectClass.empty())
+                lowerer_.deferReleaseObj(val, info->objectClass);
+            else
+                lowerer_.deferReleaseObj(val);
+            result_ = Lowerer::RVal{val, IlType(IlType::Kind::Ptr)};
         }
         else
         {
