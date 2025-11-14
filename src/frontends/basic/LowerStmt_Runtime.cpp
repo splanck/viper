@@ -242,7 +242,23 @@ void Lowerer::assignScalarSlot(const SlotType &slotInfo,
 
             ctx.setCurrent(destroyBlk);
             if (!slotInfo.objectClass.empty())
-                emitCall(mangleClassDtor(slotInfo.objectClass), {oldValue});
+            {
+                std::string dtor = mangleClassDtor(slotInfo.objectClass);
+                bool haveDtor = false;
+                if (mod)
+                {
+                    for (const auto &fn : mod->functions)
+                    {
+                        if (fn.name == dtor)
+                        {
+                            haveDtor = true;
+                            break;
+                        }
+                    }
+                }
+                if (haveDtor)
+                    emitCall(dtor, {oldValue});
+            }
             emitCall("rt_obj_free", {oldValue});
             emitBr(contBlk);
 
@@ -283,6 +299,12 @@ void Lowerer::assignArrayElement(const ArrayExpr &target, RVal value, il::suppor
         Value tmp = emitAlloca(8);
         emitStore(Type(Type::Kind::Str), tmp, value.value);
         emitCall("rt_arr_str_put", {access.base, access.index, tmp});
+    }
+    else if (info && info->isObject)
+    {
+        // Object array: rt_arr_obj_put(arr, idx, ptr)
+        requireArrayObjPut();
+        emitCall("rt_arr_obj_put", {access.base, access.index, value.value});
     }
     else
     {
@@ -330,7 +352,7 @@ void Lowerer::lowerLet(const LetStmt &stmt)
         SlotType slotInfo = storage->slotInfo;
         if (slotInfo.isArray)
         {
-            storeArray(storage->pointer, value.value);
+            storeArray(storage->pointer, value.value, /*elementType*/ AstType::I64, /*isObjectArray*/ storage->slotInfo.isObject);
         }
         else
         {
@@ -377,7 +399,7 @@ void Lowerer::lowerConst(const ConstStmt &stmt)
     SlotType slotInfo = storage->slotInfo;
     if (slotInfo.isArray)
     {
-        storeArray(storage->pointer, value.value);
+        storeArray(storage->pointer, value.value, /*elementType*/ AstType::I64, /*isObjectArray*/ storage->slotInfo.isObject);
     }
     else
     {
@@ -522,15 +544,23 @@ void Lowerer::lowerDim(const DimStmt &stmt)
     if (info->type == AstType::Str)
     {
         // String array: use rt_arr_str_alloc
+        requireArrayStrAlloc();
         handle = emitCallRet(Type(Type::Kind::Ptr), "rt_arr_str_alloc", {length});
+    }
+    else if (info->isObject)
+    {
+        // Object array
+        requireArrayObjNew();
+        handle = emitCallRet(Type(Type::Kind::Ptr), "rt_arr_obj_new", {length});
     }
     else
     {
         // Integer/numeric array: use rt_arr_i32_new
+        requireArrayI32New();
         handle = emitCallRet(Type(Type::Kind::Ptr), "rt_arr_i32_new", {length});
     }
 
-    storeArray(Value::temp(*info->slotId), handle, info->type);
+    storeArray(Value::temp(*info->slotId), handle, info->type, info->isObject);
     if (boundsChecks)
     {
         if (info && info->arrayLengthSlot)
@@ -556,8 +586,15 @@ void Lowerer::lowerReDim(const ReDimStmt &stmt)
     assert(info && info->slotId);
     Value slot = Value::temp(*info->slotId);
     Value current = emitLoad(Type(Type::Kind::Ptr), slot);
-    Value resized = emitCallRet(Type(Type::Kind::Ptr), "rt_arr_i32_resize", {current, length});
-    storeArray(slot, resized);
+    if (info && info->isObject)
+        requireArrayObjResize();
+    else
+        requireArrayI32Resize();
+    Value resized = emitCallRet(
+        Type(Type::Kind::Ptr),
+        (info && info->isObject) ? "rt_arr_obj_resize" : "rt_arr_i32_resize",
+        {current, length});
+    storeArray(slot, resized, /*elementType*/ AstType::I64, /*isObjectArray*/ info && info->isObject);
     if (boundsChecks && info && info->arrayLengthSlot)
         emitStore(Type(Type::Kind::I64), Value::temp(*info->arrayLengthSlot), length);
 }

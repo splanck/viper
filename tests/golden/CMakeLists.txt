@@ -521,6 +521,17 @@ function(viper_add_golden_suite_tests)
             "-DEXPECT=${EXPECT_STRING_ARRAY_STORE_PRINT}"
             -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
 
+    # BUG-032: Overwrite semantics (retain new, release old)
+    file(READ ${_VIPER_GOLDEN_DIR}/arrays/string_array_overwrite.stdout EXPECT_STRING_ARRAY_OVERWRITE)
+    string(STRIP "${EXPECT_STRING_ARRAY_OVERWRITE}" EXPECT_STRING_ARRAY_OVERWRITE)
+    viper_add_ctest(basic_arrays_string_overwrite
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/arrays/string_array_overwrite.bas
+            "-DEXPECT=${EXPECT_STRING_ARRAY_OVERWRITE}"
+            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
+
+
     # OOP virtual dispatch and base-qualified direct call
     file(READ ${_VIPER_GOLDEN_DIR}/oop/virtual_dispatch.stdout EXPECT_OOP_VDISPATCH)
     string(STRIP "${EXPECT_OOP_VDISPATCH}" EXPECT_OOP_VDISPATCH)
@@ -538,6 +549,46 @@ function(viper_add_golden_suite_tests)
             -DILC=${BASIC_ILC}
             -DBAS_FILE=${_VIPER_GOLDEN_DIR}/oop/base_qualifier.bas
             "-DEXPECT=${EXPECT_OOP_BASE_QUAL}"
+            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
+
+    # OOP SUB call as statement
+    file(READ ${_VIPER_GOLDEN_DIR}/oop/method_sub_call.stdout EXPECT_OOP_SUB_CALL)
+    string(STRIP "${EXPECT_OOP_SUB_CALL}" EXPECT_OOP_SUB_CALL)
+    viper_add_ctest(oop_method_sub_call
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/oop/method_sub_call.bas
+            "-DEXPECT=${EXPECT_OOP_SUB_CALL}"
+            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
+
+    # OOP mutate+return method call
+    file(READ ${_VIPER_GOLDEN_DIR}/oop/mutate_and_return.stdout EXPECT_OOP_MUT_RET)
+    string(STRIP "${EXPECT_OOP_MUT_RET}" EXPECT_OOP_MUT_RET)
+    viper_add_ctest(oop_mutate_and_return
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/oop/mutate_and_return.bas
+            "-DEXPECT=${EXPECT_OOP_MUT_RET}"
+            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
+
+    # OOP array of objects: DIM a(n) AS Class, get/put, and field access
+    file(READ ${_VIPER_GOLDEN_DIR}/basic/oop/array_of_objects.stdout EXPECT_OOP_ARRAY_OF_OBJECTS)
+    string(STRIP "${EXPECT_OOP_ARRAY_OF_OBJECTS}" EXPECT_OOP_ARRAY_OF_OBJECTS)
+    viper_add_ctest(oop_array_of_objects
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic/oop/array_of_objects.bas
+            "-DEXPECT=${EXPECT_OOP_ARRAY_OF_OBJECTS}"
+            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
+
+    # Function returning a class type (AS Box)
+    file(READ ${_VIPER_GOLDEN_DIR}/oop/function_returns_class.stdout EXPECT_FUNC_RET_CLASS)
+    string(STRIP "${EXPECT_FUNC_RET_CLASS}" EXPECT_FUNC_RET_CLASS)
+    viper_add_ctest(basic_oop_function_returns_class
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/oop/function_returns_class.bas
+            "-DEXPECT=${EXPECT_FUNC_RET_CLASS}"
             -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
 
     file(READ ${_VIPER_GOLDEN_DIR}/basic/print_commas.stdout EXPECT_BASIC_PRINT_COMMAS)

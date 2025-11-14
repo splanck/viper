@@ -101,6 +101,9 @@ bool SemanticAnalyzer::checkArgType(const BuiltinCallExpr &c,
 {
     if (argTy == Type::Unknown)
         return true;
+    // Special case: STR$ accepts BOOLEAN (fixes BUG-012)
+    if (c.builtin == BuiltinCallExpr::Builtin::Str && argTy == Type::Bool)
+        return true;
     for (Type t : allowed)
         if (t == argTy)
             return true;

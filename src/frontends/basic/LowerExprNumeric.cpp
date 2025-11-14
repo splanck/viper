@@ -189,6 +189,19 @@ NumericExprLowering::NumericOpConfig NumericExprLowering::normalizeNumericOperan
         }
     }
 
+    // Coerce operands to match the chosen arithmetic type (fixes BUG-012: boolean
+    // variables are i16, but TRUE/FALSE constants are i64, requiring promotion)
+    if (lhs.type.kind != config.arithmeticType.kind)
+    {
+        if (config.arithmeticType.kind == IlKind::I64)
+            lhs = lowerer.coerceToI64(std::move(lhs), expr.loc);
+    }
+    if (rhs.type.kind != config.arithmeticType.kind)
+    {
+        if (config.arithmeticType.kind == IlKind::I64)
+            rhs = lowerer.coerceToI64(std::move(rhs), expr.loc);
+    }
+
     return config;
 }
 
@@ -348,7 +361,16 @@ Lowerer::RVal NumericExprLowering::lowerStringBinary(const BinaryExpr &expr,
     {
         // Ensure runtime signature is linked for string concatenation.
         lowerer.trackRuntime(Lowerer::RuntimeFeature::Concat);
-        Value res = lowerer.emitCallRet(IlType(IlKind::Str), "rt_concat", {lhs.value, rhs.value});
+        // Spill operands to temporaries to avoid mixing evaluation with the
+        // concat call (stabilizes inline method calls and side effects).
+        Value lslot = lowerer.emitAlloca(8);
+        lowerer.emitStore(IlType(IlKind::Str), lslot, lhs.value);
+        Value rslot = lowerer.emitAlloca(8);
+        lowerer.emitStore(IlType(IlKind::Str), rslot, rhs.value);
+        Value lval = lowerer.emitLoad(IlType(IlKind::Str), lslot);
+        Value rval = lowerer.emitLoad(IlType(IlKind::Str), rslot);
+        Value res = lowerer.emitCallRet(IlType(IlKind::Str), "rt_concat", {lval, rval});
+        lowerer.deferReleaseStr(res);
         return {res, IlType(IlKind::Str)};
     }
 

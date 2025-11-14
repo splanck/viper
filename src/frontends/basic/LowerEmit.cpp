@@ -188,6 +188,7 @@ void Lowerer::emitMainBodyAndEpilogue(ProgramEmitContext &state)
 
     ctx.setCurrent(&state.function->blocks[ctx.exitIndex()]);
     curLoc = {};
+    releaseDeferredTemps();
     releaseObjectLocals(std::unordered_set<std::string>{});
     releaseArrayLocals(std::unordered_set<std::string>{});
     releaseArrayParams(std::unordered_set<std::string>{});
