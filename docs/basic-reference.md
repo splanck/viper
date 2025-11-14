@@ -1,23 +1,35 @@
 ---
 status: active
 audience: public
-last-updated: 2025-10-24
+last-updated: 2025-11-13
 ---
 
 # Viper BASIC — Reference
 
-This is the canonical reference for the Viper BASIC language. It describes **statements (commands)**,
-**expressions & operators**, **built-in functions**, **object features**, and **I/O**. Every statement includes
-a brief description and a minimal example.
+Complete language reference for Viper BASIC. This document describes **statements**, **expressions & operators**, **built-in functions**, **object features**, and **I/O**. For a tutorial introduction, see **[BASIC Tutorial](basic-language.md)**.
 
-> **Key dialect facts**
-> • Assignment requires **`LET`** (e.g., `LET X = 2`). A bare `X = 2` is not a statement.
-> • There is **no `CALL` keyword**. Statement calls use `Name(args)` with parentheses.
-> • **Built-ins must be called with parentheses.** Zero-argument built-ins use empty parentheses, e.g., `INKEY$()`, `GETKEY$()`, `RND()`.
-> • Arrays are 1‑D, zero‑based; `DIM`/`REDIM` are required for arrays.
-> • Booleans short‑circuit: `ANDALSO` / `ORELSE`.
-> • Functions return with `RETURN`; SUBs are called as statements.
-> • OOP: `CLASS`, methods, fields, `ME`, `NEW`, `DELETE`, optional `DESTRUCTOR`.
+---
+
+## Key Language Features
+
+- **Assignment**: Requires `LET` keyword (e.g., `LET X = 2`)
+- **Function calls**: No `CALL` keyword; use `Name(args)` with parentheses
+- **Built-ins**: Must be called with parentheses, even with zero arguments (`RND()`, `INKEY$()`)
+- **Arrays**: One-dimensional, zero-based; require `DIM` or `REDIM`
+- **Short-circuit operators**: `ANDALSO` and `ORELSE` (vs. `AND` and `OR`)
+- **Functions**: Return values with `RETURN`; subroutines use `SUB`
+- **Objects**: `CLASS`, methods, fields, `ME`, `NEW`, `DELETE`, optional `DESTRUCTOR`
+
+---
+
+## Table of Contents
+
+- [Statements A–Z](#statements-az)
+- [Expressions & Operators](#expressions--operators)
+- [Built-in Functions](#built-in-functions)
+- [Keyword Index](#keyword-index)
+
+---
 
 ## Statements A–Z
 

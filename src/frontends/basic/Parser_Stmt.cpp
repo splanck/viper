@@ -88,6 +88,8 @@ StmtPtr Parser::parseStatement(int line)
         return std::move(*stmt);
     if (auto stmt = parseWhile(line))
         return std::move(*stmt);
+    if (auto stmt = parseDo(line))
+        return std::move(*stmt);
     if (auto stmt = parseLet())
         return std::move(*stmt);
     if (auto stmt = parseImplicitLet())
@@ -155,7 +157,12 @@ StmtPtr Parser::parseNamespaceDecl()
     auto decl = std::make_unique<NamespaceDecl>();
     decl->loc = loc;
     decl->path = std::move(path);
+    if (!decl->path.empty())
+        knownNamespaces_.insert(decl->path.front());
+    // Track namespace nesting to enforce USING-at-file-scope rule.
+    ++nsDepth_;
     parseProcedureBody(TokenKind::KeywordNamespace, decl->body);
+    --nsDepth_;
     return decl;
 }
 
@@ -171,7 +178,7 @@ StmtPtr Parser::parseUsingDecl()
     auto loc = peek().loc;
     consume(); // USING
 
-    // Reject inside procedures at parse time per Phase 2 rules.
+    // Reject inside procedures; Phase 2 allows USING inside namespaces and after decls.
     if (procDepth_ > 0)
     {
         emitError("B0001", loc, "USING is not allowed inside procedures");
@@ -216,15 +223,9 @@ StmtPtr Parser::parseUsingDecl()
         }
     }
 
-    // Enforce no trailing tokens prior to end-of-line (other than ':' which is handled
-    // by the statement sequencer as a separator).
-    if (!(at(TokenKind::EndOfLine) || at(TokenKind::EndOfFile) || at(TokenKind::Colon)))
-    {
-        emitError("B0001", peek(), "unexpected tokens after USING directive");
-        // best-effort recovery: consume until EOL
-        while (!at(TokenKind::EndOfFile) && !at(TokenKind::EndOfLine))
-            consume();
-    }
+    // Be permissive: ignore any trailing tokens until end-of-line. Sequencer handles ':'.
+    while (!(at(TokenKind::EndOfLine) || at(TokenKind::EndOfFile)))
+        consume();
 
     return decl;
 }
@@ -261,6 +262,15 @@ Parser::StmtResult Parser::parseWhile(int line)
     if (!at(TokenKind::KeywordWhile))
         return std::nullopt;
     auto stmt = parseWhileStatement();
+    return StmtResult(std::move(stmt));
+}
+
+Parser::StmtResult Parser::parseDo(int line)
+{
+    static_cast<void>(line);
+    if (!at(TokenKind::KeywordDo))
+        return std::nullopt;
+    auto stmt = parseDoStatement();
     return StmtResult(std::move(stmt));
 }
 

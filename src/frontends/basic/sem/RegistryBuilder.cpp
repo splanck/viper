@@ -50,6 +50,11 @@ void buildNamespaceRegistry(const Program &program,
     // Clear previous state.
     usings.clear();
 
+    // Seed well-known root namespaces available implicitly (Phase 2).
+    // This allows file-scoped `USING System` without requiring an explicit
+    // declaration in every source file.
+    registry.registerNamespace("System");
+
     // Maintain namespace stack for qualified name construction.
     std::vector<std::string> nsStack;
 

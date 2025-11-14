@@ -1,38 +1,70 @@
 ---
 status: active
 audience: public
-last-updated: 2025-10-24
+last-updated: 2025-11-13
 ---
 
 # Viper IL — Reference
 
-This reference documents the **syntax**, **types**, **instructions**, and **verification rules** of Viper IL.
-Where possible, each instruction includes a minimal example taken from real test IL or synthesised to match the parser.
+Complete reference for Viper IL syntax, types, instructions, and verification rules. Each instruction includes minimal examples from real IL code.
+
+For introductory material, see **[IL Quickstart](il-quickstart.md)** or **[IL Guide](il-guide.md)**.
+
+---
+
+## Table of Contents
+
+- [Types](#types)
+- [Functions & Blocks](#functions--blocks)
+- [Instruction Catalog](#instruction-catalog-by-category)
+  - [Arithmetic](#arithmetic)
+  - [Comparison](#comparison)
+  - [Memory](#memory)
+  - [Control](#control)
+  - [Exceptions](#exceptions)
+  - [Misc](#misc)
+- [Verification Rules](#verification-rules-selected-highlights)
+- [Tools](#tools)
+
+---
 
 ## Types
 
-- **Integers:** `i1`, `i16`, `i32`, `i64` (frontends typically use `i64`).
-- **Floats:** `f64` only.
-- **Pointers/handles:** `ptr` (opaque), or typed pointers if present in your build.
-- **Strings:** `str` (runtime handle), produced/consumed by runtime calls.
-- **Void:** `void` for procedures.
+Viper IL supports the following primitive types:
 
-> Exact type set is validated by the verifier. Use `il-verify` to confirm.
+| Type       | Description |
+|------------|-------------|
+| **Integers** | `i1`, `i16`, `i32`, `i64` — Frontends typically use `i64` |
+| **Floats** | `f64` — Double-precision floating-point |
+| **Pointers** | `ptr` — Opaque pointers or typed pointers (build-dependent) |
+| **Strings** | `str` — Runtime handle for managed strings |
+| **Void** | `void` — No return value (procedures) |
+| **Special** | `error`, `resumetok` — Exception handling types |
 
-## Functions & blocks
+> **Note:** The verifier validates type correctness. Use `il-verify` to check your IL code.
 
-```
+---
+
+## Functions & Blocks
+
+Functions are the primary unit of IL code:
+
+```il
 func @name(<typed args>) -> <type> {
 entry:
   ; instructions
 }
 ```
 
-- Functions have a symbol name `@name` and typed parameters.
-- Basic blocks are labeled `label:` (no caret prefix) and end in a **terminator** (`ret`, `br`, `switch`).
-- Values are in SSA: `%vX` is defined once, then used.
+**Structure:**
+- **Symbol names**: `@name` for functions and globals
+- **Basic blocks**: Labeled with `label:` (no caret prefix)
+- **Terminators**: Every block must end with `ret`, `br`, `cbr`, or `switch`
+- **SSA form**: Values (`%vX`) are defined once and used multiple times
 
-## Instruction catalog (by category)
+---
+
+## Instruction Catalog (by Category)
 
 ### Arithmetic
 

@@ -32,46 +32,51 @@ size_t parseAndAnalyze(const std::string &source, DiagnosticEngine &de)
     return emitter.errorCount();
 }
 
-// Test: USING inside namespace → E_NS_008
+// Test: USING inside namespace (Phase 2 allows scoped USING inside namespace)
 void test_using_inside_namespace()
 {
-    std::string source = R"(
+    // In Phase 2 we allow USING inside namespace blocks.
+    // Use an existing namespace to avoid unknown-namespace diagnostics.
+    std::string source2 = R"(
 NAMESPACE A
-    USING System
+END NAMESPACE
+NAMESPACE B
+  USING A
 END NAMESPACE
 )";
-
-    DiagnosticEngine de;
-    size_t errorCount = parseAndAnalyze(source, de);
-    assert(errorCount > 0);
+    DiagnosticEngine de2;
+    size_t err2 = parseAndAnalyze(source2, de2);
+    assert(err2 == 0);
 }
 
-// Test: USING after first decl → E_NS_005
+// Test: USING after first decl (Phase 2 allows file-scoped USING anywhere)
 void test_using_after_decl()
 {
     std::string source = R"(
 NAMESPACE A
 END NAMESPACE
-USING System
+USING A
 )";
 
     DiagnosticEngine de;
     size_t errorCount = parseAndAnalyze(source, de);
-    assert(errorCount > 0);
+    assert(errorCount == 0);
 }
 
-// Test: USING after class decl → E_NS_005
+// Test: USING after class decl (Phase 2 allows file-scoped USING anywhere)
 void test_using_after_class()
 {
     std::string source = R"(
 CLASS MyClass
 END CLASS
-USING System
+NAMESPACE A
+END NAMESPACE
+USING A
 )";
 
     DiagnosticEngine de;
     size_t errorCount = parseAndAnalyze(source, de);
-    assert(errorCount > 0);
+    assert(errorCount == 0);
 }
 
 // Test: USING NonExistent.Namespace → E_NS_001
@@ -203,9 +208,8 @@ int main()
     test_alias_shadows_namespace();
     test_reserved_viper_namespace();
     test_reserved_viper_using();
-    // TODO: Fix parse errors in valid tests
-    // test_valid_using();
-    // test_valid_using_with_alias();
+    test_valid_using();
+    test_valid_using_with_alias();
     test_reserved_viper_case_insensitive();
     return 0;
 }

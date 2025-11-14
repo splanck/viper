@@ -628,6 +628,9 @@ void ProcedureLowering::collectProcedureSignatures(const Program &prog)
             lowerer.procSignatures.emplace(key, std::move(sig));
             if (!fn->qualifiedName.empty())
                 lowerer.procNameAliases.emplace(CanonicalizeIdent(fn->name), fn->qualifiedName);
+            else
+                // Map canonical unqualified name back to original for IL emission
+                lowerer.procNameAliases.emplace(CanonicalizeIdent(fn->name), fn->name);
         }
         else if (auto *sub = as<const SubDecl>(*decl))
         {
@@ -644,6 +647,9 @@ void ProcedureLowering::collectProcedureSignatures(const Program &prog)
             lowerer.procSignatures.emplace(key, std::move(sig));
             if (!sub->qualifiedName.empty())
                 lowerer.procNameAliases.emplace(CanonicalizeIdent(sub->name), sub->qualifiedName);
+            else
+                // Map canonical unqualified name back to original for IL emission
+                lowerer.procNameAliases.emplace(CanonicalizeIdent(sub->name), sub->name);
         }
     }
 
@@ -677,6 +683,11 @@ void ProcedureLowering::collectProcedureSignatures(const Program &prog)
                         lowerer.procSignatures.emplace(fn.qualifiedName, std::move(sig));
                         lowerer.procNameAliases.emplace(CanonicalizeIdent(fn.name), fn.qualifiedName);
                     }
+                    else
+                    {
+                        lowerer.procSignatures.emplace(fn.name, std::move(sig));
+                        lowerer.procNameAliases.emplace(CanonicalizeIdent(fn.name), fn.name);
+                    }
                     break;
                 }
                 case Stmt::Kind::SubDecl:
@@ -695,6 +706,11 @@ void ProcedureLowering::collectProcedureSignatures(const Program &prog)
                     {
                         lowerer.procSignatures.emplace(sub.qualifiedName, std::move(sig));
                         lowerer.procNameAliases.emplace(CanonicalizeIdent(sub.name), sub.qualifiedName);
+                    }
+                    else
+                    {
+                        lowerer.procSignatures.emplace(sub.name, std::move(sig));
+                        lowerer.procNameAliases.emplace(CanonicalizeIdent(sub.name), sub.name);
                     }
                     break;
                 }

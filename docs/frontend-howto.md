@@ -4,9 +4,9 @@ audience: developers
 last-updated: 2025-11-13
 ---
 
-# How to Write a Viper Frontend: Complete Implementation Guide
+# How to Write a Viper Frontend
 
-This guide provides everything a C++ programmer needs to implement a new language frontend for Viper, from build system integration to runtime ABI. No prior Viper knowledge assumed.
+Complete implementation guide for building language frontends that compile to Viper IL. Designed for C++ programmers with no prior Viper experience.
 
 ---
 
@@ -33,41 +33,49 @@ This guide provides everything a C++ programmer needs to implement a new languag
 
 ## 1. Introduction
 
-### Purpose
+### What You'll Learn
 
-This guide enables C++ programmers to implement new language frontends for the Viper IL compiler. You'll learn:
+This guide teaches you how to implement a complete language frontend for Viper:
 
-- How to parse source code into an Abstract Syntax Tree (AST)
-- How to perform semantic analysis (type checking, name resolution)
-- How to lower AST to Viper IL using the IRBuilder API
-- How to integrate with the build system and runtime
-- How to test your frontend thoroughly
+- **Parsing**: Convert source code into an Abstract Syntax Tree (AST)
+- **Semantic Analysis**: Type checking, name resolution, and validation
+- **IL Lowering**: Transform AST to Viper IL using the IRBuilder API
+- **Build Integration**: Add your frontend to the CMake build system
+- **Testing**: Write comprehensive tests for your frontend
 
 ### What is Viper?
 
-Viper is an IL (Intermediate Language) compilation framework with:
-- **IL** — SSA-based intermediate representation (like LLVM IR)
-- **VM** — Bytecode interpreter for rapid prototyping
-- **Runtime** — C-based runtime library (strings, arrays, I/O)
-- **Codegen** — x86-64 native code generation (future)
+Viper is a compiler infrastructure with multiple components:
 
-Frontends compile source languages → IL → VM execution or native code.
+| Component | Description |
+|-----------|-------------|
+| **IL** | SSA-based intermediate representation (similar to LLVM IR) |
+| **VM** | Bytecode interpreter for rapid development and testing |
+| **Runtime** | C-based runtime library (strings, arrays, I/O, GC) |
+| **Verifier** | Static analysis and type checking for IL |
+| **Codegen** | Native code generation (x86-64, future) |
+
+**Compilation flow:**
+```
+Source Language → Frontend → IL → VM/Codegen → Execution
+```
 
 ### Prerequisites
 
 **Required Knowledge:**
-- Modern C++ (C++17: unique_ptr, std::optional, structured bindings)
-- Compiler architecture basics (lexing, parsing, AST)
-- SSA form concepts (phi nodes, basic blocks)
+- **Modern C++**: C++17 features (`unique_ptr`, `std::optional`, structured bindings)
+- **Compiler Basics**: Lexing, parsing, AST construction
+- **SSA Form**: Basic understanding of phi nodes and basic blocks
 
 **Required Tools:**
-- CMake 3.20+
-- Clang or GCC with C++17 support
+- CMake 3.20 or later
+- C++17-capable compiler (Clang or GCC recommended)
 - Git
 
 **Recommended Reading:**
-- **docs/il-guide.md** — IL specification
-- **docs/architecture.md** — Viper system overview
+- **[IL Guide](il-guide.md)** — Viper IL specification and examples
+- **[Getting Started](getting-started.md)** — Build and run Viper
+- `/devdocs/architecture.md` — System architecture overview
 
 ---
 

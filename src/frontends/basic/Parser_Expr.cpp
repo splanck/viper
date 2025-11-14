@@ -459,46 +459,71 @@ ExprPtr Parser::parsePrimary()
 
     if (at(TokenKind::Identifier))
     {
-        // Try to parse a qualified identifier followed by a call.
-        // Save stream state to backtrack on non-call.
-        size_t saveIndex = 0;
-        if (!tokens_.empty())
-            saveIndex = 0; // token buffer owns full stream; noop marker
-        auto [segs, startLoc] = parseQualifiedIdentSegments();
-        if (!segs.empty() && at(TokenKind::LParen))
+        // Attempt to parse a namespace-qualified call within an expression context.
+        // This handles forms like A.B.F(...) and accepts single-dot A.F(...) only
+        // when 'A' matches a namespace observed so far.
+        Token head = peek();
+        if (peek(1).kind == TokenKind::Dot)
         {
-            // Parse argument list
-            consume(); // '('
-            std::vector<ExprPtr> args;
-            if (!at(TokenKind::RParen))
+            // Non-destructive probe to see if we have Ident( . Ident )+ '('
+            size_t i = 0;
+            bool ok = true;
+            bool sawAdditionalDot = false;
+            // first ident and dot
+            if (!(peek(i).kind == TokenKind::Identifier && peek(i + 1).kind == TokenKind::Dot))
+                ok = false;
+            if (ok)
             {
-                while (true)
+                i += 2;
+                while (peek(i).kind == TokenKind::Identifier && peek(i + 1).kind == TokenKind::Dot)
                 {
-                    args.push_back(parseExpression());
-                    if (!at(TokenKind::Comma))
-                        break;
-                    consume();
+                    sawAdditionalDot = true;
+                    i += 2;
+                }
+                if (peek(i).kind != TokenKind::Identifier || peek(i + 1).kind != TokenKind::LParen)
+                    ok = false;
+                if (!sawAdditionalDot)
+                {
+                    // Require first segment to be a known namespace for single-dot case
+                    extern std::unordered_set<std::string> dummy_decl_to_satisfy_compiler;
+                    (void)dummy_decl_to_satisfy_compiler; // no-op to avoid unused warning if header order changes
+                    if (knownNamespaces_.find(head.lexeme) == knownNamespaces_.end())
+                        ok = false;
                 }
             }
-            expect(TokenKind::RParen);
-
-            auto call = std::make_unique<CallExpr>();
-            call->loc = startLoc;
-            call->calleeQualified = segs;
-            // Keep callee joined for compatibility
-            std::string joined;
-            for (size_t i = 0; i < segs.size(); ++i)
+            if (ok)
             {
-                if (i)
-                    joined.push_back('.');
-                joined += segs[i];
-            }
-            call->callee = std::move(joined);
-            call->args = std::move(args);
-            return call;
-        }
+                auto [segs, startLoc] = parseQualifiedIdentSegments();
+                expect(TokenKind::LParen);
+                std::vector<ExprPtr> args;
+                if (!at(TokenKind::RParen))
+                {
+                    while (true)
+                    {
+                        args.push_back(parseExpression());
+                        if (!at(TokenKind::Comma))
+                            break;
+                        consume();
+                    }
+                }
+                expect(TokenKind::RParen);
 
-        // Not a qualified call; fall back to array/var handling.
+                auto call = std::make_unique<CallExpr>();
+                call->loc = startLoc;
+                if (segs.size() > 1)
+                    call->calleeQualified = segs;
+                std::string joined;
+                for (size_t si = 0; si < segs.size(); ++si)
+                {
+                    if (si)
+                        joined.push_back('.');
+                    joined += segs[si];
+                }
+                call->callee = std::move(joined);
+                call->args = std::move(args);
+                return call;
+            }
+        }
         return parseArrayOrVar();
     }
 

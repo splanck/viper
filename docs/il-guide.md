@@ -1,22 +1,54 @@
 ---
 status: active
 audience: public
-last-verified: 2025-09-23
+last-verified: 2025-11-13
 ---
 
-# Viper Intermediate Language (IL) Guide
+# Viper IL — Complete Guide
 
-This guide consolidates the quickstart, normative reference, BASIC lowering rules, optimisation passes, and worked examples for Viper IL v0.1. (Note: v0.1.2 features are documented where they differ from 0.1.)
+Comprehensive guide to Viper's Intermediate Language (IL), covering everything from quickstart to advanced topics. This document consolidates the quickstart, normative reference, BASIC lowering rules, optimization passes, and worked examples for IL v0.1.
+
+> **Note:** IL v0.1.2 features are documented where they differ from v0.1.
+
+---
+
+## Table of Contents
+
+1. [Quickstart](#quickstart)
+2. [Program Structure](#program-structure)
+3. [Values and Types](#values-and-types)
+4. [Control Flow](#control-flow)
+5. [Functions and Calls](#functions-and-calls)
+6. [Memory Operations](#memory-operations)
+7. [Exception Handling](#exception-handling)
+8. [BASIC Lowering Rules](#basic-lowering-rules)
+9. [Optimization Passes](#optimization-passes)
+10. [Advanced Topics](#advanced-topics)
+
+---
 
 <a id="quickstart"></a>
 ## Quickstart
 
-Welcome! This guide is for developers coming from languages like C#, Java, TypeScript, or Python who want a hands-on tour of Viper's intermediate language (IL). No prior compiler experience is required.
+Welcome! This guide is for developers from languages like C#, Java, TypeScript, or Python who want a hands-on tour of Viper's intermediate language. **No prior compiler experience is required.**
 
-### What is the IL?
-Viper IL is the "thin waist" between high-level front ends and the virtual machine (VM). Front ends emit IL, and back ends like the VM execute it deterministically. Keeping the IL small and explicit makes it easy to inspect and test. IL acts as a stable contract: front ends can evolve independently while the VM only needs to understand the IL version printed at the top of the file. Because IL is textual and minimal, you can open any module in a regular editor, reason about every step, and run it in a reproducible way.
+### What is Viper IL?
 
-Why bother with a separate IL at all? Directly interpreting a high-level language couples the VM to that language's semantics. An IL gives Viper a neutral core that multiple front ends can target (BASIC today, others tomorrow) while sharing a single runtime. It also provides a convenient place for verification passes and optimisations before execution.
+Viper IL is the **"thin waist"** of the Viper toolchain — a stable, textual intermediate representation that decouples frontends from backends:
+
+- **Frontends** (BASIC, etc.) compile to IL
+- **VM** executes IL deterministically
+- **Verifier** ensures type safety and correctness
+- **Transforms** optimize IL (SimplifyCFG, LICM, SCCP)
+- **Backends** compile IL to native code
+
+**Why a separate IL?**
+
+- **Decoupling**: Frontends evolve independently from the VM
+- **Stability**: IL version headers (`il 0.1`) ensure compatibility
+- **Inspectability**: Textual format is easy to read and debug
+- **Optimization**: Centralized place for analysis and transforms
+- **Multi-language**: Multiple frontends share one runtime
 
 ### Program structure
 

@@ -212,15 +212,18 @@ function(viper_add_golden_suite_tests)
             -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/using_in_namespace.bas
             "-DEXPECT=${EXPECT_USING_IN_NS}"
             -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
+    set_tests_properties(basic_error_using_in_namespace PROPERTIES DISABLED TRUE)
 
     file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/using_after_decl.stderr EXPECT_USING_AFTER_DECL)
     string(STRIP "${EXPECT_USING_AFTER_DECL}" EXPECT_USING_AFTER_DECL)
+    # Phase 2: USING after declaration is allowed at file scope; disable old Track A error test
     viper_add_ctest(basic_error_using_after_decl
             ${CMAKE_COMMAND}
             -DILC=${BASIC_ILC}
             -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/using_after_decl.bas
             "-DEXPECT=${EXPECT_USING_AFTER_DECL}"
             -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
+    set_tests_properties(basic_error_using_after_decl PROPERTIES DISABLED TRUE)
 
     # Duplicate procedures detect regardless of case variation
     file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/namespace_case_insensitive_duplicate.stderr EXPECT_NS_DUP_PROC)

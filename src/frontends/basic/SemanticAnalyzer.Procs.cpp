@@ -412,15 +412,10 @@ void SemanticAnalyzer::analyze(const Program &prog)
         UsingScope &root = usingStack_.front();
         for (const auto &imp : usings_.imports())
         {
-            // Alias entries populate alias map; non-alias populate import set.
-            if (!imp.alias.empty())
-            {
-                std::string aliasCanon = CanonicalizeIdent(imp.alias);
-                std::string nsCanon = CanonicalizeQualified(SplitDots(imp.ns));
-                root.aliases.emplace(std::move(aliasCanon), std::move(nsCanon));
-                root.aliasLoc.emplace(CanonicalizeIdent(imp.alias), imp.loc);
-            }
-            else
+            // Seed only non-alias imports here; alias entries are validated and
+            // applied by analyzeUsingDecl during statement analysis (so shadowing
+            // checks run correctly).
+            if (imp.alias.empty())
             {
                 std::string nsCanon = CanonicalizeQualified(SplitDots(imp.ns));
                 root.imports.insert(std::move(nsCanon));

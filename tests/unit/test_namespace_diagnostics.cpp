@@ -95,8 +95,8 @@ void test_ns_004_exact_message()
     // The diagnostic format is verified in the yaml and implementation.
 }
 
-// Test E_NS_005: "USING must appear before namespace or class declarations"
-void test_ns_005_exact_message()
+// Phase 2: USING may appear at file scope after declarations; ensure no error
+void test_ns_005_file_scope_allows_using_after_decl()
 {
     std::string source = R"(
 100 NAMESPACE A
@@ -104,8 +104,8 @@ void test_ns_005_exact_message()
 120 USING System
 )";
     std::string msg = getFirstDiagnostic(source);
-    assert(msg.find("USING must appear before namespace or class declarations") !=
-           std::string::npos);
+    // No error expected
+    assert(msg.empty());
 }
 
 // Test E_NS_006: "cannot resolve type: '{type}'"
@@ -130,16 +130,18 @@ void test_ns_007_exact_message()
     // The diagnostic format is verified in the yaml and implementation.
 }
 
-// Test E_NS_008: "USING cannot appear inside a namespace block"
-void test_ns_008_exact_message()
+// Phase 2: USING may appear inside namespace blocks; no error expected here.
+void test_ns_008_scoped_using_allowed()
 {
     std::string source = R"(
 100 NAMESPACE A
-110     USING System
-120 END NAMESPACE
+110 END NAMESPACE
+120 NAMESPACE B
+130     USING A
+140 END NAMESPACE
 )";
     std::string msg = getFirstDiagnostic(source);
-    assert(msg.find("USING cannot appear inside a namespace block") != std::string::npos);
+    assert(msg.empty());
 }
 
 // Test E_NS_009: "reserved root namespace 'Viper' cannot be declared or imported"
@@ -196,10 +198,10 @@ int main()
     test_ns_002_exact_message();
     test_ns_003_exact_message();
     test_ns_004_exact_message();
-    test_ns_005_exact_message();
+    test_ns_005_file_scope_allows_using_after_decl();
     test_ns_006_exact_message();
     test_ns_007_exact_message();
-    test_ns_008_exact_message();
+    test_ns_008_scoped_using_allowed();
     test_ns_009_exact_message();
     test_contender_list_format();
     test_diagnostic_locations();

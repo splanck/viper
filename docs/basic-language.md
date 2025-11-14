@@ -1,19 +1,34 @@
 ---
 status: active
 audience: public
-last-updated: 2025-10-24
+last-updated: 2025-11-13
 ---
 
 # Viper BASIC — Tutorial
 
-This tutorial teaches the Viper BASIC language by example. If you prefer a catalog,
-see the **Reference** document.
+Learn Viper BASIC by example. For a complete reference, see **[BASIC Reference](basic-reference.md)**.
 
-> **What is Viper BASIC?**  
-> A compact, modernised BASIC designed for clarity: `LET` for assignment, clean arrays, short‑circuit booleans,
-> lightweight objects, and straightforward console/file I/O. It runs on Viper’s VM and can be lowered to native code.
+> **What is Viper BASIC?**
+> A compact, modernized BASIC designed for clarity: `LET` for assignment, clean arrays, short-circuit booleans, lightweight objects, and straightforward console/file I/O. It runs on Viper's VM and can be lowered to native code.
 
-## 1. First steps: printing and expressions
+---
+
+## Table of Contents
+
+1. [First Steps: Printing and Expressions](#1-first-steps-printing-and-expressions)
+2. [Variables and Types](#2-variables-and-types)
+3. [Control Flow](#3-control-flow)
+4. [Procedures and Functions](#4-procedures-and-functions)
+5. [Objects](#5-objects)
+6. [Organizing Code with Namespaces](#6-organizing-code-with-namespaces)
+7. [Console and File I/O](#7-console-and-file-io)
+8. [Error Handling](#8-error-handling)
+9. [Example Projects](#9-example-projects)
+10. [Where to Go Next](#10-where-to-go-next)
+
+---
+
+## 1. First Steps: Printing and Expressions
 
 ```basic
 10 PRINT "Hello, world!"
@@ -21,184 +36,301 @@ see the **Reference** document.
 30 PRINT "A"; "B"        ' "AB" (no newline)
 ```
 
-Try removing line numbers; they are optional. Use `:` to put multiple statements on one line.
+**Key points:**
+- Line numbers are optional
+- Use `:` to put multiple statements on one line
+- `'` starts a single-line comment
+- `;` in PRINT suppresses the newline between values
 
-## 2. Variables and types
+---
 
-Assignments use **`LET`**. You can declare scalars implicitly by assigning,
-or explicitly with `DIM` to pin a type. Arrays require `DIM`.
+## 2. Variables and Types
+
+### Assignment with LET
+
+Assignments **require** `LET`. Variables can be declared implicitly by assigning, or explicitly with `DIM` to pin a type.
 
 ```basic
 10 LET I = 42
 20 DIM Flag AS BOOLEAN
 30 LET Flag = TRUE
-40 DIM A(3)              ' indices 0..2
-50 LET A(0) = I
 ```
 
-Suffixes: `$` string, `#`/`!` float, `&`/`%` integer.
+### Arrays
+
+Arrays **require** `DIM` and are zero-based:
 
 ```basic
-10 LET S$ = "hi"
-20 LET F# = 3.14
+10 DIM A(3)              ' indices 0..2
+20 LET A(0) = 42
+30 LET A(1) = 100
+40 PRINT A(0)            ' 42
 ```
 
-## 3. Control flow
+### Type Suffixes
+
+| Suffix | Type    |
+|--------|---------|
+| `$`    | String  |
+| `#`    | Float   |
+| `!`    | Float   |
+| `&`    | Integer |
+| `%`    | Integer |
+
+```basic
+10 LET S$ = "hello"
+20 LET F# = 3.14
+30 LET I% = 42
+```
+
+---
+
+## 3. Control Flow
+
+### IF ... THEN ... ELSE
 
 ```basic
 10 IF N = 0 THEN
 20   PRINT "zero"
-30 ELSE
-40   PRINT "nonzero"
-50 END IF
-
-10 FOR I = 1 TO 5: PRINT I: NEXT
-
-10 LET I = 3
-20 DO
-30   LET I = I - 1
-40 LOOP UNTIL I = 0
-
-10 WHILE X < 3: PRINT X: LET X = X + 1: WEND
-
-' Short-circuit
-10 IF A <> 0 ANDALSO (B / A) > 2 THEN PRINT "ok"
+30 ELSEIF N < 0 THEN
+40   PRINT "negative"
+50 ELSE
+60   PRINT "positive"
+70 END IF
 ```
 
-## 4. Procedures and functions
-
-`SUB` is a procedure (statement call). `FUNCTION` returns a value (use in expressions).
+### FOR ... NEXT
 
 ```basic
-10 SUB GREET(S$)
-20   PRINT "Hello, "; S$
-30 END SUB
+10 FOR I = 1 TO 5
+20   PRINT I
+30 NEXT
 
-40 FUNCTION SQUARE(N)
-50   RETURN N * N
-60 END FUNCTION
-
-70 GREET("Ada")          ' statement call; parentheses required
-80 LET X = SQUARE(9)     ' expression call
+' With STEP
+40 FOR I = 10 TO 1 STEP -2
+50   PRINT I
+60 NEXT
 ```
 
+### DO ... LOOP
+
+```basic
+' Condition at start
+10 DO WHILE X < 10
+20   PRINT X
+30   LET X = X + 1
+40 LOOP
+
+' Condition at end
+50 LET I = 3
+60 DO
+70   LET I = I - 1
+80   PRINT I
+90 LOOP UNTIL I = 0
+```
+
+### WHILE ... WEND
+
+```basic
+10 LET X = 0
+20 WHILE X < 3
+30   PRINT X
+40   LET X = X + 1
+50 WEND
+```
+
+### Short-Circuit Operators
+
+Use `ANDALSO` and `ORELSE` for short-circuit evaluation:
+
+```basic
+10 IF A <> 0 ANDALSO (B / A) > 2 THEN
+20   PRINT "Safe division"
+30 END IF
+
+40 IF X = 0 ORELSE Y / X > 1 THEN
+50   PRINT "Conditional evaluation"
+60 END IF
+```
+
+> **Note:** `AND` and `OR` always evaluate both operands. Use `ANDALSO` and `ORELSE` to avoid errors like division by zero.
+
+---
+
+## 4. Procedures and Functions
+
+### Subroutines (SUB)
+
+Subroutines are called as statements. **Parentheses are required** even for zero arguments:
+
+```basic
+10 SUB GREET(NAME$)
+20   PRINT "Hello, "; NAME$
+30 END SUB
+
+40 GREET("Ada")          ' Statement call with parentheses
+```
+
+### Functions (FUNCTION)
+
+Functions return values and are used in expressions:
+
+```basic
+10 FUNCTION SQUARE(N)
+20   RETURN N * N
+30 END FUNCTION
+
+40 LET X = SQUARE(9)     ' X = 81
+50 PRINT SQUARE(5)       ' 25
+```
+
+---
+
 ## 5. Objects
+
+Viper BASIC supports lightweight object-oriented programming with classes, methods, constructors, and destructors.
+
+### Basic Class
 
 ```basic
 10 CLASS Counter
 20   X AS INTEGER
-30   SUB NEW(): LET ME.X = 0: END SUB
-40   SUB INC(): LET ME.X = ME.X + 1: END SUB
-50   FUNCTION Current(): RETURN ME.X: END FUNCTION
-60 END CLASS
+30
+40   SUB NEW()
+50     LET ME.X = 0
+60   END SUB
+70
+80   SUB INCREMENT()
+90     LET ME.X = ME.X + 1
+100  END SUB
+110
+120  FUNCTION VALUE()
+130    RETURN ME.X
+140  END FUNCTION
+150 END CLASS
 
-70 DIM c AS Counter
-80 LET c = NEW Counter()
-90 c.INC()
-100 PRINT c.Current()
-110 DELETE c
+160 DIM C AS Counter
+170 LET C = NEW Counter()
+180 C.INCREMENT()
+190 C.INCREMENT()
+200 PRINT C.VALUE()        ' 2
+210 DELETE C
 ```
 
-## 6. Organizing code with namespaces
+**Key points:**
+- `ME` refers to the current instance (like `this` in C++ or `self` in Python)
+- `NEW` is a special constructor method
+- `DELETE` frees the object (calls `DESTRUCTOR` if defined)
+
+### Destructors
+
+```basic
+10 CLASS FileHandler
+20   FH AS INTEGER
+30
+40   SUB NEW(FILENAME$)
+50     OPEN FILENAME$ FOR OUTPUT AS #1
+60     LET ME.FH = 1
+70   END SUB
+80
+90   DESTRUCTOR()
+100    IF ME.FH <> 0 THEN CLOSE #ME.FH
+110  END DESTRUCTOR
+120 END CLASS
+```
+
+**Note:** Destructors are automatically called when an object is deleted or goes out of scope.
+
+---
+
+## 6. Organizing Code with Namespaces
 
 Namespaces help you organize classes and avoid name collisions in larger programs.
 
-### Declaring namespaces
+### Declaring Namespaces
 
 Use `NAMESPACE` blocks to group related types. Dotted paths create nested namespaces:
 
 ```basic
 NAMESPACE Graphics.Rendering
   CLASS Renderer
-    DIM width AS I64
-    DIM height AS I64
-  END CLASS
-
-  CLASS Camera
-    DIM position AS I64
+    WIDTH AS I64
+    HEIGHT AS I64
   END CLASS
 END NAMESPACE
 
 NAMESPACE Graphics.UI
   CLASS Button
-    DIM label AS STR
+    LABEL AS STR
   END CLASS
 END NAMESPACE
-
-REM Reference types with fully-qualified names
-DIM r AS Graphics.Rendering.Renderer
-DIM b AS Graphics.UI.Button
 ```
 
-Multiple `NAMESPACE` blocks with the same path contribute to the same namespace (merged namespaces).
+**Fully-qualified names:**
 
-### Using the USING directive
+```basic
+DIM R AS Graphics.Rendering.Renderer
+DIM B AS Graphics.UI.Button
+```
 
-The `USING` directive imports types from a namespace, allowing unqualified references:
+### Using the USING Directive
+
+Import types from a namespace for unqualified references:
 
 ```basic
 USING Graphics.Rendering
 
-NAMESPACE Application
-  CLASS GameEngine
-    DIM renderer AS Renderer    REM Unqualified via USING
-    DIM fps AS I64
-  END CLASS
-END NAMESPACE
+DIM R AS Renderer          REM Unqualified via USING
 ```
 
 **Placement rules:**
-- `USING` must appear at file scope (not inside `NAMESPACE` or `CLASS` blocks)
-- `USING` must appear before any `NAMESPACE`, `CLASS`, or `INTERFACE` declarations
-- Each file's `USING` directives are file-scoped and don't affect other files
+- `USING` must appear at file scope
+- `USING` must come before `NAMESPACE`, `CLASS`, or `INTERFACE` declarations
+- Each file's `USING` directives are file-scoped
 
-### Creating namespace aliases
+### Creating Namespace Aliases
 
-Use the alias form to create shorthand names for long namespace paths:
+Create shorthand names for long namespace paths:
 
 ```basic
 USING GR = Graphics.Rendering
 USING UI = Graphics.UI
 
-DIM renderer AS GR.Renderer
-DIM button AS UI.Button
+DIM RENDERER AS GR.Renderer
+DIM BUTTON AS UI.Button
 ```
 
-This is especially useful for deeply nested namespaces.
+### Type Resolution Precedence
 
-### Type resolution precedence
-
-When you reference a type without qualification, the compiler searches:
+When you reference a type without qualification, the compiler searches in order:
 
 1. Current namespace
 2. Parent namespaces (walking up the hierarchy)
 3. Imported namespaces via `USING` (in declaration order)
 4. Global namespace
 
-Fully-qualified names (e.g. `A.B.Type`) bypass this search.
+### Handling Ambiguity
 
-### Handling ambiguity
-
-If multiple imported namespaces contain the same type name, unqualified references are ambiguous:
+If multiple imported namespaces contain the same type name:
 
 ```basic
 USING Collections
 USING Utilities
 
-REM If both Collections and Utilities define "List":
-DIM myList AS List          REM Error: ambiguous reference
+REM If both define "List":
+DIM MYLIST AS List          REM Error: ambiguous reference
 
 REM Fix 1: Use fully-qualified name
-DIM myList AS Collections.List
+DIM MYLIST AS Collections.List
 
 REM Fix 2: Use alias
 USING Coll = Collections
-DIM myList AS Coll.List
+DIM MYLIST AS Coll.List
 ```
 
-### Case insensitivity
+### Case Insensitivity
 
-All namespace and type names are case-insensitive per BASIC semantics:
+All namespace and type names are case-insensitive:
 
 ```basic
 NAMESPACE MyLib
@@ -206,73 +338,137 @@ NAMESPACE MyLib
   END CLASS
 END NAMESPACE
 
-REM All of these are equivalent:
-DIM h1 AS MyLib.Helper
-DIM h2 AS MYLIB.HELPER
-DIM h3 AS mylib.helper
+REM All equivalent:
+DIM H1 AS MyLib.Helper
+DIM H2 AS MYLIB.HELPER
+DIM H3 AS mylib.helper
 ```
 
-### Built-in namespaces (future)
+---
 
-The `Viper` root namespace is reserved for future built-in libraries:
+## 7. Console and File I/O
+
+### Console Input/Output
 
 ```basic
-REM Future Track B feature (illustrative):
-USING Viper.System.Text
+10 INPUT "What is your name? ", NAME$
+20 PRINT "Hello, "; NAME$
 
-DIM builder AS StringBuilder
+' LINE INPUT reads an entire line
+30 LINE INPUT "Enter a line: ", LINE$
+40 PRINT "You entered: "; LINE$
 ```
 
-Currently, user code cannot declare namespaces under `Viper`.
-
-## 7. Console and file I/O
+### File Operations
 
 ```basic
-10 INPUT "Name? ", N$
-20 PRINT "Hello, "; N$
+10 OPEN "output.txt" FOR OUTPUT AS #1
+20 PRINT #1, "Hello, file!"
+30 PRINT #1, "Line 2"
+40 CLOSE #1
 
-10 OPEN "out.txt" FOR OUTPUT AS #1
-20 PRINT #1, "Hello"
-30 CLOSE #1
+50 OPEN "output.txt" FOR INPUT AS #2
+60 WHILE NOT EOF(#2)
+70   LINE INPUT #2, L$
+80   PRINT L$
+90 WEND
+100 CLOSE #2
 ```
 
-## 8. Errors
+**File modes:**
+- `INPUT` — Read from file
+- `OUTPUT` — Write to file (overwrites)
+- `APPEND` — Write to file (appends)
+- `BINARY` — Binary read/write
+
+---
+
+## 8. Error Handling
+
+### ON ERROR GOTO
 
 ```basic
 10 ON ERROR GOTO 100
 20 OPEN "missing.txt" FOR INPUT AS #1
-30 END
-100 PRINT "Could not open file"
-110 RESUME 0
+30 PRINT "File opened successfully"
+40 CLOSE #1
+50 END
+
+100 REM Error handler
+110 PRINT "Error: Could not open file"
+120 RESUME 0
 ```
 
-## 9. Mini-project A: number guess
+**Resume options:**
+- `RESUME` — Retry the statement that caused the error
+- `RESUME NEXT` — Continue with the next statement
+- `RESUME <line>` — Jump to a specific line (use `RESUME 0` to end)
+
+---
+
+## 9. Example Projects
+
+### Example A: Number Guessing Game
 
 ```basic
-10 LET SECRET = 42
-20 DO
-30   INPUT "Guess? ", G
-40   IF G = SECRET THEN PRINT "Correct!": EXIT DO
-50   IF G < SECRET THEN PRINT "Higher" ELSE PRINT "Lower"
-60 LOOP
+10 RANDOMIZE TIMER
+20 LET SECRET = INT(RND() * 100) + 1
+30 LET ATTEMPTS = 0
+
+40 DO
+50   INPUT "Guess a number (1-100): ", GUESS
+60   LET ATTEMPTS = ATTEMPTS + 1
+70
+80   IF GUESS = SECRET THEN
+90     PRINT "Correct! You won in "; ATTEMPTS; " attempts!"
+100    EXIT DO
+110  ELSEIF GUESS < SECRET THEN
+120    PRINT "Higher!"
+130  ELSE
+140    PRINT "Lower!"
+150  END IF
+160 LOOP
 ```
 
-## 10. Mini-project B: file copy (lines)
+### Example B: File Copy Utility
 
 ```basic
-10 LINE INPUT "Source? ", S$
-20 LINE INPUT "Dest? ", D$
-30 OPEN S$ FOR INPUT AS #1
-40 OPEN D$ FOR OUTPUT AS #2
-50 WHILE NOT EOF(#1)
-60   LINE INPUT #1, L$
-70   PRINT #2, L$
-80 WEND
-90 CLOSE #1: CLOSE #2
+10 LINE INPUT "Source file: ", SOURCE$
+20 LINE INPUT "Destination file: ", DEST$
+
+30 ON ERROR GOTO 200
+
+40 OPEN SOURCE$ FOR INPUT AS #1
+50 OPEN DEST$ FOR OUTPUT AS #2
+
+60 WHILE NOT EOF(#1)
+70   LINE INPUT #1, LINE$
+80   PRINT #2, LINE$
+90 WEND
+
+100 CLOSE #1
+110 CLOSE #2
+120 PRINT "File copied successfully!"
+130 END
+
+200 REM Error handler
+210 PRINT "Error: Could not copy file"
+220 RESUME 0
 ```
 
-## 11. Where to go next
+---
 
-- Skim the **Reference** for all statements and built-ins.
-- Review examples in `tests/golden/basic/` (if available).
-- Explore OOP patterns: builders, resource guards with `DESTRUCTOR`, and collection utilities.
+## 10. Where to Go Next
+
+**Learn More:**
+- **[BASIC Reference](basic-reference.md)** — Complete language reference
+- **[IL Guide](il-guide.md)** — Understanding the intermediate language
+
+**Explore Examples:**
+- Browse `examples/basic/` for more sample programs
+- Check `tests/golden/basic/` for test cases
+
+**Advanced Topics:**
+- Object-oriented patterns: builders, resource guards with `DESTRUCTOR`
+- Namespace organization strategies for large projects
+- Error handling best practices

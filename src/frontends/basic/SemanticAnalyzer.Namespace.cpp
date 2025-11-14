@@ -27,6 +27,7 @@
 #include "frontends/basic/SemanticAnalyzer.Internal.hpp"
 #include <algorithm>
 #include <cctype>
+#include "frontends/basic/StringUtils.hpp"
 
 namespace il::frontends::basic
 {
@@ -154,13 +155,19 @@ void SemanticAnalyzer::analyzeInterfaceDecl(InterfaceDecl &decl)
 ///          - "Viper" root is reserved.
 void SemanticAnalyzer::analyzeUsingDecl(UsingDecl &decl)
 {
-    // Disallow inside procedures (Phase 2 rule).
+    // Placement rules:
+    // - USING is file-scoped only (not inside namespace blocks or procedures)
+    // - USING must appear before any namespace/class/interface declarations
+    //   in the file (E_NS_005)
+    // Disallow inside procedures. Phase 2: allow inside namespace blocks (scoped USING).
     if (activeProcScope_ != nullptr)
     {
-        // Reuse existing diagnostic category for placement; message text may refer to scope.
         de.emit(diag::BasicDiag::NsUsingNotFileScope, decl.loc, 1, {});
         return;
     }
+
+    // Phase 2: allow USING anywhere at file scope (no E_NS_005 here).
+    // Still validated inside NAMESPACE by analyzeNamespaceDecl first pass.
 
     // Build canonical lowercase namespace path from segments.
     std::string nsPath;
@@ -177,15 +184,18 @@ void SemanticAnalyzer::analyzeUsingDecl(UsingDecl &decl)
         return;
     }
 
-    // E_NS_001: Namespace must exist in registry.
-    if (!nsPath.empty())
+    // E_NS_001: Namespace must exist in registry (error severity).
+    if (!nsPath.empty() && !ns_.namespaceExists(nsPath))
     {
-        if (!ns_.namespaceExists(nsPath))
-        {
-            // P2.4: Optional early validation (best-effort). Emit a warning but do not halt.
-            std::string msg = std::string("unknown namespace '") + nsPath + "' in USING";
-            de.emit(il::support::Severity::Warning, "W_NS_USING_UNKNOWN", decl.loc, 1, std::move(msg));
-        }
+        // Print identifier in canonical BASIC uppercase form in diagnostics.
+        std::string nsUpper = string_utils::to_upper(nsPath);
+        de.emit(diag::BasicDiag::NsUnknownNamespace,
+                decl.loc,
+                1,
+                {{diag::Replacement{"ns", nsUpper}}});
+        // Continue after emitting the error to allow follow-on diagnostics but do not
+        // record the USING in the scoped context.
+        return;
     }
 
     // Validate alias if present.

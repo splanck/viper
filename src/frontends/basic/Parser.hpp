@@ -112,6 +112,9 @@ class Parser
     mutable std::vector<Token> tokens_;               ///< Lookahead token buffer.
     DiagnosticEmitter *emitter_ = nullptr;            ///< Diagnostic sink; not owned.
     std::unordered_set<std::string> arrays_;          ///< Names of arrays declared via DIM.
+    // Namespaces seen during parsing (top-level heads). Used to disambiguate
+    // qualified procedure calls like A.F() from object method calls C.M().
+    std::unordered_set<std::string> knownNamespaces_{};
     std::unordered_set<std::string> knownProcedures_; ///< Procedure identifiers seen so far.
     std::unordered_set<int> usedLabelNumbers_;        ///< Numeric labels already assigned.
 
@@ -141,6 +144,9 @@ class Parser
     ///          member bodies so statement parsers can reject procedure-scoped
     ///          constructs such as USING.
     int procDepth_ = 0;
+    /// @brief Nesting depth of active NAMESPACE declarations.
+    /// @details Used to forbid USING directives inside namespaces per Phase 2 rules.
+    int nsDepth_ = 0;
 
     /// @brief Registry that maps statement-leading tokens to parser callbacks.
     class StatementParserRegistry
@@ -210,6 +216,11 @@ class Parser
     /// @param line Line metadata to propagate.
     /// @return Parsed statement or empty optional when not applicable.
     StmtResult parseWhile(int line);
+
+    /// @brief Try parsing a DO loop statement when the keyword matches.
+    /// @param line Line metadata to propagate.
+    /// @return Parsed statement or empty optional when not applicable.
+    StmtResult parseDo(int line);
 
     /// @brief Parse a LET assignment statement when the keyword is present.
     /// @return Parsed statement or empty optional when not applicable.

@@ -166,9 +166,10 @@ Parser::StmtResult Parser::parseCall(int)
     const Token nextTok = peek(1);
     if (nextTok.kind == TokenKind::Dot)
     {
-        // Generalized support: allow any qualified call expression beginning
-        // with an identifier to form a call statement (e.g., A.B.F(), obj.M()).
-        // Parse the full expression and accept either MethodCallExpr or CallExpr.
+        // Always defer dotted forms to the general expression parser which
+        // can distinguish object method calls vs. namespace-qualified
+        // procedures using existing heuristics and knownNamespaces_. This
+        // avoids misclassifying instance calls like `o.F()` as global calls.
         auto expr = parseExpression(/*min_prec=*/0);
         if (expr && (is<MethodCallExpr>(*expr) || is<CallExpr>(*expr)))
         {
@@ -177,7 +178,6 @@ Parser::StmtResult Parser::parseCall(int)
             stmt->call = std::move(expr);
             return StmtResult(std::move(stmt));
         }
-        // Not a call — treat as an error for statement context to match legacy behaviour.
         reportUnknownStatement(identTok);
         resyncAfterError();
         return StmtResult(StmtPtr{});

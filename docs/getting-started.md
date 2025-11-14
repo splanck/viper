@@ -1,34 +1,62 @@
 ---
 status: active
 audience: public
-last-verified: 2025-09-24
+last-verified: 2025-11-13
+---
+
+# Getting Started with Viper
+
+Welcome to Viper! This guide will help you build and run the Viper compiler toolchain.
+
 ---
 
 ## Prerequisites
 
-Set up the core toolchain before cloning the repository:
-- CMake ≥ 3.20.
-- A C++20-capable compiler (GCC, Clang, or MSVC) and optionally Ninja for faster multi-config builds.
-- Python 3.x if you plan to run helper scripts under `scripts/`.
+Before you begin, ensure you have:
 
-## Build (Linux/macOS/Windows)
+- **CMake** ≥ 3.20
+- **C++20 Compiler**: GCC, Clang, or MSVC
+- **Ninja** (optional): For faster multi-config builds
+- **Python 3.x** (optional): For helper scripts in `scripts/`
 
-Use an out-of-source build directory so you can cleanly rebuild or switch configurations.
+---
+
+## Building Viper
+
+### 1. Configure the Build
+
+Use an out-of-source build directory for clean rebuilds and configuration switching:
 
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
+```
+
+**Build types:**
+- `Debug` — Full debug symbols, no optimization
+- `Release` — Optimized, minimal debug info
+- `RelWithDebInfo` — Optimized with debug symbols (recommended)
+
+### 2. Compile
+
+```sh
 cmake --build build -j
 ```
 
-If you want a relocatable tree for packaging or downstream testing, install into a local prefix:
+The `-j` flag enables parallel compilation for faster builds.
+
+### 3. Optional: Install Locally
+
+For packaging or downstream testing, install into a local prefix:
 
 ```sh
 cmake --install build --prefix ./_install
 ```
 
-## Quick sanity check
+---
 
-After the build finishes, confirm the primary tools respond to `--help`:
+## Verify the Installation
+
+After building, confirm the primary tools work correctly:
 
 ```sh
 ./build/src/tools/il-verify/il-verify --help
@@ -36,27 +64,62 @@ After the build finishes, confirm the primary tools respond to `--help`:
 ./build/src/tools/ilc/ilc --help
 ```
 
-Explore the [tutorials-examples.md#examples](tutorials-examples.md#examples) section to run a sample end-to-end once the binaries are in place.
+Each tool should display its help message without errors.
 
-## Unified Errors
+---
 
-All front ends, the IL, and the VM share a single error and trap model so diagnostics stay consistent regardless of the entry point. Review [specs/errors.md](specs/errors.md) for the full set of trap kinds, handler semantics, and BASIC `ON ERROR` lowering rules before wiring new behavior into the stack.
+## Run a Simple Example
 
-## Precise Numerics
+Try running a BASIC program through the complete toolchain:
 
-Viper's execution model ships with deterministic numeric semantics ([specs/numerics.md](specs/numerics.md)) so IL and BASIC behave identically across interpreters and builds:
+```sh
+# Run a BASIC program directly on the VM
+./build/src/tools/ilc/ilc front basic -run examples/basic/ex1_hello_cond.bas
 
-- Integer arithmetic traps on overflow instead of wrapping, keeping logic predictable.
-- `/` always performs floating-point division while `\` truncates toward zero; `MOD` keeps the dividend's sign.
-- All rounding follows banker's rounding (ties-to-even) and casts use checked variants that raise when a value is out of range.
-- `VAL` and `STR$` guarantee consistent parse/print round-trips without locale surprises.
+# Or compile BASIC → IL, then run IL
+./build/src/tools/ilc/ilc front basic -emit-il examples/basic/ex1_hello_cond.bas -o hello.il
+./build/src/tools/ilc/ilc -run hello.il
+```
 
-## What to read next
+For more examples, see the **[BASIC Tutorial](basic-language.md)** and the `examples/` directory.
 
-- Architecture → [architecture.md](architecture.md)
-- BASIC language → [basic-language.md](basic-language.md)
-- IL guide → [il-guide.md](il-guide.md)
-- Runtime & VM → [runtime-vm.md](runtime-vm.md)
-- Tools (CLI) → [tools.md](tools.md)
-- Tutorials & Examples → [tutorials-examples.md](tutorials-examples.md)
-- Contributor Guide → [contributor-guide.md](contributor-guide.md)
+---
+
+## Key Concepts
+
+### Unified Error Model
+
+All frontends, IL, and the VM share a consistent error and trap model. Diagnostics remain uniform regardless of entry point.
+
+> **Learn more:** See `/devdocs/specs/errors.md` for trap kinds, handler semantics, and BASIC `ON ERROR` lowering rules.
+
+### Deterministic Numerics
+
+Viper guarantees consistent numeric behavior across all platforms and execution modes:
+
+- **Overflow checking**: Integer arithmetic traps on overflow instead of wrapping
+- **Division operators**: `/` performs floating-point division; `\` truncates toward zero
+- **Modulo**: `MOD` preserves the dividend's sign
+- **Rounding**: All rounding uses banker's rounding (ties-to-even)
+- **Conversions**: Casts use checked variants that trap when values are out of range
+- **String conversions**: `VAL` and `STR$` guarantee round-trip consistency
+
+> **Learn more:** See `/devdocs/specs/numerics.md` for complete numeric semantics.
+
+---
+
+## What to Read Next
+
+**Language Documentation:**
+- **[BASIC Tutorial](basic-language.md)** — Learn Viper BASIC by example
+- **[BASIC Reference](basic-reference.md)** — Complete language reference
+- **[IL Guide](il-guide.md)** — Comprehensive IL documentation
+
+**Implementation Guides:**
+- **[Frontend How-To](frontend-howto.md)** — Build your own language frontend
+
+**Developer Documentation** (in `/devdocs`):
+- `architecture.md` — System architecture overview
+- `runtime-vm.md` — VM and runtime internals
+- `contributor-guide.md` — Contribution guidelines
+- `tools.md` — CLI tools reference

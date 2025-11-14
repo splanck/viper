@@ -1,54 +1,37 @@
 # Viper
 
-**Viper** is an **IL‑first compiler toolchain and virtual machine**.  
-High‑level frontends—like the included BASIC compiler—lower programs into a strongly typed, SSA‑inspired intermediate language (**Viper IL**). The IL can be executed by the VM today, with native backends planned.
+**Viper** is an **IL-first compiler toolchain and virtual machine** for exploring intermediate language design, multi-frontend architectures, and interpreter micro-architectures.
 
-> Viper is an active, experimental project exploring IL design, multi‑frontend architectures, and interpreter micro‑architectures.
+High-level frontends—like the included BASIC compiler—lower programs into a strongly typed, SSA-inspired intermediate language (**Viper IL**). The IL can be executed by the VM or compiled to native code via the x86-64 backend.
 
-## Documentation
+---
 
-- IL Quickstart & Reference: [docs/il-guide.md](docs/il-guide.md)
-- BASIC Language Guide: [docs/basic-language.md](docs/basic-language.md)
-- Architecture Overview: [docs/architecture.md#cpp-overview](docs/architecture.md#cpp-overview)
-- Code Map (components & roles): [docs/codemap.md](docs/codemap.md)
+## What is Viper?
+
+Viper is a complete compiler infrastructure with multiple components:
+
+- **IL (Intermediate Language)**: Typed, SSA-based IR that serves as the universal compilation target
+- **Frontends**: Language-specific compilers that lower to IL (BASIC included, more planned)
+- **VM**: Bytecode interpreter with pluggable dispatch strategies (switch, table, threaded)
+- **Backend**: Native code generator targeting x86-64 (Phase A complete)
+- **Runtime**: Portable C libraries for strings, math, file I/O, and memory management
+- **Tooling**: Compiler driver, verifier, disassembler, and debugger integration
 
 ---
 
 ## Why Viper?
 
-- **IL at the center.** A single, readable, typed IR makes semantics explicit and frontends interchangeable.
-- **Human‑scale design.** The IL is meant to be *read and edited*; you can learn by inspecting disassembly without a microscope.
-- **Composable toolchain.** Parsers → IL builder → verifier → VM all exist as standalone tools you can script.
-- **Performance playground.** Switch vs table vs direct‑threaded dispatch lets you *feel* interpreter trade‑offs.
-- **Teaching & research friendly.** Clear examples, golden tests, and a small surface area encourage experimentation.
-
----
-
-## Feature Highlights
-
-### Implemented
-- **BASIC Frontend** — parser, semantic analysis, OOP features, and runtime integration.
-- **Viper IL** — stable, typed, SSA‑style IR with a verifier.
-- **Virtual Machine** — configurable dispatch:
-  - `switch` — classic `switch` jump table
-  - `table` — function‑pointer dispatch
-  - `threaded` — direct‑threaded labels‑as‑values (requires GCC/Clang and build flag)
-- **Runtime Libraries** — portable C for strings, math, and file I/O.
-- **Tooling**
-  - `ilc` — compile/run BASIC or IL programs
-  - `il-dis` — disassemble IL binaries
-  - `il-verify` — verify IR correctness and emit diagnostics
-- **Examples & Tests** — curated examples (e.g., `SELECT CASE`) and extensive golden tests.
-- **TUI subsystem** — experimental text‑UI widgets (`tui/`).
-
-### In Progress / Planned
-- Advanced optimization passes for the IL (mem2reg implemented)
-- Native x86-64 codegen (Phase A complete: instruction selection, linear-scan register allocation, frame lowering, assembly emission)
-- Debugger/IDE integration and richer developer tooling
+- **IL at the center**: A single, readable, typed IR makes semantics explicit and frontends interchangeable
+- **Human-scale design**: The IL is meant to be *read and edited*—you can learn by inspecting disassembly
+- **Composable toolchain**: Parsers, IL builder, verifier, and VM all exist as standalone tools you can script
+- **Performance playground**: Multiple dispatch strategies let you *feel* interpreter trade-offs
+- **Teaching & research friendly**: Clear examples, golden tests, and a small surface area encourage experimentation
 
 ---
 
 ## Quickstart
+
+Build and test:
 
 ```bash
 cmake -S . -B build
@@ -56,23 +39,68 @@ cmake --build build -j
 ctest --test-dir build --output-on-failure
 ```
 
-Run BASIC directly:
+Run a BASIC program:
 
 ```bash
-build/src/tools/ilc/ilc front basic -run examples/basic/ex1_hello_cond.bas
+./build/src/tools/ilc/ilc front basic -run examples/basic/ex1_hello_cond.bas
 ```
 
-Run IL:
+Run an IL program:
 
 ```bash
-build/src/tools/ilc/ilc -run examples/il/ex1_hello_cond.il
+./build/src/tools/ilc/ilc -run examples/il/ex1_hello_cond.il
 ```
+
+Compile to native code (x86-64):
+
+```bash
+./build/src/tools/ilc/ilc front basic examples/basic/ex1_hello_cond.bas -o hello
+./hello
+```
+
+---
+
+## Features
+
+### Implemented
+
+**Languages:**
+- **BASIC Frontend**: Complete parser, semantic analysis, OOP features (classes, methods, inheritance), and runtime integration
+
+**Core Infrastructure:**
+- **Viper IL**: Stable, typed, SSA-style IR with comprehensive verifier
+- **Virtual Machine**: Configurable dispatch strategies:
+  - `switch` — Classic switch-based jump table (portable)
+  - `table` — Function-pointer dispatch (portable)
+  - `threaded` — Direct-threaded labels-as-values (GCC/Clang only)
+- **x86-64 Backend**: Native code generation with linear-scan register allocation, instruction selection, and frame lowering
+- **Runtime Libraries**: Portable C implementations for strings, math, file I/O, and memory management
+
+**Tooling:**
+- **`ilc`**: Unified compiler driver (compile and run BASIC or IL programs)
+- **`il-verify`**: Standalone IR verifier with detailed diagnostics
+- **`il-dis`**: IL disassembler for inspection
+- **`basic-ast-dump`**: BASIC AST visualizer
+
+**Quality Assurance:**
+- Extensive golden test suite across all layers
+- Deterministic numeric semantics (overflow checking, banker's rounding)
+- Unified error model across frontends, IL, and VM
+
+### In Progress
+
+- IL optimization passes (mem2reg, SimplifyCFG, LICM, SCCP)
+- Advanced register allocation (graph coloring)
+- Debugger and IDE integration
+- Additional language frontends
 
 ---
 
 ## IL at a Glance
 
-**BASIC**
+Viper's core philosophy: **frontends lower to a typed IL that is compact, explicit, and easy to inspect.**
+
+**BASIC Source:**
 
 ```basic
 10 LET X = 2 + 3
@@ -82,7 +110,7 @@ build/src/tools/ilc/ilc -run examples/il/ex1_hello_cond.il
 50 END
 ```
 
-**Viper IL (abbreviated)**
+**Viper IL Output:**
 
 ```il
 il 0.1
@@ -91,112 +119,109 @@ extern @rt_print_i64(i64) -> void
 global const str @.NL = "\n"
 global const str @.HELLO = "HELLO"
 
-func @main() -> i32 {
+func @main() -> i64 {
 entry:
   %x = add 2, 3
   %y = mul %x, 2
-  call @rt_print_str(const_str @.HELLO); call @rt_print_str(const_str @.NL)
-  call @rt_print_i64(%y);                call @rt_print_str(const_str @.NL)
+  call @rt_print_str(const_str @.HELLO)
+  call @rt_print_str(const_str @.NL)
+  call @rt_print_i64(%y)
+  call @rt_print_str(const_str @.NL)
   ret 0
 }
 ```
 
-This is the essence of Viper: **frontends lower to a typed IL that is compact, explicit, and easy to inspect.**
-
 ---
 
-## Architecture at a Glance
+## Architecture Overview
 
 ```
-[Frontend(s)]
-   BASIC, future languages
-        │
-        ▼
-   [IL Builder]  ──►  [il-verify]
-   (typed, SSA-ish)     (correctness)
-        │
-        ▼
- [Virtual Machine]  ──►  (planned) [Native Backends]
-  switch / table / threaded
+┌─────────────────────────────────────────┐
+│           Source Language                │
+│        (BASIC, others planned)           │
+└─────────────────┬───────────────────────┘
+                  │
+                  ▼
+┌─────────────────────────────────────────┐
+│          Frontend (Parser +              │
+│       Semantic Analysis + Lowering)      │
+└─────────────────┬───────────────────────┘
+                  │
+                  ▼
+┌─────────────────────────────────────────┐
+│          Viper IL (Typed SSA)            │
+│         + Verifier + Optimizer           │
+└─────────┬───────────────┬───────────────┘
+          │               │
+          ▼               ▼
+┌──────────────┐   ┌──────────────────────┐
+│   Virtual    │   │  Backend (x86-64)    │
+│   Machine    │   │   Native Codegen     │
+└──────────────┘   └──────────────────────┘
 ```
 
-- **Frontends** lower to a *common, typed* IL.
-- **Verifier** enforces type, control‑flow, and lifetime constraints with precise diagnostics.
-- **VM** executes IL; dispatch is swappable for experimentation.
-- **Backends** (planned) will emit native code.
-
----
-
-## Interpreter Dispatch & Configuration
-
-Choose the dispatch loop at runtime with `VIPER_DISPATCH`:
-
-| Value      | Notes |
-|------------|------|
-| `switch`   | Default portable dispatch; compilers generate jump tables. |
-| `table`    | Function‑pointer dispatch. |
-| `threaded` | Direct‑threaded (GCC/Clang labels‑as‑values). Requires building with `-DVIPER_VM_THREADED=ON`. Falls back if unavailable. |
-
-If compiled with `-DVIPER_VM_THREADED=ON`, the VM upgrades the default to direct‑threaded automatically on supported compilers.
-
-### Performance Note (When `threaded` Helps)
-
-Direct‑threaded dispatch can reduce branch mispredictions and loop overhead in tight interpreter loops where **most time is spent in the dispatch itself**. Expect the most visible gains when:
-- hot paths execute many small IL instructions,
-- control flow is predictable (good I‑cache locality), and
-- your platform supports labels‑as‑values (GCC/Clang).
-
-Workloads dominated by I/O, syscalls, or heavy native library calls will see little difference because interpreter overhead isn’t the bottleneck.
+- **Frontends** lower source languages to a common, typed IL
+- **Verifier** enforces type safety, control-flow correctness, and SSA properties
+- **VM** executes IL with configurable dispatch strategies
+- **Backend** compiles IL to native machine code (x86-64 with System V ABI)
 
 ---
 
 ## Tools
 
-- **`ilc`** — frontends, compile, run
-  - `ilc front basic -run examples/...`
-  - `ilc -run examples/il/...`
-- **`il-dis`** — disassemble IL binaries for inspection.
-- **`il-verify`** — verify IR; diagnostics include function/block context.
+- **`ilc`** — Unified compiler driver
+  - Compile and run BASIC: `ilc front basic -run program.bas`
+  - Run IL directly: `ilc -run program.il`
+  - Compile to native: `ilc front basic program.bas -o executable`
+  - Generate assembly: `ilc front basic program.bas --emit-asm -o program.s`
+
+- **`il-verify`** — Standalone IR verifier
+  - Verify IL: `il-verify program.il`
+  - Outputs detailed diagnostics with function/block context
+
+- **`il-dis`** — IL disassembler
+  - Disassemble IL: `il-dis program.il`
 
 ---
 
-## Project Layout
+## Documentation
 
-```
-.
-├─ src/         # VM, IL core, frontends, tools
-├─ docs/        # IL spec, BASIC language, architecture
-├─ examples/    # BASIC and IL programs
-├─ tests/       # golden tests across layers
-├─ tui/         # experimental text UI components
-├─ cmake/       # CMake helpers and package exports
-├─ scripts/     # dev and CI convenience scripts
-└─ .github/     # CI workflows
-```
+**Getting Started:**
+- [Getting Started](docs/getting-started.md) — Build, install, and run your first program
 
-- Browse key folders:
-  - Source tree: [src/](src/)
-  - Documentation: [docs/](docs/)
-- Examples: [examples/](examples/)
+**Language References:**
+- [BASIC Tutorial](docs/basic-language.md) — Learn Viper BASIC by example
+- [BASIC Reference](docs/basic-reference.md) — Complete language specification
+- [IL Guide](docs/il-guide.md) — Comprehensive IL specification and examples
+- [IL Quickstart](docs/il-quickstart.md) — Fast introduction to Viper IL
+- [IL Reference](docs/il-reference.md) — Complete IL instruction catalog
 
-Related docs for new VM capabilities:
+**Implementation Guides:**
+- [Frontend How-To](docs/frontend-howto.md) — Build your own language frontend
+- [VM Architecture](docs/vm.md) — VM design, execution model, and internals
+- [Backend Guide](docs/backend.md) — x86-64 code generation architecture
 
-- Stepping API: [docs/vm-stepping.md](docs/vm-stepping.md)
-- Profiling counters: [docs/vm-profiling.md](docs/vm-profiling.md)
-- Runtime bridge & externs: [docs/vm-runtime-bridge.md](docs/vm-runtime-bridge.md)
-- Periodic interrupts: [docs/vm-interrupts.md](docs/vm-interrupts.md)
-  - Tests: [tests/](tests/)
-  - CMake helpers: [cmake/](cmake/)
-  - Scripts: [scripts/](scripts/)
+**Developer Resources:**
+- See `/devdocs` for architecture diagrams, code maps, and contributor guides
 
 ---
 
-## Building, Installing, Uninstalling
+## Building & Installation
+
+### Requirements
+
+- **CMake** 3.20 or later
+- **C++20 compiler**: Clang (recommended), GCC 11+, or MSVC
+- **Ninja** (optional): For faster multi-config builds
+- **Python 3.x** (optional): For helper scripts
 
 ### Build
 
 ```bash
-# Configure (optional: enable direct‑threaded VM dispatch)
+# Configure
+cmake -S . -B build
+
+# Optional: Enable direct-threaded VM dispatch (GCC/Clang only)
 cmake -S . -B build -DVIPER_VM_THREADED=ON
 
 # Build
@@ -206,139 +231,127 @@ cmake --build build -j
 ctest --test-dir build --output-on-failure
 ```
 
-### Install (macOS and Linux)
-
-The project provides standard CMake install rules for tools and headers.
+### Install
 
 ```bash
-# Install to /usr/local (default on macOS/Linux)
+# Install to /usr/local (macOS/Linux)
 sudo cmake --install build --prefix /usr/local
 
-# Or install to a custom prefix (no sudo if you own the prefix)
+# Or install to a custom prefix
 cmake --install build --prefix "$HOME/.local"
 ```
 
-What gets installed:
+**What gets installed:**
 - Binaries: `ilc`, `il-verify`, `il-dis` → `${prefix}/bin`
-- Headers (public): → `${prefix}/include/viper`
-- Generated header: `version.hpp` → `${prefix}/include/viper`
-- Man pages: `ilc(1)`, `il-verify(1)`, `il-dis(1)` → `${prefix}/share/man/man1`
-
-Notes
-- Add `${prefix}/bin` to your `PATH` and `${prefix}/share/man` to your `MANPATH` if needed.
-- The TUI demo is not installed.
+- Headers: Public API headers → `${prefix}/include/viper`
+- Man pages: → `${prefix}/share/man/man1`
 
 ### Uninstall
-
-Uninstall removes files recorded in `install_manifest.txt` from your last `cmake --install`.
 
 ```bash
 cmake --build build --target uninstall
 ```
 
-### Cleaning
+### Platform Notes
+
+**macOS:**
+- Use Apple Clang (Xcode or Command Line Tools)
+- On Apple Silicon (arm64), x86-64 tests are skipped automatically
+
+**Linux:**
+- Clang recommended; GCC 11+ supported
+- Force compiler: `CC=clang CXX=clang++ cmake -S . -B build`
+
+**Windows:**
+- Clang-CL preferred; MSVC may work but is not primary configuration
+- Some POSIX-specific tests are skipped
+
+---
+
+## VM Dispatch Strategies
+
+The VM supports three dispatch strategies optimized for different use cases:
+
+| Strategy    | Description | Portability | Performance |
+|-------------|-------------|-------------|-------------|
+| `switch`    | Switch-based jump table | All compilers | Good |
+| `table`     | Function-pointer dispatch | All compilers | Good |
+| `threaded`  | Direct-threaded (labels-as-values) | GCC/Clang only | Best |
+
+**Configure at runtime** with the `VIPER_DISPATCH` environment variable:
 
 ```bash
-# Remove built objects in the current build tree + source‑generated artifacts
-cmake --build build --target clean-all
-
-# Stronger cleanup: also remove build tree binaries and CMake cache/files
-cmake --build build --target clean-dist
+VIPER_DISPATCH=threaded ./build/src/tools/ilc/ilc -run program.il
 ```
 
-> The project targets **C++20** and builds with modern **CMake**. Direct‑threaded dispatch requires **GCC/Clang** for labels‑as‑values; other toolchains fall back to portable modes.
+If built with `-DVIPER_VM_THREADED=ON`, the VM defaults to `threaded` when available.
 
-### Packages (macOS and Linux)
-
-You can create native packages using **CPack** after install rules are in place.
-
-```bash
-cmake -S . -B build
-cmake --build build -j
-
-# Build packages (generator auto-selects per platform)
-cmake --build build --target package
-```
-
-Outputs (in `build/`):
-- macOS: `Viper-<version>-macos.pkg`
-- Linux: `viper-<version>-<system>-<arch>.deb` and/or `.rpm` if the tooling is available
-
-Install a package with your OS’s standard tools (e.g., `sudo dpkg -i …` or `sudo rpm -i …`).
+**Performance note:** Direct-threaded dispatch reduces branch mispredictions in tight interpreter loops. Workloads dominated by I/O or native library calls see minimal benefit.
 
 ---
 
-## Compiling on Different Platforms
+## Extending Viper
 
-Viper is cross‑platform and uses standard CMake toolchain discovery. The canonical compiler is **Clang**; GCC is supported.
+Adding a new language frontend:
 
-### macOS
-- Use Apple Clang (installed with Xcode or Command Line Tools).
-- The build enables `lld` automatically when available; falls back to system linker otherwise.
-- On Apple Silicon (arm64), x86_64 codegen assemble/link tests are skipped by default.
-- Install to `/usr/local` or a custom prefix: `sudo cmake --install build --prefix /usr/local`.
+1. **Parse** your language into an AST
+2. **Lower** to Viper IL using the IL builder API
+3. **Verify** with `il-verify` to catch errors
+4. **Execute** via the VM or compile to native code
 
-### Linux (Clang or GCC)
-- Clang is recommended; GCC 11+ is supported.
-- You can force a compiler with `CC`/`CXX`:
-  ```bash
-  CC=clang CXX=clang++ cmake -S . -B build
-  cmake --build build -j
-  ```
-- The install step is identical to macOS (`cmake --install build --prefix …`).
-
-### Windows
-- Clang‑CL is preferred; MSVC may work but is not the primary configuration.
-- POSIX‑specific tests and scripts are skipped or gated. If you primarily target Windows, consider building with LLVM’s `clang-cl` and Ninja.
-
+See [Frontend How-To](docs/frontend-howto.md) for a complete implementation guide.
 
 ---
 
-## Extending Viper (adding a frontend)
+## Project Status
 
-1. **Parse** your language into an AST.
-2. **Lower** to Viper IL using the IL builder (types and control‑flow made explicit).
-3. **Verify** your IL with `il-verify`.
-4. **Execute** via the VM (pick a dispatch), or—once available—emit native code with a backend.
-
-Keep frontends thin: semantics live in the IL so the VM/backends can stay generic.
-
----
-
-## Roadmap & Status
-
-All components are under active development; icons reflect current maturity, not completion.
-
-| Area                             | Status                                      |
-|----------------------------------|---------------------------------------------|
-| BASIC frontend + OOP             | 🔧 Available (actively evolving)            |
-| VM (switch/table/threaded)       | 🔧 Available (actively evolving)            |
-| Runtime libs (string/math/I/O)   | 🔧 Available (actively evolving)            |
-| IL verifier & diagnostics        | 🔧 Available (actively evolving)            |
-| TUI subsystem                    | 🧪 Experimental                              |
-| IL optimization passes           | 🧩 In progress                               |
-| Native codegen (x86-64)          | 🔧 Active (Phase A complete)                 |
-| Debugger/IDE                     | ⏳ Planned                                   |
+| Component | Status |
+|-----------|--------|
+| BASIC Frontend + OOP | Active development |
+| Virtual Machine | Active development |
+| x86-64 Backend | Phase A complete |
+| Runtime Libraries | Active development |
+| IL Verifier | Active development |
+| IL Optimizer | In progress |
+| Debugger/IDE | Planned |
+| TUI Subsystem | Experimental |
 
 ---
 
 ## Contributing
 
-We’re glad you’re interested in Viper! This project is evolving quickly and the architecture is still in flux. You’re welcome to explore the code, file issues, and propose **small fixes or documentation improvements**. However, we’re **not currently seeking large feature PRs** while the core design stabilizes. Keeping the project cohesive is the priority. If you want to experiment more broadly, feel free to fork—Viper is MIT‑licensed.
+Viper is evolving quickly and the architecture is still stabilizing. We welcome:
+
+- Bug reports and issue filing
+- Small fixes and documentation improvements
+- Feedback and suggestions
+
+We are **not currently seeking large feature PRs** while the core design solidifies. If you want to experiment more broadly, feel free to fork—Viper is MIT-licensed.
 
 ---
 
- 
-
 ## License
 
-MIT License — a short summary:
+MIT License
 
-- Permissive: you may use, copy, modify, merge, publish, distribute,
-  sublicense, and/or sell copies of the software.
-- Conditions: include the copyright and permission notice in
-  all copies or substantial portions of the software.
-- Warranty: provided "AS IS", without warranty of any kind; the authors are
-  not liable for any claim, damages, or other liability.
+Copyright (c) 2024-2025 Viper Contributors
 
-See the full text in [`LICENSE`](LICENSE).
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+See [LICENSE](LICENSE) for full text.

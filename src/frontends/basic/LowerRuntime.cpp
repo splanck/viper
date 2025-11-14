@@ -521,6 +521,10 @@ void Lowerer::declareRequiredRuntime(build::IRBuilder &b)
         if (isManualHelperRequired(helper.helper))
             declareManual(helper.name);
     }
+
+    // Note: String retain/release helpers are declared via the pre-scan and
+    // explicit require* hooks in lowering. Avoid unconditional declarations
+    // here to keep IL stable and prevent duplicate externs in simple programs.
 }
 
 } // namespace il::frontends::basic
