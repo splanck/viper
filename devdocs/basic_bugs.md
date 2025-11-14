@@ -26,7 +26,7 @@
 
 **Boolean Type System Changes**: Modified `isBooleanType()` to only accept `Type::Bool` (not `Type::Int`) for logical operators (AND/ANDALSO/OR/ORELSE). This makes the type system stricter and fixes some test cases.
 
-**Bug Statistics**: 36 resolved, 0 outstanding, 0 partially resolved (36 total documented)
+**Bug Statistics**: 37 resolved, 6 outstanding, 0 partially resolved (43 total documented)
 
 **Recent Investigation (2025-11-14)**:
 - ✅ **BUG-012 NOW RESOLVED**: BOOLEAN variables can now be compared with TRUE/FALSE constants and with each other; STR$(boolean) now works
@@ -35,6 +35,8 @@
 - ✅ **BUG-030 NOW RESOLVED**: Global variables now properly shared across SUB/FUNCTION (fixed as side effect of BUG-019)
 - ✅ **BUG-035 NOW RESOLVED**: Duplicate of BUG-030, also fixed
 - ✅ **BUG-010 NOW RESOLVED**: STATIC keyword now fully functional - procedure-local persistent variables work correctly
+- ❌ **NEW OOP BUGS DISCOVERED (2025-11-13)**: During BasicDB development, discovered 6 critical OOP limitations (BUG-037 through BUG-042) that prevent proper object-oriented programming. Classes currently limited to read-only use after construction.
+- ✅ **BUG-043 VERIFIED RESOLVED**: String arrays work correctly (duplicate/false report of BUG-032/033)
 
 ---
 
@@ -514,5 +516,274 @@ PRINT board$  ' Prints: ABCDEFGHI
 
 ### BUG-036: String comparison in OR condition causes IL error
 **Status**: ✅ RESOLVED 2025-11-13 - See basic_resolved.md for details
+
+---
+
+### BUG-037: SUB methods on class instances cannot be called
+**Difficulty**: 🔴 HARD - OOP method invocation
+**Severity**: HIGH
+**Status**: Outstanding
+**Discovered**: 2025-11-13 during BasicDB development
+**Test Case**: /devdocs/basic/basicdb.bas version 0.2
+
+**Description**:
+When calling SUB methods on class instances, the compiler reports "unknown procedure" errors. FUNCTION methods work correctly, but SUB methods fail completely.
+
+**Reproduction**:
+```basic
+CLASS Database
+  SUB IncrementCount()
+    LET Me.count = Me.count + 1
+  END SUB
+END CLASS
+
+DIM db AS Database
+db = NEW Database()
+db.IncrementCount()   ' ERROR
+```
+
+**Error Message**:
+```
+error[B1006]: unknown procedure 'db.incrementcount'
+```
+
+**Workaround**:
+Convert all SUB methods to FUNCTION methods that return a dummy value (e.g., INTEGER returning 0).
+
+**Impact**:
+- Cannot use SUB methods on class instances
+- All mutation methods must be FUNCTIONs
+- Reduces code clarity (mutation methods shouldn't return values)
+
+---
+
+### BUG-038: String concatenation with method results fails in certain contexts
+**Difficulty**: 🟡 MEDIUM - Type inference in expressions
+**Severity**: MEDIUM
+**Status**: Outstanding
+**Discovered**: 2025-11-13 during BasicDB development
+**Test Case**: /devdocs/basic/basicdb.bas version 0.2, line 138
+
+**Description**:
+When concatenating strings with the result of a method call inline, sometimes get operand type mismatch errors even though the method returns STRING.
+
+**Reproduction**:
+```basic
+CLASS Record
+  FUNCTION ToString() AS STRING
+    RETURN "Record data"
+  END FUNCTION
+END CLASS
+
+DIM rec AS Record
+rec = NEW Record(1, "Test", "test@example.com", 25)
+PRINT "After updates: " + rec.ToString()  ' ERROR
+```
+
+**Error Message**:
+```
+error[B2001]: operand type mismatch
+```
+
+**Workaround**:
+Store method result in a temporary variable first, then concatenate:
+```basic
+DIM tempStr AS STRING
+tempStr = rec.ToString()
+PRINT "After updates: " + tempStr  ' Works
+```
+
+**Impact**:
+- Cannot inline method calls in string concatenation in all contexts
+- Requires extra variables and lines of code
+- Reduces code readability
+
+---
+
+### BUG-039: Methods that mutate object state cause IL generation errors
+**Difficulty**: 🔴 HARD - OOP state management
+**Severity**: CRITICAL
+**Status**: Outstanding
+**Discovered**: 2025-11-13 during BasicDB development
+**Test Case**: /devdocs/basic/basicdb.bas version 0.2
+
+**Description**:
+Methods that both modify object state (Me.field = ...) and return a value cause "call arg type mismatch" errors during IL generation, even after workaround for BUG-037.
+
+**Reproduction**:
+```basic
+CLASS Database
+  FUNCTION IncrementCount() AS INTEGER
+    LET Me.recordCount = Me.recordCount + 1
+    RETURN 0
+  END FUNCTION
+END CLASS
+
+DIM db AS Database
+db = NEW Database()
+DIM dummy AS INTEGER
+dummy = db.IncrementCount()  ' ERROR during IL generation
+```
+
+**Error Message**:
+```
+error: main:obj_assign_cont1: call %t43: call arg type mismatch
+```
+
+**Workaround**:
+None found. Cannot use methods for state mutations on objects.
+
+**Impact**:
+- **CRITICAL**: Cannot implement proper OOP encapsulation
+- Must use direct field access or external functions
+- Defeats the purpose of object-oriented design
+- Makes classes essentially read-only after construction
+
+---
+
+### BUG-040: Cannot use custom class types as function return types
+**Difficulty**: 🔴 HARD - Type system extension
+**Severity**: HIGH
+**Status**: Outstanding
+**Discovered**: 2025-11-13 during BasicDB development
+**Test Case**: /devdocs/basic/basicdb.bas version 0.3
+
+**Description**:
+Functions can only return built-in types (INTEGER, STRING, etc.). Cannot declare a function that returns a custom CLASS type.
+
+**Reproduction**:
+```basic
+CLASS Record
+  id AS INTEGER
+  name AS STRING
+END CLASS
+
+FUNCTION DB_GetRecordById(id AS INTEGER) AS Record  ' ERROR
+  DIM rec AS Record
+  rec = NEW Record(id, "Test", "test@example.com", 25)
+  RETURN rec
+END FUNCTION
+```
+
+**Error Message**:
+```
+error[B0001]: unknown statement 'RECORD'; expected keyword or procedure call
+```
+
+**Workaround**:
+Return an index into an array instead of the object itself:
+```basic
+FUNCTION DB_FindRecordIndexById(id AS INTEGER) AS INTEGER
+  ' Return index, then caller uses: DB_RECORDS(index)
+  RETURN index
+END FUNCTION
+```
+
+**Impact**:
+- Cannot create factory functions or getters that return objects
+- Must use array indexing directly
+- Limits abstraction capabilities
+- Makes APIs less clean and more error-prone
+
+---
+
+### BUG-041: Cannot create arrays of custom class types
+**Difficulty**: 🔴 HARD - Type system + runtime support
+**Severity**: CRITICAL
+**Status**: Outstanding
+**Discovered**: 2025-11-13 during BasicDB development
+**Test Case**: /devdocs/basic/basicdb.bas version 0.3
+
+**Description**:
+Cannot declare or use arrays of custom CLASS types. Attempting to assign class instances to array elements causes IL generation errors.
+
+**Reproduction**:
+```basic
+CLASS Record
+  id AS INTEGER
+  name AS STRING
+END CLASS
+
+DIM DB_RECORDS(100) AS Record
+DB_RECORDS(0) = NEW Record(1, "Test", "test@example.com", 25)  ' ERROR
+```
+
+**Error Message**:
+```
+error: DB_ADDRECORD:bc_ok0_DB_ADDRECORD: call %t26 %t27 %t21:
+       @rt_arr_i32_set value operand must be i64
+```
+
+**Workaround**:
+Use parallel arrays - one array per field:
+```basic
+DIM DB_IDS(100) AS INTEGER
+DIM DB_NAMES(100) AS STRING
+DIM DB_EMAILS(100) AS STRING
+DIM DB_AGES(100) AS INTEGER
+```
+
+**Impact**:
+- **CRITICAL**: Cannot store collections of objects
+- Fundamentally limits OOP capabilities
+- Must use primitive type arrays with parallel indexing
+- Error-prone (easy to get indices out of sync)
+- Reduces code maintainability dramatically
+
+**Notes**: This is perhaps the most severe OOP limitation - without object arrays, you cannot build meaningful data structures or collections in an OOP style.
+
+---
+
+### BUG-042: Reserved keyword 'LINE' cannot be used as variable name
+**Difficulty**: 🟡 MEDIUM - Parser/lexer keyword handling
+**Severity**: MEDIUM
+**Status**: Outstanding
+**Discovered**: 2025-11-13 during BasicDB development
+**Test Case**: /devdocs/basic/basicdb.bas version 0.4, line 156
+
+**Description**:
+The identifier `line` (or `LINE`) cannot be used as a variable name because the parser thinks it's part of `LINE INPUT` statement, even when used as `DIM line AS STRING`.
+
+**Reproduction**:
+```basic
+DIM line AS STRING  ' ERROR
+line = "Hello"      ' Parser expects LINE INPUT syntax
+```
+
+**Error Message**:
+```
+error[B0001]: expected ident, got LINE
+error[B0001]: expected INPUT, got =
+```
+
+**Workaround**:
+Use a different variable name (e.g., `lineStr`, `output`, `result`).
+
+**Impact**:
+- Common variable name is reserved
+- Parser error messages are confusing
+- Violates principle of least surprise
+
+**Notes**: This suggests the parser may have issues with other statement-prefix keywords when used as identifiers. May affect: `INPUT`, `DATA`, `FOR`, `IF`, etc.
+
+---
+
+### BUG-043: String arrays reported not working (duplicate of BUG-032/033)
+**Status**: ✅ RESOLVED 2025-11-13 - Duplicate/false report
+**Discovered**: 2025-11-13
+
+**Description**:
+Initially reported that STRING arrays don't work, but testing confirms they work correctly. This was a duplicate concern about BUG-032/033 which had already been resolved.
+
+**Validation**:
+```basic
+DIM names$(5)
+names$(0) = "Alice"
+names$(1) = "Bob"
+PRINT names$(0)  ' Outputs: Alice
+PRINT names$(1)  ' Outputs: Bob
+```
+
+**Resolution**: String arrays work correctly. BUG-032/033 resolution was complete.
 
 ---
