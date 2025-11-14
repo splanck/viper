@@ -244,6 +244,17 @@ void SemanticAnalyzer::analyzeProcedureCommon(const Proc &proc,
 /// @param f FUNCTION declaration node.
 void SemanticAnalyzer::analyzeProc(const FunctionDecl &f)
 {
+    // Preserve current namespace stack and establish the procedure's namespace context
+    auto savedNs = nsStack_;
+    if (!f.qualifiedName.empty())
+    {
+        // Split qualified name into segments and drop the final identifier (the proc name)
+        std::vector<std::string> segs = SplitDots(f.qualifiedName);
+        if (!segs.empty())
+            segs.pop_back();
+        nsStack_ = segs;
+    }
+
     const FunctionDecl *previousFunction = activeFunction_;
     BasicType previousExplicit = activeFunctionExplicitRet_;
     bool previousNameAssigned = activeFunctionNameAssigned_;
@@ -288,6 +299,9 @@ void SemanticAnalyzer::analyzeProc(const FunctionDecl &f)
     activeFunction_ = previousFunction;
     activeFunctionExplicitRet_ = previousExplicit;
     activeFunctionNameAssigned_ = previousNameAssigned; // BUG-003: Restore state
+
+    // Restore namespace context
+    nsStack_ = std::move(savedNs);
 }
 
 /// @brief Analyze a SUB declaration.
@@ -295,7 +309,20 @@ void SemanticAnalyzer::analyzeProc(const FunctionDecl &f)
 /// @param s SUB declaration node.
 void SemanticAnalyzer::analyzeProc(const SubDecl &s)
 {
+    // Preserve current namespace stack and establish the procedure's namespace context
+    auto savedNs = nsStack_;
+    if (!s.qualifiedName.empty())
+    {
+        std::vector<std::string> segs = SplitDots(s.qualifiedName);
+        if (!segs.empty())
+            segs.pop_back();
+        nsStack_ = segs;
+    }
+
     analyzeProcedureCommon(s, [](const SubDecl &) {}, LoopKind::Sub);
+
+    // Restore namespace context
+    nsStack_ = std::move(savedNs);
 }
 
 /// @brief Determine whether a block of statements guarantees a return value.
@@ -445,6 +472,42 @@ void SemanticAnalyzer::analyze(const Program &prog)
             else if (auto *s = as<SubDecl>(*p))
                 analyzeProc(*s);
         }
+
+    // Additionally analyze procedures declared inside namespace blocks.
+    std::function<void(const std::vector<StmtPtr> &)> scanBodies;
+    scanBodies = [&](const std::vector<StmtPtr> &stmts)
+    {
+        for (const auto &stmtPtr : stmts)
+        {
+            if (!stmtPtr)
+                continue;
+            switch (stmtPtr->stmtKind())
+            {
+                case Stmt::Kind::NamespaceDecl:
+                {
+                    const auto &ns = static_cast<const NamespaceDecl &>(*stmtPtr);
+                    // Establish namespace context
+                    for (const auto &seg : ns.path)
+                        nsStack_.push_back(seg);
+                    scanBodies(ns.body);
+                    if (nsStack_.size() >= ns.path.size())
+                        nsStack_.resize(nsStack_.size() - ns.path.size());
+                    else
+                        nsStack_.clear();
+                    break;
+                }
+                case Stmt::Kind::FunctionDecl:
+                    analyzeProc(static_cast<const FunctionDecl &>(*stmtPtr));
+                    break;
+                case Stmt::Kind::SubDecl:
+                    analyzeProc(static_cast<const SubDecl &>(*stmtPtr));
+                    break;
+                default:
+                    break;
+            }
+        }
+    };
+    scanBodies(prog.main);
 }
 
 /// @brief Resolve the signature for a procedure call and validate its kind.

@@ -166,8 +166,9 @@ void ProcRegistry::registerProcImpl(std::string_view name,
     auto it = byQualified_.find(key);
     if (it != byQualified_.end())
     {
-        // Duplicate: emit centralized error + note.
-        diagx::ErrorDuplicateProc(de.emitter(), key, it->second.loc, loc);
+        // Duplicate: emit using canonical lowercase to match diagnostics expectations.
+        std::string display = key;
+        diagx::ErrorDuplicateProc(de.emitter(), display, it->second.loc, loc);
         return;
     }
 
@@ -215,7 +216,22 @@ const ProcTable &ProcRegistry::procs() const
 /// @return Pointer to the stored signature when found; otherwise nullptr.
 const ProcSignature *ProcRegistry::lookup(const std::string &name) const
 {
+    // First try exact lookup for performance
     auto it = procs_.find(name);
+    if (it != procs_.end())
+        return &it->second;
+
+    // Canonicalize qualified names (case-insensitive, strip suffix from final segment)
+    std::string key;
+    if (name.find('.') != std::string::npos)
+        key = canonicalizeQualifiedFlat(name);
+    else
+        key = CanonicalizeIdent(stripSuffix(name));
+
+    if (key.empty())
+        return nullptr;
+
+    it = procs_.find(key);
     return it == procs_.end() ? nullptr : &it->second;
 }
 

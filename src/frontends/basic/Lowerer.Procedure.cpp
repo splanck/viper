@@ -611,45 +611,45 @@ void ProcedureLowering::collectProcedureSignatures(const Program &prog)
 {
     lowerer.procSignatures.clear();
     lowerer.procNameAliases.clear();
+
+    // Local helpers to reduce duplication when constructing and registering
+    // procedure signatures from AST declarations.
+    auto buildSig = [&](il::core::Type ret, const auto &params) {
+        Lowerer::ProcedureSignature sig;
+        sig.retType = ret;
+        sig.paramTypes.reserve(params.size());
+        for (const auto &p : params)
+        {
+            il::core::Type ty = p.is_array ? il::core::Type(il::core::Type::Kind::Ptr)
+                                           : coreTypeForAstType(p.type);
+            sig.paramTypes.push_back(ty);
+        }
+        return sig;
+    };
+
+    auto registerSig = [&](const std::string &unqual,
+                           const std::string &qual,
+                           Lowerer::ProcedureSignature sig) {
+        const bool hasQual = !qual.empty();
+        const std::string &key = hasQual ? qual : unqual;
+        lowerer.procSignatures.emplace(key, std::move(sig));
+        // Map canonical unqualified name to the resolved key used for emission
+        std::string canon = CanonicalizeIdent(unqual);
+        if (!canon.empty())
+            lowerer.procNameAliases.emplace(canon, key);
+    };
     for (const auto &decl : prog.procs)
     {
         if (auto *fn = as<const FunctionDecl>(*decl))
         {
-            Lowerer::ProcedureSignature sig;
-            sig.retType = lowerer.functionRetTypeFromHint(fn->name, fn->explicitRetType);
-            sig.paramTypes.reserve(fn->params.size());
-            for (const auto &p : fn->params)
-            {
-                il::core::Type ty = p.is_array ? il::core::Type(il::core::Type::Kind::Ptr)
-                                               : coreTypeForAstType(p.type);
-                sig.paramTypes.push_back(ty);
-            }
-            const std::string key = fn->qualifiedName.empty() ? fn->name : fn->qualifiedName;
-            lowerer.procSignatures.emplace(key, std::move(sig));
-            if (!fn->qualifiedName.empty())
-                lowerer.procNameAliases.emplace(CanonicalizeIdent(fn->name), fn->qualifiedName);
-            else
-                // Map canonical unqualified name back to original for IL emission
-                lowerer.procNameAliases.emplace(CanonicalizeIdent(fn->name), fn->name);
+            auto sig = buildSig(lowerer.functionRetTypeFromHint(fn->name, fn->explicitRetType),
+                                fn->params);
+            registerSig(fn->name, fn->qualifiedName, std::move(sig));
         }
         else if (auto *sub = as<const SubDecl>(*decl))
         {
-            Lowerer::ProcedureSignature sig;
-            sig.retType = il::core::Type(il::core::Type::Kind::Void);
-            sig.paramTypes.reserve(sub->params.size());
-            for (const auto &p : sub->params)
-            {
-                il::core::Type ty = p.is_array ? il::core::Type(il::core::Type::Kind::Ptr)
-                                               : coreTypeForAstType(p.type);
-                sig.paramTypes.push_back(ty);
-            }
-            const std::string key = sub->qualifiedName.empty() ? sub->name : sub->qualifiedName;
-            lowerer.procSignatures.emplace(key, std::move(sig));
-            if (!sub->qualifiedName.empty())
-                lowerer.procNameAliases.emplace(CanonicalizeIdent(sub->name), sub->qualifiedName);
-            else
-                // Map canonical unqualified name back to original for IL emission
-                lowerer.procNameAliases.emplace(CanonicalizeIdent(sub->name), sub->name);
+            auto sig = buildSig(il::core::Type(il::core::Type::Kind::Void), sub->params);
+            registerSig(sub->name, sub->qualifiedName, std::move(sig));
         }
     }
 
@@ -669,49 +669,16 @@ void ProcedureLowering::collectProcedureSignatures(const Program &prog)
                 case Stmt::Kind::FunctionDecl:
                 {
                     const auto &fn = static_cast<const FunctionDecl &>(*stmtPtr);
-                    Lowerer::ProcedureSignature sig;
-                    sig.retType = lowerer.functionRetTypeFromHint(fn.name, fn.explicitRetType);
-                    sig.paramTypes.reserve(fn.params.size());
-                    for (const auto &p : fn.params)
-                    {
-                        il::core::Type ty = p.is_array ? il::core::Type(il::core::Type::Kind::Ptr)
-                                                       : coreTypeForAstType(p.type);
-                        sig.paramTypes.push_back(ty);
-                    }
-                    if (!fn.qualifiedName.empty())
-                    {
-                        lowerer.procSignatures.emplace(fn.qualifiedName, std::move(sig));
-                        lowerer.procNameAliases.emplace(CanonicalizeIdent(fn.name), fn.qualifiedName);
-                    }
-                    else
-                    {
-                        lowerer.procSignatures.emplace(fn.name, std::move(sig));
-                        lowerer.procNameAliases.emplace(CanonicalizeIdent(fn.name), fn.name);
-                    }
+                    auto sig = buildSig(lowerer.functionRetTypeFromHint(fn.name, fn.explicitRetType),
+                                        fn.params);
+                    registerSig(fn.name, fn.qualifiedName, std::move(sig));
                     break;
                 }
                 case Stmt::Kind::SubDecl:
                 {
                     const auto &sub = static_cast<const SubDecl &>(*stmtPtr);
-                    Lowerer::ProcedureSignature sig;
-                    sig.retType = il::core::Type(il::core::Type::Kind::Void);
-                    sig.paramTypes.reserve(sub.params.size());
-                    for (const auto &p : sub.params)
-                    {
-                        il::core::Type ty = p.is_array ? il::core::Type(il::core::Type::Kind::Ptr)
-                                                       : coreTypeForAstType(p.type);
-                        sig.paramTypes.push_back(ty);
-                    }
-                    if (!sub.qualifiedName.empty())
-                    {
-                        lowerer.procSignatures.emplace(sub.qualifiedName, std::move(sig));
-                        lowerer.procNameAliases.emplace(CanonicalizeIdent(sub.name), sub.qualifiedName);
-                    }
-                    else
-                    {
-                        lowerer.procSignatures.emplace(sub.name, std::move(sig));
-                        lowerer.procNameAliases.emplace(CanonicalizeIdent(sub.name), sub.name);
-                    }
+                    auto sig = buildSig(il::core::Type(il::core::Type::Kind::Void), sub.params);
+                    registerSig(sub.name, sub.qualifiedName, std::move(sig));
                     break;
                 }
                 default:
