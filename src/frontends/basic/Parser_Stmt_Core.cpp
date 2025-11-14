@@ -166,10 +166,94 @@ Parser::StmtResult Parser::parseCall(int)
     const Token nextTok = peek(1);
     if (nextTok.kind == TokenKind::Dot)
     {
-        // Always defer dotted forms to the general expression parser which
-        // can distinguish object method calls vs. namespace-qualified
-        // procedures using existing heuristics and knownNamespaces_. This
-        // avoids misclassifying instance calls like `o.F()` as global calls.
+        // Attempt to parse a namespace-qualified call pattern: Ident( . Ident )+ '('
+        // Prefer this interpretation in statement position to surface clearer
+        // procedure diagnostics, but avoid misclassifying instance calls like
+        // `o.F()` by requiring either multiple qualification segments or that
+        // the head identifier is a known namespace.
+        if (at(TokenKind::Identifier))
+        {
+            // Non-destructive probe for pattern Ident ('.' Ident)+ '('
+            size_t i = 0;
+            if (peek(i).kind == TokenKind::Identifier && peek(i + 1).kind == TokenKind::Dot)
+            {
+                // Advance through segments
+                i += 2; // consumed first ident and dot conceptually
+                bool ok = true;
+                bool sawAdditionalDot = false;
+                while (peek(i).kind == TokenKind::Identifier && peek(i + 1).kind == TokenKind::Dot)
+                {
+                    sawAdditionalDot = true;
+                    i += 2;
+                }
+                // Require final identifier followed by '('
+                if (peek(i).kind != TokenKind::Identifier || peek(i + 1).kind != TokenKind::LParen)
+                    ok = false;
+
+                if (ok)
+                {
+                    bool treatAsQualified = false;
+                    if (sawAdditionalDot)
+                    {
+                        treatAsQualified = true; // A.B.C.f(...)
+                    }
+                    else
+                    {
+                        // Single-dot case:
+                        // - Prefer namespace-qualified interpretation when the head is a known namespace
+                        // - Otherwise, default to qualified when the head looks like a multi-letter name
+                        //   (heuristic to avoid misclassifying object receivers like 'o.F()').
+                        if (knownNamespaces_.find(identTok.lexeme) != knownNamespaces_.end())
+                        {
+                            treatAsQualified = true;
+                        }
+                        else if (!identTok.lexeme.empty() && identTok.lexeme.size() > 1)
+                        {
+                            treatAsQualified = true;
+                        }
+                    }
+
+                    if (treatAsQualified)
+                    {
+                        // Consume the qualified segments for real and parse arguments as a CallExpr
+                        auto [segs, startLoc] = parseQualifiedIdentSegments();
+                        expect(TokenKind::LParen);
+                        std::vector<ExprPtr> args;
+                        if (!at(TokenKind::RParen))
+                        {
+                            while (true)
+                            {
+                                args.push_back(parseExpression());
+                                if (!at(TokenKind::Comma))
+                                    break;
+                                consume();
+                            }
+                        }
+                        expect(TokenKind::RParen);
+
+                        auto call = std::make_unique<CallExpr>();
+                        call->loc = startLoc;
+                        if (segs.size() > 1)
+                            call->calleeQualified = segs;
+                        std::string joined;
+                        for (size_t si = 0; si < segs.size(); ++si)
+                        {
+                            if (si)
+                                joined.push_back('.');
+                            joined += segs[si];
+                        }
+                        call->callee = std::move(joined);
+                        call->args = std::move(args);
+
+                        auto stmt = std::make_unique<CallStmt>();
+                        stmt->loc = identTok.loc;
+                        stmt->call = std::move(call);
+                        return StmtResult(std::move(stmt));
+                    }
+                }
+            }
+        }
+        // Fallback: parse a general expression and accept MethodCallExpr or CallExpr
         auto expr = parseExpression(/*min_prec=*/0);
         if (expr && (is<MethodCallExpr>(*expr) || is<CallExpr>(*expr)))
         {

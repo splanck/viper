@@ -56,6 +56,7 @@ int main()
     {
         const std::string src = "10 NAMESPACE A.B\n"
                                 "20   FUNCTION F$()\n"
+                                "25     RETURN \"\"\n"
                                 "30   END FUNCTION\n"
                                 "40 END NAMESPACE\n"
                                 "50 LET S$ = a.b.f()\n"

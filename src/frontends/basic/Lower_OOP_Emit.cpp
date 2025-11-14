@@ -508,13 +508,28 @@ void Lowerer::emitOopDeclsAndBodies(const Program &prog)
     if (!builder)
         return;
 
-    // Emit interface/class members first.
-    for (const auto &stmt : prog.main)
+    // Walk the program and nested namespaces to emit class/interface members.
+    std::function<void(const std::vector<StmtPtr> &)> scan;
+    scan = [&](const std::vector<StmtPtr> &stmts)
     {
-        if (!stmt || stmt->stmtKind() != Stmt::Kind::ClassDecl)
-            continue;
+        for (const auto &stmt : stmts)
+        {
+            if (!stmt)
+                continue;
+            if (stmt->stmtKind() == Stmt::Kind::NamespaceDecl)
+            {
+                const auto &ns = static_cast<const NamespaceDecl &>(*stmt);
+                // Enter namespace for qualification
+                pushNamespace(ns.path);
+                scan(ns.body);
+                // Leave namespace
+                popNamespace(ns.path.size());
+                continue;
+            }
+            if (stmt->stmtKind() != Stmt::Kind::ClassDecl)
+                continue;
 
-        const auto &klass = static_cast<const ClassDecl &>(*stmt);
+            const auto &klass = static_cast<const ClassDecl &>(*stmt);
         const ConstructorDecl *ctor = nullptr;
         const DestructorDecl *dtor = nullptr;
         std::vector<const MethodDecl *> methods;
@@ -558,7 +573,11 @@ void Lowerer::emitOopDeclsAndBodies(const Program &prog)
         emitClassDestructor(klass, dtor);
         for (const auto *method : methods)
             emitClassMethod(klass, *method);
-    }
+        }
+    };
+
+    // Start recursive scan from the program's main statements.
+    scan(prog.main);
 
     // Synthesize interface registration and binding thunks, and a module init.
     // 1) Interface registration thunks

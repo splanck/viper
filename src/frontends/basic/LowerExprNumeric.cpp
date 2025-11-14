@@ -346,6 +346,8 @@ Lowerer::RVal NumericExprLowering::lowerStringBinary(const BinaryExpr &expr,
     lowerer.curLoc = expr.loc;
     if (expr.op == BinaryExpr::Op::Add)
     {
+        // Ensure runtime signature is linked for string concatenation.
+        lowerer.trackRuntime(Lowerer::RuntimeFeature::Concat);
         Value res = lowerer.emitCallRet(IlType(IlKind::Str), "rt_concat", {lhs.value, rhs.value});
         return {res, IlType(IlKind::Str)};
     }
