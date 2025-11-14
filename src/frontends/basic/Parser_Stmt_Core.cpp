@@ -18,6 +18,7 @@
 #include "frontends/basic/BasicDiagnosticMessages.hpp"
 #include "frontends/basic/Parser.hpp"
 #include "frontends/basic/ast/ExprNodes.hpp"
+#include "frontends/basic/IdentifierUtil.hpp"
 
 #include <cctype>
 #include <string>
@@ -235,14 +236,7 @@ Parser::StmtResult Parser::parseCall(int)
                         call->loc = startLoc;
                         if (segs.size() > 1)
                             call->calleeQualified = segs;
-                        std::string joined;
-                        for (size_t si = 0; si < segs.size(); ++si)
-                        {
-                            if (si)
-                                joined.push_back('.');
-                            joined += segs[si];
-                        }
-                        call->callee = std::move(joined);
+                        call->callee = JoinQualified(segs);
                         call->args = std::move(args);
 
                         auto stmt = std::make_unique<CallStmt>();
