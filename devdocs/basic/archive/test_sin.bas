@@ -1,0 +1,1 @@
+PRINT SIN(0)

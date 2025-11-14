@@ -1,0 +1,7 @@
+DIM px AS INTEGER
+DIM py AS INTEGER
+px = 40
+py = 20
+
+LOCATE py, px
+PRINT "X";

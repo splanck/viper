@@ -1,0 +1,3 @@
+DIM arr(10)
+PRINT UBOUND(arr)
+PRINT LBOUND(arr)
