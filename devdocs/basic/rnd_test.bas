@@ -1,2 +1,0 @@
-DIM r AS SINGLE
-r = RND()

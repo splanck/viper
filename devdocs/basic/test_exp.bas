@@ -1,1 +1,0 @@
-PRINT EXP(1)

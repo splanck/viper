@@ -1,3 +1,0 @@
-CONST X=10
-X=X+1
-PRINT X

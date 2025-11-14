@@ -1,6 +1,0 @@
-DIM x AS INTEGER
-DIM s AS STRING
-x = 42
-s = "Hello"
-PRINT x
-PRINT s

@@ -1,1 +1,0 @@
-PRINT COS(0)

@@ -1,4 +1,0 @@
-10 PRINT "Start"
-20 GOTO 40
-30 PRINT "Skipped"
-40 PRINT "End"

@@ -1,2 +1,0 @@
-PRINT SIN(0)
-PRINT COS(0)
