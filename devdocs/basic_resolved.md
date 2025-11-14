@@ -1,6 +1,6 @@
 # VIPER BASIC — Resolved Bugs
 
-Last Updated: 2025-11-13
+Last Updated: 2025-11-14
 
 This document records bugs from devdocs/basic_bugs.md that have been verified and resolved in code, with notes on scope, approach, and validation.
 
@@ -90,3 +90,78 @@ PRINT result#  ' Output: 2.68811714181614e+43
   - src/frontends/basic/LowerStmt_Runtime.cpp: store path already passed a pointer to a temporary slot for `rt_arr_str_put`; now matches the corrected marshalling.
   - tests/golden/arrays/string_array_store_and_print.bas: new golden validates allocate → store → get → print.
 - Validation: Golden passes; existing runtime/string tests remain green. Ownership semantics: `rt_arr_str_get` retains on read; `rt_arr_str_put` retains the new value and releases the previous.
+
+---
+
+## BUG-010: STATIC keyword support
+- Status: RESOLVED (2025-11-14)
+- Summary: STATIC keyword now fully functional for procedure-local persistent variables. Variables declared with STATIC persist across procedure calls while remaining isolated between different procedures. Uses the rt_modvar infrastructure with procedure-qualified names (e.g., "Counter.count") to ensure proper isolation.
+- Key paths:
+  - src/frontends/basic/Lowerer.Procedure.cpp (lines 564-620): Added STATIC variable resolution in `resolveVariableStorage()` before module-level global check. Detects `isStatic` flag and emits appropriate `rt_modvar_addr_*` calls with scoped names.
+  - Runtime storage: Reuses existing `rt_modvar_*` helpers (same mechanism as module-level globals), ensuring zero-initialization on first access and persistence across calls.
+- Test cases:
+  - devdocs/basic/test_bug010_static.bas: Basic counter test (increments 1, 2, 3)
+  - devdocs/basic/test_bug010_static_fixed.bas: Comprehensive suite covering multiple STATIC variables, same-named variables in different procedures (isolation), type suffixes, STATIC in FUNCTION, and mixed local/STATIC variables.
+- Validation: All test scenarios pass. STATIC variables work with all types (INTEGER, SINGLE, STRING, etc.) in both SUB and FUNCTION.
+
+---
+
+## BUG-012: BOOLEAN type incompatibility with TRUE/FALSE constants
+- Status: RESOLVED (2025-11-14)
+- Summary: BOOLEAN variables can now be compared with TRUE/FALSE constants and with each other using = and <> operators. STR$() now accepts BOOLEAN arguments and converts them correctly (TRUE → "-1", FALSE → "0").
+- Root cause: Type system didn't allow BOOLEAN-vs-BOOLEAN comparisons, and STR$() didn't whitelist BOOLEAN as a valid argument type. IL lowering also had operand coercion issues when comparing i16 BOOLEAN variables with i64 TRUE/FALSE constants.
+- Key paths:
+  - src/frontends/basic/Check_Expr_Binary.cpp: Modified `validateComparisonOperands()` to allow BOOLEAN-vs-BOOLEAN comparisons for Eq/Ne operators.
+  - src/frontends/basic/SemanticAnalyzer.Builtins.cpp: Modified `checkArgType()` to whitelist BOOLEAN for STR$() conversion.
+  - src/frontends/basic/lower/LowerExprNumeric.cpp: Fixed `normalizeNumericOperands()` to promote i16 BOOLEAN variables to i64 when compared with i64 TRUE/FALSE constants.
+- Test cases:
+  - devdocs/basic/test_bug012_boolean_comparisons.bas: Tests BOOLEAN equality/inequality with TRUE/FALSE and other BOOLEAN variables
+  - devdocs/basic/test_bug012_str_bool.bas: Tests STR$() with BOOLEAN arguments
+- Validation: All tests pass. BOOLEAN type is now fully usable for equality/inequality comparisons.
+
+---
+
+## BUG-017: Accessing global strings from class methods causes segfault
+- Status: RESOLVED (2025-11-14)
+- Summary: Class methods can now access module-level global string variables without segfaulting. This was fixed as a side effect of the BUG-019 type system fix.
+- Root cause: Type precedence issue in lowering phase - getSlotType() was overriding semantic analysis types with parser symbol table types, causing wrong rt_modvar_addr_* helper selection for global strings accessed from methods.
+- Key paths:
+  - src/frontends/basic/Lowerer.Procedure.cpp: Modified `getSlotType()` to respect semantic analysis types (BUG-019 fix)
+  - The fix ensures correct helper selection (rt_modvar_addr_str for strings) when resolving global variable storage
+- Validation: Class methods successfully access and modify global string variables. No more segfaults.
+
+---
+
+## BUG-019: Float CONST truncation
+- Status: RESOLVED (2025-11-14)
+- Summary: CONST declarations with float literals now correctly preserve float precision. `CONST PI = 3.14159` now stores 3.14159 instead of truncating to 3. STR$(PI) now produces "3.14159" instead of "3".
+- Root cause: Two-phase type conflict - semantic analyzer correctly inferred Float type for CONST, but lowering phase's getSlotType() and classifyNumericType() used parser symbol table type (I64) instead of semantic analysis type.
+- Key paths:
+  - src/frontends/basic/Lowerer.Procedure.cpp (lines 527-535): Modified `getSlotType()` to only apply symbol->type override when semantic analysis has no type, preserving float CONST inference.
+  - src/frontends/basic/lower/Lowerer_Expr.cpp (lines 519-542): Modified `classifyNumericType()` VarExpr visitor to consult semantic analyzer first before checking symbol table.
+  - Added include for SemanticAnalyzer.hpp in Lowerer_Expr.cpp (line 25).
+- Test cases:
+  - devdocs/basic/test_bug019_const_float.bas: Original failing test
+  - devdocs/basic/test_bug019_const_float_fixed.bas: Comprehensive test with various CONST scenarios
+- Validation: All tests pass. CONST PI = 3.14159 now works correctly, mathematical constants preserve full precision.
+
+---
+
+## BUG-030: SUBs and FUNCTIONs cannot access global variables
+- Status: RESOLVED (2025-11-14)
+- Summary: Module-level global variables are now properly shared between main and SUB/FUNCTION procedures. Each procedure can read and modify the actual global values instead of seeing zero-initialized copies.
+- Root cause: Infrastructure for rt_modvar_addr_* runtime helpers was already present, but BUG-019's type mismatch issues caused wrong helper selection, breaking global variable sharing.
+- Key paths:
+  - Fixed as a side effect of BUG-019 type precedence fix
+  - The correct type resolution ensures proper rt_modvar_addr_* helper selection (rt_modvar_addr_i64, rt_modvar_addr_f64, rt_modvar_addr_str, etc.)
+- Test cases:
+  - devdocs/basic/test_bug030_fixed.bas: Comprehensive test with INTEGER, SINGLE, and STRING globals across SUB/FUNCTION boundaries
+  - devdocs/basic/test_bug030_scenario1-6.bas: Various scenarios testing global variable sharing
+- Validation: All 6 scenarios pass. Globals properly shared - modifications in SUB/FUNCTION are visible in main and vice versa. Modular programming now possible.
+
+---
+
+## BUG-035: Global variables not accessible in SUB/FUNCTION
+- Status: RESOLVED (2025-11-14)
+- Summary: Duplicate of BUG-030. Discovered independently during tic-tac-toe development. Resolved by the same BUG-019 type system fix.
+- Validation: Same tests as BUG-030 confirm resolution.

@@ -521,6 +521,17 @@ function(viper_add_golden_suite_tests)
             "-DEXPECT=${EXPECT_STRING_ARRAY_STORE_PRINT}"
             -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
 
+    # BUG-032: Overwrite semantics (retain new, release old)
+    file(READ ${_VIPER_GOLDEN_DIR}/arrays/string_array_overwrite.stdout EXPECT_STRING_ARRAY_OVERWRITE)
+    string(STRIP "${EXPECT_STRING_ARRAY_OVERWRITE}" EXPECT_STRING_ARRAY_OVERWRITE)
+    viper_add_ctest(basic_arrays_string_overwrite
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/arrays/string_array_overwrite.bas
+            "-DEXPECT=${EXPECT_STRING_ARRAY_OVERWRITE}"
+            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
+
+
     # OOP virtual dispatch and base-qualified direct call
     file(READ ${_VIPER_GOLDEN_DIR}/oop/virtual_dispatch.stdout EXPECT_OOP_VDISPATCH)
     string(STRIP "${EXPECT_OOP_VDISPATCH}" EXPECT_OOP_VDISPATCH)
