@@ -512,14 +512,7 @@ ExprPtr Parser::parsePrimary()
                 call->loc = startLoc;
                 if (segs.size() > 1)
                     call->calleeQualified = segs;
-                std::string joined;
-                for (size_t si = 0; si < segs.size(); ++si)
-                {
-                    if (si)
-                        joined.push_back('.');
-                    joined += segs[si];
-                }
-                call->callee = std::move(joined);
+                call->callee = JoinQualified(segs);
                 call->args = std::move(args);
                 return call;
             }

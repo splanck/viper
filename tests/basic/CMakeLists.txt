@@ -1117,7 +1117,7 @@ function(viper_add_basic_namespace_tests)
             ${CMAKE_COMMAND}
             -DILC=${_VIPER_BASIC_ILC}
             -DBAS_FILE=${_VIPER_BASIC_NS_DIR}/t05_unknown_parent_walk.bas
-            "-DEXPECT=unknown procedure 'f' \(tried: a\\.b\\.f, a\\.f, f\)"
+            "-DEXPECT=unknown procedure 'f' \\(tried: a\\.b\\.f, a\\.f, f\\)"
             -P ${_VIPER_GOLDEN_ERRORS_DIR}/check_error.cmake)
 
     # Phase 2 tests ----------------------------------------------------------
