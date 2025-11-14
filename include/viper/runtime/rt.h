@@ -21,6 +21,7 @@
 #include "rt_random.h"
 #include "rt_string.h"
 #include "rt_string_builder.h"
+#include "rt_modvar.h"
 #include "rt_trap.h"
 
 #ifdef __cplusplus

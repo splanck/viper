@@ -16,6 +16,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/basic/Lowerer.hpp"
+#include "frontends/basic/ASTUtils.hpp"
+#include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/lower/AstVisitor.hpp"
 
 #include "viper/il/Module.hpp"
@@ -501,6 +503,51 @@ void Lowerer::lowerCallStmt(const CallStmt &stmt)
     if (!stmt.call)
         return;
     curLoc = stmt.loc;
+    // If this is a method call, reject FUNCTION-as-statement and emit void call for SUB.
+    if (auto *me = as<const MethodCallExpr>(*stmt.call))
+    {
+        // Identify class and check return type
+        std::string cls = me->base ? resolveObjectClass(*me->base) : std::string{};
+        if (auto ret = findMethodReturnType(cls, me->method))
+        {
+            if (auto *em = diagnosticEmitter())
+            {
+                std::string msg = "FUNCTION call used as a statement; assign or use its value";
+                em->emit(il::support::Severity::Error, "B2030", stmt.loc, 1, std::move(msg));
+            }
+            return;
+        }
+        // SUB: just lower, which emits a void call under the hood
+        lowerMethodCallExpr(*me);
+        return;
+    }
+
+    // For plain procedures, reject FUNCTION-as-statement
+    if (auto *ce = as<const CallExpr>(*stmt.call))
+    {
+        // Resolve callee name as in expression lowering
+        std::string calleeResolved;
+        if (!ce->calleeQualified.empty())
+            calleeResolved = CanonicalizeQualified(ce->calleeQualified);
+        else
+            calleeResolved = CanonicalizeIdent(ce->callee);
+        const std::string &calleeKey = calleeResolved.empty() ? ce->callee : calleeResolved;
+        if (const ProcedureSignature *sig = findProcSignature(calleeKey))
+        {
+            if (sig->retType.kind != Type::Kind::Void)
+            {
+                if (auto *em = diagnosticEmitter())
+                {
+                    std::string msg =
+                        "FUNCTION call used as a statement; assign or use its value";
+                    em->emit(il::support::Severity::Error, "B2030", stmt.loc, 1, std::move(msg));
+                }
+                return;
+            }
+        }
+    }
+
+    // Default: lower as expression (SUB path yields a void call; result ignored)
     lowerExpr(*stmt.call);
 }
 

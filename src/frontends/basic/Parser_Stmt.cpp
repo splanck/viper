@@ -18,6 +18,7 @@
 
 #include "frontends/basic/BasicDiagnosticMessages.hpp"
 #include "frontends/basic/Parser.hpp"
+#include "frontends/basic/IdentifierUtil.hpp"
 #include "frontends/basic/ast/ExprNodes.hpp"
 #include "viper/diag/BasicDiag.hpp"
 #include <cctype>
@@ -90,6 +91,26 @@ StmtPtr Parser::parseStatement(int line)
         return std::move(*stmt);
     if (auto stmt = parseDo(line))
         return std::move(*stmt);
+    // Soft keyword: LINE INPUT (only in statement position)
+    if (at(TokenKind::Identifier) && peek(1).kind == TokenKind::KeywordInput)
+    {
+        auto toUpper = [](std::string_view text)
+        {
+            std::string result;
+            result.reserve(text.size());
+            for (char ch : text)
+            {
+                unsigned char byte = static_cast<unsigned char>(ch);
+                result.push_back(static_cast<char>(std::toupper(byte)));
+            }
+            return result;
+        };
+        if (toUpper(peek().lexeme) == "LINE")
+        {
+            return parseLineInputStatement();
+        }
+    }
+
     if (auto stmt = parseLet())
         return std::move(*stmt);
     if (auto stmt = parseImplicitLet())
@@ -377,6 +398,25 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionHeader()
     {
         consume();
         fn->explicitRetType = parseBasicType();
+        if (fn->explicitRetType == BasicType::Unknown)
+        {
+            // Parse a qualified class name: Ident ('.' Ident)*
+            if (at(TokenKind::Identifier))
+            {
+                std::vector<std::string> segs;
+                // consume first
+                segs.push_back(CanonicalizeIdent(peek().lexeme));
+                consume();
+                while (at(TokenKind::Dot) && peek(1).kind == TokenKind::Identifier)
+                {
+                    consume(); // dot
+                    segs.push_back(CanonicalizeIdent(peek().lexeme));
+                    consume();
+                }
+                if (!segs.empty())
+                    fn->explicitClassRetQname = std::move(segs);
+            }
+        }
     }
     return fn;
 }

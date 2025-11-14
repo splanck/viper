@@ -1,26 +1,8 @@
-REM Test CONST keyword (BUG-009 fix)
-PRINT "=== Testing CONST Declaration ==="
-CONST PI = 3.14159
-CONST MSG$ = "Hello"
-CONST MAX_SIZE = 100
-
-PRINT "PI = ";
-PRINT PI
-PRINT "MSG$ = ";
-PRINT MSG$
-PRINT "MAX_SIZE = ";
-PRINT MAX_SIZE
-
-PRINT ""
-PRINT "=== Testing CONST in Expressions ==="
-radius = 5
-circumference = 2 * PI * radius
-PRINT "Circumference (r=5) = ";
-PRINT circumference
-
-area = PI * radius * radius
-PRINT "Area (r=5) = ";
-PRINT area
-
-PRINT ""
-PRINT "CONST tests passed!"
+CONST MAXREC = 10
+DIM arr(MAXREC) AS INTEGER
+PRINT "MAXREC = " + STR$(MAXREC)
+arr(0) = 100
+arr(9) = 999
+PRINT "arr(0) = " + STR$(arr(0))
+PRINT "arr(9) = " + STR$(arr(9))
+END

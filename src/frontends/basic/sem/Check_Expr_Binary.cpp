@@ -144,7 +144,9 @@ Type divisionResult(Type lhs, Type rhs) noexcept
 /// @return String when both operands are string; otherwise numeric promotion.
 Type addResult(Type lhs, Type rhs) noexcept
 {
-    if (lhs == Type::String && rhs == Type::String)
+    // If either operand is a string, BASIC treats '+' as concatenation
+    // and the result is a string.
+    if (lhs == Type::String || rhs == Type::String)
         return Type::String;
     return commonNumericType(lhs, rhs);
 }
@@ -239,8 +241,9 @@ void validateAddOperands(sem::ExprCheckContext &context,
                          Type rhs,
                          std::string_view diagId)
 {
+    // Accept numeric pairs or when either operand is string (concatenation)
     const bool numericOk = isNumericType(lhs) && isNumericType(rhs);
-    const bool stringOk = isStringType(lhs) && isStringType(rhs);
+    const bool stringOk = isStringType(lhs) || isStringType(rhs);
     if (!numericOk && !stringOk)
         sem::emitOperandTypeMismatch(context.diagnostics(), expr, diagId);
 }
@@ -310,7 +313,10 @@ void validateComparisonOperands(sem::ExprCheckContext &context,
     // All comparison operators support strings for lexicographic comparison
     const bool numericOk = isNumericType(lhs) && isNumericType(rhs);
     const bool stringOk = isStringType(lhs) && isStringType(rhs);
-    if (!numericOk && !stringOk)
+    // Boolean equality/inequality comparisons (fixes BUG-012)
+    const bool booleanOk = (expr.op == BinaryExpr::Op::Eq || expr.op == BinaryExpr::Op::Ne) &&
+                           isBooleanType(lhs) && isBooleanType(rhs);
+    if (!numericOk && !stringOk && !booleanOk)
         sem::emitOperandTypeMismatch(context.diagnostics(), expr, diagId);
 }
 
@@ -506,6 +512,15 @@ SemanticAnalyzer::Type analyzeBinaryExpr(SemanticAnalyzer &analyzer, const Binar
                     context.markImplicitConversion(*expr.rhs, target);
             }
         }
+    }
+
+    // Implicit STR$ coercion for '+' when one operand is string.
+    if (expr.op == BinaryExpr::Op::Add)
+    {
+        if (lhs == Type::String && rhs != Type::String && rhs != Type::Unknown && expr.rhs)
+            context.markImplicitConversion(*expr.rhs, Type::String);
+        else if (rhs == Type::String && lhs != Type::String && lhs != Type::Unknown && expr.lhs)
+            context.markImplicitConversion(*expr.lhs, Type::String);
     }
 
     const auto &rule = semantic_analyzer_detail::exprRule(expr.op);

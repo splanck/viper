@@ -36,7 +36,7 @@ struct KeywordEntry
     TokenKind kind;
 };
 
-constexpr std::array<KeywordEntry, 94> kKeywordTable{{
+constexpr std::array<KeywordEntry, 93> kKeywordTable{{
     {"ABS", TokenKind::KeywordAbs},
     {"ABSTRACT", TokenKind::KeywordAbstract},
     {"ALTSCREEN", TokenKind::KeywordAltscreen},
@@ -81,7 +81,7 @@ constexpr std::array<KeywordEntry, 94> kKeywordTable{{
     {"IS", TokenKind::KeywordIs},
     {"LBOUND", TokenKind::KeywordLbound},
     {"LET", TokenKind::KeywordLet},
-    {"LINE", TokenKind::KeywordLine},
+    // NOTE: 'LINE' is treated as a soft keyword: lex as identifier; parser recognises 'LINE INPUT'.
     {"LOC", TokenKind::KeywordLoc},
     {"LOCATE", TokenKind::KeywordLocate},
     {"LOF", TokenKind::KeywordLof},

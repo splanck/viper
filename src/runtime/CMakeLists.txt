@@ -15,6 +15,7 @@ set(RT_SOURCES
         rt_random.c
         rt_array.c
         rt_array_str.c
+        rt_array_obj.c
         rt_heap.c
         rt_numeric.c
         rt_numeric_conv.c
@@ -27,6 +28,7 @@ set(RT_SOURCES
         rt_object.c
         rt_oop_dispatch.c
         rt_type_registry.c
+        rt_modvar.c
 )
 
 set(RT_PUBLIC_HEADERS
@@ -40,6 +42,7 @@ set(RT_PUBLIC_HEADERS
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_string.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_array.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_array_str.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/rt_array_obj.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_heap.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_object.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_oop.h
@@ -49,6 +52,7 @@ set(RT_PUBLIC_HEADERS
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_int_format.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_printf_compat.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_string_builder.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/rt_modvar.h
 )
 
 add_library(viper_runtime STATIC ${RT_SOURCES})

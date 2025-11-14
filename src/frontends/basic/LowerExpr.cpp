@@ -76,6 +76,8 @@ Lowerer::RVal Lowerer::lowerUBoundExpr(const UBoundExpr &expr)
     Value len;
     if (sym->type == AstType::Str)
         len = emitCallRet(Type(Type::Kind::I64), "rt_arr_str_len", {base});
+    else if (sym->isObject)
+        len = emitCallRet(Type(Type::Kind::I64), "rt_arr_obj_len", {base});
     else
         len = emitCallRet(Type(Type::Kind::I64), "rt_arr_i32_len", {base});
 
@@ -283,12 +285,35 @@ Lowerer::RVal Lowerer::lowerBinaryExpr(const BinaryExpr &b)
     RVal rhs = lowerExpr(*b.rhs);
     if (b.op == BinaryExpr::Op::Pow)
         return lowerPowBinary(b, std::move(lhs), std::move(rhs));
-    // Route string operations to string-specific lowering
-    if ((b.op == BinaryExpr::Op::Add || b.op == BinaryExpr::Op::Eq || b.op == BinaryExpr::Op::Ne ||
-         b.op == BinaryExpr::Op::Lt || b.op == BinaryExpr::Op::Le || b.op == BinaryExpr::Op::Gt ||
-         b.op == BinaryExpr::Op::Ge) &&
-        lhs.type.kind == Type::Kind::Str && rhs.type.kind == Type::Kind::Str)
-        return lowerStringBinary(b, lhs, rhs);
+    // Route string operations to string-specific lowering. For '+' allow one
+    // operand to be non-string and coerce it via STR$ semantics.
+    if (b.op == BinaryExpr::Op::Add || b.op == BinaryExpr::Op::Eq || b.op == BinaryExpr::Op::Ne ||
+        b.op == BinaryExpr::Op::Lt || b.op == BinaryExpr::Op::Le || b.op == BinaryExpr::Op::Gt ||
+        b.op == BinaryExpr::Op::Ge)
+    {
+        // If either side is string, coerce the other to string for '+'
+        if (b.op == BinaryExpr::Op::Add &&
+            (lhs.type.kind == Type::Kind::Str || rhs.type.kind == Type::Kind::Str))
+        {
+            if (lhs.type.kind != Type::Kind::Str && b.lhs)
+            {
+                PrintChArgString coerced = lowerPrintChArgToString(*b.lhs, lhs, false);
+                lhs = {coerced.text, Type(Type::Kind::Str)};
+                if (coerced.feature)
+                    requestHelper(*coerced.feature);
+            }
+            if (rhs.type.kind != Type::Kind::Str && b.rhs)
+            {
+                PrintChArgString coerced = lowerPrintChArgToString(*b.rhs, rhs, false);
+                rhs = {coerced.text, Type(Type::Kind::Str)};
+                if (coerced.feature)
+                    requestHelper(*coerced.feature);
+            }
+        }
+
+        if (lhs.type.kind == Type::Kind::Str && rhs.type.kind == Type::Kind::Str)
+            return lowerStringBinary(b, lhs, rhs);
+    }
     return lowerNumericBinary(b, lhs, rhs);
 }
 

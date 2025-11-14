@@ -28,6 +28,7 @@
 #include "il/runtime/HelperEffects.hpp"
 #include "il/runtime/RuntimeSignatureParser.hpp"
 #include "il/runtime/RuntimeSignaturesData.hpp"
+#include "viper/runtime/rt.h"
 #ifndef NDEBUG
 #include "il/runtime/signatures/Registry.hpp"
 #include <cassert>
@@ -46,6 +47,7 @@ void register_array_signatures();
 #include "rt.hpp"
 #include "rt_internal.h"
 #include "viper/runtime/rt.h"
+#include "rt_array_obj.h"
 #include <algorithm>
 #include <array>
 #include <cstdint>
@@ -334,6 +336,67 @@ void invokeRtArrI32Set(void **args, void * /*result*/)
     rt_arr_i32_set(arr, idx, value);
 }
 
+/// @brief Wrapper for @ref rt_arr_obj_new that converts VM arguments.
+/// @details Accepts an i64 length from the VM, converts to size_t and returns
+///          the newly allocated object array handle.
+void invokeRtArrObjNew(void **args, void *result)
+{
+    const auto lenPtr = args ? reinterpret_cast<const int64_t *>(args[0]) : nullptr;
+    const size_t len = lenPtr ? static_cast<size_t>(*lenPtr) : 0;
+    void **arr = rt_arr_obj_new(len);
+    if (result)
+        *reinterpret_cast<void **>(result) = arr;
+}
+
+/// @brief Wrapper for @ref rt_arr_obj_len that returns the array length.
+/// @details Reads the handle from VM args and returns the length as i64.
+void invokeRtArrObjLen(void **args, void *result)
+{
+    const auto arrPtr = args ? reinterpret_cast<void ***>(args[0]) : nullptr;
+    void **arr = arrPtr ? *arrPtr : nullptr;
+    const size_t len = rt_arr_obj_len(arr);
+    if (result)
+        *reinterpret_cast<int64_t *>(result) = static_cast<int64_t>(len);
+}
+
+/// @brief Wrapper for @ref rt_arr_obj_get that loads an element pointer.
+/// @details Unpacks handle and index from VM args and returns the element ptr.
+void invokeRtArrObjGet(void **args, void *result)
+{
+    const auto arrPtr = args ? reinterpret_cast<void ***>(args[0]) : nullptr;
+    const auto idxPtr = args ? reinterpret_cast<const int64_t *>(args[1]) : nullptr;
+    void **arr = arrPtr ? *arrPtr : nullptr;
+    const size_t idx = idxPtr ? static_cast<size_t>(*idxPtr) : 0;
+    void *ptr = rt_arr_obj_get(arr, idx);
+    if (result)
+        *reinterpret_cast<void **>(result) = ptr;
+}
+
+/// @brief Wrapper for @ref rt_arr_obj_put that stores an element pointer.
+/// @details Writes the element and does not return a result.
+void invokeRtArrObjPut(void **args, void * /*result*/)
+{
+    const auto arrPtr = args ? reinterpret_cast<void ***>(args[0]) : nullptr;
+    const auto idxPtr = args ? reinterpret_cast<const int64_t *>(args[1]) : nullptr;
+    const auto valPtr = args ? reinterpret_cast<void **>(args[2]) : nullptr;
+    void **arr = arrPtr ? *arrPtr : nullptr;
+    const size_t idx = idxPtr ? static_cast<size_t>(*idxPtr) : 0;
+    void *val = valPtr ? *valPtr : nullptr;
+    rt_arr_obj_put(arr, idx, val);
+}
+
+/// @brief Wrapper for @ref rt_arr_obj_resize that resizes the object array.
+void invokeRtArrObjResize(void **args, void *result)
+{
+    const auto arrPtr = args ? reinterpret_cast<void ***>(args[0]) : nullptr;
+    const auto lenPtr = args ? reinterpret_cast<const int64_t *>(args[1]) : nullptr;
+    void **arr = arrPtr ? *arrPtr : nullptr;
+    const size_t len = lenPtr ? static_cast<size_t>(*lenPtr) : 0;
+    void **res = rt_arr_obj_resize(arr, len);
+    if (result)
+        *reinterpret_cast<void **>(result) = res;
+}
+
 /// @brief Wrapper for @ref rt_arr_i32_resize that resizes an array in place.
 ///
 /// @details Extracts the handle and desired length, requests the runtime to
@@ -559,7 +622,7 @@ struct DescriptorRow
     RuntimeTrapClass trapClass;
 };
 
-constexpr std::array<DescriptorRow, 110> kDescriptorRows{{
+constexpr std::array<DescriptorRow, 121> kDescriptorRows{{
     DescriptorRow{"rt_abort",
                   std::nullopt,
                   "void(ptr)",
@@ -845,6 +908,55 @@ constexpr std::array<DescriptorRow, 110> kDescriptorRows{{
                   std::nullopt,
                   "i64(ptr)",
                   &invokeRtArrStrLen,
+                  kManualLowering,
+                  nullptr,
+                  0,
+                  RuntimeTrapClass::None},
+    // Object array helpers (void* elements).
+    DescriptorRow{"rt_arr_obj_new",
+                  std::nullopt,
+                  "ptr(i64)",
+                  &invokeRtArrObjNew,
+                  kManualLowering,
+                  nullptr,
+                  0,
+                  RuntimeTrapClass::None},
+    DescriptorRow{"rt_arr_obj_len",
+                  std::nullopt,
+                  "i64(ptr)",
+                  &invokeRtArrObjLen,
+                  kManualLowering,
+                  nullptr,
+                  0,
+                  RuntimeTrapClass::None},
+    DescriptorRow{"rt_arr_obj_get",
+                  std::nullopt,
+                  "ptr(ptr,i64)",
+                  &invokeRtArrObjGet,
+                  kManualLowering,
+                  nullptr,
+                  0,
+                  RuntimeTrapClass::None},
+    DescriptorRow{"rt_arr_obj_put",
+                  std::nullopt,
+                  "void(ptr,i64,ptr)",
+                  &invokeRtArrObjPut,
+                  kManualLowering,
+                  nullptr,
+                  0,
+                  RuntimeTrapClass::None},
+    DescriptorRow{"rt_arr_obj_resize",
+                  std::nullopt,
+                  "ptr(ptr,i64)",
+                  &invokeRtArrObjResize,
+                  kManualLowering,
+                  nullptr,
+                  0,
+                  RuntimeTrapClass::None},
+    DescriptorRow{"rt_arr_obj_release",
+                  std::nullopt,
+                  "void(ptr)",
+                  &DirectHandler<&rt_arr_obj_release, void, void **>::invoke,
                   kManualLowering,
                   nullptr,
                   0,
@@ -1230,6 +1342,47 @@ constexpr std::array<DescriptorRow, 110> kDescriptorRows{{
                   std::nullopt,
                   "string(ptr)",
                   &DirectHandler<&rt_const_cstr, rt_string, const char *>::invoke,
+                  kManualLowering,
+                  nullptr,
+                  0,
+                  RuntimeTrapClass::None},
+    // Module-level variable address helpers: return ptr from string key
+    DescriptorRow{"rt_modvar_addr_i64",
+                  std::nullopt,
+                  "ptr(string)",
+                  &DirectHandler<&rt_modvar_addr_i64, void *, rt_string>::invoke,
+                  kManualLowering,
+                  nullptr,
+                  0,
+                  RuntimeTrapClass::None},
+    DescriptorRow{"rt_modvar_addr_f64",
+                  std::nullopt,
+                  "ptr(string)",
+                  &DirectHandler<&rt_modvar_addr_f64, void *, rt_string>::invoke,
+                  kManualLowering,
+                  nullptr,
+                  0,
+                  RuntimeTrapClass::None},
+    DescriptorRow{"rt_modvar_addr_i1",
+                  std::nullopt,
+                  "ptr(string)",
+                  &DirectHandler<&rt_modvar_addr_i1, void *, rt_string>::invoke,
+                  kManualLowering,
+                  nullptr,
+                  0,
+                  RuntimeTrapClass::None},
+    DescriptorRow{"rt_modvar_addr_ptr",
+                  std::nullopt,
+                  "ptr(string)",
+                  &DirectHandler<&rt_modvar_addr_ptr, void *, rt_string>::invoke,
+                  kManualLowering,
+                  nullptr,
+                  0,
+                  RuntimeTrapClass::None},
+    DescriptorRow{"rt_modvar_addr_str",
+                  std::nullopt,
+                  "ptr(string)",
+                  &DirectHandler<&rt_modvar_addr_str, void *, rt_string>::invoke,
                   kManualLowering,
                   nullptr,
                   0,

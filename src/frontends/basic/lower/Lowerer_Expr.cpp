@@ -22,6 +22,7 @@
 #include "frontends/basic/IdentifierUtil.hpp"
 #include "frontends/basic/TypeSuffix.hpp"
 #include "frontends/basic/lower/AstVisitor.hpp"
+#include "frontends/basic/SemanticAnalyzer.hpp"
 
 #include "viper/il/Module.hpp"
 
@@ -139,7 +140,19 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
             // String array: use rt_arr_str_get (returns retained handle)
             IlValue val = lowerer_.emitCallRet(
                 IlType(IlType::Kind::Str), "rt_arr_str_get", {access.base, access.index});
+            lowerer_.deferReleaseStr(val);
             result_ = Lowerer::RVal{val, IlType(IlType::Kind::Str)};
+        }
+        else if (info && info->isObject)
+        {
+            // Object array: rt_arr_obj_get returns retained ptr
+            IlValue val = lowerer_.emitCallRet(
+                IlType(IlType::Kind::Ptr), "rt_arr_obj_get", {access.base, access.index});
+            if (info && !info->objectClass.empty())
+                lowerer_.deferReleaseObj(val, info->objectClass);
+            else
+                lowerer_.deferReleaseObj(val);
+            result_ = Lowerer::RVal{val, IlType(IlType::Kind::Ptr)};
         }
         else
         {
@@ -504,46 +517,77 @@ TypeRules::NumericType Lowerer::classifyNumericType(const Expr &expr)
 
         void visit(const VarExpr &var) override
         {
+            // BUG-019 fix: Check semantic analysis first for CONST float types
+            AstType effectiveType = AstType::I64;
+            bool hasEffectiveType = false;
+
+            if (lowerer_.semanticAnalyzer())
+            {
+                if (auto semaType = lowerer_.semanticAnalyzer()->lookupVarType(std::string{var.name}))
+                {
+                    using SemaType = SemanticAnalyzer::Type;
+                    switch (*semaType)
+                    {
+                        case SemaType::Float:
+                            effectiveType = AstType::F64;
+                            hasEffectiveType = true;
+                            break;
+                        case SemaType::Int:
+                            effectiveType = AstType::I64;
+                            hasEffectiveType = true;
+                            break;
+                        default:
+                            break;
+                    }
+                }
+            }
+
             if (const auto *info = lowerer_.findSymbol(var.name))
             {
-                if (info->hasType)
+                if (info->hasType && !hasEffectiveType)
                 {
-                    if (info->type == AstType::F64)
-                    {
-                        if (!var.name.empty())
-                        {
-                            switch (var.name.back())
-                            {
-                                case '!':
-                                    result_ = NumericType::Single;
-                                    return;
-                                case '#':
-                                    result_ = NumericType::Double;
-                                    return;
-                                default:
-                                    break;
-                            }
-                        }
-                        result_ = NumericType::Double;
-                        return;
-                    }
+                    effectiveType = info->type;
+                    hasEffectiveType = true;
+                }
+            }
+
+            if (hasEffectiveType)
+            {
+                if (effectiveType == AstType::F64)
+                {
                     if (!var.name.empty())
                     {
                         switch (var.name.back())
                         {
-                            case '%':
-                                result_ = NumericType::Integer;
+                            case '!':
+                                result_ = NumericType::Single;
                                 return;
-                            case '&':
-                                result_ = NumericType::Long;
+                            case '#':
+                                result_ = NumericType::Double;
                                 return;
                             default:
                                 break;
                         }
                     }
-                    result_ = NumericType::Long;
+                    result_ = NumericType::Double;
                     return;
                 }
+                if (!var.name.empty())
+                {
+                    switch (var.name.back())
+                    {
+                        case '%':
+                            result_ = NumericType::Integer;
+                            return;
+                        case '&':
+                            result_ = NumericType::Long;
+                            return;
+                        default:
+                            break;
+                    }
+                }
+                result_ = NumericType::Long;
+                return;
             }
 
             if (!var.name.empty())

@@ -81,7 +81,8 @@ int main()
 
     {
         Token tok = nextToken("LINE");
-        assert(tok.kind == TokenKind::KeywordLine);
+        // 'LINE' is a soft keyword; lex as identifier. Parser recognises 'LINE INPUT'.
+        assert(tok.kind == TokenKind::Identifier);
     }
 
     {

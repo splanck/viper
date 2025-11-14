@@ -92,7 +92,10 @@ class Emitter
 
     Value emitConstStr(const std::string &globalName);
 
-    void storeArray(Value slot, Value value, AstType elementType = AstType::I64);
+    void storeArray(Value slot,
+                    Value value,
+                    AstType elementType = AstType::I64,
+                    bool isObjectArray = false);
 
     void releaseArrayLocals(const std::unordered_set<std::string> &paramNames);
 
@@ -101,6 +104,11 @@ class Emitter
     void releaseObjectLocals(const std::unordered_set<std::string> &paramNames);
 
     void releaseObjectParams(const std::unordered_set<std::string> &paramNames);
+
+    // Temporary lifetime management
+    void deferReleaseStr(Value v);
+    void deferReleaseObj(Value v, const std::string &className = {});
+    void releaseDeferredTemps();
 
     void emitTrap();
 
@@ -119,6 +127,14 @@ class Emitter
   private:
     Lowerer &lowerer_;
     common::CommonLowering common_;
+
+    struct TempRelease
+    {
+        Value v;
+        bool isString{false};
+        std::string className; // optional, for object destructors
+    };
+    std::vector<TempRelease> deferredTemps_;
 };
 
 } // namespace il::frontends::basic::lower

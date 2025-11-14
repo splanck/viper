@@ -43,7 +43,12 @@ namespace il::frontends::basic
 /// @param value Array value produced by the lowering routine.
 void Lowerer::storeArray(Value slot, Value value, AstType elementType)
 {
-    emitter().storeArray(slot, value, elementType);
+    emitter().storeArray(slot, value, elementType, /*isObjectArray=*/false);
+}
+
+void Lowerer::storeArray(Value slot, Value value, AstType elementType, bool isObjectArray)
+{
+    emitter().storeArray(slot, value, elementType, isObjectArray);
 }
 
 /// @brief Release any array locals that were materialised within the current procedure.
@@ -73,6 +78,21 @@ void Lowerer::releaseArrayLocals(const std::unordered_set<std::string> &paramNam
 void Lowerer::releaseArrayParams(const std::unordered_set<std::string> &paramNames)
 {
     emitter().releaseArrayParams(paramNames);
+}
+
+void Lowerer::deferReleaseStr(Value v)
+{
+    emitter().deferReleaseStr(v);
+}
+
+void Lowerer::deferReleaseObj(Value v, const std::string &className)
+{
+    emitter().deferReleaseObj(v, className);
+}
+
+void Lowerer::releaseDeferredTemps()
+{
+    emitter().releaseDeferredTemps();
 }
 
 } // namespace il::frontends::basic
