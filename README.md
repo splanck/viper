@@ -334,7 +334,7 @@ We are **not currently seeking large feature PRs** while the core design solidif
 
 MIT License
 
-Copyright (c) 2024-2025 Viper Contributors
+Copyright (c) 2025 - Viper Contributors
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
