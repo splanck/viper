@@ -524,7 +524,14 @@ Lowerer::SlotType Lowerer::getSlotType(std::string_view name) const
             info.objectClass = sym->objectClass;
             return info;
         }
-        if (sym->hasType)
+        // BUG-019 fix: Only override with sym->type when semantic analysis has no type.
+        // This preserves float CONST inference (e.g., CONST PI = 3.14159 stays float).
+        bool hasSemaType = false;
+        if (semanticAnalyzer_)
+        {
+            hasSemaType = semanticAnalyzer_->lookupVarType(std::string{name}).has_value();
+        }
+        if (sym->hasType && !hasSemaType)
             astTy = sym->type;
         info.isArray = sym->isArray;
         if (sym->isBoolean && !info.isArray)
@@ -553,6 +560,64 @@ std::optional<Lowerer::VariableStorage> Lowerer::resolveVariableStorage(std::str
         return std::nullopt;
 
     SlotType slotInfo = getSlotType(name);
+
+    // BUG-010 fix: STATIC variables are procedure-local persistent variables.
+    // They use the rt_modvar infrastructure with procedure-qualified names
+    // to ensure isolation between procedures while persisting across calls.
+    if (const auto *info = findSymbol(name))
+    {
+        if (info->isStatic)
+        {
+            // Construct scoped name: "ProcedureName.VariableName"
+            std::string scopedName;
+            if (auto *func = context().function())
+            {
+                scopedName = std::string(func->name) + "." + std::string(name);
+            }
+            else
+            {
+                // Fallback: use plain name if no procedure context (should not happen)
+                scopedName = std::string(name);
+            }
+
+            // Use same rt_modvar_addr_* infrastructure as module-level globals
+            std::string callee;
+            switch (slotInfo.type.kind)
+            {
+                case Type::Kind::I1:
+                    requireModvarAddrI1();
+                    callee = "rt_modvar_addr_i1";
+                    break;
+                case Type::Kind::F64:
+                    requireModvarAddrF64();
+                    callee = "rt_modvar_addr_f64";
+                    break;
+                case Type::Kind::Str:
+                    requireModvarAddrStr();
+                    callee = "rt_modvar_addr_str";
+                    break;
+                case Type::Kind::Ptr:
+                    requireModvarAddrPtr();
+                    callee = "rt_modvar_addr_ptr";
+                    break;
+                default:
+                    requireModvarAddrI64();
+                    callee = "rt_modvar_addr_i64";
+                    break;
+            }
+
+            // Emit scoped name constant and runtime call
+            std::string label = getStringLabel(scopedName);
+            Value nameStr = emitConstStr(label);
+            Value addr = emitCallRet(Type(Type::Kind::Ptr), callee, {nameStr});
+
+            VariableStorage storage;
+            storage.slotInfo = slotInfo;
+            storage.pointer = addr;
+            storage.isField = false;
+            return storage;
+        }
+    }
 
     // Prefer resolving module-level globals to runtime-managed storage before
     // falling back to any materialized local slots. This ensures the @main
