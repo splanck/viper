@@ -1,0 +1,18 @@
+DIM GLOBAL_VAR AS INTEGER
+
+SUB SetGlobal()
+    GLOBAL_VAR = 42
+    PRINT "In SUB: GLOBAL_VAR = " + STR$(GLOBAL_VAR)
+END SUB
+
+FUNCTION GetGlobal() AS INTEGER
+    PRINT "In FUNCTION: GLOBAL_VAR = " + STR$(GLOBAL_VAR)
+    RETURN GLOBAL_VAR
+END FUNCTION
+
+PRINT "Initial: GLOBAL_VAR = " + STR$(GLOBAL_VAR)
+SetGlobal()
+DIM result AS INTEGER
+result = GetGlobal()
+PRINT "Final result = " + STR$(result)
+END

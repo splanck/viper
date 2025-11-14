@@ -109,6 +109,14 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
             requireStrRetainMaybe();
         }
     }
+    else if (info->isObject)
+    {
+        requireArrayObjLen();
+        if (kind == ArrayAccessKind::Load)
+            requireArrayObjGet();
+        else
+            requireArrayObjPut();
+    }
     else
     {
         requireArrayI32Len();
@@ -201,6 +209,8 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
     Value len;
     if (info->type == AstType::Str)
         len = emitCallRet(Type(Type::Kind::I64), "rt_arr_str_len", {base});
+    else if (info->isObject)
+        len = emitCallRet(Type(Type::Kind::I64), "rt_arr_obj_len", {base});
     else
         len = emitCallRet(Type(Type::Kind::I64), "rt_arr_i32_len", {base});
     Value isNeg = emitBinary(Opcode::SCmpLT, ilBoolTy(), index, Value::constInt(0));

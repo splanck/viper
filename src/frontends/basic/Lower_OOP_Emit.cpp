@@ -289,6 +289,7 @@ void Lowerer::emitClassConstructor(const ClassDecl &klass, const ConstructorDecl
 
     ctx.setCurrent(exitBlock);
     curLoc = {};
+    releaseDeferredTemps();
     releaseObjectLocals(metadata.paramNames);
     releaseObjectParams(metadata.paramNames);
     releaseArrayLocals(metadata.paramNames);

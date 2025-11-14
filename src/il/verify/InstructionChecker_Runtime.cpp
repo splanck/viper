@@ -45,13 +45,27 @@ namespace
 enum class RuntimeArrayCallee
 {
     None,
-    New,
-    Len,
-    Get,
-    Set,
-    Resize,
-    Retain,
-    Release,
+    // i32 arrays
+    NewI32,
+    LenI32,
+    GetI32,
+    SetI32,
+    ResizeI32,
+    RetainI32,
+    ReleaseI32,
+    // string arrays
+    NewStr,
+    LenStr,
+    GetStr,
+    SetStr,
+    ReleaseStr,
+    // object arrays (void* elements)
+    NewObj,
+    LenObj,
+    GetObj,
+    PutObj,
+    ResizeObj,
+    ReleaseObj,
 };
 
 /// @brief Map a runtime helper name to its array-handling category.
@@ -65,20 +79,46 @@ enum class RuntimeArrayCallee
 /// @return Enumerated helper classification.
 RuntimeArrayCallee classifyRuntimeArrayCallee(std::string_view callee)
 {
+    // i32 array helpers
     if (callee == "rt_arr_i32_new")
-        return RuntimeArrayCallee::New;
+        return RuntimeArrayCallee::NewI32;
     if (callee == "rt_arr_i32_len")
-        return RuntimeArrayCallee::Len;
+        return RuntimeArrayCallee::LenI32;
     if (callee == "rt_arr_i32_get")
-        return RuntimeArrayCallee::Get;
+        return RuntimeArrayCallee::GetI32;
     if (callee == "rt_arr_i32_set")
-        return RuntimeArrayCallee::Set;
+        return RuntimeArrayCallee::SetI32;
     if (callee == "rt_arr_i32_resize")
-        return RuntimeArrayCallee::Resize;
+        return RuntimeArrayCallee::ResizeI32;
     if (callee == "rt_arr_i32_retain")
-        return RuntimeArrayCallee::Retain;
+        return RuntimeArrayCallee::RetainI32;
     if (callee == "rt_arr_i32_release")
-        return RuntimeArrayCallee::Release;
+        return RuntimeArrayCallee::ReleaseI32;
+
+    // string array helpers
+    if (callee == "rt_arr_str_alloc")
+        return RuntimeArrayCallee::NewStr;
+    if (callee == "rt_arr_str_len")
+        return RuntimeArrayCallee::LenStr;
+    if (callee == "rt_arr_str_get")
+        return RuntimeArrayCallee::GetStr;
+    if (callee == "rt_arr_str_put")
+        return RuntimeArrayCallee::SetStr;
+    if (callee == "rt_arr_str_release")
+        return RuntimeArrayCallee::ReleaseStr;
+    // object array helpers
+    if (callee == "rt_arr_obj_new")
+        return RuntimeArrayCallee::NewObj;
+    if (callee == "rt_arr_obj_len")
+        return RuntimeArrayCallee::LenObj;
+    if (callee == "rt_arr_obj_get")
+        return RuntimeArrayCallee::GetObj;
+    if (callee == "rt_arr_obj_put")
+        return RuntimeArrayCallee::PutObj;
+    if (callee == "rt_arr_obj_resize")
+        return RuntimeArrayCallee::ResizeObj;
+    if (callee == "rt_arr_obj_release")
+        return RuntimeArrayCallee::ReleaseObj;
     return RuntimeArrayCallee::None;
 }
 
@@ -177,7 +217,7 @@ Expected<void> checkRuntimeArrayCall(const VerifyCtx &ctx)
 
     switch (calleeKind)
     {
-        case RuntimeArrayCallee::New:
+        case RuntimeArrayCallee::NewI32:
         {
             if (auto result = requireArgCount(1); !result)
                 return result;
@@ -185,7 +225,7 @@ Expected<void> checkRuntimeArrayCall(const VerifyCtx &ctx)
                 return result;
             return requireResultType(Type::Kind::Ptr);
         }
-        case RuntimeArrayCallee::Len:
+        case RuntimeArrayCallee::LenI32:
         {
             if (auto result = requireArgCount(1); !result)
                 return result;
@@ -193,7 +233,7 @@ Expected<void> checkRuntimeArrayCall(const VerifyCtx &ctx)
                 return result;
             return requireResultType(Type::Kind::I64);
         }
-        case RuntimeArrayCallee::Get:
+        case RuntimeArrayCallee::GetI32:
         {
             if (auto result = requireArgCount(2); !result)
                 return result;
@@ -203,7 +243,7 @@ Expected<void> checkRuntimeArrayCall(const VerifyCtx &ctx)
                 return result;
             return requireResultType(Type::Kind::I64);
         }
-        case RuntimeArrayCallee::Set:
+        case RuntimeArrayCallee::SetI32:
         {
             if (auto result = requireArgCount(3); !result)
                 return result;
@@ -215,7 +255,7 @@ Expected<void> checkRuntimeArrayCall(const VerifyCtx &ctx)
                 return result;
             return requireNoResult();
         }
-        case RuntimeArrayCallee::Resize:
+        case RuntimeArrayCallee::ResizeI32:
         {
             if (auto result = requireArgCount(2); !result)
                 return result;
@@ -225,7 +265,7 @@ Expected<void> checkRuntimeArrayCall(const VerifyCtx &ctx)
                 return result;
             return requireResultType(Type::Kind::Ptr);
         }
-        case RuntimeArrayCallee::Retain:
+        case RuntimeArrayCallee::RetainI32:
         {
             if (auto result = requireArgCount(1); !result)
                 return result;
@@ -233,7 +273,116 @@ Expected<void> checkRuntimeArrayCall(const VerifyCtx &ctx)
                 return result;
             return requireNoResult();
         }
-        case RuntimeArrayCallee::Release:
+        case RuntimeArrayCallee::ReleaseI32:
+        {
+            if (auto result = requireArgCount(1); !result)
+                return result;
+            if (auto result = requireOperandType(0, Type::Kind::Ptr, "handle"); !result)
+                return result;
+            return requireNoResult();
+        }
+        // String array helpers with string-typed results/operands as needed
+        case RuntimeArrayCallee::NewStr:
+        {
+            if (auto result = requireArgCount(1); !result)
+                return result;
+            if (auto result = requireOperandType(0, Type::Kind::I64, "length"); !result)
+                return result;
+            return requireResultType(Type::Kind::Ptr);
+        }
+        case RuntimeArrayCallee::LenStr:
+        {
+            if (auto result = requireArgCount(1); !result)
+                return result;
+            if (auto result = requireOperandType(0, Type::Kind::Ptr, "handle"); !result)
+                return result;
+            return requireResultType(Type::Kind::I64);
+        }
+        case RuntimeArrayCallee::GetStr:
+        {
+            if (auto result = requireArgCount(2); !result)
+                return result;
+            if (auto result = requireOperandType(0, Type::Kind::Ptr, "handle"); !result)
+                return result;
+            if (auto result = requireOperandType(1, Type::Kind::I64, "index"); !result)
+                return result;
+            return requireResultType(Type::Kind::Str);
+        }
+        case RuntimeArrayCallee::SetStr:
+        {
+            if (auto result = requireArgCount(3); !result)
+                return result;
+            if (auto result = requireOperandType(0, Type::Kind::Ptr, "handle"); !result)
+                return result;
+            if (auto result = requireOperandType(1, Type::Kind::I64, "index"); !result)
+                return result;
+            // ABI: third param is a pointer to a string slot (ptr), not `str`.
+            if (auto result = requireOperandType(2, Type::Kind::Ptr, "value.ptr"); !result)
+                return result;
+            return requireNoResult();
+        }
+        case RuntimeArrayCallee::ReleaseStr:
+        {
+            // String array release takes (ptr handle, i64 length) so runtime can
+            // release contained elements before freeing the array payload.
+            if (auto result = requireArgCount(2); !result)
+                return result;
+            if (auto result = requireOperandType(0, Type::Kind::Ptr, "handle"); !result)
+                return result;
+            if (auto result = requireOperandType(1, Type::Kind::I64, "length"); !result)
+                return result;
+            return requireNoResult();
+        }
+        // object arrays mirror i32 shapes, but get/put use ptr for value
+        case RuntimeArrayCallee::NewObj:
+        {
+            if (auto result = requireArgCount(1); !result)
+                return result;
+            if (auto result = requireOperandType(0, Type::Kind::I64, "length"); !result)
+                return result;
+            return requireResultType(Type::Kind::Ptr);
+        }
+        case RuntimeArrayCallee::LenObj:
+        {
+            if (auto result = requireArgCount(1); !result)
+                return result;
+            if (auto result = requireOperandType(0, Type::Kind::Ptr, "handle"); !result)
+                return result;
+            return requireResultType(Type::Kind::I64);
+        }
+        case RuntimeArrayCallee::GetObj:
+        {
+            if (auto result = requireArgCount(2); !result)
+                return result;
+            if (auto result = requireOperandType(0, Type::Kind::Ptr, "handle"); !result)
+                return result;
+            if (auto result = requireOperandType(1, Type::Kind::I64, "index"); !result)
+                return result;
+            return requireResultType(Type::Kind::Ptr);
+        }
+        case RuntimeArrayCallee::PutObj:
+        {
+            if (auto result = requireArgCount(3); !result)
+                return result;
+            if (auto result = requireOperandType(0, Type::Kind::Ptr, "handle"); !result)
+                return result;
+            if (auto result = requireOperandType(1, Type::Kind::I64, "index"); !result)
+                return result;
+            if (auto result = requireOperandType(2, Type::Kind::Ptr, "value"); !result)
+                return result;
+            return requireNoResult();
+        }
+        case RuntimeArrayCallee::ResizeObj:
+        {
+            if (auto result = requireArgCount(2); !result)
+                return result;
+            if (auto result = requireOperandType(0, Type::Kind::Ptr, "handle"); !result)
+                return result;
+            if (auto result = requireOperandType(1, Type::Kind::I64, "length"); !result)
+                return result;
+            return requireResultType(Type::Kind::Ptr);
+        }
+        case RuntimeArrayCallee::ReleaseObj:
         {
             if (auto result = requireArgCount(1); !result)
                 return result;
