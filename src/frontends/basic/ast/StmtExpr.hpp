@@ -265,6 +265,10 @@ struct DimStmt : Stmt
     /// Declared BASIC type for this DIM.
     Type type{Type::I64};
 
+    /// Optional explicit class return type from "AS <Class>" for object variables.
+    /// Stored as qualified, canonical lowercase name segments when present.
+    std::vector<std::string> explicitClassQname;
+
     /// True when DIM declares an array; false for scalar declarations.
     bool isArray{true};
     void accept(StmtVisitor &visitor) const override;

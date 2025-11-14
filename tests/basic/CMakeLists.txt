@@ -553,6 +553,15 @@ function(viper_add_basic_to_il_golden_tests)
             -DGOLDEN=${_VIPER_BASIC_TO_IL_DIR}/strings.il
             -P ${_VIPER_BASIC_TO_IL_CHECK})
 
+    # Ensure STRING arrays lower to the rt_arr_str_* family only (no i32 helpers)
+    viper_add_ctest(basic_to_il_string_arrays_contains
+            ${CMAKE_COMMAND}
+            -DILC=${_VIPER_BASIC_ILC}
+            -DBAS_FILE=${_VIPER_BASIC_TO_IL_DIR}/string_array_contains.bas
+            "-DMUST_HAVE=rt_arr_str_alloc;rt_arr_str_len;rt_arr_str_put;rt_arr_str_get"
+            "-DMUST_NOT_HAVE=rt_arr_i32_"
+            -P ${_VIPER_BASIC_TO_IL_DIR}/check_il_contains.cmake)
+
     viper_add_ctest(basic_to_il_string_cmp
             ${CMAKE_COMMAND}
             -DILC=${_VIPER_BASIC_ILC}
@@ -1018,6 +1027,14 @@ function(viper_add_basic_integration_tests)
             -DILC=${_VIPER_BASIC_ILC}
             -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/basic/gosub_label_only.bas
             -DEXPECT_FILE=${CMAKE_SOURCE_DIR}/tests/basic/gosub_label_only.out
+            -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_expect.cmake)
+
+    # Regression: module-level globals visible to SUB/FUNCTION (BUG-030)
+    viper_add_ctest(basic_globals_sub_mod
+            ${CMAKE_COMMAND}
+            -DILC=${_VIPER_BASIC_ILC}
+            -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/basic/semantics/globals_sub_mod.bas
+            -DEXPECT_FILE=${CMAKE_SOURCE_DIR}/tests/basic/semantics/globals_sub_mod.expect
             -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_expect.cmake)
 
     viper_add_ctest(basic_regress_fileio_write_ok
