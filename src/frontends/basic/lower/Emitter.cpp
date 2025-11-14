@@ -22,6 +22,7 @@
 
 #include <cassert>
 #include <optional>
+#include <unordered_set>
 #include <utility>
 
 using namespace il::core;
@@ -319,7 +320,7 @@ Emitter::Value Emitter::emitConstStr(const std::string &globalName)
 ///
 /// @param slot Pointer to the stack slot storing the array reference.
 /// @param value New array handle to record.
-void Emitter::storeArray(Value slot, Value value, AstType elementType)
+void Emitter::storeArray(Value slot, Value value, AstType elementType, bool isObjectArray)
 {
     if (elementType == AstType::Str)
     {
@@ -327,6 +328,14 @@ void Emitter::storeArray(Value slot, Value value, AstType elementType)
         Value oldValue = emitLoad(Type(Type::Kind::Ptr), slot);
         lowerer_.requireArrayStrRelease();
         emitCall("rt_arr_str_release", {oldValue, Value::constInt(0)});
+        emitStore(Type(Type::Kind::Ptr), slot, value);
+    }
+    else if (isObjectArray)
+    {
+        // Object array: allocator returns owned handle; just release previous
+        Value oldValue = emitLoad(Type(Type::Kind::Ptr), slot);
+        lowerer_.requireArrayObjRelease();
+        emitCall("rt_arr_obj_release", {oldValue});
         emitStore(Type(Type::Kind::Ptr), slot, value);
     }
     else
@@ -353,6 +362,7 @@ void Emitter::releaseArrayLocals(const std::unordered_set<std::string> &paramNam
 {
     bool requestedI32 = false;
     bool requestedStr = false;
+    bool requestedObj = false;
     for (auto &[name, info] : lowerer_.symbols)
     {
         if (!info.referenced || !info.slotId || !info.isArray)
@@ -370,6 +380,15 @@ void Emitter::releaseArrayLocals(const std::unordered_set<std::string> &paramNam
                 requestedStr = true;
             }
             emitCall("rt_arr_str_release", {handle, Value::constInt(0)});
+        }
+        else if (info.isObject)
+        {
+            if (!requestedObj)
+            {
+                lowerer_.requireArrayObjRelease();
+                requestedObj = true;
+            }
+            emitCall("rt_arr_obj_release", {handle});
         }
         else
         {
@@ -399,6 +418,7 @@ void Emitter::releaseArrayParams(const std::unordered_set<std::string> &paramNam
         return;
     bool requestedI32 = false;
     bool requestedStr = false;
+    bool requestedObj = false;
     for (auto &[name, info] : lowerer_.symbols)
     {
         if (!info.referenced || !info.slotId || !info.isArray)
@@ -417,6 +437,15 @@ void Emitter::releaseArrayParams(const std::unordered_set<std::string> &paramNam
             }
             emitCall("rt_arr_str_release", {handle, Value::constInt(0)});
         }
+        else if (info.isObject)
+        {
+            if (!requestedObj)
+            {
+                lowerer_.requireArrayObjRelease();
+                requestedObj = true;
+            }
+            emitCall("rt_arr_obj_release", {handle});
+        }
         else
         {
             // Integer/numeric array
@@ -429,6 +458,99 @@ void Emitter::releaseArrayParams(const std::unordered_set<std::string> &paramNam
         }
         emitStore(Type(Type::Kind::Ptr), slot, Value::null());
     }
+}
+
+void Emitter::deferReleaseStr(Value v)
+{
+    if (v.kind != Value::Kind::Temp)
+        return;
+    deferredTemps_.push_back(TempRelease{v, /*isString=*/true, {}});
+}
+
+void Emitter::deferReleaseObj(Value v, const std::string &className)
+{
+    if (v.kind != Value::Kind::Temp)
+        return;
+    deferredTemps_.push_back(TempRelease{v, /*isString=*/false, className});
+}
+
+void Emitter::releaseDeferredTemps()
+{
+    if (deferredTemps_.empty())
+        return;
+
+    // Deduplicate by temporary id so repeated uses do not double release.
+    std::unordered_set<unsigned> seen;
+    for (const auto &t : deferredTemps_)
+    {
+        if (t.v.kind != Value::Kind::Temp)
+            continue;
+        if (!seen.insert(t.v.id).second)
+            continue;
+
+        if (t.isString)
+        {
+            lowerer_.requireStrReleaseMaybe();
+            lowerer_.emitCall("rt_str_release_maybe", {t.v});
+            continue;
+        }
+
+        // Object: emit conditional destructor + free when last ref.
+        auto &ctx = lowerer_.context();
+        auto *func = ctx.function();
+        if (!func || !ctx.current())
+            continue;
+        std::size_t originIdx = static_cast<std::size_t>(ctx.current() - &func->blocks[0]);
+        auto *origin = &func->blocks[originIdx];
+
+        // Create destroy and continue blocks.
+        std::string destroyLabel;
+        std::string contLabel;
+        if (auto *bn = ctx.blockNames().namer())
+        {
+            destroyLabel = bn->generic("obj_epilogue_dtor");
+            contLabel = bn->generic("obj_epilogue_cont");
+        }
+        else
+        {
+            destroyLabel = lowerer_.mangler.block("obj_epilogue_dtor");
+            contLabel = lowerer_.mangler.block("obj_epilogue_cont");
+        }
+
+        lowerer_.builder->addBlock(*func, destroyLabel);
+        lowerer_.builder->addBlock(*func, contLabel);
+        auto *destroyBlk = &func->blocks[func->blocks.size() - 2];
+        auto *contBlk = &func->blocks.back();
+
+        Value needDtor = lowerer_.emitCallRet(Type(Type::Kind::I1), "rt_obj_release_check0", {t.v});
+        lowerer_.emitCBr(needDtor, destroyBlk, contBlk);
+
+        ctx.setCurrent(destroyBlk);
+        if (!t.className.empty())
+        {
+            // Call destructor if present in module
+            std::string dtor = mangleClassDtor(t.className);
+            bool haveDtor = false;
+            if (auto *mod = lowerer_.mod)
+            {
+                for (const auto &f : mod->functions)
+                {
+                    if (f.name == dtor)
+                    {
+                        haveDtor = true;
+                        break;
+                    }
+                }
+            }
+            if (haveDtor)
+                lowerer_.emitCall(dtor, {t.v});
+        }
+        lowerer_.emitCall("rt_obj_free", {t.v});
+        lowerer_.emitBr(contBlk);
+        ctx.setCurrent(contBlk);
+    }
+
+    deferredTemps_.clear();
 }
 
 /// @brief Emit destructor epilogues for object locals.
@@ -489,7 +611,23 @@ void Emitter::releaseObjectLocals(const std::unordered_set<std::string> &paramNa
         ctx.setCurrent(destroyBlk);
         lowerer_.curLoc = {};
         if (!info.objectClass.empty())
-            emitCall(mangleClassDtor(info.objectClass), {handle});
+        {
+            std::string dtor = mangleClassDtor(info.objectClass);
+            bool haveDtor = false;
+            if (lowerer_.mod)
+            {
+                for (const auto &fn : lowerer_.mod->functions)
+                {
+                    if (fn.name == dtor)
+                    {
+                        haveDtor = true;
+                        break;
+                    }
+                }
+            }
+            if (haveDtor)
+                emitCall(dtor, {handle});
+        }
         emitCall("rt_obj_free", {handle});
         emitBr(contBlk);
 
@@ -572,7 +710,23 @@ void Emitter::releaseObjectParams(const std::unordered_set<std::string> &paramNa
         ctx.setCurrent(destroyBlk);
         lowerer_.curLoc = {};
         if (!info.objectClass.empty())
-            emitCall(mangleClassDtor(info.objectClass), {handle});
+        {
+            std::string dtor = mangleClassDtor(info.objectClass);
+            bool haveDtor = false;
+            if (lowerer_.mod)
+            {
+                for (const auto &fn : lowerer_.mod->functions)
+                {
+                    if (fn.name == dtor)
+                    {
+                        haveDtor = true;
+                        break;
+                    }
+                }
+            }
+            if (haveDtor)
+                emitCall(dtor, {handle});
+        }
         emitCall("rt_obj_free", {handle});
         emitBr(contBlk);
 

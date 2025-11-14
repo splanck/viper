@@ -256,6 +256,30 @@ Parser::StmtResult Parser::parseCall(int)
             stmt->call = std::move(expr);
             return StmtResult(std::move(stmt));
         }
+        // Special-case: method SUB calls without parentheses (e.g., obj.Inc)
+        if (expr && is<MemberAccessExpr>(*expr))
+        {
+            // Only accept when end-of-statement follows
+            const Token &after = peek();
+            bool endOfStmt = after.kind == TokenKind::EndOfLine ||
+                             after.kind == TokenKind::EndOfFile || after.kind == TokenKind::Colon ||
+                             after.kind == TokenKind::Number;
+            if (endOfStmt)
+            {
+                auto *ma = as<MemberAccessExpr>(*expr);
+                // Synthesize a zero-arg MethodCallExpr
+                auto call = std::make_unique<MethodCallExpr>();
+                call->loc = ma->loc;
+                call->Expr::loc = ma->loc;
+                call->base = std::move(ma->base);
+                call->method = ma->member;
+
+                auto stmt = std::make_unique<CallStmt>();
+                stmt->loc = identTok.loc;
+                stmt->call = std::move(call);
+                return StmtResult(std::move(stmt));
+            }
+        }
         reportUnknownStatement(identTok);
         resyncAfterError();
         return StmtResult(StmtPtr{});

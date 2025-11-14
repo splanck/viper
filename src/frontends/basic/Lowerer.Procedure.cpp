@@ -76,6 +76,14 @@ class VarCollectWalker final : public BasicAstWalker<VarCollectWalker>
             // TODO: Skip allocation for module-level globals once IL supports
             //       mutable module-level globals (not just string constants).
             lowerer_.markSymbolReferenced(expr.name);
+            // Track module-level symbols referenced in procedures (not @main)
+            // for cross-proc sharing via runtime-backed storage.
+            if (auto sema = lowerer_.semanticAnalyzer())
+            {
+                const auto *fn = lowerer_.context().function();
+                if (((fn == nullptr) || fn->name != "main") && sema->isModuleLevelSymbol(expr.name))
+                    lowerer_.markCrossProcGlobal(expr.name);
+            }
         }
     }
 
@@ -92,6 +100,12 @@ class VarCollectWalker final : public BasicAstWalker<VarCollectWalker>
                 return;
             lowerer_.markSymbolReferenced(expr.name);
             lowerer_.markArray(expr.name);
+            if (auto sema = lowerer_.semanticAnalyzer())
+            {
+                const auto *fn = lowerer_.context().function();
+                if (((fn == nullptr) || fn->name != "main") && sema->isModuleLevelSymbol(expr.name))
+                    lowerer_.markCrossProcGlobal(expr.name);
+            }
         }
     }
 
@@ -134,7 +148,15 @@ class VarCollectWalker final : public BasicAstWalker<VarCollectWalker>
     {
         if (stmt.name.empty())
             return;
-        lowerer_.setSymbolType(stmt.name, stmt.type);
+        if (!stmt.explicitClassQname.empty())
+        {
+            lowerer_.setSymbolObjectType(
+                stmt.name, lowerer_.resolveQualifiedClassCasing(JoinDots(stmt.explicitClassQname)));
+        }
+        else
+        {
+            lowerer_.setSymbolType(stmt.name, stmt.type);
+        }
         lowerer_.markSymbolReferenced(stmt.name);
         if (stmt.isArray)
             lowerer_.markArray(stmt.name);
@@ -531,6 +553,59 @@ std::optional<Lowerer::VariableStorage> Lowerer::resolveVariableStorage(std::str
         return std::nullopt;
 
     SlotType slotInfo = getSlotType(name);
+
+    // Prefer resolving module-level globals to runtime-managed storage before
+    // falling back to any materialized local slots. This ensures the @main
+    // body shares state with SUB/FUNCTION when a global is referenced across
+    // procedures (BUG-030), instead of each procedure operating on an isolated
+    // stack slot copy.
+    if (semanticAnalyzer_ && semanticAnalyzer_->isModuleLevelSymbol(std::string(name)))
+    {
+        // In @main, only redirect to runtime storage for variables that are
+        // referenced by procedures (cross-proc globals). This preserves IL
+        // goldens for purely-local main variables while fixing shared state.
+        bool isMain = (context().function() && context().function()->name == "main");
+        if (!isMain || isCrossProcGlobal(std::string(name)))
+        {
+            // Choose the appropriate helper based on the IL type classification.
+            std::string callee;
+            switch (slotInfo.type.kind)
+            {
+                case Type::Kind::I1:
+                    requireModvarAddrI1();
+                    callee = "rt_modvar_addr_i1";
+                    break;
+                case Type::Kind::F64:
+                    requireModvarAddrF64();
+                    callee = "rt_modvar_addr_f64";
+                    break;
+                case Type::Kind::Str:
+                    requireModvarAddrStr();
+                    callee = "rt_modvar_addr_str";
+                    break;
+                case Type::Kind::Ptr:
+                    requireModvarAddrPtr();
+                    callee = "rt_modvar_addr_ptr";
+                    break;
+                default:
+                    requireModvarAddrI64();
+                    callee = "rt_modvar_addr_i64";
+                    break;
+            }
+
+            // Emit a constant string for the variable name and query the runtime for its address.
+            std::string label = getStringLabel(std::string(name));
+            Value nameStr = emitConstStr(label);
+            Value addr = emitCallRet(Type(Type::Kind::Ptr), callee, {nameStr});
+
+            VariableStorage storage;
+            storage.slotInfo = slotInfo;
+            storage.pointer = addr;
+            storage.isField = false;
+            return storage;
+        }
+    }
+
     if (const auto *info = findSymbol(name))
     {
         if (info->slotId)
@@ -552,6 +627,33 @@ std::optional<Lowerer::VariableStorage> Lowerer::resolveVariableStorage(std::str
     }
 
     return std::nullopt;
+}
+
+/// @brief Resolve canonical class name to declared qualified casing using OOP index.
+/// @param qname Case-insensitive qualified class name (segments separated by '.').
+/// @return Qualified name with original casing when found; otherwise @p qname.
+std::string Lowerer::resolveQualifiedClassCasing(const std::string &qname) const
+{
+    // Fast path: exact match
+    if (const ClassInfo *ci = oopIndex_.findClass(qname))
+        return ci->qualifiedName.empty() ? qname : ci->qualifiedName;
+    // Case-insensitive match over indexed classes
+    auto lower = [](const std::string &s)
+    {
+        std::string out;
+        out.reserve(s.size());
+        for (unsigned char c : s)
+            out.push_back(static_cast<char>(std::tolower(c)));
+        return out;
+    };
+    const std::string needle = lower(qname);
+    for (const auto &p : oopIndex_.classes())
+    {
+        const ClassInfo &ci = p.second;
+        if (lower(ci.qualifiedName) == needle)
+            return ci.qualifiedName;
+    }
+    return qname;
 }
 
 /// @brief Retrieve a cached procedure signature when available.
@@ -642,8 +744,10 @@ void ProcedureLowering::collectProcedureSignatures(const Program &prog)
     {
         if (auto *fn = as<const FunctionDecl>(*decl))
         {
-            auto sig = buildSig(lowerer.functionRetTypeFromHint(fn->name, fn->explicitRetType),
-                                fn->params);
+            il::core::Type retTy = (!fn->explicitClassRetQname.empty())
+                                       ? il::core::Type(il::core::Type::Kind::Ptr)
+                                       : lowerer.functionRetTypeFromHint(fn->name, fn->explicitRetType);
+            auto sig = buildSig(retTy, fn->params);
             registerSig(fn->name, fn->qualifiedName, std::move(sig));
         }
         else if (auto *sub = as<const SubDecl>(*decl))
@@ -669,8 +773,10 @@ void ProcedureLowering::collectProcedureSignatures(const Program &prog)
                 case Stmt::Kind::FunctionDecl:
                 {
                     const auto &fn = static_cast<const FunctionDecl &>(*stmtPtr);
-                    auto sig = buildSig(lowerer.functionRetTypeFromHint(fn.name, fn.explicitRetType),
-                                        fn.params);
+                    il::core::Type retTy = (!fn.explicitClassRetQname.empty())
+                                               ? il::core::Type(il::core::Type::Kind::Ptr)
+                                               : lowerer.functionRetTypeFromHint(fn.name, fn.explicitRetType);
+                    auto sig = buildSig(retTy, fn.params);
                     registerSig(fn.name, fn.qualifiedName, std::move(sig));
                     break;
                 }
@@ -820,6 +926,7 @@ void ProcedureLowering::emitProcedureIL(LoweringContext &ctx)
 
     procCtx.setCurrent(&ctx.function->blocks[procCtx.exitIndex()]);
     lowerer.curLoc = {};
+    lowerer.releaseDeferredTemps();
     lowerer.releaseObjectLocals(ctx.paramNames);
     lowerer.releaseObjectParams(ctx.paramNames);
     lowerer.releaseArrayLocals(ctx.paramNames);
@@ -979,6 +1086,10 @@ void Lowerer::allocateLocalSlots(const std::unordered_set<std::string> &paramNam
         bool isParam = paramNames.find(name) != paramNames.end();
         if (isParam && !includeParams)
             continue;
+        // Skip allocating a local for module-level globals; they resolve via runtime storage.
+        bool isMain = (context().function() && context().function()->name == "main");
+        if (!isParam && !isMain && semanticAnalyzer_ && semanticAnalyzer_->isModuleLevelSymbol(name))
+            continue;
         if (info.slotId)
             continue;
         curLoc = {};
@@ -999,6 +1110,10 @@ void Lowerer::allocateLocalSlots(const std::unordered_set<std::string> &paramNam
             continue; // Static variables are module-level, not stack locals
         bool isParam = paramNames.find(name) != paramNames.end();
         if (isParam && !includeParams)
+            continue;
+        // Skip allocating a local for module-level globals; they resolve via runtime storage.
+        bool isMain = (context().function() && context().function()->name == "main");
+        if (!isParam && !isMain && semanticAnalyzer_ && semanticAnalyzer_->isModuleLevelSymbol(name))
             continue;
         if (info.slotId)
             continue;
@@ -1082,6 +1197,8 @@ void Lowerer::lowerFunctionDecl(const FunctionDecl &decl)
 {
     auto defaultRet = [&]()
     {
+        if (!decl.explicitClassRetQname.empty())
+            return Value::null();
         switch (decl.ret)
         {
             case ::il::frontends::basic::Type::I64:
@@ -1102,8 +1219,21 @@ void Lowerer::lowerFunctionDecl(const FunctionDecl &decl)
     // 2) name suffix ($ => string, # => float)
     // 3) default to integer (I64)
     // SUBs are always void.
-    config.retType = functionRetTypeFromHint(decl.name, decl.explicitRetType);
-    config.postCollect = [&]() { setSymbolType(decl.name, decl.ret); };
+    if (!decl.explicitClassRetQname.empty())
+    {
+        config.retType = Type(Type::Kind::Ptr);
+        // Defer marking the function name symbol as an object until after
+        // variable collection to survive symbol-table reset.
+        config.postCollect = [&]() {
+            std::string q = resolveQualifiedClassCasing(JoinDots(decl.explicitClassRetQname));
+            setSymbolObjectType(decl.name, q);
+        };
+    }
+    else
+    {
+        config.retType = functionRetTypeFromHint(decl.name, decl.explicitRetType);
+        config.postCollect = [&]() { setSymbolType(decl.name, decl.ret); };
+    }
     config.emitEmptyBody = [&]() { emitRet(defaultRet()); };
     config.emitFinalReturn = [&]()
     {
@@ -1111,7 +1241,10 @@ void Lowerer::lowerFunctionDecl(const FunctionDecl &decl)
         if (auto storage = resolveVariableStorage(decl.name, {}))
         {
             // Function name was assigned, return its value
-            Value val = emitLoad(storage->slotInfo.type, storage->pointer);
+            // If returning a class, force IL Ptr load regardless of cached slot type.
+            const bool isClassReturn = !decl.explicitClassRetQname.empty();
+            Type loadTy = isClassReturn ? Type(Type::Kind::Ptr) : storage->slotInfo.type;
+            Value val = emitLoad(loadTy, storage->pointer);
             emitRet(val);
         }
         else

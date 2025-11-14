@@ -313,6 +313,37 @@ void Lowerer::requireArrayStrLen()
     setManualHelperRequired(ManualRuntimeHelper::ArrayStrLen);
 }
 
+// --- Object array helper require hooks ---
+void Lowerer::requireArrayObjNew()
+{
+    setManualHelperRequired(ManualRuntimeHelper::ArrayObjNew);
+}
+
+void Lowerer::requireArrayObjLen()
+{
+    setManualHelperRequired(ManualRuntimeHelper::ArrayObjLen);
+}
+
+void Lowerer::requireArrayObjGet()
+{
+    setManualHelperRequired(ManualRuntimeHelper::ArrayObjGet);
+}
+
+void Lowerer::requireArrayObjPut()
+{
+    setManualHelperRequired(ManualRuntimeHelper::ArrayObjPut);
+}
+
+void Lowerer::requireArrayObjResize()
+{
+    setManualHelperRequired(ManualRuntimeHelper::ArrayObjResize);
+}
+
+void Lowerer::requireArrayObjRelease()
+{
+    setManualHelperRequired(ManualRuntimeHelper::ArrayObjRelease);
+}
+
 /// @brief Request the helper that reports array out-of-bounds panics.
 /// @details Ensures the trap routine used for bounds failures is available when
 ///          lowering explicit checks.
@@ -392,6 +423,32 @@ void Lowerer::requireLofCh()
 void Lowerer::requireLocCh()
 {
     setManualHelperRequired(ManualRuntimeHelper::LocCh);
+}
+
+// Module-level globals helpers
+void Lowerer::requireModvarAddrI64()
+{
+    setManualHelperRequired(ManualRuntimeHelper::ModvarAddrI64);
+}
+
+void Lowerer::requireModvarAddrF64()
+{
+    setManualHelperRequired(ManualRuntimeHelper::ModvarAddrF64);
+}
+
+void Lowerer::requireModvarAddrI1()
+{
+    setManualHelperRequired(ManualRuntimeHelper::ModvarAddrI1);
+}
+
+void Lowerer::requireModvarAddrPtr()
+{
+    setManualHelperRequired(ManualRuntimeHelper::ModvarAddrPtr);
+}
+
+void Lowerer::requireModvarAddrStr()
+{
+    setManualHelperRequired(ManualRuntimeHelper::ModvarAddrStr);
 }
 
 // --- end: require implementations ---
@@ -485,6 +542,14 @@ void Lowerer::declareRequiredRuntime(build::IRBuilder &b)
         {"rt_arr_str_get", ManualRuntimeHelper::ArrayStrGet, &Lowerer::requireArrayStrGet},
         {"rt_arr_str_put", ManualRuntimeHelper::ArrayStrPut, &Lowerer::requireArrayStrPut},
         {"rt_arr_str_len", ManualRuntimeHelper::ArrayStrLen, &Lowerer::requireArrayStrLen},
+        {"rt_arr_obj_new", ManualRuntimeHelper::ArrayObjNew, &Lowerer::requireArrayObjNew},
+        {"rt_arr_obj_len", ManualRuntimeHelper::ArrayObjLen, &Lowerer::requireArrayObjLen},
+        {"rt_arr_obj_get", ManualRuntimeHelper::ArrayObjGet, &Lowerer::requireArrayObjGet},
+        {"rt_arr_obj_put", ManualRuntimeHelper::ArrayObjPut, &Lowerer::requireArrayObjPut},
+        {"rt_arr_obj_resize", ManualRuntimeHelper::ArrayObjResize, &Lowerer::requireArrayObjResize},
+        {"rt_arr_obj_release",
+         ManualRuntimeHelper::ArrayObjRelease,
+         &Lowerer::requireArrayObjRelease},
         {"rt_arr_oob_panic", ManualRuntimeHelper::ArrayOobPanic, &Lowerer::requireArrayOobPanic},
         {"rt_open_err_vstr", ManualRuntimeHelper::OpenErrVstr, &Lowerer::requireOpenErrVstr},
         {"rt_close_err", ManualRuntimeHelper::CloseErr, &Lowerer::requireCloseErr},
@@ -504,6 +569,12 @@ void Lowerer::declareRequiredRuntime(build::IRBuilder &b)
         {"rt_str_release_maybe",
          ManualRuntimeHelper::StrReleaseMaybe,
          &Lowerer::requireStrReleaseMaybe},
+        // Module-level globals address helpers
+        {"rt_modvar_addr_i64", ManualRuntimeHelper::ModvarAddrI64, &Lowerer::requireModvarAddrI64},
+        {"rt_modvar_addr_f64", ManualRuntimeHelper::ModvarAddrF64, &Lowerer::requireModvarAddrF64},
+        {"rt_modvar_addr_i1", ManualRuntimeHelper::ModvarAddrI1, &Lowerer::requireModvarAddrI1},
+        {"rt_modvar_addr_ptr", ManualRuntimeHelper::ModvarAddrPtr, &Lowerer::requireModvarAddrPtr},
+        {"rt_modvar_addr_str", ManualRuntimeHelper::ModvarAddrStr, &Lowerer::requireModvarAddrStr},
         // --- end: declarable manual helpers ---
         {"rt_sleep_ms", ManualRuntimeHelper::SleepMs, &Lowerer::requireSleepMs},
         {"rt_timer_ms", ManualRuntimeHelper::TimerMs, &Lowerer::requireTimerMs},

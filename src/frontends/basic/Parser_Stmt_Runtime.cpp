@@ -15,6 +15,7 @@
 
 #include "frontends/basic/BasicDiagnosticMessages.hpp"
 #include "frontends/basic/Parser.hpp"
+#include "frontends/basic/IdentifierUtil.hpp"
 
 #include <cstdio>
 #include <cstdlib>
@@ -189,7 +190,47 @@ StmtPtr Parser::parseDimStatement()
             if (at(TokenKind::KeywordAs))
             {
                 consume();
-                node->type = parseTypeKeyword();
+                // Peek to decide between builtin keyword vs. qualified class name
+                if (at(TokenKind::Identifier))
+                {
+                    auto toUpper = [](std::string_view text)
+                    {
+                        std::string result;
+                        result.reserve(text.size());
+                        for (char ch : text)
+                        {
+                            unsigned char byte = static_cast<unsigned char>(ch);
+                            result.push_back(static_cast<char>(std::toupper(byte)));
+                        }
+                        return result;
+                    };
+                    std::string first = peek().lexeme;
+                    std::string upper = toUpper(first);
+                    if (upper == "INTEGER" || upper == "INT" || upper == "LONG" ||
+                        upper == "DOUBLE" || upper == "FLOAT" || upper == "SINGLE" ||
+                        upper == "STRING" || upper == "BOOLEAN")
+                    {
+                        node->type = parseTypeKeyword();
+                    }
+                    else
+                    {
+                        // Parse qualified class name: Ident ('.' Ident)*
+                        std::vector<std::string> segs;
+                        segs.push_back(CanonicalizeIdent(first));
+                        consume();
+                        while (at(TokenKind::Dot) && peek(1).kind == TokenKind::Identifier)
+                        {
+                            consume(); // dot
+                            segs.push_back(CanonicalizeIdent(peek().lexeme));
+                            consume();
+                        }
+                        node->explicitClassQname = std::move(segs);
+                    }
+                }
+                else
+                {
+                    node->type = parseTypeKeyword();
+                }
             }
             arrays_.insert(node->name);
         }
@@ -199,7 +240,45 @@ StmtPtr Parser::parseDimStatement()
             if (at(TokenKind::KeywordAs))
             {
                 consume();
-                node->type = parseTypeKeyword();
+                if (at(TokenKind::Identifier))
+                {
+                    auto toUpper = [](std::string_view text)
+                    {
+                        std::string result;
+                        result.reserve(text.size());
+                        for (char ch : text)
+                        {
+                            unsigned char byte = static_cast<unsigned char>(ch);
+                            result.push_back(static_cast<char>(std::toupper(byte)));
+                        }
+                        return result;
+                    };
+                    std::string first = peek().lexeme;
+                    std::string upper = toUpper(first);
+                    if (upper == "INTEGER" || upper == "INT" || upper == "LONG" ||
+                        upper == "DOUBLE" || upper == "FLOAT" || upper == "SINGLE" ||
+                        upper == "STRING" || upper == "BOOLEAN")
+                    {
+                        node->type = parseTypeKeyword();
+                    }
+                    else
+                    {
+                        std::vector<std::string> segs;
+                        segs.push_back(CanonicalizeIdent(first));
+                        consume();
+                        while (at(TokenKind::Dot) && peek(1).kind == TokenKind::Identifier)
+                        {
+                            consume();
+                            segs.push_back(CanonicalizeIdent(peek().lexeme));
+                            consume();
+                        }
+                        node->explicitClassQname = std::move(segs);
+                    }
+                }
+                else
+                {
+                    node->type = parseTypeKeyword();
+                }
             }
         }
 
