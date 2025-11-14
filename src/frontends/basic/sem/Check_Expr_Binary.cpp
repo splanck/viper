@@ -313,7 +313,10 @@ void validateComparisonOperands(sem::ExprCheckContext &context,
     // All comparison operators support strings for lexicographic comparison
     const bool numericOk = isNumericType(lhs) && isNumericType(rhs);
     const bool stringOk = isStringType(lhs) && isStringType(rhs);
-    if (!numericOk && !stringOk)
+    // Boolean equality/inequality comparisons (fixes BUG-012)
+    const bool booleanOk = (expr.op == BinaryExpr::Op::Eq || expr.op == BinaryExpr::Op::Ne) &&
+                           isBooleanType(lhs) && isBooleanType(rhs);
+    if (!numericOk && !stringOk && !booleanOk)
         sem::emitOperandTypeMismatch(context.diagnostics(), expr, diagId);
 }
 
