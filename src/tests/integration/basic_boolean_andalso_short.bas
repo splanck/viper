@@ -1,0 +1,8 @@
+FUNCTION Touch()
+10 PRINT "touch"
+20 RETURN -1
+END FUNCTION
+
+30 IF FALSE ANDALSO (Touch() <> 0) THEN PRINT "bad"
+40 PRINT "done"
+50 END

@@ -1,0 +1,4 @@
+10 PRINT #2, "A", 42
+20 PRINT #2, "B", 7
+30 PRINT #2, "C"
+40 END

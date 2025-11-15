@@ -1,0 +1,10 @@
+CLASS Box
+  FUNCTION Id() AS INT: RETURN 7: END FUNCTION
+END CLASS
+FUNCTION Make() AS Box
+  DIM b AS Box
+  Make = b
+END FUNCTION
+DIM x AS Box: x = Make()
+PRINT x.Id()
+

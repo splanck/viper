@@ -1,0 +1,13 @@
+10 GOSUB 100
+20 PRINT "After first"
+30 GOSUB 200
+40 PRINT "After second"
+50 END
+100 PRINT "Enter first"
+110 GOSUB 300
+120 PRINT "Leave first"
+130 RETURN
+200 PRINT "Enter second"
+210 RETURN
+300 PRINT "Enter inner"
+310 RETURN

@@ -1,0 +1,10 @@
+10 LET M = -3 * (2 + 1)
+20 PRINT M
+30 PRINT -(1.5)
+40 LET P = +5
+50 PRINT P
+60 LET Q = +(-2)
+70 PRINT Q
+80 PRINT -(0 - 3)
+90 PRINT -(-(2.25))
+100 END

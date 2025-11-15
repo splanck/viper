@@ -1,0 +1,9 @@
+10 LET A = 1
+20 LET B# = 2.5
+30 PRINT STR$(A), STR$(B#)
+40 LET S$ = " 42 "
+50 PRINT VAL(S$)
+60 LET X# = 1.9
+70 LET Y# = -1.9
+80 PRINT INT(X#), INT(Y#)
+90 END

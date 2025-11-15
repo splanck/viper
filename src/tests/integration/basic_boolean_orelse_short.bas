@@ -1,0 +1,6 @@
+FUNCTION Touch() AS BOOLEAN
+  PRINT "touch"
+  Touch = TRUE
+END FUNCTION
+
+IF TRUE ORELSE Touch() THEN PRINT "ok"

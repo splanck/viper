@@ -1,0 +1,37 @@
+1:40 eol
+2:56 eol
+3:1 SELECT
+3:8 CASE
+3:13 ident X
+3:14 eol
+4:1 SELECT
+4:8 CASE
+4:13 ident X
+4:14 eol
+5:1 CASE
+5:6 number 1
+5:7 ,
+5:9 number 2
+5:10 ,
+5:12 number 3
+5:13 eol
+6:1 CASE
+6:6 number 4
+6:7 ,
+6:9 number 5
+6:10 ,
+6:12 number 6
+6:13 eol
+7:1 CASE
+7:6 ELSE
+7:10 eol
+8:1 CASE
+8:6 ELSE
+8:10 eol
+9:1 END
+9:5 SELECT
+9:11 eol
+10:1 END
+10:5 SELECT
+10:11 eol
+11:1 eof

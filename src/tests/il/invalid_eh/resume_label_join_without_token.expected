@@ -1,0 +1,1 @@
+error: verify.eh.resume_token_missing: resume_label_join_without_token:handler: resume.label %t4 label after: [checkUnreachableAfterThrow] resume.* requires active resume token; path: entry -> handler

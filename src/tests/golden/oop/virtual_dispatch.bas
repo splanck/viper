@@ -1,0 +1,14 @@
+CLASS A
+  VIRTUAL SUB Speak()
+    PRINT "A"
+  END SUB
+END CLASS
+CLASS B : A
+  OVERRIDE SUB Speak()
+    PRINT "B"
+  END SUB
+END CLASS
+DIM x AS A
+LET x = NEW B()
+x.Speak()
+END

@@ -1,0 +1,29 @@
+1:50 eol
+2:64 eol
+3:1 eol
+4:1 number 10
+4:4 FUNCTION
+4:13 ident FOO_BAR%
+4:21 (
+4:22 ident N%
+4:24 )
+4:26 :
+4:28 RETURN
+4:35 ident N%
+4:37 *
+4:38 number 2
+4:40 :
+4:42 END
+4:46 FUNCTION
+4:54 eol
+5:1 number 20
+5:4 PRINT
+5:10 ident FOO_BAR%
+5:18 (
+5:19 number 7
+5:20 )
+5:21 eol
+6:1 number 30
+6:4 END
+6:7 eol
+7:1 eof

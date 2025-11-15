@@ -1,0 +1,4 @@
+0: (PRINT (MID$ S$ 1))
+0: (PRINT (MID$ S$ 1 2))
+0: (PRINT (INSTR H$ N$))
+0: (PRINT (INSTR 5 H$ N$))

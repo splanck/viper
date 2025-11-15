@@ -1,0 +1,1 @@
+error: main:bad: handler params must be named %err and %tok

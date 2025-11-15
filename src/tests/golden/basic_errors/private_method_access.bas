@@ -1,0 +1,9 @@
+CLASS C
+  PRIVATE SUB M()
+  END SUB
+END CLASS
+DIM c AS C
+LET c = NEW C()
+c.M()
+END
+

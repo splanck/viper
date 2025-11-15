@@ -1,0 +1,7 @@
+NAMESPACE Lib
+  SUB Hi: PRINT "hi": END SUB
+END NAMESPACE
+
+USING Lib
+
+Hi()

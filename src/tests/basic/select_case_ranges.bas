@@ -1,0 +1,12 @@
+DIM X
+X=2: GOSUB T
+X=4: GOSUB T
+X=9: GOSUB T
+END
+T:
+  SELECT CASE X
+    CASE 1 TO 3: PRINT "small"
+    CASE 4 TO 5: PRINT "mid"
+    CASE ELSE:   PRINT "other"
+  END SELECT
+RETURN

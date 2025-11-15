@@ -1,0 +1,7 @@
+NAMESPACE A.B
+  SUB F: PRINT "ok": END SUB
+  SUB Main
+    F()
+  END SUB
+END NAMESPACE
+A.B.Main()

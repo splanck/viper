@@ -1,0 +1,13 @@
+NAMESPACE A.B
+  SUB F: PRINT "local": END SUB
+  USING X.Y
+  SUB Main
+    F()
+  END SUB
+END NAMESPACE
+
+NAMESPACE X.Y
+  SUB F: PRINT "import": END SUB
+END NAMESPACE
+
+A.B.Main()

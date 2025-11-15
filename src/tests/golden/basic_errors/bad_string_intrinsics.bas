@@ -1,0 +1,4 @@
+10 PRINT LEN(42)
+20 LET X$ = "HI"
+30 PRINT MID$(X$, "A")
+40 END

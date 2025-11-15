@@ -1,0 +1,15 @@
+' i32_compare_zero.bas
+DIM X AS INTEGER
+X = 0
+IF X = 0 THEN
+  PRINT "ZERO"
+ELSE
+  PRINT "NONZERO"
+END IF
+
+X = -1
+IF X = 0 THEN
+  PRINT "ZERO"
+ELSE
+  PRINT "NONZERO"
+END IF

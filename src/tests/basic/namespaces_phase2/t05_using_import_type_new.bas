@@ -1,0 +1,9 @@
+NAMESPACE Shapes
+  CLASS Point
+  END CLASS
+END NAMESPACE
+
+USING Shapes
+
+DIM x AS I64
+NEW Point()

@@ -1,0 +1,4 @@
+10 LET N = 3
+20 DIM A(N)
+30 LET A(N + 1) = 1
+40 END

@@ -1,0 +1,6 @@
+NAMESPACE A.B
+  SUB Main
+    F()
+  END SUB
+END NAMESPACE
+A.B.Main()
