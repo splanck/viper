@@ -1,9 +1,9 @@
 cmake_minimum_required(VERSION 3.20)
 # ---- Begin: Viper version wiring (SSOT + snapshots) ----
 # Read SSOT files from repo root
-file(READ "${CMAKE_SOURCE_DIR}/VERSION"     VIPER_VERSION_STR)
+file(READ "${CMAKE_SOURCE_DIR}/src/buildmeta/VERSION"     VIPER_VERSION_STR)
 string(STRIP "${VIPER_VERSION_STR}"         VIPER_VERSION_STR)
-file(READ "${CMAKE_SOURCE_DIR}/IL_VERSION"  VIPER_IL_VERSION_STR)
+file(READ "${CMAKE_SOURCE_DIR}/src/buildmeta/IL_VERSION"  VIPER_IL_VERSION_STR)
 string(STRIP "${VIPER_IL_VERSION_STR}"      VIPER_IL_VERSION_STR)
 
 # Extract numeric MAJOR.MINOR.PATCH for CMake's project() VERSION
@@ -214,6 +214,7 @@ add_custom_target(clean-dist
           "${CMAKE_BINARY_DIR}/src"
           "${CMAKE_BINARY_DIR}/tests"
           "${CMAKE_BINARY_DIR}/tui"
+          "${CMAKE_BINARY_DIR}/src/tui"
           "${CMAKE_BINARY_DIR}/generated"
           "${CMAKE_BINARY_DIR}/compile_commands.json"
   COMMAND ${CMAKE_COMMAND} -E rm -f "${CMAKE_BINARY_DIR}/CMakeCache.txt"
@@ -282,8 +283,8 @@ if(VIPER_INSTALL_TUI AND NOT BUILD_TUI)
   message(WARNING "VIPER_INSTALL_TUI is ON but BUILD_TUI is OFF; no TUI targets will be installed.")
 endif()
 if(BUILD_TUI)
-  add_subdirectory(tui)
-  viper_assert_no_directory_link_libraries("tui" "tui")
+  add_subdirectory(src/tui)
+  viper_assert_no_directory_link_libraries("src/tui" "src/tui")
 endif()
 
 if(VIPER_BUILD_TESTING)
