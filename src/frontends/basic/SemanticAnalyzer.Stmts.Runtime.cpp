@@ -24,7 +24,10 @@
 #include "frontends/basic/ASTUtils.hpp"
 
 #include "frontends/basic/BasicDiagnosticMessages.hpp"
+#include "frontends/basic/Diag.hpp"
+#include "frontends/basic/IdentifierUtil.hpp"
 #include "frontends/basic/SemanticAnalyzer.Internal.hpp"
+#include "frontends/basic/IdentifierUtil.hpp"
 #include "frontends/basic/StringUtils.hpp"
 #include "frontends/basic/ast/ExprNodes.hpp"
 
@@ -66,8 +69,26 @@ void SemanticAnalyzer::analyzeCallStmt(CallStmt &stmt)
     if (auto *me = as<MethodCallExpr>(*stmt.call))
     {
         // Best-effort analysis: visit receiver and args to trigger diagnostics.
+        // BUG-037 fix: Detect undefined variables in method calls and suggest qualified call syntax
         if (me->base)
+        {
+            if (auto *varExpr = as<VarExpr>(*me->base))
+            {
+                // Check if the base variable exists; if not, this might be a qualified call
+                if (symbols_.find(std::string{varExpr->name}) == symbols_.end())
+                {
+                    // Variable not found - could be a namespace-qualified call attempt
+                    std::vector<std::string> segments;
+                    segments.push_back(std::string{varExpr->name});
+                    segments.push_back(me->method);
+                    std::string qualifiedName = CanonicalizeQualified(segments);
+                    std::vector<std::string> attempts;
+                    diagx::ErrorUnknownProcWithTries(de.emitter(), stmt.loc, qualifiedName, attempts);
+                    return;
+                }
+            }
             visitExpr(*me->base);
+        }
         for (auto &arg : me->args)
             if (arg)
                 visitExpr(*arg);

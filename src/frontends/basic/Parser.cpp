@@ -468,6 +468,98 @@ bool Parser::handleTopLevelAddFile(Program &prog)
     return true;
 }
 
+bool Parser::handleAddFileInto(std::vector<StmtPtr> &dst)
+{
+    if (!at(TokenKind::KeywordAddfile))
+        return false;
+
+    Token kw = consume(); // ADDFILE
+    if (!sm_ || !emitter_)
+    {
+        emitError("B0001", kw.loc, "ADDFILE is not supported in this parsing context");
+        syncToStmtBoundary();
+        if (at(TokenKind::EndOfLine))
+            consume();
+        return true;
+    }
+
+    Token pathTok = expect(TokenKind::String);
+    std::string rawPath = pathTok.lexeme;
+
+    while (!at(TokenKind::EndOfFile) && !at(TokenKind::EndOfLine))
+        consume();
+    if (at(TokenKind::EndOfLine))
+        consume();
+
+    // Resolve path relative to current file
+    const uint32_t includingFileId = kw.loc.file_id;
+    std::filesystem::path base(sm_->getPath(includingFileId));
+    std::filesystem::path candidate(rawPath);
+    std::filesystem::path resolved = candidate.is_absolute() ? candidate : base.parent_path() / candidate;
+
+    std::error_code ec;
+    std::filesystem::path canon = std::filesystem::weakly_canonical(resolved, ec);
+    const std::string canonStr = ec ? resolved.lexically_normal().string() : canon.string();
+
+    if (includeStack_)
+    {
+        if (includeStack_->size() >= static_cast<size_t>(maxIncludeDepth_))
+        {
+            emitError("B0001", kw.loc, "ADDFILE depth limit exceeded");
+            return true;
+        }
+        for (const auto &p : *includeStack_)
+        {
+            if (p == canonStr)
+            {
+                emitError("B0001", kw.loc, "cyclic ADDFILE detected: " + canonStr);
+                return true;
+            }
+        }
+        includeStack_->push_back(canonStr);
+    }
+
+    std::ifstream in(canonStr);
+    if (!in)
+    {
+        emitError("B0001", kw.loc, "unable to open: " + canonStr);
+        if (includeStack_ && !includeStack_->empty())
+            includeStack_->pop_back();
+        return true;
+    }
+    std::ostringstream ss;
+    ss << in.rdbuf();
+    std::string contents = ss.str();
+
+    uint32_t newFileId = sm_->addFile(canonStr);
+    if (newFileId == 0)
+    {
+        emitError("B0005", kw.loc, std::string{il::support::kSourceManagerFileIdOverflowMessage});
+        if (includeStack_ && !includeStack_->empty())
+            includeStack_->pop_back();
+        return true;
+    }
+    emitter_->addSource(newFileId, contents);
+
+    Parser child(contents, newFileId, emitter_, sm_, includeStack_, /*suppress*/ true);
+    auto subprog = child.parseProgram();
+    if (!subprog)
+    {
+        if (includeStack_ && !includeStack_->empty())
+            includeStack_->pop_back();
+        return true;
+    }
+
+    for (auto &p : subprog->procs)
+        dst.push_back(std::move(p));
+    for (auto &s : subprog->main)
+        dst.push_back(std::move(s));
+
+    if (includeStack_ && !includeStack_->empty())
+        includeStack_->pop_back();
+    return true;
+}
+
 // ============================================================================
 // Error Reporting Helpers
 // ============================================================================

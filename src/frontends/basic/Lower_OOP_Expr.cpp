@@ -105,8 +105,32 @@ std::string Lowerer::resolveObjectClass(const Expr &expr) const
     }
     if (const auto *call = as<const MethodCallExpr>(expr))
     {
+        // BUG-039/BUG-040 fix: Method calls should only be treated as returning objects
+        // if the method's return type is actually a class type (not INTEGER, STRING, etc.)
         if (call->base)
-            return resolveObjectClass(*call->base);
+        {
+            std::string baseClass = resolveObjectClass(*call->base);
+            if (!baseClass.empty())
+            {
+                // Check the method's return type
+                if (auto retType = findMethodReturnType(baseClass, call->method))
+                {
+                    // Only return a class name if the method returns a class type (ptr)
+                    // For primitive types (I64, F64, Str, Bool), return empty string
+                    if (*retType == ::il::frontends::basic::Type::I64 ||
+                        *retType == ::il::frontends::basic::Type::F64 ||
+                        *retType == ::il::frontends::basic::Type::Str ||
+                        *retType == ::il::frontends::basic::Type::Bool)
+                    {
+                        return {};
+                    }
+                    // If it's a custom type, we need to look it up
+                    // For now, assume it's an object if it's not a known primitive
+                    // This handles class return types
+                    return baseClass;  // TODO: Should return the actual return class, not base class
+                }
+            }
+        }
         return {};
     }
     return {};

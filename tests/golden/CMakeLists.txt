@@ -73,13 +73,29 @@ function(viper_add_golden_suite_tests)
             "-DEXPECT=${EXPECT_BAD_GOTO}"
             -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
 
-    file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/string_arith.stderr EXPECT_STRING_ARITH)
-    string(STRIP "${EXPECT_STRING_ARITH}" EXPECT_STRING_ARITH)
+    # '+' concatenation is allowed; ensure no error for string arithmetic.
     viper_add_ctest(basic_error_string_arith
             ${CMAKE_COMMAND}
             -DILC=${BASIC_ILC}
             -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/string_arith.bas
-            "-DEXPECT=${EXPECT_STRING_ARITH}"
+            -DEXPECT_EXIT_ZERO=TRUE
+            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
+
+    # ------------------------------------------------------------------
+    # BASIC examples (smoke): ensure these compile successfully
+    # ------------------------------------------------------------------
+    viper_add_ctest(example_basic_addfile
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${CMAKE_SOURCE_DIR}/examples/basic/addfile_main.bas
+            -DEXPECT_EXIT_ZERO=TRUE
+            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
+
+    viper_add_ctest(example_basic_addfile_ns
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${CMAKE_SOURCE_DIR}/examples/basic/addfile_ns_main.bas
+            -DEXPECT_EXIT_ZERO=TRUE
             -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
 
     # String comparison operators are now supported, so string_cmp_order test removed

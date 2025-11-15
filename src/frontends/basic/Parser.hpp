@@ -197,6 +197,13 @@ class Parser
     /// @return True when a directive was handled (successfully or with diagnostics);
     ///         false when no ADDFILE directive was present.
     bool handleTopLevelAddFile(Program &prog);
+    /// @brief Handle an ADDFILE directive in the current statement context.
+    /// @details When the next token is ADDFILE and a source manager is available,
+    ///          reads and parses the included file and appends its statements and
+    ///          procedure declarations to @p dst.
+    /// @return True when a directive was handled (successfully or with diagnostics);
+    ///         false when no ADDFILE directive was present.
+    bool handleAddFileInto(std::vector<StmtPtr> &dst);
     StmtPtr parseClassDecl();
     StmtPtr parseTypeDecl();
     StmtPtr parseDeleteStatement();

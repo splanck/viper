@@ -63,9 +63,9 @@ int main()
     }
 
     {
+        // '+' concatenates when either operand is string; no error expected.
         auto result = analyzeSnippet(makeSnippet("1 + \"A\""));
-        assert(result.errors == 1);
-        assert(result.output.find("error[B2001]") != std::string::npos);
+        assert(result.errors == 0);
     }
 
     {

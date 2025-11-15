@@ -127,5 +127,55 @@ int main()
         assert(diag.find("cyclic ADDFILE detected") != std::string::npos);
     }
 
+    // Test 4: Depth limit exceeded (chain length 33)
+    {
+        const fs::path dir = tempRoot / "depth";
+        fs::create_directories(dir);
+        // Generate inc01.bas .. inc33.bas where each includes the next.
+        const int chainLen = 33;
+        for (int i = 1; i <= chainLen; ++i)
+        {
+            char nextName[16];
+            std::snprintf(nextName, sizeof(nextName), "inc%02d.bas", i + 1);
+            std::string contents;
+            if (i < chainLen)
+            {
+                contents = std::string{"10 ADDFILE \""} + nextName + "\"\n20 END\n";
+            }
+            else
+            {
+                contents = "10 END\n";
+            }
+            char curName[16];
+            std::snprintf(curName, sizeof(curName), "inc%02d.bas", i);
+            write_file(dir, curName, contents);
+        }
+        // Main includes inc01.bas
+        write_file(dir, "main.bas", "10 ADDFILE \"inc01.bas\"\n20 END\n");
+        size_t errs = 0;
+        std::string diag = run_and_collect_errors((dir / "main.bas").string(),
+                                                  "10 ADDFILE \"inc01.bas\"\n20 END\n",
+                                                  errs);
+        // Expect depth limit error (limit is 32), so chain 33 triggers error.
+        if (errs == 0)
+            std::cerr << diag << std::endl;
+        assert(errs >= 1);
+        assert(diag.find("depth limit") != std::string::npos);
+    }
+
+    // Test 5: Numeric line label before ADDFILE
+    {
+        const fs::path dir = tempRoot / "label";
+        write_file(dir, "inc.bas", "10 PRINT \"LAB\"\n20 END\n");
+        const fs::path mainPath = write_file(dir, "main.bas", "100 ADDFILE \"inc.bas\"\n200 END\n");
+        size_t errs = 0;
+        std::string diag = run_and_collect_errors(mainPath.string(),
+                                                  "100 ADDFILE \"inc.bas\"\n200 END\n",
+                                                  errs);
+        if (errs != 0)
+            std::cerr << diag << std::endl;
+        assert(errs == 0);
+    }
+
     return 0;
 }

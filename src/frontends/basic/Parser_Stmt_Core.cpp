@@ -202,13 +202,9 @@ Parser::StmtResult Parser::parseCall(int)
                     {
                         // Single-dot case:
                         // - Prefer namespace-qualified interpretation when the head is a known namespace
-                        // - Otherwise, default to qualified when the head looks like a multi-letter name
-                        //   (heuristic to avoid misclassifying object receivers like 'o.F()').
+                        // - BUG-037 fix: Removed blanket multi-letter heuristic that broke method calls.
+                        //   Fall through to expression parser which handles both cases correctly.
                         if (knownNamespaces_.find(identTok.lexeme) != knownNamespaces_.end())
-                        {
-                            treatAsQualified = true;
-                        }
-                        else if (!identTok.lexeme.empty() && identTok.lexeme.size() > 1)
                         {
                             treatAsQualified = true;
                         }

@@ -297,8 +297,13 @@ StatementSequencer::TerminatorInfo StatementSequencer::collectStatements(
             break;
 
         TokenKind lookaheadKind = parser_.peek().kind;
-        if (lookaheadKind != TokenKind::EndOfLine && lookaheadKind != TokenKind::EndOfFile &&
-            lookaheadKind != TokenKind::Colon)
+        if (lookaheadKind == TokenKind::KeywordAddfile)
+        {
+            // Handle ADDFILE directive by splicing included content into dst.
+            parser_.handleAddFileInto(dst);
+        }
+        else if (lookaheadKind != TokenKind::EndOfLine && lookaheadKind != TokenKind::EndOfFile &&
+                 lookaheadKind != TokenKind::Colon)
         {
             auto stmt = parser_.parseStatement(line);
             if (stmt)
