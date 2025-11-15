@@ -1,9 +1,0 @@
-DIM ARR1(3) AS INTEGER
-ARR1(0) = 7
-
-FUNCTION TestAccess(index AS INTEGER) AS INTEGER
-    TestAccess = ARR1(index)
-END FUNCTION
-
-PRINT TestAccess(0)
-

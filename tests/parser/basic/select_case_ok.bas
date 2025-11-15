@@ -1,9 +1,0 @@
-10 X = 2
-20 SELECT CASE X
-30   CASE 1, 3
-40     PRINT "odd small"
-50   CASE 2
-60     PRINT "two"
-70   CASE ELSE
-80     PRINT "other"
-90 END SELECT

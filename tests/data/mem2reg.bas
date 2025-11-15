@@ -1,4 +1,0 @@
-10 LET A = 40
-20 LET B = 2
-30 LET T = A + B
-40 PRINT T;

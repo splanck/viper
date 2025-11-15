@@ -1,4 +1,0 @@
-NAMESPACE Lib
-  SUB Ping: PRINT "pong": END SUB
-END NAMESPACE
-

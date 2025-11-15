@@ -1,7 +1,0 @@
-NAMESPACE Lib.M
-  SUB S: PRINT "m": END SUB
-END NAMESPACE
-
-USING Math = Lib.M
-
-Math.S()

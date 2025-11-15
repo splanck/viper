@@ -1,6 +1,0 @@
-DIM X, S$
-S$ = "a"
-SELECT CASE S$
-  CASE "a": PRINT 1
-  CASE 1:   PRINT 2
-END SELECT

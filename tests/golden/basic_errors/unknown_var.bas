@@ -1,3 +1,0 @@
-10 LET A = 1
-20 PRINT B
-30 END

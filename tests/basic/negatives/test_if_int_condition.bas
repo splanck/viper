@@ -1,2 +1,0 @@
-IF 2 THEN PRINT 1
-END

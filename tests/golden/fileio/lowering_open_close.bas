@@ -1,2 +1,0 @@
-10 OPEN "foo.txt" FOR OUTPUT AS #1
-20 CLOSE #1

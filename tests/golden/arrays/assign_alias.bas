@@ -1,7 +1,0 @@
-10 DIM A(3)
-15 DIM B(3)
-20 LET A(0) = 1
-30 LET B = A
-40 LET A(0) = 7
-50 PRINT B(0)
-60 END

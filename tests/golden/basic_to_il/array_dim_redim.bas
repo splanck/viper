@@ -1,3 +1,0 @@
-10 DIM A(3)
-20 REDIM A(5)
-30 END

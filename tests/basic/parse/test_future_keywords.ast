@@ -1,5 +1,0 @@
-0: (FUNCTION FUTURE qualifiedName: <null> RET I64 () {0:(RETURN)})
-0: (SUB FUTURES qualifiedName: <null> () {})
-0: (FUNCTION CALLRETURN qualifiedName: <null> RET I64 () {0:(PRINT 3) 0:(RETURN) 0:(RETURN)})
-0: (PRINT 1)
-0: (PRINT 2)

@@ -1,1 +1,0 @@
-error: narrow_cast:entry: %2 = fptosi %t1: fp to integer narrowing must use cast.fp_to_si.rte.chk (rounds to nearest-even and traps on overflow)

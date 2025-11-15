@@ -1,3 +1,0 @@
-PRINT 1
-PRINT 2
-END

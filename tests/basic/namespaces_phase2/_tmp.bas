@@ -1,7 +1,0 @@
-NAMESPACE A.B
-  SUB F: PRINT "local": END SUB
-END NAMESPACE
-
-SUB Main
-  A.B.F()
-END SUB

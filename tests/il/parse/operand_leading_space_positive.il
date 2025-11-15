@@ -1,2 +1,0 @@
-   %tmp
-   @global_symbol

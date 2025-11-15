@@ -212,9 +212,7 @@ add_custom_target(clean-dist
           "${CMAKE_BINARY_DIR}/bin"
           "${CMAKE_BINARY_DIR}/lib"
           "${CMAKE_BINARY_DIR}/src"
-          "${CMAKE_BINARY_DIR}/tests"
           "${CMAKE_BINARY_DIR}/tui"
-          "${CMAKE_BINARY_DIR}/src/tui"
           "${CMAKE_BINARY_DIR}/generated"
           "${CMAKE_BINARY_DIR}/compile_commands.json"
   COMMAND ${CMAKE_COMMAND} -E rm -f "${CMAKE_BINARY_DIR}/CMakeCache.txt"
@@ -266,7 +264,7 @@ if(VIPER_BUILD_TESTING)
   enable_testing()
   add_test(
     NAME basic_select_case_string
-    COMMAND ${CMAKE_SOURCE_DIR}/tests/integration/basic/select_case_string.sh
+    COMMAND ${CMAKE_SOURCE_DIR}/src/tests/integration/basic/select_case_string.sh
             ${CMAKE_BINARY_DIR}
   )
 endif()
@@ -288,8 +286,8 @@ if(BUILD_TUI)
 endif()
 
 if(VIPER_BUILD_TESTING)
-  add_subdirectory(tests)
-  viper_assert_no_directory_link_libraries("tests" "tests")
+  add_subdirectory(src/tests)
+  viper_assert_no_directory_link_libraries("src/tests" "src/tests")
 endif()
 
 # ---- Examples ----

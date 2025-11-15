@@ -1,7 +1,0 @@
-10: (LET X (+ 2 3))
-20: (LET Y (* X 2))
-30: (PRINT "HELLO")
-40: (PRINT "READY")
-50: (PRINT Y)
-60: (IF (> Y 8) THEN (PRINT Y) ELSE (PRINT 4))
-70: (END)

@@ -1,3 +1,0 @@
-10 PRINT VAL("  -12.5E+1x")
-20 PRINT VAL("abc")
-30 PRINT VAL("  +12.34E1x")

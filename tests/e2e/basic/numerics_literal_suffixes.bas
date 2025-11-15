@@ -1,7 +1,0 @@
-10 LET D# = 1 / 2
-20 PRINT D#
-30 LET I% = 7 \ 2
-40 PRINT I%
-50 LET S! = 2 + 1
-60 PRINT S!
-70 END

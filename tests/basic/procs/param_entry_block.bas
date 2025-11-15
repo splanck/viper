@@ -1,3 +1,0 @@
-100 FUNCTION Cat$(A$, B$) : RETURN A$ + B$ : END FUNCTION
-10 PRINT Cat$("Hi, ", "Bob")
-20 END

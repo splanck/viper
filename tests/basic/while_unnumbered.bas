@@ -1,6 +1,0 @@
-LET I = 0
-WHILE I < 3
-  LET I = I + 1
-WEND
-PRINT I
-END

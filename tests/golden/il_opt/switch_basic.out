@@ -1,2 +1,0 @@
-[IL] fn=@main blk=entry ip=#0 op=switch.i32 1, 1, 3
-[IL] fn=@main blk=case_first ip=#0 op=ret 111

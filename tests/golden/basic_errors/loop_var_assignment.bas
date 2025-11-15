@@ -1,3 +1,0 @@
-10 FOR I = 1 TO 3
-20 LET I = 2
-30 NEXT I

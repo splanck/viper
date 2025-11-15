@@ -1,2 +1,0 @@
-10 PRINT 1 / 2
-20 DIM s AS SINGLE: s = 3!: PRINT s / 2

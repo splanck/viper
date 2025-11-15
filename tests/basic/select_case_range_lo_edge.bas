@@ -1,7 +1,0 @@
-LET N% = 10
-SELECT CASE N%
-  CASE 10 TO 20
-    PRINT "in"
-  CASE ELSE
-    PRINT "out"
-END SELECT

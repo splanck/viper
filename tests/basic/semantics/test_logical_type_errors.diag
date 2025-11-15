@@ -1,6 +1,0 @@
-tests/basic/semantics/test_logical_type_errors.bas:4:11: error[E1002]: Logical operator ANDALSO requires BOOLEAN operands, got INT and BOOLEAN.
-LET Y = X ANDALSO TRUE
-          ^
-tests/basic/semantics/test_logical_type_errors.bas:5:9: error[E1003]: NOT requires a BOOLEAN operand, got INT.
-LET Y = NOT X
-        ^^^
