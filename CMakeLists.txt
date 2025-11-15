@@ -43,7 +43,7 @@ configure_file(
 install(FILES "${CMAKE_BINARY_DIR}/generated/viper/version.hpp"
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/viper)
 
-find_package(Python3 COMPONENTS Interpreter REQUIRED)
+# No external scripting dependencies required (Python removed).
 
 option(VIPER_INSTALL_TUI "Install TUI apps/libraries" OFF)
 option(VIPER_BUILD_TESTING "Enable CTest-based tests" ON)

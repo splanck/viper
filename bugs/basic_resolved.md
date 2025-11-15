@@ -226,3 +226,41 @@ PRINT result#  ' Output: 2.68811714181614e+43
 - Validation: Method calls returning primitives can be assigned to variables without type mismatch errors. Test cases demonstrate INTEGER, STRING, and other primitive return types working correctly.
 
 ---
+
+## BUG-040: Cannot use custom class types as function return types
+- Status: RESOLVED (2025-11-15)
+- Summary: Functions can now return custom class types. Previously, attempting to return a class instance from a function would either load from the wrong slot (returning null/uninitialized data) or cause type mismatch errors due to incorrect symbol resolution.
+- Root cause: Complex interaction of two issues:
+  1. **Duplicate Symbol Creation**: The semantic analyzer creates mangled symbols (e.g., "X_0") for object-typed variables, while the lowerer also creates unmangled symbols (e.g., "X"). This resulted in two symbols for the same variable - one with `isObject=false` and one with `isObject=true`.
+  2. **Wrong Symbol Resolution**: When `RETURN X` was lowered, `resolveVariableStorage("X")` would find the unmangled symbol with `isObject=false`, causing it to load as `i64` instead of `ptr`, or load from the wrong slot entirely.
+- Key paths:
+  - src/frontends/basic/Lowerer.Procedure.cpp (lines 1297-1306): Modified `postCollect` callback to only mark the function name symbol as an object type if it was actually referenced in the function body, preventing unnecessary symbol creation.
+  - src/frontends/basic/lower/Lowerer_Stmt.cpp (lines 578-603): Enhanced `lowerReturn()` to handle the duplicate symbol issue by attempting to find the object-typed version of a variable (trying "_0" suffix if the first lookup returns a non-object symbol).
+- Example that now works:
+  ```basic
+  CLASS Record
+    id AS INTEGER
+    name AS STRING
+  END CLASS
+
+  FUNCTION GetRecord() AS Record
+    DIM rec AS Record
+    rec = NEW Record()
+    rec.id = 1
+    rec.name = "Alice"
+    RETURN rec  ' Now works correctly!
+  END FUNCTION
+
+  DIM r AS Record
+  r = GetRecord()
+  PRINT r.name  ' Outputs: Alice
+  ```
+- Test cases:
+  - /tmp/trace_bug.bas: Function returning class instance with PRINT before RETURN
+  - /tmp/test_symbols.bas: Simple function returning a class instance
+  - /tmp/test_name_case.bas: Case-insensitive variable names with class returns
+  - /tmp/test_debug_return.bas: Function with multiple local variables and object return
+  - /tmp/test_func_assign.bas: Function that assigns to its own name before returning another variable
+- Validation: All test cases pass. Functions can correctly return custom class types, and the returned instances can be used normally. Full test suite: 625/626 tests pass (99%).
+
+---

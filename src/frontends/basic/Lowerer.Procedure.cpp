@@ -1295,16 +1295,10 @@ void Lowerer::lowerFunctionDecl(const FunctionDecl &decl)
             // BUG-040 fix: Only mark the function name as an object type if it was actually used.
             // The function name symbol should only exist if the function body explicitly assigns
             // to it (VB-style implicit return). If it doesn't exist, don't create it.
-            if (auto *sym = findSymbol(decl.name))
+            if (findSymbol(decl.name))
             {
-                fprintf(stderr, "DEBUG: Function '%s' name symbol exists (referenced=%d)\n",
-                        decl.name.c_str(), sym->referenced);
                 std::string q = resolveQualifiedClassCasing(JoinDots(decl.explicitClassRetQname));
                 setSymbolObjectType(decl.name, q);
-            }
-            else
-            {
-                fprintf(stderr, "DEBUG: Function '%s' name symbol does NOT exist\n", decl.name.c_str());
             }
         };
     }

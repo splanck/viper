@@ -575,12 +575,30 @@ void Lowerer::lowerReturn(const ReturnStmt &stmt)
         {
             if (auto *var = as<const VarExpr>(*stmt.value))
             {
-                // Resolve the variable's address and load as a pointer explicitly.
+                // BUG-040 fix: Try to find the object-typed version of the variable.
+                // Due to semantic analyzer mangling, there may be multiple symbols for the same
+                // variable name (e.g., "X" and "X_0"), where one has isObject=false and one has
+                // isObject=true. We need to find the one with isObject=true.
                 if (auto storage = resolveVariableStorage(var->name, var->loc))
                 {
-                    Value val = emitLoad(Type(Type::Kind::Ptr), storage->pointer);
-                    emitRet(val);
-                    return;
+                    // If we found a non-object storage, try with "_0" suffix
+                    if (!storage->slotInfo.isObject && storage->slotInfo.type.kind != Type::Kind::Ptr)
+                    {
+                        std::string mangled = std::string(var->name) + "_0";
+                        if (auto objStorage = resolveVariableStorage(mangled, var->loc))
+                        {
+                            if (objStorage->slotInfo.isObject || objStorage->slotInfo.type.kind == Type::Kind::Ptr)
+                                storage = objStorage;
+                        }
+                    }
+
+                    // Now use the (hopefully object-typed) storage
+                    if (storage->slotInfo.isObject || storage->slotInfo.type.kind == Type::Kind::Ptr)
+                    {
+                        Value val = emitLoad(Type(Type::Kind::Ptr), storage->pointer);
+                        emitRet(val);
+                        return;
+                    }
                 }
             }
         }

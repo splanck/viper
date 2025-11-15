@@ -26,7 +26,7 @@
 
 **Boolean Type System Changes**: Modified `isBooleanType()` to only accept `Type::Bool` (not `Type::Int`) for logical operators (AND/ANDALSO/OR/ORELSE). This makes the type system stricter and fixes some test cases.
 
-**Bug Statistics**: 42 resolved, 1 outstanding, 0 partially resolved (43 total documented)
+**Bug Statistics**: 43 resolved, 0 outstanding, 0 partially resolved (43 total documented)
 
 **Recent Investigation (2025-11-14)**:
 - ✅ **BUG-012 NOW RESOLVED**: BOOLEAN variables can now be compared with TRUE/FALSE constants and with each other; STR$(boolean) now works
@@ -44,6 +44,7 @@
 **Recent Fixes (2025-11-15)**:
 - ✅ **BUG-037 NOW RESOLVED**: SUB methods on class instances can now be called (parser heuristic fix)
 - ✅ **BUG-039 NOW RESOLVED**: Method call results can now be assigned to variables (OOP expression lowering fix)
+- ✅ **BUG-040 NOW RESOLVED**: Functions can now return custom class types (symbol resolution and return statement fix)
 
 ---
 
@@ -567,45 +568,7 @@ Testing confirms that string concatenation with method results works correctly. 
 ---
 
 ### BUG-040: Cannot use custom class types as function return types
-**Difficulty**: 🔴 HARD - Type system extension
-**Severity**: HIGH
-**Status**: Outstanding
-**Discovered**: 2025-11-13 during BasicDB development
-**Test Case**: /devdocs/basic/basicdb.bas version 0.3
-
-**Description**:
-Functions can only return built-in types (INTEGER, STRING, etc.). Cannot declare a function that returns a custom CLASS type.
-
-**Reproduction**:
-```basic
-CLASS Record
-  id AS INTEGER
-  name AS STRING
-END CLASS
-
-FUNCTION DB_GetRecordById(id AS INTEGER) AS Record  ' ERROR
-  DIM rec AS Record
-  rec = NEW Record(id, "Test", "test@example.com", 25)
-  RETURN rec
-END FUNCTION
-```
-
-**Error Message**:
-```
-error[B0001]: unknown statement 'RECORD'; expected keyword or procedure call
-```
-
-**Workaround**:
-Return an index into an array instead of the object itself:
-```basic
-FUNCTION DB_FindRecordIndexById(id AS INTEGER) AS INTEGER
-  ' Return index, then caller uses: DB_RECORDS(index)
-  RETURN index
-END FUNCTION
-```
-
-**Resolution summary**:
-- Lowering updated to return pointer-typed values for class-returning FUNCTIONS when `RETURN <object-var>` is used, fixing the ret type mismatch. Guarded by unit test `test_basic_class_return`.
+**Status**: ✅ RESOLVED 2025-11-15 - See [basic_resolved.md](basic_resolved.md#bug-040-cannot-use-custom-class-types-as-function-return-types) for details
 
 ---
 
