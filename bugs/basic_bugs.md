@@ -3,21 +3,20 @@
 *Last Updated: 2025-11-15*
 *Source: Empirical testing during language audit*
 
-**Bug Statistics**: 65 resolved, 1 outstanding bug (66 total documented)
+**Bug Statistics**: 66 resolved, 0 outstanding bugs (66 total documented)
 
-**STATUS**: ✅ BUG-058 RESOLVED — string array field stores now retain values (2025-11-15)
-
----
-
-## OUTSTANDING BUGS (1 bug)
-
-**🚨 CRITICAL ISSUES (1 bug)**:
-- **BUG-065**: Array field assignments silently dropped by compiler (no error/warning)
+**STATUS**: ✅ BUG-065 RESOLVED — array field assignments preserved (2025-11-15)
 
 ---
 
-### BUG-065 CRITICAL: Array Field Assignments Silently Dropped by Compiler
-**Status**: 🚨 CRITICAL - Silent data loss
+## OUTSTANDING BUGS (0 bugs)
+
+None at this time.
+
+---
+
+### BUG-065: Array Field Assignments Silently Dropped by Compiler
+**Status**: ✅ RESOLVED (2025-11-15)
 **Discovered**: 2025-11-15 (Adventure Game Testing - root cause of BUG-064)
 **Category**: Frontend / Code Generation / OOP
 **Test File**: `/bugs/bug_testing/adventure_player_v2.bas`, `/bugs/bug_testing/debug_parse_test.bas`
@@ -38,11 +37,11 @@ END CLASS
 
 **IL Evidence**: The `%t12 = load str, %t3` loads the parameter, but then NO array store operation is emitted. The assignment is recognized but abandoned.
 
-**Expected**: Should emit `call @rt_arr_str_put(handle, index, value)`
+**Expected/Now**: Emits `rt_arr_str_put` for string arrays and `rt_arr_i32_set` for numeric arrays
 
-**Workaround**: Use explicit `ME.inventory(0) = item` syntax instead of implicit `inventory(0) = item`
+**Workaround**: No longer needed
 
-**Impact**: 🚨 CRITICAL - Silent bugs are worst kind. Makes array fields completely unusable for storage with implicit syntax. Arrays can be read but not written.
+**Impact**: Fixed — implicit field array stores inside methods now work reliably.
 
 **Root Cause**:
 1. **Information Loss in OOP Scan** (`Lower_OOP_Scan.cpp:150-165`): AST `ClassDecl::Field` has `bool isArray` and `arrayExtents`, but `ClassLayout::Field` struct does NOT preserve these fields. The OOP scan uses `field.isArray` to compute storage size but discards the metadata.
@@ -59,7 +58,14 @@ END CLASS
 - `src/frontends/basic/Lowerer.Procedure.cpp:430-449` (pushFieldScope hardcodes isArray=false)
 - `src/frontends/basic/LowerStmt_Runtime.cpp:286-368` (assignArrayElement recovery logic)
 
-**Proposed Fix**: Add `bool isArray{false};` field to `ClassLayout::Field` struct, preserve it during OOP scan (`info.isArray = field.isArray;`), and use it in `pushFieldScope` instead of hardcoding false.
+**Fix Implemented**:
+- Added `bool isArray` to `ClassLayout::Field` and preserved it during OOP scan.
+- `pushFieldScope` now propagates array metadata to field symbols.
+- Implicit field-array assignments in methods correctly emit `rt_arr_*_set` calls.
+
+**Verification**:
+- New unit test: `tests/unit/test_basic_oop_numeric_array_field.cpp` confirms numeric arrays emit `rt_arr_i32_set/get`.
+- Existing string array field test already verifies `rt_arr_str_put/get`.
 
 ---
 

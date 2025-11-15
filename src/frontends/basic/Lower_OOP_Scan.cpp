@@ -156,6 +156,9 @@ class OopScanWalker final : public BasicAstWalker<OopScanWalker>
             // Arrays stored as fields are references to runtime array handles.
             // Use pointer size for storage to keep following field offsets correct.
             info.size = field.isArray ? kPointerSize : fieldSize(field.type);
+            // Preserve array metadata so implicit field-array accesses in
+            // methods can be identified during lowering.
+            info.isArray = field.isArray;
             layout.fields.push_back(std::move(info));
             layout.fieldIndex.emplace(layout.fields.back().name, layout.fields.size() - 1);
             offset += layout.fields.back().size;

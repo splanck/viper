@@ -806,6 +806,11 @@ class Lowerer
             AstType type{AstType::I64};
             std::size_t offset{0};
             std::size_t size{0};
+            /// @brief True when this field is declared as an array.
+            /// @details Preserves array metadata from the AST so lowering can
+            ///          distinguish implicit field-array accesses inside
+            ///          methods (e.g., `inventory(i)`) from scalar fields.
+            bool isArray{false};
         };
 
         /// @brief Ordered field entries preserving declaration order.

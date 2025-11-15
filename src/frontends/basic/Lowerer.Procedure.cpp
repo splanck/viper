@@ -438,7 +438,9 @@ void Lowerer::pushFieldScope(const std::string &className)
             SymbolInfo info;
             info.type = field.type;
             info.hasType = true;
-            info.isArray = false;
+            // Preserve array-ness from class layout so implicit field-array
+            // accesses inside methods are handled correctly.
+            info.isArray = field.isArray;
             info.isBoolean = (field.type == AstType::Bool);
             info.referenced = false;
             info.isObject = false;
