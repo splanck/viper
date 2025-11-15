@@ -541,7 +541,34 @@ std::vector<Param> Parser::parseParamList()
             consume();
             if (at(TokenKind::KeywordBoolean) || at(TokenKind::Identifier))
             {
+                // BUG-060 fix: Capture the type name before parseTypeKeyword() consumes it
+                std::string typeName;
+                if (at(TokenKind::Identifier))
+                {
+                    typeName = peek().lexeme;
+                }
                 p.type = parseTypeKeyword();
+                // If parseTypeKeyword() returned default I64, the identifier might be a class name
+                if (p.type == Type::I64 && !typeName.empty())
+                {
+                    // Check if it's a known class (case-insensitive)
+                    // For now, assume any unrecognized identifier is a class name
+                    // The semantic analyzer will validate it later
+                    std::string upperName;
+                    upperName.reserve(typeName.size());
+                    for (char ch : typeName)
+                    {
+                        unsigned char byte = static_cast<unsigned char>(ch);
+                        upperName.push_back(static_cast<char>(std::toupper(byte)));
+                    }
+                    // Only treat as object class if it's NOT a primitive type keyword
+                    if (upperName != "INTEGER" && upperName != "INT" && upperName != "LONG" &&
+                        upperName != "DOUBLE" && upperName != "FLOAT" && upperName != "SINGLE" &&
+                        upperName != "STRING")
+                    {
+                        p.objectClass = typeName;
+                    }
+                }
             }
             else
             {

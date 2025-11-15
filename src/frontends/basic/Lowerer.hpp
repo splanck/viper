@@ -923,6 +923,14 @@ class Lowerer
     std::optional<::il::frontends::basic::Type> findMethodReturnType(
         std::string_view className, std::string_view methodName) const;
 
+    /// @brief Lookup the AST type for a class field.
+    std::optional<::il::frontends::basic::Type> findFieldType(
+        std::string_view className, std::string_view fieldName) const;
+
+    /// @brief Check if a class field is an array.
+    [[nodiscard]] bool isFieldArray(
+        std::string_view className, std::string_view fieldName) const;
+
     [[nodiscard]] ProcedureContext &context() noexcept;
 
     [[nodiscard]] const ProcedureContext &context() const noexcept;

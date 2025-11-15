@@ -27,6 +27,8 @@
 
 namespace il::build
 {
+using namespace il::core;
+using namespace il::support;
 
 /// @brief Initialise a builder that mutates an existing module.
 ///
@@ -37,7 +39,7 @@ namespace il::build
 ///
 /// @param m Module that will be extended by this builder.
 /// @note Populates callee metadata so emitCall can validate future calls.
-IRBuilder::IRBuilder(Module &m) : mod(m)
+IRBuilder::IRBuilder(il::core::Module &m) : mod(m)
 {
     for (const auto &fn : mod.functions)
         calleeReturnTypes[fn.name] = fn.retType;
@@ -51,7 +53,9 @@ IRBuilder::IRBuilder(Module &m) : mod(m)
 /// @param params Ordered parameter types accepted by the callee.
 /// @return Reference to the inserted extern declaration.
 /// @post calleeReturnTypes is updated to match @p ret.
-Extern &IRBuilder::addExtern(const std::string &name, Type ret, const std::vector<Type> &params)
+il::core::Extern &IRBuilder::addExtern(const std::string &name,
+                                       il::core::Type ret,
+                                       const std::vector<il::core::Type> &params)
 {
     mod.externs.push_back({name, ret, params});
     calleeReturnTypes[name] = ret;
@@ -63,9 +67,9 @@ Extern &IRBuilder::addExtern(const std::string &name, Type ret, const std::vecto
 /// @param value Contents of the string literal.
 /// @return Reference to the inserted global definition.
 /// @note The global is always recorded with Type::Kind::Str.
-Global &IRBuilder::addGlobalStr(const std::string &name, const std::string &value)
+il::core::Global &IRBuilder::addGlobalStr(const std::string &name, const std::string &value)
 {
-    mod.globals.push_back({name, Type(Type::Kind::Str), value});
+    mod.globals.push_back({name, il::core::Type(il::core::Type::Kind::Str), value});
     return mod.globals.back();
 }
 
@@ -75,9 +79,9 @@ Global &IRBuilder::addGlobalStr(const std::string &name, const std::string &valu
 /// @param params Formal parameters with stable IDs and debug names.
 /// @return Reference to the newly created function.
 /// @post nextTemp is reset and populated with parameter IDs for subsequent temporaries.
-Function &IRBuilder::startFunction(const std::string &name,
-                                   Type ret,
-                                   const std::vector<Param> &params)
+il::core::Function &IRBuilder::startFunction(const std::string &name,
+                                             il::core::Type ret,
+                                             const std::vector<il::core::Param> &params)
 {
     mod.functions.push_back({name, ret, {}, {}, {}});
     calleeReturnTypes[name] = ret;
@@ -86,7 +90,7 @@ Function &IRBuilder::startFunction(const std::string &name,
     nextTemp = 0;
     for (auto p : params)
     {
-        Param np = p;
+        il::core::Param np = p;
         np.id = nextTemp++;
         curFunc->params.push_back(np);
     }
@@ -102,15 +106,15 @@ Function &IRBuilder::startFunction(const std::string &name,
 /// @param params Block parameters that must align with incoming branch arguments.
 /// @return Reference to the created block.
 /// @post fn.valueNames is grown to include every parameter ID produced.
-BasicBlock &IRBuilder::createBlock(Function &fn,
-                                   const std::string &label,
-                                   const std::vector<Param> &params)
+il::core::BasicBlock &IRBuilder::createBlock(il::core::Function &fn,
+                                             const std::string &label,
+                                             const std::vector<il::core::Param> &params)
 {
     fn.blocks.push_back({label, {}, {}, false});
-    BasicBlock &bb = fn.blocks.back();
+    il::core::BasicBlock &bb = fn.blocks.back();
     for (auto p : params)
     {
-        Param np = p;
+        il::core::Param np = p;
         np.id = nextTemp++;
         bb.params.push_back(np);
         if (fn.valueNames.size() <= np.id)
@@ -124,7 +128,7 @@ BasicBlock &IRBuilder::createBlock(Function &fn,
 /// @param fn Function to receive the block.
 /// @param label Label to assign to the block.
 /// @return Reference to the created block.
-BasicBlock &IRBuilder::addBlock(Function &fn, const std::string &label)
+il::core::BasicBlock &IRBuilder::addBlock(il::core::Function &fn, const std::string &label)
 {
     return createBlock(fn, label, {});
 }
@@ -134,10 +138,10 @@ BasicBlock &IRBuilder::addBlock(Function &fn, const std::string &label)
 /// @param idx Zero-based index into bb.params.
 /// @return Temporary value representing the parameter.
 /// @pre idx must reference an existing parameter.
-Value IRBuilder::blockParam(BasicBlock &bb, unsigned idx)
+il::core::Value IRBuilder::blockParam(il::core::BasicBlock &bb, unsigned idx)
 {
     assert(idx < bb.params.size());
-    return Value::temp(bb.params[idx].id);
+    return il::core::Value::temp(bb.params[idx].id);
 }
 
 /// @brief Emit an unconditional branch to @p dst.
@@ -145,12 +149,12 @@ Value IRBuilder::blockParam(BasicBlock &bb, unsigned idx)
 /// @param args Values corresponding to @p dst's block parameters.
 /// @pre args.size() must equal dst.params.size().
 /// @post Current block is marked terminated and cannot receive more non-phi instructions.
-void IRBuilder::br(BasicBlock &dst, const std::vector<Value> &args)
+void IRBuilder::br(il::core::BasicBlock &dst, const std::vector<il::core::Value> &args)
 {
     assert(args.size() == dst.params.size());
-    Instr instr;
-    instr.op = Opcode::Br;
-    instr.type = Type(Type::Kind::Void);
+    il::core::Instr instr;
+    instr.op = il::core::Opcode::Br;
+    instr.type = il::core::Type(il::core::Type::Kind::Void);
     instr.labels.push_back(dst.label);
     instr.brArgs.push_back(args);
     append(std::move(instr));
@@ -164,17 +168,17 @@ void IRBuilder::br(BasicBlock &dst, const std::vector<Value> &args)
 /// @param fargs Arguments supplied when branching to @p f.
 /// @pre Argument counts must match the parameter lists of both targets.
 /// @post Current block is marked terminated.
-void IRBuilder::cbr(Value cond,
-                    BasicBlock &t,
-                    const std::vector<Value> &targs,
-                    BasicBlock &f,
-                    const std::vector<Value> &fargs)
+void IRBuilder::cbr(il::core::Value cond,
+                    il::core::BasicBlock &t,
+                    const std::vector<il::core::Value> &targs,
+                    il::core::BasicBlock &f,
+                    const std::vector<il::core::Value> &fargs)
 {
     assert(targs.size() == t.params.size());
     assert(fargs.size() == f.params.size());
-    Instr instr;
-    instr.op = Opcode::CBr;
-    instr.type = Type(Type::Kind::Void);
+    il::core::Instr instr;
+    instr.op = il::core::Opcode::CBr;
+    instr.type = il::core::Type(il::core::Type::Kind::Void);
     instr.operands.push_back(cond);
     instr.labels.push_back(t.label);
     instr.labels.push_back(f.label);
@@ -191,7 +195,7 @@ void IRBuilder::cbr(Value cond,
 ///
 /// @param bb Block that becomes the current insertion point.
 /// @post curBlock is updated to @p bb; termination state is preserved.
-void IRBuilder::setInsertPoint(BasicBlock &bb)
+void IRBuilder::setInsertPoint(il::core::BasicBlock &bb)
 {
     curBlock = &bb;
 }
@@ -201,7 +205,7 @@ void IRBuilder::setInsertPoint(BasicBlock &bb)
 /// @return Reference to the stored instruction inside the block.
 /// @pre An insertion point must be established with setInsertPoint().
 /// @post Terminator opcodes mark the block as finished to prevent further insertions.
-Instr &IRBuilder::append(Instr instr)
+il::core::Instr &IRBuilder::append(il::core::Instr instr)
 {
     assert(curBlock && "insert point not set");
     if (isTerminator(instr.op))
@@ -221,11 +225,12 @@ Instr &IRBuilder::append(Instr instr)
 ///
 /// @param op Opcode to categorize.
 /// @return True when @p op ends the block (branch, conditional branch, return, trap).
-bool IRBuilder::isTerminator(Opcode op) const
+bool IRBuilder::isTerminator(il::core::Opcode op) const
 {
-    return op == Opcode::Br || op == Opcode::CBr || op == Opcode::SwitchI32 || op == Opcode::Ret ||
-           op == Opcode::Trap || op == Opcode::ResumeSame || op == Opcode::ResumeNext ||
-           op == Opcode::ResumeLabel;
+    return op == il::core::Opcode::Br || op == il::core::Opcode::CBr ||
+           op == il::core::Opcode::SwitchI32 || op == il::core::Opcode::Ret ||
+           op == il::core::Opcode::Trap || op == il::core::Opcode::ResumeSame ||
+           op == il::core::Opcode::ResumeNext || op == il::core::Opcode::ResumeLabel;
 }
 
 /// @brief Materialize a string constant by referencing an existing global.
@@ -233,17 +238,17 @@ bool IRBuilder::isTerminator(Opcode op) const
 /// @param loc Source location associated with the instruction.
 /// @return SSA temporary containing the string value.
 /// @post nextTemp advances to include the new temporary identifier.
-Value IRBuilder::emitConstStr(const std::string &globalName, il::support::SourceLoc loc)
+il::core::Value IRBuilder::emitConstStr(const std::string &globalName, il::support::SourceLoc loc)
 {
     unsigned id = nextTemp++;
-    Instr instr;
+    il::core::Instr instr;
     instr.result = id;
-    instr.op = Opcode::ConstStr;
-    instr.type = Type(Type::Kind::Str);
-    instr.operands.push_back(Value::global(globalName));
+    instr.op = il::core::Opcode::ConstStr;
+    instr.type = il::core::Type(il::core::Type::Kind::Str);
+    instr.operands.push_back(il::core::Value::global(globalName));
     instr.loc = loc;
     append(std::move(instr));
-    return Value::temp(id);
+    return il::core::Value::temp(id);
 }
 
 /// @brief Emit a function call and optionally capture its result.
@@ -254,12 +259,12 @@ Value IRBuilder::emitConstStr(const std::string &globalName, il::support::Source
 /// @throws std::logic_error If @p callee is not known to the module.
 /// @post nextTemp expands when @p dst refers to a previously unseen ID.
 void IRBuilder::emitCall(const std::string &callee,
-                         const std::vector<Value> &args,
-                         const std::optional<Value> &dst,
+                         const std::vector<il::core::Value> &args,
+                         const std::optional<il::core::Value> &dst,
                          il::support::SourceLoc loc)
 {
-    Instr instr;
-    instr.op = Opcode::Call;
+    il::core::Instr instr;
+    instr.op = il::core::Opcode::Call;
     const auto it = calleeReturnTypes.find(callee);
     if (it == calleeReturnTypes.end())
         throw std::logic_error("emitCall: unknown callee '" + callee + "'");
@@ -284,11 +289,11 @@ void IRBuilder::emitCall(const std::string &callee,
 /// @param v Optional SSA value to return.
 /// @param loc Source location carried by the instruction.
 /// @post Marks the block as terminated and enforces the void return opcode when absent.
-void IRBuilder::emitRet(const std::optional<Value> &v, il::support::SourceLoc loc)
+void IRBuilder::emitRet(const std::optional<il::core::Value> &v, il::support::SourceLoc loc)
 {
-    Instr instr;
-    instr.op = Opcode::Ret;
-    instr.type = Type(Type::Kind::Void);
+    il::core::Instr instr;
+    instr.op = il::core::Opcode::Ret;
+    instr.type = il::core::Type(il::core::Type::Kind::Void);
     if (v)
         instr.operands.push_back(*v);
     instr.loc = loc;
@@ -302,11 +307,11 @@ void IRBuilder::emitRet(const std::optional<Value> &v, il::support::SourceLoc lo
 /// source location for diagnostics.
 /// @param token SSA value representing the exception token to resume.
 /// @param loc Source location used when formatting verifier diagnostics.
-void IRBuilder::emitResumeSame(Value token, il::support::SourceLoc loc)
+void IRBuilder::emitResumeSame(il::core::Value token, il::support::SourceLoc loc)
 {
-    Instr instr;
-    instr.op = Opcode::ResumeSame;
-    instr.type = Type(Type::Kind::Void);
+    il::core::Instr instr;
+    instr.op = il::core::Opcode::ResumeSame;
+    instr.type = il::core::Type(il::core::Type::Kind::Void);
     instr.operands.push_back(token);
     instr.loc = loc;
     append(std::move(instr));
@@ -319,11 +324,11 @@ void IRBuilder::emitResumeSame(Value token, il::support::SourceLoc loc)
 /// and records the provided source location.
 /// @param token SSA value representing the exception token to resume.
 /// @param loc Source location used when formatting verifier diagnostics.
-void IRBuilder::emitResumeNext(Value token, il::support::SourceLoc loc)
+void IRBuilder::emitResumeNext(il::core::Value token, il::support::SourceLoc loc)
 {
-    Instr instr;
-    instr.op = Opcode::ResumeNext;
-    instr.type = Type(Type::Kind::Void);
+    il::core::Instr instr;
+    instr.op = il::core::Opcode::ResumeNext;
+    instr.type = il::core::Type(il::core::Type::Kind::Void);
     instr.operands.push_back(token);
     instr.loc = loc;
     append(std::move(instr));
@@ -337,11 +342,13 @@ void IRBuilder::emitResumeNext(Value token, il::support::SourceLoc loc)
 /// @param target Handler block that receives control once the token is
 /// resumed.
 /// @param loc Source location used when formatting verifier diagnostics.
-void IRBuilder::emitResumeLabel(Value token, BasicBlock &target, il::support::SourceLoc loc)
+void IRBuilder::emitResumeLabel(il::core::Value token,
+                                il::core::BasicBlock &target,
+                                il::support::SourceLoc loc)
 {
-    Instr instr;
-    instr.op = Opcode::ResumeLabel;
-    instr.type = Type(Type::Kind::Void);
+    il::core::Instr instr;
+    instr.op = il::core::Opcode::ResumeLabel;
+    instr.type = il::core::Type(il::core::Type::Kind::Void);
     instr.operands.push_back(token);
     instr.labels.push_back(target.label);
     instr.loc = loc;

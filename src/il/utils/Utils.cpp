@@ -26,6 +26,7 @@
 #include "il/core/Value.hpp"
 
 #include <algorithm>
+#include <string_view>
 
 namespace viper::il
 {
@@ -202,6 +203,28 @@ unsigned nextTempId(const ::il::core::Function &F)
     }
 
     return next;
+}
+
+/// @brief Linear search for a block with @p label in @p F.
+viper::il::Block *findBlock(::il::core::Function &F, std::string_view label)
+{
+    for (auto &B : F.blocks)
+    {
+        if (B.label == label)
+            return &B;
+    }
+    return nullptr;
+}
+
+/// @brief Const overload of findBlock.
+const viper::il::Block *findBlock(const ::il::core::Function &F, std::string_view label)
+{
+    for (const auto &B : F.blocks)
+    {
+        if (B.label == label)
+            return &B;
+    }
+    return nullptr;
 }
 
 } // namespace viper::il

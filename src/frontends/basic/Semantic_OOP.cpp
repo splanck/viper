@@ -257,7 +257,8 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
                     for (const auto &field : classDecl.fields)
                     {
                         info.fields.push_back(
-                            ClassInfo::FieldInfo{field.name, field.type, field.access});
+                            ClassInfo::FieldInfo{field.name, field.type, field.access,
+                                               field.isArray, field.arrayExtents});
                         classFieldNames.insert(field.name);
                     }
 

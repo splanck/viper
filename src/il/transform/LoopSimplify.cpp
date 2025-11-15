@@ -16,8 +16,13 @@
 
 #include "il/transform/AnalysisManager.hpp"
 #include "il/transform/analysis/LoopInfo.hpp"
+// Reuse shared CFG utilities to avoid duplication of value equality and
+// terminator lookup logic used by SimplifyCFG.
+#include "il/transform/SimplifyCFG/Utils.hpp"
 
 #include "il/analysis/Dominators.hpp"
+// Shared IL utilities (include after Dominators to avoid nested name lookup issues)
+#include "il/utils/Utils.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
@@ -43,53 +48,20 @@ struct IncomingEdge
 
 Instr *getTerminator(BasicBlock &block)
 {
-    if (!block.terminated || block.instructions.empty())
-        return nullptr;
-    return &block.instructions.back();
+    return il::transform::simplify_cfg::findTerminator(block);
 }
 
 const Instr *getTerminator(const BasicBlock &block)
 {
-    if (!block.terminated || block.instructions.empty())
-        return nullptr;
-    return &block.instructions.back();
+    return il::transform::simplify_cfg::findTerminator(block);
 }
 
 BasicBlock *findBlock(Function &function, const std::string &label)
 {
-    for (auto &block : function.blocks)
-    {
-        if (block.label == label)
-            return &block;
-    }
-    return nullptr;
+    return viper::il::findBlock(function, label);
 }
 
-unsigned nextTempId(Function &function)
-{
-    unsigned next = 0;
-    auto update = [&](unsigned id) { next = std::max(next, id + 1); };
-    for (auto &param : function.params)
-        update(param.id);
-    for (auto &block : function.blocks)
-    {
-        for (auto &param : block.params)
-            update(param.id);
-        for (auto &instr : block.instructions)
-        {
-            if (instr.result)
-                update(*instr.result);
-            for (auto &operand : instr.operands)
-                if (operand.kind == Value::Kind::Temp)
-                    update(operand.id);
-            for (auto &argList : instr.brArgs)
-                for (auto &arg : argList)
-                    if (arg.kind == Value::Kind::Temp)
-                        update(arg.id);
-        }
-    }
-    return next;
-}
+static inline unsigned nextTempId(Function &function) { return viper::il::nextTempId(function); }
 
 std::string makeUniqueLabel(const Function &function, const std::string &base)
 {
@@ -112,37 +84,15 @@ std::string makeUniqueLabel(const Function &function, const std::string &base)
     return candidate;
 }
 
-bool valuesEqual(const Value &lhs, const Value &rhs)
+// Use shared equality from SimplifyCFG utilities to avoid divergence.
+static inline bool valuesEqual(const Value &lhs, const Value &rhs)
 {
-    if (lhs.kind != rhs.kind)
-        return false;
-    switch (lhs.kind)
-    {
-        case Value::Kind::Temp:
-            return lhs.id == rhs.id;
-        case Value::Kind::ConstInt:
-            return lhs.i64 == rhs.i64 && lhs.isBool == rhs.isBool;
-        case Value::Kind::ConstFloat:
-            return lhs.f64 == rhs.f64;
-        case Value::Kind::ConstStr:
-        case Value::Kind::GlobalAddr:
-            return lhs.str == rhs.str;
-        case Value::Kind::NullPtr:
-            return true;
-    }
-    return false;
+    return il::transform::simplify_cfg::valuesEqual(lhs, rhs);
 }
 
-bool valueVectorsEqual(const std::vector<Value> &lhs, const std::vector<Value> &rhs)
+static inline bool valueVectorsEqual(const std::vector<Value> &lhs, const std::vector<Value> &rhs)
 {
-    if (lhs.size() != rhs.size())
-        return false;
-    for (size_t i = 0; i < lhs.size(); ++i)
-    {
-        if (!valuesEqual(lhs[i], rhs[i]))
-            return false;
-    }
-    return true;
+    return il::transform::simplify_cfg::valueVectorsEqual(lhs, rhs);
 }
 
 bool ensurePreheader(Function &function, const Loop &loop)

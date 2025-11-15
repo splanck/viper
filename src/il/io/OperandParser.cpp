@@ -53,163 +53,20 @@ using il::io::formatLineDiag;
 
 using Operand = Value;
 
-template <typename T> Expected<T> makeSyntaxError(ParserState &state, std::string message)
+// Shared scanners to reduce duplication across parser helpers.
+static Expected<std::pair<size_t, size_t>> findTopLevelParenRange(ParserState &state,
+                                                                 const Instr &instr,
+                                                                 const std::string &text,
+                                                                 size_t startIndex,
+                                                                 const char *context)
 {
-    return Expected<T>{il::io::makeLineErrorDiag(state.curLoc, state.lineNo, std::move(message))};
-}
-
-} // namespace
-
-/// @brief Create an operand parser bound to the current parser state and instruction.
-/// @note instr_ aliases the caller-owned instruction so operands are populated in-place.
-OperandParser::OperandParser(ParserState &state, Instr &instr) : state_(state), instr_(instr) {}
-
-/// @brief Parse a single operand token into a Value representation.
-///
-/// Handles constants, temporaries, globals, null, and quoted string literals.
-/// When parsing fails an error diagnostic is produced referencing the current
-/// parser line.
-///
-/// @param tok Token extracted from the operand text.
-/// @return Parsed value or an error diagnostic.
-Expected<Value> OperandParser::parseValueToken(const std::string &tok) const
-{
-    viper::parse::Cursor cursor{tok, viper::parse::SourcePos{state_.lineNo, 0}};
-    viper::il::io::Context ctx{state_, const_cast<Instr &>(instr_)};
-    auto parsed = viper::il::io::parseValueOperand(cursor, ctx);
-    if (!parsed.ok())
-        return Expected<Value>{parsed.status.error()};
-    if (!parsed.hasValue())
-        return makeSyntaxError<Value>(state_, "missing operand");
-    return Expected<Value>{std::move(*parsed.value)};
-}
-
-/// @brief Split a comma-separated operand list while respecting nested constructs.
-///
-/// Tracks string literals, escape sequences, and parenthesis depth so nested
-/// expressions do not break the split.  When malformed input is detected, an
-/// error diagnostic is returned referencing the instruction being parsed.
-///
-/// @param text Raw operand text after the mnemonic.
-/// @param context Human-readable description for error messages.
-/// @return Vector of trimmed tokens or an error diagnostic.
-Expected<std::vector<std::string>> OperandParser::splitCommaSeparated(const std::string &text,
-                                                                      const char *context) const
-{
-    std::vector<std::string> tokens;
-    std::string current;
-    bool inString = false;
-    bool escape = false;
-    size_t depth = 0;
-
-    auto makeErrorWithMessage = [&](const std::string &message)
-    {
-        return Expected<std::vector<std::string>>{
-            il::io::makeLineErrorDiag(instr_.loc, state_.lineNo, message)};
-    };
-
-    auto malformedError = [&]()
-    {
-        std::ostringstream msg;
-        msg << "malformed " << context;
-        return makeErrorWithMessage(msg.str());
-    };
-
-    const bool textIsWhitespaceOnly = trim(text).empty();
-
-    for (char c : text)
-    {
-        if (inString)
-        {
-            current.push_back(c);
-            if (escape)
-            {
-                escape = false;
-                continue;
-            }
-            if (c == '\\')
-            {
-                escape = true;
-                continue;
-            }
-            if (c == '"')
-                inString = false;
-            continue;
-        }
-
-        if (c == '"')
-        {
-            current.push_back(c);
-            inString = true;
-            continue;
-        }
-
-        if (c == '(')
-        {
-            current.push_back(c);
-            ++depth;
-            continue;
-        }
-        if (c == ')')
-        {
-            if (depth == 0)
-                return makeErrorWithMessage("mismatched ')'");
-            current.push_back(c);
-            --depth;
-            continue;
-        }
-        if (c == ',' && depth == 0)
-        {
-            std::string trimmed = trim(current);
-            if (trimmed.empty() && !textIsWhitespaceOnly)
-                return malformedError();
-            if (!trimmed.empty())
-                tokens.push_back(std::move(trimmed));
-            current.clear();
-            continue;
-        }
-
-        current.push_back(c);
-    }
-
-    if (escape || inString)
-        return malformedError();
-    if (depth != 0)
-        return makeErrorWithMessage("mismatched ')'");
-
-    std::string trimmed = trim(current);
-    if (!trimmed.empty())
-        tokens.push_back(std::move(trimmed));
-
-    return Expected<std::vector<std::string>>{std::move(tokens)};
-}
-
-/// @brief Parse operands for call-style instructions.
-///
-/// Extracts the callee name, decodes each argument, and appends them to the
-/// instruction.  The function verifies balanced parentheses, rejects trailing
-/// junk after the argument list, and reports clear diagnostics on malformed
-/// text.
-///
-/// @param text Operand substring following the mnemonic.
-/// @return Success or an error diagnostic.
-Expected<void> OperandParser::parseCallOperands(const std::string &text)
-{
-    const size_t at = text.find('@');
-    if (at == std::string::npos)
-    {
-        return Expected<void>{
-            makeError(instr_.loc, formatLineDiag(state_.lineNo, "malformed call"))};
-    }
-
     size_t lp = std::string::npos;
     size_t rp = std::string::npos;
     size_t depth = 0;
     bool inString = false;
     bool escape = false;
-    bool mismatchedClose = false;
 
-    for (size_t index = at + 1; index < text.size(); ++index)
+    for (size_t index = startIndex; index < text.size(); ++index)
     {
         char c = text[index];
         if (inString)
@@ -253,8 +110,8 @@ Expected<void> OperandParser::parseCallOperands(const std::string &text)
         {
             if (lp == std::string::npos || depth == 0)
             {
-                mismatchedClose = true;
-                break;
+                return Expected<std::pair<size_t, size_t>>{
+                    il::io::makeLineErrorDiag(instr.loc, state.lineNo, "mismatched ')'")};
             }
             --depth;
             if (depth == 0)
@@ -266,11 +123,182 @@ Expected<void> OperandParser::parseCallOperands(const std::string &text)
         }
     }
 
-    if (lp == std::string::npos || rp == std::string::npos || depth != 0 || mismatchedClose)
+    if (lp == std::string::npos || rp == std::string::npos || depth != 0)
+    {
+        std::ostringstream oss;
+        oss << "malformed " << context;
+        return Expected<std::pair<size_t, size_t>>{makeError(instr.loc, oss.str())};
+    }
+
+    return Expected<std::pair<size_t, size_t>>{std::make_pair(lp, rp)};
+}
+
+static Expected<std::vector<std::string>> splitTopLevel(ParserState &state,
+                                                        const Instr &instr,
+                                                        const std::string &text,
+                                                        char delim,
+                                                        const char *context)
+{
+    std::vector<std::string> tokens;
+    std::string current;
+    bool inString = false;
+    bool escape = false;
+    size_t depth = 0;
+
+    const bool whitespaceOnly = trim(text).empty();
+
+    for (char c : text)
+    {
+        if (inString)
+        {
+            current.push_back(c);
+            if (escape)
+            {
+                escape = false;
+                continue;
+            }
+            if (c == '\\')
+            {
+                escape = true;
+                continue;
+            }
+            if (c == '"')
+                inString = false;
+            continue;
+        }
+
+        if (c == '"')
+        {
+            current.push_back(c);
+            inString = true;
+            continue;
+        }
+
+        if (c == '(')
+        {
+            current.push_back(c);
+            ++depth;
+            continue;
+        }
+        if (c == ')')
+        {
+            if (depth == 0)
+            {
+                return Expected<std::vector<std::string>>{
+                    il::io::makeLineErrorDiag(instr.loc, state.lineNo, "mismatched ')'")};
+            }
+            current.push_back(c);
+            --depth;
+            continue;
+        }
+        if (c == delim && depth == 0)
+        {
+            std::string trimmed = trim(current);
+            if (trimmed.empty() && !whitespaceOnly)
+            {
+                std::ostringstream msg;
+                msg << "malformed " << context;
+                return Expected<std::vector<std::string>>{
+                    il::io::makeLineErrorDiag(instr.loc, state.lineNo, msg.str())};
+            }
+            if (!trimmed.empty())
+                tokens.push_back(std::move(trimmed));
+            current.clear();
+            continue;
+        }
+
+        current.push_back(c);
+    }
+
+    if (escape || inString)
+    {
+        std::ostringstream msg;
+        msg << "malformed " << context;
+        return Expected<std::vector<std::string>>{
+            il::io::makeLineErrorDiag(instr.loc, state.lineNo, msg.str())};
+    }
+    if (depth != 0)
+    {
+        return Expected<std::vector<std::string>>{
+            il::io::makeLineErrorDiag(instr.loc, state.lineNo, "mismatched ')'")};
+    }
+
+    std::string trimmed = trim(current);
+    if (!trimmed.empty())
+        tokens.push_back(std::move(trimmed));
+
+    return Expected<std::vector<std::string>>{std::move(tokens)};
+}
+
+template <typename T> Expected<T> makeSyntaxError(ParserState &state, std::string message)
+{
+    return Expected<T>{il::io::makeLineErrorDiag(state.curLoc, state.lineNo, std::move(message))};
+}
+
+} // namespace
+
+/// @brief Create an operand parser bound to the current parser state and instruction.
+/// @note instr_ aliases the caller-owned instruction so operands are populated in-place.
+OperandParser::OperandParser(ParserState &state, Instr &instr) : state_(state), instr_(instr) {}
+
+/// @brief Parse a single operand token into a Value representation.
+///
+/// Handles constants, temporaries, globals, null, and quoted string literals.
+/// When parsing fails an error diagnostic is produced referencing the current
+/// parser line.
+///
+/// @param tok Token extracted from the operand text.
+/// @return Parsed value or an error diagnostic.
+Expected<Value> OperandParser::parseValueToken(const std::string &tok) const
+{
+    viper::parse::Cursor cursor{tok, viper::parse::SourcePos{state_.lineNo, 0}};
+    viper::il::io::Context ctx{state_, const_cast<Instr &>(instr_)};
+    auto parsed = viper::il::io::parseValueOperand(cursor, ctx);
+    if (!parsed.ok())
+        return Expected<Value>{parsed.status.error()};
+    if (!parsed.hasValue())
+        return makeSyntaxError<Value>(state_, "missing operand");
+    return Expected<Value>{std::move(*parsed.value)};
+}
+
+/// @brief Split a comma-separated operand list while respecting nested constructs.
+///
+/// Tracks string literals, escape sequences, and parenthesis depth so nested
+/// expressions do not break the split.  When malformed input is detected, an
+/// error diagnostic is returned referencing the instruction being parsed.
+///
+/// @param text Raw operand text after the mnemonic.
+/// @param context Human-readable description for error messages.
+/// @return Vector of trimmed tokens or an error diagnostic.
+Expected<std::vector<std::string>> OperandParser::splitCommaSeparated(const std::string &text,
+                                                                      const char *context) const
+{
+    return splitTopLevel(state_, instr_, text, ',', context);
+}
+
+/// @brief Parse operands for call-style instructions.
+///
+/// Extracts the callee name, decodes each argument, and appends them to the
+/// instruction.  The function verifies balanced parentheses, rejects trailing
+/// junk after the argument list, and reports clear diagnostics on malformed
+/// text.
+///
+/// @param text Operand substring following the mnemonic.
+/// @return Success or an error diagnostic.
+Expected<void> OperandParser::parseCallOperands(const std::string &text)
+{
+    const size_t at = text.find('@');
+    if (at == std::string::npos)
     {
         return Expected<void>{
-            il::io::makeLineErrorDiag(instr_.loc, state_.lineNo, "malformed call")};
+            makeError(instr_.loc, formatLineDiag(state_.lineNo, "malformed call"))};
     }
+
+    auto parens = findTopLevelParenRange(state_, instr_, text, at + 1, "call");
+    if (!parens)
+        return Expected<void>{parens.error()};
+    const size_t lp = parens.value().first;
+    const size_t rp = parens.value().second;
 
     if (!trim(text.substr(rp + 1)).empty())
     {

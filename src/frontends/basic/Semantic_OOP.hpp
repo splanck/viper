@@ -57,6 +57,8 @@ struct ClassInfo
         std::string name;              ///< Declared field name.
         Type type = Type::I64;         ///< Declared field type.
         Access access{Access::Public}; ///< Field access control.
+        bool isArray{false};           ///< Whether field is an array (BUG-059 fix).
+        std::vector<long long> arrayExtents; ///< Array dimensions if isArray (BUG-059 fix).
     };
 
     /// @brief Signature metadata for constructor parameters.

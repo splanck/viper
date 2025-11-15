@@ -5,6 +5,7 @@
 // Links: docs/dev/analysis.md
 #pragma once
 
+#include <string_view>
 namespace il::core
 {
 struct Instr;
@@ -52,5 +53,17 @@ void replaceAllUses(::il::core::Function &F, unsigned tempId, const ::il::core::
 /// @param F Function to analyze.
 /// @return First unused temporary identifier.
 unsigned nextTempId(const ::il::core::Function &F);
+
+/// @brief Find a basic block by label in @p F.
+/// @param F Function to search.
+/// @param label Label to match exactly.
+/// @return Pointer to the block when found; nullptr otherwise.
+Block *findBlock(::il::core::Function &F, std::string_view label);
+
+/// @brief Find a basic block by label in @p F (const overload).
+/// @param F Function to search.
+/// @param label Label to match exactly.
+/// @return Pointer to the block when found; nullptr otherwise.
+const Block *findBlock(const ::il::core::Function &F, std::string_view label);
 
 } // namespace viper::il

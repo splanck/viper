@@ -23,6 +23,9 @@
 #include "frontends/basic/TypeSuffix.hpp"
 #include "frontends/basic/lower/Emitter.hpp"
 
+#include <algorithm>
+#include <cctype>
+
 using il::core::Type;
 using il::frontends::basic::BasicType;
 
@@ -127,6 +130,53 @@ std::optional<::il::frontends::basic::Type> Lowerer::findMethodReturnType(
         return suffixType;
 
     return std::nullopt;
+}
+
+std::optional<::il::frontends::basic::Type> Lowerer::findFieldType(
+    std::string_view className, std::string_view fieldName) const
+{
+    if (className.empty())
+        return std::nullopt;
+
+    const ClassInfo *info = oopIndex_.findClass(std::string(className));
+    if (!info)
+        return std::nullopt;
+
+    // Search through fields (case-insensitive comparison)
+    std::string fieldNameUpper(fieldName);
+    std::transform(fieldNameUpper.begin(), fieldNameUpper.end(), fieldNameUpper.begin(), ::toupper);
+    for (const auto &field : info->fields)
+    {
+        std::string storedNameUpper = field.name;
+        std::transform(storedNameUpper.begin(), storedNameUpper.end(), storedNameUpper.begin(), ::toupper);
+        if (storedNameUpper == fieldNameUpper)
+            return field.type;
+    }
+
+    return std::nullopt;
+}
+
+bool Lowerer::isFieldArray(std::string_view className, std::string_view fieldName) const
+{
+    if (className.empty())
+        return false;
+
+    const ClassInfo *info = oopIndex_.findClass(std::string(className));
+    if (!info)
+        return false;
+
+    // Search through fields (case-insensitive comparison)
+    std::string fieldNameUpper(fieldName);
+    std::transform(fieldNameUpper.begin(), fieldNameUpper.end(), fieldNameUpper.begin(), ::toupper);
+    for (const auto &field : info->fields)
+    {
+        std::string storedNameUpper = field.name;
+        std::transform(storedNameUpper.begin(), storedNameUpper.end(), storedNameUpper.begin(), ::toupper);
+        if (storedNameUpper == fieldNameUpper)
+            return field.isArray;
+    }
+
+    return false;
 }
 
 /// @brief Construct a lowering driver composed of specialised helper stages.

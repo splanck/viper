@@ -236,6 +236,37 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
     /// @param expr Call expression node from the BASIC AST.
     void visit(const CallExpr &expr) override
     {
+        // BUG-059 fix: Check if this is actually a field array access
+        // In class methods, name(index) might be a field array, not a function call
+        std::string className = lowerer_.currentClass();
+        if (!className.empty() && expr.calleeQualified.empty())
+        {
+            std::string fieldName = CanonicalizeIdent(expr.callee);
+            if (lowerer_.isFieldArray(className, fieldName))
+            {
+                // This is a field array access, not a function call
+                // Construct a temporary ArrayExpr with ME.fieldname
+                std::string dottedName = "ME." + expr.callee;
+                ArrayExpr tempExpr;
+                tempExpr.name = dottedName;
+                tempExpr.loc = expr.loc;
+                // Temporarily move unique_ptrs from expr.args to tempExpr.indices
+                // We'll move them back after lowering
+                for (auto &arg : const_cast<std::vector<ExprPtr>&>(expr.args))
+                {
+                    tempExpr.indices.push_back(std::move(arg));
+                }
+                // Now call the visitor as if this were an ArrayExpr
+                visit(tempExpr);
+                // Move the indices back to expr.args to restore ownership
+                for (size_t i = 0; i < tempExpr.indices.size(); ++i)
+                {
+                    const_cast<std::vector<ExprPtr>&>(expr.args)[i] = std::move(tempExpr.indices[i]);
+                }
+                return;
+            }
+        }
+
         // Resolve callee (supports qualified call syntax). Canonicalize to
         // maintain case-insensitive semantics for lookups.
         std::string calleeResolved;

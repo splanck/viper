@@ -98,20 +98,79 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
     // This supports module-level globals referenced inside procedures (BUG-053),
     // where globals are routed through runtime-backed storage and do not have
     // a materialised local stack slot.
-    const auto *info = findSymbol(expr.name);
     // BUG-056: Detect object field array access via dotted name (e.g., B.CELLS(i)).
+    // BUG-059: Also detect field arrays accessed without dotted syntax in methods (e.g., exits(i)).
     const bool isMemberArray = expr.name.find('.') != std::string::npos;
+
+    const auto *info = isMemberArray ? nullptr : findSymbol(expr.name);
+
     // When accessing array fields, we'll compute 'base' by loading the pointer from
     // the object's field; otherwise we load from variable storage as usual.
     Type::Kind memberElemIlKind = Type::Kind::I64; // default element kind
     ::il::frontends::basic::Type memberElemAstType = ::il::frontends::basic::Type::I64;
     Value base;
 
-    auto storage = resolveVariableStorage(expr.name, expr.loc);
-    assert(storage && "array access requires resolvable storage");
+    // Only resolve storage for non-member arrays
+    std::optional<VariableStorage> storage;
+    if (!isMemberArray)
+    {
+        storage = resolveVariableStorage(expr.name, expr.loc);
+        assert(storage && "array access requires resolvable storage");
+    }
+
+    // BUG-059: For member arrays, determine element type early so we can require the right runtime functions
+    if (isMemberArray)
+    {
+        // Split into base variable and field name
+        const std::string &full = expr.name;
+        std::size_t dot = full.find('.');
+        std::string baseName = full.substr(0, dot);
+        std::string fieldName = full.substr(dot + 1);
+
+        // Look up field type in class layout
+        const auto *baseSym = findSymbol(baseName);
+        if (baseSym)
+        {
+            std::string klass = getSlotType(baseName).objectClass;
+            auto it = classLayouts_.find(klass);
+            if (it != classLayouts_.end())
+            {
+                if (const ClassLayout::Field *fld = it->second.findField(fieldName))
+                {
+                    memberElemAstType = fld->type;
+                    memberElemIlKind = (fld->type == ::il::frontends::basic::Type::Str)
+                                           ? Type::Kind::Str
+                                           : Type::Kind::I64;
+                }
+            }
+        }
+    }
 
     // Require appropriate runtime functions based on array element type
-    if (info->type == AstType::Str)
+    if (isMemberArray)
+    {
+        // Use memberElemAstType for member arrays
+        if (memberElemAstType == ::il::frontends::basic::Type::Str)
+        {
+            requireArrayStrLen();
+            if (kind == ArrayAccessKind::Load)
+                requireArrayStrGet();
+            else
+            {
+                requireArrayStrPut();
+                requireStrRetainMaybe();
+            }
+        }
+        else
+        {
+            requireArrayI32Len();
+            if (kind == ArrayAccessKind::Load)
+                requireArrayI32Get();
+            else
+                requireArrayI32Set();
+        }
+    }
+    else if (info && info->type == AstType::Str)
     {
         requireArrayStrLen();
         if (kind == ArrayAccessKind::Load)
@@ -122,7 +181,7 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
             requireStrRetainMaybe();
         }
     }
-    else if (info->isObject)
+    else if (info && info->isObject)
     {
         requireArrayObjLen();
         if (kind == ArrayAccessKind::Load)
@@ -155,13 +214,14 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
         {
             curLoc = expr.loc;
             Value selfPtr = emitLoad(Type(Type::Kind::Ptr), Value::temp(*baseSym->slotId));
-            // Find field in class layout
+            // Find field in class layout (already looked up above)
             std::string klass = getSlotType(baseName).objectClass;
             auto it = classLayouts_.find(klass);
             if (it != classLayouts_.end())
             {
                 if (const ClassLayout::Field *fld = it->second.findField(fieldName))
                 {
+                    // Type already set above
                     memberElemAstType = fld->type;
                     memberElemIlKind = (fld->type == ::il::frontends::basic::Type::Str)
                                            ? Type::Kind::Str
@@ -269,6 +329,7 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
     }
     else
     {
+        assert(info && "info must be non-null for non-member arrays");
         if (info->type == AstType::Str)
             len = emitCallRet(Type(Type::Kind::I64), "rt_arr_str_len", {base});
         else if (info->isObject)

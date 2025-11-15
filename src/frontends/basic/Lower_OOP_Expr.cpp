@@ -99,8 +99,33 @@ std::string Lowerer::resolveObjectClass(const Expr &expr) const
     }
     if (const auto *access = as<const MemberAccessExpr>(expr))
     {
+        // BUG-061 fix: Check if the FIELD itself is an object type, not the base
         if (access->base)
-            return resolveObjectClass(*access->base);
+        {
+            std::string baseClass = resolveObjectClass(*access->base);
+            if (!baseClass.empty())
+            {
+                // Look up the field type in the class layout
+                if (auto fieldType = findFieldType(baseClass, access->member))
+                {
+                    // Only return a class name if the field is an object type (custom class)
+                    // For primitive types (I64, F64, Str, Bool), return empty string
+                    if (*fieldType == ::il::frontends::basic::Type::I64 ||
+                        *fieldType == ::il::frontends::basic::Type::F64 ||
+                        *fieldType == ::il::frontends::basic::Type::Str ||
+                        *fieldType == ::il::frontends::basic::Type::Bool)
+                    {
+                        return {};  // Field is primitive, not an object
+                    }
+                    // If it's a custom type, it must be an object
+                    // The field type is stored as the class name for object fields
+                    // For now, we know it's an object but don't have the class name
+                    // This is a limitation - we need to track object field class names
+                    // TODO: Store object class names in FieldInfo
+                    return {};  // Conservative: treat as non-object for now
+                }
+            }
+        }
         return {};
     }
     if (const auto *call = as<const MethodCallExpr>(expr))

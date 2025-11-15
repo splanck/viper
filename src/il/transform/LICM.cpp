@@ -20,6 +20,7 @@
 #include "il/transform/analysis/LoopInfo.hpp"
 
 #include "il/analysis/Dominators.hpp"
+#include "il/utils/Utils.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
@@ -61,12 +62,7 @@ bool isSafeToHoist(const Instr &instr)
 
 BasicBlock *findBlock(Function &function, const std::string &label)
 {
-    for (auto &block : function.blocks)
-    {
-        if (block.label == label)
-            return &block;
-    }
-    return nullptr;
+    return viper::il::findBlock(function, label);
 }
 
 BasicBlock *findPreheader(Function &function, const Loop &loop, BasicBlock &header)

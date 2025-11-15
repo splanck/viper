@@ -31,6 +31,9 @@ struct Param
 
     /// Source location of the parameter name.
     il::support::SourceLoc loc{};
+
+    /// BUG-060 fix: Class name for object-typed parameters; empty for primitives.
+    std::string objectClass;
 };
 
 /// @brief FUNCTION declaration with optional parameters and return type.

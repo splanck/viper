@@ -787,8 +787,21 @@ void ProcedureLowering::collectProcedureSignatures(const Program &prog)
         sig.paramTypes.reserve(params.size());
         for (const auto &p : params)
         {
-            il::core::Type ty = p.is_array ? il::core::Type(il::core::Type::Kind::Ptr)
-                                           : coreTypeForAstType(p.type);
+            // BUG-060 fix: Handle object-typed parameters
+            il::core::Type ty;
+            if (p.is_array)
+            {
+                ty = il::core::Type(il::core::Type::Kind::Ptr);
+            }
+            else if (!p.objectClass.empty())
+            {
+                // Object parameter - use Ptr type
+                ty = il::core::Type(il::core::Type::Kind::Ptr);
+            }
+            else
+            {
+                ty = coreTypeForAstType(p.type);
+            }
             sig.paramTypes.push_back(ty);
         }
         return sig;
@@ -1050,7 +1063,21 @@ Lowerer::ProcedureMetadata Lowerer::collectProcedureMetadata(const std::vector<P
     for (const auto &p : params)
     {
         metadata.paramNames.insert(p.name);
-        Type ty = p.is_array ? Type(Type::Kind::Ptr) : coreTypeForAstType(p.type);
+        // BUG-060 fix: Handle object-typed parameters
+        Type ty;
+        if (p.is_array)
+        {
+            ty = Type(Type::Kind::Ptr);
+        }
+        else if (!p.objectClass.empty())
+        {
+            // Object parameter - use Ptr type
+            ty = Type(Type::Kind::Ptr);
+        }
+        else
+        {
+            ty = coreTypeForAstType(p.type);
+        }
         metadata.irParams.push_back({p.name, ty});
         if (p.is_array)
         {
@@ -1402,13 +1429,23 @@ void Lowerer::materializeParams(const std::vector<Param> &params)
     {
         const auto &p = params[i];
         bool isBoolParam = !p.is_array && p.type == AstType::Bool;
+        // BUG-060 fix: Object parameters need pointer slots
+        bool isObjectParam = !p.objectClass.empty();
         Value slot = emitAlloca(isBoolParam ? 1 : 8);
         if (p.is_array)
         {
             markArray(p.name);
             emitStore(Type(Type::Kind::Ptr), slot, Value::null());
         }
-        setSymbolType(p.name, p.type);
+        // BUG-060 fix: Set object type for object parameters
+        if (isObjectParam)
+        {
+            setSymbolObjectType(p.name, p.objectClass);
+        }
+        else
+        {
+            setSymbolType(p.name, p.type);
+        }
         markSymbolReferenced(p.name);
         auto &info = ensureSymbol(p.name);
         info.slotId = slot.id;
