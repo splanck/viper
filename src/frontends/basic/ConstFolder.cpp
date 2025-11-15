@@ -409,13 +409,29 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
         return true;
     }
 
+    /// @brief Fold CHR$ builtin calls when the argument is a literal integer.
+    /// @param expr Builtin call expression being visited.
+    /// @return @c true when the expression was replaced with a string literal.
+    bool tryFoldChr(BuiltinCallExpr &expr)
+    {
+        if (expr.args.size() != 1 || !expr.args[0])
+            return false;
+        if (auto folded = cf::foldChrLiteral(*expr.args[0]))
+        {
+            folded->loc = expr.loc;
+            replaceWithExpr(std::move(folded));
+            return true;
+        }
+        return false;
+    }
+
     struct BuiltinDispatchEntry
     {
         BuiltinCallExpr::Builtin builtin;
         bool (ConstFolderPass::*folder)(BuiltinCallExpr &);
     };
 
-    static constexpr std::array<BuiltinDispatchEntry, 9> kBuiltinDispatch{{
+    static constexpr std::array<BuiltinDispatchEntry, 10> kBuiltinDispatch{{
         {BuiltinCallExpr::Builtin::Len, &ConstFolderPass::tryFoldLen},
         {BuiltinCallExpr::Builtin::Mid, &ConstFolderPass::tryFoldMid},
         {BuiltinCallExpr::Builtin::Left, &ConstFolderPass::tryFoldLeft},
@@ -425,6 +441,7 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
         {BuiltinCallExpr::Builtin::Fix, &ConstFolderPass::tryFoldFix},
         {BuiltinCallExpr::Builtin::Round, &ConstFolderPass::tryFoldRound},
         {BuiltinCallExpr::Builtin::Str, &ConstFolderPass::tryFoldStr},
+        {BuiltinCallExpr::Builtin::Chr, &ConstFolderPass::tryFoldChr},
     }};
 
     // MutExprVisitor overrides ----------------------------------------------

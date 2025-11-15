@@ -608,6 +608,7 @@ class Lowerer
     void releaseObjectLocals(const std::unordered_set<std::string> &paramNames);
     void releaseObjectParams(const std::unordered_set<std::string> &paramNames);
     void releaseDeferredTemps();
+    void clearDeferredTemps();
     // Defer releases for temporaries
     void deferReleaseStr(Value v);
     void deferReleaseObj(Value v, const std::string &className = {});

@@ -203,4 +203,23 @@ AST::ExprPtr foldRightLiteral(const AST::Expr &source, const AST::Expr &countExp
     return make_string(s->value.substr(start, take));
 }
 
+/// @brief Fold a CHR$() invocation when the argument is a literal integer.
+/// @details Converts an integer literal in the range [0, 255] into a single-
+///          character string. Values outside this range are rejected to maintain
+///          BASIC's ASCII/extended ASCII semantics.
+/// @param arg Expression passed to CHR$().
+/// @return String literal containing the character, or @c nullptr when the
+///         argument is not a valid literal integer in range.
+AST::ExprPtr foldChrLiteral(const AST::Expr &arg)
+{
+    auto charCode = as_index(arg);
+    if (!charCode)
+        return nullptr;
+    // Accept values in [0, 255] for standard ASCII/extended ASCII range
+    if (*charCode < 0 || *charCode > 255)
+        return nullptr;
+    char ch = static_cast<char>(*charCode);
+    return make_string(std::string(1, ch));
+}
+
 } // namespace il::frontends::basic::constfold

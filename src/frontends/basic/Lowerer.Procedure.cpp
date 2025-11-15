@@ -295,6 +295,7 @@ Lowerer::SymbolInfo *Lowerer::findSymbol(std::string_view name)
         auto symIt = scopeIt->symbols.find(key);
         if (symIt != scopeIt->symbols.end())
             return &symIt->second;
+        (void)key;
     }
     return nullptr;
 }
@@ -314,6 +315,7 @@ const Lowerer::SymbolInfo *Lowerer::findSymbol(std::string_view name) const
         auto symIt = scopeIt->symbols.find(key);
         if (symIt != scopeIt->symbols.end())
             return &symIt->second;
+        (void)key;
     }
     return nullptr;
 }
@@ -960,6 +962,9 @@ void ProcedureLowering::scheduleBlocks(LoweringContext &ctx)
     assert(config.emitFinalReturn && "Missing final return handler");
     if (!config.emitEmptyBody || !config.emitFinalReturn)
         return;
+
+    // BUG-063 fix: Clear any deferred temps from module-level init or prior procedures
+    lowerer.clearDeferredTemps();
 
     auto metadata = ctx.metadata;
     auto &procCtx = lowerer.context();

@@ -109,6 +109,7 @@ class Emitter
     void deferReleaseStr(Value v);
     void deferReleaseObj(Value v, const std::string &className = {});
     void releaseDeferredTemps();
+    void clearDeferredTemps();
 
     void emitTrap();
 

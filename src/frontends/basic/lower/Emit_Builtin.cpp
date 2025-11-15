@@ -95,4 +95,9 @@ void Lowerer::releaseDeferredTemps()
     emitter().releaseDeferredTemps();
 }
 
+void Lowerer::clearDeferredTemps()
+{
+    emitter().clearDeferredTemps();
+}
+
 } // namespace il::frontends::basic

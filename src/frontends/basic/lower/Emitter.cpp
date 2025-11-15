@@ -553,6 +553,14 @@ void Emitter::releaseDeferredTemps()
     deferredTemps_.clear();
 }
 
+/// @brief Clear accumulated deferred temps without emitting releases.
+/// @details Used at procedure entry to prevent leaking cleanup code from
+///          module-level initialization or prior procedures (BUG-063 fix).
+void Emitter::clearDeferredTemps()
+{
+    deferredTemps_.clear();
+}
+
 /// @brief Emit destructor epilogues for object locals.
 ///
 /// @details For each tracked object local not excluded by @p paramNames, the

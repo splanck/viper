@@ -111,6 +111,9 @@ AST::ExprPtr foldLeftLiteral(const AST::Expr &source, const AST::Expr &count);
 /// @brief Fold RIGHT$ builtin when both operands are literals.
 AST::ExprPtr foldRightLiteral(const AST::Expr &source, const AST::Expr &count);
 
+/// @brief Fold CHR$ builtin when the argument is a literal integer.
+AST::ExprPtr foldChrLiteral(const AST::Expr &arg);
+
 /// @brief Check whether @p expr can be folded to a literal value.
 bool can_fold(const AST::Expr &expr);
 

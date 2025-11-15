@@ -99,7 +99,7 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
     // where globals are routed through runtime-backed storage and do not have
     // a materialised local stack slot.
     // BUG-056: Detect object field array access via dotted name (e.g., B.CELLS(i)).
-    // BUG-059: Also detect field arrays accessed without dotted syntax in methods (e.g., exits(i)).
+    // BUG-059/058: Also detect field arrays accessed without dotted syntax in methods (e.g., inventory(i)).
     const bool isMemberArray = expr.name.find('.') != std::string::npos;
 
     const auto *info = isMemberArray ? nullptr : findSymbol(expr.name);
@@ -118,7 +118,7 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
         assert(storage && "array access requires resolvable storage");
     }
 
-    // BUG-059: For member arrays, determine element type early so we can require the right runtime functions
+    // Determine element type early so we can require the right runtime functions
     if (isMemberArray)
     {
         // Split into base variable and field name
@@ -149,7 +149,7 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
     // Require appropriate runtime functions based on array element type
     if (isMemberArray)
     {
-        // Use memberElemAstType for member arrays
+        // Use memberElemAstType for field arrays (dotted or implicit)
         if (memberElemAstType == ::il::frontends::basic::Type::Str)
         {
             requireArrayStrLen();

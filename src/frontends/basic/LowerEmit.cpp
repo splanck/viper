@@ -93,6 +93,9 @@ Lowerer::ProgramEmitContext Lowerer::collectProgramDeclarations(const Program &p
 /// @param state Mutable emission context storing block references.
 void Lowerer::buildMainFunctionSkeleton(ProgramEmitContext &state)
 {
+    // BUG-063 fix: Clear any deferred temps from prior procedures
+    clearDeferredTemps();
+
     build::IRBuilder &b = *builder;
     ProcedureContext &ctx = context();
 

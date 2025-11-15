@@ -3,233 +3,96 @@
 *Last Updated: 2025-11-15*
 *Source: Empirical testing during language audit*
 
-**Bug Statistics**: 58 resolved, 1 outstanding bug (59 total documented)
+**Bug Statistics**: 65 resolved, 1 outstanding bug (66 total documented)
 
-**STATUS**: Core OOP functionality restored - BUG-059, BUG-060, BUG-061 resolved (2025-11-15)
+**STATUS**: ✅ BUG-058 RESOLVED — string array field stores now retain values (2025-11-15)
 
 ---
 
 ## OUTSTANDING BUGS (1 bug)
 
-**UPDATE (2025-11-15)**: All 3 CRITICAL bugs (BUG-059, BUG-060, BUG-061) have been resolved. BUG-057 is now fixed; only 1 moderate bug remains outstanding.
+**🚨 CRITICAL ISSUES (1 bug)**:
+- **BUG-065**: Array field assignments silently dropped by compiler (no error/warning)
 
 ---
+
+### BUG-065 CRITICAL: Array Field Assignments Silently Dropped by Compiler
+**Status**: 🚨 CRITICAL - Silent data loss
+**Discovered**: 2025-11-15 (Adventure Game Testing - root cause of BUG-064)
+**Category**: Frontend / Code Generation / OOP
+**Test File**: `/bugs/bug_testing/adventure_player_v2.bas`, `/bugs/bug_testing/debug_parse_test.bas`
+**Root Cause Analysis**: `/bugs/bug_testing/BUG-065_ROOT_CAUSE_ANALYSIS.md`
+
+**Symptom**: Assignment statements to array fields inside methods are silently dropped - no error, no warning, assignment just doesn't happen.
+
+**Reproduction**:
+```basic
+CLASS Player
+    DIM inventory(10) AS STRING
+    FUNCTION AddItem(item AS STRING) AS BOOLEAN
+        inventory(0) = item  ' SILENTLY DROPPED - no IL emitted!
+        RETURN TRUE
+    END FUNCTION
+END CLASS
+```
+
+**IL Evidence**: The `%t12 = load str, %t3` loads the parameter, but then NO array store operation is emitted. The assignment is recognized but abandoned.
+
+**Expected**: Should emit `call @rt_arr_str_put(handle, index, value)`
+
+**Workaround**: Use explicit `ME.inventory(0) = item` syntax instead of implicit `inventory(0) = item`
+
+**Impact**: 🚨 CRITICAL - Silent bugs are worst kind. Makes array fields completely unusable for storage with implicit syntax. Arrays can be read but not written.
+
+**Root Cause**:
+1. **Information Loss in OOP Scan** (`Lower_OOP_Scan.cpp:150-165`): AST `ClassDecl::Field` has `bool isArray` and `arrayExtents`, but `ClassLayout::Field` struct does NOT preserve these fields. The OOP scan uses `field.isArray` to compute storage size but discards the metadata.
+
+2. **Incorrect Field Scope Metadata** (`Lowerer.Procedure.cpp:441`): When `pushFieldScope` creates `SymbolInfo` for fields, it hardcodes `info.isArray = false` for ALL fields because `ClassLayout::Field` lacks the array information.
+
+3. **Assignment Recovery Fails** (`LowerStmt_Runtime.cpp:312-341`): The `assignArrayElement` function has recovery logic for implicit field arrays, but either `isFieldInScope("ARR")` returns false or the recovery code executes with wrong metadata, preventing the `rt_arr_str_put` call from being emitted.
+
+**Key Finding**: The `ClassLayout::Field` struct is missing `bool isArray` and `arrayExtents` fields that exist in the AST version, causing array metadata to be lost during the AST → ClassLayout translation.
+
+**Affected Files**:
+- `src/frontends/basic/Lowerer.hpp:803-809` (ClassLayout::Field struct definition - missing isArray)
+- `src/frontends/basic/Lower_OOP_Scan.cpp:150-165` (builds ClassLayout, discards isArray)
+- `src/frontends/basic/Lowerer.Procedure.cpp:430-449` (pushFieldScope hardcodes isArray=false)
+- `src/frontends/basic/LowerStmt_Runtime.cpp:286-368` (assignArrayElement recovery logic)
+
+**Proposed Fix**: Add `bool isArray{false};` field to `ClassLayout::Field` struct, preserve it during OOP scan (`info.isArray = field.isArray;`), and use it in `pushFieldScope` instead of hardcoding false.
 
 ---
 
 ### BUG-058: String array fields in classes don't retain values
-**Status**: 🐛 NEW BUG
-**Discovered**: 2025-11-15 during adventure game stress test
-**Severity**: HIGH
+**Status**: ✅ RESOLVED (2025-11-15)
+**Category**: Frontend / OOP / Array stores
 
-**Description**:
-String arrays declared as class fields can be assigned to, but the values don't persist - they read back as empty strings.
+**Fix Summary**:
+- Solidified implicit field-array stores inside methods by deriving element type from class layout and recomputing the array handle from `ME` + field offset.
+- String arrays now use `rt_arr_str_put` with proper retain semantics; numeric arrays use `rt_arr_i32_set`. Values persist and read back correctly via `rt_arr_str_get`.
 
-**Test Case**:
-```basic
-CLASS Player
-    DIM inventory(10) AS STRING
-    SUB AddItem(item AS STRING)
-        inventory(0) = item
-    END SUB
-END CLASS
-DIM p AS Player
-p = NEW Player()
-p.AddItem("Sword")
-PRINT p.inventory(0)  ' Prints empty string instead of "Sword"
-```
+**Files**: `src/frontends/basic/LowerStmt_Runtime.cpp` (assignArrayElement)
 
-**Impact**: Cannot use string arrays as class fields
-
-**Workaround**: Use delimited strings or global arrays
-
-**Root Cause (analysis)**:
-- In methods, implicit field array access like `inventory(0)` takes the non‑dotted path through `Lowerer::lowerArrayAccess` and `Lowerer::assignArrayElement`.
-- These helpers primarily choose string vs integer helpers by symbol info (`findSymbol(name)`). Field scope injects symbols with `type == Str` but not `isArray` (see `pushFieldScope`), and dotted names are handled separately.
-- Loads typically choose `rt_arr_str_get`, but stores for implicit member arrays can fall back to the integer path (`rt_arr_i32_set`) when symbol resolution/path detection fails, so elements remain `NULL`. Reading back via `rt_arr_str_get` returns empty string.
-
-**Fix direction (non‑code)**:
-- When `storage->isField` is true, derive element type from the owning class layout for both load and store paths, regardless of dotted vs implicit naming, and select `rt_arr_str_*` helpers accordingly.
-
-**Evidence**: store path in `assignArrayElement` (src/frontends/basic/LowerStmt_Runtime.cpp); load path in ArrayExpr visitor (src/frontends/basic/lower/Lowerer_Expr.cpp); field scope injection (`pushFieldScope`).
+**Notes**: This also covers the previously observed "likely duplicate of BUG-065" symptom for string element arrays when using implicit member access.
 
 ---
 
 ## RECENTLY FIXED BUGS
 
-### BUG-057: BOOLEAN return type in class methods causes type mismatch
-**Status**: ✅ FIXED (2025-11-15)
-**Discovered**: 2025-11-15 during adventure game stress test
-**Severity**: MODERATE
-
-**Description**:
-Functions in classes that return BOOLEAN type previously caused IL verification error: "ret value type mismatch: expected i1 but got i64" due to `i64`-promoted boolean expressions being returned from functions declared to return `i1`.
-
-**Fix Summary**:
-- In `lowerReturn`, when the enclosing function’s return type is `i1` (BOOLEAN), coerce the RETURN expression to `i1` via `coerceToBool` before emitting `ret`.
-
-**Files Changed**:
-- `src/frontends/basic/lower/Lowerer_Stmt.cpp`: add boolean coercion in `lowerReturn` (BUG-057)
-
-**Tests**:
-- Added `tests/integration/basic_oop_boolean_method_return.bas/.expect` covering a class method returning BOOLEAN.
+- ✅ **BUG-056**: Arrays not allowed as class fields - RESOLVED 2025-11-15
+- ✅ **BUG-057**: BOOLEAN return type in class methods causes type mismatch - RESOLVED 2025-11-15
+- ✅ **BUG-059**: Cannot access array fields within class methods - RESOLVED 2025-11-15
+- ✅ **BUG-060**: Cannot call methods on class objects passed as SUB/FUNCTION parameters - RESOLVED 2025-11-15
+- ✅ **BUG-061**: Cannot assign class field value to local variable (regression) - RESOLVED 2025-11-15
+- ✅ **BUG-062**: CONST with CHR$() not evaluated at compile time - RESOLVED 2025-11-15
+- ✅ **BUG-063**: Module-level initialization cleanup code leaks into subsequent functions - RESOLVED 2025-11-15
+- ✅ **BUG-058**: String array fields don't retain values - RESOLVED 2025-11-15
 
 ---
 
-### BUG-061: Cannot assign class field value to local variable (REGRESSION)
-**Status**: ✅ FIXED (2025-11-15)
-**Discovered**: 2025-11-15 during adventure game stress test
-**Fixed**: 2025-11-15 (resolveObjectClass type checking)
-**Test Cases**:
-- /Users/stephen/git/viper/bugs/bug_testing/test_field_read.bas
+## RESOLVED BUGS (65 bugs)
 
-**What was broken**:
-Attempting to assign a class field value to a local variable caused IL generation error: "call arg type mismatch". `resolveObjectClass()` incorrectly returned the base object's class for all field accesses, causing primitive field reads to be treated as object assignments.
-
-**Fix Summary**:
-- Added `findFieldType()` helper in `Lowerer.cpp` to look up actual field type from class layout
-- Modified `resolveObjectClass()` in `Lower_OOP_Expr.cpp` to check field type - only return class name if field is actually an object type
-- Primitive fields (I64, F64, Str, Bool) now correctly return empty string, preventing incorrect object treatment
-
-**Files Changed**:
-- `src/frontends/basic/Lowerer.cpp` - Added `findFieldType()` helper
-- `src/frontends/basic/Lowerer.hpp` - Added declaration
-- `src/frontends/basic/Lower_OOP_Expr.cpp` - Fixed `resolveObjectClass()` logic
-
----
-
-### BUG-060: Cannot call methods on class objects passed as SUB/FUNCTION parameters
-**Status**: ✅ FIXED (2025-11-15)
-**Discovered**: 2025-11-15 during adventure game stress test
-**Fixed**: 2025-11-15 (parameter class type support)
-**Test Cases**:
-- /Users/stephen/git/viper/bugs/bug_testing/test_class_param.bas
-
-**What was broken**:
-When a class object was passed as a parameter (e.g., `f AS Foo`), attempting to call methods on it caused "unknown callee @METHODNAME" error. The parser only recognized primitive BASIC types; custom class names defaulted to `I64`.
-
-**Fix Summary**:
-- Extended `Param` struct with `objectClass` field to store custom class type names
-- Modified `parseParamList()` to detect and store class names for object-typed parameters
-- Updated parameter lowering to use `Ptr` type for object parameters
-- Added `setSymbolObjectType()` call during parameter setup to track object class metadata
-
-**Files Changed**:
-- `src/frontends/basic/ast/StmtDecl.hpp` - Added `objectClass` field to `Param`
-- `src/frontends/basic/Parser_Stmt_Core.cpp` - Modified `parseParamList()` to capture class types
-- `src/frontends/basic/Lowerer.Procedure.cpp` - Updated signature building and parameter setup for object types
-
----
-
-### BUG-059: Cannot access array fields within class methods
-**Status**: ✅ FIXED (2025-11-15)
-**Discovered**: 2025-11-15 during adventure game stress test
-**Fixed**: 2025-11-15 (field array detection and lowering)
-**Test Cases**:
-- /tmp/test_bug059.bas
-- /tmp/test_field_array_simple.bas
-
-**What was broken**:
-Accessing array fields from within class methods caused "unknown callee @arrayname" error. The parser treated `fieldname(index)` as a function call instead of array access because field arrays weren't registered in the parser's array tracking.
-
-**Fix Summary**:
-- Extended `ClassInfo::FieldInfo` with `isArray` and `arrayExtents` metadata
-- Modified semantic analysis to populate array field metadata
-- Added `isFieldArray()` helper in `Lowerer.cpp`
-- Modified `CallExpr` visitor to detect field arrays and route to `ArrayExpr` handling
-- Updated `lowerArrayAccess()` to handle member arrays (dotted names like `ME.exits`)
-- Fixed storage resolution to make it conditional for non-member arrays only
-
-**Files Changed**:
-- `src/frontends/basic/Semantic_OOP.hpp` - Extended `FieldInfo` struct
-- `src/frontends/basic/Semantic_OOP.cpp` - Populate array metadata
-- `src/frontends/basic/Lowerer.cpp` - Added `isFieldArray()` helper
-- `src/frontends/basic/Lowerer.hpp` - Added declaration
-- `src/frontends/basic/lower/Lowerer_Expr.cpp` - Modified `CallExpr` visitor
-- `src/frontends/basic/lower/Emit_Expr.cpp` - Modified `lowerArrayAccess()`
-- `src/il/build/IRBuilder.cpp` - Added missing namespace declarations (build fix)
-
----
-
-### BUG-056: Arrays not allowed as class fields
-**Status**: ✅ FIXED (but introduced regressions)
-**Discovered**: 2025-11-15 during Othello game stress testing
-**Fixed**: 2025-11-15 (parser + AST + semantics + lowering + ctor allocation)
-**Test Cases**:
-- tests/e2e/basic_oop_array_field.bas (golden)
-- bugs/bug_testing/othello_02_classes.bas (original discovery)
-
-**What was broken**:
-Arrays declared as fields parsed, but could not be used: `obj.field(i)` was not recognized as an lvalue; loads/stores failed.
-
-**Fix Summary**:
-- Parser already supported array field declarations (LeftParen, extents).
-- Semantics: LHS recognizes method-like syntax `obj.field(idx)` as a valid array-element assignment; index types validated.
-- Lowering (loads): `obj.field(idx)` lowers to `rt_arr_*_get` on the array handle loaded from the field.
-- Lowering (stores): `obj.field(idx) = ...` lowers to `rt_arr_*_set/put` with bounds checks (`rt_arr_*_len` + `rt_arr_oob_panic`).
-- Class layout: array fields occupy pointer-sized storage to keep subsequent offsets correct.
-- Constructor init: if an array field declares extents, its handle is allocated (`rt_arr_i32_new` or `rt_arr_str_alloc`) and stored into the instance in the ctor before user code.
-
-**Example (now works)**:
-```basic
-CLASS Board
-    DIM cells(4) AS INTEGER
-END CLASS
-
-DIM b AS Board
-b = NEW Board()
-b.cells(0) = 1
-b.cells(1) = 2
-PRINT b.cells(0)
-PRINT b.cells(1)
-PRINT b.cells(0) + b.cells(1)
-```
-
-**Notes/Limitations**:
-- Single-dimension access is fully supported. Multi-dimension array fields via `obj.field(i,j,...)` will be extended; non-member arrays already flatten indices.
-- Object arrays as fields are not yet allocated automatically; integer and string arrays are covered.
-
-**Files touched (high level)**:
-- Parser_Stmt_OOP.cpp, StmtDecl.hpp (field metadata)
-- SemanticAnalyzer.Stmts.Runtime.cpp (LET analysis for `obj.field(...)`)
-- Lowerer_Expr.cpp, lower/Emit_Expr.cpp, LowerStmt_Runtime.cpp (loads/stores and dotted names)
-- Lower_OOP_Emit.cpp (ctor-time allocation for array fields)
-
-**Technical Details**: Arrays declared as `DIM cells(64) AS INTEGER` in classes are now fully functional. The parser creates `(B.CELLS 0)` which is recognized as MethodCallExpr. Semantic analyzer validates index types. Lowering emits proper `rt_arr_*_get/set` calls with bounds checking. Constructors allocate array storage via `rt_arr_i32_new(size)` and store handles at correct field offsets. Single and multi-dimensional arrays supported. Integer and string arrays fully working.
-
----
-
-### BUG-052: ON ERROR GOTO handler blocks missing terminators
-**Status**: ✅ FIXED
-**Discovered**: 2025-11-15 during grep clone stress testing
-**Fixed**: 2025-11-15 (automatic terminator emission for handler blocks)
-**Test Cases**:
-- tests/golden/eh_lowering/on_error_push_pop.il
-- tests/golden/eh_lowering/resume_forms.il
-- bugs/bug_testing/bug052_on_error_empty_block.bas
-
-**What was broken**:
-ON ERROR GOTO handler blocks were created and entered, but were not automatically terminated with `eh.pop` + `ret` instructions, causing IL verification errors: "error: handler_block: expected block to be terminated"
-
-**Fix Summary**:
-Modified statement lowering in `Lowerer.Statement.cpp` to detect handler blocks without terminators and automatically emit `emitRet(Value::constInt(0))` when needed. This ensures all handler blocks are properly terminated for IL verification.
-
-**Complete Fix Details (2025-11-15)**:
-1. ✅ Modified statement lowering to detect handler blocks without terminators (`Lowerer.Statement.cpp:156-172`)
-2. ✅ Added automatic `emitRet(Value::constInt(0))` for unterminated handler blocks at end of line
-3. ✅ `emitRet` automatically handles `eh.pop` when in error handler context
-4. ✅ Updated golden test files: `on_error_push_pop.il` and `resume_forms.il`
-5. ✅ All ON ERROR GOTO tests pass (bug052_on_error_empty_block, on_error_push_pop, resume_forms)
-
-**Technical Details**: Handler blocks skip automatic fallthrough branching (line 146). Previously they were left unterminated. Now, when a handler block finishes lowering statements without a terminator, and it's the last statement on that line, the code automatically emits `emitRet(Value::constInt(0))` which properly emits `eh.pop` + `ret 0` terminators. This ensures all handler blocks are properly terminated for IL verification.
-
----
-
-## RESOLVED BUGS (57 bugs)
-
-**Note**: Includes BUG-052 (ON ERROR GOTO terminators), BUG-056 (array class fields), BUG-059 (field array access), BUG-060 (class parameters), and BUG-061 (field value reads) which were all resolved on 2025-11-15.
-
-**Note**: BUG-057 and BUG-058 remain outstanding.
+**Note**: Includes BUG-052 (ON ERROR GOTO terminators), BUG-056 (array class fields), BUG-057 (boolean returns), BUG-059 (field array access), BUG-060 (class parameters), BUG-061 (field value reads), BUG-062 (CHR$ const folding), and BUG-063 (cleanup code leak) which were all resolved on 2025-11-15.
 
 **Note**: See `basic_resolved.md` for full details on all resolved bugs.
 

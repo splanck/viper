@@ -96,6 +96,12 @@ add_executable(test_basic_oop_lowering ${CMAKE_CURRENT_SOURCE_DIR}/unit/BasicOOP
 target_link_libraries(test_basic_oop_lowering fe_basic viper_testing)
 add_test(NAME unit_basic_oop_lowering COMMAND test_basic_oop_lowering)
 
+# String array field helpers in OOP
+add_executable(test_basic_oop_string_array_field
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_basic_oop_string_array_field.cpp)
+target_link_libraries(test_basic_oop_string_array_field PRIVATE fe_basic viper_testing)
+viper_add_ctest(test_basic_oop_string_array_field test_basic_oop_string_array_field)
+
 # BUG-040 guard: FUNCTIONS returning class types should return ptr from RETURN var
 viper_add_test(
         test_basic_class_return
