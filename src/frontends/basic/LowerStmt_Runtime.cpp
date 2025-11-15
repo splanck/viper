@@ -537,8 +537,6 @@ void Lowerer::lowerDim(const DimStmt &stmt)
     }
 
     const auto *info = findSymbol(stmt.name);
-    assert(info && info->slotId);
-
     // Determine array element type and call appropriate runtime allocator
     Value handle;
     if (info->type == AstType::Str)
@@ -560,7 +558,15 @@ void Lowerer::lowerDim(const DimStmt &stmt)
         handle = emitCallRet(Type(Type::Kind::Ptr), "rt_arr_i32_new", {length});
     }
 
-    storeArray(Value::temp(*info->slotId), handle, info->type, info->isObject);
+    // Store into the resolved storage (supports module-level globals across procedures)
+    if (auto storage = resolveVariableStorage(stmt.name, stmt.loc))
+    {
+        storeArray(storage->pointer, handle, info ? info->type : AstType::I64, info && info->isObject);
+    }
+    else
+    {
+        assert(false && "DIM target should have resolvable storage");
+    }
     if (boundsChecks)
     {
         if (info && info->arrayLengthSlot)
@@ -583,9 +589,9 @@ void Lowerer::lowerReDim(const ReDimStmt &stmt)
     bound = ensureI64(std::move(bound), stmt.loc);
     Value length = emitArrayLengthCheck(bound.value, stmt.loc, "redim_len");
     const auto *info = findSymbol(stmt.name);
-    assert(info && info->slotId);
-    Value slot = Value::temp(*info->slotId);
-    Value current = emitLoad(Type(Type::Kind::Ptr), slot);
+    auto storage = resolveVariableStorage(stmt.name, stmt.loc);
+    assert(storage && "REDIM target should have resolvable storage");
+    Value current = emitLoad(Type(Type::Kind::Ptr), storage->pointer);
     if (info && info->isObject)
         requireArrayObjResize();
     else
@@ -594,7 +600,7 @@ void Lowerer::lowerReDim(const ReDimStmt &stmt)
         Type(Type::Kind::Ptr),
         (info && info->isObject) ? "rt_arr_obj_resize" : "rt_arr_i32_resize",
         {current, length});
-    storeArray(slot, resized, /*elementType*/ AstType::I64, /*isObjectArray*/ info && info->isObject);
+    storeArray(storage->pointer, resized, /*elementType*/ AstType::I64, /*isObjectArray*/ info && info->isObject);
     if (boundsChecks && info && info->arrayLengthSlot)
         emitStore(Type(Type::Kind::I64), Value::temp(*info->arrayLengthSlot), length);
 }
