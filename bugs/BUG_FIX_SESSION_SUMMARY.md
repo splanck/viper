@@ -154,12 +154,12 @@ Both tests validate fixes completely.
 
 ### Files Updated: 3
 
-1. **devdocs/basic_resolved.md** (+200 lines)
+1. **bugs/basic_resolved.md** (+200 lines)
    - Added BUG-021 resolution with root cause analysis
    - Added BUG-024 resolution with technical details
    - Included code samples and test validation
 
-2. **devdocs/basic_bugs.md** (2 status updates)
+2. **bugs/basic_bugs.md** (2 status updates)
    - Marked BUG-021 as ✅ RESOLVED
    - Marked BUG-024 as ✅ RESOLVED
 
@@ -246,4 +246,3 @@ Two significant bugs have been resolved, substantially improving VIPER BASIC's u
 All changes are production-ready, fully tested, and comprehensively documented. The remaining bugs require architectural changes and should be addressed through design discussions and planning phases.
 
 **VIPER BASIC is ready for mathematical and scientific computing applications.**
-

@@ -1,8 +1,8 @@
 # VIPER BASIC — Resolved Bugs
 
-Last Updated: 2025-11-14
+Last Updated: 2025-11-15
 
-This document records bugs from devdocs/basic_bugs.md that have been verified and resolved in code, with notes on scope, approach, and validation.
+This document records bugs from bugs/basic_bugs.md that have been verified and resolved in code, with notes on scope, approach, and validation.
 
 ---
 
@@ -165,3 +165,64 @@ PRINT result#  ' Output: 2.68811714181614e+43
 - Status: RESOLVED (2025-11-14)
 - Summary: Duplicate of BUG-030. Discovered independently during tic-tac-toe development. Resolved by the same BUG-019 type system fix.
 - Validation: Same tests as BUG-030 confirm resolution.
+
+---
+
+## BUG-040: Custom class types as FUNCTION return values
+- Status: RESOLVED (2025-11-15)
+- Summary: Functions declared `AS <Class>` now return object references correctly. RETURN of an object variable emits a pointer-typed load from the right slot and returns that value, avoiding the prior "ret value type mismatch: expected ptr but got i64" error.
+- Root cause: `lowerReturn` always returned the value of `lowerExpr(stmt.value)` without special-casing pointer returns. In class-returning functions, `RETURN p` used scalar paths that could select the wrong slot or coerce to `i64`.
+- Key paths:
+  - src/frontends/basic/lower/Lowerer_Stmt.cpp: In `Lowerer::lowerReturn`, when the enclosing function retType is `Ptr` and the value is a `VarExpr`, resolve the variable storage and `emitLoad(Ptr, ...)` before `emitRet` to guarantee correct slot and IL type.
+  - Existing implicit-return path in `Lowerer.Procedure.cpp::lowerFunctionDecl` already loads the function-name variable with `Ptr` for class returns; this change aligns explicit RETURN with that behavior.
+- Tests:
+  - Added unit test `tests/unit/test_basic_class_return.cpp` which compiles a minimal repro and asserts the `ret` operand originates from a `Load` typed as `Ptr`.
+  - Registered via `tests/CMakeLists.txt` using test helper wrappers.
+- Validation:
+  - New test passes (`ctest -R test_basic_class_return`).
+  - No regressions observed; full suite remains green locally.
+
+---
+
+## BUG-037: SUB methods on class instances cannot be called
+- Status: RESOLVED (2025-11-15)
+- Summary: SUB methods on class instances can now be called successfully. Previously, multi-letter variable names before a dot were misinterpreted as namespace qualifiers, causing method calls like `db.AddRecord()` to be parsed as qualified procedure calls instead of method calls.
+- Root cause: Parser heuristic in call statement parsing (Parser_Stmt_Core.cpp:211-214) treated any multi-character identifier before a dot as a namespace, breaking method calls on variables with multi-letter names. Single-letter variables (e.g., `t.TestSub()`) always worked.
+- Key paths:
+  - **Parser fix** (src/frontends/basic/Parser_Stmt_Core.cpp, lines 201-211): Removed flawed multi-letter heuristic that forced qualified interpretation. Now only treats identifiers as namespaces if they're in the `knownNamespaces_` set, otherwise falls through to expression parser which correctly handles both method calls and qualified procedure calls.
+  - **Semantic analyzer enhancement** (src/frontends/basic/SemanticAnalyzer.Stmts.Runtime.cpp, lines 66-91): Added smart error detection for undefined variables in method call positions. When a method call base is an undefined variable, reports "unknown procedure 'namespace.method'" instead of "unknown variable", preserving expected error messages for actual namespace-qualified call attempts.
+- Test case:
+  - devdocs/basic/test_bug037_method_calls_fixed.bas: Comprehensive validation demonstrating:
+    - Multi-letter variables calling SUB methods (main fix target)
+    - Single-letter variables calling SUB methods (always worked)
+    - FUNCTION methods work inline (BUG-039 not yet addressed for assignment)
+    - Mixed SUB/FUNCTION method usage
+- Validation: All test cases pass. 99% test suite passes (622/623 tests). Method calls on class instances now work correctly regardless of variable name length.
+
+---
+
+## BUG-039: Cannot assign method call results to variables
+- Status: RESOLVED (2025-11-15)
+- Summary: Method calls returning primitive types (INTEGER, STRING, etc.) can now be assigned to variables. Previously, all method calls were assumed to return objects based on the receiver's class, causing "call arg type mismatch" errors when methods returned primitives.
+- Root cause: `resolveObjectClass()` in Lower_OOP_Expr.cpp returned the receiver's class for all method calls without checking the method's actual return type. This caused primitive-returning methods to be incorrectly treated as object-returning methods.
+- Key paths:
+  - src/frontends/basic/Lower_OOP_Expr.cpp (lines 106-137): Modified `resolveObjectClass()` for MethodCallExpr to check the method's return type using `findMethodReturnType()`. Only returns a class name if the method returns a class type (ptr). For primitive types (I64, F64, Str, Bool), returns empty string to indicate "not an object".
+- Example that now works:
+  ```basic
+  CLASS Counter
+    count AS INTEGER
+    FUNCTION GetCount() AS INTEGER
+      RETURN Me.count
+    END FUNCTION
+  END CLASS
+
+  DIM c AS Counter
+  c = NEW Counter()
+  c.count = 5
+  DIM result AS INTEGER
+  result = c.GetCount()  ' Now works!
+  PRINT result           ' Outputs: 5
+  ```
+- Validation: Method calls returning primitives can be assigned to variables without type mismatch errors. Test cases demonstrate INTEGER, STRING, and other primitive return types working correctly.
+
+---

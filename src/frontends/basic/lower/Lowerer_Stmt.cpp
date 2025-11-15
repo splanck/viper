@@ -567,6 +567,24 @@ void Lowerer::lowerReturn(const ReturnStmt &stmt)
 
     if (stmt.value)
     {
+        // If the enclosing FUNCTION returns an object (ptr), be strict about
+        // returning a pointer-typed value. This avoids accidental scalar
+        // coercions and ensures RETURN of an object variable emits a ptr load.
+        il::core::Function *fn = context().function();
+        if (fn && fn->retType.kind == Type::Kind::Ptr)
+        {
+            if (auto *var = as<const VarExpr>(*stmt.value))
+            {
+                // Resolve the variable's address and load as a pointer explicitly.
+                if (auto storage = resolveVariableStorage(var->name, var->loc))
+                {
+                    Value val = emitLoad(Type(Type::Kind::Ptr), storage->pointer);
+                    emitRet(val);
+                    return;
+                }
+            }
+        }
+
         RVal v = lowerExpr(*stmt.value);
         emitRet(v.value);
     }

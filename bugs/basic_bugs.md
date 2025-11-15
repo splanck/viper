@@ -26,7 +26,7 @@
 
 **Boolean Type System Changes**: Modified `isBooleanType()` to only accept `Type::Bool` (not `Type::Int`) for logical operators (AND/ANDALSO/OR/ORELSE). This makes the type system stricter and fixes some test cases.
 
-**Bug Statistics**: 40 resolved, 3 outstanding, 0 partially resolved (43 total documented)
+**Bug Statistics**: 42 resolved, 1 outstanding, 0 partially resolved (43 total documented)
 
 **Recent Investigation (2025-11-14)**:
 - ✅ **BUG-012 NOW RESOLVED**: BOOLEAN variables can now be compared with TRUE/FALSE constants and with each other; STR$(boolean) now works
@@ -40,7 +40,10 @@
 - ✅ **BUG-041 NOW RESOLVED**: Arrays of custom class types work perfectly
 - ✅ **BUG-042 NOW RESOLVED**: LINE keyword no longer reserved, can be used as variable name
 - ✅ **BUG-043 VERIFIED RESOLVED**: String arrays work correctly (duplicate/false report of BUG-032/033)
-- ⚠️ **BUG-039 DIAGNOSIS CORRECTED**: Issue is not about mutation - cannot assign ANY method result to a variable (works inline only)
+
+**Recent Fixes (2025-11-15)**:
+- ✅ **BUG-037 NOW RESOLVED**: SUB methods on class instances can now be called (parser heuristic fix)
+- ✅ **BUG-039 NOW RESOLVED**: Method call results can now be assigned to variables (OOP expression lowering fix)
 
 ---
 
@@ -524,40 +527,7 @@ PRINT board$  ' Prints: ABCDEFGHI
 ---
 
 ### BUG-037: SUB methods on class instances cannot be called
-**Difficulty**: 🔴 HARD - OOP method invocation
-**Severity**: HIGH
-**Status**: Outstanding
-**Discovered**: 2025-11-13 during BasicDB development
-**Test Case**: /devdocs/basic/basicdb.bas version 0.2
-
-**Description**:
-When calling SUB methods on class instances, the compiler reports "unknown procedure" errors. FUNCTION methods work correctly, but SUB methods fail completely.
-
-**Reproduction**:
-```basic
-CLASS Database
-  SUB IncrementCount()
-    LET Me.count = Me.count + 1
-  END SUB
-END CLASS
-
-DIM db AS Database
-db = NEW Database()
-db.IncrementCount()   ' ERROR
-```
-
-**Error Message**:
-```
-error[B1006]: unknown procedure 'db.incrementcount'
-```
-
-**Workaround**:
-Convert all SUB methods to FUNCTION methods that return a dummy value (e.g., INTEGER returning 0).
-
-**Impact**:
-- Cannot use SUB methods on class instances
-- All mutation methods must be FUNCTIONs
-- Reduces code clarity (mutation methods shouldn't return values)
+**Status**: ✅ RESOLVED 2025-11-15 - See [basic_resolved.md](basic_resolved.md#bug-037-sub-methods-on-class-instances-cannot-be-called) for details
 
 ---
 
@@ -592,59 +562,7 @@ Testing confirms that string concatenation with method results works correctly. 
 ---
 
 ### BUG-039: Cannot assign method call results to variables
-**Difficulty**: 🔴 HARD - IL lowering type mismatch
-**Severity**: CRITICAL
-**Status**: Outstanding
-**Discovered**: 2025-11-13 during BasicDB development
-**Diagnosis Corrected**: 2025-11-14
-**Test Cases**: /tmp/test_bug039_readonly_method.bas, /tmp/test_bug039_inline.bas
-
-**Description**:
-Method call results cannot be assigned to variables - causes "call arg type mismatch" IL errors. However, method calls work perfectly when used directly inline in expressions (PRINT, concatenation, etc.).
-
-**IMPORTANT**: This has **nothing to do with mutation** - even read-only methods fail when assigned to variables.
-
-**Fails** (variable assignment):
-```basic
-CLASS Counter
-  count AS INTEGER
-
-  FUNCTION GetCount() AS INTEGER
-    RETURN Me.count
-  END FUNCTION
-END CLASS
-
-DIM c AS Counter
-c = NEW Counter()
-c.count = 5
-DIM result AS INTEGER
-result = c.GetCount()  ' ❌ ERROR: call arg type mismatch
-```
-
-**Works** (inline usage):
-```basic
-DIM c AS Counter
-c = NEW Counter()
-c.count = 5
-PRINT "Count: "; c.GetCount()  ' ✅ Works perfectly!
-```
-
-**Error Message**:
-```
-error: main:obj_assign_cont1: call %t8: call arg type mismatch
-```
-
-**Workaround**:
-Use method calls only inline in expressions (PRINT, string concatenation, arithmetic). Cannot store results in variables.
-
-**Impact**:
-- **CRITICAL**: Cannot store method results for reuse
-- Severely limits method utility
-- Forces awkward inline-only patterns
-- Makes complex calculations with method results impossible
-
-**Root Cause** (suspected):
-IL lowering issue in `/src/frontends/basic/Lower_OOP_Expr.cpp` - method return values not properly bridged to variable assignment context.
+**Status**: ✅ RESOLVED 2025-11-15 - See [basic_resolved.md](basic_resolved.md#bug-039-cannot-assign-method-call-results-to-variables) for details
 
 ---
 
@@ -686,11 +604,8 @@ FUNCTION DB_FindRecordIndexById(id AS INTEGER) AS INTEGER
 END FUNCTION
 ```
 
-**Impact**:
-- Cannot create factory functions or getters that return objects
-- Must use array indexing directly
-- Limits abstraction capabilities
-- Makes APIs less clean and more error-prone
+**Resolution summary**:
+- Lowering updated to return pointer-typed values for class-returning FUNCTIONS when `RETURN <object-var>` is used, fixing the ret type mismatch. Guarded by unit test `test_basic_class_return`.
 
 ---
 
