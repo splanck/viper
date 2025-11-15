@@ -159,9 +159,10 @@ void StatementLowering::lowerSequence(const std::vector<const Stmt *> &stmts,
             auto *handlerBlock = ctx.current();
             if (handlerBlock && !handlerBlock->terminated)
             {
-                // Check if this is the last statement or if the next statement is on a different line
-                bool isLastInHandler = (i + 1 >= stmts.size()) ||
-                                       (lowerer.virtualLine(*stmts[i + 1]) != vLine);
+                // Check if this is the last statement or if the next statement is on a different
+                // line
+                bool isLastInHandler =
+                    (i + 1 >= stmts.size()) || (lowerer.virtualLine(*stmts[i + 1]) != vLine);
 
                 if (isLastInHandler)
                 {

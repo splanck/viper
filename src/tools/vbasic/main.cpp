@@ -15,8 +15,8 @@
 /// @details Translates user-friendly vbasic arguments into ilc front basic subcommands
 ///          and delegates to the existing BASIC frontend implementation.
 
-#include "usage.hpp"
 #include "tools/ilc/cli.hpp"
+#include "usage.hpp"
 #include <iostream>
 #include <string>
 #include <string_view>

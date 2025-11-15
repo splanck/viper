@@ -22,13 +22,13 @@
 
 #include "il/analysis/Dominators.hpp"
 // Shared IL utilities (include after Dominators to avoid nested name lookup issues)
-#include "il/utils/Utils.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
 #include "il/core/Opcode.hpp"
 #include "il/core/Type.hpp"
 #include "il/core/Value.hpp"
+#include "il/utils/Utils.hpp"
 
 #include <algorithm>
 #include <string>
@@ -61,7 +61,10 @@ BasicBlock *findBlock(Function &function, const std::string &label)
     return viper::il::findBlock(function, label);
 }
 
-static inline unsigned nextTempId(Function &function) { return viper::il::nextTempId(function); }
+static inline unsigned nextTempId(Function &function)
+{
+    return viper::il::nextTempId(function);
+}
 
 std::string makeUniqueLabel(const Function &function, const std::string &base)
 {

@@ -785,7 +785,8 @@ void ProcedureLowering::collectProcedureSignatures(const Program &prog)
 
     // Local helpers to reduce duplication when constructing and registering
     // procedure signatures from AST declarations.
-    auto buildSig = [&](il::core::Type ret, const auto &params) {
+    auto buildSig = [&](il::core::Type ret, const auto &params)
+    {
         Lowerer::ProcedureSignature sig;
         sig.retType = ret;
         sig.paramTypes.reserve(params.size());
@@ -811,9 +812,9 @@ void ProcedureLowering::collectProcedureSignatures(const Program &prog)
         return sig;
     };
 
-    auto registerSig = [&](const std::string &unqual,
-                           const std::string &qual,
-                           Lowerer::ProcedureSignature sig) {
+    auto registerSig =
+        [&](const std::string &unqual, const std::string &qual, Lowerer::ProcedureSignature sig)
+    {
         const bool hasQual = !qual.empty();
         const std::string &key = hasQual ? qual : unqual;
         lowerer.procSignatures.emplace(key, std::move(sig));
@@ -826,9 +827,10 @@ void ProcedureLowering::collectProcedureSignatures(const Program &prog)
     {
         if (auto *fn = as<const FunctionDecl>(*decl))
         {
-            il::core::Type retTy = (!fn->explicitClassRetQname.empty())
-                                       ? il::core::Type(il::core::Type::Kind::Ptr)
-                                       : lowerer.functionRetTypeFromHint(fn->name, fn->explicitRetType);
+            il::core::Type retTy =
+                (!fn->explicitClassRetQname.empty())
+                    ? il::core::Type(il::core::Type::Kind::Ptr)
+                    : lowerer.functionRetTypeFromHint(fn->name, fn->explicitRetType);
             auto sig = buildSig(retTy, fn->params);
             registerSig(fn->name, fn->qualifiedName, std::move(sig));
         }
@@ -855,9 +857,10 @@ void ProcedureLowering::collectProcedureSignatures(const Program &prog)
                 case Stmt::Kind::FunctionDecl:
                 {
                     const auto &fn = static_cast<const FunctionDecl &>(*stmtPtr);
-                    il::core::Type retTy = (!fn.explicitClassRetQname.empty())
-                                               ? il::core::Type(il::core::Type::Kind::Ptr)
-                                               : lowerer.functionRetTypeFromHint(fn.name, fn.explicitRetType);
+                    il::core::Type retTy =
+                        (!fn.explicitClassRetQname.empty())
+                            ? il::core::Type(il::core::Type::Kind::Ptr)
+                            : lowerer.functionRetTypeFromHint(fn.name, fn.explicitRetType);
                     auto sig = buildSig(retTy, fn.params);
                     registerSig(fn.name, fn.qualifiedName, std::move(sig));
                     break;
@@ -1207,7 +1210,8 @@ void Lowerer::allocateLocalSlots(const std::unordered_set<std::string> &paramNam
             continue;
         // Skip allocating a local for module-level globals; they resolve via runtime storage.
         bool isMain = (context().function() && context().function()->name == "main");
-        if (!isParam && !isMain && semanticAnalyzer_ && semanticAnalyzer_->isModuleLevelSymbol(name))
+        if (!isParam && !isMain && semanticAnalyzer_ &&
+            semanticAnalyzer_->isModuleLevelSymbol(name))
             continue;
         if (info.slotId)
             continue;
@@ -1232,7 +1236,8 @@ void Lowerer::allocateLocalSlots(const std::unordered_set<std::string> &paramNam
             continue;
         // Skip allocating a local for module-level globals; they resolve via runtime storage.
         bool isMain = (context().function() && context().function()->name == "main");
-        if (!isParam && !isMain && semanticAnalyzer_ && semanticAnalyzer_->isModuleLevelSymbol(name))
+        if (!isParam && !isMain && semanticAnalyzer_ &&
+            semanticAnalyzer_->isModuleLevelSymbol(name))
             continue;
         if (info.slotId)
             continue;
@@ -1345,7 +1350,8 @@ void Lowerer::lowerFunctionDecl(const FunctionDecl &decl)
         // If the function body assigns to the function name, the symbol will be
         // created automatically during collectVars. We only need to mark it as
         // an object type if it exists.
-        config.postCollect = [&]() {
+        config.postCollect = [&]()
+        {
             // BUG-040 fix: Only mark the function name as an object type if it was actually used.
             // The function name symbol should only exist if the function body explicitly assigns
             // to it (VB-style implicit return). If it doesn't exist, don't create it.
@@ -1360,7 +1366,8 @@ void Lowerer::lowerFunctionDecl(const FunctionDecl &decl)
     {
         config.retType = functionRetTypeFromHint(decl.name, decl.explicitRetType);
         // BUG-040 fix: Only set type if symbol was actually referenced
-        config.postCollect = [&]() {
+        config.postCollect = [&]()
+        {
             if (findSymbol(decl.name))
                 setSymbolType(decl.name, decl.ret);
         };

@@ -99,7 +99,8 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
     // where globals are routed through runtime-backed storage and do not have
     // a materialised local stack slot.
     // BUG-056: Detect object field array access via dotted name (e.g., B.CELLS(i)).
-    // BUG-059/058: Also detect field arrays accessed without dotted syntax in methods (e.g., inventory(i)).
+    // BUG-059/058: Also detect field arrays accessed without dotted syntax in methods (e.g.,
+    // inventory(i)).
     const bool isMemberArray = expr.name.find('.') != std::string::npos;
 
     const auto *info = isMemberArray ? nullptr : findSymbol(expr.name);
@@ -227,10 +228,11 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
                                            ? Type::Kind::Str
                                            : Type::Kind::I64;
                     curLoc = expr.loc;
-                    Value fieldPtr = emitBinary(Opcode::GEP,
-                                                Type(Type::Kind::Ptr),
-                                                selfPtr,
-                                                Value::constInt(static_cast<long long>(fld->offset)));
+                    Value fieldPtr =
+                        emitBinary(Opcode::GEP,
+                                   Type(Type::Kind::Ptr),
+                                   selfPtr,
+                                   Value::constInt(static_cast<long long>(fld->offset)));
                     curLoc = expr.loc;
                     base = emitLoad(Type(Type::Kind::Ptr), fieldPtr);
                 }

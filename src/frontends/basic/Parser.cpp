@@ -22,13 +22,13 @@
 #include "frontends/basic/Parser.hpp"
 #include "frontends/basic/ASTUtils.hpp"
 #include "support/source_manager.hpp"
-#include <filesystem>
-#include <fstream>
-#include <sstream>
 #include <array>
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
+#include <sstream>
 #include <utility>
 
 namespace il::frontends::basic
@@ -398,7 +398,8 @@ bool Parser::handleTopLevelAddFile(Program &prog)
     const uint32_t includingFileId = kw.loc.file_id;
     std::filesystem::path base(sm_->getPath(includingFileId));
     std::filesystem::path candidate(rawPath);
-    std::filesystem::path resolved = candidate.is_absolute() ? candidate : base.parent_path() / candidate;
+    std::filesystem::path resolved =
+        candidate.is_absolute() ? candidate : base.parent_path() / candidate;
 
     std::error_code ec;
     std::filesystem::path canon = std::filesystem::weakly_canonical(resolved, ec);
@@ -495,7 +496,8 @@ bool Parser::handleAddFileInto(std::vector<StmtPtr> &dst)
     const uint32_t includingFileId = kw.loc.file_id;
     std::filesystem::path base(sm_->getPath(includingFileId));
     std::filesystem::path candidate(rawPath);
-    std::filesystem::path resolved = candidate.is_absolute() ? candidate : base.parent_path() / candidate;
+    std::filesystem::path resolved =
+        candidate.is_absolute() ? candidate : base.parent_path() / candidate;
 
     std::error_code ec;
     std::filesystem::path canon = std::filesystem::weakly_canonical(resolved, ec);

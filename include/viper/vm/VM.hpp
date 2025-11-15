@@ -47,6 +47,11 @@ struct RunConfig
     DebugCtrl debug;                  ///< Debug controller copied into the VM.
     DebugScript *debugScript = nullptr; ///< Optional script pointer; not owned.
     std::vector<ExternDesc> externs;  ///< Pre-registered extern helpers.
+    /// @brief Command-line arguments to seed into the runtime before run().
+    /// @details When non-empty, the Runner seeds the runtime argument store
+    ///          after VM construction so BASIC's ARGC/ARG$/COMMAND$ can read
+    ///          them safely.
+    std::vector<std::string> programArgs;
 
     // Periodic host polling --------------------------------------------------
     /// @brief Invoke a host callback every N instructions (0 disables).

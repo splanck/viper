@@ -50,17 +50,16 @@ namespace
 
 TEST(BasicOOPNumericArrayField, ImplicitStoreAndLoadUseNumericArrayHelpers)
 {
-    const std::string src =
-        "10 CLASS Player\n"
-        "20   DIM slots(10) AS INTEGER\n"
-        "30   SUB Add(n)\n"
-        "40     slots(0) = n\n"
-        "50   END SUB\n"
-        "60   FUNCTION First%()\n"
-        "70     RETURN slots(0)\n"
-        "80   END FUNCTION\n"
-        "90 END CLASS\n"
-        "100 END\n";
+    const std::string src = "10 CLASS Player\n"
+                            "20   DIM slots(10) AS INTEGER\n"
+                            "30   SUB Add(n)\n"
+                            "40     slots(0) = n\n"
+                            "50   END SUB\n"
+                            "60   FUNCTION First%()\n"
+                            "70     RETURN slots(0)\n"
+                            "80   END FUNCTION\n"
+                            "90 END CLASS\n"
+                            "100 END\n";
 
     SourceManager sm;
     BasicCompilerInput input{src, "oop_num_arr_field.bas"};
@@ -119,4 +118,3 @@ int main()
     return RUN_ALL_TESTS();
 }
 #endif
-

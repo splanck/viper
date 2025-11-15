@@ -74,11 +74,11 @@
 #include "frontends/basic/AST.hpp"
 #include "frontends/basic/BasicTypes.hpp"
 #include "frontends/basic/EmitCommon.hpp"
+#include "frontends/basic/IdentifierUtil.hpp"
 #include "frontends/basic/LowerRuntime.hpp"
 #include "frontends/basic/NameMangler.hpp"
 #include "frontends/basic/Semantic_OOP.hpp"
 #include "frontends/basic/TypeRules.hpp"
-#include "frontends/basic/IdentifierUtil.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
 #include "viper/il/IRBuilder.hpp"
 #include "viper/il/Module.hpp"
@@ -599,10 +599,7 @@ class Lowerer
 
     Value emitConstStr(const std::string &globalName);
     void storeArray(Value slot, Value value, AstType elementType = AstType::I64);
-    void storeArray(Value slot,
-                    Value value,
-                    AstType elementType,
-                    bool isObjectArray);
+    void storeArray(Value slot, Value value, AstType elementType, bool isObjectArray);
     void releaseArrayLocals(const std::unordered_set<std::string> &paramNames);
     void releaseArrayParams(const std::unordered_set<std::string> &paramNames);
     void releaseObjectLocals(const std::unordered_set<std::string> &paramNames);
@@ -674,7 +671,11 @@ class Lowerer
     std::unordered_set<std::string> crossProcGlobals_;
 
   public:
-    void markCrossProcGlobal(const std::string &name) { crossProcGlobals_.insert(name); }
+    void markCrossProcGlobal(const std::string &name)
+    {
+        crossProcGlobals_.insert(name);
+    }
+
     bool isCrossProcGlobal(const std::string &name) const
     {
         return crossProcGlobals_.find(name) != crossProcGlobals_.end();
@@ -930,12 +931,11 @@ class Lowerer
         std::string_view className, std::string_view methodName) const;
 
     /// @brief Lookup the AST type for a class field.
-    std::optional<::il::frontends::basic::Type> findFieldType(
-        std::string_view className, std::string_view fieldName) const;
+    std::optional<::il::frontends::basic::Type> findFieldType(std::string_view className,
+                                                              std::string_view fieldName) const;
 
     /// @brief Check if a class field is an array.
-    [[nodiscard]] bool isFieldArray(
-        std::string_view className, std::string_view fieldName) const;
+    [[nodiscard]] bool isFieldArray(std::string_view className, std::string_view fieldName) const;
 
     [[nodiscard]] ProcedureContext &context() noexcept;
 

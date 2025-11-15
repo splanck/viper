@@ -27,7 +27,6 @@
 #include "frontends/basic/Diag.hpp"
 #include "frontends/basic/IdentifierUtil.hpp"
 #include "frontends/basic/SemanticAnalyzer.Internal.hpp"
-#include "frontends/basic/IdentifierUtil.hpp"
 #include "frontends/basic/StringUtils.hpp"
 #include "frontends/basic/ast/ExprNodes.hpp"
 
@@ -83,7 +82,8 @@ void SemanticAnalyzer::analyzeCallStmt(CallStmt &stmt)
                     segments.push_back(me->method);
                     std::string qualifiedName = CanonicalizeQualified(segments);
                     std::vector<std::string> attempts;
-                    diagx::ErrorUnknownProcWithTries(de.emitter(), stmt.loc, qualifiedName, attempts);
+                    diagx::ErrorUnknownProcWithTries(
+                        de.emitter(), stmt.loc, qualifiedName, attempts);
                     return;
                 }
             }

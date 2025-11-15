@@ -403,7 +403,10 @@ void Lowerer::lowerLet(const LetStmt &stmt)
         SlotType slotInfo = storage->slotInfo;
         if (slotInfo.isArray)
         {
-            storeArray(storage->pointer, value.value, /*elementType*/ AstType::I64, /*isObjectArray*/ storage->slotInfo.isObject);
+            storeArray(storage->pointer,
+                       value.value,
+                       /*elementType*/ AstType::I64,
+                       /*isObjectArray*/ storage->slotInfo.isObject);
         }
         else
         {
@@ -436,10 +439,11 @@ void Lowerer::lowerLet(const LetStmt &stmt)
                         if (const ClassLayout::Field *fld = it->second.findField(mc->method))
                         {
                             curLoc = stmt.loc;
-                            Value fieldPtr = emitBinary(Opcode::GEP,
-                                                        Type(Type::Kind::Ptr),
-                                                        selfPtr,
-                                                        Value::constInt(static_cast<long long>(fld->offset)));
+                            Value fieldPtr =
+                                emitBinary(Opcode::GEP,
+                                           Type(Type::Kind::Ptr),
+                                           selfPtr,
+                                           Value::constInt(static_cast<long long>(fld->offset)));
                             Value arrHandle = emitLoad(Type(Type::Kind::Ptr), fieldPtr);
 
                             // Lower indices (single dimension support for now)
@@ -458,20 +462,24 @@ void Lowerer::lowerLet(const LetStmt &stmt)
                             if (fld->type == ::il::frontends::basic::Type::Str)
                             {
                                 requireArrayStrLen();
-                                len = emitCallRet(Type(Type::Kind::I64), "rt_arr_str_len", {arrHandle});
+                                len = emitCallRet(
+                                    Type(Type::Kind::I64), "rt_arr_str_len", {arrHandle});
                             }
                             else
                             {
                                 requireArrayI32Len();
-                                len = emitCallRet(Type(Type::Kind::I64), "rt_arr_i32_len", {arrHandle});
+                                len = emitCallRet(
+                                    Type(Type::Kind::I64), "rt_arr_i32_len", {arrHandle});
                             }
-                            Value isNeg = emitBinary(Opcode::SCmpLT, ilBoolTy(), index, Value::constInt(0));
+                            Value isNeg =
+                                emitBinary(Opcode::SCmpLT, ilBoolTy(), index, Value::constInt(0));
                             Value tooHigh = emitBinary(Opcode::SCmpGE, ilBoolTy(), index, len);
                             auto emitc = emitCommon(stmt.loc);
                             Value isNeg64 = emitc.widen_to(isNeg, 1, 64, Signedness::Unsigned);
                             Value tooHigh64 = emitc.widen_to(tooHigh, 1, 64, Signedness::Unsigned);
                             Value oobInt = emitc.logical_or(isNeg64, tooHigh64);
-                            Value oobCond = emitBinary(Opcode::ICmpNe, ilBoolTy(), oobInt, Value::constInt(0));
+                            Value oobCond =
+                                emitBinary(Opcode::ICmpNe, ilBoolTy(), oobInt, Value::constInt(0));
 
                             ProcedureContext &ctx = context();
                             Function *func = ctx.function();
@@ -479,12 +487,14 @@ void Lowerer::lowerLet(const LetStmt &stmt)
                             unsigned bcId = ctx.consumeBoundsCheckId();
                             BlockNamer *blockNamer = ctx.blockNames().namer();
                             size_t okIdx = func->blocks.size();
-                            std::string okLbl = blockNamer ? blockNamer->tag("bc_ok" + std::to_string(bcId))
-                                                           : mangler.block("bc_ok" + std::to_string(bcId));
+                            std::string okLbl =
+                                blockNamer ? blockNamer->tag("bc_ok" + std::to_string(bcId))
+                                           : mangler.block("bc_ok" + std::to_string(bcId));
                             builder->addBlock(*func, okLbl);
                             size_t oobIdx = func->blocks.size();
-                            std::string oobLbl = blockNamer ? blockNamer->tag("bc_oob" + std::to_string(bcId))
-                                                            : mangler.block("bc_oob" + std::to_string(bcId));
+                            std::string oobLbl =
+                                blockNamer ? blockNamer->tag("bc_oob" + std::to_string(bcId))
+                                           : mangler.block("bc_oob" + std::to_string(bcId));
                             builder->addBlock(*func, oobLbl);
                             BasicBlock *ok = &func->blocks[okIdx];
                             BasicBlock *oob = &func->blocks[oobIdx];
@@ -558,7 +568,10 @@ void Lowerer::lowerConst(const ConstStmt &stmt)
     SlotType slotInfo = storage->slotInfo;
     if (slotInfo.isArray)
     {
-        storeArray(storage->pointer, value.value, /*elementType*/ AstType::I64, /*isObjectArray*/ storage->slotInfo.isObject);
+        storeArray(storage->pointer,
+                   value.value,
+                   /*elementType*/ AstType::I64,
+                   /*isObjectArray*/ storage->slotInfo.isObject);
     }
     else
     {
@@ -720,7 +733,8 @@ void Lowerer::lowerDim(const DimStmt &stmt)
     // Store into the resolved storage (supports module-level globals across procedures)
     if (auto storage = resolveVariableStorage(stmt.name, stmt.loc))
     {
-        storeArray(storage->pointer, handle, info ? info->type : AstType::I64, info && info->isObject);
+        storeArray(
+            storage->pointer, handle, info ? info->type : AstType::I64, info && info->isObject);
     }
     else
     {
@@ -757,11 +771,14 @@ void Lowerer::lowerReDim(const ReDimStmt &stmt)
         requireArrayObjResize();
     else
         requireArrayI32Resize();
-    Value resized = emitCallRet(
-        Type(Type::Kind::Ptr),
-        (info && info->isObject) ? "rt_arr_obj_resize" : "rt_arr_i32_resize",
-        {current, length});
-    storeArray(storage->pointer, resized, /*elementType*/ AstType::I64, /*isObjectArray*/ info && info->isObject);
+    Value resized =
+        emitCallRet(Type(Type::Kind::Ptr),
+                    (info && info->isObject) ? "rt_arr_obj_resize" : "rt_arr_i32_resize",
+                    {current, length});
+    storeArray(storage->pointer,
+               resized,
+               /*elementType*/ AstType::I64,
+               /*isObjectArray*/ info && info->isObject);
     if (boundsChecks && info && info->arrayLengthSlot)
         emitStore(Type(Type::Kind::I64), Value::temp(*info->arrayLengthSlot), length);
 }

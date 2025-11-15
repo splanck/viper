@@ -135,6 +135,7 @@ class Emitter
         bool isString{false};
         std::string className; // optional, for object destructors
     };
+
     std::vector<TempRelease> deferredTemps_;
 };
 

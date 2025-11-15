@@ -18,8 +18,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/basic/ASTUtils.hpp"
-#include "frontends/basic/SemanticAnalyzer.Internal.hpp"
 #include "frontends/basic/IdentifierUtil.hpp"
+#include "frontends/basic/SemanticAnalyzer.Internal.hpp"
 
 #include <limits>
 
@@ -178,7 +178,8 @@ class SemanticAnalyzerExprVisitor final : public MutExprVisitor
                 std::vector<std::string> hits;
                 for (std::size_t n = prefix.size(); n > 0; --n)
                 {
-                    std::vector<std::string> parts(prefix.begin(), prefix.begin() + static_cast<std::ptrdiff_t>(n));
+                    std::vector<std::string> parts(prefix.begin(),
+                                                   prefix.begin() + static_cast<std::ptrdiff_t>(n));
                     parts.push_back(ident);
                     std::string q = JoinDots(parts);
                     if (existsQ(q))
@@ -273,7 +274,8 @@ class SemanticAnalyzerExprVisitor final : public MutExprVisitor
                 };
                 for (std::size_t n = prefix.size(); n > 0; --n)
                 {
-                    std::vector<std::string> parts(prefix.begin(), prefix.begin() + static_cast<std::ptrdiff_t>(n));
+                    std::vector<std::string> parts(prefix.begin(),
+                                                   prefix.begin() + static_cast<std::ptrdiff_t>(n));
                     parts.push_back(ident);
                     std::string q = JoinDots(parts);
                     if (existsQ(q))
@@ -496,7 +498,8 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeNew(NewExpr &expr)
         if (it != aliases.end())
         {
             std::vector<std::string> expanded = SplitDots(it->second);
-            expanded.insert(expanded.end(), expr.qualifiedType.begin() + 1, expr.qualifiedType.end());
+            expanded.insert(
+                expanded.end(), expr.qualifiedType.begin() + 1, expr.qualifiedType.end());
             // Rebuild className from canonicalized expanded segments.
             expr.className = mapCanonicalToDeclared(CanonJoin(expanded));
         }
@@ -526,7 +529,8 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeNew(NewExpr &expr)
         std::vector<std::string> hits;
         for (std::size_t n = prefixCanon.size(); n > 0; --n)
         {
-            std::vector<std::string> parts(prefixCanon.begin(), prefixCanon.begin() + static_cast<std::ptrdiff_t>(n));
+            std::vector<std::string> parts(prefixCanon.begin(),
+                                           prefixCanon.begin() + static_cast<std::ptrdiff_t>(n));
             parts.push_back(ident);
             std::string q = JoinDots(parts);
             attempts.push_back(q);
@@ -550,7 +554,11 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeNew(NewExpr &expr)
                 msg += sorted[i];
             }
             msg += ")";
-            de.emit(il::support::Severity::Error, "B2110", expr.loc, static_cast<uint32_t>(expr.className.size()), std::move(msg));
+            de.emit(il::support::Severity::Error,
+                    "B2110",
+                    expr.loc,
+                    static_cast<uint32_t>(expr.className.size()),
+                    std::move(msg));
         };
 
         if (hits.size() == 1)

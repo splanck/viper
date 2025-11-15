@@ -74,8 +74,7 @@ void ErrorUnknownProcQualified(DiagnosticEmitter &emitter,
                  std::string("unknown procedure '") + std::string(qname) + "'");
 }
 
-static std::string formatTriedList(const std::vector<std::string> &tried,
-                                   std::size_t limit = 8)
+static std::string formatTriedList(const std::vector<std::string> &tried, std::size_t limit = 8)
 {
     if (tried.empty())
         return {};
@@ -124,7 +123,11 @@ void ErrorAmbiguousProc(DiagnosticEmitter &emitter,
             msg += ", ";
         msg += matches[i];
     }
-    emitter.emit(il::support::Severity::Error, "B2009", loc, static_cast<uint32_t>(ident.size()), std::move(msg));
+    emitter.emit(il::support::Severity::Error,
+                 "B2009",
+                 loc,
+                 static_cast<uint32_t>(ident.size()),
+                 std::move(msg));
 }
 
 void ErrorUnknownTypeWithTries(DiagnosticEmitter &emitter,

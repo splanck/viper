@@ -17,8 +17,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/basic/BasicDiagnosticMessages.hpp"
-#include "frontends/basic/Parser.hpp"
 #include "frontends/basic/IdentifierUtil.hpp"
+#include "frontends/basic/Parser.hpp"
 #include "frontends/basic/ast/ExprNodes.hpp"
 #include "viper/diag/BasicDiag.hpp"
 #include <cctype>

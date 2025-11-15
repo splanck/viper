@@ -134,4 +134,3 @@ void rt_arr_obj_release(void **arr)
     }
     rt_heap_release(arr);
 }
-

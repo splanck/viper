@@ -115,14 +115,14 @@ std::string Lowerer::resolveObjectClass(const Expr &expr) const
                         *fieldType == ::il::frontends::basic::Type::Str ||
                         *fieldType == ::il::frontends::basic::Type::Bool)
                     {
-                        return {};  // Field is primitive, not an object
+                        return {}; // Field is primitive, not an object
                     }
                     // If it's a custom type, it must be an object
                     // The field type is stored as the class name for object fields
                     // For now, we know it's an object but don't have the class name
                     // This is a limitation - we need to track object field class names
                     // TODO: Store object class names in FieldInfo
-                    return {};  // Conservative: treat as non-object for now
+                    return {}; // Conservative: treat as non-object for now
                 }
             }
         }
@@ -152,7 +152,7 @@ std::string Lowerer::resolveObjectClass(const Expr &expr) const
                     // If it's a custom type, we need to look it up
                     // For now, assume it's an object if it's not a known primitive
                     // This handles class return types
-                    return baseClass;  // TODO: Should return the actual return class, not base class
+                    return baseClass; // TODO: Should return the actual return class, not base class
                 }
             }
         }
@@ -453,7 +453,8 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
         if (const ClassInfo *ci = oopIndex_.findClass(directQClass))
             emitClassName = ci->qualifiedName;
     }
-    std::string directCallee = emitClassName.empty() ? expr.method : mangleMethod(emitClassName, expr.method);
+    std::string directCallee =
+        emitClassName.empty() ? expr.method : mangleMethod(emitClassName, expr.method);
 
     // If virtual and not BASE-qualified, emit call.indirect; otherwise direct call or interface
     // dispatch. Interface dispatch via (expr AS IFACE).Method: detect AS with interface target.

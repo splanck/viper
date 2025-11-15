@@ -14,10 +14,10 @@
 #include <cassert>
 #include <filesystem>
 #include <fstream>
-#include <string>
-#include <sstream>
-#include <unistd.h>
 #include <iostream>
+#include <sstream>
+#include <string>
+#include <unistd.h>
 
 using namespace il::frontends::basic;
 using namespace il::support;
@@ -71,10 +71,10 @@ int main()
         const fs::path mainPath = write_file(dir, "main.bas", "10 ADDFILE \"inc.bas\"\n20 END\n");
 
         size_t errs = 0;
-        std::string diag = run_and_collect_errors(mainPath.string(),
-                                                  "10 ADDFILE \"inc.bas\"\n20 END\n",
-                                                  errs);
-        if (errs != 0) {
+        std::string diag =
+            run_and_collect_errors(mainPath.string(), "10 ADDFILE \"inc.bas\"\n20 END\n", errs);
+        if (errs != 0)
+        {
             std::cerr << diag << std::endl;
         }
         assert(errs == 0);
@@ -99,10 +99,10 @@ int main()
         fs::create_directories(dir);
         const fs::path mainPath = write_file(dir, "main.bas", "10 ADDFILE \"nope.bas\"\n20 END\n");
         size_t errs = 0;
-        std::string diag = run_and_collect_errors(mainPath.string(),
-                                                  "10 ADDFILE \"nope.bas\"\n20 END\n",
-                                                  errs);
-        if (errs != 1) {
+        std::string diag =
+            run_and_collect_errors(mainPath.string(), "10 ADDFILE \"nope.bas\"\n20 END\n", errs);
+        if (errs != 1)
+        {
             std::cerr << diag << std::endl;
         }
         assert(errs == 1);
@@ -117,10 +117,10 @@ int main()
         write_file(dir, "b.bas", "10 ADDFILE \"a.bas\"\n20 END\n");
         const fs::path mainPath = dir / "a.bas";
         size_t errs = 0;
-        std::string diag = run_and_collect_errors(mainPath.string(),
-                                                  "10 ADDFILE \"b.bas\"\n20 END\n",
-                                                  errs);
-        if (errs != 1) {
+        std::string diag =
+            run_and_collect_errors(mainPath.string(), "10 ADDFILE \"b.bas\"\n20 END\n", errs);
+        if (errs != 1)
+        {
             std::cerr << diag << std::endl;
         }
         assert(errs == 1);
@@ -153,9 +153,8 @@ int main()
         // Main includes inc01.bas
         write_file(dir, "main.bas", "10 ADDFILE \"inc01.bas\"\n20 END\n");
         size_t errs = 0;
-        std::string diag = run_and_collect_errors((dir / "main.bas").string(),
-                                                  "10 ADDFILE \"inc01.bas\"\n20 END\n",
-                                                  errs);
+        std::string diag = run_and_collect_errors(
+            (dir / "main.bas").string(), "10 ADDFILE \"inc01.bas\"\n20 END\n", errs);
         // Expect depth limit error (limit is 32), so chain 33 triggers error.
         if (errs == 0)
             std::cerr << diag << std::endl;
@@ -169,9 +168,8 @@ int main()
         write_file(dir, "inc.bas", "10 PRINT \"LAB\"\n20 END\n");
         const fs::path mainPath = write_file(dir, "main.bas", "100 ADDFILE \"inc.bas\"\n200 END\n");
         size_t errs = 0;
-        std::string diag = run_and_collect_errors(mainPath.string(),
-                                                  "100 ADDFILE \"inc.bas\"\n200 END\n",
-                                                  errs);
+        std::string diag =
+            run_and_collect_errors(mainPath.string(), "100 ADDFILE \"inc.bas\"\n200 END\n", errs);
         if (errs != 0)
             std::cerr << diag << std::endl;
         assert(errs == 0);

@@ -20,12 +20,12 @@
 #include "il/transform/analysis/LoopInfo.hpp"
 
 #include "il/analysis/Dominators.hpp"
-#include "il/utils/Utils.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
 #include "il/core/OpcodeInfo.hpp"
 #include "il/core/Value.hpp"
+#include "il/utils/Utils.hpp"
 #include "il/verify/VerifierTable.hpp"
 
 #include <string>

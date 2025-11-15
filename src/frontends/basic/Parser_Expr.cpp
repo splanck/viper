@@ -486,7 +486,8 @@ ExprPtr Parser::parsePrimary()
                 {
                     // Require first segment to be a known namespace for single-dot case
                     extern std::unordered_set<std::string> dummy_decl_to_satisfy_compiler;
-                    (void)dummy_decl_to_satisfy_compiler; // no-op to avoid unused warning if header order changes
+                    (void)dummy_decl_to_satisfy_compiler; // no-op to avoid unused warning if header
+                                                          // order changes
                     if (knownNamespaces_.find(head.lexeme) == knownNamespaces_.end())
                         ok = false;
                 }

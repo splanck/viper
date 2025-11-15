@@ -51,17 +51,16 @@ namespace
 
 TEST(BasicOOPStringArrayField, ImplicitStoreAndLoadUseStringArrayHelpers)
 {
-    const std::string src =
-        "10 CLASS Player\n"
-        "20   DIM inventory(10) AS STRING\n"
-        "30   SUB Add(item$)\n"
-        "40     inventory(0) = item$\n"
-        "50   END SUB\n"
-        "60   FUNCTION First$()\n"
-        "70     RETURN inventory(0)\n"
-        "80   END FUNCTION\n"
-        "90 END CLASS\n"
-        "100 END\n";
+    const std::string src = "10 CLASS Player\n"
+                            "20   DIM inventory(10) AS STRING\n"
+                            "30   SUB Add(item$)\n"
+                            "40     inventory(0) = item$\n"
+                            "50   END SUB\n"
+                            "60   FUNCTION First$()\n"
+                            "70     RETURN inventory(0)\n"
+                            "80   END FUNCTION\n"
+                            "90 END CLASS\n"
+                            "100 END\n";
 
     SourceManager sm;
     BasicCompilerInput input{src, "oop_str_arr_field.bas"};

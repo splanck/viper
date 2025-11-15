@@ -46,7 +46,9 @@ int main()
 
     // cmdline joins with spaces and returns new string
     rt_string tail = rt_cmdline();
-    assert(std::strcmp(rt_string_cstr(tail), "" " foo bar baz") == 0);
+    assert(std::strcmp(rt_string_cstr(tail),
+                       ""
+                       " foo bar baz") == 0);
 
     // Release all retained strings from getters
     rt_string_unref(s1);
@@ -59,4 +61,3 @@ int main()
 
     return 0;
 }
-

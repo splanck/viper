@@ -28,6 +28,7 @@
 #include "support/source_manager.hpp"
 #include "viper/il/IO.hpp"
 #include "viper/il/Verify.hpp"
+#include "viper/runtime/rt.h"
 #include "viper/vm/VM.hpp"
 #include <cstdint>
 #include <cstdio>
@@ -36,7 +37,6 @@
 #include <optional>
 #include <sstream>
 #include <string>
-#include "viper/runtime/rt.h"
 
 using namespace il;
 using namespace il::frontends::basic;
@@ -271,20 +271,8 @@ int runFrontBasic(const FrontBasicConfig &config,
     runCfg.trace = traceCfg;
     runCfg.maxSteps = config.shared.maxSteps;
 
-    // Seed runtime argument store when running
-    if (config.run && !config.programArgs.empty())
-    {
-        // Call into the runtime C API to pre-populate arguments
-        // Available through the umbrella runtime header.
-        rt_args_clear();
-        for (const auto &s : config.programArgs)
-        {
-            rt_string tmp = rt_string_from_bytes(s.data(), s.size());
-            rt_args_push(tmp);
-            rt_string_unref(tmp);
-        }
-    }
-
+    // Pass program arguments to the VM runner for safe seeding after init.
+    runCfg.programArgs = config.programArgs;
     vm::Runner runner(module, std::move(runCfg));
     int rc = static_cast<int>(runner.run());
     const auto trapMessage = runner.lastTrapMessage();

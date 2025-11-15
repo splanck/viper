@@ -132,8 +132,8 @@ std::optional<::il::frontends::basic::Type> Lowerer::findMethodReturnType(
     return std::nullopt;
 }
 
-std::optional<::il::frontends::basic::Type> Lowerer::findFieldType(
-    std::string_view className, std::string_view fieldName) const
+std::optional<::il::frontends::basic::Type> Lowerer::findFieldType(std::string_view className,
+                                                                   std::string_view fieldName) const
 {
     if (className.empty())
         return std::nullopt;
@@ -148,7 +148,8 @@ std::optional<::il::frontends::basic::Type> Lowerer::findFieldType(
     for (const auto &field : info->fields)
     {
         std::string storedNameUpper = field.name;
-        std::transform(storedNameUpper.begin(), storedNameUpper.end(), storedNameUpper.begin(), ::toupper);
+        std::transform(
+            storedNameUpper.begin(), storedNameUpper.end(), storedNameUpper.begin(), ::toupper);
         if (storedNameUpper == fieldNameUpper)
             return field.type;
     }
@@ -171,7 +172,8 @@ bool Lowerer::isFieldArray(std::string_view className, std::string_view fieldNam
     for (const auto &field : info->fields)
     {
         std::string storedNameUpper = field.name;
-        std::transform(storedNameUpper.begin(), storedNameUpper.end(), storedNameUpper.begin(), ::toupper);
+        std::transform(
+            storedNameUpper.begin(), storedNameUpper.end(), storedNameUpper.begin(), ::toupper);
         if (storedNameUpper == fieldNameUpper)
             return field.isArray;
     }

@@ -602,49 +602,49 @@ void Lowerer::emitOopDeclsAndBodies(const Program &prog)
                 continue;
 
             const auto &klass = static_cast<const ClassDecl &>(*stmt);
-        const ConstructorDecl *ctor = nullptr;
-        const DestructorDecl *dtor = nullptr;
-        std::vector<const MethodDecl *> methods;
-        methods.reserve(klass.members.size());
+            const ConstructorDecl *ctor = nullptr;
+            const DestructorDecl *dtor = nullptr;
+            std::vector<const MethodDecl *> methods;
+            methods.reserve(klass.members.size());
 
-        for (const auto &member : klass.members)
-        {
-            if (!member)
-                continue;
-            switch (member->stmtKind())
+            for (const auto &member : klass.members)
             {
-                case Stmt::Kind::ConstructorDecl:
-                    ctor = static_cast<const ConstructorDecl *>(member.get());
-                    break;
-                case Stmt::Kind::DestructorDecl:
-                    dtor = static_cast<const DestructorDecl *>(member.get());
-                    break;
-                case Stmt::Kind::MethodDecl:
-                    methods.push_back(static_cast<const MethodDecl *>(member.get()));
-                    break;
-                default:
-                    break;
+                if (!member)
+                    continue;
+                switch (member->stmtKind())
+                {
+                    case Stmt::Kind::ConstructorDecl:
+                        ctor = static_cast<const ConstructorDecl *>(member.get());
+                        break;
+                    case Stmt::Kind::DestructorDecl:
+                        dtor = static_cast<const DestructorDecl *>(member.get());
+                        break;
+                    case Stmt::Kind::MethodDecl:
+                        methods.push_back(static_cast<const MethodDecl *>(member.get()));
+                        break;
+                    default:
+                        break;
+                }
             }
-        }
 
-        if (ctor)
-        {
-            emitClassConstructor(klass, *ctor);
-        }
-        else
-        {
-            const ClassInfo *info = oopIndex_.findClass(klass.name);
-            if (info && info->hasSynthCtor)
+            if (ctor)
             {
-                ConstructorDecl synthCtor;
-                synthCtor.loc = klass.loc;
-                synthCtor.line = klass.line;
-                emitClassConstructor(klass, synthCtor);
+                emitClassConstructor(klass, *ctor);
             }
-        }
-        emitClassDestructor(klass, dtor);
-        for (const auto *method : methods)
-            emitClassMethod(klass, *method);
+            else
+            {
+                const ClassInfo *info = oopIndex_.findClass(klass.name);
+                if (info && info->hasSynthCtor)
+                {
+                    ConstructorDecl synthCtor;
+                    synthCtor.loc = klass.loc;
+                    synthCtor.line = klass.line;
+                    emitClassConstructor(klass, synthCtor);
+                }
+            }
+            emitClassDestructor(klass, dtor);
+            for (const auto *method : methods)
+                emitClassMethod(klass, *method);
         }
     };
 

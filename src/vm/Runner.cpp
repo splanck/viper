@@ -62,6 +62,20 @@ class Runner::Impl
         detail::VMAccess::setPollConfig(vm, everyN, std::move(config.pollCallback));
         for (const auto &ext : config.externs)
             il::vm::RuntimeBridge::registerExtern(ext);
+
+        // Seed runtime ARGC/ARG$/COMMAND$ only after VM construction so the
+        // runtime is ready for string/heap operations.
+        if (!config.programArgs.empty())
+        {
+            // Use direct C runtime API for efficiency and to avoid VM traps here.
+            rt_args_clear();
+            for (const auto &s : config.programArgs)
+            {
+                rt_string tmp = rt_string_from_bytes(s.data(), s.size());
+                rt_args_push(tmp);
+                rt_string_unref(tmp);
+            }
+        }
     }
 
     /// @brief Execute the loaded module until completion or trap.

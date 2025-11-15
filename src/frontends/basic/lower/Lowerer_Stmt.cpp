@@ -15,9 +15,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/DiagnosticEmitter.hpp"
+#include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/lower/AstVisitor.hpp"
 
 #include "viper/il/Module.hpp"
@@ -538,8 +538,7 @@ void Lowerer::lowerCallStmt(const CallStmt &stmt)
             {
                 if (auto *em = diagnosticEmitter())
                 {
-                    std::string msg =
-                        "FUNCTION call used as a statement; assign or use its value";
+                    std::string msg = "FUNCTION call used as a statement; assign or use its value";
                     em->emit(il::support::Severity::Error, "B2030", stmt.loc, 1, std::move(msg));
                 }
                 return;
@@ -582,18 +581,21 @@ void Lowerer::lowerReturn(const ReturnStmt &stmt)
                 if (auto storage = resolveVariableStorage(var->name, var->loc))
                 {
                     // If we found a non-object storage, try with "_0" suffix
-                    if (!storage->slotInfo.isObject && storage->slotInfo.type.kind != Type::Kind::Ptr)
+                    if (!storage->slotInfo.isObject &&
+                        storage->slotInfo.type.kind != Type::Kind::Ptr)
                     {
                         std::string mangled = std::string(var->name) + "_0";
                         if (auto objStorage = resolveVariableStorage(mangled, var->loc))
                         {
-                            if (objStorage->slotInfo.isObject || objStorage->slotInfo.type.kind == Type::Kind::Ptr)
+                            if (objStorage->slotInfo.isObject ||
+                                objStorage->slotInfo.type.kind == Type::Kind::Ptr)
                                 storage = objStorage;
                         }
                     }
 
                     // Now use the (hopefully object-typed) storage
-                    if (storage->slotInfo.isObject || storage->slotInfo.type.kind == Type::Kind::Ptr)
+                    if (storage->slotInfo.isObject ||
+                        storage->slotInfo.type.kind == Type::Kind::Ptr)
                     {
                         Value val = emitLoad(Type(Type::Kind::Ptr), storage->pointer);
                         emitRet(val);

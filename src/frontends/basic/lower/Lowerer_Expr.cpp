@@ -15,14 +15,14 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "frontends/basic/IdentifierUtil.hpp"
 #include "frontends/basic/LowerExprBuiltin.hpp"
 #include "frontends/basic/LowerExprLogical.hpp"
 #include "frontends/basic/LowerExprNumeric.hpp"
 #include "frontends/basic/Lowerer.hpp"
-#include "frontends/basic/IdentifierUtil.hpp"
+#include "frontends/basic/SemanticAnalyzer.hpp"
 #include "frontends/basic/TypeSuffix.hpp"
 #include "frontends/basic/lower/AstVisitor.hpp"
-#include "frontends/basic/SemanticAnalyzer.hpp"
 
 #include "viper/il/Module.hpp"
 
@@ -252,7 +252,7 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
                 tempExpr.loc = expr.loc;
                 // Temporarily move unique_ptrs from expr.args to tempExpr.indices
                 // We'll move them back after lowering
-                for (auto &arg : const_cast<std::vector<ExprPtr>&>(expr.args))
+                for (auto &arg : const_cast<std::vector<ExprPtr> &>(expr.args))
                 {
                     tempExpr.indices.push_back(std::move(arg));
                 }
@@ -261,7 +261,8 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
                 // Move the indices back to expr.args to restore ownership
                 for (size_t i = 0; i < tempExpr.indices.size(); ++i)
                 {
-                    const_cast<std::vector<ExprPtr>&>(expr.args)[i] = std::move(tempExpr.indices[i]);
+                    const_cast<std::vector<ExprPtr> &>(expr.args)[i] =
+                        std::move(tempExpr.indices[i]);
                 }
                 return;
             }
@@ -359,12 +360,14 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
                     // Compute array handle pointer from object field
                     Lowerer::RVal self = lowerer_.lowerExpr(*expr.base);
                     lowerer_.curLoc = expr.loc;
-                    Lowerer::Value fieldPtr = lowerer_.emitBinary(il::core::Opcode::GEP,
-                                                                  Lowerer::Type(Lowerer::Type::Kind::Ptr),
-                                                                  self.value,
-                                                                  Lowerer::Value::constInt(static_cast<long long>(fld->offset)));
+                    Lowerer::Value fieldPtr = lowerer_.emitBinary(
+                        il::core::Opcode::GEP,
+                        Lowerer::Type(Lowerer::Type::Kind::Ptr),
+                        self.value,
+                        Lowerer::Value::constInt(static_cast<long long>(fld->offset)));
                     lowerer_.curLoc = expr.loc;
-                    Lowerer::Value arrHandle = lowerer_.emitLoad(Lowerer::Type(Lowerer::Type::Kind::Ptr), fieldPtr);
+                    Lowerer::Value arrHandle =
+                        lowerer_.emitLoad(Lowerer::Type(Lowerer::Type::Kind::Ptr), fieldPtr);
 
                     // Lower first index (single-dimension)
                     Lowerer::Value indexVal = Lowerer::Value::constInt(0);
@@ -379,10 +382,10 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
                     if (fld->type == ::il::frontends::basic::Type::Str)
                     {
                         lowerer_.requireArrayStrGet();
-                        Lowerer::IlValue val = lowerer_.emitCallRet(
-                            Lowerer::IlType(Lowerer::IlType::Kind::Str),
-                            "rt_arr_str_get",
-                            {arrHandle, indexVal});
+                        Lowerer::IlValue val =
+                            lowerer_.emitCallRet(Lowerer::IlType(Lowerer::IlType::Kind::Str),
+                                                 "rt_arr_str_get",
+                                                 {arrHandle, indexVal});
                         lowerer_.deferReleaseStr(val);
                         result_ = Lowerer::RVal{val, Lowerer::IlType(Lowerer::IlType::Kind::Str)};
                         return;
@@ -390,10 +393,10 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
                     else
                     {
                         lowerer_.requireArrayI32Get();
-                        Lowerer::IlValue val = lowerer_.emitCallRet(
-                            Lowerer::IlType(Lowerer::IlType::Kind::I64),
-                            "rt_arr_i32_get",
-                            {arrHandle, indexVal});
+                        Lowerer::IlValue val =
+                            lowerer_.emitCallRet(Lowerer::IlType(Lowerer::IlType::Kind::I64),
+                                                 "rt_arr_i32_get",
+                                                 {arrHandle, indexVal});
                         result_ = Lowerer::RVal{val, Lowerer::IlType(Lowerer::IlType::Kind::I64)};
                         return;
                     }
@@ -627,7 +630,8 @@ TypeRules::NumericType Lowerer::classifyNumericType(const Expr &expr)
 
             if (lowerer_.semanticAnalyzer())
             {
-                if (auto semaType = lowerer_.semanticAnalyzer()->lookupVarType(std::string{var.name}))
+                if (auto semaType =
+                        lowerer_.semanticAnalyzer()->lookupVarType(std::string{var.name}))
                 {
                     using SemaType = SemanticAnalyzer::Type;
                     switch (*semaType)

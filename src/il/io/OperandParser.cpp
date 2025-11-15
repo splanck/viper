@@ -55,10 +55,10 @@ using Operand = Value;
 
 // Shared scanners to reduce duplication across parser helpers.
 static Expected<std::pair<size_t, size_t>> findTopLevelParenRange(ParserState &state,
-                                                                 const Instr &instr,
-                                                                 const std::string &text,
-                                                                 size_t startIndex,
-                                                                 const char *context)
+                                                                  const Instr &instr,
+                                                                  const std::string &text,
+                                                                  size_t startIndex,
+                                                                  const char *context)
 {
     size_t lp = std::string::npos;
     size_t rp = std::string::npos;

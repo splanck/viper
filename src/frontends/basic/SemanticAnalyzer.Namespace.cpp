@@ -25,9 +25,9 @@
 #include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/IdentifierUtil.hpp"
 #include "frontends/basic/SemanticAnalyzer.Internal.hpp"
+#include "frontends/basic/StringUtils.hpp"
 #include <algorithm>
 #include <cctype>
-#include "frontends/basic/StringUtils.hpp"
 
 namespace il::frontends::basic
 {
@@ -195,10 +195,8 @@ void SemanticAnalyzer::analyzeUsingDecl(UsingDecl &decl)
     {
         // Print identifier in canonical BASIC uppercase form in diagnostics.
         std::string nsUpper = string_utils::to_upper(nsPath);
-        de.emit(diag::BasicDiag::NsUnknownNamespace,
-                decl.loc,
-                1,
-                {{diag::Replacement{"ns", nsUpper}}});
+        de.emit(
+            diag::BasicDiag::NsUnknownNamespace, decl.loc, 1, {{diag::Replacement{"ns", nsUpper}}});
         // Continue after emitting the error to allow follow-on diagnostics but do not
         // record the USING in the scoped context.
         return;

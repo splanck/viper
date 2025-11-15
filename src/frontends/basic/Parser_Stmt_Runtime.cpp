@@ -14,8 +14,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/basic/BasicDiagnosticMessages.hpp"
-#include "frontends/basic/Parser.hpp"
 #include "frontends/basic/IdentifierUtil.hpp"
+#include "frontends/basic/Parser.hpp"
 
 #include <cstdio>
 #include <cstdlib>

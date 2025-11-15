@@ -6,6 +6,7 @@
 #pragma once
 
 #include <string_view>
+
 namespace il::core
 {
 struct Instr;

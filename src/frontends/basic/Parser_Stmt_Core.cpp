@@ -16,9 +16,9 @@
 
 #include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/BasicDiagnosticMessages.hpp"
+#include "frontends/basic/IdentifierUtil.hpp"
 #include "frontends/basic/Parser.hpp"
 #include "frontends/basic/ast/ExprNodes.hpp"
-#include "frontends/basic/IdentifierUtil.hpp"
 
 #include <cctype>
 #include <string>
@@ -201,8 +201,10 @@ Parser::StmtResult Parser::parseCall(int)
                     else
                     {
                         // Single-dot case:
-                        // - Prefer namespace-qualified interpretation when the head is a known namespace
-                        // - BUG-037 fix: Removed blanket multi-letter heuristic that broke method calls.
+                        // - Prefer namespace-qualified interpretation when the head is a known
+                        // namespace
+                        // - BUG-037 fix: Removed blanket multi-letter heuristic that broke method
+                        // calls.
                         //   Fall through to expression parser which handles both cases correctly.
                         if (knownNamespaces_.find(identTok.lexeme) != knownNamespaces_.end())
                         {

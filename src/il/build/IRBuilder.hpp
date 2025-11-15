@@ -164,7 +164,7 @@ class IRBuilder
     il::core::Module &mod;                   ///< Module being constructed
     il::core::Function *curFunc{nullptr};    ///< Current function
     il::core::BasicBlock *curBlock{nullptr}; ///< Current insertion block
-    unsigned nextTemp{0};          ///< Next temporary id
+    unsigned nextTemp{0};                    ///< Next temporary id
     std::unordered_map<std::string, il::core::Type>
         calleeReturnTypes; ///< Cached return types keyed by callee name
 

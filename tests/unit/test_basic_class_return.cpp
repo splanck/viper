@@ -38,10 +38,16 @@ constexpr const char *kSrc = R"BASIC(
 static const il::core::Function *findFunctionCaseInsensitive(const il::core::Module &m,
                                                              std::string_view name)
 {
-    auto ieq = [](char a, char b) { return std::tolower((unsigned char)a) == std::tolower((unsigned char)b); };
-    auto eq = [&](std::string_view a, std::string_view b) {
-        if (a.size() != b.size()) return false;
-        for (size_t i = 0; i < a.size(); ++i) if (!ieq(a[i], b[i])) return false; return true;
+    auto ieq = [](char a, char b)
+    { return std::tolower((unsigned char)a) == std::tolower((unsigned char)b); };
+    auto eq = [&](std::string_view a, std::string_view b)
+    {
+        if (a.size() != b.size())
+            return false;
+        for (size_t i = 0; i < a.size(); ++i)
+            if (!ieq(a[i], b[i]))
+                return false;
+        return true;
     };
     for (const auto &fn : m.functions)
         if (eq(fn.name, name))
@@ -65,7 +71,8 @@ TEST(BasicClassReturn, ReturnUsesPtrLoad)
     // Sanity: function must declare a ptr return type
     EXPECT_EQ(fn->retType.kind, il::core::Type::Kind::Ptr);
 
-    // Find a Ret, then locate the defining instruction for its operand, and ensure it is a Load Ptr.
+    // Find a Ret, then locate the defining instruction for its operand, and ensure it is a Load
+    // Ptr.
     bool foundPtrLoadRet = false;
     for (const auto &bb : fn->blocks)
     {

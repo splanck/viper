@@ -45,9 +45,9 @@ void register_array_signatures();
 #endif
 
 #include "rt.hpp"
+#include "rt_array_obj.h"
 #include "rt_internal.h"
 #include "viper/runtime/rt.h"
-#include "rt_array_obj.h"
 #include <algorithm>
 #include <array>
 #include <cstdint>

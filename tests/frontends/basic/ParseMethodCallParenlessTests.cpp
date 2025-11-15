@@ -1,8 +1,8 @@
 // File: tests/frontends/basic/ParseMethodCallParenlessTests.cpp
-// Purpose: Ensure BASIC parser accepts zero-arg method calls without parentheses in statement position.
-// Key invariants: A member access at end-of-statement is synthesized into a MethodCallExpr wrapped by CallStmt.
-// Ownership/Lifetime: Test owns parser instance; no shared global state.
-// Links: docs/basic-language.md#procedures-and-functions
+// Purpose: Ensure BASIC parser accepts zero-arg method calls without parentheses in statement
+// position. Key invariants: A member access at end-of-statement is synthesized into a
+// MethodCallExpr wrapped by CallStmt. Ownership/Lifetime: Test owns parser instance; no shared
+// global state. Links: docs/basic-language.md#procedures-and-functions
 
 #include "frontends/basic/Parser.hpp"
 #include "support/source_manager.hpp"
@@ -17,16 +17,15 @@ int main()
 {
     // Program defines a simple class with a zero-arg SUB, then calls it both
     // with and without parentheses to exercise parser behavior.
-    const std::string src =
-        "10 CLASS C\n"
-        "20   SUB INC()\n"
-        "30   END SUB\n"
-        "40 END CLASS\n"
-        "50 DIM X AS C\n"
-        "60 LET X = NEW C()\n"
-        "70 X.INC\n"       // paren-less method call (statement form)
-        "80 X.INC()\n"     // canonical method call with parentheses
-        "90 END\n";
+    const std::string src = "10 CLASS C\n"
+                            "20   SUB INC()\n"
+                            "30   END SUB\n"
+                            "40 END CLASS\n"
+                            "50 DIM X AS C\n"
+                            "60 LET X = NEW C()\n"
+                            "70 X.INC\n"   // paren-less method call (statement form)
+                            "80 X.INC()\n" // canonical method call with parentheses
+                            "90 END\n";
 
     SourceManager sm;
     uint32_t fid = sm.addFile("method_parenless.bas");
@@ -63,4 +62,3 @@ int main()
     assert(sawParened);
     return 0;
 }
-

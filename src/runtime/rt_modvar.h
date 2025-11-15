@@ -5,22 +5,22 @@
 
 #pragma once
 
+#include "rt_string.h"
 #include <stddef.h>
 #include <stdint.h>
-#include "rt_string.h"
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
-// Return addresses to runtime-managed storage for module-level variables.
-void *rt_modvar_addr_i64(rt_string name);
-void *rt_modvar_addr_f64(rt_string name);
-void *rt_modvar_addr_i1(rt_string name);
-void *rt_modvar_addr_ptr(rt_string name);
-void *rt_modvar_addr_str(rt_string name);
+    // Return addresses to runtime-managed storage for module-level variables.
+    void *rt_modvar_addr_i64(rt_string name);
+    void *rt_modvar_addr_f64(rt_string name);
+    void *rt_modvar_addr_i1(rt_string name);
+    void *rt_modvar_addr_ptr(rt_string name);
+    void *rt_modvar_addr_str(rt_string name);
 
 #ifdef __cplusplus
 }
 #endif
-

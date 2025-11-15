@@ -82,7 +82,8 @@ class Parser
     /// @param emitter Optional diagnostic emitter; not owned.
     /// @param sm Optional source manager for ADDFILE support; not owned.
     /// @param includeStack Optional include stack for cycle detection; not owned.
-    /// @param suppressUndefinedLabelCheck Suppress undefined-label check (used for included parses).
+    /// @param suppressUndefinedLabelCheck Suppress undefined-label check (used for included
+    /// parses).
     Parser(std::string_view src,
            uint32_t file_id,
            DiagnosticEmitter *emitter = nullptr,
@@ -117,10 +118,10 @@ class Parser
     /// @return Parsed statement belonging to the branch body.
     StmtPtr parseIfBranchBody(int line, StatementSequencer &ctx);
 
-    mutable Lexer lexer_;                             ///< Provides tokens from the source buffer.
-    mutable std::vector<Token> tokens_;               ///< Lookahead token buffer.
-    DiagnosticEmitter *emitter_ = nullptr;            ///< Diagnostic sink; not owned.
-    std::unordered_set<std::string> arrays_;          ///< Names of arrays declared via DIM.
+    mutable Lexer lexer_;                    ///< Provides tokens from the source buffer.
+    mutable std::vector<Token> tokens_;      ///< Lookahead token buffer.
+    DiagnosticEmitter *emitter_ = nullptr;   ///< Diagnostic sink; not owned.
+    std::unordered_set<std::string> arrays_; ///< Names of arrays declared via DIM.
     // Namespaces seen during parsing (top-level heads). Used to disambiguate
     // qualified procedure calls like A.F() from object method calls C.M().
     std::unordered_set<std::string> knownNamespaces_{};
@@ -698,7 +699,7 @@ class Parser
     // ---------------------------------------------------------------------
     // ADDFILE support
     // ---------------------------------------------------------------------
-    il::support::SourceManager *sm_ = nullptr; ///< For path resolution and file ids.
+    il::support::SourceManager *sm_ = nullptr;         ///< For path resolution and file ids.
     std::vector<std::string> *includeStack_ = nullptr; ///< Tracks include chain for cycles.
     bool suppressUndefinedNamedLabelCheck_ = false;    ///< Skip undefined label check when true.
     int maxIncludeDepth_ = 32;                         ///< Hard limit to prevent recursion.
