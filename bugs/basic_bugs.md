@@ -3,52 +3,17 @@
 *Last Updated: 2025-11-15*
 *Source: Empirical testing during language audit*
 
-**Bug Statistics**: 57 resolved, 2 outstanding bugs (59 total documented)
+**Bug Statistics**: 58 resolved, 1 outstanding bug (59 total documented)
 
 **STATUS**: Core OOP functionality restored - BUG-059, BUG-060, BUG-061 resolved (2025-11-15)
 
 ---
 
-## OUTSTANDING BUGS (2 bugs)
+## OUTSTANDING BUGS (1 bug)
 
-**UPDATE (2025-11-15)**: All 3 CRITICAL bugs (BUG-059, BUG-060, BUG-061) have been resolved. Only 2 moderate bugs remain outstanding.
+**UPDATE (2025-11-15)**: All 3 CRITICAL bugs (BUG-059, BUG-060, BUG-061) have been resolved. BUG-057 is now fixed; only 1 moderate bug remains outstanding.
 
 ---
-
-### BUG-057: BOOLEAN return type in class methods causes type mismatch
-**Status**: 🐛 NEW BUG
-**Discovered**: 2025-11-15 during adventure game stress test
-**Severity**: MODERATE
-
-**Description**:
-Functions in classes that return BOOLEAN type cause IL verification error: "ret value type mismatch: expected i1 but got i64"
-
-**Test Case**:
-```basic
-CLASS Player
-    DIM health AS INTEGER
-    FUNCTION IsAlive() AS BOOLEAN
-        RETURN health > 0
-    END FUNCTION
-END CLASS
-```
-
-**Error**: `error: PLAYER.ISALIVE:entry_PLAYER.ISALIVE: ret %t7: ret value type mismatch: expected i1 but got i64`
-
-**Impact**: Cannot use BOOLEAN return types in class methods
-
-**Workaround**: Use INTEGER return type with explicit 1/0 values
-
-**Root Cause (analysis)**:
-- Boolean expressions (e.g., comparisons) are promoted from `i1` to BASIC logical word `i64` by `emitBasicLogicalI64` in `NumericExprLowering::lowerNumericBinary` when `promoteBoolToI64` is set (src/frontends/basic/LowerExprNumeric.cpp).
-- `Lowerer::lowerReturn` currently emits the value as‑is for non‑object returns (src/frontends/basic/lower/Lowerer_Stmt.cpp) and does not coerce to the function’s IL return type.
-- For a method declared `AS BOOLEAN`, the function’s IL return type is `i1` (set in `emitClassMethod`, src/frontends/basic/Lower_OOP_Emit.cpp), but the lowered `RETURN` value is `i64`, triggering: “ret value type mismatch: expected i1 but got i64”.
-
-**Fix direction (non‑code)**:
-- In `lowerReturn`, when the enclosing function’s `retType` is `Bool`, coerce the value with `coerceToBool` before `emitRet`.
-- Alternatively, avoid promoting to `i64` in `NumericExprLowering` when the result flows into a boolean context (but the minimal‑risk change is in `lowerReturn`).
-
-**Evidence**: comparison lowering and promotion in `LowerExprNumeric.cpp`; return emission in `Lowerer_Stmt.cpp`.
 
 ---
 
@@ -91,6 +56,25 @@ PRINT p.inventory(0)  ' Prints empty string instead of "Sword"
 ---
 
 ## RECENTLY FIXED BUGS
+
+### BUG-057: BOOLEAN return type in class methods causes type mismatch
+**Status**: ✅ FIXED (2025-11-15)
+**Discovered**: 2025-11-15 during adventure game stress test
+**Severity**: MODERATE
+
+**Description**:
+Functions in classes that return BOOLEAN type previously caused IL verification error: "ret value type mismatch: expected i1 but got i64" due to `i64`-promoted boolean expressions being returned from functions declared to return `i1`.
+
+**Fix Summary**:
+- In `lowerReturn`, when the enclosing function’s return type is `i1` (BOOLEAN), coerce the RETURN expression to `i1` via `coerceToBool` before emitting `ret`.
+
+**Files Changed**:
+- `src/frontends/basic/lower/Lowerer_Stmt.cpp`: add boolean coercion in `lowerReturn` (BUG-057)
+
+**Tests**:
+- Added `tests/integration/basic_oop_boolean_method_return.bas/.expect` covering a class method returning BOOLEAN.
+
+---
 
 ### BUG-061: Cannot assign class field value to local variable (REGRESSION)
 **Status**: ✅ FIXED (2025-11-15)

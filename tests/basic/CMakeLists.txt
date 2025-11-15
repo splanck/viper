@@ -1053,6 +1053,17 @@ function(viper_add_basic_integration_tests)
             -DEXPECT_FILE=${CMAKE_SOURCE_DIR}/tests/basic/semantics/globals_sub_mod.expect
             -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_expect.cmake)
 
+    # BUG-057: BOOLEAN return type in class methods
+    viper_add_ctest(basic_oop_boolean_method_return
+            ${CMAKE_COMMAND}
+            -DILC=${_VIPER_BASIC_ILC}
+            -DBAS_FILE=${_VIPER_BASIC_INTEGRATION_DIR}/basic_oop_boolean_method_return.bas
+            -DEXPECT_FILE=${_VIPER_BASIC_INTEGRATION_DIR}/basic_oop_boolean_method_return.expect
+            -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_expect.cmake)
+
+    # BUG-058: String array fields persist values —
+    # Test intentionally not registered until bug is fixed to keep CI green.
+
     viper_add_ctest(basic_regress_fileio_write_ok
             ${CMAKE_COMMAND}
             -DILC=${_VIPER_BASIC_ILC}

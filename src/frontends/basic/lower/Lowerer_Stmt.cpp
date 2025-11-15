@@ -604,6 +604,15 @@ void Lowerer::lowerReturn(const ReturnStmt &stmt)
         }
 
         RVal v = lowerExpr(*stmt.value);
+        // BUG-057: If the enclosing FUNCTION returns BOOLEAN (i1), ensure the
+        // returned value is coerced to i1 to satisfy the IL verifier.
+        if (il::core::Function *fn2 = context().function())
+        {
+            if (fn2->retType.kind == il::core::Type::Kind::I1)
+            {
+                v = coerceToBool(std::move(v), stmt.loc);
+            }
+        }
         emitRet(v.value);
     }
     else

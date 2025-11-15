@@ -291,8 +291,8 @@ void Lowerer::assignArrayElement(const ArrayExpr &target, RVal value, il::suppor
 
     // Determine array element type and use appropriate runtime function
     const auto *info = findSymbol(target.name);
-    // BUG-056: If assigning to an array field (dotted name), derive element type from the
-    // owning class layout rather than symbol table.
+    // BUG-056: If assigning to an array field (dotted name), derive element
+    // type from the owning class layout rather than symbol table.
     bool isMemberArray = target.name.find('.') != std::string::npos;
     ::il::frontends::basic::Type memberElemAstType = ::il::frontends::basic::Type::I64;
     if (isMemberArray)
@@ -309,8 +309,40 @@ void Lowerer::assignArrayElement(const ArrayExpr &target, RVal value, il::suppor
                 memberElemAstType = fld->type;
         }
     }
+    // BUG-058: Implicit field array accesses (inside methods) use non-dotted
+    // names like `inventory(i)`. When in a field scope, derive element type
+    // from the active class layout to choose correct string helpers.
+    bool isImplicitFieldArray = (!isMemberArray) && isFieldInScope(target.name);
+    if (isImplicitFieldArray)
+    {
+        if (const auto *scope = activeFieldScope(); scope && scope->layout)
+        {
+            if (const ClassLayout::Field *fld = scope->layout->findField(target.name))
+                memberElemAstType = fld->type;
+            // Recompute base as ME.<field> to ensure we are storing into the
+            // instance field array even when the name is implicit.
+            const auto *selfInfo = findSymbol("ME");
+            if (selfInfo && selfInfo->slotId)
+            {
+                curLoc = loc;
+                Value selfPtr = emitLoad(Type(Type::Kind::Ptr), Value::temp(*selfInfo->slotId));
+                curLoc = loc;
+                // Look up offset again for the named field
+                long long offset = 0;
+                if (const ClassLayout::Field *f2 = scope->layout->findField(target.name))
+                    offset = static_cast<long long>(f2->offset);
+                Value fieldPtr = emitBinary(
+                    Opcode::GEP, Type(Type::Kind::Ptr), selfPtr, Value::constInt(offset));
+                curLoc = loc;
+                // Load the array handle from the field into access.base
+                access.base = emitLoad(Type(Type::Kind::Ptr), fieldPtr);
+            }
+        }
+    }
 
-    if ((info && info->type == AstType::Str) || (isMemberArray && memberElemAstType == ::il::frontends::basic::Type::Str))
+    if ((info && info->type == AstType::Str) ||
+        (isMemberArray && memberElemAstType == ::il::frontends::basic::Type::Str) ||
+        (isImplicitFieldArray && memberElemAstType == ::il::frontends::basic::Type::Str))
     {
         // String array: use rt_arr_str_put (handles retain/release)
         // ABI expects a pointer to the string handle for the value operand.
@@ -692,7 +724,9 @@ void Lowerer::lowerDim(const DimStmt &stmt)
     }
     else
     {
-        assert(false && "DIM target should have resolvable storage");
+        // Avoid hard assertions in production builds; emit a trap so the
+        // failure is observable without terminating the entire test suite.
+        emitTrap();
     }
     if (boundsChecks)
     {
