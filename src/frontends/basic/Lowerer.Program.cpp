@@ -108,6 +108,9 @@ void ProgramLowering::run(const Program &prog, il::core::Module &module)
 
     lowerer.scanOOP(prog);     // Must scan OOP first to populate classLayouts_
     lowerer.scanProgram(prog); // Then scan program (needs classLayouts_ for field assignments)
+    // Ensure procedure signature/alias table is populated before emitting OOP bodies
+    // so method calls to module-level procedures resolve correctly.
+    lowerer.collectProcedureSignatures(prog);
     lowerer.emitOopDeclsAndBodies(prog);
     // Emit program bodies (may toggle manual helpers during lowering).
     lowerer.emitProgram(prog);

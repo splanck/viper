@@ -1,0 +1,17 @@
+rt_heap_retain(0xb1346c350) => 2
+rt_heap_retain(0xb1346c350) => 3
+rt_heap_release(0xb1346c350) => 2
+rt_heap_retain(0xb1346c020) => 2
+rt_heap_retain(0xb1346c020) => 3
+rt_heap_release(0xb1346c020) => 2
+rt_heap_retain(0xb1346c050) => 2
+rt_heap_retain(0xb1346c050) => 3
+rt_heap_retain(0xb1346c350) => 3
+rt_heap_release(0xb1346c050) => 2
+rt_heap_retain(0xb1346c350) => 4
+rt_heap_retain(0xb1346c020) => 3
+rt_heap_release(0xb1346c350) => 3
+rt_heap_retain(0xb1346c020) => 4
+rt_heap_retain(0xb1346c050) => 3
+rt_heap_release(0xb1346c020) => 3
+rt_heap_retain(0xb1346c050) => 4

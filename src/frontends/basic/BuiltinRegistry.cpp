@@ -258,9 +258,22 @@ std::optional<BuiltinCallExpr::Builtin> lookupBuiltin(std::string_view name)
 {
     const auto &index = builtinNameIndex();
     auto it = index.find(name);
-    if (it == index.end())
-        return std::nullopt;
-    return it->second;
+    if (it != index.end())
+        return it->second;
+
+    // Fall back to case-insensitive lookup.
+    std::string upper;
+    upper.reserve(name.size());
+    for (unsigned char c : name)
+        upper.push_back(static_cast<char>(std::toupper(c)));
+    if (auto it2 = index.find(upper); it2 != index.end())
+        return it2->second;
+
+    // Builtin aliasing: accept CHR without suffix as CHR$.
+    if (upper == "CHR")
+        return BuiltinCallExpr::Builtin::Chr;
+
+    return std::nullopt;
 }
 
 /// @brief Access the declarative scan rule for a BASIC builtin.

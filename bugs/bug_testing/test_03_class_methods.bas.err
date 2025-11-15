@@ -1,0 +1,9 @@
+rt_heap_retain(0xc2b058710) => 2
+rt_heap_retain(0xc2b0590d0) => 2
+rt_heap_retain(0xc2b0590d0) => 3
+rt_heap_retain(0xc2b0590d0) => 4
+rt_heap_retain(0xc2b0590d0) => 5
+rt_heap_release(0xc2b0590d0) => 4
+rt_heap_retain(0xc2b004560) => 2
+rt_heap_retain(0xc2b004560) => 3
+rt_heap_release(0xc2b058140) => 0

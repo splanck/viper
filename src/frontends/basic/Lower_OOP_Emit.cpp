@@ -272,22 +272,30 @@ void Lowerer::emitClassConstructor(const ClassDecl &klass, const ConstructorDecl
     }
     allocateLocalSlots(metadata.paramNames, /*includeParams=*/false);
 
+    // Do not cache pointers into blocks vector; later addBlock() may reallocate.
     Function *func = ctx.function();
-    BasicBlock *exitBlock = &func->blocks[ctx.exitIndex()];
+    const size_t exitIdx = ctx.exitIndex();
 
     if (metadata.bodyStmts.empty())
     {
         curLoc = {};
+        func = ctx.function();
+        BasicBlock *exitBlock = &func->blocks[exitIdx];
         emitBr(exitBlock);
     }
     else
     {
         lowerStatementSequence(metadata.bodyStmts, /*stopOnTerminated=*/true);
         if (ctx.current() && !ctx.current()->terminated)
+        {
+            func = ctx.function();
+            BasicBlock *exitBlock = &func->blocks[exitIdx];
             emitBr(exitBlock);
+        }
     }
 
-    ctx.setCurrent(exitBlock);
+    func = ctx.function();
+    ctx.setCurrent(&func->blocks[exitIdx]);
     curLoc = {};
     releaseDeferredTemps();
     releaseObjectLocals(metadata.paramNames);
@@ -339,22 +347,30 @@ void Lowerer::emitClassDestructor(const ClassDecl &klass, const DestructorDecl *
     unsigned selfSlotId = materializeSelfSlot(klass.name, fn);
     allocateLocalSlots(metadata.paramNames, /*includeParams=*/false);
 
+    // Do not cache pointers into blocks vector; later addBlock() may reallocate.
     Function *func = ctx.function();
-    BasicBlock *exitBlock = &func->blocks[ctx.exitIndex()];
+    const size_t exitIdx = ctx.exitIndex();
 
     if (!metadata.bodyStmts.empty())
     {
         lowerStatementSequence(metadata.bodyStmts, /*stopOnTerminated=*/true);
         if (ctx.current() && !ctx.current()->terminated)
+        {
+            func = ctx.function();
+            BasicBlock *exitBlock = &func->blocks[exitIdx];
             emitBr(exitBlock);
+        }
     }
     else
     {
         curLoc = {};
+        func = ctx.function();
+        BasicBlock *exitBlock = &func->blocks[exitIdx];
         emitBr(exitBlock);
     }
 
-    ctx.setCurrent(exitBlock);
+    func = ctx.function();
+    ctx.setCurrent(&func->blocks[exitIdx]);
     curLoc = {};
 
     Value selfPtr = loadSelfPointer(selfSlotId);
@@ -448,22 +464,30 @@ void Lowerer::emitClassMethod(const ClassDecl &klass, const MethodDecl &method)
     }
     allocateLocalSlots(metadata.paramNames, /*includeParams=*/false);
 
+    // Do not cache pointers into blocks vector; later addBlock() may reallocate.
     Function *func = ctx.function();
-    BasicBlock *exitBlock = &func->blocks[ctx.exitIndex()];
+    const size_t exitIdx = ctx.exitIndex();
 
     if (metadata.bodyStmts.empty())
     {
         curLoc = {};
+        func = ctx.function();
+        BasicBlock *exitBlock = &func->blocks[exitIdx];
         emitBr(exitBlock);
     }
     else
     {
         lowerStatementSequence(metadata.bodyStmts, /*stopOnTerminated=*/true);
         if (ctx.current() && !ctx.current()->terminated)
+        {
+            func = ctx.function();
+            BasicBlock *exitBlock = &func->blocks[exitIdx];
             emitBr(exitBlock);
+        }
     }
 
-    ctx.setCurrent(exitBlock);
+    func = ctx.function();
+    ctx.setCurrent(&func->blocks[exitIdx]);
     curLoc = {};
     releaseObjectLocals(metadata.paramNames);
     releaseObjectParams(metadata.paramNames);

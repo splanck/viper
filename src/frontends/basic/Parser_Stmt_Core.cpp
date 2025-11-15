@@ -315,8 +315,9 @@ Parser::StmtResult Parser::parseCall(int)
         return std::nullopt;
     }
 
-    auto expr = parseArrayOrVar();
-    if (expr && is<CallExpr>(*expr))
+    // Parse full expression to allow array-element method calls like arr(i).Init(...)
+    auto expr = parseExpression(/*min_prec=*/0);
+    if (expr && (is<CallExpr>(*expr) || is<MethodCallExpr>(*expr)))
     {
         auto stmt = std::make_unique<CallStmt>();
         stmt->loc = identTok.loc;

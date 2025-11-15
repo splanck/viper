@@ -587,11 +587,22 @@ void SemanticAnalyzer::analyzeDim(DimStmt &d)
                 previous = itType->second;
             activeProcScope_->noteVarTypeMutation(d.name, previous);
         }
-        // Determine array element type from name suffix
-        if (!d.name.empty() && d.name.back() == '$')
-            varTypes_[d.name] = Type::ArrayString;
-        else
+        // Determine array element type preferring explicit AS clause over name suffix.
+        // Object arrays are tracked separately; here we only distinguish STRING vs numeric.
+        if (!d.explicitClassQname.empty())
+        {
+            // Treat object arrays as numeric for analyzer typing; element checks occur elsewhere.
             varTypes_[d.name] = Type::ArrayInt;
+        }
+        else if (d.type == ::il::frontends::basic::Type::Str ||
+                 (!d.name.empty() && d.name.back() == '$'))
+        {
+            varTypes_[d.name] = Type::ArrayString;
+        }
+        else
+        {
+            varTypes_[d.name] = Type::ArrayInt;
+        }
     }
     else
     {

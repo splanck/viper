@@ -1,0 +1,12 @@
+rt_heap_retain(0xa93054290) => 2
+rt_heap_retain(0xa93054290) => 3
+rt_heap_retain(0xa93054080) => 2
+rt_heap_retain(0xa93054080) => 3
+rt_heap_retain(0xa930540e0) => 2
+rt_heap_retain(0xa930540e0) => 3
+rt_heap_retain(0xa93054290) => 4
+rt_heap_retain(0xa93054290) => 5
+rt_heap_retain(0xa93054080) => 4
+rt_heap_retain(0xa93054080) => 5
+rt_heap_retain(0xa930540e0) => 4
+rt_heap_retain(0xa930540e0) => 5
