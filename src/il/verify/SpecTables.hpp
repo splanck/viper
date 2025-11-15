@@ -17,8 +17,8 @@
 /// @brief Table-driven opcode specification interface for the IL verifier.
 /// @details Exposes compact metadata describing operand counts, type
 ///          expectations, control-flow properties, and verification strategies
-///          derived from the shared opcode schema.  The tables are generated via
-///          src/il/verify/gen/specgen.py to ensure the verifier and interpreter
+///          derived from the shared opcode schema.  The tables are committed as
+///          generated sources to ensure the verifier and interpreter
 ///          stay in sync.
 
 #pragma once

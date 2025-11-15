@@ -6,7 +6,7 @@ cmake_minimum_required(VERSION 3.20)
 
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/TestHelpers.cmake)
 
-option(IL_ENABLE_DOCS_LINT "Run header/Doxygen docs check (scripts/check_comments.py)" OFF)
+## Docs lint disabled (no external scripting dependencies)
 
 set(VIPER_TESTS_DIR ${CMAKE_CURRENT_LIST_DIR})
 
@@ -61,22 +61,7 @@ target_include_directories(viper_test_common PUBLIC
 )
 target_link_libraries(viper_test_common PUBLIC viper_testing il_vm il_build)
 
-if (IL_ENABLE_DOCS_LINT)
-    find_package(Python3 COMPONENTS Interpreter REQUIRED)
-    execute_process(
-            COMMAND git rev-parse --is-inside-work-tree
-            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-            RESULT_VARIABLE GIT_OK
-            OUTPUT_QUIET ERROR_QUIET)
-    if (GIT_OK EQUAL 0)
-        viper_add_ctest(docs_comment_check
-                ${Python3_EXECUTABLE}
-                ${CMAKE_SOURCE_DIR}/scripts/check_comments.py)
-        set_tests_properties(docs_comment_check PROPERTIES LABELS Docs)
-    else ()
-        message(STATUS "Skipping docs_comment_check (not a Git working tree)")
-    endif ()
-endif ()
+## docs_comment_check removed to avoid Python dependency
 
 add_subdirectory(unit)
 add_subdirectory(il)

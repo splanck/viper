@@ -6,15 +6,14 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Auto-generated instruction specification tables produced by
-// `src/il/verify/gen/specgen.py`.  The data encodes verifier expectations for
+// Auto-generated instruction specification tables. The data encodes verifier expectations for
 // every opcode: operand/result arity, type categories, and custom strategy
 // hooks.  Keeping the table in generated form ensures it stays in lockstep with
 // the authoritative specification while still allowing the verifier to include
 // a richly documented source artifact.
 //
 // This file is auto-generated. Do not edit manually.
-// Use src/il/verify/gen/specgen.py to regenerate.
+// This file is maintained as a committed generated source.
 //
 //===----------------------------------------------------------------------===//
 

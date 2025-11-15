@@ -1,5 +1,5 @@
 // This file is auto-generated. Do not edit manually.
-// Use src/vm/ops/gen/opgen.py to regenerate.
+// Maintained as a committed generated include.
 
 void inline_handle_Add(ExecState &st);
 void inline_handle_Sub(ExecState &st);

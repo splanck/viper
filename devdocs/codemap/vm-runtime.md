@@ -175,7 +175,7 @@
 
   Declarative opcode schema consumed by generator scripts to produce handler tables and inline dispatch macros; documents opcode→handler mapping.
 
-- **src/vm/ops/gen/opgen.py**
+- Generated VM opcode tables (src/vm/ops/generated/*) are maintained as committed includes; no build-time generator required.
 
   Code generation script that reads the opcode schema and emits handler tables and inline switch/threaded dispatch includes under `generated/`.
 

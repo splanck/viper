@@ -1,5 +1,5 @@
 // This file is auto-generated. Do not edit manually.
-// Use src/vm/ops/gen/opgen.py to regenerate.
+// Maintained as a committed generated include.
 LBL_Add:
 {
     vm.traceInstruction(*currentInstr, state.fr);

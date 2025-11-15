@@ -2,7 +2,7 @@
 
 // Auto-generated opcode schema metadata.
 // This file is auto-generated. Do not edit manually.
-// Use src/vm/ops/gen/opgen.py to regenerate.
+// Maintained as a committed generated header.
 //===----------------------------------------------------------------------===//
 
 #pragma once
