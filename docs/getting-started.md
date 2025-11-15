@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2025-11-13
+last-verified: 2025-11-15
 ---
 
 # Getting Started with Viper
@@ -59,29 +59,74 @@ cmake --install build --prefix ./_install
 After building, confirm the primary tools work correctly:
 
 ```sh
+./build/src/tools/vbasic/vbasic --help
+./build/src/tools/ilrun/ilrun --help
 ./build/src/tools/il-verify/il-verify --help
-./build/src/tools/il-dis/il-dis --help
-./build/src/tools/ilc/ilc --help
 ```
 
 Each tool should display its help message without errors.
 
 ---
 
-## Run a Simple Example
+## Quick Start: Run Your First Program
 
-Try running a BASIC program through the complete toolchain:
+The simplest way to run a BASIC program:
 
 ```sh
-# Run a BASIC program directly on the VM
-./build/src/tools/ilc/ilc front basic -run examples/basic/ex1_hello_cond.bas
+# Run a BASIC program (new simplified syntax!)
+./build/src/tools/vbasic/vbasic examples/basic/ex1_hello_cond.bas
 
-# Or compile BASIC → IL, then run IL
-./build/src/tools/ilc/ilc front basic -emit-il examples/basic/ex1_hello_cond.bas -o hello.il
-./build/src/tools/ilc/ilc -run hello.il
+# That's it! Compare with the old way:
+# ./build/src/tools/ilc/ilc front basic -run examples/basic/ex1_hello_cond.bas
+```
+
+**Expected output:**
+```
+Hello, World!
+Condition is true
+```
+
+---
+
+## Working with IL Programs
+
+You can also inspect the generated IL or run IL programs directly:
+
+```sh
+# Show generated IL
+./build/src/tools/vbasic/vbasic examples/basic/ex1_hello_cond.bas --emit-il
+
+# Save IL to a file
+./build/src/tools/vbasic/vbasic examples/basic/ex1_hello_cond.bas -o hello.il
+
+# Run the IL program directly
+./build/src/tools/ilrun/ilrun hello.il
 ```
 
 For more examples, see the **[BASIC Tutorial](basic-language.md)** and the `examples/` directory.
+
+---
+
+## Command Reference
+
+### User-Facing Tools (Simplified CLI)
+
+| Tool | Purpose | Example |
+|------|---------|---------|
+| `vbasic` | Run/compile BASIC programs | `vbasic script.bas` |
+| `ilrun` | Execute IL programs | `ilrun program.il` |
+| `il-verify` | Verify IL correctness | `il-verify program.il` |
+| `il-dis` | Disassemble IL | `il-dis program.il` |
+
+### Advanced Tools
+
+| Tool | Purpose | Example |
+|------|---------|---------|
+| `ilc` | Unified compiler (advanced) | `ilc front basic -run script.bas` |
+| `basic-ast-dump` | Dump BASIC AST | `basic-ast-dump script.bas` |
+| `basic-lex-dump` | Dump BASIC tokens | `basic-lex-dump script.bas` |
+
+> **Note:** The old `ilc` commands still work for backwards compatibility, but the new simplified tools (`vbasic`, `ilrun`) are recommended for everyday use.
 
 ---
 

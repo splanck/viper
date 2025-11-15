@@ -42,13 +42,21 @@ ctest --test-dir build --output-on-failure
 Run a BASIC program:
 
 ```bash
-./build/src/tools/ilc/ilc front basic -run examples/basic/ex1_hello_cond.bas
+# New simplified syntax!
+./build/src/tools/vbasic/vbasic examples/basic/ex1_hello_cond.bas
+
+# Old syntax still works:
+# ./build/src/tools/ilc/ilc front basic -run examples/basic/ex1_hello_cond.bas
 ```
 
 Run an IL program:
 
 ```bash
-./build/src/tools/ilc/ilc -run examples/il/ex1_hello_cond.il
+# New simplified syntax!
+./build/src/tools/ilrun/ilrun examples/il/ex1_hello_cond.il
+
+# Old syntax still works:
+# ./build/src/tools/ilc/ilc -run examples/il/ex1_hello_cond.il
 ```
 
 Compile to native code (x86-64):
@@ -77,7 +85,9 @@ Compile to native code (x86-64):
 - **Runtime Libraries**: Portable C implementations for strings, math, file I/O, and memory management
 
 **Tooling:**
-- **`ilc`**: Unified compiler driver (compile and run BASIC or IL programs)
+- **`vbasic`**: Simplified BASIC interpreter/compiler (run or emit IL)
+- **`ilrun`**: Simplified IL program runner
+- **`ilc`**: Unified compiler driver (advanced use; compile and run BASIC or IL programs)
 - **`il-verify`**: Standalone IR verifier with detailed diagnostics
 - **`il-dis`**: IL disassembler for inspection
 - **`basic-ast-dump`**: BASIC AST visualizer
@@ -169,11 +179,17 @@ entry:
 
 ## Tools
 
-- **`ilc`** — Unified compiler driver
-  - Compile and run BASIC: `ilc front basic -run program.bas`
-  - Run IL directly: `ilc -run program.il`
-  - Compile to native: `ilc front basic program.bas -o executable`
-  - Generate assembly: `ilc front basic program.bas --emit-asm -o program.s`
+### User-Facing Tools (Simplified)
+
+- **`vbasic`** — BASIC interpreter/compiler
+  - Run program: `vbasic program.bas`
+  - Emit IL: `vbasic program.bas --emit-il`
+  - Save IL to file: `vbasic program.bas -o program.il`
+
+- **`ilrun`** — IL program runner
+  - Execute IL: `ilrun program.il`
+  - With tracing: `ilrun program.il --trace`
+  - With breakpoints: `ilrun program.il --break main:10`
 
 - **`il-verify`** — Standalone IR verifier
   - Verify IL: `il-verify program.il`
@@ -181,6 +197,16 @@ entry:
 
 - **`il-dis`** — IL disassembler
   - Disassemble IL: `il-dis program.il`
+
+### Advanced Tools
+
+- **`ilc`** — Unified compiler driver (advanced use)
+  - Compile and run BASIC: `ilc front basic -run program.bas`
+  - Run IL directly: `ilc -run program.il`
+  - Compile to native: `ilc front basic program.bas -o executable`
+  - Generate assembly: `ilc front basic program.bas --emit-asm -o program.s`
+
+> **Note:** The new simplified tools (`vbasic`, `ilrun`) are recommended for everyday use. The `ilc` command remains available for advanced workflows and backwards compatibility.
 
 ---
 
@@ -242,7 +268,7 @@ cmake --install build --prefix "$HOME/.local"
 ```
 
 **What gets installed:**
-- Binaries: `ilc`, `il-verify`, `il-dis` → `${prefix}/bin`
+- Binaries: `vbasic`, `ilrun`, `ilc`, `il-verify`, `il-dis` → `${prefix}/bin`
 - Headers: Public API headers → `${prefix}/include/viper`
 - Man pages: → `${prefix}/share/man/man1`
 
@@ -281,7 +307,7 @@ The VM supports three dispatch strategies optimized for different use cases:
 **Configure at runtime** with the `VIPER_DISPATCH` environment variable:
 
 ```bash
-VIPER_DISPATCH=threaded ./build/src/tools/ilc/ilc -run program.il
+VIPER_DISPATCH=threaded ./build/src/tools/ilrun/ilrun program.il
 ```
 
 If built with `-DVIPER_VM_THREADED=ON`, the VM defaults to `threaded` when available.

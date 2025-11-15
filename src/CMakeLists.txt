@@ -271,6 +271,40 @@ get_target_property(ILC_LINK_LIBS ilc LINK_LIBRARIES)
 message(STATUS "ilc LINK_LIBRARIES: ${ILC_LINK_LIBS}")
 install(TARGETS ilc RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
+add_executable(vbasic
+        tools/vbasic/main.cpp
+        tools/vbasic/usage.cpp
+        tools/vbasic/ilc_compat.cpp
+        tools/ilc/cmd_front_basic.cpp
+        tools/ilc/cli.cpp)
+set_target_properties(vbasic PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/vbasic)
+target_link_libraries(vbasic
+        PRIVATE
+        viper_common_opts
+        viper::il_full
+        il_vm
+        il_transform
+        fe_basic
+        il_api
+        il_tools_common)
+install(TARGETS vbasic RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+
+add_executable(ilrun
+        tools/ilrun/main.cpp
+        tools/ilrun/ilc_compat.cpp
+        tools/ilc/cmd_run_il.cpp
+        tools/ilc/cli.cpp
+        tools/ilc/break_spec.cpp)
+set_target_properties(ilrun PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/ilrun)
+target_link_libraries(ilrun
+        PRIVATE
+        viper_common_opts
+        viper::il_full
+        il_vm
+        il_api
+        il_tools_common)
+install(TARGETS ilrun RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+
 add_executable(il-verify tools/il-verify/il-verify.cpp)
 set_target_properties(il-verify PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/il-verify)
 target_link_libraries(il-verify

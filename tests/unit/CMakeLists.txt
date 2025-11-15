@@ -337,6 +337,11 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_chr_invalid PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_chr_invalid test_rt_chr_invalid)
 
+    # rt_args tests
+    viper_add_test(test_rt_args ${VIPER_TESTS_DIR}/runtime/RTArgsTests.cpp)
+    target_link_libraries(test_rt_args PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_args test_rt_args)
+
     # Sleep runtime test
     viper_add_test(test_rt_sleep ${VIPER_TESTS_DIR}/runtime/RT_SleepTests.cpp)
     target_link_libraries(test_rt_sleep PRIVATE ${VIPER_RUNTIME_TEST_LIBS})

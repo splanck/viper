@@ -335,6 +335,9 @@ struct BuiltinCallExpr : Expr
         Lof,
         Loc,
         Timer,
+        Argc,
+        ArgGet,
+        Command,
         Err
     } builtin{Builtin::Len};
 

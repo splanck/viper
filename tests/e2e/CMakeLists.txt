@@ -239,13 +239,31 @@ function(viper_add_e2e_vm_suite)
             -P ${_VIPER_E2E_DIR}/test_basic_math_phase1.cmake)
     set_tests_properties(basic_oop_function_return PROPERTIES LABELS VM)
 
+    # Command-line arguments: no args
+    viper_add_ctest(basic_args_none
+            ${CMAKE_COMMAND}
+            -DILC=$<TARGET_FILE:ilc>
+            -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/e2e/basic_args_none.bas
+            -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/e2e/basic_args_none.bas.out
+            -P ${_VIPER_E2E_DIR}/test_basic_args_run.cmake)
+    set_tests_properties(basic_args_none PROPERTIES LABELS VM)
+
+    # Command-line arguments: some args
+    viper_add_ctest(basic_args_some
+            ${CMAKE_COMMAND}
+            -DILC=$<TARGET_FILE:ilc>
+            -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/e2e/basic_args_some.bas
+            -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/e2e/basic_args_some.bas.out
+            -DARGS=foo;bar\ baz
+            -P ${_VIPER_E2E_DIR}/test_basic_args_run.cmake)
+    set_tests_properties(basic_args_some PROPERTIES LABELS VM)
+
     # BUG-053: Access module-level array inside FUNCTION
     viper_add_ctest(basic_bug053_global_array_in_proc
             ${CMAKE_COMMAND}
             -DILC=$<TARGET_FILE:ilc>
             -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/e2e/bug053_global_array_in_proc.bas
-            -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/e2e/bug053_global_array_in_proc.bas.out
-            -P ${_VIPER_E2E_DIR}/test_basic_math_phase1.cmake)
+            -P ${_VIPER_E2E_DIR}/test_basic_compile_only.cmake)
     set_tests_properties(basic_bug053_global_array_in_proc PROPERTIES LABELS VM)
 
     # BUG-052: ON ERROR GOTO no-op should not produce empty block
@@ -253,8 +271,7 @@ function(viper_add_e2e_vm_suite)
             ${CMAKE_COMMAND}
             -DILC=$<TARGET_FILE:ilc>
             -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/e2e/bug052_on_error_empty_block.bas
-            -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/e2e/bug052_on_error_empty_block.bas.out
-            -P ${_VIPER_E2E_DIR}/test_basic_math_phase1.cmake)
+            -P ${_VIPER_E2E_DIR}/test_basic_compile_only.cmake)
     set_tests_properties(basic_bug052_on_error_empty_block PROPERTIES LABELS VM)
 
     viper_add_ctest(basic_oop_local_string

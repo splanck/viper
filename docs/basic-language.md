@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-updated: 2025-11-13
+last-updated: 2025-11-15
 ---
 
 # Viper BASIC — Tutorial
@@ -161,7 +161,9 @@ Use `ANDALSO` and `ORELSE` for short-circuit evaluation:
 
 ### Subroutines (SUB)
 
-Subroutines are called as statements. **Parentheses are required** even for zero arguments:
+Subroutines are called as statements. Parentheses are recommended and required when passing
+arguments. For zero-argument SUBs, the parser also accepts the legacy form without
+parentheses in statement position.
 
 ```basic
 10 SUB GREET(NAME$)
@@ -169,6 +171,7 @@ Subroutines are called as statements. **Parentheses are required** even for zero
 30 END SUB
 
 40 GREET("Ada")          ' Statement call with parentheses
+50 GREET                 ' Legacy: zero-arg call without parentheses (statement form)
 ```
 
 ### Functions (FUNCTION)
@@ -221,6 +224,10 @@ Viper BASIC supports lightweight object-oriented programming with classes, metho
 - `ME` refers to the current instance (like `this` in C++ or `self` in Python)
 - `NEW` is a special constructor method
 - `DELETE` frees the object (calls `DESTRUCTOR` if defined)
+
+Common mistakes and tips:
+- Missing parentheses when passing arguments will be rejected with a clear diagnostic.
+- For readability and consistency, prefer parentheses even for zero-argument calls.
 
 ### Destructors
 

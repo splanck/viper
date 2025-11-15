@@ -13,7 +13,9 @@ Complete language reference for Viper BASIC. This document describes **statement
 ## Key Language Features
 
 - **Assignment**: Requires `LET` keyword (e.g., `LET X = 2`)
-- **Function calls**: No `CALL` keyword; use `Name(args)` with parentheses
+- **Function calls**: Use `Name(args)` with parentheses (required in expressions). For statement-form
+  SUB calls, parentheses are required when passing arguments; the legacy paren-less form for zero-arg
+  SUBs is accepted in statement position. The optional `CALL` keyword may be used for readability.
 - **Built-ins**: Must be called with parentheses, even with zero arguments (`RND()`, `INKEY$()`)
 - **Arrays**: One-dimensional, zero-based; require `DIM` or `REDIM`
 - **Short-circuit operators**: `ANDALSO` and `ORELSE` (vs. `AND` and `OR`)

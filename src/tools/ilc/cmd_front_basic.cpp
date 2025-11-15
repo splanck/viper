@@ -36,6 +36,7 @@
 #include <optional>
 #include <sstream>
 #include <string>
+#include "viper/runtime/rt.h"
 
 using namespace il;
 using namespace il::frontends::basic;
@@ -51,6 +52,7 @@ struct FrontBasicConfig
     std::string sourcePath;
     ilc::SharedCliOptions shared;
     std::optional<uint32_t> sourceFileId{};
+    std::vector<std::string> programArgs; ///< Arguments to pass to BASIC program after '--'.
 };
 
 struct LoadedSource
@@ -109,6 +111,13 @@ il::support::Expected<FrontBasicConfig> parseFrontBasicArgs(int argc, char **arg
             }
             config.run = true;
             config.sourcePath = argv[++i];
+        }
+        else if (arg == "--")
+        {
+            // Remaining tokens are program arguments
+            for (int j = i + 1; j < argc; ++j)
+                config.programArgs.emplace_back(argv[j]);
+            break;
         }
         else
         {
@@ -261,6 +270,20 @@ int runFrontBasic(const FrontBasicConfig &config,
     vm::RunConfig runCfg;
     runCfg.trace = traceCfg;
     runCfg.maxSteps = config.shared.maxSteps;
+
+    // Seed runtime argument store when running
+    if (config.run && !config.programArgs.empty())
+    {
+        // Call into the runtime C API to pre-populate arguments
+        // Available through the umbrella runtime header.
+        rt_args_clear();
+        for (const auto &s : config.programArgs)
+        {
+            rt_string tmp = rt_string_from_bytes(s.data(), s.size());
+            rt_args_push(tmp);
+            rt_string_unref(tmp);
+        }
+    }
 
     vm::Runner runner(module, std::move(runCfg));
     int rc = static_cast<int>(runner.run());

@@ -622,7 +622,7 @@ struct DescriptorRow
     RuntimeTrapClass trapClass;
 };
 
-constexpr std::array<DescriptorRow, 121> kDescriptorRows{{
+constexpr std::array<DescriptorRow, 124> kDescriptorRows{{
     DescriptorRow{"rt_abort",
                   std::nullopt,
                   "void(ptr)",
@@ -717,6 +717,31 @@ constexpr std::array<DescriptorRow, 121> kDescriptorRows{{
                   "i64()",
                   &DirectHandler<&rt_timer_ms, int64_t>::invoke,
                   kManualLowering,
+                  nullptr,
+                  0,
+                  RuntimeTrapClass::None},
+    // --- Argument store helpers ---
+    DescriptorRow{"rt_args_count",
+                  std::nullopt,
+                  "i64()",
+                  &DirectHandler<&rt_args_count, int64_t>::invoke,
+                  featureLowering(RuntimeFeature::ArgsCount),
+                  nullptr,
+                  0,
+                  RuntimeTrapClass::None},
+    DescriptorRow{"rt_args_get",
+                  std::nullopt,
+                  "string(i64)",
+                  &DirectHandler<&rt_args_get, rt_string, int64_t>::invoke,
+                  featureLowering(RuntimeFeature::ArgsGet),
+                  nullptr,
+                  0,
+                  RuntimeTrapClass::None},
+    DescriptorRow{"rt_cmdline",
+                  std::nullopt,
+                  "string()",
+                  &DirectHandler<&rt_cmdline, rt_string>::invoke,
+                  featureLowering(RuntimeFeature::Cmdline),
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
