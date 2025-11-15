@@ -26,7 +26,7 @@
 
 **Boolean Type System Changes**: Modified `isBooleanType()` to only accept `Type::Bool` (not `Type::Int`) for logical operators (AND/ANDALSO/OR/ORELSE). This makes the type system stricter and fixes some test cases.
 
-**Bug Statistics**: 43 resolved, 0 outstanding, 0 partially resolved (43 total documented)
+**Bug Statistics**: 43 resolved, 8 outstanding, 0 partially resolved (51 total documented)
 
 **Recent Investigation (2025-11-14)**:
 - ✅ **BUG-012 NOW RESOLVED**: BOOLEAN variables can now be compared with TRUE/FALSE constants and with each other; STR$(boolean) now works
@@ -45,6 +45,21 @@
 - ✅ **BUG-037 NOW RESOLVED**: SUB methods on class instances can now be called (parser heuristic fix)
 - ✅ **BUG-039 NOW RESOLVED**: Method call results can now be assigned to variables (OOP expression lowering fix)
 - ✅ **BUG-040 NOW RESOLVED**: Functions can now return custom class types (symbol resolution and return statement fix)
+
+**Stress Testing (2025-11-15)**:
+Conducted comprehensive OOP stress testing by building text-based adventure games. Created 26 test files (1501 lines of code) exercising classes, arrays, strings, math, loops, and file inclusion. See `/bugs/bug_testing/STRESS_TEST_SUMMARY.md` for full report.
+
+**New Bugs Discovered During Stress Testing (2025-11-15)**:
+- ❌ **BUG-044**: CHR() function not implemented (cannot generate ANSI codes)
+- ❌ **BUG-045**: STRING arrays broken (contradicts BUG-032/033 resolution)
+- ❌ **BUG-046**: Cannot call methods on array elements (e.g., `array(i).Method()`)
+- ❌ **BUG-047 CRITICAL**: IF/THEN inside class methods causes crash
+- ❌ **BUG-048 CRITICAL**: Cannot call module-level SUB/FUNCTION from class methods
+- ❌ **BUG-049**: RND() signature incompatible (takes no arguments)
+- ❌ **BUG-050**: SELECT CASE with multiple values causes IL error
+- ❌ **BUG-051**: DO UNTIL loop causes IL error
+
+**Priority**: BUG-047 and BUG-048 are CRITICAL blockers for usable OOP development.
 
 ---
 
@@ -649,5 +664,304 @@ PRINT names$(1)  ' Outputs: Bob
 ```
 
 **Resolution**: String arrays work correctly. BUG-032/033 resolution was complete.
+
+---
+
+## NEW BUGS FOUND DURING STRESS TESTING (2025-11-15)
+
+### BUG-044: CHR() function not implemented
+**Status**: ❌ OUTSTANDING
+**Discovered**: 2025-11-15 during text adventure stress testing
+**Test Case**: /Users/stephen/git/viper/bugs/bug_testing/test_04_ansi_color.bas
+
+**Description**:
+The `CHR()` function, which converts an ASCII/character code to a string character, is not implemented in Viper BASIC. This is a standard BASIC function needed for generating special characters like ANSI escape sequences.
+
+**Example that fails**:
+```basic
+DIM ESC AS STRING
+ESC = CHR(27)  ' Try to create ESC character
+PRINT ESC + "[31mRed text[0m"
+```
+
+**Error**:
+```
+error[B1006]: unknown procedure 'chr' (tried: chr)
+ESC = CHR(27)
+      ^^^
+```
+
+**Impact**: Cannot generate ANSI escape codes, control characters, or arbitrary characters from numeric codes. Limits ability to do colored terminal output, cursor positioning, etc.
+
+**Workaround**: None for runtime character generation. Can only use literal characters in source code.
+
+**Related Missing Functions**: Likely ASC() (char to code) is also missing.
+
+---
+
+### BUG-045: STRING arrays not working (contradicts BUG-032/033/043 resolution)
+**Status**: ❌ OUTSTANDING
+**Discovered**: 2025-11-15 during stress testing
+**Test Case**: /Users/stephen/git/viper/bugs/bug_testing/test_06_arrays.bas
+
+**Description**:
+Despite BUG-032/033/043 being marked as resolved, STRING arrays do not work. Attempting to create an array with `AS STRING` type causes type mismatch errors.
+
+**Example that fails**:
+```basic
+DIM items(5) AS STRING
+items(0) = "Sword"
+items(1) = "Shield"
+```
+
+**Error**:
+```
+error[B2001]: array element type mismatch: expected INT, got STRING
+items(0) = "Sword"
+^
+```
+
+**Observations**:
+- INTEGER arrays work fine
+- Object arrays work fine
+- Only STRING arrays fail
+- Error message suggests array is defaulting to INT type regardless of `AS STRING` declaration
+
+**Impact**: Cannot create arrays of strings, which is a fundamental data structure for text-based applications.
+
+**Workaround**: Use arrays of objects that contain string fields.
+
+**Note**: This contradicts the resolution status of BUG-032/033/043. Those bugs may have been tested with `DIM names$(5)` syntax (string type suffix) rather than `DIM names(5) AS STRING` syntax.
+
+---
+
+### BUG-046: Cannot call methods on array elements
+**Status**: ❌ OUTSTANDING
+**Discovered**: 2025-11-15 during stress testing
+**Test Case**: /Users/stephen/git/viper/bugs/bug_testing/test_07_object_arrays.bas
+
+**Description**:
+Cannot call methods on objects accessed via array indexing. Expression like `array(i).Method()` causes parser error.
+
+**Example that fails**:
+```basic
+CLASS Item
+    DIM name AS STRING
+    SUB Init(n AS STRING)
+        name = n
+    END SUB
+END CLASS
+
+DIM inventory(3) AS Item
+inventory(0) = NEW Item()
+inventory(0).Init("Sword")  ' FAILS
+```
+
+**Error**:
+```
+error[B0001]: expected procedure call after identifier 'INVENTORY'
+inventory(0).Init("Sword")
+^^^^^^^^^
+```
+
+**Workaround**: Use a temporary variable:
+```basic
+DIM temp AS Item
+temp = inventory(0)
+temp.Init("Sword")
+inventory(0) = temp
+```
+
+**Impact**: Makes OOP code with collections very verbose and awkward. Cannot use natural `collection(i).method()` syntax.
+
+---
+
+### BUG-047: IF/THEN/END IF inside class methods causes crash
+**Status**: ❌ CRITICAL - COMPILER CRASH
+**Discovered**: 2025-11-15 during stress testing
+**Test Cases**:
+- /Users/stephen/git/viper/bugs/bug_testing/test_08_room_class.bas (empty block error)
+- /Users/stephen/git/viper/bugs/bug_testing/test_09_if_in_sub.bas (std::length_error)
+- /Users/stephen/git/viper/bugs/bug_testing/test_09_if_single_line.bas (segfault)
+
+**Description**:
+Using IF/THEN/END IF (or single-line IF/THEN) inside class methods causes compiler crashes or errors. IF statements work fine at module level but fail inside SUB/FUNCTION methods of classes.
+
+**Example that crashes**:
+```basic
+CLASS Test
+    DIM value AS INTEGER
+
+    SUB CheckValue()
+        IF value = 0 THEN
+            PRINT "Value is zero"
+        END IF
+    END SUB
+END CLASS
+```
+
+**Errors observed**:
+1. "empty block" error (test_08)
+2. `libc++abi: terminating due to uncaught exception of type std::length_error: vector` (test_09)
+3. Segmentation fault (test_09 single-line)
+
+**Verified working**: IF/THEN/END IF works perfectly at module level (outside classes)
+
+**Example that works**:
+```basic
+DIM x AS INTEGER
+x = 5
+IF x = 5 THEN
+    PRINT "X is 5"
+END IF
+```
+
+**Impact**: CRITICAL - Cannot use conditional logic inside class methods, which severely limits OOP functionality. This is a blocker for any non-trivial class-based code.
+
+**Workaround**: None effective. Could potentially move logic outside class, but defeats purpose of OOP.
+
+**Note**: This appears to be a code generation or IL lowering bug specific to the class method context.
+
+---
+
+### BUG-048: Cannot call module-level SUB/FUNCTION from within class methods
+**Status**: ❌ OUTSTANDING
+**Discovered**: 2025-11-15 during stress testing
+**Test Case**: /Users/stephen/git/viper/bugs/bug_testing/adventure_game.bas
+
+**Description**:
+Class methods cannot call module-level (global) SUB or FUNCTION procedures. Attempting to do so results in "unknown callee" error during IL generation.
+
+**Example that fails**:
+```basic
+SUB PrintHeader(title AS STRING)
+    PRINT "=== "; title; " ==="
+END SUB
+
+CLASS Room
+    DIM name AS STRING
+
+    SUB Describe()
+        PrintHeader(name)  ' FAILS - cannot call module-level SUB
+        PRINT "Room description here"
+    END SUB
+END CLASS
+```
+
+**Error**:
+```
+error: ROOM.DESCRIBE:entry_ROOM.DESCRIBE: call %t6: unknown callee @printheader
+```
+
+**Workaround**: Move all logic to module level and avoid calling module SUBs from within class methods. Can only call other methods of the same class.
+
+**Impact**: CRITICAL - Severely limits code organization and reusability. Cannot create utility functions that are shared between classes and module code. Makes OOP very awkward.
+
+**Related**: This may be related to namespace/scope resolution in the IL lowering phase.
+
+---
+
+### BUG-049: RND() function signature incompatible with standard BASIC
+**Status**: ⚠️ MINOR
+**Discovered**: 2025-11-15 during stress testing
+**Test Case**: /Users/stephen/git/viper/bugs/bug_testing/test_15_math.bas
+
+**Description**:
+The `RND()` function in Viper BASIC does not accept an argument, whereas standard BASIC implementations typically accept `RND(n)` where the argument controls random number generation behavior (e.g., reseed, return last value, etc.).
+
+**Example**:
+```basic
+' Standard BASIC
+x = RND(1)    ' FAILS in Viper BASIC
+
+' Viper BASIC
+x = RND()     ' Works - no argument
+```
+
+**Error**:
+```
+error[B0001]: expected ), got number
+result = RND(1)
+             ^
+```
+
+**Impact**: Minor - Can still generate random numbers, but cannot control RNG seeding or behavior.
+
+**Workaround**: Use `RND()` without arguments.
+
+---
+
+### BUG-050: SELECT CASE with multiple values (CASE 1, 2, 3) causes IL generation error
+**Status**: ❌ OUTSTANDING
+**Discovered**: 2025-11-15 during stress testing
+**Test Case**: /Users/stephen/git/viper/bugs/bug_testing/comprehensive_test.bas
+
+**Description**:
+Using multiple comma-separated values in a single CASE statement causes an IL generation error with "expected 2 branch argument bundles, or none".
+
+**Example that fails**:
+```basic
+SELECT CASE value
+    CASE 1
+        PRINT "One"
+    CASE 4, 5        ' FAILS - multiple values
+        PRINT "Four or Five"
+END SELECT
+```
+
+**Error**:
+```
+error: main:do_head1: cbr %t363 label UL999999903 label do_body1: expected 2 branch argument bundles, or none
+```
+
+**Workaround**: Use separate CASE statements for each value:
+```basic
+SELECT CASE value
+    CASE 4
+        PRINT "Four"
+    CASE 5
+        PRINT "Five"
+END SELECT
+```
+
+**Impact**: Moderate - Can work around by duplicating code in separate CASE statements, but makes SELECT CASE less concise.
+
+---
+
+### BUG-051: DO UNTIL loop causes IL generation error
+**Status**: ❌ OUTSTANDING
+**Discovered**: 2025-11-15 during stress testing
+**Test Case**: /Users/stephen/git/viper/bugs/bug_testing/comprehensive_test.bas
+
+**Description**:
+The `DO UNTIL` loop construct causes an IL generation error. Other DO loop variants (DO WHILE, DO...LOOP WHILE) work correctly.
+
+**Example that fails**:
+```basic
+DIM i AS INTEGER
+i = 0
+DO UNTIL i > 3
+    PRINT i
+    i = i + 1
+LOOP
+```
+
+**Error**:
+```
+error: main:do_head1: cbr %t363 label UL999999903 label do_body1: expected 2 branch argument bundles, or none
+```
+
+**Workaround**: Use `DO WHILE NOT (condition)` or `WHILE` loop instead:
+```basic
+' Instead of: DO UNTIL i > 3
+DO WHILE NOT (i > 3)
+    PRINT i
+    i = i + 1
+LOOP
+```
+
+**Impact**: Moderate - Other loop constructs work fine, but DO UNTIL is a common pattern in BASIC.
+
+**Note**: This appears to be the same IL generation error as BUG-050, possibly related to conditional branch handling.
 
 ---
