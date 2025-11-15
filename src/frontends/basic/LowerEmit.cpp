@@ -184,6 +184,21 @@ void Lowerer::emitMainBodyAndEpilogue(ProgramEmitContext &state)
         // requires every basic block to end with a terminator.
         if (ctx.current() && !ctx.current()->terminated)
             emitBr(&state.function->blocks[ctx.exitIndex()]);
+
+        // BUG-052 guard: Some preallocated per-line blocks may remain unused
+        // (no instructions emitted). Fill truly empty blocks with an explicit
+        // branch to the exit block so the verifier does not report "empty block".
+        for (std::size_t i = 0; i < state.function->blocks.size(); ++i)
+        {
+            if (i == 0 || i == static_cast<std::size_t>(ctx.exitIndex()))
+                continue; // skip entry and exit
+            auto &bb = state.function->blocks[i];
+            if (bb.instructions.empty())
+            {
+                ctx.setCurrent(&bb);
+                emitBr(&state.function->blocks[ctx.exitIndex()]);
+            }
+        }
     }
 
     ctx.setCurrent(&state.function->blocks[ctx.exitIndex()]);

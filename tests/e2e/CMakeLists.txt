@@ -239,6 +239,24 @@ function(viper_add_e2e_vm_suite)
             -P ${_VIPER_E2E_DIR}/test_basic_math_phase1.cmake)
     set_tests_properties(basic_oop_function_return PROPERTIES LABELS VM)
 
+    # BUG-053: Access module-level array inside FUNCTION
+    viper_add_ctest(basic_bug053_global_array_in_proc
+            ${CMAKE_COMMAND}
+            -DILC=$<TARGET_FILE:ilc>
+            -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/e2e/bug053_global_array_in_proc.bas
+            -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/e2e/bug053_global_array_in_proc.bas.out
+            -P ${_VIPER_E2E_DIR}/test_basic_math_phase1.cmake)
+    set_tests_properties(basic_bug053_global_array_in_proc PROPERTIES LABELS VM)
+
+    # BUG-052: ON ERROR GOTO no-op should not produce empty block
+    viper_add_ctest(basic_bug052_on_error_empty_block
+            ${CMAKE_COMMAND}
+            -DILC=$<TARGET_FILE:ilc>
+            -DBAS_FILE=${CMAKE_SOURCE_DIR}/tests/e2e/bug052_on_error_empty_block.bas
+            -DGOLDEN=${CMAKE_SOURCE_DIR}/tests/e2e/bug052_on_error_empty_block.bas.out
+            -P ${_VIPER_E2E_DIR}/test_basic_math_phase1.cmake)
+    set_tests_properties(basic_bug052_on_error_empty_block PROPERTIES LABELS VM)
+
     viper_add_ctest(basic_oop_local_string
             ${CMAKE_COMMAND}
             -DILC=$<TARGET_FILE:ilc>

@@ -989,6 +989,26 @@ void ProcedureLowering::emitProcedureIL(LoweringContext &ctx)
 
     lowerer.lowerStatementSequence(ctx.bodyStmts, /*stopOnTerminated=*/true);
 
+    // BUG-052 guard for procedures: ensure no preallocated line blocks remain
+    // completely empty. Insert an explicit branch to the procedure's exit block
+    // so the verifier does not flag "empty block".
+    if (ctx.function)
+    {
+        auto &f = *ctx.function;
+        int exitIdx = procCtx.exitIndex();
+        for (std::size_t i = 0; i < f.blocks.size(); ++i)
+        {
+            if (i == 0 || i == static_cast<std::size_t>(exitIdx))
+                continue; // skip entry and exit
+            auto &bb = f.blocks[i];
+            if (bb.instructions.empty())
+            {
+                procCtx.setCurrent(&bb);
+                lowerer.emitBr(&f.blocks[exitIdx]);
+            }
+        }
+    }
+
     procCtx.setCurrent(&ctx.function->blocks[procCtx.exitIndex()]);
     lowerer.curLoc = {};
     lowerer.releaseDeferredTemps();

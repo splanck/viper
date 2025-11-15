@@ -94,8 +94,13 @@ Lowerer::IlValue Lowerer::emitBoolFromBranches(const std::function<void(Value)> 
 /// @return Metadata describing the computed address and optional result slot.
 Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAccessKind kind)
 {
+    // Resolve storage for the target symbol instead of assuming a local slot.
+    // This supports module-level globals referenced inside procedures (BUG-053),
+    // where globals are routed through runtime-backed storage and do not have
+    // a materialised local stack slot.
     const auto *info = findSymbol(expr.name);
-    assert(info && info->slotId);
+    auto storage = resolveVariableStorage(expr.name, expr.loc);
+    assert(storage && "array access requires resolvable storage");
 
     // Require appropriate runtime functions based on array element type
     if (info->type == AstType::Str)
@@ -128,8 +133,9 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
     requireArrayOobPanic();
 
     ProcedureContext &ctx = context();
-    Value slot = Value::temp(*info->slotId);
-    Value base = emitLoad(Type(Type::Kind::Ptr), slot);
+    // storage->pointer is the address of the variable's storage (local slot or
+    // runtime-backed module variable). Load the array handle pointer from it.
+    Value base = emitLoad(Type(Type::Kind::Ptr), storage->pointer);
 
     // Collect all index expressions (backward compat: check 'index' first, then 'indices')
     std::vector<const ExprPtr *> indexExprs;
