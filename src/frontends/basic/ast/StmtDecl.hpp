@@ -221,6 +221,10 @@ struct ClassDecl : Stmt
         Type type{Type::I64};
         /// Access specifier (PUBLIC/PRIVATE); defaults to PUBLIC.
         Access access{Access::Public};
+        /// Whether this field is an array (BUG-056 fix).
+        bool isArray{false};
+        /// Array dimension extents if isArray is true (BUG-056 fix).
+        std::vector<long long> arrayExtents;
     };
 
     /// Ordered fields declared on the class.

@@ -291,7 +291,26 @@ void Lowerer::assignArrayElement(const ArrayExpr &target, RVal value, il::suppor
 
     // Determine array element type and use appropriate runtime function
     const auto *info = findSymbol(target.name);
-    if (info && info->type == AstType::Str)
+    // BUG-056: If assigning to an array field (dotted name), derive element type from the
+    // owning class layout rather than symbol table.
+    bool isMemberArray = target.name.find('.') != std::string::npos;
+    ::il::frontends::basic::Type memberElemAstType = ::il::frontends::basic::Type::I64;
+    if (isMemberArray)
+    {
+        const std::string &full = target.name;
+        std::size_t dot = full.find('.');
+        std::string baseName = full.substr(0, dot);
+        std::string fieldName = full.substr(dot + 1);
+        std::string klass = getSlotType(baseName).objectClass;
+        auto it = classLayouts_.find(klass);
+        if (it != classLayouts_.end())
+        {
+            if (const ClassLayout::Field *fld = it->second.findField(fieldName))
+                memberElemAstType = fld->type;
+        }
+    }
+
+    if ((info && info->type == AstType::Str) || (isMemberArray && memberElemAstType == ::il::frontends::basic::Type::Str))
     {
         // String array: use rt_arr_str_put (handles retain/release)
         // ABI expects a pointer to the string handle for the value operand.
@@ -300,7 +319,7 @@ void Lowerer::assignArrayElement(const ArrayExpr &target, RVal value, il::suppor
         emitStore(Type(Type::Kind::Str), tmp, value.value);
         emitCall("rt_arr_str_put", {access.base, access.index, tmp});
     }
-    else if (info && info->isObject)
+    else if (!isMemberArray && info && info->isObject)
     {
         // Object array: rt_arr_obj_put(arr, idx, ptr)
         requireArrayObjPut();
@@ -358,6 +377,114 @@ void Lowerer::lowerLet(const LetStmt &stmt)
         {
             assignScalarSlot(slotInfo, storage->pointer, std::move(value), stmt.loc);
         }
+    }
+    else if (auto *mc = as<const MethodCallExpr>(*stmt.target))
+    {
+        // BUG-056: Support obj.arrayField(index) = value
+        // Only handle simple base forms we can resolve (VarExpr or ME).
+        if (mc->base)
+        {
+            std::string baseName;
+            if (auto *v = as<const VarExpr>(*mc->base))
+                baseName = v->name;
+            else if (is<MeExpr>(*mc->base))
+                baseName = "ME";
+            if (!baseName.empty())
+            {
+                // Compute array handle from object field
+                const auto *baseSym = findSymbol(baseName);
+                if (baseSym && baseSym->slotId)
+                {
+                    curLoc = stmt.loc;
+                    Value selfPtr = emitLoad(Type(Type::Kind::Ptr), Value::temp(*baseSym->slotId));
+                    std::string klass = getSlotType(baseName).objectClass;
+                    auto it = classLayouts_.find(klass);
+                    if (it != classLayouts_.end())
+                    {
+                        if (const ClassLayout::Field *fld = it->second.findField(mc->method))
+                        {
+                            curLoc = stmt.loc;
+                            Value fieldPtr = emitBinary(Opcode::GEP,
+                                                        Type(Type::Kind::Ptr),
+                                                        selfPtr,
+                                                        Value::constInt(static_cast<long long>(fld->offset)));
+                            Value arrHandle = emitLoad(Type(Type::Kind::Ptr), fieldPtr);
+
+                            // Lower indices (single dimension support for now)
+                            std::vector<Value> indices;
+                            indices.reserve(mc->args.size());
+                            for (const auto &arg : mc->args)
+                            {
+                                RVal idx = lowerExpr(*arg);
+                                idx = coerceToI64(std::move(idx), stmt.loc);
+                                indices.push_back(idx.value);
+                            }
+                            Value index = indices.empty() ? Value::constInt(0) : indices[0];
+
+                            // Bounds check
+                            Value len;
+                            if (fld->type == ::il::frontends::basic::Type::Str)
+                            {
+                                requireArrayStrLen();
+                                len = emitCallRet(Type(Type::Kind::I64), "rt_arr_str_len", {arrHandle});
+                            }
+                            else
+                            {
+                                requireArrayI32Len();
+                                len = emitCallRet(Type(Type::Kind::I64), "rt_arr_i32_len", {arrHandle});
+                            }
+                            Value isNeg = emitBinary(Opcode::SCmpLT, ilBoolTy(), index, Value::constInt(0));
+                            Value tooHigh = emitBinary(Opcode::SCmpGE, ilBoolTy(), index, len);
+                            auto emitc = emitCommon(stmt.loc);
+                            Value isNeg64 = emitc.widen_to(isNeg, 1, 64, Signedness::Unsigned);
+                            Value tooHigh64 = emitc.widen_to(tooHigh, 1, 64, Signedness::Unsigned);
+                            Value oobInt = emitc.logical_or(isNeg64, tooHigh64);
+                            Value oobCond = emitBinary(Opcode::ICmpNe, ilBoolTy(), oobInt, Value::constInt(0));
+
+                            ProcedureContext &ctx = context();
+                            Function *func = ctx.function();
+                            size_t curIdx = static_cast<size_t>(ctx.current() - &func->blocks[0]);
+                            unsigned bcId = ctx.consumeBoundsCheckId();
+                            BlockNamer *blockNamer = ctx.blockNames().namer();
+                            size_t okIdx = func->blocks.size();
+                            std::string okLbl = blockNamer ? blockNamer->tag("bc_ok" + std::to_string(bcId))
+                                                           : mangler.block("bc_ok" + std::to_string(bcId));
+                            builder->addBlock(*func, okLbl);
+                            size_t oobIdx = func->blocks.size();
+                            std::string oobLbl = blockNamer ? blockNamer->tag("bc_oob" + std::to_string(bcId))
+                                                            : mangler.block("bc_oob" + std::to_string(bcId));
+                            builder->addBlock(*func, oobLbl);
+                            BasicBlock *ok = &func->blocks[okIdx];
+                            BasicBlock *oob = &func->blocks[oobIdx];
+                            ctx.setCurrent(&func->blocks[curIdx]);
+                            emitCBr(oobCond, oob, ok);
+                            ctx.setCurrent(oob);
+                            requireArrayOobPanic();
+                            emitCall("rt_arr_oob_panic", {index, len});
+                            emitTrap();
+                            ctx.setCurrent(ok);
+
+                            // Perform the store
+                            if (fld->type == ::il::frontends::basic::Type::Str)
+                            {
+                                requireArrayStrPut();
+                                Value tmp = emitAlloca(8);
+                                emitStore(Type(Type::Kind::Str), tmp, value.value);
+                                emitCall("rt_arr_str_put", {arrHandle, index, tmp});
+                            }
+                            else
+                            {
+                                requireArrayI32Set();
+                                RVal coerced = ensureI64(std::move(value), stmt.loc);
+                                emitCall("rt_arr_i32_set", {arrHandle, index, coerced.value});
+                            }
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+        // Fallback: not a supported lvalue form; do nothing here (analyzer should have errored).
     }
     else if (auto *arr = as<const ArrayExpr>(*stmt.target))
     {

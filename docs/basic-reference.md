@@ -46,7 +46,7 @@ Comment. A leading apostrophe starts a comment.
 
 ### CLASS / NEW / DELETE
 
-Defines classes; construct with NEW, optionally free with DELETE.
+Defines classes with scalar or array fields; construct with NEW, optionally free with DELETE. Array fields may be declared with dimensions and accessed using `obj.field(index)`.
 
 ```basic
 10 CLASS Counter
@@ -65,6 +65,23 @@ Defines classes; construct with NEW, optionally free with DELETE.
 130 PRINT c.X
 140 DELETE c
 ```
+
+Array fields:
+
+```basic
+10 CLASS Buffer
+20   DIM data(8) AS INTEGER
+30 END CLASS
+
+40 DIM b AS Buffer
+50 LET b = NEW Buffer()      ' data() allocated length 8 by constructor
+60 LET b.data(0) = 42
+70 PRINT b.data(0)
+```
+
+Notes:
+- When an array field includes dimensions in the class definition, the constructor allocates the array to the specified length.
+- String array fields are supported; element loads/stores retain/release strings automatically.
 
 ### BEEP
 

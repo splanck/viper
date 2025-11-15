@@ -222,23 +222,32 @@ void SemanticAnalyzer::analyzeVarAssignment(VarExpr &v, const LetStmt &l)
 /// @param l LET statement describing the overall assignment.
 void SemanticAnalyzer::analyzeArrayAssignment(ArrayExpr &a, const LetStmt &l)
 {
-    resolveAndTrackSymbol(a.name, SymbolKind::Reference);
-    if (!arrays_.count(a.name))
+    // BUG-056 fix: Check if this is an array field access (e.g., "B.CELLS")
+    // If the name contains a dot, it's accessing an array field on an object
+    bool isArrayField = a.name.find('.') != std::string::npos;
+
+    if (!isArrayField)
     {
-        de.emit(diag::BasicDiag::UnknownArray,
-                a.loc,
-                static_cast<uint32_t>(a.name.size()),
-                std::initializer_list<diag::Replacement>{diag::Replacement{"name", a.name}});
+        resolveAndTrackSymbol(a.name, SymbolKind::Reference);
+        if (!arrays_.count(a.name))
+        {
+            de.emit(diag::BasicDiag::UnknownArray,
+                    a.loc,
+                    static_cast<uint32_t>(a.name.size()),
+                    std::initializer_list<diag::Replacement>{diag::Replacement{"name", a.name}});
+        }
+        if (auto itType = varTypes_.find(a.name); itType != varTypes_.end() &&
+                                                  itType->second != Type::ArrayInt &&
+                                                  itType->second != Type::ArrayString)
+        {
+            de.emit(diag::BasicDiag::NotAnArray,
+                    a.loc,
+                    static_cast<uint32_t>(a.name.size()),
+                    std::initializer_list<diag::Replacement>{diag::Replacement{"name", a.name}});
+        }
     }
-    if (auto itType = varTypes_.find(a.name); itType != varTypes_.end() &&
-                                              itType->second != Type::ArrayInt &&
-                                              itType->second != Type::ArrayString)
-    {
-        de.emit(diag::BasicDiag::NotAnArray,
-                a.loc,
-                static_cast<uint32_t>(a.name.size()),
-                std::initializer_list<diag::Replacement>{diag::Replacement{"name", a.name}});
-    }
+    // For array fields, validation happens during lowering when field types are known
+
     // Validate each index expression (supports multi-dimensional arrays)
     // For backward compatibility: use 'index' for single-dim, 'indices' for multi-dim
     if (a.index)
@@ -390,6 +399,42 @@ void SemanticAnalyzer::analyzeLet(LetStmt &l)
     else if (auto *a = as<ArrayExpr>(*l.target))
     {
         analyzeArrayAssignment(*a, l);
+    }
+    else if (auto *mc = as<MethodCallExpr>(*l.target))
+    {
+        // BUG-056: Treat method-like syntax on LHS (obj.field(...)) as array-field assignment.
+        // Perform basic index type validation and RHS checks similar to arrays.
+        if (mc->base)
+            visitExpr(*mc->base);
+        // Validate indices: all args must be INT (allow float literals with narrowing warning)
+        for (auto &arg : mc->args)
+        {
+            if (!arg)
+                continue;
+            Type ty = visitExpr(*arg);
+            if (ty == Type::Float)
+            {
+                if (auto *fl = as<FloatExpr>(*arg))
+                {
+                    insertImplicitCast(*arg, Type::Int);
+                    std::string msg = "narrowing conversion from FLOAT to INT in array index";
+                    de.emit(il::support::Severity::Warning, "B2002", mc->loc, 1, std::move(msg));
+                }
+                else
+                {
+                    std::string msg = "index type mismatch";
+                    de.emit(il::support::Severity::Error, "B2001", mc->loc, 1, std::move(msg));
+                }
+            }
+            else if (ty != Type::Unknown && ty != Type::Int)
+            {
+                std::string msg = "index type mismatch";
+                de.emit(il::support::Severity::Error, "B2001", mc->loc, 1, std::move(msg));
+            }
+        }
+        // Analyze RHS to surface type errors; element type will be validated during lowering
+        if (l.expr)
+            visitExpr(*l.expr);
     }
     else if (auto *m = as<MemberAccessExpr>(*l.target))
     {

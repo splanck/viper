@@ -140,7 +140,27 @@ class OopScanWalker final : public BasicAstWalker<OopScanWalker>
     /// @param decl Class declaration encountered during traversal.
     void after(const ClassDecl &decl)
     {
-        auto layout = buildLayout(decl.fields);
+        // BUG-056: Arrays as class fields occupy pointer-sized storage.
+        // Build layout manually so we can account for Field.isArray when
+        // computing offsets and sizes. TypeDecl fields do not support arrays
+        // and continue to use the generic builder below.
+        Lowerer::ClassLayout layout;
+        std::size_t offset = 0;
+        for (const auto &field : decl.fields)
+        {
+            offset = alignTo(offset, kFieldAlignment);
+            Lowerer::ClassLayout::Field info{};
+            info.name = field.name;
+            info.type = field.type;
+            info.offset = offset;
+            // Arrays stored as fields are references to runtime array handles.
+            // Use pointer size for storage to keep following field offsets correct.
+            info.size = field.isArray ? kPointerSize : fieldSize(field.type);
+            layout.fields.push_back(std::move(info));
+            layout.fieldIndex.emplace(layout.fields.back().name, layout.fields.size() - 1);
+            offset += layout.fields.back().size;
+        }
+        layout.size = alignTo(offset, kFieldAlignment);
         layout.classId = nextClassId_++;
         layouts.emplace_back(decl.name, std::move(layout));
     }

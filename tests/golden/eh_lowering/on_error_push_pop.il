@@ -52,4 +52,8 @@ handler ^handler_L100(%err:Error, %tok:ResumeTok):
   %t3 = const_str @.L0
   .loc 1 4 11
   call @rt_print_str(%t3)
+  .loc 1 4 5
+  eh.pop
+  .loc 1 4 5
+  ret 0
 }

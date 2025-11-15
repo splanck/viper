@@ -2968,6 +2968,43 @@ rt_arr_str_get(ptr, i64) -> str     // Get element
 rt_arr_str_put(ptr, i64, str) -> void  // Set element
 ```
 
+### OOP: Array Fields (BASIC CLASS)
+
+Array fields declared inside a `CLASS` are represented as pointer-sized handles in the object layout. Lowering supports both reads and writes via the same runtime helpers used for normal arrays; the only difference is that the base array handle is loaded from the object field before invoking the helper.
+
+Key pieces in the BASIC frontend:
+- Constructor initialization: If an array field declares extents (e.g., `DIM data(8) AS INTEGER`), the constructor allocates the array and stores the handle into the field.
+  - File: `src/frontends/basic/Lower_OOP_Emit.cpp`
+  - Function: `Lowerer::emitClassConstructor`
+  - Mapping:
+    - Integer arrays → `rt_arr_i32_new(len)`
+    - String arrays → `rt_arr_str_alloc(len)`
+- Loads: `obj.field(i)` lowers to a load of the array handle from the field followed by `rt_arr_*_get(obj.field, i)`.
+  - Files:
+    - `src/frontends/basic/lower/Emit_Expr.cpp` (dotted array names in `lowerArrayAccess`)
+    - `src/frontends/basic/lower/Lowerer_Expr.cpp` (treat `MethodCallExpr` on field name as array get when applicable)
+  - Helpers: `rt_arr_i32_get`, `rt_arr_str_get`, with `rt_arr_*_len` for bounds checks when emitted.
+- Stores: `obj.field(i) = value` lowers to a store into the array referenced by the field.
+  - File: `src/frontends/basic/LowerStmt_Runtime.cpp`
+  - Paths:
+    - `assignArrayElement` handles dotted names, selecting helpers by element type
+    - LHS `MethodCallExpr` path synthesizes store for `obj.field(index)`
+  - Helpers: `rt_arr_i32_set`, `rt_arr_str_put` with bounds checks via `rt_arr_*_len` + `rt_arr_oob_panic`.
+- Layout: Array fields occupy pointer-sized storage so subsequent field offsets are stable.
+  - Files:
+    - `src/frontends/basic/Lower_OOP_Scan.cpp` (class layout builder)
+    - `src/frontends/basic/Lowerer.hpp` (`ClassLayout` metadata)
+
+Example lowering flow for `obj.field(i) = 42` (integer array field):
+1) Load `self` pointer; compute field address via `GEP(self, field.offset)`
+2) Load array handle from field pointer
+3) Coerce index to i64; compute/emit bounds check using `rt_arr_i32_len`
+4) Call `rt_arr_i32_set(handle, index, 42)`
+
+Notes:
+- String array fields retain/release element handles using `rt_arr_str_put/rt_arr_str_get` and the standard string retain/release hooks.
+- Single-dimension indexing of array fields is supported; multi-dimension flattening for fields follows the same row‑major approach as normal arrays when metadata is available.
+
 ### I/O Operations
 
 ```cpp

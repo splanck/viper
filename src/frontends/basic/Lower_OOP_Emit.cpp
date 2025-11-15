@@ -247,7 +247,7 @@ void Lowerer::emitClassConstructor(const ClassDecl &klass, const ConstructorDecl
     buildProcedureSkeleton(fn, name, metadata);
 
     ctx.setCurrent(&fn.blocks.front());
-    materializeSelfSlot(klass.name, fn);
+    unsigned selfSlotId = materializeSelfSlot(klass.name, fn);
     for (std::size_t i = 0; i < ctor.params.size(); ++i)
     {
         const auto &param = ctor.params[i];
@@ -271,6 +271,53 @@ void Lowerer::emitClassConstructor(const ClassDecl &klass, const ConstructorDecl
             emitStore(ilParamTy, slot, incoming);
     }
     allocateLocalSlots(metadata.paramNames, /*includeParams=*/false);
+
+    // BUG-056: Initialize array fields declared with extents.
+    // For each array field, allocate an array handle of the declared length
+    // and store it into the instance field slot before executing user code.
+    {
+        auto layoutIt = classLayouts_.find(klass.name);
+        if (layoutIt != classLayouts_.end())
+        {
+            Value selfPtr = loadSelfPointer(selfSlotId);
+            for (const auto &field : klass.fields)
+            {
+                if (!field.isArray || field.arrayExtents.empty())
+                    continue;
+
+                // Compute total length as the product of declared extents
+                long long total = 1;
+                for (long long e : field.arrayExtents)
+                    total *= e;
+                Value length = Value::constInt(total);
+
+                // Find field offset in layout
+                const auto *fi = layoutIt->second.findField(field.name);
+                if (!fi)
+                    continue;
+
+                // Allocate appropriate array type
+                Value handle;
+                if (field.type == AstType::Str)
+                {
+                    requireArrayStrAlloc();
+                    handle = emitCallRet(Type(Type::Kind::Ptr), "rt_arr_str_alloc", {length});
+                }
+                else
+                {
+                    requireArrayI32New();
+                    handle = emitCallRet(Type(Type::Kind::Ptr), "rt_arr_i32_new", {length});
+                }
+
+                // Store handle into object field
+                Value fieldPtr = emitBinary(Opcode::GEP,
+                                            Type(Type::Kind::Ptr),
+                                            selfPtr,
+                                            Value::constInt(static_cast<long long>(fi->offset)));
+                emitStore(Type(Type::Kind::Ptr), fieldPtr, handle);
+            }
+        }
+    }
 
     // Do not cache pointers into blocks vector; later addBlock() may reallocate.
     Function *func = ctx.function();

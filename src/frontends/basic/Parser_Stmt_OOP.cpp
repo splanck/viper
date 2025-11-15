@@ -147,7 +147,7 @@ StmtPtr Parser::parseClassDecl()
         const bool looksLikeFieldDecl =
             (at(TokenKind::Identifier) && peek(1).kind == TokenKind::KeywordAs) ||
             (at(TokenKind::KeywordDim) && peek(1).kind == TokenKind::Identifier &&
-             peek(2).kind == TokenKind::KeywordAs);
+             (peek(2).kind == TokenKind::KeywordAs || peek(2).kind == TokenKind::LParen));
 
         if (!looksLikeFieldDecl)
             break;
@@ -158,6 +158,32 @@ StmtPtr Parser::parseClassDecl()
         Token fieldNameTok = expect(TokenKind::Identifier);
         if (fieldNameTok.kind != TokenKind::Identifier)
             break;
+
+        // Parse array dimensions if present (BUG-056 fix)
+        std::vector<long long> extents;
+        bool isArray = false;
+        if (at(TokenKind::LParen))
+        {
+            consume(); // (
+            isArray = true;
+
+            while (!at(TokenKind::RParen) && !at(TokenKind::EndOfFile))
+            {
+                // Parse dimension size (constant expression)
+                Token sizeTok = expect(TokenKind::Number);
+                if (sizeTok.kind == TokenKind::Number)
+                {
+                    long long size = std::stoll(sizeTok.lexeme) + 1; // BASIC uses 0-based with size
+                    extents.push_back(size);
+                }
+
+                if (at(TokenKind::Comma))
+                    consume();
+                else if (!at(TokenKind::RParen))
+                    break;
+            }
+            expect(TokenKind::RParen);
+        }
 
         Token asTok = expect(TokenKind::KeywordAs);
         if (asTok.kind != TokenKind::KeywordAs)
@@ -177,6 +203,8 @@ StmtPtr Parser::parseClassDecl()
         field.name = fieldNameTok.lexeme;
         field.type = fieldType;
         field.access = curAccess.value_or(Access::Public);
+        field.isArray = isArray;
+        field.arrayExtents = std::move(extents);
         curAccess.reset();
         decl->fields.push_back(std::move(field));
 

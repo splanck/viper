@@ -193,6 +193,27 @@ Functions return values and are used in expressions:
 
 Viper BASIC supports lightweight object-oriented programming with classes, methods, constructors, and destructors.
 
+Array fields in classes
+-----------------------
+
+Fields may be scalars or arrays. Declare array fields with dimensions inside `CLASS`; access elements with `obj.field(index)` similarly to regular arrays. When an array field declares a fixed extent, the constructor initializes it to that length; otherwise, assign an array handle at runtime before use.
+
+```basic
+10 CLASS Board
+20   DIM cells(4) AS INTEGER   ' array field
+30 END CLASS
+
+40 DIM b AS Board
+50 LET b = NEW Board()               ' cells() allocated length 4 by constructor
+60 LET b.cells(0) = 1
+70 LET b.cells(1) = 2
+80 PRINT b.cells(0) + b.cells(1)     ' 3
+```
+
+Notes:
+- Single-dimension array field access is supported using `obj.field(i)`. Multi-dimension field access will be added; non-member arrays already support multiple indices.
+- String array fields are supported; assignment manages string lifetimes under the hood.
+
 ### Basic Class
 
 ```basic

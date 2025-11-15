@@ -99,6 +99,14 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
     // where globals are routed through runtime-backed storage and do not have
     // a materialised local stack slot.
     const auto *info = findSymbol(expr.name);
+    // BUG-056: Detect object field array access via dotted name (e.g., B.CELLS(i)).
+    const bool isMemberArray = expr.name.find('.') != std::string::npos;
+    // When accessing array fields, we'll compute 'base' by loading the pointer from
+    // the object's field; otherwise we load from variable storage as usual.
+    Type::Kind memberElemIlKind = Type::Kind::I64; // default element kind
+    ::il::frontends::basic::Type memberElemAstType = ::il::frontends::basic::Type::I64;
+    Value base;
+
     auto storage = resolveVariableStorage(expr.name, expr.loc);
     assert(storage && "array access requires resolvable storage");
 
@@ -133,9 +141,48 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
     requireArrayOobPanic();
 
     ProcedureContext &ctx = context();
-    // storage->pointer is the address of the variable's storage (local slot or
-    // runtime-backed module variable). Load the array handle pointer from it.
-    Value base = emitLoad(Type(Type::Kind::Ptr), storage->pointer);
+    if (isMemberArray)
+    {
+        // Split into base variable and field name
+        const std::string &full = expr.name;
+        std::size_t dot = full.find('.');
+        std::string baseName = full.substr(0, dot);
+        std::string fieldName = full.substr(dot + 1);
+
+        // Load the object pointer for the base
+        const auto *baseSym = findSymbol(baseName);
+        if (baseSym && baseSym->slotId)
+        {
+            curLoc = expr.loc;
+            Value selfPtr = emitLoad(Type(Type::Kind::Ptr), Value::temp(*baseSym->slotId));
+            // Find field in class layout
+            std::string klass = getSlotType(baseName).objectClass;
+            auto it = classLayouts_.find(klass);
+            if (it != classLayouts_.end())
+            {
+                if (const ClassLayout::Field *fld = it->second.findField(fieldName))
+                {
+                    memberElemAstType = fld->type;
+                    memberElemIlKind = (fld->type == ::il::frontends::basic::Type::Str)
+                                           ? Type::Kind::Str
+                                           : Type::Kind::I64;
+                    curLoc = expr.loc;
+                    Value fieldPtr = emitBinary(Opcode::GEP,
+                                                Type(Type::Kind::Ptr),
+                                                selfPtr,
+                                                Value::constInt(static_cast<long long>(fld->offset)));
+                    curLoc = expr.loc;
+                    base = emitLoad(Type(Type::Kind::Ptr), fieldPtr);
+                }
+            }
+        }
+    }
+    else
+    {
+        // storage->pointer is the address of the variable's storage (local slot or
+        // runtime-backed module variable). Load the array handle pointer from it.
+        base = emitLoad(Type(Type::Kind::Ptr), storage->pointer);
+    }
 
     // Collect all index expressions (backward compat: check 'index' first, then 'indices')
     std::vector<const ExprPtr *> indexExprs;
@@ -213,12 +260,22 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
 
     // Use appropriate length function based on array element type
     Value len;
-    if (info->type == AstType::Str)
-        len = emitCallRet(Type(Type::Kind::I64), "rt_arr_str_len", {base});
-    else if (info->isObject)
-        len = emitCallRet(Type(Type::Kind::I64), "rt_arr_obj_len", {base});
+    if (isMemberArray)
+    {
+        if (memberElemAstType == ::il::frontends::basic::Type::Str)
+            len = emitCallRet(Type(Type::Kind::I64), "rt_arr_str_len", {base});
+        else
+            len = emitCallRet(Type(Type::Kind::I64), "rt_arr_i32_len", {base});
+    }
     else
-        len = emitCallRet(Type(Type::Kind::I64), "rt_arr_i32_len", {base});
+    {
+        if (info->type == AstType::Str)
+            len = emitCallRet(Type(Type::Kind::I64), "rt_arr_str_len", {base});
+        else if (info->isObject)
+            len = emitCallRet(Type(Type::Kind::I64), "rt_arr_obj_len", {base});
+        else
+            len = emitCallRet(Type(Type::Kind::I64), "rt_arr_i32_len", {base});
+    }
     Value isNeg = emitBinary(Opcode::SCmpLT, ilBoolTy(), index, Value::constInt(0));
     Value tooHigh = emitBinary(Opcode::SCmpGE, ilBoolTy(), index, len);
     auto emit = emitCommon(expr.loc);
