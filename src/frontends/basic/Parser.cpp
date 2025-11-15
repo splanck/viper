@@ -21,6 +21,10 @@
 
 #include "frontends/basic/Parser.hpp"
 #include "frontends/basic/ASTUtils.hpp"
+#include "support/source_manager.hpp"
+#include <filesystem>
+#include <fstream>
+#include <sstream>
 #include <array>
 #include <cctype>
 #include <cstdio>
@@ -37,8 +41,14 @@ namespace il::frontends::basic
 /// @param src Full BASIC source to parse.
 /// @param file_id Identifier for diagnostics.
 /// @param emitter Destination for emitted diagnostics.
-Parser::Parser(std::string_view src, uint32_t file_id, DiagnosticEmitter *emitter)
-    : lexer_(src, file_id), emitter_(emitter)
+Parser::Parser(std::string_view src,
+               uint32_t file_id,
+               DiagnosticEmitter *emitter,
+               il::support::SourceManager *sm,
+               std::vector<std::string> *includeStack,
+               bool suppressUndefinedLabelCheck)
+    : lexer_(src, file_id), emitter_(emitter), sm_(sm), includeStack_(includeStack),
+      suppressUndefinedNamedLabelCheck_(suppressUndefinedLabelCheck)
 {
     tokens_.push_back(lexer_.next());
 }
@@ -309,6 +319,21 @@ std::unique_ptr<Program> Parser::parseProgram()
         seq.skipLineBreaks();
         if (at(TokenKind::EndOfFile))
             break;
+        // Handle top-level ADDFILE directives before parsing a statement line.
+        // If a leading numeric label precedes ADDFILE, consume and record it.
+        if (at(TokenKind::Number) && peek(1).kind == TokenKind::KeywordAddfile)
+        {
+            Token numberTok = consume();
+            noteNumericLabelUsage(std::atoi(numberTok.lexeme.c_str()));
+        }
+        if (at(TokenKind::KeywordAddfile))
+        {
+            if (handleTopLevelAddFile(*prog))
+            {
+                // Either handled or diagnosed; continue to next line.
+                continue;
+            }
+        }
         auto root = seq.parseStatementLine();
         if (!root)
             continue;
@@ -321,18 +346,126 @@ std::unique_ptr<Program> Parser::parseProgram()
             prog->main.push_back(std::move(root));
         }
     }
-    bool hasUndefinedNamedLabel = false;
-    for (const auto &[name, entry] : namedLabels_)
+    if (!suppressUndefinedNamedLabelCheck_)
     {
-        if (!entry.referenced || entry.defined)
-            continue;
-        hasUndefinedNamedLabel = true;
-        std::string msg = "Undefined label: " + name;
-        emitError("B0002", entry.referenceLoc, std::move(msg));
+        bool hasUndefinedNamedLabel = false;
+        for (const auto &[name, entry] : namedLabels_)
+        {
+            if (!entry.referenced || entry.defined)
+                continue;
+            hasUndefinedNamedLabel = true;
+            std::string msg = "Undefined label: " + name;
+            emitError("B0002", entry.referenceLoc, std::move(msg));
+        }
+        if (hasUndefinedNamedLabel)
+            return nullptr;
     }
-    if (hasUndefinedNamedLabel)
-        return nullptr;
     return prog;
+}
+
+// -----------------------------------------------------------------------------
+// ADDFILE handling
+// -----------------------------------------------------------------------------
+
+bool Parser::handleTopLevelAddFile(Program &prog)
+{
+    if (!at(TokenKind::KeywordAddfile))
+        return false;
+
+    Token kw = consume(); // ADDFILE
+
+    if (!sm_ || !emitter_)
+    {
+        emitError("B0001", kw.loc, "ADDFILE is not supported in this parsing context");
+        syncToStmtBoundary();
+        if (at(TokenKind::EndOfLine))
+            consume();
+        return true;
+    }
+
+    Token pathTok = expect(TokenKind::String);
+    std::string rawPath = pathTok.lexeme;
+
+    // Consume to end of line if any trailing tokens.
+    while (!at(TokenKind::EndOfFile) && !at(TokenKind::EndOfLine))
+    {
+        consume();
+    }
+    if (at(TokenKind::EndOfLine))
+        consume();
+
+    // Resolve path relative to including file.
+    const uint32_t includingFileId = kw.loc.file_id;
+    std::filesystem::path base(sm_->getPath(includingFileId));
+    std::filesystem::path candidate(rawPath);
+    std::filesystem::path resolved = candidate.is_absolute() ? candidate : base.parent_path() / candidate;
+
+    std::error_code ec;
+    std::filesystem::path canon = std::filesystem::weakly_canonical(resolved, ec);
+    const std::string canonStr = ec ? resolved.lexically_normal().string() : canon.string();
+
+    // Cycle and depth checks.
+    if (includeStack_)
+    {
+        if (includeStack_->size() >= static_cast<size_t>(maxIncludeDepth_))
+        {
+            emitError("B0001", kw.loc, "ADDFILE depth limit exceeded");
+            return true;
+        }
+        for (const auto &p : *includeStack_)
+        {
+            if (p == canonStr)
+            {
+                emitError("B0001", kw.loc, "cyclic ADDFILE detected: " + canonStr);
+                return true;
+            }
+        }
+        includeStack_->push_back(canonStr);
+    }
+
+    // Load file contents.
+    std::ifstream in(canonStr);
+    if (!in)
+    {
+        emitError("B0001", kw.loc, "unable to open: " + canonStr);
+        if (includeStack_ && !includeStack_->empty())
+            includeStack_->pop_back();
+        return true;
+    }
+    std::ostringstream ss;
+    ss << in.rdbuf();
+    std::string contents = ss.str();
+
+    uint32_t newFileId = sm_->addFile(canonStr);
+    if (newFileId == 0)
+    {
+        emitError("B0005", kw.loc, std::string{il::support::kSourceManagerFileIdOverflowMessage});
+        if (includeStack_ && !includeStack_->empty())
+            includeStack_->pop_back();
+        return true;
+    }
+    emitter_->addSource(newFileId, contents);
+
+    // Parse included file with suppressed undefined-label check.
+    Parser child(contents, newFileId, emitter_, sm_, includeStack_, /*suppress*/ true);
+    auto subprog = child.parseProgram();
+    if (!subprog)
+    {
+        // Diagnostics already emitted by child parser.
+        if (includeStack_ && !includeStack_->empty())
+            includeStack_->pop_back();
+        return true;
+    }
+
+    // Merge procs and main.
+    for (auto &p : subprog->procs)
+        prog.procs.push_back(std::move(p));
+    for (auto &s : subprog->main)
+        prog.main.push_back(std::move(s));
+
+    if (includeStack_ && !includeStack_->empty())
+        includeStack_->pop_back();
+    return true;
 }
 
 // ============================================================================

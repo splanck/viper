@@ -65,7 +65,8 @@ int main(int argc, char **argv)
     DiagnosticEmitter emitter(diagEngine, sm);
     emitter.addSource(*fileId, src);
 
-    Parser p(src, *fileId, &emitter);
+    std::vector<std::string> includeStack;
+    Parser p(src, *fileId, &emitter, &sm, &includeStack);
     auto prog = p.parseProgram();
     if (!prog)
     {

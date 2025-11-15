@@ -102,7 +102,9 @@ BasicCompilerResult compileBasic(const BasicCompilerInput &input,
 
     result.emitter->addSource(fileId, std::string{input.source});
 
-    Parser parser(input.source, fileId, result.emitter.get());
+    // Prepare include stack for ADDFILE handling.
+    std::vector<std::string> includeStack;
+    Parser parser(input.source, fileId, result.emitter.get(), &sm, &includeStack, /*suppress*/ false);
     auto program = parser.parseProgram();
     if (!program)
     {

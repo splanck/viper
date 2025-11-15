@@ -57,6 +57,7 @@
 #include "frontends/basic/StatementSequencer.hpp"
 #include "frontends/basic/ast/DeclNodes.hpp"
 #include "support/diag_expected.hpp"
+#include "support/source_manager.hpp"
 #include <array>
 #include <functional>
 #include <initializer_list>
@@ -79,7 +80,15 @@ class Parser
     /// @param src Source code to parse.
     /// @param file_id Identifier used for diagnostics.
     /// @param emitter Optional diagnostic emitter; not owned.
-    Parser(std::string_view src, uint32_t file_id, DiagnosticEmitter *emitter = nullptr);
+    /// @param sm Optional source manager for ADDFILE support; not owned.
+    /// @param includeStack Optional include stack for cycle detection; not owned.
+    /// @param suppressUndefinedLabelCheck Suppress undefined-label check (used for included parses).
+    Parser(std::string_view src,
+           uint32_t file_id,
+           DiagnosticEmitter *emitter = nullptr,
+           il::support::SourceManager *sm = nullptr,
+           std::vector<std::string> *includeStack = nullptr,
+           bool suppressUndefinedLabelCheck = false);
 
     /// @brief Parse the entire BASIC program.
     /// @return Program AST on success or nullptr on failure.
@@ -181,6 +190,13 @@ class Parser
     static void registerIoParsers(StatementParserRegistry &registry);
     static void registerCoreParsers(StatementParserRegistry &registry);
     static void registerOopParsers(StatementParserRegistry &registry);
+    /// @brief Handle a top-level ADDFILE directive if present.
+    /// @details When the current token is ADDFILE and a source manager is available,
+    ///          resolves, loads, and parses the included file, then merges its AST
+    ///          into @p prog.
+    /// @return True when a directive was handled (successfully or with diagnostics);
+    ///         false when no ADDFILE directive was present.
+    bool handleTopLevelAddFile(Program &prog);
     StmtPtr parseClassDecl();
     StmtPtr parseTypeDecl();
     StmtPtr parseDeleteStatement();
@@ -671,6 +687,14 @@ class Parser
     /// @param tok Token providing source location.
     /// @param message Warning message text.
     void emitWarning(std::string_view code, const Token &tok, std::string message);
+
+    // ---------------------------------------------------------------------
+    // ADDFILE support
+    // ---------------------------------------------------------------------
+    il::support::SourceManager *sm_ = nullptr; ///< For path resolution and file ids.
+    std::vector<std::string> *includeStack_ = nullptr; ///< Tracks include chain for cycles.
+    bool suppressUndefinedNamedLabelCheck_ = false;    ///< Skip undefined label check when true.
+    int maxIncludeDepth_ = 32;                         ///< Hard limit to prevent recursion.
 };
 
 } // namespace il::frontends::basic

@@ -36,9 +36,10 @@ struct KeywordEntry
     TokenKind kind;
 };
 
-constexpr std::array<KeywordEntry, 93> kKeywordTable{{
+constexpr std::array<KeywordEntry, 94> kKeywordTable{{
     {"ABS", TokenKind::KeywordAbs},
     {"ABSTRACT", TokenKind::KeywordAbstract},
+    {"ADDFILE", TokenKind::KeywordAddfile},
     {"ALTSCREEN", TokenKind::KeywordAltscreen},
     {"AND", TokenKind::KeywordAnd},
     {"ANDALSO", TokenKind::KeywordAndAlso},

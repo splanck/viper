@@ -212,6 +212,13 @@ function(viper_add_basic_main_tests)
     viper_add_ctest(
             test_frontends_basic_parse_unknown_stmt test_frontends_basic_parse_unknown_stmt)
 
+    # ADDFILE directive tests
+    viper_add_test(
+            test_frontends_basic_addfile
+            ${VIPER_TESTS_DIR}/frontends/basic/AddFileTests.cpp)
+    target_link_libraries(test_frontends_basic_addfile PRIVATE ${VIPER_BASIC_LIBS})
+    viper_add_ctest(test_frontends_basic_addfile test_frontends_basic_addfile)
+
     viper_add_test(
             test_frontends_basic_line_label_diagnostics
             ${VIPER_TESTS_DIR}/frontends/basic/ParserLineLabelDiagnosticsTests.cpp)
