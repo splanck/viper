@@ -168,7 +168,9 @@ class VM
     };
 
     /// @brief Block lookup table keyed by label.
-    using BlockMap = std::unordered_map<std::string, const il::core::BasicBlock *>;
+    // Use string_view keys to avoid key string copies while relying on the
+    // module-owned lifetime of names/labels.
+    using BlockMap = std::unordered_map<std::string_view, const il::core::BasicBlock *>;
 
     /// @brief Create VM for module @p m.
     /// @param m IL module to execute.
@@ -276,11 +278,11 @@ class VM
 
     /// @brief Function name lookup table.
     /// @ownership Owned by the VM; values reference functions in @c mod.
-    std::unordered_map<std::string, const il::core::Function *> fnMap;
+    std::unordered_map<std::string_view, const il::core::Function *> fnMap;
 
     /// @brief Interned runtime strings.
     /// @ownership Owned by the VM; manages @c rt_string handles for globals.
-    std::unordered_map<std::string, rt_string> strMap;
+    std::unordered_map<std::string_view, rt_string> strMap;
 
     /// @brief Cached runtime handles for inline string literals containing embedded NULs.
     /// @ownership Owned by the VM; stores @c rt_string handles created via @c rt_string_from_bytes.
@@ -339,7 +341,7 @@ class VM
     /// @param bb Set to point at the entry block.
     Frame setupFrame(const il::core::Function &fn,
                      const std::vector<Slot> &args,
-                     std::unordered_map<std::string, const il::core::BasicBlock *> &blocks,
+                     BlockMap &blocks,
                      const il::core::BasicBlock *&bb);
 
     /// @brief Handle pending debug breaks at block entry or instruction boundaries.
@@ -370,7 +372,7 @@ class VM
     ExecResult executeOpcode(
         Frame &fr,
         const il::core::Instr &in,
-        const std::unordered_map<std::string, const il::core::BasicBlock *> &blocks,
+        const BlockMap &blocks,
         const il::core::BasicBlock *&bb,
         size_t &ip);
 

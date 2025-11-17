@@ -267,7 +267,7 @@ int64_t VM::run()
 /// @return Execution result capturing control-flow effects and return value.
 VM::ExecResult VM::executeOpcode(Frame &fr,
                                  const Instr &in,
-                                 const std::unordered_map<std::string, const BasicBlock *> &blocks,
+                                 const BlockMap &blocks,
                                  const BasicBlock *&bb,
                                  size_t &ip)
 {
@@ -376,7 +376,7 @@ bool VM::finalizeDispatch(ExecState &state, const ExecResult &exec)
     // Allow embedders to perform post-dispatch polling and request pauses.
     VIPER_VM_DISPATCH_AFTER(state,
                             state.currentInstr ? state.currentInstr->op : il::core::Opcode::Trap);
-    if (state.exitRequested)
+    if (state.exitRequested) [[unlikely]]
     {
         // Pause requested by hook; ensure a result is staged.
         if (!state.pendingResult)
@@ -387,7 +387,7 @@ bool VM::finalizeDispatch(ExecState &state, const ExecResult &exec)
         }
         return true;
     }
-    if (exec.returned)
+    if (exec.returned) [[unlikely]]
     {
         state.pendingResult = exec.value;
         state.exitRequested = true;
@@ -399,7 +399,7 @@ bool VM::finalizeDispatch(ExecState &state, const ExecResult &exec)
     else
         ++state.ip;
 
-    if (auto pause = shouldPause(state, nullptr, true))
+    if (auto pause = shouldPause(state, nullptr, true)) [[unlikely]]
     {
         state.pendingResult = *pause;
         state.exitRequested = true;
@@ -656,19 +656,27 @@ bool VM::prepareTrap(VmError &error)
                     fr.func = ownerFn;
                     fr.regs.clear();
 
-                    // Calculate maximum SSA value ID to properly pre-size register vector
+                    // Reuse/compute the maximum SSA value id from the cache to
+                    // avoid rescanning the function on trap rebinding.
                     size_t maxSsaId = 0;
-                    for (const auto &p : ownerFn->params)
-                        maxSsaId = std::max(maxSsaId, static_cast<size_t>(p.id));
-                    for (const auto &block : ownerFn->blocks)
+                    if (auto rc = regCountCache_.find(ownerFn); rc != regCountCache_.end())
                     {
-                        for (const auto &p : block.params)
+                        maxSsaId = rc->second;
+                    }
+                    else
+                    {
+                        for (const auto &p : ownerFn->params)
                             maxSsaId = std::max(maxSsaId, static_cast<size_t>(p.id));
-                        for (const auto &instr : block.instructions)
+                        for (const auto &block : ownerFn->blocks)
                         {
-                            if (instr.result)
-                                maxSsaId = std::max(maxSsaId, static_cast<size_t>(*instr.result));
+                            for (const auto &p : block.params)
+                                maxSsaId = std::max(maxSsaId, static_cast<size_t>(p.id));
+                            for (const auto &instr : block.instructions)
+                                if (instr.result)
+                                    maxSsaId =
+                                        std::max(maxSsaId, static_cast<size_t>(*instr.result));
                         }
+                        regCountCache_.emplace(ownerFn, maxSsaId);
                     }
 
                     fr.regs.resize(maxSsaId + 1);

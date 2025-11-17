@@ -285,7 +285,7 @@ VM::VM(const Module &m, TraceConfig tc, uint64_t ms, DebugCtrl dbg, DebugScript 
 /// @return Fully initialised frame ready to run.
 Frame VM::setupFrame(const Function &fn,
                      const std::vector<Slot> &args,
-                     std::unordered_map<std::string, const BasicBlock *> &blocks,
+                     BlockMap &blocks,
                      const BasicBlock *&bb)
 {
     Frame fr;
@@ -344,6 +344,8 @@ Frame VM::setupFrame(const Function &fn,
     fr.ehStack.clear();
     fr.activeError = {};
     fr.resumeState = {};
+    // Reserve to avoid rehashing while populating the per-call label map
+    blocks.reserve(fn.blocks.size());
     for (const auto &b : fn.blocks)
         blocks[b.label] = &b;
     bb = fn.blocks.empty() ? nullptr : &fn.blocks.front();

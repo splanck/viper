@@ -31,8 +31,8 @@ struct VMAccess
         return vm.debug;
     }
 
-    static inline const std::unordered_map<std::string, const il::core::Function *> &functionMap(
-        const VM &vm)
+    static inline const std::unordered_map<std::string_view, const il::core::Function *> &
+    functionMap(const VM &vm)
     {
         return vm.fnMap;
     }
