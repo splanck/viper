@@ -126,6 +126,12 @@ add_executable(test_basic_input_typing
 target_link_libraries(test_basic_input_typing PRIVATE fe_basic viper_testing)
 viper_add_ctest(test_basic_input_typing test_basic_input_typing)
 
+# Nested member method call resolution
+add_executable(test_basic_nested_member_method_call
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_basic_nested_member_method_call.cpp)
+target_link_libraries(test_basic_nested_member_method_call PRIVATE fe_basic viper_testing)
+viper_add_ctest(test_basic_nested_member_method_call test_basic_nested_member_method_call)
+
 # BUG-040 guard: FUNCTIONS returning class types should return ptr from RETURN var
 viper_add_test(
         test_basic_class_return

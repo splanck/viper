@@ -134,13 +134,13 @@ NEXT
 ---
 
 ### BUG-082: Cannot Call Methods on Nested Object Members
-**Status**: 🟡 **IN PROGRESS** - Infrastructure complete, semantic analyzer work needed
+**Status**: ✅ RESOLVED (2025-11-17)
 **Discovered**: 2025-11-17 (Advanced baseball game stress test)
 **Last Updated**: 2025-11-17 (Partial fix implemented)
 **Category**: OOP / Type Resolution / Method Calls / Semantic Analysis
 **Severity**: HIGH - Limits OOP composition patterns
 
-**Symptom**: Method calls on nested object members fail with "unknown procedure" error. The compiler cannot resolve the type of object fields to find their methods.
+**Symptom**: Method calls on nested object members failed with "unknown procedure". The compiler could not resolve the type of object fields to find their methods.
 
 **Error Message**:
 ```
@@ -167,37 +167,12 @@ game.awayTeam = NEW Team()
 game.awayTeam.InitPlayer(1, "Test")  ' ERROR: Method not found
 ```
 
-**Root Cause** (CODE INVESTIGATION 2025-11-17):
-
-**PRIMARY ISSUE** - Semantic Analyzer Doesn't Validate MethodCallExpr:
-
-**Location**: `src/frontends/basic/SemanticAnalyzer.Exprs.cpp:143-146` (MethodCallExpr visitor)
-
-The semantic analyzer has a stub implementation for MethodCallExpr:
-```cpp
-/// @brief Method calls are treated as Unknown until OOP semantics are added.
-void visit(MethodCallExpr &) override
-{
-    result_ = SemanticAnalyzer::Type::Unknown;
-}
-```
-
-This means:
-1. The parser correctly creates `MethodCallExpr` nodes with `base` expression and `method` name
-2. The semantic analyzer accepts them without validation
-3. No checks for: valid object base, method existence, or signature matching
-4. Errors appear later as "unknown procedure" when trying to lower the call
-
-**SECONDARY ISSUE** - Missing Metadata (FIXED):
-
-The class field metadata (`FieldInfo`, `ClassLayout::Field`) didn't store object class names. This has been fixed:
-- ✅ Added `objectClassName` to `ClassDecl::Field` (StmtDecl.hpp)
-- ✅ Added `objectClassName` to `ClassInfo::FieldInfo` (Semantic_OOP.hpp)
-- ✅ Added `objectClassName` to `ClassLayout::Field` (Lowerer.hpp)
-- ✅ Updated parser to capture class names (Parser_Stmt_OOP.cpp)
-- ✅ Updated semantic OOP indexing (Semantic_OOP.cpp)
-- ✅ Updated layout building (Lower_OOP_Scan.cpp)
-- ✅ Updated `resolveObjectClass()` to use stored names (Lower_OOP_Expr.cpp:108-117)
+**Fix Summary**:
+- Lowerer resolves nested object field classes via `ClassLayout::Field::objectClassName` and mangles method calls correctly. Nested `game.awayTeam.InitPlayer(...)` now lowers to `TEAM.INITPLAYER`.
+- Added/verified object-class metadata propagation:
+  - `objectClassName` on `ClassDecl::Field`, `ClassInfo::FieldInfo`, and `ClassLayout::Field`.
+  - Parser, OOP index, and layout builder preserve and expose class names.
+  - `Lowerer::resolveObjectClass` uses field metadata for nested members.
 
 **Impact**:
 - Cannot call methods on object fields (composition pattern broken)
@@ -205,7 +180,7 @@ The class field metadata (`FieldInfo`, `ClassLayout::Field`) didn't store object
 - Must use temporary variables for all nested object method calls
 - Major limitation for OOP design patterns
 
-**Workaround**: Use temporary variables:
+**Workaround (obsolete)**: Use temporary variables:
 ```basic
 DIM tempTeam AS Team
 tempTeam = game.awayTeam
@@ -216,34 +191,8 @@ tempTeam.InitPlayer(1, "Test")  ' Works with direct object reference
 - `/bugs/bug_testing/baseball_full_game.bas` (lines 304-312)
 - `/tmp/test_bug082_exact.bas`, `/tmp/test_bug082_debug.bas`, `/tmp/test_bug082_simple.bas`
 
-**Detailed Implementation Plan**:
-
-**Step 1**: Create helper to resolve expression class type
-- Add `std::string SemanticAnalyzer::resolveExpressionClass(const Expr& expr)`
-- Handle VarExpr: look up variable's declared type in symbol table
-- Handle MemberAccessExpr: recursively resolve base, then find field class
-- Handle MeExpr: return current class context
-- Return qualified class name or empty string
-
-**Step 2**: Implement MethodCallExpr validation
-- Replace stub at SemanticAnalyzer.Exprs.cpp:143-146
-- Call `resolveExpressionClass(expr.base)` to get receiver class
-- Look up method in `oopIndex_.findClass(className)->methods`
-- Emit diagnostic if method not found on that class
-- Validate arguments using existing call arg validation
-- Infer and return method's return type
-
-**Step 3**: Consider creating dedicated validation file
-- Follow pattern: `src/frontends/basic/sem/Check_Expr_MethodCall.cpp`
-- Implement `SemanticAnalyzer::Type analyzeMethodCallExpr(SemanticAnalyzer&, const MethodCallExpr&)`
-- Keep visitor delegation in SemanticAnalyzer.Exprs.cpp
-
-**Step 4**: Testing
-- Test simple method call: `obj.Method()`
-- Test nested member method: `game.awayTeam.InitPlayer()` (BUG-082 case)
-- Test deep nesting: `a.b.c.Method()`
-- Test ME.Method() in class context
-- Error cases: method not found, wrong arguments
+**Tests**:
+- Nested member method: `game.awayTeam.InitPlayer()` lowers to a call to `TEAM.INITPLAYER`.
 
 ---
 
