@@ -1,18 +1,18 @@
 # VIPER BASIC Known Bugs and Issues
 
-*Last Updated: 2025-11-16*
+*Last Updated: 2025-11-17*
 *Source: Empirical testing during language audit + Dungeon + Frogger + Adventure stress testing*
 
-**Bug Statistics**: 66 resolved, 7 outstanding bugs (73 total documented)
+**Bug Statistics**: 70 resolved, 4 outstanding bugs (74 total documented)
 
-**STATUS**: 🚨 New bugs found during OOP stress testing (Dungeon + Frogger + Adventure games)
+**STATUS**: 🚨 New bugs found during OOP stress testing (Dungeon + Frogger + Adventure + Texas Hold'em Poker)
 
 ---
 
-## OUTSTANDING BUGS (7 bugs)
+## OUTSTANDING BUGS (4 bugs)
 
-### BUG-067 CRITICAL: Array Fields in Classes Not Supported
-**Status**: 🚨 CRITICAL - Parse error
+### BUG-067: Array Fields in Classes Not Supported
+**Status**: ✅ RESOLVED (Previously fixed, verified 2025-11-17)
 **Discovered**: 2025-11-16 (Dungeon OOP stress test)
 **Category**: Frontend / Parser / OOP
 **Test File**: `/bugs/bug_testing/dungeon_entities.bas`
@@ -60,76 +60,100 @@ error[B0001]: expected END, got ident
 
 **Files**: `src/frontends/basic/Parser_Stmt_OOP.cpp` (lines 147-186), `Parser_Stmt_Core.cpp` (parseTypeKeyword)
 
+**Resolution**:
+This bug was already fixed in a previous update. The parser lookahead at `Parser_Stmt_OOP.cpp:153-154` now includes:
 
-### BUG-068 HIGH: Function Name Assignment for Return Value Not Working
-**Status**: 🚨 HIGH - Breaks traditional BASIC pattern
+```cpp
+// Shorthand with array dims: name '(' ... ')' AS TYPE
+(at(TokenKind::Identifier) && peek(1).kind == TokenKind::LParen);
+```
+
+Array dimension parsing was also implemented at lines 166-190, supporting multi-dimensional arrays in class fields.
+
+**Validation**:
+- ✅ `test_bug067_array_fields.bas` - Array fields (STRING and INTEGER) work correctly
+- ✅ Field arrays can be declared with dimensions: `inventory(10) AS STRING`
+- ✅ Array fields can be accessed and modified in methods
+- ✅ Multi-dimensional arrays supported
+
+**Notes**:
+The fix was likely part of BUG-056 (Array Field Initialization) work, which added comprehensive array field support to the parser and lowering logic.
+
+
+### BUG-068: Function Name Assignment for Return Value Not Working
+**Status**: ✅ RESOLVED (2025-11-17)
 **Discovered**: 2025-11-16 (Dungeon OOP stress test)
-**Category**: Frontend / Semantic Analysis
-**Test File**: `/bugs/bug_testing/test_function_return.bas`, `/bugs/bug_testing/test_return_keyword.bas`
+**Category**: Frontend / Semantic Analysis + Lowering / Method Epilogue
+**Test Files**: `/bugs/bug_testing/test_bug068_explicit_return.bas`, `/bugs/bug_testing/test_bug068_function_name_return.bas`
 
-**Symptom**: Traditional BASIC pattern of assigning to function name to set return value doesn't work. Semantic analyzer reports "missing return" error even when function name is assigned.
+**Symptom**: Traditional BASIC pattern of assigning to function name to set return value had two issues:
+1. Semantic analyzer incorrectly reported "missing return" error (now fixed via `methodHasImplicitReturn()`)
+2. Runtime always returned default values (0, empty string) instead of assigned value
 
 **Reproduction**:
 ```basic
 CLASS Test
     FUNCTION GetValue() AS INTEGER
-        GetValue = 42  ' ERROR: "missing return"
+        GetValue = 42  ' Compiled but returned 0 instead of 42
     END FUNCTION
 END CLASS
 ```
 
-**Error**:
-```
-error[B1007]: missing return in FUNCTION TEST.GETVALUE
-    FUNCTION GetValue() AS INTEGER
-    ^^^
-```
-
-**Expected**: Assignment to function name should count as a return path (traditional BASIC behavior)
-
-**Workaround**: Use explicit RETURN statement instead:
-```basic
-FUNCTION GetValue() AS INTEGER
-    RETURN 42  ' Works!
-END FUNCTION
-```
-
-**Impact**: Breaks traditional BASIC code patterns, requires modern RETURN keyword
+**Expected**: Assignment to function name should set return value (traditional BASIC/VB behavior)
 
 **Root Cause**:
-- **Timing issue**: OOP return check happens during `buildOopIndex()` phase 1 (line 316 in Semantic_OOP.cpp) BEFORE semantic analysis of method bodies. The `activeFunctionNameAssigned_` flag doesn't exist yet.
+- **Semantic issue** (already fixed): OOP return checker in `Semantic_OOP.cpp` now uses `methodHasImplicitReturn()` (lines 127-171) which scans AST for function name assignments to prevent false "missing return" errors.
 
-- **Static function limitation** (Lines 125-141): `emitMissingReturn()` is a static helper that only calls `methodBodyMustReturn()`, which uses AST structural analysis:
+- **Runtime issue** (fixed 2025-11-17): Method epilogue in `Lower_OOP_Emit.cpp` always emitted default return values without checking if function-name variable was assigned:
   ```cpp
-  void emitMissingReturn(const ClassDecl &klass, const MethodDecl &method, DiagnosticEmitter *emitter)
+  // OLD CODE: Always returned default
+  if (returnsValue)
   {
-      if (!emitter || !method.ret)
-          return;
-      if (methodBodyMustReturn(method.body))  // Only checks AST structure!
-          return;
-      // Emits error without checking activeFunctionNameAssigned_
+      Value retValue = Value::constInt(0);  // Hard-coded default!
+      emitRet(retValue);
   }
   ```
 
-- **Correct implementation** (SemanticAnalyzer.Procs.cpp lines 332-367): The instance method `mustReturn()` properly checks the flag AFTER semantic analysis:
-  ```cpp
-  bool SemanticAnalyzer::mustReturn(const std::vector<StmtPtr> &stmts) const
-  {
-      if (activeFunctionNameAssigned_)  // <-- Checks VB-style implicit return
-          return true;
-      // ... then checks AST structure
-  }
-  ```
+**Resolution**: Added implicit return logic to method epilogue (Lower_OOP_Emit.cpp:560-588):
 
-- **Flag setting** (SemanticAnalyzer.Stmts.Runtime.cpp lines 117-121): During semantic analysis, assigning to function name sets the flag:
-  ```cpp
-  if (activeFunction_ && string_utils::iequals(v.name, activeFunction_->name))
-      activeFunctionNameAssigned_ = true;
-  ```
+```cpp
+if (returnsValue)
+{
+    Value retValue = Value::constInt(0);
+    // BUG-068 fix: Check for VB-style implicit return via function name assignment
+    auto methodNameSym = findSymbol(method.name);
+    if (methodNameSym && methodNameSym->slotId.has_value())
+    {
+        // Function name was assigned - load from that variable
+        Type ilType = ilTypeForAstType(*methodRetAst);
+        Value slot = Value::temp(*methodNameSym->slotId);
+        retValue = emitLoad(ilType, slot);
+    }
+    else
+    {
+        // No assignment - use default value
+        switch (*methodRetAst)
+        {
+            case ::il::frontends::basic::Type::I64:
+                retValue = Value::constInt(0);
+                break;
+            case ::il::frontends::basic::Type::Str:
+                retValue = Value::constStrPtr("");
+                break;
+            // ... other types ...
+        }
+    }
+    emitRet(retValue);
+}
+```
 
-**Fix**: Move OOP return check after semantic analysis, or make `emitMissingReturn()` scan AST for assignments to function name.
+Now the epilogue checks if a variable with the method name exists in the symbol table. If it does, the return value is loaded from that variable. Otherwise, default values are used.
 
-**Files**: `src/frontends/basic/Semantic_OOP.cpp` (lines 95-141, 316), `SemanticAnalyzer.Procs.cpp` (lines 287-367), `SemanticAnalyzer.Stmts.Runtime.cpp` (lines 117-121)
+**Validation**:
+- ✅ `test_bug068_explicit_return.bas` - Explicit RETURN: 42, Implicit (name assignment): 42
+- ✅ `test_bug068_function_name_return.bas` - GetValue: 42, Calculate: 30
+- ✅ Both explicit RETURN and implicit function-name assignment patterns work correctly
+- ✅ Traditional BASIC/VB implicit return pattern fully functional
 
 
 ### BUG-069 CRITICAL: Objects Not Initialized by DIM - NEW Required
@@ -211,7 +235,7 @@ obj.value = 42      ' Works!
 
 
 ### BUG-070 HIGH: BOOLEAN Parameters Cause Type Mismatch Errors
-**Status**: 🚨 HIGH - Cannot pass BOOLEAN to methods
+**Status**: ✅ RESOLVED (2025-11-17)
 **Discovered**: 2025-11-16 (Dungeon OOP stress test)
 **Category**: Frontend / Type System
 **Test File**: `/bugs/bug_testing/test_boolean.bas`
@@ -289,12 +313,18 @@ SUB SetFlag(value AS INTEGER)  ' Use 0/1 instead
 | BOOLEAN parameter | i1 | Expected |
 | BOOLEAN slot size | 1 byte | Too small for i64 |
 
-**Fix options**:
-1. Lower boolean literals to i1 instead of i64
-2. Change parameter type mapping to use i64 for BOOLEAN
-3. Add implicit coercion from i64 to i1 at call sites
+**Resolution**:
+Implemented targeted i64→i1 coercion at call sites when a callee parameter is BOOLEAN (`i1`). Kept boolean literals lowered as legacy i64 values (-1 for TRUE, 0 for FALSE) to preserve existing IL goldens and BASIC semantics. This reconciles literal/param mismatches without broad type changes.
 
-**Files**: `src/frontends/basic/lower/Lowerer_Expr.cpp` (lines 102-111), `Lower_OOP_Emit.cpp` (lines 43-58, 266, 505)
+**What changed**:
+- `src/frontends/basic/lower/Lowerer_Expr.cpp`: In general call lowering, when the callee signature expects `i1`, arguments are coerced via `coerceToBool(...)` before emission. Boolean literal lowering remains `i64 (-1/0)`.
+
+**Validation**:
+- Golden tests for boolean IL printing/combinations remain green.
+- OOP boolean method parameter calls no longer trip IL verifier (“call arg type mismatch”).
+
+**Notes**:
+- This approach avoids spec changes and maintains deterministic IL outputs for existing tests while fixing call-site typing.
 
 
 ### BUG-071 CRITICAL: String Arrays Cause IL Generation Error
@@ -475,8 +505,8 @@ select_arm_0:   <-- Unreachable! After return!
 **Files**: `src/frontends/basic/SelectCaseLowering.cpp` (lines 123-177, 411-477), entry from `Lower_Switch.cpp` line 38
 
 
-### BUG-073 CRITICAL: Cannot Call Methods on Object Parameters
-**Status**: 🚨 CRITICAL - IL generation failure
+### BUG-073: Cannot Call Methods on Object Parameters
+**Status**: ✅ RESOLVED (2025-11-17)
 **Discovered**: 2025-11-16 (Adventure game multi-object stress test)
 **Category**: Code Generation / IL / OOP / Method Resolution
 **Test File**: `/bugs/bug_testing/test_method_call_param.bas`, `/bugs/bug_testing/adventure_game_simple.bas`
@@ -573,6 +603,223 @@ error: ACTOR.DOACTION:entry_ACTOR.DOACTION: call %t6 25: unknown callee @MODIFY
 **Fix**: In constructor parameter materialization (line 272), check `!param.objectClass.empty()` and call `setSymbolObjectType()` like method parameters do.
 
 **Files**: `src/frontends/basic/Lower_OOP_Emit.cpp` (lines 251-272 constructor params, 504-508 method params), `Lower_OOP_Expr.cpp` (lines 72-162, 356), `Lowerer.Procedure.cpp` (lines 516-558)
+
+**Resolution**:
+Fixed by applying the same object-class preservation pattern used in method parameters to constructor parameters in `Lower_OOP_Emit.cpp:262-271`:
+
+```cpp
+// BUG-073 fix: Preserve object-class typing for parameters so member calls on params resolve
+if (!param.objectClass.empty())
+    setSymbolObjectType(param.name, qualify(param.objectClass));
+else
+    setSymbolType(param.name, param.type);
+// ...
+Type ilParamTy = (!param.objectClass.empty() || param.is_array) ? Type(Type::Kind::Ptr)
+                                                                : ilTypeForAstType(param.type);
+```
+
+This ensures that constructor parameters with object types preserve their class information in the symbol table, enabling the resolver to generate properly qualified method names (`@TARGET.MODIFY` instead of `@MODIFY`).
+
+**Validation**:
+- ✅ `test_bug073_object_param.bas` - Object parameters can now have methods called on them
+- ✅ Pattern now consistent between constructor and method parameter handling
+- ✅ All BASIC test suite passes (272/273 tests, 1 pre-existing failure)
+- ✅ OOP patterns like visitor, strategy, and inter-object communication now possible
+
+---
+
+### BUG-074: Constructor Corruption When Class Uses Previously-Defined Class
+**Status**: ✅ RESOLVED (2025-11-17)
+**Discovered**: 2025-11-16 (Texas Hold'em Poker OOP stress test)
+**Category**: Frontend / Lowering / OOP / Constructor Generation
+**Test Files**: `/bugs/bug_testing/poker_v2_deck_class.bas` (fails), `/bugs/bug_testing/poker_v3_simple_deck.bas` (fails), `/bugs/bug_testing/poker_v4_reversed_order.bas` (works with workaround)
+
+**Symptom**: When a class B uses another class A that was defined earlier in the source file, the constructor for class B becomes corrupted with string cleanup code from unrelated contexts, causing "use before def" errors.
+
+**Reproduction**:
+```basic
+REM Define Card first
+CLASS Card
+    suit AS INTEGER
+    rank AS INTEGER
+    SUB Init(s AS INTEGER, r AS INTEGER)
+        ME.suit = s
+        ME.rank = r
+    END SUB
+END CLASS
+
+REM Then define Deck that uses Card
+CLASS Deck
+    SUB Init()
+        REM Empty init
+    END SUB
+
+    SUB ShowCard()
+        DIM c AS Card
+        c = NEW Card()    ' Triggers bug!
+        c.Init(0, 14)
+    END SUB
+END CLASS
+
+DIM deck AS Deck
+deck = NEW Deck()    ' ERROR: DECK.__ctor:entry_DECK.__ctor: call %t27: unknown temp %27
+deck.Init()
+```
+
+**Error**:
+```
+error: DECK.__ctor:entry_DECK.__ctor: call %t27: unknown temp %27; use before def of %27
+```
+
+**IL Evidence**: Constructor is corrupted with string release calls for temporaries that don't exist:
+```
+func @DECK.__ctor(ptr %ME) -> void {
+entry_DECK.__ctor(%ME:ptr):
+  %t1 = alloca 8
+  store ptr, %t1, %t0        // ERROR: %t0 undefined, should be %ME
+  %t2 = load ptr, %t1
+  br ret_DECK.__ctor
+ret_DECK.__ctor:
+  call @rt_str_release_maybe(%t27)  // ERROR: %t27 from calling context!
+  call @rt_str_release_maybe(%t30)  // ERROR: %t30 from calling context!
+  ret
+}
+```
+
+**Expected**: Constructor should only manage its own local state, not cleanup temporaries from other scopes.
+
+**Workaround**: Define classes in reverse dependency order - define the "using" class before the "used" class. Forward references work correctly.
+
+**Example Workaround**:
+```basic
+REM Define Deck BEFORE Card (forward reference)
+CLASS Deck
+    SUB Init()
+    END SUB
+    SUB ShowCard()
+        DIM c AS Card    ' Forward reference OK!
+        c = NEW Card()
+        c.Init(0, 14)
+    END SUB
+END CLASS
+
+REM Define Card after Deck
+CLASS Card
+    suit AS INTEGER
+    rank AS INTEGER
+    SUB Init(s AS INTEGER, r AS INTEGER)
+        ME.suit = s
+        ME.rank = r
+    END SUB
+END CLASS
+
+REM Now it works!
+DIM deck AS Deck
+deck = NEW Deck()
+deck.Init()
+```
+
+**Impact**: CRITICAL - Severely restricts multi-class programs. Classes must be defined in reverse dependency order, which is counterintuitive.
+
+**Root Cause**: **Deferred temporary tracking state not cleared between constructor emissions**. When Class B's constructor is emitted after Class A's constructor, the Emitter's `deferredTemps_` vector retains temporaries from Class A's lowering. These stale temporaries are then incorrectly emitted during Class B's epilogue, corrupting its IL output.
+
+**Detailed Analysis**:
+
+1. **Global Emitter with Persistent State** (`Lowerer.hpp:664`):
+   ```cpp
+   std::unique_ptr<lower::Emitter> emitter_;
+   ```
+   The Lowerer holds a single, long-lived Emitter instance for the entire lowering session.
+
+2. **Deferred Temps Accumulate Across Constructors** (`lower/Emitter.hpp:132-139`):
+   ```cpp
+   struct TempRelease {
+       Value v;
+       bool isString{false};
+       std::string className; // optional, for object destructors
+   };
+   std::vector<TempRelease> deferredTemps_;  // NOT cleared between procedures!
+   ```
+
+3. **resetLoweringState() Does NOT Clear Deferred Temps** (`Lowerer.Procedure.cpp:1418-1424`):
+   ```cpp
+   void Lowerer::resetLoweringState() {
+       resetSymbolState();
+       context().reset();           // Resets ProcedureContext only
+       stmtVirtualLines_.clear();
+       synthSeq_ = 0;
+       // BUG: deferredTemps_ in the Emitter is NOT cleared!
+   }
+   ```
+   This is called at the start of each constructor (Lower_OOP_Emit.cpp:219) but leaves `deferredTemps_` intact.
+
+4. **Constructor Emission Pattern** (`Lower_OOP_Emit.cpp:217-355`):
+   ```cpp
+   void Lowerer::emitClassConstructor(const ClassDecl &klass, const ConstructorDecl &ctor) {
+       resetLoweringState();  // Line 219 - doesn't clear deferredTemps_!
+       // ... parameter setup ...
+       // Line 335: lowerStatementSequence() accumulates temps in deferredTemps_
+       // Line 347: releaseDeferredTemps() emits ALL accumulated temps (stale + current)
+       releaseDeferredTemps();
+       emitRetVoid();
+   }
+   ```
+
+5. **Data Flow Causing Corruption**:
+   ```
+   emitOopDeclsAndBodies(program)
+     └─> emitClassConstructor(ClassA)
+         ├─> resetLoweringState()  [doesn't clear emitter_.deferredTemps_]
+         ├─> lowerStatementSequence() [adds temps to deferredTemps_]
+         └─> releaseDeferredTemps()  [emits and clears deferredTemps_]
+     └─> emitClassConstructor(ClassB)  <-- CORRUPTION HERE
+         ├─> resetLoweringState()  [doesn't clear emitter_.deferredTemps_]
+         ├─> lowerStatementSequence() [adds MORE temps to deferredTemps_]
+         └─> releaseDeferredTemps()  [emits stale ClassA temps + ClassB temps!]
+   ```
+
+**Evidence from BUG-063 Fix**: The main function emission already has this fix (`LowerEmit.cpp:96-97`):
+```cpp
+void Lowerer::buildMainFunctionSkeleton(ProgramEmitContext &state) {
+    // BUG-063 fix: Clear any deferred temps from prior procedures
+    clearDeferredTemps();  // <-- Explicit clearing that OOP emission lacks!
+}
+```
+This pattern was never applied to OOP constructor/method emission.
+
+**Why Reverse Order Works**: When Deck is defined before Card, Deck's constructor is emitted first. Even if it accumulates deferred temps, Card's constructor emission happens later and those temps don't interfere with Deck (which was already emitted).
+
+**Fix**: Add `clearDeferredTemps()` call in `resetLoweringState()` or at the start of each OOP function emission (`emitClassConstructor`, `emitClassDestructor`, `emitClassMethod`).
+
+**Files**:
+- Root cause: `src/frontends/basic/Lowerer.Procedure.cpp:1418-1424` (resetLoweringState)
+- Manifestation: `src/frontends/basic/Lower_OOP_Emit.cpp:219, 347, 369, 449`
+- Pattern to follow: `src/frontends/basic/LowerEmit.cpp:96-97` (BUG-063 fix)
+- State holder: `src/frontends/basic/lower/Emitter.hpp:139` (deferredTemps_)
+
+**Resolution**:
+Fixed by adding `clearDeferredTemps()` call to `resetLoweringState()` in `Lowerer.Procedure.cpp:1425`:
+
+```cpp
+void Lowerer::resetLoweringState()
+{
+    resetSymbolState();
+    context().reset();
+    stmtVirtualLines_.clear();
+    synthSeq_ = 0;
+    // BUG-074 fix: Clear any deferred temps from prior procedures
+    clearDeferredTemps();
+}
+```
+
+This ensures that the `deferredTemps_` vector is cleared at the start of each procedure emission, preventing stale temporaries from prior constructors/methods from polluting subsequent IL generation.
+
+**Validation**:
+- ✅ `poker_v2_deck_class.bas` - Previously failed, now works
+- ✅ `poker_v3_simple_deck.bas` - Previously failed, now works
+- ✅ `poker_v4_reversed_order.bas` - Still works (workaround no longer needed)
+- ✅ All BASIC test suite passes (272/273 tests, 1 pre-existing failure)
+- ✅ Classes can now be defined in natural dependency order (Card before Deck)
 
 ---
 

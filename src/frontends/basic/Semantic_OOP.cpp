@@ -30,6 +30,8 @@
 #include "frontends/basic/SemanticDiagnostics.hpp"
 #include "frontends/basic/TypeSuffix.hpp"
 #include "frontends/basic/StringUtils.hpp"
+#include "frontends/basic/IdentifierUtil.hpp"
+#include "frontends/basic/SemanticDiagUtil.hpp"
 
 #include "support/diagnostics.hpp"
 
@@ -510,6 +512,38 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
         return {};
     };
 
+    // Collect file-scoped USING directives (imports and aliases) for base resolution.
+    struct UsingImports
+    {
+        std::unordered_set<std::string> imports;                // e.g., "Foundation"
+        std::unordered_map<std::string, std::string> aliases;   // lower(alias) -> "Lib.Core"
+    } usingCtx;
+
+    for (const auto &stmtPtr : program.main)
+    {
+        if (!stmtPtr || stmtPtr->stmtKind() != Stmt::Kind::UsingDecl)
+            continue;
+        const auto &u = static_cast<const UsingDecl &>(*stmtPtr);
+        // Join namespace path with original casing as parsed.
+        std::string nsPath;
+        for (std::size_t i = 0; i < u.namespacePath.size(); ++i)
+        {
+            if (i)
+                nsPath.push_back('.');
+            nsPath += u.namespacePath[i];
+        }
+        if (nsPath.empty())
+            continue;
+        if (!u.alias.empty())
+        {
+            usingCtx.aliases[CanonicalizeIdent(u.alias)] = nsPath;
+        }
+        else
+        {
+            usingCtx.imports.insert(nsPath);
+        }
+    }
+
     // Phase 2: resolve bases and detect missing bases; collect implements list.
     for (auto &entry : index.classes())
     {
@@ -518,7 +552,54 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
         if (it != rawBases.end())
         {
             const std::string &raw = it->second.first;
-            std::string resolved = resolveBase(ci.qualifiedName, raw);
+            // Attempt alias expansion for qualified base names (e.g., L.Container).
+            auto expandAlias = [&](const std::string &q) -> std::string
+            {
+                auto pos = q.find('.');
+                if (pos == std::string::npos)
+                    return q;
+                std::string first = q.substr(0, pos);
+                std::string firstCanon = CanonicalizeIdent(first);
+                auto itAlias = usingCtx.aliases.find(firstCanon);
+                if (itAlias == usingCtx.aliases.end())
+                    return q;
+                std::string tail = q.substr(pos + 1);
+                if (tail.empty())
+                    return itAlias->second; // degenerate, but harmless
+                return itAlias->second + "." + tail;
+            };
+
+            std::string rawMaybeAliased = expandAlias(raw);
+
+            std::string resolved = resolveBase(ci.qualifiedName, rawMaybeAliased);
+            if (resolved.empty())
+            {
+                // Try USING imports for simple (unqualified) names.
+                if (rawMaybeAliased.find('.') == std::string::npos)
+                {
+                    std::vector<std::string> hits;
+                    hits.reserve(usingCtx.imports.size());
+                    for (const auto &imp : usingCtx.imports)
+                    {
+                        std::string cand = imp + "." + rawMaybeAliased;
+                        if (index.classes().count(cand))
+                            hits.push_back(std::move(cand));
+                    }
+                    if (hits.size() == 1)
+                    {
+                        resolved = std::move(hits.front());
+                    }
+                    else if (hits.size() > 1)
+                    {
+                        if (emitter)
+                        {
+                            il::frontends::basic::semutil::emitAmbiguousType(
+                                *emitter, it->second.second, 1, rawMaybeAliased, hits);
+                        }
+                        // Leave resolved empty so caller records no base.
+                    }
+                }
+            }
             if (resolved.empty())
             {
                 if (emitter)

@@ -46,7 +46,8 @@ END NAMESPACE
 )";
     DiagnosticEngine de2;
     size_t err2 = parseAndAnalyze(source2, de2);
-    assert(err2 == 0);
+    // Spec: USING inside namespace is not allowed (E_NS_008)
+    assert(err2 > 0);
 }
 
 // Test: USING after first decl (Phase 2 allows file-scoped USING anywhere)
@@ -60,7 +61,8 @@ USING A
 
     DiagnosticEngine de;
     size_t errorCount = parseAndAnalyze(source, de);
-    assert(errorCount == 0);
+    // Spec: USING must appear before declarations (E_NS_005)
+    assert(errorCount > 0);
 }
 
 // Test: USING after class decl (Phase 2 allows file-scoped USING anywhere)
@@ -76,7 +78,8 @@ USING A
 
     DiagnosticEngine de;
     size_t errorCount = parseAndAnalyze(source, de);
-    assert(errorCount == 0);
+    // Spec: USING must appear before declarations (E_NS_005)
+    assert(errorCount > 0);
 }
 
 // Test: USING NonExistent.Namespace → E_NS_001
@@ -155,9 +158,9 @@ USING Viper
 void test_valid_using()
 {
     std::string source = R"(
-100 NAMESPACE System
-110 END NAMESPACE
-120 USING System
+100 USING System
+110 NAMESPACE System
+120 END NAMESPACE
 130 NAMESPACE MyApp
 140 END NAMESPACE
 )";
@@ -172,9 +175,9 @@ void test_valid_using()
 void test_valid_using_with_alias()
 {
     std::string source = R"(
-100 NAMESPACE System.Collections
-110 END NAMESPACE
-120 USING SC = System.Collections
+100 USING SC = System.Collections
+110 NAMESPACE System.Collections
+120 END NAMESPACE
 130 NAMESPACE MyApp
 140 END NAMESPACE
 )";

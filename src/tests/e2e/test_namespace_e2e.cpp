@@ -340,8 +340,8 @@ END
     std::vector<std::pair<std::string, std::string>> files = {
         {"a.bas", file1}, {"b.bas", file2}, {"app.bas", file3}};
 
-    // Should have exactly 1 error (E_NS_003)
-    bool hasAmbiguityError = hasMultiFileDiagnostic(files, "E_NS_003", "app.bas");
+    // Should have exactly 1 error (ambiguous type reference)
+    bool hasAmbiguityError = hasMultiFileDiagnostic(files, "ambiguous reference to", "app.bas");
     assert(hasAmbiguityError);
 
     // Verify stable sorted candidate list

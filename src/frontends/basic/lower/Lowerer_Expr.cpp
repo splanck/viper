@@ -100,8 +100,10 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
     }
 
     /// @brief Lower a boolean literal expression.
-    /// @details In classic BASIC, BOOLEAN is an alias for INTEGER with TRUE=-1
-    ///          and FALSE=0 (all bits set/clear). Emits i64 constants directly.
+    /// @details Preserve classic BASIC convention in IL by representing
+    ///          booleans as integer values (-1 for TRUE, 0 for FALSE) with
+    ///          `i64` type. Downstream call sites perform i64→i1 coercion when
+    ///          targeting boolean parameters to satisfy verifier expectations.
     /// @param expr Boolean literal node from the BASIC AST.
     void visit(const BoolExpr &expr) override
     {
@@ -156,9 +158,11 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
             (isMemberArray && memberElemAstType == ::il::frontends::basic::Type::Str))
         {
             // String array: use rt_arr_str_get (returns retained handle)
+            // BUG-071 fix: Don't defer release - consuming code handles lifetime
+            // to avoid dominance violations when array access is in conditional blocks
             IlValue val = lowerer_.emitCallRet(
                 IlType(IlType::Kind::Str), "rt_arr_str_get", {access.base, access.index});
-            lowerer_.deferReleaseStr(val);
+            // Removed: lowerer_.deferReleaseStr(val);
             result_ = Lowerer::RVal{val, IlType(IlType::Kind::Str)};
         }
         else if (!isMemberArray && info && info->isObject)
@@ -297,6 +301,10 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
                 {
                     arg = lowerer_.coerceToI64(std::move(arg), expr.loc);
                 }
+                else if (paramTy.kind == IlType::Kind::I1)
+                {
+                    arg = lowerer_.coerceToBool(std::move(arg), expr.loc);
+                }
             }
             args.push_back(arg.value);
         }
@@ -382,11 +390,12 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
                     if (fld->type == ::il::frontends::basic::Type::Str)
                     {
                         lowerer_.requireArrayStrGet();
+                        // BUG-071 fix: Don't defer release - consuming code handles lifetime
                         Lowerer::IlValue val =
                             lowerer_.emitCallRet(Lowerer::IlType(Lowerer::IlType::Kind::Str),
                                                  "rt_arr_str_get",
                                                  {arrHandle, indexVal});
-                        lowerer_.deferReleaseStr(val);
+                        // Removed: lowerer_.deferReleaseStr(val);
                         result_ = Lowerer::RVal{val, Lowerer::IlType(Lowerer::IlType::Kind::Str)};
                         return;
                     }

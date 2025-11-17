@@ -104,8 +104,8 @@ void test_ns_005_file_scope_allows_using_after_decl()
 120 USING System
 )";
     std::string msg = getFirstDiagnostic(source);
-    // No error expected
-    assert(msg.empty());
+    // Spec: USING must appear before declarations → expect error
+    assert(!msg.empty());
 }
 
 // Test E_NS_006: "cannot resolve type: '{type}'"
@@ -141,7 +141,8 @@ void test_ns_008_scoped_using_allowed()
 140 END NAMESPACE
 )";
     std::string msg = getFirstDiagnostic(source);
-    assert(msg.empty());
+    // Spec: USING inside namespace is an error (E_NS_008)
+    assert(!msg.empty());
 }
 
 // Test E_NS_009: "reserved root namespace 'Viper' cannot be declared or imported"

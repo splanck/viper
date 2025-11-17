@@ -259,11 +259,16 @@ void Lowerer::emitClassConstructor(const ClassDecl &klass, const ConstructorDecl
             markArray(param.name);
             emitStore(Type(Type::Kind::Ptr), slot, Value::null());
         }
-        setSymbolType(param.name, param.type);
+        // BUG-073 fix: Preserve object-class typing for parameters so member calls on params resolve
+        if (!param.objectClass.empty())
+            setSymbolObjectType(param.name, qualify(param.objectClass));
+        else
+            setSymbolType(param.name, param.type);
         markSymbolReferenced(param.name);
         auto &info = ensureSymbol(param.name);
         info.slotId = slot.id;
-        Type ilParamTy = param.is_array ? Type(Type::Kind::Ptr) : ilTypeForAstType(param.type);
+        Type ilParamTy = (!param.objectClass.empty() || param.is_array) ? Type(Type::Kind::Ptr)
+                                                                        : ilTypeForAstType(param.type);
         Value incoming = Value::temp(fn.params[1 + i].id);
         if (param.is_array)
             storeArray(slot, incoming);
@@ -552,20 +557,33 @@ void Lowerer::emitClassMethod(const ClassDecl &klass, const MethodDecl &method)
     if (returnsValue)
     {
         Value retValue = Value::constInt(0);
-        switch (*methodRetAst)
+        // BUG-068 fix: Check for VB-style implicit return via function name assignment
+        auto methodNameSym = findSymbol(method.name);
+        if (methodNameSym && methodNameSym->slotId.has_value())
         {
-            case ::il::frontends::basic::Type::I64:
-                retValue = Value::constInt(0);
-                break;
-            case ::il::frontends::basic::Type::F64:
-                retValue = Value::constFloat(0.0);
-                break;
-            case ::il::frontends::basic::Type::Str:
-                retValue = emitConstStr(getStringLabel(""));
-                break;
-            case ::il::frontends::basic::Type::Bool:
-                retValue = emitBoolConst(false);
-                break;
+            // Function name was assigned - load from that variable
+            Type ilType = ilTypeForAstType(*methodRetAst);
+            Value slot = Value::temp(*methodNameSym->slotId);
+            retValue = emitLoad(ilType, slot);
+        }
+        else
+        {
+            // No assignment - use default value
+            switch (*methodRetAst)
+            {
+                case ::il::frontends::basic::Type::I64:
+                    retValue = Value::constInt(0);
+                    break;
+                case ::il::frontends::basic::Type::F64:
+                    retValue = Value::constFloat(0.0);
+                    break;
+                case ::il::frontends::basic::Type::Str:
+                    retValue = emitConstStr(getStringLabel(""));
+                    break;
+                case ::il::frontends::basic::Type::Bool:
+                    retValue = emitBoolConst(false);
+                    break;
+            }
         }
         emitRet(retValue);
     }

@@ -1421,6 +1421,8 @@ void Lowerer::resetLoweringState()
     context().reset();
     stmtVirtualLines_.clear();
     synthSeq_ = 0;
+    // BUG-074 fix: Clear any deferred temps from prior procedures
+    clearDeferredTemps();
 }
 
 /// @brief Allocate stack slots and store incoming arguments for parameters.

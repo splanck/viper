@@ -156,24 +156,31 @@ void SemanticAnalyzer::analyzeInterfaceDecl(InterfaceDecl &decl)
 ///          - "Viper" root is reserved.
 void SemanticAnalyzer::analyzeUsingDecl(UsingDecl &decl)
 {
-    // Placement rules:
-    // - USING is file-scoped OR inside namespace blocks (scoped USING)
+    // Placement rules (per docs/basic-language.md):
+    // - USING must appear at file scope (not inside namespace blocks)
+    // - USING must appear before any namespace/class/interface declarations
     // - USING cannot appear inside procedures
 
-    // Disallow inside procedures.
+    // Disallow inside procedures (parser should already prevent this, but keep as guard).
     if (activeProcScope_ != nullptr)
     {
         de.emit(diag::BasicDiag::NsUsingNotFileScope, decl.loc, 1, {});
         return;
     }
 
-    // NOTE: USING inside namespace blocks is allowed (scoped USING).
-    // E_NS_008 ("USING cannot appear inside a namespace block") is NOT enforced.
+    // Disallow USING inside namespace blocks: E_NS_008.
+    if (!nsStack_.empty())
+    {
+        de.emit(diag::BasicDiag::NsUsingNotFileScope, decl.loc, 1, {});
+        return;
+    }
 
-    // NOTE: E_NS_005 (USING must appear before namespace/class declarations) is currently
-    // disabled to support "Phase 2" USING placement where USING can appear anywhere at
-    // file scope. Some tests (test_namespace_integration) expect E_NS_005 to be enforced,
-    // while others (namespaces_phase2) expect it to be allowed. This needs clarification.
+    // Enforce USING-before-decls at file scope: E_NS_005.
+    if (sawDecl_)
+    {
+        de.emit(diag::BasicDiag::NsUsingAfterDecl, decl.loc, 1, {});
+        return;
+    }
 
     // Build canonical lowercase namespace path from segments.
     std::string nsPath;

@@ -1168,26 +1168,29 @@ function(viper_add_basic_namespace_tests)
     set(_P2_DIR ${VIPER_TESTS_DIR}/basic/namespaces_phase2)
     set(_SEM_DIR ${VIPER_TESTS_DIR}/basic/semantics)
 
+    # Spec-compliant: USING after declarations is an error (E_NS_005)
     viper_add_ctest(basic_ns2_t01_import_proc
             ${CMAKE_COMMAND}
             -DILC=${_VIPER_BASIC_ILC}
             -DBAS_FILE=${_P2_DIR}/t01_using_import_proc.bas
-            -DEXPECT_FILE=${_P2_DIR}/t01_using_import_proc.expect
-            -P ${_SEM_DIR}/check_expect.cmake)
+            "-DEXPECT=E_NS_005"
+            -P ${_VIPER_GOLDEN_ERRORS_DIR}/check_error.cmake)
 
+    # Spec-compliant: USING after declarations is an error (E_NS_005)
     viper_add_ctest(basic_ns2_t02_alias_qualified_call
             ${CMAKE_COMMAND}
             -DILC=${_VIPER_BASIC_ILC}
             -DBAS_FILE=${_P2_DIR}/t02_using_alias_qualified_call.bas
-            -DEXPECT_FILE=${_P2_DIR}/t02_using_alias_qualified_call.expect
-            -P ${_SEM_DIR}/check_expect.cmake)
+            "-DEXPECT=E_NS_005"
+            -P ${_VIPER_GOLDEN_ERRORS_DIR}/check_error.cmake)
 
+    # Spec-compliant: USING inside namespace is an error (E_NS_008)
     viper_add_ctest(basic_ns2_t03_shadowing_local_vs_import
             ${CMAKE_COMMAND}
             -DILC=${_VIPER_BASIC_ILC}
             -DBAS_FILE=${_P2_DIR}/t03_shadowing_local_vs_import.bas
-            -DEXPECT_FILE=${_P2_DIR}/t03_shadowing_local_vs_import.expect
-            -P ${_SEM_DIR}/check_expect.cmake)
+            "-DEXPECT=E_NS_008"
+            -P ${_VIPER_GOLDEN_ERRORS_DIR}/check_error.cmake)
 
     viper_add_ctest(basic_ns2_t04_ambiguity_imports
             ${CMAKE_COMMAND}
@@ -1196,12 +1199,13 @@ function(viper_add_basic_namespace_tests)
             "-DEXPECT=B2009"
             -P ${_VIPER_GOLDEN_ERRORS_DIR}/check_error.cmake)
 
+    # Spec-compliant: USING after declarations is an error (E_NS_005)
     viper_add_ctest(basic_ns2_t05_types_with_imports
             ${CMAKE_COMMAND}
             -DILC=${_VIPER_BASIC_ILC}
             -DBAS_FILE=${_P2_DIR}/t05_types_with_imports.bas
-            -DEXPECT_FILE=${_P2_DIR}/t05_types_with_imports.expect
-            -P ${_SEM_DIR}/check_expect.cmake)
+            "-DEXPECT=E_NS_005"
+            -P ${_VIPER_GOLDEN_ERRORS_DIR}/check_error.cmake)
 
     viper_add_ctest(basic_ns2_t06_alias_does_not_open
             ${CMAKE_COMMAND}
@@ -1210,10 +1214,11 @@ function(viper_add_basic_namespace_tests)
             "-DEXPECT=B1006"
             -P ${_VIPER_GOLDEN_ERRORS_DIR}/check_error.cmake)
 
+    # Spec-compliant: USING after declarations is an error (E_NS_005)
     viper_add_ctest(basic_ns2_t07_case_insensitive
             ${CMAKE_COMMAND}
             -DILC=${_VIPER_BASIC_ILC}
             -DBAS_FILE=${_P2_DIR}/t07_case_insensitive.bas
-            -DEXPECT_FILE=${_P2_DIR}/t07_case_insensitive.expect
-            -P ${_SEM_DIR}/check_expect.cmake)
+            "-DEXPECT=E_NS_005"
+            -P ${_VIPER_GOLDEN_ERRORS_DIR}/check_error.cmake)
 endfunction()

@@ -259,12 +259,15 @@ function(viper_add_e2e_vm_suite)
     set_tests_properties(basic_args_none PROPERTIES LABELS VM)
 
     # Command-line arguments: some args
+    # Pass two program arguments: "foo" and "bar baz". Semicolons are CMake's
+    # list separators, so escape it (\;) to keep both elements inside the single
+    # -DARGS=... argument. Spaces do not need escaping here.
     viper_add_ctest(basic_args_some
             ${CMAKE_COMMAND}
             -DILC=$<TARGET_FILE:ilc>
             -DBAS_FILE=${CMAKE_SOURCE_DIR}/src/tests/e2e/basic_args_some.bas
             -DGOLDEN=${CMAKE_SOURCE_DIR}/src/tests/e2e/basic_args_some.bas.out
-            -DARGS=foo;bar\ baz
+            "-DARGS=foo\;bar baz"
             -P ${_VIPER_E2E_DIR}/test_basic_args_run.cmake)
     set_tests_properties(basic_args_some PROPERTIES LABELS VM)
 
@@ -447,6 +450,4 @@ if (NOT TARGET test_namespace_e2e)
     viper_add_test(test_namespace_e2e ${VIPER_TESTS_DIR}/e2e/test_namespace_e2e.cpp)
     target_link_libraries(test_namespace_e2e PRIVATE fe_basic viper_support)
     viper_add_ctest(test_namespace_e2e test_namespace_e2e)
-    # TODO: Fix multi-file type resolution - currently tests infrastructure but has semantic issues
-    set_tests_properties(test_namespace_e2e PROPERTIES DISABLED TRUE)
 endif ()
