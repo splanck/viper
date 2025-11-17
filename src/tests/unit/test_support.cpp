@@ -116,7 +116,7 @@ int main()
     const size_t stored_before = il::support::SourceManagerTestAccess::storedPathCount(dedupeSm);
     const uint32_t dedupeSecond = dedupeSm.addFile("dupe/./file.txt");
     assert(dedupeSecond == dedupeFirst);
-    const size_t stored_after = il::support::SourceManagerTestAccess::storedPathCount(dedupeSm);
+    [[maybe_unused]] const size_t stored_after = il::support::SourceManagerTestAccess::storedPathCount(dedupeSm);
     assert(stored_before == stored_after);
     assert(dedupeSm.getPath(dedupeFirst) == "dupe/file.txt");
 
@@ -165,11 +165,11 @@ int main()
     il::support::Arena arena(64);
     void *p1 = arena.allocate(1, 1);
     (void)p1;
-    void *p2 = arena.allocate(sizeof(double), alignof(double));
+    [[maybe_unused]] void *p2 = arena.allocate(sizeof(double), alignof(double));
     assert(reinterpret_cast<uintptr_t>(p2) % alignof(double) == 0);
     const size_t large_align = alignof(std::max_align_t) << 1;
     il::support::Arena large_arena(256);
-    void *p3 = large_arena.allocate(16, large_align);
+    [[maybe_unused]] void *p3 = large_arena.allocate(16, large_align);
     assert(p3 != nullptr);
     assert(reinterpret_cast<uintptr_t>(p3) % large_align == 0);
     assert(arena.allocate(1, 0) == nullptr);

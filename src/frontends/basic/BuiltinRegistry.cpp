@@ -321,4 +321,67 @@ BuiltinHandler find_builtin(std::string_view name)
     return nullptr;
 }
 
+static il::frontends::basic::BuiltinResultKind resultKindFromMask(TypeMask m)
+{
+    using RK = il::frontends::basic::BuiltinResultKind;
+    const bool i = (static_cast<std::uint8_t>(m) & static_cast<std::uint8_t>(TypeMask::I64)) != 0;
+    const bool f = (static_cast<std::uint8_t>(m) & static_cast<std::uint8_t>(TypeMask::F64)) != 0;
+    const bool s = (static_cast<std::uint8_t>(m) & static_cast<std::uint8_t>(TypeMask::Str)) != 0;
+    const int count = (i ? 1 : 0) + (f ? 1 : 0) + (s ? 1 : 0);
+    if (count != 1)
+        return RK::Unknown;
+    if (i)
+        return RK::Int;
+    if (f)
+        return RK::Float;
+    if (s)
+        return RK::String;
+    return RK::Unknown;
+}
+BuiltinResultKind getBuiltinFixedResult(BuiltinCallExpr::Builtin b)
+{
+    const auto idxv = static_cast<std::size_t>(b);
+    if (idxv >= kBuiltinCount)
+        return BuiltinResultKind::Unknown;
+    const auto &desc = kBuiltinDescriptors[idxv];
+    return resultKindFromMask(desc.typeMask);
+}
+
+// Minimal registry-driven semantic signatures for critical builtins ----------
+static const SemanticArgSpecView kArgGetArgs[] = {
+    SemanticArgSpecView{false, BuiltinArgTypeMask::Int},
+};
+
+static const SemanticSignatureView kArgcSemSig{/*min*/ 0,
+                                               /*max*/ 0,
+                                               /*args*/ nullptr,
+                                               /*count*/ 0,
+                                               /*result*/ BuiltinResultKind::Int};
+static const SemanticSignatureView kArgGetSemSig{/*min*/ 1,
+                                                 /*max*/ 1,
+                                                 /*args*/ kArgGetArgs,
+                                                 /*count*/ 1,
+                                                 /*result*/ BuiltinResultKind::String};
+static const SemanticSignatureView kCommandSemSig{/*min*/ 0,
+                                                  /*max*/ 0,
+                                                  /*args*/ nullptr,
+                                                  /*count*/ 0,
+                                                  /*result*/ BuiltinResultKind::String};
+
+const SemanticSignatureView *getBuiltinSemanticSignature(BuiltinCallExpr::Builtin b)
+{
+    using E = BuiltinCallExpr::Builtin;
+    switch (b)
+    {
+        case E::Argc:
+            return &kArgcSemSig;
+        case E::ArgGet:
+            return &kArgGetSemSig;
+        case E::Command:
+            return &kCommandSemSig;
+        default:
+            return nullptr;
+    }
+}
+
 } // namespace il::frontends::basic

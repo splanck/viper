@@ -264,4 +264,52 @@ void register_builtin(std::string_view name, BuiltinHandler fn);
 /// @brief Locate the lowering handler associated with @p name.
 BuiltinHandler find_builtin(std::string_view name);
 
+// Lightweight result kind derived from builtin descriptor metadata. Only returns
+// a concrete kind for builtins with fixed result categories; otherwise Unknown.
+enum class BuiltinResultKind : std::uint8_t
+{
+    Unknown = 0,
+    Int,
+    Float,
+    String,
+};
+
+/// \brief Fetch a fixed result kind for @p b when available.
+/// \details Consults the builtin descriptor table. When the descriptor marks
+///          multiple possible categories (e.g., depends on args), returns Unknown.
+BuiltinResultKind getBuiltinFixedResult(BuiltinCallExpr::Builtin b);
+
+// Semantic signature view (registry-driven) ----------------------------------
+enum class BuiltinArgTypeMask : std::uint8_t
+{
+    None = 0,
+    Int = 1U << 0U,
+    Float = 1U << 1U,
+    String = 1U << 2U,
+    Bool = 1U << 3U,
+    Number = Int | Float,
+    Any = Int | Float | String | Bool,
+};
+
+struct SemanticArgSpecView
+{
+    bool optional{false};
+    BuiltinArgTypeMask allowed{BuiltinArgTypeMask::Any};
+};
+
+struct SemanticSignatureView
+{
+    std::size_t minArgs{0};
+    std::size_t maxArgs{0};
+    const SemanticArgSpecView *args{nullptr};
+    std::size_t argCount{0};
+    BuiltinResultKind result{BuiltinResultKind::Unknown};
+};
+
+/// \brief Return a registry-backed semantic signature when available.
+/// \details For builtins that have per-argument typing metadata encoded, the
+///          returned view describes allowed argument categories and arity.
+///          Returns nullptr for builtins not yet covered by the registry view.
+const SemanticSignatureView *getBuiltinSemanticSignature(BuiltinCallExpr::Builtin b);
+
 } // namespace il::frontends::basic

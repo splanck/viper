@@ -213,6 +213,7 @@ static int rt_arr_i32_grow_in_place(rt_heap_hdr_t **hdr_inout,
                                     size_t new_len)
 {
     rt_heap_hdr_t *hdr = *hdr_inout;
+    size_t old_len = hdr ? hdr->len : 0;
     size_t new_cap = new_len;
     size_t payload_bytes = rt_arr_i32_payload_bytes(new_cap);
     if (new_cap > 0 && payload_bytes == 0)
@@ -224,7 +225,7 @@ static int rt_arr_i32_grow_in_place(rt_heap_hdr_t **hdr_inout,
         return -1;
 
     int32_t *payload = (int32_t *)rt_heap_data(resized);
-    size_t old_len = resized->len;
+    // Use the snapshotted old_len to avoid relying on header contents mid-mutation.
     if (new_len > old_len)
     {
         size_t grow = new_len - old_len;

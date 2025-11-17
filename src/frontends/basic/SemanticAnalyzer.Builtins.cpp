@@ -241,7 +241,123 @@ static constexpr std::array<BuiltinSignature, 41> kBuiltinSignatures{{
 const SemanticAnalyzer::BuiltinSignature &SemanticAnalyzer::builtinSignature(
     BuiltinCallExpr::Builtin builtin)
 {
-    return kBuiltinSignatures[static_cast<size_t>(builtin)];
+    using B = BuiltinCallExpr::Builtin;
+    // Single-source truth for argument counts for key runtime builtins that were
+    // added later; avoid relying on a potentially out-of-sync static table.
+    static const BuiltinArgSpec kOneIntArg[] = {
+        BuiltinArgSpec{false, nullptr, 0}, // Allow unknown; type-checked separately
+    };
+    static const BuiltinSignature kArgcSig{/*required*/ 0,
+                                           /*optional*/ 0,
+                                           /*args*/ nullptr,
+                                           /*count*/ 0,
+                                           /*result*/ Type::Int};
+    static const BuiltinSignature kArgGetSig{/*required*/ 1,
+                                             /*optional*/ 0,
+                                             /*args*/ kOneIntArg,
+                                             /*count*/ 1,
+                                             /*result*/ Type::String};
+    static const BuiltinSignature kCommandSig{/*required*/ 0,
+                                              /*optional*/ 0,
+                                              /*args*/ nullptr,
+                                              /*count*/ 0,
+                                              /*result*/ Type::String};
+    switch (builtin)
+    {
+        case B::Argc:
+            return kArgcSig;
+        case B::ArgGet:
+            return kArgGetSig;
+        case B::Command:
+            return kCommandSig;
+        default:
+            break;
+    }
+    // Prefer a full semantic signature view from the registry when available.
+    if (const auto *view = getBuiltinSemanticSignature(builtin))
+    {
+        static BuiltinSignature cached; // reused per-call; safe since we return a reference
+        cached.requiredArgs = view->minArgs;
+        cached.optionalArgs = (view->maxArgs >= view->minArgs) ? (view->maxArgs - view->minArgs) : 0;
+        static SemanticAnalyzer::BuiltinArgSpec argSpecs[8]; // up to 8 args for now
+        static SemanticAnalyzer::Type allowedInt[] = {Type::Int};
+        static SemanticAnalyzer::Type allowedFloat[] = {Type::Float};
+        static SemanticAnalyzer::Type allowedString[] = {Type::String};
+        static SemanticAnalyzer::Type allowedBool[] = {Type::Bool};
+        static SemanticAnalyzer::Type allowedNumber[] = {Type::Int, Type::Float};
+        static SemanticAnalyzer::Type allowedAny[] = {Type::Int, Type::Float, Type::String, Type::Bool};
+
+        auto maskToAllowed = [&](BuiltinArgTypeMask m) -> std::pair<const SemanticAnalyzer::Type *, std::size_t> {
+            using M = BuiltinArgTypeMask;
+            switch (m)
+            {
+                case M::Int:
+                    return {allowedInt, 1};
+                case M::Float:
+                    return {allowedFloat, 1};
+                case M::String:
+                    return {allowedString, 1};
+                case M::Bool:
+                    return {allowedBool, 1};
+                case M::Number:
+                    return {allowedNumber, 2};
+                case M::Any:
+                    return {allowedAny, 4};
+                case M::None:
+                default:
+                    return {nullptr, 0};
+            }
+        };
+
+        const std::size_t n = std::min<std::size_t>(view->argCount, 8);
+        for (std::size_t i = 0; i < n; ++i)
+        {
+            argSpecs[i].optional = view->args[i].optional;
+            auto [ptr, cnt] = maskToAllowed(view->args[i].allowed);
+            argSpecs[i].allowed = ptr;
+            argSpecs[i].allowedCount = cnt;
+        }
+        cached.arguments = (n > 0) ? argSpecs : nullptr;
+        cached.argumentCount = n;
+        switch (view->result)
+        {
+            case BuiltinResultKind::Int:
+                cached.result = Type::Int;
+                break;
+            case BuiltinResultKind::Float:
+                cached.result = Type::Float;
+                break;
+            case BuiltinResultKind::String:
+                cached.result = Type::String;
+                break;
+            case BuiltinResultKind::Unknown:
+            default:
+                cached.result = Type::Unknown;
+                break;
+        }
+        return cached;
+    }
+
+    // Fallback to legacy static table but override fixed result kind when possible to reduce drift.
+    const BuiltinSignature &legacy = kBuiltinSignatures[static_cast<size_t>(builtin)];
+    static BuiltinSignature scratch;
+    scratch = legacy;
+    switch (getBuiltinFixedResult(builtin))
+    {
+        case BuiltinResultKind::Int:
+            scratch.result = Type::Int;
+            break;
+        case BuiltinResultKind::Float:
+            scratch.result = Type::Float;
+            break;
+        case BuiltinResultKind::String:
+            scratch.result = Type::String;
+            break;
+        case BuiltinResultKind::Unknown:
+        default:
+            break;
+    }
+    return scratch;
 }
 
 /// @brief Validate builtin arguments against a signature definition.
@@ -258,8 +374,10 @@ bool SemanticAnalyzer::validateBuiltinArgs(const BuiltinCallExpr &c,
                                            const std::vector<Type> &args,
                                            const BuiltinSignature &signature)
 {
-    const std::size_t minArgs = signature.requiredArgs;
-    const std::size_t maxArgs = signature.requiredArgs + signature.optionalArgs;
+    // Derive arity from the BuiltinRegistry to avoid table drift.
+    const auto arity = getBuiltinArity(c.builtin);
+    const std::size_t minArgs = arity.minArgs;
+    const std::size_t maxArgs = arity.maxArgs;
     if (!checkArgCount(c, args, minArgs, maxArgs))
         return false;
 

@@ -80,7 +80,7 @@ function(viper_add_e2e_vm_suite)
     viper_add_ctest(vm_break_src_exact
             ${CMAKE_COMMAND}
             -DILC=$<TARGET_FILE:ilc>
-            -DSRC_FILE=tests/e2e/BreakSrcExact.bas
+            -DSRC_FILE=src/tests/e2e/BreakSrcExact.bas
             -DGOLDEN=${CMAKE_SOURCE_DIR}/src/tests/golden/break_src_exact.out
             -DLINE=1
             -DROOT=${CMAKE_SOURCE_DIR}
@@ -90,7 +90,7 @@ function(viper_add_e2e_vm_suite)
     viper_add_ctest(vm_break_src_coalesce
             ${CMAKE_COMMAND}
             -DILC=$<TARGET_FILE:ilc>
-            -DSRC_FILE=tests/e2e/BreakSrcCoalesce.bas
+            -DSRC_FILE=src/tests/e2e/BreakSrcCoalesce.bas
             -DGOLDEN=${CMAKE_SOURCE_DIR}/src/tests/golden/break_src_coalesce.out
             -DLINE=1
             -DROOT=${CMAKE_SOURCE_DIR}

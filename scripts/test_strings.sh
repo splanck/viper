@@ -7,9 +7,9 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ILC="$ROOT/build/src/tools/ilc/ilc"
 FAIL=0
-for BAS in "$ROOT"/tests/basic/strings/*.bas; do
+for BAS in "$ROOT"/src/tests/basic/strings/*.bas; do
   NAME="$(basename "$BAS" .bas)"
-  GOLDEN="$ROOT/tests/basic/strings/$NAME.golden"
+  GOLDEN="$ROOT/src/tests/basic/strings/$NAME.golden"
   OUT="$(mktemp)"
   if ! "$ILC" front basic -run "$BAS" > "$OUT"; then
     echo "[test_strings] FAIL $NAME (run)" >&2

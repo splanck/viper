@@ -89,7 +89,7 @@ if (NOT RN STREQUAL "AB\n")
 endif ()
 
 # test INPUT string echo
-execute_process(COMMAND ${ILC} front basic -run ${SRC_DIR}/examples/basic/ex5_input_echo.bas --stdin-from ${SRC_DIR}/tests/data/input1.txt
+execute_process(COMMAND ${ILC} front basic -run ${SRC_DIR}/examples/basic/ex5_input_echo.bas --stdin-from ${SRC_DIR}/src/tests/data/input1.txt
         OUTPUT_FILE run3.txt RESULT_VARIABLE r4)
 if (NOT r4 EQUAL 0)
     message(FATAL_ERROR "execution ex5 failed")
@@ -117,7 +117,7 @@ if (NOT _n1)
 endif ()
 
 # test INPUT prompt literal
-execute_process(COMMAND ${ILC} front basic -run ${SRC_DIR}/examples/basic/ex_input_prompt_min.bas --stdin-from ${SRC_DIR}/tests/data/n_input.txt
+execute_process(COMMAND ${ILC} front basic -run ${SRC_DIR}/examples/basic/ex_input_prompt_min.bas --stdin-from ${SRC_DIR}/src/tests/data/n_input.txt
         OUTPUT_FILE run_prompt.txt RESULT_VARIABLE rp)
 if (NOT rp EQUAL 0)
     message(FATAL_ERROR "execution input_prompt failed")

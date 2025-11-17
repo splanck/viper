@@ -11,7 +11,7 @@ execute_process(COMMAND ${ILC} front basic -run ${SRC_DIR}/examples/basic/monte_
 if (NOT r EQUAL 0)
     message(FATAL_ERROR "execution failed")
 endif ()
-execute_process(COMMAND ${FLOAT_OUT} ${OUT_FILE} ${SRC_DIR}/tests/e2e/monte_carlo_pi.expect
+execute_process(COMMAND ${FLOAT_OUT} ${OUT_FILE} ${SRC_DIR}/src/tests/e2e/monte_carlo_pi.expect
         RESULT_VARIABLE r2)
 if (NOT r2 EQUAL 0)
     message(FATAL_ERROR "float mismatch")

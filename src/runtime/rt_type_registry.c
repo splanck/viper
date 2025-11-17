@@ -5,6 +5,7 @@
 // Links: src/runtime/rt_oop.h
 
 #include "rt_oop.h"
+#include "rt_internal.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -42,13 +43,37 @@ static void ensure_cap(void **buf, size_t *cap, size_t elem_size)
     if (*cap == 0)
     {
         *cap = 16;
-        *buf = malloc((*cap) * elem_size);
+        void *tmp = malloc((*cap) * elem_size);
+        if (!tmp)
+        {
+            rt_trap("rt_type_registry: alloc failed");
+            return;
+        }
+        *buf = tmp;
+        return;
     }
-    else if (*cap < (size_t)-1 / 2)
+
+    // Exponential growth with overflow guards
+    if (*cap > (SIZE_MAX / 2))
     {
-        *cap *= 2;
-        *buf = realloc(*buf, (*cap) * elem_size);
+        rt_trap("rt_type_registry: capacity overflow");
+        return;
     }
+    size_t new_cap = (*cap) * 2;
+    if (elem_size != 0 && new_cap > (SIZE_MAX / elem_size))
+    {
+        rt_trap("rt_type_registry: size overflow");
+        return;
+    }
+    void *new_buf = realloc(*buf, new_cap * elem_size);
+    if (!new_buf)
+    {
+        // Preserve existing buffer to avoid pointer loss on realloc failure
+        rt_trap("rt_type_registry: realloc failed");
+        return;
+    }
+    *buf = new_buf;
+    *cap = new_cap;
 }
 
 static const class_entry *find_class_by_type(int type_id)

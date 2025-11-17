@@ -1,17 +1,180 @@
 # VIPER BASIC Known Bugs and Issues
 
-*Last Updated: 2025-11-15*
-*Source: Empirical testing during language audit*
+*Last Updated: 2025-11-16*
+*Source: Empirical testing during language audit + Dungeon stress testing*
 
-**Bug Statistics**: 66 resolved, 0 outstanding bugs (66 total documented)
+**Bug Statistics**: 66 resolved, 5 outstanding bugs (71 total documented)
 
-**STATUS**: ✅ BUG-065 RESOLVED — array field assignments preserved (2025-11-15)
+**STATUS**: 🚨 New bugs found during OOP stress testing (Dungeon + Frogger games)
 
 ---
 
-## OUTSTANDING BUGS (0 bugs)
+## OUTSTANDING BUGS (5 bugs)
 
-None at this time.
+### BUG-067 CRITICAL: Array Fields in Classes Not Supported
+**Status**: 🚨 CRITICAL - Parse error
+**Discovered**: 2025-11-16 (Dungeon OOP stress test)
+**Category**: Frontend / Parser / OOP
+**Test File**: `/bugs/bug_testing/dungeon_entities.bas`
+
+**Symptom**: Cannot declare array fields inside CLASS definitions. Parser fails with "expected END, got ident" error.
+
+**Reproduction**:
+```basic
+CLASS Player
+    inventory(10) AS Item  ' ERROR: Parse fails!
+END CLASS
+```
+
+**Error**:
+```
+error[B0001]: expected END, got ident
+    inventory(10) AS Item
+    ^
+```
+
+**Expected**: Arrays should be valid field types in classes
+
+**Workaround**: Use multiple scalar fields or manage arrays outside the class
+
+**Impact**: Severely limits OOP design - cannot have collection fields in classes
+
+
+### BUG-068 HIGH: Function Name Assignment for Return Value Not Working
+**Status**: 🚨 HIGH - Breaks traditional BASIC pattern
+**Discovered**: 2025-11-16 (Dungeon OOP stress test)
+**Category**: Frontend / Semantic Analysis
+**Test File**: `/bugs/bug_testing/test_function_return.bas`, `/bugs/bug_testing/test_return_keyword.bas`
+
+**Symptom**: Traditional BASIC pattern of assigning to function name to set return value doesn't work. Semantic analyzer reports "missing return" error even when function name is assigned.
+
+**Reproduction**:
+```basic
+CLASS Test
+    FUNCTION GetValue() AS INTEGER
+        GetValue = 42  ' ERROR: "missing return"
+    END FUNCTION
+END CLASS
+```
+
+**Error**:
+```
+error[B1007]: missing return in FUNCTION TEST.GETVALUE
+    FUNCTION GetValue() AS INTEGER
+    ^^^
+```
+
+**Expected**: Assignment to function name should count as a return path (traditional BASIC behavior)
+
+**Workaround**: Use explicit RETURN statement instead:
+```basic
+FUNCTION GetValue() AS INTEGER
+    RETURN 42  ' Works!
+END FUNCTION
+```
+
+**Impact**: Breaks traditional BASIC code patterns, requires modern RETURN keyword
+
+
+### BUG-069 CRITICAL: Objects Not Initialized by DIM - NEW Required
+**Status**: 🚨 CRITICAL - Runtime crash (null pointer)
+**Discovered**: 2025-11-16 (Dungeon OOP stress test)
+**Category**: Runtime / OOP / Object Lifecycle
+**Test File**: `/bugs/bug_testing/test_me_in_init.bas`, `/bugs/bug_testing/test_new_standalone.bas`
+
+**Symptom**: `DIM obj AS ClassName` creates a null object reference. Calling any method (including Init/constructor) causes "null store" or "null load" trap.
+
+**Reproduction**:
+```basic
+CLASS Simple
+    value AS INTEGER
+    SUB Init(v AS INTEGER)
+        ME.value = v  ' CRASH: "null store" - ME is null!
+    END SUB
+END CLASS
+
+DIM obj AS Simple  ' Object is NULL!
+obj.Init(42)       ' CRASH!
+```
+
+**Trap**:
+```
+Trap @SIMPLE.INIT#3 line 8: InvalidOperation (code=0): null store
+```
+
+**Expected**: DIM should allocate object memory, or Init should auto-allocate
+
+**Workaround**: Must use NEW to allocate object before use:
+```basic
+DIM obj AS Simple
+obj = NEW Simple()  ' Now allocated!
+obj.value = 42      ' Works!
+```
+
+**Impact**: CRITICAL - Makes constructor/Init pattern impossible. Must manually NEW every object. Different from traditional BASIC OOP patterns.
+
+
+### BUG-070 HIGH: BOOLEAN Parameters Cause Type Mismatch Errors
+**Status**: 🚨 HIGH - Cannot pass BOOLEAN to methods
+**Discovered**: 2025-11-16 (Dungeon OOP stress test)
+**Category**: Frontend / Type System
+**Test File**: `/bugs/bug_testing/test_boolean.bas`
+
+**Symptom**: Passing any value (including TRUE/FALSE constants) to a BOOLEAN parameter causes "call arg type mismatch" error.
+
+**Reproduction**:
+```basic
+CLASS Test
+    SUB SetFlag(value AS BOOLEAN)
+        ' ...
+    END SUB
+END CLASS
+
+DIM t AS NEW Test()
+t.SetFlag(TRUE)   ' ERROR: call arg type mismatch
+t.SetFlag(1)      ' ERROR: call arg type mismatch
+```
+
+**Error**:
+```
+error: main:entry: call %t4 -1: call arg type mismatch
+```
+
+**Expected**: TRUE/FALSE or integer values should be passable to BOOLEAN parameters
+
+**Workaround**: Use INTEGER parameters instead:
+```basic
+SUB SetFlag(value AS INTEGER)  ' Use 0/1 instead
+```
+
+**Impact**: Cannot use BOOLEAN type for method parameters. Must use INTEGER flags everywhere.
+
+
+### BUG-071 CRITICAL: String Arrays Cause IL Generation Error
+**Status**: 🚨 CRITICAL - Compiler crash
+**Discovered**: 2025-11-16 (Frogger OOP stress test)
+**Category**: Code Generation / IL / Arrays
+**Test File**: `/bugs/bug_testing/test_array_string.bas`, `/bugs/bug_testing/test_arrays_local.bas`
+
+**Symptom**: Declaring or using string arrays causes IL generation to fail with "unknown temp" error. Integer arrays work fine.
+
+**Reproduction**:
+```basic
+DIM names(3) AS STRING  ' Declaration succeeds
+names(0) = "Alice"       ' Assignment works
+PRINT names(0)           ' ERROR: IL generation fails!
+```
+
+**Error**:
+```
+error: main:UL999999992: call %t57: unknown temp %57; use before def of %57
+```
+
+**Expected**: String arrays should work like integer arrays
+
+**Workaround**: Use only INTEGER arrays. Cannot store strings in arrays.
+
+**Impact**: CRITICAL - Cannot create arrays of strings. Severely limits data structures. Makes games with multiple text elements (names, messages, etc.) very difficult.
 
 ---
 

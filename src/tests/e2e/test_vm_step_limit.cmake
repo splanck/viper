@@ -7,7 +7,7 @@
 # Use unique filenames to avoid collisions when tests run in parallel.
 set(OUT_FILE "${CMAKE_CURRENT_BINARY_DIR}/vm_step_limit.out.txt")
 set(ERR_FILE "${CMAKE_CURRENT_BINARY_DIR}/vm_step_limit.err.txt")
-execute_process(COMMAND ${ILC} -run ${SRC_DIR}/tests/data/loop.il --max-steps 5
+execute_process(COMMAND ${ILC} -run ${SRC_DIR}/src/tests/data/loop.il --max-steps 5
         OUTPUT_FILE ${OUT_FILE} ERROR_FILE ${ERR_FILE} RESULT_VARIABLE r)
 if (r EQUAL 0)
     message(FATAL_ERROR "expected non-zero exit")

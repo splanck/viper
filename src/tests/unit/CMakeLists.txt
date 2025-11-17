@@ -23,6 +23,32 @@ if (NOT TARGET test_basic_terminal_scan)
     viper_add_ctest(test_basic_terminal_scan test_basic_terminal_scan)
 endif ()
 
+# Parser single-index array test (guards HIGH-2 fix)
+if (NOT TARGET test_basic_parse_array_single_index)
+    viper_add_test(test_basic_parse_array_single_index ${VIPER_TESTS_DIR}/unit/test_basic_parse_array_single_index.cpp)
+    target_link_libraries(test_basic_parse_array_single_index PRIVATE fe_basic)
+    viper_add_ctest(test_basic_parse_array_single_index test_basic_parse_array_single_index)
+endif ()
+
+# Builtins ARGC/ARG$/COMMAND$ lowering test
+if (NOT TARGET test_basic_builtins_args_cmd)
+    viper_add_test(test_basic_builtins_args_cmd ${VIPER_TESTS_DIR}/unit/test_basic_builtins_args_cmd.cpp)
+    target_link_libraries(test_basic_builtins_args_cmd PRIVATE fe_basic)
+    viper_add_ctest(test_basic_builtins_args_cmd test_basic_builtins_args_cmd)
+endif ()
+
+if (NOT TARGET test_basic_builtins_args_cmd_semantics)
+    viper_add_test(test_basic_builtins_args_cmd_semantics ${VIPER_TESTS_DIR}/unit/test_basic_builtins_args_cmd_semantics.cpp)
+    target_link_libraries(test_basic_builtins_args_cmd_semantics PRIVATE fe_basic)
+    viper_add_ctest(test_basic_builtins_args_cmd_semantics test_basic_builtins_args_cmd_semantics)
+endif ()
+
+if (NOT TARGET test_basic_builtins_arg_get_typing)
+    viper_add_test(test_basic_builtins_arg_get_typing ${VIPER_TESTS_DIR}/unit/test_basic_builtins_arg_get_typing.cpp)
+    target_link_libraries(test_basic_builtins_arg_get_typing PRIVATE fe_basic)
+    viper_add_ctest(test_basic_builtins_arg_get_typing test_basic_builtins_arg_get_typing)
+endif ()
+
 if (NOT TARGET test_basic_parse_namespace)
     viper_add_test(test_basic_parse_namespace ${VIPER_TESTS_DIR}/unit/test_basic_parse_namespace.cpp)
     target_link_libraries(test_basic_parse_namespace PRIVATE fe_basic)

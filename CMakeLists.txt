@@ -87,6 +87,11 @@ if(IL_WARN_AS_ERROR)
   list(APPEND IL_COMPILE_FLAGS -Werror)
 endif()
 
+# Test code often has variables/functions/types used only in assertions (compiled out in release builds)
+if(VIPER_BUILD_TESTING)
+  list(APPEND IL_COMPILE_FLAGS -Wno-unused-variable -Wno-unused-but-set-variable -Wno-unused-function -Wno-unused-lambda-capture -Wno-unused-local-typedef)
+endif()
+
 if(IL_USE_LLD)
   include(CheckLinkerFlag)
   check_linker_flag(CXX "-fuse-ld=lld" IL_HAS_LLD)

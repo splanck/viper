@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 BIN="${1:-./build/src/tools/ilc/ilc}"
-BASIC="tests/basic/sum_no_linenos.bas"
+BASIC="src/tests/basic/sum_no_linenos.bas"
 OUT="$("$BIN" front basic -run "$BASIC")"
 # Expect exact output:
 # WHILE=55 FOR=55

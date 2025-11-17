@@ -32,7 +32,7 @@ int main()
     clear_disable();
     viper::tui::term::StringTermIO tio;
     viper::tui::term::Osc52Clipboard cb(tio);
-    bool ok = cb.copy("hello");
+    [[maybe_unused]] bool ok = cb.copy("hello");
     assert(ok);
     assert(tio.buffer() == "\x1b]52;c;aGVsbG8=\x07");
 

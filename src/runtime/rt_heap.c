@@ -23,6 +23,7 @@
 ///          scenes.
 
 #include "rt_heap.h"
+#include "rt_internal.h"
 
 #include <assert.h>
 #include <stddef.h>
@@ -134,6 +135,13 @@ void rt_heap_retain(void *payload)
         return;
     rt_heap_validate_header(hdr);
     assert(hdr->refcnt > 0);
+    // Guard against overflow. Saturate at SIZE_MAX-1 and trap so callers can
+    // diagnose leaks or cyclic ownership patterns before wraparound to zero.
+    if (hdr->refcnt >= SIZE_MAX - 1)
+    {
+        rt_trap("refcount overflow");
+        return;
+    }
     hdr->refcnt++;
 #ifdef VIPER_RC_DEBUG
     fprintf(stderr, "rt_heap_retain(%p) => %zu\n", payload, hdr->refcnt);

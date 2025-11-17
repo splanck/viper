@@ -18,5 +18,5 @@ run() {
   fi
 }
 
-run tests/basic/while_unnumbered.bas "^3$"
-run tests/basic/sum_two_ways.bas "WHILE=55 FOR=55"
+run src/tests/basic/while_unnumbered.bas "^3$"
+run src/tests/basic/sum_two_ways.bas "WHILE=55 FOR=55"

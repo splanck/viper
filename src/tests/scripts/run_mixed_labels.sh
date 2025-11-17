@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 BIN="${1:-./build/src/tools/ilc/ilc}"
-BASIC="tests/basic/mixed_labels.bas"
+BASIC="src/tests/basic/mixed_labels.bas"
 OUT="$("$BIN" front basic -run "$BASIC")"
 EXPECTED=$'start\nlanded on 100'
 if [[ "$OUT" == "$EXPECTED" ]]; then

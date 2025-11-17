@@ -25,7 +25,7 @@ VmTrapResult VmFixture::runExpectingTrap(il::core::Module &module) const
     VmTrapResult result{};
 
     std::array<int, 2> fds{};
-    const int pipeStatus = ::pipe(fds.data());
+    [[maybe_unused]] const int pipeStatus = ::pipe(fds.data());
     assert(pipeStatus == 0);
 
     const pid_t pid = ::fork();
@@ -54,7 +54,7 @@ VmTrapResult VmFixture::runExpectingTrap(il::core::Module &module) const
     ::close(fds[0]);
 
     int status = 0;
-    const pid_t waitStatus = ::waitpid(pid, &status, 0);
+    [[maybe_unused]] const pid_t waitStatus = ::waitpid(pid, &status, 0);
     assert(waitStatus == pid);
 
     result.stderrText = std::move(buffer);

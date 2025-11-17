@@ -334,16 +334,18 @@ ExprPtr Parser::parseArrayRef(std::string name, il::support::SourceLoc loc)
     arr->name = std::move(name);
 
     // For backward compatibility with single-dimensional arrays:
-    // - Keep both 'index' (deprecated) and 'indices' populated
-    // - For single-dim: move expr to 'index', indices vector remains valid but holds moved-from ptr
-    // - For multi-dim: only 'indices' is populated, 'index' is null
+    // - Populate only the deprecated 'index' field when exactly one index is present.
+    // - Do NOT also populate 'indices' with a moved-from pointer, which is UB when accessed.
+    // - For multi-dimensional arrays, populate 'indices' and leave 'index' null.
     if (indexList.size() == 1)
     {
-        // Single-dimensional: populate deprecated 'index' field for backward compatibility
         arr->index = std::move(indexList[0]);
+        arr->indices.clear();
     }
-    // Always populate indices vector (may contain moved-from ptr at [0] for single-dim)
-    arr->indices = std::move(indexList);
+    else
+    {
+        arr->indices = std::move(indexList);
+    }
 
     return arr;
 }

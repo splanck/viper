@@ -7,7 +7,7 @@ Scope: Tooling/driver/infra issues (ilc/vm/runtime/registry), not language seman
 ---
 
 ## NEW: SYS-001 — ARG$/COMMAND$ cause segfault and bogus arity diagnostics
-Status: Open
+Status: Fixed (signature arity derived from registry; unit test added)
 Category: Frontend (Semantics)/Tooling
 Severity: High (crashes `ilc` on common usage)
 
@@ -85,6 +85,139 @@ Notes:
 
 ---
 
+## NEW: CRIT-1 — Refcount Overflow Vulnerability
+Status: Fixed (runtime patch applied)
+Severity: Critical (memory safety)
+Source: CODE_QUALITY_DEEP_DIVE.md (CRIT-1)
+
+Repro/Analysis:
+- In `src/runtime/rt_heap.c`, `rt_heap_retain` increments `hdr->refcnt` with no overflow guard.
+- If `refcnt` reaches `SIZE_MAX`, a further retain wraps to 0; a subsequent release frees while still referenced.
+
+Root Cause:
+- Missing saturation/overflow check on the shared heap header refcount; code assumes “won’t happen”.
+
+Affected Code:
+- `src/runtime/rt_heap.c` — `rt_heap_retain`
+
+Proposed Fix:
+- Add overflow check and trap before increment; treat `SIZE_MAX-1` as the last valid count.
+- Consider using a reserved immortal sentinel consistently to avoid wrap.
+
+Verification Plan:
+- Unit test: artificially bump refcount near `SIZE_MAX` via test hook and verify trap.
+- Fuzz retain/release sequences under address sanitizer.
+
+---
+
+## NEW: CRIT-2 — Double-free risk in string literal release (not reproduced)
+Status: Needs Triage
+Severity: Critical (claimed) → Not reproduced
+Source: CODE_QUALITY_DEEP_DIVE.md (CRIT-2)
+
+Repro/Analysis:
+- Report claims underflow on `literal_refs` in `rt_string_unref` can double-free.
+- Current code guards correctly:
+  `if (s->literal_refs > 0 && --s->literal_refs == 0) free(s);`
+- No underflow path observed; repeated releases with zero do nothing.
+
+Root Cause:
+- Likely stale code snapshot used for the report. Current implementation is safe against underflow.
+
+Affected Code:
+- `src/runtime/rt_string_ops.c` — `rt_string_unref`
+
+Recommendation:
+- Optionally add an explicit else-branch trap for visibility on spurious extra releases.
+
+---
+
+## NEW: CRIT-3 — realloc error handling loses original pointer
+Status: Fixed (runtime patch applied)
+Severity: Critical (leak + crash)
+Source: CODE_QUALITY_DEEP_DIVE.md (CRIT-3)
+
+Repro/Analysis:
+- In `src/runtime/rt_type_registry.c::ensure_cap`, `realloc` return is assigned directly to `*buf` without NULL check.
+- On failure, original pointer is leaked and `*buf` becomes NULL; subsequent writes crash.
+
+Root Cause:
+- Unchecked `realloc` assignment; classic pointer-loss on allocation failure.
+
+Affected Code:
+- `src/runtime/rt_type_registry.c` — `ensure_cap`
+
+Proposed Fix:
+- Assign realloc to a temp, check NULL, trap/return error; only then store to `*buf`.
+- Also cap growth to avoid overflow (`cap * 2` guard).
+
+Verification Plan:
+- Fault injection: make `realloc` fail (test shim) and assert no pointer loss and proper trap.
+
+---
+
+## NEW: CRIT-4 — Null dereference after guard in DELETE lowering (not reproduced)
+Status: Not Reproducible
+Severity: Critical (claimed) → Appears safe as implemented
+Source: CODE_QUALITY_DEEP_DIVE.md (CRIT-4)
+
+Repro/Analysis:
+- Inspected `src/frontends/basic/Lower_OOP_Stmt.cpp::lowerDelete` around the cited lines.
+- Code guards `func` and `origin` and computes an index, then appends new blocks. It then re-derives the base pointer `&func->blocks[...]` after potential vector growth, which is safe.
+- No null deref path identified; control flow respects guards.
+
+Root Cause:
+- Likely false positive from static heuristic; current pattern is valid.
+
+Recommendation:
+- Add a small unit test that exercises DELETE lowering to confirm no crashes under ASan/UBSan.
+
+---
+
+## NEW: HIGH-2 — Use-after-move in array expression parsing
+Status: Fixed (parser patch + unit test)
+Severity: High (memory safety)
+Source: CODE_QUALITY_DEEP_DIVE.md (HIGH-2)
+
+Repro/Analysis:
+- In `Parser_Expr.cpp`, code moves `indexList[0]` into `arr->index`, then moves `indexList` into `arr->indices`.
+- The moved-from `indexList[0]` element is then part of the moved vector; subsequent uses are UB.
+
+Root Cause:
+- Dual ownership design between legacy single-dim `index` and multi-dim `indices` with incorrect move sequence.
+
+Affected Code:
+- `src/frontends/basic/Parser_Expr.cpp` near array index list handling (around lines ~340-346 per report).
+
+Proposed Fix:
+- Copy the single element into `arr->index` or avoid populating both fields concurrently.
+
+Verification Plan:
+- Unit test: parse `a(1)` and assert AST has either `index` or `indices` consistently without null/moved-from nodes.
+
+---
+
+## NEW: HIGH-3 — Heap corruption risk after realloc in array resize
+Status: Fixed (runtime patch applied)
+Severity: High (memory safety)
+Source: CODE_QUALITY_DEEP_DIVE.md (HIGH-3)
+
+Repro/Analysis:
+- In `src/runtime/rt_array.c`, code reads fields from a header pointer immediately after `realloc`, using the new pointer but assuming old state without validation.
+- If `realloc` moved the block, directly reading/dependent logic can observe inconsistent state.
+
+Root Cause:
+- Insufficient capture of old values prior to `realloc` and missing post-alloc validation.
+
+Affected Code:
+- `src/runtime/rt_array.c` (resize path cited around 222-227 in report).
+
+Proposed Fix:
+- Snapshot old fields before `realloc`; after successful `realloc`, use the returned pointer and recompute derived metadata defensively.
+
+Verification Plan:
+- Unit test that triggers resize with reallocation (force small caps) under ASan; check array invariants and no invalid reads/writes.
+
 ## RESOLVED: SYS-000 — Program arguments seeded before VM init (CLI)
 Status: Resolved (2025-11-15)
 Category: Tooling/Runner integration
@@ -100,4 +233,3 @@ Fix:
 
 Files:
 - `include/viper/vm/VM.hpp`, `src/vm/Runner.cpp`, `src/tools/ilc/cmd_front_basic.cpp`.
-
