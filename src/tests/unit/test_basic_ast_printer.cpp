@@ -222,7 +222,9 @@ int main()
 
     auto forStmt = std::make_unique<ForStmt>();
     forStmt->line = 80;
-    forStmt->var = "I";
+    auto forVarExpr = std::make_unique<VarExpr>();
+    forVarExpr->name = "I";
+    forStmt->varExpr = std::move(forVarExpr);
     forStmt->start = makeInt(1);
     forStmt->end = makeInt(5);
     forStmt->step = makeInt(2);

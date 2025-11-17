@@ -102,6 +102,30 @@ add_executable(test_basic_oop_string_array_field
 target_link_libraries(test_basic_oop_string_array_field PRIVATE fe_basic viper_testing)
 viper_add_ctest(test_basic_oop_string_array_field test_basic_oop_string_array_field)
 
+# Object array field helpers in OOP
+add_executable(test_basic_oop_object_array_field
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_basic_oop_object_array_field.cpp)
+target_link_libraries(test_basic_oop_object_array_field PRIVATE fe_basic viper_testing)
+viper_add_ctest(test_basic_oop_object_array_field test_basic_oop_object_array_field)
+
+# Global string array assignment from SUB uses string helper
+add_executable(test_basic_global_string_array_sub_store
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_basic_global_string_array_sub_store.cpp)
+target_link_libraries(test_basic_global_string_array_sub_store PRIVATE fe_basic viper_testing)
+viper_add_ctest(test_basic_global_string_array_sub_store test_basic_global_string_array_sub_store)
+
+# SELECT CASE object assignment retains object
+add_executable(test_basic_select_case_object_assign
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_basic_select_case_object_assign.cpp)
+target_link_libraries(test_basic_select_case_object_assign PRIVATE fe_basic viper_testing)
+viper_add_ctest(test_basic_select_case_object_assign test_basic_select_case_object_assign)
+
+# INPUT typing for SINGLE conversion
+add_executable(test_basic_input_typing
+        ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_basic_input_typing.cpp)
+target_link_libraries(test_basic_input_typing PRIVATE fe_basic viper_testing)
+viper_add_ctest(test_basic_input_typing test_basic_input_typing)
+
 # BUG-040 guard: FUNCTIONS returning class types should return ptr from RETURN var
 viper_add_test(
         test_basic_class_return

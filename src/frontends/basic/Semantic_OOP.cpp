@@ -314,7 +314,8 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
                                                                    field.type,
                                                                    field.access,
                                                                    field.isArray,
-                                                                   field.arrayExtents});
+                                                                   field.arrayExtents,
+                                                                   field.objectClassName});  // BUG-082 fix
                         classFieldNames.insert(field.name);
                     }
 

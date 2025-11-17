@@ -144,7 +144,12 @@ void printDo(const DoStmt &stmt, Context &ctx)
 void printFor(const ForStmt &stmt, Context &ctx)
 {
     auto &os = ctx.stream();
-    os << "(FOR " << stmt.var << " = ";
+    os << "(FOR ";
+    if (stmt.varExpr)
+        ctx.printExpr(*stmt.varExpr);
+    else
+        os << "<missing-var>";
+    os << " = ";
     ctx.printExpr(*stmt.start);
     os << " TO ";
     ctx.printExpr(*stmt.end);

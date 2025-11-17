@@ -105,25 +105,19 @@ std::string Lowerer::resolveObjectClass(const Expr &expr) const
             std::string baseClass = resolveObjectClass(*access->base);
             if (!baseClass.empty())
             {
-                // Look up the field type in the class layout
-                if (auto fieldType = findFieldType(baseClass, access->member))
+                // BUG-082 fix: Look up the field class name in the class layout
+                auto layoutIt = classLayouts_.find(baseClass);
+                if (layoutIt != classLayouts_.end())
                 {
-                    // Only return a class name if the field is an object type (custom class)
-                    // For primitive types (I64, F64, Str, Bool), return empty string
-                    if (*fieldType == ::il::frontends::basic::Type::I64 ||
-                        *fieldType == ::il::frontends::basic::Type::F64 ||
-                        *fieldType == ::il::frontends::basic::Type::Str ||
-                        *fieldType == ::il::frontends::basic::Type::Bool)
+                    const auto *field = layoutIt->second.findField(access->member);
+                    if (field && !field->objectClassName.empty())
                     {
-                        return {}; // Field is primitive, not an object
+                        // Field is an object type - qualify the class name for proper lookup
+                        return qualify(field->objectClassName);
                     }
-                    // If it's a custom type, it must be an object
-                    // The field type is stored as the class name for object fields
-                    // For now, we know it's an object but don't have the class name
-                    // This is a limitation - we need to track object field class names
-                    // TODO: Store object class names in FieldInfo
-                    return {}; // Conservative: treat as non-object for now
                 }
+                // Field is primitive or not found
+                return {};
             }
         }
         return {};

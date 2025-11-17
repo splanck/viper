@@ -204,8 +204,16 @@ class VarCollectWalker final : public BasicAstWalker<VarCollectWalker>
     /// @param stmt FOR statement whose control variable is examined.
     void before(const ForStmt &stmt)
     {
-        if (!stmt.var.empty())
-            lowerer_.markSymbolReferenced(stmt.var);
+        // BUG-081 fix: Extract variable name from expression
+        if (stmt.varExpr)
+        {
+            if (auto *varExpr = as<VarExpr>(*stmt.varExpr))
+            {
+                lowerer_.markSymbolReferenced(varExpr->name);
+            }
+            // For complex expressions (member access, array), the base variables
+            // will be marked when the expression is visited
+        }
     }
 
     /// @brief Record loop induction variables referenced by NEXT statements.

@@ -340,7 +340,11 @@ void Lowerer::assignArrayElement(const ArrayExpr &target, RVal value, il::suppor
         }
     }
 
-    if ((info && info->type == AstType::Str) ||
+    // Prefer RHS-driven dispatch to avoid relying on fragile symbol/type
+    // resolution across scopes: a string RHS must use string array helpers,
+    // an object (ptr) RHS must use object array helpers; otherwise numeric.
+    if (value.type.kind == Type::Kind::Str ||
+        (info && info->type == AstType::Str) ||
         (isMemberArray && memberElemAstType == ::il::frontends::basic::Type::Str) ||
         (isImplicitFieldArray && memberElemAstType == ::il::frontends::basic::Type::Str))
     {
@@ -351,7 +355,7 @@ void Lowerer::assignArrayElement(const ArrayExpr &target, RVal value, il::suppor
         emitStore(Type(Type::Kind::Str), tmp, value.value);
         emitCall("rt_arr_str_put", {access.base, access.index, tmp});
     }
-    else if (!isMemberArray && info && info->isObject)
+    else if (value.type.kind == Type::Kind::Ptr || (!isMemberArray && info && info->isObject))
     {
         // Object array: rt_arr_obj_put(arr, idx, ptr)
         requireArrayObjPut();
@@ -397,16 +401,17 @@ void Lowerer::lowerLet(const LetStmt &stmt)
             if (!className.empty())
             {
                 setSymbolObjectType(var->name, className);
-                storage->slotInfo = getSlotType(var->name);
             }
         }
-        SlotType slotInfo = storage->slotInfo;
+        // Always refresh slot typing from symbols/sema to avoid stale kinds
+        // when crossing complex control flow (e.g., SELECT CASE) (BUG-076).
+        SlotType slotInfo = getSlotType(var->name);
         if (slotInfo.isArray)
         {
             storeArray(storage->pointer,
                        value.value,
                        /*elementType*/ AstType::I64,
-                       /*isObjectArray*/ storage->slotInfo.isObject);
+                       /*isObjectArray*/ slotInfo.isObject);
         }
         else
         {

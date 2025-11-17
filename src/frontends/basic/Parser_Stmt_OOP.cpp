@@ -194,8 +194,11 @@ StmtPtr Parser::parseClassDecl()
             continue;
 
         Type fieldType = Type::I64;
+        std::string typeName;  // BUG-082 fix: capture type name for object fields
         if (at(TokenKind::KeywordBoolean) || at(TokenKind::Identifier))
         {
+            if (at(TokenKind::Identifier))
+                typeName = peek().lexeme;  // BUG-082: save before parseTypeKeyword consumes it
             fieldType = parseTypeKeyword();
         }
         else
@@ -209,6 +212,21 @@ StmtPtr Parser::parseClassDecl()
         field.access = curAccess.value_or(Access::Public);
         field.isArray = isArray;
         field.arrayExtents = std::move(extents);
+        // BUG-082 fix: Check if this is an object type (not a recognized primitive)
+        if (!typeName.empty())
+        {
+            // Convert to uppercase for comparison
+            std::string upper = typeName;
+            for (auto &ch : upper)
+                ch = static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
+            // If it's not a known primitive keyword, treat it as a class name
+            if (upper != "INTEGER" && upper != "INT" && upper != "LONG" &&
+                upper != "DOUBLE" && upper != "FLOAT" && upper != "SINGLE" &&
+                upper != "STRING" && upper != "BOOLEAN")
+            {
+                field.objectClassName = typeName;
+            }
+        }
         curAccess.reset();
         decl->fields.push_back(std::move(field));
 

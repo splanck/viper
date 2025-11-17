@@ -78,7 +78,9 @@ int main()
     {
         Program prog;
         auto loop = std::make_unique<ForStmt>();
-        loop->var = "I";
+        auto varExpr = std::make_unique<VarExpr>();
+        varExpr->name = "I";
+        loop->varExpr = std::move(varExpr);
         loop->start = makeInt(0);
         loop->end = makeInt(1);
         auto print = std::make_unique<PrintStmt>();
@@ -133,7 +135,9 @@ int main()
         sub->body.push_back(std::move(input));
 
         auto loop = std::make_unique<ForStmt>();
-        loop->var = "I";
+        auto loopVar = std::make_unique<VarExpr>();
+        loopVar->name = "I";
+        loop->varExpr = std::move(loopVar);
         loop->start = makeInt(1);
         loop->end = makeInt(3);
         sub->body.push_back(std::move(loop));
@@ -160,7 +164,8 @@ int main()
         assert(iDecl->name == "I_2");
         assert(inputStmt->vars.size() == 1);
         assert(inputStmt->vars[0] == "NAME$_1");
-        assert(forStmt->var == "I_2");
+        auto *forVar = dynamic_cast<VarExpr *>(forStmt->varExpr.get());
+        assert(forVar && forVar->name == "I_2");
     }
 
     return 0;

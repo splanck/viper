@@ -1,0 +1,201 @@
+REM baseball_v4.bas - Full game with both teams batting
+REM ANSI colors
+CONST RED$ = CHR$(27) + "[31m"
+CONST GREEN$ = CHR$(27) + "[32m"
+CONST YELLOW$ = CHR$(27) + "[33m"
+CONST CYAN$ = CHR$(27) + "[36m"
+CONST BLUE$ = CHR$(27) + "[34m"
+CONST RESET$ = CHR$(27) + "[0m"
+CONST BOLD$ = CHR$(27) + "[1m"
+
+REM Game state
+DIM homeScore AS INTEGER
+DIM awayScore AS INTEGER
+DIM currentInning AS INTEGER
+DIM outs AS INTEGER
+DIM onFirst AS INTEGER
+DIM onSecond AS INTEGER
+DIM onThird AS INTEGER
+DIM battingHome AS INTEGER
+DIM currentBatterNum AS INTEGER
+
+SUB ClearBases()
+    onFirst = 0
+    onSecond = 0
+    onThird = 0
+END SUB
+
+SUB ShowField()
+    PRINT ""
+    PRINT BOLD$; CYAN$; "    ⚾ DIAMOND ⚾"; RESET$
+    PRINT "         ◆"
+    IF onSecond THEN
+        PRINT "      "; GREEN$; "[2B]"; RESET$
+    ELSE
+        PRINT "       2B"
+    END IF
+    PRINT "     ◆   ◆"
+    IF onThird THEN
+        PRINT "    "; GREEN$; "[3B]"; RESET$
+    ELSE
+        PRINT "     3B"
+    END IF
+    PRINT "         ";
+    IF onFirst THEN
+        PRINT GREEN$; "[1B]"; RESET$
+    ELSE
+        PRINT "1B"
+    END IF
+    PRINT "       ⌂"
+    PRINT ""
+END SUB
+
+SUB ShowScoreboard()
+    PRINT ""
+    PRINT BOLD$; YELLOW$; "╔════════════════════╗"; RESET$
+    PRINT YELLOW$; "║  INNING: "; currentInning; "/9      ║"; RESET$
+    PRINT YELLOW$; "║  OUTS: "; outs; "          ║"; RESET$
+    PRINT YELLOW$; "║  AWAY: "; awayScore; "          ║"; RESET$
+    PRINT YELLOW$; "║  HOME: "; homeScore; "          ║"; RESET$
+    IF battingHome THEN
+        PRINT YELLOW$; "║  🏏 HOME BATTING   ║"; RESET$
+    ELSE
+        PRINT YELLOW$; "║  🏏 AWAY BATTING   ║"; RESET$
+    END IF
+    PRINT BOLD$; YELLOW$; "╚════════════════════╝"; RESET$
+END SUB
+
+FUNCTION SimulateAtBat() AS INTEGER
+    DIM roll AS INTEGER
+    roll = INT(RND() * 100)
+    IF roll < 60 THEN
+        SimulateAtBat = 0  REM Out
+    ELSE IF roll < 80 THEN
+        SimulateAtBat = 1  REM Single
+    ELSE IF roll < 92 THEN
+        SimulateAtBat = 2  REM Double
+    ELSE IF roll < 98 THEN
+        SimulateAtBat = 3  REM Triple
+    ELSE
+        SimulateAtBat = 4  REM Homer
+    END IF
+END FUNCTION
+
+SUB ProcessHit(hitType AS INTEGER)
+    DIM runsScored AS INTEGER
+    runsScored = 0
+
+    IF hitType = 0 THEN
+        PRINT RED$; "  ⚠ OUT!"; RESET$
+        outs = outs + 1
+    ELSE IF hitType = 1 THEN
+        PRINT GREEN$; "  ✓ SINGLE!"; RESET$
+        IF onThird THEN runsScored = runsScored + 1
+        onThird = onSecond
+        onSecond = onFirst
+        onFirst = 1
+    ELSE IF hitType = 2 THEN
+        PRINT GREEN$; BOLD$; "  ✓✓ DOUBLE!"; RESET$
+        IF onThird THEN runsScored = runsScored + 1
+        IF onSecond THEN runsScored = runsScored + 1
+        onThird = onFirst
+        onSecond = 1
+        onFirst = 0
+    ELSE IF hitType = 3 THEN
+        PRINT GREEN$; BOLD$; "  ✓✓✓ TRIPLE!"; RESET$
+        IF onThird THEN runsScored = runsScored + 1
+        IF onSecond THEN runsScored = runsScored + 1
+        IF onFirst THEN runsScored = runsScored + 1
+        onThird = 1
+        onSecond = 0
+        onFirst = 0
+    ELSE IF hitType = 4 THEN
+        PRINT YELLOW$; BOLD$; "  ⚡ HOME RUN! ⚡"; RESET$
+        runsScored = 1
+        IF onFirst THEN runsScored = runsScored + 1
+        IF onSecond THEN runsScored = runsScored + 1
+        IF onThird THEN runsScored = runsScored + 1
+        ClearBases()
+    END IF
+
+    IF runsScored > 0 THEN
+        PRINT BOLD$; GREEN$; "  🎉 +"; runsScored; " RUN";
+        IF runsScored > 1 THEN PRINT "S";
+        PRINT "!"; RESET$
+        IF battingHome THEN
+            homeScore = homeScore + runsScored
+        ELSE
+            awayScore = awayScore + runsScored
+        END IF
+    END IF
+END SUB
+
+SUB PlayHalfInning(isHome AS INTEGER)
+    battingHome = isHome
+    IF isHome THEN
+        PRINT BLUE$; "⚾ HOME team batting..."; RESET$
+    ELSE
+        PRINT YELLOW$; "⚾ AWAY team batting..."; RESET$
+    END IF
+
+    outs = 0
+    ClearBases()
+    currentBatterNum = 1
+
+    DO WHILE outs < 3
+        ShowScoreboard()
+        ShowField()
+        PRINT "🏏 Batter #"; currentBatterNum; " up..."
+        DIM result AS INTEGER
+        result = SimulateAtBat()
+        ProcessHit(result)
+        PRINT ""
+        currentBatterNum = currentBatterNum + 1
+        IF currentBatterNum > 9 THEN currentBatterNum = 1
+    LOOP
+
+    PRINT BOLD$; "✓ Side retired!"; RESET$
+    PRINT ""
+END SUB
+
+REM Initialize
+homeScore = 0
+awayScore = 0
+currentInning = 1
+battingHome = 0
+
+PRINT BOLD$; CYAN$
+PRINT "╔══════════════════════════════╗"
+PRINT "║  ⚾ VIPER BASEBALL GAME ⚾   ║"
+PRINT "║     GIANTS vs DODGERS       ║"
+PRINT "╚══════════════════════════════╝"
+PRINT RESET$
+PRINT ""
+
+REM WORKAROUND BUG-078: Use local loop var, copy to global
+DIM i AS INTEGER
+FOR i = 1 TO 3
+    currentInning = i  REM Copy to global
+    PRINT ""
+    PRINT BOLD$; CYAN$; "════════ INNING "; currentInning; " ════════"; RESET$
+    PRINT ""
+
+    REM Top of inning - away team bats
+    PlayHalfInning(0)
+
+    REM Bottom of inning - home team bats
+    PlayHalfInning(1)
+NEXT
+
+PRINT ""
+PRINT BOLD$; CYAN$; "════════ FINAL SCORE ════════"; RESET$
+ShowScoreboard()
+PRINT ""
+IF homeScore > awayScore THEN
+    PRINT BOLD$; GREEN$; "🏆 GIANTS WIN! 🏆"; RESET$
+ELSE IF awayScore > homeScore THEN
+    PRINT BOLD$; RED$; "🏆 DODGERS WIN! 🏆"; RESET$
+ELSE
+    PRINT BOLD$; YELLOW$; "⚖ TIE GAME! ⚖"; RESET$
+END IF
+PRINT ""

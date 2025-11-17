@@ -193,23 +193,17 @@ Parser::StmtResult Parser::parseCall(int)
 
                 if (ok)
                 {
+                    // BUG-082 fix: Only treat as qualified procedure call if the first identifier
+                    // is a known namespace. Otherwise, let the expression parser handle it, which
+                    // will correctly distinguish between namespace-qualified calls (Ns.Ns.Proc)
+                    // and method calls on member access (obj.field.Method).
+                    //
+                    // This fixes cases like game.awayTeam.InitPlayer() which should be parsed
+                    // as a MethodCallExpr on MemberAccessExpr, not as a qualified CallExpr.
                     bool treatAsQualified = false;
-                    if (sawAdditionalDot)
+                    if (knownNamespaces_.find(identTok.lexeme) != knownNamespaces_.end())
                     {
-                        treatAsQualified = true; // A.B.C.f(...)
-                    }
-                    else
-                    {
-                        // Single-dot case:
-                        // - Prefer namespace-qualified interpretation when the head is a known
-                        // namespace
-                        // - BUG-037 fix: Removed blanket multi-letter heuristic that broke method
-                        // calls.
-                        //   Fall through to expression parser which handles both cases correctly.
-                        if (knownNamespaces_.find(identTok.lexeme) != knownNamespaces_.end())
-                        {
-                            treatAsQualified = true;
-                        }
+                        treatAsQualified = true;
                     }
 
                     if (treatAsQualified)

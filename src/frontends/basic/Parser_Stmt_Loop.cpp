@@ -16,6 +16,7 @@
 
 #include "frontends/basic/Parser.hpp"
 #include "frontends/basic/Parser_Stmt_ControlHelpers.hpp"
+#include "frontends/basic/ASTUtils.hpp"
 
 namespace il::frontends::basic
 {
@@ -113,8 +114,40 @@ StmtPtr Parser::parseForStatement()
     consume(); // FOR
     auto stmt = std::make_unique<ForStmt>();
     stmt->loc = loc;
-    Token varTok = expect(TokenKind::Identifier);
-    stmt->var = varTok.lexeme;
+
+    // BUG-081 fix: Parse loop variable as an lvalue expression
+    // Supports simple variables (i), member access (obj.field), and array elements (arr(i))
+    stmt->varExpr = parsePrimary();
+
+    // Continue parsing member access or array subscripts to build full lvalue
+    while (at(TokenKind::Dot) || at(TokenKind::LParen))
+    {
+        if (at(TokenKind::Dot))
+        {
+            consume(); // .
+            Token memberTok = expect(TokenKind::Identifier);
+            auto access = std::make_unique<MemberAccessExpr>();
+            access->loc = memberTok.loc;
+            access->base = std::move(stmt->varExpr);
+            access->member = memberTok.lexeme;
+            stmt->varExpr = std::move(access);
+        }
+        else if (at(TokenKind::LParen))
+        {
+            consume(); // (
+            auto index = parseExpression();
+            expect(TokenKind::RParen);
+            auto arr = std::make_unique<ArrayExpr>();
+            arr->loc = stmt->varExpr->loc;
+            if (auto *v = as<VarExpr>(*stmt->varExpr))
+            {
+                arr->name = v->name;
+            }
+            arr->indices.push_back(std::move(index));
+            stmt->varExpr = std::move(arr);
+        }
+    }
+
     expect(TokenKind::Equal);
     stmt->start = parseExpression();
     expect(TokenKind::KeywordTo);

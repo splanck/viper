@@ -812,6 +812,9 @@ class Lowerer
             ///          distinguish implicit field-array accesses inside
             ///          methods (e.g., `inventory(i)`) from scalar fields.
             bool isArray{false};
+            /// @brief BUG-082 fix: Class name for object-typed fields.
+            /// @details Empty for primitive types; holds the class name for object references.
+            std::string objectClassName;
         };
 
         /// @brief Ordered field entries preserving declaration order.

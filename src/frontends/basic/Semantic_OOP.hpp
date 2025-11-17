@@ -59,6 +59,7 @@ struct ClassInfo
         Access access{Access::Public};       ///< Field access control.
         bool isArray{false};                 ///< Whether field is an array (BUG-059 fix).
         std::vector<long long> arrayExtents; ///< Array dimensions if isArray (BUG-059 fix).
+        std::string objectClassName;         ///< BUG-082 fix: Class name for object fields.
     };
 
     /// @brief Signature metadata for constructor parameters.

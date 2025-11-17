@@ -193,10 +193,13 @@ struct ForStmt : Stmt
         return Kind::For;
     }
 
-    /// Loop variable name controlling the iteration.
-    std::string var;
+    /// Loop variable expression (lvalue) controlling the iteration.
+    /// Can be a VarExpr (simple variable), MemberAccessExpr (object member),
+    /// or ArrayExpr (array element). Owned and non-null.
+    /// BUG-081 fix: Changed from std::string to ExprPtr to support object members.
+    ExprPtr varExpr;
 
-    /// Initial value assigned to @ref var; owned and non-null.
+    /// Initial value assigned to loop variable; owned and non-null.
     ExprPtr start;
 
     /// Loop end value; owned and non-null.

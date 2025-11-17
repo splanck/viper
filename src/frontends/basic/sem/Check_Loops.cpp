@@ -28,6 +28,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/basic/sem/Check_Common.hpp"
+#include "frontends/basic/ASTUtils.hpp"
 
 #include <string>
 
@@ -107,7 +108,41 @@ void analyzeDo(SemanticAnalyzer &analyzer, const DoStmt &stmt)
 void analyzeFor(SemanticAnalyzer &analyzer, ForStmt &stmt)
 {
     ControlCheckContext context(analyzer);
-    context.resolveLoopVariable(stmt.var);
+
+    // BUG-081 fix: Handle expression-based loop variables
+    // Extract variable name for tracking, validate the lvalue expression
+    std::string varName;
+    if (stmt.varExpr)
+    {
+        if (auto *varExpr = as<VarExpr>(*stmt.varExpr))
+        {
+            // Simple variable: FOR i = 1 TO 10
+            varName = varExpr->name;
+            context.resolveLoopVariable(varName);
+        }
+        else if (auto *memberAccess = as<MemberAccessExpr>(*stmt.varExpr))
+        {
+            // Member access: FOR obj.field = 1 TO 10
+            // Validate the base expression exists
+            context.evaluateExpr(*stmt.varExpr);
+            // For tracking purposes, use a placeholder name (NEXT matching with complex
+            // expressions is optional)
+            varName = "<complex>";
+        }
+        else if (auto *arrayExpr = as<ArrayExpr>(*stmt.varExpr))
+        {
+            // Array element: FOR arr(i) = 1 TO 10
+            context.evaluateExpr(*stmt.varExpr);
+            varName = "<complex>";
+        }
+        else
+        {
+            // Other expression - validate it
+            context.evaluateExpr(*stmt.varExpr);
+            varName = "<complex>";
+        }
+    }
+
     if (stmt.start)
         context.evaluateExpr(*stmt.start);
     if (stmt.end)
@@ -115,7 +150,7 @@ void analyzeFor(SemanticAnalyzer &analyzer, ForStmt &stmt)
     if (stmt.step)
         context.evaluateExpr(*stmt.step);
 
-    [[maybe_unused]] auto forGuard = context.trackForVariable(stmt.var);
+    [[maybe_unused]] auto forGuard = context.trackForVariable(varName);
     [[maybe_unused]] auto loopGuard = context.forLoopGuard();
     [[maybe_unused]] auto scope = context.pushScope();
     for (const auto &bodyStmt : stmt.body)

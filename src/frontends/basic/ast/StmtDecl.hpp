@@ -228,6 +228,8 @@ struct ClassDecl : Stmt
         bool isArray{false};
         /// Array dimension extents if isArray is true (BUG-056 fix).
         std::vector<long long> arrayExtents;
+        /// BUG-082 fix: Class name for object-typed fields; empty for primitives.
+        std::string objectClassName;
     };
 
     /// Ordered fields declared on the class.

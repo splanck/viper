@@ -20,6 +20,7 @@
 #include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/LocationScope.hpp"
 #include "frontends/basic/Lowerer.hpp"
+#include "frontends/basic/SemanticAnalyzer.hpp"
 
 #include <algorithm>
 #include <cassert>
@@ -485,6 +486,28 @@ void Lowerer::lowerInput(const InputStmt &stmt)
         auto storage = resolveVariableStorage(name, stmt.loc);
         assert(storage && "INPUT target should have storage");
         SlotType slotInfo = storage->slotInfo;
+        // Be robust when symbol typing is incomplete in this context: consult
+        // semantic analyzer for declared types to guide conversion (BUG-080).
+        if (slotInfo.type.kind != Type::Kind::Str && slotInfo.type.kind != Type::Kind::F64 &&
+            slotInfo.type.kind != Type::Kind::I1)
+        {
+            // Requery slot typing to capture semantic types even when the
+            // initial storage resolution lost precision.
+            SlotType inferred = getSlotType(name);
+            if (inferred.type.kind == Type::Kind::Str)
+            {
+                slotInfo.type = Type(Type::Kind::Str);
+            }
+            else if (inferred.type.kind == Type::Kind::F64)
+            {
+                slotInfo.type = Type(Type::Kind::F64);
+            }
+            else if (inferred.type.kind == Type::Kind::I1)
+            {
+                slotInfo.type = ilBoolTy();
+                slotInfo.isBoolean = true;
+            }
+        }
         Value target = storage->pointer;
         if (slotInfo.type.kind == Type::Kind::Str)
         {

@@ -159,6 +159,8 @@ class OopScanWalker final : public BasicAstWalker<OopScanWalker>
             // Preserve array metadata so implicit field-array accesses in
             // methods can be identified during lowering.
             info.isArray = field.isArray;
+            // BUG-082 fix: Propagate object class name for object-typed fields.
+            info.objectClassName = field.objectClassName;
             layout.fields.push_back(std::move(info));
             layout.fieldIndex.emplace(layout.fields.back().name, layout.fields.size() - 1);
             offset += layout.fields.back().size;

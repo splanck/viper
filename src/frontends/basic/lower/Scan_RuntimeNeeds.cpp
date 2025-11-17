@@ -441,11 +441,17 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
     /// @param stmt FOR loop under analysis.
     void before(const ForStmt &stmt)
     {
-        if (!stmt.var.empty())
+        // BUG-081 fix: Extract variable name from expression
+        if (stmt.varExpr)
         {
-            const auto *info = lowerer_.findSymbol(stmt.var);
-            if (!info || !info->hasType)
-                lowerer_.setSymbolType(stmt.var, inferVariableType(stmt.var));
+            if (auto *varExpr = as<VarExpr>(*stmt.varExpr))
+            {
+                const auto *info = lowerer_.findSymbol(varExpr->name);
+                if (!info || !info->hasType)
+                    lowerer_.setSymbolType(varExpr->name, inferVariableType(varExpr->name));
+            }
+            // For complex expressions (member access, array), type inference happens
+            // during expression lowering
         }
     }
 
