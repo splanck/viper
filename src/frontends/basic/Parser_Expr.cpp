@@ -484,14 +484,13 @@ ExprPtr Parser::parsePrimary()
                 }
                 if (peek(i).kind != TokenKind::Identifier || peek(i + 1).kind != TokenKind::LParen)
                     ok = false;
-                if (!sawAdditionalDot)
+                // BUG-082 fix: Only treat as qualified procedure call if the first identifier
+                // is a known namespace. This applies to both single-dot (obj.Method) and
+                // multi-dot (obj.field.Method) cases to prevent misclassifying method calls
+                // on object members as namespace-qualified procedure calls.
+                if (ok && knownNamespaces_.find(head.lexeme) == knownNamespaces_.end())
                 {
-                    // Require first segment to be a known namespace for single-dot case
-                    extern std::unordered_set<std::string> dummy_decl_to_satisfy_compiler;
-                    (void)dummy_decl_to_satisfy_compiler; // no-op to avoid unused warning if header
-                                                          // order changes
-                    if (knownNamespaces_.find(head.lexeme) == knownNamespaces_.end())
-                        ok = false;
+                    ok = false;
                 }
             }
             if (ok)

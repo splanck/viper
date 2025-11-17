@@ -134,14 +134,34 @@ class SemanticAnalyzerExprVisitor final : public MutExprVisitor
     }
 
     /// @brief Member access expressions remain Unknown until OOP analysis matures.
-    void visit(MemberAccessExpr &) override
+    /// However, we validate the base expression to catch undefined variables.
+    void visit(MemberAccessExpr &expr) override
     {
+        // Validate base expression (catches undefined variables like 'A' in 'A.B')
+        if (expr.base)
+        {
+            analyzer_.visitExpr(*expr.base);
+        }
         result_ = SemanticAnalyzer::Type::Unknown;
     }
 
     /// @brief Method calls are treated as Unknown until OOP semantics are added.
-    void visit(MethodCallExpr &) override
+    /// However, we validate the base expression to catch undefined variables.
+    void visit(MethodCallExpr &expr) override
     {
+        // Validate base expression (catches undefined variables in nested calls)
+        if (expr.base)
+        {
+            analyzer_.visitExpr(*expr.base);
+        }
+        // Validate arguments
+        for (auto &arg : expr.args)
+        {
+            if (arg)
+            {
+                analyzer_.visitExpr(*arg);
+            }
+        }
         result_ = SemanticAnalyzer::Type::Unknown;
     }
 
