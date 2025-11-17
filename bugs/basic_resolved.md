@@ -1,8 +1,135 @@
 # VIPER BASIC — Resolved Bugs
 
-Last Updated: 2025-11-15
+Last Updated: 2025-11-17
 
 This document records bugs from bugs/basic_bugs.md that have been verified and resolved in code, with notes on scope, approach, and validation.
+
+---
+
+## BUG-067: Array Fields in Classes Not Supported
+Status: RESOLVED (Previously fixed, verified 2025-11-17)
+Discovered: 2025-11-16 (Dungeon OOP stress test)
+Category: Frontend / Parser / OOP
+Test File: `/bugs/bug_testing/dungeon_entities.bas`
+
+Symptom: Cannot declare array fields inside CLASS definitions. Parser fails with "expected END, got ident" error.
+
+Reproduction:
+```basic
+CLASS Player
+    inventory(10) AS Item  ' ERROR: Parse fails!
+END CLASS
+```
+
+Error:
+```
+error[B0001]: expected END, got ident
+    inventory(10) AS Item
+    ^
+```
+
+Expected: Arrays should be valid field types in classes
+
+Workaround: Use multiple scalar fields or manage arrays outside the class
+
+Impact: Severely limits OOP design - cannot have collection fields in classes
+
+Root Cause:
+- Parser lookahead constraint: `looksLikeFieldDecl` did not accept `identifier ( ... ) AS type` forms without DIM; fix includes allowing `peek(1) == LParen` after identifier.
+- Type system limitation: `parseTypeKeyword()` only captured primitive types; object class names for array elements were not preserved in field parsing.
+
+Files: `src/frontends/basic/Parser_Stmt_OOP.cpp`, `Parser_Stmt_Core.cpp`
+
+Resolution: Parser lookahead updated to allow array dims shorthand; array dimension parsing implemented. Multi-dimensional arrays supported.
+
+Validation:
+- `test_bug067_array_fields.bas` verifies array fields for STRING and INTEGER
+- Array fields can be accessed/modified in methods
+
+---
+
+## BUG-068: Function Name Assignment for Return Value Not Working
+Status: RESOLVED (2025-11-17)
+Discovered: 2025-11-16 (Dungeon OOP stress test)
+Category: Frontend / Semantic Analysis + Lowering / Method Epilogue
+Test Files: `/bugs/bug_testing/test_bug068_explicit_return.bas`, `/bugs/bug_testing/test_bug068_function_name_return.bas`
+
+Symptom: Assigning to the function name failed to set return value; semantic checker also flagged false "missing return" errors.
+
+Resolution: Method epilogue loads from function-name variable if present; semantic checker uses `methodHasImplicitReturn()`.
+
+Validation: Explicit RETURN and implicit name-assignment both return expected values in tests.
+
+---
+
+## BUG-070: BOOLEAN Parameters Cause Type Mismatch Errors
+Status: RESOLVED (2025-11-17)
+Discovered: 2025-11-16 (Dungeon OOP stress test)
+Category: Frontend / Type System
+
+Symptom: Passing TRUE/FALSE to BOOLEAN parameters caused IL call-arg type mismatches (i64 vs i1).
+
+Resolution: Coerce call arguments to `i1` when callee expects BOOLEAN; keep literals as legacy `i64` (-1/0) to preserve IL goldens.
+
+Validation: Boolean parameter calls compile and run; goldens remain stable.
+
+---
+
+## BUG-071: String Arrays Cause IL Generation Error
+Status: RESOLVED (2025-11-17)
+Category: Code Generation / IL / Arrays / Temporary Lifetime
+
+Symptom: Deferred releases of string temps from `rt_arr_str_get` caused use-before-def at function exit.
+
+Resolution: Removed deferred releases for array-get results; consuming code manages lifetime.
+
+Validation: String array loop tests pass.
+
+---
+
+## BUG-073: Cannot Call Methods on Object Parameters
+Status: RESOLVED (2025-11-17)
+Category: Code Generation / IL / OOP / Method Resolution
+
+Symptom: Calls on object-typed parameters emitted unqualified callee names due to missing `objectClass` typing for constructor params.
+
+Resolution: Preserve object-class typing for constructor params via `setSymbolObjectType`, matching method params.
+
+Validation: Object-parameter method calls compile/run; suite green.
+
+---
+
+## BUG-074: Constructor Corruption When Class Uses Previously-Defined Class
+Status: RESOLVED (2025-11-17)
+Category: Frontend / Lowering / OOP / Constructor Generation
+
+Symptom: Deferred temporaries leaked across procedures caused constructor corruption.
+
+Resolution: Clear deferred temps in `resetLoweringState()` before each procedure; aligns with main-function handling.
+
+Validation: Poker constructor cases pass.
+
+---
+
+## BUG-065: Array Field Assignments Silently Dropped by Compiler
+Status: RESOLVED (2025-11-15)
+Category: Frontend / Code Generation / OOP
+
+Symptom: Array field assignments in methods were silently dropped.
+
+Resolution: Preserve array metadata in `ClassLayout::Field`, propagate to symbols, and emit proper `rt_arr_*` stores.
+
+Validation: New unit tests for numeric/string array field stores/loads pass.
+
+---
+
+## BUG-058: String array fields in classes don't retain values
+Status: RESOLVED (2025-11-15)
+Category: Frontend / OOP / Array stores
+
+Resolution: Use `rt_arr_str_put` with retain semantics for string arrays; derive element type from class layout and recompute handle from `ME` + field offset. Numeric arrays use `rt_arr_i32_set`.
+
+Validation: Values persist; reads via `rt_arr_str_get` verified by tests.
 
 ---
 

@@ -143,7 +143,10 @@ SelectCaseLowering::Blocks SelectCaseLowering::prepareBlocks(const SelectCaseStm
 
     size_t curIdx = static_cast<size_t>(current - &func->blocks[0]);
     auto *blockNamer = ctx.blockNames().namer();
-    // Append blocks; we'll normalize exit position after lowering completes.
+
+    // BUG-072 fix: Use addBlock to append SELECT blocks at the end of the function.
+    // The exit block will be moved to the very end after all function lowering completes.
+    // This preserves block index stability during lowering.
     size_t startIdx = func->blocks.size();
 
     Blocks blocks{};
@@ -151,6 +154,7 @@ SelectCaseLowering::Blocks SelectCaseLowering::prepareBlocks(const SelectCaseStm
     blocks.switchIdx = curIdx;
     blocks.armIdx.resize(stmt.arms.size());
 
+    // Append all SELECT blocks at the end using addBlock().
     for (size_t i = 0; i < stmt.arms.size(); ++i)
     {
         std::string label = blockNamer ? blockNamer->generic("select_arm")
@@ -179,14 +183,13 @@ SelectCaseLowering::Blocks SelectCaseLowering::prepareBlocks(const SelectCaseStm
     lowerer_.builder->addBlock(*func, endLabel);
     blocks.endIdx = startIdx + stmt.arms.size() + (hasCaseElse ? 1 : 0) + (needsDispatch ? 1 : 0);
 
+    // Refresh pointers after additions (vector may have reallocated).
     func = ctx.function();
     current = &func->blocks[curIdx];
     ctx.setCurrent(current);
 
     for (size_t i = 0; i < stmt.arms.size(); ++i)
         blocks.armIdx[i] = startIdx + i;
-
-    // Exit index normalization is handled after full SELECT lowering completes.
 
     return blocks;
 }
@@ -459,16 +462,6 @@ size_t SelectCaseLowering::emitCompareChain(size_t startIdx,
         auto &entry = plan[i];
         func = ctx.function();
         auto *checkBlk = &func->blocks[currentIdx];
-        // Capture the true-target's label before any potential block allocations
-        // that may reallocate the blocks vector and invalidate pointers.
-        std::string trueLabel = entry.target ? entry.target->label : std::string();
-        if (trueLabel.empty())
-        {
-            // Stamp a deterministic fallback label now so it survives reallocation.
-            trueLabel = std::string(lowerer_.nextFallbackBlockLabel());
-            if (entry.target)
-                entry.target->label = trueLabel;
-        }
 
         bool needIntermediate = plan[i + 1].kind != CasePlanEntry::Kind::Default;
         il::core::BasicBlock *falseTarget = defaultBlk;
@@ -485,28 +478,18 @@ size_t SelectCaseLowering::emitCompareChain(size_t startIdx,
             if (falseTarget->label.empty())
                 falseTarget->label = lowerer_.nextFallbackBlockLabel();
         }
-        // Refresh true target pointer after any potential reallocation.
-        auto *trueTarget = static_cast<il::core::BasicBlock *>(nullptr);
-        for (auto &bb : func->blocks)
-        {
-            if (bb.label == trueLabel)
-            {
-                trueTarget = &bb;
-                break;
-            }
-        }
-        assert(trueTarget && "trueTarget block must exist");
 
         ctx.setCurrent(checkBlk);
         lowerer_.curLoc = entry.loc;
         il::core::Value cond = emitCond(entry);
+        auto *trueTarget = entry.target;
         // Each comparison produces a terminating conditional branch; no fallthrough remains.
         lowerer_.emitCBr(cond, trueTarget, falseTarget);
         currentIdx = nextIdx;
     }
 
     ctx.setCurrent(defaultBlk);
-    return static_cast<size_t>(defaultBlk - &ctx.function()->blocks[0]);
+    return static_cast<size_t>(defaultBlk - &func->blocks[0]);
 }
 
 /// @brief Compute a diagnostic label describing a case-plan entry.
