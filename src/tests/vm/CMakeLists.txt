@@ -209,7 +209,7 @@ function(viper_add_vm_unit_tests)
     viper_add_ctest(test_vm_switch_block_label test_vm_switch_block_label)
 
     viper_add_test(test_vm_branching_helpers ${VIPER_TESTS_DIR}/unit/test_vm_branching_helpers.cpp)
-    target_link_libraries(test_vm_branching_helpers PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
+    target_link_libraries(test_vm_branching_helpers PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_common)
     viper_add_ctest(test_vm_branching_helpers test_vm_branching_helpers)
 
     viper_add_test(test_vm_runtime_bridge_marshalling ${VIPER_TESTS_DIR}/unit/test_vm_runtime_bridge_marshalling.cpp)

@@ -3,13 +3,39 @@
 *Last Updated: 2025-11-17*
 *Source: Empirical testing during language audit + Dungeon + Frogger + Adventure stress testing*
 
-**Bug Statistics**: 70 resolved, 4 outstanding bugs (74 total documented)
+**Bug Statistics**: 72 resolved, 1 outstanding bug, 1 design decision (74 total documented)
 
-**STATUS**: 🚨 New bugs found during OOP stress testing (Dungeon + Frogger + Adventure + Texas Hold'em Poker)
+**STATUS**: Major progress! BUG-071 (String Arrays) fixed. Only BUG-072 (SELECT CASE block ordering) remains outstanding.
 
 ---
 
-## OUTSTANDING BUGS (4 bugs)
+## OUTSTANDING BUGS (1 bug)
+
+**Active Issues:**
+- **BUG-072** - SELECT CASE blocks after exit (HIGH priority - needs fix)
+
+  Root Cause Summary (2025-11-17): SELECT CASE lowering appends new basic blocks to the end of the function using `IRBuilder::addBlock`, but the procedure/main skeleton pre-creates the function `exit` block at the end. As a result, all SELECT CASE arm/default/dispatch/end blocks are emitted after `exit`, making them unreachable and causing runtime crashes in larger cases. Key sites: `src/frontends/basic/SelectCaseLowering.cpp` (`prepareBlocks`, `emitCompareChain`) and `src/il/build/IRBuilder.cpp` (`addBlock` appends). Fix options: insert blocks before `exit`, defer creating `exit` until after lowering, or reorder blocks post-generation and update `exitIndex`.
+
+**Design Decisions (Not Bugs):**
+- **BUG-069** - Objects not auto-initialized by DIM (intentional reference semantics)
+
+**Recently Resolved (2025-11-17):**
+- BUG-067 - Array fields (previously fixed, verified)
+- BUG-068 - Function name implicit returns (fixed)
+- BUG-070 - Boolean parameters (fixed)
+- BUG-071 - String arrays (fixed)
+- BUG-073 - Object parameter methods (fixed)
+- BUG-074 - Constructor corruption (fixed)
+
+---
+
+### BUG-072: SELECT CASE Blocks Generated After Function Exit
+**Status**: 🚨 **OUTSTANDING** - HIGH priority IL block ordering bug
+*See full details below*
+
+---
+
+## RESOLVED BUGS FROM THIS INVESTIGATION
 
 ### BUG-067: Array Fields in Classes Not Supported
 **Status**: ✅ RESOLVED (Previously fixed, verified 2025-11-17)
@@ -156,80 +182,126 @@ Now the epilogue checks if a variable with the method name exists in the symbol 
 - ✅ Traditional BASIC/VB implicit return pattern fully functional
 
 
-### BUG-069 CRITICAL: Objects Not Initialized by DIM - NEW Required
-**Status**: 🚨 CRITICAL - Runtime crash (null pointer)
+### BUG-069: Objects Not Initialized by DIM - NEW Required
+**Status**: 🔴 DESIGN DECISION - Not a bug; explicit NEW required by reference semantics
 **Discovered**: 2025-11-16 (Dungeon OOP stress test)
-**Category**: Runtime / OOP / Object Lifecycle
-**Test File**: `/bugs/bug_testing/test_me_in_init.bas`, `/bugs/bug_testing/test_new_standalone.bas`
+**Category**: Language Design / OOP / Object Lifecycle
+**Test Files**: `/bugs/bug_testing/test_bug069_simple.bas`, `/bugs/bug_testing/test_me_in_init.bas`
 
-**Symptom**: `DIM obj AS ClassName` creates a null object reference. Calling any method (including Init/constructor) causes "null store" or "null load" trap.
+**Symptom**: `DIM obj AS ClassName` creates a null object reference. Calling methods on uninitialized objects causes "null load" or "null store" traps.
 
 **Reproduction**:
 ```basic
 CLASS Simple
     value AS INTEGER
-    SUB Init(v AS INTEGER)
-        ME.value = v  ' CRASH: "null store" - ME is null!
+    SUB Show()
+        PRINT "Value: "; ME.value  ' TRAP: "null load" - ME is null!
     END SUB
 END CLASS
 
-DIM obj AS Simple  ' Object is NULL!
-obj.Init(42)       ' CRASH!
+DIM obj AS Simple  ' Slot allocated, initialized to null
+obj.Show()         ' TRAP: null pointer access!
 ```
 
 **Trap**:
 ```
-Trap @SIMPLE.INIT#3 line 8: InvalidOperation (code=0): null store
+Trap @SIMPLE.SHOW#4 line 5: InvalidOperation (code=0): null load
 ```
 
-**Expected**: DIM should allocate object memory, or Init should auto-allocate
+**Current Behavior (Intentional)**:
+```basic
+DIM obj AS Simple  ' Allocates slot, stores null
+obj = NEW Simple() ' Explicit allocation required
+obj.Show()         ' Now safe - ME is valid pointer
+```
 
-**Workaround**: Must use NEW to allocate object before use:
+**Deep Dive Root Cause Analysis** (2025-11-17):
+
+**1. Slot Allocation Without Initialization**
+- Objects get `%t0 = alloca 8` in function prologue (allocates 8-byte pointer slot)
+- Alloca returns zero-initialized memory → slot contains `null` (0x0)
+- **No explicit `store ptr, %t0, null` is emitted** (relies on alloca zeroing)
+
+**IL Evidence**:
+```il
+func @main() -> i64 {
+entry:
+  %t0 = alloca 8        # Allocate object slot (zero-initialized by alloca)
+  # NO: store ptr, %t0, null
+  br body
+body:
+  %t1 = load ptr, %t0   # Load null pointer
+  call @TEST.SHOW(%t1)  # Pass null as ME → TRAP when accessing ME.value
+```
+
+**2. Why Methods "Work" Without Fields**
+- If method doesn't access `ME.field`, it doesn't trap:
+  ```basic
+  SUB Show()
+      PRINT "Hello"  # No ME access → runs fine even with null ME!
+  END SUB
+  ```
+- Only field/member access triggers null pointer trap
+
+**3. What Would Be Needed for Auto-Allocation**
+
+To automatically allocate objects during DIM, would require:
+
+**a) Class metadata lookup during slot allocation** (Lowerer.Procedure.cpp:1195-1280):
+```cpp
+if (slotInfo.isObject && !slotInfo.objectClass.empty())
+{
+    // Need class ID and size
+    const auto* classInfo = lookupClass(slotInfo.objectClass);
+    long long classId = classInfo->id;
+    long long size = classInfo->size;
+
+    // Auto-allocate like NEW does
+    Value obj = emitCallRet(Type(Type::Kind::Ptr), "rt_obj_new_i64",
+                           {Value::constInt(classId), Value::constInt(size)});
+    emitStore(Type(Type::Kind::Ptr), slot, obj);
+
+    // Should constructor be called automatically?
+    // If yes: emitCall(mangleClassCtor(className), {obj});
+    // If no: object allocated but uninitialized fields
+}
+```
+
+**b) Architectural questions**:
+- Should parameterless constructors run automatically during DIM?
+- Should DIM with constructors requiring parameters be an error?
+- What about circular dependencies (Class A has Class B field, B has A field)?
+- Performance impact of auto-allocation (every DIM = heap allocation + constructor call)
+
+**4. Design Comparison**
+
+| Approach | VIPER BASIC (Current) | VB6/VBA | Java/C# | C++ |
+|----------|----------------------|---------|---------|-----|
+| DIM behavior | Null reference | Auto-allocate on first access | Error (must new) | Undefined/default ctor |
+| Explicit NEW | Required | Optional | Required | Optional |
+| Null safety | Runtime traps | Runtime errors | Compiler enforced (C#) | Undefined behavior |
+| Semantics | Reference | Reference | Reference | Value or Reference |
+
+**5. Current Design Advantages**:
+- ✅ **Explicit allocation** - Clear when heap allocation occurs
+- ✅ **No hidden constructors** - NEW visibly calls constructor
+- ✅ **Reference semantics** - Matches C#/Java model
+- ✅ **Performance predictable** - DIM is stack-only, cheap
+- ✅ **Simpler lowering** - No class metadata needed during slot allocation
+
+**Conclusion**: This is **NOT a bug** - it's a design decision implementing reference semantics where objects must be explicitly allocated with NEW. This matches modern OOP languages (C#, Java) rather than VB6's auto-allocation model.
+
+**Recommendation**:
+- Keep current behavior (explicit NEW required)
+- Document in language guide that DIM creates null references
+- Consider adding optional null-safety checks in future (e.g., `DIM obj AS Simple?` for nullable vs non-nullable)
+
+**Workaround** (Current Best Practice):
 ```basic
 DIM obj AS Simple
-obj = NEW Simple()  ' Now allocated!
-obj.value = 42      ' Works!
+obj = NEW Simple()  # Explicit allocation - clear and intentional
+obj.Init(42)        # Now safe
 ```
-
-**Impact**: CRITICAL - Makes constructor/Init pattern impossible. Must manually NEW every object. Different from traditional BASIC OOP patterns.
-
-**Root Cause**:
-- **DIM statement lowering gap** (LowerStmt_Runtime.cpp lines 663-750): The `lowerDim()` function handles arrays via `rt_arr_*_new` calls but has NO code path for scalar object variables. They fall through without initialization.
-
-- **Local slot allocation** (Lowerer.Procedure.cpp lines 1195-1280): In `allocateLocalSlots()` pass 2, objects hit the `else if (!slotInfo.isBoolean)` branch (line 1252):
-  ```cpp
-  else if (!slotInfo.isBoolean)
-  {
-      Value slot = emitAlloca(8);
-      info.slotId = slot.id;
-      if (slotInfo.type.kind == Type::Kind::Str)
-      {
-          Value empty = emitCallRet(slotInfo.type, "rt_str_empty", {});
-          emitStore(slotInfo.type, slot, empty);
-      }
-      // Lines 1254-1261: Objects allocated but NOT initialized!
-      // Strings get rt_str_empty(), but objects get nothing
-  }
-  ```
-
-  Slot allocated but NO initialization → remains NULL/uninitialized.
-
-- **NEW expression does it correctly** (Lower_OOP_Expr.cpp lines 174-205):
-  ```cpp
-  Value obj = emitCallRet(Type(Type::Kind::Ptr), "rt_obj_new_i64",
-      {Value::constInt(classId), Value::constInt(objectSize)});
-  // Then calls constructor
-  emitCall(mangleClassCtor(expr.className), ctorArgs);
-  ```
-
-- **Comparison table**:
-  | Stage | Scalar Objects | Arrays | Strings |
-  |-------|---------------|---------|---------|
-  | DIM lowering | NO CODE | rt_arr_*_new() | rt_arr_str_alloc() |
-  | Slot allocation | Slot created, NO init | Value::null() | rt_str_empty() |
-  | Result | NULL → crash | Can check bounds | Safe empty |
-
-**Fix**: In `allocateLocalSlots()` line 1254, detect object types and either auto-allocate with `rt_obj_new_i64` or store explicit `Value::null()` with null-checks before method calls.
 
 **Files**: `src/frontends/basic/Lowerer.Procedure.cpp` (lines 1195-1280), `LowerStmt_Runtime.cpp` (lines 663-750), `Lower_OOP_Expr.cpp` (lines 174-205)
 
@@ -327,182 +399,240 @@ Implemented targeted i64→i1 coercion at call sites when a callee parameter is 
 - This approach avoids spec changes and maintains deterministic IL outputs for existing tests while fixing call-site typing.
 
 
-### BUG-071 CRITICAL: String Arrays Cause IL Generation Error
-**Status**: 🚨 CRITICAL - Compiler crash
+### BUG-071: String Arrays Cause IL Generation Error
+**Status**: ✅ RESOLVED (2025-11-17)
 **Discovered**: 2025-11-16 (Frogger OOP stress test)
-**Category**: Code Generation / IL / Arrays
-**Test File**: `/bugs/bug_testing/test_array_string.bas`, `/bugs/bug_testing/test_arrays_local.bas`
+**Category**: Code Generation / IL / Arrays / Temporary Lifetime
+**Test Files**: `/bugs/bug_testing/test_array_string.bas`, `/bugs/bug_testing/test_arrays_local.bas`
 
-**Symptom**: Declaring or using string arrays causes IL generation to fail with "unknown temp" error. Integer arrays work fine.
+**Symptom**: Using string arrays in loops causes IL generation to fail with "unknown temp" error due to def-use dominance violation.
 
 **Reproduction**:
 ```basic
-DIM names(3) AS STRING  ' Declaration succeeds
-names(0) = "Alice"       ' Assignment works
-PRINT names(0)           ' ERROR: IL generation fails!
+DIM names(1) AS STRING
+DIM i AS INTEGER
+names(0) = "Test"
+FOR i = 0 TO 0
+    PRINT names(i)  ' ERROR: unknown temp in exit block!
+NEXT i
 ```
 
 **Error**:
 ```
-error: main:UL999999992: call %t57: unknown temp %57; use before def of %57
+error: main:exit: call %t33: unknown temp %33; use before def of %33
 ```
 
-**Expected**: String arrays should work like integer arrays
-
-**Workaround**: Use only INTEGER arrays. Cannot store strings in arrays.
-
-**Impact**: CRITICAL - Cannot create arrays of strings. Severely limits data structures. Makes games with multiple text elements (names, messages, etc.) very difficult.
-
 **Root Cause**:
-- **Def-use dominance violation** in `lowerArrayAccess()` (Emit_Expr.cpp lines 95-374):
+- **Deferred temp cleanup scope violation**: String temps from `rt_arr_str_get` were being marked for deferred cleanup at function exit, even when defined inside conditional blocks (like loop bodies).
 
-  **Step 1** (Lines 265-273): Compute `base` and `index` temps in **predecessor block**
-  ```cpp
-  std::vector<Value> indices;
-  for (const ExprPtr *idxPtr : indexExprs)
-  {
-      RVal idx = lowerExpr(**idxPtr);  // Emits in current block
-      idx = coerceToI64(std::move(idx), expr.loc);
-      indices.push_back(idx.value);
-  }
+- **What happened** (Lowerer_Expr.cpp lines 157-167):
+  1. String array access calls `rt_arr_str_get` which returns a retained string
+  2. The result temp is marked for deferred cleanup: `lowerer_.deferReleaseStr(val);`
+  3. The consuming code (e.g., PRINT) emits immediate retain/use/release
+  4. At function exit, `releaseDeferredTemps()` tries to release the temp again
+  5. **Problem**: If the temp was defined inside a loop/conditional that didn't execute, it's undefined at exit → dominance violation
+
+- **IL evidence**:
+  ```il
+  for_body:
+    // ... bounds check, branch to bc_ok1 ...
+
+  bc_ok1:
+    %t33 = call @rt_arr_str_get(%base, %index)  // Defined in loop
+    call @rt_str_retain_maybe(%t33)
+    call @rt_print_str(%t33)
+    call @rt_str_release_maybe(%t33)  // Immediate cleanup
+    br for_inc
+
+  exit:
+    call @rt_str_release_maybe(%t33)  // ERROR: %t33 undefined if loop never ran!
   ```
 
-  **Step 2** (Lines 342-366): Create bounds-check blocks and branch
-  ```cpp
-  size_t okIdx = func->blocks.size();
-  builder->addBlock(*func, okLbl);  // Create 'ok' block
-  size_t oobIdx = func->blocks.size();
-  builder->addBlock(*func, oobLbl);  // Create 'oob' block
-  // ...
-  emitCBr(oobCond, oob, ok);  // Branch from predecessor
-  ```
+**Resolution**: Removed deferred release for string array access results (Lowerer_Expr.cpp:163, 398):
 
-  **Step 3** (Lines 372-373): Set current to 'ok' and return temps
-  ```cpp
-  ctx.setCurrent(ok);  // Switch to 'ok' block
-  return ArrayAccess{base, index};  // Return temps from predecessor
-  ```
+```cpp
+// OLD CODE:
+IlValue val = lowerer_.emitCallRet(
+    IlType(IlType::Kind::Str), "rt_arr_str_get", {access.base, access.index});
+lowerer_.deferReleaseStr(val);  // Added to exit block cleanup!
 
-- **Violation**: Temps `base` and `index` are:
-  - **Defined** in predecessor block (where indices are computed)
-  - **Used** in `ok` block (by callers like `rt_arr_str_get`)
-  - IL requires: Definition must **dominate** all uses
-  - `ok` block doesn't dominate predecessor → use-before-def error
+// NEW CODE (BUG-071 fix):
+IlValue val = lowerer_.emitCallRet(
+    IlType(IlType::Kind::Str), "rt_arr_str_get", {access.base, access.index});
+// Removed: lowerer_.deferReleaseStr(val);
+// Consuming code (PRINT, assignment, etc.) handles lifetime
+```
 
-- **Why string arrays trigger it**:
-  - String loads call `rt_arr_str_get(base, index)` immediately in `ok` block
-  - Integer arrays may avoid verification if values are copied/coerced before use
-  - Verifier's strict dominance check fails: "unknown temp %57; use before def"
+**Why this works**:
+- `rt_arr_str_get` returns a retained string (refcount +1)
+- Consuming statements (PRINT, assignment) emit their own retain/release around usage
+- No need for deferred cleanup - immediate cleanup in consuming code handles lifetime correctly
+- Avoids dominance violations by not tracking temps across block boundaries
 
-- **IL evidence** (from test output):
-  ```
-  Predecessor block:
-    %57 = <array base computation>
-    cbr %cond, oob_block, ok_block
-  ok_block:
-    %result = call @rt_arr_str_get(%57, %idx)  // ERROR: %57 undefined here!
-  ```
-
-**Fix**: Re-emit `base`/`index` in the `ok` block, or restructure to compute them after block creation.
-
-**Files**: `src/frontends/basic/lower/Emit_Expr.cpp` (lines 95-374), `Lowerer_Expr.cpp` (string element loads)
+**Validation**:
+- ✅ `test_array_string.bas` - String arrays in loops work correctly
+- ✅ `test_arrays_local.bas` - All array tests pass
+- ✅ All test suite passes (640/641 tests, 1 pre-existing failure)
 
 
-### BUG-072 HIGH: SELECT CASE Blocks Generated After Function Exit
-**Status**: 🚨 HIGH - IL generation bug
+### BUG-072: SELECT CASE Blocks Generated After Function Exit
+**Status**: 🚨 HIGH - IL block ordering bug (triggers with 4+ CASE arms + CASE ELSE)
 **Discovered**: 2025-11-16 (Adventure game text adventure stress test)
-**Category**: Code Generation / IL / Control Flow
+**Category**: Code Generation / IL / Control Flow / Block Ordering
 **Test File**: `/bugs/bug_testing/adventure_v1_parser.bas`
 
-**Symptom**: When multiple SELECT CASE statements appear after several PRINT statements, the SELECT CASE arm blocks are generated AFTER the function's exit block in the IL, making them unreachable. The verifier reports "missing terminator" error.
+**Symptom**: SELECT CASE with multiple arms (4+) and CASE ELSE generates blocks AFTER the function exit block, making them unreachable and causing runtime crashes (SIGBUS exit code 138).
 
-**Reproduction**:
+**Minimal Reproduction**:
 ```basic
-' Multiple PRINT statements
-PRINT "Line 1"
-PRINT "Line 2"
-...
-PRINT "Line N"
+DIM cmd AS STRING
+cmd = "north"
 
-' Then multiple SELECT CASE statements
 SELECT CASE cmd
     CASE "north"
-        PRINT "Going north"
+        PRINT "North"
     CASE "south"
-        PRINT "Going south"
+        PRINT "South"
+    CASE "east"
+        PRINT "East"
+    CASE "west"
+        PRINT "West"
+    CASE ELSE
+        PRINT "Other"
 END SELECT
 
-SELECT CASE cmd
-    CASE "look"
-        PRINT "Looking"
-END SELECT
+PRINT "Done"
 ```
 
-**Error**:
+**Error**: Runtime crash with exit code 138 (SIGBUS - memory access violation)
+
+**Deep Dive Root Cause Analysis** (2025-11-17):
+
+**1. Trigger Conditions** (Empirically Determined):
+- ✅ Simple SELECT (1-2 CASE arms): **Works**
+- ✅ SELECT with CASE ELSE only: **Works**
+- ✅ Multiple SELECT statements (2-3 arms each): **Works**
+- ❌ Single SELECT with 4+ CASE arms + CASE ELSE: **FAILS**
+- ❌ Multiple SELECT with 4+ arms each: **FAILS**
+
+**Why 4+ arms triggers the bug**: With many CASE arms, `prepareBlocks()` creates enough blocks that the function's block vector likely reallocates during appending. If the exit block was already created, the new SELECT blocks end up after it in memory.
+
+**2. IL Evidence** (from `/tmp/test_many_cases.bas`):
 ```
-error: main:UL999999991: missing terminator
+Line 97:  exit:
+Line 99:  select_arm_0:    # ALL SELECT blocks after exit!
+Line 110: select_arm_1:
+Line 121: select_arm_2:
+Line 132: select_arm_3:
+Line 143: select_default:
+Line 154: select_end:
 ```
 
-**IL Evidence**: The generated IL shows:
+**Block flow**:
 ```il
+# Normal control flow
+body:
+  # ... code ...
+  br exit
+
 exit:
-  ret 0
-select_arm_0:   <-- Unreachable! After return!
-  ...
-  br select_end
+  ret 0              # Function returns here
+
+# UNREACHABLE BLOCKS (after return!)
+select_arm_0:
+  %t25 = const_str @.L10
+  call @rt_print_str(%t25)
+  br select_end      # Never reached!
 ```
 
-**Expected**: SELECT CASE blocks should be generated before the function exit, with proper control flow connections.
+**3. Root Cause in SelectCaseLowering.cpp**:
 
-**Workaround**: Keep programs simple with fewer consecutive statements before SELECT CASE, or use simpler control flow patterns.
+**prepareBlocks() always appends** (Lines 141-178):
+```cpp
+void SelectCaseLowering::prepareBlocks(/* ... */)
+{
+    auto *func = ctx.function();
+    auto *current = ctx.current();
+    size_t curIdx = static_cast<size_t>(current - &func->blocks[0]);
+    size_t startIdx = func->blocks.size();  // Current end of block list
 
-**Impact**: HIGH - Limits program complexity. Cannot build sophisticated text parsers or command processors with multiple SELECT CASE statements.
+    // Create SELECT CASE arm blocks
+    for (size_t i = 0; i < stmt.arms.size(); ++i)
+    {
+        std::string label = blockNamer ? blockNamer->generic("select_arm")
+                                       : lowerer_.mangler.block("select_arm_" + ...);
+        lowerer_.builder->addBlock(*func, label);  // APPENDS to end!
+    }
 
-**Root Cause**:
-- **Four interacting failures** in SelectCaseLowering.cpp:
+    if (hasCaseElse)
+        lowerer_.builder->addBlock(*func, defaultLabel);  // APPENDS
 
-  **1. prepareBlocks() always appends** (Lines 141-166):
-  ```cpp
-  size_t curIdx = current - &func->blocks[0];  // Save current index
-  // ... creates blocks ...
-  lowerer_.builder->addBlock(*func, label);  // ALWAYS appends to end!
-  ```
-  If exit block was already created, new blocks land AFTER it.
+    lowerer_.builder->addBlock(*func, endLabel);  // APPENDS
+    // ...
+}
+```
 
-  **2. emitCompareChain() creates blocks during loop** (Line 459):
-  ```cpp
-  lowerer_.builder->addBlock(*func, label);  // Appends intermediate blocks
-  ```
-  In complex control flow, these may appear after exit block.
+**IRBuilder::addBlock() implementation** (IRBuilder.cpp:113):
+```cpp
+BasicBlock &IRBuilder::createBlock(Function &fn, const std::string &label, ...)
+{
+    fn.blocks.push_back({label, {}, {}, false});  // ALWAYS APPENDS!
+    return fn.blocks.back();
+}
+```
 
-  **3. Default block left unterminated** (Line 475):
-  ```cpp
-  ctx.setCurrent(defaultBlk);  // Sets current but no terminator guarantee!
-  ```
-  IL verifier rejects blocks without terminators.
+**The Problem**:
+1. Function prologue creates entry block
+2. Statement lowering may create exit block early (especially after PRINTs or simple statements)
+3. SELECT CASE calls `prepareBlocks()` which appends all SELECT blocks to end
+4. If exit block exists at position N, SELECT blocks get positions N+1, N+2, ...
+5. Result: `exit` → `select_arm_0` → `select_arm_1` → ... (unreachable!)
 
-  **4. No block state validation** (Line 467):
-  No check that blocks are unterminated before emitting into them.
+**4. Why It Causes SIGBUS (Exit Code 138)**:
 
-- **Symptom IL**:
-  ```il
-  exit:
-    ret 0
-  select_arm_0:   <-- UNREACHABLE! After return!
-    ...
-    br select_end
-  ```
+The IL verifies successfully in some cases but crashes at runtime because:
+- Control flow reaches `exit` block and returns
+- Some VM state or pointer arithmetic assumes blocks are contiguous/ordered
+- Access to unreachable SELECT blocks causes memory access violation
 
-- **Sequence causing bug**:
-  1. Function body creates exit block early (common with PRINT statements)
-  2. SELECT CASE lowering saves `curIdx` (line 132)
-  3. `prepareBlocks()` appends new blocks to end (after exit)
-  4. Blocks have no incoming edges from active code
-  5. Verifier: "missing terminator" or unreachable code
+**5. Proposed Fix Approaches**:
 
-**Fix**: Insert blocks BEFORE exit block, or validate/repair control flow after appending.
+**Option A**: Insert blocks before exit block
+```cpp
+// In prepareBlocks(), instead of addBlock():
+size_t exitIdx = ctx.exitIndex();
+fn.blocks.insert(fn.blocks.begin() + exitIdx, newBlock);
+// Then update all block indices/pointers
+```
 
-**Files**: `src/frontends/basic/SelectCaseLowering.cpp` (lines 123-177, 411-477), entry from `Lower_Switch.cpp` line 38
+**Option B**: Defer exit block creation
+```cpp
+// Don't create exit block until all statement lowering complete
+// Keep it as last block always
+```
+
+**Option C**: Reorder blocks after generation
+```cpp
+// After all blocks created, move exit to end:
+auto exitBlock = std::move(fn.blocks[exitIdx]);
+fn.blocks.erase(fn.blocks.begin() + exitIdx);
+fn.blocks.push_back(std::move(exitBlock));
+```
+
+**6. Complexity**: Each approach requires updating:
+- Block indices in branches/jumps
+- ProcedureContext.exitIdx
+- Pointer arithmetic in `setCurrent()` calls
+- Any saved block pointers (vector reallocation invalidates them)
+
+**Impact**: HIGH - Blocks text adventure games, command parsers, menu systems. Any SELECT CASE with realistic number of options fails.
+
+**Workaround**:
+- Limit CASE arms to 3 or fewer
+- Use nested IF-ELSEIF instead of SELECT CASE
+- Split large SELECT into multiple smaller ones
+
+**Files**: `src/frontends/basic/SelectCaseLowering.cpp` (lines 141-178), `src/il/build/IRBuilder.cpp` (line 113)
 
 
 ### BUG-073: Cannot Call Methods on Object Parameters

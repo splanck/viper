@@ -103,6 +103,16 @@ class IRBuilder
     /// @brief Backward-compatible helper without parameters.
     il::core::BasicBlock &addBlock(il::core::Function &fn, const std::string &label);
 
+    /// @brief Insert a basic block at a specific index in @p fn.
+    /// @param fn Function receiving the block.
+    /// @param idx Zero-based insertion index into @ref il::core::Function::blocks.
+    /// @param label Block label.
+    /// @return Reference to the inserted block.
+    /// @note This variant creates a parameter-less block and does not change the
+    ///       current insertion point. Use when block order must precede an
+    ///       existing block such as a synthetic exit block.
+    il::core::BasicBlock &insertBlock(il::core::Function &fn, size_t idx, const std::string &label);
+
     /// @brief Access parameter @p idx of block @p bb as a value.
     il::core::Value blockParam(il::core::BasicBlock &bb, unsigned idx);
 

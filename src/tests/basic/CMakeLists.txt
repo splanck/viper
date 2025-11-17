@@ -66,6 +66,11 @@ function(viper_add_basic_main_tests)
     target_link_libraries(test_basic_lowerer_select_case PRIVATE ${VIPER_BASIC_LIBS})
     viper_add_ctest(test_basic_lowerer_select_case test_basic_lowerer_select_case)
 
+    # Ensure SELECT CASE blocks are inserted before exit (BUG-072 regression test)
+    viper_add_test(test_basic_lowerer_select_case_order ${_VIPER_BASIC_UNIT_DIR}/test_basic_lowerer_select_case_order.cpp)
+    target_link_libraries(test_basic_lowerer_select_case_order PRIVATE ${VIPER_BASIC_LIBS})
+    viper_add_ctest(test_basic_lowerer_select_case_order test_basic_lowerer_select_case_order)
+
     viper_add_test(test_basic_semantic_components ${_VIPER_BASIC_UNIT_DIR}/test_basic_semantic_components.cpp)
     target_link_libraries(test_basic_semantic_components PRIVATE ${VIPER_BASIC_LIBS})
     viper_add_ctest(test_basic_semantic_components test_basic_semantic_components)

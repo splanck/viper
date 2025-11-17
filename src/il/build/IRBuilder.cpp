@@ -133,6 +133,21 @@ il::core::BasicBlock &IRBuilder::addBlock(il::core::Function &fn, const std::str
     return createBlock(fn, label, {});
 }
 
+/// @brief Insert a parameter-less basic block at a fixed position in the function.
+/// @details Useful for ensuring new blocks appear before a known position (e.g.,
+///          the function's synthetic exit block). Does not update the current
+///          insertion point.
+il::core::BasicBlock &IRBuilder::insertBlock(il::core::Function &fn,
+                                             size_t idx,
+                                             const std::string &label)
+{
+    if (idx > fn.blocks.size())
+        idx = fn.blocks.size();
+    auto it = fn.blocks.insert(fn.blocks.begin() + static_cast<std::ptrdiff_t>(idx),
+                               il::core::BasicBlock{label, {}, {}, false});
+    return *it;
+}
+
 /// @brief Retrieve the SSA value associated with a block parameter.
 /// @param bb Block whose parameter is being referenced.
 /// @param idx Zero-based index into bb.params.

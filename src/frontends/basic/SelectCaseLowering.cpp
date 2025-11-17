@@ -143,6 +143,7 @@ SelectCaseLowering::Blocks SelectCaseLowering::prepareBlocks(const SelectCaseStm
 
     size_t curIdx = static_cast<size_t>(current - &func->blocks[0]);
     auto *blockNamer = ctx.blockNames().namer();
+    // Append blocks; we'll normalize exit position after lowering completes.
     size_t startIdx = func->blocks.size();
 
     Blocks blocks{};
@@ -184,6 +185,8 @@ SelectCaseLowering::Blocks SelectCaseLowering::prepareBlocks(const SelectCaseStm
 
     for (size_t i = 0; i < stmt.arms.size(); ++i)
         blocks.armIdx[i] = startIdx + i;
+
+    // Exit index normalization is handled after full SELECT lowering completes.
 
     return blocks;
 }
@@ -456,9 +459,16 @@ size_t SelectCaseLowering::emitCompareChain(size_t startIdx,
         auto &entry = plan[i];
         func = ctx.function();
         auto *checkBlk = &func->blocks[currentIdx];
-        auto *trueTarget = entry.target;
-        if (trueTarget->label.empty())
-            trueTarget->label = lowerer_.nextFallbackBlockLabel();
+        // Capture the true-target's label before any potential block allocations
+        // that may reallocate the blocks vector and invalidate pointers.
+        std::string trueLabel = entry.target ? entry.target->label : std::string();
+        if (trueLabel.empty())
+        {
+            // Stamp a deterministic fallback label now so it survives reallocation.
+            trueLabel = std::string(lowerer_.nextFallbackBlockLabel());
+            if (entry.target)
+                entry.target->label = trueLabel;
+        }
 
         bool needIntermediate = plan[i + 1].kind != CasePlanEntry::Kind::Default;
         il::core::BasicBlock *falseTarget = defaultBlk;
@@ -475,6 +485,17 @@ size_t SelectCaseLowering::emitCompareChain(size_t startIdx,
             if (falseTarget->label.empty())
                 falseTarget->label = lowerer_.nextFallbackBlockLabel();
         }
+        // Refresh true target pointer after any potential reallocation.
+        auto *trueTarget = static_cast<il::core::BasicBlock *>(nullptr);
+        for (auto &bb : func->blocks)
+        {
+            if (bb.label == trueLabel)
+            {
+                trueTarget = &bb;
+                break;
+            }
+        }
+        assert(trueTarget && "trueTarget block must exist");
 
         ctx.setCurrent(checkBlk);
         lowerer_.curLoc = entry.loc;

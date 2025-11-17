@@ -16,15 +16,14 @@
 #include <cassert>
 #include <cstdlib>
 #include <string>
-#include <sys/wait.h>
-#include <unistd.h>
 #include <vector>
+#include "common/RunProcess.hpp"
 
 using il::vm::ops::common::Case;
 using il::vm::ops::common::Scalar;
 using il::vm::ops::common::Target;
 
-int main()
+int main(int argc, char **argv)
 {
     {
         // Exact match should select the corresponding target.
@@ -106,11 +105,9 @@ int main()
     }
 
     {
-        // Argument count mismatches must trigger a trap in a separate process.
-        pid_t child = fork();
-        assert(child != -1 && "fork must succeed for trap isolation");
-
-        if (child == 0)
+        // Argument count mismatches must trigger a trap; run in a subprocess for isolation.
+        const char *reentry = std::getenv("VIPER_VM_BRANCH_TRAP");
+        if (reentry && std::string(reentry) == "1")
         {
             il::core::Module module;
             auto &function = module.functions.emplace_back();
@@ -147,32 +144,14 @@ int main()
             target.ip = &state.ip;
 
             il::vm::ops::common::jump(state.fr, target);
-
             std::_Exit(0);
         }
 
-        // Decode exit semantics portably: treat signaled termination as non-zero.
-        auto decodeExitCode = [](int raw)
-        {
-            if (raw == -1)
-                return -1;
-#ifdef _WIN32
-            return raw;
-#else
-            if (WIFEXITED(raw))
-                return WEXITSTATUS(raw);
-            if (WIFSIGNALED(raw))
-                return 128 + WTERMSIG(raw);
-            return raw;
-#endif
-        };
-
-        int status = 0;
-        const pid_t waited = waitpid(child, &status, 0);
-        assert(waited == child && "waitpid must return child pid");
-        const int code = decodeExitCode(status);
-        // Accept any non-zero termination in constrained environments.
-        assert(code != 0 && "trap should yield a non-zero termination status");
+        // Spawn subprocess of this test with an env var flag.
+        std::vector<std::string> argv_vec;
+        for (int i = 0; i < argc; ++i) argv_vec.emplace_back(argv[i]);
+        RunResult rr = run_process(argv_vec, std::nullopt, {{"VIPER_VM_BRANCH_TRAP", std::string("1")}});
+        assert(rr.exit_code != 0 && "trap should yield a non-zero termination status");
     }
 
     return 0;
