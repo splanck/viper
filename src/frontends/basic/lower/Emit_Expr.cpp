@@ -262,7 +262,7 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
     }
     assert(!indexExprs.empty() && "array access must have at least one index");
 
-    // Lower all index expressions to i64
+    // Lower all index expressions to i64 for bounds checking in the current block
     std::vector<Value> indices;
     for (const ExprPtr *idxPtr : indexExprs)
     {
@@ -276,49 +276,37 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
     // For N dimensions with extents [E0, E1, ..., E_{N-1}] and indices [i0, i1, ..., i_{N-1}]:
     // flat_index = i0*E1*E2*...*E_{N-1} + i1*E2*...*E_{N-1} + ... + i_{N-2}*E_{N-1} + i_{N-1}
     Value index;
-    if (indices.size() == 1)
+    auto computeFlatIndex = [&](const std::vector<Value> &idxVals) -> Value
     {
-        // Single-dimensional: use index directly
-        index = indices[0];
-    }
-    else
-    {
-        // Multi-dimensional: compute row-major flattened index
+        if (idxVals.size() == 1)
+            return idxVals[0];
         const SemanticAnalyzer *sema = semanticAnalyzer();
         const ArrayMetadata *metadata = sema ? sema->lookupArrayMetadata(expr.name) : nullptr;
-
-        if (metadata && metadata->extents.size() == indices.size())
+        if (metadata && metadata->extents.size() == idxVals.size())
         {
-            // We have extent information - use it for row-major indexing
             const std::vector<long long> &extents = metadata->extents;
-
-            // Start with first index: i0 * (E1 * E2 * ... * E_{N-1})
             long long stride = 1;
             for (size_t i = 1; i < extents.size(); ++i)
                 stride *= extents[i];
-
-            index = emitBinary(
-                Opcode::IMulOvf, Type(Type::Kind::I64), indices[0], Value::constInt(stride));
-
-            // Add remaining dimensions: i_k * (E_{k+1} * ... * E_{N-1})
-            for (size_t k = 1; k < indices.size(); ++k)
+            Value sum = emitBinary(Opcode::IMulOvf,
+                                   Type(Type::Kind::I64),
+                                   idxVals[0],
+                                   Value::constInt(stride));
+            for (size_t k = 1; k < idxVals.size(); ++k)
             {
                 stride = 1;
                 for (size_t i = k + 1; i < extents.size(); ++i)
                     stride *= extents[i];
-
                 Value term = emitBinary(
-                    Opcode::IMulOvf, Type(Type::Kind::I64), indices[k], Value::constInt(stride));
-                index = emitBinary(Opcode::IAddOvf, Type(Type::Kind::I64), index, term);
+                    Opcode::IMulOvf, Type(Type::Kind::I64), idxVals[k], Value::constInt(stride));
+                sum = emitBinary(Opcode::IAddOvf, Type(Type::Kind::I64), sum, term);
             }
+            return sum;
         }
-        else
-        {
-            // Fallback: if we don't have metadata or dimension mismatch, just use first index
-            // This maintains backward compatibility
-            index = indices[0];
-        }
-    }
+        // Fallback: just use first index
+        return idxVals[0];
+    };
+    index = computeFlatIndex(indices);
 
     // Use appropriate length function based on array element type
     Value len;
@@ -370,6 +358,59 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
     emitTrap();
 
     ctx.setCurrent(ok);
+    // Only for string arrays (value or member), re-lower base/index in the ok block
+    // to avoid cross-block temp reuse issues seen with string element handling.
+    bool isStringArray = false;
+    if (isMemberArray)
+        isStringArray = (memberElemAstType == ::il::frontends::basic::Type::Str);
+    else if (info)
+        isStringArray = (info->type == AstType::Str);
+
+    if (isStringArray)
+    {
+        Value baseOk;
+        if (isMemberArray)
+        {
+            const std::string &full = expr.name;
+            std::size_t dot = full.find('.');
+            std::string baseName = full.substr(0, dot);
+            std::string fieldName = full.substr(dot + 1);
+            const auto *baseSym = findSymbol(baseName);
+            if (baseSym && baseSym->slotId)
+            {
+                curLoc = expr.loc;
+                Value selfPtr = emitLoad(Type(Type::Kind::Ptr), Value::temp(*baseSym->slotId));
+                std::string klass = getSlotType(baseName).objectClass;
+                auto it = classLayouts_.find(klass);
+                if (it != classLayouts_.end())
+                {
+                    if (const ClassLayout::Field *fld = it->second.findField(fieldName))
+                    {
+                        Value fieldPtr = emitBinary(Opcode::GEP,
+                                                    Type(Type::Kind::Ptr),
+                                                    selfPtr,
+                                                    Value::constInt(static_cast<long long>(fld->offset)));
+                        baseOk = emitLoad(Type(Type::Kind::Ptr), fieldPtr);
+                    }
+                }
+            }
+        }
+        else
+        {
+            baseOk = emitLoad(Type(Type::Kind::Ptr), storage->pointer);
+        }
+        std::vector<Value> indicesOk;
+        indicesOk.reserve(indexExprs.size());
+        for (const ExprPtr *idxPtr : indexExprs)
+        {
+            RVal idx = lowerExpr(**idxPtr);
+            idx = coerceToI64(std::move(idx), expr.loc);
+            indicesOk.push_back(idx.value);
+        }
+        Value indexOk = computeFlatIndex(indicesOk);
+        return ArrayAccess{baseOk, indexOk};
+    }
+    // Non-string arrays: keep original SSA values to preserve IL golden tests
     return ArrayAccess{base, index};
 }
 

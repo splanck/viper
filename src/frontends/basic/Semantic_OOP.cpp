@@ -29,6 +29,7 @@
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/SemanticDiagnostics.hpp"
 #include "frontends/basic/TypeSuffix.hpp"
+#include "frontends/basic/StringUtils.hpp"
 
 #include "support/diagnostics.hpp"
 
@@ -122,6 +123,54 @@ void checkMemberShadowing(const std::vector<StmtPtr> &body,
     return tail && methodMustReturn(*tail);
 }
 
+namespace {
+/// @brief Detect VB-style implicit returns via assignment to the function name.
+/// @details Scans the method body for a LET assigning to an identifier that
+///          case-insensitively matches the method name. Nested statement lists
+///          are traversed conservatively to capture common patterns.
+static bool methodHasImplicitReturn(const MethodDecl &method)
+{
+    auto isNameAssign = [&](const Stmt &s) -> bool
+    {
+        if (auto *let = as<const LetStmt>(s))
+        {
+            if (let->target)
+            {
+                if (auto *v = as<VarExpr>(*let->target))
+                    return string_utils::iequals(v->name, method.name);
+            }
+        }
+        return false;
+    };
+    std::function<bool(const Stmt &)> walk = [&](const Stmt &s) -> bool
+    {
+        if (isNameAssign(s))
+            return true;
+        if (auto *list = as<const StmtList>(s))
+        {
+            for (const auto &sp : list->stmts)
+                if (sp && walk(*sp))
+                    return true;
+        }
+        if (auto *ifs = as<const IfStmt>(s))
+        {
+            if (ifs->then_branch && walk(*ifs->then_branch))
+                return true;
+            for (const auto &e : ifs->elseifs)
+                if (e.then_branch && walk(*e.then_branch))
+                    return true;
+            if (ifs->else_branch && walk(*ifs->else_branch))
+                return true;
+        }
+        return false;
+    };
+    for (const auto &sp : method.body)
+        if (sp && walk(*sp))
+            return true;
+    return false;
+}
+} // namespace
+
 void emitMissingReturn(const ClassDecl &klass, const MethodDecl &method, DiagnosticEmitter *emitter)
 {
     if (!emitter)
@@ -129,6 +178,9 @@ void emitMissingReturn(const ClassDecl &klass, const MethodDecl &method, Diagnos
     if (!method.ret)
         return;
     if (methodBodyMustReturn(method.body))
+        return;
+    // Honor VB-style implicit return by assignment to function name.
+    if (methodHasImplicitReturn(method))
         return;
 
     std::string qualified = klass.name;

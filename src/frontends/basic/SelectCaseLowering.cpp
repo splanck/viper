@@ -60,6 +60,18 @@ void SelectCaseLowering::lower(const SelectCaseStmt &stmt)
     if (!func || !current)
         return;
 
+    // Defensive: if the current block is already terminated, start a fresh block
+    // so the SELECT CASE lowering has a valid insertion point.
+    if (current->terminated)
+    {
+        auto *namer = ctx.blockNames().namer();
+        std::string label = namer ? namer->generic("select_start") : lowerer_.mangler.block("select_start");
+        lowerer_.builder->addBlock(*func, label);
+        func = ctx.function();
+        current = &func->blocks.back();
+        ctx.setCurrent(current);
+    }
+
     lowerer_.curLoc = stmt.selector->loc;
     Lowerer::RVal selectorVal = lowerer_.lowerExpr(*stmt.selector);
     bool selectorIsString = selectorVal.type.kind == il::core::Type::Kind::Str;

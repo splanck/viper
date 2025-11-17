@@ -1,15 +1,15 @@
 # VIPER BASIC Known Bugs and Issues
 
 *Last Updated: 2025-11-16*
-*Source: Empirical testing during language audit + Dungeon stress testing*
+*Source: Empirical testing during language audit + Dungeon + Frogger + Adventure stress testing*
 
-**Bug Statistics**: 66 resolved, 5 outstanding bugs (71 total documented)
+**Bug Statistics**: 66 resolved, 7 outstanding bugs (73 total documented)
 
-**STATUS**: 🚨 New bugs found during OOP stress testing (Dungeon + Frogger games)
+**STATUS**: 🚨 New bugs found during OOP stress testing (Dungeon + Frogger + Adventure games)
 
 ---
 
-## OUTSTANDING BUGS (5 bugs)
+## OUTSTANDING BUGS (7 bugs)
 
 ### BUG-067 CRITICAL: Array Fields in Classes Not Supported
 **Status**: 🚨 CRITICAL - Parse error
@@ -38,6 +38,27 @@ error[B0001]: expected END, got ident
 **Workaround**: Use multiple scalar fields or manage arrays outside the class
 
 **Impact**: Severely limits OOP design - cannot have collection fields in classes
+
+**Root Cause**:
+- **Parser lookahead constraint** (Lines 147-150): The `looksLikeFieldDecl` boolean only recognizes:
+  - Simple form: `identifier AS type`
+  - DIM form: `DIM identifier AS type` or `DIM identifier (`
+  - **Missing**: Direct array form `identifier ( size ) AS type` without DIM prefix
+
+  ```cpp
+  const bool looksLikeFieldDecl =
+      (at(TokenKind::Identifier) && peek(1).kind == TokenKind::KeywordAs) ||
+      (at(TokenKind::KeywordDim) && peek(1).kind == TokenKind::Identifier &&
+       (peek(2).kind == TokenKind::KeywordAs || peek(2).kind == TokenKind::LParen));
+  ```
+
+  The first clause checks for `AS` immediately after identifier, rejecting `identifier LParen`.
+
+  **Fix**: Add `|| peek(1).kind == TokenKind::LParen` to first clause to accept array syntax.
+
+- **Type system limitation** (Parser_Stmt_Core.cpp): Field parsing only captures primitive types via `parseTypeKeyword()` which maps INTEGER/FLOAT/STRING/BOOLEAN. Object class names for array elements are not preserved during field declaration parsing.
+
+**Files**: `src/frontends/basic/Parser_Stmt_OOP.cpp` (lines 147-186), `Parser_Stmt_Core.cpp` (parseTypeKeyword)
 
 
 ### BUG-068 HIGH: Function Name Assignment for Return Value Not Working
@@ -74,6 +95,41 @@ END FUNCTION
 ```
 
 **Impact**: Breaks traditional BASIC code patterns, requires modern RETURN keyword
+
+**Root Cause**:
+- **Timing issue**: OOP return check happens during `buildOopIndex()` phase 1 (line 316 in Semantic_OOP.cpp) BEFORE semantic analysis of method bodies. The `activeFunctionNameAssigned_` flag doesn't exist yet.
+
+- **Static function limitation** (Lines 125-141): `emitMissingReturn()` is a static helper that only calls `methodBodyMustReturn()`, which uses AST structural analysis:
+  ```cpp
+  void emitMissingReturn(const ClassDecl &klass, const MethodDecl &method, DiagnosticEmitter *emitter)
+  {
+      if (!emitter || !method.ret)
+          return;
+      if (methodBodyMustReturn(method.body))  // Only checks AST structure!
+          return;
+      // Emits error without checking activeFunctionNameAssigned_
+  }
+  ```
+
+- **Correct implementation** (SemanticAnalyzer.Procs.cpp lines 332-367): The instance method `mustReturn()` properly checks the flag AFTER semantic analysis:
+  ```cpp
+  bool SemanticAnalyzer::mustReturn(const std::vector<StmtPtr> &stmts) const
+  {
+      if (activeFunctionNameAssigned_)  // <-- Checks VB-style implicit return
+          return true;
+      // ... then checks AST structure
+  }
+  ```
+
+- **Flag setting** (SemanticAnalyzer.Stmts.Runtime.cpp lines 117-121): During semantic analysis, assigning to function name sets the flag:
+  ```cpp
+  if (activeFunction_ && string_utils::iequals(v.name, activeFunction_->name))
+      activeFunctionNameAssigned_ = true;
+  ```
+
+**Fix**: Move OOP return check after semantic analysis, or make `emitMissingReturn()` scan AST for assignments to function name.
+
+**Files**: `src/frontends/basic/Semantic_OOP.cpp` (lines 95-141, 316), `SemanticAnalyzer.Procs.cpp` (lines 287-367), `SemanticAnalyzer.Stmts.Runtime.cpp` (lines 117-121)
 
 
 ### BUG-069 CRITICAL: Objects Not Initialized by DIM - NEW Required
@@ -113,6 +169,46 @@ obj.value = 42      ' Works!
 
 **Impact**: CRITICAL - Makes constructor/Init pattern impossible. Must manually NEW every object. Different from traditional BASIC OOP patterns.
 
+**Root Cause**:
+- **DIM statement lowering gap** (LowerStmt_Runtime.cpp lines 663-750): The `lowerDim()` function handles arrays via `rt_arr_*_new` calls but has NO code path for scalar object variables. They fall through without initialization.
+
+- **Local slot allocation** (Lowerer.Procedure.cpp lines 1195-1280): In `allocateLocalSlots()` pass 2, objects hit the `else if (!slotInfo.isBoolean)` branch (line 1252):
+  ```cpp
+  else if (!slotInfo.isBoolean)
+  {
+      Value slot = emitAlloca(8);
+      info.slotId = slot.id;
+      if (slotInfo.type.kind == Type::Kind::Str)
+      {
+          Value empty = emitCallRet(slotInfo.type, "rt_str_empty", {});
+          emitStore(slotInfo.type, slot, empty);
+      }
+      // Lines 1254-1261: Objects allocated but NOT initialized!
+      // Strings get rt_str_empty(), but objects get nothing
+  }
+  ```
+
+  Slot allocated but NO initialization → remains NULL/uninitialized.
+
+- **NEW expression does it correctly** (Lower_OOP_Expr.cpp lines 174-205):
+  ```cpp
+  Value obj = emitCallRet(Type(Type::Kind::Ptr), "rt_obj_new_i64",
+      {Value::constInt(classId), Value::constInt(objectSize)});
+  // Then calls constructor
+  emitCall(mangleClassCtor(expr.className), ctorArgs);
+  ```
+
+- **Comparison table**:
+  | Stage | Scalar Objects | Arrays | Strings |
+  |-------|---------------|---------|---------|
+  | DIM lowering | NO CODE | rt_arr_*_new() | rt_arr_str_alloc() |
+  | Slot allocation | Slot created, NO init | Value::null() | rt_str_empty() |
+  | Result | NULL → crash | Can check bounds | Safe empty |
+
+**Fix**: In `allocateLocalSlots()` line 1254, detect object types and either auto-allocate with `rt_obj_new_i64` or store explicit `Value::null()` with null-checks before method calls.
+
+**Files**: `src/frontends/basic/Lowerer.Procedure.cpp` (lines 1195-1280), `LowerStmt_Runtime.cpp` (lines 663-750), `Lower_OOP_Expr.cpp` (lines 174-205)
+
 
 ### BUG-070 HIGH: BOOLEAN Parameters Cause Type Mismatch Errors
 **Status**: 🚨 HIGH - Cannot pass BOOLEAN to methods
@@ -149,6 +245,57 @@ SUB SetFlag(value AS INTEGER)  ' Use 0/1 instead
 
 **Impact**: Cannot use BOOLEAN type for method parameters. Must use INTEGER flags everywhere.
 
+**Root Cause**:
+- **Type mismatch between literals and parameters**:
+
+  **Literals** (Lowerer_Expr.cpp lines 102-111) emit i64:
+  ```cpp
+  void visit(const BoolExpr &expr) override
+  {
+      lowerer_.curLoc = expr.loc;
+      IlValue intVal = IlValue::constInt(expr.value ? -1 : 0);
+      result_ = Lowerer::RVal{intVal, IlType(IlType::Kind::I64)};  // i64!
+  }
+  ```
+
+  **Parameters** (Lower_OOP_Emit.cpp lines 43-58) expect i1:
+  ```cpp
+  il::core::Type ilTypeForAstType(AstType ty)
+  {
+      switch (ty)
+      {
+          case AstType::Bool:
+              return IlType(IlType::Kind::I1);  // i1!
+          // ...
+      }
+  }
+  ```
+
+- **Call site**: When calling `obj.SetFlag(TRUE)`:
+  1. Argument: `TRUE` → i64 constant -1
+  2. Parameter: `value AS BOOLEAN` → i1 type in signature
+  3. IL verifier: "call arg type mismatch" (i64 vs i1)
+
+- **Slot allocation** (Lines 266, 505): BOOLEAN params get 1-byte slots:
+  ```cpp
+  Value slot = emitAlloca((!param.is_array && param.type == AstType::Bool) ? 1 : 8);
+  ```
+
+**Type mismatch summary**:
+| Component | Type | Value |
+|-----------|------|-------|
+| TRUE literal | i64 | -1 |
+| FALSE literal | i64 | 0 |
+| BOOLEAN parameter | i1 | Expected |
+| BOOLEAN slot size | 1 byte | Too small for i64 |
+
+**Fix options**:
+1. Lower boolean literals to i1 instead of i64
+2. Change parameter type mapping to use i64 for BOOLEAN
+3. Add implicit coercion from i64 to i1 at call sites
+
+**Files**: `src/frontends/basic/lower/Lowerer_Expr.cpp` (lines 102-111), `Lower_OOP_Emit.cpp` (lines 43-58, 266, 505)
+
 
 ### BUG-071 CRITICAL: String Arrays Cause IL Generation Error
 **Status**: 🚨 CRITICAL - Compiler crash
@@ -175,6 +322,257 @@ error: main:UL999999992: call %t57: unknown temp %57; use before def of %57
 **Workaround**: Use only INTEGER arrays. Cannot store strings in arrays.
 
 **Impact**: CRITICAL - Cannot create arrays of strings. Severely limits data structures. Makes games with multiple text elements (names, messages, etc.) very difficult.
+
+**Root Cause**:
+- **Def-use dominance violation** in `lowerArrayAccess()` (Emit_Expr.cpp lines 95-374):
+
+  **Step 1** (Lines 265-273): Compute `base` and `index` temps in **predecessor block**
+  ```cpp
+  std::vector<Value> indices;
+  for (const ExprPtr *idxPtr : indexExprs)
+  {
+      RVal idx = lowerExpr(**idxPtr);  // Emits in current block
+      idx = coerceToI64(std::move(idx), expr.loc);
+      indices.push_back(idx.value);
+  }
+  ```
+
+  **Step 2** (Lines 342-366): Create bounds-check blocks and branch
+  ```cpp
+  size_t okIdx = func->blocks.size();
+  builder->addBlock(*func, okLbl);  // Create 'ok' block
+  size_t oobIdx = func->blocks.size();
+  builder->addBlock(*func, oobLbl);  // Create 'oob' block
+  // ...
+  emitCBr(oobCond, oob, ok);  // Branch from predecessor
+  ```
+
+  **Step 3** (Lines 372-373): Set current to 'ok' and return temps
+  ```cpp
+  ctx.setCurrent(ok);  // Switch to 'ok' block
+  return ArrayAccess{base, index};  // Return temps from predecessor
+  ```
+
+- **Violation**: Temps `base` and `index` are:
+  - **Defined** in predecessor block (where indices are computed)
+  - **Used** in `ok` block (by callers like `rt_arr_str_get`)
+  - IL requires: Definition must **dominate** all uses
+  - `ok` block doesn't dominate predecessor → use-before-def error
+
+- **Why string arrays trigger it**:
+  - String loads call `rt_arr_str_get(base, index)` immediately in `ok` block
+  - Integer arrays may avoid verification if values are copied/coerced before use
+  - Verifier's strict dominance check fails: "unknown temp %57; use before def"
+
+- **IL evidence** (from test output):
+  ```
+  Predecessor block:
+    %57 = <array base computation>
+    cbr %cond, oob_block, ok_block
+  ok_block:
+    %result = call @rt_arr_str_get(%57, %idx)  // ERROR: %57 undefined here!
+  ```
+
+**Fix**: Re-emit `base`/`index` in the `ok` block, or restructure to compute them after block creation.
+
+**Files**: `src/frontends/basic/lower/Emit_Expr.cpp` (lines 95-374), `Lowerer_Expr.cpp` (string element loads)
+
+
+### BUG-072 HIGH: SELECT CASE Blocks Generated After Function Exit
+**Status**: 🚨 HIGH - IL generation bug
+**Discovered**: 2025-11-16 (Adventure game text adventure stress test)
+**Category**: Code Generation / IL / Control Flow
+**Test File**: `/bugs/bug_testing/adventure_v1_parser.bas`
+
+**Symptom**: When multiple SELECT CASE statements appear after several PRINT statements, the SELECT CASE arm blocks are generated AFTER the function's exit block in the IL, making them unreachable. The verifier reports "missing terminator" error.
+
+**Reproduction**:
+```basic
+' Multiple PRINT statements
+PRINT "Line 1"
+PRINT "Line 2"
+...
+PRINT "Line N"
+
+' Then multiple SELECT CASE statements
+SELECT CASE cmd
+    CASE "north"
+        PRINT "Going north"
+    CASE "south"
+        PRINT "Going south"
+END SELECT
+
+SELECT CASE cmd
+    CASE "look"
+        PRINT "Looking"
+END SELECT
+```
+
+**Error**:
+```
+error: main:UL999999991: missing terminator
+```
+
+**IL Evidence**: The generated IL shows:
+```il
+exit:
+  ret 0
+select_arm_0:   <-- Unreachable! After return!
+  ...
+  br select_end
+```
+
+**Expected**: SELECT CASE blocks should be generated before the function exit, with proper control flow connections.
+
+**Workaround**: Keep programs simple with fewer consecutive statements before SELECT CASE, or use simpler control flow patterns.
+
+**Impact**: HIGH - Limits program complexity. Cannot build sophisticated text parsers or command processors with multiple SELECT CASE statements.
+
+**Root Cause**:
+- **Four interacting failures** in SelectCaseLowering.cpp:
+
+  **1. prepareBlocks() always appends** (Lines 141-166):
+  ```cpp
+  size_t curIdx = current - &func->blocks[0];  // Save current index
+  // ... creates blocks ...
+  lowerer_.builder->addBlock(*func, label);  // ALWAYS appends to end!
+  ```
+  If exit block was already created, new blocks land AFTER it.
+
+  **2. emitCompareChain() creates blocks during loop** (Line 459):
+  ```cpp
+  lowerer_.builder->addBlock(*func, label);  // Appends intermediate blocks
+  ```
+  In complex control flow, these may appear after exit block.
+
+  **3. Default block left unterminated** (Line 475):
+  ```cpp
+  ctx.setCurrent(defaultBlk);  // Sets current but no terminator guarantee!
+  ```
+  IL verifier rejects blocks without terminators.
+
+  **4. No block state validation** (Line 467):
+  No check that blocks are unterminated before emitting into them.
+
+- **Symptom IL**:
+  ```il
+  exit:
+    ret 0
+  select_arm_0:   <-- UNREACHABLE! After return!
+    ...
+    br select_end
+  ```
+
+- **Sequence causing bug**:
+  1. Function body creates exit block early (common with PRINT statements)
+  2. SELECT CASE lowering saves `curIdx` (line 132)
+  3. `prepareBlocks()` appends new blocks to end (after exit)
+  4. Blocks have no incoming edges from active code
+  5. Verifier: "missing terminator" or unreachable code
+
+**Fix**: Insert blocks BEFORE exit block, or validate/repair control flow after appending.
+
+**Files**: `src/frontends/basic/SelectCaseLowering.cpp` (lines 123-177, 411-477), entry from `Lower_Switch.cpp` line 38
+
+
+### BUG-073 CRITICAL: Cannot Call Methods on Object Parameters
+**Status**: 🚨 CRITICAL - IL generation failure
+**Discovered**: 2025-11-16 (Adventure game multi-object stress test)
+**Category**: Code Generation / IL / OOP / Method Resolution
+**Test File**: `/bugs/bug_testing/test_method_call_param.bas`, `/bugs/bug_testing/adventure_game_simple.bas`
+
+**Symptom**: When an object is passed as a parameter to a method, and you try to call a method on that parameter object, the compiler generates invalid IL looking for an unqualified method name instead of the fully-qualified class method.
+
+**Reproduction**:
+```basic
+CLASS Target
+    SUB Modify(amount AS INTEGER)
+        ' ...
+    END SUB
+END CLASS
+
+CLASS Actor
+    SUB DoAction(t AS Target)
+        t.Modify(25)  ' ERROR: unknown callee @MODIFY
+    END SUB
+END CLASS
+```
+
+**Error**:
+```
+error: ACTOR.DOACTION:entry_ACTOR.DOACTION: call %t6 25: unknown callee @MODIFY
+```
+
+**IL Evidence**: The compiler looks for `@MODIFY` instead of the properly qualified method name like `@TARGET.MODIFY`.
+
+**Expected**: Should generate IL that calls the correct class method on the parameter object.
+
+**Workaround**: Cannot pass objects as parameters and call their methods. Must use globals or restructure code to avoid parameter objects.
+
+**Impact**: CRITICAL - Severely limits OOP design. Cannot implement common patterns like:
+- Visitor pattern
+- Strategy pattern
+- Inter-object communication
+- Game entities interacting (Monster attacking Player)
+- Any composition or delegation patterns
+
+**Root Cause**:
+- **Constructor parameters missing objectClass** (Lower_OOP_Emit.cpp lines 251-272):
+  ```cpp
+  for (std::size_t i = 0; i < ctor.params.size(); ++i)
+  {
+      const auto &param = ctor.params[i];
+      // ... allocate slot ...
+      setSymbolType(param.name, param.type);  // WRONG! Doesn't set objectClass
+      // Should be: if (!param.objectClass.empty())
+      //              setSymbolObjectType(param.name, param.objectClass);
+  }
+  ```
+
+- **Method parameters HAVE the fix** (Lower_OOP_Emit.cpp lines 504-508):
+  ```cpp
+  if (!param.objectClass.empty())
+      setSymbolObjectType(param.name, qualify(param.objectClass));  // CORRECT!
+  else
+      setSymbolType(param.name, param.type);
+  ```
+
+- **Resolution chain**:
+  1. `lowerMethodCallExpr()` calls `resolveObjectClass(*expr.base)` (line 356)
+  2. `resolveObjectClass()` calls `getSlotType(var->name)` (lines 72-162)
+  3. `getSlotType()` retrieves `sym->objectClass` from symbol table (line 528)
+  4. If objectClass is empty → returns empty string
+  5. Call site emits unqualified name `@MODIFY` instead of `@TARGET.MODIFY`
+  6. IL verifier: "unknown callee @MODIFY"
+
+- **Code locations**:
+  ```cpp
+  // Lower_OOP_Expr.cpp:356
+  std::string className = resolveObjectClass(*expr.base);
+
+  // Lower_OOP_Expr.cpp:72-90
+  if (const auto *var = as<const VarExpr>(expr))
+  {
+      SlotType slotInfo = getSlotType(var->name);
+      if (slotInfo.isObject)
+          return slotInfo.objectClass;  // Empty if not set!
+      return {};
+  }
+
+  // Lowerer.Procedure.cpp:516-528
+  if (const auto *sym = findSymbol(name))
+  {
+      if (sym->isObject)
+      {
+          info.objectClass = sym->objectClass;  // Retrieved here
+          return info;
+      }
+  }
+  ```
+
+**Fix**: In constructor parameter materialization (line 272), check `!param.objectClass.empty()` and call `setSymbolObjectType()` like method parameters do.
+
+**Files**: `src/frontends/basic/Lower_OOP_Emit.cpp` (lines 251-272 constructor params, 504-508 method params), `Lower_OOP_Expr.cpp` (lines 72-162, 356), `Lowerer.Procedure.cpp` (lines 516-558)
 
 ---
 

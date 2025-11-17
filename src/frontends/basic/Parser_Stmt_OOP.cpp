@@ -145,9 +145,13 @@ StmtPtr Parser::parseClassDecl()
         }
 
         const bool looksLikeFieldDecl =
+            // Shorthand: name AS TYPE
             (at(TokenKind::Identifier) && peek(1).kind == TokenKind::KeywordAs) ||
+            // DIM name [(...)] AS TYPE
             (at(TokenKind::KeywordDim) && peek(1).kind == TokenKind::Identifier &&
-             (peek(2).kind == TokenKind::KeywordAs || peek(2).kind == TokenKind::LParen));
+             (peek(2).kind == TokenKind::KeywordAs || peek(2).kind == TokenKind::LParen)) ||
+            // Shorthand with array dims: name '(' ... ')' AS TYPE
+            (at(TokenKind::Identifier) && peek(1).kind == TokenKind::LParen);
 
         if (!looksLikeFieldDecl)
             break;

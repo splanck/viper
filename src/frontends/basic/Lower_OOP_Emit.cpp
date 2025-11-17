@@ -458,7 +458,10 @@ void Lowerer::emitClassMethod(const ClassDecl &klass, const MethodDecl &method)
     metadata.irParams.push_back({"ME", Type(Type::Kind::Ptr)});
     for (const auto &param : method.params)
     {
-        Type ilParamTy = param.is_array ? Type(Type::Kind::Ptr) : ilTypeForAstType(param.type);
+        // Object-typed parameters should use pointer IL type regardless of AST primitive default
+        const bool isObjectParam = !param.objectClass.empty();
+        Type ilParamTy = (param.is_array || isObjectParam) ? Type(Type::Kind::Ptr)
+                                                           : ilTypeForAstType(param.type);
         metadata.irParams.push_back({param.name, ilParamTy});
         if (param.is_array)
         {
@@ -498,11 +501,16 @@ void Lowerer::emitClassMethod(const ClassDecl &klass, const MethodDecl &method)
             markArray(param.name);
             emitStore(Type(Type::Kind::Ptr), slot, Value::null());
         }
-        setSymbolType(param.name, param.type);
+        // Preserve object-class typing for parameters so member calls on params resolve
+        if (!param.objectClass.empty())
+            setSymbolObjectType(param.name, qualify(param.objectClass));
+        else
+            setSymbolType(param.name, param.type);
         markSymbolReferenced(param.name);
         auto &info = ensureSymbol(param.name);
         info.slotId = slot.id;
-        Type ilParamTy = param.is_array ? Type(Type::Kind::Ptr) : ilTypeForAstType(param.type);
+        Type ilParamTy = (!param.objectClass.empty() || param.is_array) ? Type(Type::Kind::Ptr)
+                                                                        : ilTypeForAstType(param.type);
         Value incoming = Value::temp(fn.params[1 + i].id);
         if (param.is_array)
             storeArray(slot, incoming);

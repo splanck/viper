@@ -409,8 +409,9 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
     std::vector<Value> args;
     args.reserve(expr.args.size() + 1);
     args.push_back(selfArg);
-    for (const auto &arg : expr.args)
+    for (std::size_t i = 0; i < expr.args.size(); ++i)
     {
+        const auto &arg = expr.args[i];
         if (!arg)
             continue;
         RVal lowered = lowerExpr(*arg);
@@ -419,6 +420,45 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
 
     curLoc = expr.loc;
     const std::string qname = qualify(className);
+
+    // Attempt to coerce arguments to the method's declared parameter types to avoid IL mismatches
+    // (e.g., BOOLEAN params expect i1; TRUE/FALSE literals lower as i64 otherwise).
+    if (!expr.args.empty())
+    {
+        std::vector<::il::frontends::basic::Type> expectParamAst;
+        if (!qname.empty())
+        {
+            if (const ClassInfo *ci = oopIndex_.findClass(qname))
+            {
+                auto it = ci->methods.find(expr.method);
+                if (it != ci->methods.end())
+                    expectParamAst = it->second.sig.paramTypes;
+            }
+        }
+        if (!expectParamAst.empty())
+        {
+            // Re-lower/coerce arguments based on expected AST types and rebuild 'args'
+            std::vector<Value> coerced;
+            coerced.reserve(1 + expr.args.size());
+            coerced.push_back(args.front()); // selfArg
+            for (std::size_t i = 0; i < expr.args.size(); ++i)
+            {
+                RVal lowered = lowerExpr(*expr.args[i]);
+                if (i < expectParamAst.size())
+                {
+                    auto astTy = expectParamAst[i];
+                    if (astTy == ::il::frontends::basic::Type::Bool)
+                        lowered = coerceToBool(std::move(lowered), expr.loc);
+                    else if (astTy == ::il::frontends::basic::Type::F64)
+                        lowered = coerceToF64(std::move(lowered), expr.loc);
+                    else if (astTy == ::il::frontends::basic::Type::I64)
+                        lowered = coerceToI64(std::move(lowered), expr.loc);
+                }
+                coerced.push_back(lowered.value);
+            }
+            args.swap(coerced);
+        }
+    }
 
     // Detect BASE-qualified calls conservatively: treat `BASE` as a direct call cue.
     bool baseQualified = false;
