@@ -38,24 +38,43 @@ namespace il::transform
 {
 /// @brief Count how many times each temporary identifier is referenced.
 ///
-/// @details The pass seeds the map with entries for block parameters so they
-/// receive a zero count when unused, then walks every operand and branch
-/// argument inside @p F.  Each encounter with a temporary identifier bumps the
-/// associated slot, yielding an @c O(n) summary where @c n equals the total
-/// number of operands scanned.  No control-flow reasoning is performed; the
-/// counts purely reflect syntactic uses, which is sufficient for pruning dead
-/// temporaries and block parameters later in the pass.
+/// @details Determines the maximum SSA id and uses an indexed vector for
+///          counts to avoid hashing overhead in large functions. The vector is
+///          seeded to include block parameters (zero uses) and incremented for
+///          every operand or branch argument referencing a temp id.
 ///
 /// @param F Function whose temporaries are inspected.
-/// @return Map from temporary id to number of references.
-static std::unordered_map<unsigned, size_t> countUses(Function &F)
+/// @return Vector indexed by temp id with use counts.
+static std::vector<size_t> countUses(Function &F)
 {
-    std::unordered_map<unsigned, size_t> uses;
-    auto touch = [&](unsigned id) { uses[id]++; };
+    // Compute maximum SSA id encountered across params, block params, and results
+    unsigned maxId = 0;
+    for (auto &p : F.params)
+        maxId = std::max(maxId, p.id);
     for (auto &B : F.blocks)
     {
         for (auto &p : B.params)
-            uses[p.id];
+            maxId = std::max(maxId, p.id);
+        for (auto &I : B.instructions)
+            if (I.result)
+                maxId = std::max(maxId, static_cast<unsigned>(*I.result));
+    }
+
+    std::vector<size_t> uses(static_cast<size_t>(maxId) + 1, 0);
+
+    // Touch block params to ensure zero entries exist even when unused
+    for (auto &B : F.blocks)
+        for (auto &p : B.params)
+            (void)uses[p.id];
+
+    auto touch = [&](unsigned id)
+    {
+        if (id < uses.size())
+            uses[id]++;
+    };
+
+    for (auto &B : F.blocks)
+    {
         for (auto &I : B.instructions)
         {
             for (auto &Op : I.operands)
@@ -96,6 +115,23 @@ void dce(Module &M)
     for (auto &F : M.functions)
     {
         auto uses = countUses(F);
+        
+        // Build a predecessor edge index once: for each target label, collect
+        // (terminator*, successorIndex) pairs. Speeds up param pruning.
+        std::unordered_map<std::string, std::vector<std::pair<Instr *, size_t>>> predEdges;
+        predEdges.reserve(F.blocks.size());
+        for (auto &PB : F.blocks)
+        {
+            for (auto &I : PB.instructions)
+            {
+                if (I.op != Opcode::Br && I.op != Opcode::CBr && I.op != Opcode::SwitchI32)
+                    continue;
+                for (size_t l = 0; l < I.labels.size(); ++l)
+                {
+                    predEdges[I.labels[l]].emplace_back(&I, l);
+                }
+            }
+        }
         // Gather allocas and whether they have loads
         std::unordered_map<unsigned, bool> hasLoad;
         for (auto &B : F.blocks)
@@ -142,18 +178,21 @@ void dce(Module &M)
             for (int idx = static_cast<int>(B.params.size()) - 1; idx >= 0; --idx)
             {
                 unsigned id = B.params[idx].id;
-                if (uses[id] != 0)
+                if (id >= uses.size() || uses[id] != 0)
                     continue;
                 B.params.erase(B.params.begin() + idx);
-                for (auto &PB : F.blocks)
-                    for (auto &I : PB.instructions)
-                        if (I.op == Opcode::Br || I.op == Opcode::CBr || I.op == Opcode::SwitchI32)
+                auto it = predEdges.find(B.label);
+                if (it != predEdges.end())
+                {
+                    for (auto &[term, succIdx] : it->second)
+                    {
+                        if (term->brArgs.size() > succIdx &&
+                            term->brArgs[succIdx].size() > static_cast<std::size_t>(idx))
                         {
-                            for (std::size_t l = 0; l < I.labels.size(); ++l)
-                                if (I.labels[l] == B.label && I.brArgs.size() > l &&
-                                    I.brArgs[l].size() > static_cast<std::size_t>(idx))
-                                    I.brArgs[l].erase(I.brArgs[l].begin() + idx);
+                            term->brArgs[succIdx].erase(term->brArgs[succIdx].begin() + idx);
                         }
+                    }
+                }
             }
         }
     }

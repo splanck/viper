@@ -58,11 +58,17 @@ constexpr size_t toIndex(Opcode op)
 /// @brief Format a value operand into the textual representation used by IL.
 /// @param value Operand to serialise.
 /// @return Printable string capturing the operand, including string escapes.
-std::string formatValue(const Value &value)
+/// @brief Stream a value operand into the textual representation used by IL.
+/// @param os    Stream receiving the textual value.
+/// @param value Operand to serialise.
+void printValue(std::ostream &os, const Value &value)
 {
     if (value.kind == Value::Kind::ConstStr)
-        return std::string("\"") + encodeEscapedString(value.str) + "\"";
-    return il::core::toString(value);
+    {
+        os << '"' << encodeEscapedString(value.str) << '"';
+        return;
+    }
+    os << il::core::toString(value);
 }
 
 /// @brief Emit a comma-separated list of operands to a stream.
@@ -74,7 +80,7 @@ void printValueList(std::ostream &os, const std::vector<Value> &values)
     {
         if (i)
             os << ", ";
-        os << formatValue(values[i]);
+        printValue(os, values[i]);
     }
 }
 
@@ -105,7 +111,8 @@ void printTrapKindOperand(const Instr &instr, std::ostream &os)
             return;
         }
     }
-    os << ' ' << formatValue(operand);
+    os << ' ';
+    printValue(os, operand);
 }
 
 /// @brief Emit operands for trap.from.err instructions.
@@ -115,7 +122,10 @@ void printTrapFromErrOperands(const Instr &instr, std::ostream &os)
 {
     os << ' ' << instr.type.toString();
     if (!instr.operands.empty())
-        os << ' ' << formatValue(instr.operands.front());
+    {
+        os << ' ';
+        printValue(os, instr.operands.front());
+    }
 }
 
 /// @brief Emit operand list for call instructions.
@@ -135,7 +145,8 @@ void printRetOperand(const Instr &instr, std::ostream &os)
 {
     if (instr.operands.empty())
         return;
-    os << ' ' << formatValue(instr.operands[0]);
+    os << ' ';
+    printValue(os, instr.operands[0]);
 }
 
 /// @brief Emit operands for load instructions including type annotation.
@@ -145,7 +156,10 @@ void printLoadOperands(const Instr &instr, std::ostream &os)
 {
     os << ' ' << instr.type.toString();
     if (!instr.operands.empty())
-        os << ", " << formatValue(instr.operands[0]);
+    {
+        os << ", ";
+        printValue(os, instr.operands[0]);
+    }
 }
 
 /// @brief Emit operands for store instructions including type annotation.
@@ -156,9 +170,13 @@ void printStoreOperands(const Instr &instr, std::ostream &os)
     os << ' ' << instr.type.toString();
     if (!instr.operands.empty())
     {
-        os << ", " << formatValue(instr.operands[0]);
+        os << ", ";
+        printValue(os, instr.operands[0]);
         if (instr.operands.size() > 1)
-            os << ", " << formatValue(instr.operands[1]);
+        {
+            os << ", ";
+            printValue(os, instr.operands[1]);
+        }
     }
 }
 
@@ -218,7 +236,8 @@ void printCBrOperands(const Instr &instr, std::ostream &os)
         return;
     }
 
-    os << ' ' << formatValue(instr.operands[0]);
+    os << ' ';
+    printValue(os, instr.operands[0]);
 
     if (instr.labels.empty())
     {
@@ -248,14 +267,17 @@ void printSwitchI32Operands(const Instr &instr, std::ostream &os)
     if (instr.operands.empty() || instr.labels.empty())
         return;
 
-    os << ' ' << formatValue(switchScrutinee(instr));
+    os << ' ';
+    printValue(os, switchScrutinee(instr));
     os << ", ";
     printCaretBranchTarget(instr, 0, os);
 
     const size_t caseCount = switchCaseCount(instr);
     for (size_t idx = 0; idx < caseCount; ++idx)
     {
-        os << ", " << formatValue(switchCaseValue(instr, idx)) << " -> ";
+        os << ", ";
+        printValue(os, switchCaseValue(instr, idx));
+        os << " -> ";
         printCaretBranchTarget(instr, idx + 1, os);
     }
 }
@@ -301,7 +323,10 @@ const Formatter &formatterFor(Opcode op)
         table[toIndex(Opcode::ResumeLabel)] = [](const Instr &instr, std::ostream &os)
         {
             if (!instr.operands.empty())
-                os << ' ' << formatValue(instr.operands[0]);
+            {
+                os << ' ';
+                printValue(os, instr.operands[0]);
+            }
             if (!instr.labels.empty())
             {
                 os << ", ";

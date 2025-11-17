@@ -57,6 +57,8 @@ struct BlockState
 using AllocaMap = std::unordered_map<unsigned, AllocaInfo>;
 using VarMap = std::unordered_map<unsigned, VarState>;
 using BlockMap = std::unordered_map<BasicBlock *, BlockState>;
+using LabelIndexCache =
+    std::unordered_map<const Instr *, std::unordered_map<std::string, std::size_t>>;
 
 /// @brief Gather information about @c alloca instructions within a function.
 ///
@@ -159,14 +161,36 @@ static void addIncoming(BasicBlock *B,
                         const Value &val,
                         VarMap &vars,
                         BlockMap &blocks,
-                        unsigned &nextId)
+                        unsigned &nextId,
+                        LabelIndexCache *idxCache)
 {
     unsigned pIdx = ensureParam(B, varId, vars, blocks, nextId);
     Instr &term = Pred->instructions.back();
     std::size_t target = 0;
-    for (; target < term.labels.size(); ++target)
-        if (term.labels[target] == B->label)
-            break;
+    if (idxCache && term.labels.size() >= 6)
+    {
+        auto &map = (*idxCache)[&term];
+        if (map.empty())
+        {
+            for (std::size_t i = 0; i < term.labels.size(); ++i)
+                map.emplace(term.labels[i], i);
+        }
+        auto it = map.find(B->label);
+        if (it != map.end())
+            target = it->second;
+        else
+        {
+            for (target = 0; target < term.labels.size(); ++target)
+                if (term.labels[target] == B->label)
+                    break;
+        }
+    }
+    else
+    {
+        for (target = 0; target < term.labels.size(); ++target)
+            if (term.labels[target] == B->label)
+                break;
+    }
     if (term.brArgs.size() < term.labels.size())
         term.brArgs.resize(term.labels.size());
     auto &args = term.brArgs[target];
@@ -205,7 +229,8 @@ static Value readFromPreds(Function &F,
                            VarMap &vars,
                            BlockMap &blocks,
                            unsigned &nextId,
-                           const analysis::CFGContext &ctx)
+                           const analysis::CFGContext &ctx,
+                           LabelIndexCache *idxCache)
 {
     auto preds = analysis::predecessors(ctx, *B);
     if (preds.empty())
@@ -218,7 +243,7 @@ static Value readFromPreds(Function &F,
     for (auto *P : preds)
     {
         Value arg = renameUses(F, P, varId, vars, blocks, nextId, ctx);
-        addIncoming(B, varId, P, arg, vars, blocks, nextId);
+        addIncoming(B, varId, P, arg, vars, blocks, nextId, idxCache);
     }
     return paramVal;
 }
@@ -258,7 +283,7 @@ static Value renameUses(Function &F,
         BS.incomplete.insert(varId);
         return v;
     }
-    Value v = readFromPreds(F, B, varId, vars, blocks, nextId, ctx);
+    Value v = readFromPreds(F, B, varId, vars, blocks, nextId, ctx, nullptr);
     VS.defs[B] = v;
     return v;
 }
@@ -281,14 +306,15 @@ static void sealBlocks(Function &F,
                        VarMap &vars,
                        BlockMap &blocks,
                        unsigned &nextId,
-                       const analysis::CFGContext &ctx)
+                       const analysis::CFGContext &ctx,
+                       LabelIndexCache *idxCache)
 {
     BlockState &BS = blocks[B];
     if (BS.sealed)
         return;
     for (unsigned varId : BS.incomplete)
     {
-        Value v = readFromPreds(F, B, varId, vars, blocks, nextId, ctx);
+        Value v = readFromPreds(F, B, varId, vars, blocks, nextId, ctx, idxCache);
         if (!vars[varId].defs.count(B))
             vars[varId].defs[B] = v;
     }
@@ -351,6 +377,8 @@ static void promoteVariables(Function &F,
         queued.insert(&F.blocks.front());
     }
 
+    LabelIndexCache idxCache;
+
     while (!work.empty())
     {
         BasicBlock *B = work.front();
@@ -400,7 +428,7 @@ static void promoteVariables(Function &F,
                 queued.insert(S);
             }
             if (SS.seenPreds == SS.totalPreds)
-                sealBlocks(F, S, vars, blocks, nextId, ctx);
+                sealBlocks(F, S, vars, blocks, nextId, ctx, &idxCache);
         }
     }
 }

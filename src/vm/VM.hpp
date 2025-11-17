@@ -170,7 +170,63 @@ class VM
     /// @brief Block lookup table keyed by label.
     // Use string_view keys to avoid key string copies while relying on the
     // module-owned lifetime of names/labels.
-    using BlockMap = std::unordered_map<std::string_view, const il::core::BasicBlock *>;
+    struct TransparentHashSV
+    {
+        using is_transparent = void;
+        size_t operator()(std::string_view sv) const noexcept
+        {
+            return std::hash<std::string_view>{}(sv);
+        }
+        size_t operator()(const std::string &s) const noexcept
+        {
+            return (*this)(std::string_view{s});
+        }
+        size_t operator()(const char *s) const noexcept
+        {
+            return (*this)(std::string_view{s});
+        }
+    };
+
+    struct TransparentEqualSV
+    {
+        using is_transparent = void;
+        bool operator()(std::string_view a, std::string_view b) const noexcept
+        {
+            return a == b;
+        }
+        bool operator()(const std::string &a, const std::string &b) const noexcept
+        {
+            return a == b;
+        }
+        bool operator()(const std::string &a, std::string_view b) const noexcept
+        {
+            return a == b;
+        }
+        bool operator()(std::string_view a, const std::string &b) const noexcept
+        {
+            return a == b;
+        }
+        bool operator()(const char *a, std::string_view b) const noexcept
+        {
+            return std::string_view{a} == b;
+        }
+        bool operator()(std::string_view a, const char *b) const noexcept
+        {
+            return a == std::string_view{b};
+        }
+    };
+
+    using BlockMap = std::unordered_map<std::string_view,
+                                        const il::core::BasicBlock *,
+                                        TransparentHashSV,
+                                        TransparentEqualSV>;
+
+    // Public map aliases for handler-facing utilities
+    using FnMap = std::unordered_map<std::string_view,
+                                     const il::core::Function *,
+                                     TransparentHashSV,
+                                     TransparentEqualSV>;
+    using StrMap = std::unordered_map<std::string_view, rt_string, TransparentHashSV, TransparentEqualSV>;
 
     /// @brief Create VM for module @p m.
     /// @param m IL module to execute.
@@ -278,17 +334,22 @@ class VM
 
     /// @brief Function name lookup table.
     /// @ownership Owned by the VM; values reference functions in @c mod.
-    std::unordered_map<std::string_view, const il::core::Function *> fnMap;
+    std::unordered_map<std::string_view,
+                       const il::core::Function *,
+                       TransparentHashSV,
+                       TransparentEqualSV>
+        fnMap;
 
     /// @brief Interned runtime strings.
     /// @ownership Owned by the VM; manages @c rt_string handles for globals.
-    std::unordered_map<std::string_view, rt_string> strMap;
+    std::unordered_map<std::string_view, rt_string, TransparentHashSV, TransparentEqualSV> strMap;
 
     /// @brief Cached runtime handles for inline string literals containing embedded NULs.
     /// @ownership Owned by the VM; stores @c rt_string handles created via @c rt_string_from_bytes.
     /// @invariant Each literal string maps to at most one active handle, released exactly once
     ///            when the cache is cleared.
-    std::unordered_map<std::string, rt_string> inlineLiteralCache;
+    std::unordered_map<std::string_view, rt_string, TransparentHashSV, TransparentEqualSV>
+        inlineLiteralCache;
 
     /// @brief Reverse map from basic block pointer to owning function.
     /// @ownership Owned by the VM; populated during initialization.
