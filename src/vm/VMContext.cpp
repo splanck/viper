@@ -364,8 +364,95 @@ VM *activeVMInstance()
 /// @return Slot populated with the evaluated payload.
 Slot VM::eval(Frame &fr, const il::core::Value &value)
 {
-    VMContext ctx(*this);
-    return ctx.eval(fr, value);
+    // Direct, allocation-free evaluation to avoid constructing a temporary VMContext.
+    auto evalTemp = [&](const il::core::Value &v) -> Slot
+    {
+        Slot s{};
+        if (v.id < fr.regs.size())
+            return fr.regs[v.id];
+
+        const std::string fnName = fr.func ? fr.func->name : std::string("<unknown>");
+        const il::core::BasicBlock *block = currentContext.block;
+        const std::string blockLabel = block ? block->label : std::string();
+        const auto loc = currentContext.loc;
+
+        std::string message =
+            detail::formatRegisterRangeError(v.id, fr.regs.size(), fnName, blockLabel);
+        if (loc.hasLine())
+        {
+            std::ostringstream os;
+            os << message << ", at line " << loc.line;
+            if (loc.hasColumn())
+                os << ':' << loc.column;
+            message = os.str();
+        }
+        else
+        {
+            message += ", at unknown location";
+        }
+        RuntimeBridge::trap(TrapKind::InvalidOperation, message, loc, fnName, blockLabel);
+        return s;
+    };
+
+    auto evalConstStr = [&](const il::core::Value &v) -> Slot
+    {
+        Slot s{};
+        auto [it, inserted] = inlineLiteralCache.try_emplace(v.str);
+        if (inserted)
+        {
+            if (v.str.find('\0') == std::string::npos)
+                it->second = rt_const_cstr(v.str.c_str());
+            else
+                it->second = rt_string_from_bytes(v.str.data(), v.str.size());
+        }
+        s.str = it->second;
+        return s;
+    };
+
+    auto evalGlobalAddr = [&](const il::core::Value &v) -> Slot
+    {
+        Slot s{};
+        // Map to function pointer when name matches a function; also map to runtime string for
+        // globals.
+        auto fIt = fnMap.find(v.str);
+        if (fIt != fnMap.end())
+        {
+            s.ptr = const_cast<il::core::Function *>(fIt->second);
+            return s;
+        }
+
+        auto it = strMap.find(v.str);
+        if (it == strMap.end())
+        {
+            RuntimeBridge::trap(TrapKind::DomainError, "unknown global", {}, fr.func->name, "");
+        }
+        else
+        {
+            s.str = it->second;
+        }
+        return s;
+    };
+
+    Slot slot{};
+    switch (value.kind)
+    {
+        case il::core::Value::Kind::Temp:
+            return evalTemp(value);
+        case il::core::Value::Kind::ConstInt:
+            slot.i64 = toI64(value);
+            return slot;
+        case il::core::Value::Kind::ConstFloat:
+            slot.f64 = toF64(value);
+            return slot;
+        case il::core::Value::Kind::ConstStr:
+            return evalConstStr(value);
+        case il::core::Value::Kind::GlobalAddr:
+            return evalGlobalAddr(value);
+        case il::core::Value::Kind::NullPtr:
+            slot.ptr = nullptr;
+            return slot;
+    }
+    return slot;
 }
 
 /// @brief Execute a single interpreter step on behalf of the VM.

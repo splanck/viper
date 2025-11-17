@@ -271,8 +271,8 @@ VM::ExecResult VM::executeOpcode(Frame &fr,
                                  const BasicBlock *&bb,
                                  size_t &ip)
 {
-    const auto &table = getOpcodeHandlers();
     const size_t index = static_cast<size_t>(in.op);
+    const auto &table = (handlerTable_ != nullptr) ? *handlerTable_ : getOpcodeHandlers();
     OpcodeHandler handler = index < table.size() ? table[index] : nullptr;
     if (!handler)
     {

@@ -107,9 +107,30 @@ void jump(Frame &frame, Target target)
     {
         assert(target.valid() && "attempted to jump to an invalid target");
 
-        auto it = target.blocks->find(target.instr->labels[target.labelIndex]);
-        assert(it != target.blocks->end() && "branch target must resolve to a basic block");
-        const il::core::BasicBlock *dest = it->second;
+        const il::core::BasicBlock *dest = nullptr;
+        if (auto *st = il::vm::detail::VMAccess::currentExecState(*target.vm))
+        {
+            auto &cache = st->branchTargetCache;
+            auto &resolved = cache[target.instr];
+            if (resolved.size() != target.instr->labels.size())
+            {
+                resolved.resize(target.instr->labels.size());
+                for (size_t i = 0; i < target.instr->labels.size(); ++i)
+                {
+                    auto it = target.blocks->find(target.instr->labels[i]);
+                    assert(it != target.blocks->end() &&
+                           "branch target must resolve to a basic block");
+                    resolved[i] = it->second;
+                }
+            }
+            dest = resolved[target.labelIndex];
+        }
+        else
+        {
+            auto it = target.blocks->find(target.instr->labels[target.labelIndex]);
+            assert(it != target.blocks->end() && "branch target must resolve to a basic block");
+            dest = it->second;
+        }
         const il::core::BasicBlock *sourceBlock = *target.currentBlock;
 
         const size_t expected = dest->params.size();

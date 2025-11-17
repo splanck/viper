@@ -2,25 +2,26 @@
 
 *Last Updated: 2025-11-17*
 
-**Bug Statistics**: 78 resolved, 2 outstanding bugs, 1 design decision (81 total documented)
+**Bug Statistics**: 79 resolved, 1 outstanding bug, 1 design decision (81 total documented)
 
 **Test Suite Status**: 642/642 tests passing (100%)
 
-**STATUS**: ⚠️ 2 new OOP limitation bugs found during advanced stress testing (2025-11-17)
+**STATUS**: ⚠️ 1 OOP limitation bug (nested method calls) found during advanced stress testing (2025-11-17)
 
 ---
 
 ## OUTSTANDING BUGS
 
-**2 bugs** - Found during advanced OOP stress testing (2025-11-17)
+**1 bug** - Found during advanced OOP stress testing (2025-11-17)
 
 ### BUG-081: FOR Loop Variable Cannot Be Object Member
-**Status**: 🟡 **MEDIUM** - Limitation, not critical
+**Status**: ✅ **RESOLVED** (2025-11-17)
 **Discovered**: 2025-11-17 (Advanced baseball game stress test)
+**Resolved**: 2025-11-17 (Expression-based FOR loop variables)
 **Category**: Control Flow / OOP / Parsing
 **Severity**: MEDIUM - Can work around with temp variables
 
-**Symptom**: FOR loops cannot use object member fields as loop variables. The parser expects a simple identifier, not a member access expression.
+**Symptom**: FOR loops could not use object member fields as loop variables. The parser expected a simple identifier, not a member access expression.
 
 **Error Message**:
 ```
@@ -76,7 +77,27 @@ NEXT
 
 **Test File**: `/bugs/bug_testing/baseball_full_game.bas` (line 335)
 
-**Detailed Implementation Plan**:
+**Fix Summary** (2025-11-17):
+
+Successfully implemented expression-based FOR loop variables. The fix involved:
+
+1. **AST Structure** (`StmtControl.hpp:197`): Changed `std::string var` to `ExprPtr varExpr` to support both simple variables and complex expressions.
+
+2. **Parser** (`Parser_Stmt_Loop.cpp:116-150`): Updated to parse lvalue expressions (VarExpr, MemberAccessExpr, ArrayExpr) instead of just identifiers. The parser now builds the full expression tree for `game.inning` or `arr(i)`.
+
+3. **Semantic Analysis** (`sem/Check_Loops.cpp:117-146`): Updated `analyzeFor` to handle expression-based loop variables, validate them, and update VarExpr names with scoped identifiers.
+
+4. **Lowering** (`lower/Lower_Loops.cpp:468-500`): Modified to resolve storage locations from expressions using `resolveMemberField()` for member access and existing mechanisms for arrays.
+
+5. **Test Fixes**: Updated `test_basic_ast_mutation.cpp` and `test_basic_ast_printer.cpp` to use ExprPtr instead of string.
+
+**Results**:
+- ✅ Simple variables: `FOR i = 1 TO 10`
+- ✅ Single-level member access: `FOR game.inning = 1 TO 9`
+- ✅ Array elements: `FOR scores(i) = 1 TO 100`
+- ⚠️ Nested member access has limitations: `FOR team.player.number = 1 TO 12` (works but may have edge cases)
+
+**Detailed Implementation Plan** (Completed):
 
 **Step 1**: Modify ForStmt AST structure
 - File: `src/frontends/basic/ast/StmtControl.hpp:197`
@@ -134,13 +155,13 @@ NEXT
 ---
 
 ### BUG-082: Cannot Call Methods on Nested Object Members
-**Status**: ✅ RESOLVED (2025-11-17)
+**Status**: 🔴 **OUTSTANDING** - Infrastructure complete, parser/semantic work remaining
 **Discovered**: 2025-11-17 (Advanced baseball game stress test)
-**Last Updated**: 2025-11-17 (Partial fix implemented)
-**Category**: OOP / Type Resolution / Method Calls / Semantic Analysis
-**Severity**: HIGH - Limits OOP composition patterns
+**Last Updated**: 2025-11-17 (Object field type infrastructure complete, regression fixed)
+**Category**: OOP / Type Resolution / Method Calls / Parser / Semantic Analysis
+**Severity**: MEDIUM - Object field operations work, only nested method calls fail
 
-**Symptom**: Method calls on nested object members failed with "unknown procedure". The compiler could not resolve the type of object fields to find their methods.
+**Symptom**: Method calls on nested object members fail with "unknown procedure". The compiler cannot resolve nested member access expressions during parsing/semantic analysis phase.
 
 **Error Message**:
 ```
@@ -167,20 +188,43 @@ game.awayTeam = NEW Team()
 game.awayTeam.InitPlayer(1, "Test")  ' ERROR: Method not found
 ```
 
-**Fix Summary**:
-- Lowerer resolves nested object field classes via `ClassLayout::Field::objectClassName` and mangles method calls correctly. Nested `game.awayTeam.InitPlayer(...)` now lowers to `TEAM.INITPLAYER`.
-- Added/verified object-class metadata propagation:
-  - `objectClassName` on `ClassDecl::Field`, `ClassInfo::FieldInfo`, and `ClassLayout::Field`.
-  - Parser, OOP index, and layout builder preserve and expose class names.
-  - `Lowerer::resolveObjectClass` uses field metadata for nested members.
+**Fix Summary** (2025-11-17 Infrastructure Complete):
+
+**✅ Completed Infrastructure**:
+1. **Object Field Metadata Pipeline**: Added `objectClassName` field to:
+   - `ClassDecl::Field` (AST) - `ast/StmtDecl.hpp`
+   - `ClassInfo::FieldInfo` (semantic index) - `Semantic_OOP.hpp`
+   - `ClassLayout::Field` (lowering) - `Lowerer.hpp`
+   - `MemberFieldAccess` (field access resolution) - `Lowerer.hpp`
+
+2. **Parser** (`Parser_Stmt_OOP.cpp:196-229`): Captures class names for object-typed fields and stores them in `objectClassName`.
+
+3. **Type Propagation**: Object class names flow through semantic analysis and into class layouts.
+
+4. **Field Resolution** (`Lower_OOP_Expr.cpp:287-295, 322-327`):
+   - `resolveMemberField()` and `resolveImplicitField()` populate `objectClassName`
+   - Object fields correctly typed as `Type::Ptr` instead of `Type::I64`
+
+5. **Assignment** (`LowerStmt_Runtime.cpp:548-552`): Object field assignments now correctly identify object types and use proper reference counting.
+
+**✅ Working Features**:
+- ✅ Object field assignment: `obj.inner = NEW Inner()`
+- ✅ Nested field access: `obj.inner.value = 42`
+- ✅ Single-level method calls: `obj.DoIt()`
+- ✅ Reading object field values: `temp = obj.inner`
+
+**❌ Still Failing**:
+- ❌ Nested method calls: `obj.inner.Test()` → "unknown procedure 'obj.inner.test'"
+
+**Root Cause** (Parser/Semantic Phase):
+The error occurs during parsing/semantic analysis before lowering. The parser or semantic analyzer fails to resolve `obj.inner.Test()` as a valid method call. The issue is NOT in the lowering phase (infrastructure is complete).
 
 **Impact**:
-- Cannot call methods on object fields (composition pattern broken)
-- Cannot chain object member access for method calls
-- Must use temporary variables for all nested object method calls
-- Major limitation for OOP design patterns
+- Cannot call methods on object fields directly
+- Must use temporary variable workaround for nested method calls
+- Limits OOP composition patterns
 
-**Workaround (obsolete)**: Use temporary variables:
+**Workaround**: Use temporary variables:
 ```basic
 DIM tempTeam AS Team
 tempTeam = game.awayTeam
@@ -190,9 +234,108 @@ tempTeam.InitPlayer(1, "Test")  ' Works with direct object reference
 **Test Files**:
 - `/bugs/bug_testing/baseball_full_game.bas` (lines 304-312)
 - `/tmp/test_bug082_exact.bas`, `/tmp/test_bug082_debug.bas`, `/tmp/test_bug082_simple.bas`
+- `/tmp/test_simple_obj_assign.bas` - Object field assignment test (passes)
+- `/tmp/test_bug082_single.bas` - Single-level method call test (passes)
 
-**Tests**:
-- Nested member method: `game.awayTeam.InitPlayer()` lowers to a call to `TEAM.INITPLAYER`.
+---
+
+## Remaining Work: BUG-082 Nested Method Call Resolution
+
+**Problem**: `obj.inner.Test()` fails with "unknown procedure 'obj.inner.test'" during parsing/semantic phase.
+
+**Investigation Needed**:
+
+1. **Locate the Error Source**:
+   - File: Likely `Parser_Stmt_Core.cpp` (parseCall function) or `SemanticAnalyzer.*.cpp`
+   - The error "unknown procedure" (B1006) comes from semantic analysis
+   - Need to find where procedure names are validated and why nested member access fails
+
+2. **Current Parsing Behavior**:
+   - File: `Parser_Stmt_Core.cpp:400-450` (parseCall function)
+   - The parser likely treats `obj.inner.Test()` as a qualified procedure name
+   - It may be looking for a procedure named `"obj.inner.test"` instead of recognizing it as a method call on `obj.inner`
+
+3. **Semantic Analysis Issue**:
+   - File: `SemanticAnalyzer.*.cpp` or `sem/*.cpp`
+   - The semantic analyzer validates procedure calls
+   - It needs to recognize that `obj.inner.Test()` is actually:
+     - Access `obj.inner` (returns an object of class `Inner`)
+     - Call method `Test()` on that object
+   - Currently it's searching for a procedure named `"obj.inner.test"` which doesn't exist
+
+**Implementation Plan**:
+
+**Step 1**: Investigate Parser Call Handling
+- File: `src/frontends/basic/Parser_Stmt_Core.cpp` (parseCall function around line 400-450)
+- Check how the parser distinguishes between:
+  - Qualified procedure: `MODULE.ProcName()`
+  - Method call on variable: `obj.MethodName()`
+  - Nested member method: `obj.field.MethodName()`
+- Look for the code that builds the "callee" name
+- Determine if parser is creating wrong AST for `obj.inner.Test()`
+
+**Step 2**: Examine AST Structure for Method Calls
+- Check if `MethodCallExpr` or similar exists
+- Verify how base expressions are stored (e.g., `obj.inner` as base, `Test` as method name)
+- Confirm whether nested member access is properly represented in AST
+
+**Step 3**: Fix Semantic Analysis
+- File: Likely in `SemanticAnalyzer.Procs.cpp` or semantic analysis for calls
+- Find where "unknown procedure" error is emitted (search for "B1006" or "unknown procedure")
+- Update procedure resolution to:
+  - Detect when callee is a member access expression (contains dots)
+  - Parse the base part (`obj.inner`) as an expression
+  - Evaluate the type of the base expression
+  - Look up the method in that class
+  - Mark it as valid method call, not unknown procedure
+
+**Step 4**: Update Call Lowering (if needed)
+- File: `Lower_OOP_Expr.cpp` (lowerMethodCallExpr)
+- The lowering infrastructure is already complete (resolveObjectClass works)
+- May need minor adjustments to handle MethodCallExpr with complex base expressions
+- But likely the lowering will "just work" once the parser/semantic phase is fixed
+
+**Expected Changes**:
+
+```cpp
+// Pseudo-code for semantic analysis fix:
+if (callExpr->callee.contains('.')) {
+    // Could be module.proc OR obj.method OR obj.field.method
+
+    // Try to parse as expression first
+    if (isValidExpression(callExpr->callee)) {
+        // Split into base + method name
+        Expression base = parseBase(callExpr->callee); // "obj.inner"
+        std::string method = extractMethod(callExpr->callee); // "Test"
+
+        // Evaluate base type
+        Type baseType = evaluateExpressionType(base);
+
+        if (baseType.isObject()) {
+            // Look up method in class
+            if (classHasMethod(baseType.className, method)) {
+                // Valid method call!
+                return;
+            }
+        }
+    }
+
+    // Fallback: try as qualified procedure name
+    // existing code...
+}
+```
+
+**Files to Modify** (Estimated):
+- `src/frontends/basic/Parser_Stmt_Core.cpp` - Call parsing logic
+- `src/frontends/basic/SemanticAnalyzer.Procs.cpp` or similar - Procedure/method validation
+- Possibly `src/frontends/basic/ast/ExprNodes.hpp` - If AST structure needs adjustment
+
+**Testing**:
+- Simple nested: `obj.inner.Test()` (current failure case)
+- Deep nested: `obj.a.b.c.Method()`
+- With arguments: `obj.inner.Init(1, "test")`
+- Mixed: `obj.arr(i).field.Method()`
+- Error case: `obj.inner.NonExistentMethod()` (should give correct error)
 
 ---
 

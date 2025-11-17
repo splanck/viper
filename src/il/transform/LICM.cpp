@@ -181,7 +181,7 @@ PreservedAnalyses LICM::run(Function &function, AnalysisManager &analysis)
             continue;
 
         std::unordered_set<unsigned> invariants;
-        invariants.reserve(32);
+        invariants.reserve(function.params.size() + header->params.size() + 32);
         seedInvariants(loop, function, invariants);
 
         std::vector<BasicBlock *> blockOrder;

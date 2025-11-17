@@ -194,6 +194,11 @@ VM::VM(const Module &m, TraceConfig tc, uint64_t ms, DebugCtrl dbg, DebugScript 
     }
 
     debug.setSourceManager(tc.sm);
+    // Cache pointer to opcode handler table once.
+    handlerTable_ = &VM::getOpcodeHandlers();
+    // Reserve map capacities based on module sizes to reduce rehashing.
+    fnMap.reserve(m.functions.size());
+    strMap.reserve(m.globals.size());
     // Cache function pointers and constant strings for fast lookup during
     // execution and for resolving runtime bridge requests such as ConstStr.
     for (const auto &f : m.functions)
@@ -255,12 +260,15 @@ VM::VM(const Module &m, TraceConfig tc, uint64_t ms, DebugCtrl dbg, DebugScript 
     // Build reverse map from BasicBlock -> Function for fast exception handler lookup.
     // This eliminates the O(N*M) linear scan in prepareTrap, providing a 50-90%
     // improvement in exception handling performance.
-    for (const auto &f : m.functions)
+    // Compute total blocks to reserve map capacity and avoid rehashing.
     {
-        for (const auto &block : f.blocks)
-        {
-            blockToFunction[&block] = &f;
-        }
+        size_t totalBlocks = 0;
+        for (const auto &f : m.functions)
+            totalBlocks += f.blocks.size();
+        blockToFunction.reserve(totalBlocks);
+        for (const auto &f : m.functions)
+            for (const auto &block : f.blocks)
+                blockToFunction[&block] = &f;
     }
 }
 
@@ -294,28 +302,28 @@ Frame VM::setupFrame(const Function &fn,
                      fn.params.size(),
                      fn.blocks.size());
     }
-    // Calculate the maximum SSA value ID used in this function by scanning all
-    // instruction results and block parameters. This ensures the register vector
-    // is properly pre-sized to avoid incremental growth during execution.
-    //
-    // As a fallback, use valueNames.size() which provides a conservative upper bound.
-    size_t maxSsaId = fn.valueNames.empty() ? 0 : fn.valueNames.size() - 1;
-
-    // Check function parameters
-    for (const auto &p : fn.params)
-        maxSsaId = std::max(maxSsaId, static_cast<size_t>(p.id));
-
-    // Check all instruction result IDs and block parameter IDs
-    for (const auto &block : fn.blocks)
+    // Compute or reuse the maximum SSA id (register file size - 1) for this function.
+    size_t maxSsaId;
+    auto rcIt = regCountCache_.find(&fn);
+    if (rcIt != regCountCache_.end())
     {
-        for (const auto &p : block.params)
+        maxSsaId = rcIt->second;
+    }
+    else
+    {
+        // Calculate the maximum SSA value ID used by scanning instruction results and params.
+        maxSsaId = fn.valueNames.empty() ? 0 : fn.valueNames.size() - 1;
+        for (const auto &p : fn.params)
             maxSsaId = std::max(maxSsaId, static_cast<size_t>(p.id));
-
-        for (const auto &instr : block.instructions)
+        for (const auto &block : fn.blocks)
         {
-            if (instr.result)
-                maxSsaId = std::max(maxSsaId, static_cast<size_t>(*instr.result));
+            for (const auto &p : block.params)
+                maxSsaId = std::max(maxSsaId, static_cast<size_t>(p.id));
+            for (const auto &instr : block.instructions)
+                if (instr.result)
+                    maxSsaId = std::max(maxSsaId, static_cast<size_t>(*instr.result));
         }
+        regCountCache_.emplace(&fn, maxSsaId);
     }
 
     // Pre-size register vector to maximum SSA ID + 1 (IDs are 0-based)

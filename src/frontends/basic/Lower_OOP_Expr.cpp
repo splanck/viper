@@ -284,11 +284,14 @@ std::optional<Lowerer::MemberFieldAccess> Lowerer::resolveMemberField(const Memb
                                 Type(Type::Kind::Ptr),
                                 base.value,
                                 Value::constInt(static_cast<long long>(field->offset)));
-    Type fieldTy = ilTypeForAstType(field->type);
+    // BUG-082 fix: Object fields are pointers, not I64
+    Type fieldTy = !field->objectClassName.empty() ? Type(Type::Kind::Ptr)
+                                                    : ilTypeForAstType(field->type);
     MemberFieldAccess access;
     access.ptr = fieldPtr;
     access.ilType = fieldTy;
     access.astType = field->type;
+    access.objectClassName = field->objectClassName;  // BUG-082 fix
     return access;
 }
 
@@ -316,8 +319,11 @@ std::optional<Lowerer::MemberFieldAccess> Lowerer::resolveImplicitField(std::str
                                 Value::constInt(static_cast<long long>(field->offset)));
     MemberFieldAccess access;
     access.ptr = fieldPtr;
-    access.ilType = ilTypeForAstType(field->type);
+    // BUG-082 fix: Object fields are pointers, not I64
+    access.ilType = !field->objectClassName.empty() ? Type(Type::Kind::Ptr)
+                                                     : ilTypeForAstType(field->type);
     access.astType = field->type;
+    access.objectClassName = field->objectClassName;  // BUG-082 fix
     return access;
 }
 

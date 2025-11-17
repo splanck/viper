@@ -842,6 +842,7 @@ class Lowerer
         Type ilType{Type(Type::Kind::I64)}; ///< IL type used for loads/stores.
         ::il::frontends::basic::Type astType{
             ::il::frontends::basic::Type::I64}; ///< Original AST type.
+        std::string objectClassName;        ///< BUG-082: Class name for object-typed fields.
     };
 
     struct FieldScope

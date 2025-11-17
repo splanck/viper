@@ -295,6 +295,14 @@ class VM
     ///          providing 50-90% improvement in error path performance.
     std::unordered_map<const il::core::BasicBlock *, const il::core::Function *> blockToFunction;
 
+    /// @brief Cache of precomputed register file sizes per function.
+    /// @details Avoids rescanning instructions to determine the maximum SSA id
+    ///          every time a frame is prepared for the same function.
+    std::unordered_map<const il::core::Function *, size_t> regCountCache_;
+
+    /// @brief Cached pointer to the opcode handler table for quick access.
+    const OpcodeHandlerTable *handlerTable_ = nullptr;
+
     /// @brief Trap metadata for the currently executing runtime call.
     RuntimeCallContext runtimeContext;
 
@@ -425,6 +433,12 @@ class VM
             pendingResult = s;
             exitRequested = true;
         }
+
+        /// @brief Cache for resolved branch targets per instruction.
+        /// @details Maps an instruction pointer to a vector of resolved
+        ///          BasicBlock* targets in the same order as @c in.labels.
+        std::unordered_map<const il::core::Instr *, std::vector<const il::core::BasicBlock *>>
+            branchTargetCache;
     };
 
     bool prepareTrap(VmError &error);

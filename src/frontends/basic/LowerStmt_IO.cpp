@@ -480,6 +480,25 @@ void Lowerer::lowerInput(const InputStmt &stmt)
         return;
 
     Value line = emitCallRet(Type(Type::Kind::Str), "rt_input_line", {});
+    // Precompute store kinds for each variable to avoid repeated symbol lookups.
+    enum class StoreKind { I64, F64, I1, Str };
+    std::unordered_map<std::string, StoreKind> storeKinds;
+    storeKinds.reserve(stmt.vars.size());
+    for (const auto &vn : stmt.vars)
+    {
+        if (vn.empty())
+            continue;
+        SlotType sk = getSlotType(vn);
+        StoreKind k = StoreKind::I64;
+        switch (sk.type.kind)
+        {
+            case Type::Kind::Str: k = StoreKind::Str; break;
+            case Type::Kind::F64: k = StoreKind::F64; break;
+            case Type::Kind::I1:  k = StoreKind::I1;  break;
+            default: break;
+        }
+        storeKinds.emplace(vn, k);
+    }
 
     auto storeField = [&](const std::string &name, Value field)
     {
@@ -491,18 +510,24 @@ void Lowerer::lowerInput(const InputStmt &stmt)
         if (slotInfo.type.kind != Type::Kind::Str && slotInfo.type.kind != Type::Kind::F64 &&
             slotInfo.type.kind != Type::Kind::I1)
         {
-            // Requery slot typing to capture semantic types even when the
-            // initial storage resolution lost precision.
-            SlotType inferred = getSlotType(name);
-            if (inferred.type.kind == Type::Kind::Str)
+            // Prefer precomputed kind; fallback to a quick requery if missing.
+            auto it = storeKinds.find(name);
+            Type::Kind k = (it != storeKinds.end())
+                               ? (it->second == StoreKind::Str
+                                      ? Type::Kind::Str
+                                      : it->second == StoreKind::F64 ? Type::Kind::F64
+                                      : it->second == StoreKind::I1  ? Type::Kind::I1
+                                                                     : Type::Kind::I64)
+                               : getSlotType(name).type.kind;
+            if (k == Type::Kind::Str)
             {
                 slotInfo.type = Type(Type::Kind::Str);
             }
-            else if (inferred.type.kind == Type::Kind::F64)
+            else if (k == Type::Kind::F64)
             {
                 slotInfo.type = Type(Type::Kind::F64);
             }
-            else if (inferred.type.kind == Type::Kind::I1)
+            else if (k == Type::Kind::I1)
             {
                 slotInfo.type = ilBoolTy();
                 slotInfo.isBoolean = true;

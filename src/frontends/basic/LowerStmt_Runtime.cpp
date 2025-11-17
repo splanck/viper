@@ -545,7 +545,11 @@ void Lowerer::lowerLet(const LetStmt &stmt)
             slotInfo.type = access->ilType;
             slotInfo.isArray = false;
             slotInfo.isBoolean = (access->astType == ::il::frontends::basic::Type::Bool);
-            slotInfo.isObject = false;
+            slotInfo.isObject = !access->objectClassName.empty();  // BUG-082 fix
+            if (slotInfo.isObject)
+            {
+                slotInfo.objectClass = access->objectClassName;
+            }
             assignScalarSlot(slotInfo, access->ptr, std::move(value), stmt.loc);
         }
     }

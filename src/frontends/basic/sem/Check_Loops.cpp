@@ -119,6 +119,8 @@ void analyzeFor(SemanticAnalyzer &analyzer, ForStmt &stmt)
             // Simple variable: FOR i = 1 TO 10
             varName = varExpr->name;
             context.resolveLoopVariable(varName);
+            // Update the VarExpr with the scoped name (e.g., "I" -> "I_2")
+            varExpr->name = varName;
         }
         else if (auto *memberAccess = as<MemberAccessExpr>(*stmt.varExpr))
         {

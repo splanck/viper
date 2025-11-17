@@ -71,6 +71,7 @@ using BlockMap = std::unordered_map<BasicBlock *, BlockState>;
 static AllocaMap collectAllocas(Function &F)
 {
     AllocaMap infos;
+    infos.reserve(F.valueNames.size());
     for (auto &B : F.blocks)
         for (auto &I : B.instructions)
             if (I.op == Opcode::Alloca && I.result)
@@ -311,6 +312,7 @@ static void promoteVariables(Function &F,
                              const analysis::CFGContext &ctx)
 {
     VarMap vars;
+    vars.reserve(infos.size());
     for (auto &[id, AI] : infos)
     {
         if (AI.addressTaken || !AI.hasStore)
@@ -331,6 +333,7 @@ static void promoteVariables(Function &F,
     unsigned nextId = viper::il::nextTempId(F);
 
     BlockMap blocks;
+    blocks.reserve(F.blocks.size());
     for (auto &B : F.blocks)
     {
         BlockState bs;
@@ -341,6 +344,7 @@ static void promoteVariables(Function &F,
 
     std::queue<BasicBlock *> work;
     std::unordered_set<BasicBlock *> queued;
+    queued.reserve(F.blocks.size());
     if (!F.blocks.empty())
     {
         work.push(&F.blocks.front());
