@@ -119,7 +119,16 @@ void dce(Module &M)
         // Build a predecessor edge index once: for each target label, collect
         // (terminator*, successorIndex) pairs. Speeds up param pruning.
         std::unordered_map<std::string, std::vector<std::pair<Instr *, size_t>>> predEdges;
-        predEdges.reserve(F.blocks.size());
+        // Reserve buckets roughly based on total labels encountered to
+        // minimize rehashing while building the map.
+        {
+            std::size_t totalLabels = 0;
+            for (auto &PB : F.blocks)
+                for (auto &I : PB.instructions)
+                    totalLabels += I.labels.size();
+            if (totalLabels)
+                predEdges.reserve(totalLabels);
+        }
         for (auto &PB : F.blocks)
         {
             for (auto &I : PB.instructions)

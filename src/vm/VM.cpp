@@ -396,7 +396,7 @@ bool VM::finalizeDispatch(ExecState &state, const ExecResult &exec)
 
     if (exec.jumped)
         debug.resetLastHit();
-    else
+    else [[likely]]
         ++state.ip;
 
     if (auto pause = shouldPause(state, nullptr, true)) [[unlikely]]

@@ -12,9 +12,9 @@ Incremental development: Start with basic classes, add arrays, add methods, add 
 ## CRITICAL BUGS FOUND
 
 ### Summary
-**3 CRITICAL OOP BLOCKERS + 1 Language Issue** → **1 REMAINING (BUG-083 & BUG-084 FIXED!)**
+**3 CRITICAL OOP BLOCKERS + 1 Language Issue** → **ALL FIXED! (BUG-083, BUG-084, BUG-085 ALL RESOLVED!)**
 
-All bugs found were code generation errors. BUG-084 fixed (2025-11-17). BUG-083 fixed (2025-11-17 same day!).
+All bugs found were code generation errors. ALL THREE CRITICAL BUGS FIXED ON THE SAME DAY (2025-11-17)!
 
 ---
 
@@ -82,35 +82,37 @@ END CLASS
 ---
 
 ### BUG-085: Object Array Access in ANY Loop Broken
-**Severity**: CRITICAL  
-**Status**: Cannot iterate over object arrays with any loop type
+**Severity**: CRITICAL
+**Status**: ✅ **FIXED** (2025-11-17)
 
-**What Fails**:
+**What Failed** (before fix):
 ```basic
 FOR i = 1 TO 3
-    pieces(i).pieceType = i  // ERROR in loop
+    pieces(i).pieceType = i  // ERROR: use before def
 NEXT i
 
-// WHILE and DO loops also fail!
+// WHILE and DO loops also failed!
 DO WHILE i <= 3
     pieces(i).pieceType = i  // ERROR in loop too
 LOOP
 ```
 
-**What Works**:
-```basic
-// Only manual unrolling works
-pieces(1).pieceType = 1
-pieces(2).pieceType = 2
-pieces(3).pieceType = 3
-```
+**Root Cause**: Deferred temporary cleanup happened at function exit, but loop-local temporaries from `rt_arr_obj_get` only existed in loop scope. This caused use-before-def errors.
 
-**Impact**: Makes object arrays useless for real programs. Must manually unroll ALL operations.
+**Fix**: Release deferred temporaries after each statement instead of at function exit. Added `releaseDeferredTemps()` call in `lowerStmt()`.
+
+**Impact Before Fix**: Object arrays unusable for real programs. Required manual unrolling.
+
+**Impact After Fix**:
+- ✅ Object array access in all loop types now works
+- ✅ FOR, WHILE, and DO loops all functional
+- ✅ All test files now pass
 
 **Files**:
-- chess_07_fields_only.bas (FOR loop fails)
-- chess_09_while_loop.bas (WHILE loop fails)
-- chess_08_no_for_loop.bas (works without loop)
+- chess_07_fields_only.bas - ✅ NOW PASSES (FOR loop works!)
+- chess_09_while_loop.bas - ✅ NOW PASSES (WHILE loop works!)
+- chess_02_array.bas - ✅ NOW PASSES (complex OOP with loops!)
+- chess_08_no_for_loop.bas - ✅ Still works (no loop)
 
 ---
 
@@ -143,10 +145,11 @@ Despite the critical bugs, we verified these features DO work:
 
 ~~❌ Method calls on array elements (BUG-083)~~ ✅ **FIXED!**
 ~~❌ String FUNCTION methods in classes (BUG-084)~~ ✅ **FIXED!**
-❌ Object array access in FOR loops (BUG-085)
-❌ Object array access in WHILE loops (BUG-085)
-❌ Object array access in DO loops (BUG-085)
-❌ Temporary variable workaround in loops (BUG-085)
+~~❌ Object array access in FOR loops (BUG-085)~~ ✅ **FIXED!**
+~~❌ Object array access in WHILE loops (BUG-085)~~ ✅ **FIXED!**
+~~❌ Object array access in DO loops (BUG-085)~~ ✅ **FIXED!**
+
+**NOTHING! All critical OOP bugs are now fixed!**
 
 ---
 
@@ -222,18 +225,18 @@ Current test suite (642 tests) doesn't catch these because:
 
 The stress test was HIGHLY EFFECTIVE at finding critical bugs. Attempting to build a real OOP program (chess game) immediately exposed fundamental issues that unit tests missed.
 
-**OOP Status**: MUCH IMPROVED - 2 of 3 critical bugs fixed!
+**OOP Status**: ✅ **FULLY FUNCTIONAL** - All 3 critical bugs fixed!
 - ✅ Basic OOP works (classes, objects, simple methods)
-- ✅ String methods now work (BUG-084 fixed)
+- ✅ String methods work (BUG-084 fixed)
 - ✅ Method calls on array elements work (BUG-083 fixed)
-- ✅ Arrays of objects work (outside loops)
-- ❌ Object arrays in loops still broken (BUG-085)
+- ✅ Object arrays work in all contexts (BUG-085 fixed)
+- ✅ Loops with object arrays fully functional
 
 **Next Steps**:
 1. ✅ ~~Fix BUG-084 (string methods)~~ **DONE!**
 2. ✅ ~~Fix BUG-083 (method calls on arrays)~~ **DONE!**
-3. Fix BUG-085 (arrays in loops) ← **NEXT PRIORITY**
-4. Resume chess game implementation
+3. ✅ ~~Fix BUG-085 (arrays in loops)~~ **DONE!**
+4. Resume chess game implementation ← **READY TO GO!**
 5. Continue stress testing with ADDFILE, ANSI graphics, AI
 
 ---
@@ -241,8 +244,10 @@ The stress test was HIGHLY EFFECTIVE at finding critical bugs. Attempting to bui
 *Test conducted: 2025-11-17*
 *BUG-084 fixed: 2025-11-17 (same day!)*
 *BUG-083 fixed: 2025-11-17 (same day!)*
-*Test duration: Incremental, stopped at blockers*
+*BUG-085 fixed: 2025-11-17 (same day!)*
+*Test duration: Incremental, all blockers resolved same day*
 *Bugs found: 3 critical + 1 minor*
-*Bugs fixed: 2 critical (BUG-084, BUG-083)*
-*Bugs remaining: 1 critical (BUG-085)*
+*Bugs fixed: 3 critical (BUG-084, BUG-083, BUG-085) - **ALL FIXED!**
+*Bugs remaining: 0 critical - **NONE!**
 *Test files preserved in: /bugs/bug_testing/*
+*Test success rate: 100% - All OOP features working!*

@@ -2,17 +2,17 @@
 
 *Last Updated: 2025-11-17*
 
-**Bug Statistics**: 82 resolved, 1 outstanding bug, 1 design decision (84 total documented)
+**Bug Statistics**: 83 resolved, 0 outstanding bugs, 1 design decision (84 total documented)
 
-**Test Suite Status**: 641/642 tests passing (99.8%) - 1 flaky test
+**Test Suite Status**: 642/642 tests passing (100%)
 
-**STATUS**: ⚠️ 1 critical OOP bug remaining (arrays + loops broken)
+**STATUS**: ✅ ALL CRITICAL BUGS RESOLVED! OOP fully functional!
 
 ---
 
 ## OUTSTANDING BUGS
 
-**1 bug** - Object arrays + loops broken
+**0 bugs** - All known bugs have been resolved!
 
 ### BUG-083: Cannot Call Methods on Object Array Elements
 **Status**: ✅ **RESOLVED** (2025-11-17) - Critical code generation bug FIXED
@@ -780,7 +780,7 @@ END CLASS
 ---
 
 ### BUG-085: Object Array Access in ANY Loop Causes Code Generation Errors
-**Status**: 🔴 **OUTSTANDING** - Critical loop + array interaction bug
+**Status**: ✅ **RESOLVED** (2025-11-17) - Critical loop + array interaction bug FIXED
 **Discovered**: 2025-11-17 (Chess game stress test)
 **Category**: OOP / Arrays / Loops / Code Generation
 **Severity**: CRITICAL - Cannot iterate over object arrays with any loop type
@@ -868,26 +868,63 @@ exit:
 - All use the same temporary tracking mechanism
 - All suffer from the same scope mismatch issue
 
-**Impact**:
-- Cannot iterate over object arrays with any loop construct
-- Forces complete manual unrolling of all operations
-- Makes object arrays essentially unusable for any realistic program
-- Combined with BUG-083, OOP arrays are completely broken
+**THE FIX** (2025-11-17):
 
-**Workaround**: ONLY manual unrolling works (WHILE/DO loops also fail):
-```basic
-REM Manual unrolling
-pieces(1).pieceType = 1
-pieces(2).pieceType = 2  
-pieces(3).pieceType = 3
+**Root Cause Identified**: Deferred temporary cleanup was happening at function exit, but loop-local temporaries don't exist in function scope. This created use-before-def errors because the cleanup code tried to reference temporaries that were only created inside loop bodies.
 
-REM WHILE/DO loops ALSO fail - only manual unrolling works!
+**The Solution**: Release deferred temporaries after EACH STATEMENT instead of at function exit.
+
+**Code Change** (`src/frontends/basic/lower/Lowerer_Stmt.cpp:472-483`):
+```cpp
+void Lowerer::lowerStmt(const Stmt &stmt)
+{
+    curLoc = stmt.loc;
+    LowererStmtVisitor visitor(*this);
+    visitor.visitStmt(stmt);
+    // BUG-085 fix: Release deferred temporaries after each statement rather than
+    // at function exit. This prevents use-before-def errors when temporaries from
+    // array access (rt_arr_obj_get) are created inside loops - the temporaries are
+    // loop-local and don't exist at function entry, so releasing them at function
+    // exit would reference undefined values.
+    releaseDeferredTemps();
+}
 ```
 
+**How It Works**:
+- After each statement executes, any object temporaries created during that statement are released
+- For loops, each iteration executes statements, so temps are released after each iteration
+- Loop-local temporaries never accumulate to function exit
+- Function-exit cleanup has no deferred temps remaining (they were already released)
+
+**Result**:
+- ✅ Object array access in FOR loops now works
+- ✅ Object array access in WHILE loops now works
+- ✅ Object array access in DO loops now works
+- ✅ Method calls on array elements in loops now work
+- ✅ Field access on array elements in loops now works
+- ✅ All 642 tests pass (100%)
+
+**Impact** (Before Fix):
+- Could not iterate over object arrays with any loop construct
+- Forced complete manual unrolling of all operations
+- Made object arrays essentially unusable for any realistic program
+- Combined with BUG-083, OOP arrays were completely broken
+
+**Impact** (After Fix):
+- ✅ Object arrays fully functional in all loop types
+- ✅ Can iterate over objects with FOR, WHILE, and DO loops
+- ✅ Realistic OOP programs with arrays now possible
+- ✅ Combined with BUG-083 fix, OOP arrays are now fully working
+
+**Workaround** (No Longer Needed):
+~~Manual unrolling (FIXED - workaround no longer required)~~
+
 **Test Files**:
-- `/bugs/bug_testing/chess_07_fields_only.bas` - Fails (FOR loop)
-- `/bugs/bug_testing/chess_09_while_loop.bas` - Fails (WHILE loop)
-- `/bugs/bug_testing/chess_08_no_for_loop.bas` - Works (no loop)
+- `/bugs/bug_testing/chess_07_fields_only.bas` - ✅ NOW PASSES (FOR loop works!)
+- `/bugs/bug_testing/chess_09_while_loop.bas` - ✅ NOW PASSES (WHILE loop works!)
+- `/bugs/bug_testing/chess_02_array.bas` - ✅ NOW PASSES (complex OOP with loops!)
+- `/bugs/bug_testing/chess_02b_array_simple.bas` - ✅ NOW PASSES (method calls in loops!)
+- `/bugs/bug_testing/chess_08_no_for_loop.bas` - ✅ Still works (no loop)
 
 **Related Bugs**: BUG-083 (method calls on arrays), BUG-078 (FOR loop issues with globals)
 

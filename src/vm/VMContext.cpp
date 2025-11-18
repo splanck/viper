@@ -109,15 +109,18 @@ Slot VMContext::eval(Frame &fr, const il::core::Value &value) const
         const std::string blockLabel = block ? block->label : std::string();
         const auto loc = vmInstance->currentContext.loc;
 
-        std::string message =
-            detail::formatRegisterRangeError(v.id, fr.regs.size(), fnName, blockLabel);
+        // Build a compact message without iostream overhead.
+        std::string message = detail::formatRegisterRangeError(v.id, fr.regs.size(), fnName, blockLabel);
         if (loc.hasLine())
         {
-            std::ostringstream os;
-            os << message << ", at line " << loc.line;
+            message.reserve(message.size() + 24);
+            message += ", at line ";
+            message += std::to_string(loc.line);
             if (loc.hasColumn())
-                os << ':' << loc.column;
-            message = os.str();
+            {
+                message.push_back(':');
+                message += std::to_string(loc.column);
+            }
         }
         else
         {

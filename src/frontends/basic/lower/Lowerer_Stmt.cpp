@@ -474,6 +474,12 @@ void Lowerer::lowerStmt(const Stmt &stmt)
     curLoc = stmt.loc;
     LowererStmtVisitor visitor(*this);
     visitor.visitStmt(stmt);
+    // BUG-085 fix: Release deferred temporaries after each statement rather than
+    // at function exit. This prevents use-before-def errors when temporaries from
+    // array access (rt_arr_obj_get) are created inside loops - the temporaries are
+    // loop-local and don't exist at function entry, so releasing them at function
+    // exit would reference undefined values.
+    releaseDeferredTemps();
 }
 
 /// @brief Lower a sequence of BASIC statements.
