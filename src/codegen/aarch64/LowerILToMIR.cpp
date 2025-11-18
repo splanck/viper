@@ -167,19 +167,277 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
         {
             const auto &binI = bb.instructions[bb.instructions.size() - 2];
             const auto &retI = bb.instructions.back();
-            // call @callee(args...) feeding ret: assume args already in x0..x7
+            // call @callee(args...) feeding ret: marshal params/consts (and one temp) into x0..x7, then bl
             if (binI.op == il::core::Opcode::Call && retI.op == il::core::Opcode::Ret &&
                 binI.result && !retI.operands.empty())
             {
                 const auto &retV = retI.operands[0];
-                if (retV.kind == il::core::Value::Kind::Temp && retV.id == *binI.result)
+                if (retV.kind == il::core::Value::Kind::Temp && retV.id == *binI.result && !binI.callee.empty())
                 {
-                    // Minimal rule: callee name present, up to 8 integer args. We assume params
-                    // are already in x0..x7 as per ABI; future work will marshal non-param args.
-                    if (!binI.callee.empty())
+                    // Single-block, marshal only entry params and const i64 to integer arg regs.
+                    const std::size_t nargs = binI.operands.size();
+                    if (nargs <= ti_->intArgOrder.size())
                     {
-                        bbMir.instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp(binI.callee)}});
-                        return mf;
+                        // Build move plan for reg->reg moves; immediates applied after.
+                        struct Move { PhysReg dst; PhysReg src; };
+                        std::vector<Move> moves;
+                        std::vector<std::pair<PhysReg,long long>> immLoads;
+                        std::vector<std::pair<std::size_t,PhysReg>> tempRegs; // (arg index, reg holding computed temp)
+                        const PhysReg scratchPool[] = {PhysReg::X9, PhysReg::X10};
+                        std::size_t scratchUsed = 0;
+                        auto isParamTemp = [&](const il::core::Value &v, unsigned &outIdx) -> bool {
+                            if (v.kind != il::core::Value::Kind::Temp) return false;
+                            int p = indexOfParam(bb, v.id);
+                            if (p >= 0) { outIdx = static_cast<unsigned>(p); return true; }
+                            return false;
+                        };
+                        auto computeTempTo = [&](const il::core::Instr &prod, PhysReg dstReg) -> bool {
+                            // Helpers
+                            auto rr_emit = [&](MOpcode opc, unsigned p0, unsigned p1) {
+                                const PhysReg r0 = argOrder[p0];
+                                const PhysReg r1 = argOrder[p1];
+                                bbMir.instrs.push_back(MInstr{opc, {MOperand::regOp(dstReg), MOperand::regOp(r0), MOperand::regOp(r1)}});
+                            };
+                            auto ri_emit = [&](MOpcode opc, unsigned p0, long long imm) {
+                                const PhysReg r0 = argOrder[p0];
+                                bbMir.instrs.push_back(MInstr{opc, {MOperand::regOp(dstReg), MOperand::regOp(r0), MOperand::immOp(imm)}});
+                            };
+                            // RR patterns: both operands are entry params
+                            if (prod.op == il::core::Opcode::Add || prod.op == il::core::Opcode::IAddOvf ||
+                                prod.op == il::core::Opcode::Sub || prod.op == il::core::Opcode::ISubOvf ||
+                                prod.op == il::core::Opcode::Mul || prod.op == il::core::Opcode::IMulOvf ||
+                                prod.op == il::core::Opcode::And || prod.op == il::core::Opcode::Or ||
+                                prod.op == il::core::Opcode::Xor)
+                            {
+                                if (prod.operands.size() != 2) return false;
+                                if (prod.operands[0].kind == il::core::Value::Kind::Temp && prod.operands[1].kind == il::core::Value::Kind::Temp)
+                                {
+                                    int i0 = indexOfParam(bb, prod.operands[0].id);
+                                    int i1 = indexOfParam(bb, prod.operands[1].id);
+                                    if (i0 >= 0 && i1 >= 0 && i0 < 8 && i1 < 8)
+                                    {
+                                        MOpcode opc = MOpcode::AddRRR;
+                                        if (prod.op == il::core::Opcode::Add || prod.op == il::core::Opcode::IAddOvf) opc = MOpcode::AddRRR;
+                                        else if (prod.op == il::core::Opcode::Sub || prod.op == il::core::Opcode::ISubOvf) opc = MOpcode::SubRRR;
+                                        else if (prod.op == il::core::Opcode::Mul || prod.op == il::core::Opcode::IMulOvf) opc = MOpcode::MulRRR;
+                                        else if (prod.op == il::core::Opcode::And) opc = MOpcode::AndRRR;
+                                        else if (prod.op == il::core::Opcode::Or) opc = MOpcode::OrrRRR;
+                                        else if (prod.op == il::core::Opcode::Xor) opc = MOpcode::EorRRR;
+                                        rr_emit(opc, static_cast<unsigned>(i0), static_cast<unsigned>(i1));
+                                        return true;
+                                    }
+                                }
+                            }
+                            // RI patterns: param + imm for add/sub/shift
+                            if (prod.op == il::core::Opcode::Shl || prod.op == il::core::Opcode::LShr || prod.op == il::core::Opcode::AShr ||
+                                prod.op == il::core::Opcode::Add || prod.op == il::core::Opcode::IAddOvf ||
+                                prod.op == il::core::Opcode::Sub || prod.op == il::core::Opcode::ISubOvf)
+                            {
+                                if (prod.operands.size() != 2) return false;
+                                const auto &o0 = prod.operands[0];
+                                const auto &o1 = prod.operands[1];
+                                if (o0.kind == il::core::Value::Kind::Temp && o1.kind == il::core::Value::Kind::ConstInt)
+                                {
+                                    int ip = indexOfParam(bb, o0.id);
+                                    if (ip >= 0 && ip < 8)
+                                    {
+                                        if (prod.op == il::core::Opcode::Shl) ri_emit(MOpcode::LslRI, static_cast<unsigned>(ip), o1.i64);
+                                        else if (prod.op == il::core::Opcode::LShr) ri_emit(MOpcode::LsrRI, static_cast<unsigned>(ip), o1.i64);
+                                        else if (prod.op == il::core::Opcode::AShr) ri_emit(MOpcode::AsrRI, static_cast<unsigned>(ip), o1.i64);
+                                        else if (prod.op == il::core::Opcode::Add || prod.op == il::core::Opcode::IAddOvf) ri_emit(MOpcode::AddRI, static_cast<unsigned>(ip), o1.i64);
+                                        else if (prod.op == il::core::Opcode::Sub || prod.op == il::core::Opcode::ISubOvf) ri_emit(MOpcode::SubRI, static_cast<unsigned>(ip), o1.i64);
+                                        return true;
+                                    }
+                                }
+                                else if (o1.kind == il::core::Value::Kind::Temp && o0.kind == il::core::Value::Kind::ConstInt)
+                                {
+                                    int ip = indexOfParam(bb, o1.id);
+                                    if (ip >= 0 && ip < 8)
+                                    {
+                                        if (prod.op == il::core::Opcode::Shl) ri_emit(MOpcode::LslRI, static_cast<unsigned>(ip), o0.i64);
+                                        else if (prod.op == il::core::Opcode::LShr) ri_emit(MOpcode::LsrRI, static_cast<unsigned>(ip), o0.i64);
+                                        else if (prod.op == il::core::Opcode::AShr) ri_emit(MOpcode::AsrRI, static_cast<unsigned>(ip), o0.i64);
+                                        else if (prod.op == il::core::Opcode::Add || prod.op == il::core::Opcode::IAddOvf) ri_emit(MOpcode::AddRI, static_cast<unsigned>(ip), o0.i64);
+                                        // Sub with const first not supported
+                                        return true;
+                                    }
+                                }
+                            }
+                            // Compare patterns: produce 0/1 in dstReg via cmp + cset
+                            if (prod.op == il::core::Opcode::ICmpEq || prod.op == il::core::Opcode::ICmpNe ||
+                                prod.op == il::core::Opcode::SCmpLT || prod.op == il::core::Opcode::SCmpLE ||
+                                prod.op == il::core::Opcode::SCmpGT || prod.op == il::core::Opcode::SCmpGE ||
+                                prod.op == il::core::Opcode::UCmpLT || prod.op == il::core::Opcode::UCmpLE ||
+                                prod.op == il::core::Opcode::UCmpGT || prod.op == il::core::Opcode::UCmpGE)
+                            {
+                                if (prod.operands.size() != 2) return false;
+                                const auto &o0 = prod.operands[0];
+                                const auto &o1 = prod.operands[1];
+                                const char *cc = condForOpcode(prod.op);
+                                if (!cc) return false;
+                                if (o0.kind == il::core::Value::Kind::Temp && o1.kind == il::core::Value::Kind::Temp)
+                                {
+                                    int i0 = indexOfParam(bb, o0.id);
+                                    int i1 = indexOfParam(bb, o1.id);
+                                    if (i0 >= 0 && i1 >= 0 && i0 < 8 && i1 < 8)
+                                    {
+                                        const PhysReg r0 = argOrder[i0];
+                                        const PhysReg r1 = argOrder[i1];
+                                        bbMir.instrs.push_back(MInstr{MOpcode::CmpRR, {MOperand::regOp(r0), MOperand::regOp(r1)}});
+                                        bbMir.instrs.push_back(MInstr{MOpcode::Cset, {MOperand::regOp(dstReg), MOperand::condOp(cc)}});
+                                        return true;
+                                    }
+                                }
+                                if (o0.kind == il::core::Value::Kind::Temp && o1.kind == il::core::Value::Kind::ConstInt)
+                                {
+                                    int i0 = indexOfParam(bb, o0.id);
+                                    if (i0 >= 0 && i0 < 8)
+                                    {
+                                        const PhysReg r0 = argOrder[i0];
+                                        // cmp r0, #imm; cset dst, cc
+                                        bbMir.instrs.push_back(MInstr{MOpcode::CmpRI, {MOperand::regOp(r0), MOperand::immOp(o1.i64)}});
+                                        bbMir.instrs.push_back(MInstr{MOpcode::Cset, {MOperand::regOp(dstReg), MOperand::condOp(cc)}});
+                                        return true;
+                                    }
+                                }
+                            }
+                            return false;
+                        };
+                        // Split into register and stack arguments
+                        const std::size_t nReg = argOrder.size();
+                        const std::size_t nRegArgs = (nargs < nReg) ? nargs : nReg;
+                        const std::size_t nStackArgs = (nargs > nReg) ? (nargs - nReg) : 0;
+                        bool supported = true;
+                        // Register args: plan moves/imm loads/temps for 0..nRegArgs-1
+                        for (std::size_t i = 0; i < nRegArgs; ++i)
+                        {
+                            const PhysReg dst = argOrder[i];
+                            const auto &arg = binI.operands[i];
+                            if (arg.kind == il::core::Value::Kind::ConstInt)
+                            {
+                                immLoads.emplace_back(dst, arg.i64);
+                            }
+                            else
+                            {
+                                unsigned pIdx = 0;
+                                if (isParamTemp(arg, pIdx) && pIdx < argOrder.size())
+                                {
+                                    const PhysReg src = argOrder[pIdx];
+                                    if (src != dst)
+                                        moves.push_back(Move{dst, src});
+                                }
+                                else
+                                {
+                                    // Attempt to compute temp into a scratch then marshal it.
+                                    if (arg.kind == il::core::Value::Kind::Temp && scratchUsed < (sizeof(scratchPool)/sizeof(scratchPool[0])))
+                                    {
+                                        auto it = std::find_if(bb.instructions.begin(), bb.instructions.end(),
+                                                               [&](const il::core::Instr &I){ return I.result && *I.result == arg.id; });
+                                        if (it != bb.instructions.end())
+                                        {
+                                            const PhysReg dstScratch = scratchPool[scratchUsed];
+                                            if (computeTempTo(*it, dstScratch))
+                                            {
+                                                tempRegs.emplace_back(i, dstScratch);
+                                                ++scratchUsed;
+                                                continue;
+                                            }
+                                        }
+                                    }
+                                    supported = false; break; // unsupported temp
+                                }
+                            }
+                        }
+                        if (!supported) { /* fallthrough: no call lowering */ }
+                        else
+                        {
+                            // Include temp-reg moves into overall move list
+                            for (auto &tr : tempRegs)
+                            {
+                                const PhysReg dstArg = argOrder[tr.first];
+                                if (dstArg != tr.second)
+                                    moves.push_back(Move{dstArg, tr.second});
+                            }
+                            // Resolve reg moves with scratch X9 to break cycles.
+                            auto hasDst = [&](PhysReg r){ for (auto &m : moves) if (m.dst==r) return true; return false; };
+                            // Perform until empty
+                            while (!moves.empty())
+                            {
+                                bool progressed = false;
+                                for (auto it = moves.begin(); it != moves.end(); )
+                                {
+                                    if (!hasDst(it->src))
+                                    {
+                                        bbMir.instrs.push_back(MInstr{MOpcode::MovRR, {MOperand::regOp(it->dst), MOperand::regOp(it->src)}});
+                                        it = moves.erase(it);
+                                        progressed = true;
+                                    }
+                                    else { ++it; }
+                                }
+                                if (!progressed)
+                                {
+                                    const PhysReg cycleSrc = moves.front().src;
+                                    bbMir.instrs.push_back(MInstr{MOpcode::MovRR, {MOperand::regOp(PhysReg::X9), MOperand::regOp(cycleSrc)}});
+                                    for (auto &m : moves)
+                                        if (m.src == cycleSrc) m.src = PhysReg::X9;
+                                }
+                            }
+                            // Apply immediates
+                            for (auto &pr : immLoads)
+                                bbMir.instrs.push_back(MInstr{MOpcode::MovRI, {MOperand::regOp(pr.first), MOperand::immOp(pr.second)}});
+
+                            // Stack args: allocate area, materialize values, store at [sp, #offset]
+                            if (nStackArgs > 0)
+                            {
+                                long long frameBytes = static_cast<long long>(nStackArgs) * 8LL;
+                                if (frameBytes % 16LL != 0LL) frameBytes += 8LL; // 16-byte alignment
+                                bbMir.instrs.push_back(MInstr{MOpcode::SubSpImm, {MOperand::immOp(frameBytes)}});
+                                for (std::size_t i = nReg; i < nargs; ++i)
+                                {
+                                    const auto &arg = binI.operands[i];
+                                    PhysReg valReg = PhysReg::X9;
+                                    if (arg.kind == il::core::Value::Kind::ConstInt)
+                                    {
+                                        // Use a scratch reg to hold the constant
+                                        const PhysReg tmp = (scratchUsed < (sizeof(scratchPool)/sizeof(scratchPool[0]))) ? scratchPool[scratchUsed++] : PhysReg::X9;
+                                        bbMir.instrs.push_back(MInstr{MOpcode::MovRI, {MOperand::regOp(tmp), MOperand::immOp(arg.i64)}});
+                                        valReg = tmp;
+                                    }
+                                    else if (arg.kind == il::core::Value::Kind::Temp)
+                                    {
+                                        unsigned pIdx = 0;
+                                        if (isParamTemp(arg, pIdx) && pIdx < argOrder.size())
+                                        {
+                                            valReg = argOrder[pIdx];
+                                        }
+                                        else
+                                        {
+                                            // Compute limited temps into scratch
+                                            if (scratchUsed >= (sizeof(scratchPool)/sizeof(scratchPool[0]))) { supported = false; break; }
+                                            valReg = scratchPool[scratchUsed++];
+                                            auto it = std::find_if(bb.instructions.begin(), bb.instructions.end(),
+                                                                   [&](const il::core::Instr &I){ return I.result && *I.result == arg.id; });
+                                            if (it == bb.instructions.end() || !computeTempTo(*it, valReg)) { supported = false; break; }
+                                        }
+                                    }
+                                    else { supported = false; break; }
+                                    const long long off = static_cast<long long>((i - nReg) * 8ULL);
+                                    bbMir.instrs.push_back(MInstr{MOpcode::StrRegSpImm, {MOperand::regOp(valReg), MOperand::immOp(off)}});
+                                }
+                                if (!supported)
+                                {
+                                    // If unsupported mid-way, do not emit call sequence.
+                                    return mf;
+                                }
+                                // Emit call and deallocate area
+                                bbMir.instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp(binI.callee)}});
+                                bbMir.instrs.push_back(MInstr{MOpcode::AddSpImm, {MOperand::immOp(frameBytes)}});
+                                return mf;
+                            }
+                            // No stack args; emit call directly
+                            bbMir.instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp(binI.callee)}});
+                            return mf;
+                        }
                     }
                 }
             }

@@ -181,7 +181,9 @@ void Parser::parseElseChain(IfParseState &state)
 
     while (true)
     {
-        skipOptionalLineLabelAfterBreak(ctxIf, {TokenKind::KeywordElseIf, TokenKind::KeywordElse});
+        // BUG-092 fix: Single-line IFs should only consume ELSE/ELSEIF on the same line.
+        // Do not skip line breaks when looking for ELSE/ELSEIF, otherwise nested
+        // single-line IFs will incorrectly consume ELSE from the outer IF block.
         if (at(TokenKind::KeywordElseIf))
         {
             consume();

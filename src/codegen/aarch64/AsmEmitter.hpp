@@ -64,6 +64,11 @@ class AsmEmitter
     void emitMovImm64(std::ostream &os, PhysReg dst, unsigned long long value) const;
     void emitRet(std::ostream &os) const;
 
+    // Stack/Memory helpers for outgoing arg area
+    void emitSubSp(std::ostream &os, long long bytes) const;
+    void emitAddSp(std::ostream &os, long long bytes) const;
+    void emitStrToSp(std::ostream &os, PhysReg src, long long offset) const;
+
     // Emit from minimal MIR (Phase A)
     void emitFunction(std::ostream &os, const MFunction &fn) const;
     void emitBlock(std::ostream &os, const MBasicBlock &bb) const;

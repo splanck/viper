@@ -101,6 +101,11 @@ add_executable(test_emit_aarch64_mir_branches ${CMAKE_CURRENT_SOURCE_DIR}/unit/c
 target_link_libraries(test_emit_aarch64_mir_branches PRIVATE viper_testing il_codegen_aarch64)
 viper_add_ctest(test_emit_aarch64_mir_branches $<TARGET_FILE:test_emit_aarch64_mir_branches>)
 
+# MIR frame plan emission through emitFunction
+add_executable(test_emit_aarch64_mir_frameplan ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_emit_aarch64_mir_frameplan.cpp)
+target_link_libraries(test_emit_aarch64_mir_frameplan PRIVATE viper_testing il_codegen_aarch64)
+viper_add_ctest(test_emit_aarch64_mir_frameplan $<TARGET_FILE:test_emit_aarch64_mir_frameplan>)
+
 # CLI smoke for arm64 -S (ret 0)
 add_executable(test_codegen_arm64_cli ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_cli.cpp)
 target_link_libraries(test_codegen_arm64_cli PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
@@ -155,6 +160,21 @@ viper_add_ctest(test_codegen_arm64_cbr $<TARGET_FILE:test_codegen_arm64_cbr>)
 add_executable(test_codegen_arm64_call ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_call.cpp)
 target_link_libraries(test_codegen_arm64_call PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
 viper_add_ctest(test_codegen_arm64_call $<TARGET_FILE:test_codegen_arm64_call>)
+
+# call arg marshalling tests
+add_executable(test_codegen_arm64_call_args ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_call_args.cpp)
+target_link_libraries(test_codegen_arm64_call_args PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
+viper_add_ctest(test_codegen_arm64_call_args $<TARGET_FILE:test_codegen_arm64_call_args>)
+
+# call args with a single non-entry temp
+add_executable(test_codegen_arm64_call_temp_args ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_call_temp_args.cpp)
+target_link_libraries(test_codegen_arm64_call_temp_args PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
+viper_add_ctest(test_codegen_arm64_call_temp_args $<TARGET_FILE:test_codegen_arm64_call_temp_args>)
+
+## call with >8 integer args uses stack area (pending enable after backend support hardens)
+# add_executable(test_codegen_arm64_call_stack_args ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_call_stack_args.cpp)
+# target_link_libraries(test_codegen_arm64_call_stack_args PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
+# viper_add_ctest(test_codegen_arm64_call_stack_args $<TARGET_FILE:test_codegen_arm64_call_stack_args>)
 
 viper_add_ctest(NoAssertFalseGuard
         ${CMAKE_COMMAND}

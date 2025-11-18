@@ -219,11 +219,32 @@ Status: Added `src/codegen/common/ArgNormalize.hpp` and started consuming it fro
   - Lowering: IL→MIR recognizes single-block pattern `%t = call @callee(%paramK...)` feeding `ret %t` and emits `Bl callee`. Assumes args already in x0..x7 as per ABI (no marshalling yet).
   - Tests: `test_codegen_arm64_call.cpp` validates CLI emits `bl h` for a simple extern call.
 
+- Argument marshalling for simple calls (params + immediates) — DONE
+  - IL→MIR now marshals integer arguments into `x0..x7` for call sites when operands are entry parameters or constant i64 values.
+  - Handles register permutations and cycles using `x9` scratch; immediates are materialized with `mov`/`movz+movk` by the emitter.
+  - Tests: `test_codegen_arm64_call_args.cpp` covers `%a, 5` (RI), swapped params `%b, %a` (RR with cycle), and a three-arg case `%b, 7, %a`.
+
+- FramePlan integration in MIR emission — DONE
+  - `MFunction` now carries an optional list of callee‑saved GPRs (`savedGPRs`).
+  - `AsmEmitter::emitFunction` saves/restores those via `emitPrologue/Epilogue(FramePlan)`.
+  - Test: `test_emit_aarch64_mir_frameplan.cpp` verifies `stp/str` saves and matching restores are emitted around blocks.
+
+- One non-entry temp as call arg — DONE
+  - Lowerer can compute a limited expression into a scratch (X9/X10) and marshal it to the arg reg: rr arithmetic/bitwise, ri add/sub/shift-imm, and compares (rr/ri) over entry params only.
+  - Uses `cmp + cset` for compares; reuses existing param-indexing and condition mapping.
+  - Tests: `test_codegen_arm64_call_temp_args.cpp` covers rr (`add`), ri (`add` with imm), shift-imm, compare, and two-temp cases (`x9` and `x10`).
+
+- Outgoing stack-argument scaffolding — PARTIAL
+  - MIR: Added opcodes for stack pointer adjust and stores to outgoing arg area: `SubSpImm`, `AddSpImm`, `StrRegSpImm`.
+  - Emitter: Emits `sub sp, sp, #N`, `add sp, sp, #N`, and `str xN, [sp, #off]` for these MIR ops.
+  - Lowering: Extended IL→MIR call marshalling to allocate an outgoing stack area (16-byte aligned), materialize extra integer args (>8) into scratch regs, and store them at `[sp, #offset]` before `bl`, then deallocate the area after the call.
+  - Notes: CLI enablement for stack args is conservative; existing tests remain green. A focused test will be enabled once additional edge cases (e.g., reading this-function’s stack params) are covered.
+
 ## What’s Next
 
-- Argument marshalling for non-param operands (consts/temps) into x0..x7.
-- Support >8 integer args (stack area) and FPR args (v0..v7) in the call path.
-- Integrate FramePlan with MIR when callee-saved usage is detected.
+- Calls: Lift remaining temp restrictions (multiple temps beyond two; non-entry temps built from non-param operands); enable and harden >8 integer args path now that MIR/emitter scaffolding exists; add FPR args (v0..v7).
+- Control Flow: Broaden IL→MIR CF lowering for non-trivial diamonds (beyond simple cbr), as needed by future patterns.
+- Frame: Drive `savedGPRs` from lowering when callee-saved usage is detected (MIR/emitter support is ready); add FPR saves when FP usage lands.
 
 - Generalize parameter coverage to x2..x7 for `ret %paramN` and rr ops feeding ret; add tests for 3‑arg functions. — DONE
   - rr/ri ops normalize any arg index 0..7 using scratch; `ret %paramN` moves ArgRegN → x0 as needed.

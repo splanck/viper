@@ -25,6 +25,11 @@ enum class MOpcode
 {
     MovRR,
     MovRI,
+    // Stack pointer adjust (for outgoing arg area)
+    SubSpImm,
+    AddSpImm,
+    // Store to outgoing arg area at [sp, #imm]
+    StrRegSpImm,
     AddRRR,
     SubRRR,
     MulRRR,
@@ -74,6 +79,8 @@ struct MFunction
 {
     std::string name;
     std::vector<MBasicBlock> blocks;
+    // Optional: list of callee-saved GPRs to be saved/restored in prologue/epilogue.
+    std::vector<PhysReg> savedGPRs;
 };
 
 } // namespace viper::codegen::aarch64

@@ -2,18 +2,83 @@
 
 *Last Updated: 2025-11-18*
 
-**Bug Statistics**: 88 resolved, 2 outstanding bugs, 3 design decisions (93 total documented)
+**Bug Statistics**: 90 resolved, 2 outstanding bugs, 3 design decisions (95 total documented)
 
 **Test Suite Status**: 642/642 tests passing (100%)
 
-**STATUS**: ⚠️  **2 outstanding bugs** - Both root causes identified; workaround available for BUG-092
+**STATUS**: ⚠️ **2 OUTSTANDING BUGS** - BUG-094 (2D arrays in classes), BUG-095 (Array bounds check false positive)
 
 ---
 
 ## OUTSTANDING BUGS
 
+### BUG-094: 2D Array Assignments in Class Methods Store All Values at Same Location
+**Status**: ⚠️ **OUTSTANDING** - Discovered 2025-11-18
+**Discovered**: 2025-11-18 (Chess game development - board representation)
+**Category**: OOP / Arrays / Memory Management
+**Severity**: HIGH - Breaks 2D array usage in classes
+
+**Symptom**: When assigning values to different elements of a 2D array that is a class field, all assignments appear to write to the same location. Reading back the values shows the last assigned value in all positions.
+
+**Minimal Reproduction**:
+```basic
+CLASS Test
+    DIM pieces(7, 7) AS INTEGER
+
+    SUB New()
+        me.pieces(7, 0) = 4
+        me.pieces(7, 1) = 2
+        me.pieces(7, 2) = 3
+    END SUB
+
+    SUB Display()
+        PRINT me.pieces(7, 0)  ' Prints 3 (expect 4)
+        PRINT me.pieces(7, 1)  ' Prints 3 (expect 2)
+        PRINT me.pieces(7, 2)  ' Prints 3 (expect 3)
+    END SUB
+END CLASS
+```
+
+**Expected**: Each array element should store its assigned value
+**Actual**: All elements contain the last assigned value (3 in this case)
+
+**Impact**: HIGH - Makes it impossible to use 2D arrays as class fields for game boards, matrices, etc.
+
+**Workaround**: Use 1D arrays with calculated indices: `index = row * width + col`
+
+**Test File**: `/tmp/test_class_array.bas`
+
+### BUG-095: Array Bounds Check Reports False Positive with Valid Indices
+**Status**: ⚠️ **OUTSTANDING** - Discovered 2025-11-18
+**Discovered**: 2025-11-18 (Chess game with ANSI colors - Display function)
+**Category**: Runtime / Arrays / Bounds Checking
+**Severity**: MEDIUM - False error reported but program continues to work
+
+**Symptom**: Runtime reports "rt_arr_i32: index 72 out of bounds (len=64)" even though all array accesses use calculated indices that should be within bounds (0-63).
+
+**Context**: Chess game using 1D array of size 64 (DIM pieces(63)) with index calculation `row * 8 + col` where row ∈ [0,7] and col ∈ [0,7].
+
+**Observed Behavior**:
+- Array declared as `DIM pieces(63) AS INTEGER` (64 elements, indices 0-63)
+- All accesses use `idx = row * 8 + col` where both row and col are in range [0,7]
+- Maximum index should be 7*8+7 = 63 (valid)
+- Runtime reports accessing index 72 (which would be row=9, col=0: 9*8+0=72)
+- Despite error, program continues to execute and display correctly
+
+**Impact**: MEDIUM - Error message is confusing but doesn't prevent program from working
+
+**Workaround**: None needed - program works despite error message
+
+**Test File**: `/tmp/chess.bas`
+
+**Notes**: Index 72 suggests row=9 is being calculated somewhere, but code inspection shows all loops use correct bounds (row: 7 TO 0, col: 0 TO 7)
+
+---
+
+## OUTSTANDING BUGS (Previously Resolved)
+
 ### BUG-092: Nested IF Statements in FUNCTIONs Execute Incorrect Branch
-**Status**: ⚠️  **OUTSTANDING** - Discovered 2025-11-18
+**Status**: ✅ **RESOLVED** - Fixed 2025-11-18
 **Discovered**: 2025-11-18 (Chess game development - board display issue)
 **Category**: Control Flow / Functions / Conditionals
 **Severity**: HIGH - Causes incorrect program logic in FUNCTIONs
@@ -106,10 +171,48 @@ The bug is **specifically with single-line IF statements (without END IF) nested
 
 4. **Specific Behavior**: When the outer IF condition evaluates to TRUE, the ELSE branch is executed. When it evaluates to FALSE, the THEN branch is executed (but nested single-line IFs don't match, leaving variables unassigned).
 
-**Location**: The bug is likely in how single-line IF statements are parsed or lowered within FUNCTION contexts. The IF lowering code in `src/frontends/basic/lower/Lower_If.cpp` and condition branching in `src/frontends/basic/lower/Emit_Control.cpp` appear correct, suggesting the issue may be in how the AST is constructed for single-line IFs in FUNCTIONs or how control flow is wired during lowering.
+**Location**: Parser bug in `src/frontends/basic/Parser_Stmt_If.cpp:184`
+
+**FIX** (Implemented 2025-11-18):
+
+The bug was in the parser, not the lowerer. The `parseElseChain` function (which handles single-line IF statements) was calling `skipOptionalLineLabelAfterBreak` to look for ELSE/ELSEIF keywords. This function **skips line breaks**, allowing single-line IFs to incorrectly consume ELSE keywords from the next line when nested inside multi-line IF blocks.
+
+**Example of the bug**:
+```basic
+IF 1 = 1 THEN
+    IF 2 = 2 THEN PRINT "A"
+ELSE               REM This ELSE should belong to outer IF
+    PRINT "B"
+END IF
+```
+
+Before the fix, the parser produced this AST:
+```
+IF (1 = 1) THEN
+  (IF (2 = 2) THEN PRINT "A" ELSE PRINT "B")  ← ELSE wrongly attached to inner IF!
+```
+
+After the fix, the parser produces the correct AST:
+```
+IF (1 = 1) THEN
+  (IF (2 = 2) THEN PRINT "A")
+ELSE
+  PRINT "B"
+```
+
+**Changed**: `src/frontends/basic/Parser_Stmt_If.cpp:184`
+- **Before**: Called `skipOptionalLineLabelAfterBreak` which skips line breaks looking for ELSE
+- **After**: Removed the line break skipping; single-line IFs now only consume ELSE on the same line
+
+**Testing**: All 276 BASIC tests pass with the fix. The parser now correctly distinguishes between:
+- Single-line IFs with ELSE on same line: `IF cond THEN stmt1 ELSE stmt2`
+- Single-line IFs nested in multi-line blocks: ELSE belongs to the outer block
+
+**Files Changed**: `src/frontends/basic/Parser_Stmt_If.cpp`
+**Test Files**: `/tmp/test_parser_else_bug.bas`, `/tmp/test_single_line_if_func.bas`
 
 ### BUG-093: INPUT Statement Treats STRING Variables as Numbers
-**Status**: ⚠️  **OUTSTANDING** - Discovered 2025-11-18
+**Status**: ✅ **RESOLVED** - Fixed 2025-11-18
 **Discovered**: 2025-11-18 (Chess game development - interactive input attempt)
 **Category**: I/O / Type System / Variables
 **Severity**: HIGH - Blocks interactive string input in programs
@@ -168,11 +271,48 @@ if (forceDefault || itType == varTypes_.end())
 5. **BUG**: `varTypes_["move"] = Type::Int` (line 168) - **overwrites the STRING type!**
 6. All subsequent uses of `move` now treat it as INTEGER
 
-**The Fix**: Remove the `forceDefault` behavior for INPUT when a variable already has an explicitly declared type. INPUT should only set the default type for undeclared variables, not override explicit DIM declarations.
+**FIX** (Implemented 2025-11-18):
 
-**Files Involved**:
-- `src/frontends/basic/SemanticAnalyzer.cpp` (lines 149-169)
-- `src/frontends/basic/SemanticAnalyzer.Stmts.IO.cpp` (line 251 - calls resolveAndTrackSymbol)
+The fix was simple: remove the `forceDefault` logic that unconditionally overwrites variable types when processing INPUT statements.
+
+**Changed**: `src/frontends/basic/SemanticAnalyzer.cpp:149-152`
+
+**Before**:
+```cpp
+const bool forceDefault = kind == SymbolKind::InputTarget;
+auto itType = varTypes_.find(name);
+if (forceDefault || itType == varTypes_.end())
+{
+    // Sets default type, overwriting DIM types!
+    varTypes_[name] = defaultType;
+}
+```
+
+**After**:
+```cpp
+// BUG-093 fix: Do not override explicitly declared types (from DIM) when processing
+// INPUT statements. Only set default type if the variable has no type yet.
+auto itType = varTypes_.find(name);
+if (itType == varTypes_.end())
+{
+    // Only sets default type for undeclared variables
+    varTypes_[name] = defaultType;
+}
+```
+
+**Result**:
+- Variables declared with `DIM name AS STRING` now retain their STRING type through INPUT
+- Undeclared variables (e.g., `INPUT name$`) still get suffix-based default types
+- All 276 BASIC tests pass
+
+**Testing**:
+- ✅ `DIM move AS STRING; INPUT move; PRINT LEFT$(move, 1)` - Works correctly
+- ✅ `INPUT name$` (undeclared) - Still uses suffix-based STRING type
+- ✅ `INPUT age` (undeclared) - Still uses default INTEGER type
+- ✅ Mixed declared/undeclared variables - All work correctly
+
+**Files Changed**: `src/frontends/basic/SemanticAnalyzer.cpp`
+**Test Files**: `/tmp/test_input_string.bas`, `/tmp/test_input_undeclared.bas`, `/tmp/test_input_mixed.bas`
 
 ---
 

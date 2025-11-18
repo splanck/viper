@@ -164,6 +164,21 @@ void AsmEmitter::emitCset(std::ostream &os, PhysReg dst, const char *cond) const
     os << "  cset " << rn(dst) << ", " << cond << "\n";
 }
 
+void AsmEmitter::emitSubSp(std::ostream &os, long long bytes) const
+{
+    os << "  sub sp, sp, #" << bytes << "\n";
+}
+
+void AsmEmitter::emitAddSp(std::ostream &os, long long bytes) const
+{
+    os << "  add sp, sp, #" << bytes << "\n";
+}
+
+void AsmEmitter::emitStrToSp(std::ostream &os, PhysReg src, long long offset) const
+{
+    os << "  str " << rn(src) << ", [sp, #" << offset << "]\n";
+}
+
 void AsmEmitter::emitMovZ(std::ostream &os, PhysReg dst, unsigned imm16, unsigned lsl) const
 {
     os << "  movz " << rn(dst) << ", #" << imm16;
@@ -201,10 +216,13 @@ void AsmEmitter::emitRet(std::ostream &os) const
 void AsmEmitter::emitFunction(std::ostream &os, const MFunction &fn) const
 {
     emitFunctionHeader(os, fn.name);
-    emitPrologue(os);
+    const bool usePlan = !fn.savedGPRs.empty();
+    FramePlan plan;
+    if (usePlan) plan.saveGPRs = fn.savedGPRs;
+    if (usePlan) emitPrologue(os, plan); else emitPrologue(os);
     for (const auto &bb : fn.blocks)
         emitBlock(os, bb);
-    emitEpilogue(os);
+    if (usePlan) emitEpilogue(os, plan); else emitEpilogue(os);
 }
 
 void AsmEmitter::emitBlock(std::ostream &os, const MBasicBlock &bb) const
@@ -246,6 +264,9 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &mi) const
         case K::CmpRR: emitCmpRR(os, reg(mi.ops[0]), reg(mi.ops[1])); break;
         case K::CmpRI: emitCmpRI(os, reg(mi.ops[0]), imm(mi.ops[1])); break;
         case K::Cset: emitCset(os, reg(mi.ops[0]), mi.ops[1].cond); break;
+        case K::SubSpImm: emitSubSp(os, imm(mi.ops[0])); break;
+        case K::AddSpImm: emitAddSp(os, imm(mi.ops[0])); break;
+        case K::StrRegSpImm: emitStrToSp(os, reg(mi.ops[0]), imm(mi.ops[1])); break;
         case K::Br:
             os << "  b " << mi.ops[0].label << "\n"; break;
         case K::BCond:

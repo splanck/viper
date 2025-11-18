@@ -18,7 +18,7 @@ namespace viper::codegen::aarch64
 struct FramePlan
 {
     std::vector<PhysReg> saveGPRs; // e.g., X19..X28
+    std::vector<PhysReg> saveFPRs; // e.g., V8..V15 (as D regs)
 };
 
 } // namespace viper::codegen::aarch64
-

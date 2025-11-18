@@ -146,9 +146,10 @@ void SemanticAnalyzer::resolveAndTrackSymbol(std::string &name, SymbolKind kind)
     if (insertResult.second && activeProcScope_)
         activeProcScope_->noteSymbolInserted(name);
 
-    const bool forceDefault = kind == SymbolKind::InputTarget;
+    // BUG-093 fix: Do not override explicitly declared types (from DIM) when processing
+    // INPUT statements. Only set default type if the variable has no type yet.
     auto itType = varTypes_.find(name);
-    if (forceDefault || itType == varTypes_.end())
+    if (itType == varTypes_.end())
     {
         Type defaultType = Type::Int;
         if (!name.empty())
@@ -161,8 +162,6 @@ void SemanticAnalyzer::resolveAndTrackSymbol(std::string &name, SymbolKind kind)
         if (activeProcScope_)
         {
             std::optional<Type> previous;
-            if (itType != varTypes_.end())
-                previous = itType->second;
             activeProcScope_->noteVarTypeMutation(name, previous);
         }
         varTypes_[name] = defaultType;
