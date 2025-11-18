@@ -2,15 +2,411 @@
 
 *Last Updated: 2025-11-18*
 
-**Bug Statistics**: 93 resolved, 1 outstanding bug, 4 design decisions (98 total documented)
+**Bug Statistics**: 97 resolved, 0 outstanding bugs, 4 design decisions (101 total documented)
 
 **Test Suite Status**: 664/664 tests passing (100%)
 
-**STATUS**: ⚠️ **1 OUTSTANDING BUG** - BUG-097 (Method calls on array elements from procedures)
+**STATUS**: ✅ **ALL BUGS RESOLVED**
 
 ---
 
-## OUTSTANDING BUGS
+## RECENTLY RESOLVED BUGS
+
+### BUG-099: Functions Returning Objects Cause Type Mismatch / Object Parameters May Corrupt State
+**Status**: ✅ **RESOLVED** (2025-11-18)
+**Discovered**: 2025-11-18 (Poker game stress test)
+**Category**: OOP / Functions / Parameter Passing
+**Severity**: HIGH - Prevents returning objects from functions
+
+**Symptom**: When a function returns an object, assigning the result causes "call arg type mismatch" error. Additionally, passing objects as SUB/FUNCTION parameters may cause memory corruption or unexpected behavior.
+
+**Minimal Reproduction**:
+```basic
+CLASS Card
+    DIM value AS INTEGER
+    SUB Init(v AS INTEGER)
+        value = v
+    END SUB
+END CLASS
+
+CLASS Deck
+    DIM cards(51) AS Card
+
+    FUNCTION Draw() AS Card
+        Draw = cards(0)  ' Returns a Card object
+    END FUNCTION
+END CLASS
+
+DIM deck AS Deck
+deck = NEW Deck()
+DIM card AS Card
+card = deck.Draw()  ' ERROR: call arg type mismatch
+```
+
+**Expected**: Function should return object successfully
+**Actual**: Compilation error "call arg type mismatch" at assignment
+
+**Impact**: HIGH - Cannot use functions to return objects, limits OOP design patterns
+
+**Workaround**: Use SUB with object parameter instead of FUNCTION return value
+```basic
+SUB Draw(result AS Card)
+    result = cards(0)
+END SUB
+```
+
+**Test File**: `/tmp/bug_testing/poker_deck.bas`
+
+**Additional Notes**: Even with the SUB workaround, object parameters may exhibit issues with array bounds or state corruption
+
+**ROOT CAUSE** (Verified 2025-11-18):
+
+There are two distinct issues that combine to break object returns and object-typed flows across calls:
+
+- Methods cannot declare object return types; parser treats `AS <Class>` as a primitive type.
+  - In class method parsing (`Parser_Stmt_OOP.cpp:443-445`), when `AS` is encountered, the parser calls `parseTypeKeyword()` (`Parser_Stmt_Core.cpp:468-502`) which only recognizes primitive keywords (BOOLEAN, INTEGER, DOUBLE, SINGLE, STRING).
+  - **Code verification**: `parseTypeKeyword()` checks for known primitive types and returns `Type::I64` as the default (line 501) when an unrecognized identifier like "Card" is encountered.
+  - There is no capture of an explicit class return for methods (contrast with top-level `FunctionDecl.explicitClassRetQname`). As a result, methods like `FUNCTION Draw() AS Card` are parsed as returning `INTEGER` (I64), not a pointer/object.
+  - Downstream, procedure signatures for methods are built from this AST `Type`, so callers and assignments expect an `i64` return, causing "call arg type mismatch" when used as an object.
+
+- Object-return detection for function/method call expressions is incomplete/misleading when marking assignment targets as objects.
+  - In `LowerStmt_Runtime.cpp:lowerLet`, the LHS is marked as an object only when `resolveObjectClass(*stmt.expr)` returns a non-empty class.
+  - For free functions that legitimately return an object via `AS <Class>` (`FunctionDecl.explicitClassRetQname`), `resolveObjectClass(const CallExpr&)` returns empty, so the LHS variable is not marked as an object and ends up with a non-pointer slot/type, again causing mismatches.
+  - For methods, `resolveObjectClass(const MethodCallExpr&)` returns the base object’s class when the method’s return type is non-primitive, not the actual declared return class (see `Lower_OOP_Expr.cpp`: it returns `baseClass` rather than the method’s return class). This mis-tags the LHS with the wrong class and can route destructor/retain paths incorrectly, leading to leaks or corruption.
+
+Consequence:
+- Methods cannot return objects at all (treated as I64); free functions that return objects are not recognized at assignment sites; and method call returns mis-mark the target with the base class name.
+
+**FIX SUMMARY** (2025-11-18):
+
+The fix required comprehensive changes across the parser, semantic analysis, and lowering phases:
+
+**1. Parser Changes**:
+- Added `explicitClassRetQname` field to `MethodDecl` in `ast/StmtDecl.hpp:181-184`
+- Updated `Parser_Stmt_OOP.cpp:441-492` to parse `AS <Class>` for methods, storing the class name without canonicalization to preserve casing for method mangling
+
+**2. Field Type Handling**:
+- Fixed `Parser_Stmt_OOP.cpp:231` to preserve original class name casing for object fields (not canonicalize)
+- Updated `Lower_OOP_Scan.cpp:164` to propagate `objectClassName` from field declarations to layout
+
+**3. OOP Index**:
+- Added `returnClassName` field to `MethodSig` struct in `Semantic_OOP.hpp:47-49`
+- Updated `Semantic_OOP.cpp:372-383` to populate `returnClassName` when methods are registered
+- Added `Lowerer::findMethodReturnClassName()` in `Lowerer.cpp:135-154` to query method return class names
+
+**4. Method Signature Generation**:
+- Fixed `Lower_OOP_Emit.cpp:485-520` to use `Type::Kind::Ptr` for object-returning methods
+- Fixed `Lower_OOP_Emit.cpp:611-613` to use `methodRetType` (not AST type) when loading return values
+
+**5. Object Class Resolution**:
+- Updated `Lower_OOP_Expr.cpp:206-212` to call `findMethodReturnClassName()` instead of returning base class
+
+**6. Field Symbol Management**:
+- Fixed `Lowerer.Procedure.cpp:456-457` to preserve `isObject` and `objectClass` when creating field symbols
+
+**7. Destructor Generation**:
+- Updated `Lower_OOP_Emit.cpp:189-197` to handle object field releases in destructors
+
+**8. Return Value Handling**:
+- Fixed `Lower_OOP_Emit.cpp:598-604` to exclude method name from object release when returning an object, preventing the return value from being zeroed before return
+
+**Files Modified**:
+- `src/frontends/basic/ast/StmtDecl.hpp`
+- `src/frontends/basic/Parser_Stmt_OOP.cpp`
+- `src/frontends/basic/Semantic_OOP.hpp`
+- `src/frontends/basic/Semantic_OOP.cpp`
+- `src/frontends/basic/Lowerer.hpp`
+- `src/frontends/basic/Lowerer.cpp`
+- `src/frontends/basic/Lowerer.Procedure.cpp`
+- `src/frontends/basic/Lower_OOP_Emit.cpp`
+- `src/frontends/basic/Lower_OOP_Expr.cpp`
+- `src/frontends/basic/Lower_OOP_Scan.cpp`
+
+**Test Case**: Successfully executes object-returning methods with proper reference counting and type propagation
+
+---
+
+### BUG-100: AddFile Does Not Expose Global Variables Across File Boundaries
+**Status**: ✅ **RESOLVED** (2025-11-18)
+**Discovered**: 2025-11-18 (Poker game stress test - multi-file structure)
+**Category**: AddFile / Scope / Global Variables
+**Severity**: HIGH - Limits multi-file program structure
+
+**Symptom**: When using AddFile to include a BASIC file that declares global variables (arrays, scalars, etc.), those globals are not visible to:
+1. The main file that included them
+2. Other files included via AddFile
+
+**Minimal Reproduction**:
+```basic
+REM deck_module.bas
+DIM g_deck(51) AS Card  ' Global deck array
+
+SUB InitDeck()
+    ' Initialize deck
+END SUB
+```
+
+```basic
+REM utils_module.bas
+ADDFILE "deck_module.bas"
+
+SUB UseCard()
+    PRINT g_deck(0).ToString()  ' ERROR: unknown procedure 'g_deck'
+END SUB
+```
+
+```basic
+REM main.bas
+ADDFILE "deck_module.bas"
+ADDFILE "utils_module.bas"
+
+InitDeck()
+PRINT g_deck(0).ToString()  ' ERROR: unknown procedure 'g_deck'
+```
+
+**Expected**: Global variables from included files should be accessible in including scope
+**Actual**: Compilation error "unknown procedure 'g_deck'"
+
+**Impact**: HIGH - Cannot share global state across multiple files, limits modular code organization
+
+**Workaround**: Place all code in a single file instead of using AddFile for modular structure
+
+**Test Files**:
+- `/tmp/bug_testing/poker_game_test.bas` (fails with AddFile)
+- `/tmp/bug_testing/poker_single_file_test.bas` (works without AddFile)
+
+**Additional Notes**: AddFile appears to include code (functions/subs work) but does not expose global variable declarations. This makes it difficult to structure larger programs into separate modules with shared state.
+
+**ROOT CAUSE** (Verified 2025-11-18):
+
+Parser-level array disambiguation is not propagated across ADDFILE boundaries, causing array element syntax `name(i)` from an included file to be misparsed as a procedure call in the including file.
+
+- The parser uses a per-parser `arrays_` registry to differentiate `arr(i)` (ArrayExpr) from `proc(i)` (CallExpr) while parsing expressions.
+- ADDFILE is implemented by spawning a child `Parser` that parses the included file into a separate `Program`, then splicing its `procs` and `main` into the parent program (`Parser.cpp:handleTopLevelAddFile` line 370).
+- **Code verification** (`Parser.cpp:451-465`): Child parser is created at line 451, program parsed at line 452, then only `procs` and `main` are merged at lines 462-465:
+  ```cpp
+  Parser child(contents, newFileId, emitter_, sm_, includeStack_, /*suppress*/ true);
+  auto subprog = child.parseProgram();
+  // Merge procs and main - but NOT arrays_ registry!
+  for (auto &p : subprog->procs)
+      prog.procs.push_back(std::move(p));
+  for (auto &s : subprog->main)
+      prog.main.push_back(std::move(s));
+  ```
+- Any `DIM` arrays declared inside the included file populate the child parser's `arrays_`, but this registry is not merged back into the parent parser. Later, when the parent parser parses code that references those arrays (in main or in other included files), it does not know the identifiers are arrays and parses `g_deck(0)` as a `CallExpr` to a procedure named `g_deck`.
+- This produces diagnostics like "unknown procedure 'g_deck'" even though `DIM g_deck(...)` exists in an included file.
+
+Consequence:
+- Functions and SUBs from included files work (because they are spliced as declarations), but array element references to globals declared in included files are misparsed and rejected.
+
+**FIX SUMMARY** (2025-11-18):
+
+The fix required two changes to the ADDFILE handling in Parser.cpp:
+
+**1. Propagate Parent Arrays to Child**:
+- Before parsing the included file, copy the parent parser's `arrays_` registry to the child parser (`Parser.cpp:453`)
+- This allows the child parser to know about arrays declared in previously included files and the parent file
+- Without this, a file included via ADDFILE cannot reference arrays from earlier includes
+
+**2. Merge Child Arrays Back to Parent**:
+- After parsing the included file, merge the child parser's `arrays_` registry back into the parent (`Parser.cpp:468-469`)
+- This ensures arrays declared in the included file are visible to code parsed after the ADDFILE statement
+- Without this, the parent file and subsequent includes cannot reference arrays declared in this include
+
+**Files Modified**:
+- `src/frontends/basic/Parser.cpp:453` - Copy parent arrays to child before parsing
+- `src/frontends/basic/Parser.cpp:468-469` - Merge child arrays to parent after parsing
+
+**Test Cases**:
+- Single AddFile: File declaring array can be included and array is accessible
+- Multiple AddFile: Arrays visible across multiple included files in sequence
+- Nested references: File B included via AddFile can reference arrays from File A also included via AddFile
+
+---
+
+### BUG-101: IF Inside FOR Loop with Non-Local Arrays Causes "unknown label bb_0"
+**Status**: ✅ **RESOLVED** (2025-11-18)
+**Discovered**: 2025-11-18 (Poker game stress test - hand evaluation logic)
+**Category**: Code Generation / Control Flow / Arrays
+**Severity**: CRITICAL - Prevents common loop+conditional patterns with arrays
+
+**Symptom**: When a FOR loop contains an IF statement that accesses non-local arrays (global arrays or array parameters), the generated IL code references labels `bb_0` and `bb_1` that are never defined, causing runtime error "unknown label bb_0".
+
+**Minimal Reproduction** (Global Array):
+```basic
+DIM g_arr(4) AS INTEGER
+
+g_arr(0) = 10
+g_arr(1) = 20
+
+FUNCTION Test() AS INTEGER
+    DIM i AS INTEGER
+    DIM result AS INTEGER
+    result = 1
+
+    FOR i = 0 TO 3
+        IF g_arr(i) <> 99 THEN  ' ERROR: unknown label bb_0
+            result = 0
+        END IF
+    NEXT i
+
+    Test = result
+END FUNCTION
+```
+
+**Minimal Reproduction** (Array Parameter):
+```basic
+FUNCTION TestParam(arr() AS INTEGER) AS INTEGER
+    DIM i AS INTEGER
+    DIM result AS INTEGER
+    result = 1
+
+    FOR i = 0 TO 3
+        IF arr(i) <> 99 THEN  ' ERROR: unknown label bb_0
+            result = 0
+        END IF
+    NEXT i
+
+    TestParam = result
+END FUNCTION
+```
+
+**Expected**: Function executes correctly, returning 0 (since no elements equal 99)
+**Actual**: Runtime error "TEST: unknown label bb_0"
+
+**Impact**: CRITICAL - Cannot use IF statements inside FOR loops with global arrays or array parameters, making it nearly impossible to write functions that validate or process arrays
+
+**ROOT CAUSE** (Verified 2025-11-18):
+
+Pointer invalidation of IF-block targets during condition lowering when the condition references non-local arrays (globals or array params). The array bounds-check path inserts new blocks into the function during expression lowering, which can reallocate the `blocks` vector and invalidate previously captured block pointers for the IF's true/false targets.
+
+**Detailed code flow**:
+
+1. **Block pointers captured** (`lower/Lower_If.cpp:180-184`):
+   ```cpp
+   auto *testBlk = &func->blocks[blocks.tests[i]];    // Line 180
+   auto *thenBlk = &func->blocks[blocks.thens[i]];    // Line 181
+   auto *falseBlk = ...;                               // Lines 182-183
+   lowerIfCondition(*condExprs[i], testBlk, thenBlk, falseBlk, stmt.loc);  // Line 184
+   ```
+
+2. **Condition lowering** (`lower/Emit_Control.cpp:95-103`):
+   - `lowerIfCondition` forwards to `lowerCondBranch` (line 102) with the block pointers
+
+3. **Expression evaluation triggers reallocation** (`lower/Emit_Control.cpp:147-149`):
+   ```cpp
+   RVal cond = lowerExpr(expr);                        // Line 147 - adds bounds-check blocks!
+   cond = coerceToBool(std::move(cond), loc);
+   emitCBr(cond.value, trueBlk, falseBlk);            // Line 149 - uses STALE pointers!
+   ```
+   - When `lowerExpr(expr)` encounters array access, it calls `lowerArrayAccess` which adds bc_oob/bc_ok blocks
+   - These `builder->addBlock(*func, ...)` calls reallocate `func->blocks` vector
+   - This invalidates the `thenBlk` and `falseBlk` pointers captured at step 1
+
+4. **Fallback label assignment** (`lower/common/CommonLowering.cpp:317-320`):
+   ```cpp
+   if (t->label.empty())                               // Line 317 - accesses STALE pointer!
+       t->label = lowerer_->nextFallbackBlockLabel();  // Assigns "bb_0"
+   if (f->label.empty())                               // Line 319
+       f->label = lowerer_->nextFallbackBlockLabel();  // Assigns "bb_1"
+   ```
+   - Accessing `t->label` on stale pointer reads invalid memory, appears empty
+   - Fallback labels `bb_0` and `bb_1` are assigned, but no blocks with these labels exist
+
+**Note**: The logical AND/OR branch in `lowerCondBranch` (lines 114-142) correctly handles this by:
+- Converting pointers to indices immediately (lines 114-115)
+- Refreshing pointers from indices after recursive calls (lines 136-139)
+
+The simple expression path (lines 147-149) lacks this refresh logic.
+
+Why only non-local arrays: array bounds checks for locals are emitted earlier in contexts that do not cause reallocation at this point (or the pointer set happens after), so the pointer invalidation does not trigger. Globals/params trigger the block insertions precisely during the IF condition lowering path.
+
+Fix direction:
+- Avoid passing raw block pointers into `lowerCondBranch` that outlive expression lowering. Pass block indices or refresh the `thenBlk`/`falseBlk` pointers after expression lowering and before emitting the final `emitCBr`. This mirrors the existing pattern in `lowerIfBranch`, which passes the exit block by index to avoid stale pointers.
+- Alternatively, pre-create and label the target blocks and capture their indices, then reload pointers after the condition lowering (post array bounds-check block insertions) before emitting `emitCBr`.
+```il
+%t23 = trunc1 %t22
+.loc 1 40 21
+cbr %t23, bb_0, bb_1
+bc_oob0_TESTGLOBAL:
+  call @rt_arr_oob_panic(%t11, %t12)
+  trap
+}  ; Function ends without defining bb_0 or bb_1
+```
+
+**Workaround**: Only use simple local arrays (declared in the same function scope) with IF inside FOR loops. Avoid global arrays and array parameters.
+
+**Works**:
+- FOR loop with IF accessing local arrays declared in same function
+- Multiple FOR loops without IF
+- FOR loops with IF and non-array variables
+
+**Fails**:
+- FOR loop with IF accessing global arrays
+- FOR loop with IF accessing array parameters (passed to function)
+- Nested FOR with IF, followed by another FOR with IF
+- Any combination of non-local array access within IF inside FOR
+
+**Test Files**:
+- `/tmp/bug_testing/test_local_vs_global_array.bas` - Demonstrates local vs global arrays
+- `/tmp/bug_testing/test_array_params.bas` - Demonstrates array parameter issue
+- `/tmp/bug_testing/test_if_array_compare.bas` - Various IF patterns
+- `/tmp/bug_testing/test_expr_loop_bounds.bas` - Expression-based loop bounds and nested loops
+- `/tmp/bug_testing/test_multiple_for_loops.bas` - Multiple FOR loops in same function
+- `/tmp/bug_testing/poker_comprehensive.bas` - Real-world use case (IsStraight function)
+
+**Affected Code**: Likely in `src/frontends/basic/lower/` - IF statement code generation within FOR loop context when accessing global variables
+
+**RESOLUTION** (2025-11-18):
+
+Fixed by implementing block pointer refresh logic in `src/frontends/basic/lower/Emit_Control.cpp:147-165`. The fix mirrors the existing pattern used for logical AND/OR branches (lines 114-142) where block indices are captured before expression lowering and pointers are refreshed afterward.
+
+**Changes Made**:
+
+1. **Captured block indices before expression lowering** (`Emit_Control.cpp:147-156`):
+   - Convert block pointers to stable indices before calling `lowerExpr()`
+   - Indices remain valid even when `func->blocks` vector is reallocated
+
+2. **Refreshed pointers after expression lowering** (`Emit_Control.cpp:161-165`):
+   - Reload function pointer (may have changed due to vector reallocation)
+   - Rebuild block pointers from the stable indices
+   - Use refreshed pointers in `emitCBr()` call
+
+**Code Changes**:
+```cpp
+// Before (lines 147-149):
+RVal cond = lowerExpr(expr);
+cond = coerceToBool(std::move(cond), loc);
+emitCBr(cond.value, trueBlk, falseBlk);
+
+// After (lines 147-165):
+// Capture block indices before lowerExpr, which may add blocks
+ProcedureContext &ctx = context();
+Function *func = ctx.function();
+auto indexOf = [&](BasicBlock *bb) {
+    assert(bb && "lowerCondBranch requires non-null block");
+    return static_cast<size_t>(bb - &func->blocks[0]);
+};
+size_t trueIdx = indexOf(trueBlk);
+size_t falseIdx = indexOf(falseBlk);
+
+RVal cond = lowerExpr(expr);
+cond = coerceToBool(std::move(cond), loc);
+
+// Refresh pointers after potential reallocation
+func = ctx.function();
+BasicBlock *trueTarget = &func->blocks[trueIdx];
+BasicBlock *falseTarget = &func->blocks[falseIdx];
+emitCBr(cond.value, trueTarget, falseTarget);
+```
+
+**Verification**:
+- Global array test: `FOR i = 0 TO 3: IF g_arr(i) <> 99 THEN result = 0: NEXT` ✅
+- Array parameter test: Same pattern with array passed as function parameter ✅
+- Complex nested loops: 2D arrays with nested FOR/IF ✅
+- All 664 tests passing ✅
+
+---
 
 ### BUG-094: 2D Array Assignments in Class Methods Store All Values at Same Location
 **Status**: ✅ **RESOLVED** - Fixed 2025-11-18 (verified and completed 2025-11-18)

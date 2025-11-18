@@ -144,9 +144,25 @@ void Lowerer::lowerCondBranch(const Expr &expr,
         }
     }
 
+    // BUG-101 fix: Capture block indices before lowerExpr, which may add blocks
+    // (e.g., array bounds checks) and invalidate the trueBlk/falseBlk pointers
+    ProcedureContext &ctx = context();
+    Function *func = ctx.function();
+    auto indexOf = [&](BasicBlock *bb) {
+        assert(bb && "lowerCondBranch requires non-null block");
+        return static_cast<size_t>(bb - &func->blocks[0]);
+    };
+    size_t trueIdx = indexOf(trueBlk);
+    size_t falseIdx = indexOf(falseBlk);
+
     RVal cond = lowerExpr(expr);
     cond = coerceToBool(std::move(cond), loc);
-    emitCBr(cond.value, trueBlk, falseBlk);
+
+    // Refresh pointers after potential reallocation
+    func = ctx.function();
+    BasicBlock *trueTarget = &func->blocks[trueIdx];
+    BasicBlock *falseTarget = &func->blocks[falseIdx];
+    emitCBr(cond.value, trueTarget, falseTarget);
 }
 
 /// @brief Push a new exception handler for the active procedure.

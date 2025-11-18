@@ -449,6 +449,8 @@ bool Parser::handleTopLevelAddFile(Program &prog)
 
     // Parse included file with suppressed undefined-label check.
     Parser child(contents, newFileId, emitter_, sm_, includeStack_, /*suppress*/ true);
+    // BUG-100 fix: Copy parent's array registry to child so it knows about existing arrays
+    child.arrays_ = arrays_;
     auto subprog = child.parseProgram();
     if (!subprog)
     {
@@ -463,6 +465,10 @@ bool Parser::handleTopLevelAddFile(Program &prog)
         prog.procs.push_back(std::move(p));
     for (auto &s : subprog->main)
         prog.main.push_back(std::move(s));
+
+    // BUG-100 fix: Merge array registry so included files' arrays are visible
+    for (const auto &arrName : child.arrays_)
+        arrays_.insert(arrName);
 
     if (includeStack_ && !includeStack_->empty())
         includeStack_->pop_back();
