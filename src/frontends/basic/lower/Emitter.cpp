@@ -496,6 +496,10 @@ void Emitter::releaseDeferredTemps()
         }
 
         // Object: emit conditional destructor + free when last ref.
+        // BUG-086 fix: Request runtime helpers before using them
+        lowerer_.requestHelper(Lowerer::RuntimeFeature::ObjReleaseChk0);
+        lowerer_.requestHelper(Lowerer::RuntimeFeature::ObjFree);
+
         auto &ctx = lowerer_.context();
         auto *func = ctx.function();
         if (!func || !ctx.current())
@@ -651,6 +655,10 @@ void Emitter::releaseObjectLocals(const std::unordered_set<std::string> &paramNa
     {
         if (!info.referenced || !info.isObject)
             continue;
+        // BUG-086 fix: Object arrays have isObject=true but should be released
+        // by releaseArrayLocals, not here. Skip arrays.
+        if (info.isArray)
+            continue;
         if (name == "ME")
             continue;
         if (paramNames.contains(name))
@@ -749,6 +757,10 @@ void Emitter::releaseObjectParams(const std::unordered_set<std::string> &paramNa
     for (auto &[name, info] : lowerer_.symbols)
     {
         if (!info.referenced || !info.isObject)
+            continue;
+        // BUG-086 fix: Object arrays have isObject=true but should be released
+        // by releaseArrayParams, not here. Skip arrays.
+        if (info.isArray)
             continue;
         if (name == "ME")
             continue;

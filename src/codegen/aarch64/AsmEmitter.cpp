@@ -76,6 +76,36 @@ void AsmEmitter::emitSubRI(std::ostream &os, PhysReg dst, PhysReg lhs, long long
     os << "  sub " << rn(dst) << ", " << rn(lhs) << ", #" << imm << "\n";
 }
 
+void AsmEmitter::emitAndRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const
+{
+    os << "  and " << rn(dst) << ", " << rn(lhs) << ", " << rn(rhs) << "\n";
+}
+
+void AsmEmitter::emitOrrRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const
+{
+    os << "  orr " << rn(dst) << ", " << rn(lhs) << ", " << rn(rhs) << "\n";
+}
+
+void AsmEmitter::emitEorRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const
+{
+    os << "  eor " << rn(dst) << ", " << rn(lhs) << ", " << rn(rhs) << "\n";
+}
+
+void AsmEmitter::emitLslRI(std::ostream &os, PhysReg dst, PhysReg lhs, long long sh) const
+{
+    os << "  lsl " << rn(dst) << ", " << rn(lhs) << ", #" << sh << "\n";
+}
+
+void AsmEmitter::emitLsrRI(std::ostream &os, PhysReg dst, PhysReg lhs, long long sh) const
+{
+    os << "  lsr " << rn(dst) << ", " << rn(lhs) << ", #" << sh << "\n";
+}
+
+void AsmEmitter::emitAsrRI(std::ostream &os, PhysReg dst, PhysReg lhs, long long sh) const
+{
+    os << "  asr " << rn(dst) << ", " << rn(lhs) << ", #" << sh << "\n";
+}
+
 void AsmEmitter::emitRet(std::ostream &os) const
 {
     os << "  ret\n";

@@ -39,6 +39,14 @@ class AsmEmitter
     // add/sub with small immediate
     void emitAddRI(std::ostream &os, PhysReg dst, PhysReg lhs, long long imm) const;
     void emitSubRI(std::ostream &os, PhysReg dst, PhysReg lhs, long long imm) const;
+    // bitwise rr
+    void emitAndRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const;
+    void emitOrrRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const;
+    void emitEorRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const;
+    // shifts by immediate
+    void emitLslRI(std::ostream &os, PhysReg dst, PhysReg lhs, long long sh) const;
+    void emitLsrRI(std::ostream &os, PhysReg dst, PhysReg lhs, long long sh) const;
+    void emitAsrRI(std::ostream &os, PhysReg dst, PhysReg lhs, long long sh) const;
     void emitRet(std::ostream &os) const;
 
   private:

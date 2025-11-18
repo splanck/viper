@@ -161,7 +161,7 @@ class SelectCaseLowering
     void emitArmBody(const std::vector<StmtPtr> &body,
                      il::core::BasicBlock *entry,
                      il::support::SourceLoc loc,
-                     il::core::BasicBlock *endBlk);
+                     size_t endBlkIdx);
 
     Lowerer &lowerer_;
 };

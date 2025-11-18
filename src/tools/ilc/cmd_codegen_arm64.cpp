@@ -145,14 +145,16 @@ int emitAssembly(const Options &opts)
                         }
                     }
                 }
-                // Pattern A: single block, penultimate add/sub/mul feeding ret, both operands are entry params 0/1
+                // Pattern A: single block, penultimate rr op feeding ret, both operands are entry params (indices 0..7)
                 if (fn.blocks.size() == 1 && bb.instructions.size() >= 2 && bb.params.size() >= 2)
                 {
                     const auto &addI = bb.instructions[bb.instructions.size() - 2];
                     const auto &retI = bb.instructions.back();
                     if ((addI.op == il::core::Opcode::Add || addI.op == il::core::Opcode::IAddOvf ||
                          addI.op == il::core::Opcode::Sub || addI.op == il::core::Opcode::ISubOvf ||
-                         addI.op == il::core::Opcode::Mul || addI.op == il::core::Opcode::IMulOvf) &&
+                         addI.op == il::core::Opcode::Mul || addI.op == il::core::Opcode::IMulOvf ||
+                         addI.op == il::core::Opcode::And || addI.op == il::core::Opcode::Or ||
+                         addI.op == il::core::Opcode::Xor) &&
                         retI.op == il::core::Opcode::Ret && addI.result && !retI.operands.empty())
                     {
                         const auto &retV = retI.operands[0];
@@ -161,32 +163,58 @@ int emitAssembly(const Options &opts)
                             addI.operands[0].kind == il::core::Value::Kind::Temp &&
                             addI.operands[1].kind == il::core::Value::Kind::Temp)
                         {
-                            const unsigned p0 = bb.params[0].id;
-                            const unsigned p1 = bb.params[1].id;
-                            const unsigned o0 = addI.operands[0].id;
-                            const unsigned o1 = addI.operands[1].id;
-                            if ((o0 == p0 && o1 == p1) || (o0 == p1 && o1 == p0))
+                            auto indexOfParam = [&](unsigned tempId) -> int {
+                                for (size_t i = 0; i < bb.params.size(); ++i)
+                                {
+                                    if (bb.params[i].id == tempId) return static_cast<int>(i);
+                                }
+                                return -1;
+                            };
+                            const int idx0 = indexOfParam(addI.operands[0].id);
+                            const int idx1 = indexOfParam(addI.operands[1].id);
+                            if (idx0 >= 0 && idx1 >= 0 && idx0 < 8 && idx1 < 8)
                             {
-                                if (addI.op == il::core::Opcode::Add || addI.op == il::core::Opcode::IAddOvf)
-                                    emitter.emitAddRRR(out, PhysReg::X0, PhysReg::X0, PhysReg::X1);
-                                else if (addI.op == il::core::Opcode::Sub || addI.op == il::core::Opcode::ISubOvf)
-                                    emitter.emitSubRRR(out, PhysReg::X0, PhysReg::X0, PhysReg::X1);
-                                else
-                                    emitter.emitMulRRR(out, PhysReg::X0, PhysReg::X0, PhysReg::X1);
+                                // Move argument regs for idx0/idx1 into x0/x1 using x9 as scratch
+                                const auto &argOrder = ti.intArgOrder;
+                                const PhysReg src0 = argOrder[static_cast<size_t>(idx0)];
+                                const PhysReg src1 = argOrder[static_cast<size_t>(idx1)];
+                                emitter.emitMovRR(out, PhysReg::X9, src1);
+                                emitter.emitMovRR(out, PhysReg::X0, src0);
+                                emitter.emitMovRR(out, PhysReg::X1, PhysReg::X9);
+                                using il::core::Opcode;
+                                switch (addI.op)
+                                {
+                                    case Opcode::Add: case Opcode::IAddOvf:
+                                        emitter.emitAddRRR(out, PhysReg::X0, PhysReg::X0, PhysReg::X1); break;
+                                    case Opcode::Sub: case Opcode::ISubOvf:
+                                        emitter.emitSubRRR(out, PhysReg::X0, PhysReg::X0, PhysReg::X1); break;
+                                    case Opcode::Mul: case Opcode::IMulOvf:
+                                        emitter.emitMulRRR(out, PhysReg::X0, PhysReg::X0, PhysReg::X1); break;
+                                    case Opcode::And:
+                                        emitter.emitAndRRR(out, PhysReg::X0, PhysReg::X0, PhysReg::X1); break;
+                                    case Opcode::Or:
+                                        emitter.emitOrrRRR(out, PhysReg::X0, PhysReg::X0, PhysReg::X1); break;
+                                    case Opcode::Xor:
+                                        emitter.emitEorRRR(out, PhysReg::X0, PhysReg::X0, PhysReg::X1); break;
+                                    default: break;
+                                }
                                 goto after_body;
                             }
                         }
                     }
                 }
 
-                // Pattern A.1: single block, penultimate add/sub with one entry param and one immediate
+                // Pattern A.1: single block, penultimate add/sub/shifts with one entry param (index 0..7) and one immediate
                 if (fn.blocks.size() == 1 && bb.instructions.size() >= 2 && !bb.params.empty())
                 {
                     const auto &binI = bb.instructions[bb.instructions.size() - 2];
                     const auto &retI = bb.instructions.back();
                     const bool isAdd = (binI.op == il::core::Opcode::Add || binI.op == il::core::Opcode::IAddOvf);
                     const bool isSub = (binI.op == il::core::Opcode::Sub || binI.op == il::core::Opcode::ISubOvf);
-                    if ((isAdd || isSub) && retI.op == il::core::Opcode::Ret && binI.result &&
+                    const bool isShl = (binI.op == il::core::Opcode::Shl);
+                    const bool isLShr = (binI.op == il::core::Opcode::LShr);
+                    const bool isAShr = (binI.op == il::core::Opcode::AShr);
+                    if ((isAdd || isSub || isShl || isLShr || isAShr) && retI.op == il::core::Opcode::Ret && binI.result &&
                         !retI.operands.empty() && binI.operands.size() == 2)
                     {
                         const auto &retV = retI.operands[0];
@@ -196,41 +224,42 @@ int emitAssembly(const Options &opts)
                             const auto &o1 = binI.operands[1];
                             auto emitImm = [&](unsigned paramIndex, long long imm)
                             {
-                                if (paramIndex == 0)
+                                const auto &argOrder = ti.intArgOrder;
+                                if (paramIndex < argOrder.size())
                                 {
+                                    const PhysReg src = argOrder[paramIndex];
+                                    emitter.emitMovRR(out, PhysReg::X0, src);
                                     if (isAdd) emitter.emitAddRI(out, PhysReg::X0, PhysReg::X0, imm);
-                                    else emitter.emitSubRI(out, PhysReg::X0, PhysReg::X0, imm);
-                                }
-                                else if (paramIndex == 1)
-                                {
-                                    emitter.emitMovRR(out, PhysReg::X0, PhysReg::X1);
-                                    if (isAdd) emitter.emitAddRI(out, PhysReg::X0, PhysReg::X0, imm);
-                                    else emitter.emitSubRI(out, PhysReg::X0, PhysReg::X0, imm);
+                                    else if (isSub) emitter.emitSubRI(out, PhysReg::X0, PhysReg::X0, imm);
+                                    else if (isShl) emitter.emitLslRI(out, PhysReg::X0, PhysReg::X0, imm);
+                                    else if (isLShr) emitter.emitLsrRI(out, PhysReg::X0, PhysReg::X0, imm);
+                                    else if (isAShr) emitter.emitAsrRI(out, PhysReg::X0, PhysReg::X0, imm);
                                 }
                             };
                             if (o0.kind == il::core::Value::Kind::Temp && o1.kind == il::core::Value::Kind::ConstInt)
                             {
-                                if (bb.params.size() >= 1 && o0.id == bb.params[0].id)
+                                for (size_t i = 0; i < bb.params.size(); ++i)
                                 {
-                                    emitImm(0, o1.i64);
-                                    goto after_body;
-                                }
-                                if (bb.params.size() >= 2 && o0.id == bb.params[1].id)
-                                {
-                                    emitImm(1, o1.i64);
-                                    goto after_body;
+                                    if (bb.params[i].id == o0.id && i < 8)
+                                    {
+                                        emitImm(static_cast<unsigned>(i), o1.i64);
+                                        goto after_body;
+                                    }
                                 }
                             }
                             if (o1.kind == il::core::Value::Kind::Temp && o0.kind == il::core::Value::Kind::ConstInt)
                             {
-                                if (bb.params.size() >= 1 && o1.id == bb.params[0].id)
+                                // Only support commutative/add or shifts when imm is on lhs
+                                if (isAdd || isShl || isLShr || isAShr)
                                 {
-                                    // Note: for sub with reversed operands (imm - param), skip
-                                    if (isAdd) { emitImm(0, o0.i64); goto after_body; }
-                                }
-                                if (bb.params.size() >= 2 && o1.id == bb.params[1].id)
-                                {
-                                    if (isAdd) { emitImm(1, o0.i64); goto after_body; }
+                                    for (size_t i = 0; i < bb.params.size(); ++i)
+                                    {
+                                        if (bb.params[i].id == o1.id && i < 8)
+                                        {
+                                            emitImm(static_cast<unsigned>(i), o0.i64);
+                                            goto after_body;
+                                        }
+                                    }
                                 }
                             }
                         }

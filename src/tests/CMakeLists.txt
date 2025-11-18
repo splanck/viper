@@ -98,6 +98,14 @@ add_executable(test_codegen_arm64_add_imm ${CMAKE_CURRENT_SOURCE_DIR}/unit/codeg
 target_link_libraries(test_codegen_arm64_add_imm PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
 viper_add_ctest(test_codegen_arm64_add_imm test_codegen_arm64_add_imm)
 
+add_executable(test_codegen_arm64_bitwise ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_bitwise.cpp)
+target_link_libraries(test_codegen_arm64_bitwise PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
+viper_add_ctest(test_codegen_arm64_bitwise test_codegen_arm64_bitwise)
+
+add_executable(test_codegen_arm64_params_wide ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_params_wide.cpp)
+target_link_libraries(test_codegen_arm64_params_wide PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
+viper_add_ctest(test_codegen_arm64_params_wide test_codegen_arm64_params_wide)
+
 viper_add_ctest(NoAssertFalseGuard
         ${CMAKE_COMMAND}
         -DVIPER_SOURCE_DIR=${CMAKE_SOURCE_DIR}

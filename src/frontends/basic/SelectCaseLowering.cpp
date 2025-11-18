@@ -102,21 +102,25 @@ void SelectCaseLowering::lower(const SelectCaseStmt &stmt)
         lowerNumericDispatch(stmt, model, blocks, selWide, sel);
     }
 
-    func = ctx.function();
-    auto *endBlk = &func->blocks[blocks.endIdx];
-
+    // BUG-087 fix: Pass end block INDEX instead of pointer, since nested statements
+    // (like IF) can cause func->blocks vector to reallocate, invalidating pointers.
     for (size_t i = 0; i < stmt.arms.size(); ++i)
     {
+        func = ctx.function();
         auto *armBlk = &func->blocks[blocks.armIdx[i]];
-        emitArmBody(stmt.arms[i].body, armBlk, stmt.arms[i].range.begin, endBlk);
+        emitArmBody(stmt.arms[i].body, armBlk, stmt.arms[i].range.begin, blocks.endIdx);
     }
 
     if (model.hasCaseElse)
     {
+        func = ctx.function();
         auto *caseElseBlk = &func->blocks[*blocks.elseIdx];
-        emitArmBody(stmt.elseBody, caseElseBlk, stmt.range.end, endBlk);
+        emitArmBody(stmt.elseBody, caseElseBlk, stmt.range.end, blocks.endIdx);
     }
 
+    // BUG-087 fix: Refresh endBlk pointer after emitting arm bodies
+    func = ctx.function();
+    auto *endBlk = &func->blocks[blocks.endIdx];
     ctx.setCurrent(endBlk);
 }
 
@@ -586,11 +590,11 @@ void SelectCaseLowering::emitSwitchJumpTable(const SelectCaseStmt &stmt,
 /// @param body AST nodes forming the arm body.
 /// @param entry Block that serves as the entry point for the arm.
 /// @param loc Source location used for synthesized branch diagnostics.
-/// @param endBlk Successor block executed after the arm completes.
+/// @param endBlkIdx Index of successor block executed after the arm completes.
 void SelectCaseLowering::emitArmBody(const std::vector<StmtPtr> &body,
                                      il::core::BasicBlock *entry,
                                      il::support::SourceLoc loc,
-                                     il::core::BasicBlock *endBlk)
+                                     size_t endBlkIdx)
 {
     auto &ctx = lowerer_.context();
     ctx.setCurrent(entry);
@@ -607,6 +611,10 @@ void SelectCaseLowering::emitArmBody(const std::vector<StmtPtr> &body,
     auto *bodyCur = ctx.current();
     if (bodyCur && !bodyCur->terminated)
     {
+        // BUG-087 fix: Refresh endBlk pointer after lowering statements, since
+        // nested control flow (IF, FOR, etc.) can cause func->blocks to reallocate.
+        auto *func = ctx.function();
+        auto *endBlk = &func->blocks[endBlkIdx];
         lowerer_.curLoc = loc;
         lowerer_.emitBr(endBlk);
     }
