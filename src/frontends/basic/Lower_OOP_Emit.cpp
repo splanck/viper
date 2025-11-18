@@ -185,6 +185,17 @@ void Lowerer::emitFieldReleaseSequence(Value selfPtr, const ClassLayout &layout)
                                     Type(Type::Kind::Ptr),
                                     selfPtr,
                                     Value::constInt(static_cast<long long>(field.offset)));
+
+        // BUG-099 fix: Handle object field release
+        if (!field.objectClassName.empty())
+        {
+            Value fieldValue = emitLoad(Type(Type::Kind::Ptr), fieldPtr);
+            requestRuntimeFeature(il::runtime::RuntimeFeature::ObjReleaseChk0);
+            Value needsFree = emitCallRet(Type(Type::Kind::I1), "rt_obj_release_check0", {fieldValue});
+            (void)needsFree;  // Destructor ignores the result
+            continue;
+        }
+
         switch (field.type)
         {
             case AstType::Str:
@@ -483,18 +494,39 @@ void Lowerer::emitClassMethod(const ClassDecl &klass, const MethodDecl &method)
     }
 
     const bool returnsValue = method.ret.has_value();
+    const bool returnsObject = !method.explicitClassRetQname.empty();
     Type methodRetType = Type(Type::Kind::Void);
     std::optional<::il::frontends::basic::Type> methodRetAst;
-    if (returnsValue)
+    if (returnsValue || returnsObject)
     {
-        methodRetType = ilTypeForAstType(*method.ret);
-        methodRetAst = method.ret;
-        // BUG-084 fix: Set the return type for the method name symbol (VB-style implicit return).
-        // This ensures the function return value slot is allocated with the correct type.
-        // Must be done after collectVars() but before allocateLocalSlots().
-        if (findSymbol(method.name))
+        // BUG-099 fix: Methods returning objects should use ptr type, not i64
+        if (returnsObject)
         {
-            setSymbolType(method.name, *method.ret);
+            methodRetType = Type(Type::Kind::Ptr);
+            // Mark the return value symbol as an object type
+            if (findSymbol(method.name))
+            {
+                std::string qualifiedClassName;
+                for (size_t i = 0; i < method.explicitClassRetQname.size(); ++i)
+                {
+                    if (i > 0)
+                        qualifiedClassName += ".";
+                    qualifiedClassName += method.explicitClassRetQname[i];
+                }
+                setSymbolObjectType(method.name, qualifiedClassName);
+            }
+        }
+        else if (returnsValue)
+        {
+            methodRetType = ilTypeForAstType(*method.ret);
+            methodRetAst = method.ret;
+            // BUG-084 fix: Set the return type for the method name symbol (VB-style implicit return).
+            // This ensures the function return value slot is allocated with the correct type.
+            // Must be done after collectVars() but before allocateLocalSlots().
+            if (findSymbol(method.name))
+            {
+                setSymbolType(method.name, *method.ret);
+            }
         }
     }
 
@@ -563,7 +595,13 @@ void Lowerer::emitClassMethod(const ClassDecl &klass, const MethodDecl &method)
     func = ctx.function();
     ctx.setCurrent(&func->blocks[exitIdx]);
     curLoc = {};
-    releaseObjectLocals(metadata.paramNames);
+    // BUG-099 fix: Exclude method name from release if it returns an object
+    std::unordered_set<std::string> excludeNames = metadata.paramNames;
+    if (returnsObject)
+    {
+        excludeNames.insert(method.name);
+    }
+    releaseObjectLocals(excludeNames);
     releaseObjectParams(metadata.paramNames);
     releaseArrayLocals(metadata.paramNames);
     releaseArrayParams(metadata.paramNames);
@@ -576,9 +614,9 @@ void Lowerer::emitClassMethod(const ClassDecl &klass, const MethodDecl &method)
         if (methodNameSym && methodNameSym->slotId.has_value())
         {
             // Function name was assigned - load from that variable
-            Type ilType = ilTypeForAstType(*methodRetAst);
+            // BUG-099 fix: Use methodRetType which handles object returns correctly
             Value slot = Value::temp(*methodNameSym->slotId);
-            retValue = emitLoad(ilType, slot);
+            retValue = emitLoad(methodRetType, slot);
         }
         else
         {

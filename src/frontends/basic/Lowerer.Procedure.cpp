@@ -452,8 +452,9 @@ void Lowerer::pushFieldScope(const std::string &className)
             info.isArray = field.isArray;
             info.isBoolean = (field.type == AstType::Bool);
             info.referenced = false;
-            info.isObject = false;
-            info.objectClass.clear();
+            // BUG-099 fix: Preserve object field information
+            info.isObject = !field.objectClassName.empty();
+            info.objectClass = field.objectClassName;
             scope.symbols.emplace(field.name, std::move(info));
         }
     }

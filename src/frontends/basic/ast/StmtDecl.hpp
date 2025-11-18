@@ -178,6 +178,11 @@ struct MethodDecl : Stmt
     /// Optional return type when method yields a value.
     std::optional<Type> ret;
 
+    /// Optional explicit class return type from "AS <Class>".
+    /// Stored as a qualified, canonical lowercase name when present.
+    /// Empty vector indicates primitive or no explicit return type.
+    std::vector<std::string> explicitClassRetQname;
+
     /// OOP modifiers
     /// @note Constructors cannot be virtual/override/abstract/final; only methods may carry these.
     bool isVirtual{false};

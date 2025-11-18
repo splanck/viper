@@ -132,6 +132,27 @@ std::optional<::il::frontends::basic::Type> Lowerer::findMethodReturnType(
     return std::nullopt;
 }
 
+std::string Lowerer::findMethodReturnClassName(std::string_view className,
+                                                 std::string_view methodName) const
+{
+    if (className.empty())
+        return {};
+
+    const ClassInfo *info = oopIndex_.findClass(std::string(className));
+    if (!info)
+        return {};
+
+    auto it = info->methods.find(std::string(methodName));
+    if (it == info->methods.end())
+        return {};
+
+    // BUG-099 fix: Return the object class name if method returns an object
+    if (!it->second.sig.returnClassName.empty())
+        return it->second.sig.returnClassName;
+
+    return {};
+}
+
 std::optional<::il::frontends::basic::Type> Lowerer::findFieldType(std::string_view className,
                                                                    std::string_view fieldName) const
 {

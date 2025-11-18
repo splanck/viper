@@ -965,6 +965,11 @@ class Lowerer
     std::optional<::il::frontends::basic::Type> findMethodReturnType(
         std::string_view className, std::string_view methodName) const;
 
+    /// @brief Lookup the return class name for a method that returns an object.
+    /// @return Qualified class name if method returns object, empty string otherwise.
+    [[nodiscard]] std::string findMethodReturnClassName(std::string_view className,
+                                                         std::string_view methodName) const;
+
     /// @brief Lookup the AST type for a class field.
     std::optional<::il::frontends::basic::Type> findFieldType(std::string_view className,
                                                               std::string_view fieldName) const;

@@ -44,6 +44,10 @@ struct MethodSig
     /// Optional return type for methods producing a value.
     std::optional<Type> returnType;
 
+    /// BUG-099 fix: Qualified class name when method returns an object.
+    /// Empty string indicates primitive or void return type.
+    std::string returnClassName;
+
     /// Access specifier for the method (default Public).
     Access access{Access::Public};
 };

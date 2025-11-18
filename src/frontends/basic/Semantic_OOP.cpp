@@ -368,6 +368,19 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
                                     sig.returnType = suffixType;
                                 }
                                 sig.access = method.access;
+
+                                // BUG-099 fix: Store the return class name if method returns an object
+                                if (!method.explicitClassRetQname.empty())
+                                {
+                                    std::string qualifiedClassName;
+                                    for (size_t i = 0; i < method.explicitClassRetQname.size(); ++i)
+                                    {
+                                        if (i > 0)
+                                            qualifiedClassName += ".";
+                                        qualifiedClassName += method.explicitClassRetQname[i];
+                                    }
+                                    sig.returnClassName = qualifiedClassName;
+                                }
                                 emitMissingReturn(classDecl, method, emitter);
                                 checkMemberShadowing(
                                     method.body, classDecl, classFieldNames, emitter);

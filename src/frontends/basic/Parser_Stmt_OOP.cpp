@@ -25,6 +25,7 @@
 ///          inference shims as procedural code.
 
 #include "frontends/basic/Parser.hpp"
+#include "frontends/basic/IdentifierUtil.hpp"
 #include <cctype>
 #include <string>
 #include <utility>
@@ -440,9 +441,50 @@ StmtPtr Parser::parseClassDecl()
             if (at(TokenKind::KeywordAs))
             {
                 consume();
-                if (at(TokenKind::KeywordBoolean) || at(TokenKind::Identifier))
+                // Try parsing as a primitive type keyword first
+                if (at(TokenKind::KeywordBoolean))
                 {
                     method->ret = parseTypeKeyword();
+                }
+                else if (at(TokenKind::Identifier))
+                {
+                    // Check if it's a primitive type name before consuming
+                    std::string identName = peek().lexeme;
+                    std::string upperName;
+                    upperName.reserve(identName.size());
+                    for (char ch : identName)
+                    {
+                        upperName.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(ch))));
+                    }
+
+                    bool isPrimitive = (upperName == "INTEGER" || upperName == "INT" ||
+                                       upperName == "LONG" || upperName == "DOUBLE" ||
+                                       upperName == "FLOAT" || upperName == "SINGLE" ||
+                                       upperName == "STRING");
+
+                    if (isPrimitive)
+                    {
+                        method->ret = parseTypeKeyword();
+                    }
+                    else
+                    {
+                        // It's a class name - parse as qualified name
+                        // BUG-099 fix: Store original class name for correct method mangling
+                        std::vector<std::string> segs;
+                        segs.push_back(peek().lexeme);
+                        consume();
+
+                        // Parse dotted path if present: Class.SubClass
+                        while (at(TokenKind::Dot) && peek(1).kind == TokenKind::Identifier)
+                        {
+                            consume(); // dot
+                            segs.push_back(peek().lexeme);
+                            consume();
+                        }
+
+                        if (!segs.empty())
+                            method->explicitClassRetQname = std::move(segs);
+                    }
                 }
                 else
                 {
