@@ -72,6 +72,31 @@ add_subdirectory(basic)
 add_subdirectory(golden)
 add_subdirectory(e2e)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/codegen/x86_64)
+add_executable(test_target_aarch64 ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_target_aarch64.cpp)
+target_link_libraries(test_target_aarch64 PRIVATE viper_testing il_codegen_aarch64)
+viper_add_ctest(test_target_aarch64 test_target_aarch64)
+
+# Minimal AArch64 emission smoke test
+add_executable(test_emit_aarch64_minimal ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_emit_aarch64_minimal.cpp)
+target_link_libraries(test_emit_aarch64_minimal PRIVATE viper_testing il_codegen_aarch64)
+viper_add_ctest(test_emit_aarch64_minimal test_emit_aarch64_minimal)
+
+# CLI smoke for arm64 -S (ret 0)
+add_executable(test_codegen_arm64_cli ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_cli.cpp)
+target_link_libraries(test_codegen_arm64_cli PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
+viper_add_ctest(test_codegen_arm64_cli test_codegen_arm64_cli)
+
+add_executable(test_codegen_arm64_add_params ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_add_params.cpp)
+target_link_libraries(test_codegen_arm64_add_params PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
+viper_add_ctest(test_codegen_arm64_add_params test_codegen_arm64_add_params)
+
+add_executable(test_codegen_arm64_ret_param ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_ret_param.cpp)
+target_link_libraries(test_codegen_arm64_ret_param PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
+viper_add_ctest(test_codegen_arm64_ret_param test_codegen_arm64_ret_param)
+
+add_executable(test_codegen_arm64_add_imm ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_add_imm.cpp)
+target_link_libraries(test_codegen_arm64_add_imm PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
+viper_add_ctest(test_codegen_arm64_add_imm test_codegen_arm64_add_imm)
 
 viper_add_ctest(NoAssertFalseGuard
         ${CMAKE_COMMAND}

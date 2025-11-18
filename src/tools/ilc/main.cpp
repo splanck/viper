@@ -19,6 +19,7 @@
 
 #include "cli.hpp"
 #include "cmd_codegen_x64.hpp"
+#include "cmd_codegen_arm64.hpp"
 #include "frontends/basic/Intrinsics.hpp"
 #include "il/core/Module.hpp"
 #include "viper/version.hpp"
@@ -67,6 +68,7 @@ void usage()
         << "       ilc front basic -run <file.bas> [--trace=il|src] [--stdin-from <file>] "
            "[--max-steps N] [--bounds-checks] [--dump-trap]\n"
         << "       ilc codegen x64 -S <in.il> [-o <exe>] [--run-native]\n"
+        << "       ilc codegen arm64 <in.il> -S <out.s>\n"
         << "       ilc il-opt <in.il> -o <out.il> [--passes p1,p2] [-print-before] [-print-after]"
            " [-verify-each]\n"
         << "\nIL notes:\n"
@@ -135,9 +137,16 @@ int main(int argc, char **argv)
     }
     if (cmd == "codegen")
     {
-        if (argc >= 3 && std::string_view(argv[2]) == "x64")
+        if (argc >= 3)
         {
-            return viper::tools::ilc::run_codegen_x64(argc - 2, argv + 2);
+            if (std::string_view(argv[2]) == "x64")
+            {
+                return viper::tools::ilc::run_codegen_x64(argc - 2, argv + 2);
+            }
+            if (std::string_view(argv[2]) == "arm64")
+            {
+                return viper::tools::ilc::cmd_codegen_arm64(argc - 3, argv + 3);
+            }
         }
         usage();
         return 1;

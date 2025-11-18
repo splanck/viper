@@ -350,7 +350,26 @@ StmtPtr Parser::parseClassDecl()
                     emitError("B3002", subLoc, "modifiers not allowed on constructors");
                 }
                 ctor->params = parseParamList();
+
+                // BUG-086 fix: Register array parameters for constructor body parsing.
+                std::vector<std::string> arrayParams;
+                for (const auto &param : ctor->params)
+                {
+                    if (param.is_array)
+                    {
+                        arrays_.insert(param.name);
+                        arrayParams.push_back(param.name);
+                    }
+                }
+
                 parseProcedureBody(TokenKind::KeywordSub, ctor->body);
+
+                // BUG-086 fix: Remove array parameters from global set after parsing.
+                for (const auto &name : arrayParams)
+                {
+                    arrays_.erase(name);
+                }
+
                 decl->members.push_back(std::move(ctor));
                 curAccess.reset();
                 continue;
@@ -365,6 +384,18 @@ StmtPtr Parser::parseClassDecl()
             method->isOverride = mods.over;
             method->isAbstract = mods.abstr;
             method->isFinal = mods.fin;
+
+            // BUG-086 fix: Register array parameters for method body parsing.
+            std::vector<std::string> arrayParams;
+            for (const auto &param : method->params)
+            {
+                if (param.is_array)
+                {
+                    arrays_.insert(param.name);
+                    arrayParams.push_back(param.name);
+                }
+            }
+
             if (method->isAbstract)
             {
                 if (!at(TokenKind::EndOfLine))
@@ -377,6 +408,13 @@ StmtPtr Parser::parseClassDecl()
             {
                 parseProcedureBody(TokenKind::KeywordSub, method->body);
             }
+
+            // BUG-086 fix: Remove array parameters from global set after parsing.
+            for (const auto &name : arrayParams)
+            {
+                arrays_.erase(name);
+            }
+
             decl->members.push_back(std::move(method));
             curAccess.reset();
             continue;
@@ -412,6 +450,18 @@ StmtPtr Parser::parseClassDecl()
             method->isOverride = mods.over;
             method->isAbstract = mods.abstr;
             method->isFinal = mods.fin;
+
+            // BUG-086 fix: Register array parameters for method body parsing.
+            std::vector<std::string> arrayParams;
+            for (const auto &param : method->params)
+            {
+                if (param.is_array)
+                {
+                    arrays_.insert(param.name);
+                    arrayParams.push_back(param.name);
+                }
+            }
+
             if (method->isAbstract)
             {
                 if (!at(TokenKind::EndOfLine))
@@ -424,6 +474,13 @@ StmtPtr Parser::parseClassDecl()
             {
                 parseProcedureBody(TokenKind::KeywordFunction, method->body);
             }
+
+            // BUG-086 fix: Remove array parameters from global set after parsing.
+            for (const auto &name : arrayParams)
+            {
+                arrays_.erase(name);
+            }
+
             decl->members.push_back(std::move(method));
             curAccess.reset();
             continue;

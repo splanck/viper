@@ -241,13 +241,126 @@ The stress test was HIGHLY EFFECTIVE at finding critical bugs. Attempting to bui
 
 ---
 
+---
+
+## PHASE 2: CONTINUED STRESS TESTING (2025-11-17)
+
+After resolving all critical OOP bugs, stress testing continued with the chess game implementation. **2 new bugs discovered:**
+
+### BUG-086: Array Parameters Not Supported
+**Severity**: MEDIUM - Language limitation
+**Discovery**: During ADDFILE testing, attempted to create modular DisplayBoard function
+
+**Impact**:
+- Cannot pass arrays as parameters to SUBs/FUNCTIONs
+- Limits code modularity and reusability
+- ADDFILE usefulness reduced (can't factor array operations into separate modules)
+
+**Workaround**: Use global arrays accessed by SUBs
+
+**Status**: Documented, workaround available
+
+---
+
+### BUG-087: Nested IF Inside SELECT CASE Causes IL Errors
+**Severity**: MEDIUM - Code generation bug
+**Discovery**: During move validation implementation
+
+**What Failed**:
+```basic
+SELECT CASE ME.pieceType
+    CASE 1
+        IF ME.pieceColor = 0 THEN  ' Nested IF
+            IF toRow > 5 THEN      ' Doubly-nested
+                result = 1
+            END IF
+        END IF  ' ERROR: unknown label bb_0
+END SELECT
+```
+
+**Impact**:
+- Cannot use complex nested control flow in SELECT CASE blocks
+- Forces use of IF/ELSEIF instead of SELECT CASE
+- Limits expressiveness of CASE blocks
+
+**Workaround**: Use IF/ELSEIF/ELSE instead of SELECT CASE for complex logic
+
+**Status**: Documented, workaround available
+
+---
+
+## STRESS TEST PROGRESS
+
+### Completed Steps:
+1. ✅ **Step 1**: Base ChessPiece class - Tests basic OOP (PASS)
+2. ✅ **Step 2**: Board with 2D array - Tests arrays + loops (PASS)
+3. ✅ **Step 3**: ANSI colors - Tests string manipulation, CHR$, ANSI codes (PASS)
+4. ✅ **Step 4**: ADDFILE keyword - Tests module inclusion (PASS, discovered BUG-086)
+5. ✅ **Step 5**: Move validation - Tests complex methods (PASS with workaround for BUG-087)
+6. ✅ **Step 6**: Player input/move execution - Tests INPUT, move logic (PASS)
+
+### Test Files Created:
+- chess_step01_base_class.bas
+- chess_step02_board.bas
+- chess_step03_ansi_colors.bas
+- chess_step04_addfile_main.bas + modules
+- chess_step04b_addfile_simple.bas (working test)
+- chess_step05_move_validation.bas (triggers BUG-087)
+- chess_step05b_move_validation_workaround.bas (uses IF/ELSEIF)
+- chess_step06_player_input.bas
+- test_array_params.bas (BUG-086 reproduction)
+- test_select_nested_if.bas (BUG-087 reproduction)
+- test_select_exit_function.bas (shows simple SELECT CASE works)
+
+### Features Successfully Tested:
+✅ OOP classes and methods
+✅ Arrays of objects
+✅ Nested FOR loops with object arrays
+✅ ANSI escape sequences and terminal control
+✅ String concatenation with CHR$
+✅ Complex string methods
+✅ ADDFILE keyword for module inclusion
+✅ Complex method logic with nested IF (outside SELECT CASE)
+✅ Move validation algorithms
+✅ Object state modification
+✅ Method calls returning booleans
+
+### Known Limitations Found:
+⚠️ Array parameters not supported (BUG-086)
+⚠️ Nested IF in SELECT CASE broken (BUG-087)
+⚠️ INPUT only works with INTEGER (BUG-080, previously known)
+
+---
+
+## CONCLUSION (UPDATED)
+
+**Phase 1 Results**: Found and fixed 3 critical OOP bugs (BUG-083, BUG-084, BUG-085) - **100% success**
+
+**Phase 2 Results**: Found 2 medium-severity bugs with viable workarounds (BUG-086, BUG-087)
+
+**Overall Assessment**:
+- ✅ Core OOP functionality is **solid** - all critical bugs fixed
+- ✅ Stress testing methodology **highly effective** at finding edge cases
+- ⚠️ Some language features incomplete (array parameters)
+- ⚠️ Some code generation edge cases remain (SELECT CASE + nested IF)
+
+**Recommendation**:
+- BUG-087 should be fixed (code generation bug, limits SELECT CASE usefulness)
+- BUG-086 is a language feature gap - lower priority but valuable for future
+
+**Viper BASIC Status**: **Production-ready for OOP programs** with documented workarounds for known limitations.
+
+---
+
 *Test conducted: 2025-11-17*
 *BUG-084 fixed: 2025-11-17 (same day!)*
 *BUG-083 fixed: 2025-11-17 (same day!)*
 *BUG-085 fixed: 2025-11-17 (same day!)*
-*Test duration: Incremental, all blockers resolved same day*
-*Bugs found: 3 critical + 1 minor*
-*Bugs fixed: 3 critical (BUG-084, BUG-083, BUG-085) - **ALL FIXED!**
-*Bugs remaining: 0 critical - **NONE!**
+*BUG-086 discovered: 2025-11-17 (documented, workaround available)*
+*BUG-087 discovered: 2025-11-17 (documented, workaround available)*
+*Test duration: Incremental, 6 steps completed*
+*Bugs found: 3 critical (fixed) + 2 medium (documented)*
+*Bugs fixed: 3 critical (BUG-083, BUG-084, BUG-085) - **ALL FIXED!**
+*Bugs remaining: 2 medium with workarounds (BUG-086, BUG-087)*
 *Test files preserved in: /bugs/bug_testing/*
-*Test success rate: 100% - All OOP features working!*
+*Overall success: Excellent - OOP fully functional with workarounds for minor limitations*

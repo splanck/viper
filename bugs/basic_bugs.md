@@ -2,17 +2,392 @@
 
 *Last Updated: 2025-11-17*
 
-**Bug Statistics**: 83 resolved, 0 outstanding bugs, 1 design decision (84 total documented)
+**Bug Statistics**: 83 resolved, 2 outstanding bugs, 1 design decision (86 total documented)
 
 **Test Suite Status**: 642/642 tests passing (100%)
 
-**STATUS**: ✅ ALL CRITICAL BUGS RESOLVED! OOP fully functional!
+**STATUS**: ⚠️ 2 bugs discovered during chess stress test
 
 ---
 
 ## OUTSTANDING BUGS
 
-**0 bugs** - All known bugs have been resolved!
+**2 bugs** - 1 language limitation (array parameters), 1 code generation bug (nested IF in SELECT CASE)
+
+### BUG-086: Array Parameters Not Supported in SUBs/FUNCTIONs
+**Status**: ❌ **OUTSTANDING** - Infrastructure exists but incomplete
+**Discovered**: 2025-11-17 (Chess game stress test - ADDFILE testing)
+**Category**: Language Feature / Arrays / Parameters / Symbol Resolution
+**Severity**: MEDIUM - Limits code modularity, workarounds exist
+
+**INVESTIGATION SUMMARY**: The infrastructure for array parameters is 90% complete. Parser recognizes `arr()` syntax, semantic analyzer registers array parameters, and lowerer marks them correctly. **The missing piece** is expression resolution: when `arr(i)` is encountered in the procedure body, the system doesn't find the array metadata and treats it as a procedure call instead. The fix requires connecting parameter array metadata to expression parsing/lowering.
+
+**Symptom**: Cannot pass arrays as parameters to SUBs or FUNCTIONs. When an array parameter is declared with `arr() AS TYPE` syntax, attempts to access the array inside the procedure fail with "unknown procedure" error.
+
+**Error Message**:
+```
+error[B1006]: unknown procedure 'arr' (tried: arr)
+        PRINT arr(i); " ";
+              ^^^
+```
+
+**ROOT CAUSE ANALYSIS** (Code Investigation 2025-11-17):
+
+**The Infrastructure Exists But Is Incomplete**:
+
+The parser and lowerer CORRECTLY recognize array parameters:
+1. **Parser** (`src/frontends/basic/ast/StmtDecl.hpp:21-36`): `Param` struct has `bool is_array{false}` field
+2. **Semantic Analyzer** (`src/frontends/basic/SemanticAnalyzer.Procs.cpp:167,179`):
+   - Line 167: Array params get type `Type::ArrayInt`
+   - Line 179: Array params are registered in `arrays_` map
+3. **Lowerer** (`src/frontends/basic/Lowerer.Procedure.cpp:1459-1461`):
+   ```cpp
+   if (p.is_array)
+   {
+       markArray(p.name);  // Correctly marks parameter as array
+       emitStore(Type(Type::Kind::Ptr), slot, Value::null());
+   }
+   ```
+
+**Where It Fails**:
+
+The issue is in **expression resolution during procedure body lowering**. When code inside a procedure accesses `arr(i)`:
+
+1. The parser encounters `arr(i)` and must decide: is this an array access or a procedure call?
+2. The parser/semantic analyzer checks if `arr` is known to be an array
+3. **BUG**: The array metadata from parameter lowering doesn't propagate correctly to expression lowering
+4. Without array metadata, `arr(i)` is interpreted as a procedure call
+5. Procedure call lookup fails → "unknown procedure 'arr'"
+
+**Missing Link**:
+
+The disconnect occurs between:
+- `materializeParams` marking the parameter as an array (line 1461)
+- Expression lowering finding that metadata when encountering `arr(i)`
+
+The `markArray()` call likely updates a procedure-local symbol table, but when the expression lowerer resolves `arr(i)`, it either:
+- Doesn't check the local symbol table for array-ness
+- Checks a different symbol table that wasn't updated
+- Has the parser make the array-vs-procedure decision before lowering (too early)
+
+**Evidence from OOP Code**:
+
+Constructors and methods (`src/frontends/basic/Lower_OOP_Emit.cpp:256-259,510-513`) correctly handle array parameters the SAME WAY as module-level functions, suggesting the bug affects ALL procedure types equally.
+
+**Fix Needed**:
+
+The fix requires ensuring expression parsing/resolution can determine that a parameter name refers to an array. Options:
+1. Update parser to check parameter array-ness when parsing `name(index)` expressions
+2. Ensure `markArray()` updates the symbol table that expression resolution uses
+3. Add a separate pass that propagates array parameter metadata before lowering expressions
+
+**Reproduction**:
+```basic
+SUB PrintArray(arr() AS INTEGER, count AS INTEGER)
+    DIM i AS INTEGER
+    FOR i = 1 TO count
+        PRINT arr(i); " ";  ' ERROR: unknown procedure 'arr'
+    NEXT i
+END SUB
+
+DIM nums(5) AS INTEGER
+nums(1) = 10
+PrintArray(nums, 5)  ' Compile error
+```
+
+**What Works**:
+- ✅ Arrays at module level
+- ✅ Arrays as local variables in SUBs/FUNCTIONs
+- ✅ Passing scalar values as parameters
+- ✅ Passing objects as parameters
+
+**What Fails**:
+- ❌ Integer array parameters: `SUB Test(arr() AS INTEGER)`
+- ❌ String array parameters: `SUB Test(arr() AS STRING)`
+- ❌ Object array parameters: `SUB Test(arr() AS MyClass)`
+- ❌ All array element access inside procedure: `arr(i)` treated as procedure call
+
+**Root Cause**: The parser/semantic analyzer does not recognize array parameter syntax. When `arr()` is declared as a parameter, the procedure receives it, but any access to `arr(i)` inside the procedure is interpreted as a **procedure call** to a function named `arr`, not as array element access.
+
+**Possible Causes**:
+1. Parameter declaration accepts `arr() AS TYPE` syntax but doesn't mark `arr` as an array
+2. Inside procedure scope, `arr` is treated as a scalar variable or missing type info
+3. Array access `arr(i)` falls back to procedure call lookup when `arr` isn't marked as array type
+
+**Fix Needed**: Extend parameter handling to support array parameters:
+1. Parse and recognize array parameter syntax `name() AS TYPE`
+2. Store metadata marking parameter as array type
+3. Resolve `name(index)` expressions to array access, not procedure calls
+4. Pass arrays by reference (pointer to array structure)
+
+**Impact**:
+- Cannot create reusable array utility functions
+- Cannot modularize code that operates on arrays
+- Limits ADDFILE usefulness (can't factor array operations into modules)
+- Reduces code reusability
+
+**Workaround**: Use global arrays or pass individual elements:
+```basic
+REM Workaround 1: Global array
+DIM sharedArray(10) AS INTEGER
+
+SUB ProcessArray(count AS INTEGER)
+    DIM i AS INTEGER
+    FOR i = 1 TO count
+        PRINT sharedArray(i); " ";
+    NEXT i
+END SUB
+
+REM Workaround 2: Pass individual elements (very limited)
+SUB ProcessElement(value AS INTEGER)
+    PRINT value; " "
+END SUB
+
+FOR i = 1 TO 5
+    ProcessElement(nums(i))
+NEXT i
+```
+
+**Test Files**:
+- `/bugs/bug_testing/test_array_params.bas` - Demonstrates both integer and object array parameter failures
+- `/bugs/bug_testing/chess_display.bas` - Failed attempt to pass board array to DisplayBoard SUB
+
+**Related Code**:
+- **Parameter Parsing**: `src/frontends/basic/ast/StmtDecl.hpp:21-36` (Param struct with is_array field)
+- **Semantic Analysis**: `src/frontends/basic/SemanticAnalyzer.Procs.cpp:167,179` (registers array params)
+- **Parameter Lowering**: `src/frontends/basic/Lowerer.Procedure.cpp:1443-1490` (materializeParams function)
+- **Array Marking**: `src/frontends/basic/Lowerer.Procedure.cpp:1461` (markArray call)
+- **Expression Parsing**: Needs investigation - where `name(index)` is disambiguated
+- **Symbol Resolution**: Needs investigation - where array metadata is queried during expression lowering
+
+**Note**: This is a **language limitation**, not a code generation bug. The feature was likely never implemented rather than being broken. Standard BASIC dialects (QB, VB) support array parameters, so this is an expected feature users will miss.
+
+---
+
+### BUG-087: Nested IF Statements Inside SELECT CASE Causes IL Errors
+**Status**: ❌ **OUTSTANDING** - Block ownership conflict
+**Discovered**: 2025-11-17 (Chess game stress test - move validation)
+**Category**: Control Flow / Code Generation / IL / SELECT CASE / Block Management
+**Severity**: MEDIUM - Limits SELECT CASE usage, workarounds exist
+
+**INVESTIGATION SUMMARY**: SELECT CASE creates a block structure for dispatch and case arms. When a case arm contains nested IF statements, the IF lowering creates additional blocks and changes the "current block" pointer. This causes block ownership confusion: the SELECT CASE end-branch logic expects a specific block, but nested IF has changed context. Result: missing labels, empty blocks, or invalid control flow. The fix requires better coordination between SELECT CASE and nested control flow lowering.
+
+**Symptom**: Using nested IF/THEN/ELSE statements inside SELECT CASE blocks in class methods causes IL generation errors. Either "unknown label bb_0" or "empty block" errors occur during compilation.
+
+**Error Messages**:
+```
+error: TESTCLASS.TESTNESTED: unknown label bb_0
+```
+OR
+```
+error: CHESSPIECE.ISVALIDMOVE:select_end_0_CHESSPIECE.ISVALIDMOVE: empty block
+```
+
+**ROOT CAUSE ANALYSIS** (Code Investigation 2025-11-17):
+
+**How SELECT CASE Lowering Works**:
+
+`src/frontends/basic/SelectCaseLowering.cpp` implements SELECT CASE lowering:
+
+1. **Block Preparation** (`prepareBlocks`, line 135-206):
+   - Creates blocks for each CASE arm
+   - Creates an optional CASE ELSE block
+   - Creates an end block for control flow merge
+   - All blocks created at function end using `addBlock()`
+
+2. **Arm Body Lowering** (`emitArmBody`, line 590-613):
+   ```cpp
+   void SelectCaseLowering::emitArmBody(...)
+   {
+       ctx.setCurrent(entry);  // Set current to case arm block
+       for (const auto &node : body)
+       {
+           lowerer_.lowerStmt(*node);  // Lower each statement
+           auto *bodyCur = ctx.current();
+           if (!bodyCur || bodyCur->terminated)
+               break;
+       }
+
+       auto *bodyCur = ctx.current();
+       if (bodyCur && !bodyCur->terminated)
+       {
+           lowerer_.emitBr(endBlk);  // Branch to end
+       }
+   }
+   ```
+
+**Where It Fails with Nested IF**:
+
+When a CASE arm contains nested IF/THEN/ELSE statements:
+
+1. `emitArmBody` sets current block to the case arm block
+2. Calls `lowerer_.lowerStmt(*node)` for each statement
+3. **Problem**: When the statement is a nested IF:
+   - IF lowering creates new blocks (test, then, else, join)
+   - IF lowering updates `ctx.current()` to the join block
+   - Control returns to `emitArmBody`
+4. After the loop, `bodyCur = ctx.current()` gets the IF join block
+5. If the IF join block is already terminated (because it merged branches), the end branch is NOT emitted
+6. **Result**: Missing branches or invalid control flow
+
+**The "unknown label bb_0" Error**:
+
+This error occurs when:
+- Nested IF creates blocks that need labels for branches
+- `nextFallbackBlockLabel()` generates "bb_0", "bb_1", etc.
+- Block gets created but label never gets assigned to the IL instruction
+- Branch instruction references a label that doesn't exist
+
+**The "empty block" Error**:
+
+This occurs when:
+- A basic block is created but has no instructions and no terminator
+- IL verifier rejects empty blocks (all blocks must end with a terminator)
+- Happens when control flow paths don't properly connect
+
+**Critical Issue**:
+
+The fundamental problem is **block ownership confusion**. SELECT CASE creates its own block structure, but nested IF ALSO creates blocks. When these two systems interact:
+- Block indices can shift (if new blocks added during nested IF)
+- Current block pointer can become invalid
+- Block connections get lost
+- Labels don't get properly assigned
+
+**Evidence**:
+
+The simple test (`test_select_exit_function.bas`) works because:
+- No nested control flow inside CASE arms
+- Simple assignments don't create new blocks
+- Current block remains valid throughout
+
+Complex tests fail because:
+- Nested IF creates multiple blocks
+- Current block changes during lowering
+- SELECT CASE assumes stable block indices
+
+**Fix Needed**:
+
+Options to fix this:
+1. **Save/Restore Context**: Have `emitArmBody` save the expected end block and restore context after lowering nested statements
+2. **Block Reservation**: Pre-allocate all blocks (including nested IF blocks) before lowering begins
+3. **Two-Pass Lowering**: First pass discovers all blocks needed, second pass emits code
+4. **Current Block Tracking**: After nested statement lowering, check if current block is the original arm block or a new join block
+
+**Reproduction**:
+```basic
+CLASS TestClass
+    pieceColor AS INTEGER
+
+    FUNCTION TestNested(pieceType AS INTEGER, toRow AS INTEGER) AS INTEGER
+        TestNested = 0
+
+        SELECT CASE pieceType
+            CASE 1
+                IF ME.pieceColor = 0 THEN  ' Nested IF inside CASE
+                    IF toRow > 5 THEN      ' Doubly-nested IF
+                        TestNested = 1
+                    ELSE
+                        TestNested = 0
+                    END IF
+                ELSE
+                    IF toRow < 5 THEN
+                        TestNested = 1
+                    ELSE
+                        TestNested = 0
+                    END IF
+                END IF  ' ERROR: causes "unknown label bb_0"
+
+            CASE 2
+                TestNested = 2
+
+            CASE ELSE
+                TestNested = 99
+        END SELECT
+    END FUNCTION
+END CLASS
+```
+
+**What Works**:
+- ✅ Simple assignments in SELECT CASE: `CASE 1: x = 10`
+- ✅ Single-level IF without ELSE in SELECT CASE (sometimes)
+- ✅ EXIT FUNCTION in SELECT CASE (in simple cases)
+- ✅ Nested IF outside SELECT CASE works fine
+
+**What Fails**:
+- ❌ Nested IF/THEN/ELSE inside CASE blocks
+- ❌ Doubly-nested IF (IF inside IF inside CASE)
+- ❌ Complex control flow in CASE blocks
+
+**Root Cause**: IL code generation bug in SELECT CASE lowering. When nested IF statements are present inside CASE blocks, the lowering code creates labels that don't exist or creates empty basic blocks without terminators.
+
+**Possible Causes**:
+1. SELECT CASE lowering creates a base block label (bb_0) that nested IF lowering expects but doesn't exist
+2. Control flow graph construction doesn't properly handle nested scopes within CASE blocks
+3. Block merging after nested IF creates empty blocks in the SELECT CASE exit path
+
+**Fix Needed**: Fix SELECT CASE lowering to correctly handle nested control flow:
+1. Ensure all blocks created for CASE bodies have proper labels
+2. Fix block terminator insertion when nested IF exists
+3. Properly merge control flow from nested IF back to CASE exit
+
+**Impact**:
+- Cannot use complex logic directly in SELECT CASE
+- Limits expressiveness of CASE blocks
+- Forces extraction of logic to separate methods
+
+**Workaround**: Move nested IF logic to separate methods or use IF/ELSE instead of SELECT CASE:
+```basic
+REM Workaround 1: Extract to method
+FUNCTION CheckPawnMove(toRow AS INTEGER) AS INTEGER
+    IF ME.pieceColor = 0 THEN
+        IF toRow = ME.row + 1 THEN
+            CheckPawnMove = 1
+        ELSE
+            CheckPawnMove = 0
+        END IF
+    ELSE
+        ' ... etc
+    END IF
+END FUNCTION
+
+FUNCTION IsValidMove(toRow AS INTEGER, toCol AS INTEGER) AS INTEGER
+    SELECT CASE ME.pieceType
+        CASE 1  REM Pawn
+            IsValidMove = CheckPawnMove(toRow)  ' Call separate method
+        CASE 2
+            ' ...
+    END SELECT
+END FUNCTION
+
+REM Workaround 2: Use IF/ELSEIF instead of SELECT CASE
+FUNCTION IsValidMove(toRow AS INTEGER, toCol AS INTEGER) AS INTEGER
+    IF ME.pieceType = 1 THEN
+        IF ME.pieceColor = 0 THEN
+            ' Nested IF now works because not inside SELECT CASE
+        END IF
+    ELSEIF ME.pieceType = 2 THEN
+        ' ...
+    END IF
+END FUNCTION
+```
+
+**Test Files**:
+- `/bugs/bug_testing/test_select_nested_if.bas` - Minimal reproduction (triggers "unknown label bb_0")
+- `/bugs/bug_testing/chess_step05_move_validation.bas` - Complex real-world case (triggers "empty block")
+- `/bugs/bug_testing/test_select_exit_function.bas` - Shows simple SELECT CASE works (no nested IF)
+
+**Related Code**:
+- **Main SELECT Lowering**: `src/frontends/basic/SelectCaseLowering.cpp` (entire file)
+  - `lower()` function: line 52-121 (main entry point)
+  - `prepareBlocks()`: line 135-206 (creates block structure)
+  - `emitArmBody()`: line 590-613 (where nested IF breaks)
+- **Block Label Generation**: `src/frontends/basic/Lowerer.Procedure.cpp:1596-1599` (nextFallbackBlockLabel)
+- **IF Statement Lowering**: Needs investigation - how IF creates blocks and updates current block
+- **Block Management**: `src/frontends/basic/lower/Emitter.cpp` or similar - how context tracks current block
+
+**Note**: This is a **code generation bug** that needs fixing. SELECT CASE should support arbitrary statements in CASE blocks, including nested control flow.
+
+---
 
 ### BUG-083: Cannot Call Methods on Object Array Elements
 **Status**: ✅ **RESOLVED** (2025-11-17) - Critical code generation bug FIXED

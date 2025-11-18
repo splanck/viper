@@ -614,7 +614,28 @@ StmtPtr Parser::parseFunctionStatement()
         }
     }
     noteProcedureName(func->name);
+
+    // BUG-086 fix: Register array parameters so the parser can distinguish
+    // arr(i) from proc(i) when parsing the procedure body.
+    std::vector<std::string> arrayParams;
+    for (const auto &param : func->params)
+    {
+        if (param.is_array)
+        {
+            arrays_.insert(param.name);
+            arrayParams.push_back(param.name);
+        }
+    }
+
     parseProcedureBody(TokenKind::KeywordFunction, func->body);
+
+    // BUG-086 fix: Remove array parameters from the global set after parsing
+    // the procedure body to maintain proper scoping.
+    for (const auto &name : arrayParams)
+    {
+        arrays_.erase(name);
+    }
+
     return func;
 }
 
@@ -641,7 +662,28 @@ StmtPtr Parser::parseSubStatement()
         emitError("B4007", asTok, "SUB cannot have 'AS <TYPE>'");
     }
     noteProcedureName(sub->name);
+
+    // BUG-086 fix: Register array parameters so the parser can distinguish
+    // arr(i) from proc(i) when parsing the procedure body.
+    std::vector<std::string> arrayParams;
+    for (const auto &param : sub->params)
+    {
+        if (param.is_array)
+        {
+            arrays_.insert(param.name);
+            arrayParams.push_back(param.name);
+        }
+    }
+
     parseProcedureBody(TokenKind::KeywordSub, sub->body);
+
+    // BUG-086 fix: Remove array parameters from the global set after parsing
+    // the procedure body to maintain proper scoping.
+    for (const auto &name : arrayParams)
+    {
+        arrays_.erase(name);
+    }
+
     return sub;
 }
 

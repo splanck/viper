@@ -439,12 +439,12 @@ void Emitter::releaseArrayParams(const std::unordered_set<std::string> &paramNam
         }
         else if (info.isObject)
         {
-            if (!requestedObj)
-            {
-                lowerer_.requireArrayObjRelease();
-                requestedObj = true;
-            }
-            emitCall("rt_arr_obj_release", {handle});
+            // BUG-086 fix: Object arrays don't have array-level reference counting,
+            // only the objects inside do. The array itself is owned by the creator.
+            // When passed as a parameter, we don't retain it (no rt_arr_obj_retain),
+            // so we must NOT release it at function exit (caller still owns it).
+            // Skip release for object array parameters.
+            continue;
         }
         else
         {

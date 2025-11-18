@@ -13,6 +13,7 @@ target_include_directories(viper_pass PUBLIC
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>)
 
 add_subdirectory(codegen/x86_64)
+add_subdirectory(codegen/aarch64)
 
 add_library(viper_il_core STATIC
         il/core/OpcodeInfo.cpp
@@ -248,6 +249,10 @@ target_include_directories(il_codegen_x86_64 PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>)
 
+add_library(ilc_cmd_arm64 STATIC
+        tools/ilc/cmd_codegen_arm64.cpp)
+target_link_libraries(ilc_cmd_arm64 PRIVATE viper_common_opts il_tools_common il_codegen_aarch64 viper::il_full)
+
 add_executable(ilc
         tools/ilc/main.cpp
         tools/ilc/cmd_run_il.cpp
@@ -266,7 +271,9 @@ target_link_libraries(ilc
         fe_basic
         il_api
         il_tools_common
-        viper_codegen_x86_64)
+        viper_codegen_x86_64
+        il_codegen_aarch64
+        ilc_cmd_arm64)
 get_target_property(ILC_LINK_LIBS ilc LINK_LIBRARIES)
 message(STATUS "ilc LINK_LIBRARIES: ${ILC_LINK_LIBS}")
 install(TARGETS ilc RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})

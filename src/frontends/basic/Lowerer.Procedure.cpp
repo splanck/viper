@@ -1480,7 +1480,10 @@ void Lowerer::materializeParams(const std::vector<Param> &params)
         Value incoming = Value::temp(func->params[ilIndex].id);
         if (p.is_array)
         {
-            storeArray(slot, incoming);
+            // BUG-086 fix: Pass element type and object array flag to storeArray
+            // so it uses the correct runtime functions (i32, str, or obj).
+            bool isObjectArray = !p.objectClass.empty();
+            storeArray(slot, incoming, p.type, isObjectArray);
         }
         else
         {
