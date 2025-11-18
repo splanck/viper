@@ -139,9 +139,9 @@ Status: Added `src/codegen/common/ArgNormalize.hpp` and started consuming it fro
    - Added dedicated shift‑imm tests (shl/lshr/ashr) for param0/param1 in `test_codegen_arm64_shift_imm.cpp`.
    - Added explicit `iadd.ovf`/`isub.ovf`/`imul.ovf` rr tests in `test_codegen_arm64_ovf.cpp`.
 
-2) Cleanly factor the pattern‑lowerer
-   - NEXT: Extract current pattern code into a small `Arm64PatternLowerer` to simplify the CLI file and enable testable units.
-   - Consider a table‑driven mapping from IL opcodes to emitter lambdas for the rr/ri forms.
+2) Cleanly factor the pattern‑lowerer — DONE
+   - Extracted the pattern code into a small internal `Arm64PatternLowerer` helper inside `src/tools/ilc/cmd_codegen_arm64.cpp`, keeping the CLI tidy and making opcode→sequence mappings centralized.
+   - Future: consider a table‑driven mapping from IL opcodes to emitter lambdas for rr/ri forms.
 
 3) Expand parameter coverage to x2..x7 for 3+ argument functions (still single‑block patterns)
    - DONE for rr/ri patterns via normalization to x0/x1 using `x9` scratch.
@@ -152,10 +152,11 @@ Status: Added `src/codegen/common/ArgNormalize.hpp` and started consuming it fro
 
 ## Medium‑Term Plan (next 2–6 weeks)
 
-4) Minimal MIR layer for AArch64 (Phase A)
-   - Define a compact Machine IR for arm64 (parallel to `codegen/x86_64/MachineIR.*`).
-   - Create a thin lowering adapter from IL to MIR for the supported int ops, ret, simple branches.
-   - Reuse emitter to print MIR → asm.
+4) Minimal MIR layer for AArch64 (Phase A) — PARTIAL DONE
+   - Implemented a compact MIR for arm64 under `src/codegen/aarch64/MachineIR.hpp` with a tiny opcode set (mov rr/ri, add/sub/mul rrr/ri, shift‑imm, cmp rr/ri, cset) and containers (`MFunction`, `MBasicBlock`, `MInstr`).
+   - Extended `AsmEmitter` with `emitFunction(MFunction)`, `emitBlock`, and `emitInstruction` to print MIR → asm using existing helpers.
+   - Added unit test `src/tests/unit/codegen/test_emit_aarch64_mir_minimal.cpp` to validate prologue/add/epilogue emission via MIR.
+   - Next: Introduce a lowering shim from IL→MIR for the existing CLI patterns (kept as future step to keep changes small and green).
 
 5) Frame and prologue/epilogue refinement
    - Model callee‑saved saves/restores as needed (x19..x28, v8..v15 per Darwin) once the MIR uses them.
@@ -193,10 +194,10 @@ Status: Added `src/codegen/common/ArgNormalize.hpp` and started consuming it fro
 - Add shift‑by‑imm lowering for entry param (shl/lsr/asr) with tests:
   - Files: `cmd_codegen_arm64.cpp`, new `test_codegen_arm64_shift_imm.cpp`.
 
-- Factor a small `Arm64PatternLowerer` helper inside `cmd_codegen_arm64.cpp` to declutter the CLI file and centralize opcode mapping.
+- Factor a small `Arm64PatternLowerer` helper inside `cmd_codegen_arm64.cpp` to declutter the CLI file and centralize opcode mapping. — DONE
 
-- Generalize parameter coverage to x2..x7 for `ret %paramN` and rr ops feeding ret; add tests for 3‑arg functions.
-  - Partial: rr/ri ops now normalize any arg index 0..7; next is `ret %paramN` beyond first two.
+- Generalize parameter coverage to x2..x7 for `ret %paramN` and rr ops feeding ret; add tests for 3‑arg functions. — DONE
+  - rr/ri ops normalize any arg index 0..7 using scratch; `ret %paramN` moves ArgRegN → x0 as needed.
 
 ## Notes and Limitations (today)
 

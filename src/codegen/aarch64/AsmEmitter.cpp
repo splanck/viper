@@ -155,4 +155,44 @@ void AsmEmitter::emitRet(std::ostream &os) const
     os << "  ret\n";
 }
 
+void AsmEmitter::emitFunction(std::ostream &os, const MFunction &fn) const
+{
+    emitFunctionHeader(os, fn.name);
+    emitPrologue(os);
+    for (const auto &bb : fn.blocks)
+        emitBlock(os, bb);
+    emitEpilogue(os);
+}
+
+void AsmEmitter::emitBlock(std::ostream &os, const MBasicBlock &bb) const
+{
+    (void)bb; // unnamed blocks for now
+    for (const auto &mi : bb.instrs)
+        emitInstruction(os, mi);
+}
+
+void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &mi) const
+{
+    using K = MOpcode;
+    auto reg = [](const MOperand &op) { return op.reg; };
+    auto imm = [](const MOperand &op) { return op.imm; };
+    switch (mi.opc)
+    {
+        case K::MovRR: emitMovRR(os, reg(mi.ops[0]), reg(mi.ops[1])); break;
+        case K::MovRI: emitMovRI(os, reg(mi.ops[0]), imm(mi.ops[1])); break;
+        case K::AddRRR: emitAddRRR(os, reg(mi.ops[0]), reg(mi.ops[1]), reg(mi.ops[2])); break;
+        case K::SubRRR: emitSubRRR(os, reg(mi.ops[0]), reg(mi.ops[1]), reg(mi.ops[2])); break;
+        case K::MulRRR: emitMulRRR(os, reg(mi.ops[0]), reg(mi.ops[1]), reg(mi.ops[2])); break;
+        case K::AddRI: emitAddRI(os, reg(mi.ops[0]), reg(mi.ops[1]), imm(mi.ops[2])); break;
+        case K::SubRI: emitSubRI(os, reg(mi.ops[0]), reg(mi.ops[1]), imm(mi.ops[2])); break;
+        case K::LslRI: emitLslRI(os, reg(mi.ops[0]), reg(mi.ops[1]), imm(mi.ops[2])); break;
+        case K::LsrRI: emitLsrRI(os, reg(mi.ops[0]), reg(mi.ops[1]), imm(mi.ops[2])); break;
+        case K::AsrRI: emitAsrRI(os, reg(mi.ops[0]), reg(mi.ops[1]), imm(mi.ops[2])); break;
+        case K::CmpRR: emitCmpRR(os, reg(mi.ops[0]), reg(mi.ops[1])); break;
+        case K::CmpRI: emitCmpRI(os, reg(mi.ops[0]), imm(mi.ops[1])); break;
+        case K::Cset: emitCset(os, reg(mi.ops[0]), mi.ops[1].cond); break;
+        default: break;
+    }
+}
+
 } // namespace viper::codegen::aarch64

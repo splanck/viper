@@ -81,6 +81,11 @@ add_executable(test_emit_aarch64_minimal ${CMAKE_CURRENT_SOURCE_DIR}/unit/codege
 target_link_libraries(test_emit_aarch64_minimal PRIVATE viper_testing il_codegen_aarch64)
 viper_add_ctest(test_emit_aarch64_minimal test_emit_aarch64_minimal)
 
+# Minimal AArch64 MIR emission smoke test
+add_executable(test_emit_aarch64_mir_minimal ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_emit_aarch64_mir_minimal.cpp)
+target_link_libraries(test_emit_aarch64_mir_minimal PRIVATE viper_testing il_codegen_aarch64)
+viper_add_ctest(test_emit_aarch64_mir_minimal test_emit_aarch64_mir_minimal)
+
 # CLI smoke for arm64 -S (ret 0)
 add_executable(test_codegen_arm64_cli ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_cli.cpp)
 target_link_libraries(test_codegen_arm64_cli PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)

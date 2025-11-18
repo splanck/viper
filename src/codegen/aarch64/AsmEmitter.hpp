@@ -13,6 +13,7 @@
 #include <string>
 
 #include "codegen/aarch64/TargetAArch64.hpp"
+#include "codegen/aarch64/MachineIR.hpp"
 
 namespace viper::codegen::aarch64
 {
@@ -58,6 +59,11 @@ class AsmEmitter
     void emitMovK(std::ostream &os, PhysReg dst, unsigned imm16, unsigned lsl) const;
     void emitMovImm64(std::ostream &os, PhysReg dst, unsigned long long value) const;
     void emitRet(std::ostream &os) const;
+
+    // Emit from minimal MIR (Phase A)
+    void emitFunction(std::ostream &os, const MFunction &fn) const;
+    void emitBlock(std::ostream &os, const MBasicBlock &bb) const;
+    void emitInstruction(std::ostream &os, const MInstr &mi) const;
 
   private:
     const TargetInfo *target_{nullptr};
