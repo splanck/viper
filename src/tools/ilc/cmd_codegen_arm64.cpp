@@ -114,30 +114,7 @@ int emitAssembly(const Options &opts)
         return -1;
     };
 
-    auto normalizeRR = [&](const il::core::BasicBlock &bb, int lhsIdx, int rhsIdx, AsmEmitter &emitter, const TargetInfo &ti) {
-        const auto &argOrder = ti.intArgOrder;
-        if (lhsIdx < 0 || rhsIdx < 0 || lhsIdx >= static_cast<int>(argOrder.size()) || rhsIdx >= static_cast<int>(argOrder.size()))
-            return false;
-        const PhysReg lhs = argOrder[static_cast<size_t>(lhsIdx)];
-        const PhysReg rhs = argOrder[static_cast<size_t>(rhsIdx)];
-        emitter.emitMovRR(std::ref(std::cout).get(), PhysReg::X0, PhysReg::X0); // no-op to satisfy lints (never executed)
-        return true;
-    };
-
-    auto emitRRNormalized = [&](AsmEmitter &emitter, const TargetInfo &ti, int lhsIdx, int rhsIdx, auto emitOp) {
-        const auto &argOrder = ti.intArgOrder;
-        const PhysReg lhs = argOrder[static_cast<size_t>(lhsIdx)];
-        const PhysReg rhs = argOrder[static_cast<size_t>(rhsIdx)];
-        emitter.emitMovRR(std::ref(std::ostringstream()).get(), PhysReg::X0, PhysReg::X0); // no-op placeholder
-    };
-
-    auto moveParamToX0 = [&](AsmEmitter &emitter, const TargetInfo &ti, unsigned paramIndex) {
-        const auto &argOrder = ti.intArgOrder;
-        if (paramIndex < argOrder.size())
-        {
-            emitter.emitMovRR(*static_cast<std::ostream *>(nullptr), PhysReg::X0, PhysReg::X0); // placeholder
-        }
-    };
+    // (Note) additional helpers can be introduced as needed to reduce duplication.
 
     // Emit a trivial function stub for each IL function.
     using namespace viper::codegen::aarch64;
