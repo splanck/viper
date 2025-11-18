@@ -158,6 +158,11 @@ class Parser
     /// @details Used to forbid USING directives inside namespaces per Phase 2 rules.
     int nsDepth_ = 0;
 
+    /// @brief Current class being parsed (nullptr when not in a class).
+    /// @details Used to detect intra-class method calls and rewrite them as method
+    ///          calls on ME. Set when parsing class members; nullptr elsewhere.
+    ClassDecl *currentClass_ = nullptr;
+
     /// @brief Registry that maps statement-leading tokens to parser callbacks.
     class StatementParserRegistry
     {

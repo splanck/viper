@@ -2,15 +2,201 @@
 
 *Last Updated: 2025-11-18*
 
-**Bug Statistics**: 97 resolved, 0 outstanding bugs, 4 design decisions (101 total documented)
+**Bug Statistics**: 98 resolved, 1 outstanding bug, 4 design decisions (103 total documented)
 
 **Test Suite Status**: 664/664 tests passing (100%)
 
-**STATUS**: ✅ **ALL BUGS RESOLVED**
+**STATUS**: ⚠️ **1 OUTSTANDING BUG** - BUG-103 (object array parameters)
+
+---
+
+## OUTSTANDING BUGS
+
+### BUG-103: Passing Object Arrays as Function Parameters Causes Runtime Crash
+**Status**: ⚠️ **OUTSTANDING**
+**Discovered**: 2025-11-18 (Poker game stress test - Hand evaluation functions)
+**Category**: OOP / Arrays / Function Parameters
+**Severity**: CRITICAL - Runtime crash with assertion failure
+
+**Symptom**: When an object array is passed as a parameter to a function, the program crashes with assertion failure: "Assertion failed: (hdr->kind == RT_HEAP_ARRAY), function rt_arr_obj_assert_header, file rt_array_obj.c, line 32"
+
+**Minimal Reproduction**:
+```basic
+CLASS Card
+    DIM value AS INTEGER
+    SUB Init(v AS INTEGER)
+        value = v
+    END SUB
+END CLASS
+
+FUNCTION ProcessCards(cards() AS Card, count AS INTEGER) AS INTEGER
+    DIM i AS INTEGER
+    DIM total AS INTEGER
+    total = 0
+    FOR i = 0 TO count - 1
+        total = total + cards(i).value  ' CRASH HERE
+    NEXT i
+    ProcessCards = total
+END FUNCTION
+
+DIM deck(4) AS Card
+DIM i AS INTEGER
+FOR i = 0 TO 4
+    deck(i) = NEW Card()
+    deck(i).Init(i)
+NEXT i
+
+DIM result AS INTEGER
+result = ProcessCards(deck, 5)  ' CRASH: assertion failure
+PRINT result
+```
+
+**Expected**: Function receives object array and processes it normally
+**Actual**: Runtime assertion failure when accessing array elements inside function
+
+**Impact**: CRITICAL - Cannot use functions to process object arrays, severely limiting code organization and reusability
+
+**Workaround**: Keep all object array processing inside the class that owns the array. Do not pass object arrays to standalone functions.
+
+**Test File**: `/tmp/bug_testing/poker_v4_hand_simple.bas` (calls CheckFlush with object array parameter)
+
+**ROOT CAUSE** (Identified 2025-11-18):
+
+Mixed typing for array parameters causes the callee to use object-array element access while the incoming pointer does not reference an object-array header.
+
+- Parameter materialization correctly treats `cards() AS Card` as an array of objects and stores the incoming handle into the stack slot (`materializeParams` -> `storeArray(..., isObjectArray=true)`). It also marks the parameter symbol as both `isArray` and `isObject` so later decisions can select object-array helpers.
+- However, during element access in the callee, `lowerArrayAccess` may fail to find parameter symbol metadata in specific contexts (e.g., after resets or in nested scopes), falling back to analyzer metadata (`SemanticAnalyzer::lookupArrayMetadata`) which tracks only String vs Int arrays and treats object arrays as numeric. In this fallback path, the helper selection and the refcounted-array re-lowering logic diverge: helper selection can choose object-array ops from a partial symbol, while the re-lowering path reloads the base from storage using the non-object analyzer view, yielding a non-array (or wrong-kind) pointer into `rt_arr_obj_*` routines.
+- The first object-array operation (`rt_arr_obj_get/len`) then asserts in `rt_arr_obj_assert_header` because the handle does not identify an object-array header.
+
+Fix direction:
+- Ensure parameter symbols for object arrays are always available to `lowerArrayAccess` (do not drop them during resets) and are consulted preferentially over analyzer metadata.
+- Unify helper selection and the re-lowering base/index recomputation to use a single consistent source of truth (parameter symbol typing) so the array-kind cannot diverge mid-lowering.
+- Optional: extend analyzer typing to record object-element arrays distinctly to remove the numeric fallback for object arrays.
 
 ---
 
 ## RECENTLY RESOLVED BUGS
+
+### BUG-102: Methods Cannot Call Other Methods in Same Class
+**Status**: ✅ **RESOLVED** (2025-11-18)
+**Discovered**: 2025-11-18 (Poker game stress test - Hand evaluation)
+**Category**: OOP / Method Resolution / Scoping
+**Severity**: HIGH - Severely limits OOP design patterns
+
+**Symptom**: When a class method (FUNCTION or SUB) attempts to call another method defined in the same class, compilation fails with "unknown callee @methodname" error.
+
+**Minimal Reproduction**:
+```basic
+CLASS Hand
+    DIM value AS INTEGER
+
+    SUB SetValue(v AS INTEGER)
+        value = v
+    END SUB
+
+    FUNCTION GetValue() AS INTEGER
+        GetValue = value
+    END FUNCTION
+
+    FUNCTION DoubleValue() AS INTEGER
+        DIM current AS INTEGER
+        current = GetValue()  ' ERROR: unknown callee @getvalue
+        DoubleValue = current * 2
+    END FUNCTION
+END CLASS
+
+DIM h AS Hand
+h = NEW Hand()
+h.SetValue(5)
+PRINT h.DoubleValue()  ' Should print 10
+```
+
+**Expected**: Methods can call other methods in the same class (standard OOP behavior)
+**Actual**: Compilation error "call: unknown callee @getvalue"
+
+**Impact**: HIGH - Forces developers to:
+- Duplicate code instead of factoring into helper methods
+- Inline complex logic, making code unmaintainable
+- Cannot implement common OOP patterns (template method, strategy, etc.)
+- Severely limits usefulness of classes
+
+**Workaround**: Inline all method logic instead of calling helper methods. Access member variables directly instead of using getter/setter methods.
+
+**Test File**: `/tmp/bug_testing/poker_v4_hand.bas` (attempts to call IsFlush(), IsStraight(), GetRankPattern() from GetHandRank())
+
+**ROOT CAUSE** (Identified 2025-11-18):
+
+Unqualified intra-class calls are parsed and lowered as free-function calls instead of method calls on `ME`.
+
+- Inside a class method, calling `GetValue()` without a receiver is parsed as a plain `CallExpr` (free procedure), not a `MethodCallExpr`. Neither the parser nor the lowerer rewrites such calls to `ME.GetValue()` or resolves them against the enclosing class scope.
+- During lowering, `CallExpr` resolution looks up a global procedure named `getvalue`. Since no such free function exists, the lowerer emits a call to `@GETVALUE`, which is not declared, producing “unknown callee @getvalue”.
+
+Fix direction:
+- In class-method context, resolve bare identifiers that match method names on the current class to method calls with implicit receiver `ME`. This can be implemented in the parser (desugaring to `MethodCallExpr`) or in lowering (detecting `CallExpr` in a field scope and rewriting to `MethodCallExpr(ME, name)`).
+- Update semantic analysis and signature resolution to recognize implicit-receiver method calls so type checking and return-type inference work uniformly.
+
+**RESOLUTION** (2025-11-18):
+
+Fixed by implementing parser-level rewriting of intra-class method calls to method calls on `ME`.
+
+**Changes Made**:
+
+1. **Added current class tracking to Parser** (`Parser.hpp`):
+   - Added `ClassDecl *currentClass_` member variable to track the class being parsed
+   - Set to `decl.get()` when entering parseClassDecl()
+   - Reset to `nullptr` when exiting class parsing
+
+2. **Updated parseClassDecl()** (`Parser_Stmt_OOP.cpp`):
+   - Set `currentClass_ = decl.get()` after creating ClassDecl (line 61)
+   - Reset `currentClass_ = nullptr` before returning (line 566)
+
+3. **Modified parseArrayOrVar()** (`Parser_Expr.cpp`):
+   - After parsing a call expression, check if `currentClass_` is set (line 393)
+   - Iterate through class members to find matching methods (case-insensitive) (lines 396-427)
+   - If match found, create `MethodCallExpr` with `MeExpr` as base instead of `CallExpr`
+   - Otherwise, create regular `CallExpr` for non-method calls
+
+**Code Changes Summary**:
+```cpp
+// Parser.hpp - Add tracking
+ClassDecl *currentClass_ = nullptr;
+
+// Parser_Stmt_OOP.cpp - Set/reset tracking
+currentClass_ = decl.get();  // On entry
+currentClass_ = nullptr;     // On exit
+
+// Parser_Expr.cpp - Rewrite method calls
+if (currentClass_) {
+    for (const auto &member : currentClass_->members) {
+        if (auto *method = dynamic_cast<MethodDecl *>(member.get())) {
+            if (equalsIgnoreCase(name, method->name)) {
+                // Create MethodCallExpr with ME as base
+                auto methodCall = std::make_unique<MethodCallExpr>();
+                methodCall->base = std::make_unique<MeExpr>();
+                methodCall->method = method->name;
+                methodCall->args = std::move(args);
+                return methodCall;
+            }
+        }
+    }
+}
+// Fall through to regular CallExpr
+```
+
+**Verification**:
+- Minimal test: Method calling another method in same class ✅
+- Chained calls: Method calling method that calls another method ✅
+- Multiple calls: Method calling several different methods ✅
+- SUB calling SUB ✅
+- FUNCTION calling FUNCTION ✅
+- SUB calling FUNCTION and vice versa ✅
+- All 664 tests passing ✅
+
+**Test Files**:
+- `/tmp/bug_testing/test_bug102_method_calls.bas` - Original minimal reproduction
+- `/tmp/bug_testing/test_bug102_fixed.bas` - Comprehensive verification
+
+---
 
 ### BUG-099: Functions Returning Objects Cause Type Mismatch / Object Parameters May Corrupt State
 **Status**: ✅ **RESOLVED** (2025-11-18)

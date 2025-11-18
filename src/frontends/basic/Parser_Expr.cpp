@@ -387,6 +387,48 @@ ExprPtr Parser::parseArrayOrVar()
             }
         }
         expect(TokenKind::RParen);
+
+        // BUG-102 fix: Check if we're in a class and this call matches a method name.
+        // If so, rewrite to a method call on ME.
+        if (currentClass_)
+        {
+            // Check if this name matches a method in the current class
+            for (const auto &member : currentClass_->members)
+            {
+                if (auto *method = dynamic_cast<MethodDecl *>(member.get()))
+                {
+                    // Case-insensitive comparison
+                    auto equalsIgnoreCase = [](const std::string &lhs, const std::string &rhs)
+                    {
+                        if (lhs.size() != rhs.size())
+                            return false;
+                        for (std::size_t i = 0; i < lhs.size(); ++i)
+                        {
+                            unsigned char lc = static_cast<unsigned char>(lhs[i]);
+                            unsigned char rc = static_cast<unsigned char>(rhs[i]);
+                            if (std::toupper(lc) != std::toupper(rc))
+                                return false;
+                        }
+                        return true;
+                    };
+
+                    if (equalsIgnoreCase(name, method->name))
+                    {
+                        // This is a method call - rewrite to ME.MethodName(args)
+                        auto methodCall = std::make_unique<MethodCallExpr>();
+                        methodCall->loc = loc;
+                        methodCall->Expr::loc = loc;
+                        methodCall->base = std::make_unique<MeExpr>();
+                        methodCall->base->loc = loc;
+                        methodCall->method = method->name; // Use actual method name
+                        methodCall->args = std::move(args);
+                        return methodCall;
+                    }
+                }
+            }
+        }
+
+        // Not a method call - create regular CallExpr
         auto call = std::make_unique<CallExpr>();
         call->loc = loc;
         call->Expr::loc = loc;

@@ -57,6 +57,9 @@ StmtPtr Parser::parseClassDecl()
     if (nameTok.kind == TokenKind::Identifier)
         decl->name = nameTok.lexeme;
 
+    // BUG-102 fix: Track current class for intra-class method call rewriting
+    currentClass_ = decl.get();
+
     // Optional single inheritance: CLASS B : A or CLASS B:A or CLASS B : Namespace.Base
     if (at(TokenKind::Colon))
     {
@@ -558,6 +561,9 @@ StmtPtr Parser::parseClassDecl()
 
     expect(TokenKind::KeywordEnd);
     expect(TokenKind::KeywordClass);
+
+    // BUG-102 fix: Reset current class tracking
+    currentClass_ = nullptr;
 
     return decl;
 }
