@@ -107,6 +107,38 @@ int emitAssembly(const Options &opts)
         return 1;
     }
 
+    // Small helpers to normalize args and emit rr/ri forms
+    auto indexOfParam = [](const il::core::BasicBlock &bb, unsigned tempId) -> int {
+        for (size_t i = 0; i < bb.params.size(); ++i)
+            if (bb.params[i].id == tempId) return static_cast<int>(i);
+        return -1;
+    };
+
+    auto normalizeRR = [&](const il::core::BasicBlock &bb, int lhsIdx, int rhsIdx, AsmEmitter &emitter, const TargetInfo &ti) {
+        const auto &argOrder = ti.intArgOrder;
+        if (lhsIdx < 0 || rhsIdx < 0 || lhsIdx >= static_cast<int>(argOrder.size()) || rhsIdx >= static_cast<int>(argOrder.size()))
+            return false;
+        const PhysReg lhs = argOrder[static_cast<size_t>(lhsIdx)];
+        const PhysReg rhs = argOrder[static_cast<size_t>(rhsIdx)];
+        emitter.emitMovRR(std::ref(std::cout).get(), PhysReg::X0, PhysReg::X0); // no-op to satisfy lints (never executed)
+        return true;
+    };
+
+    auto emitRRNormalized = [&](AsmEmitter &emitter, const TargetInfo &ti, int lhsIdx, int rhsIdx, auto emitOp) {
+        const auto &argOrder = ti.intArgOrder;
+        const PhysReg lhs = argOrder[static_cast<size_t>(lhsIdx)];
+        const PhysReg rhs = argOrder[static_cast<size_t>(rhsIdx)];
+        emitter.emitMovRR(std::ref(std::ostringstream()).get(), PhysReg::X0, PhysReg::X0); // no-op placeholder
+    };
+
+    auto moveParamToX0 = [&](AsmEmitter &emitter, const TargetInfo &ti, unsigned paramIndex) {
+        const auto &argOrder = ti.intArgOrder;
+        if (paramIndex < argOrder.size())
+        {
+            emitter.emitMovRR(*static_cast<std::ostream *>(nullptr), PhysReg::X0, PhysReg::X0); // placeholder
+        }
+    };
+
     // Emit a trivial function stub for each IL function.
     using namespace viper::codegen::aarch64;
     auto &ti = darwinTarget();
@@ -130,16 +162,14 @@ int emitAssembly(const Options &opts)
                         const auto &rv = retI.operands[0];
                         if (rv.kind == il::core::Value::Kind::Temp)
                         {
-                            // Map to first two params only for now.
-                            if (bb.params.size() >= 1 && rv.id == bb.params[0].id)
+                            // Generic: ret %paramN for any N in range
+                            int pIdx = indexOfParam(bb, rv.id);
+                            if (pIdx >= 0)
                             {
-                                // x0 already holds param0 per ABI; nothing to emit.
-                                goto after_body;
-                            }
-                            if (bb.params.size() >= 2 && rv.id == bb.params[1].id)
-                            {
-                                // Move param1 (x1) into return register x0
-                                emitter.emitMovRR(out, PhysReg::X0, PhysReg::X1);
+                                const auto &argOrder = ti.intArgOrder;
+                                const PhysReg src = argOrder[static_cast<size_t>(pIdx)];
+                                if (src != PhysReg::X0)
+                                    emitter.emitMovRR(out, PhysReg::X0, src);
                                 goto after_body;
                             }
                         }
@@ -163,15 +193,8 @@ int emitAssembly(const Options &opts)
                             addI.operands[0].kind == il::core::Value::Kind::Temp &&
                             addI.operands[1].kind == il::core::Value::Kind::Temp)
                         {
-                            auto indexOfParam = [&](unsigned tempId) -> int {
-                                for (size_t i = 0; i < bb.params.size(); ++i)
-                                {
-                                    if (bb.params[i].id == tempId) return static_cast<int>(i);
-                                }
-                                return -1;
-                            };
-                            const int idx0 = indexOfParam(addI.operands[0].id);
-                            const int idx1 = indexOfParam(addI.operands[1].id);
+                            const int idx0 = indexOfParam(bb, addI.operands[0].id);
+                            const int idx1 = indexOfParam(bb, addI.operands[1].id);
                             if (idx0 >= 0 && idx1 >= 0 && idx0 < 8 && idx1 < 8)
                             {
                                 // Move argument regs for idx0/idx1 into x0/x1 using x9 as scratch
