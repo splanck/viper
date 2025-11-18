@@ -445,6 +445,8 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
         isRefCountedArray = (memberElemAstType == ::il::frontends::basic::Type::Str) || isMemberObjectArray;
     else if (info)
         isRefCountedArray = (info->type == AstType::Str) || info->isObject;
+    else if (!moduleObjectClass.empty())
+        isRefCountedArray = true;
 
     if (isRefCountedArray)
     {

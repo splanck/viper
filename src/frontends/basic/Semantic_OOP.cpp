@@ -402,6 +402,33 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
                     if (!info.hasConstructor)
                         info.hasSynthCtor = true;
 
+                    // BUG-106 fix: Check for field/method name collisions (case-insensitive)
+                    for (const auto &[methodName, methodInfo] : info.methods)
+                    {
+                        for (const auto &fieldName : classFieldNames)
+                        {
+                            if (string_utils::iequals(methodName, fieldName))
+                            {
+                                if (emitter)
+                                {
+                                    auto locIt = info.methodLocs.find(methodName);
+                                    il::support::SourceLoc loc = locIt != info.methodLocs.end()
+                                                                    ? locIt->second
+                                                                    : classDecl.loc;
+                                    std::string msg = "method '" + methodName + "' conflicts with field '" +
+                                                      fieldName + "' (names are case-insensitive); " +
+                                                      "rename one to avoid runtime errors";
+                                    emitter->emit(il::support::Severity::Error,
+                                                  "B2017",
+                                                  loc,
+                                                  static_cast<uint32_t>(methodName.size()),
+                                                  std::move(msg));
+                                }
+                                break;
+                            }
+                        }
+                    }
+
                     // Capture raw implements list from AST when available
                     for (const auto &implQN : classDecl.implementsQualifiedNames)
                     {

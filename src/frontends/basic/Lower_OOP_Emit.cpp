@@ -187,12 +187,23 @@ void Lowerer::emitFieldReleaseSequence(Value selfPtr, const ClassLayout &layout)
                                     Value::constInt(static_cast<long long>(field.offset)));
 
         // BUG-099 fix: Handle object field release
+        // BUG-105 fix: Distinguish object arrays from single objects
         if (!field.objectClassName.empty())
         {
             Value fieldValue = emitLoad(Type(Type::Kind::Ptr), fieldPtr);
-            requestRuntimeFeature(il::runtime::RuntimeFeature::ObjReleaseChk0);
-            Value needsFree = emitCallRet(Type(Type::Kind::I1), "rt_obj_release_check0", {fieldValue});
-            (void)needsFree;  // Destructor ignores the result
+            if (field.isArray)
+            {
+                // Object array field: use rt_arr_obj_release
+                requireArrayObjRelease();
+                emitCall("rt_arr_obj_release", {fieldValue});
+            }
+            else
+            {
+                // Single object field: use rt_obj_release_check0
+                requestRuntimeFeature(il::runtime::RuntimeFeature::ObjReleaseChk0);
+                Value needsFree = emitCallRet(Type(Type::Kind::I1), "rt_obj_release_check0", {fieldValue});
+                (void)needsFree;  // Destructor ignores the result
+            }
             continue;
         }
 
@@ -369,9 +380,10 @@ void Lowerer::emitClassConstructor(const ClassDecl &klass, const ConstructorDecl
     curLoc = {};
     releaseDeferredTemps();
     releaseObjectLocals(metadata.paramNames);
-    releaseObjectParams(metadata.paramNames);
+    // BUG-105 fix: Don't release object/array parameters - they are borrowed references from caller
+    // releaseObjectParams(metadata.paramNames);  // REMOVED
     releaseArrayLocals(metadata.paramNames);
-    releaseArrayParams(metadata.paramNames);
+    // releaseArrayParams(metadata.paramNames);  // REMOVED
     curLoc = {};
     emitRetVoid();
     ctx.blockNames().resetNamer();
@@ -449,9 +461,10 @@ void Lowerer::emitClassDestructor(const ClassDecl &klass, const DestructorDecl *
         emitFieldReleaseSequence(selfPtr, layoutIt->second);
 
     releaseObjectLocals(metadata.paramNames);
-    releaseObjectParams(metadata.paramNames);
+    // BUG-105 fix: Don't release object/array parameters - they are borrowed references from caller
+    // releaseObjectParams(metadata.paramNames);  // REMOVED
     releaseArrayLocals(metadata.paramNames);
-    releaseArrayParams(metadata.paramNames);
+    // releaseArrayParams(metadata.paramNames);  // REMOVED
     curLoc = {};
     emitRetVoid();
     ctx.blockNames().resetNamer();
@@ -602,9 +615,10 @@ void Lowerer::emitClassMethod(const ClassDecl &klass, const MethodDecl &method)
         excludeNames.insert(method.name);
     }
     releaseObjectLocals(excludeNames);
-    releaseObjectParams(metadata.paramNames);
+    // BUG-105 fix: Don't release object/array parameters - they are borrowed references from caller
+    // releaseObjectParams(metadata.paramNames);  // REMOVED
     releaseArrayLocals(metadata.paramNames);
-    releaseArrayParams(metadata.paramNames);
+    // releaseArrayParams(metadata.paramNames);  // REMOVED
     curLoc = {};
     if (returnsValue)
     {

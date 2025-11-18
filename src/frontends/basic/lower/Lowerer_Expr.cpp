@@ -19,6 +19,7 @@
 #include "frontends/basic/LowerExprBuiltin.hpp"
 #include "frontends/basic/LowerExprLogical.hpp"
 #include "frontends/basic/LowerExprNumeric.hpp"
+#include "frontends/basic/NameMangler_OOP.hpp"
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/SemanticAnalyzer.hpp"
 #include "frontends/basic/TypeSuffix.hpp"
@@ -193,16 +194,11 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
         else if ((info && info->isObject) || isMemberObjectArray || !moduleObjectClass.empty())
         {
             // BUG-089/BUG-097 fix: Object array (member, non-member, or module-level): rt_arr_obj_get returns retained ptr
+            // BUG-104 fix: Don't defer release - consuming code handles lifetime
+            // to avoid dominance violations when array access is in conditional blocks (same as BUG-071 for strings)
             IlValue val = lowerer_.emitCallRet(
                 IlType(IlType::Kind::Ptr), "rt_arr_obj_get", {access.base, access.index});
-            if (isMemberObjectArray && !memberObjectClass.empty())
-                lowerer_.deferReleaseObj(val, memberObjectClass);
-            else if (info && !info->objectClass.empty())
-                lowerer_.deferReleaseObj(val, info->objectClass);
-            else if (!moduleObjectClass.empty())
-                lowerer_.deferReleaseObj(val, moduleObjectClass); // BUG-097: Use cached class
-            else
-                lowerer_.deferReleaseObj(val);
+            // Removed: deferReleaseObj calls - consuming code (method calls, assignments) handles object lifetime
             result_ = Lowerer::RVal{val, IlType(IlType::Kind::Ptr)};
         }
         else
@@ -301,6 +297,68 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
             }
         }
 
+        // Implicit receiver in class methods: treat bare calls as ME.Method.
+        // If we're inside a class method and the call is unqualified, try
+        // lowering it as a method call on ME first (BUG-102).
+        if (lowerer_.currentClass().size() > 0 && expr.calleeQualified.empty())
+        {
+            // Load ME pointer as implicit receiver
+            const auto *meSym = lowerer_.findSymbol("ME");
+            if (meSym && meSym->slotId)
+            {
+                lowerer_.curLoc = expr.loc;
+                IlValue selfArg = lowerer_.emitLoad(IlType(IlType::Kind::Ptr), IlValue::temp(*meSym->slotId));
+
+                // Lower arguments and prepend receiver
+                std::vector<IlValue> args;
+                args.reserve(expr.args.size() + 1);
+                args.push_back(selfArg);
+                for (const auto &a : expr.args)
+                {
+                    if (!a)
+                        continue;
+                    Lowerer::RVal v = lowerer_.lowerExpr(*a);
+                    args.push_back(v.value);
+                }
+
+                // Determine return IL type when available; otherwise emit void call
+                IlType retIl = IlType(IlType::Kind::Void);
+                if (auto retAst = lowerer_.findMethodReturnType(lowerer_.currentClass(), expr.callee))
+                {
+                    switch (*retAst)
+                    {
+                        case ::il::frontends::basic::Type::I64:
+                            retIl = IlType(IlType::Kind::I64);
+                            break;
+                        case ::il::frontends::basic::Type::F64:
+                            retIl = IlType(IlType::Kind::F64);
+                            break;
+                        case ::il::frontends::basic::Type::Str:
+                            retIl = IlType(IlType::Kind::Str);
+                            break;
+                        case ::il::frontends::basic::Type::Bool:
+                            retIl = lowerer_.ilBoolTy();
+                            break;
+                    }
+                }
+
+                // Mangle and emit call
+                const std::string callee = mangleMethod(lowerer_.currentClass(), expr.callee);
+                lowerer_.curLoc = expr.loc;
+                if (retIl.kind != IlType::Kind::Void)
+                {
+                    IlValue res = lowerer_.emitCallRet(retIl, callee, args);
+                    result_ = Lowerer::RVal{res, retIl};
+                }
+                else
+                {
+                    lowerer_.emitCall(callee, args);
+                    result_ = Lowerer::RVal{IlValue::constInt(0), IlType(IlType::Kind::I64)};
+                }
+                return;
+            }
+        }
+
         // Resolve callee (supports qualified call syntax). Canonicalize to
         // maintain case-insensitive semantics for lookups.
         std::string calleeResolved;
@@ -394,6 +452,13 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
             {
                 if (const Lowerer::ClassLayout::Field *fld = it->second.findField(expr.method))
                 {
+                    // Only treat as array-field access when the field is actually an array.
+                    // Otherwise, fall back to lowering a real method call (BUG-106).
+                    if (!fld->isArray)
+                    {
+                        result_ = lowerer_.lowerMethodCallExpr(expr);
+                        return;
+                    }
                     // Compute array handle pointer from object field
                     Lowerer::RVal self = lowerer_.lowerExpr(*expr.base);
                     lowerer_.curLoc = expr.loc;

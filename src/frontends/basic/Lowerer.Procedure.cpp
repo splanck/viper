@@ -633,6 +633,29 @@ std::optional<Lowerer::VariableStorage> Lowerer::resolveVariableStorage(std::str
         }
     }
 
+    // BUG-103 fix: Check for local/parameter symbols FIRST before falling back
+    // to module-level globals. This ensures function parameters and local variables
+    // properly shadow module-level variables with the same name.
+    if (const auto *info = findSymbol(name))
+    {
+        if (info->slotId)
+        {
+            bool isMain = (context().function() && context().function()->name == "main");
+            bool isModLevel = semanticAnalyzer_ && semanticAnalyzer_->isModuleLevelSymbol(std::string(name));
+            bool isCrossProc = isModLevel && isCrossProcGlobal(std::string(name));
+
+            // Use the local slot if it's a true local/parameter (not module-level)
+            if (!isModLevel)
+                return VariableStorage{slotInfo, Value::temp(*info->slotId), false};
+
+            // For module-level symbols in @main, use local slot only if NOT cross-procedure
+            if (isMain && !isCrossProc)
+                return VariableStorage{slotInfo, Value::temp(*info->slotId), false};
+
+            // Otherwise fall through to rt_modvar handling below
+        }
+    }
+
     // Prefer resolving module-level globals to runtime-managed storage before
     // falling back to any materialized local slots. This ensures the @main
     // body shares state with SUB/FUNCTION when a global is referenced across
@@ -683,12 +706,6 @@ std::optional<Lowerer::VariableStorage> Lowerer::resolveVariableStorage(std::str
             storage.isField = false;
             return storage;
         }
-    }
-
-    if (const auto *info = findSymbol(name))
-    {
-        if (info->slotId)
-            return VariableStorage{slotInfo, Value::temp(*info->slotId), false};
     }
 
     if (auto field = resolveImplicitField(name, loc))
