@@ -193,6 +193,12 @@ void TraceSink::onFramePrepared(const Frame &fr)
     if (!inserted)
         return;
     auto &map = it->second;
+    // Reserve buckets to avoid rehashing while indexing instructions.
+    std::size_t totalInstrs = 0;
+    for (const auto &block : fr.func->blocks)
+        totalInstrs += block.instructions.size();
+    if (totalInstrs)
+        map.reserve(totalInstrs);
     for (const auto &block : fr.func->blocks)
     {
         for (size_t idx = 0; idx < block.instructions.size(); ++idx)
