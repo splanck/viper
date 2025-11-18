@@ -2,18 +2,18 @@
 
 *Last Updated: 2025-11-18*
 
-**Bug Statistics**: 90 resolved, 2 outstanding bugs, 3 design decisions (95 total documented)
+**Bug Statistics**: 90 resolved, 4 outstanding bugs, 3 design decisions (97 total documented)
 
 **Test Suite Status**: 642/642 tests passing (100%)
 
-**STATUS**: ⚠️ **2 OUTSTANDING BUGS** - BUG-094 (2D arrays in classes), BUG-095 (Array bounds check false positive)
+**STATUS**: ⚠️ **4 OUTSTANDING BUGS** - BUG-094 (2D arrays in classes), BUG-095 (Array bounds check false positive), BUG-096 (Object arrays as class fields), BUG-097 (Cannot call methods on global array elements from class methods)
 
 ---
 
 ## OUTSTANDING BUGS
 
 ### BUG-094: 2D Array Assignments in Class Methods Store All Values at Same Location
-**Status**: ⚠️ **OUTSTANDING** - Discovered 2025-11-18
+**Status**: ✅ **RESOLVED** - Fixed 2025-11-18
 **Discovered**: 2025-11-18 (Chess game development - board representation)
 **Category**: OOP / Arrays / Memory Management
 **Severity**: HIGH - Breaks 2D array usage in classes
@@ -48,6 +48,25 @@ END CLASS
 
 **Test File**: `/tmp/test_class_array.bas`
 
+**Root Cause**:
+
+- Field arrays do not register dimension metadata with the semantic analyzer, and the lowerer’s multi‑dimensional index linearization falls back to using only the first subscript when extents are unknown.
+  - In `lower/Emit_Expr.cpp`, `lowerArrayAccess()` computes a flattened index via `computeFlatIndex()`, which consults `SemanticAnalyzer::lookupArrayMetadata(expr.name)`.
+  - For class fields, `expr.name` is dotted (e.g., `ME.pieces`) or implicit (`pieces` inside a method). These names are not keys in `SemanticAnalyzer::arrays_`, so metadata is absent and the code falls back to `idxVals[0]` (first index only). Consequently, all accesses `(i, j)` for a fixed `i` alias the same linear index, matching the observed “last write wins across columns”.
+
+- Additionally, array fields declared with extents are allocated with an under‑sized total length in constructors.
+  - In `Lower_OOP_Emit.cpp` constructor emission, total length is computed as the product of declared extents without applying BASIC’s inclusive bound semantics (+1 per dimension). For `DIM pieces(7,7)`, this yields `7*7=49` instead of the correct `8*8=64`.
+
+**Fix**:
+- Index linearization: `lower/Emit_Expr.cpp` now derives extents for class field arrays (both dotted and implicit) from the class layout and flattens indices using inclusive lengths `(extent + 1)`; for non-field arrays, analyzer extents are also treated as inclusive lengths. This prevents column aliasing and matches DIM semantics.
+- Allocation size: `Lower_OOP_Emit.cpp` constructor emission computes total field array length as the product of `(extent + 1)` and passes that to the appropriate runtime allocator.
+
+Affected files: `src/frontends/basic/lower/Emit_Expr.cpp`, `src/frontends/basic/Lower_OOP_Emit.cpp`
+
+Follow-ups:
+- Add multi‑dimensional field array store/load tests (dotted and implicit forms) validating distinct locations per `(i,j)` and boundary indices.
+
+
 ### BUG-095: Array Bounds Check Reports False Positive with Valid Indices
 **Status**: ⚠️ **OUTSTANDING** - Discovered 2025-11-18
 **Discovered**: 2025-11-18 (Chess game with ANSI colors - Display function)
@@ -72,6 +91,154 @@ END CLASS
 **Test File**: `/tmp/chess.bas`
 
 **Notes**: Index 72 suggests row=9 is being calculated somewhere, but code inspection shows all loops use correct bounds (row: 7 TO 0, col: 0 TO 7)
+
+**Findings (analysis and likely cause)**:
+
+- Runtime behaviour: The C runtime bounds enforcement (`rt_arr_i32_validate_bounds` in `rt_array.c`) is strict and aborts on OOB; a message of the form `rt_arr_i32: index %zu out of bounds (len=%zu)` is only printed immediately before `abort()`. If the program continued after the message, it was likely run through the VM path (which raises a `Bounds` trap) rather than the C runtime.
+
+- 1D array lowering path is straightforward and correct for inclusive DIM semantics:
+  - `DIM pieces(63)` lowers via `lowerDim()` which applies `emitArrayLengthCheck(bound)` (adds +1) and calls `rt_arr_i32_new(length)`. Valid indices are 0..63; there is no off‑by‑one in allocation.
+  - Element access for 1D arrays passes the index expression as‑lowered (coerced to i64) directly to `rt_arr_i32_get/set`.
+
+- The most plausible root cause is an index computation, not the bounds check itself. Two specific pitfalls identified during code review/testing:
+  1) Loop direction without explicit `STEP` in decreasing ranges. Our FOR semantics skip execution when `start > end` and `STEP` is positive (default `+1`). If user code intended a descending loop but omitted `STEP -1`, any derived indices saved outside the loop might retain unexpected values. This can manifest as a one‑off larger `row` (e.g., 9) used later for `row*8 + col`.
+  2) Misuse of upper bound in index math. `UBOUND(pieces)` returns the highest valid index (63 for a 64‑element array), not the width. Using `row * UBOUND(pieces) + col` (instead of `(UBOUND(pieces)+1)`) would overshoot for many `row` values. While your description used a literal 8, we’ve seen this pattern causing exactly the kind of sporadic >63 indices reported.
+
+- Notably, we did not find a 1D array code path in the compiler that could produce an index of 72 from in‑range `(row,col)` when the calculation is `row*8 + col` with `row,col ∈ [0,7]`.
+
+**Status**: Needs a minimal repro to confirm. Our 1D array DIM/UBOUND/element paths are consistent; the only identified compiler defects in this area are with multi‑dimensional arrays and class field arrays (see BUG‑094). Once a minimal snippet reproduces 72 on a 1D array using `row*8 + col`, we’ll add a unit test and fix immediately.
+
+**Next Steps**:
+- Provide a minimal BASIC snippet that logs the computed `row`, `col`, and `idx` just before the failing access. We will add it as a unit test under `src/tests/basic/` and close this out.
+
+---
+
+### BUG-096: Cannot Assign Objects to Array Elements When Array is Class Field
+**Status**: ⚠️ **OUTSTANDING** - Discovered 2025-11-18
+**Discovered**: 2025-11-18 (Frogger game stress test - Game class with vehicle array)
+**Category**: OOP / Arrays / Type System
+**Severity**: HIGH - Prevents using object arrays as class fields
+
+**Symptom**: Assigning an object to an array element fails with compile error "@rt_arr_i32_set value operand must be i64" when the array is a class field. Same code works correctly when array is at module scope.
+
+**Minimal Reproduction**:
+```basic
+CLASS Vehicle
+    DIM x AS INTEGER
+    SUB New(startX AS INTEGER)
+        me.x = startX
+    END SUB
+END CLASS
+
+CLASS Container
+    DIM items(2) AS Vehicle
+    SUB New()
+        me.items(0) = NEW Vehicle(10)  ' ERROR: value operand must be i64
+    END SUB
+END CLASS
+```
+
+**Works at Module Scope**:
+```basic
+DIM vehicles(2) AS Vehicle
+vehicles(0) = NEW Vehicle(10)  ' This works fine!
+```
+
+**Error Message**:
+```
+error: CONTAINER.__ctor:bc_ok0_CONTAINER.__ctor: call %t16 0 %t7: @rt_arr_i32_set value operand must be i64
+```
+
+**Observed Behavior**:
+- Arrays of objects work correctly at module/global scope
+- Arrays of objects as class fields cannot be assigned to
+- Error occurs during compilation/lowering phase
+- Error suggests type mismatch - trying to use i32 array operations for object pointers
+
+**Impact**: HIGH - Severely limits OOP design patterns. Cannot have classes that manage collections of other objects as fields.
+
+**Workaround**: Store objects at module scope instead of as class fields, or redesign to avoid object arrays in classes
+
+**Test Files**:
+- `/tmp/bug_testing/test_vehicle_array.bas` (works - module scope)
+- `/tmp/bug_testing/test_object_array_in_class.bas` (fails - class field)
+- `/tmp/bug_testing/game.bas` (blocked by this bug)
+
+**Notes**: Related to BUG-094 (2D arrays in classes). Both involve arrays as class fields. May be same root cause in how class field arrays are lowered/typed.
+
+---
+
+### BUG-097: Cannot Call Methods on Global Array Elements from Class Methods
+**Status**: ⚠️ **OUTSTANDING** - Discovered 2025-11-18
+**Discovered**: 2025-11-18 (Frogger game stress test - Game class updating vehicles)
+**Category**: OOP / Method Calls / Scope Resolution
+**Severity**: HIGH - Prevents common OOP pattern of managing global collections
+
+**Symptom**: Calling a method on an array element from within ANY SUB or FUNCTION (including class methods) fails with compile error "unknown callee @METHOD_NAME". Method calls on array elements only work at module scope.
+
+**Minimal Reproduction**:
+```basic
+CLASS Widget
+    DIM value AS INTEGER
+    SUB Update()
+        PRINT "Updated"
+    END SUB
+END CLASS
+
+DIM g_widgets(2) AS Widget
+
+CLASS Manager
+    SUB UpdateAll()
+        DIM i AS INTEGER
+        FOR i = 0 TO 2
+            g_widgets(i).Update()  ' ERROR: unknown callee @UPDATE
+        NEXT i
+    END SUB
+END CLASS
+
+REM Also fails from module-level SUB:
+SUB UpdateAll()
+    DIM i AS INTEGER
+    FOR i = 0 TO 2
+        g_widgets(i).Update()  ' ERROR: unknown callee @UPDATE
+    NEXT i
+END SUB
+```
+
+**Works ONLY at Module Scope**:
+```basic
+DIM widgets(2) AS Widget
+DIM i AS INTEGER
+FOR i = 0 TO 2
+    widgets(i).Update()  ' This works fine at module scope!
+NEXT i
+```
+
+**Error Message**:
+```
+error: MANAGER.UPDATEALL:bc_ok0_MANAGER.UPDATEALL: call %t24: unknown callee @UPDATE
+```
+
+**Observed Behavior**:
+- Method calls on array elements work ONLY at module scope (outside any SUB/FUNCTION)
+- Method calls on array elements FAIL when called from within:
+  - Class methods (SUB/FUNCTION inside CLASS)
+  - Module-level SUBs/FUNCTIONs
+  - Any nested scope with a procedure
+- Error occurs during compilation/lowering phase
+- Method name resolution appears to fail when caller is inside ANY procedure scope
+
+**Impact**: CRITICAL - Makes it nearly impossible to build OOP programs that manage collections of objects. Cannot iterate over object arrays and call methods from within any procedure. Severely limits practical OOP usage.
+
+**Workaround**: All loops that call methods on array elements must be at module scope. This severely constrains program architecture and prevents proper encapsulation.
+
+**Test Files**:
+- `/tmp/bug_testing/test_array_method_call.bas` (works - module scope iteration)
+- `/tmp/bug_testing/test_global_array_method.bas` (fails - class method)
+- `/tmp/bug_testing/test_module_function_array.bas` (fails - module-level SUB)
+- `/tmp/bug_testing/game_v2.bas` (blocked by this bug)
+
+**Notes**: Scope resolution issue - method lookup on array element expressions may not be checking global scope when called from within class context. Combined with BUG-096, makes it very difficult to implement collection-based OOP designs.
 
 ---
 

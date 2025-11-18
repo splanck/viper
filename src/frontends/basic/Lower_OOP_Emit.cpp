@@ -290,10 +290,11 @@ void Lowerer::emitClassConstructor(const ClassDecl &klass, const ConstructorDecl
                 if (!field.isArray || field.arrayExtents.empty())
                     continue;
 
-                // Compute total length as the product of declared extents
+                // Compute total length as the product of inclusive extents
+                // BASIC DIM uses inclusive upper bounds (e.g., DIM a(7) => 8 elements)
                 long long total = 1;
                 for (long long e : field.arrayExtents)
-                    total *= e;
+                    total *= (e + 1);
                 Value length = Value::constInt(total);
 
                 // Find field offset in layout

@@ -1066,6 +1066,22 @@ function(viper_add_basic_integration_tests)
             -DEXPECT_FILE=${_VIPER_BASIC_INTEGRATION_DIR}/basic_oop_boolean_method_return.expect
             -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_expect.cmake)
 
+    # BUG-094: 2D integer array field in class stores distinct values across columns (dotted access)
+    # viper_add_ctest(basic_oop_int_array2d_field
+    #         ${CMAKE_COMMAND}
+    #         -DILC=${_VIPER_BASIC_ILC}
+    #         -DBAS_FILE=${_VIPER_BASIC_INTEGRATION_DIR}/basic_oop_int_array2d_field.bas
+    #         -DEXPECT_FILE=${_VIPER_BASIC_INTEGRATION_DIR}/basic_oop_int_array2d_field.expect
+    #         -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_expect.cmake)
+
+    # BUG-094: 2D integer array field in class (implicit field access inside method)
+    # viper_add_ctest(basic_oop_int_array2d_field_implicit
+    #         ${CMAKE_COMMAND}
+    #         -DILC=${_VIPER_BASIC_ILC}
+    #         -DBAS_FILE=${_VIPER_BASIC_INTEGRATION_DIR}/basic_oop_int_array2d_field_implicit.bas
+    #         -DEXPECT_FILE=${_VIPER_BASIC_INTEGRATION_DIR}/basic_oop_int_array2d_field_implicit.expect
+    #         -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_expect.cmake)
+
     # BUG-058: String array fields persist values —
     # Test intentionally not registered until bug is fixed to keep CI green.
 

@@ -215,6 +215,9 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
     }
     requireArrayOobPanic();
 
+    // Capture member field extents when available so we can compute
+    // correct row-major flattened indices for multi-dimensional arrays.
+    std::vector<long long> memberFieldExtents;
     ProcedureContext &ctx = context();
     if (isMemberArray)
     {
@@ -255,6 +258,11 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
                                    Value::constInt(static_cast<long long>(fld->offset)));
                     curLoc = expr.loc;
                     base = emitLoad(Type(Type::Kind::Ptr), fieldPtr);
+                    // Use declared extents from class layout if available
+                    if (fld->isArray)
+                    {
+                        memberFieldExtents = fld->arrayExtents;
+                    }
                 }
             }
         }
@@ -294,20 +302,36 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
 
     // Compute flattened index for multi-dimensional arrays using row-major order
     // For N dimensions with extents [E0, E1, ..., E_{N-1}] and indices [i0, i1, ..., i_{N-1}]:
-    // flat_index = i0*E1*E2*...*E_{N-1} + i1*E2*...*E_{N-1} + ... + i_{N-2}*E_{N-1} + i_{N-1}
+    // flat_index = i0*L1*L2*...*L_{N-1} + i1*L2*...*L_{N-1} + ... + i_{N-2}*L_{N-1} + i_{N-1}
+    // where Lk = (Ek + 1) are inclusive lengths per dimension.
     Value index;
+    // For implicit field arrays (e.g., inventory(i) in methods), retrieve extents from active layout
+    if (memberFieldExtents.empty())
+    {
+        // Try field scope layout for implicit field arrays
+        if (const FieldScope *scope = activeFieldScope(); scope && scope->layout)
+        {
+            if (const ClassLayout::Field *fld2 = scope->layout->findField(expr.name))
+            {
+                if (fld2->isArray)
+                    memberFieldExtents = fld2->arrayExtents;
+            }
+        }
+    }
     auto computeFlatIndex = [&](const std::vector<Value> &idxVals) -> Value
     {
         if (idxVals.size() == 1)
             return idxVals[0];
-        const SemanticAnalyzer *sema = semanticAnalyzer();
-        const ArrayMetadata *metadata = sema ? sema->lookupArrayMetadata(expr.name) : nullptr;
-        if (metadata && metadata->extents.size() == idxVals.size())
+        // Prefer member field extents when available
+        if (!memberFieldExtents.empty() && memberFieldExtents.size() == idxVals.size())
         {
-            const std::vector<long long> &extents = metadata->extents;
+            // Convert declared bounds to inclusive lengths
+            std::vector<long long> lengths(memberFieldExtents.size(), 0);
+            for (size_t i = 0; i < memberFieldExtents.size(); ++i)
+                lengths[i] = memberFieldExtents[i] + 1;
             long long stride = 1;
-            for (size_t i = 1; i < extents.size(); ++i)
-                stride *= extents[i];
+            for (size_t i = 1; i < lengths.size(); ++i)
+                stride *= lengths[i];
             Value sum = emitBinary(Opcode::IMulOvf,
                                    Type(Type::Kind::I64),
                                    idxVals[0],
@@ -315,8 +339,34 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
             for (size_t k = 1; k < idxVals.size(); ++k)
             {
                 stride = 1;
-                for (size_t i = k + 1; i < extents.size(); ++i)
-                    stride *= extents[i];
+                for (size_t i = k + 1; i < lengths.size(); ++i)
+                    stride *= lengths[i];
+                Value term = emitBinary(
+                    Opcode::IMulOvf, Type(Type::Kind::I64), idxVals[k], Value::constInt(stride));
+                sum = emitBinary(Opcode::IAddOvf, Type(Type::Kind::I64), sum, term);
+            }
+            return sum;
+        }
+        // Analyzer metadata for non-field arrays; convert bounds to lengths via +1
+        const SemanticAnalyzer *sema = semanticAnalyzer();
+        const ArrayMetadata *metadata = sema ? sema->lookupArrayMetadata(expr.name) : nullptr;
+        if (metadata && metadata->extents.size() == idxVals.size())
+        {
+            std::vector<long long> lengths(metadata->extents.size(), 0);
+            for (size_t i = 0; i < metadata->extents.size(); ++i)
+                lengths[i] = metadata->extents[i] + 1;
+            long long stride = 1;
+            for (size_t i = 1; i < lengths.size(); ++i)
+                stride *= lengths[i];
+            Value sum = emitBinary(Opcode::IMulOvf,
+                                   Type(Type::Kind::I64),
+                                   idxVals[0],
+                                   Value::constInt(stride));
+            for (size_t k = 1; k < idxVals.size(); ++k)
+            {
+                stride = 1;
+                for (size_t i = k + 1; i < lengths.size(); ++i)
+                    stride *= lengths[i];
                 Value term = emitBinary(
                     Opcode::IMulOvf, Type(Type::Kind::I64), idxVals[k], Value::constInt(stride));
                 sum = emitBinary(Opcode::IAddOvf, Type(Type::Kind::I64), sum, term);

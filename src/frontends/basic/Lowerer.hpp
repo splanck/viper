@@ -812,6 +812,10 @@ class Lowerer
             ///          distinguish implicit field-array accesses inside
             ///          methods (e.g., `inventory(i)`) from scalar fields.
             bool isArray{false};
+            /// @brief Declared array extents (upper bounds per dimension).
+            /// @details Used for multi-dimensional index linearization. Each
+            ///          entry is an inclusive upper bound; length = bound + 1.
+            std::vector<long long> arrayExtents{};
             /// @brief BUG-082 fix: Class name for object-typed fields.
             /// @details Empty for primitive types; holds the class name for object references.
             std::string objectClassName;
