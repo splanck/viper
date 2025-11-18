@@ -132,14 +132,13 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                                 bbMir.instrs.push_back(MInstr{MOpcode::MulRRR, {MOperand::regOp(PhysReg::X0), MOperand::regOp(PhysReg::X0), MOperand::regOp(PhysReg::X1)}});
                                 break;
                             case Opcode::And:
-                                bbMir.instrs.push_back(MInstr{MOpcode::AddRRR /* placeholder? */}); // will be overridden by emitter mapping
-                                bbMir.instrs.back().opc = MOpcode::AddRRR; // keep structure consistent
-                                // but we don't have AND in MIR; use emitter helper via direct mapping not supported here
-                                // fall-through to emulate using emitter RR ops is handled via CLI path; omit in MIR here
+                                bbMir.instrs.push_back(MInstr{MOpcode::AndRRR, {MOperand::regOp(PhysReg::X0), MOperand::regOp(PhysReg::X0), MOperand::regOp(PhysReg::X1)}});
                                 break;
                             case Opcode::Or:
+                                bbMir.instrs.push_back(MInstr{MOpcode::OrrRRR, {MOperand::regOp(PhysReg::X0), MOperand::regOp(PhysReg::X0), MOperand::regOp(PhysReg::X1)}});
+                                break;
                             case Opcode::Xor:
-                                // Not yet in MIR minimal; handled by CLI path (kept unchanged)
+                                bbMir.instrs.push_back(MInstr{MOpcode::EorRRR, {MOperand::regOp(PhysReg::X0), MOperand::regOp(PhysReg::X0), MOperand::regOp(PhysReg::X1)}});
                                 break;
                             case Opcode::ICmpEq: case Opcode::ICmpNe:
                             case Opcode::SCmpLT: case Opcode::SCmpLE: case Opcode::SCmpGT: case Opcode::SCmpGE:
@@ -248,4 +247,3 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
 }
 
 } // namespace viper::codegen::aarch64
-

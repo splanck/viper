@@ -28,6 +28,9 @@ enum class MOpcode
     AddRRR,
     SubRRR,
     MulRRR,
+    AndRRR,
+    OrrRRR,
+    EorRRR,
     AddRI,
     SubRI,
     LslRI,
@@ -69,4 +72,3 @@ struct MFunction
 };
 
 } // namespace viper::codegen::aarch64
-

@@ -183,6 +183,9 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &mi) const
         case K::AddRRR: emitAddRRR(os, reg(mi.ops[0]), reg(mi.ops[1]), reg(mi.ops[2])); break;
         case K::SubRRR: emitSubRRR(os, reg(mi.ops[0]), reg(mi.ops[1]), reg(mi.ops[2])); break;
         case K::MulRRR: emitMulRRR(os, reg(mi.ops[0]), reg(mi.ops[1]), reg(mi.ops[2])); break;
+        case K::AndRRR: emitAndRRR(os, reg(mi.ops[0]), reg(mi.ops[1]), reg(mi.ops[2])); break;
+        case K::OrrRRR: emitOrrRRR(os, reg(mi.ops[0]), reg(mi.ops[1]), reg(mi.ops[2])); break;
+        case K::EorRRR: emitEorRRR(os, reg(mi.ops[0]), reg(mi.ops[1]), reg(mi.ops[2])); break;
         case K::AddRI: emitAddRI(os, reg(mi.ops[0]), reg(mi.ops[1]), imm(mi.ops[2])); break;
         case K::SubRI: emitSubRI(os, reg(mi.ops[0]), reg(mi.ops[1]), imm(mi.ops[2])); break;
         case K::LslRI: emitLslRI(os, reg(mi.ops[0]), reg(mi.ops[1]), imm(mi.ops[2])); break;
