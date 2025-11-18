@@ -14,6 +14,7 @@
 
 #include "codegen/aarch64/TargetAArch64.hpp"
 #include "codegen/aarch64/MachineIR.hpp"
+#include "codegen/aarch64/FramePlan.hpp"
 
 namespace viper::codegen::aarch64
 {
@@ -29,6 +30,9 @@ class AsmEmitter
     // ABI-conformant frame prologue/epilogue for leaf-like functions.
     void emitPrologue(std::ostream &os) const;
     void emitEpilogue(std::ostream &os) const;
+    // Prologue/epilogue honoring an explicit frame plan (callee-saved saves)
+    void emitPrologue(std::ostream &os, const FramePlan &plan) const;
+    void emitEpilogue(std::ostream &os, const FramePlan &plan) const;
 
     // Integer ops (64-bit): mov dst, src; add dst, lhs, rhs; ret
     void emitMovRR(std::ostream &os, PhysReg dst, PhysReg src) const;

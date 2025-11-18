@@ -52,17 +52,25 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
 {
     MFunction mf{};
     mf.name = fn.name;
-    mf.blocks.emplace_back();
-    auto &bbMir = mf.blocks.back();
+    // Pre-create MIR blocks with labels to mirror IL CFG shape.
+    for (const auto &bb : fn.blocks)
+    {
+        mf.blocks.emplace_back();
+        mf.blocks.back().name = bb.label;
+    }
+
+    // Helper to access a MIR block by IL block index
+    auto bbOut = [&](std::size_t idx) -> MBasicBlock & { return mf.blocks[idx]; };
 
     if (fn.retType.kind != il::core::Type::Kind::I64)
-        return mf; // Only i64 patterns supported in this phase
+        return mf; // Focus on i64 patterns for now
 
     const auto &argOrder = ti_->intArgOrder;
 
     if (!fn.blocks.empty())
     {
         const auto &bb = fn.blocks.front();
+        auto &bbMir = bbOut(0);
 
         // ret %paramN fast-path
         if (fn.blocks.size() == 1 && !bb.instructions.empty() && !bb.params.empty())
@@ -159,6 +167,22 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
         {
             const auto &binI = bb.instructions[bb.instructions.size() - 2];
             const auto &retI = bb.instructions.back();
+            // call @callee(args...) feeding ret: assume args already in x0..x7
+            if (binI.op == il::core::Opcode::Call && retI.op == il::core::Opcode::Ret &&
+                binI.result && !retI.operands.empty())
+            {
+                const auto &retV = retI.operands[0];
+                if (retV.kind == il::core::Value::Kind::Temp && retV.id == *binI.result)
+                {
+                    // Minimal rule: callee name present, up to 8 integer args. We assume params
+                    // are already in x0..x7 as per ABI; future work will marshal non-param args.
+                    if (!binI.callee.empty())
+                    {
+                        bbMir.instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp(binI.callee)}});
+                        return mf;
+                    }
+                }
+            }
             const bool isAdd = (binI.op == il::core::Opcode::Add || binI.op == il::core::Opcode::IAddOvf);
             const bool isSub = (binI.op == il::core::Opcode::Sub || binI.op == il::core::Opcode::ISubOvf);
             const bool isShl = (binI.op == il::core::Opcode::Shl);
@@ -223,12 +247,13 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
             }
         }
 
-        // ret const i64 anywhere in the function
-        for (const auto &block : fn.blocks)
+        // ret const i64 short-path: only when function is single-block.
+        if (fn.blocks.size() == 1)
         {
-            if (!block.instructions.empty())
+            const auto &only = fn.blocks.front();
+            if (!only.instructions.empty())
             {
-                const auto &term = block.instructions.back();
+                const auto &term = only.instructions.back();
                 if (term.op == il::core::Opcode::Ret && !term.operands.empty())
                 {
                     const auto &v = term.operands[0];
@@ -236,10 +261,108 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                     {
                         const long long imm = v.i64;
                         // Prefer movz/movk path in AsmEmitter for wide values.
-                        bbMir.instrs.push_back(MInstr{MOpcode::MovRI, {MOperand::regOp(PhysReg::X0), MOperand::immOp(imm)}});
+                        bbOut(0).instrs.push_back(MInstr{MOpcode::MovRI, {MOperand::regOp(PhysReg::X0), MOperand::immOp(imm)}});
                         return mf;
                     }
                 }
+            }
+        }
+
+        // Lower simple control-flow terminators: br and cbr
+        for (std::size_t i = 0; i < fn.blocks.size(); ++i)
+        {
+            const auto &inBB = fn.blocks[i];
+            if (inBB.instructions.empty()) continue;
+            const auto &term = inBB.instructions.back();
+            auto &outBB = bbOut(i);
+            switch (term.op)
+            {
+                case il::core::Opcode::Br:
+                    if (!term.labels.empty())
+                        outBB.instrs.push_back(MInstr{MOpcode::Br, {MOperand::labelOp(term.labels[0])}});
+                    break;
+                case il::core::Opcode::CBr:
+                    if (term.operands.size() >= 1 && term.labels.size() == 2)
+                    {
+                        const auto &cond = term.operands[0];
+                        // If constant, fold to unconditional branch.
+                        if (cond.kind == il::core::Value::Kind::ConstInt)
+                        {
+                            const auto &lbl = (cond.i64 != 0) ? term.labels[0] : term.labels[1];
+                            outBB.instrs.push_back(MInstr{MOpcode::Br, {MOperand::labelOp(lbl)}});
+                        }
+                        else
+                        {
+                            bool loweredViaCompare = false;
+                            // If cond is produced by a compare, emit cmp + b.<cond>
+                            if (cond.kind == il::core::Value::Kind::Temp)
+                            {
+                                const auto it = std::find_if(
+                                    inBB.instructions.begin(), inBB.instructions.end(),
+                                    [&](const il::core::Instr &I) { return I.result && *I.result == cond.id; });
+                                if (it != inBB.instructions.end())
+                                {
+                                    const il::core::Instr &cmpI = *it;
+                                    const char *cc = condForOpcode(cmpI.op);
+                                    if (cc && cmpI.operands.size() == 2)
+                                    {
+                                        const auto &o0 = cmpI.operands[0];
+                                        const auto &o1 = cmpI.operands[1];
+                                        if (o0.kind == il::core::Value::Kind::Temp && o1.kind == il::core::Value::Kind::Temp)
+                                        {
+                                            int idx0 = indexOfParam(inBB, o0.id);
+                                            int idx1 = indexOfParam(inBB, o1.id);
+                                            if (idx0 >= 0 && idx1 >= 0 && idx0 < 8 && idx1 < 8)
+                                            {
+                                                const PhysReg src0 = argOrder[static_cast<size_t>(idx0)];
+                                                const PhysReg src1 = argOrder[static_cast<size_t>(idx1)];
+                                                outBB.instrs.push_back(MInstr{MOpcode::MovRR, {MOperand::regOp(PhysReg::X9), MOperand::regOp(src1)}});
+                                                outBB.instrs.push_back(MInstr{MOpcode::MovRR, {MOperand::regOp(PhysReg::X0), MOperand::regOp(src0)}});
+                                                outBB.instrs.push_back(MInstr{MOpcode::MovRR, {MOperand::regOp(PhysReg::X1), MOperand::regOp(PhysReg::X9)}});
+                                                outBB.instrs.push_back(MInstr{MOpcode::CmpRR, {MOperand::regOp(PhysReg::X0), MOperand::regOp(PhysReg::X1)}});
+                                                outBB.instrs.push_back(MInstr{MOpcode::BCond, {MOperand::condOp(cc), MOperand::labelOp(term.labels[0])}});
+                                                outBB.instrs.push_back(MInstr{MOpcode::Br, {MOperand::labelOp(term.labels[1])}});
+                                                loweredViaCompare = true;
+                                            }
+                                        }
+                                        else if (o0.kind == il::core::Value::Kind::Temp && o1.kind == il::core::Value::Kind::ConstInt)
+                                        {
+                                            int idx0 = indexOfParam(inBB, o0.id);
+                                            if (idx0 >= 0 && idx0 < 8)
+                                            {
+                                                const PhysReg src0 = argOrder[static_cast<size_t>(idx0)];
+                                                if (src0 != PhysReg::X0)
+                                                    outBB.instrs.push_back(MInstr{MOpcode::MovRR, {MOperand::regOp(PhysReg::X0), MOperand::regOp(src0)}});
+                                                outBB.instrs.push_back(MInstr{MOpcode::CmpRI, {MOperand::regOp(PhysReg::X0), MOperand::immOp(o1.i64)}});
+                                                outBB.instrs.push_back(MInstr{MOpcode::BCond, {MOperand::condOp(cc), MOperand::labelOp(term.labels[0])}});
+                                                outBB.instrs.push_back(MInstr{MOpcode::Br, {MOperand::labelOp(term.labels[1])}});
+                                                loweredViaCompare = true;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            if (!loweredViaCompare)
+                            {
+                                // Fallback: assume cond in x0 (or move param to x0), then cmp x0, #0; b.ne true; b false
+                                if (cond.kind == il::core::Value::Kind::Temp)
+                                {
+                                    int pIdx = indexOfParam(inBB, cond.id);
+                                    if (pIdx >= 0)
+                                    {
+                                        const PhysReg src = argOrder[static_cast<size_t>(pIdx)];
+                                        if (src != PhysReg::X0)
+                                            outBB.instrs.push_back(MInstr{MOpcode::MovRR, {MOperand::regOp(PhysReg::X0), MOperand::regOp(src)}});
+                                    }
+                                }
+                                outBB.instrs.push_back(MInstr{MOpcode::CmpRI, {MOperand::regOp(PhysReg::X0), MOperand::immOp(0)}});
+                                outBB.instrs.push_back(MInstr{MOpcode::BCond, {MOperand::condOp("ne"), MOperand::labelOp(term.labels[0])}});
+                                outBB.instrs.push_back(MInstr{MOpcode::Br, {MOperand::labelOp(term.labels[1])}});
+                            }
+                        }
+                    }
+                    break;
+                default: break;
             }
         }
     }

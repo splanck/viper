@@ -40,6 +40,49 @@ void AsmEmitter::emitEpilogue(std::ostream &os) const
     os << "  ret\n";
 }
 
+void AsmEmitter::emitPrologue(std::ostream &os, const FramePlan &plan) const
+{
+    // Always save FP/LR first
+    emitPrologue(os);
+    // Save additional callee-saved GPRs from plan in pairs
+    for (std::size_t i = 0; i < plan.saveGPRs.size(); )
+    {
+        const PhysReg r0 = plan.saveGPRs[i++];
+        if (i < plan.saveGPRs.size())
+        {
+            const PhysReg r1 = plan.saveGPRs[i++];
+            os << "  stp " << rn(r0) << ", " << rn(r1) << ", [sp, #-16]!\n";
+        }
+        else
+        {
+            os << "  str " << rn(r0) << ", [sp, #-16]!\n";
+        }
+    }
+}
+
+void AsmEmitter::emitEpilogue(std::ostream &os, const FramePlan &plan) const
+{
+    // Restore in reverse order of saves, then FP/LR
+    // Compute how many stores we emitted.
+    std::size_t n = plan.saveGPRs.size();
+    // If odd, we restored one with STR/then LDR in reverse
+    if (n % 2 == 1)
+    {
+        const PhysReg r0 = plan.saveGPRs[n - 1];
+        os << "  ldr " << rn(r0) << ", [sp], #16\n";
+        --n;
+    }
+    while (n > 0)
+    {
+        const PhysReg r1 = plan.saveGPRs[n - 1];
+        const PhysReg r0 = plan.saveGPRs[n - 2];
+        os << "  ldp " << rn(r0) << ", " << rn(r1) << ", [sp], #16\n";
+        n -= 2;
+    }
+    // Finally FP/LR and ret
+    emitEpilogue(os);
+}
+
 void AsmEmitter::emitMovRR(std::ostream &os, PhysReg dst, PhysReg src) const
 {
     os << "  mov " << rn(dst) << ", " << rn(src) << "\n";
@@ -166,7 +209,8 @@ void AsmEmitter::emitFunction(std::ostream &os, const MFunction &fn) const
 
 void AsmEmitter::emitBlock(std::ostream &os, const MBasicBlock &bb) const
 {
-    (void)bb; // unnamed blocks for now
+    if (!bb.name.empty())
+        os << bb.name << ":\n";
     for (const auto &mi : bb.instrs)
         emitInstruction(os, mi);
 }
@@ -179,7 +223,15 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &mi) const
     switch (mi.opc)
     {
         case K::MovRR: emitMovRR(os, reg(mi.ops[0]), reg(mi.ops[1])); break;
-        case K::MovRI: emitMovRI(os, reg(mi.ops[0]), imm(mi.ops[1])); break;
+        case K::MovRI:
+        {
+            const long long v = imm(mi.ops[1]);
+            if (v >= 0 && v <= 65535)
+                emitMovRI(os, reg(mi.ops[0]), v);
+            else
+                emitMovImm64(os, reg(mi.ops[0]), static_cast<unsigned long long>(v));
+            break;
+        }
         case K::AddRRR: emitAddRRR(os, reg(mi.ops[0]), reg(mi.ops[1]), reg(mi.ops[2])); break;
         case K::SubRRR: emitSubRRR(os, reg(mi.ops[0]), reg(mi.ops[1]), reg(mi.ops[2])); break;
         case K::MulRRR: emitMulRRR(os, reg(mi.ops[0]), reg(mi.ops[1]), reg(mi.ops[2])); break;
@@ -194,6 +246,12 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &mi) const
         case K::CmpRR: emitCmpRR(os, reg(mi.ops[0]), reg(mi.ops[1])); break;
         case K::CmpRI: emitCmpRI(os, reg(mi.ops[0]), imm(mi.ops[1])); break;
         case K::Cset: emitCset(os, reg(mi.ops[0]), mi.ops[1].cond); break;
+        case K::Br:
+            os << "  b " << mi.ops[0].label << "\n"; break;
+        case K::BCond:
+            os << "  b." << mi.ops[0].cond << " " << mi.ops[1].label << "\n"; break;
+        case K::Bl:
+            os << "  bl " << mi.ops[0].label << "\n"; break;
         default: break;
     }
 }

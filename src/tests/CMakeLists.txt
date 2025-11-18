@@ -74,67 +74,87 @@ add_subdirectory(e2e)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/codegen/x86_64)
 add_executable(test_target_aarch64 ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_target_aarch64.cpp)
 target_link_libraries(test_target_aarch64 PRIVATE viper_testing il_codegen_aarch64)
-viper_add_ctest(test_target_aarch64 test_target_aarch64)
+viper_add_ctest(test_target_aarch64 $<TARGET_FILE:test_target_aarch64>)
 
 # Minimal AArch64 emission smoke test
 add_executable(test_emit_aarch64_minimal ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_emit_aarch64_minimal.cpp)
 target_link_libraries(test_emit_aarch64_minimal PRIVATE viper_testing il_codegen_aarch64)
-viper_add_ctest(test_emit_aarch64_minimal test_emit_aarch64_minimal)
+viper_add_ctest(test_emit_aarch64_minimal $<TARGET_FILE:test_emit_aarch64_minimal>)
 
 # Minimal AArch64 MIR emission smoke test
 add_executable(test_emit_aarch64_mir_minimal ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_emit_aarch64_mir_minimal.cpp)
 target_link_libraries(test_emit_aarch64_mir_minimal PRIVATE viper_testing il_codegen_aarch64)
-viper_add_ctest(test_emit_aarch64_mir_minimal test_emit_aarch64_mir_minimal)
+viper_add_ctest(test_emit_aarch64_mir_minimal $<TARGET_FILE:test_emit_aarch64_mir_minimal>)
+
+# FramePlan emission test
+add_executable(test_emit_aarch64_frameplan ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_emit_aarch64_frameplan.cpp)
+target_link_libraries(test_emit_aarch64_frameplan PRIVATE viper_testing il_codegen_aarch64)
+viper_add_ctest(test_emit_aarch64_frameplan $<TARGET_FILE:test_emit_aarch64_frameplan>)
 
 # MIR bitwise rr emission test
 add_executable(test_emit_aarch64_mir_bitwise ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_emit_aarch64_mir_bitwise.cpp)
 target_link_libraries(test_emit_aarch64_mir_bitwise PRIVATE viper_testing il_codegen_aarch64)
-viper_add_ctest(test_emit_aarch64_mir_bitwise test_emit_aarch64_mir_bitwise)
+viper_add_ctest(test_emit_aarch64_mir_bitwise $<TARGET_FILE:test_emit_aarch64_mir_bitwise>)
+
+# MIR branches emission test
+add_executable(test_emit_aarch64_mir_branches ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_emit_aarch64_mir_branches.cpp)
+target_link_libraries(test_emit_aarch64_mir_branches PRIVATE viper_testing il_codegen_aarch64)
+viper_add_ctest(test_emit_aarch64_mir_branches $<TARGET_FILE:test_emit_aarch64_mir_branches>)
 
 # CLI smoke for arm64 -S (ret 0)
 add_executable(test_codegen_arm64_cli ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_cli.cpp)
 target_link_libraries(test_codegen_arm64_cli PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
-viper_add_ctest(test_codegen_arm64_cli test_codegen_arm64_cli)
+viper_add_ctest(test_codegen_arm64_cli $<TARGET_FILE:test_codegen_arm64_cli>)
 
 add_executable(test_codegen_arm64_add_params ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_add_params.cpp)
 target_link_libraries(test_codegen_arm64_add_params PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
-viper_add_ctest(test_codegen_arm64_add_params test_codegen_arm64_add_params)
+viper_add_ctest(test_codegen_arm64_add_params $<TARGET_FILE:test_codegen_arm64_add_params>)
 
 add_executable(test_codegen_arm64_ret_param ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_ret_param.cpp)
 target_link_libraries(test_codegen_arm64_ret_param PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
-viper_add_ctest(test_codegen_arm64_ret_param test_codegen_arm64_ret_param)
+viper_add_ctest(test_codegen_arm64_ret_param $<TARGET_FILE:test_codegen_arm64_ret_param>)
 
 add_executable(test_codegen_arm64_add_imm ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_add_imm.cpp)
 target_link_libraries(test_codegen_arm64_add_imm PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
-viper_add_ctest(test_codegen_arm64_add_imm test_codegen_arm64_add_imm)
+viper_add_ctest(test_codegen_arm64_add_imm $<TARGET_FILE:test_codegen_arm64_add_imm>)
 
 add_executable(test_codegen_arm64_bitwise ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_bitwise.cpp)
 target_link_libraries(test_codegen_arm64_bitwise PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
-viper_add_ctest(test_codegen_arm64_bitwise test_codegen_arm64_bitwise)
+viper_add_ctest(test_codegen_arm64_bitwise $<TARGET_FILE:test_codegen_arm64_bitwise>)
 
 add_executable(test_codegen_arm64_params_wide ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_params_wide.cpp)
 target_link_libraries(test_codegen_arm64_params_wide PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
-viper_add_ctest(test_codegen_arm64_params_wide test_codegen_arm64_params_wide)
+viper_add_ctest(test_codegen_arm64_params_wide $<TARGET_FILE:test_codegen_arm64_params_wide>)
 
 add_executable(test_codegen_arm64_ovf ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_ovf.cpp)
 target_link_libraries(test_codegen_arm64_ovf PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
-viper_add_ctest(test_codegen_arm64_ovf test_codegen_arm64_ovf)
+viper_add_ctest(test_codegen_arm64_ovf $<TARGET_FILE:test_codegen_arm64_ovf>)
 
 add_executable(test_codegen_arm64_shift_imm ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_shift_imm.cpp)
 target_link_libraries(test_codegen_arm64_shift_imm PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
-viper_add_ctest(test_codegen_arm64_shift_imm test_codegen_arm64_shift_imm)
+viper_add_ctest(test_codegen_arm64_shift_imm $<TARGET_FILE:test_codegen_arm64_shift_imm>)
 
 add_executable(test_codegen_arm64_icmp ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_icmp.cpp)
 target_link_libraries(test_codegen_arm64_icmp PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
-viper_add_ctest(test_codegen_arm64_icmp test_codegen_arm64_icmp)
+viper_add_ctest(test_codegen_arm64_icmp $<TARGET_FILE:test_codegen_arm64_icmp>)
 
 add_executable(test_codegen_arm64_large_imm ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_large_imm.cpp)
 target_link_libraries(test_codegen_arm64_large_imm PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
-viper_add_ctest(test_codegen_arm64_large_imm test_codegen_arm64_large_imm)
+viper_add_ctest(test_codegen_arm64_large_imm $<TARGET_FILE:test_codegen_arm64_large_imm>)
 
 add_executable(test_codegen_arm64_icmp_imm ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_icmp_imm.cpp)
 target_link_libraries(test_codegen_arm64_icmp_imm PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
-viper_add_ctest(test_codegen_arm64_icmp_imm test_codegen_arm64_icmp_imm)
+viper_add_ctest(test_codegen_arm64_icmp_imm $<TARGET_FILE:test_codegen_arm64_icmp_imm>)
+
+# cbr lowering tests for arm64 CLI
+add_executable(test_codegen_arm64_cbr ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_cbr.cpp)
+target_link_libraries(test_codegen_arm64_cbr PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
+viper_add_ctest(test_codegen_arm64_cbr $<TARGET_FILE:test_codegen_arm64_cbr>)
+
+# call lowering smoke test for arm64 CLI (bl callee)
+add_executable(test_codegen_arm64_call ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_call.cpp)
+target_link_libraries(test_codegen_arm64_call PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
+viper_add_ctest(test_codegen_arm64_call $<TARGET_FILE:test_codegen_arm64_call>)
 
 viper_add_ctest(NoAssertFalseGuard
         ${CMAKE_COMMAND}

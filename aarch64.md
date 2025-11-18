@@ -158,22 +158,23 @@ Status: Added `src/codegen/common/ArgNormalize.hpp` and started consuming it fro
    - Added unit test `src/tests/unit/codegen/test_emit_aarch64_mir_minimal.cpp` to validate prologue/add/epilogue emission via MIR.
    - Added a minimal IL→MIR lowering shim used by the CLI: `src/codegen/aarch64/LowerILToMIR.{hpp,cpp}` lowers the existing CLI patterns (ret const/param, rr/ri ops incl. bitwise, shift‑imm, compares) into MIR. The CLI now calls IL→MIR then MIR→asm.
    - Extended MIR opcode coverage to include bitwise rr (`AndRRR`/`OrrRRR`/`EorRRR`) and added a focused MIR unit test (`test_emit_aarch64_mir_bitwise.cpp`).
+   - Added basic block label emission and branches in MIR (`Br`, `BCond`) with a unit test (`test_emit_aarch64_mir_branches.cpp`). IL→MIR now lowers trivial `br`/`cbr` (const folds and simple i1 via cmp x0, #0) as a starting point; fuller CF lowering remains next.
 
 5) Frame and prologue/epilogue refinement
-   - Model callee‑saved saves/restores as needed (x19..x28, v8..v15 per Darwin) once the MIR uses them.
-   - Implement basic stack object placement for spills and outgoing call frames.
+   - DONE (GPR saves): Introduced `FramePlan` (header-only) and extended `AsmEmitter` with `emitPrologue/Epilogue(FramePlan)` to save/restore requested callee‑saved GPRs (pairs + single). Added unit test `test_emit_aarch64_frameplan.cpp` covering odd/even saves. Next: incorporate FramePlan into MIR/CLI path when non‑volatile usage arises; add FPR saves later.
+   - NEXT: Implement basic stack object placement for spills and outgoing call frames (kept out of scope for this step).
 
 6) Register allocation (linear scan)
    - Adapt or re‑implement the x86 linear scan allocator for arm64 MIR.
    - Add spill code paths and tests.
 
 7) Calls and ABI interop
-   - Implement call lowering: argument assignment (x0..x7 / v0..v7), stack spills for extras, return value handling.
-   - Add minimal runtime call smoke tests.
+  - Implement call lowering: argument assignment (x0..x7 / v0..v7), stack spills for extras, return value handling.
+  - Add minimal runtime call smoke tests.
 
 8) Assembler + link integration (optional gating on host/toolchain)
    - Add `-assemble`/`--run-native` modes for arm64 akin to x64 pipeline, gated behind host/toolchain checks.
-   - Add `movz/movk` materialization for large immediates; prefer `adrp+add` sequences for addressing rodata labels.
+   - Large immediates: MIR `movri` now materializes wide constants with `movz/movk` in the emitter. Addressing sequences (`adrp+add`) remain future work.
 
 ## Long‑Term Plan
 
@@ -189,13 +190,40 @@ Status: Added `src/codegen/common/ArgNormalize.hpp` and started consuming it fro
 
 ## Next Concrete Items (actionable checklist)
 
-- Add bitwise rr lowering for entry params (and/or/xor) with tests:
-  - Files: `cmd_codegen_arm64.cpp`, new `test_codegen_arm64_bitwise.cpp`.
+- Bitwise rr lowering (and/or/xor) with tests — DONE
+  - Implemented via IL→MIR in `LowerILToMIR.cpp` and emitted by `AsmEmitter`.
+  - Tests: `test_codegen_arm64_bitwise.cpp`, `test_emit_aarch64_mir_bitwise.cpp`.
 
-- Add shift‑by‑imm lowering for entry param (shl/lsr/asr) with tests:
-  - Files: `cmd_codegen_arm64.cpp`, new `test_codegen_arm64_shift_imm.cpp`.
+- Shift‑by‑imm lowering (shl/lsr/asr) with tests — DONE
+  - Implemented in IL→MIR (LslRI/LsrRI/AsrRI) and emitted by `AsmEmitter`.
+  - Tests: `test_codegen_arm64_shift_imm.cpp`.
 
-- Factor a small `Arm64PatternLowerer` helper inside `cmd_codegen_arm64.cpp` to declutter the CLI file and centralize opcode mapping. — DONE
+- Factor a small `Arm64PatternLowerer` helper — DONE
+  - Functionality moved into `LowerILToMIR` keeping the CLI thin.
+
+- Conditional branches on compares (rr and ri) — DONE
+  - IL→MIR lowers `cbr (icmp/scmp/ucmp ...) , T, F` to `cmp` + `b.<cond>` sequences, with param normalization and immediate handling.
+  - Tests: `test_emit_aarch64_mir_branches.cpp`, `test_codegen_arm64_cbr.cpp`, `test_codegen_arm64_icmp.cpp`, `test_codegen_arm64_icmp_imm.cpp`.
+
+## Recent Fixes
+
+- Correct IL→MIR ret‑const handling in multi‑block functions
+  - Previously, a ret‑const anywhere in the function short‑circuited emission to a single `mov x0, #imm` in `entry`, breaking `cbr` lowering tests.
+  - Now restricted to single‑block functions only. Multi‑block functions lower their control flow and compares as expected.
+
+## New Work Completed
+
+- Minimal call lowering (rr args, ret-forward) — DONE
+  - MIR: Added `Bl` opcode for `bl <callee>`.
+  - Emitter: Prints `bl <name>` from MIR.
+  - Lowering: IL→MIR recognizes single-block pattern `%t = call @callee(%paramK...)` feeding `ret %t` and emits `Bl callee`. Assumes args already in x0..x7 as per ABI (no marshalling yet).
+  - Tests: `test_codegen_arm64_call.cpp` validates CLI emits `bl h` for a simple extern call.
+
+## What’s Next
+
+- Argument marshalling for non-param operands (consts/temps) into x0..x7.
+- Support >8 integer args (stack area) and FPR args (v0..v7) in the call path.
+- Integrate FramePlan with MIR when callee-saved usage is detected.
 
 - Generalize parameter coverage to x2..x7 for `ret %paramN` and rr ops feeding ret; add tests for 3‑arg functions. — DONE
   - rr/ri ops normalize any arg index 0..7 using scratch; `ret %paramN` moves ArgRegN → x0 as needed.
