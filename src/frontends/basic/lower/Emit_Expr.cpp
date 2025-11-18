@@ -109,6 +109,7 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
     // the object's field; otherwise we load from variable storage as usual.
     Type::Kind memberElemIlKind = Type::Kind::I64; // default element kind
     ::il::frontends::basic::Type memberElemAstType = ::il::frontends::basic::Type::I64;
+    bool isMemberObjectArray = false; // BUG-089: Track if member array holds objects
     Value base;
 
     // Only resolve storage for non-member arrays
@@ -139,9 +140,14 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
                 if (const ClassLayout::Field *fld = it->second.findField(fieldName))
                 {
                     memberElemAstType = fld->type;
-                    memberElemIlKind = (fld->type == ::il::frontends::basic::Type::Str)
-                                           ? Type::Kind::Str
-                                           : Type::Kind::I64;
+                    // BUG-089 fix: Check if field is an object array
+                    isMemberObjectArray = !fld->objectClassName.empty();
+                    if (fld->type == ::il::frontends::basic::Type::Str)
+                        memberElemIlKind = Type::Kind::Str;
+                    else if (isMemberObjectArray)
+                        memberElemIlKind = Type::Kind::Ptr;
+                    else
+                        memberElemIlKind = Type::Kind::I64;
                 }
             }
         }
@@ -161,6 +167,15 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
                 requireArrayStrPut();
                 requireStrRetainMaybe();
             }
+        }
+        else if (isMemberObjectArray)
+        {
+            // BUG-089 fix: Use object array runtime functions for object fields
+            requireArrayObjLen();
+            if (kind == ArrayAccessKind::Load)
+                requireArrayObjGet();
+            else
+                requireArrayObjPut();
         }
         else
         {
@@ -224,9 +239,14 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
                 {
                     // Type already set above
                     memberElemAstType = fld->type;
-                    memberElemIlKind = (fld->type == ::il::frontends::basic::Type::Str)
-                                           ? Type::Kind::Str
-                                           : Type::Kind::I64;
+                    // BUG-089 fix: Check if field is an object array (same as earlier)
+                    isMemberObjectArray = !fld->objectClassName.empty();
+                    if (fld->type == ::il::frontends::basic::Type::Str)
+                        memberElemIlKind = Type::Kind::Str;
+                    else if (isMemberObjectArray)
+                        memberElemIlKind = Type::Kind::Ptr;
+                    else
+                        memberElemIlKind = Type::Kind::I64;
                     curLoc = expr.loc;
                     Value fieldPtr =
                         emitBinary(Opcode::GEP,
@@ -314,6 +334,8 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
     {
         if (memberElemAstType == ::il::frontends::basic::Type::Str)
             len = emitCallRet(Type(Type::Kind::I64), "rt_arr_str_len", {base});
+        else if (isMemberObjectArray)
+            len = emitCallRet(Type(Type::Kind::I64), "rt_arr_obj_len", {base}); // BUG-089 fix
         else
             len = emitCallRet(Type(Type::Kind::I64), "rt_arr_i32_len", {base});
     }
@@ -358,15 +380,15 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
     emitTrap();
 
     ctx.setCurrent(ok);
-    // Only for string arrays (value or member), re-lower base/index in the ok block
-    // to avoid cross-block temp reuse issues seen with string element handling.
-    bool isStringArray = false;
+    // Only for string/object arrays (value or member), re-lower base/index in the ok block
+    // to avoid cross-block temp reuse issues seen with reference-counted element handling.
+    bool isRefCountedArray = false;
     if (isMemberArray)
-        isStringArray = (memberElemAstType == ::il::frontends::basic::Type::Str);
+        isRefCountedArray = (memberElemAstType == ::il::frontends::basic::Type::Str) || isMemberObjectArray;
     else if (info)
-        isStringArray = (info->type == AstType::Str);
+        isRefCountedArray = (info->type == AstType::Str) || info->isObject;
 
-    if (isStringArray)
+    if (isRefCountedArray)
     {
         Value baseOk;
         if (isMemberArray)
@@ -410,7 +432,7 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
         Value indexOk = computeFlatIndex(indicesOk);
         return ArrayAccess{baseOk, indexOk};
     }
-    // Non-string arrays: keep original SSA values to preserve IL golden tests
+    // Non-reference-counted arrays (i32/i64/f64): keep original SSA values to preserve IL golden tests
     return ArrayAccess{base, index};
 }
 

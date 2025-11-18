@@ -295,6 +295,7 @@ void Lowerer::assignArrayElement(const ArrayExpr &target, RVal value, il::suppor
     // type from the owning class layout rather than symbol table.
     bool isMemberArray = target.name.find('.') != std::string::npos;
     ::il::frontends::basic::Type memberElemAstType = ::il::frontends::basic::Type::I64;
+    bool isMemberObjectArray = false; // BUG-089: Track if member array holds objects
     if (isMemberArray)
     {
         const std::string &full = target.name;
@@ -306,7 +307,11 @@ void Lowerer::assignArrayElement(const ArrayExpr &target, RVal value, il::suppor
         if (it != classLayouts_.end())
         {
             if (const ClassLayout::Field *fld = it->second.findField(fieldName))
+            {
                 memberElemAstType = fld->type;
+                // BUG-089 fix: Check if field is an object array
+                isMemberObjectArray = !fld->objectClassName.empty();
+            }
         }
     }
     // BUG-058: Implicit field array accesses (inside methods) use non-dotted
@@ -318,7 +323,11 @@ void Lowerer::assignArrayElement(const ArrayExpr &target, RVal value, il::suppor
         if (const auto *scope = activeFieldScope(); scope && scope->layout)
         {
             if (const ClassLayout::Field *fld = scope->layout->findField(target.name))
+            {
                 memberElemAstType = fld->type;
+                // BUG-089 fix: Check if field is an object array
+                isMemberObjectArray = !fld->objectClassName.empty();
+            }
             // Recompute base as ME.<field> to ensure we are storing into the
             // instance field array even when the name is implicit.
             const auto *selfInfo = findSymbol("ME");
@@ -355,9 +364,9 @@ void Lowerer::assignArrayElement(const ArrayExpr &target, RVal value, il::suppor
         emitStore(Type(Type::Kind::Str), tmp, value.value);
         emitCall("rt_arr_str_put", {access.base, access.index, tmp});
     }
-    else if (value.type.kind == Type::Kind::Ptr || (!isMemberArray && info && info->isObject))
+    else if (value.type.kind == Type::Kind::Ptr || (!isMemberArray && info && info->isObject) || isMemberObjectArray)
     {
-        // Object array: rt_arr_obj_put(arr, idx, ptr)
+        // BUG-089 fix: Object array (including member object arrays): rt_arr_obj_put(arr, idx, ptr)
         requireArrayObjPut();
         emitCall("rt_arr_obj_put", {access.base, access.index, value.value});
     }
@@ -532,6 +541,122 @@ void Lowerer::lowerLet(const LetStmt &stmt)
             }
         }
         // Fallback: not a supported lvalue form; do nothing here (analyzer should have errored).
+    }
+    else if (auto *call = as<const CallExpr>(*stmt.target))
+    {
+        // BUG-089 fix: CallExpr might be an implicit field array access (e.g., items(i) in a method)
+        // Check if this is a field array in the current class
+        if (isFieldInScope(call->callee))
+        {
+            if (const auto *scope = activeFieldScope(); scope && scope->layout)
+            {
+                if (const ClassLayout::Field *fld = scope->layout->findField(call->callee))
+                {
+                    if (fld->isArray)
+                    {
+                        // This is a field array access. Lower it inline similar to MethodCallExpr handling.
+                        // Get the ME pointer and compute the field array handle
+                        const auto *selfInfo = findSymbol("ME");
+                        if (selfInfo && selfInfo->slotId)
+                        {
+                            curLoc = stmt.loc;
+                            Value selfPtr = emitLoad(Type(Type::Kind::Ptr), Value::temp(*selfInfo->slotId));
+                            curLoc = stmt.loc;
+                            Value fieldPtr = emitBinary(
+                                Opcode::GEP,
+                                Type(Type::Kind::Ptr),
+                                selfPtr,
+                                Value::constInt(static_cast<long long>(fld->offset)));
+                            Value arrHandle = emitLoad(Type(Type::Kind::Ptr), fieldPtr);
+
+                            // Lower the index
+                            Value index = Value::constInt(0);
+                            if (!call->args.empty() && call->args[0])
+                            {
+                                RVal idx = lowerExpr(*call->args[0]);
+                                idx = coerceToI64(std::move(idx), stmt.loc);
+                                index = idx.value;
+                            }
+
+                            // Now perform bounds-checked array assignment
+                            // We need to call the appropriate rt_arr_*_put function
+                            bool isMemberObjectArray = !fld->objectClassName.empty();
+
+                            // Bounds check
+                            Value len;
+                            if (fld->type == ::il::frontends::basic::Type::Str)
+                            {
+                                requireArrayStrLen();
+                                len = emitCallRet(Type(Type::Kind::I64), "rt_arr_str_len", {arrHandle});
+                            }
+                            else if (isMemberObjectArray)
+                            {
+                                requireArrayObjLen();
+                                len = emitCallRet(Type(Type::Kind::I64), "rt_arr_obj_len", {arrHandle});
+                            }
+                            else
+                            {
+                                requireArrayI32Len();
+                                len = emitCallRet(Type(Type::Kind::I64), "rt_arr_i32_len", {arrHandle});
+                            }
+
+                            Value isNeg = emitBinary(Opcode::SCmpLT, ilBoolTy(), index, Value::constInt(0));
+                            Value tooHigh = emitBinary(Opcode::SCmpGE, ilBoolTy(), index, len);
+                            auto emitc = emitCommon(stmt.loc);
+                            Value isNeg64 = emitc.widen_to(isNeg, 1, 64, Signedness::Unsigned);
+                            Value tooHigh64 = emitc.widen_to(tooHigh, 1, 64, Signedness::Unsigned);
+                            Value oobInt = emitc.logical_or(isNeg64, tooHigh64);
+                            Value oobCond = emitBinary(Opcode::ICmpNe, ilBoolTy(), oobInt, Value::constInt(0));
+
+                            ProcedureContext &ctx = context();
+                            Function *func = ctx.function();
+                            size_t curIdx = static_cast<size_t>(ctx.current() - &func->blocks[0]);
+                            unsigned bcId = ctx.consumeBoundsCheckId();
+                            BlockNamer *blockNamer = ctx.blockNames().namer();
+                            size_t okIdx = func->blocks.size();
+                            std::string okLbl = blockNamer ? blockNamer->tag("bc_ok" + std::to_string(bcId))
+                                                           : mangler.block("bc_ok" + std::to_string(bcId));
+                            builder->addBlock(*func, okLbl);
+                            size_t oobIdx = func->blocks.size();
+                            std::string oobLbl = blockNamer ? blockNamer->tag("bc_oob" + std::to_string(bcId))
+                                                            : mangler.block("bc_oob" + std::to_string(bcId));
+                            builder->addBlock(*func, oobLbl);
+                            BasicBlock *ok = &func->blocks[okIdx];
+                            BasicBlock *oob = &func->blocks[oobIdx];
+                            ctx.setCurrent(&func->blocks[curIdx]);
+                            emitCBr(oobCond, oob, ok);
+                            ctx.setCurrent(oob);
+                            requireArrayOobPanic();
+                            emitCall("rt_arr_oob_panic", {index, len});
+                            emitTrap();
+                            ctx.setCurrent(ok);
+
+                            // Perform the actual assignment
+                            if (fld->type == ::il::frontends::basic::Type::Str)
+                            {
+                                requireArrayStrPut();
+                                Value tmp = emitAlloca(8);
+                                emitStore(Type(Type::Kind::Str), tmp, value.value);
+                                emitCall("rt_arr_str_put", {arrHandle, index, tmp});
+                            }
+                            else if (isMemberObjectArray)
+                            {
+                                requireArrayObjPut();
+                                emitCall("rt_arr_obj_put", {arrHandle, index, value.value});
+                            }
+                            else
+                            {
+                                requireArrayI32Set();
+                                RVal coerced = ensureI64(std::move(value), stmt.loc);
+                                emitCall("rt_arr_i32_set", {arrHandle, index, coerced.value});
+                            }
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+        // Not a field array; fall through (analyzer should have errored)
     }
     else if (auto *arr = as<const ArrayExpr>(*stmt.target))
     {

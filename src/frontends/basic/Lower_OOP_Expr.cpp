@@ -89,12 +89,60 @@ std::string Lowerer::resolveObjectClass(const Expr &expr) const
     {
         return alloc->className;
     }
+    if (const auto *call = as<const CallExpr>(expr))
+    {
+        // BUG-089 fix: CallExpr might be a field array access (BASIC uses () for both)
+        // Check if this is an implicit field array in a class method
+        const FieldScope *scope = activeFieldScope();
+        if (scope && scope->layout)
+        {
+            const auto *field = scope->layout->findField(call->callee);
+            if (field && field->isArray && !field->objectClassName.empty())
+            {
+                return qualify(field->objectClassName);
+            }
+        }
+
+        return {};
+    }
     if (const auto *arr = as<const ArrayExpr>(expr))
     {
-        // Array element access inherits the element's class from the array symbol
+        // BUG-089 fix: Handle module-level, dotted member, and implicit field arrays
         const auto *info = findSymbol(arr->name);
         if (info && info->isObject && !info->objectClass.empty())
             return info->objectClass;
+
+        // Check if this is a member array with dotted name (e.g., ME.items)
+        bool isMemberArray = arr->name.find('.') != std::string::npos;
+        if (isMemberArray)
+        {
+            const std::string &full = arr->name;
+            std::size_t dot = full.find('.');
+            std::string baseName = full.substr(0, dot);
+            std::string fieldName = full.substr(dot + 1);
+            std::string klass = getSlotType(baseName).objectClass;
+            auto it = classLayouts_.find(klass);
+            if (it != classLayouts_.end())
+            {
+                if (const ClassLayout::Field *fld = it->second.findField(fieldName))
+                {
+                    if (!fld->objectClassName.empty())
+                        return qualify(fld->objectClassName);
+                }
+            }
+        }
+
+        // BUG-089 fix: Check if this is an implicit field access (e.g., items in a method)
+        const FieldScope *scope = activeFieldScope();
+        if (scope && scope->layout)
+        {
+            const auto *field = scope->layout->findField(arr->name);
+            if (field && !field->objectClassName.empty())
+            {
+                return qualify(field->objectClassName);
+            }
+        }
+
         return {};
     }
     if (const auto *access = as<const MemberAccessExpr>(expr))

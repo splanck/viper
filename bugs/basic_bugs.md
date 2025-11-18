@@ -1,21 +1,21 @@
 # VIPER BASIC Known Bugs and Issues
 
-*Last Updated: 2025-11-17*
+*Last Updated: 2025-11-18*
 
-**Bug Statistics**: 85 resolved, 3 outstanding bugs, 2 design decisions (90 total documented)
+**Bug Statistics**: 88 resolved, 0 outstanding bugs, 3 design decisions (91 total documented)
 
 **Test Suite Status**: 642/642 tests passing (100%)
 
-**STATUS**: 🚨 **Chess Engine v2 stress test in progress** - 3 critical OOP bugs found
+**STATUS**: 🎉 **Chess Engine v2 stress test COMPLETE** - All critical bugs resolved!
 
 ---
 
-## OUTSTANDING BUGS
+## RESOLVED BUGS (From Chess Engine v2 Stress Test)
 
-**3 critical bugs** - Found during Chess Engine v2 development
+All critical bugs found during the Chess Engine v2 development have been resolved!
 
 ### BUG-090: Cannot Pass Object Array Field as Parameter (Runtime Crash)
-**Status**: ❌ **CRITICAL BUG** - Runtime assertion failure
+**Status**: ✅ **RESOLVED** - Fixed 2025-11-17 (resolved together with BUG-089)
 **Discovered**: 2025-11-17 (Chess Engine v2 stress test)
 **Category**: OOP / Runtime / Arrays / Parameters / Memory Management
 **Severity**: CRITICAL - Runtime crash, blocks BUG-089 workaround
@@ -57,10 +57,70 @@ END CLASS
 
 **Workaround**: None for class fields. Must use module-level arrays only.
 
+**ROOT CAUSE** (Identified 2025-11-17):
+
+The bug occurs in class constructor generation code at `/src/frontends/basic/Lower_OOP_Emit.cpp` lines 306-315. When allocating array fields in constructors, the code only checks for string arrays and defaults all other arrays to integer arrays:
+
+```cpp
+// Allocate appropriate array type
+Value handle;
+if (field.type == AstType::Str)
+{
+    requireArrayStrAlloc();
+    handle = emitCallRet(Type(Type::Kind::Ptr), "rt_arr_str_alloc", {length});
+}
+else
+{
+    requireArrayI32New();
+    handle = emitCallRet(Type(Type::Kind::Ptr), "rt_arr_i32_new", {length});
+}
+```
+
+**The Problem**:
+- Object array fields get allocated using `rt_arr_i32_new`, which sets `elem_kind = RT_ELEM_I32`
+- Object arrays require `elem_kind = RT_ELEM_NONE` (as verified by runtime assertions in `rt_array_obj.c:34`)
+- When runtime functions like `rt_arr_obj_len` or `rt_arr_obj_get` are called on these arrays, they assert that `elem_kind == RT_ELEM_NONE`
+- This assertion fails because the array was created with the wrong element kind
+
+**IL Evidence**:
+```il
+func @CONTAINER.__ctor(ptr %ME) -> void {
+entry_CONTAINER.__ctor(%ME:ptr):
+  %t3 = call @rt_arr_i32_new(4)  # ← WRONG! Should be rt_arr_obj_new
+  %t4 = gep %t2, 0
+  store ptr, %t4, %t3
+```
+
+**RESOLVED** (2025-11-17):
+
+This bug was resolved as part of the BUG-089 fix. The key fix was in **`Lower_OOP_Emit.cpp`** where constructor generation now properly detects object array fields and allocates them using `rt_arr_obj_new` instead of `rt_arr_i32_new`:
+
+```cpp
+else if (!field.objectClassName.empty())
+{
+    // BUG-089 fix: Allocate object array for object-typed fields
+    requireArrayObjNew();
+    handle = emitCallRet(Type(Type::Kind::Ptr), "rt_arr_obj_new", {length});
+}
+```
+
+This ensures that object array fields are created with the correct `elem_kind = RT_ELEM_NONE`, which satisfies the runtime assertion in `rt_arr_obj_assert_header`. When these arrays are passed as parameters, the runtime functions correctly recognize them as object arrays.
+
+**Verification**: The IL now shows:
+```il
+func @CONTAINER.__ctor(ptr %ME) -> void {
+  %t3 = call @rt_arr_obj_new(4)  # ← Correct! Uses rt_arr_obj_new
+  %t4 = gep %t2, 0
+  store ptr, %t4, %t3
+}
+```
+
+**Test File**: `/bugs/bug_testing/test_class_array_param.bas` now passes successfully.
+
 ---
 
 ### BUG-089: Cannot Call Methods on Object Array Fields from Class Methods
-**Status**: ❌ **BUG** - Compiler error when calling methods on array elements
+**Status**: ✅ **RESOLVED** - Fixed 2025-11-17
 **Discovered**: 2025-11-17 (Chess Engine v2 stress test)
 **Category**: OOP / Code Generation / Method Resolution / Arrays
 **Severity**: HIGH - Blocks essential OOP patterns for complex applications
@@ -101,6 +161,77 @@ END CLASS
 
 **Impact**: Severely limits OOP design patterns. Cannot implement collections, game boards, or any data structure containing object arrays inside classes. This is a critical blocker for real-world OOP applications.
 
+**ROOT CAUSE** (Identified 2025-11-17):
+
+The bug occurs in array access code generation at `/src/frontends/basic/lower/Emit_Expr.cpp` lines 151-172. When handling member array access (arrays that are class fields), the code only checks for string arrays and defaults all other arrays to integer arrays:
+
+```cpp
+// Require appropriate runtime functions based on array element type
+if (isMemberArray)
+{
+    // Use memberElemAstType for field arrays (dotted or implicit)
+    if (memberElemAstType == ::il::frontends::basic::Type::Str)
+    {
+        requireArrayStrLen();
+        if (kind == ArrayAccessKind::Load)
+            requireArrayStrGet();
+        else
+        {
+            requireArrayStrPut();
+            requireStrRetainMaybe();
+        }
+    }
+    else
+    {
+        // BUG: Missing object array check! Defaults to i32 for everything else
+        requireArrayI32Len();
+        if (kind == ArrayAccessKind::Load)
+            requireArrayI32Get();
+        else
+            requireArrayI32Set();
+    }
+}
+```
+
+**The Problem**:
+- When generating code for `items(i).SetVal(...)`, the compiler generates `rt_arr_i32_get` instead of `rt_arr_obj_get`
+- The i32 getter returns a plain integer, not an object pointer
+- Trying to call a method on an integer causes "unknown callee" error
+- The information needed to fix this (`ClassLayout::Field::objectClassName`) is available but not being used
+
+**IL Evidence**:
+```il
+# Should generate this:
+%t20 = call @rt_arr_obj_get(%items, %i)  # Returns object pointer
+call @ITEM.SETVAL(%t20, %value)          # Can call methods
+
+# Actually generates this:
+%t20 = call @rt_arr_i32_get(%items, %i)  # Returns integer!
+call @ITEM.SETVAL(%t20, %value)          # ERROR: trying to call method on integer
+```
+
+**RESOLVED** (2025-11-17):
+
+The fix required changes in multiple files to properly handle object arrays:
+
+1. **Constructor Generation** (`Lower_OOP_Emit.cpp`): Added object array detection in constructors to call `rt_arr_obj_new` instead of `rt_arr_i32_new`
+
+2. **Array Access Code Generation** (`Emit_Expr.cpp`): Added `isMemberObjectArray` tracking to use correct runtime functions (`rt_arr_obj_get`/`rt_arr_obj_put`) for object array fields
+
+3. **Array Assignment** (`LowerStmt_Runtime.cpp`):
+   - Added object array tracking for member arrays in `assignArrayElement`
+   - Added `CallExpr` case in `lowerLet` to handle implicit field array assignments (e.g., `items(i) = NEW Item()`)
+
+4. **Method Resolution** (`Lower_OOP_Expr.cpp`):
+   - Added `CallExpr` case in `resolveObjectClass` to handle implicit field arrays
+   - Added `ArrayExpr` case to check for implicit field arrays using `activeFieldScope()`
+
+5. **Array Lowering** (`Lowerer_Expr.cpp`): Added implicit field array detection in array expression visitor
+
+The key insight was that in BASIC, parentheses are used for both function calls and array access, so `items(i)` in a class method is parsed as a `CallExpr`, not an `ArrayExpr`. All code paths needed to recognize this pattern and handle it correctly.
+
+**Test File**: `/bugs/bug_testing/test_bug089.bas` now passes successfully.
+
 ---
 
 ### BUG-088: COLOR Keyword Collision with Class Field Names
@@ -133,6 +264,127 @@ END CLASS
 **Root Cause**: The parser treats `COLOR` as a statement keyword (for ANSI color commands) before checking if it's being used as a field name in a class context.
 
 **Design Decision**: This is a fundamental language design choice. BASIC traditionally has many reserved keywords. The workaround is simple and clear.
+
+---
+
+### BUG-091: Compiler Crash with 2D Array Access in Expressions
+**Status**: ✅ **RESOLVED** - Fixed 2025-11-17
+**Discovered**: 2025-11-17 (Chess Engine v2 stress test)
+**Category**: Compiler / Expression Type Scanning / Multi-dimensional Arrays
+**Severity**: CRITICAL - Compiler crash, blocks use of 2D arrays in arithmetic
+
+**Symptom**: When accessing a 2D array element and using the result in an arithmetic expression, the compiler crashes with an expression stack imbalance assertion.
+
+**Error Message**:
+```
+Assertion failed: (walker.exprStack_.size() == depth && "expression stack imbalance"),
+function ~StackScope, file Scan_ExprTypes.cpp, line 344.
+```
+
+**Minimal Reproduction**:
+```basic
+SUB TestSub(row AS INTEGER)
+    DIM moves(8, 2) AS INTEGER
+    DIM i AS INTEGER
+    DIM newRow AS INTEGER
+
+    moves(1, 1) = 2
+    i = 1
+    newRow = row + moves(i, 1)  REM CRASH: Compiler assertion failure
+
+    PRINT newRow
+END SUB
+
+TestSub(3)
+```
+
+**What Works**:
+- ✅ 1D array access in expressions: `result = row + arr(i)` - Works fine
+- ✅ 2D array assignment: `moves(1, 1) = 2` - Works fine
+- ✅ 2D array access at module scope - Works fine
+- ✅ 2D array access for simple assignment in SUB: `x = moves(i, 1)` - Works fine
+
+**What Fails**:
+- ❌ 2D array access in arithmetic expressions inside SUB/FUNCTION: `row + moves(i, 1)` - Crashes
+- ❌ This affects any expression using 2D array access, not just arithmetic
+
+**Test File**: `/bugs/bug_testing/chess_v2_moves.bas` (line 164: `newRow = row + moves(i, 1)`)
+
+**Impact**: CRITICAL - Completely blocks use of 2D arrays in any meaningful computation. Cannot implement:
+- Chess move tables (knight moves, king moves, etc.)
+- Game boards with computed positions
+- Matrices and mathematical operations
+- Any algorithm requiring multi-dimensional lookup tables
+
+**Workaround**: None practical. Must use 1D arrays with manual index calculation: `moves(i * 2 + j)` instead of `moves(i, j)`.
+
+**ROOT CAUSE** (Identified 2025-11-17):
+
+The bug occurs in the expression type scanner at `/src/frontends/basic/lower/Scan_ExprTypes.cpp` line 344. The `StackScope` destructor asserts that the expression stack is balanced (same depth on entry and exit).
+
+**The Problem**:
+- When scanning a 2D array subscript expression like `moves(i, 1)`, the type scanner pushes/pops an incorrect number of values
+- This creates a stack depth mismatch that violates the balance invariant
+- The assertion catches this imbalance and crashes the compiler
+
+**How Expression Scanning Should Work**:
+- `StackScope` is created at the start of expression evaluation (records current stack depth)
+- Expression visitor methods push type information for sub-expressions
+- Expression visitor methods pop type information to compute result types
+- `~StackScope` verifies stack returned to original depth (balanced push/pop)
+
+**What's Going Wrong**:
+- 1D array subscripts (`arr(i)`) correctly balance the stack: one push for result type
+- 2D array subscripts (`arr(i, j)`) create an imbalance: likely pushing/popping wrong number of times
+- The code that handles multi-dimensional array subscript expressions has a bug in stack management
+
+**Evidence**:
+```
+# Works (1D):
+result = arr(i)          # Stack: push(array_type), push(index_type), pop(), pop(), push(element_type)
+
+# Crashes (2D):
+result = arr(i, j)       # Stack: ??? (imbalanced operations)
+```
+
+**RESOLVED** (2025-11-17):
+
+The bug was in the `after(const ArrayExpr &expr)` method in **`Scan_ExprTypes.cpp`** at line 183. The method only handled the deprecated single-index field (`expr.index`) and didn't handle multi-dimensional arrays using the `expr.indices` vector.
+
+**The Fix** (in `Scan_ExprTypes.cpp`):
+```cpp
+void after(const ArrayExpr &expr)
+{
+    // BUG-091 fix: Handle multi-dimensional arrays by discarding all index expressions
+    // For backwards compatibility, check deprecated 'index' field first
+    if (expr.index != nullptr)
+    {
+        (void)pop();
+    }
+    // Handle multi-dimensional arrays via 'indices' vector
+    else if (!expr.indices.empty())
+    {
+        for (size_t i = 0; i < expr.indices.size(); ++i)
+        {
+            (void)pop();
+        }
+    }
+    push(ExprType::I64);
+}
+```
+
+**How It Works**:
+- For 1D arrays like `arr(i)`, pop 1 index type from stack
+- For 2D arrays like `arr(i, j)`, pop 2 index types from stack
+- For 3D arrays like `arr(i, j, k)`, pop 3 index types from stack
+- Then push the result type (I64) onto the stack
+- This maintains stack balance regardless of array dimensions
+
+**Verification**: All test cases now work:
+- 2D array in arithmetic: `newRow = row + moves(i, 1)` ✓
+- 3D array access: `val = cube(1, 2, 3) + 8` ✓
+- Complex expressions: `result = grid(2, 3) * 2 + grid(4, 1)` ✓
+- All 642 tests in test suite still pass ✓
 
 ---
 

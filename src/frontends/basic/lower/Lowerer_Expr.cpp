@@ -139,6 +139,8 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
         const auto *info = lowerer_.findSymbol(expr.name);
         bool isMemberArray = expr.name.find('.') != std::string::npos;
         ::il::frontends::basic::Type memberElemAstType = ::il::frontends::basic::Type::I64;
+        bool isMemberObjectArray = false; // BUG-089: Track if member array holds objects
+        std::string memberObjectClass;    // BUG-089: Track object class name for member arrays
         if (isMemberArray)
         {
             const std::string &full = expr.name;
@@ -150,8 +152,22 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
             if (it != lowerer_.classLayouts_.end())
             {
                 if (const Lowerer::ClassLayout::Field *fld = it->second.findField(fieldName))
+                {
                     memberElemAstType = fld->type;
+                    // BUG-089 fix: Check if field is an object array
+                    isMemberObjectArray = !fld->objectClassName.empty();
+                    if (isMemberObjectArray)
+                        memberObjectClass = fld->objectClassName;
+                }
             }
+        }
+        // BUG-089 fix: Also check for implicit field arrays (no dot in name but is a class field)
+        else if (auto field = lowerer_.resolveImplicitField(expr.name, {}))
+        {
+            memberElemAstType = field->astType;
+            isMemberObjectArray = !field->objectClassName.empty();
+            if (isMemberObjectArray)
+                memberObjectClass = field->objectClassName;
         }
 
         if ((info && info->type == ::il::frontends::basic::Type::Str) ||
@@ -165,12 +181,14 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
             // Removed: lowerer_.deferReleaseStr(val);
             result_ = Lowerer::RVal{val, IlType(IlType::Kind::Str)};
         }
-        else if (!isMemberArray && info && info->isObject)
+        else if ((info && info->isObject) || isMemberObjectArray)
         {
-            // Object array: rt_arr_obj_get returns retained ptr
+            // BUG-089 fix: Object array (both member and non-member): rt_arr_obj_get returns retained ptr
             IlValue val = lowerer_.emitCallRet(
                 IlType(IlType::Kind::Ptr), "rt_arr_obj_get", {access.base, access.index});
-            if (info && !info->objectClass.empty())
+            if (isMemberObjectArray && !memberObjectClass.empty())
+                lowerer_.deferReleaseObj(val, memberObjectClass);
+            else if (info && !info->objectClass.empty())
                 lowerer_.deferReleaseObj(val, info->objectClass);
             else
                 lowerer_.deferReleaseObj(val);

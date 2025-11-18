@@ -152,11 +152,11 @@ Status: Added `src/codegen/common/ArgNormalize.hpp` and started consuming it fro
 
 ## Medium‑Term Plan (next 2–6 weeks)
 
-4) Minimal MIR layer for AArch64 (Phase A) — PARTIAL DONE
+4) Minimal MIR layer for AArch64 (Phase A) — DONE (Step A)
    - Implemented a compact MIR for arm64 under `src/codegen/aarch64/MachineIR.hpp` with a tiny opcode set (mov rr/ri, add/sub/mul rrr/ri, shift‑imm, cmp rr/ri, cset) and containers (`MFunction`, `MBasicBlock`, `MInstr`).
    - Extended `AsmEmitter` with `emitFunction(MFunction)`, `emitBlock`, and `emitInstruction` to print MIR → asm using existing helpers.
    - Added unit test `src/tests/unit/codegen/test_emit_aarch64_mir_minimal.cpp` to validate prologue/add/epilogue emission via MIR.
-   - Next: Introduce a lowering shim from IL→MIR for the existing CLI patterns (kept as future step to keep changes small and green).
+   - Added a minimal IL→MIR lowering shim used by the CLI: `src/codegen/aarch64/LowerILToMIR.{hpp,cpp}` lowers the existing CLI patterns (ret const/param, rr/ri ops, shift‑imm, compares) into MIR. The CLI now calls IL→MIR then MIR→asm.
 
 5) Frame and prologue/epilogue refinement
    - Model callee‑saved saves/restores as needed (x19..x28, v8..v15 per Darwin) once the MIR uses them.

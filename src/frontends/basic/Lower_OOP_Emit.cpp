@@ -308,6 +308,12 @@ void Lowerer::emitClassConstructor(const ClassDecl &klass, const ConstructorDecl
                     requireArrayStrAlloc();
                     handle = emitCallRet(Type(Type::Kind::Ptr), "rt_arr_str_alloc", {length});
                 }
+                else if (!field.objectClassName.empty())
+                {
+                    // BUG-089 fix: Allocate object array for object-typed fields
+                    requireArrayObjNew();
+                    handle = emitCallRet(Type(Type::Kind::Ptr), "rt_arr_obj_new", {length});
+                }
                 else
                 {
                     requireArrayI32New();

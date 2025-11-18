@@ -182,7 +182,20 @@ class ExprTypeScanner final : public BasicAstWalker<ExprTypeScanner>
     /// @param expr Array expression possibly containing an index.
     void after(const ArrayExpr &expr)
     {
-        discardIf(expr.index != nullptr);
+        // BUG-091 fix: Handle multi-dimensional arrays by discarding all index expressions
+        // For backwards compatibility, check deprecated 'index' field first
+        if (expr.index != nullptr)
+        {
+            (void)pop();
+        }
+        // Handle multi-dimensional arrays via 'indices' vector
+        else if (!expr.indices.empty())
+        {
+            for (size_t i = 0; i < expr.indices.size(); ++i)
+            {
+                (void)pop();
+            }
+        }
         push(ExprType::I64);
     }
 
