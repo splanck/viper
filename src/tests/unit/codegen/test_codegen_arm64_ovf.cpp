@@ -1,5 +1,5 @@
-// File: tests/unit/codegen/test_codegen_arm64_bitwise.cpp
-// Purpose: Verify and/or/xor lowering on two entry params.
+// File: tests/unit/codegen/test_codegen_arm64_ovf.cpp
+// Purpose: Verify iadd.ovf/isub.ovf/imul.ovf rr lowering on two entry params.
 
 #include "tests/unit/GTestStub.hpp"
 
@@ -35,17 +35,17 @@ static std::string readFile(const std::string &path)
     return ss.str();
 }
 
-TEST(Arm64CLI, BitwiseRR)
+TEST(Arm64CLI, OverflowVariantsRR)
 {
     struct Case { const char *op; const char *expect; } cases[] = {
-        {"and", "and x0, x0, x1"},
-        {"or",  "orr x0, x0, x1"},
-        {"xor", "eor x0, x0, x1"},
+        {"iadd.ovf", "add x0, x0, x1"},
+        {"isub.ovf", "sub x0, x0, x1"},
+        {"imul.ovf", "mul x0, x0, x1"},
     };
     for (const auto &c : cases)
     {
-        std::string in = std::string("arm64_bit_") + c.op + ".il";
-        std::string out = std::string("arm64_bit_") + c.op + ".s";
+        std::string in = std::string("arm64_ovf_") + c.op + ".il";
+        std::string out = std::string("arm64_ovf_") + c.op + ".s";
         std::string il = std::string(
             "il 0.1\n"
             "func @f(%a:i64, %b:i64) -> i64 {\n"

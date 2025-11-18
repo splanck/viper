@@ -106,6 +106,26 @@ add_executable(test_codegen_arm64_params_wide ${CMAKE_CURRENT_SOURCE_DIR}/unit/c
 target_link_libraries(test_codegen_arm64_params_wide PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
 viper_add_ctest(test_codegen_arm64_params_wide test_codegen_arm64_params_wide)
 
+add_executable(test_codegen_arm64_ovf ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_ovf.cpp)
+target_link_libraries(test_codegen_arm64_ovf PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
+viper_add_ctest(test_codegen_arm64_ovf test_codegen_arm64_ovf)
+
+add_executable(test_codegen_arm64_shift_imm ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_shift_imm.cpp)
+target_link_libraries(test_codegen_arm64_shift_imm PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
+viper_add_ctest(test_codegen_arm64_shift_imm test_codegen_arm64_shift_imm)
+
+add_executable(test_codegen_arm64_icmp ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_icmp.cpp)
+target_link_libraries(test_codegen_arm64_icmp PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
+viper_add_ctest(test_codegen_arm64_icmp test_codegen_arm64_icmp)
+
+add_executable(test_codegen_arm64_large_imm ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_large_imm.cpp)
+target_link_libraries(test_codegen_arm64_large_imm PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
+viper_add_ctest(test_codegen_arm64_large_imm test_codegen_arm64_large_imm)
+
+add_executable(test_codegen_arm64_icmp_imm ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_icmp_imm.cpp)
+target_link_libraries(test_codegen_arm64_icmp_imm PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
+viper_add_ctest(test_codegen_arm64_icmp_imm test_codegen_arm64_icmp_imm)
+
 viper_add_ctest(NoAssertFalseGuard
         ${CMAKE_COMMAND}
         -DVIPER_SOURCE_DIR=${CMAKE_SOURCE_DIR}

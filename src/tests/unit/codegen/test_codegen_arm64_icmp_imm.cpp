@@ -1,5 +1,5 @@
-// File: tests/unit/codegen/test_codegen_arm64_ret_param.cpp
-// Purpose: Verify returning parameters lowers to correct moves/no-op.
+// File: tests/unit/codegen/test_codegen_arm64_icmp_imm.cpp
+// Purpose: Verify integer compares against immediates using cmp #imm + cset.
 
 #include "tests/unit/GTestStub.hpp"
 
@@ -35,17 +35,18 @@ static std::string readFile(const std::string &path)
     return ss.str();
 }
 
-TEST(Arm64CLI, RetParam)
+TEST(Arm64CLI, ICmpImm)
 {
-    // Return param0: no mov expected (x0 already contains arg0)
+    // icmp_eq %a, 42
     {
-        const std::string in = "arm64_ret_p0.il";
-        const std::string out = "arm64_ret_p0.s";
+        const std::string in = "arm64_icmp_imm_eq.il";
+        const std::string out = "arm64_icmp_imm_eq.s";
         const std::string il =
             "il 0.1\n"
-            "func @id0(%a:i64, %b:i64) -> i64 {\n"
-            "entry(%a:i64, %b:i64):\n"
-            "  ret %a\n"
+            "func @f(%a:i64) -> i64 {\n"
+            "entry(%a:i64):\n"
+            "  %t0 = icmp_eq %a, 42\n"
+            "  ret %t0\n"
             "}\n";
         const std::string inP = outPath(in);
         const std::string outP = outPath(out);
@@ -53,18 +54,19 @@ TEST(Arm64CLI, RetParam)
         const char *argv[] = {inP.c_str(), "-S", outP.c_str()};
         ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
         const std::string asmText = readFile(outP);
-        EXPECT_EQ(asmText.find("mov x0, x1"), std::string::npos);
+        EXPECT_NE(asmText.find("cmp x0, #42"), std::string::npos);
+        EXPECT_NE(asmText.find("cset x0, eq"), std::string::npos);
     }
-
-    // Return param1: expect mov x0, x1
+    // scmp_lt %b, -7
     {
-        const std::string in = "arm64_ret_p1.il";
-        const std::string out = "arm64_ret_p1.s";
+        const std::string in = "arm64_icmp_imm_slt.il";
+        const std::string out = "arm64_icmp_imm_slt.s";
         const std::string il =
             "il 0.1\n"
-            "func @id1(%a:i64, %b:i64) -> i64 {\n"
+            "func @g(%a:i64, %b:i64) -> i64 {\n"
             "entry(%a:i64, %b:i64):\n"
-            "  ret %b\n"
+            "  %t0 = scmp_lt %b, -7\n"
+            "  ret %t0\n"
             "}\n";
         const std::string inP = outPath(in);
         const std::string outP = outPath(out);
@@ -73,6 +75,8 @@ TEST(Arm64CLI, RetParam)
         ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
         const std::string asmText = readFile(outP);
         EXPECT_NE(asmText.find("mov x0, x1"), std::string::npos);
+        EXPECT_NE(asmText.find("cmp x0, #-7"), std::string::npos);
+        EXPECT_NE(asmText.find("cset x0, lt"), std::string::npos);
     }
 }
 

@@ -2,17 +2,139 @@
 
 *Last Updated: 2025-11-17*
 
-**Bug Statistics**: 85 resolved, 0 outstanding bugs, 1 design decision (86 total documented)
+**Bug Statistics**: 85 resolved, 3 outstanding bugs, 2 design decisions (90 total documented)
 
 **Test Suite Status**: 642/642 tests passing (100%)
 
-**STATUS**: ✅ **ALL BUGS RESOLVED!** Chess stress test complete - all critical and medium bugs fixed!
+**STATUS**: 🚨 **Chess Engine v2 stress test in progress** - 3 critical OOP bugs found
 
 ---
 
 ## OUTSTANDING BUGS
 
-**0 bugs** - All bugs from chess stress test have been fixed!
+**3 critical bugs** - Found during Chess Engine v2 development
+
+### BUG-090: Cannot Pass Object Array Field as Parameter (Runtime Crash)
+**Status**: ❌ **CRITICAL BUG** - Runtime assertion failure
+**Discovered**: 2025-11-17 (Chess Engine v2 stress test)
+**Category**: OOP / Runtime / Arrays / Parameters / Memory Management
+**Severity**: CRITICAL - Runtime crash, blocks BUG-089 workaround
+
+**Symptom**: When passing an object array that is a class field as a parameter to a function/SUB, the runtime crashes with an assertion failure in the array object runtime code.
+
+**Error Message**:
+```
+Assertion failed: (hdr->elem_kind == RT_ELEM_NONE), function rt_arr_obj_assert_header, file rt_array_obj.c, line 34.
+```
+
+**Minimal Reproduction**:
+```basic
+CLASS Item
+    val AS INTEGER
+END CLASS
+
+SUB InitArray(items() AS Item)
+    items(1) = NEW Item()
+END SUB
+
+CLASS Container
+    items(3) AS Item
+    SUB InitItems()
+        InitArray(items)  REM CRASH: Assertion failure!
+    END SUB
+END CLASS
+```
+
+**Test File**: `/bugs/bug_testing/test_class_array_param.bas`
+
+**Context**: This bug makes the workaround for BUG-089 completely unusable for class fields. Combined with BUG-089, it's currently **impossible** to work with object arrays inside classes in any meaningful way.
+
+**Impact**: CRITICAL - Completely blocks object array usage in OOP. Cannot implement:
+- Game boards (chess, checkers, tic-tac-toe)
+- Collections/containers
+- Any data structure with object arrays as fields
+- Real-world OOP applications
+
+**Workaround**: None for class fields. Must use module-level arrays only.
+
+---
+
+### BUG-089: Cannot Call Methods on Object Array Fields from Class Methods
+**Status**: ❌ **BUG** - Compiler error when calling methods on array elements
+**Discovered**: 2025-11-17 (Chess Engine v2 stress test)
+**Category**: OOP / Code Generation / Method Resolution / Arrays
+**Severity**: HIGH - Blocks essential OOP patterns for complex applications
+
+**Symptom**: When calling a method on an object stored in an array field (from within another method of the same class), the compiler fails with "unknown callee @METHODNAME".
+
+**Error Message**:
+```
+error: CONTAINER.INITITEMS:bc_ok0_CONTAINER.INITITEMS: call %t20 %t22: unknown callee @SETVAL
+```
+
+**Minimal Reproduction**:
+```basic
+CLASS Item
+    val AS INTEGER
+    SUB SetVal(v AS INTEGER)
+        ME.val = v
+    END SUB
+END CLASS
+
+CLASS Container
+    items(3) AS Item
+    SUB InitItems()
+        DIM i AS INTEGER
+        FOR i = 1 TO 3
+            items(i) = NEW Item()
+            items(i).SetVal(i * 10)  REM ERROR: unknown callee @SETVAL
+        NEXT i
+    END SUB
+END CLASS
+```
+
+**Works At Module Level**: The same code works fine when called from module-level code (not inside a class method), suggesting a scoping issue in method resolution.
+
+**Test File**: `/bugs/bug_testing/test_bug089.bas`
+
+**Workaround**: Use module-level SUBs/FUNCTIONs to manipulate object arrays, passing the array as a parameter (now possible thanks to BUG-086 fix).
+
+**Impact**: Severely limits OOP design patterns. Cannot implement collections, game boards, or any data structure containing object arrays inside classes. This is a critical blocker for real-world OOP applications.
+
+---
+
+### BUG-088: COLOR Keyword Collision with Class Field Names
+**Status**: ❌ **LIMITATION** - Cannot use COLOR as field name
+**Discovered**: 2025-11-17 (Chess Engine v2 stress test)
+**Category**: Language Design / Reserved Keywords / OOP
+**Severity**: LOW - Easy workaround available
+
+**Symptom**: Cannot declare a class field named `color` because COLOR is a reserved keyword for terminal color commands.
+
+**Error Message**:
+```
+error[B0001]: expected END, got DIM
+    DIM color AS INTEGER
+    ^
+error[B2001]: COLOR foreground must be numeric, got BOOLEAN
+        color = pColor
+              ^
+```
+
+**Minimal Reproduction**:
+```basic
+CLASS Piece
+    color AS INTEGER  REM ERROR: COLOR is reserved keyword
+END CLASS
+```
+
+**Workaround**: Use alternative field names like `pieceColor`, `itemColor`, `colorValue`, etc.
+
+**Root Cause**: The parser treats `COLOR` as a statement keyword (for ANSI color commands) before checking if it's being used as a field name in a class context.
+
+**Design Decision**: This is a fundamental language design choice. BASIC traditionally has many reserved keywords. The workaround is simple and clear.
+
+---
 
 ### BUG-086: Array Parameters Not Supported in SUBs/FUNCTIONs
 **Status**: ✅ **RESOLVED** (2025-11-17)

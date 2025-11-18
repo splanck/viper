@@ -1,5 +1,5 @@
-// File: tests/unit/codegen/test_codegen_arm64_add_params.cpp
-// Purpose: Verify arm64 CLI lowers simple add of two entry parameters.
+// File: tests/unit/codegen/test_codegen_arm64_large_imm.cpp
+// Purpose: Verify large immediate materialization uses movz/movk sequence for ret const.
 
 #include "tests/unit/GTestStub.hpp"
 
@@ -35,27 +35,25 @@ static std::string readFile(const std::string &path)
     return ss.str();
 }
 
-TEST(Arm64CLI, AddTwoParams)
+TEST(Arm64CLI, LargeImmRet)
 {
-    const std::string in = "arm64_cli_add2.il";
-    const std::string out = "arm64_cli_add2.s";
+    const std::string in = "arm64_large_imm.il";
+    const std::string out = "arm64_large_imm.s";
+    // Use a value that requires multiple 16-bit chunks.
     const std::string il =
-        "il 0.1\n"
-        "func @add2(%a:i64, %b:i64) -> i64 {\n"
-        "entry(%a:i64, %b:i64):\n"
-        "  %t0 = add %a, %b\n"
-        "  ret %t0\n"
+        "il 0.1\n\n"
+        "func @main() -> i64 {\n"
+        "entry:\n"
+        "  ret 81985529216486895\n" // 0x0123456789ABCDEF
         "}\n";
     const std::string inP = outPath(in);
     const std::string outP = outPath(out);
     writeFile(inP, il);
-
     const char *argv[] = {inP.c_str(), "-S", outP.c_str()};
-    const int rc = cmd_codegen_arm64(3, const_cast<char **>(argv));
-    ASSERT_EQ(rc, 0);
+    ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(outP);
-    // Expect add using first two argument registers.
-    EXPECT_NE(asmText.find("add x0, x0, x1"), std::string::npos);
+    EXPECT_NE(asmText.find("movz x0, #"), std::string::npos);
+    EXPECT_NE(asmText.find("movk x0, #"), std::string::npos);
 }
 
 int main(int argc, char **argv)

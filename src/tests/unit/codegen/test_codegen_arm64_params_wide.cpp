@@ -6,10 +6,19 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <filesystem>
 
 #include "tools/ilc/cmd_codegen_arm64.hpp"
 
 using namespace viper::tools::ilc;
+
+static std::string outPath(const std::string &name)
+{
+    namespace fs = std::filesystem;
+    const fs::path dir{"build/test-out/arm64"};
+    fs::create_directories(dir);
+    return (dir / name).string();
+}
 
 static void writeFile(const std::string &path, const std::string &text)
 {
@@ -39,10 +48,12 @@ TEST(Arm64CLI, ParamsBeyondX1)
             "  %t0 = add %c, %a\n"
             "  ret %t0\n"
             "}\n";
-        writeFile(in, il);
-        const char *argv[] = {in.c_str(), "-S", out.c_str()};
+        const std::string inP = outPath(in);
+        const std::string outP = outPath(out);
+        writeFile(inP, il);
+        const char *argv[] = {inP.c_str(), "-S", outP.c_str()};
         ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
-        const std::string asmText = readFile(out);
+        const std::string asmText = readFile(outP);
         // Expected sequence: mov x9, x0; mov x0, x2; mov x1, x9; add x0, x0, x1
         EXPECT_NE(asmText.find("mov x9, x0"), std::string::npos);
         EXPECT_NE(asmText.find("mov x0, x2"), std::string::npos);
@@ -61,10 +72,12 @@ TEST(Arm64CLI, ParamsBeyondX1)
             "  %t0 = sub %d, 7\n"
             "  ret %t0\n"
             "}\n";
-        writeFile(in, il);
-        const char *argv[] = {in.c_str(), "-S", out.c_str()};
+        const std::string inP2 = outPath(in);
+        const std::string outP2 = outPath(out);
+        writeFile(inP2, il);
+        const char *argv[] = {inP2.c_str(), "-S", outP2.c_str()};
         ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
-        const std::string asmText = readFile(out);
+        const std::string asmText = readFile(outP2);
         EXPECT_NE(asmText.find("mov x0, x3"), std::string::npos);
         EXPECT_NE(asmText.find("sub x0, x0, #7"), std::string::npos);
     }
@@ -75,4 +88,3 @@ int main(int argc, char **argv)
     testing::InitGoogleTest(&argc, &argv);
     return RUN_ALL_TESTS();
 }
-

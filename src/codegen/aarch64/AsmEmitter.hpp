@@ -47,6 +47,16 @@ class AsmEmitter
     void emitLslRI(std::ostream &os, PhysReg dst, PhysReg lhs, long long sh) const;
     void emitLsrRI(std::ostream &os, PhysReg dst, PhysReg lhs, long long sh) const;
     void emitAsrRI(std::ostream &os, PhysReg dst, PhysReg lhs, long long sh) const;
+
+    // Compare and set
+    void emitCmpRR(std::ostream &os, PhysReg lhs, PhysReg rhs) const;
+    void emitCmpRI(std::ostream &os, PhysReg lhs, long long imm) const;
+    void emitCset(std::ostream &os, PhysReg dst, const char *cond) const;
+
+    // Wide immediate materialization (movz/movk sequence)
+    void emitMovZ(std::ostream &os, PhysReg dst, unsigned imm16, unsigned lsl) const;
+    void emitMovK(std::ostream &os, PhysReg dst, unsigned imm16, unsigned lsl) const;
+    void emitMovImm64(std::ostream &os, PhysReg dst, unsigned long long value) const;
     void emitRet(std::ostream &os) const;
 
   private:

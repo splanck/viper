@@ -106,6 +106,50 @@ void AsmEmitter::emitAsrRI(std::ostream &os, PhysReg dst, PhysReg lhs, long long
     os << "  asr " << rn(dst) << ", " << rn(lhs) << ", #" << sh << "\n";
 }
 
+void AsmEmitter::emitCmpRR(std::ostream &os, PhysReg lhs, PhysReg rhs) const
+{
+    os << "  cmp " << rn(lhs) << ", " << rn(rhs) << "\n";
+}
+
+void AsmEmitter::emitCmpRI(std::ostream &os, PhysReg lhs, long long imm) const
+{
+    os << "  cmp " << rn(lhs) << ", #" << imm << "\n";
+}
+
+void AsmEmitter::emitCset(std::ostream &os, PhysReg dst, const char *cond) const
+{
+    os << "  cset " << rn(dst) << ", " << cond << "\n";
+}
+
+void AsmEmitter::emitMovZ(std::ostream &os, PhysReg dst, unsigned imm16, unsigned lsl) const
+{
+    os << "  movz " << rn(dst) << ", #" << imm16;
+    if (lsl) os << ", lsl #" << lsl;
+    os << "\n";
+}
+
+void AsmEmitter::emitMovK(std::ostream &os, PhysReg dst, unsigned imm16, unsigned lsl) const
+{
+    os << "  movk " << rn(dst) << ", #" << imm16;
+    if (lsl) os << ", lsl #" << lsl;
+    os << "\n";
+}
+
+void AsmEmitter::emitMovImm64(std::ostream &os, PhysReg dst, unsigned long long value) const
+{
+    unsigned chunks[4] = {
+        static_cast<unsigned>(value & 0xFFFFULL),
+        static_cast<unsigned>((value >> 16) & 0xFFFFULL),
+        static_cast<unsigned>((value >> 32) & 0xFFFFULL),
+        static_cast<unsigned>((value >> 48) & 0xFFFFULL),
+    };
+    // Always start with MOVZ of the low 16 bits
+    emitMovZ(os, dst, chunks[0], 0);
+    if (chunks[1]) emitMovK(os, dst, chunks[1], 16);
+    if (chunks[2]) emitMovK(os, dst, chunks[2], 32);
+    if (chunks[3]) emitMovK(os, dst, chunks[3], 48);
+}
+
 void AsmEmitter::emitRet(std::ostream &os) const
 {
     os << "  ret\n";

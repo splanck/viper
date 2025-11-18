@@ -1,5 +1,5 @@
-// File: tests/unit/codegen/test_codegen_arm64_bitwise.cpp
-// Purpose: Verify and/or/xor lowering on two entry params.
+// File: tests/unit/codegen/test_codegen_arm64_icmp.cpp
+// Purpose: Verify icmp/scmp/ucmp lowering using cmp + cset, feeding ret.
 
 #include "tests/unit/GTestStub.hpp"
 
@@ -35,17 +35,18 @@ static std::string readFile(const std::string &path)
     return ss.str();
 }
 
-TEST(Arm64CLI, BitwiseRR)
+TEST(Arm64CLI, ICmpAndSCmpRet)
 {
-    struct Case { const char *op; const char *expect; } cases[] = {
-        {"and", "and x0, x0, x1"},
-        {"or",  "orr x0, x0, x1"},
-        {"xor", "eor x0, x0, x1"},
+    struct Case { const char *op; const char *cset; } cases[] = {
+        {"icmp_eq", "cset x0, eq"},
+        {"icmp_ne", "cset x0, ne"},
+        {"scmp_lt", "cset x0, lt"},
+        {"scmp_ge", "cset x0, ge"},
     };
     for (const auto &c : cases)
     {
-        std::string in = std::string("arm64_bit_") + c.op + ".il";
-        std::string out = std::string("arm64_bit_") + c.op + ".s";
+        std::string in = std::string("arm64_cmp_") + c.op + ".il";
+        std::string out = std::string("arm64_cmp_") + c.op + ".s";
         std::string il = std::string(
             "il 0.1\n"
             "func @f(%a:i64, %b:i64) -> i64 {\n"
@@ -57,7 +58,8 @@ TEST(Arm64CLI, BitwiseRR)
         const char *argv[] = {inP.c_str(), "-S", outP.c_str()};
         ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
         const std::string asmText = readFile(outP);
-        EXPECT_NE(asmText.find(c.expect), std::string::npos);
+        EXPECT_NE(asmText.find("cmp x0, x1"), std::string::npos);
+        EXPECT_NE(asmText.find(c.cset), std::string::npos);
     }
 }
 

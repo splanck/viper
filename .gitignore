@@ -94,6 +94,9 @@ lcov.info
 # --- Project-specific test/run outputs (if created) ---
 tests/**/output/
 tests/**/out/
+build/test-out/
+/*.il
+/*.s
 
 # --- Code mapping / analysis temp files ---
 .all_code_files.txt

@@ -6,10 +6,19 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <filesystem>
 
 #include "tools/ilc/cmd_codegen_arm64.hpp"
 
 using namespace viper::tools::ilc;
+
+static std::string outPath(const std::string &name)
+{
+    namespace fs = std::filesystem;
+    const fs::path dir{"build/test-out/arm64"};
+    fs::create_directories(dir);
+    return (dir / name).string();
+}
 
 static void writeFile(const std::string &path, const std::string &text)
 {
@@ -36,12 +45,14 @@ TEST(Arm64CLI, RetZeroEmitsMovX0Zero)
         "entry:\n"
         "  ret 0\n"
         "}\n";
-    writeFile(in, il);
+    const std::string inP = outPath(in);
+    const std::string outP = outPath(out);
+    writeFile(inP, il);
 
-    const char *argv[] = {in.c_str(), "-S", out.c_str()};
+    const char *argv[] = {inP.c_str(), "-S", outP.c_str()};
     const int rc = cmd_codegen_arm64(3, const_cast<char **>(argv));
     ASSERT_EQ(rc, 0);
-    const std::string asmText = readFile(out);
+    const std::string asmText = readFile(outP);
     // Expect prologue, mov x0, #0 before epilogue ret
     EXPECT_NE(asmText.find("stp x29, x30"), std::string::npos);
     EXPECT_NE(asmText.find("mov x0, #0"), std::string::npos);
@@ -54,4 +65,3 @@ int main(int argc, char **argv)
     testing::InitGoogleTest(&argc, &argv);
     return RUN_ALL_TESTS();
 }
-

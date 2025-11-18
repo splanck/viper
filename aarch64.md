@@ -54,6 +54,7 @@ We have scaffolded a native AArch64 (arm64) backend for macOS and implemented a 
   - Return parameter:
     - `ret %param0` → no body emission (arg already in `x0`).
     - `ret %param1` → `mov x0, x1`.
+    - Generic: `ret %paramN` (N∈[0,7]) → `mov x0, <ArgRegN>` using ABI order.
   - Binary arithmetic on entry parameters (penultimate instruction, any arg index 0..7):
     - `add` / `iadd.ovf` → `add x0, x0, x1`
     - `sub` / `isub.ovf` → `sub x0, x0, x1`
@@ -67,10 +68,13 @@ We have scaffolded a native AArch64 (arm64) backend for macOS and implemented a 
     - `%param1 - imm` → `mov x0, x1; sub x0, x0, #imm`
   - Shifts by immediate (entry param <<|>> const; any arg index 0..7):
     - Move `%paramK` to `x0` based on ABI order; then emit `lsl/lsr/asr x0, x0, #imm`.
+  - Integer compares feeding ret (i1 widened to i64):
+    - Detect `icmp_eq/ne`, `scmp_lt/le/gt/ge`, `ucmp_lt/le/gt/ge` on entry params.
+    - Normalize operands into `(x0, x1)`, emit `cmp x0, x1`, then `cset x0, <cond>` mapping IL predicate to AArch64 condition codes (`eq/ne/lt/le/gt/ge/lo/ls/hi/hs`).
   - Limitations:
     - Only i64 functions.
     - Only single‑block functions for the param‑based patterns (ret const works across blocks).
-    - No handling yet for `imm - %paramX` (non‑commutative reverse). No large immediate materialization sequences (`movz/movk`).
+    - No handling yet for `imm - %paramX` (non‑commutative reverse).
 
 ### Tests
 - Files:
@@ -82,6 +86,8 @@ We have scaffolded a native AArch64 (arm64) backend for macOS and implemented a 
   - `src/tests/unit/codegen/test_codegen_arm64_add_imm.cpp` — add/sub immediate forms on params.
   - `src/tests/unit/codegen/test_codegen_arm64_bitwise.cpp` — and/or/xor rr forms on params.
   - `src/tests/unit/codegen/test_codegen_arm64_params_wide.cpp` — rr/ri forms using params beyond x1 (e.g. x2/x3) and scratch‐based normalization.
+- Test artifacts:
+  - All arm64 CLI tests write transient `.il` and `.s` files under `build/test-out/arm64/` to avoid polluting the repository root. The directory is created on demand by the tests.
 - CMake wiring present in `src/tests/CMakeLists.txt`.
 
 ### Build integration
@@ -120,6 +126,8 @@ We have scaffolded a native AArch64 (arm64) backend for macOS and implemented a 
   - `CLI glue`: thin helpers to parse `-S/-o/--run-native` consistently across backends.
   - Goal: reduce duplication when AArch64 adds a proper MIR and pass pipeline.
 
+Status: Added `src/codegen/common/ArgNormalize.hpp` and started consuming it from the arm64 CLI to normalize rr operands into `(x0, x1)` with a scratch. The header is header‑only and requires a target emitter API accepting `(ostream&, dst, src)`.
+
 ### Emitter capabilities and constraints
 - Emitter prints textual assembly; no assembling/linking in this step.
 - Immediate forms (`mov/add/sub #imm`) assume small immediates. Large immediates will require `movz/movk` sequences later.
@@ -127,17 +135,17 @@ We have scaffolded a native AArch64 (arm64) backend for macOS and implemented a 
 
 ## Short‑Term Plan (next 1–3 steps)
 
-1) Verify and extend coverage with focused tests
-   - Add dedicated shift‑imm tests (shl/lshr/ashr) for param0 and param1 cases.
-   - Add explicit `iadd.ovf`/`isub.ovf`/`imul.ovf` rr and ri cases in tests.
+1) Verify and extend coverage with focused tests — DONE
+   - Added dedicated shift‑imm tests (shl/lshr/ashr) for param0/param1 in `test_codegen_arm64_shift_imm.cpp`.
+   - Added explicit `iadd.ovf`/`isub.ovf`/`imul.ovf` rr tests in `test_codegen_arm64_ovf.cpp`.
 
 2) Cleanly factor the pattern‑lowerer
-   - Introduce a tiny helper (e.g., `Arm64PatternLowerer` in `cmd_codegen_arm64.cpp`) to isolate pattern matching and emission. Keep it header‑only/local for now.
-   - Add table‑driven mapping from IL opcodes to emitter lambdas for the rr/ri forms.
+   - NEXT: Extract current pattern code into a small `Arm64PatternLowerer` to simplify the CLI file and enable testable units.
+   - Consider a table‑driven mapping from IL opcodes to emitter lambdas for the rr/ri forms.
 
 3) Expand parameter coverage to x2..x7 for 3+ argument functions (still single‑block patterns)
    - DONE for rr/ri patterns via normalization to x0/x1 using `x9` scratch.
-   - NEXT: generalize `ret %paramN` beyond the first two by moving `ArgRegN → x0`.
+   - DONE: generalized `ret %paramN` beyond the first two by moving `ArgRegN → x0`.
 
 4) Simple compares feeding ret (i1 → i64)
    - Equality/relational compares producing i1 → set x0 to 0/1 using `cmp` + `cset` when the value is returned immediately.

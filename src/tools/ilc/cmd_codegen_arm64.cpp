@@ -14,6 +14,7 @@
 
 #include "codegen/aarch64/AsmEmitter.hpp"
 #include "tools/common/module_loader.hpp"
+#include "codegen/common/ArgNormalize.hpp"
 #include "il/core/Instr.hpp"
 #include "il/core/Type.hpp"
 #include "il/core/Value.hpp"
@@ -29,6 +30,11 @@ namespace viper::tools::ilc
 {
 namespace
 {
+
+using il::core::Opcode;
+
+// Forward declaration for predicate→condition mapper used by emitAssembly.
+static const char *condForOpcode(Opcode op);
 
 constexpr std::string_view kUsage =
     "usage: ilc codegen arm64 <file.il> -S <file.s>\n";
@@ -161,7 +167,12 @@ int emitAssembly(const Options &opts)
                          addI.op == il::core::Opcode::Sub || addI.op == il::core::Opcode::ISubOvf ||
                          addI.op == il::core::Opcode::Mul || addI.op == il::core::Opcode::IMulOvf ||
                          addI.op == il::core::Opcode::And || addI.op == il::core::Opcode::Or ||
-                         addI.op == il::core::Opcode::Xor) &&
+                         addI.op == il::core::Opcode::Xor ||
+                         addI.op == il::core::Opcode::ICmpEq || addI.op == il::core::Opcode::ICmpNe ||
+                         addI.op == il::core::Opcode::SCmpLT || addI.op == il::core::Opcode::SCmpLE ||
+                         addI.op == il::core::Opcode::SCmpGT || addI.op == il::core::Opcode::SCmpGE ||
+                         addI.op == il::core::Opcode::UCmpLT || addI.op == il::core::Opcode::UCmpLE ||
+                         addI.op == il::core::Opcode::UCmpGT || addI.op == il::core::Opcode::UCmpGE) &&
                         retI.op == il::core::Opcode::Ret && addI.result && !retI.operands.empty())
                     {
                         const auto &retV = retI.operands[0];
@@ -174,14 +185,11 @@ int emitAssembly(const Options &opts)
                             const int idx1 = indexOfParam(bb, addI.operands[1].id);
                             if (idx0 >= 0 && idx1 >= 0 && idx0 < 8 && idx1 < 8)
                             {
-                                // Move argument regs for idx0/idx1 into x0/x1 using x9 as scratch
-                                const auto &argOrder = ti.intArgOrder;
-                                const PhysReg src0 = argOrder[static_cast<size_t>(idx0)];
-                                const PhysReg src1 = argOrder[static_cast<size_t>(idx1)];
-                                emitter.emitMovRR(out, PhysReg::X9, src1);
-                                emitter.emitMovRR(out, PhysReg::X0, src0);
-                                emitter.emitMovRR(out, PhysReg::X1, PhysReg::X9);
-                                using il::core::Opcode;
+                                // Normalize param regs to (x0,x1) using x9 scratch
+                                viper::codegen::common::normalize_rr_to_x0_x1(emitter, ti,
+                                                                               static_cast<std::size_t>(idx0),
+                                                                               static_cast<std::size_t>(idx1),
+                                                                               PhysReg::X9, PhysReg::X0, PhysReg::X1, out);
                                 switch (addI.op)
                                 {
                                     case Opcode::Add: case Opcode::IAddOvf:
@@ -196,6 +204,12 @@ int emitAssembly(const Options &opts)
                                         emitter.emitOrrRRR(out, PhysReg::X0, PhysReg::X0, PhysReg::X1); break;
                                     case Opcode::Xor:
                                         emitter.emitEorRRR(out, PhysReg::X0, PhysReg::X0, PhysReg::X1); break;
+                                    case Opcode::ICmpEq: case Opcode::ICmpNe:
+                                    case Opcode::SCmpLT: case Opcode::SCmpLE: case Opcode::SCmpGT: case Opcode::SCmpGE:
+                                    case Opcode::UCmpLT: case Opcode::UCmpLE: case Opcode::UCmpGT: case Opcode::UCmpGE:
+                                        emitter.emitCmpRR(out, PhysReg::X0, PhysReg::X1);
+                                        emitter.emitCset(out, PhysReg::X0, condForOpcode(addI.op));
+                                        break;
                                     default: break;
                                 }
                                 goto after_body;
@@ -214,6 +228,7 @@ int emitAssembly(const Options &opts)
                     const bool isShl = (binI.op == il::core::Opcode::Shl);
                     const bool isLShr = (binI.op == il::core::Opcode::LShr);
                     const bool isAShr = (binI.op == il::core::Opcode::AShr);
+                    const bool isICmpImm = (condForOpcode(binI.op) != nullptr);
                     if ((isAdd || isSub || isShl || isLShr || isAShr) && retI.op == il::core::Opcode::Ret && binI.result &&
                         !retI.operands.empty() && binI.operands.size() == 2)
                     {
@@ -264,9 +279,42 @@ int emitAssembly(const Options &opts)
                             }
                         }
                     }
+                    // Handle immediate compares: param vs const → cmp x0, #imm; cset
+                    if (isICmpImm && retI.op == il::core::Opcode::Ret && binI.result && !retI.operands.empty() && binI.operands.size() == 2)
+                    {
+                        const auto &retV = retI.operands[0];
+                        if (retV.kind == il::core::Value::Kind::Temp && retV.id == *binI.result)
+                        {
+                            const auto &o0 = binI.operands[0];
+                            const auto &o1 = binI.operands[1];
+                            auto emitCmpImm = [&](unsigned paramIndex, long long imm)
+                            {
+                                const auto &argOrder = ti.intArgOrder;
+                                if (paramIndex < argOrder.size())
+                                {
+                                    const PhysReg src = argOrder[paramIndex];
+                                    if (src != PhysReg::X0) emitter.emitMovRR(out, PhysReg::X0, src);
+                                    emitter.emitCmpRI(out, PhysReg::X0, imm);
+                                    emitter.emitCset(out, PhysReg::X0, condForOpcode(binI.op));
+                                }
+                            };
+                            if (o0.kind == il::core::Value::Kind::Temp && o1.kind == il::core::Value::Kind::ConstInt)
+                            {
+                                for (size_t i = 0; i < bb.params.size(); ++i)
+                                {
+                                    if (bb.params[i].id == o0.id && i < 8)
+                                    {
+                                        emitCmpImm(static_cast<unsigned>(i), o1.i64);
+                                        goto after_body;
+                                    }
+                                }
+                            }
+                            // (const vs param) forms require swapping operands and inverting predicate; omitted for now.
+                        }
+                    }
                 }
 
-                // Pattern B: ret immediate small integer
+                // Pattern B: ret immediate integer (materialize if needed)
                 for (const auto &block : fn.blocks)
                 {
                     if (!block.instructions.empty())
@@ -277,7 +325,15 @@ int emitAssembly(const Options &opts)
                             const auto &v = term.operands[0];
                             if (v.kind == il::core::Value::Kind::ConstInt)
                             {
-                                emitter.emitMovRI(out, PhysReg::X0, v.i64);
+                                const long long imm = v.i64;
+                                if (imm >= 0 && imm <= 65535)
+                                {
+                                    emitter.emitMovRI(out, PhysReg::X0, imm);
+                                }
+                                else
+                                {
+                                    emitter.emitMovImm64(out, PhysReg::X0, static_cast<unsigned long long>(imm));
+                                }
                                 break;
                             }
                         }
@@ -290,6 +346,25 @@ int emitAssembly(const Options &opts)
         out << "\n";
     }
     return 0;
+}
+
+// Map IL integer-compare opcodes to AArch64 condition code strings for CSET.
+static const char *condForOpcode(Opcode op)
+{
+    switch (op)
+    {
+        case Opcode::ICmpEq: return "eq";
+        case Opcode::ICmpNe: return "ne";
+        case Opcode::SCmpLT: return "lt";
+        case Opcode::SCmpLE: return "le";
+        case Opcode::SCmpGT: return "gt";
+        case Opcode::SCmpGE: return "ge";
+        case Opcode::UCmpLT: return "lo";
+        case Opcode::UCmpLE: return "ls";
+        case Opcode::UCmpGT: return "hi";
+        case Opcode::UCmpGE: return "hs";
+        default: return nullptr;
+    }
 }
 
 } // namespace
