@@ -460,7 +460,7 @@ void Lowerer::lowerLet(const LetStmt &stmt)
                                            Value::constInt(static_cast<long long>(fld->offset)));
                             Value arrHandle = emitLoad(Type(Type::Kind::Ptr), fieldPtr);
 
-                            // Lower indices (single dimension support for now)
+                            // BUG-094 fix: Lower all indices and compute flattened index for multi-dimensional arrays
                             std::vector<Value> indices;
                             indices.reserve(mc->args.size());
                             for (const auto &arg : mc->args)
@@ -469,15 +469,76 @@ void Lowerer::lowerLet(const LetStmt &stmt)
                                 idx = coerceToI64(std::move(idx), stmt.loc);
                                 indices.push_back(idx.value);
                             }
-                            Value index = indices.empty() ? Value::constInt(0) : indices[0];
 
-                            // Bounds check
+                            // Compute flattened index for multi-dimensional arrays
+                            Value index = Value::constInt(0);
+                            if (!indices.empty())
+                            {
+                                if (indices.size() == 1)
+                                {
+                                    index = indices[0];
+                                }
+                                else if (fld->isArray && !fld->arrayExtents.empty() &&
+                                         fld->arrayExtents.size() == indices.size())
+                                {
+                                    // Multi-dimensional: compute row-major flattened index
+                                    // For extents [E0, E1, ..., E_{N-1}] and indices [i0, i1, ..., i_{N-1}]:
+                                    // flat = i0*L1*L2*...*L_{N-1} + i1*L2*...*L_{N-1} + ... + i_{N-1}
+                                    // where Lk = (Ek + 1) are inclusive lengths per dimension.
+                                    std::vector<long long> lengths;
+                                    for (long long e : fld->arrayExtents)
+                                        lengths.push_back(e + 1);
+
+                                    long long stride = 1;
+                                    for (size_t i = 1; i < lengths.size(); ++i)
+                                        stride *= lengths[i];
+
+                                    curLoc = stmt.loc;
+                                    index = emitBinary(Opcode::IMulOvf,
+                                                      Type(Type::Kind::I64),
+                                                      indices[0],
+                                                      Value::constInt(stride));
+
+                                    for (size_t k = 1; k < indices.size(); ++k)
+                                    {
+                                        stride = 1;
+                                        for (size_t i = k + 1; i < lengths.size(); ++i)
+                                            stride *= lengths[i];
+                                        curLoc = stmt.loc;
+                                        Value term = emitBinary(Opcode::IMulOvf,
+                                                               Type(Type::Kind::I64),
+                                                               indices[k],
+                                                               Value::constInt(stride));
+                                        curLoc = stmt.loc;
+                                        index = emitBinary(Opcode::IAddOvf,
+                                                          Type(Type::Kind::I64),
+                                                          index,
+                                                          term);
+                                    }
+                                }
+                                else
+                                {
+                                    // Fallback: use first index only
+                                    index = indices[0];
+                                }
+                            }
+
+                            // Determine element kind for helpers
+                            const bool isMemberObjectArray = !fld->objectClassName.empty();
+
+                            // Bounds check (select len helper based on element kind)
                             Value len;
                             if (fld->type == ::il::frontends::basic::Type::Str)
                             {
                                 requireArrayStrLen();
                                 len = emitCallRet(
                                     Type(Type::Kind::I64), "rt_arr_str_len", {arrHandle});
+                            }
+                            else if (isMemberObjectArray)
+                            {
+                                requireArrayObjLen();
+                                len = emitCallRet(
+                                    Type(Type::Kind::I64), "rt_arr_obj_len", {arrHandle});
                             }
                             else
                             {
@@ -527,6 +588,11 @@ void Lowerer::lowerLet(const LetStmt &stmt)
                                 Value tmp = emitAlloca(8);
                                 emitStore(Type(Type::Kind::Str), tmp, value.value);
                                 emitCall("rt_arr_str_put", {arrHandle, index, tmp});
+                            }
+                            else if (isMemberObjectArray)
+                            {
+                                requireArrayObjPut();
+                                emitCall("rt_arr_obj_put", {arrHandle, index, value.value});
                             }
                             else
                             {

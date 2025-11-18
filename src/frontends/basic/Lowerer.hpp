@@ -926,6 +926,33 @@ class Lowerer
 
     void resetSymbolState();
 
+    // --- Module-level object array typing cache (BUG-097) ---
+    /// @brief Map of module-level array names to their element class (qualified).
+    /// @details Populated from the main-body variable discovery so procedure
+    ///          scopes can recover object element types for global arrays even
+    ///          after per-procedure symbol resets.
+    std::unordered_map<std::string, std::string> moduleObjArrayElemClass_;
+
+  public:
+    /// @brief Clear cached module-level object array typing.
+    void clearModuleObjectArrayCache() { moduleObjArrayElemClass_.clear(); }
+
+    /// @brief Scan AST for module-level DIM object arrays and cache their types.
+    /// @details Called before lowering procedures so object array element classes
+    ///          are available for method dispatch resolution in procedure bodies.
+    ///          BUG-097 fix: Populate cache from AST rather than symbol table.
+    /// @param main Main body statements from the Program AST.
+    void cacheModuleObjectArraysFromAST(const std::vector<StmtPtr> &main);
+
+    /// @brief Snapshot object-array typings from current symbol table.
+    /// @details Intended to be called after collecting main variables so
+    ///          global DIM object arrays are recorded for later procedure use.
+    void cacheModuleObjectArraysFromSymbols();
+
+    /// @brief Lookup element class for a module-level array by name.
+    /// @return Qualified class name when known, empty otherwise.
+    [[nodiscard]] std::string lookupModuleArrayElemClass(std::string_view name) const;
+
   public:
     /// @brief Lookup a cached procedure signature by BASIC name.
     /// @return Pointer to the signature when present, nullptr otherwise.

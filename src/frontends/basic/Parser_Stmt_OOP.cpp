@@ -177,7 +177,10 @@ StmtPtr Parser::parseClassDecl()
                 Token sizeTok = expect(TokenKind::Number);
                 if (sizeTok.kind == TokenKind::Number)
                 {
-                    long long size = std::stoll(sizeTok.lexeme) + 1; // BASIC uses 0-based with size
+                    // BUG-094 fix: Store the declared extent as-is (e.g., 7 for DIM a(7)).
+                    // The +1 conversion to length happens in the lowerer when computing
+                    // allocation sizes and flat indices, not during parsing.
+                    long long size = std::stoll(sizeTok.lexeme);
                     extents.push_back(size);
                 }
 

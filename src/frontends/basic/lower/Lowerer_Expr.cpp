@@ -137,6 +137,15 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
 
         // Determine array element type and use appropriate runtime function
         const auto *info = lowerer_.findSymbol(expr.name);
+
+        // BUG-097 fix: Check module-level cache if symbol exists but isn't marked as object,
+        // or if symbol doesn't exist at all (procedure-local symbol tables lose module info)
+        std::string moduleObjectClass;
+        if (!info || (info && !info->isObject))
+        {
+            moduleObjectClass = lowerer_.lookupModuleArrayElemClass(expr.name);
+        }
+
         bool isMemberArray = expr.name.find('.') != std::string::npos;
         ::il::frontends::basic::Type memberElemAstType = ::il::frontends::basic::Type::I64;
         bool isMemberObjectArray = false; // BUG-089: Track if member array holds objects
@@ -181,15 +190,17 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
             // Removed: lowerer_.deferReleaseStr(val);
             result_ = Lowerer::RVal{val, IlType(IlType::Kind::Str)};
         }
-        else if ((info && info->isObject) || isMemberObjectArray)
+        else if ((info && info->isObject) || isMemberObjectArray || !moduleObjectClass.empty())
         {
-            // BUG-089 fix: Object array (both member and non-member): rt_arr_obj_get returns retained ptr
+            // BUG-089/BUG-097 fix: Object array (member, non-member, or module-level): rt_arr_obj_get returns retained ptr
             IlValue val = lowerer_.emitCallRet(
                 IlType(IlType::Kind::Ptr), "rt_arr_obj_get", {access.base, access.index});
             if (isMemberObjectArray && !memberObjectClass.empty())
                 lowerer_.deferReleaseObj(val, memberObjectClass);
             else if (info && !info->objectClass.empty())
                 lowerer_.deferReleaseObj(val, info->objectClass);
+            else if (!moduleObjectClass.empty())
+                lowerer_.deferReleaseObj(val, moduleObjectClass); // BUG-097: Use cached class
             else
                 lowerer_.deferReleaseObj(val);
             result_ = Lowerer::RVal{val, IlType(IlType::Kind::Ptr)};
@@ -395,16 +406,75 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
                     Lowerer::Value arrHandle =
                         lowerer_.emitLoad(Lowerer::Type(Lowerer::Type::Kind::Ptr), fieldPtr);
 
-                    // Lower first index (single-dimension)
-                    Lowerer::Value indexVal = Lowerer::Value::constInt(0);
-                    if (!expr.args.empty() && expr.args[0])
+                    // BUG-094 fix: Lower all indices and compute flattened index for multi-dimensional arrays
+                    std::vector<Lowerer::Value> indices;
+                    for (const auto &arg : expr.args)
                     {
-                        Lowerer::RVal idx = lowerer_.lowerExpr(*expr.args[0]);
-                        idx = lowerer_.coerceToI64(std::move(idx), expr.loc);
-                        indexVal = idx.value;
+                        if (arg)
+                        {
+                            Lowerer::RVal idx = lowerer_.lowerExpr(*arg);
+                            idx = lowerer_.coerceToI64(std::move(idx), expr.loc);
+                            indices.push_back(idx.value);
+                        }
                     }
 
-                    // Select getter and result type
+                    // Compute flattened index for multi-dimensional arrays
+                    Lowerer::Value indexVal = Lowerer::Value::constInt(0);
+                    if (!indices.empty())
+                    {
+                        if (indices.size() == 1)
+                        {
+                            indexVal = indices[0];
+                        }
+                        else if (fld->isArray && !fld->arrayExtents.empty() &&
+                                 fld->arrayExtents.size() == indices.size())
+                        {
+                            // Multi-dimensional: compute row-major flattened index
+                            // For extents [E0, E1, ..., E_{N-1}] and indices [i0, i1, ..., i_{N-1}]:
+                            // flat = i0*L1*L2*...*L_{N-1} + i1*L2*...*L_{N-1} + ... + i_{N-1}
+                            // where Lk = (Ek + 1) are inclusive lengths per dimension.
+                            std::vector<long long> lengths;
+                            for (long long e : fld->arrayExtents)
+                                lengths.push_back(e + 1);
+
+                            long long stride = 1;
+                            for (size_t i = 1; i < lengths.size(); ++i)
+                                stride *= lengths[i];
+
+                            lowerer_.curLoc = expr.loc;
+                            indexVal = lowerer_.emitBinary(
+                                il::core::Opcode::IMulOvf,
+                                Lowerer::Type(Lowerer::Type::Kind::I64),
+                                indices[0],
+                                Lowerer::Value::constInt(stride));
+
+                            for (size_t k = 1; k < indices.size(); ++k)
+                            {
+                                stride = 1;
+                                for (size_t i = k + 1; i < lengths.size(); ++i)
+                                    stride *= lengths[i];
+                                lowerer_.curLoc = expr.loc;
+                                Lowerer::Value term = lowerer_.emitBinary(
+                                    il::core::Opcode::IMulOvf,
+                                    Lowerer::Type(Lowerer::Type::Kind::I64),
+                                    indices[k],
+                                    Lowerer::Value::constInt(stride));
+                                lowerer_.curLoc = expr.loc;
+                                indexVal = lowerer_.emitBinary(
+                                    il::core::Opcode::IAddOvf,
+                                    Lowerer::Type(Lowerer::Type::Kind::I64),
+                                    indexVal,
+                                    term);
+                            }
+                        }
+                        else
+                        {
+                            // Fallback: use first index only
+                            indexVal = indices[0];
+                        }
+                    }
+
+                    // Select getter and result type based on field element type
                     if (fld->type == ::il::frontends::basic::Type::Str)
                     {
                         lowerer_.requireArrayStrGet();
@@ -415,6 +485,17 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
                                                  {arrHandle, indexVal});
                         // Removed: lowerer_.deferReleaseStr(val);
                         result_ = Lowerer::RVal{val, Lowerer::IlType(Lowerer::IlType::Kind::Str)};
+                        return;
+                    }
+                    else if (!fld->objectClassName.empty())
+                    {
+                        // BUG-096/BUG-098 fix: Handle object arrays
+                        lowerer_.requireArrayObjGet();
+                        Lowerer::IlValue val =
+                            lowerer_.emitCallRet(Lowerer::IlType(Lowerer::IlType::Kind::Ptr),
+                                                 "rt_arr_obj_get",
+                                                 {arrHandle, indexVal});
+                        result_ = Lowerer::RVal{val, Lowerer::IlType(Lowerer::IlType::Kind::Ptr)};
                         return;
                     }
                     else

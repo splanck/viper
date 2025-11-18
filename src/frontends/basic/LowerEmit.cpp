@@ -224,6 +224,11 @@ void Lowerer::emitMainBodyAndEpilogue(ProgramEmitContext &state)
 /// @param prog BASIC program to lower into IL.
 void Lowerer::emitProgram(const Program &prog)
 {
+    // BUG-097 fix: Cache module-level object array types BEFORE lowering procedures.
+    // Procedure bodies may reference global arrays (e.g., g_widgets(i).Update()),
+    // and resolveObjectClass needs the element class info during procedure lowering.
+    cacheModuleObjectArraysFromAST(prog.main);
+
     ProgramEmitContext state = collectProgramDeclarations(prog);
     buildMainFunctionSkeleton(state);
     collectMainVariables(state);

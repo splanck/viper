@@ -105,6 +105,13 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
 
     const auto *info = isMemberArray ? nullptr : findSymbol(expr.name);
 
+    // BUG-097 fix: Check module cache for object array type info
+    std::string moduleObjectClass;
+    if (!isMemberArray && (!info || (info && !info->isObject)))
+    {
+        moduleObjectClass = lookupModuleArrayElemClass(expr.name);
+    }
+
     // When accessing array fields, we'll compute 'base' by loading the pointer from
     // the object's field; otherwise we load from variable storage as usual.
     Type::Kind memberElemIlKind = Type::Kind::I64; // default element kind
@@ -197,8 +204,9 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
             requireStrRetainMaybe();
         }
     }
-    else if (info && info->isObject)
+    else if ((info && info->isObject) || !moduleObjectClass.empty())
     {
+        // BUG-097 fix: Use object array functions for module-level object arrays too
         requireArrayObjLen();
         if (kind == ArrayAccessKind::Load)
             requireArrayObjGet();
@@ -394,8 +402,8 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
         assert(info && "info must be non-null for non-member arrays");
         if (info->type == AstType::Str)
             len = emitCallRet(Type(Type::Kind::I64), "rt_arr_str_len", {base});
-        else if (info->isObject)
-            len = emitCallRet(Type(Type::Kind::I64), "rt_arr_obj_len", {base});
+        else if (info->isObject || !moduleObjectClass.empty())
+            len = emitCallRet(Type(Type::Kind::I64), "rt_arr_obj_len", {base}); // BUG-097: Check module cache too
         else
             len = emitCallRet(Type(Type::Kind::I64), "rt_arr_i32_len", {base});
     }

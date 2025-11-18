@@ -29,6 +29,7 @@
 
 #include "viper/il/Module.hpp"
 
+
 #include <cassert>
 #include <memory>
 #include <utility>
@@ -1431,6 +1432,57 @@ void Lowerer::resetLoweringState()
     synthSeq_ = 0;
     // BUG-074 fix: Clear any deferred temps from prior procedures
     clearDeferredTemps();
+}
+
+void Lowerer::cacheModuleObjectArraysFromAST(const std::vector<StmtPtr> &main)
+{
+    moduleObjArrayElemClass_.clear();
+
+    // Walk main body statements looking for DIM declarations of object arrays
+    for (const auto &stmtPtr : main)
+    {
+        if (!stmtPtr)
+            continue;
+
+        if (stmtPtr->stmtKind() == Stmt::Kind::Dim)
+        {
+            const auto *dim = as<const DimStmt>(*stmtPtr);
+            if (dim && dim->isArray && !dim->explicitClassQname.empty())
+            {
+                // Join qualified class name segments with dots
+                std::string className;
+                for (size_t i = 0; i < dim->explicitClassQname.size(); ++i)
+                {
+                    if (i > 0)
+                        className += '.';
+                    className += dim->explicitClassQname[i];
+                }
+                moduleObjArrayElemClass_[dim->name] = className;
+            }
+        }
+    }
+}
+
+void Lowerer::cacheModuleObjectArraysFromSymbols()
+{
+    moduleObjArrayElemClass_.clear();
+    for (const auto &p : symbols)
+    {
+        const std::string &name = p.first;
+        const SymbolInfo &info = p.second;
+        if (info.isArray && info.isObject && !info.objectClass.empty())
+        {
+            moduleObjArrayElemClass_[name] = info.objectClass;
+        }
+    }
+}
+
+std::string Lowerer::lookupModuleArrayElemClass(std::string_view name) const
+{
+    auto it = moduleObjArrayElemClass_.find(std::string{name});
+    if (it == moduleObjArrayElemClass_.end())
+        return {};
+    return it->second;
 }
 
 /// @brief Allocate stack slots and store incoming arguments for parameters.

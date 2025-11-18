@@ -19,6 +19,7 @@
 #include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/Lowerer.hpp"
+#include "frontends/basic/SemanticAnalyzer.hpp"
 #include "frontends/basic/NameMangler_OOP.hpp"
 #include "frontends/basic/Semantic_OOP.hpp"
 
@@ -142,7 +143,16 @@ std::string Lowerer::resolveObjectClass(const Expr &expr) const
                 return qualify(field->objectClassName);
             }
         }
-
+        // BUG-097 fix: If this is a module-level array referenced inside a procedure,
+        // recover the element class from the cached module-level object array map.
+        // Try the lookup directly - if the name isn't in the cache, it returns empty.
+        std::string cls = lookupModuleArrayElemClass(arr->name);
+        if (!cls.empty())
+        {
+            // Resolve canonical lowercase name to declared casing (e.g., 'widget' -> 'WIDGET')
+            std::string qualified = qualify(cls);
+            return resolveQualifiedClassCasing(qualified);
+        }
         return {};
     }
     if (const auto *access = as<const MemberAccessExpr>(expr))
@@ -172,14 +182,28 @@ std::string Lowerer::resolveObjectClass(const Expr &expr) const
     }
     if (const auto *call = as<const MethodCallExpr>(expr))
     {
-        // BUG-039/BUG-040 fix: Method calls should only be treated as returning objects
-        // if the method's return type is actually a class type (not INTEGER, STRING, etc.)
+        // BUG-096/BUG-098 fix: MethodCallExpr might be a field array access
+        // (e.g., container.items(0) where items is an array field)
+        // Check this BEFORE checking for method return types
         if (call->base)
         {
             std::string baseClass = resolveObjectClass(*call->base);
             if (!baseClass.empty())
             {
-                // Check the method's return type
+                // First check if this is a field array access, not an actual method call
+                auto layoutIt = classLayouts_.find(baseClass);
+                if (layoutIt != classLayouts_.end())
+                {
+                    const auto *field = layoutIt->second.findField(call->method);
+                    if (field && field->isArray && !field->objectClassName.empty())
+                    {
+                        // This is a field array access (e.g., obj.arrayField(idx))
+                        // Return the array element class
+                        return qualify(field->objectClassName);
+                    }
+                }
+
+                // Not a field array, check the method's return type
                 if (auto retType = findMethodReturnType(baseClass, call->method))
                 {
                     // Only return a class name if the method returns a class type (ptr)

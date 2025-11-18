@@ -106,6 +106,9 @@ void ProgramLowering::run(const Program &prog, il::core::Module &module)
     lowerer.runtimeTracker.reset();
     lowerer.resetManualHelpers();
 
+    // Clear any cached module-level array typing from previous runs (BUG-097)
+    lowerer.clearModuleObjectArrayCache();
+
     lowerer.scanOOP(prog);     // Must scan OOP first to populate classLayouts_
     lowerer.scanProgram(prog); // Then scan program (needs classLayouts_ for field assignments)
     // Ensure procedure signature/alias table is populated before emitting OOP bodies
