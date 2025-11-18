@@ -58,7 +58,7 @@ void storeResult(Frame &fr, const il::core::Instr &in, const Slot &val)
     if (!hadRegister)
         fr.regs.resize(destIndex + 1);
 
-    if (in.type.kind == il::core::Type::Kind::Str)
+    if (in.type.kind == il::core::Type::Kind::Str) [[unlikely]]
     {
         if (hadRegister)
             rt_str_release_maybe(fr.regs[destIndex].str);

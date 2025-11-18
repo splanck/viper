@@ -324,7 +324,7 @@ void VM::beginDispatch(ExecState &state)
 /// @return False when execution should stop (due to exit or pause), true otherwise.
 bool VM::selectInstruction(ExecState &state, const Instr *&instr)
 {
-    if (!state.bb || state.ip >= state.bb->instructions.size())
+    if (!state.bb || state.ip >= state.bb->instructions.size()) [[unlikely]]
     {
         clearCurrentContext();
         Slot zero{};
@@ -340,7 +340,7 @@ bool VM::selectInstruction(ExecState &state, const Instr *&instr)
     instr = state.currentInstr;
     setCurrentContext(state.fr, state.bb, state.ip, *state.currentInstr);
 
-    if (auto pause = shouldPause(state, state.currentInstr, false))
+    if (auto pause = shouldPause(state, state.currentInstr, false)) [[unlikely]]
     {
         state.pendingResult = *pause;
         state.exitRequested = true;

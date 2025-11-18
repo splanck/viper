@@ -209,6 +209,24 @@ VM::VM(const Module &m, TraceConfig tc, uint64_t ms, DebugCtrl dbg, DebugScript 
     // Pre-populate string literal cache to eliminate map lookups on hot path.
     // This scans all const_str operands in the module and creates rt_string
     // objects upfront, providing a 15-25% speedup for string-heavy programs.
+    // First, estimate the number of string occurrences to reserve capacity.
+    {
+        size_t estimate = 0;
+        for (const auto &f : m.functions)
+            for (const auto &block : f.blocks)
+                for (const auto &instr : block.instructions)
+                {
+                    for (const auto &operand : instr.operands)
+                        if (operand.kind == Value::Kind::ConstStr)
+                            ++estimate;
+                    for (const auto &args : instr.brArgs)
+                        for (const auto &arg : args)
+                            if (arg.kind == Value::Kind::ConstStr)
+                                ++estimate;
+                }
+        if (estimate)
+            inlineLiteralCache.reserve(estimate);
+    }
     for (const auto &f : m.functions)
     {
         for (const auto &block : f.blocks)
@@ -396,6 +414,15 @@ VM::ExecState VM::prepareExecution(const Function &fn, const std::vector<Slot> &
     ExecState st{};
     st.owner = this;
     st.fr = setupFrame(fn, args, st.blocks, st.bb);
+    // Reserve branch-target cache buckets roughly based on number of
+    // terminators to reduce rehashing during branching-heavy execution.
+    size_t estTerms = 0;
+    for (const auto &b : fn.blocks)
+        for (const auto &in : b.instructions)
+            if (!in.labels.empty())
+                ++estTerms;
+    if (estTerms)
+        st.branchTargetCache.reserve(estTerms);
     // Inherit polling configuration from VM.
     st.config.interruptEveryN = pollEveryN_;
     st.config.pollCallback = pollCallback_;

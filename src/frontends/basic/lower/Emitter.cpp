@@ -522,6 +522,9 @@ void Emitter::releaseDeferredTemps()
         auto *destroyBlk = &func->blocks[func->blocks.size() - 2];
         auto *contBlk = &func->blocks.back();
 
+        // Reset current block pointer after adding blocks, since vector may have reallocated.
+        ctx.setCurrent(&func->blocks[originIdx]);
+
         Value needDtor = lowerer_.emitCallRet(Type(Type::Kind::I1), "rt_obj_release_check0", {t.v});
         lowerer_.emitCBr(needDtor, destroyBlk, contBlk);
 

@@ -482,6 +482,13 @@ void Lowerer::emitClassMethod(const ClassDecl &klass, const MethodDecl &method)
     {
         methodRetType = ilTypeForAstType(*method.ret);
         methodRetAst = method.ret;
+        // BUG-084 fix: Set the return type for the method name symbol (VB-style implicit return).
+        // This ensures the function return value slot is allocated with the correct type.
+        // Must be done after collectVars() but before allocateLocalSlots().
+        if (findSymbol(method.name))
+        {
+            setSymbolType(method.name, *method.ret);
+        }
     }
 
     std::string name = mangleMethod(qualify(klass.name), method.name);
