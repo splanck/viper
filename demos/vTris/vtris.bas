@@ -21,6 +21,8 @@ Dim DropSpeed As Integer
 
 ' === MAIN MENU ===
 Sub ShowMainMenu()
+    ' Set background color and clear screen
+    COLOR 7, 0
     CLS
 
     ' Title banner
@@ -33,40 +35,46 @@ Sub ShowMainMenu()
     Print "          ║  ";
     COLOR 11, 0
     Print "  ██    ██ █████ █████";
+    LOCATE 4, 40
     COLOR 14, 0
-    Print "  ║"
+    Print "║"
     LOCATE 5, 1
     Print "          ║  ";
     COLOR 11, 0
     Print "  ██    ██   ██  ██  █";
+    LOCATE 5, 40
     COLOR 14, 0
-    Print "  ║"
+    Print "║"
     LOCATE 6, 1
     Print "          ║  ";
     COLOR 11, 0
     Print "  ██    ██   ██  █████";
+    LOCATE 6, 40
     COLOR 14, 0
-    Print "  ║"
+    Print "║"
     LOCATE 7, 1
     Print "          ║  ";
     COLOR 11, 0
     Print "   ██  ██    ██  ██  █";
+    LOCATE 7, 40
     COLOR 14, 0
-    Print "  ║"
+    Print "║"
     LOCATE 8, 1
     Print "          ║  ";
     COLOR 11, 0
     Print "    ████     ██  █████";
+    LOCATE 8, 40
     COLOR 14, 0
-    Print "  ║"
+    Print "║"
     LOCATE 9, 1
     Print "          ║                            ║"
     LOCATE 10, 1
     Print "          ║    ";
     COLOR 10, 0
     Print "Viper BASIC Demo";
+    LOCATE 10, 40
     COLOR 14, 0
-    Print "    ║"
+    Print "║"
     LOCATE 11, 1
     Print "          ╚════════════════════════════╝"
 
@@ -92,7 +100,7 @@ Sub ShowMainMenu()
     LOCATE 20, 1
     COLOR 15, 0
     Print "               [Q] ";
-    COLOR 8, 0
+    COLOR 12, 0
     Print "QUIT"
 
     LOCATE 23, 1
@@ -102,6 +110,7 @@ Sub ShowMainMenu()
 End Sub
 
 Sub ShowInstructions()
+    COLOR 7, 0
     CLS
 
     LOCATE 2, 1
@@ -111,8 +120,9 @@ Sub ShowInstructions()
     Print "║                ";
     COLOR 15, 0
     Print "INSTRUCTIONS";
+    LOCATE 3, 54
     COLOR 14, 0
-    Print "                      ║"
+    Print "║"
     LOCATE 4, 1
     Print "╚════════════════════════════════════════════════════╝"
 
@@ -142,30 +152,35 @@ Sub ShowInstructions()
     Print "   - Soft drop (move down faster)"
     LOCATE 12, 1
     COLOR 15, 0
+    Print "    Space";
+    COLOR 7, 0
+    Print " - Hard drop (instant placement)"
+    LOCATE 13, 1
+    COLOR 15, 0
     Print "    Q";
     COLOR 7, 0
     Print "   - Quit to main menu"
 
-    LOCATE 14, 1
+    LOCATE 15, 1
     COLOR 11, 0
     Print "  SCORING:"
-    LOCATE 15, 1
+    LOCATE 16, 1
     COLOR 7, 0
     Print "    1 Line  = 100 points"
-    LOCATE 16, 1
-    Print "    2 Lines = 400 points"
     LOCATE 17, 1
-    Print "    3 Lines = 900 points"
+    Print "    2 Lines = 400 points"
     LOCATE 18, 1
+    Print "    3 Lines = 900 points"
+    LOCATE 19, 1
     Print "    4 Lines = 1600 points"
 
-    LOCATE 20, 1
+    LOCATE 21, 1
     COLOR 11, 0
     Print "  LEVELS:";
     COLOR 7, 0
     Print " Speed increases every 10 lines"
 
-    LOCATE 23, 1
+    LOCATE 24, 1
     COLOR 8, 0
     Print "Press any key to return to menu...";
     COLOR 7, 0
@@ -178,6 +193,7 @@ Sub ShowInstructions()
 End Sub
 
 Sub ShowHighScores()
+    COLOR 7, 0
     CLS
     ScoreBoard.DrawScoreboard(3)
 
@@ -196,7 +212,6 @@ End Sub
 ' === GAME INITIALIZATION ===
 Sub InitGame()
     GameBoard = New Board()
-    ScoreBoard = New Scoreboard()
     GameScore = 0
     GameLines = 0
     GameLevel = 1
@@ -243,8 +258,9 @@ Sub DrawUI()
     Print "║ ";
     COLOR 15, 0
     Print "vTRIS v2.0";
+    LOCATE 3, 45
     COLOR 14, 0
-    Print "      ║"
+    Print "║"
 
     LOCATE 4, 26
     Print "╠══════════════════╣"
@@ -255,12 +271,14 @@ Sub DrawUI()
     Print "║ ";
     COLOR 11, 0
     Print "SCORE:";
+    LOCATE 5, 45
     COLOR 14, 0
-    Print "          ║"
+    Print "║"
     LOCATE 6, 26
     Print "║ ";
     COLOR 15, 0
     Print GameScore; "            ";
+    LOCATE 6, 45
     COLOR 14, 0
     Print "║"
 
@@ -269,12 +287,14 @@ Sub DrawUI()
     Print "║ ";
     COLOR 10, 0
     Print "LINES:";
+    LOCATE 7, 45
     COLOR 14, 0
-    Print "          ║"
+    Print "║"
     LOCATE 8, 26
     Print "║ ";
     COLOR 15, 0
     Print GameLines; "            ";
+    LOCATE 8, 45
     COLOR 14, 0
     Print "║"
 
@@ -283,12 +303,14 @@ Sub DrawUI()
     Print "║ ";
     COLOR 9, 0
     Print "LEVEL:";
+    LOCATE 9, 45
     COLOR 14, 0
-    Print "          ║"
+    Print "║"
     LOCATE 10, 26
     Print "║ ";
     COLOR 15, 0
     Print GameLevel; "            ";
+    LOCATE 10, 45
     COLOR 14, 0
     Print "║"
 
@@ -300,8 +322,9 @@ Sub DrawUI()
     Print "║ ";
     COLOR 13, 0
     Print "NEXT:";
+    LOCATE 12, 45
     COLOR 14, 0
-    Print "           ║"
+    Print "║"
 
     ' Draw next piece preview (rows 13-16)
     Dim i As Integer, j As Integer
@@ -320,8 +343,9 @@ Sub DrawUI()
             End If
         Next j
 
+        LOCATE 13 + i, 45
         COLOR 14, 0
-        Print "  ║"
+        Print "║"
     Next i
 
     LOCATE 17, 26
@@ -332,28 +356,39 @@ Sub DrawUI()
     Print "║ ";
     COLOR 8, 0
     Print "A/D - Move";
+    LOCATE 18, 45
     COLOR 14, 0
-    Print "     ║"
+    Print "║"
     LOCATE 19, 26
     Print "║ ";
     COLOR 8, 0
     Print "W - Rotate";
+    LOCATE 19, 45
     COLOR 14, 0
-    Print "      ║"
+    Print "║"
     LOCATE 20, 26
     Print "║ ";
     COLOR 8, 0
     Print "S - Drop";
+    LOCATE 20, 45
     COLOR 14, 0
-    Print "        ║"
+    Print "║"
     LOCATE 21, 26
     Print "║ ";
     COLOR 8, 0
-    Print "Q - Quit";
+    Print "Space - Hard";
+    LOCATE 21, 45
     COLOR 14, 0
-    Print "        ║"
-
+    Print "║"
     LOCATE 22, 26
+    Print "║ ";
+    COLOR 8, 0
+    Print "Q - Quit";
+    LOCATE 22, 45
+    COLOR 14, 0
+    Print "║"
+
+    LOCATE 23, 26
     Print "╚══════════════════╝"
 
     COLOR 7, 0
@@ -395,6 +430,7 @@ End Sub
 Sub GameLoop()
     Dim k As String
 
+    COLOR 7, 0
     CLS
 
     While GameOver = 0
@@ -434,6 +470,15 @@ Sub GameLoop()
             End If
         End If
 
+        If k = " " Then
+            ' Hard drop - instantly move to bottom
+            While GameBoard.CanPlace(CurrentPiece) = 1
+                CurrentPiece.MoveDown()
+            Wend
+            CurrentPiece.PosY = CurrentPiece.PosY - 1
+            LockPiece()
+        End If
+
         If k = "q" Or k = "Q" Then
             GameOver = 1
         End If
@@ -460,6 +505,7 @@ Sub GameLoop()
 End Sub
 
 Sub GameOverScreen()
+    COLOR 7, 0
     CLS
 
     LOCATE 8, 1
@@ -471,8 +517,9 @@ Sub GameOverScreen()
     Print "     ║           ";
     COLOR 15, 0
     Print "GAME OVER!";
+    LOCATE 10, 47
     COLOR 12, 0
-    Print "                 ║"
+    Print "║"
     LOCATE 11, 1
     Print "     ║                                        ║"
     LOCATE 12, 1
@@ -527,6 +574,9 @@ End Sub
 
 ' === MAIN PROGRAM ===
 Randomize
+
+' Initialize scoreboard (needs to persist across games)
+ScoreBoard = New Scoreboard()
 
 Dim menuChoice As String
 Dim running As Integer

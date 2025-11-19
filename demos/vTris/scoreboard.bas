@@ -108,11 +108,12 @@ Class Scoreboard
         Print "     ╔════════════════════════════════════╗"
 
         LOCATE startRow + 1, 1
-        Print "     ║  "
+        Print "     ║  ";
         COLOR 15, 0  ' Bright white
-        Print "★  ALL-TIME HIGH SCORES  ★"
+        Print "★  ALL-TIME HIGH SCORES  ★";
+        LOCATE startRow + 1, 43
         COLOR 14, 0
-        Print "  ║"
+        Print "║"
 
         LOCATE startRow + 2, 1
         Print "     ╠════════════════════════════════════╣"
@@ -120,7 +121,7 @@ Class Scoreboard
         For i = 0 To 9
             LOCATE startRow + 3 + i, 1
             COLOR 14, 0
-            Print "     ║ "
+            Print "     ║ ";
 
             If i < Me.Count Then
                 ' Rank color
@@ -134,39 +135,53 @@ Class Scoreboard
                     COLOR 7, 0   ' Gray for others
                 End If
 
-                ' Rank number
+                ' Rank number (fixed 4 chars: " 1. ")
                 If i < 9 Then
-                    Print " "; (i + 1); ". "
+                    Print " "; (i + 1); ". ";
                 Else
-                    Print (i + 1); ". "
+                    Print (i + 1); ". ";
                 End If
 
-                ' Name (padded to 8 chars)
+                ' Name (fixed 8 chars)
                 COLOR 15, 0
                 Dim nameStr As String
+                Dim namePad As Integer
                 nameStr = Me.Names(i)
-                Print nameStr; "        "
+                namePad = 8 - Len(nameStr)
+                Print nameStr;
+                Dim p As Integer
+                For p = 1 To namePad
+                    Print " ";
+                Next p
 
-                ' Score (right-aligned to 8 chars)
+                ' Score (fixed 8 chars)
                 COLOR 11, 0
                 Dim scoreStr As String
+                Dim scorePad As Integer
                 scoreStr = Str$(Me.Scores(i))
-                Print "   "; scoreStr; "    "
+                scorePad = 8 - Len(scoreStr)
+                For p = 1 To scorePad
+                    Print " ";
+                Next p
+                Print scoreStr;
 
-                ' Level
+                ' Level (fixed width)
                 COLOR 10, 0
-                Print "L"; Me.Levels(i); "  "
+                Print " L"; Me.Levels(i);
             Else
                 ' Empty slot
                 COLOR 8, 0  ' Dark gray
                 If i < 9 Then
-                    Print " "; (i + 1); ". "
+                    Print " "; (i + 1); ". ";
                 Else
-                    Print (i + 1); ". "
+                    Print (i + 1); ". ";
                 End If
-                Print "---             ---     L-  "
+                Print "---     ";  ' Name field (8 chars)
+                Print "   ---  ";  ' Score field (8 chars)
+                Print " L-";       ' Level field
             End If
 
+            LOCATE startRow + 3 + i, 43
             COLOR 14, 0
             Print "║"
         Next i

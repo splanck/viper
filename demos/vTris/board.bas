@@ -120,61 +120,43 @@ Class Board
     End Sub
 
     Sub DrawBoard()
-        ' Draw the board with ANSI colors and enhanced visuals
+        ' Draw the board
         Dim row As Integer, col As Integer
 
-        ' Top border with gradient effect
+        ' Top border
         LOCATE 1, 1
-        COLOR 14, 0  ' Yellow border
+        COLOR 11, 0
         Print "╔════════════════════╗"
 
+        ' Draw rows
         For row = 0 To 19
             LOCATE row + 2, 1
-
-            ' Border color gradient (yellow to blue)
-            If row < 5 Then
-                COLOR 14, 0  ' Yellow
-            ElseIf row < 10 Then
-                COLOR 11, 0  ' Cyan
-            ElseIf row < 15 Then
-                COLOR 10, 0  ' Green
-            Else
-                COLOR 9, 0   ' Blue
-            End If
+            COLOR 11, 0
             Print "║";
 
             ' Draw cells
             For col = 1 To 10
                 If Me.Grid(row, col) = 0 Then
-                    ' Empty cell
                     COLOR 0, 0
                     Print "  ";
                 Else
-                    ' Colored blocks
                     COLOR Me.GridColor(row, col), 0
                     Print "██";
                 End If
             Next col
 
-            ' Right border (matching gradient)
-            If row < 5 Then
-                COLOR 14, 0
-            ElseIf row < 10 Then
-                COLOR 11, 0
-            ElseIf row < 15 Then
-                COLOR 10, 0
-            Else
-                COLOR 9, 0
-            End If
+            ' Right border at column 22
+            LOCATE row + 2, 22
+            COLOR 11, 0
             Print "║"
         Next row
 
         ' Bottom border
         LOCATE 22, 1
-        COLOR 9, 0  ' Blue bottom
+        COLOR 11, 0
         Print "╚════════════════════╝"
 
-        COLOR 7, 0  ' Reset
+        COLOR 7, 0
     End Sub
 
     Sub DrawPiece(p As Piece)

@@ -10,12 +10,12 @@ Class Piece
     Dim PosX As Integer
     Dim PosY As Integer
 
-    Sub New(pieceType As Integer)
-        Me.PieceType = pieceType
+    Sub New(pType As Integer)
+        Me.PieceType = pType
         Me.Rotation = 0
         Me.PosX = 3  ' Start in middle of board
         Me.PosY = 0
-        
+
         ' Initialize shape grid
         Dim i As Integer, j As Integer
         For i = 0 To 3
@@ -23,16 +23,16 @@ Class Piece
                 Me.Shape(i, j) = 0
             Next j
         Next i
-        
+
         ' Set color based on piece type
-        If pieceType = 0 Then Me.PieceColor = 6      ' I = Cyan
-        If pieceType = 1 Then Me.PieceColor = 3      ' O = Yellow
-        If pieceType = 2 Then Me.PieceColor = 5      ' T = Magenta
-        If pieceType = 3 Then Me.PieceColor = 2      ' S = Green
-        If pieceType = 4 Then Me.PieceColor = 1      ' Z = Red
-        If pieceType = 5 Then Me.PieceColor = 4      ' J = Blue
-        If pieceType = 6 Then Me.PieceColor = 7      ' L = White
-        
+        If pType = 0 Then Me.PieceColor = 6      ' I = Cyan
+        If pType = 1 Then Me.PieceColor = 3      ' O = Yellow
+        If pType = 2 Then Me.PieceColor = 5      ' T = Magenta
+        If pType = 3 Then Me.PieceColor = 2      ' S = Green
+        If pType = 4 Then Me.PieceColor = 1      ' Z = Red
+        If pType = 5 Then Me.PieceColor = 4      ' J = Blue
+        If pType = 6 Then Me.PieceColor = 7      ' L = White
+
         ' Initialize the shape
         Me.InitShape()
     End Sub
