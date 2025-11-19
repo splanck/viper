@@ -1,0 +1,723 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the MIT License.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/frontends/basic/IoStatementLowerer.cpp
+// Purpose: Implementation of I/O statement lowering extracted from Lowerer.
+//          Handles lowering of BASIC terminal and file I/O statements to IL
+//          and runtime helper calls.
+// Key invariants: Maintains Lowerer's I/O lowering semantics exactly
+// Ownership/Lifetime: Borrows Lowerer reference; coordinates with parent
+// Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
+
+#include "IoStatementLowerer.hpp"
+#include "Lowerer.hpp"
+#include "frontends/basic/ASTUtils.hpp"
+#include "frontends/basic/LocationScope.hpp"
+#include "frontends/basic/SemanticAnalyzer.hpp"
+
+#include <algorithm>
+#include <cassert>
+#include <cstdio>
+#include <optional>
+#include <string>
+
+namespace
+{
+constexpr std::size_t kPrintZoneWidth = 14;
+
+std::optional<std::size_t> estimatePrintWidth(const il::frontends::basic::Expr &expr)
+{
+    using namespace il::frontends::basic;
+
+    if (const auto *stringExpr = as<const StringExpr>(expr))
+        return stringExpr->value.size();
+
+    if (const auto *intExpr = as<const IntExpr>(expr))
+        return std::to_string(intExpr->value).size();
+
+    if (const auto *floatExpr = as<const FloatExpr>(expr))
+    {
+        char buffer[64];
+        int written = std::snprintf(buffer, sizeof(buffer), "%.15g", floatExpr->value);
+        if (written < 0 || static_cast<std::size_t>(written) >= sizeof(buffer))
+            return std::nullopt;
+        return static_cast<std::size_t>(written);
+    }
+
+    if (const auto *boolExpr = as<const BoolExpr>(expr))
+        return boolExpr->value ? std::size_t{2} : std::size_t{1};
+
+    return std::nullopt;
+}
+} // namespace
+
+namespace il::frontends::basic
+{
+
+using IlType = il::core::Type;
+using Value = il::core::Value;
+using Opcode = il::core::Opcode;
+using PrintChArgString = Lowerer::PrintChArgString;
+
+// Forward declarations of file-local helper functions
+PrintChArgString lowerPrintChArgToString(IoStatementLowerer &self,
+                                        const Expr &expr,
+                                        Lowerer::RVal value,
+                                        bool quoteStrings);
+Value buildPrintChWriteRecord(IoStatementLowerer &self, const PrintChStmt &stmt);
+
+IoStatementLowerer::IoStatementLowerer(Lowerer &lowerer) : lowerer_(lowerer) {}
+
+/// @brief Lower an OPEN statement to the runtime helper sequence.
+///
+/// @details Evaluates the path and channel expressions, normalises the channel
+///          to a 32-bit descriptor, and invokes `rt_open_err_vstr`.  Any runtime
+///          error triggers emission of a `trap.from_err` via @ref emitRuntimeErrCheck.
+///
+/// @param stmt Parsed OPEN statement containing operands and source location.
+void IoStatementLowerer::lowerOpen(const OpenStmt &stmt)
+{
+    if (!stmt.pathExpr || !stmt.channelExpr)
+        return;
+
+    Lowerer::RVal path = lowerer_.lowerExpr(*stmt.pathExpr);
+    Lowerer::RVal channel = lowerer_.lowerExpr(*stmt.channelExpr);
+    channel = lowerer_.normalizeChannelToI32(std::move(channel), stmt.loc);
+
+    Value modeValue = lowerer_.emitCommon(stmt.loc).narrow_to(
+        Value::constInt(static_cast<int32_t>(stmt.mode)), 64, 32);
+
+    Value err = lowerer_.emitCallRet(
+        IlType(IlType::Kind::I32), "rt_open_err_vstr", {path.value, modeValue, channel.value});
+
+    lowerer_.emitRuntimeErrCheck(
+        err, stmt.loc, "open", [&](Value code) { lowerer_.emitTrapFromErr(code); });
+}
+
+/// @brief Lower a CLOSE statement that releases an open channel.
+///
+/// @details Normalises the channel expression, calls `rt_close_err`, and hooks
+///          the result into the standard runtime error check pipeline.
+///
+/// @param stmt Parsed CLOSE statement.
+void IoStatementLowerer::lowerClose(const CloseStmt &stmt)
+{
+    LocationScope loc(lowerer_, stmt.loc);
+    if (!stmt.channelExpr)
+        return;
+
+    Lowerer::RVal channel = lowerer_.lowerExpr(*stmt.channelExpr);
+    channel = lowerer_.normalizeChannelToI32(std::move(channel), stmt.loc);
+
+    Value err = lowerer_.emitCallRet(IlType(IlType::Kind::I32), "rt_close_err", {channel.value});
+
+    lowerer_.emitRuntimeErrCheck(
+        err, stmt.loc, "close", [&](Value code) { lowerer_.emitTrapFromErr(code); });
+}
+
+/// @brief Lower a SEEK statement that repositions a file channel.
+///
+/// @details Converts the channel to an @c i32 descriptor, coerces the position
+///          expression to @c i64, and emits a call to `rt_seek_ch_err` with
+///          diagnostic handling.
+///
+/// @param stmt Parsed SEEK statement.
+void IoStatementLowerer::lowerSeek(const SeekStmt &stmt)
+{
+    LocationScope loc(lowerer_, stmt.loc);
+    if (!stmt.channelExpr || !stmt.positionExpr)
+        return;
+
+    Lowerer::RVal channel = lowerer_.lowerExpr(*stmt.channelExpr);
+    channel = lowerer_.normalizeChannelToI32(std::move(channel), stmt.loc);
+
+    Lowerer::RVal position = lowerer_.lowerExpr(*stmt.positionExpr);
+    position = lowerer_.ensureI64(std::move(position), stmt.loc);
+
+    Value err = lowerer_.emitCallRet(
+        IlType(IlType::Kind::I32), "rt_seek_ch_err", {channel.value, position.value});
+
+    lowerer_.emitRuntimeErrCheck(
+        err, stmt.loc, "seek", [&](Value code) { lowerer_.emitTrapFromErr(code); });
+}
+
+/// @brief Lower a PRINT statement to a series of runtime calls.
+///
+/// @details Iterates over each print item, lowering expressions to the
+///          appropriate runtime helper and emitting spacing semantics for commas
+///          and semicolons.  The helper appends a newline when the trailing item
+///          is not a semicolon, mirroring BASIC behaviour.
+///
+/// @param stmt Parsed PRINT statement with expression list.
+void IoStatementLowerer::lowerPrint(const PrintStmt &stmt)
+{
+    LocationScope loc(lowerer_, stmt.loc);
+    std::size_t column = 1;
+    bool columnKnown = true;
+
+    auto updateColumn = [&](std::optional<std::size_t> width)
+    {
+        if (!columnKnown)
+            return;
+        if (width)
+            column += *width;
+        else
+            columnKnown = false;
+    };
+
+    auto resetColumn = [&]()
+    {
+        column = 1;
+        columnKnown = true;
+    };
+
+    for (const auto &it : stmt.items)
+    {
+        switch (it.kind)
+        {
+            case PrintItem::Kind::Expr:
+            {
+                std::optional<std::size_t> widthEstimate;
+                if (it.expr)
+                    widthEstimate = estimatePrintWidth(*it.expr);
+
+                Lowerer::RVal value = lowerer_.lowerExpr(*it.expr);
+                if (value.type.kind == IlType::Kind::Str)
+                {
+                    // Check if expr is an lvalue (borrowed reference that needs retaining)
+                    bool isLvalue = as<const VarExpr>(*it.expr) ||
+                                    as<const MemberAccessExpr>(*it.expr) ||
+                                    as<const ArrayExpr>(*it.expr);
+
+                    if (isLvalue)
+                    {
+                        // Retain borrowed value before passing to print
+                        lowerer_.requireStrRetainMaybe();
+                        lowerer_.emitCall("rt_str_retain_maybe", {value.value});
+                    }
+
+                    lowerer_.emitCall("rt_print_str", {value.value});
+
+                    if (isLvalue)
+                    {
+                        // Release the temporary after print
+                        lowerer_.requireStrReleaseMaybe();
+                        lowerer_.emitCall("rt_str_release_maybe", {value.value});
+                    }
+
+                    updateColumn(widthEstimate);
+                    break;
+                }
+                if (value.type.kind == IlType::Kind::F64)
+                {
+                    lowerer_.emitCall("rt_print_f64", {value.value});
+                    updateColumn(widthEstimate);
+                    break;
+                }
+                value = lowerer_.lowerScalarExpr(std::move(value), stmt.loc);
+                lowerer_.emitCall("rt_print_i64", {value.value});
+                updateColumn(widthEstimate);
+                break;
+            }
+            case PrintItem::Kind::Comma:
+            {
+                std::size_t spaces = kPrintZoneWidth;
+                if (columnKnown)
+                {
+                    std::size_t offset = (column - 1) % kPrintZoneWidth;
+                    spaces = kPrintZoneWidth - offset;
+                    column += spaces;
+                }
+                std::string padding(spaces, ' ');
+                std::string spaceLbl = lowerer_.getStringLabel(padding);
+                Value sp = lowerer_.emitConstStr(spaceLbl);
+                lowerer_.emitCall("rt_print_str", {sp});
+                break;
+            }
+            case PrintItem::Kind::Semicolon:
+                break;
+        }
+    }
+
+    bool suppress_nl = !stmt.items.empty() && stmt.items.back().kind == PrintItem::Kind::Semicolon;
+    if (!suppress_nl)
+    {
+        std::string nlLbl = lowerer_.getStringLabel("\n");
+        Value nl = lowerer_.emitConstStr(nlLbl);
+        lowerer_.emitCall("rt_print_str", {nl});
+        resetColumn();
+    }
+}
+
+/// @brief Convert a PRINT# argument into a runtime string representation.
+///
+/// @details Determines whether the expression represents a string or numeric
+///          value, performs any necessary narrowing to match runtime helper
+///          contracts, and optionally quotes string values for CSV emission.
+///          The helper returns both the lowered string and the runtime feature
+///          that must be requested for linking.
+///
+/// @param expr AST expression being lowered.
+/// @param value Result of lowering the expression.
+/// @param quoteStrings Whether string arguments should be quoted for CSV mode.
+/// @return Lowered string value and optional runtime feature dependency.
+PrintChArgString
+lowerPrintChArgToString(IoStatementLowerer &self, const Expr &expr,
+                                            Lowerer::RVal value,
+                                            bool quoteStrings)
+{
+    LocationScope loc(self.lowerer_, expr.loc);
+    if (value.type.kind == IlType::Kind::Str)
+    {
+        if (!quoteStrings)
+            return {value.value, std::nullopt};
+
+        Value quoted =
+            self.lowerer_.emitCallRet(IlType(IlType::Kind::Str), "rt_csv_quote_alloc", {value.value});
+        return {quoted, il::runtime::RuntimeFeature::CsvQuote};
+    }
+
+    TypeRules::NumericType numericType = self.lowerer_.classifyNumericType(expr);
+    const char *runtime = nullptr;
+    il::runtime::RuntimeFeature feature = il::runtime::RuntimeFeature::StrFromDouble;
+
+    auto narrowInteger = [&](IlType::Kind target)
+    {
+        value = self.lowerer_.ensureI64(std::move(value), expr.loc);
+        int bits = 64;
+        switch (target)
+        {
+            case IlType::Kind::I16:
+                bits = 16;
+                break;
+            case IlType::Kind::I32:
+                bits = 32;
+                break;
+            case IlType::Kind::I1:
+                bits = 1;
+                break;
+            default:
+                bits = 64;
+                break;
+        }
+        value.value = self.lowerer_.emitCommon(expr.loc).narrow_to(value.value, 64, bits);
+        value  .type = IlType(target);
+    };
+
+    switch (numericType)
+    {
+        case TypeRules::NumericType::Integer:
+            runtime = "rt_str_i16_alloc";
+            feature = il::runtime::RuntimeFeature::StrFromI16;
+            narrowInteger(IlType::Kind::I16);
+            break;
+        case TypeRules::NumericType::Long:
+            runtime = "rt_str_i32_alloc";
+            feature = il::runtime::RuntimeFeature::StrFromI32;
+            narrowInteger(IlType::Kind::I32);
+            break;
+        case TypeRules::NumericType::Single:
+            runtime = "rt_str_f_alloc";
+            feature = il::runtime::RuntimeFeature::StrFromSingle;
+            value = self.lowerer_.ensureF64(std::move(value), expr.loc);
+            break;
+        case TypeRules::NumericType::Double:
+        default:
+            runtime = "rt_str_d_alloc";
+            feature = il::runtime::RuntimeFeature::StrFromDouble;
+            value = self.lowerer_.ensureF64(std::move(value), expr.loc);
+            break;
+    }
+
+    Value text = self.lowerer_.emitCallRet(IlType(IlType::Kind::Str), runtime, {value.value});
+    return {text, feature};
+}
+
+/// @brief Concatenate PRINT# arguments into a comma-delimited record.
+///
+/// @details Lowers each argument to a string, requests any needed runtime
+///          helpers, and concatenates values using the runtime `rt_concat`
+///          helper.  When no arguments are present the helper returns an empty
+///          string literal handle.
+///
+/// @param stmt Parsed PRINT# statement describing the arguments.
+/// @return Runtime string handle suitable for writing.
+Value buildPrintChWriteRecord(IoStatementLowerer &self, const PrintChStmt &stmt)
+{
+    Value record{};
+    bool hasRecord = false;
+    std::string commaLbl = self.lowerer_.getStringLabel(",");
+    Value comma = self.lowerer_.emitConstStr(commaLbl);
+
+    for (const auto &arg : stmt.args)
+    {
+        if (!arg)
+            continue;
+
+        Lowerer::RVal value = self.lowerer_.lowerExpr(*arg);
+        PrintChArgString lowered = lowerPrintChArgToString(self, *arg, std::move(value), true);
+        if (lowered.feature)
+            self.lowerer_.requestHelper(*lowered.feature);
+
+        if (!hasRecord)
+        {
+            record = lowered.text;
+            hasRecord = true;
+            continue;
+        }
+
+        self.lowerer_.curLoc = arg->loc;
+        record = self.lowerer_.emitCallRet(IlType(IlType::Kind::Str), "rt_concat", {record, comma});
+        record = self.lowerer_.emitCallRet(IlType(IlType::Kind::Str), "rt_concat", {record, lowered.text});
+    }
+
+    if (!hasRecord)
+    {
+        std::string emptyLbl = self.lowerer_.getStringLabel("");
+        record = self.lowerer_.emitConstStr(emptyLbl);
+    }
+
+    return record;
+}
+
+/// @brief Lower a PRINT# or WRITE# statement.
+///
+/// @details Normalises the channel, determines whether the statement is WRITE
+///          (which aggregates arguments) or PRINT (which streams them
+///          individually), and emits calls to `rt_println_ch_err`.  Each call is
+///          wrapped in runtime error checking.
+///
+/// @param stmt Parsed PRINT#/WRITE# statement.
+void IoStatementLowerer::lowerPrintCh(const PrintChStmt &stmt)
+{
+    LocationScope loc(lowerer_, stmt.loc);
+    if (!stmt.channelExpr)
+        return;
+
+    Lowerer::RVal channel = lowerer_.lowerExpr(*stmt.channelExpr);
+    channel = lowerer_.normalizeChannelToI32(std::move(channel), stmt.loc);
+
+    bool isWrite = stmt.mode == PrintChStmt::Mode::Write;
+
+    if (stmt.args.empty())
+    {
+        if (stmt.trailingNewline || isWrite)
+        {
+            std::string emptyLbl = lowerer_.getStringLabel("");
+            Value empty = lowerer_.emitConstStr(emptyLbl);
+            Value err = lowerer_.emitCallRet(
+                IlType(IlType::Kind::I32), "rt_println_ch_err", {channel.value, empty});
+            const char *context = isWrite ? "write" : "printch";
+            lowerer_.emitRuntimeErrCheck(
+                err, stmt.loc, context, [&](Value code) { lowerer_.emitTrapFromErr(code); });
+        }
+        return;
+    }
+
+    if (isWrite)
+    {
+        Value record = buildPrintChWriteRecord(*this, stmt);
+        Value err = lowerer_.emitCallRet(
+            IlType(IlType::Kind::I32), "rt_println_ch_err", {channel.value, record});
+        lowerer_.emitRuntimeErrCheck(
+            err, stmt.loc, "write", [&](Value code) { lowerer_.emitTrapFromErr(code); });
+        return;
+    }
+
+    for (auto it = stmt.args.begin(); it != stmt.args.end(); ++it)
+    {
+        const auto &arg = *it;
+        if (!arg)
+            continue;
+
+        Lowerer::RVal value = lowerer_.lowerExpr(*arg);
+        PrintChArgString lowered = lowerPrintChArgToString(*this, *arg, std::move(value), false);
+        if (lowered.feature)
+            lowerer_.requestHelper(*lowered.feature);
+
+        auto nextIt = it;
+        do
+        {
+            ++nextIt;
+        } while (nextIt != stmt.args.end() && !*nextIt);
+
+        bool hasNext = nextIt != stmt.args.end();
+        const char *helper = "rt_write_ch_err";
+        if (stmt.trailingNewline && !hasNext)
+            helper = "rt_println_ch_err";
+
+        lowerer_.curLoc = arg->loc;
+        Value err =
+            lowerer_.emitCallRet(IlType(IlType::Kind::I32), helper, {channel.value, lowered.text});
+        lowerer_.emitRuntimeErrCheck(
+            err, arg->loc, "printch", [&](Value code) { lowerer_.emitTrapFromErr(code); });
+    }
+
+    if (stmt.trailingNewline)
+    {
+        auto hasPrintedArg = std::any_of(stmt.args.begin(),
+                                         stmt.args.end(),
+                                         [](const auto &expr) { return static_cast<bool>(expr); });
+        if (!hasPrintedArg)
+        {
+            std::string emptyLbl = lowerer_.getStringLabel("");
+            Value empty = lowerer_.emitConstStr(emptyLbl);
+            Value err = lowerer_.emitCallRet(
+                IlType(IlType::Kind::I32), "rt_println_ch_err", {channel.value, empty});
+            lowerer_.emitRuntimeErrCheck(
+                err, stmt.loc, "printch", [&](Value code) { lowerer_.emitTrapFromErr(code); });
+        }
+    }
+}
+
+/// @brief Lower an INPUT statement that reads from the console.
+///
+/// @details Optionally prints the prompt, reads a line from the runtime, splits
+///          fields when multiple variables are present, and stores each field
+///          into the appropriate slot with type-specific conversions and string
+///          release management.
+///
+/// @param stmt Parsed INPUT statement.
+void IoStatementLowerer::lowerInput(const InputStmt &stmt)
+{
+    LocationScope loc(lowerer_, stmt.loc);
+    if (stmt.prompt)
+    {
+        if (auto *se = as<const StringExpr>(*stmt.prompt))
+        {
+            std::string lbl = lowerer_.getStringLabel(se->value);
+            Value v = lowerer_.emitConstStr(lbl);
+            lowerer_.emitCall("rt_print_str", {v});
+        }
+    }
+    if (stmt.vars.empty())
+        return;
+
+    Value line = lowerer_.emitCallRet(IlType(IlType::Kind::Str), "rt_input_line", {});
+    // Precompute store kinds for each variable to avoid repeated symbol lookups.
+    enum class StoreKind { I64, F64, I1, Str };
+    std::unordered_map<std::string, StoreKind> storeKinds;
+    storeKinds.reserve(stmt.vars.size());
+    for (const auto &vn : stmt.vars)
+    {
+        if (vn.empty())
+            continue;
+        Lowerer::SlotType sk = lowerer_.getSlotType(vn);
+        StoreKind k = StoreKind::I64;
+        switch (sk.type.kind)
+        {
+            case IlType::Kind::Str: k = StoreKind::Str; break;
+            case IlType::Kind::F64: k = StoreKind::F64; break;
+            case IlType::Kind::I1:  k = StoreKind::I1;  break;
+            default: break;
+        }
+        storeKinds.emplace(vn, k);
+    }
+
+    auto storeField = [&](const std::string &name, Value field)
+    {
+        auto storage = lowerer_.resolveVariableStorage(name, stmt.loc);
+        assert(storage && "INPUT target should have storage");
+        Lowerer::SlotType slotInfo = storage->slotInfo;
+        // Be robust when symbol typing is incomplete in this context: consult
+        // semantic analyzer for declared types to guide conversion (BUG-080).
+        if (slotInfo.type.kind != IlType::Kind::Str && slotInfo.type.kind != IlType::Kind::F64 &&
+            slotInfo.type.kind != IlType::Kind::I1)
+        {
+            // Prefer precomputed kind; fallback to a quick requery if missing.
+            auto it = storeKinds.find(name);
+            IlType::Kind k = (it != storeKinds.end())
+                               ? (it->second == StoreKind::Str
+                                      ? IlType::Kind::Str
+                                      : it->second == StoreKind::F64 ? IlType::Kind::F64
+                                      : it->second == StoreKind::I1  ? IlType::Kind::I1
+                                                                     : IlType::Kind::I64)
+                               : lowerer_.getSlotType(name).type.kind;
+            if (k == IlType::Kind::Str)
+            {
+                slotInfo.type = IlType(IlType::Kind::Str);
+            }
+            else if (k == IlType::Kind::F64)
+            {
+                slotInfo.type = IlType(IlType::Kind::F64);
+            }
+            else if (k == IlType::Kind::I1)
+            {
+                slotInfo.type = lowerer_.ilBoolTy();
+                slotInfo.isBoolean = true;
+            }
+        }
+        Value target = storage->pointer;
+        if (slotInfo.type.kind == IlType::Kind::Str)
+        {
+            lowerer_.emitStore(IlType(IlType::Kind::Str), target, field);
+            return;
+        }
+
+        if (slotInfo.type.kind == IlType::Kind::F64)
+        {
+            Value f = lowerer_.emitCallRet(IlType(IlType::Kind::F64), "rt_to_double", {field});
+            lowerer_.emitStore(IlType(IlType::Kind::F64), target, f);
+            lowerer_.requireStrReleaseMaybe();
+            lowerer_.emitCall("rt_str_release_maybe", {field});
+            return;
+        }
+
+        Value n = lowerer_.emitCallRet(IlType(IlType::Kind::I64), "rt_to_int", {field});
+        if (slotInfo.isBoolean)
+        {
+            Value b = lowerer_.coerceToBool({n, IlType(IlType::Kind::I64)}, stmt.loc).value;
+            lowerer_.emitStore(lowerer_.ilBoolTy(), target, b);
+        }
+        else
+        {
+            lowerer_.emitStore(IlType(IlType::Kind::I64), target, n);
+        }
+        lowerer_.requireStrReleaseMaybe();
+        lowerer_.emitCall("rt_str_release_maybe", {field});
+    };
+
+    if (stmt.vars.size() == 1)
+    {
+        storeField(stmt.vars.front(), line);
+        return;
+    }
+
+    const long long fieldCount = static_cast<long long>(stmt.vars.size());
+    Value fields = lowerer_.emitAlloca(static_cast<int>(fieldCount * 8));
+    lowerer_.emitCallRet(
+        IlType(IlType::Kind::I64), "rt_split_fields", {line, fields, Value::constInt(fieldCount)});
+    lowerer_.requireStrReleaseMaybe();
+    lowerer_.emitCall("rt_str_release_maybe", {line});
+
+    for (std::size_t i = 0; i < stmt.vars.size(); ++i)
+    {
+        long long offset = static_cast<long long>(i * 8);
+        Value slot = lowerer_.emitBinary(
+            Opcode::GEP, IlType(IlType::Kind::Ptr), fields, Value::constInt(offset));
+        Value field = lowerer_.emitLoad(IlType(IlType::Kind::Str), slot);
+        storeField(stmt.vars[i], field);
+    }
+}
+
+/// @brief Lower an INPUT# statement for reading a record from a channel.
+///
+/// @details Allocates temporary slots, performs the channel read via
+///          `rt_line_input_ch_err`, splits the result into a single field, and
+///          parses it into the target slot according to its declared type.
+///
+/// @param stmt Parsed INPUT# statement.
+void IoStatementLowerer::lowerInputCh(const InputChStmt &stmt)
+{
+    LocationScope loc(lowerer_, stmt.loc);
+    Value outSlot = lowerer_.emitAlloca(8);
+    lowerer_.emitStore(IlType(IlType::Kind::Ptr), outSlot, Value::null());
+
+    Lowerer::RVal channel{Value::constInt(stmt.channel), IlType(IlType::Kind::I64)};
+    channel = lowerer_.normalizeChannelToI32(std::move(channel), stmt.loc);
+
+    Value err = lowerer_.emitCallRet(
+        IlType(IlType::Kind::I32), "rt_line_input_ch_err", {channel.value, outSlot});
+
+    lowerer_.emitRuntimeErrCheck(
+        err, stmt.loc, "lineinputch", [&](Value code) { lowerer_.emitTrapFromErr(code); });
+
+    Value line = lowerer_.emitLoad(IlType(IlType::Kind::Str), outSlot);
+
+    Value fieldSlot = lowerer_.emitAlloca(8);
+    lowerer_.emitStore(IlType(IlType::Kind::Ptr), fieldSlot, Value::null());
+    lowerer_.emitCallRet(
+        IlType(IlType::Kind::I64), "rt_split_fields", {line, fieldSlot, Value::constInt(1)});
+    lowerer_.requireStrReleaseMaybe();
+    lowerer_.emitCall("rt_str_release_maybe", {line});
+
+    Value field = lowerer_.emitLoad(IlType(IlType::Kind::Str), fieldSlot);
+
+    auto storage = lowerer_.resolveVariableStorage(stmt.target.name, stmt.loc);
+    if (!storage)
+        return;
+
+    Lowerer::SlotType slotInfo = storage->slotInfo;
+    Value slot = storage->pointer;
+    if (slotInfo.type.kind == IlType::Kind::Str)
+    {
+        lowerer_.emitStore(IlType(IlType::Kind::Str), slot, field);
+        return;
+    }
+
+    Value fieldCstr = lowerer_.emitCallRet(IlType(IlType::Kind::Ptr), "rt_string_cstr", {field});
+
+    Value parsedSlot = lowerer_.emitAlloca(8);
+
+    if (slotInfo.type.kind == IlType::Kind::F64)
+    {
+        Value err =
+            lowerer_.emitCallRet(IlType(IlType::Kind::I32), "rt_parse_double", {fieldCstr, parsedSlot});
+        lowerer_.emitRuntimeErrCheck(
+            err, stmt.loc, "inputch_parse", [&](Value code) { lowerer_.emitTrapFromErr(code); });
+        Value parsed = lowerer_.emitLoad(IlType(IlType::Kind::F64), parsedSlot);
+        lowerer_.emitStore(IlType(IlType::Kind::F64), slot, parsed);
+    }
+    else
+    {
+        Value err =
+            lowerer_.emitCallRet(IlType(IlType::Kind::I32), "rt_parse_int64", {fieldCstr, parsedSlot});
+        lowerer_.emitRuntimeErrCheck(
+            err, stmt.loc, "inputch_parse", [&](Value code) { lowerer_.emitTrapFromErr(code); });
+        Value parsed = lowerer_.emitLoad(IlType(IlType::Kind::I64), parsedSlot);
+        if (slotInfo.isBoolean)
+        {
+            Value b = lowerer_.coerceToBool({parsed, IlType(IlType::Kind::I64)}, stmt.loc).value;
+            lowerer_.emitStore(lowerer_.ilBoolTy(), slot, b);
+        }
+        else
+        {
+            lowerer_.emitStore(IlType(IlType::Kind::I64), slot, parsed);
+        }
+    }
+
+    lowerer_.emitCall("rt_str_release_maybe", {field});
+}
+
+/// @brief Lower a LINE INPUT# statement that reads a full line into a string.
+///
+/// @details Reads the line through `rt_line_input_ch_err`, stores the result in
+///          the target variable when present, and propagates runtime errors.
+///
+/// @param stmt Parsed LINE INPUT# statement.
+void IoStatementLowerer::lowerLineInputCh(const LineInputChStmt &stmt)
+{
+    LocationScope loc(lowerer_, stmt.loc);
+    if (!stmt.channelExpr || !stmt.targetVar)
+        return;
+
+    Lowerer::RVal channel = lowerer_.lowerExpr(*stmt.channelExpr);
+    channel = lowerer_.normalizeChannelToI32(std::move(channel), stmt.loc);
+
+    Value outSlot = lowerer_.emitAlloca(8);
+    lowerer_.emitStore(IlType(IlType::Kind::Ptr), outSlot, Value::null());
+
+    Value err = lowerer_.emitCallRet(
+        IlType(IlType::Kind::I32), "rt_line_input_ch_err", {channel.value, outSlot});
+
+    lowerer_.emitRuntimeErrCheck(
+        err, stmt.loc, "lineinputch", [&](Value code) { lowerer_.emitTrapFromErr(code); });
+
+    Value line = lowerer_.emitLoad(IlType(IlType::Kind::Str), outSlot);
+
+    if (const auto *var = as<const VarExpr>(*stmt.targetVar))
+    {
+        auto storage = lowerer_.resolveVariableStorage(var->name, stmt.loc);
+        if (!storage)
+            return;
+        Value slot = storage->pointer;
+        lowerer_.emitStore(IlType(IlType::Kind::Str), slot, line);
+    }
+}
+} // namespace il::frontends::basic

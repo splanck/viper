@@ -21,13 +21,13 @@ namespace il::frontends::basic::il_utils
 }
 
 /// @brief Check if an IL type is a floating-point type.
-/// @details Returns true for f32, f64 floating-point types.
+/// @details Returns true for f64 floating-point type.
 /// @param k Type kind to check.
 /// @return True if the type is a floating-point type.
 [[nodiscard]] constexpr bool isFloatType(il::core::Type::Kind k) noexcept
 {
     using Kind = il::core::Type::Kind;
-    return k == Kind::F32 || k == Kind::F64;
+    return k == Kind::F64;
 }
 
 /// @brief Check if an IL type is a numeric type (integer or float).
@@ -96,14 +96,12 @@ namespace il::frontends::basic::il_utils
 
 /// @brief Get the bit width of an IL floating-point type.
 /// @param k Type kind to check.
-/// @return Bit width (32 or 64) or 0 if not a float type.
+/// @return Bit width (64) or 0 if not a float type.
 [[nodiscard]] constexpr unsigned getFloatBitWidth(il::core::Type::Kind k) noexcept
 {
     using Kind = il::core::Type::Kind;
     switch (k)
     {
-        case Kind::F32:
-            return 32;
         case Kind::F64:
             return 64;
         default:
@@ -125,3 +123,49 @@ namespace il::frontends::basic::il_utils
 }
 
 } // namespace il::frontends::basic::il_utils
+
+// Forward declare BASIC AST Type enum
+namespace il::frontends::basic
+{
+enum class Type : std::uint8_t;
+}
+
+namespace il::frontends::basic::type_conv
+{
+
+/// @brief Translate a BASIC AST type into the corresponding IL core type.
+///
+/// @details Lowering frequently needs to turn semantic types expressed by the
+///          BASIC AST (`Type`) into the concrete IL type descriptor understood by
+///          the builder. The mapping is intentionally narrow: each BASIC type
+///          collapses to a single IL `Type::Kind`. Should the language evolve,
+///          new cases can be added here without touching call sites.
+///
+///          This function consolidates three previously duplicate implementations:
+///          - Lower_OOP_Emit.cpp::ilTypeForAstType()
+///          - Lower_OOP_Expr.cpp::ilTypeForAstType()
+///          - Lowerer.Program.cpp::pipeline_detail::coreTypeForAstType()
+///
+/// @param ty BASIC type enumeration value.
+/// @return Concrete IL type used during lowering. Defaults to `I64` for
+///         robustness when the caller passes an unrecognized type.
+[[nodiscard]] il::core::Type astToIlType(::il::frontends::basic::Type ty) noexcept;
+
+/// @brief Determine the storage size for a BASIC field type.
+///
+/// @details Maps BASIC semantic types to their runtime storage requirements.
+///          String fields are treated as pointers to managed buffers, numeric
+///          fields use their natural width, and any unrecognized types default
+///          to 64 bits so layouts remain conservative.
+///
+///          Boolean types use 1 byte for efficient packing in class layouts.
+///          All other integer and floating-point types use 8 bytes.
+///
+///          This function consolidates the implementation previously in:
+///          - Lower_OOP_Scan.cpp::fieldSize()
+///
+/// @param type BASIC field type enumerator.
+/// @return Size in bytes required to store the field.
+[[nodiscard]] std::size_t getFieldSize(::il::frontends::basic::Type type) noexcept;
+
+} // namespace il::frontends::basic::type_conv

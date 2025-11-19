@@ -22,6 +22,7 @@
 #include "frontends/basic/SemanticAnalyzer.hpp"
 #include "frontends/basic/NameMangler_OOP.hpp"
 #include "frontends/basic/Semantic_OOP.hpp"
+#include "frontends/basic/ILTypeUtils.hpp"
 
 #include <cstdint>
 #include <string>
@@ -30,35 +31,6 @@
 
 namespace il::frontends::basic
 {
-namespace
-{
-/// @brief Translate a BASIC AST type into the corresponding IL type.
-///
-/// @details Provides the shared mapping used by member access lowering when the
-///          class layout records only high-level BASIC types.  Defaults to the
-///          integral representation when a new enumerator is introduced before
-///          the lowering logic is updated, preserving legacy behaviour until the
-///          mapping is extended explicitly.
-///
-/// @param ty BASIC type enumerator describing the field layout.
-/// @return Equivalent IL type descriptor.
-[[nodiscard]] il::core::Type ilTypeForAstType(::il::frontends::basic::Type ty)
-{
-    using IlType = il::core::Type;
-    switch (ty)
-    {
-        case ::il::frontends::basic::Type::I64:
-            return IlType(IlType::Kind::I64);
-        case ::il::frontends::basic::Type::F64:
-            return IlType(IlType::Kind::F64);
-        case ::il::frontends::basic::Type::Str:
-            return IlType(IlType::Kind::Str);
-        case ::il::frontends::basic::Type::Bool:
-            return IlType(IlType::Kind::I1);
-    }
-    return IlType(IlType::Kind::I64);
-}
-} // namespace
 
 /// @brief Determine the class name associated with an OOP expression.
 ///
@@ -359,7 +331,7 @@ std::optional<Lowerer::MemberFieldAccess> Lowerer::resolveMemberField(const Memb
                                 Value::constInt(static_cast<long long>(field->offset)));
     // BUG-082 fix: Object fields are pointers, not I64
     Type fieldTy = !field->objectClassName.empty() ? Type(Type::Kind::Ptr)
-                                                    : ilTypeForAstType(field->type);
+                                                    : type_conv::astToIlType(field->type);
     MemberFieldAccess access;
     access.ptr = fieldPtr;
     access.ilType = fieldTy;
@@ -394,7 +366,7 @@ std::optional<Lowerer::MemberFieldAccess> Lowerer::resolveImplicitField(std::str
     access.ptr = fieldPtr;
     // BUG-082 fix: Object fields are pointers, not I64
     access.ilType = !field->objectClassName.empty() ? Type(Type::Kind::Ptr)
-                                                     : ilTypeForAstType(field->type);
+                                                     : type_conv::astToIlType(field->type);
     access.astType = field->type;
     access.objectClassName = field->objectClassName;  // BUG-082 fix
     return access;
@@ -630,7 +602,7 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
             if (iface->slots[static_cast<std::size_t>(slotIndex)].returnType)
             {
                 retTy =
-                    ilTypeForAstType(*iface->slots[static_cast<std::size_t>(slotIndex)].returnType);
+                    type_conv::astToIlType(*iface->slots[static_cast<std::size_t>(slotIndex)].returnType);
             }
         }
 
@@ -657,7 +629,7 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
         Value calleeOp = Value::global(directCallee);
         if (auto retType = findMethodReturnType(className, expr.method))
         {
-            Type ilRetTy = ilTypeForAstType(*retType);
+            Type ilRetTy = type_conv::astToIlType(*retType);
             Value result = emitCallIndirectRet(ilRetTy, calleeOp, args);
             return {result, ilRetTy};
         }
@@ -670,7 +642,7 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
     const std::string retClassLookup = baseQualified ? directQClass : qname;
     if (auto retType = findMethodReturnType(retClassLookup, expr.method))
     {
-        Type ilRetTy = ilTypeForAstType(*retType);
+        Type ilRetTy = type_conv::astToIlType(*retType);
         Value result = emitCallRet(ilRetTy, directCallee, args);
         if (ilRetTy.kind == Type::Kind::Str)
             deferReleaseStr(result);

@@ -10,6 +10,10 @@
 // Links: docs/codemap.md
 #pragma once
 
+#include "il/core/BasicBlock.hpp"
+#include "il/core/Function.hpp"
+#include "il/core/Value.hpp"
+
 #include <cstddef>
 #include <memory>
 #include <optional>
@@ -17,6 +21,14 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
+
+// All context structures are in the il::frontends::basic namespace
+namespace il::frontends::basic
+{
+
+using Function = il::core::Function;
+using BasicBlock = il::core::BasicBlock;
+using Value = il::core::Value;
 
 struct BlockNamer
 {
@@ -558,3 +570,5 @@ struct ProcedureContext
     ErrorHandlerState errorHandlers_{};
     GosubState gosub_{};
 };
+
+} // namespace il::frontends::basic

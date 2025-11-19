@@ -33,6 +33,10 @@ target_sources(fe_basic PRIVATE
         NameMangler_OOP.cpp
         TypeSuffix.cpp
         TypeRules.cpp
+        ILTypeUtils.cpp
+        IoStatementLowerer.cpp
+        ControlStatementLowerer.cpp
+        RuntimeStatementLowerer.cpp
         LoweringContext.cpp
         LocationScope.cpp
         Lowerer.Program.cpp

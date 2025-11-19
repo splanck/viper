@@ -21,6 +21,7 @@
 
 #include "frontends/basic/AstWalker.hpp"
 #include "frontends/basic/Lowerer.hpp"
+#include "frontends/basic/ILTypeUtils.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
 
 #include <cstddef>
@@ -48,29 +49,6 @@ constexpr std::size_t kPointerSize = sizeof(void *);
     return (value + mask) & ~mask;
 }
 
-/// @brief Determine the storage size for a BASIC field type.
-/// @details Maps BASIC semantic types to their runtime storage requirements.
-///          String fields are treated as pointers to managed buffers, numeric
-///          fields use their natural width, and any unrecognised types default
-///          to 64 bits so layouts remain conservative.
-/// @param type Field type enumerator.
-/// @return Size in bytes required to store the field.
-[[nodiscard]] std::size_t fieldSize(Type type) noexcept
-{
-    switch (type)
-    {
-        case Type::Str:
-            return kPointerSize;
-        case Type::F64:
-            return 8;
-        case Type::Bool:
-            return 1;
-        case Type::I64:
-        default:
-            return 8;
-    }
-}
-
 /// @brief Construct a class layout description from an iterable field range.
 /// @details Iterates over the provided field descriptors, aligning each field,
 ///          computing its offset/size pair, and inserting lookups into the
@@ -91,7 +69,7 @@ template <typename FieldRange>
         info.name = field.name;
         info.type = field.type;
         info.offset = offset;
-        info.size = fieldSize(field.type);
+        info.size = type_conv::getFieldSize(field.type);
         layout.fields.push_back(std::move(info));
         layout.fieldIndex.emplace(layout.fields.back().name, layout.fields.size() - 1);
         offset += layout.fields.back().size;
@@ -155,7 +133,7 @@ class OopScanWalker final : public BasicAstWalker<OopScanWalker>
             info.offset = offset;
             // Arrays stored as fields are references to runtime array handles.
             // Use pointer size for storage to keep following field offsets correct.
-            info.size = field.isArray ? kPointerSize : fieldSize(field.type);
+            info.size = field.isArray ? kPointerSize : type_conv::getFieldSize(field.type);
             // Preserve array metadata so implicit field-array accesses in
             // methods can be identified during lowering.
             info.isArray = field.isArray;

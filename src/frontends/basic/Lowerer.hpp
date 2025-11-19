@@ -76,6 +76,7 @@
 #include "frontends/basic/EmitCommon.hpp"
 #include "frontends/basic/IdentifierUtil.hpp"
 #include "frontends/basic/LowerRuntime.hpp"
+#include "frontends/basic/LowererContext.hpp"
 #include "frontends/basic/NameMangler.hpp"
 #include "frontends/basic/Semantic_OOP.hpp"
 #include "frontends/basic/TypeRules.hpp"
@@ -104,6 +105,10 @@ struct StatementLowering;
 class DiagnosticEmitter;
 class SelectCaseLowering;
 class SemanticAnalyzer;
+class StatementLowerer;
+class IoStatementLowerer;
+class ControlStatementLowerer;
+class RuntimeStatementLowerer;
 
 struct LogicalExprLowering;
 struct NumericExprLowering;
@@ -218,6 +223,9 @@ class Lowerer
     friend class lower::BuiltinLowerContext;
     friend class lower::common::CommonLowering;
     friend class Emit;
+    friend class IoStatementLowerer;
+    friend class ControlStatementLowerer;
+    friend class RuntimeStatementLowerer;
 
     using Module = il::core::Module;
     using Function = il::core::Function;
@@ -229,12 +237,31 @@ class Lowerer
     using IlType = Type;
     using AstType = ::il::frontends::basic::Type;
 
+    // Type aliases for context structures (defined in LowererContext.hpp)
+    using ProcedureContext = ::il::frontends::basic::ProcedureContext;
+    using BlockNamer = ::il::frontends::basic::BlockNamer;
+    using ForBlocks = ::il::frontends::basic::ForBlocks;
+
   public:
     struct RVal
     {
         Value value;
         Type type;
     };
+
+    /// @brief Result of lowering a PRINT# argument to a string.
+    struct PrintChArgString
+    {
+        Value text;
+        std::optional<il::runtime::RuntimeFeature> feature;
+    };
+
+    // Friend declarations for I/O helper functions (must appear after RVal definition)
+    friend PrintChArgString lowerPrintChArgToString(IoStatementLowerer &self,
+                                                     const Expr &expr,
+                                                     RVal value,
+                                                     bool quoteStrings);
+    friend Value buildPrintChWriteRecord(IoStatementLowerer &self, const PrintChStmt &stmt);
 
     /// @brief Result of lowering an array access expression.
     struct ArrayAccess
@@ -309,8 +336,7 @@ class Lowerer
         size_t exitIdx;            ///< index of common exit block
     };
 
-    /// @brief Deterministic per-procedure block naming and per-procedure context.
-#include "frontends/basic/LowererContext.hpp"
+    // Note: ProcedureContext, BlockNamer, and ForBlocks are defined in LowererContext.hpp
 
   public:
     struct ProcedureConfig;
@@ -504,26 +530,116 @@ class Lowerer
 
     RVal ensureF64(RVal v, il::support::SourceLoc loc);
 
-    struct PrintChArgString
-    {
-        Value text;
-        std::optional<il::runtime::RuntimeFeature> feature;
-    };
-
     PrintChArgString lowerPrintChArgToString(const Expr &expr, RVal value, bool quoteStrings);
 
     Value buildPrintChWriteRecord(const PrintChStmt &stmt);
 
-#include "frontends/basic/LowerStmt_Core.hpp"
+    // -------------------------------------------------------------------------
+    // Core statement lowering (formerly LowerStmt_Core.hpp)
+    // -------------------------------------------------------------------------
+    void lowerStmtList(const StmtList &stmt);
+    void lowerCallStmt(const CallStmt &stmt);
+    void lowerReturn(const ReturnStmt &stmt);
+    RVal normalizeChannelToI32(RVal channel, il::support::SourceLoc loc);
+    void emitRuntimeErrCheck(Value err,
+                             il::support::SourceLoc loc,
+                             std::string_view labelStem,
+                             const std::function<void(Value)> &onFailure);
 
-#include "frontends/basic/LowerStmt_Runtime.hpp"
+    // -------------------------------------------------------------------------
+    // Runtime statement lowering (formerly LowerStmt_Runtime.hpp)
+    // -------------------------------------------------------------------------
+    void lowerLet(const LetStmt &stmt);
+    void lowerConst(const ConstStmt &stmt);
+    void lowerStatic(const StaticStmt &stmt);
+    void assignScalarSlot(const SlotType &slotInfo, Value slot, RVal value, il::support::SourceLoc loc);
+    void assignArrayElement(const ArrayExpr &target, RVal value, il::support::SourceLoc loc);
+    void lowerDim(const DimStmt &stmt);
+    void lowerReDim(const ReDimStmt &stmt);
+    void lowerRandomize(const RandomizeStmt &stmt);
+    void lowerSwap(const SwapStmt &stmt);
+    void visit(const BeepStmt &stmt);
+    void visit(const ClsStmt &stmt);
+    void visit(const ColorStmt &stmt);
+    void visit(const SleepStmt &stmt);
+    void visit(const LocateStmt &stmt);
+    void visit(const CursorStmt &stmt);
+    void visit(const AltScreenStmt &stmt);
+    Value emitArrayLengthCheck(Value bound, il::support::SourceLoc loc, std::string_view labelBase);
 
-#include "frontends/basic/LowerStmt_IO.hpp"
+    // -------------------------------------------------------------------------
+    // I/O statement lowering (formerly LowerStmt_IO.hpp)
+    // -------------------------------------------------------------------------
+    void lowerOpen(const OpenStmt &stmt);
+    void lowerClose(const CloseStmt &stmt);
+    void lowerSeek(const SeekStmt &stmt);
+    void lowerPrint(const PrintStmt &stmt);
+    void lowerPrintCh(const PrintChStmt &stmt);
+    void lowerInput(const InputStmt &stmt);
+    void lowerInputCh(const InputChStmt &stmt);
+    void lowerLineInputCh(const LineInputChStmt &stmt);
+
+    // -------------------------------------------------------------------------
+    // Control flow lowering (formerly LowerStmt_Control.hpp)
+    // -------------------------------------------------------------------------
+
+    /// @brief Control-flow state emitted by structured statement helpers.
+    /// @details `cur` tracks the block left active after lowering, while
+    ///          `after` stores the merge/done block when it survives the
+    ///          lowering step. Helpers mark `fallthrough` when execution can
+    ///          reach `after` without an explicit transfer, ensuring callers
+    ///          can reason about terminators consistently.
+    struct CtrlState
+    {
+        BasicBlock *cur{nullptr};   ///< Block left active after lowering.
+        BasicBlock *after{nullptr}; ///< Merge/done block if retained.
+        bool fallthrough{false};    ///< True when `after` remains reachable.
+
+        [[nodiscard]] bool terminated() const
+        {
+            return !cur || cur->terminated;
+        }
+    };
 
     /// @brief Emit blocks for an IF/ELSEIF chain.
     /// @param conds Number of conditions (IF + ELSEIFs).
     /// @return Indices for test/then blocks and ELSE/exit blocks.
-#include "frontends/basic/LowerStmt_Control.hpp"
+    IfBlocks emitIfBlocks(size_t conds);
+    void lowerIfCondition(const Expr &cond,
+                          BasicBlock *testBlk,
+                          BasicBlock *thenBlk,
+                          BasicBlock *falseBlk,
+                          il::support::SourceLoc loc);
+    void lowerCondBranch(const Expr &expr,
+                         BasicBlock *trueBlk,
+                         BasicBlock *falseBlk,
+                         il::support::SourceLoc loc);
+    bool lowerIfBranch(const Stmt *stmt,
+                       BasicBlock *thenBlk,
+                       size_t exitIdx,
+                       il::support::SourceLoc loc);
+    CtrlState emitIf(const IfStmt &stmt);
+    void lowerIf(const IfStmt &stmt);
+    void lowerLoopBody(const std::vector<StmtPtr> &body);
+    CtrlState emitWhile(const WhileStmt &stmt);
+    void lowerWhile(const WhileStmt &stmt);
+    CtrlState emitDo(const DoStmt &stmt);
+    void lowerDo(const DoStmt &stmt);
+    ForBlocks setupForBlocks(bool varStep);
+    void lowerForConstStep(const ForStmt &stmt, Value slot, RVal end, RVal step, int64_t stepConst);
+    void lowerForVarStep(const ForStmt &stmt, Value slot, RVal end, RVal step);
+    CtrlState emitFor(const ForStmt &stmt, Value slot, RVal end, RVal step);
+    void lowerFor(const ForStmt &stmt);
+    void emitForStep(Value slot, Value step);
+    CtrlState emitSelect(const SelectCaseStmt &stmt);
+    void lowerNext(const NextStmt &stmt);
+    void lowerExit(const ExitStmt &stmt);
+    void lowerGosub(const GosubStmt &stmt);
+    void lowerGoto(const GotoStmt &stmt);
+    void lowerGosubReturn(const ReturnStmt &stmt);
+    void lowerOnErrorGoto(const OnErrorGoto &stmt);
+    void lowerResume(const Resume &stmt);
+    void lowerEnd(const EndStmt &stmt);
 
     void lowerSelectCase(const SelectCaseStmt &stmt);
 
@@ -873,6 +989,15 @@ class Lowerer
     Value loadSelfPointer(unsigned slotId);
 
     void emitFieldReleaseSequence(Value selfPtr, const ClassLayout &layout);
+
+    /// @brief I/O statement lowering subsystem.
+    std::unique_ptr<IoStatementLowerer> ioStmtLowerer_;
+
+    /// @brief Control flow statement lowering subsystem.
+    std::unique_ptr<ControlStatementLowerer> ctrlStmtLowerer_;
+
+    /// @brief Runtime statement lowering subsystem.
+    std::unique_ptr<RuntimeStatementLowerer> runtimeStmtLowerer_;
 
     /// @brief Cached layout table indexed by class or TYPE name.
     std::unordered_map<std::string, ClassLayout> classLayouts_;

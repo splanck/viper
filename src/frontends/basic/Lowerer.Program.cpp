@@ -28,6 +28,7 @@
 
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/LoweringPipeline.hpp"
+#include "frontends/basic/ILTypeUtils.hpp"
 
 #include "viper/il/IRBuilder.hpp"
 
@@ -44,24 +45,16 @@ namespace pipeline_detail
 ///          collapses to a single IL `Type::Kind`.  Should the language evolve
 ///          new cases can be added here without touching call sites.
 ///
+///          This function now forwards to the consolidated implementation in
+///          type_conv::astToIlType() to maintain the single source of truth
+///          while preserving the existing API for backward compatibility.
+///
 /// @param ty BASIC type enumeration value.
 /// @return Concrete IL type used during lowering. Defaults to `I64` for
 ///         robustness when the caller passes an unrecognised type.
 il::core::Type coreTypeForAstType(::il::frontends::basic::Type ty)
 {
-    using il::core::Type;
-    switch (ty)
-    {
-        case ::il::frontends::basic::Type::I64:
-            return Type(Type::Kind::I64);
-        case ::il::frontends::basic::Type::F64:
-            return Type(Type::Kind::F64);
-        case ::il::frontends::basic::Type::Str:
-            return Type(Type::Kind::Str);
-        case ::il::frontends::basic::Type::Bool:
-            return Type(Type::Kind::I1);
-    }
-    return Type(Type::Kind::I64);
+    return type_conv::astToIlType(ty);
 }
 } // namespace pipeline_detail
 

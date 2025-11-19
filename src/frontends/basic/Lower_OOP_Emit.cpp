@@ -17,6 +17,7 @@
 
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/NameMangler_OOP.hpp"
+#include "frontends/basic/ILTypeUtils.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
 
 #include <string>
@@ -28,34 +29,6 @@ namespace il::frontends::basic
 namespace
 {
 using AstType = ::il::frontends::basic::Type;
-
-/// @brief Translate a BASIC AST type into the corresponding IL core type.
-///
-/// @details CLASS lowering frequently needs to emit temporaries or parameters
-///          using the IL type system.  The helper performs a direct mapping from
-///          BASIC enum values to @ref il::core::Type::Kind entries so all call
-///          sites share the same conversion logic.  Unknown enumerators fall
-///          back to 64-bit integers to match historical behaviour and avoid
-///          crashes during incremental language development.
-///
-/// @param ty BASIC type enumerator describing the source language type.
-/// @return IL type descriptor used when emitting instructions for @p ty.
-[[nodiscard]] il::core::Type ilTypeForAstType(AstType ty)
-{
-    using IlType = il::core::Type;
-    switch (ty)
-    {
-        case AstType::I64:
-            return IlType(IlType::Kind::I64);
-        case AstType::F64:
-            return IlType(IlType::Kind::F64);
-        case AstType::Str:
-            return IlType(IlType::Kind::Str);
-        case AstType::Bool:
-            return IlType(IlType::Kind::I1);
-    }
-    return IlType(IlType::Kind::I64);
-}
 
 /// @brief Extract raw statement pointers from an owning body list.
 ///
@@ -250,7 +223,7 @@ void Lowerer::emitClassConstructor(const ClassDecl &klass, const ConstructorDecl
     metadata.irParams.push_back({"ME", Type(Type::Kind::Ptr)});
     for (const auto &param : ctor.params)
     {
-        Type ilParamTy = param.is_array ? Type(Type::Kind::Ptr) : ilTypeForAstType(param.type);
+        Type ilParamTy = param.is_array ? Type(Type::Kind::Ptr) : type_conv::astToIlType(param.type);
         metadata.irParams.push_back({param.name, ilParamTy});
         if (param.is_array)
         {
@@ -290,7 +263,7 @@ void Lowerer::emitClassConstructor(const ClassDecl &klass, const ConstructorDecl
         auto &info = ensureSymbol(param.name);
         info.slotId = slot.id;
         Type ilParamTy = (!param.objectClass.empty() || param.is_array) ? Type(Type::Kind::Ptr)
-                                                                        : ilTypeForAstType(param.type);
+                                                                        : type_conv::astToIlType(param.type);
         Value incoming = Value::temp(fn.params[1 + i].id);
         if (param.is_array)
             storeArray(slot, incoming);
@@ -495,7 +468,7 @@ void Lowerer::emitClassMethod(const ClassDecl &klass, const MethodDecl &method)
         // Object-typed parameters should use pointer IL type regardless of AST primitive default
         const bool isObjectParam = !param.objectClass.empty();
         Type ilParamTy = (param.is_array || isObjectParam) ? Type(Type::Kind::Ptr)
-                                                           : ilTypeForAstType(param.type);
+                                                           : type_conv::astToIlType(param.type);
         metadata.irParams.push_back({param.name, ilParamTy});
         if (param.is_array)
         {
@@ -529,7 +502,7 @@ void Lowerer::emitClassMethod(const ClassDecl &klass, const MethodDecl &method)
         }
         else if (returnsValue)
         {
-            methodRetType = ilTypeForAstType(*method.ret);
+            methodRetType = type_conv::astToIlType(*method.ret);
             methodRetAst = method.ret;
             // BUG-084 fix: Set the return type for the method name symbol (VB-style implicit return).
             // This ensures the function return value slot is allocated with the correct type.
@@ -572,7 +545,7 @@ void Lowerer::emitClassMethod(const ClassDecl &klass, const MethodDecl &method)
         auto &info = ensureSymbol(param.name);
         info.slotId = slot.id;
         Type ilParamTy = (!param.objectClass.empty() || param.is_array) ? Type(Type::Kind::Ptr)
-                                                                        : ilTypeForAstType(param.type);
+                                                                        : type_conv::astToIlType(param.type);
         Value incoming = Value::temp(fn.params[1 + i].id);
         if (param.is_array)
             storeArray(slot, incoming);
