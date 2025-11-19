@@ -55,6 +55,7 @@ enum class BasicType
     Int,
     Float,
     String,
+    Bool,
     Void
 };
 
@@ -73,6 +74,8 @@ inline const char *toString(BasicType t)
             return "float";
         case BasicType::String:
             return "string";
+        case BasicType::Bool:
+            return "boolean";
         case BasicType::Void:
             return "void";
     }

@@ -41,6 +41,8 @@ Type ilTypeForBasicRet(const std::string &fnName, BasicType hint)
         return Type(K::F64);
     if (hint == BasicType::Int)
         return Type(K::I64);
+    if (hint == BasicType::Bool)
+        return Type(K::I1);
     if (hint == BasicType::Void)
         return Type(K::Void);
     if (!fnName.empty())

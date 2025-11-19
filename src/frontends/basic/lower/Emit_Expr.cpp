@@ -141,10 +141,9 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
         if (baseSym)
         {
             std::string klass = getSlotType(baseName).objectClass;
-            auto it = classLayouts_.find(klass);
-            if (it != classLayouts_.end())
+            if (const ClassLayout *layout = findClassLayout(klass))
             {
-                if (const ClassLayout::Field *fld = it->second.findField(fieldName))
+                if (const ClassLayout::Field *fld = layout->findField(fieldName))
                 {
                     memberElemAstType = fld->type;
                     // BUG-089 fix: Check if field is an object array

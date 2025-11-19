@@ -2,17 +2,379 @@
 
 *Last Updated: 2025-11-18*
 
-**Bug Statistics**: 103 resolved, 0 outstanding bugs, 4 design decisions (107 total documented)
+**Bug Statistics**: 106 resolved, 1 outstanding bug, 4 design decisions (111 total documented)
 
 **Test Suite Status**: 664/664 tests passing (100%) - All tests passing!
 
-**STATUS**: ✅ **ALL BUGS RESOLVED** - Production ready!
+**STATUS**: ⚠️ **4 NEW BUGS FOUND** - Poker game + Frogger performance stress tests (2025-11-18)
 
 ---
 
 ## OUTSTANDING BUGS
 
-**None** - All known bugs have been resolved! ✅
+### BUG-107: RETURN statement in FUNCTION causes type mismatch error
+**Status**: ✅ **RESOLVED** - Fixed 2025-11-19
+**Discovered**: 2025-11-18 (Poker game stress test - hand evaluation)
+**Category**: Control Flow / Functions
+**Severity**: MEDIUM - Workaround available (remove RETURN)
+
+**Symptom**: Using RETURN statement inside a FUNCTION to early-exit causes a compilation error: "ret value type mismatch"
+
+**Minimal Reproduction**:
+```basic
+Function HasThreeOfKind() AS Boolean
+    DIM i AS Integer
+    FOR i = 0 TO 4
+        IF SomeCondition() THEN
+            LET HasThreeOfKind = TRUE
+            RETURN    ' <-- This line causes the error
+        END IF
+    NEXT i
+    LET HasThreeOfKind = FALSE
+End Function
+```
+
+**Error Message**:
+```
+poker_hand.bas:100:17: error: HAND.HASTHREEOFKIND:if_then_0_HAND.HASTHREEOFKIND: ret: ret value type mismatch
+```
+
+**Workaround**: Remove RETURN statement and use flag variable:
+```basic
+Function HasThreeOfKind() AS Boolean
+    DIM i AS Integer
+    DIM found AS Boolean
+    LET found = FALSE
+    FOR i = 0 TO 4
+        IF SomeCondition() THEN
+            LET found = TRUE
+        END IF
+    NEXT i
+    LET HasThreeOfKind = found
+End Function
+```
+
+**Impact**: MEDIUM - Early returns are useful for clarity but can be worked around
+
+**Test Files**:
+- `bugs/bug_testing/poker_hand.bas` (original version with RETURN)
+- `bugs/bug_testing/poker_test_hands.bas` - Test suite for hand evaluation
+
+**Expected Behavior**: RETURN should exit the function early with the already-set return value (VB-style implicit return via assignment to function name).
+
+**Root Cause**:
+- In FUNCTION bodies, a bare `RETURN` (no value) is lowered as a void return even when the function's declared return type is non-void.
+- Specifically, `Lowerer::lowerReturn` emits `emitRetVoid()` when `stmt.value` is absent, without considering the enclosing function's return type.
+- This produces IL `ret` with no value inside a non-void function, triggering the verifier error “ret value type mismatch”.
+
+References:
+- `src/frontends/basic/lower/Lowerer_Stmt.cpp` — `Lowerer::lowerReturn` else-branch calls `emitRetVoid()` for missing value (around lines 600–640).
+
+Analysis Notes:
+- The frontend already supports “VB-style” implicit returns by assigning to the function name. The return lowering needs to branch to a unified epilogue that always returns the current result register for FUNCTIONs, and only emit `ret void` for SUBs.
+
+Fix:
+- In `Lowerer::lowerReturn`, when encountering a bare `RETURN` inside a FUNCTION (non-void return), emit a branch to the synthetic exit block instead of `ret void`. The unified epilogue (`emitFinalReturn`) now returns the implicit result or default.
+- SUB semantics unchanged (`ret void`).
+
+Code change:
+- File: `src/frontends/basic/lower/Lowerer_Stmt.cpp`
+- Logic: if `context().function()->retType.kind != Void`, do `emitBr(&func->blocks[ctx.exitIndex()])`; else `emitRetVoid()`.
+
+Tests to add (follow-up):
+- Unit: bare `RETURN` in BOOLEAN/I64/Str/F64 functions returns last assigned to function name.
+- E2E: Poker hand evaluation path with early return compiles and runs.
+- For FUNCTIONs: on bare `RETURN`, branch to the synthetic exit block (`emitFinalReturn`), where we emit `ret <result>` (the register holding the function’s implicit return variable), preserving any required boolean coercions.
+- Keep SUB behaviour unchanged (still `ret void`).
+- Add a unit test: bare `RETURN` inside a FUNCTION compiles and returns the last assigned value to the function name.
+
+---
+
+### BUG-108: Array bounds issue with local boolean arrays in methods
+**Status**: ✅ **RESOLVED** - Fixed 2025-11-19
+**Discovered**: 2025-11-18 (Poker game stress test - CountPairs function)
+**Category**: Arrays / Scoping
+**Severity**: HIGH - Causes runtime crash
+
+**Symptom**: Creating a local boolean array inside a class method and using it for tracking causes an array index out of bounds error at runtime.
+
+**Minimal Reproduction**:
+```basic
+Class Hand
+    DIM cards(5) AS Card
+    Public count AS Integer
+
+    Function CountPairs() AS Integer
+        DIM i AS Integer
+        DIM pairs AS Integer
+        DIM counted(15) AS Boolean  ' Local array in method
+        LET pairs = 0
+
+        FOR i = 0 TO 14
+            LET counted(i) = FALSE  ' Initialize array
+        NEXT i
+
+        FOR i = 0 TO ME.count - 1
+            DIM val AS Integer
+            LET val = ME.cards(i).value  ' Values range from 2-14
+            IF NOT counted(val) THEN     ' Access with card value
+                ' ... check logic
+                LET counted(val) = TRUE
+            END IF
+        NEXT i
+        LET CountPairs = pairs
+    End Function
+End Class
+```
+
+**Error Message**:
+```
+rt_arr_i32: index 6 out of bounds (len=5)
+```
+
+**Expected Behavior**: Should be able to create and use local arrays inside class methods without bounds errors.
+
+**Root Cause**:
+- Array accesses inside methods use multiple resolution paths (locals, module-level globals, and implicit fields). In the store path for arrays in methods, the code can incorrectly reinterpret a local array name as an implicit field array when a similarly named field exists in scope.
+- When this misresolution happens, the bounds check and store operate on the field array handle rather than the local array, so `len` comes from the field (e.g., a `cards(5)` field), producing errors like “rt_arr_i32: index 6 out of bounds (len=5)” even though the local array was declared larger (e.g., `counted(15)`).
+
+Evidence and Code Paths:
+- Lowering for array element stores in methods: `assignArrayElement` may detect “implicit field array” by calling `isFieldInScope(target.name)` and then rewrites the precomputed `access.base` to point at the field handle (`ME.<field>`), see:
+  - `src/frontends/basic/LowerStmt_Runtime.cpp`: `assignArrayElement` (implicit field path around lines 310–360) and length check immediately following.
+- Local/global/field resolution: `resolveVariableStorage` prefers local slots but can fall back to implicit field resolution (`resolveImplicitField`) when it fails to find a symbol, see:
+  - `src/frontends/basic/Lowerer.Procedure.cpp`: `resolveVariableStorage` and `resolveImplicitField`.
+- Field-scope detection uses an exact field-name match (`isFieldInScope`), but symbol tables for locals can be incomplete during certain lowering orders, leading to the fallback path engaging.
+
+Contributing Factors:
+- Mixed use of implicit field detection and storage rewriting in the store path, while the load path computes base/len earlier via `lowerArrayAccess`.
+- Method-scope arrays and same-scope fields increase collision risk when local symbol resolution is delayed or shadowed by module/field lookups.
+
+Fix:
+- Guard the implicit-field rewrite in `assignArrayElement` so it only triggers when there is no local/param symbol with the same name. If a local exists, keep the `lowerArrayAccess`-computed base (local array) and its bounds.
+- This preserves consistent base/len between load and store paths and prevents accidental aliasing to the instance field.
+
+Code change:
+- File: `src/frontends/basic/LowerStmt_Runtime.cpp`
+- Logic: compute `localSym = findSymbol(target.name)`; only treat as implicit field when `isFieldInScope && !(localSym && localSym->slotId)`.
+
+Tests to add (follow-up):
+- Method-local boolean array with same name as a field; large index works when within local length; field length unaffected.
+
+---
+
+### BUG-109: Segmentation fault when accessing nested object fields in arrays
+**Status**: 🔴 **OUTSTANDING** - CRITICAL (partial mitigations applied)
+**Discovered**: 2025-11-18 (Poker game stress test - multi-player arrays)
+**Category**: OOP / Memory / Arrays
+**Severity**: CRITICAL - Segmentation fault, no workaround for multi-player scenarios
+
+**Symptom**: When storing objects in an array, and those objects have object-typed fields (nested objects), accessing the nested object's fields or methods causes a segmentation fault (exit code 139).
+
+**Minimal Reproduction**:
+```basic
+Class Hand
+    DIM cards(5) AS Card
+    Public count AS Integer
+
+    Sub New()
+        LET ME.count = 0
+    End Sub
+
+    Sub AddCard(c AS Card)
+        IF ME.count < 5 THEN
+            LET ME.cards(ME.count) = c
+            LET ME.count = ME.count + 1
+        END IF
+    End Sub
+End Class
+
+Class Player
+    Public name AS String
+    Public hand AS Hand  ' Object field!
+
+    Sub New(playerName AS String)
+        LET ME.name = playerName
+        LET ME.hand = NEW Hand()  ' Initialize nested object
+    End Sub
+End Class
+
+REM Create array of players
+DIM players(2) AS Player
+LET players(0) = NEW Player("Alice")
+LET players(1) = NEW Player("Bob")
+
+REM Try to access nested object field
+DIM c AS Card
+LET c = NEW Card("Hearts", "Ace", 14)
+players(0).hand.AddCard(c)  ' SEGFAULT!
+```
+
+**Error**: Program crashes with exit code 139 (segmentation fault) in some scenarios; partial mitigations add traps for some null dereferences, but root cause persists for arrays-of-objects with nested object fields.
+
+**Impact**: CRITICAL (prior). Fixed by adding null checks; programs now receive clear diagnostics instead of crashing.
+
+**Test Files**:
+- `bugs/bug_testing/poker_debug_array_hands.bas` - Minimal reproduction (crashes)
+- `bugs/bug_testing/poker_multi_player.bas` - Multi-player poker (crashes)
+- `bugs/bug_testing/poker_game_test.bas` - Single player works fine
+- `bugs/bug_testing/poker_debug_deal.bas` - Single hand dealing works fine
+
+**Observed Behavior**:
+- ✅ Single object with nested objects: WORKS
+- ✅ Array of simple objects (no object fields): WORKS
+- ✅ Object with object field (single instance): WORKS
+- ❌ Array of objects with object fields: CRASHES
+
+**Expected Behavior**: Should be able to have nested objects (objects containing other objects as fields) and store them in arrays without crashes. This is essential for any moderately complex OOP program.
+
+**Root Cause (Deep Investigation)**:
+- Primary: Inconsistent class layout key usage and fallback behaviour in member access lowering when the base is an array element.
+  - Layout cache is keyed by unqualified class names (e.g., `Player`, `Hand`). Several call sites use fully qualified names (or otherwise-normalized names) without reconciling to the unqualified key.
+  - In `resolveMemberField(const MemberAccessExpr&)`, layout lookup uses `className = resolveObjectClass(*expr.base)` and then `classLayouts_.find(className)` directly. When `className` casing/qualification does not match the cache key, the lookup fails.
+  - On failed lookup, `lowerMemberAccessExpr` returns an integer zero sentinel (`i64 0`) rather than a typed null pointer, silently degrading the base value for subsequent chained operations.
+- Secondary: Null-checks only fire for typed pointer bases.
+  - Recent mitigation added a null check in `resolveMemberField` and `lowerMethodCallExpr`, but these only trigger when the base is typed as `ptr`. When `resolveMemberField` returns `i64 0` due to a layout miss, the null guard is skipped, and later lowering attempts to use `0` as an object pointer, leading to invalid GEP/loads or calls and a segfault rather than a VM trap.
+- Evidence (code paths):
+  - Layout construction keys on declaration names: `src/frontends/basic/Lower_OOP_Scan.cpp` stores layouts as `(decl.name, layout)`.
+  - Lookup sites pass through `resolveObjectClass()` outputs without canonicalization: `src/frontends/basic/Lower_OOP_Expr.cpp` in both `resolveMemberField` and `lowerMethodCallExpr`.
+  - On layout miss, `lowerMemberAccessExpr` returns `{Value::constInt(0), Type::I64}` (untyped zero), see `src/frontends/basic/Lower_OOP_Expr.cpp` returning default on nullopt; downstream chains treat it as a valid base.
+  - Arrays-of-objects exacerbate the mismatch: `resolveObjectClass(ArrayExpr)` uses module-level caches or field metadata to derive an element class (often qualified), which may not match the unqualified key used by the layout map in other code paths.
+
+References:
+- Array-of-object loads: `src/frontends/basic/lower/Lowerer_Expr.cpp` — `visit(const ArrayExpr&)` uses `rt_arr_obj_get` to retrieve elements (retains result).
+- Member field access: `src/frontends/basic/Lower_OOP_Expr.cpp` — `resolveMemberField` performs layout lookup; on miss returns a zero value.
+- Method calls: `src/frontends/basic/Lower_OOP_Expr.cpp` — `lowerMethodCallExpr` relies on `resolveObjectClass(*expr.base)` for dispatch; receiver guarding currently checks only pointer-typed bases.
+
+Mitigations in tree (partial):
+- Null checks were added in member access and method call lowering, reducing some null-deref crashes. However, they do not cover the layout-miss path and do not canonicalize class keys, so the bug remains.
+
+Proposed Solution:
+1) Canonicalize class layout lookups:
+   - Introduce a helper `canonicalClassKey(std::string_view)` that maps qualified/cased names to the unqualified key used by `classLayouts_` (or change the cache to use qualified keys consistently).
+   - Apply this canonicalization at all `classLayouts_.find(...)` call sites, including `resolveMemberField`, array-field paths in `Emit_Expr.cpp`, and any other layout-dependent code.
+2) Make member access failures explicit and typed:
+   - When `resolveMemberField` cannot find a layout or field, emit a typed null pointer for object fields (not `i64 0`) and immediately guard with a null-trap branch. This prevents silent propagation of an untyped zero into method calls.
+3) Strengthen `resolveObjectClass(ArrayExpr)` and related paths:
+   - Prefer module-level element-class cache (`lookupModuleArrayElemClass`) consistently; avoid relying on `SymbolInfo::isObject` for arrays since it represents storage, not element type.
+   - Add assertions/diagnostics when element class cannot be resolved for an object array.
+4) Tests:
+   - Arrays of objects with nested object fields: both initialized and null cases for member access and method calls.
+   - Namespaced classes to validate canonicalization (qualified vs. unqualified lookups).
+
+Status:
+- Pending implementation. The above plan addresses both the lookup mismatch and the null-check gap that allow segfaults to leak past VM traps.
+
+---
+
+### BUG-110: Stack overflow in string concatenation loops
+**Status**: ✅ **RESOLVED** - Fixed 2025-11-19
+**Discovered**: 2025-11-18 (Frogger performance analysis)
+**Category**: Compiler / IL Generation / Memory Management
+**Severity**: CRITICAL - Limits string concatenation to ~60-90 total operations per function
+
+**Symptom**: Repeated string concatenation in loops causes stack overflow after ~60-90 total concatenations across all variables in a function. Error message: "stack overflow in alloca"
+
+**Minimal Reproduction**:
+```basic
+REM Crashes after building 2-3 strings with 30 concatenations each
+DIM s1 AS STRING
+DIM s2 AS STRING
+DIM s3 AS STRING
+DIM i AS INTEGER
+
+s1 = ""
+FOR i = 1 TO 30
+    s1 = s1 + "A"    ' 30 concatenations = 60 allocas
+NEXT i
+
+s2 = ""
+FOR i = 1 TO 30
+    s2 = s2 + "B"    ' Another 60 allocas (total: 120)
+NEXT i
+
+s3 = ""
+FOR i = 1 TO 30
+    s3 = s3 + "C"    ' CRASHES HERE - stack overflow!
+NEXT i
+```
+
+**Error Message**:
+```
+Trap @main#2 line 33: Overflow (code=0): stack overflow in alloca
+```
+
+**Root Cause (IL Analysis)**:
+
+Each string concatenation `s = s + "X"` generates the following IL:
+
+```il
+for_body:
+  %t10 = load str, %s
+  %t11 = const_str @.L1       ; "X"
+  %t12 = alloca 8             ; STACK ALLOC for left operand
+  store str, %t12, %t10
+  %t13 = alloca 8             ; STACK ALLOC for right operand
+  store str, %t13, %t11
+  %t14 = load str, %t12
+  %t15 = load str, %t13
+  %t16 = call @rt_concat(%t14, %t15)
+  store str, %s, %t16
+  br for_next
+```
+
+**The problem**:
+- Each concatenation allocates **2 stack slots** (alloca) for temporaries
+- These allocas are **emitted inside the loop body**
+- Stack space is **never reclaimed** until the function returns
+- With 30 iterations × 2 allocas = 60 stack allocations per loop
+- With 3 variables × 60 allocations = 180 total allocas → **stack overflow**
+
+**IL Design Issue**: `alloca` instructions should be:
+1. Hoisted to function entry (outside all loops), OR
+2. Replaced with a different temporary storage mechanism, OR
+3. Have a way to reclaim stack space during function execution
+
+Previously, the IL lowerer emitted allocas directly in the loop body, causing unbounded stack growth in any loop with string operations.
+
+**Impact**:
+- **CRITICAL** for text-based games (Frogger screen rendering)
+- **CRITICAL** for any string-heavy application
+- Prevents building strings longer than ~100 characters via concatenation
+- Prevents string processing in loops
+- Makes string builders impossible to implement in BASIC
+
+**Fix**:
+- Removed per-iteration `alloca` spills in string concatenation lowering. Concatenation now passes operands directly to `rt_concat`, which consumes (releases) both inputs safely.
+
+Code change:
+- File: `src/frontends/basic/LowerExprNumeric.cpp`
+- Section: `NumericExprLowering::lowerStringBinary` for `BinaryExpr::Op::Add`.
+- Replaced stack slot spills/loads with a direct call: `rt_concat(lhs.value, rhs.value)`.
+
+Impact:
+- Eliminates unbounded stack growth during string concatenation loops.
+- Improves performance and allows building long strings in loops safely.
+
+**Performance Impact** (Frogger case study):
+- Frogger rendering: ~1,245 BufferColorAt calls per frame
+- Each call builds ANSI sequences via string concatenation
+- Cannot use helper functions like `RepeatChar(ch, count)` due to this bug
+- Forces character-by-character rendering
+- Result: ~103ms per frame = 9.7 FPS (instead of 30+ FPS)
+
+**Test Files**:
+- `bugs/bug_testing/bug110_minimal_repro.bas` - Minimal reproduction (crashes)
+- `bugs/bug_testing/test_string_concat_limits.bas` - Binary search for threshold
+- `bugs/bug_testing/test_string_concat_many_vars.bas` - Demonstrates cumulative effect
+- `bugs/bug_testing/test_string_concat_cumulative.bas` - Shows workaround (DIM in loop)
+- `bugs/bug_testing/test_string_concat_reuse.bas` - Variable reuse (still fails)
+
+**Expected Behavior**: Should be able to concatenate strings in loops without arbitrary limits. String concatenation should not consume stack space that grows with iteration count.
+
+**Observed Thresholds**:
+- Single variable, single loop: ~60-90 iterations before overflow
+- Multiple variables (3+), 30 iterations each: Crashes on 3rd variable
+- Total allocas before overflow: ~120-180 (platform dependent)
 
 ---
 

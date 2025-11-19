@@ -625,6 +625,21 @@ void Lowerer::lowerReturn(const ReturnStmt &stmt)
     }
     else
     {
+        // BUG-107: In FUNCTIONs, a bare RETURN should jump to the unified
+        // epilogue so we return the implicit result (assignment to the
+        // function name) rather than emitting a void return which violates
+        // the IL verifier's return type.
+        if (il::core::Function *fn = context().function(); fn && fn->retType.kind != Type::Kind::Void)
+        {
+            ProcedureContext &ctx = context();
+            Function *func = ctx.function();
+            if (func)
+            {
+                emitBr(&func->blocks[ctx.exitIndex()]);
+                return;
+            }
+        }
+        // SUB or unavailable context: fall back to void return.
         emitRetVoid();
     }
 }

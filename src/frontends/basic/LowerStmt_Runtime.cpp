@@ -303,10 +303,9 @@ void Lowerer::assignArrayElement(const ArrayExpr &target, RVal value, il::suppor
         std::string baseName = full.substr(0, dot);
         std::string fieldName = full.substr(dot + 1);
         std::string klass = getSlotType(baseName).objectClass;
-        auto it = classLayouts_.find(klass);
-        if (it != classLayouts_.end())
+        if (const ClassLayout *layout = findClassLayout(klass))
         {
-            if (const ClassLayout::Field *fld = it->second.findField(fieldName))
+            if (const ClassLayout::Field *fld = layout->findField(fieldName))
             {
                 memberElemAstType = fld->type;
                 // BUG-089 fix: Check if field is an object array
@@ -318,7 +317,10 @@ void Lowerer::assignArrayElement(const ArrayExpr &target, RVal value, il::suppor
     // names like `inventory(i)`. When in a field scope, derive element type
     // from the active class layout to choose correct string helpers.
     bool isImplicitFieldArray = (!isMemberArray) && isFieldInScope(target.name);
-    if (isImplicitFieldArray)
+    // BUG-108: If a local variable or parameter with the same name exists,
+    // do NOT treat this as an implicit field array. Prefer the local array.
+    const auto *localSym = findSymbol(target.name);
+    if (isImplicitFieldArray && !(localSym && localSym->slotId))
     {
         if (const auto *scope = activeFieldScope(); scope && scope->layout)
         {
@@ -446,19 +448,18 @@ void Lowerer::lowerLet(const LetStmt &stmt)
                 {
                     curLoc = stmt.loc;
                     Value selfPtr = emitLoad(Type(Type::Kind::Ptr), Value::temp(*baseSym->slotId));
-                    std::string klass = getSlotType(baseName).objectClass;
-                    auto it = classLayouts_.find(klass);
-                    if (it != classLayouts_.end())
-                    {
-                        if (const ClassLayout::Field *fld = it->second.findField(mc->method))
-                        {
-                            curLoc = stmt.loc;
-                            Value fieldPtr =
-                                emitBinary(Opcode::GEP,
-                                           Type(Type::Kind::Ptr),
-                                           selfPtr,
-                                           Value::constInt(static_cast<long long>(fld->offset)));
-                            Value arrHandle = emitLoad(Type(Type::Kind::Ptr), fieldPtr);
+            std::string klass = getSlotType(baseName).objectClass;
+            if (const ClassLayout *layout = findClassLayout(klass))
+            {
+                if (const ClassLayout::Field *fld = layout->findField(mc->method))
+                {
+                    curLoc = stmt.loc;
+                    Value fieldPtr =
+                        emitBinary(Opcode::GEP,
+                                   Type(Type::Kind::Ptr),
+                                   selfPtr,
+                                   Value::constInt(static_cast<long long>(fld->offset)));
+                    Value arrHandle = emitLoad(Type(Type::Kind::Ptr), fieldPtr);
 
                             // BUG-094 fix: Lower all indices and compute flattened index for multi-dimensional arrays
                             std::vector<Value> indices;

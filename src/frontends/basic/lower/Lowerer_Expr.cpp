@@ -611,9 +611,8 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
         {
             // Use last segment as class key for layout map
             std::string cls = expr.typeName.empty() ? std::string{} : expr.typeName.back();
-            auto it = lowerer_.classLayouts_.find(cls);
-            if (it != lowerer_.classLayouts_.end())
-                targetId = static_cast<int>(it->second.classId);
+            if (const Lowerer::ClassLayout *layout = lowerer_.findClassLayout(cls))
+                targetId = static_cast<int>(layout->classId);
         }
 
         // Call rt_typeid_of to get type id and then predicate helper
@@ -658,9 +657,8 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
         if (!isIface)
         {
             std::string cls = expr.typeName.empty() ? std::string{} : expr.typeName.back();
-            auto it = lowerer_.classLayouts_.find(cls);
-            if (it != lowerer_.classLayouts_.end())
-                targetId = static_cast<int>(it->second.classId);
+            if (const Lowerer::ClassLayout *layout = lowerer_.findClassLayout(cls))
+                targetId = static_cast<int>(layout->classId);
         }
         Lowerer::Value casted =
             isIface ? lowerer_.emitCallRet(Lowerer::Type(Lowerer::Type::Kind::Ptr),

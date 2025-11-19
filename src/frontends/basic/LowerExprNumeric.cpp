@@ -361,15 +361,8 @@ Lowerer::RVal NumericExprLowering::lowerStringBinary(const BinaryExpr &expr,
     {
         // Ensure runtime signature is linked for string concatenation.
         lowerer.trackRuntime(Lowerer::RuntimeFeature::Concat);
-        // Spill operands to temporaries to avoid mixing evaluation with the
-        // concat call (stabilizes inline method calls and side effects).
-        Value lslot = lowerer.emitAlloca(8);
-        lowerer.emitStore(IlType(IlKind::Str), lslot, lhs.value);
-        Value rslot = lowerer.emitAlloca(8);
-        lowerer.emitStore(IlType(IlKind::Str), rslot, rhs.value);
-        Value lval = lowerer.emitLoad(IlType(IlKind::Str), lslot);
-        Value rval = lowerer.emitLoad(IlType(IlKind::Str), rslot);
-        Value res = lowerer.emitCallRet(IlType(IlKind::Str), "rt_concat", {lval, rval});
+        // BUG-110: Avoid per-iteration alloca spills; pass operands directly.
+        Value res = lowerer.emitCallRet(IlType(IlKind::Str), "rt_concat", {lhs.value, rhs.value});
         lowerer.deferReleaseStr(res);
         return {res, IlType(IlKind::Str)};
     }

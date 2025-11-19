@@ -347,11 +347,11 @@ std::optional<Lowerer::MemberFieldAccess> Lowerer::resolveMemberField(const Memb
             }
         }
     }
-    auto layoutIt = classLayouts_.find(className);
-    if (layoutIt == classLayouts_.end())
+    const ClassLayout *layout = findClassLayout(className);
+    if (!layout)
         return std::nullopt;
 
-    const ClassLayout::Field *field = layoutIt->second.findField(expr.member);
+    const ClassLayout::Field *field = layout->findField(expr.member);
     if (!field)
         return std::nullopt;
 
@@ -407,7 +407,7 @@ Lowerer::RVal Lowerer::lowerMemberAccessExpr(const MemberAccessExpr &expr)
 {
     auto access = resolveMemberField(expr);
     if (!access)
-        return {Value::constInt(0), Type(Type::Kind::I64)};
+        return {Value::null(), Type(Type::Kind::Ptr)};
 
     curLoc = expr.loc;
     Value loaded = emitLoad(access->ilType, access->ptr);

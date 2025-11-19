@@ -765,6 +765,43 @@ std::string Lowerer::resolveQualifiedClassCasing(const std::string &qname) const
     return qname;
 }
 
+std::string Lowerer::canonicalLayoutKey(std::string_view className) const
+{
+    // First, try to resolve to a canonical qualified name using the OOP index (case-insensitive).
+    std::string qname = resolveQualifiedClassCasing(std::string(className));
+    // Extract unqualified leaf name (layout keys are stored by declared class name).
+    auto lastDot = qname.find_last_of('.');
+    std::string leaf = (lastDot == std::string::npos) ? qname : qname.substr(lastDot + 1);
+    return leaf;
+}
+
+const Lowerer::ClassLayout *Lowerer::findClassLayout(std::string_view className) const
+{
+    // Try direct key
+    auto it = classLayouts_.find(std::string(className));
+    if (it != classLayouts_.end())
+        return &it->second;
+    // Try canonicalized key (qualified → unqualified; corrected casing)
+    std::string key = canonicalLayoutKey(className);
+    auto it2 = classLayouts_.find(key);
+    if (it2 != classLayouts_.end())
+        return &it2->second;
+    // As a last resort, perform a case-insensitive match on the leaf name
+    auto lower = [](std::string s)
+    {
+        for (auto &c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        return s;
+    };
+    std::string needle = lower(key);
+    for (const auto &p : classLayouts_)
+    {
+        std::string leaf = p.first;
+        if (lower(leaf) == needle)
+            return &p.second;
+    }
+    return nullptr;
+}
+
 /// @brief Retrieve a cached procedure signature when available.
 /// @details Looks up metadata gathered during @ref collectProcedureSignatures so
 ///          later lowering stages can inspect parameter and return types without

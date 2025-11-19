@@ -228,6 +228,14 @@ BasicType Parser::parseBasicType()
     };
 
     const Token &tok = peek();
+
+    // Check for BOOLEAN keyword token first
+    if (tok.kind == TokenKind::KeywordBoolean)
+    {
+        consume();
+        return BasicType::Bool;
+    }
+
     if (tok.kind != TokenKind::Identifier)
         return BasicType::Unknown;
 
@@ -246,6 +254,11 @@ BasicType Parser::parseBasicType()
     {
         consume();
         return BasicType::String;
+    }
+    if (upper == "BOOLEAN" || upper == "BOOL")
+    {
+        consume();
+        return BasicType::Bool;
     }
     return BasicType::Unknown;
 }

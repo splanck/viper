@@ -901,6 +901,20 @@ class Lowerer
                                                                         il::support::SourceLoc loc);
     [[nodiscard]] const FieldScope *activeFieldScope() const;
 
+    // --- BUG-109: Canonical class-layout resolution helpers ---
+  public:
+    /// @brief Resolve a class layout by canonicalizing name (qualified/unqualified, casing).
+    /// @param className Class name as discovered (may be qualified or different casing).
+    /// @return Pointer to layout when found; nullptr otherwise.
+    [[nodiscard]] const ClassLayout *findClassLayout(std::string_view className) const;
+
+  private:
+    /// @brief Compute the canonical layout key (unqualified, declared casing) for a class name.
+    /// @details Uses the OOP index to normalize qualified names and casing, then returns the
+    ///          unqualified identifier used as the key in classLayouts_. Falls back to the last
+    ///          dotted segment when lookup fails.
+    [[nodiscard]] std::string canonicalLayoutKey(std::string_view className) const;
+
   public:
     SymbolInfo &ensureSymbol(std::string_view name);
 

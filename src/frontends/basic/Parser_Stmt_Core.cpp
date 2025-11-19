@@ -606,6 +606,9 @@ StmtPtr Parser::parseFunctionStatement()
             case BasicType::String:
                 func->ret = Type::Str;
                 break;
+            case BasicType::Bool:
+                func->ret = Type::Bool;
+                break;
             case BasicType::Void:
                 func->ret = Type::I64;
                 break;
