@@ -158,10 +158,9 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
             std::string baseName = full.substr(0, dot);
             std::string fieldName = full.substr(dot + 1);
             std::string klass = lowerer_.getSlotType(baseName).objectClass;
-            auto it = lowerer_.classLayouts_.find(klass);
-            if (it != lowerer_.classLayouts_.end())
+            if (const Lowerer::ClassLayout *layout = lowerer_.findClassLayout(klass))
             {
-                if (const Lowerer::ClassLayout::Field *fld = it->second.findField(fieldName))
+                if (const Lowerer::ClassLayout::Field *fld = layout->findField(fieldName))
                 {
                     memberElemAstType = fld->type;
                     // BUG-089 fix: Check if field is an object array
@@ -447,10 +446,9 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
         std::string cls = expr.base ? lowerer_.resolveObjectClass(*expr.base) : std::string{};
         if (!cls.empty())
         {
-            auto it = lowerer_.classLayouts_.find(cls);
-            if (it != lowerer_.classLayouts_.end())
+            if (const Lowerer::ClassLayout *layout = lowerer_.findClassLayout(cls))
             {
-                if (const Lowerer::ClassLayout::Field *fld = it->second.findField(expr.method))
+                if (const Lowerer::ClassLayout::Field *fld = layout->findField(expr.method))
                 {
                     // Only treat as array-field access when the field is actually an array.
                     // Otherwise, fall back to lowering a real method call (BUG-106).

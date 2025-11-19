@@ -163,7 +163,7 @@ Tests to add (follow-up):
 ---
 
 ### BUG-109: Segmentation fault when accessing nested object fields in arrays
-**Status**: 🔴 **OUTSTANDING** - CRITICAL (partial mitigations applied)
+**Status**: ✅ **RESOLVED** - Fixed 2025-11-19
 **Discovered**: 2025-11-18 (Poker game stress test - multi-player arrays)
 **Category**: OOP / Memory / Arrays
 **Severity**: CRITICAL - Segmentation fault, no workaround for multi-player scenarios
@@ -261,8 +261,22 @@ Proposed Solution:
    - Arrays of objects with nested object fields: both initialized and null cases for member access and method calls.
    - Namespaced classes to validate canonicalization (qualified vs. unqualified lookups).
 
-Status:
-- Pending implementation. The above plan addresses both the lookup mismatch and the null-check gap that allow segfaults to leak past VM traps.
+Implementation Summary:
+- Added canonical class-layout lookup in `Lowerer` to normalize qualified/unqualified names and casing before querying `classLayouts_`.
+- Replaced direct `classLayouts_.find(...)` uses in member access, array-field access, and related lowering with `findClassLayout(...)`.
+- Changed member access fallback to return a typed null pointer (ptr) instead of `i64 0` so later null-guards apply.
+- Inserted explicit null-check/trap for member access and method receivers when pointer-typed.
+
+Files:
+- `src/frontends/basic/Lowerer.hpp` — declared `findClassLayout` and `canonicalLayoutKey`.
+- `src/frontends/basic/Lowerer.Procedure.cpp` — defined canonicalization and lookup helpers.
+- `src/frontends/basic/Lower_OOP_Expr.cpp` — use canonical lookup; return typed null on failure; null-checks.
+- `src/frontends/basic/lower/Emit_Expr.cpp` — canonical lookup for array-field accesses.
+- `src/frontends/basic/LowerStmt_Runtime.cpp` — canonical lookup for member array paths.
+- `src/frontends/basic/lower/Lowerer_Expr.cpp` — canonical lookup in method-like array-field lowering and casts.
+
+Result:
+- Arrays-of-objects with nested object fields no longer segfault. Null elements trigger structured traps with location info; initialized elements work for field access and method calls.
 
 ---
 

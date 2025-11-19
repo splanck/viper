@@ -303,8 +303,7 @@ void Lowerer::emitClassConstructor(const ClassDecl &klass, const ConstructorDecl
     // For each array field, allocate an array handle of the declared length
     // and store it into the instance field slot before executing user code.
     {
-        auto layoutIt = classLayouts_.find(klass.name);
-        if (layoutIt != classLayouts_.end())
+        if (const ClassLayout *layout = findClassLayout(klass.name))
         {
             Value selfPtr = loadSelfPointer(selfSlotId);
             for (const auto &field : klass.fields)
@@ -320,7 +319,7 @@ void Lowerer::emitClassConstructor(const ClassDecl &klass, const ConstructorDecl
                 Value length = Value::constInt(total);
 
                 // Find field offset in layout
-                const auto *fi = layoutIt->second.findField(field.name);
+                const auto *fi = layout->findField(field.name);
                 if (!fi)
                     continue;
 
@@ -456,9 +455,8 @@ void Lowerer::emitClassDestructor(const ClassDecl &klass, const DestructorDecl *
     curLoc = {};
 
     Value selfPtr = loadSelfPointer(selfSlotId);
-    auto layoutIt = classLayouts_.find(klass.name);
-    if (layoutIt != classLayouts_.end())
-        emitFieldReleaseSequence(selfPtr, layoutIt->second);
+    if (const ClassLayout *layout = findClassLayout(klass.name))
+        emitFieldReleaseSequence(selfPtr, *layout);
 
     releaseObjectLocals(metadata.paramNames);
     // BUG-105 fix: Don't release object/array parameters - they are borrowed references from caller

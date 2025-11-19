@@ -136,10 +136,9 @@ std::string Lowerer::resolveObjectClass(const Expr &expr) const
             std::string baseName = full.substr(0, dot);
             std::string fieldName = full.substr(dot + 1);
             std::string klass = getSlotType(baseName).objectClass;
-            auto it = classLayouts_.find(klass);
-            if (it != classLayouts_.end())
+            if (const ClassLayout *layout = findClassLayout(klass))
             {
-                if (const ClassLayout::Field *fld = it->second.findField(fieldName))
+                if (const ClassLayout::Field *fld = layout->findField(fieldName))
                 {
                     if (!fld->objectClassName.empty())
                         return qualify(fld->objectClassName);
@@ -178,10 +177,9 @@ std::string Lowerer::resolveObjectClass(const Expr &expr) const
             if (!baseClass.empty())
             {
                 // BUG-082 fix: Look up the field class name in the class layout
-                auto layoutIt = classLayouts_.find(baseClass);
-                if (layoutIt != classLayouts_.end())
+                if (const ClassLayout *layout = findClassLayout(baseClass))
                 {
-                    const auto *field = layoutIt->second.findField(access->member);
+                    const auto *field = layout->findField(access->member);
                     if (field && !field->objectClassName.empty())
                     {
                         // Field is an object type - qualify the class name for proper lookup
@@ -205,10 +203,9 @@ std::string Lowerer::resolveObjectClass(const Expr &expr) const
             if (!baseClass.empty())
             {
                 // First check if this is a field array access, not an actual method call
-                auto layoutIt = classLayouts_.find(baseClass);
-                if (layoutIt != classLayouts_.end())
+                if (const ClassLayout *layout = findClassLayout(baseClass))
                 {
-                    const auto *field = layoutIt->second.findField(call->method);
+                    const auto *field = layout->findField(call->method);
                     if (field && field->isArray && !field->objectClassName.empty())
                     {
                         // This is a field array access (e.g., obj.arrayField(idx))
