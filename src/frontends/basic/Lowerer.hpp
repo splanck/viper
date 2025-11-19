@@ -932,10 +932,12 @@ class Lowerer
     ///          scopes can recover object element types for global arrays even
     ///          after per-procedure symbol resets.
     std::unordered_map<std::string, std::string> moduleObjArrayElemClass_;
+    /// @brief BUG-107 fix: Cache for module-level scalar object types.
+    std::unordered_map<std::string, std::string> moduleObjectClass_;
 
   public:
-    /// @brief Clear cached module-level object array typing.
-    void clearModuleObjectArrayCache() { moduleObjArrayElemClass_.clear(); }
+    /// @brief Clear cached module-level object array and scalar object typing.
+    void clearModuleObjectArrayCache() { moduleObjArrayElemClass_.clear(); moduleObjectClass_.clear(); }
 
     /// @brief Scan AST for module-level DIM object arrays and cache their types.
     /// @details Called before lowering procedures so object array element classes

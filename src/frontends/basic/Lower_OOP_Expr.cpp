@@ -77,6 +77,20 @@ std::string Lowerer::resolveObjectClass(const Expr &expr) const
         SlotType slotInfo = getSlotType(var->name);
         if (slotInfo.isObject)
             return slotInfo.objectClass;
+
+        // BUG-107 fix: Module-level object variables don't have slots,
+        // check SymbolInfo directly for object class
+        if (const auto *info = findSymbol(var->name))
+        {
+            if (info->isObject && !info->objectClass.empty())
+                return info->objectClass;
+        }
+
+        // BUG-107 fix: Check module-level scalar object cache (already resolved)
+        auto it = moduleObjectClass_.find(std::string(var->name));
+        if (it != moduleObjectClass_.end())
+            return it->second;
+
         return {};
     }
     if (is<MeExpr>(expr))

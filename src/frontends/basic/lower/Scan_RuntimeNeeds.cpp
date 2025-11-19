@@ -379,7 +379,24 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
     {
         if (stmt.name.empty())
             return;
-        lowerer_.setSymbolType(stmt.name, stmt.type);
+
+        // BUG-107 fix: Handle object type declarations (DIM frog AS Frog)
+        if (!stmt.explicitClassQname.empty())
+        {
+            std::string className;
+            for (size_t i = 0; i < stmt.explicitClassQname.size(); ++i)
+            {
+                if (i > 0)
+                    className += ".";
+                className += stmt.explicitClassQname[i];
+            }
+            lowerer_.setSymbolObjectType(stmt.name, lowerer_.resolveQualifiedClassCasing(className));
+        }
+        else
+        {
+            lowerer_.setSymbolType(stmt.name, stmt.type);
+        }
+
         lowerer_.markSymbolReferenced(stmt.name);
         if (stmt.isArray)
         {

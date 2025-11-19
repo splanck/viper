@@ -29,9 +29,22 @@ COLOR_MAGENTA = "[35m"
 COLOR_CYAN = "[36m"
 COLOR_WHITE = "[37m"
 
+REM Screen buffer for double buffering (reduces flicker)
+DIM SCREEN_BUFFER AS STRING
+
 REM Clear the entire screen
 SUB ClearScreen()
     PRINT ESC; "[2J"
+END SUB
+
+REM Use alternate screen buffer (prevents flicker)
+SUB UseAltScreen()
+    PRINT ESC; "[?1049h"
+END SUB
+
+REM Restore normal screen buffer
+SUB UseNormalScreen()
+    PRINT ESC; "[?1049l"
 END SUB
 
 REM Hide the cursor
@@ -52,7 +65,7 @@ END SUB
 REM Print text at specific position
 SUB PrintAt(row AS INTEGER, col AS INTEGER, text AS STRING)
     GotoXY(row, col)
-    PRINT text;
+    PRINT text
 END SUB
 
 REM Print colored text at specific position
@@ -60,3 +73,38 @@ SUB PrintColorAt(row AS INTEGER, col AS INTEGER, clr AS STRING, text AS STRING)
     GotoXY(row, col)
     PRINT ESC; clr; text; ESC; RESET;
 END SUB
+
+REM ====================================================================
+REM Optimized Rendering Functions
+REM ====================================================================
+
+REM Start a new frame - just reposition cursor (no clear to avoid flicker)
+SUB BeginFrame()
+    PRINT ESC; "[H";
+END SUB
+
+REM Draw colored text at position (direct output)
+SUB BufferColorAt(row AS INTEGER, col AS INTEGER, clr AS STRING, text AS STRING)
+    PRINT ESC; "["; STR$(row); ";"; STR$(col); "H"; ESC; clr; text; ESC; RESET;
+END SUB
+
+REM Draw text at position (direct output)
+SUB BufferAt(row AS INTEGER, col AS INTEGER, text AS STRING)
+    PRINT ESC; "["; STR$(row); ";"; STR$(col); "H"; text;
+END SUB
+
+REM Flush frame (flush output buffer)
+SUB FlushFrame()
+    PRINT ""
+END SUB
+
+REM Helper: Build a string of repeated characters
+FUNCTION RepeatChar(ch AS STRING, count AS INTEGER) AS STRING
+    DIM result AS STRING
+    DIM i AS INTEGER
+    result = ""
+    FOR i = 1 TO count
+        result = result + ch
+    NEXT i
+    RepeatChar = result
+END FUNCTION

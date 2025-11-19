@@ -1,6 +1,5 @@
 REM ====================================================================
-REM Game Object Classes for Frogger
-REM Demonstrates OOP principles in Viper BASIC
+REM Enhanced Game Object Classes for Classic Frogger
 REM ====================================================================
 
 REM ====================================================================
@@ -25,14 +24,6 @@ CLASS Position
         col = col + dc
     END SUB
 
-    SUB SetRow(r AS INTEGER)
-        row = r
-    END SUB
-
-    SUB SetCol(c AS INTEGER)
-        col = c
-    END SUB
-
     FUNCTION GetRow() AS INTEGER
         GetRow = row
     END FUNCTION
@@ -44,14 +35,15 @@ END CLASS
 
 REM ====================================================================
 REM Frog Class - The player character
-REM Demonstrates: nested objects, state management, boundary checking
 REM ====================================================================
 CLASS Frog
     DIM pos AS Position
     DIM lives AS INTEGER
-    DIM alive AS INTEGER  ' BUG-106 workaround: can't name same as method
+    DIM alive AS INTEGER
     DIM startRow AS INTEGER
     DIM startCol AS INTEGER
+    DIM onPlatform AS INTEGER
+    DIM platformSpeed AS INTEGER
 
     SUB Init(r AS INTEGER, c AS INTEGER)
         pos = NEW Position()
@@ -60,21 +52,23 @@ CLASS Frog
         startCol = c
         lives = 3
         alive = 1
+        onPlatform = 0
+        platformSpeed = 0
     END SUB
 
     SUB MoveUp()
         DIM newRow AS INTEGER
         newRow = pos.GetRow() - 1
-        IF newRow >= 0 THEN
-            pos.SetRow(newRow)
+        IF newRow >= 1 THEN
+            pos.MoveTo(newRow, pos.GetCol())
         END IF
     END SUB
 
     SUB MoveDown()
         DIM newRow AS INTEGER
         newRow = pos.GetRow() + 1
-        IF newRow <= 23 THEN
-            pos.SetRow(newRow)
+        IF newRow <= 24 THEN
+            pos.MoveTo(newRow, pos.GetCol())
         END IF
     END SUB
 
@@ -82,7 +76,7 @@ CLASS Frog
         DIM newCol AS INTEGER
         newCol = pos.GetCol() - 1
         IF newCol >= 1 THEN
-            pos.SetCol(newCol)
+            pos.MoveTo(pos.GetRow(), newCol)
         END IF
     END SUB
 
@@ -90,8 +84,29 @@ CLASS Frog
         DIM newCol AS INTEGER
         newCol = pos.GetCol() + 1
         IF newCol <= 70 THEN
-            pos.SetCol(newCol)
+            pos.MoveTo(pos.GetRow(), newCol)
         END IF
+    END SUB
+
+    SUB UpdateOnPlatform()
+        REM Move with platform if riding one
+        IF onPlatform = 1 THEN
+            DIM newCol AS INTEGER
+            newCol = pos.GetCol() + platformSpeed
+            IF newCol >= 1 AND newCol <= 70 THEN
+                pos.MoveTo(pos.GetRow(), newCol)
+            END IF
+        END IF
+    END SUB
+
+    SUB SetOnPlatform(speed AS INTEGER)
+        onPlatform = 1
+        platformSpeed = speed
+    END SUB
+
+    SUB ClearPlatform()
+        onPlatform = 0
+        platformSpeed = 0
     END SUB
 
     FUNCTION GetRow() AS INTEGER
@@ -107,9 +122,10 @@ CLASS Frog
         IF lives <= 0 THEN
             alive = 0
         ELSE
-            REM Reset to start position when lives remain
             pos.MoveTo(startRow, startCol)
         END IF
+        onPlatform = 0
+        platformSpeed = 0
     END SUB
 
     FUNCTION GetLives() AS INTEGER
@@ -122,17 +138,18 @@ CLASS Frog
 
     SUB Reset()
         pos.MoveTo(startRow, startCol)
+        onPlatform = 0
+        platformSpeed = 0
     END SUB
 END CLASS
 
 REM ====================================================================
-REM Car Class - Moving obstacle
-REM Demonstrates: object arrays, collision detection, wrapping behavior
+REM Vehicle Class - Cars and trucks on the road
 REM ====================================================================
-CLASS Car
+CLASS Vehicle
     DIM pos AS Position
     DIM speed AS INTEGER
-    DIM direction AS INTEGER  ' 1 = right, -1 = left
+    DIM direction AS INTEGER
     DIM symbol AS STRING
     DIM width AS INTEGER
 
@@ -148,16 +165,13 @@ CLASS Car
     SUB Move()
         DIM newCol AS INTEGER
         newCol = pos.GetCol() + (speed * direction)
-
-        REM Wrap around screen edges
         IF newCol > 75 THEN
             newCol = 1 - width
         END IF
         IF newCol < (0 - width) THEN
             newCol = 75
         END IF
-
-        pos.SetCol(newCol)
+        pos.MoveTo(pos.GetRow(), newCol)
     END SUB
 
     FUNCTION GetRow() AS INTEGER
@@ -168,35 +182,130 @@ CLASS Car
         GetCol = pos.GetCol()
     END FUNCTION
 
+    FUNCTION GetWidth() AS INTEGER
+        GetWidth = width
+    END FUNCTION
+
     FUNCTION GetSymbol() AS STRING
         GetSymbol = symbol
+    END FUNCTION
+
+    FUNCTION GetSpeed() AS INTEGER
+        GetSpeed = speed
+    END FUNCTION
+
+    FUNCTION GetDirection() AS INTEGER
+        GetDirection = direction
+    END FUNCTION
+
+    FUNCTION CheckCollision(frogRow AS INTEGER, frogCol AS INTEGER) AS INTEGER
+        DIM i AS INTEGER
+        CheckCollision = 0
+        IF frogRow = pos.GetRow() THEN
+            FOR i = 0 TO width - 1
+                IF frogCol = pos.GetCol() + i THEN
+                    CheckCollision = 1
+                    EXIT FUNCTION
+                END IF
+            NEXT i
+        END IF
+    END FUNCTION
+END CLASS
+
+REM ====================================================================
+REM Platform Class - Logs and turtles in the river
+REM ====================================================================
+CLASS Platform
+    DIM pos AS Position
+    DIM speed AS INTEGER
+    DIM direction AS INTEGER
+    DIM symbol AS STRING
+    DIM width AS INTEGER
+
+    SUB Init(r AS INTEGER, c AS INTEGER, spd AS INTEGER, dir AS INTEGER, sym AS STRING, w AS INTEGER)
+        pos = NEW Position()
+        pos.Init(r, c)
+        speed = spd
+        direction = dir
+        symbol = sym
+        width = w
+    END SUB
+
+    SUB Move()
+        DIM newCol AS INTEGER
+        newCol = pos.GetCol() + (speed * direction)
+        IF newCol > 75 THEN
+            newCol = 1 - width
+        END IF
+        IF newCol < (0 - width) THEN
+            newCol = 75
+        END IF
+        pos.MoveTo(pos.GetRow(), newCol)
+    END SUB
+
+    FUNCTION GetRow() AS INTEGER
+        GetRow = pos.GetRow()
+    END FUNCTION
+
+    FUNCTION GetCol() AS INTEGER
+        GetCol = pos.GetCol()
     END FUNCTION
 
     FUNCTION GetWidth() AS INTEGER
         GetWidth = width
     END FUNCTION
 
-    REM Check if car collides with given position
-    FUNCTION CheckCollision(frogRow AS INTEGER, frogCol AS INTEGER) AS INTEGER
-        DIM carRow AS INTEGER
-        DIM carCol AS INTEGER
+    FUNCTION GetSymbol() AS STRING
+        GetSymbol = symbol
+    END FUNCTION
+
+    FUNCTION GetSpeed() AS INTEGER
+        GetSpeed = speed
+    END FUNCTION
+
+    FUNCTION GetDirection() AS INTEGER
+        GetDirection = direction
+    END FUNCTION
+
+    FUNCTION CheckOnPlatform(frogRow AS INTEGER, frogCol AS INTEGER) AS INTEGER
         DIM i AS INTEGER
-        DIM hit AS INTEGER
-
-        carRow = pos.GetRow()
-        carCol = pos.GetCol()
-        hit = 0
-
-        REM Check if frog is on same row
-        IF frogRow = carRow THEN
-            REM Check each cell of car's width
+        CheckOnPlatform = 0
+        IF frogRow = pos.GetRow() THEN
             FOR i = 0 TO width - 1
-                IF frogCol = carCol + i THEN
-                    hit = 1
+                IF frogCol = pos.GetCol() + i THEN
+                    CheckOnPlatform = 1
+                    EXIT FUNCTION
                 END IF
             NEXT i
         END IF
-
-        CheckCollision = hit
     END FUNCTION
+END CLASS
+
+REM ====================================================================
+REM Home Class - Goal slots at the top
+REM ====================================================================
+CLASS Home
+    DIM col AS INTEGER
+    DIM filled AS INTEGER
+
+    SUB Init(c AS INTEGER)
+        col = c
+        filled = 0
+    END SUB
+
+    FUNCTION GetCol() AS INTEGER
+        GetCol = col
+    END FUNCTION
+
+    FUNCTION IsFilled() AS INTEGER
+        IsFilled = filled
+    END FUNCTION
+
+    SUB Fill()
+        filled = 1
+    END SUB
+
+    SUB Reset()
+        filled = 0
+    END SUB
 END CLASS

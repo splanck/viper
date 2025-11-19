@@ -243,12 +243,14 @@ Notes:
 
 **Key points:**
 - `ME` refers to the current instance (like `this` in C++ or `self` in Python)
+- Inside a class method, unqualified method calls implicitly target `ME`. For example, `Increment()` is equivalent to `ME.Increment()`.
 - `NEW` is a special constructor method
 - `DELETE` frees the object (calls `DESTRUCTOR` if defined)
 
 Common mistakes and tips:
 - Missing parentheses when passing arguments will be rejected with a clear diagnostic.
 - For readability and consistency, prefer parentheses even for zero-argument calls.
+- Avoid naming a field and a method with the same (case-insensitive) name when the field is an array. Array-field access uses the same `obj.field(...)` syntax as method calls; the compiler resolves `obj.field(i)` as array access only when the field is declared as an array. Non-array fields with the same name as methods are treated as methods in calls (e.g., `obj.Value()`).
 
 ### Destructors
 

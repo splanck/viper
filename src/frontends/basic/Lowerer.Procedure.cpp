@@ -527,6 +527,19 @@ Lowerer::SlotType Lowerer::getSlotType(std::string_view name) const
 {
     SlotType info;
     AstType astTy = inferVariableTypeForLowering(*this, name);
+
+    // BUG-107 fix: Check module-level scalar object cache first
+    auto modObjIt = moduleObjectClass_.find(std::string(name));
+    if (modObjIt != moduleObjectClass_.end())
+    {
+        info.type = Type(Type::Kind::Ptr);
+        info.isArray = false;
+        info.isBoolean = false;
+        info.isObject = true;
+        info.objectClass = modObjIt->second;
+        return info;
+    }
+
     if (const auto *sym = findSymbol(name))
     {
         if (sym->isObject)
@@ -1455,8 +1468,9 @@ void Lowerer::resetLoweringState()
 void Lowerer::cacheModuleObjectArraysFromAST(const std::vector<StmtPtr> &main)
 {
     moduleObjArrayElemClass_.clear();
+    moduleObjectClass_.clear();  // BUG-107 fix: Also clear scalar object cache
 
-    // Walk main body statements looking for DIM declarations of object arrays
+    // Walk main body statements looking for DIM declarations of objects (arrays and scalars)
     for (const auto &stmtPtr : main)
     {
         if (!stmtPtr)
@@ -1465,7 +1479,7 @@ void Lowerer::cacheModuleObjectArraysFromAST(const std::vector<StmtPtr> &main)
         if (stmtPtr->stmtKind() == Stmt::Kind::Dim)
         {
             const auto *dim = as<const DimStmt>(*stmtPtr);
-            if (dim && dim->isArray && !dim->explicitClassQname.empty())
+            if (dim && !dim->explicitClassQname.empty())
             {
                 // Join qualified class name segments with dots
                 std::string className;
@@ -1475,7 +1489,12 @@ void Lowerer::cacheModuleObjectArraysFromAST(const std::vector<StmtPtr> &main)
                         className += '.';
                     className += dim->explicitClassQname[i];
                 }
-                moduleObjArrayElemClass_[dim->name] = className;
+                // BUG-107 fix: Resolve class name casing when caching
+                std::string resolvedClassName = resolveQualifiedClassCasing(className);
+                if (dim->isArray)
+                    moduleObjArrayElemClass_[dim->name] = resolvedClassName;
+                else
+                    moduleObjectClass_[dim->name] = resolvedClassName;  // BUG-107 fix: Cache scalar objects
             }
         }
     }

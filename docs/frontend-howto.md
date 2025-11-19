@@ -2982,14 +2982,14 @@ Key pieces in the BASIC frontend:
 - Loads: `obj.field(i)` lowers to a load of the array handle from the field followed by `rt_arr_*_get(obj.field, i)`.
   - Files:
     - `src/frontends/basic/lower/Emit_Expr.cpp` (dotted array names in `lowerArrayAccess`)
-    - `src/frontends/basic/lower/Lowerer_Expr.cpp` (treat `MethodCallExpr` on field name as array get when applicable)
-  - Helpers: `rt_arr_i32_get`, `rt_arr_str_get`, with `rt_arr_*_len` for bounds checks when emitted.
+    - `src/frontends/basic/lower/Lowerer_Expr.cpp` (treat `MethodCallExpr` on field name as array get only when the field is declared as an array; guard with `fld->isArray`)
+  - Helpers: `rt_arr_i32_get`, `rt_arr_str_get`, `rt_arr_obj_get` (for object-element arrays), with `rt_arr_*_len` for bounds checks when emitted.
 - Stores: `obj.field(i) = value` lowers to a store into the array referenced by the field.
   - File: `src/frontends/basic/LowerStmt_Runtime.cpp`
   - Paths:
     - `assignArrayElement` handles dotted names, selecting helpers by element type
     - LHS `MethodCallExpr` path synthesizes store for `obj.field(index)`
-  - Helpers: `rt_arr_i32_set`, `rt_arr_str_put` with bounds checks via `rt_arr_*_len` + `rt_arr_oob_panic`.
+  - Helpers: `rt_arr_i32_set`, `rt_arr_str_put`, `rt_arr_obj_put` (for object-element arrays) with bounds checks via `rt_arr_*_len` + `rt_arr_oob_panic`.
 - Layout: Array fields occupy pointer-sized storage so subsequent field offsets are stable.
   - Files:
     - `src/frontends/basic/Lower_OOP_Scan.cpp` (class layout builder)
@@ -3003,6 +3003,7 @@ Example lowering flow for `obj.field(i) = 42` (integer array field):
 
 Notes:
 - String array fields retain/release element handles using `rt_arr_str_put/rt_arr_str_get` and the standard string retain/release hooks.
+- Object array fields use `rt_arr_obj_len/get/put` and are not refcounted at the array-handle level; only element objects participate in retain/release.
 - Single-dimension indexing of array fields is supported; multi-dimension flattening for fields follows the same row‑major approach as normal arrays when metadata is available.
 
 ### I/O Operations

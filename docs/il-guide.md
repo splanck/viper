@@ -312,7 +312,7 @@ entry:
 
 ### Debugging IL
 - `ilc -run --trace foo.il` prints each instruction as it executes.
-- `ilc -verify foo.il` checks structural rules without running.
+- `il-verify foo.il` checks structural rules without running.
 - Common errors like "type mismatch" or "undefined block" point to the offending line.
 
 ### Tips & best practices
@@ -337,7 +337,7 @@ Happy hacking!
 
 ### Normative scope
 
-The archived IL v0.1.2 specification established the design principles still in force today: IL acts as the "thin waist" between front ends and execution engines, enforces explicit control flow with one terminator per block, and keeps the type system intentionally small (`i1`, `i64`, `f64`, `ptr`, `str`, `void`). The material below supersedes earlier drafts (including v0.1.1) while remaining source-compatible with modules written for those versions. Numeric promotion semantics are specified in [specs/numerics.md](specs/numerics.md) and the unified trap/handler model is defined in [specs/errors.md](specs/errors.md); both documents are normative for all front ends and the VM.
+The archived IL v0.1.2 specification established the design principles still in force today: IL acts as the "thin waist" between front ends and execution engines, enforces explicit control flow with one terminator per block, and keeps the type system intentionally small (`i1`, `i64`, `f64`, `ptr`, `str`, `void`). The material below supersedes earlier drafts (including v0.1.1) while remaining source-compatible with modules written for those versions. Numeric promotion semantics are specified in [devdocs/specs/numerics.md](../devdocs/specs/numerics.md) and the unified trap/handler model is defined in [devdocs/specs/errors.md](../devdocs/specs/errors.md); both documents are normative for all front ends and the VM.
 
 ### IL Reference (v0.1.2)
 
@@ -366,7 +366,7 @@ il 0.1
 target "x86_64-sysv"
 ```
 
-See [examples/il](examples/il/) for complete programs.
+See [examples/il](../examples/il/) for complete programs.
 
 Each function has the form:
 
@@ -809,7 +809,7 @@ Native back ends target the System V x86-64 ABI:
 * Call sites maintain 16-byte stack alignment; `i1` arguments are zero-extended to 32 bits.
 
 #### Versioning & Conformance
-Modules must begin with `il 0.1.2`.  A conforming implementation accepts this grammar, obeys the semantics above, and traps on the conditions listed for each instruction.  Implementations are validated against the sample suite under [examples/il](examples/il/).
+Modules must begin with `il 0.1.2`.  A conforming implementation accepts this grammar, obeys the semantics above, and traps on the conditions listed for each instruction.  Implementations are validated against the sample suite under [examples/il](../examples/il/).
 
 <a id="lowering"></a>
 ## Lowering
