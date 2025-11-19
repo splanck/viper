@@ -18,6 +18,12 @@
 #include "il/transform/LICM.hpp"
 #include "il/transform/LoopSimplify.hpp"
 #include "il/transform/SCCP.hpp"
+#include "il/transform/ConstFold.hpp"
+#include "il/transform/Peephole.hpp"
+#include "il/transform/DCE.hpp"
+#include "il/transform/Mem2Reg.hpp"
+#include "il/transform/DSE.hpp"
+#include "il/transform/EarlyCSE.hpp"
 
 #include <utility>
 
@@ -354,6 +360,76 @@ void registerSCCPPass(PassRegistry &registry)
                                     sccp(module);
                                     return PreservedAnalyses::none();
                                 });
+}
+
+void registerConstFoldPass(PassRegistry &registry)
+{
+    registry.registerModulePass("constfold",
+                                [](core::Module &module, AnalysisManager &)
+                                {
+                                    constFold(module);
+                                    return PreservedAnalyses::none();
+                                });
+}
+
+void registerPeepholePass(PassRegistry &registry)
+{
+    registry.registerModulePass("peephole",
+                                [](core::Module &module, AnalysisManager &)
+                                {
+                                    peephole(module);
+                                    return PreservedAnalyses::none();
+                                });
+}
+
+void registerDCEPass(PassRegistry &registry)
+{
+    registry.registerModulePass("dce",
+                                [](core::Module &module, AnalysisManager &)
+                                {
+                                    dce(module);
+                                    return PreservedAnalyses::none();
+                                });
+}
+
+void registerMem2RegPass(PassRegistry &registry)
+{
+    registry.registerModulePass("mem2reg",
+                                [](core::Module &module, AnalysisManager &)
+                                {
+                                    viper::passes::mem2reg(module, nullptr);
+                                    return PreservedAnalyses::none();
+                                });
+}
+
+void registerDSEPass(PassRegistry &registry)
+{
+    registry.registerFunctionPass(
+        "dse",
+        [](core::Function &fn, AnalysisManager &am)
+        {
+            bool changed = runDSE(fn, am);
+            if (!changed)
+                return PreservedAnalyses::all();
+            PreservedAnalyses p; // conservatively invalidate function analyses
+            p.preserveAllModules();
+            return p;
+        });
+}
+
+void registerEarlyCSEPass(PassRegistry &registry)
+{
+    registry.registerFunctionPass(
+        "earlycse",
+        [](core::Function &fn, AnalysisManager &)
+        {
+            bool changed = runEarlyCSE(fn);
+            if (!changed)
+                return PreservedAnalyses::all();
+            PreservedAnalyses p;
+            p.preserveAllModules();
+            return p;
+        });
 }
 
 } // namespace il::transform

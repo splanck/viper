@@ -134,6 +134,8 @@ add_library(il_transform STATIC
         il/transform/ConstFold.cpp
         il/transform/DCE.cpp
         il/transform/Mem2Reg.cpp
+        il/transform/EarlyCSE.cpp
+        il/transform/DSE.cpp
         il/transform/LoopSimplify.cpp
         il/transform/LICM.cpp
         il/transform/SCCP.cpp

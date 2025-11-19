@@ -24,6 +24,7 @@
 
 #include "il/analysis/CFG.hpp"
 #include "il/analysis/Dominators.hpp"
+#include "il/analysis/BasicAA.hpp"
 #include "il/io/Serializer.hpp"
 #include "il/transform/LICM.hpp"
 #include "il/transform/PipelineExecutor.hpp"
@@ -72,10 +73,37 @@ PassManager::PassManager()
     analysisRegistry_.registerFunctionAnalysis<LivenessInfo>(
         "liveness",
         [](core::Module &module, core::Function &fn) { return computeLiveness(module, fn); });
+    // Basic alias analysis for memory disambiguation (available to DSE/LICM etc.)
+    analysisRegistry_.registerFunctionAnalysis<viper::analysis::BasicAA>(
+        "basic-aa",
+        [](core::Module &module, core::Function &fn) { return viper::analysis::BasicAA(module, fn); });
 
     registerLoopSimplifyPass(passRegistry_);
     registerLICMPass(passRegistry_);
     registerSCCPPass(passRegistry_);
+    registerConstFoldPass(passRegistry_);
+    registerPeepholePass(passRegistry_);
+    registerDCEPass(passRegistry_);
+    registerMem2RegPass(passRegistry_);
+    registerDSEPass(passRegistry_);
+    registerEarlyCSEPass(passRegistry_);
+
+    // Pre-register common pipelines
+    registerPipeline("O0", {"simplify-cfg", "dce"});
+    registerPipeline(
+        "O1",
+        {"simplify-cfg", "mem2reg", "simplify-cfg", "sccp", "dce", "simplify-cfg", "licm",
+         "simplify-cfg", "peephole", "dce"});
+    registerPipeline(
+        "O2",
+        {"loop-simplify", "simplify-cfg", "mem2reg", "simplify-cfg", "sccp", "dce", "simplify-cfg",
+         "licm", "simplify-cfg", "earlycse", "dse", "peephole", "dce"});
+    registerConstFoldPass(passRegistry_);
+    registerPeepholePass(passRegistry_);
+    registerDCEPass(passRegistry_);
+    registerMem2RegPass(passRegistry_);
+    registerDSEPass(passRegistry_);
+    registerEarlyCSEPass(passRegistry_);
 }
 
 /// @brief Register the SimplifyCFG transform in the function pass registry.

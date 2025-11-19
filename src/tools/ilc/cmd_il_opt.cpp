@@ -69,6 +69,7 @@ int cmdILOpt(int argc, char **argv)
     bool printBefore = false;
     bool printAfter = false;
     bool verifyEach = false;
+    std::string pipelineName; // O0/O1/O2
     auto trimToken = [](const std::string &token)
     {
         auto begin = token.begin();
@@ -115,6 +116,10 @@ int cmdILOpt(int argc, char **argv)
         {
             noMem2Reg = true;
         }
+        else if (arg == "--pipeline" && i + 1 < argc)
+        {
+            pipelineName = argv[++i];
+        }
         else if (arg == "--mem2reg-stats")
         {
             mem2regStats = true;
@@ -156,43 +161,21 @@ int cmdILOpt(int argc, char **argv)
         pm.setVerifyBetweenPasses(true);
 
     pm.addSimplifyCFG();
-    pm.registerModulePass("constfold",
-                          [](core::Module &mod, transform::AnalysisManager &)
-                          {
-                              transform::constFold(mod);
-                              return transform::PreservedAnalyses::none();
-                          });
-    pm.registerModulePass("peephole",
-                          [](core::Module &mod, transform::AnalysisManager &)
-                          {
-                              transform::peephole(mod);
-                              return transform::PreservedAnalyses::none();
-                          });
-    pm.registerModulePass("dce",
-                          [](core::Module &mod, transform::AnalysisManager &)
-                          {
-                              transform::dce(mod);
-                              return transform::PreservedAnalyses::none();
-                          });
-    pm.registerModulePass("mem2reg",
-                          [mem2regStats](core::Module &mod, transform::AnalysisManager &)
-                          {
-                              viper::passes::Mem2RegStats st;
-                              viper::passes::mem2reg(mod, mem2regStats ? &st : nullptr);
-                              if (mem2regStats)
-                              {
-                                  std::cout << "mem2reg: promoted " << st.promotedVars
-                                            << ", removed loads " << st.removedLoads
-                                            << ", removed stores " << st.removedStores << "\n";
-                              }
-                              return transform::PreservedAnalyses::none();
-                          });
-    pm.addSimplifyCFG();
-    pm.registerPipeline(
-        "default", {"simplify-cfg", "mem2reg", "simplify-cfg", "constfold", "peephole", "dce"});
+    // Pipelines are pre-registered in PassManager; choose pipeline if requested
+    if (!pipelineName.empty())
+    {
+        const auto *pl = pm.getPipeline(pipelineName);
+        if (!pl)
+        {
+            std::cerr << "unknown pipeline '" << pipelineName << "' (use O0/O1/O2)\n";
+            return 1;
+        }
+        passList = *pl;
+        passesExplicit = true;
+    }
     if (!passesExplicit)
     {
-        if (const auto *pipeline = pm.getPipeline("default"))
+        if (const auto *pipeline = pm.getPipeline("O1"))
             passList = *pipeline;
     }
     if (noMem2Reg)

@@ -225,6 +225,19 @@ Apply optimization passes:
 ilc opt program.il -p simplifycfg -o optimized.il
 ```
 
+Preset pipelines via `ilc il-opt`:
+
+```sh
+# O1 (default): mem2reg + SCCP + LICM + peephole + DCE
+ilc il-opt program.il --pipeline O1 -o program.o1.il
+
+# O2: adds loop-simplify + EarlyCSE + DSE for extra cleanup
+ilc il-opt program.il --pipeline O2 -o program.o2.il
+
+# Custom sequence
+ilc il-opt program.il --passes "simplify-cfg,mem2reg,sccp,dce" -o out.il
+```
+
 Available passes: `simplifycfg`, `liveness`, `licm`, `sccp`
 
 ---

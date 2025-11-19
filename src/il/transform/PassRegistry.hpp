@@ -229,4 +229,22 @@ void registerLoopSimplifyPass(PassRegistry &registry);
 /// @param registry PassRegistry to register the pass into.
 void registerSCCPPass(PassRegistry &registry);
 
+/// @brief Register the constant folding pass.
+void registerConstFoldPass(PassRegistry &registry);
+
+/// @brief Register the peephole/inst-combine style pass.
+void registerPeepholePass(PassRegistry &registry);
+
+/// @brief Register the trivial dead-code elimination pass.
+void registerDCEPass(PassRegistry &registry);
+
+/// @brief Register the mem2reg promotion pass.
+void registerMem2RegPass(PassRegistry &registry);
+
+/// @brief Register a simple dead-store elimination pass (placeholder).
+void registerDSEPass(PassRegistry &registry);
+
+/// @brief Register an EarlyCSE/GVN-lite pass (placeholder).
+void registerEarlyCSEPass(PassRegistry &registry);
+
 } // namespace il::transform
