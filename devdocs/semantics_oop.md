@@ -30,3 +30,23 @@ Access control applies at the accessor, not the head, when the accessor has a st
 - In this milestone, interfaces do not support `PROPERTY` blocks or `STATIC` members.
 - Method dispatch through interfaces uses a per-(class,interface) indirection table (itable).
 
+## Destructors and Disposal
+
+### Destructor semantics
+
+- One instance destructor per class; no parameters or return value.
+- Virtual by default: disposing a derived instance invokes the most‑derived destructor body.
+- Chaining order is deterministic: Derived body runs first, then base, continuing up the chain.
+- `STATIC DESTRUCTOR` is allowed once per class and runs at program shutdown.
+- Destructors are not permitted in interfaces.
+
+### Static destructors (shutdown)
+
+- Static destructors run exactly once at program exit in class declaration order within the module.
+
+### DISPOSE
+
+- `DISPOSE expr` performs deterministic cleanup of an object: invokes the derived→base destructor chain and releases storage when the retain count drops to zero.
+- Disposing `NULL` is a no‑op.
+- Double dispose: debug builds mark objects as disposed at destructor entry and trap when a disposed object is disposed again.
+- Recursion guard: disposing `ME` in a destructor body is diagnosed to prevent infinite recursion.

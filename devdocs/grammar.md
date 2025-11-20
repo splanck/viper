@@ -120,6 +120,43 @@ Fully-qualified names (e.g. `A.B.Type`) bypass this search and resolve directly.
     - `FINAL`: disallows further overrides in derived classes.
   - Constructors are declared as `SUB NEW(...)` and cannot carry the above modifiers.
 
+## Destructors and Disposal
+
+### Class destructors
+
+- Instance destructor (no params/return):
+
+  ```basic
+  DESTRUCTOR
+    ' body
+  END DESTRUCTOR
+  ```
+
+- Static destructor (no params):
+
+  ```basic
+  STATIC DESTRUCTOR
+    ' body
+  END DESTRUCTOR
+  ```
+
+Constraints:
+
+- At most one instance destructor per class.
+- At most one static destructor per class.
+- No access modifiers on destructors.
+- Destructors are not allowed in `INTERFACE` declarations.
+
+### DISPOSE statement
+
+- Explicit disposal of an object reference:
+
+  ```basic
+  DISPOSE <expr>
+  ```
+
+`<expr>` must evaluate to an object handle; disposing `NULL` is a no‑op.
+
 - Base‑qualified call:
 
   - `BASE.M(...)` calls the base implementation directly, bypassing virtual dispatch. Parsing treats `BASE` as a special receiver token; lowering substitutes the current instance (`ME`) as the first argument when emitting the direct call.

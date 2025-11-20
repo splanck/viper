@@ -305,6 +305,19 @@ add_executable(test_oop_overloads ${CMAKE_CURRENT_SOURCE_DIR}/unit/oop/TestOverl
 target_link_libraries(test_oop_overloads PRIVATE fe_basic viper_testing)
 viper_add_ctest(test_oop_overloads test_oop_overloads)
 
+# Destructor + dispose tests
+add_executable(test_oop_destructor_dispose ${CMAKE_CURRENT_SOURCE_DIR}/unit/oop/TestDestructorDispose.cpp)
+target_link_libraries(test_oop_destructor_dispose PRIVATE fe_basic viper_testing)
+viper_add_ctest(test_oop_destructor_dispose test_oop_destructor_dispose)
+
+add_executable(test_oop_destructor_chain ${CMAKE_CURRENT_SOURCE_DIR}/unit/oop/TestDestructorChain.cpp)
+target_link_libraries(test_oop_destructor_chain PRIVATE fe_basic viper_testing viper_test_common)
+viper_add_ctest(test_oop_destructor_chain test_oop_destructor_chain)
+
+add_executable(test_oop_dispose ${CMAKE_CURRENT_SOURCE_DIR}/unit/oop/TestDispose.cpp)
+target_link_libraries(test_oop_dispose PRIVATE fe_basic viper_testing viper_test_common)
+viper_add_ctest(test_oop_dispose test_oop_dispose)
+
 add_test(NAME basic_repros
         COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/scripts/run_basic_repros.sh
         $<TARGET_FILE:ilc>)
