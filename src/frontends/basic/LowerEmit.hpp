@@ -140,6 +140,7 @@ void lowerEnd(const EndStmt &stmt);
 void lowerInput(const InputStmt &stmt);
 void lowerDim(const DimStmt &stmt);
 void lowerRandomize(const RandomizeStmt &stmt);
+void lowerTryCatch(const TryCatchStmt &stmt);
 
 // helpers
 IlType ilBoolTy();

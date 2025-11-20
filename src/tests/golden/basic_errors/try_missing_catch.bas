@@ -1,0 +1,3 @@
+TRY
+  PRINT 1
+END TRY

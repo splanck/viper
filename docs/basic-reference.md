@@ -275,6 +275,73 @@ Installs an error handler at a line label.
 110 RESUME 0
 ```
 
+### TRY … CATCH
+
+Structured error handling that scopes a handler to a lexical block.
+
+Syntax:
+
+```
+TRY
+  ' protected statements
+CATCH [errVar]
+  ' handler statements
+END TRY
+```
+
+Behavior:
+- Errors raised in the TRY body transfer to the CATCH block.
+- After the CATCH block finishes, execution continues after `END TRY`.
+- `errVar` (optional) is a local INTEGER (i64) visible only within the CATCH block.
+- Inside CATCH, `ERR()` returns the error code (same meaning as in `ON ERROR` handlers).
+- Nested TRY/CATCH is allowed; handlers stack in last-in–first-out order.
+- Interaction with `ON ERROR GOTO`: a TRY installs a handler on top of any existing handler and pops it at `END TRY` (the outer `ON ERROR` handler remains active).
+
+Examples
+
+Divide by zero is caught and control resumes after the block:
+
+```basic
+10 TRY
+20   LET Z = 0
+25   LET X = 1 / Z
+30   PRINT "nope"
+40 CATCH e
+50   PRINT "caught "; STR$(ERR())
+60 END TRY
+70 PRINT "after"
+```
+
+Output:
+
+```
+caught 0
+after
+```
+
+Nested TRY where the inner handler fires and does not leak outward:
+
+```basic
+10 TRY
+20   TRY
+30     OPEN "missing.txt" FOR INPUT AS #1
+40     PRINT "opened"
+50   CATCH
+60     PRINT "inner"
+70   END TRY
+80   PRINT "outer-body"
+90 CATCH
+100  PRINT "outer"
+110 END TRY
+```
+
+Output:
+
+```
+inner
+outer-body
+```
+
 ### OPEN
 
 Opens a file and assigns it a file number (#).
@@ -647,3 +714,27 @@ The following built-ins are available. Use them in expressions (e.g., `LET X = A
 - `WEND`
 - `WHILE`
 - `WRITE`
+### TRY/CATCH and ON ERROR Interop
+
+TRY/CATCH composes with legacy `ON ERROR GOTO` as a nested handler:
+
+- Precedence: a TRY installs a fresh error handler on top of any active `ON ERROR GOTO` handler.
+- Restoration: when the TRY region finishes without error, the TRY handler is popped and the prior `ON ERROR GOTO` handler remains in effect.
+- Catch resumption: the CATCH body terminates by resuming to the first block after the TRY via a resume token. A `RESUME` inside a CATCH is allowed but typically unnecessary because the compiler emits a `resume.label` to the join point.
+
+Example:
+
+10 ON ERROR GOTO Outer
+20 TRY
+30   ' protected code
+40 CATCH err
+50   ' handle inner error (err is i64 here)
+60 END TRY
+70 ' Outer ON ERROR handler still active
+80 END
+100 Outer:
+110 RESUME NEXT
+
+Semantics:
+- Inner exceptions raised between lines 20–39 are caught by the TRY handler.
+- After `END TRY`, the previously active `ON ERROR GOTO Outer` handler continues to apply.

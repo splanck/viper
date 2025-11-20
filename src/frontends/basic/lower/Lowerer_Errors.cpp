@@ -27,6 +27,15 @@
 namespace il::frontends::basic
 {
 
+// NOTE (TRY/CATCH interop):
+// The label-driven ON ERROR/RESUME lowering manipulates ErrorHandlerState
+// (active/line/index) in the ProcedureContext so later RESUME statements can
+// find the appropriate handler and token. In contrast, TRY/CATCH lowering
+// intentionally uses only eh.push/eh.pop without mutating the active state.
+// This allows a TRY to nest over an existing ON ERROR GOTO handler and ensures
+// that leaving TRY restores the prior handler automatically with a single pop.
+// See Lower_TryCatch.cpp for details.
+
 /// @brief Attach a diagnostic emitter to the lowering pipeline.
 /// @details Stores the supplied @p emitter for later use and wires its reporting
 ///          callbacks into @ref TypeRules so that type-check errors surface

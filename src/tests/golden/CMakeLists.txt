@@ -136,6 +136,25 @@ function(viper_add_golden_suite_tests)
             "-DEXPECT=${EXPECT_BAD_STRING_INTRINSICS}"
             -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
 
+    # TRY/CATCH structural errors
+    file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/try_missing_catch.stderr EXPECT_TRY_MISS)
+    string(STRIP "${EXPECT_TRY_MISS}" EXPECT_TRY_MISS)
+    viper_add_ctest(basic_error_try_missing_catch
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/try_missing_catch.bas
+            "-DEXPECT=${EXPECT_TRY_MISS}"
+            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
+
+    file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/catch_without_try.stderr EXPECT_CATCH_WO_TRY)
+    string(STRIP "${EXPECT_CATCH_WO_TRY}" EXPECT_CATCH_WO_TRY)
+    viper_add_ctest(basic_error_catch_without_try
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/catch_without_try.bas
+            "-DEXPECT=${EXPECT_CATCH_WO_TRY}"
+            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
+
     file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/float_to_int.stderr EXPECT_FLOAT_TO_INT)
     string(STRIP "${EXPECT_FLOAT_TO_INT}" EXPECT_FLOAT_TO_INT)
     viper_add_ctest(basic_error_float_to_int
@@ -659,6 +678,25 @@ function(viper_add_golden_suite_tests)
             -DILC=${BASIC_ILC}
             -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic/namespace_using.bas
             "-DEXPECT=${EXPECT_NS_USING}"
+            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
+
+    # TRY/CATCH golden tests
+    file(READ ${_VIPER_GOLDEN_DIR}/trycatch/try_div_zero.stdout EXPECT_TRY_DIV_ZERO)
+    string(STRIP "${EXPECT_TRY_DIV_ZERO}" EXPECT_TRY_DIV_ZERO)
+    viper_add_ctest(basic_trycatch_div_zero
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/trycatch/try_div_zero.bas
+            "-DEXPECT=${EXPECT_TRY_DIV_ZERO}"
+            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
+
+    file(READ ${_VIPER_GOLDEN_DIR}/trycatch/nested_try_first_catches.stdout EXPECT_TRY_NESTED_INNER)
+    string(STRIP "${EXPECT_TRY_NESTED_INNER}" EXPECT_TRY_NESTED_INNER)
+    viper_add_ctest(basic_trycatch_nested_first_catches
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/trycatch/nested_try_first_catches.bas
+            "-DEXPECT=${EXPECT_TRY_NESTED_INNER}"
             -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
 
     file(READ ${_VIPER_GOLDEN_DIR}/basic/namespace_inheritance.stdout EXPECT_NS_INHERITANCE)

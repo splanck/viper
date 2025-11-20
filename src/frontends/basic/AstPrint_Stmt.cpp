@@ -270,6 +270,19 @@ struct AstPrinter::StmtPrinter final : StmtVisitor
         print_stmt::printSelectCase(stmt, ctx);
     }
 
+    /// @brief Render a TRY/CATCH block with optional catch variable.
+    void visit(const TryCatchStmt &stmt) override
+    {
+        auto &os = ctx.stream();
+        os << "(TRY";
+        ctx.printNumberedBody(stmt.tryBody);
+        os << " CATCH";
+        if (stmt.catchVar && !stmt.catchVar->empty())
+            os << ' ' << *stmt.catchVar;
+        ctx.printNumberedBody(stmt.catchBody);
+        os << ')';
+    }
+
     /// @brief Render a WHILE loop.
     ///
     /// @param stmt While statement with condition and body.

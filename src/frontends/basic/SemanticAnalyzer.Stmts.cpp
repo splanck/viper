@@ -282,6 +282,11 @@ class SemanticAnalyzerStmtVisitor final : public MutStmtVisitor
         analyzer_.analyzeNamespaceDecl(decl);
     }
 
+    void visit(TryCatchStmt &stmt) override
+    {
+        analyzer_.visit(stmt);
+    }
+
     void visit(ClassDecl &decl) override
     {
         analyzer_.analyzeClassDecl(decl);

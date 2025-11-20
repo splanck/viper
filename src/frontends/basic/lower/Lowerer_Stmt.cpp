@@ -234,6 +234,13 @@ class LowererStmtVisitor final : public lower::AstVisitor, public StmtVisitor
         lowerer_.lowerSelectCase(stmt);
     }
 
+    /// @brief Lower a TRY/CATCH statement.
+    /// @details Delegates to Lowerer helper that maps to eh.push/eh.pop and a handler with resume.label.
+    void visit(const TryCatchStmt &stmt) override
+    {
+        lowerer_.lowerTryCatch(stmt);
+    }
+
     /// @brief Lower a WHILE loop.
     /// @details Delegates to @ref Lowerer::lowerWhile which wires up loop entry
     ///          and exit blocks.

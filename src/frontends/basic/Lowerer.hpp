@@ -557,6 +557,7 @@ class Lowerer
     void lowerDim(const DimStmt &stmt);
     void lowerReDim(const ReDimStmt &stmt);
     void lowerRandomize(const RandomizeStmt &stmt);
+    void lowerTryCatch(const TryCatchStmt &stmt);
     void lowerSwap(const SwapStmt &stmt);
     void visit(const BeepStmt &stmt);
     void visit(const ClsStmt &stmt);

@@ -593,6 +593,20 @@ void SelectCaseStmt::accept(MutStmtVisitor &visitor)
     visitor.visit(*this);
 }
 
+/// @brief Forwards this TRY/CATCH statement node to the visitor for double dispatch.
+/// @param visitor Receives the node; ownership remains with the AST.
+void TryCatchStmt::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+/// @brief Dispatch this TRY/CATCH statement node to a mutable visitor.
+/// @param visitor Receives the node and may mutate bodies or catch variable.
+void TryCatchStmt::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
 /// @brief Forwards this while loop node to the visitor for double dispatch.
 /// @param visitor Receives the node; ownership remains with the AST.
 void WhileStmt::accept(StmtVisitor &visitor) const

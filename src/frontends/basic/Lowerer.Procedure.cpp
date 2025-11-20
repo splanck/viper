@@ -201,6 +201,17 @@ class VarCollectWalker final : public BasicAstWalker<VarCollectWalker>
         lowerer_.markArray(stmt.name);
     }
 
+    /// @brief Track optional catch variable introduced by TRY/CATCH.
+    /// @details Ensures a storage slot exists for the catch variable when present.
+    /// @param stmt TRY/CATCH statement introducing an optional catch variable.
+    void before(const TryCatchStmt &stmt)
+    {
+        if (stmt.catchVar && !stmt.catchVar->empty())
+        {
+            lowerer_.markSymbolReferenced(*stmt.catchVar);
+        }
+    }
+
     /// @brief Record loop induction variables referenced by FOR statements.
     /// @param stmt FOR statement whose control variable is examined.
     void before(const ForStmt &stmt)

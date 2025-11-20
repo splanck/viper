@@ -213,6 +213,9 @@ class Parser
     StmtPtr parseClassDecl();
     StmtPtr parseTypeDecl();
     StmtPtr parseDeleteStatement();
+    /// @brief Parse a TRY/CATCH statement.
+    /// @return Newly constructed TryCatchStmt or nullptr on error.
+    StmtPtr parseTryCatchStatement();
 
 #include "frontends/basic/Parser_Token.hpp"
 

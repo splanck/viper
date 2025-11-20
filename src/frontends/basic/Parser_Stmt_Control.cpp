@@ -29,6 +29,7 @@
 ///          uncluttered.
 
 #include "frontends/basic/Parser.hpp"
+#include "frontends/basic/IdentifierUtil.hpp"
 #include "frontends/basic/Parser_Stmt_ControlHelpers.hpp"
 
 namespace il::frontends::basic
@@ -57,6 +58,90 @@ void Parser::registerControlFlowParsers(StatementParserRegistry &registry)
     registry.registerHandler(TokenKind::KeywordGoto, &Parser::parseGotoStatement);
     registry.registerHandler(TokenKind::KeywordGosub, &Parser::parseGosubStatement);
     registry.registerHandler(TokenKind::KeywordReturn, &Parser::parseReturnStatement);
+    registry.registerHandler(TokenKind::KeywordTry, &Parser::parseTryCatchStatement);
+}
+
+/// @brief Parse a TRY/CATCH statement with an optional catch variable.
+///
+/// TRY
+///   ...
+/// CATCH [ident]
+///   ...
+/// END TRY
+StmtPtr Parser::parseTryCatchStatement()
+{
+    auto locTry = peek().loc;
+    consume(); // TRY
+
+    auto node = std::make_unique<TryCatchStmt>();
+    node->loc = locTry;
+    node->header.begin = locTry;
+
+    // Collect TRY body until CATCH or END TRY
+    auto ctx = statementSequencer();
+    enum class Term { None, Catch, EndTry } term = Term::None;
+    auto termInfo = ctx.collectStatements(
+        [&](int, il::support::SourceLoc) {
+            if (at(TokenKind::KeywordCatch))
+                return true;
+            if (at(TokenKind::KeywordEnd) && peek(1).kind == TokenKind::KeywordTry)
+                return true;
+            return false;
+        },
+        [&](int, il::support::SourceLoc, StatementSequencer::TerminatorInfo &) {
+            if (at(TokenKind::KeywordCatch))
+            {
+                term = Term::Catch;
+                node->header.end = peek().loc;
+                consume(); // CATCH
+            }
+            else if (at(TokenKind::KeywordEnd) && peek(1).kind == TokenKind::KeywordTry)
+            {
+                term = Term::EndTry;
+                node->header.end = peek().loc;
+                consume(); // END
+                consume(); // TRY
+            }
+        },
+        node->tryBody);
+
+    // Must have a CATCH
+    if (term != Term::Catch)
+    {
+        emitError("B3201", termInfo.loc, "missing CATCH for TRY block");
+        // We saw END TRY or EOF — return the node with just TRY body to keep progress.
+        return node;
+    }
+
+    // Optional catch variable
+    if (at(TokenKind::Identifier))
+    {
+        node->catchVar = CanonicalizeIdent(peek().lexeme);
+        consume();
+    }
+
+    // Optional line breaks before CATCH body
+    ctx.skipLineBreaks();
+
+    // Collect CATCH body until END TRY
+    bool sawEndTry = false;
+    ctx.collectStatements(
+        [&](int, il::support::SourceLoc) {
+            return at(TokenKind::KeywordEnd) && peek(1).kind == TokenKind::KeywordTry;
+        },
+        [&](int, il::support::SourceLoc, StatementSequencer::TerminatorInfo &) {
+            sawEndTry = true;
+            consume(); // END
+            consume(); // TRY
+        },
+        node->catchBody);
+
+    if (!sawEndTry)
+    {
+        emitError("B3202", locTry, "missing END TRY to terminate TRY/CATCH");
+    }
+
+    return node;
 }
 
 } // namespace il::frontends::basic

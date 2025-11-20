@@ -137,6 +137,30 @@ struct SelectCaseStmt : Stmt
     void accept(MutStmtVisitor &visitor) override;
 };
 
+/// @brief TRY/CATCH statement with optional catch variable.
+struct TryCatchStmt : Stmt
+{
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
+    {
+        return Kind::TryCatch;
+    }
+
+    /// @brief Statements executed under the TRY region.
+    std::vector<StmtPtr> tryBody;
+
+    /// @brief Optional catch variable name (binds error code as i64 when present).
+    std::optional<std::string> catchVar;
+
+    /// @brief Statements executed when an error is caught.
+    std::vector<StmtPtr> catchBody;
+
+    /// @brief Source range covering the TRY…CATCH header for diagnostics.
+    il::support::SourceRange header{};
+
+    void accept(StmtVisitor &visitor) const override;
+    void accept(MutStmtVisitor &visitor) override;
+};
+
 /// @brief WHILE ... WEND loop statement.
 struct WhileStmt : Stmt
 {

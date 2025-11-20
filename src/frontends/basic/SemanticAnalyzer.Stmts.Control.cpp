@@ -126,6 +126,77 @@ bool SemanticAnalyzer::validateSelectCaseNumericArm(const CaseArm &arm, SelectCa
     return sem::detail::validateSelectCaseNumericArm(arm, ctx);
 }
 
+/// @brief Perform semantic analysis for a TRY/CATCH statement.
+///
+/// - Analyzes the TRY body in the current scope (no new scope).
+/// - Begins a new local scope for the CATCH body.
+/// - If a catch variable is present, declares it as a local of INTEGER (i64) type
+///   scoped to the CATCH body. Initialization occurs during lowering.
+/// - Issues a warning if both TRY and CATCH bodies are empty.
+/// - Duplicate declaration of the catch variable within the same (catch) scope
+///   is forbidden and reported consistently with local duplication rules.
+void SemanticAnalyzer::visit(const TryCatchStmt &stmt)
+{
+    // Analyze TRY body under the existing scope.
+    for (const auto &st : stmt.tryBody)
+        if (st)
+            visitStmt(*st);
+
+    // Warn on no-op TRY/CATCH if both bodies are empty (policy: allow with warning).
+    if (stmt.tryBody.empty() && stmt.catchBody.empty())
+    {
+        de.emit(il::support::Severity::Warning,
+                "B3203",
+                stmt.header.begin,
+                1,
+                std::string{"empty TRY and CATCH bodies"});
+    }
+
+    // Begin a new scope for the CATCH body; the optional catch variable is local to it.
+    ScopeTracker::ScopedScope catchScope(scopes_);
+
+    if (stmt.catchVar && !stmt.catchVar->empty())
+    {
+        const std::string &name = *stmt.catchVar;
+
+        // Forbid duplicate declaration in the same (catch) scope.
+        if (scopes_.isDeclaredInCurrentScope(name))
+        {
+            std::string msg = "duplicate local '" + name + "'";
+            de.emit(il::support::Severity::Error,
+                    "B1006",
+                    stmt.header.end.isValid() ? stmt.header.end : stmt.header.begin,
+                    static_cast<uint32_t>(name.size()),
+                    std::move(msg));
+        }
+        else
+        {
+            // Declare a local binding for the catch variable in this scope.
+            std::string unique = scopes_.declareLocal(name);
+
+            // Track symbol and force INTEGER (i64) type; initialized during lowering.
+            auto insertResult = symbols_.insert(unique);
+            if (insertResult.second && activeProcScope_)
+                activeProcScope_->noteSymbolInserted(unique);
+
+            auto itType = varTypes_.find(unique);
+            if (activeProcScope_)
+            {
+                std::optional<Type> previous;
+                if (itType != varTypes_.end())
+                    previous = itType->second;
+                activeProcScope_->noteVarTypeMutation(unique, previous);
+            }
+            varTypes_[unique] = Type::Int; // INTEGER (i64)
+        }
+    }
+
+    // Analyze CATCH body within the new scope.
+    for (const auto &st : stmt.catchBody)
+        if (st)
+            visitStmt(*st);
+}
+
 /// @brief Perform semantic checks for WHILE loops.
 ///
 /// @param stmt WHILE statement to analyse.

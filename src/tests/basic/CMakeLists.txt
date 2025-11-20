@@ -193,6 +193,11 @@ function(viper_add_basic_main_tests)
             test_frontends_basic_parse_select_case_positive
             test_frontends_basic_parse_select_case_positive)
 
+    # TRY/CATCH parser unit tests
+    viper_add_test(test_basic_parse_try_catch ${_VIPER_BASIC_UNIT_DIR}/test_basic_parse_try_catch.cpp)
+    target_link_libraries(test_basic_parse_try_catch PRIVATE ${VIPER_BASIC_LIBS})
+    viper_add_ctest(test_basic_parse_try_catch test_basic_parse_try_catch)
+
     viper_add_test(
             test_frontends_basic_subroutines_gosub_inline_case
             ${VIPER_TESTS_DIR}/frontends/basic/SubroutinesGosubInlineCaseTests.cpp)

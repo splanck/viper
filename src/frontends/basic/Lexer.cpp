@@ -36,7 +36,7 @@ struct KeywordEntry
     TokenKind kind;
 };
 
-constexpr std::array<KeywordEntry, 95> kKeywordTable{{
+constexpr std::array<KeywordEntry, 97> kKeywordTable{{
     {"ABS", TokenKind::KeywordAbs},
     {"ABSTRACT", TokenKind::KeywordAbstract},
     {"ADDFILE", TokenKind::KeywordAddfile},
@@ -50,6 +50,7 @@ constexpr std::array<KeywordEntry, 95> kKeywordTable{{
     {"BINARY", TokenKind::KeywordBinary},
     {"BOOLEAN", TokenKind::KeywordBoolean},
     {"CASE", TokenKind::KeywordCase},
+    {"CATCH", TokenKind::KeywordCatch},
     {"CEIL", TokenKind::KeywordCeil},
     {"CLASS", TokenKind::KeywordClass},
     {"CLOSE", TokenKind::KeywordClose},
@@ -125,6 +126,7 @@ constexpr std::array<KeywordEntry, 95> kKeywordTable{{
     {"THEN", TokenKind::KeywordThen},
     {"TO", TokenKind::KeywordTo},
     {"TRUE", TokenKind::KeywordTrue},
+    {"TRY", TokenKind::KeywordTry},
     {"TYPE", TokenKind::KeywordType},
     {"UBOUND", TokenKind::KeywordUbound},
     {"UNTIL", TokenKind::KeywordUntil},

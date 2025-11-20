@@ -57,6 +57,7 @@ struct SwapStmt;
 struct RandomizeStmt;
 struct IfStmt;
 struct SelectCaseStmt;
+struct TryCatchStmt;
 struct WhileStmt;
 struct DoStmt;
 struct ForStmt;
