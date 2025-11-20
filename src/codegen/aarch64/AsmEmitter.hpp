@@ -12,9 +12,9 @@
 #include <ostream>
 #include <string>
 
-#include "codegen/aarch64/TargetAArch64.hpp"
-#include "codegen/aarch64/MachineIR.hpp"
 #include "codegen/aarch64/FramePlan.hpp"
+#include "codegen/aarch64/MachineIR.hpp"
+#include "codegen/aarch64/TargetAArch64.hpp"
 
 namespace viper::codegen::aarch64
 {
@@ -76,7 +76,11 @@ class AsmEmitter
 
   private:
     const TargetInfo *target_{nullptr};
-    [[nodiscard]] static const char *rn(PhysReg r) noexcept { return regName(r); }
+
+    [[nodiscard]] static const char *rn(PhysReg r) noexcept
+    {
+        return regName(r);
+    }
 };
 
 } // namespace viper::codegen::aarch64

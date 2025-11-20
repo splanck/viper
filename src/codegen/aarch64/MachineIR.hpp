@@ -43,24 +43,57 @@ enum class MOpcode
     AsrRI,
     CmpRR,
     CmpRI,
-    Cset, // dst, cond(code)
-    Br,      // b label
-    BCond,   // b.<cond> label
-    Bl,      // bl <label> (call)
+    Cset,  // dst, cond(code)
+    Br,    // b label
+    BCond, // b.<cond> label
+    Bl,    // bl <label> (call)
 };
 
 struct MOperand
 {
-    enum class Kind { Reg, Imm, Cond, Label } kind{Kind::Imm};
+    enum class Kind
+    {
+        Reg,
+        Imm,
+        Cond,
+        Label
+    } kind{Kind::Imm};
     PhysReg reg{PhysReg::X0};
     long long imm{0};
     const char *cond{nullptr};
     std::string label;
 
-    static MOperand regOp(PhysReg r) { MOperand o{}; o.kind = Kind::Reg; o.reg = r; return o; }
-    static MOperand immOp(long long v) { MOperand o{}; o.kind = Kind::Imm; o.imm = v; return o; }
-    static MOperand condOp(const char *c) { MOperand o{}; o.kind = Kind::Cond; o.cond = c; return o; }
-    static MOperand labelOp(std::string name) { MOperand o{}; o.kind = Kind::Label; o.label = std::move(name); return o; }
+    static MOperand regOp(PhysReg r)
+    {
+        MOperand o{};
+        o.kind = Kind::Reg;
+        o.reg = r;
+        return o;
+    }
+
+    static MOperand immOp(long long v)
+    {
+        MOperand o{};
+        o.kind = Kind::Imm;
+        o.imm = v;
+        return o;
+    }
+
+    static MOperand condOp(const char *c)
+    {
+        MOperand o{};
+        o.kind = Kind::Cond;
+        o.cond = c;
+        return o;
+    }
+
+    static MOperand labelOp(std::string name)
+    {
+        MOperand o{};
+        o.kind = Kind::Label;
+        o.label = std::move(name);
+        return o;
+    }
 };
 
 struct MInstr

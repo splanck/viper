@@ -52,4 +52,3 @@ struct BuiltinExternalType
 void seedRuntimeTypeCatalog(NamespaceRegistry &registry);
 
 } // namespace il::frontends::basic
-

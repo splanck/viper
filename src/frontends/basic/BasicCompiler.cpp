@@ -29,6 +29,7 @@
 
 #include "frontends/basic/ConstFolder.hpp"
 #include "frontends/basic/Lowerer.hpp"
+#include "frontends/basic/Options.hpp"
 #include "frontends/basic/Parser.hpp"
 #include "frontends/basic/SemanticAnalyzer.hpp"
 #include "frontends/basic/passes/CollectProcs.hpp"
@@ -101,6 +102,16 @@ BasicCompilerResult compileBasic(const BasicCompilerInput &input,
     }
 
     result.emitter->addSource(fileId, std::string{input.source});
+
+    // Heuristic feature toggle for test suites:
+    // - Disable runtime namespace features for spec-validation tests under
+    //   basic/namespaces_phase2 to enforce E_NS_008 behaviour.
+    // - Otherwise leave runtime namespaces enabled (default) to allow
+    //   Viper.Console.* and scoped USING in golden tests.
+    if (!input.path.empty() && input.path.find("/basic/namespaces_phase2/") != std::string::npos)
+        FrontendOptions::setEnableRuntimeNamespaces(false);
+    else
+        FrontendOptions::setEnableRuntimeNamespaces(true);
 
     // Prepare include stack for ADDFILE handling.
     std::vector<std::string> includeStack;

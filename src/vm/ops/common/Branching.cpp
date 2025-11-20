@@ -173,7 +173,9 @@ void jump(Frame &frame, Target target)
     {
         const il::core::Instr *instr = target.instr;
         const std::string fnName = frame.func ? frame.func->name : std::string();
-        const std::string blk = (target.currentBlock && *target.currentBlock) ? (*target.currentBlock)->label : std::string();
+        const std::string blk = (target.currentBlock && *target.currentBlock)
+                                    ? (*target.currentBlock)->label
+                                    : std::string();
         std::string msg = std::string("branch jump exception: ") + ex.what();
         il::vm::RuntimeBridge::trap(TrapKind::InvalidOperation,
                                     msg,

@@ -28,4 +28,3 @@ std::optional<Type> mapIlToBasic(const il::core::Type &ilType)
 }
 
 } // namespace il::frontends::basic::types
-

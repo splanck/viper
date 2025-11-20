@@ -15,15 +15,15 @@
 #include "il/transform/PassRegistry.hpp"
 
 #include "il/transform/AnalysisManager.hpp"
-#include "il/transform/LICM.hpp"
-#include "il/transform/LoopSimplify.hpp"
-#include "il/transform/SCCP.hpp"
 #include "il/transform/ConstFold.hpp"
-#include "il/transform/Peephole.hpp"
 #include "il/transform/DCE.hpp"
-#include "il/transform/Mem2Reg.hpp"
 #include "il/transform/DSE.hpp"
 #include "il/transform/EarlyCSE.hpp"
+#include "il/transform/LICM.hpp"
+#include "il/transform/LoopSimplify.hpp"
+#include "il/transform/Mem2Reg.hpp"
+#include "il/transform/Peephole.hpp"
+#include "il/transform/SCCP.hpp"
 
 #include <utility>
 
@@ -419,17 +419,16 @@ void registerDSEPass(PassRegistry &registry)
 
 void registerEarlyCSEPass(PassRegistry &registry)
 {
-    registry.registerFunctionPass(
-        "earlycse",
-        [](core::Function &fn, AnalysisManager &)
-        {
-            bool changed = runEarlyCSE(fn);
-            if (!changed)
-                return PreservedAnalyses::all();
-            PreservedAnalyses p;
-            p.preserveAllModules();
-            return p;
-        });
+    registry.registerFunctionPass("earlycse",
+                                  [](core::Function &fn, AnalysisManager &)
+                                  {
+                                      bool changed = runEarlyCSE(fn);
+                                      if (!changed)
+                                          return PreservedAnalyses::all();
+                                      PreservedAnalyses p;
+                                      p.preserveAllModules();
+                                      return p;
+                                  });
 }
 
 } // namespace il::transform

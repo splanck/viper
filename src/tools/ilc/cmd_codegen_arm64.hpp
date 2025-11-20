@@ -11,4 +11,3 @@ namespace viper::tools::ilc
 int cmd_codegen_arm64(int argc, char **argv);
 
 } // namespace viper::tools::ilc
-

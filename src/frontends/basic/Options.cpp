@@ -14,7 +14,7 @@
 namespace il::frontends::basic
 {
 
-static bool g_enableRuntimeNamespaces = true; // default ON
+static bool g_enableRuntimeNamespaces = true;   // default ON
 static bool g_enableRuntimeTypeBridging = true; // default ON for iteration
 
 bool FrontendOptions::enableRuntimeNamespaces()

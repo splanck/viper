@@ -5,14 +5,14 @@
 #pragma once
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
-// Allocate an opaque object instance for Viper.System.Text.StringBuilder.
-// Returns a pointer managed by the runtime object heap (refcounted).
-void *rt_ns_stringbuilder_new(void);
+    // Allocate an opaque object instance for Viper.System.Text.StringBuilder.
+    // Returns a pointer managed by the runtime object heap (refcounted).
+    void *rt_ns_stringbuilder_new(void);
 
 #ifdef __cplusplus
 }
 #endif
-

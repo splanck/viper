@@ -104,7 +104,6 @@ Cross-layer includes require ADR. Never modify `/docs/il-guide.md#reference` wit
 
 - `/docs/il-guide.md#reference` — IL spec
 - `.github/workflows/*` — No CI workflow creation/modification during viper phase
-- License headers and metadata — Leave unchanged
 
 ---
 

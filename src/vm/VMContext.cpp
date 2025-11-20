@@ -110,7 +110,8 @@ Slot VMContext::eval(Frame &fr, const il::core::Value &value) const
         const auto loc = vmInstance->currentContext.loc;
 
         // Build a compact message without iostream overhead.
-        std::string message = detail::formatRegisterRangeError(v.id, fr.regs.size(), fnName, blockLabel);
+        std::string message =
+            detail::formatRegisterRangeError(v.id, fr.regs.size(), fnName, blockLabel);
         if (loc.hasLine())
         {
             message.reserve(message.size() + 24);

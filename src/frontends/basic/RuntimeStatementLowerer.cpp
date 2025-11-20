@@ -18,9 +18,9 @@
 #include "RuntimeStatementLowerer.hpp"
 #include "Lowerer.hpp"
 #include "frontends/basic/ASTUtils.hpp"
+#include "frontends/basic/ILTypeUtils.hpp"
 #include "frontends/basic/LocationScope.hpp"
 #include "frontends/basic/NameMangler_OOP.hpp"
-#include "frontends/basic/ILTypeUtils.hpp"
 #include "frontends/basic/sem/OverloadResolution.hpp"
 
 #include <cassert>
@@ -43,7 +43,10 @@ RuntimeStatementLowerer::RuntimeStatementLowerer(Lowerer &lowerer) : lowerer_(lo
 void RuntimeStatementLowerer::visit(const BeepStmt &s)
 {
     LocationScope loc(lowerer_, s.loc);
-    lowerer_.emitRuntimeHelper(il::runtime::RuntimeFeature::TermBell, "rt_bell", il::core::Type(il::core::Type::Kind::Void), {});
+    lowerer_.emitRuntimeHelper(il::runtime::RuntimeFeature::TermBell,
+                               "rt_bell",
+                               il::core::Type(il::core::Type::Kind::Void),
+                               {});
 }
 
 /// @brief Lower the BASIC @c CLS statement to a runtime helper call.
@@ -56,8 +59,10 @@ void RuntimeStatementLowerer::visit(const BeepStmt &s)
 void RuntimeStatementLowerer::visit(const ClsStmt &s)
 {
     LocationScope loc(lowerer_, s.loc);
-    lowerer_.emitRuntimeHelper(
-        il::runtime::RuntimeFeature::TermCls, "rt_term_cls", il::core::Type(il::core::Type::Kind::Void), {});
+    lowerer_.emitRuntimeHelper(il::runtime::RuntimeFeature::TermCls,
+                               "rt_term_cls",
+                               il::core::Type(il::core::Type::Kind::Void),
+                               {});
 }
 
 /// @brief Lower the BASIC @c COLOR statement to the runtime helper.
@@ -81,9 +86,9 @@ void RuntimeStatementLowerer::visit(const ColorStmt &s)
     Value fg32 = lowerer_.narrow32(fg.value, s.loc);
     Value bg32 = lowerer_.narrow32(bgv, s.loc);
     lowerer_.emitRuntimeHelper(il::runtime::RuntimeFeature::TermColor,
-                      "rt_term_color_i32",
-                      il::core::Type(il::core::Type::Kind::Void),
-                      {fg32, bg32});
+                               "rt_term_color_i32",
+                               il::core::Type(il::core::Type::Kind::Void),
+                               {fg32, bg32});
 }
 
 /// @brief Lower the BASIC @c LOCATE statement that positions the cursor.
@@ -107,9 +112,9 @@ void RuntimeStatementLowerer::visit(const LocateStmt &s)
     Value row32 = lowerer_.narrow32(row.value, s.loc);
     Value col32 = lowerer_.narrow32(colv, s.loc);
     lowerer_.emitRuntimeHelper(il::runtime::RuntimeFeature::TermLocate,
-                      "rt_term_locate_i32",
-                      il::core::Type(il::core::Type::Kind::Void),
-                      {row32, col32});
+                               "rt_term_locate_i32",
+                               il::core::Type(il::core::Type::Kind::Void),
+                               {row32, col32});
 }
 
 /// @brief Lower the BASIC @c CURSOR statement to control cursor visibility.
@@ -125,9 +130,9 @@ void RuntimeStatementLowerer::visit(const CursorStmt &s)
     Value show = Value::constInt(s.visible ? 1 : 0);
     Value show32 = lowerer_.narrow32(show, s.loc);
     lowerer_.emitRuntimeHelper(il::runtime::RuntimeFeature::TermCursor,
-                      "rt_term_cursor_visible_i32",
-                      il::core::Type(il::core::Type::Kind::Void),
-                      {show32});
+                               "rt_term_cursor_visible_i32",
+                               il::core::Type(il::core::Type::Kind::Void),
+                               {show32});
 }
 
 /// @brief Lower the BASIC @c ALTSCREEN statement to control alternate screen buffer.
@@ -143,9 +148,9 @@ void RuntimeStatementLowerer::visit(const AltScreenStmt &s)
     Value enable = Value::constInt(s.enable ? 1 : 0);
     Value enable32 = lowerer_.narrow32(enable, s.loc);
     lowerer_.emitRuntimeHelper(il::runtime::RuntimeFeature::TermAltScreen,
-                      "rt_term_alt_screen_i32",
-                      il::core::Type(il::core::Type::Kind::Void),
-                      {enable32});
+                               "rt_term_alt_screen_i32",
+                               il::core::Type(il::core::Type::Kind::Void),
+                               {enable32});
 }
 
 /// @brief Lower the BASIC SLEEP statement to the runtime helper.
@@ -177,9 +182,9 @@ void RuntimeStatementLowerer::visit(const SleepStmt &s)
 /// @param value    Lowered right-hand side value paired with its type.
 /// @param loc      Source location for diagnostics and helper calls.
 void RuntimeStatementLowerer::assignScalarSlot(const Lowerer::SlotType &slotInfo,
-                               Lowerer::Value slot,
-                               Lowerer::RVal value,
-                               il::support::SourceLoc loc)
+                                               Lowerer::Value slot,
+                                               Lowerer::RVal value,
+                                               il::support::SourceLoc loc)
 {
     LocationScope location(lowerer_, loc);
     il::core::Type targetTy = slotInfo.type;
@@ -221,7 +226,8 @@ void RuntimeStatementLowerer::assignScalarSlot(const Lowerer::SlotType &slotInfo
         lowerer_.requestHelper(RuntimeFeature::ObjRetainMaybe);
 
         Value oldValue = lowerer_.emitLoad(il::core::Type(il::core::Type::Kind::Ptr), slot);
-        Value shouldDestroy = lowerer_.emitCallRet(lowerer_.ilBoolTy(), "rt_obj_release_check0", {oldValue});
+        Value shouldDestroy =
+            lowerer_.emitCallRet(lowerer_.ilBoolTy(), "rt_obj_release_check0", {oldValue});
 
         ProcedureContext &ctx = lowerer_.context();
         Function *func = ctx.function();
@@ -231,10 +237,10 @@ void RuntimeStatementLowerer::assignScalarSlot(const Lowerer::SlotType &slotInfo
             std::size_t originIdx = static_cast<std::size_t>(origin - &func->blocks[0]);
             BlockNamer *blockNamer = ctx.blockNames().namer();
             std::string base = "obj_assign";
-            std::string destroyLbl =
-                blockNamer ? blockNamer->generic(base + "_dtor") : lowerer_.mangler.block(base + "_dtor");
-            std::string contLbl =
-                blockNamer ? blockNamer->generic(base + "_cont") : lowerer_.mangler.block(base + "_cont");
+            std::string destroyLbl = blockNamer ? blockNamer->generic(base + "_dtor")
+                                                : lowerer_.mangler.block(base + "_dtor");
+            std::string contLbl = blockNamer ? blockNamer->generic(base + "_cont")
+                                             : lowerer_.mangler.block(base + "_cont");
 
             std::size_t destroyIdx = func->blocks.size();
             lowerer_.builder->addBlock(*func, destroyLbl);
@@ -290,11 +296,14 @@ void RuntimeStatementLowerer::assignScalarSlot(const Lowerer::SlotType &slotInfo
 /// @param target Array expression describing the destination element.
 /// @param value  Lowered right-hand side value being assigned.
 /// @param loc    Source location for diagnostics and helper invocations.
-void RuntimeStatementLowerer::assignArrayElement(const ArrayExpr &target, Lowerer::RVal value, il::support::SourceLoc loc)
+void RuntimeStatementLowerer::assignArrayElement(const ArrayExpr &target,
+                                                 Lowerer::RVal value,
+                                                 il::support::SourceLoc loc)
 {
     LocationScope location(lowerer_, loc);
 
-    Lowerer::ArrayAccess access = lowerer_.lowerArrayAccess(target, Lowerer::ArrayAccessKind::Store);
+    Lowerer::ArrayAccess access =
+        lowerer_.lowerArrayAccess(target, Lowerer::ArrayAccessKind::Store);
 
     // Determine array element type and use appropriate runtime function
     const auto *info = lowerer_.findSymbol(target.name);
@@ -343,17 +352,21 @@ void RuntimeStatementLowerer::assignArrayElement(const ArrayExpr &target, Lowere
             if (selfInfo && selfInfo->slotId)
             {
                 lowerer_.curLoc = loc;
-                Value selfPtr = lowerer_.emitLoad(il::core::Type(il::core::Type::Kind::Ptr), Value::temp(*selfInfo->slotId));
+                Value selfPtr = lowerer_.emitLoad(il::core::Type(il::core::Type::Kind::Ptr),
+                                                  Value::temp(*selfInfo->slotId));
                 lowerer_.curLoc = loc;
                 // Look up offset again for the named field
                 long long offset = 0;
                 if (const Lowerer::ClassLayout::Field *f2 = scope->layout->findField(target.name))
                     offset = static_cast<long long>(f2->offset);
-                Value fieldPtr = lowerer_.emitBinary(
-                    Opcode::GEP, il::core::Type(il::core::Type::Kind::Ptr), selfPtr, Value::constInt(offset));
+                Value fieldPtr = lowerer_.emitBinary(Opcode::GEP,
+                                                     il::core::Type(il::core::Type::Kind::Ptr),
+                                                     selfPtr,
+                                                     Value::constInt(offset));
                 lowerer_.curLoc = loc;
                 // Load the array handle from the field into access.base
-                access.base = lowerer_.emitLoad(il::core::Type(il::core::Type::Kind::Ptr), fieldPtr);
+                access.base =
+                    lowerer_.emitLoad(il::core::Type(il::core::Type::Kind::Ptr), fieldPtr);
             }
         }
     }
@@ -361,8 +374,7 @@ void RuntimeStatementLowerer::assignArrayElement(const ArrayExpr &target, Lowere
     // Prefer RHS-driven dispatch to avoid relying on fragile symbol/type
     // resolution across scopes: a string RHS must use string array helpers,
     // an object (ptr) RHS must use object array helpers; otherwise numeric.
-    if (value.type.kind == il::core::Type::Kind::Str ||
-        (info && info->type == AstType::Str) ||
+    if (value.type.kind == il::core::Type::Kind::Str || (info && info->type == AstType::Str) ||
         (isMemberArray && memberElemAstType == ::il::frontends::basic::Type::Str) ||
         (isImplicitFieldArray && memberElemAstType == ::il::frontends::basic::Type::Str))
     {
@@ -373,7 +385,8 @@ void RuntimeStatementLowerer::assignArrayElement(const ArrayExpr &target, Lowere
         lowerer_.emitStore(il::core::Type(il::core::Type::Kind::Str), tmp, value.value);
         lowerer_.emitCall("rt_arr_str_put", {access.base, access.index, tmp});
     }
-    else if (value.type.kind == il::core::Type::Kind::Ptr || (!isMemberArray && info && info->isObject) || isMemberObjectArray)
+    else if (value.type.kind == il::core::Type::Kind::Ptr ||
+             (!isMemberArray && info && info->isObject) || isMemberObjectArray)
     {
         // BUG-089 fix: Object array (including member object arrays): rt_arr_obj_put(arr, idx, ptr)
         lowerer_.requireArrayObjPut();
@@ -427,9 +440,9 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt)
         if (slotInfo.isArray)
         {
             lowerer_.storeArray(storage->pointer,
-                       value.value,
-                       /*elementType*/ AstType::I64,
-                       /*isObjectArray*/ slotInfo.isObject);
+                                value.value,
+                                /*elementType*/ AstType::I64,
+                                /*isObjectArray*/ slotInfo.isObject);
         }
         else
         {
@@ -454,21 +467,24 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt)
                 if (baseSym && baseSym->slotId)
                 {
                     lowerer_.curLoc = stmt.loc;
-                    Value selfPtr = lowerer_.emitLoad(il::core::Type(il::core::Type::Kind::Ptr), Value::temp(*baseSym->slotId));
-            std::string klass = lowerer_.getSlotType(baseName).objectClass;
-            if (const Lowerer::ClassLayout *layout = lowerer_.findClassLayout(klass))
-            {
-                if (const Lowerer::ClassLayout::Field *fld = layout->findField(mc->method))
-                {
-                    lowerer_.curLoc = stmt.loc;
-                    Value fieldPtr =
-                        lowerer_.emitBinary(Opcode::GEP,
-                                   il::core::Type(il::core::Type::Kind::Ptr),
-                                   selfPtr,
-                                   Value::constInt(static_cast<long long>(fld->offset)));
-                    Value arrHandle = lowerer_.emitLoad(il::core::Type(il::core::Type::Kind::Ptr), fieldPtr);
+                    Value selfPtr = lowerer_.emitLoad(il::core::Type(il::core::Type::Kind::Ptr),
+                                                      Value::temp(*baseSym->slotId));
+                    std::string klass = lowerer_.getSlotType(baseName).objectClass;
+                    if (const Lowerer::ClassLayout *layout = lowerer_.findClassLayout(klass))
+                    {
+                        if (const Lowerer::ClassLayout::Field *fld = layout->findField(mc->method))
+                        {
+                            lowerer_.curLoc = stmt.loc;
+                            Value fieldPtr = lowerer_.emitBinary(
+                                Opcode::GEP,
+                                il::core::Type(il::core::Type::Kind::Ptr),
+                                selfPtr,
+                                Value::constInt(static_cast<long long>(fld->offset)));
+                            Value arrHandle = lowerer_.emitLoad(
+                                il::core::Type(il::core::Type::Kind::Ptr), fieldPtr);
 
-                            // BUG-094 fix: Lower all indices and compute flattened index for multi-dimensional arrays
+                            // BUG-094 fix: Lower all indices and compute flattened index for
+                            // multi-dimensional arrays
                             std::vector<Value> indices;
                             indices.reserve(mc->args.size());
                             for (const auto &arg : mc->args)
@@ -490,9 +506,10 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt)
                                          fld->arrayExtents.size() == indices.size())
                                 {
                                     // Multi-dimensional: compute row-major flattened index
-                                    // For extents [E0, E1, ..., E_{N-1}] and indices [i0, i1, ..., i_{N-1}]:
-                                    // flat = i0*L1*L2*...*L_{N-1} + i1*L2*...*L_{N-1} + ... + i_{N-1}
-                                    // where Lk = (Ek + 1) are inclusive lengths per dimension.
+                                    // For extents [E0, E1, ..., E_{N-1}] and indices [i0, i1, ...,
+                                    // i_{N-1}]: flat = i0*L1*L2*...*L_{N-1} + i1*L2*...*L_{N-1} +
+                                    // ... + i_{N-1} where Lk = (Ek + 1) are inclusive lengths per
+                                    // dimension.
                                     std::vector<long long> lengths;
                                     for (long long e : fld->arrayExtents)
                                         lengths.push_back(e + 1);
@@ -502,10 +519,11 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt)
                                         stride *= lengths[i];
 
                                     lowerer_.curLoc = stmt.loc;
-                                    index = lowerer_.emitBinary(Opcode::IMulOvf,
-                                                      il::core::Type(il::core::Type::Kind::I64),
-                                                      indices[0],
-                                                      Value::constInt(stride));
+                                    index = lowerer_.emitBinary(
+                                        Opcode::IMulOvf,
+                                        il::core::Type(il::core::Type::Kind::I64),
+                                        indices[0],
+                                        Value::constInt(stride));
 
                                     for (size_t k = 1; k < indices.size(); ++k)
                                     {
@@ -513,15 +531,17 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt)
                                         for (size_t i = k + 1; i < lengths.size(); ++i)
                                             stride *= lengths[i];
                                         lowerer_.curLoc = stmt.loc;
-                                        Value term = lowerer_.emitBinary(Opcode::IMulOvf,
-                                                               il::core::Type(il::core::Type::Kind::I64),
-                                                               indices[k],
-                                                               Value::constInt(stride));
+                                        Value term = lowerer_.emitBinary(
+                                            Opcode::IMulOvf,
+                                            il::core::Type(il::core::Type::Kind::I64),
+                                            indices[k],
+                                            Value::constInt(stride));
                                         lowerer_.curLoc = stmt.loc;
-                                        index = lowerer_.emitBinary(Opcode::IAddOvf,
-                                                          il::core::Type(il::core::Type::Kind::I64),
-                                                          index,
-                                                          term);
+                                        index = lowerer_.emitBinary(
+                                            Opcode::IAddOvf,
+                                            il::core::Type(il::core::Type::Kind::I64),
+                                            index,
+                                            term);
                                     }
                                 }
                                 else
@@ -539,30 +559,37 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt)
                             if (fld->type == ::il::frontends::basic::Type::Str)
                             {
                                 lowerer_.requireArrayStrLen();
-                                len = lowerer_.emitCallRet(
-                                    il::core::Type(il::core::Type::Kind::I64), "rt_arr_str_len", {arrHandle});
+                                len =
+                                    lowerer_.emitCallRet(il::core::Type(il::core::Type::Kind::I64),
+                                                         "rt_arr_str_len",
+                                                         {arrHandle});
                             }
                             else if (isMemberObjectArray)
                             {
                                 lowerer_.requireArrayObjLen();
-                                len = lowerer_.emitCallRet(
-                                    il::core::Type(il::core::Type::Kind::I64), "rt_arr_obj_len", {arrHandle});
+                                len =
+                                    lowerer_.emitCallRet(il::core::Type(il::core::Type::Kind::I64),
+                                                         "rt_arr_obj_len",
+                                                         {arrHandle});
                             }
                             else
                             {
                                 lowerer_.requireArrayI32Len();
-                                len = lowerer_.emitCallRet(
-                                    il::core::Type(il::core::Type::Kind::I64), "rt_arr_i32_len", {arrHandle});
+                                len =
+                                    lowerer_.emitCallRet(il::core::Type(il::core::Type::Kind::I64),
+                                                         "rt_arr_i32_len",
+                                                         {arrHandle});
                             }
-                            Value isNeg =
-                                lowerer_.emitBinary(Opcode::SCmpLT, lowerer_.ilBoolTy(), index, Value::constInt(0));
-                            Value tooHigh = lowerer_.emitBinary(Opcode::SCmpGE, lowerer_.ilBoolTy(), index, len);
+                            Value isNeg = lowerer_.emitBinary(
+                                Opcode::SCmpLT, lowerer_.ilBoolTy(), index, Value::constInt(0));
+                            Value tooHigh = lowerer_.emitBinary(
+                                Opcode::SCmpGE, lowerer_.ilBoolTy(), index, len);
                             auto emitc = lowerer_.emitCommon(stmt.loc);
                             Value isNeg64 = emitc.widen_to(isNeg, 1, 64, Signedness::Unsigned);
                             Value tooHigh64 = emitc.widen_to(tooHigh, 1, 64, Signedness::Unsigned);
                             Value oobInt = emitc.logical_or(isNeg64, tooHigh64);
-                            Value oobCond =
-                                lowerer_.emitBinary(Opcode::ICmpNe, lowerer_.ilBoolTy(), oobInt, Value::constInt(0));
+                            Value oobCond = lowerer_.emitBinary(
+                                Opcode::ICmpNe, lowerer_.ilBoolTy(), oobInt, Value::constInt(0));
 
                             ProcedureContext &ctx = lowerer_.context();
                             Function *func = ctx.function();
@@ -576,8 +603,9 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt)
                             lowerer_.builder->addBlock(*func, okLbl);
                             size_t oobIdx = func->blocks.size();
                             std::string oobLbl =
-                                blockNamer ? blockNamer->tag("bc_oob" + std::to_string(bcId))
-                                           : lowerer_.mangler.block("bc_oob" + std::to_string(bcId));
+                                blockNamer
+                                    ? blockNamer->tag("bc_oob" + std::to_string(bcId))
+                                    : lowerer_.mangler.block("bc_oob" + std::to_string(bcId));
                             lowerer_.builder->addBlock(*func, oobLbl);
                             BasicBlock *ok = &func->blocks[okIdx];
                             BasicBlock *oob = &func->blocks[oobIdx];
@@ -594,19 +622,23 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt)
                             {
                                 lowerer_.requireArrayStrPut();
                                 Value tmp = lowerer_.emitAlloca(8);
-                                lowerer_.emitStore(il::core::Type(il::core::Type::Kind::Str), tmp, value.value);
+                                lowerer_.emitStore(
+                                    il::core::Type(il::core::Type::Kind::Str), tmp, value.value);
                                 lowerer_.emitCall("rt_arr_str_put", {arrHandle, index, tmp});
                             }
                             else if (isMemberObjectArray)
                             {
                                 lowerer_.requireArrayObjPut();
-                                lowerer_.emitCall("rt_arr_obj_put", {arrHandle, index, value.value});
+                                lowerer_.emitCall("rt_arr_obj_put",
+                                                  {arrHandle, index, value.value});
                             }
                             else
                             {
                                 lowerer_.requireArrayI32Set();
-                                Lowerer::RVal coerced = lowerer_.ensureI64(std::move(value), stmt.loc);
-                                lowerer_.emitCall("rt_arr_i32_set", {arrHandle, index, coerced.value});
+                                Lowerer::RVal coerced =
+                                    lowerer_.ensureI64(std::move(value), stmt.loc);
+                                lowerer_.emitCall("rt_arr_i32_set",
+                                                  {arrHandle, index, coerced.value});
                             }
                             return;
                         }
@@ -618,8 +650,8 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt)
     }
     else if (auto *call = as<const CallExpr>(*stmt.target))
     {
-        // BUG-089 fix: CallExpr might be an implicit field array access (e.g., items(i) in a method)
-        // Check if this is a field array in the current class
+        // BUG-089 fix: CallExpr might be an implicit field array access (e.g., items(i) in a
+        // method) Check if this is a field array in the current class
         if (lowerer_.isFieldInScope(call->callee))
         {
             if (const auto *scope = lowerer_.activeFieldScope(); scope && scope->layout)
@@ -628,20 +660,23 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt)
                 {
                     if (fld->isArray)
                     {
-                        // This is a field array access. Lower it inline similar to MethodCallExpr handling.
-                        // Get the ME pointer and compute the field array handle
+                        // This is a field array access. Lower it inline similar to MethodCallExpr
+                        // handling. Get the ME pointer and compute the field array handle
                         const auto *selfInfo = lowerer_.findSymbol("ME");
                         if (selfInfo && selfInfo->slotId)
                         {
                             lowerer_.curLoc = stmt.loc;
-                            Value selfPtr = lowerer_.emitLoad(il::core::Type(il::core::Type::Kind::Ptr), Value::temp(*selfInfo->slotId));
+                            Value selfPtr =
+                                lowerer_.emitLoad(il::core::Type(il::core::Type::Kind::Ptr),
+                                                  Value::temp(*selfInfo->slotId));
                             lowerer_.curLoc = stmt.loc;
                             Value fieldPtr = lowerer_.emitBinary(
                                 Opcode::GEP,
                                 il::core::Type(il::core::Type::Kind::Ptr),
                                 selfPtr,
                                 Value::constInt(static_cast<long long>(fld->offset)));
-                            Value arrHandle = lowerer_.emitLoad(il::core::Type(il::core::Type::Kind::Ptr), fieldPtr);
+                            Value arrHandle = lowerer_.emitLoad(
+                                il::core::Type(il::core::Type::Kind::Ptr), fieldPtr);
 
                             // Lower the index
                             Value index = Value::constInt(0);
@@ -661,26 +696,38 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt)
                             if (fld->type == ::il::frontends::basic::Type::Str)
                             {
                                 lowerer_.requireArrayStrLen();
-                                len = lowerer_.emitCallRet(il::core::Type(il::core::Type::Kind::I64), "rt_arr_str_len", {arrHandle});
+                                len =
+                                    lowerer_.emitCallRet(il::core::Type(il::core::Type::Kind::I64),
+                                                         "rt_arr_str_len",
+                                                         {arrHandle});
                             }
                             else if (isMemberObjectArray)
                             {
                                 lowerer_.requireArrayObjLen();
-                                len = lowerer_.emitCallRet(il::core::Type(il::core::Type::Kind::I64), "rt_arr_obj_len", {arrHandle});
+                                len =
+                                    lowerer_.emitCallRet(il::core::Type(il::core::Type::Kind::I64),
+                                                         "rt_arr_obj_len",
+                                                         {arrHandle});
                             }
                             else
                             {
                                 lowerer_.requireArrayI32Len();
-                                len = lowerer_.emitCallRet(il::core::Type(il::core::Type::Kind::I64), "rt_arr_i32_len", {arrHandle});
+                                len =
+                                    lowerer_.emitCallRet(il::core::Type(il::core::Type::Kind::I64),
+                                                         "rt_arr_i32_len",
+                                                         {arrHandle});
                             }
 
-                            Value isNeg = lowerer_.emitBinary(Opcode::SCmpLT, lowerer_.ilBoolTy(), index, Value::constInt(0));
-                            Value tooHigh = lowerer_.emitBinary(Opcode::SCmpGE, lowerer_.ilBoolTy(), index, len);
+                            Value isNeg = lowerer_.emitBinary(
+                                Opcode::SCmpLT, lowerer_.ilBoolTy(), index, Value::constInt(0));
+                            Value tooHigh = lowerer_.emitBinary(
+                                Opcode::SCmpGE, lowerer_.ilBoolTy(), index, len);
                             auto emitc = lowerer_.emitCommon(stmt.loc);
                             Value isNeg64 = emitc.widen_to(isNeg, 1, 64, Signedness::Unsigned);
                             Value tooHigh64 = emitc.widen_to(tooHigh, 1, 64, Signedness::Unsigned);
                             Value oobInt = emitc.logical_or(isNeg64, tooHigh64);
-                            Value oobCond = lowerer_.emitBinary(Opcode::ICmpNe, lowerer_.ilBoolTy(), oobInt, Value::constInt(0));
+                            Value oobCond = lowerer_.emitBinary(
+                                Opcode::ICmpNe, lowerer_.ilBoolTy(), oobInt, Value::constInt(0));
 
                             ProcedureContext &ctx = lowerer_.context();
                             Function *func = ctx.function();
@@ -688,12 +735,15 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt)
                             unsigned bcId = ctx.consumeBoundsCheckId();
                             BlockNamer *blockNamer = ctx.blockNames().namer();
                             size_t okIdx = func->blocks.size();
-                            std::string okLbl = blockNamer ? blockNamer->tag("bc_ok" + std::to_string(bcId))
-                                                           : lowerer_.mangler.block("bc_ok" + std::to_string(bcId));
+                            std::string okLbl =
+                                blockNamer ? blockNamer->tag("bc_ok" + std::to_string(bcId))
+                                           : lowerer_.mangler.block("bc_ok" + std::to_string(bcId));
                             lowerer_.builder->addBlock(*func, okLbl);
                             size_t oobIdx = func->blocks.size();
-                            std::string oobLbl = blockNamer ? blockNamer->tag("bc_oob" + std::to_string(bcId))
-                                                            : lowerer_.mangler.block("bc_oob" + std::to_string(bcId));
+                            std::string oobLbl =
+                                blockNamer
+                                    ? blockNamer->tag("bc_oob" + std::to_string(bcId))
+                                    : lowerer_.mangler.block("bc_oob" + std::to_string(bcId));
                             lowerer_.builder->addBlock(*func, oobLbl);
                             BasicBlock *ok = &func->blocks[okIdx];
                             BasicBlock *oob = &func->blocks[oobIdx];
@@ -710,19 +760,23 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt)
                             {
                                 lowerer_.requireArrayStrPut();
                                 Value tmp = lowerer_.emitAlloca(8);
-                                lowerer_.emitStore(il::core::Type(il::core::Type::Kind::Str), tmp, value.value);
+                                lowerer_.emitStore(
+                                    il::core::Type(il::core::Type::Kind::Str), tmp, value.value);
                                 lowerer_.emitCall("rt_arr_str_put", {arrHandle, index, tmp});
                             }
                             else if (isMemberObjectArray)
                             {
                                 lowerer_.requireArrayObjPut();
-                                lowerer_.emitCall("rt_arr_obj_put", {arrHandle, index, value.value});
+                                lowerer_.emitCall("rt_arr_obj_put",
+                                                  {arrHandle, index, value.value});
                             }
                             else
                             {
                                 lowerer_.requireArrayI32Set();
-                                Lowerer::RVal coerced = lowerer_.ensureI64(std::move(value), stmt.loc);
-                                lowerer_.emitCall("rt_arr_i32_set", {arrHandle, index, coerced.value});
+                                Lowerer::RVal coerced =
+                                    lowerer_.ensureI64(std::move(value), stmt.loc);
+                                lowerer_.emitCall("rt_arr_i32_set",
+                                                  {arrHandle, index, coerced.value});
                             }
                             return;
                         }
@@ -744,7 +798,7 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt)
             slotInfo.type = access->ilType;
             slotInfo.isArray = false;
             slotInfo.isBoolean = (access->astType == ::il::frontends::basic::Type::Bool);
-            slotInfo.isObject = !access->objectClassName.empty();  // BUG-082 fix
+            slotInfo.isObject = !access->objectClassName.empty(); // BUG-082 fix
             if (slotInfo.isObject)
             {
                 slotInfo.objectClass = access->objectClassName;
@@ -754,8 +808,9 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt)
         else
         {
             // Property setter sugar (instance): base.member = value -> call set_member(base, value)
-            // Property setter sugar (static):   Class.member = value -> call Class.set_member(value)
-            // Static field assignment:          Class.field  = value -> store @Class::field
+            // Property setter sugar (static):   Class.member = value -> call
+            // Class.set_member(value) Static field assignment:          Class.field  = value ->
+            // store @Class::field
 
             std::string className = lowerer_.resolveObjectClass(*member->base);
             if (!className.empty())
@@ -768,17 +823,25 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt)
                     using K = Lowerer::Type::Kind;
                     switch (t.kind)
                     {
-                        case K::F64: return ::il::frontends::basic::Type::F64;
-                        case K::Str: return ::il::frontends::basic::Type::Str;
-                        case K::I1: return ::il::frontends::basic::Type::Bool;
-                        default: return ::il::frontends::basic::Type::I64;
+                        case K::F64:
+                            return ::il::frontends::basic::Type::F64;
+                        case K::Str:
+                            return ::il::frontends::basic::Type::Str;
+                        case K::I1:
+                            return ::il::frontends::basic::Type::Bool;
+                        default:
+                            return ::il::frontends::basic::Type::I64;
                     }
                 };
                 std::vector<::il::frontends::basic::Type> argTypes{mapIlToAst(value.type)};
-                if (auto resolved = sem::resolveMethodOverload(lowerer_.oopIndex_, qname, member->member,
-                                                              /*isStatic*/ false, argTypes,
-                                                              lowerer_.currentClass(),
-                                                              lowerer_.diagnosticEmitter(), stmt.loc))
+                if (auto resolved = sem::resolveMethodOverload(lowerer_.oopIndex_,
+                                                               qname,
+                                                               member->member,
+                                                               /*isStatic*/ false,
+                                                               argTypes,
+                                                               lowerer_.currentClass(),
+                                                               lowerer_.diagnosticEmitter(),
+                                                               stmt.loc))
                 {
                     setter = resolved->methodName;
                 }
@@ -795,10 +858,12 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt)
 
             if (const auto *v = as<const VarExpr>(*member->base))
             {
-                // If a symbol with this name exists (local/param/global), treat as instance, not static
+                // If a symbol with this name exists (local/param/global), treat as instance, not
+                // static
                 if (const auto *sym = lowerer_.findSymbol(v->name); sym && sym->slotId)
                 {
-                    // analyzer should have already errored if not a property/field; nothing more to do here
+                    // analyzer should have already errored if not a property/field; nothing more to
+                    // do here
                     return;
                 }
                 std::string qname = lowerer_.resolveQualifiedClassCasing(lowerer_.qualify(v->name));
@@ -811,17 +876,25 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt)
                         using K = Lowerer::Type::Kind;
                         switch (t.kind)
                         {
-                            case K::F64: return ::il::frontends::basic::Type::F64;
-                            case K::Str: return ::il::frontends::basic::Type::Str;
-                            case K::I1: return ::il::frontends::basic::Type::Bool;
-                            default: return ::il::frontends::basic::Type::I64;
+                            case K::F64:
+                                return ::il::frontends::basic::Type::F64;
+                            case K::Str:
+                                return ::il::frontends::basic::Type::Str;
+                            case K::I1:
+                                return ::il::frontends::basic::Type::Bool;
+                            default:
+                                return ::il::frontends::basic::Type::I64;
                         }
                     };
                     std::vector<::il::frontends::basic::Type> argTypes{mapIlToAst(value.type)};
-                    if (auto resolved = sem::resolveMethodOverload(lowerer_.oopIndex_, qname, member->member,
-                                                                  /*isStatic*/ true, argTypes,
-                                                                  lowerer_.currentClass(),
-                                                                  lowerer_.diagnosticEmitter(), stmt.loc))
+                    if (auto resolved = sem::resolveMethodOverload(lowerer_.oopIndex_,
+                                                                   qname,
+                                                                   member->member,
+                                                                   /*isStatic*/ true,
+                                                                   argTypes,
+                                                                   lowerer_.currentClass(),
+                                                                   lowerer_.diagnosticEmitter(),
+                                                                   stmt.loc))
                     {
                         setter = resolved->methodName;
                     }
@@ -847,9 +920,10 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt)
                                                      : Lowerer::Type(Lowerer::Type::Kind::Ptr);
                             lowerer_.curLoc = stmt.loc;
                             std::string gname = ci->qualifiedName + "::" + member->member;
-                            Lowerer::Value addr = lowerer_.emitUnary(Lowerer::Opcode::AddrOf,
-                                                                     Lowerer::Type(Lowerer::Type::Kind::Ptr),
-                                                                     Lowerer::Value::global(gname));
+                            Lowerer::Value addr =
+                                lowerer_.emitUnary(Lowerer::Opcode::AddrOf,
+                                                   Lowerer::Type(Lowerer::Type::Kind::Ptr),
+                                                   Lowerer::Value::global(gname));
                             // Coerce booleans when needed
                             Lowerer::RVal vcoerced = value;
                             if (ilTy.kind == Lowerer::Type::Kind::I1)
@@ -887,9 +961,9 @@ void RuntimeStatementLowerer::lowerConst(const ConstStmt &stmt)
     if (slotInfo.isArray)
     {
         lowerer_.storeArray(storage->pointer,
-                   value.value,
-                   /*elementType*/ AstType::I64,
-                   /*isObjectArray*/ storage->slotInfo.isObject);
+                            value.value,
+                            /*elementType*/ AstType::I64,
+                            /*isObjectArray*/ storage->slotInfo.isObject);
     }
     else
     {
@@ -927,11 +1001,12 @@ void RuntimeStatementLowerer::lowerStatic(const StaticStmt &stmt)
 /// @param labelBase Prefix used when naming generated failure blocks.
 /// @return Validated length value produced by the runtime helper.
 Value RuntimeStatementLowerer::emitArrayLengthCheck(Value bound,
-                                    il::support::SourceLoc loc,
-                                    std::string_view labelBase)
+                                                    il::support::SourceLoc loc,
+                                                    std::string_view labelBase)
 {
     LocationScope location(lowerer_, loc);
-    Value length = lowerer_.emitCommon(loc).add_checked(bound, Value::constInt(1), OverflowPolicy::Checked);
+    Value length =
+        lowerer_.emitCommon(loc).add_checked(bound, Value::constInt(1), OverflowPolicy::Checked);
 
     ProcedureContext &ctx = lowerer_.context();
     Function *func = ctx.function();
@@ -945,8 +1020,10 @@ Value RuntimeStatementLowerer::emitArrayLengthCheck(Value bound,
         std::string failName = base.empty() ? "arr_len_fail" : base + "_fail";
         std::string contName = base.empty() ? "arr_len_cont" : base + "_cont";
 
-        std::string failLbl = blockNamer ? blockNamer->generic(failName) : lowerer_.mangler.block(failName);
-        std::string contLbl = blockNamer ? blockNamer->generic(contName) : lowerer_.mangler.block(contName);
+        std::string failLbl =
+            blockNamer ? blockNamer->generic(failName) : lowerer_.mangler.block(failName);
+        std::string contLbl =
+            blockNamer ? blockNamer->generic(contName) : lowerer_.mangler.block(contName);
 
         size_t failIdx = func->blocks.size();
         lowerer_.builder->addBlock(*func, failLbl);
@@ -957,7 +1034,8 @@ Value RuntimeStatementLowerer::emitArrayLengthCheck(Value bound,
         BasicBlock *contBlk = &func->blocks[contIdx];
 
         ctx.setCurrent(&func->blocks[curIdx]);
-        Value isNeg = lowerer_.emitBinary(Opcode::SCmpLT, lowerer_.ilBoolTy(), length, Value::constInt(0));
+        Value isNeg =
+            lowerer_.emitBinary(Opcode::SCmpLT, lowerer_.ilBoolTy(), length, Value::constInt(0));
         lowerer_.emitCBr(isNeg, failBlk, contBlk);
 
         ctx.setCurrent(failBlk);
@@ -1021,7 +1099,8 @@ void RuntimeStatementLowerer::lowerDim(const DimStmt &stmt)
             Lowerer::RVal dimBound = lowerer_.lowerExpr(**dimExprs[i]);
             dimBound = lowerer_.ensureI64(std::move(dimBound), stmt.loc);
             Value dimLen = emitArrayLengthCheck(dimBound.value, stmt.loc, "dim_len");
-            totalSize = lowerer_.emitBinary(Opcode::IMulOvf, il::core::Type(il::core::Type::Kind::I64), totalSize, dimLen);
+            totalSize = lowerer_.emitBinary(
+                Opcode::IMulOvf, il::core::Type(il::core::Type::Kind::I64), totalSize, dimLen);
         }
         length = totalSize;
     }
@@ -1033,19 +1112,22 @@ void RuntimeStatementLowerer::lowerDim(const DimStmt &stmt)
     {
         // String array: use rt_arr_str_alloc
         lowerer_.requireArrayStrAlloc();
-        handle = lowerer_.emitCallRet(il::core::Type(il::core::Type::Kind::Ptr), "rt_arr_str_alloc", {length});
+        handle = lowerer_.emitCallRet(
+            il::core::Type(il::core::Type::Kind::Ptr), "rt_arr_str_alloc", {length});
     }
     else if (info->isObject)
     {
         // Object array
         lowerer_.requireArrayObjNew();
-        handle = lowerer_.emitCallRet(il::core::Type(il::core::Type::Kind::Ptr), "rt_arr_obj_new", {length});
+        handle = lowerer_.emitCallRet(
+            il::core::Type(il::core::Type::Kind::Ptr), "rt_arr_obj_new", {length});
     }
     else
     {
         // Integer/numeric array: use rt_arr_i32_new
         lowerer_.requireArrayI32New();
-        handle = lowerer_.emitCallRet(il::core::Type(il::core::Type::Kind::Ptr), "rt_arr_i32_new", {length});
+        handle = lowerer_.emitCallRet(
+            il::core::Type(il::core::Type::Kind::Ptr), "rt_arr_i32_new", {length});
     }
 
     // Store into the resolved storage (supports module-level globals across procedures)
@@ -1063,7 +1145,9 @@ void RuntimeStatementLowerer::lowerDim(const DimStmt &stmt)
     if (lowerer_.boundsChecks)
     {
         if (info && info->arrayLengthSlot)
-            lowerer_.emitStore(il::core::Type(il::core::Type::Kind::I64), Value::temp(*info->arrayLengthSlot), length);
+            lowerer_.emitStore(il::core::Type(il::core::Type::Kind::I64),
+                               Value::temp(*info->arrayLengthSlot),
+                               length);
     }
 }
 
@@ -1091,14 +1175,15 @@ void RuntimeStatementLowerer::lowerReDim(const ReDimStmt &stmt)
         lowerer_.requireArrayI32Resize();
     Value resized =
         lowerer_.emitCallRet(il::core::Type(il::core::Type::Kind::Ptr),
-                    (info && info->isObject) ? "rt_arr_obj_resize" : "rt_arr_i32_resize",
-                    {current, length});
+                             (info && info->isObject) ? "rt_arr_obj_resize" : "rt_arr_i32_resize",
+                             {current, length});
     lowerer_.storeArray(storage->pointer,
-               resized,
-               /*elementType*/ AstType::I64,
-               /*isObjectArray*/ info && info->isObject);
+                        resized,
+                        /*elementType*/ AstType::I64,
+                        /*isObjectArray*/ info && info->isObject);
     if (lowerer_.boundsChecks && info && info->arrayLengthSlot)
-        lowerer_.emitStore(il::core::Type(il::core::Type::Kind::I64), Value::temp(*info->arrayLengthSlot), length);
+        lowerer_.emitStore(
+            il::core::Type(il::core::Type::Kind::I64), Value::temp(*info->arrayLengthSlot), length);
 }
 
 /// @brief Lower the BASIC @c RANDOMIZE statement configuring the RNG seed.

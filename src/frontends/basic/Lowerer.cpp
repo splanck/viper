@@ -21,8 +21,8 @@
 #include "frontends/basic/BasicTypes.hpp"
 #include "frontends/basic/ControlStatementLowerer.hpp"
 #include "frontends/basic/IoStatementLowerer.hpp"
-#include "frontends/basic/RuntimeStatementLowerer.hpp"
 #include "frontends/basic/LoweringPipeline.hpp"
+#include "frontends/basic/RuntimeStatementLowerer.hpp"
 #include "frontends/basic/TypeSuffix.hpp"
 #include "frontends/basic/lower/Emitter.hpp"
 
@@ -138,7 +138,7 @@ std::optional<::il::frontends::basic::Type> Lowerer::findMethodReturnType(
 }
 
 std::string Lowerer::findMethodReturnClassName(std::string_view className,
-                                                 std::string_view methodName) const
+                                               std::string_view methodName) const
 {
     if (className.empty())
         return {};

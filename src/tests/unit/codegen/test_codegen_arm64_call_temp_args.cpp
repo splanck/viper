@@ -3,10 +3,10 @@
 
 #include "tests/unit/GTestStub.hpp"
 
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <string>
-#include <filesystem>
 
 #include "tools/ilc/cmd_codegen_arm64.hpp"
 
@@ -39,15 +39,14 @@ TEST(Arm64CLI, CallWithTempRR)
 {
     const std::string in = outPath("arm64_call_temp_rr.il");
     const std::string out = outPath("arm64_call_temp_rr.s");
-    const std::string il =
-        "il 0.1\n"
-        "extern @h(i64, i64) -> i64\n"
-        "func @f(%a:i64, %b:i64) -> i64 {\n"
-        "entry(%a:i64, %b:i64):\n"
-        "  %t1 = add %a, %b\n"
-        "  %t0 = call @h(%t1, %a)\n"
-        "  ret %t0\n"
-        "}\n";
+    const std::string il = "il 0.1\n"
+                           "extern @h(i64, i64) -> i64\n"
+                           "func @f(%a:i64, %b:i64) -> i64 {\n"
+                           "entry(%a:i64, %b:i64):\n"
+                           "  %t1 = add %a, %b\n"
+                           "  %t0 = call @h(%t1, %a)\n"
+                           "  ret %t0\n"
+                           "}\n";
     writeFile(in, il);
     const char *argv[] = {in.c_str(), "-S", out.c_str()};
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
@@ -62,15 +61,14 @@ TEST(Arm64CLI, CallWithTempRI)
 {
     const std::string in = outPath("arm64_call_temp_ri.il");
     const std::string out = outPath("arm64_call_temp_ri.s");
-    const std::string il =
-        "il 0.1\n"
-        "extern @h(i64, i64) -> i64\n"
-        "func @f(%a:i64, %b:i64) -> i64 {\n"
-        "entry(%a:i64, %b:i64):\n"
-        "  %t1 = add %b, 5\n"
-        "  %t0 = call @h(%a, %t1)\n"
-        "  ret %t0\n"
-        "}\n";
+    const std::string il = "il 0.1\n"
+                           "extern @h(i64, i64) -> i64\n"
+                           "func @f(%a:i64, %b:i64) -> i64 {\n"
+                           "entry(%a:i64, %b:i64):\n"
+                           "  %t1 = add %b, 5\n"
+                           "  %t0 = call @h(%a, %t1)\n"
+                           "  ret %t0\n"
+                           "}\n";
     writeFile(in, il);
     const char *argv[] = {in.c_str(), "-S", out.c_str()};
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
@@ -84,15 +82,14 @@ TEST(Arm64CLI, CallWithTempShift)
 {
     const std::string in = outPath("arm64_call_temp_shl.il");
     const std::string out = outPath("arm64_call_temp_shl.s");
-    const std::string il =
-        "il 0.1\n"
-        "extern @h(i64, i64) -> i64\n"
-        "func @f(%a:i64, %b:i64) -> i64 {\n"
-        "entry(%a:i64, %b:i64):\n"
-        "  %t1 = shl %a, 3\n"
-        "  %t0 = call @h(%t1, %b)\n"
-        "  ret %t0\n"
-        "}\n";
+    const std::string il = "il 0.1\n"
+                           "extern @h(i64, i64) -> i64\n"
+                           "func @f(%a:i64, %b:i64) -> i64 {\n"
+                           "entry(%a:i64, %b:i64):\n"
+                           "  %t1 = shl %a, 3\n"
+                           "  %t0 = call @h(%t1, %b)\n"
+                           "  ret %t0\n"
+                           "}\n";
     writeFile(in, il);
     const char *argv[] = {in.c_str(), "-S", out.c_str()};
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
@@ -106,15 +103,14 @@ TEST(Arm64CLI, CallWithCompareTemp)
 {
     const std::string in = outPath("arm64_call_temp_cmp.il");
     const std::string out = outPath("arm64_call_temp_cmp.s");
-    const std::string il =
-        "il 0.1\n"
-        "extern @h(i64, i64) -> i64\n"
-        "func @f(%a:i64, %b:i64) -> i64 {\n"
-        "entry(%a:i64, %b:i64):\n"
-        "  %t1 = icmp_eq %a, %b\n"
-        "  %t0 = call @h(%t1, %a)\n"
-        "  ret %t0\n"
-        "}\n";
+    const std::string il = "il 0.1\n"
+                           "extern @h(i64, i64) -> i64\n"
+                           "func @f(%a:i64, %b:i64) -> i64 {\n"
+                           "entry(%a:i64, %b:i64):\n"
+                           "  %t1 = icmp_eq %a, %b\n"
+                           "  %t0 = call @h(%t1, %a)\n"
+                           "  ret %t0\n"
+                           "}\n";
     writeFile(in, il);
     const char *argv[] = {in.c_str(), "-S", out.c_str()};
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
@@ -129,16 +125,15 @@ TEST(Arm64CLI, CallWithTwoTemps)
 {
     const std::string in = outPath("arm64_call_two_temps.il");
     const std::string out = outPath("arm64_call_two_temps.s");
-    const std::string il =
-        "il 0.1\n"
-        "extern @h(i64, i64) -> i64\n"
-        "func @f(%a:i64, %b:i64) -> i64 {\n"
-        "entry(%a:i64, %b:i64):\n"
-        "  %t1 = add %a, %b\n"
-        "  %t2 = shl %b, 1\n"
-        "  %t0 = call @h(%t1, %t2)\n"
-        "  ret %t0\n"
-        "}\n";
+    const std::string il = "il 0.1\n"
+                           "extern @h(i64, i64) -> i64\n"
+                           "func @f(%a:i64, %b:i64) -> i64 {\n"
+                           "entry(%a:i64, %b:i64):\n"
+                           "  %t1 = add %a, %b\n"
+                           "  %t2 = shl %b, 1\n"
+                           "  %t0 = call @h(%t1, %t2)\n"
+                           "  ret %t0\n"
+                           "}\n";
     writeFile(in, il);
     const char *argv[] = {in.c_str(), "-S", out.c_str()};
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);

@@ -3,10 +3,10 @@
 
 #include "tests/unit/GTestStub.hpp"
 
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <string>
-#include <filesystem>
 
 #include "tools/ilc/cmd_codegen_arm64.hpp"
 
@@ -37,22 +37,30 @@ static std::string readFile(const std::string &path)
 
 TEST(Arm64CLI, ShiftImmParam0Param1)
 {
-    struct Case { const char *op; const char *expect0; const char *expect1op; int imm0; int imm1; } cases[] = {
-        {"shl",  "lsl x0, x0, #4", "lsl x0, x0, #4", 4, 4},
+    struct Case
+    {
+        const char *op;
+        const char *expect0;
+        const char *expect1op;
+        int imm0;
+        int imm1;
+    } cases[] = {
+        {"shl", "lsl x0, x0, #4", "lsl x0, x0, #4", 4, 4},
         {"lshr", "lsr x0, x0, #5", "lsr x0, x0, #5", 5, 5},
         {"ashr", "asr x0, x0, #6", "asr x0, x0, #6", 6, 6},
     };
+
     for (const auto &c : cases)
     {
         // param0
         {
             std::string in = std::string("arm64_") + c.op + "_p0.il";
             std::string out = std::string("arm64_") + c.op + "_p0.s";
-            std::string il = std::string(
-                "il 0.1\n"
-                "func @f(%a:i64, %b:i64) -> i64 {\n"
-                "entry(%a:i64, %b:i64):\n"
-                "  %t0 = ") + c.op + " %a, " + std::to_string(c.imm0) + "\n  ret %t0\n}\n";
+            std::string il = std::string("il 0.1\n"
+                                         "func @f(%a:i64, %b:i64) -> i64 {\n"
+                                         "entry(%a:i64, %b:i64):\n"
+                                         "  %t0 = ") +
+                             c.op + " %a, " + std::to_string(c.imm0) + "\n  ret %t0\n}\n";
             const std::string inP = outPath(in);
             const std::string outP = outPath(out);
             writeFile(inP, il);
@@ -65,11 +73,11 @@ TEST(Arm64CLI, ShiftImmParam0Param1)
         {
             std::string in = std::string("arm64_") + c.op + "_p1.il";
             std::string out = std::string("arm64_") + c.op + "_p1.s";
-            std::string il = std::string(
-                "il 0.1\n"
-                "func @f(%a:i64, %b:i64) -> i64 {\n"
-                "entry(%a:i64, %b:i64):\n"
-                "  %t0 = ") + c.op + " %b, " + std::to_string(c.imm1) + "\n  ret %t0\n}\n";
+            std::string il = std::string("il 0.1\n"
+                                         "func @f(%a:i64, %b:i64) -> i64 {\n"
+                                         "entry(%a:i64, %b:i64):\n"
+                                         "  %t0 = ") +
+                             c.op + " %b, " + std::to_string(c.imm1) + "\n  ret %t0\n}\n";
             const std::string inP = outPath(in);
             const std::string outP = outPath(out);
             writeFile(inP, il);

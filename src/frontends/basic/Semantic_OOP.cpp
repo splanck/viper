@@ -27,11 +27,11 @@
 #include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/AstWalker.hpp"
 #include "frontends/basic/DiagnosticEmitter.hpp"
-#include "frontends/basic/SemanticDiagnostics.hpp"
-#include "frontends/basic/TypeSuffix.hpp"
-#include "frontends/basic/StringUtils.hpp"
 #include "frontends/basic/IdentifierUtil.hpp"
 #include "frontends/basic/SemanticDiagUtil.hpp"
+#include "frontends/basic/SemanticDiagnostics.hpp"
+#include "frontends/basic/StringUtils.hpp"
+#include "frontends/basic/TypeSuffix.hpp"
 
 #include "support/diagnostics.hpp"
 
@@ -125,7 +125,8 @@ void checkMemberShadowing(const std::vector<StmtPtr> &body,
     return tail && methodMustReturn(*tail);
 }
 
-namespace {
+namespace
+{
 /// @brief Detect VB-style implicit returns via assignment to the function name.
 /// @details Scans the method body for a LET assigning to an identifier that
 ///          case-insensitively matches the method name. Nested statement lists
@@ -346,7 +347,8 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
                                                       "B2113",
                                                       prop.loc,
                                                       1,
-                                                      "getter access cannot be more permissive than property access");
+                                                      "getter access cannot be more permissive "
+                                                      "than property access");
                                     }
                                 }
                                 if (prop.set.present && rank(prop.set.access) > rank(prop.access))
@@ -357,7 +359,8 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
                                                       "B2114",
                                                       prop.loc,
                                                       1,
-                                                      "setter access cannot be more permissive than property access");
+                                                      "setter access cannot be more permissive "
+                                                      "than property access");
                                     }
                                 }
 
@@ -525,7 +528,8 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
                                 }
                                 sig.access = method.access;
 
-                                // BUG-099 fix: Store the return class name if method returns an object
+                                // BUG-099 fix: Store the return class name if method returns an
+                                // object
                                 if (!method.explicitClassRetQname.empty())
                                 {
                                     std::string qualifiedClassName;
@@ -593,10 +597,11 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
                                 {
                                     auto locIt = info.methodLocs.find(methodName);
                                     il::support::SourceLoc loc = locIt != info.methodLocs.end()
-                                                                    ? locIt->second
-                                                                    : classDecl.loc;
-                                    std::string msg = "method '" + methodName + "' conflicts with field '" +
-                                                      fieldName + "' (names are case-insensitive); " +
+                                                                     ? locIt->second
+                                                                     : classDecl.loc;
+                                    std::string msg = "method '" + methodName +
+                                                      "' conflicts with field '" + fieldName +
+                                                      "' (names are case-insensitive); " +
                                                       "rename one to avoid runtime errors";
                                     emitter->emit(il::support::Severity::Error,
                                                   "B2017",
@@ -756,8 +761,8 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
     // Collect file-scoped USING directives (imports and aliases) for base resolution.
     struct UsingImports
     {
-        std::unordered_set<std::string> imports;                // e.g., "Foundation"
-        std::unordered_map<std::string, std::string> aliases;   // lower(alias) -> "Lib.Core"
+        std::unordered_set<std::string> imports;              // e.g., "Foundation"
+        std::unordered_map<std::string, std::string> aliases; // lower(alias) -> "Lib.Core"
     } usingCtx;
 
     for (const auto &stmtPtr : program.main)

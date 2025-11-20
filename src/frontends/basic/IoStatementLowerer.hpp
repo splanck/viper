@@ -58,7 +58,8 @@ class IoStatementLowerer
     /// @brief Lower LINE INPUT# statement for line-based file input.
     void lowerLineInputCh(const LineInputChStmt &stmt);
 
-    Lowerer &lowerer_; ///< Parent lowerer providing context and helpers (public for file-local helpers)
+    Lowerer
+        &lowerer_; ///< Parent lowerer providing context and helpers (public for file-local helpers)
 };
 
 } // namespace il::frontends::basic

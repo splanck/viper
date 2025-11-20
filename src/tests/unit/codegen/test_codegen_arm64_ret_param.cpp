@@ -3,10 +3,10 @@
 
 #include "tests/unit/GTestStub.hpp"
 
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <string>
-#include <filesystem>
 
 #include "tools/ilc/cmd_codegen_arm64.hpp"
 
@@ -41,12 +41,11 @@ TEST(Arm64CLI, RetParam)
     {
         const std::string in = "arm64_ret_p0.il";
         const std::string out = "arm64_ret_p0.s";
-        const std::string il =
-            "il 0.1\n"
-            "func @id0(%a:i64, %b:i64) -> i64 {\n"
-            "entry(%a:i64, %b:i64):\n"
-            "  ret %a\n"
-            "}\n";
+        const std::string il = "il 0.1\n"
+                               "func @id0(%a:i64, %b:i64) -> i64 {\n"
+                               "entry(%a:i64, %b:i64):\n"
+                               "  ret %a\n"
+                               "}\n";
         const std::string inP = outPath(in);
         const std::string outP = outPath(out);
         writeFile(inP, il);
@@ -60,12 +59,11 @@ TEST(Arm64CLI, RetParam)
     {
         const std::string in = "arm64_ret_p1.il";
         const std::string out = "arm64_ret_p1.s";
-        const std::string il =
-            "il 0.1\n"
-            "func @id1(%a:i64, %b:i64) -> i64 {\n"
-            "entry(%a:i64, %b:i64):\n"
-            "  ret %b\n"
-            "}\n";
+        const std::string il = "il 0.1\n"
+                               "func @id1(%a:i64, %b:i64) -> i64 {\n"
+                               "entry(%a:i64, %b:i64):\n"
+                               "  ret %b\n"
+                               "}\n";
         const std::string inP = outPath(in);
         const std::string outP = outPath(out);
         writeFile(inP, il);

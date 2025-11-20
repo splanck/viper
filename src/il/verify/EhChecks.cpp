@@ -516,7 +516,8 @@ class HandlerCoverageTraversal
     /// @return Pointer to the instruction when it terminates the block; null otherwise.
     const Instr *processEhInstruction(const Instr &instr, const BasicBlock &bb, State &state)
     {
-        if (!state.hasResumeToken && !state.handlerStack.empty() && isPotentialFaultingOpcode(instr.op))
+        if (!state.hasResumeToken && !state.handlerStack.empty() &&
+            isPotentialFaultingOpcode(instr.op))
         {
             if (const BasicBlock *handlerBlock = state.handlerStack.back())
             {

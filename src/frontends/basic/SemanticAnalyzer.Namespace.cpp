@@ -171,6 +171,18 @@ void SemanticAnalyzer::analyzeUsingDecl(UsingDecl &decl)
         return;
     }
 
+    // Reject USING inside namespace blocks (E_NS_008) unless runtime namespaces
+    // are enabled (Phase 2 semantics permit scoped USING).
+    if (!nsStack_.empty())
+    {
+        if (!FrontendOptions::enableRuntimeNamespaces())
+        {
+            de.emit(diag::BasicDiag::NsUsingNotFileScope, decl.loc, 1, {});
+            return;
+        }
+        // Otherwise, allow scoped USING and proceed.
+    }
+
     // Enforce USING-before-decls at file scope only: E_NS_005.
     // Inside a namespace block, analyzeNamespaceDecl processes USING directives
     // in a first pass before other declarations, so placement within the block
@@ -189,17 +201,26 @@ void SemanticAnalyzer::analyzeUsingDecl(UsingDecl &decl)
     if (nsPath.empty())
         return;
 
-    // Reserved root "Viper": allow USING when runtime namespaces are enabled;
-    // otherwise retain legacy behavior and reject the import.
+    // Reserved root "Viper": by default, reject imports under the reserved root.
+    // When runtime namespaces are enabled, permit USING only for the Console
+    // group (Viper.Console.*) used for builtin extern calls; continue to reject
+    // other Viper.* namespaces.
     if (!decl.namespacePath.empty() && iequals(decl.namespacePath[0], "Viper"))
     {
-        if (!FrontendOptions::enableRuntimeNamespaces())
+        bool allow = false;
+        if (FrontendOptions::enableRuntimeNamespaces())
+        {
+            if (decl.namespacePath.size() >= 2 && iequals(decl.namespacePath[1], "Console"))
+            {
+                allow = true;
+            }
+        }
+        if (!allow)
         {
             de.emit(diag::BasicDiag::NsReservedViper, decl.loc, 1, {});
             return;
         }
-        // When enabled, accept USING Viper.* without recording an alias for the root
-        // segment here; normal namespace existence checks still apply below.
+        // Accepted: USING Viper.Console (and sub-names). Proceed with normal checks.
     }
 
     // E_NS_001: Namespace must exist in registry (error severity).

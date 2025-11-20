@@ -3,10 +3,10 @@
 
 #include "tests/unit/GTestStub.hpp"
 
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <string>
-#include <filesystem>
 
 #include "tools/ilc/cmd_codegen_arm64.hpp"
 
@@ -39,12 +39,11 @@ TEST(Arm64CLI, RetZeroEmitsMovX0Zero)
 {
     const std::string in = "arm64_cli_ret0.il";
     const std::string out = "arm64_cli_ret0.s";
-    const std::string il =
-        "il 0.1\n\n"
-        "func @main() -> i64 {\n"
-        "entry:\n"
-        "  ret 0\n"
-        "}\n";
+    const std::string il = "il 0.1\n\n"
+                           "func @main() -> i64 {\n"
+                           "entry:\n"
+                           "  ret 0\n"
+                           "}\n";
     const std::string inP = outPath(in);
     const std::string outP = outPath(out);
     writeFile(inP, il);

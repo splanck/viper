@@ -28,11 +28,8 @@ inline void normalize_rr_to_x0_x1(EmitterT &emit,
 }
 
 template <typename TargetInfoT, typename PhysRegT, typename EmitterT>
-inline void move_param_to_x0(EmitterT &emit,
-                             const TargetInfoT &ti,
-                             std::size_t index,
-                             PhysRegT dst0,
-                             std::ostream &os)
+inline void move_param_to_x0(
+    EmitterT &emit, const TargetInfoT &ti, std::size_t index, PhysRegT dst0, std::ostream &os)
 {
     const auto &order = ti.intArgOrder;
     const PhysRegT src = order[index];

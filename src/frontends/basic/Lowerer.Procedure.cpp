@@ -665,7 +665,8 @@ std::optional<Lowerer::VariableStorage> Lowerer::resolveVariableStorage(std::str
         if (info->slotId)
         {
             bool isMain = (context().function() && context().function()->name == "main");
-            bool isModLevel = semanticAnalyzer_ && semanticAnalyzer_->isModuleLevelSymbol(std::string(name));
+            bool isModLevel =
+                semanticAnalyzer_ && semanticAnalyzer_->isModuleLevelSymbol(std::string(name));
             bool isCrossProc = isModLevel && isCrossProcGlobal(std::string(name));
 
             // Use the local slot if it's a true local/parameter (not module-level)
@@ -800,7 +801,8 @@ const Lowerer::ClassLayout *Lowerer::findClassLayout(std::string_view className)
     // As a last resort, perform a case-insensitive match on the leaf name
     auto lower = [](std::string s)
     {
-        for (auto &c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        for (auto &c : s)
+            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
         return s;
     };
     std::string needle = lower(key);
@@ -1516,7 +1518,7 @@ void Lowerer::resetLoweringState()
 void Lowerer::cacheModuleObjectArraysFromAST(const std::vector<StmtPtr> &main)
 {
     moduleObjArrayElemClass_.clear();
-    moduleObjectClass_.clear();  // BUG-107 fix: Also clear scalar object cache
+    moduleObjectClass_.clear(); // BUG-107 fix: Also clear scalar object cache
 
     // Walk main body statements looking for DIM declarations of objects (arrays and scalars)
     for (const auto &stmtPtr : main)
@@ -1542,7 +1544,8 @@ void Lowerer::cacheModuleObjectArraysFromAST(const std::vector<StmtPtr> &main)
                 if (dim->isArray)
                     moduleObjArrayElemClass_[dim->name] = resolvedClassName;
                 else
-                    moduleObjectClass_[dim->name] = resolvedClassName;  // BUG-107 fix: Cache scalar objects
+                    moduleObjectClass_[dim->name] =
+                        resolvedClassName; // BUG-107 fix: Cache scalar objects
             }
         }
     }

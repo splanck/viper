@@ -18,15 +18,15 @@
 
 #include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/DiagnosticEmitter.hpp"
-#include "frontends/basic/Lowerer.hpp"
-#include "il/runtime/RuntimeSignatures.hpp"
-#include "frontends/basic/SemanticAnalyzer.hpp"
-#include "frontends/basic/Options.hpp"
-#include "frontends/basic/NameMangler_OOP.hpp"
-#include "frontends/basic/Semantic_OOP.hpp"
 #include "frontends/basic/ILTypeUtils.hpp"
-#include "frontends/basic/sem/OverloadResolution.hpp"
+#include "frontends/basic/Lowerer.hpp"
+#include "frontends/basic/NameMangler_OOP.hpp"
+#include "frontends/basic/Options.hpp"
+#include "frontends/basic/SemanticAnalyzer.hpp"
+#include "frontends/basic/Semantic_OOP.hpp"
 #include "frontends/basic/StringUtils.hpp"
+#include "frontends/basic/sem/OverloadResolution.hpp"
+#include "il/runtime/RuntimeSignatures.hpp"
 
 #include <cstdint>
 #include <string>
@@ -297,7 +297,8 @@ Lowerer::RVal Lowerer::lowerNewExpr(const NewExpr &expr)
             if (builder)
                 builder->addExtern("rt_alloc", Type(Type::Kind::Ptr), {Type(Type::Kind::I64)});
             const long long bytes = static_cast<long long>(slotCount * 8ULL);
-            Value vtblPtr = emitCallRet(Type(Type::Kind::Ptr), "rt_alloc", {Value::constInt(bytes)});
+            Value vtblPtr =
+                emitCallRet(Type(Type::Kind::Ptr), "rt_alloc", {Value::constInt(bytes)});
 
             auto findImplementorQClass = [&](const std::string &startQ,
                                              const std::string &mname) -> std::string
@@ -343,7 +344,8 @@ Lowerer::RVal Lowerer::lowerNewExpr(const NewExpr &expr)
             for (std::size_t s = 0; s < slotCount; ++s)
             {
                 const long long offset = static_cast<long long>(s * 8ULL);
-                Value slotPtr = emitBinary(Opcode::GEP, Type(Type::Kind::Ptr), vtblPtr, Value::constInt(offset));
+                Value slotPtr = emitBinary(
+                    Opcode::GEP, Type(Type::Kind::Ptr), vtblPtr, Value::constInt(offset));
                 const std::string &mname = slotToName[s];
                 if (mname.empty())
                 {
@@ -477,12 +479,12 @@ std::optional<Lowerer::MemberFieldAccess> Lowerer::resolveMemberField(const Memb
                                 Value::constInt(static_cast<long long>(field->offset)));
     // BUG-082 fix: Object fields are pointers, not I64
     Type fieldTy = !field->objectClassName.empty() ? Type(Type::Kind::Ptr)
-                                                    : type_conv::astToIlType(field->type);
+                                                   : type_conv::astToIlType(field->type);
     MemberFieldAccess access;
     access.ptr = fieldPtr;
     access.ilType = fieldTy;
     access.astType = field->type;
-    access.objectClassName = field->objectClassName;  // BUG-082 fix
+    access.objectClassName = field->objectClassName; // BUG-082 fix
     return access;
 }
 
@@ -512,9 +514,9 @@ std::optional<Lowerer::MemberFieldAccess> Lowerer::resolveImplicitField(std::str
     access.ptr = fieldPtr;
     // BUG-082 fix: Object fields are pointers, not I64
     access.ilType = !field->objectClassName.empty() ? Type(Type::Kind::Ptr)
-                                                     : type_conv::astToIlType(field->type);
+                                                    : type_conv::astToIlType(field->type);
     access.astType = field->type;
-    access.objectClassName = field->objectClassName;  // BUG-082 fix
+    access.objectClassName = field->objectClassName; // BUG-082 fix
     return access;
 }
 
@@ -538,9 +540,14 @@ Lowerer::RVal Lowerer::lowerMemberAccessExpr(const MemberAccessExpr &expr)
                 std::string getter = std::string("get_") + expr.member;
                 // Overload resolution for property getter (0 user params)
                 std::string curClass = currentClass();
-                if (auto resolved = sem::resolveMethodOverload(
-                        oopIndex_, qname, expr.member, /*isStatic*/ false, /*args*/ {}, curClass,
-                        diagnosticEmitter(), expr.loc))
+                if (auto resolved = sem::resolveMethodOverload(oopIndex_,
+                                                               qname,
+                                                               expr.member,
+                                                               /*isStatic*/ false,
+                                                               /*args*/ {},
+                                                               curClass,
+                                                               diagnosticEmitter(),
+                                                               expr.loc))
                 {
                     getter = resolved->methodName;
                 }
@@ -575,9 +582,14 @@ Lowerer::RVal Lowerer::lowerMemberAccessExpr(const MemberAccessExpr &expr)
                 {
                     // Prefer property getter sugar when present (resolve overloads)
                     std::string getter = std::string("get_") + expr.member;
-                    if (auto resolved = sem::resolveMethodOverload(oopIndex_, qname, expr.member,
-                                                                  /*isStatic*/ true, /*args*/ {},
-                                                                  currentClass(), diagnosticEmitter(), expr.loc))
+                    if (auto resolved = sem::resolveMethodOverload(oopIndex_,
+                                                                   qname,
+                                                                   expr.member,
+                                                                   /*isStatic*/ true,
+                                                                   /*args*/ {},
+                                                                   currentClass(),
+                                                                   diagnosticEmitter(),
+                                                                   expr.loc))
                         getter = resolved->methodName;
                     else if (diagnosticEmitter())
                         return {Value::constInt(0), Type(Type::Kind::I64)};
@@ -603,7 +615,8 @@ Lowerer::RVal Lowerer::lowerMemberAccessExpr(const MemberAccessExpr &expr)
                                                                    : Type(Type::Kind::Ptr);
                             curLoc = expr.loc;
                             std::string gname = ci->qualifiedName + "::" + expr.member;
-                            Value addr = emitUnary(Opcode::AddrOf, Type(Type::Kind::Ptr), Value::global(gname));
+                            Value addr = emitUnary(
+                                Opcode::AddrOf, Type(Type::Kind::Ptr), Value::global(gname));
                             Value loaded = emitLoad(ilTy, addr);
                             return {loaded, ilTy};
                         }
@@ -645,63 +658,70 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
         }
         else
         {
-        std::string qname = resolveQualifiedClassCasing(qualify(vb->name));
-        if (const ClassInfo *ci = oopIndex_.findClass(qname))
-        {
-            // Overload resolution for static call
-            std::vector<::il::frontends::basic::Type> argAstTypes;
-            argAstTypes.reserve(expr.args.size());
-            for (const auto &a : expr.args)
-                argAstTypes.push_back(a ? (scanExpr(*a) == ExprType::F64 ? ::il::frontends::basic::Type::F64
-                                                                         : (scanExpr(*a) == ExprType::Str
-                                                                                ? ::il::frontends::basic::Type::Str
-                                                                                : (scanExpr(*a) == ExprType::Bool
-                                                                                       ? ::il::frontends::basic::Type::Bool
-                                                                                       : ::il::frontends::basic::Type::I64)))
-                                         : ::il::frontends::basic::Type::I64);
-            std::string selected = expr.method;
-            if (auto resolved = sem::resolveMethodOverload(
-                    oopIndex_, qname, expr.method, /*isStatic*/ true, argAstTypes, currentClass(),
-                    diagnosticEmitter(), expr.loc))
+            std::string qname = resolveQualifiedClassCasing(qualify(vb->name));
+            if (const ClassInfo *ci = oopIndex_.findClass(qname))
             {
-                selected = resolved->methodName;
-            }
-            std::vector<::il::frontends::basic::Type> expectParamAst;
-            if (auto it = ci->methods.find(selected); it != ci->methods.end())
-                expectParamAst = it->second.sig.paramTypes;
-
-            std::vector<Value> args;
-            args.reserve(expr.args.size());
-            for (std::size_t i = 0; i < expr.args.size(); ++i)
-            {
-                RVal lowered = lowerExpr(*expr.args[i]);
-                if (i < expectParamAst.size())
+                // Overload resolution for static call
+                std::vector<::il::frontends::basic::Type> argAstTypes;
+                argAstTypes.reserve(expr.args.size());
+                for (const auto &a : expr.args)
+                    argAstTypes.push_back(
+                        a ? (scanExpr(*a) == ExprType::F64
+                                 ? ::il::frontends::basic::Type::F64
+                                 : (scanExpr(*a) == ExprType::Str
+                                        ? ::il::frontends::basic::Type::Str
+                                        : (scanExpr(*a) == ExprType::Bool
+                                               ? ::il::frontends::basic::Type::Bool
+                                               : ::il::frontends::basic::Type::I64)))
+                          : ::il::frontends::basic::Type::I64);
+                std::string selected = expr.method;
+                if (auto resolved = sem::resolveMethodOverload(oopIndex_,
+                                                               qname,
+                                                               expr.method,
+                                                               /*isStatic*/ true,
+                                                               argAstTypes,
+                                                               currentClass(),
+                                                               diagnosticEmitter(),
+                                                               expr.loc))
                 {
-                    auto astTy = expectParamAst[i];
-                    if (astTy == ::il::frontends::basic::Type::Bool)
-                        lowered = coerceToBool(std::move(lowered), expr.loc);
-                    else if (astTy == ::il::frontends::basic::Type::F64)
-                        lowered = coerceToF64(std::move(lowered), expr.loc);
-                    else if (astTy == ::il::frontends::basic::Type::I64)
-                        lowered = coerceToI64(std::move(lowered), expr.loc);
+                    selected = resolved->methodName;
                 }
-                args.push_back(lowered.value);
-            }
+                std::vector<::il::frontends::basic::Type> expectParamAst;
+                if (auto it = ci->methods.find(selected); it != ci->methods.end())
+                    expectParamAst = it->second.sig.paramTypes;
 
-            std::string callee = mangleMethod(ci->qualifiedName, selected);
-            if (auto retType = findMethodReturnType(qname, selected))
-            {
-                Type ilRetTy = type_conv::astToIlType(*retType);
-                Value result = emitCallRet(ilRetTy, callee, args);
-                if (ilRetTy.kind == Type::Kind::Str)
-                    deferReleaseStr(result);
-                else if (ilRetTy.kind == Type::Kind::Ptr)
-                    deferReleaseObj(result, qname);
-                return {result, ilRetTy};
+                std::vector<Value> args;
+                args.reserve(expr.args.size());
+                for (std::size_t i = 0; i < expr.args.size(); ++i)
+                {
+                    RVal lowered = lowerExpr(*expr.args[i]);
+                    if (i < expectParamAst.size())
+                    {
+                        auto astTy = expectParamAst[i];
+                        if (astTy == ::il::frontends::basic::Type::Bool)
+                            lowered = coerceToBool(std::move(lowered), expr.loc);
+                        else if (astTy == ::il::frontends::basic::Type::F64)
+                            lowered = coerceToF64(std::move(lowered), expr.loc);
+                        else if (astTy == ::il::frontends::basic::Type::I64)
+                            lowered = coerceToI64(std::move(lowered), expr.loc);
+                    }
+                    args.push_back(lowered.value);
+                }
+
+                std::string callee = mangleMethod(ci->qualifiedName, selected);
+                if (auto retType = findMethodReturnType(qname, selected))
+                {
+                    Type ilRetTy = type_conv::astToIlType(*retType);
+                    Value result = emitCallRet(ilRetTy, callee, args);
+                    if (ilRetTy.kind == Type::Kind::Str)
+                        deferReleaseStr(result);
+                    else if (ilRetTy.kind == Type::Kind::Ptr)
+                        deferReleaseObj(result, qname);
+                    return {result, ilRetTy};
+                }
+                emitCall(callee, args);
+                return {Value::constInt(0), Type(Type::Kind::I64)};
             }
-            emitCall(callee, args);
-            return {Value::constInt(0), Type(Type::Kind::I64)};
-        }
         }
     }
 
@@ -843,21 +863,28 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
     std::vector<::il::frontends::basic::Type> argAstTypes;
     argAstTypes.reserve(expr.args.size());
     for (const auto &a : expr.args)
-        argAstTypes.push_back(a ? (scanExpr(*a) == ExprType::F64 ? ::il::frontends::basic::Type::F64
-                                                                 : (scanExpr(*a) == ExprType::Str
-                                                                        ? ::il::frontends::basic::Type::Str
-                                                                        : (scanExpr(*a) == ExprType::Bool
-                                                                               ? ::il::frontends::basic::Type::Bool
-                                                                               : ::il::frontends::basic::Type::I64)))
-                                 : ::il::frontends::basic::Type::I64);
+        argAstTypes.push_back(
+            a ? (scanExpr(*a) == ExprType::F64
+                     ? ::il::frontends::basic::Type::F64
+                     : (scanExpr(*a) == ExprType::Str
+                            ? ::il::frontends::basic::Type::Str
+                            : (scanExpr(*a) == ExprType::Bool ? ::il::frontends::basic::Type::Bool
+                                                              : ::il::frontends::basic::Type::I64)))
+              : ::il::frontends::basic::Type::I64);
 
     std::string qc = qname.empty() ? directQClass : qname;
     std::string curClass = currentClass();
     std::string selectedName = expr.method;
     if (!qc.empty())
     {
-        if (auto resolved = sem::resolveMethodOverload(oopIndex_, qc, expr.method, false, argAstTypes,
-                                                       curClass, diagnosticEmitter(), expr.loc))
+        if (auto resolved = sem::resolveMethodOverload(oopIndex_,
+                                                       qc,
+                                                       expr.method,
+                                                       false,
+                                                       argAstTypes,
+                                                       curClass,
+                                                       diagnosticEmitter(),
+                                                       expr.loc))
         {
             selectedName = resolved->methodName;
         }
@@ -872,7 +899,8 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
         if (const ClassInfo *ci = oopIndex_.findClass(qc))
             emitClassName = ci->qualifiedName;
     }
-    std::string directCallee = emitClassName.empty() ? selectedName : mangleMethod(emitClassName, selectedName);
+    std::string directCallee =
+        emitClassName.empty() ? selectedName : mangleMethod(emitClassName, selectedName);
 
     // If virtual and not BASE-qualified, emit call.indirect; otherwise direct call or interface
     // dispatch. Interface dispatch via (expr AS IFACE).Method: detect AS with interface target.
@@ -925,7 +953,8 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
         if (builder)
         {
             if (const auto *desc = il::runtime::findRuntimeDescriptor("rt_itable_lookup"))
-                builder->addExtern(std::string(desc->name), desc->signature.retType, desc->signature.paramTypes);
+                builder->addExtern(
+                    std::string(desc->name), desc->signature.retType, desc->signature.paramTypes);
             else
                 builder->addExtern("rt_itable_lookup",
                                    Type(Type::Kind::Ptr),
@@ -944,8 +973,8 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
         {
             if (iface->slots[static_cast<std::size_t>(slotIndex)].returnType)
             {
-                retTy =
-                    type_conv::astToIlType(*iface->slots[static_cast<std::size_t>(slotIndex)].returnType);
+                retTy = type_conv::astToIlType(
+                    *iface->slots[static_cast<std::size_t>(slotIndex)].returnType);
             }
         }
 
@@ -979,7 +1008,8 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
         // will trap with a clear message.
         Value tablePtr = emitLoad(Type(Type::Kind::Ptr), selfArg);
         const long long offset = static_cast<long long>(slot * 8LL);
-        Value entryPtr = emitBinary(Opcode::GEP, Type(Type::Kind::Ptr), tablePtr, Value::constInt(offset));
+        Value entryPtr =
+            emitBinary(Opcode::GEP, Type(Type::Kind::Ptr), tablePtr, Value::constInt(offset));
         Value fnPtr = emitLoad(Type(Type::Kind::Ptr), entryPtr);
 
         if (auto retType = findMethodReturnType(className, expr.method))

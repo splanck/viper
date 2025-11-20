@@ -3,10 +3,10 @@
 
 #include "tests/unit/GTestStub.hpp"
 
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <string>
-#include <filesystem>
 
 #include "tools/ilc/cmd_codegen_arm64.hpp"
 
@@ -39,17 +39,16 @@ TEST(Arm64CLI, CBrOnCompareRR)
 {
     const std::string in = outPath("arm64_cbr_rr.il");
     const std::string out = outPath("arm64_cbr_rr.s");
-    const std::string il =
-        "il 0.1\n"
-        "func @f(%a:i64, %b:i64) -> i64 {\n"
-        "entry(%a:i64, %b:i64):\n"
-        "  %c = icmp_eq %a, %b\n"
-        "  cbr %c, t(), f()\n"
-        "t():\n"
-        "  ret 1\n"
-        "f():\n"
-        "  ret 0\n"
-        "}\n";
+    const std::string il = "il 0.1\n"
+                           "func @f(%a:i64, %b:i64) -> i64 {\n"
+                           "entry(%a:i64, %b:i64):\n"
+                           "  %c = icmp_eq %a, %b\n"
+                           "  cbr %c, t(), f()\n"
+                           "t():\n"
+                           "  ret 1\n"
+                           "f():\n"
+                           "  ret 0\n"
+                           "}\n";
     writeFile(in, il);
     const char *argv[] = {in.c_str(), "-S", out.c_str()};
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
@@ -65,17 +64,16 @@ TEST(Arm64CLI, CBrOnCompareImm)
 {
     const std::string in = outPath("arm64_cbr_imm.il");
     const std::string out = outPath("arm64_cbr_imm.s");
-    const std::string il =
-        "il 0.1\n"
-        "func @g(%a:i64, %b:i64) -> i64 {\n"
-        "entry(%a:i64, %b:i64):\n"
-        "  %c = scmp_lt %b, -7\n"
-        "  cbr %c, T(), F()\n"
-        "T():\n"
-        "  ret 1\n"
-        "F():\n"
-        "  ret 0\n"
-        "}\n";
+    const std::string il = "il 0.1\n"
+                           "func @g(%a:i64, %b:i64) -> i64 {\n"
+                           "entry(%a:i64, %b:i64):\n"
+                           "  %c = scmp_lt %b, -7\n"
+                           "  cbr %c, T(), F()\n"
+                           "T():\n"
+                           "  ret 1\n"
+                           "F():\n"
+                           "  ret 0\n"
+                           "}\n";
     writeFile(in, il);
     const char *argv[] = {in.c_str(), "-S", out.c_str()};
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
@@ -91,4 +89,3 @@ int main(int argc, char **argv)
     testing::InitGoogleTest(&argc, &argv);
     return RUN_ALL_TESTS();
 }
-

@@ -27,9 +27,10 @@ static inline bool isExactMatch(::il::frontends::basic::Type expect,
 static inline bool isWideningAllowed(::il::frontends::basic::Type expect,
                                      ::il::frontends::basic::Type got) noexcept
 {
-    // Only numeric widening: int->float64; integer to integer widening already canonicalized to I64.
-    // For this frontend, INT maps to I64 and SINGLE/DOUBLE to F64; allow I64->F64.
-    return (expect == ::il::frontends::basic::Type::F64 && got == ::il::frontends::basic::Type::I64);
+    // Only numeric widening: int->float64; integer to integer widening already canonicalized to
+    // I64. For this frontend, INT maps to I64 and SINGLE/DOUBLE to F64; allow I64->F64.
+    return (expect == ::il::frontends::basic::Type::F64 &&
+            got == ::il::frontends::basic::Type::I64);
 }
 
 static inline std::string signatureText(std::string_view qclass,
@@ -49,10 +50,18 @@ static inline std::string signatureText(std::string_view qclass,
         auto t = mi.sig.paramTypes[i];
         switch (t)
         {
-            case Type::I64: s += "INTEGER"; break;
-            case Type::F64: s += "DOUBLE"; break;
-            case Type::Str: s += "STRING"; break;
-            case Type::Bool: s += "BOOLEAN"; break;
+            case Type::I64:
+                s += "INTEGER";
+                break;
+            case Type::F64:
+                s += "DOUBLE";
+                break;
+            case Type::Str:
+                s += "STRING";
+                break;
+            case Type::Bool:
+                s += "BOOLEAN";
+                break;
         }
     }
     s += ")";
@@ -75,7 +84,12 @@ std::optional<ResolvedMethod> resolveMethodOverload(const OopIndex &index,
         return std::nullopt;
 
     // Build candidate list: methodName plus property accessors matching arity.
-    struct Cand { const ClassInfo::MethodInfo *mi; std::string name; };
+    struct Cand
+    {
+        const ClassInfo::MethodInfo *mi;
+        std::string name;
+    };
+
     std::vector<Cand> cands;
     auto addIf = [&](const std::string &name)
     {
@@ -113,10 +127,18 @@ std::optional<ResolvedMethod> resolveMethodOverload(const OopIndex &index,
                     msg += ", ";
                 switch (argTypes[i])
                 {
-                    case Type::I64: msg += "INTEGER"; break;
-                    case Type::F64: msg += "DOUBLE"; break;
-                    case Type::Str: msg += "STRING"; break;
-                    case Type::Bool: msg += "BOOLEAN"; break;
+                    case Type::I64:
+                        msg += "INTEGER";
+                        break;
+                    case Type::F64:
+                        msg += "DOUBLE";
+                        break;
+                    case Type::Str:
+                        msg += "STRING";
+                        break;
+                    case Type::Bool:
+                        msg += "BOOLEAN";
+                        break;
                 }
             }
             msg += ")'";
@@ -208,4 +230,3 @@ std::optional<ResolvedMethod> resolveMethodOverload(const OopIndex &index,
 }
 
 } // namespace il::frontends::basic::sem
-

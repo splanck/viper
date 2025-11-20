@@ -192,9 +192,8 @@ int cmdILOpt(int argc, char **argv)
         passList.erase(std::remove(passList.begin(), passList.end(), "mem2reg"), passList.end());
         viper::passes::Mem2RegStats stats{};
         viper::passes::mem2reg(m, &stats);
-        std::cout << "mem2reg: promoted " << stats.promotedVars
-                  << ", removed loads " << stats.removedLoads
-                  << ", removed stores " << stats.removedStores << "\n";
+        std::cout << "mem2reg: promoted " << stats.promotedVars << ", removed loads "
+                  << stats.removedLoads << ", removed stores " << stats.removedStores << "\n";
     }
     pm.run(m, passList);
     std::ofstream ofs(outFile);

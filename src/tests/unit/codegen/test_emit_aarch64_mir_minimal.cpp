@@ -21,7 +21,10 @@ TEST(AArch64MIR, PrologueAddEpilogue)
     fn.blocks.push_back(MBasicBlock{});
     auto &bb = fn.blocks.back();
     // x0 = x0 + x1
-    bb.instrs.push_back(MInstr{MOpcode::AddRRR, {MOperand::regOp(PhysReg::X0), MOperand::regOp(PhysReg::X0), MOperand::regOp(PhysReg::X1)}});
+    bb.instrs.push_back(MInstr{MOpcode::AddRRR,
+                               {MOperand::regOp(PhysReg::X0),
+                                MOperand::regOp(PhysReg::X0),
+                                MOperand::regOp(PhysReg::X1)}});
 
     std::ostringstream os;
     emit.emitFunction(os, fn);
@@ -39,4 +42,3 @@ int main(int argc, char **argv)
     testing::InitGoogleTest(&argc, &argv);
     return RUN_ALL_TESTS();
 }
-

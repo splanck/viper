@@ -52,9 +52,9 @@
 //===----------------------------------------------------------------------===//
 #pragma once
 
-#include <optional>
-#include <cstddef>
 #include "il/runtime/RuntimeSignatures.hpp"
+#include <cstddef>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>

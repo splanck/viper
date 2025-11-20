@@ -181,14 +181,17 @@ class VM
     struct TransparentHashSV
     {
         using is_transparent = void;
+
         size_t operator()(std::string_view sv) const noexcept
         {
             return std::hash<std::string_view>{}(sv);
         }
+
         size_t operator()(const std::string &s) const noexcept
         {
             return (*this)(std::string_view{s});
         }
+
         size_t operator()(const char *s) const noexcept
         {
             return (*this)(std::string_view{s});
@@ -198,26 +201,32 @@ class VM
     struct TransparentEqualSV
     {
         using is_transparent = void;
+
         bool operator()(std::string_view a, std::string_view b) const noexcept
         {
             return a == b;
         }
+
         bool operator()(const std::string &a, const std::string &b) const noexcept
         {
             return a == b;
         }
+
         bool operator()(const std::string &a, std::string_view b) const noexcept
         {
             return a == b;
         }
+
         bool operator()(std::string_view a, const std::string &b) const noexcept
         {
             return a == b;
         }
+
         bool operator()(const char *a, std::string_view b) const noexcept
         {
             return std::string_view{a} == b;
         }
+
         bool operator()(std::string_view a, const char *b) const noexcept
         {
             return a == std::string_view{b};
@@ -234,7 +243,8 @@ class VM
                                      const il::core::Function *,
                                      TransparentHashSV,
                                      TransparentEqualSV>;
-    using StrMap = std::unordered_map<std::string_view, rt_string, TransparentHashSV, TransparentEqualSV>;
+    using StrMap =
+        std::unordered_map<std::string_view, rt_string, TransparentHashSV, TransparentEqualSV>;
 
     /// @brief Create VM for module @p m.
     /// @param m IL module to execute.
@@ -438,12 +448,11 @@ class VM
     /// @param bb [in,out] Current basic block.
     /// @param ip [in,out] Instruction pointer within @p bb.
     /// @return Result describing jump or return.
-    ExecResult executeOpcode(
-        Frame &fr,
-        const il::core::Instr &in,
-        const BlockMap &blocks,
-        const il::core::BasicBlock *&bb,
-        size_t &ip);
+    ExecResult executeOpcode(Frame &fr,
+                             const il::core::Instr &in,
+                             const BlockMap &blocks,
+                             const il::core::BasicBlock *&bb,
+                             size_t &ip);
 
     /// @brief Update current trap context for instruction @p in.
     void setCurrentContext(Frame &fr,

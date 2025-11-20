@@ -11,4 +11,3 @@ void *rt_ns_stringbuilder_new(void)
     const int64_t kMinBytes = 8; // vptr space
     return rt_obj_new_i64(kClassId, kMinBytes);
 }
-

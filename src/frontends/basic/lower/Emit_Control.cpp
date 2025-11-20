@@ -148,7 +148,8 @@ void Lowerer::lowerCondBranch(const Expr &expr,
     // (e.g., array bounds checks) and invalidate the trueBlk/falseBlk pointers
     ProcedureContext &ctx = context();
     Function *func = ctx.function();
-    auto indexOf = [&](BasicBlock *bb) {
+    auto indexOf = [&](BasicBlock *bb)
+    {
         assert(bb && "lowerCondBranch requires non-null block");
         return static_cast<size_t>(bb - &func->blocks[0]);
     };

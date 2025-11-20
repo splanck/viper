@@ -122,7 +122,8 @@ struct KeyHash
 {
     size_t operator()(const Key &k) const noexcept
     {
-        auto h = static_cast<size_t>(k.op) * 1469598103934665603ULL ^ static_cast<size_t>(k.type.kind);
+        auto h =
+            static_cast<size_t>(k.op) * 1469598103934665603ULL ^ static_cast<size_t>(k.type.kind);
         auto hval = [](const Value &v)
         {
             size_t h0 = static_cast<size_t>(v.kind);
@@ -168,9 +169,7 @@ inline void normalizeCommutative(Opcode op, Value &a, Value &b)
         return;
     // Place constants last to prefer temp-first ordering; tie-break by id
     auto rank = [](const Value &v)
-    {
-        return v.kind == Value::Kind::Temp ? (1000000 + static_cast<int>(v.id)) : 0;
-    };
+    { return v.kind == Value::Kind::Temp ? (1000000 + static_cast<int>(v.id)) : 0; };
     if (rank(a) < rank(b))
         std::swap(a, b);
 }
@@ -183,7 +182,7 @@ bool runEarlyCSE(Function &F)
     for (auto &B : F.blocks)
     {
         std::unordered_map<Key, unsigned, KeyHash> table;
-        for (std::size_t idx = 0; idx < B.instructions.size();) 
+        for (std::size_t idx = 0; idx < B.instructions.size();)
         {
             Instr &I = B.instructions[idx];
             if (!I.result || !isPure(I.op) || I.operands.empty())

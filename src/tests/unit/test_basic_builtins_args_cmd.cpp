@@ -26,10 +26,16 @@ namespace
 {
 static bool containsCall(const il::core::Module &m, std::string_view name)
 {
-    auto ieq = [](char a, char b) { return std::tolower((unsigned char)a) == std::tolower((unsigned char)b); };
-    auto eq = [&](std::string_view a, std::string_view b) {
-        if (a.size() != b.size()) return false;
-        for (size_t i = 0; i < a.size(); ++i) if (!ieq(a[i], b[i])) return false; return true;
+    auto ieq = [](char a, char b)
+    { return std::tolower((unsigned char)a) == std::tolower((unsigned char)b); };
+    auto eq = [&](std::string_view a, std::string_view b)
+    {
+        if (a.size() != b.size())
+            return false;
+        for (size_t i = 0; i < a.size(); ++i)
+            if (!ieq(a[i], b[i]))
+                return false;
+        return true;
     };
     for (const auto &fn : m.functions)
         for (const auto &bb : fn.blocks)
@@ -46,11 +52,10 @@ TEST(BasicBuiltinsArgsCmd, LowersToRuntime)
 int main()
 #endif
 {
-    const std::string src =
-        "10 PRINT ARGC()\n"
-        "20 PRINT ARG$(0)\n"
-        "30 PRINT COMMAND$()\n"
-        "40 END\n";
+    const std::string src = "10 PRINT ARGC()\n"
+                            "20 PRINT ARG$(0)\n"
+                            "30 PRINT COMMAND$()\n"
+                            "40 END\n";
     SourceManager sm;
     BasicCompilerInput input{src, "args_cmd.bas"};
     BasicCompilerOptions opts{};
@@ -66,4 +71,3 @@ int main()
     return 0;
 #endif
 }
-

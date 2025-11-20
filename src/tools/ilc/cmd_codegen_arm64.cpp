@@ -14,11 +14,11 @@
 
 #include "codegen/aarch64/AsmEmitter.hpp"
 #include "codegen/aarch64/LowerILToMIR.hpp"
-#include "tools/common/module_loader.hpp"
 #include "codegen/common/ArgNormalize.hpp"
 #include "il/core/Instr.hpp"
 #include "il/core/Type.hpp"
 #include "il/core/Value.hpp"
+#include "tools/common/module_loader.hpp"
 
 #include <fstream>
 #include <iostream>
@@ -40,23 +40,34 @@ using il::core::Opcode;
 // Keeps cmd driver tidy and centralizes opcode/sequence mapping.
 // (Pattern-lowering moved to LowerILToMIR)
 
-constexpr std::string_view kUsage =
-    "usage: ilc codegen arm64 <file.il> -S <file.s>\n";
+constexpr std::string_view kUsage = "usage: ilc codegen arm64 <file.il> -S <file.s>\n";
 
 struct ArgvView
 {
     int argc;
     char **argv;
-    [[nodiscard]] bool empty() const { return argc <= 0 || argv == nullptr; }
-    [[nodiscard]] std::string_view front() const { return empty() ? std::string_view{} : argv[0]; }
+
+    [[nodiscard]] bool empty() const
+    {
+        return argc <= 0 || argv == nullptr;
+    }
+
+    [[nodiscard]] std::string_view front() const
+    {
+        return empty() ? std::string_view{} : argv[0];
+    }
+
     [[nodiscard]] std::string_view at(int i) const
     {
-        if (i < 0 || i >= argc || argv == nullptr) return std::string_view{};
+        if (i < 0 || i >= argc || argv == nullptr)
+            return std::string_view{};
         return argv[i];
     }
+
     [[nodiscard]] ArgvView drop_front(int n = 1) const
     {
-        if (n >= argc) return {0, nullptr};
+        if (n >= argc)
+            return {0, nullptr};
         return {argc - n, argv + n};
     }
 };

@@ -20,8 +20,8 @@
 ///          @ref Lowerer::ClassLayout table drives later IL emission.
 
 #include "frontends/basic/AstWalker.hpp"
-#include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/ILTypeUtils.hpp"
+#include "frontends/basic/Lowerer.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
 
 #include <cstddef>

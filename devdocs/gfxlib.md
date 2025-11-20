@@ -58,6 +58,7 @@ version: 1.0.0
 - [ ] API documentation
 - [ ] Example programs documented
 - [ ] Integration guide for Viper runtime
+- [ ] Changelog / release notes
 
 ---
 
@@ -73,6 +74,9 @@ version: 1.0.0
 8. [Internal Architecture](#8-internal-architecture)
 9. [Build System](#9-build-system)
 10. [Implementation Plan](#10-implementation-plan)
+11. [Future Phases](#11-future-phases-out-of-scope-for-v10)
+12. [Appendix A: Platform Notes](#appendix-a-platform-specific-notes)
+13. [Appendix B: Example Programs](#appendix-b-example-programs)
 
 ---
 
@@ -83,6 +87,7 @@ version: 1.0.0
 **ViperGFX** is a pure software-rendered, single-window, cross-platform 2D graphics library written in C.
 
 **Core Features:**
+
 - Window creation & event loop
 - Software framebuffer rendering (32-bit RGBA)
 - Basic 2D drawing primitives
@@ -90,22 +95,23 @@ version: 1.0.0
 - Configurable FPS limiting
 
 **Design Principles:**
-- **Zero external dependencies** – No SDL, GLFW, or third-party libraries
+
+- **Zero external dependencies** – No SDL, GLFW, or other windowing libraries
 - **Native platform APIs only** – Cocoa (macOS), X11 (Linux), Win32 (Windows)
-- **Pure C implementation** – C99 standard, C++ compatible
+- **Pure C implementation** – C99 standard, C++ compatible headers
 - **Software rendering only** – No OpenGL/Vulkan/Metal
 
 ### 1.2 Target Platforms
 
-| Platform | API | Backend File |
-|----------|-----|--------------|
-| macOS | Cocoa | `vgfx_platform_macos.m` |
-| Linux | X11 | `vgfx_platform_linux.c` |
-| Windows | Win32 GDI | `vgfx_platform_win32.c` |
+| Platform | API       | Backend File                 |
+|----------|-----------|------------------------------|
+| macOS    | Cocoa     | `vgfx_platform_macos.m`      |
+| Linux    | X11       | `vgfx_platform_linux.c`      |
+| Windows  | Win32 GDI | `vgfx_platform_win32.c`      |
 
 ### 1.3 Integration Path
 
-```
+```text
 Phase 1: Standalone static library (libvipergfx.a / vipergfx.lib)
           ↓
 Phase 2: Integration into Viper runtime
@@ -120,46 +126,52 @@ Phase 3: BASIC frontend support (SCREEN, PSET, LINE, etc.)
 ### 2.1 In Scope (Phase 1)
 
 ✅ **Window Management**
+
 - Single window creation/destruction
-- Event loop stepping
+- Event loop stepping via `vgfx_update`
 - Optional user resizing
-- Window close detection
+- Window close detection via events
 
 ✅ **Framebuffer**
+
 - 32-bit RGBA software buffer
-- Direct pixel access API
-- Automatic presentation to window
+- Direct pixel access API (`vgfx_get_framebuffer`)
+- Automatic presentation to window from framebuffer
 
 ✅ **Pixel Operations**
+
 - Set pixel (with bounds checking)
 - Get pixel color
 - Clear screen
 
 ✅ **Drawing Primitives**
+
 - Line (Bresenham algorithm)
 - Rectangle (outline & filled)
 - Circle (outline & filled, midpoint algorithm)
 
 ✅ **Input**
-- Keyboard state polling (A-Z, 0-9, arrows, Enter, Escape, Space)
+
+- Keyboard state polling (A–Z, 0–9, arrows, Enter, Escape, Space)
 - Mouse position tracking
 - Mouse button state (left, right, middle)
 - Event queue for close, resize, focus, key up/down, mouse move/button
 
 ✅ **Frame Timing**
+
 - Configurable per-window FPS limit
-- Unlimited FPS mode
+- "Unlimited FPS" mode
 
 ### 2.2 Out of Scope (Phase 1)
 
 ❌ Hardware acceleration (OpenGL/Vulkan/Metal)
-❌ Image file loading (PNG/JPEG)
+❌ Image file loading (PNG/JPEG, etc.)
 ❌ Text rendering / font support
 ❌ Audio subsystem
 ❌ 3D graphics
 ❌ Advanced blending/compositing
 ❌ Multi-window support
-❌ Modifier keys (Shift/Ctrl/Alt)
+❌ Modifier keys (Shift/Ctrl/Alt, etc.)
 ❌ Per-monitor high-DPI awareness
 
 ---
@@ -185,12 +197,14 @@ Phase 3: BASIC frontend support (SCREEN, PSET, LINE, etc.)
 #define VGFX_DEFAULT_TITLE   "ViperGFX"
 #endif
 
-// Default frame rate limit (-1 = unlimited)
+// Default frame rate limit used when params.fps == 0.
+// Convention: fps < 0 at runtime means "unlimited" (no limiting).
 #ifndef VGFX_DEFAULT_FPS
 #define VGFX_DEFAULT_FPS     60
 #endif
 
-// Color depth (internal framebuffer)
+// Color depth (internal framebuffer). For v1, this must remain 32.
+// Overriding this is unsupported and will lead to undefined behavior.
 #ifndef VGFX_COLOR_DEPTH
 #define VGFX_COLOR_DEPTH     32  // RGBA (8-8-8-8)
 #endif
@@ -204,27 +218,32 @@ Phase 3: BASIC frontend support (SCREEN, PSET, LINE, etc.)
 #define VGFX_MAX_HEIGHT      4096
 #endif
 
-// Event queue capacity (must be power of 2 for efficient ring buffer)
+// Event queue capacity. Power of 2 is recommended for efficient
+// ring-buffer indexing, but any positive value is supported.
 #ifndef VGFX_EVENT_QUEUE_SIZE
 #define VGFX_EVENT_QUEUE_SIZE 256
 #endif
 ```
 
-**Usage:** Projects may provide their own `vgfx_config.h` before including `vgfx.h`.
+**Usage Notes:**
+
+- Projects may provide their own `vgfx_config.h` before including `vgfx.h`
+- For v1, `VGFX_COLOR_DEPTH` is effectively a documentation constant and must remain 32
+- All dimensions are clamped to `[0, VGFX_MAX_*]` range
 
 ### 3.2 Runtime Configuration
 
 ```c
-// Set per-window target FPS
-//   fps == -1: unlimited (no frame limiting)
-//   fps == 0:  use current global default
-//   fps > 0:   specific target FPS
+// Set per-window target FPS.
+//   fps < 0: unlimited (no frame limiting)
+//   fps == 0: use current global default
+//   fps > 0: specific target FPS
 void vgfx_set_fps(vgfx_window_t window, int32_t fps);
 
-// Set global default FPS for future windows created with params.fps == 0
-//   fps == -1: unlimited
-//   fps > 0:   specific FPS
-// Initial default: VGFX_DEFAULT_FPS (60)
+// Set global default FPS for future windows created with params.fps == 0.
+//   fps < 0: unlimited (no limiting)
+//   fps > 0: specific FPS
+// Initial default: VGFX_DEFAULT_FPS (e.g., 60)
 void vgfx_set_default_fps(int32_t fps);
 ```
 
@@ -234,44 +253,49 @@ void vgfx_set_default_fps(int32_t fps);
 
 ### 4.1 Coordinate System
 
-```
+```text
 (0,0) ──────────> X
   │
   │
   │
   ▼
   Y
-
-Origin: Top-left corner
-X-axis: Increases to the right
-Y-axis: Increases downward
-Valid range: [0, width) × [0, height)
 ```
+
+- **Origin:** Top-left corner of the window
+- **X-axis:** Increases to the right
+- **Y-axis:** Increases downward
+- **Valid range:** `[0, width) × [0, height)`
 
 ### 4.2 Window & Framebuffer
 
-**Framebuffer Format:**
+**Framebuffer Format**
+
 - **Bits per pixel:** 32 (RGBA)
 - **Byte layout:** `[R, G, B, A]` (8 bits each)
-- **Memory layout:** Row-major, no padding
+- **Memory layout:** Row-major, no padding between rows
 - **Stride:** Always `width * 4` bytes
+- **Row ordering:** Row 0 is the top of the window
 
-**Color Model:**
-- **API color type:** `vgfx_color_t` (24-bit RGB, `0x00RRGGBB`)
+**Color Model**
+
+- **API color type:** `vgfx_color_t` is 24-bit RGB encoded in a 32-bit integer: `0x00RRGGBB`
 - **Internal storage:** 32-bit RGBA
-- **Alpha channel:** Always set to `0xFF` (fully opaque) by all drawing operations
-- **Direct access:** Users may manipulate alpha via `vgfx_get_framebuffer()`
+- **Alpha channel:** All drawing operations write alpha as `0xFF` (fully opaque)
+  - Applications may manipulate alpha directly via `vgfx_get_framebuffer` for future features
 
-**Color Conversion:**
+**Color Conversion**
+
 ```c
 // When vgfx_color_t (0x00RRGGBB) is written to framebuffer:
-uint8_t r = (color >> 16) & 0xFF;  // → pixels[offset + 0]
-uint8_t g = (color >>  8) & 0xFF;  // → pixels[offset + 1]
-uint8_t b = (color >>  0) & 0xFF;  // → pixels[offset + 2]
-uint8_t a = 0xFF;                  // → pixels[offset + 3]
+uint8_t r = (color >> 16) & 0xFF;  // pixels[offset + 0]
+uint8_t g = (color >>  8) & 0xFF;  // pixels[offset + 1]
+uint8_t b = (color >>  0) & 0xFF;  // pixels[offset + 2]
+uint8_t a = 0xFF;                  // pixels[offset + 3] (always opaque)
 ```
 
-**Pixel Addressing:**
+**Pixel Addressing**
+
 ```c
 // Pixel at (x, y):
 int32_t offset = y * stride + x * 4;
@@ -287,10 +311,10 @@ uint8_t a = pixels[offset + 3];
 
 ```c
 vgfx_window_params_t params = {
-    .width    = 800,
-    .height   = 600,
-    .title    = "Example",
-    .fps      = 60,
+    .width     = 800,
+    .height    = 600,
+    .title     = "Example",
+    .fps       = 60,
     .resizable = 1
 };
 
@@ -302,13 +326,13 @@ if (!win) {
 
 int running = 1;
 while (running) {
-    // 1. Process events and present framebuffer (with FPS limiting)
+    // 1. Process events, present framebuffer, enforce FPS limit.
     if (!vgfx_update(win)) {
-        // Fatal error or window lost
+        // Fatal error or window lost.
         break;
     }
 
-    // 2. Poll events
+    // 2. Poll events.
     vgfx_event_t ev;
     while (vgfx_poll_event(win, &ev)) {
         switch (ev.type) {
@@ -316,17 +340,14 @@ while (running) {
             running = 0;
             break;
         case VGFX_EVENT_RESIZE:
-            // Framebuffer has been resized; redraw fully
-            break;
-        case VGFX_EVENT_KEY_DOWN:
-            // Handle key press
+            // Framebuffer has been resized and cleared; redraw fully.
             break;
         default:
             break;
         }
     }
 
-    // 3. Draw next frame
+    // 3. Draw the next frame into the framebuffer.
     vgfx_cls(win, VGFX_BLACK);
     // ... draw primitives ...
 }
@@ -334,25 +355,34 @@ while (running) {
 vgfx_destroy_window(win);
 ```
 
-**Frame Timing:**
-```
+**Canonical semantics of `vgfx_update`:**
+
+> `vgfx_update` presents whatever is currently in the framebuffer (typically drawn during the previous loop iteration), processes OS events and queues ViperGFX events, enforces FPS limiting, and then returns.
+
+**Implications:**
+
+- Frame N's drawing typically happens **after** `vgfx_update` for frame N
+- That frame's contents are presented at the **next** call to `vgfx_update` (frame N+1)
+- This one-frame latency is intentional and simplifies the API
+- At 60 FPS, this latency (~16ms) is not perceptible
+
+**Frame Timing Diagram**
+
+```text
 Frame N start
     ↓
-vgfx_update() called
-    ↓
-1. Process OS events → translate to vgfx events → enqueue
-2. Present framebuffer to window (blit)
-3. Calculate elapsed time since last frame
-4. If FPS limiting enabled:
-       target_time = 1000ms / fps
-       if elapsed < target_time:
-           sleep(target_time - elapsed)
+vgfx_update(win)
+    1. Process OS events → enqueue vgfx events
+    2. Present framebuffer (drawn in previous iteration)
+    3. Calculate elapsed time since last frame
+    4. If FPS limiting enabled and frame is early:
+           sleep(remaining_time)
     ↓
 vgfx_update() returns 1
     ↓
 Application polls events via vgfx_poll_event()
     ↓
-Application draws next frame
+Application draws next frame into framebuffer
     ↓
 Frame N+1 start
 ```
@@ -360,65 +390,86 @@ Frame N+1 start
 ### 4.4 Window Resizing
 
 **Behavior:**
-1. User resizes window (if `resizable == 1`)
-2. `VGFX_EVENT_RESIZE` queued with new `width` and `height`
-3. Internal framebuffer reallocated to new dimensions
-4. **New framebuffer cleared to black** (`0x000000`, alpha `0xFF`)
-5. Application should redraw fully after receiving `VGFX_EVENT_RESIZE`
+
+1. User resizes window (if `resizable != 0`)
+2. Backend enqueues `VGFX_EVENT_RESIZE` with new `width` and `height`
+3. Internal framebuffer is reallocated to the new dimensions
+4. **New framebuffer contents are cleared to black** (`0x000000`, alpha `0xFF`)
+5. Applications should redraw fully after receiving `VGFX_EVENT_RESIZE`
+
+**Rationale for clearing:** Prevents exposing uninitialized memory or stale content from previous size.
 
 **Querying Size:**
+
 ```c
 int32_t width, height;
 if (vgfx_get_size(win, &width, &height)) {
-    // width, height populated
+    // width, height now hold current window size
 }
 ```
 
 ### 4.5 Out-of-Bounds Behavior
 
-| Function | Out-of-Bounds Behavior |
-|----------|------------------------|
-| `vgfx_pset(x, y, color)` | No-op (silent, no write) |
-| `vgfx_point(x, y)` | Returns `0x000000` (black) |
-| `vgfx_line(...)` | Clipped to window bounds |
-| `vgfx_rect(...)` | Clipped to window bounds |
-| `vgfx_circle(...)` | Clipped to window bounds |
+| Function                  | Out-of-Bounds Behavior               |
+|---------------------------|--------------------------------------|
+| `vgfx_pset(x, y, color)`  | No-op (silent, no write)            |
+| `vgfx_point(x, y)`        | Returns `0x000000` (black)          |
+| `vgfx_line(...)`          | Clipped to window bounds            |
+| `vgfx_rect(...)`          | Clipped to window bounds            |
+| `vgfx_circle(...)`        | Clipped to window bounds            |
 
-**Rationale:** Performance (no error checking overhead in inner loops) and simplicity.
+**Rationale:**
+- Simple mental model
+- No branching overhead in inner loops
+- Consistent behavior across all drawing operations
 
 ### 4.6 Input Semantics
 
-**Keyboard:**
-- `vgfx_key_down(win, key)` returns **current state** (1 = pressed, 0 = released)
-- Not edge-triggered; applications must track edges if needed
-- Key codes represent **physical keys**
-- Letters map to uppercase ASCII (`'A'`-`'Z'`) regardless of Shift/CapsLock
-- Modifiers (Shift/Ctrl/Alt) are **out of scope** for Phase 1
+**Keyboard**
 
-**Key Repeat:**
+- `vgfx_key_down(win, key)` returns **current key state** (not edge-triggered):
+  - `1` = pressed
+  - `0` = released
+- Applications must track their own edges if needed
+- Key codes for letters use uppercase ASCII (`'A'`–`'Z'`) regardless of Shift/CapsLock
+- **Modifiers are out of scope for Phase 1** (Shift/Ctrl/Alt/Meta)
+
+**Key Repeat**
+
 - OS auto-repeat may generate multiple `VGFX_EVENT_KEY_DOWN` events
-- `event.data.key.is_repeat` flag indicates repeat (best-effort, platform-dependent)
+- `event.data.key.is_repeat` is set to `1` on repeat events (best-effort, platform-dependent)
 - Applications needing precise input should track `KEY_DOWN`/`KEY_UP` pairs
 
-**Mouse:**
-- `vgfx_mouse_pos(win, &x, &y)` reports position in window coordinates
-- Coordinates may be **negative or exceed window dimensions** if mouse is outside
-- Return value: `1` if inside window bounds `[0, width) × [0, height)`, `0` otherwise
-- `vgfx_mouse_button(win, button)` returns current button state (1 = pressed, 0 = released)
+**Mouse**
+
+- `vgfx_mouse_pos(win, &x, &y)` reports mouse position in window coordinates:
+  - **Always fills** `*x` and `*y` (if non-NULL) with current position
+  - Coordinates may be **negative or exceed window dimensions** if mouse is outside
+  - Returns `1` if mouse is inside `[0, width) × [0, height)`, `0` otherwise
+
+- `vgfx_mouse_button(win, button)` returns current button state:
+  - `1` = pressed
+  - `0` = released
 
 ### 4.7 Threading Model
 
-**Restrictions:**
+**Requirements:**
+
 - ViperGFX is **NOT thread-safe**
-- All functions for a given window **must be called from the thread that created it**
-- **macOS:** All calls **MUST** be on the main thread (Cocoa requirement)
+- All functions for a given window **MUST** be called from the same thread that created it
+- **macOS specific:** All calls **MUST** occur on the **main thread** (Cocoa requirement)
+  - Violation will cause assertion/crash from AppKit
 - **Linux/Windows:** Any single thread is acceptable
 
-**Violation Consequences:**
-- **macOS:** Cocoa will assert/crash
-- **Other platforms:** Undefined behavior (likely crashes or corruption)
+**Enforcement:**
 
-**No Enforcement:** Library does not validate thread IDs (performance overhead).
+- The library performs **no internal locking** or thread validation (performance overhead)
+- Callers are responsible for ensuring single-threaded access
+
+**Violation Consequences:**
+
+- **macOS:** AppKit will assert/crash immediately
+- **Other platforms:** Undefined behavior (likely crashes or corruption)
 
 ---
 
@@ -426,12 +477,15 @@ if (vgfx_get_size(win, &width, &height)) {
 
 **Header:** `include/vgfx.h`
 
-**C++ Compatibility:**
+All public API is C-compatible with C++ linkage guards:
+
 ```c
 #ifdef __cplusplus
 extern "C" {
 #endif
+
 // ... API ...
+
 #ifdef __cplusplus
 }
 #endif
@@ -440,15 +494,22 @@ extern "C" {
 ### 5.0 Library Version
 
 ```c
-// Library version
+// Library version macros
 #define VGFX_VERSION_MAJOR 1
 #define VGFX_VERSION_MINOR 0
 #define VGFX_VERSION_PATCH 0
 
-// Query runtime version
+// Query runtime version.
 // Returns: (major << 16) | (minor << 8) | patch
 uint32_t vgfx_version(void);
 ```
+
+**Versioning Policy (Informal):**
+
+- Major version increments indicate breaking API changes
+- Minor version increments add features while maintaining backward compatibility
+- Patch version increments are bug fixes only
+- ABI stability is not guaranteed across versions (static linking recommended for v1)
 
 ### 5.1 Core Data Types
 
@@ -458,44 +519,63 @@ uint32_t vgfx_version(void);
 // Opaque window handle
 typedef struct vgfx_window* vgfx_window_t;
 
-// 24-bit RGB color (0x00RRGGBB)
-// Note: Internally stored as 32-bit RGBA with alpha = 0xFF
+// 24-bit RGB color encoded in 32 bits: 0x00RRGGBB.
+// Internally converted to 32-bit RGBA with alpha = 0xFF.
 typedef uint32_t vgfx_color_t;
 ```
 
-**Window Creation Parameters:**
+**Window Creation Parameters**
+
 ```c
 typedef struct {
     int32_t     width;      // Pixels; <= 0 → VGFX_DEFAULT_WIDTH
     int32_t     height;     // Pixels; <= 0 → VGFX_DEFAULT_HEIGHT
     const char* title;      // UTF-8 string; NULL → VGFX_DEFAULT_TITLE
-    int32_t     fps;        // -1 = unlimited, 0 = use default, >0 = target FPS
+    int32_t     fps;        // fps < 0: unlimited, 0: use default, >0: target FPS
     int32_t     resizable;  // 0 = fixed size, non-zero = user-resizable
 } vgfx_window_params_t;
 ```
 
-**Event Types:**
+**Optional Helper (Implementation May Provide):**
+
+```c
+// Returns a parameter struct initialized with sensible defaults.
+// Equivalent to: {VGFX_DEFAULT_WIDTH, VGFX_DEFAULT_HEIGHT,
+//                 VGFX_DEFAULT_TITLE, VGFX_DEFAULT_FPS, 0}
+vgfx_window_params_t vgfx_window_params_default(void);
+```
+
+**Event Types**
+
 ```c
 typedef enum {
     VGFX_EVENT_NONE = 0,
+
+    // Window events
     VGFX_EVENT_CLOSE,
     VGFX_EVENT_RESIZE,
     VGFX_EVENT_FOCUS_GAINED,
     VGFX_EVENT_FOCUS_LOST,
+
+    // Keyboard events
     VGFX_EVENT_KEY_DOWN,
     VGFX_EVENT_KEY_UP,
+
+    // Mouse events
     VGFX_EVENT_MOUSE_MOVE,
     VGFX_EVENT_MOUSE_DOWN,
     VGFX_EVENT_MOUSE_UP
 } vgfx_event_type_t;
 ```
 
-**Key Codes:**
+**Key Codes**
+
 ```c
 typedef enum {
     VGFX_KEY_UNKNOWN = 0,
 
-    // Letters (always uppercase)
+    // Letters (always uppercase).
+    // Relies on ASCII contiguity for 'A'..'Z'.
     VGFX_KEY_A = 'A', VGFX_KEY_B, VGFX_KEY_C, VGFX_KEY_D,
     VGFX_KEY_E, VGFX_KEY_F, VGFX_KEY_G, VGFX_KEY_H,
     VGFX_KEY_I, VGFX_KEY_J, VGFX_KEY_K, VGFX_KEY_L,
@@ -504,11 +584,12 @@ typedef enum {
     VGFX_KEY_U, VGFX_KEY_V, VGFX_KEY_W, VGFX_KEY_X,
     VGFX_KEY_Y, VGFX_KEY_Z = 'Z',
 
-    // Digits
+    // Digits (ASCII contiguous for '0'..'9').
     VGFX_KEY_0 = '0', VGFX_KEY_1, VGFX_KEY_2, VGFX_KEY_3,
     VGFX_KEY_4, VGFX_KEY_5, VGFX_KEY_6, VGFX_KEY_7,
     VGFX_KEY_8, VGFX_KEY_9 = '9',
 
+    // Special keys
     VGFX_KEY_SPACE  = ' ',
     VGFX_KEY_ENTER  = 256,
     VGFX_KEY_ESCAPE,
@@ -519,7 +600,12 @@ typedef enum {
 } vgfx_key_t;
 ```
 
-**Mouse Buttons:**
+**Key Code Guarantees:**
+- All `vgfx_key_t` values are `< 512` (matches internal key state array size)
+- Letter and digit ranges are contiguous (safe for range checks)
+
+**Mouse Buttons**
+
 ```c
 typedef enum {
     VGFX_MOUSE_LEFT   = 0,
@@ -528,27 +614,32 @@ typedef enum {
 } vgfx_mouse_button_t;
 ```
 
-**Event Structure:**
+**Event Structure**
+
 ```c
 typedef struct {
     vgfx_event_type_t type;
 
     union {
+        // VGFX_EVENT_RESIZE
         struct {
             int32_t width;
             int32_t height;
         } resize;
 
+        // VGFX_EVENT_KEY_DOWN, VGFX_EVENT_KEY_UP
         struct {
             vgfx_key_t key;
             int32_t    is_repeat;  // 1 = auto-repeat, 0 = initial press
         } key;
 
+        // VGFX_EVENT_MOUSE_MOVE
         struct {
             int32_t x;
             int32_t y;
         } mouse_move;
 
+        // VGFX_EVENT_MOUSE_DOWN, VGFX_EVENT_MOUSE_UP
         struct {
             int32_t x;
             int32_t y;
@@ -558,7 +649,12 @@ typedef struct {
 } vgfx_event_t;
 ```
 
-**Framebuffer Info:**
+**Event Union Usage:**
+- Only access union members corresponding to the event type
+- Accessing wrong union member is undefined behavior
+
+**Framebuffer Info**
+
 ```c
 typedef struct {
     uint8_t* pixels;  // Pointer to first byte of row 0
@@ -571,108 +667,138 @@ typedef struct {
 ### 5.2 Window Management
 
 ```c
-// Create window with specified parameters
-// Returns NULL on failure (check vgfx_get_last_error())
+// Create window with specified parameters.
+// Returns NULL on failure; check vgfx_get_last_error() for details.
+//
+// params may be NULL; defaults will be used for all fields.
+// Individual fields with invalid values (width/height <= 0, NULL title)
+// will be replaced with defaults.
 vgfx_window_t vgfx_create_window(const vgfx_window_params_t* params);
 
-// Destroy window and free all resources
-// NULL is allowed and is a no-op
+// Destroy window and free all resources.
+// NULL window is allowed and is a no-op.
+// After this call, the window handle is invalid and must not be used.
 void vgfx_destroy_window(vgfx_window_t window);
 
-// Process events, present framebuffer, enforce FPS limit
-// Returns: 1 = success, 0 = fatal error / window lost
+// Process events, present framebuffer, enforce FPS limit.
+// Returns: 1 = success, 0 = fatal error / window loss.
 //
 // NOTE: Receiving VGFX_EVENT_CLOSE does NOT cause this to return 0.
-// Application must check for VGFX_EVENT_CLOSE and call vgfx_destroy_window.
+// The application must handle VGFX_EVENT_CLOSE explicitly and call
+// vgfx_destroy_window to clean up.
+//
+// Calling vgfx_update after receiving VGFX_EVENT_CLOSE but before
+// vgfx_destroy_window will continue to return 1 (no new events).
 int32_t vgfx_update(vgfx_window_t window);
 
-// Set per-window target FPS
-//   -1 = unlimited, 0 = use default, >0 = specific FPS
+// Set per-window target FPS.
+//   fps < 0: unlimited (no frame limiting)
+//   fps == 0: use current global default
+//   fps > 0: specific target FPS
 void vgfx_set_fps(vgfx_window_t window, int32_t fps);
 
-// Set global default FPS for future windows (params.fps == 0)
-//   -1 = unlimited, >0 = specific FPS
+// Set global default FPS for future windows created with params.fps == 0.
+//   fps < 0: unlimited (no limiting)
+//   fps > 0: specific FPS
+// Does not affect existing windows.
 void vgfx_set_default_fps(int32_t fps);
 
-// Get current window size
-// Returns 1 on success, 0 on error (e.g., NULL window or NULL outputs)
+// Get current window size.
+// Returns 1 on success, 0 on error (e.g., NULL window or NULL outputs).
+// Output pointers may be NULL if that dimension is not needed.
 int32_t vgfx_get_size(vgfx_window_t window, int32_t* width, int32_t* height);
 ```
 
 ### 5.3 Event Handling
 
 ```c
-// Poll next pending event
-// Returns 1 if event was written to out_event, 0 if queue is empty
+// Poll the next pending event for the window.
+// Returns 1 if an event was written to out_event, 0 if the queue is empty.
 //
-// Event queue:
-//   - Minimum capacity: VGFX_EVENT_QUEUE_SIZE (256)
+// Event queue behavior:
+//   - Minimum capacity: VGFX_EVENT_QUEUE_SIZE (default 256)
 //   - When full: oldest events are dropped (FIFO eviction)
 //   - Events are queued by vgfx_update()
+//   - Applications should call this in every frame to avoid loss
 int32_t vgfx_poll_event(vgfx_window_t window, vgfx_event_t* out_event);
 ```
 
 ### 5.4 Drawing Operations
 
 ```c
-// Set pixel at (x, y) to color
-// No-op if window is NULL or coordinates are out of bounds
+// Set pixel at (x, y) to color.
+// No-op if window is NULL or coordinates are out of bounds.
 void vgfx_pset(vgfx_window_t window, int32_t x, int32_t y, vgfx_color_t color);
 
-// Get pixel color at (x, y)
-// Returns 0x000000 if out of bounds or window is NULL
+// Get pixel color at (x, y).
+// Returns 0x000000 (black) if out of bounds or window is NULL.
 vgfx_color_t vgfx_point(vgfx_window_t window, int32_t x, int32_t y);
 
-// Clear entire framebuffer to color
+// Clear entire framebuffer to color.
+// Alpha channel of all pixels set to 0xFF (opaque).
 void vgfx_cls(vgfx_window_t window, vgfx_color_t color);
 
-// Draw line from (x1, y1) to (x2, y2), clipped to window
+// Draw line from (x1, y1) to (x2, y2), inclusive, clipped to window bounds.
+// Uses Bresenham's algorithm for integer-only arithmetic.
 void vgfx_line(vgfx_window_t window,
                int32_t x1, int32_t y1,
                int32_t x2, int32_t y2,
                vgfx_color_t color);
 
-// Draw axis-aligned rectangle outline
-// Coverage: [x, x+w) × [y, y+h)
-// No-op if w <= 0 or h <= 0
+// Draw axis-aligned rectangle outline.
+// Coverage: pixels in [x, x+w) × [y, y+h) on the border only.
+// No-op if w <= 0, h <= 0, or window is NULL.
+//
+// Edge drawing: Each edge is drawn once; corners are not double-drawn.
 void vgfx_rect(vgfx_window_t window,
                int32_t x, int32_t y,
                int32_t w, int32_t h,
                vgfx_color_t color);
 
-// Draw filled rectangle
-// Coverage: [x, x+w) × [y, y+h)
-// No-op if w <= 0 or h <= 0
+// Draw filled rectangle.
+// Coverage: all pixels in [x, x+w) × [y, y+h).
+// No-op if w <= 0, h <= 0, or window is NULL.
 void vgfx_fill_rect(vgfx_window_t window,
                     int32_t x, int32_t y,
                     int32_t w, int32_t h,
                     vgfx_color_t color);
 
-// Draw circle outline (midpoint algorithm)
-// No-op if radius <= 0
+// Draw circle outline centered at (cx, cy) with given radius.
+// Uses integer midpoint circle algorithm (8-way symmetry).
+// No-op if radius <= 0 or window is NULL.
 void vgfx_circle(vgfx_window_t window,
                  int32_t cx, int32_t cy,
                  int32_t radius,
                  vgfx_color_t color);
 
-// Draw filled circle
-// No-op if radius <= 0
+// Draw filled circle centered at (cx, cy).
+// Uses scanline fill derived from midpoint algorithm.
+// No-op if radius <= 0 or window is NULL.
 void vgfx_fill_circle(vgfx_window_t window,
                       int32_t cx, int32_t cy,
                       int32_t radius,
                       vgfx_color_t color);
 ```
 
+**Drawing Performance Notes:**
+- All primitives are software-rendered; performance scales with pixel count
+- For bulk operations, consider direct framebuffer access (Section 5.7)
+- Clipping is performed internally; no need for manual bounds checking
+
 ### 5.5 Color Utilities
 
 ```c
-// Construct RGB color from components
-vgfx_color_t vgfx_rgb(uint8_t r, uint8_t g, uint8_t b);
+// Construct RGB color from components.
+// Returns 0x00RRGGBB (upper byte is always 0).
+static inline vgfx_color_t vgfx_rgb(uint8_t r, uint8_t g, uint8_t b) {
+    return ((uint32_t)r << 16) | ((uint32_t)g << 8) | (uint32_t)b;
+}
 
-// Extract RGB components
+// Extract RGB components from a vgfx_color_t.
+// Output pointers may be NULL if that component is not needed.
 void vgfx_color_to_rgb(vgfx_color_t color, uint8_t* r, uint8_t* g, uint8_t* b);
 
-// Common colors
+// Common colors (24-bit RGB)
 #define VGFX_BLACK    0x000000
 #define VGFX_WHITE    0xFFFFFF
 #define VGFX_RED      0xFF0000
@@ -686,37 +812,66 @@ void vgfx_color_to_rgb(vgfx_color_t color, uint8_t* r, uint8_t* g, uint8_t* b);
 ### 5.6 Input Polling
 
 ```c
-// Check if key is currently pressed (1) or not (0)
+// Check if key is currently pressed (1) or not (0).
+// Returns 0 if window is NULL or key is VGFX_KEY_UNKNOWN.
 int32_t vgfx_key_down(vgfx_window_t window, vgfx_key_t key);
 
-// Get mouse position in window coordinates
-// Coordinates may be negative or > width/height if mouse is outside
-// Returns 1 if mouse is inside window bounds [0, width) × [0, height), 0 otherwise
+// Get mouse position in window coordinates.
+// Returns 1 if mouse is inside [0,width) × [0,height), 0 otherwise.
+//
+// If x and/or y are non-NULL, they are ALWAYS filled with the current
+// mouse position, which may be outside the window bounds (negative or
+// exceeding width/height).
+//
+// Returns 0 if window is NULL (output pointers unchanged).
 int32_t vgfx_mouse_pos(vgfx_window_t window, int32_t* x, int32_t* y);
 
-// Check if mouse button is currently pressed (1) or not (0)
+// Check if mouse button is currently pressed (1) or not (0).
+// Returns 0 if window is NULL.
 int32_t vgfx_mouse_button(vgfx_window_t window, vgfx_mouse_button_t button);
 ```
 
 ### 5.7 Advanced Framebuffer Access
 
 ```c
-// Get direct access to internal framebuffer for low-level drawing
-// Returns 1 on success, 0 on failure
+// Get direct access to internal framebuffer for low-level operations.
+// Returns 1 on success, 0 on failure (e.g., NULL window or NULL out_info).
+//
+// Use Case: Bulk operations, custom rendering, advanced effects.
+// Typical applications can ignore this and use drawing primitives instead.
 //
 // Pixel format:
 //   - 32-bpp RGBA
 //   - Byte layout: [R, G, B, A]
-//   - stride = width * 4 (no padding)
-//   - Pixel (x, y): offset = y * stride + x * 4
+//   - stride = width * 4 (no padding between rows)
+//   - Pixel (x, y) starts at: pixels[y * stride + x * 4]
 //   - Row 0 is top of window
 //
 // Validity:
-//   Returned pointer valid until:
-//     - Next vgfx_update() call
-//     - Window resize
-//     - vgfx_destroy_window() call
+//   The returned pointer remains valid until one of:
+//     - The next call to vgfx_update(window)
+//     - The window is resized (VGFX_EVENT_RESIZE)
+//     - vgfx_destroy_window(window) is called
+//
+// Thread Safety:
+//   As with all ViperGFX functions, this must be called from the
+//   window's owning thread only.
 int32_t vgfx_get_framebuffer(vgfx_window_t window, vgfx_framebuffer_t* out_info);
+```
+
+**Advanced Usage Example:**
+
+```c
+vgfx_framebuffer_t fb;
+if (vgfx_get_framebuffer(win, &fb)) {
+    // Direct pixel write (bypassing vgfx_pset)
+    int x = 100, y = 50;
+    int offset = y * fb.stride + x * 4;
+    fb.pixels[offset + 0] = 255; // R
+    fb.pixels[offset + 1] = 0;   // G
+    fb.pixels[offset + 2] = 0;   // B
+    fb.pixels[offset + 3] = 255; // A
+}
 ```
 
 ---
@@ -725,53 +880,74 @@ int32_t vgfx_get_framebuffer(vgfx_window_t window, vgfx_framebuffer_t* out_info)
 
 ### 6.1 General Strategy
 
-**Return Values:**
+**Return Value Conventions:**
+
 - `NULL` for handle-returning functions (e.g., `vgfx_create_window`)
 - `0` for integer-returning functions on failure
-- Silent no-op for drawing functions with invalid inputs
+- Silent no-op for drawing functions and other "cheap" operations with invalid inputs
 
-**Diagnostics:**
+**Diagnostic Output:**
+
 - Error messages printed to `stderr` with prefix `"vgfx: "`
 - Library **never** calls `abort()` or `exit()`
-- Last error string available via `vgfx_get_last_error()`
+- Thread-local "last error string" accessible via `vgfx_get_last_error()`
 
-### 6.2 Error Scenarios
+**Error Reporting Policy:**
 
-| Scenario | Return Value | stderr Output | Last Error String |
-|----------|--------------|---------------|-------------------|
-| `vgfx_create_window`: width/height > max | `NULL` | `vgfx: Window dimensions exceed maximum (4096x4096)` | Set |
-| `vgfx_create_window`: width/height ≤ 0 | Valid handle | `vgfx: Using default dimensions (640x480)` | Not set |
-| `vgfx_create_window`: NULL params | Valid handle | `vgfx: NULL params; using defaults` | Not set |
-| `vgfx_create_window`: platform failure | `NULL` | `vgfx: Failed to create native window` | Set |
-| `vgfx_destroy_window`: NULL window | No-op | None | Not set |
-| `vgfx_update`: NULL window | `0` | None | Not set |
-| `vgfx_update`: platform error | `0` | `vgfx: Event processing error` | Set |
-| `vgfx_get_size`: NULL window or outputs | `0` | None | Not set |
-| `vgfx_poll_event`: NULL window or out_event | `0` | None | Not set |
-| `vgfx_get_framebuffer`: NULL window or out_info | `0` | None | Not set |
-| `vgfx_pset`: out of bounds | No-op | None | Not set |
-| `vgfx_point`: out of bounds | `0x000000` | None | Not set |
-| `vgfx_rect`: w ≤ 0 or h ≤ 0 | No-op | None | Not set |
-| `vgfx_circle`: radius ≤ 0 | No-op | None | Not set |
-| Drawing functions: NULL window | No-op | None | Not set |
+- Functions that can fail meaningfully (window creation, fatal platform errors) set last error
+- Functions documented as silent no-ops (drawing with NULL window, OOB pixel access) do not set last error
+- Last error persists until next error or explicit clear
+
+### 6.2 Representative Error Scenarios
+
+| Scenario                                           | Return Value | `stderr` Output                                          | Last Error Set? |
+|----------------------------------------------------|--------------|----------------------------------------------------------|----------------|
+| `vgfx_create_window`: width/height > max           | `NULL`       | `vgfx: Window dimensions exceed maximum (4096x4096)`     | Yes            |
+| `vgfx_create_window`: width/height ≤ 0             | Valid handle | `vgfx: Using default dimensions (640x480)` (optional)   | No             |
+| `vgfx_create_window`: NULL params                  | Valid handle | `vgfx: NULL params; using defaults` (optional)          | No             |
+| `vgfx_create_window`: platform failure             | `NULL`       | `vgfx: Failed to create native window`                  | Yes            |
+| `vgfx_create_window`: framebuffer alloc fails      | `NULL`       | `vgfx: Failed to allocate framebuffer`                  | Yes            |
+| `vgfx_destroy_window`: NULL window                 | No-op        | None                                                     | No             |
+| `vgfx_update`: NULL window                         | `0`          | None                                                     | No             |
+| `vgfx_update`: fatal platform error                | `0`          | `vgfx: Event processing error`                          | Yes            |
+| `vgfx_update`: present fails                       | `0`          | `vgfx: Failed to present framebuffer`                   | Yes            |
+| `vgfx_get_size`: NULL window or NULL outputs       | `0`          | None                                                     | No             |
+| `vgfx_poll_event`: NULL window or NULL out_event   | `0`          | None                                                     | No             |
+| `vgfx_get_framebuffer`: NULL window or out_info    | `0`          | None                                                     | No             |
+| `vgfx_pset`: out-of-bounds coords                  | No-op        | None                                                     | No             |
+| `vgfx_point`: out-of-bounds coords                 | `0x000000`   | None                                                     | No             |
+| `vgfx_rect`: w ≤ 0 or h ≤ 0                        | No-op        | None                                                     | No             |
+| `vgfx_circle`: radius ≤ 0                          | No-op        | None                                                     | No             |
+| Drawing functions: NULL window                     | No-op        | None                                                     | No             |
 
 ### 6.3 Last Error String
 
 ```c
-// Returns human-readable description of last error on calling thread
-// Returns NULL if no error has occurred
+// Returns a human-readable description of the last error that occurred
+// in the calling thread, or NULL if no error has occurred.
 //
-// Stored in thread-local storage (TLS)
-// Valid until:
-//   - Next ViperGFX call on same thread
-//   - Thread termination
+// Storage:
+//   - Stored in thread-local storage (TLS)
+//   - String is owned by the library; caller must NOT free it
+//   - Valid until the next ViperGFX call on that thread OR thread exit
 //
-// String is owned by library; caller must NOT free it
+// Usage:
+//   Functions that can fail meaningfully (e.g. vgfx_create_window,
+//   vgfx_update on fatal error) set this string. Functions documented
+//   as silent no-ops do not modify it.
 const char* vgfx_get_last_error(void);
 
-// Clear last error string for calling thread
+// Clear the last error string for the calling thread.
+// Subsequent calls to vgfx_get_last_error() will return NULL until
+// another error occurs.
 void vgfx_clear_last_error(void);
 ```
+
+**Thread-Local Storage Notes:**
+
+- Each thread has its own last error string
+- No synchronization needed between threads
+- Error strings persist until explicitly cleared or overwritten
 
 ---
 
@@ -781,266 +957,331 @@ void vgfx_clear_last_error(void);
 
 **Test Framework:** Custom C test harness using mock platform backend
 
-**Location:** `tests/test_*.c`
+**Test File Organization:** `tests/test_*.c`
+
+**Mock Backend:** `vgfx_platform_mock.c` provides:
+- Deterministic event injection
+- Controllable time for FPS tests
+- No actual window creation (pure in-memory)
+
+---
 
 #### T1: Window Creation – Valid Parameters
 
-```
-Given: params = {width=800, height=600, title="Test", fps=60, resizable=1}
-When:  win = vgfx_create_window(&params)
-Then:  win != NULL
-  And: vgfx_get_size(win, &w, &h) returns 1
-  And: w == 800, h == 600
-  And: vgfx_update(win) returns 1
-```
+**Given:** `params = {width=800, height=600, title="Test", fps=60, resizable=1}`
+**When:** `win = vgfx_create_window(&params)`
+**Then:**
+- `win != NULL`
+- `vgfx_get_size(win, &w, &h)` returns `1`
+- `w == 800 && h == 600`
+- `vgfx_update(win)` returns `1`
+
+---
 
 #### T2: Window Creation – Dimensions Exceed Max
 
-```
-Given: params = {width=5000, height=5000, ...}
-When:  win = vgfx_create_window(&params)
-Then:  win == NULL
-  And: vgfx_get_last_error() contains "exceed maximum"
-  And: stderr contains "exceed maximum"
-```
+**Given:** `params = {width=5000, height=5000, ...}`
+**When:** `win = vgfx_create_window(&params)`
+**Then:**
+- `win == NULL`
+- `vgfx_get_last_error() != NULL`
+- `strstr(vgfx_get_last_error(), "exceed maximum") != NULL`
+- `stderr` contains "exceed maximum"
+
+---
 
 #### T3: Window Creation – Invalid Dimensions Use Defaults
 
-```
-Given: params = {width=0, height=-10, ...}
-When:  win = vgfx_create_window(&params)
-Then:  win != NULL
-  And: vgfx_get_size(win, &w, &h) returns 1
-  And: w == VGFX_DEFAULT_WIDTH, h == VGFX_DEFAULT_HEIGHT
-```
+**Given:** `params = {width=0, height=-10, title="Test", fps=60, resizable=0}`
+**When:** `win = vgfx_create_window(&params)`
+**Then:**
+- `win != NULL`
+- `vgfx_get_size(win, &w, &h)` returns `1`
+- `w == VGFX_DEFAULT_WIDTH && h == VGFX_DEFAULT_HEIGHT`
+
+---
 
 #### T4: Pixel Set/Get
 
-```
-Given: win created at 640×480
-When:  vgfx_pset(win, 100, 100, 0xFF0000)
-  And: color = vgfx_point(win, 100, 100)
-Then:  color == 0xFF0000
-```
+**Given:** Window created at 640×480
+**When:**
+- `vgfx_pset(win, 100, 100, 0xFF0000)`
+- `color = vgfx_point(win, 100, 100)`
+
+**Then:** `color == 0xFF0000`
+
+---
 
 #### T5: Out-of-Bounds Write Ignored
 
-```
-Given: win at 640×480, pixel (639, 479) is black
-When:  vgfx_pset(win, 1000, 1000, 0x00FF00)
-Then:  vgfx_point(win, 639, 479) == 0x000000 (unchanged)
-  And: vgfx_point(win, 1000, 1000) == 0x000000
-```
+**Given:** Window at 640×480, pixel `(639, 479)` is initially black
+**When:**
+- `vgfx_cls(win, VGFX_BLACK)`
+- `vgfx_pset(win, 1000, 1000, 0x00FF00)`
+
+**Then:**
+- `vgfx_point(win, 639, 479) == 0x000000` (unchanged)
+- `vgfx_point(win, 1000, 1000) == 0x000000` (OOB returns black)
+
+---
 
 #### T6: Clear Screen
 
-```
-Given: win at 100×100
-When:  vgfx_cls(win, 0xFF0000)
-Then:  For all (x, y) in [0, 100) × [0, 100):
-         vgfx_point(win, x, y) == 0xFF0000
-```
+**Given:** Window at 100×100
+**When:** `vgfx_cls(win, 0xFF0000)`
+**Then:**
+- For all `(x, y)` in `[0,100) × [0,100)`:
+  - `vgfx_point(win, x, y) == 0xFF0000`
+
+---
 
 #### T7: Line Drawing – Horizontal
 
-```
-Given: win created
-When:  vgfx_line(win, 10, 10, 50, 10, 0xFFFFFF)
-Then:  For all x in [10, 50]:
-         vgfx_point(win, x, 10) == 0xFFFFFF
-```
+**Given:** Window created, cleared to black
+**When:** `vgfx_line(win, 10, 10, 50, 10, 0xFFFFFF)`
+**Then:**
+- For all `x` in `[10, 50]`: `vgfx_point(win, x, 10) == 0xFFFFFF`
+- `vgfx_point(win, 9, 10) == 0x000000` (not drawn)
+- `vgfx_point(win, 51, 10) == 0x000000` (not drawn)
+
+---
 
 #### T8: Line Drawing – Vertical
 
-```
-Given: win created
-When:  vgfx_line(win, 20, 10, 20, 30, 0xFF0000)
-Then:  For all y in [10, 30]:
-         vgfx_point(win, 20, y) == 0xFF0000
-```
+**Given:** Window created, cleared to black
+**When:** `vgfx_line(win, 20, 10, 20, 30, 0xFF0000)`
+**Then:**
+- For all `y` in `[10, 30]`: `vgfx_point(win, 20, y) == 0xFF0000`
+
+---
 
 #### T9: Line Drawing – Diagonal
 
-```
-Given: win created
-When:  vgfx_line(win, 0, 0, 10, 10, 0x00FF00)
-Then:  vgfx_point(win, 0, 0) == 0x00FF00
-  And: vgfx_point(win, 5, 5) == 0x00FF00
-  And: vgfx_point(win, 10, 10) == 0x00FF00
-```
+**Given:** Window created, cleared to black
+**When:** `vgfx_line(win, 0, 0, 10, 10, 0x00FF00)`
+**Then:**
+- `vgfx_point(win, 0, 0) == 0x00FF00`
+- `vgfx_point(win, 5, 5) == 0x00FF00`
+- `vgfx_point(win, 10, 10) == 0x00FF00`
+- At least 8 pixels are green (Bresenham may interpolate)
+
+---
 
 #### T10: Rectangle Outline
 
-```
-Given: win created, cls to black
-When:  vgfx_rect(win, 10, 10, 20, 15, 0xFFFFFF)
-Then:  Top edge: [10, 30) × {10} all white
-  And: Bottom edge: [10, 30) × {24} all white
-  And: Left edge: {10} × [10, 25) all white
-  And: Right edge: {29} × [10, 25) all white
-  And: Interior (e.g., 15, 15) remains black
-```
+**Given:** Window created; cleared to black
+**When:** `vgfx_rect(win, 10, 10, 20, 15, 0xFFFFFF)`
+**Then:**
+- **Top edge:** For all `x` in `[10, 30)`: `vgfx_point(win, x, 10) == 0xFFFFFF`
+- **Bottom edge:** For all `x` in `[10, 30)`: `vgfx_point(win, x, 24) == 0xFFFFFF`
+- **Left edge:** For all `y` in `[10, 25)`: `vgfx_point(win, 10, y) == 0xFFFFFF`
+- **Right edge:** For all `y` in `[10, 25)`: `vgfx_point(win, 29, y) == 0xFFFFFF`
+- **Interior:** `vgfx_point(win, 15, 15) == 0x000000` (not filled)
+
+---
 
 #### T11: Filled Rectangle
 
-```
-Given: win created, cls to black
-When:  vgfx_fill_rect(win, 5, 5, 10, 10, 0xFF0000)
-Then:  For all (x, y) in [5, 15) × [5, 15):
-         vgfx_point(win, x, y) == 0xFF0000
-```
+**Given:** Window created; cleared to black
+**When:** `vgfx_fill_rect(win, 5, 5, 10, 10, 0xFF0000)`
+**Then:**
+- For all `(x, y)` in `[5, 15) × [5, 15)`:
+  - `vgfx_point(win, x, y) == 0xFF0000`
+- `vgfx_point(win, 4, 5) == 0x000000` (outside)
+- `vgfx_point(win, 15, 5) == 0x000000` (outside)
+
+---
 
 #### T12: Circle Outline – Sanity
 
-```
-Given: win at 200×200, cls to black
-When:  vgfx_circle(win, 100, 100, 50, 0xFF0000)
-Then:  Known octant points are red:
-         (150, 100), (50, 100), (100, 150), (100, 50)
-  And: Total red pixels > 200 and < 400 (approximate circle)
-```
+**Given:** Window at 200×200; cleared to black
+**When:** `vgfx_circle(win, 100, 100, 50, 0xFF0000)`
+**Then:**
+- Known cardinal points are red:
+  - `(150, 100)` — east
+  - `(50, 100)` — west
+  - `(100, 150)` — south
+  - `(100, 50)` — north
+- Total red pixels is in range `[200, 400]` (approximate circle perimeter)
+- Center `(100, 100)` is black (outline only)
 
-#### T13: Filled Circle
+---
 
-```
-Given: win at 200×200, cls to black
-When:  vgfx_fill_circle(win, 100, 100, 30, 0x00FF00)
-Then:  All pixels within distance 30 from (100, 100) are green
-  And: Approximate count: π × 30² ≈ 2827 green pixels (±5%)
-```
+#### T13: Filled Circle – Sanity
+
+**Given:** Window at 200×200; cleared to black
+**When:** `vgfx_fill_circle(win, 100, 100, 30, 0x00FF00)`
+**Then:**
+- Center `(100, 100)` is green
+- Cardinal points at radius 30 are green:
+  - `(130, 100)`, `(70, 100)`, `(100, 130)`, `(100, 70)`
+- Total green pixels approximately `π × 30² ≈ 2827` (within ±10%)
+- `vgfx_point(win, 131, 100) == 0x000000` (outside radius)
+
+---
 
 #### T14: Framebuffer Access
 
-```
-Given: win created
-When:  vgfx_get_framebuffer(win, &fb) returns 1
-  And: Write pixel directly: fb.pixels[y * fb.stride + x * 4 + 0..2] = RGB
-Then:  vgfx_point(win, x, y) returns matching color
-  And: fb.stride == fb.width * 4
-```
+**Given:** Window created
+**When:**
+- `vgfx_get_framebuffer(win, &fb)` returns `1`
+- Write directly: `fb.pixels[y * fb.stride + x * 4 + {0,1,2}] = {R,G,B}`
+
+**Then:**
+- `vgfx_point(win, x, y)` returns matching color
+- `fb.stride == fb.width * 4`
+- `fb.pixels != NULL`
+
+---
 
 #### T15: Frame Rate Limiting
 
-```
-Given: win with vgfx_set_fps(win, 60)
-When:  t_start = now()
-  And: Call vgfx_update(win) 120 times with minimal work
-  And: t_end = now()
-Then:  elapsed = t_end - t_start
-  And: 1.7s < elapsed < 2.3s (2.0s ± 15%)
-```
+**Given:** Window with `vgfx_set_fps(win, 60)` using mock backend
+**When:**
+- `t_start = vgfx_mock_get_time_ms()`
+- Call `vgfx_update(win)` 120 times with minimal work
+- `t_end = vgfx_mock_get_time_ms()`
+
+**Then:**
+- `elapsed = t_end - t_start`
+- `1700 <= elapsed <= 2300` (2000ms ± 15%)
+
+**Note:** FPS limiting only delays frames that would otherwise be faster than target.
+
+---
 
 #### T16: Keyboard Input (Mock Backend)
 
-```
-Given: win with mock platform backend
-When:  Mock injects KEY_DOWN for VGFX_KEY_A
-Then:  vgfx_key_down(win, VGFX_KEY_A) == 1
+**Given:** Window with mock backend
+**When:** Mock injects `KEY_DOWN` for `VGFX_KEY_A`
+**Then:** `vgfx_key_down(win, VGFX_KEY_A) == 1`
 
-When:  Mock injects KEY_UP for VGFX_KEY_A
-Then:  vgfx_key_down(win, VGFX_KEY_A) == 0
-```
+**When:** Mock injects `KEY_UP` for `VGFX_KEY_A`
+**Then:** `vgfx_key_down(win, VGFX_KEY_A) == 0`
+
+---
 
 #### T17: Mouse Position (Mock Backend)
 
-```
-Given: win at 640×480 with mock backend
-When:  Mock reports mouse at (150, 200)
-Then:  vgfx_mouse_pos(win, &x, &y) == 1
-  And: x == 150, y == 200
+**Given:** Window at 640×480 with mock backend
 
-When:  Mock reports mouse at (-10, -10)
-Then:  vgfx_mouse_pos(win, &x, &y) == 0
-  And: x == -10, y == -10
-```
+**Case 1: Inside bounds**
+**When:** Mock reports mouse at `(150, 200)`
+**Then:**
+- `vgfx_mouse_pos(win, &x, &y) == 1`
+- `x == 150 && y == 200`
+
+**Case 2: Outside bounds**
+**When:** Mock reports mouse at `(-10, -10)`
+**Then:**
+- `vgfx_mouse_pos(win, &x, &y) == 0`
+- `x == -10 && y == -10` (coordinates still reported)
+
+---
 
 #### T18: Mouse Button (Mock Backend)
 
-```
-Given: win with mock backend
-When:  Mock injects MOUSE_DOWN for VGFX_MOUSE_LEFT
-Then:  vgfx_mouse_button(win, VGFX_MOUSE_LEFT) == 1
+**Given:** Window with mock backend
 
-When:  Mock injects MOUSE_UP for VGFX_MOUSE_LEFT
-Then:  vgfx_mouse_button(win, VGFX_MOUSE_LEFT) == 0
-```
+**When:** Mock injects `MOUSE_DOWN` for `VGFX_MOUSE_LEFT`
+**Then:** `vgfx_mouse_button(win, VGFX_MOUSE_LEFT) == 1`
+
+**When:** Mock injects `MOUSE_UP` for `VGFX_MOUSE_LEFT`
+**Then:** `vgfx_mouse_button(win, VGFX_MOUSE_LEFT) == 0`
+
+---
 
 #### T19: Event Queue – Basic
 
-```
-Given: win created
-When:  Mock injects events: KEY_DOWN, MOUSE_MOVE, KEY_UP
-  And: vgfx_update(win) called
-Then:  vgfx_poll_event(win, &ev) returns 1, ev.type == VGFX_EVENT_KEY_DOWN
-  And: vgfx_poll_event(win, &ev) returns 1, ev.type == VGFX_EVENT_MOUSE_MOVE
-  And: vgfx_poll_event(win, &ev) returns 1, ev.type == VGFX_EVENT_KEY_UP
-  And: vgfx_poll_event(win, &ev) returns 0 (queue empty)
-```
+**Given:** Window created
+**When:**
+- Mock injects events: `KEY_DOWN`, `MOUSE_MOVE`, `KEY_UP`
+- `vgfx_update(win)` is called
+
+**Then:**
+- `vgfx_poll_event(win, &ev)` returns `1`, `ev.type == VGFX_EVENT_KEY_DOWN`
+- `vgfx_poll_event(win, &ev)` returns `1`, `ev.type == VGFX_EVENT_MOUSE_MOVE`
+- `vgfx_poll_event(win, &ev)` returns `1`, `ev.type == VGFX_EVENT_KEY_UP`
+- `vgfx_poll_event(win, &ev)` returns `0` (queue empty)
+
+---
 
 #### T20: Event Queue – Overflow
 
-```
-Given: win created, queue capacity = 256
-When:  Mock injects 300 events
-  And: vgfx_update(win) called
-Then:  vgfx_poll_event retrieves 256 events
-  And: Oldest 44 events were dropped
-```
+**Given:** Window created, queue capacity = `VGFX_EVENT_QUEUE_SIZE` (256)
+**When:**
+- Mock injects `VGFX_EVENT_QUEUE_SIZE + 44` events
+- `vgfx_update(win)` is called
+
+**Then:**
+- Only the **newest** `VGFX_EVENT_QUEUE_SIZE` events are delivered
+- Oldest 44 events are dropped (FIFO eviction)
+
+---
 
 #### T21: Resize Event
 
-```
-Given: win at 640×480
-When:  Mock injects RESIZE event (800, 600)
-  And: vgfx_update(win) called
-Then:  vgfx_poll_event(win, &ev) returns 1
-  And: ev.type == VGFX_EVENT_RESIZE
-  And: ev.data.resize.width == 800
-  And: ev.data.resize.height == 600
-  And: vgfx_get_size(win, &w, &h): w == 800, h == 600
-  And: All pixels are black (framebuffer cleared)
-```
+**Given:** Window at 640×480
+**When:**
+- Mock injects `RESIZE` to 800×600
+- `vgfx_update(win)` is called
+
+**Then:**
+- `vgfx_poll_event(win, &ev)` returns `1`
+- `ev.type == VGFX_EVENT_RESIZE`
+- `ev.data.resize.width == 800`
+- `ev.data.resize.height == 600`
+- `vgfx_get_size(win, &w, &h)`: `w == 800 && h == 600`
+- All pixels are black (framebuffer cleared)
+
+---
 
 ### 7.2 Visual / Manual Tests
 
 **Location:** `tests/visual_*.c`, `examples/*.c`
 
+---
+
 #### V1: RGB Color Rendering
 
-```
-Program: Draw three filled rectangles (red, green, blue) side-by-side
-Expected: Visually distinct primary colors, no artifacts
-```
+**Program:** Draw three filled rectangles (red, green, blue) side by side
+**Expected:** Visually distinct primary colors, no obvious artifacts
+
+---
 
 #### V2: Graphics Performance
 
-```
-Program: Each frame, draw 10,000 random pixels + 100 random lines
-Expected: Smooth animation at 60 FPS, no stutter
-```
+**Program:** Each frame, draw 10,000 random pixels + 100 random lines
+**Expected:** Smooth animation at ~60 FPS on typical modern hardware, no stutter
+
+---
 
 #### V3: Resize Behavior
 
-```
-Program: Display colored content filling window
-Action: Resize window repeatedly
-Expected: Framebuffer adjusts, content redraws, no crashes
-```
+**Program:** Fill window with a gradient or grid
+**Action:** Resize window repeatedly
+**Expected:**
+- Content resizes appropriately
+- No crashes or artifacts
+- Framebuffer cleared to black and redrawn
+
+---
 
 #### V4: Input Demo
 
-```
-Program: Display keyboard/mouse state on screen
-Action: Press keys, move mouse, click buttons
-Expected: Visual feedback updates correctly
-```
+**Program:** Display keyboard and mouse state on screen
+**Action:** Press keys, move mouse, click buttons
+**Expected:** Visual feedback matches physical input accurately
+
+---
 
 #### V5: Bouncing Ball
 
-```
-Program: Ball bounces within window bounds with physics
-Expected: Smooth animation, collision detection works
-```
+**Program:** Ball bouncing inside window using circle primitives
+**Expected:**
+- Smooth animation at 60 FPS
+- Collisions with window bounds behave correctly
+- No tearing or artifacts
 
 ---
 
@@ -1048,60 +1289,63 @@ Expected: Smooth animation, collision detection works
 
 ### 8.1 File Structure
 
-```
+```text
 vipergfx/
 ├── include/
 │   ├── vgfx.h                    # Public API header
 │   └── vgfx_config.h             # Configuration macros
 ├── src/
-│   ├── vgfx.c                    # Core implementation (window lifecycle, events)
-│   ├── vgfx_internal.h           # Internal structures & helpers
-│   ├── vgfx_draw.c               # Drawing primitives (Bresenham, midpoint)
+│   ├── vgfx.c                    # Core implementation (API, window lifecycle, events)
+│   ├── vgfx_internal.h           # Internal structures & helpers (not installed)
+│   ├── vgfx_draw.c               # Drawing primitives (Bresenham, midpoint algorithms)
 │   ├── vgfx_platform_macos.m     # macOS Cocoa backend
 │   ├── vgfx_platform_linux.c     # Linux X11 backend
 │   ├── vgfx_platform_win32.c     # Windows Win32 backend
-│   └── vgfx_platform_mock.c      # Mock backend for testing
+│   └── vgfx_platform_mock.c      # Mock backend for tests only (not in library)
 ├── tests/
-│   ├── test_window.c             # Window creation tests
-│   ├── test_drawing.c            # Drawing primitive tests
-│   ├── test_input.c              # Input & event tests (uses mock)
-│   ├── visual_test.c             # Manual visual verification
+│   ├── test_window.c             # Window creation tests (T1-T3)
+│   ├── test_drawing.c            # Drawing primitive tests (T7-T13)
+│   ├── test_input.c              # Input & event tests (T16-T21, uses mock backend)
+│   ├── test_pixels.c             # Pixel operation tests (T4-T6, T14)
+│   ├── visual_test.c             # Manual visual verification harness (V1-V5)
 │   └── test_harness.h            # Custom test framework
 ├── examples/
 │   ├── hello_pixel.c             # Minimal pixel demo
-│   ├── bouncing_ball.c           # Animation + collision demo
+│   ├── bouncing_ball.c           # Animation demo with collision
 │   └── input_demo.c              # Keyboard/mouse visualization
 ├── CMakeLists.txt                # Build configuration
-└── README.md                     # Usage & build instructions
+├── README.md                     # Overview & build instructions
+└── LICENSE                       # License file (e.g., MIT)
 ```
 
 ### 8.2 Platform Abstraction
 
-**Internal Window Structure:**
+**Internal Window Structure (Conceptual)**
 
 ```c
 // src/vgfx_internal.h
 
-#define VGFX_EVENT_QUEUE_SIZE 256
+#include "vgfx_config.h"
+#include <stdint.h>
 
 typedef struct vgfx_window {
     // Public attributes
     int32_t  width;
     int32_t  height;
-    int32_t  fps;
+    int32_t  fps;        // Current per-window FPS setting
     int32_t  resizable;
 
     // Framebuffer
-    uint8_t* pixels;      // RGBA data (width × height × 4 bytes)
-    int32_t  stride;      // Always width * 4
+    uint8_t* pixels;     // RGBA data (width × height × 4 bytes)
+    int32_t  stride;     // Always width * 4
 
     // Event queue (ring buffer)
     vgfx_event_t event_queue[VGFX_EVENT_QUEUE_SIZE];
-    int32_t      event_head;  // Next write position
-    int32_t      event_tail;  // Next read position
+    int32_t      event_head;  // Next write position (producer)
+    int32_t      event_tail;  // Next read position (consumer)
 
     // Input state
-    uint8_t key_state[512];          // Indexed by vgfx_key_t
+    uint8_t key_state[512];          // Indexed by vgfx_key_t (values < 512)
     int32_t mouse_x;
     int32_t mouse_y;
     uint8_t mouse_button_state[8];   // Indexed by vgfx_mouse_button_t
@@ -1114,79 +1358,122 @@ typedef struct vgfx_window {
 } vgfx_window;
 ```
 
-**Platform API (per backend):**
+**Platform API (Per Backend)**
+
+Each backend (`vgfx_platform_*.c`) implements these functions:
 
 ```c
-// Initialize platform-specific window
-// Returns 0 on failure, 1 on success
-int vgfx_platform_init_window(vgfx_window* win, const vgfx_window_params_t* params);
+// Initialize platform-specific window resources.
+// Allocates platform_data and creates native window.
+// Returns 1 on success, 0 on failure.
+int vgfx_platform_init_window(vgfx_window* win,
+                              const vgfx_window_params_t* params);
 
-// Destroy platform-specific window resources
+// Destroy platform-specific window resources.
+// Frees platform_data and destroys native window.
 void vgfx_platform_destroy_window(vgfx_window* win);
 
-// Process OS events and translate to vgfx events
-// Returns 0 on fatal error, 1 on success
+// Process OS events and translate into ViperGFX events.
+// Updates win->key_state, win->mouse_*, and enqueues events.
+// Returns 1 on success, 0 on fatal error.
 int vgfx_platform_process_events(vgfx_window* win);
 
-// Present framebuffer to screen (blit)
-// Returns 0 on failure, 1 on success
+// Present framebuffer to window (blit).
+// Transfers win->pixels to native window surface.
+// Returns 1 on success, 0 on failure.
 int vgfx_platform_present(vgfx_window* win);
 
-// Sleep for specified milliseconds (for FPS limiting)
+// Sleep for specified number of milliseconds.
+// Used for FPS limiting.
 void vgfx_platform_sleep_ms(int32_t ms);
 
-// High-resolution timer (milliseconds since arbitrary epoch)
+// High-resolution timer in milliseconds since arbitrary epoch.
+// Used for FPS timing calculations.
+// Must be monotonic (never goes backward).
 int64_t vgfx_platform_now_ms(void);
 ```
 
-**Mock Platform API (tests only):**
+**Mock Platform API (Tests Only)**
 
 ```c
 // src/vgfx_platform_mock.c
 
+// Inject synthetic key event
 void vgfx_mock_inject_key_event(vgfx_window* win, vgfx_key_t key, int down);
+
+// Inject synthetic mouse move
 void vgfx_mock_inject_mouse_move(vgfx_window* win, int32_t x, int32_t y);
-void vgfx_mock_inject_mouse_button(vgfx_window* win, vgfx_mouse_button_t btn, int down);
+
+// Inject synthetic mouse button event
+void vgfx_mock_inject_mouse_button(vgfx_window* win,
+                                   vgfx_mouse_button_t btn, int down);
+
+// Inject synthetic resize event
 void vgfx_mock_inject_resize(vgfx_window* win, int32_t width, int32_t height);
+
+// Inject synthetic close event
 void vgfx_mock_inject_close(vgfx_window* win);
-void vgfx_mock_set_time_ms(int64_t ms);  // Control time for FPS tests
+
+// Control mock time for deterministic FPS tests
+void vgfx_mock_set_time_ms(int64_t ms);
+int64_t vgfx_mock_get_time_ms(void);
 ```
+
+**Mock Backend Linkage:**
+- Only linked into test executables
+- Production `libvipergfx.a` never includes mock backend
 
 ### 8.3 Drawing Algorithms
 
-**Bresenham Line Algorithm:**
+**Bresenham Line Algorithm (Conceptual)**
+
 ```c
-// Integer-only, deterministic
-void bresenham_line(int32_t x0, int32_t y0, int32_t x1, int32_t y1,
-                    void (*plot)(int32_t x, int32_t y, void* ctx), void* ctx);
+// Integer-only line drawing with callback for each pixel
+void bresenham_line(int32_t x0, int32_t y0,
+                    int32_t x1, int32_t y1,
+                    void (*plot)(int32_t x, int32_t y, void* ctx),
+                    void* ctx);
 ```
 
-**Midpoint Circle Algorithm:**
+**Midpoint Circle Algorithm (Outline)**
+
 ```c
-// Integer-only, draws 8 octants symmetrically
+// Integer-only circle drawing using 8-way symmetry
 void midpoint_circle(int32_t cx, int32_t cy, int32_t radius,
-                     void (*plot)(int32_t x, int32_t y, void* ctx), void* ctx);
+                     void (*plot)(int32_t x, int32_t y, void* ctx),
+                     void* ctx);
 ```
 
-**Filled Circle:**
+**Filled Circle (Scanline Fill)**
+
 ```c
-// Scanline fill using midpoint circle for horizontal spans
+// Scanline fill derived from midpoint algorithm
 void filled_circle(int32_t cx, int32_t cy, int32_t radius,
-                   void (*hline)(int32_t x0, int32_t x1, int32_t y, void* ctx), void* ctx);
+                   void (*hline)(int32_t x0, int32_t x1,
+                                 int32_t y, void* ctx),
+                   void* ctx);
 ```
+
+**Implementation Notes:**
+- All algorithms are integer-only (no floating point)
+- Helpers live in `vgfx_draw.c` and are not part of public API
+- Clipping is performed at primitive level, not in helpers
 
 ### 8.4 HiDPI Considerations
 
 **Phase 1 Behavior:**
-- All dimensions in **logical pixels**
-- Platform handles backing scale automatically
-- **macOS Retina:** 800×600 window → 800×600 framebuffer (OS scales to physical pixels)
-- **Windows/Linux:** Default system scaling applies
-- No explicit DPI management
 
-**Future Phases:**
+- All coordinates and sizes are in **logical pixels**
+- Backends rely on platform scaling:
+  - **macOS:** Cocoa handles backing scale factor automatically; framebuffer is in logical pixels
+  - **Windows/Linux:** Default system scaling is used; no explicit DPI management
+- No guarantee of 1:1 mapping between framebuffer pixels and physical screen pixels
+
+**Future Extension (Out of Scope for v1):**
+
 ```c
-// Query backing scale factor (e.g., 2.0 for Retina)
+// Query backing scale factor (e.g., 2.0 for Retina displays)
+// Returns 1 on success, 0 on error.
 int32_t vgfx_get_scale(vgfx_window_t window, float* scale_x, float* scale_y);
 ```
 
@@ -1194,7 +1481,7 @@ int32_t vgfx_get_scale(vgfx_window_t window, float* scale_x, float* scale_y);
 
 ## 9. Build System
 
-### 9.1 CMakeLists.txt
+### 9.1 CMake Configuration
 
 ```cmake
 cmake_minimum_required(VERSION 3.10)
@@ -1213,6 +1500,8 @@ endif()
 if(APPLE)
     set(PLATFORM_SOURCES src/vgfx_platform_macos.m)
     set(PLATFORM_LIBS "-framework Cocoa")
+    set_source_files_properties(src/vgfx_platform_macos.m PROPERTIES
+        COMPILE_FLAGS "-x objective-c")
 elseif(UNIX)
     find_package(X11 REQUIRED)
     set(PLATFORM_SOURCES src/vgfx_platform_linux.c)
@@ -1230,7 +1519,8 @@ add_library(vipergfx STATIC
 )
 
 target_include_directories(vipergfx PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>
 )
 
 target_link_libraries(vipergfx PUBLIC ${PLATFORM_LIBS})
@@ -1246,15 +1536,28 @@ option(VGFX_BUILD_EXAMPLES "Build examples" ON)
 if(VGFX_BUILD_EXAMPLES)
     add_subdirectory(examples)
 endif()
+
+# Install targets
+install(TARGETS vipergfx
+    EXPORT vipergfx-targets
+    ARCHIVE DESTINATION lib
+    LIBRARY DESTINATION lib
+    RUNTIME DESTINATION bin
+)
+
+install(DIRECTORY include/
+    DESTINATION include
+    FILES_MATCHING PATTERN "*.h"
+)
 ```
 
-### 9.2 Build Commands
+### 9.2 Build & Test Commands
 
 ```bash
 # Configure
 cmake -S . -B build
 
-# Build library
+# Build library only
 cmake --build build
 
 # Build with tests and examples
@@ -1264,8 +1567,17 @@ cmake --build build
 # Run tests
 cd build && ctest --output-on-failure
 
+# Run specific test
+cd build && ./tests/test_window
+
+# Run example
+cd build && ./examples/hello_pixel
+
 # Install (optional)
 cmake --install build --prefix /usr/local
+
+# Clean build
+rm -rf build && cmake -S . -B build
 ```
 
 ---
@@ -1277,275 +1589,559 @@ cmake --install build --prefix /usr/local
 **Estimated Effort:** 2-3 days
 
 **Deliverables:**
-1. ✅ Project structure
-2. ✅ CMakeLists.txt (macOS only)
-3. ✅ `include/vgfx.h` with all API declarations
-4. ✅ `include/vgfx_config.h` with configuration macros
-5. ✅ `src/vgfx_internal.h` with `vgfx_window` struct
-6. ✅ `src/vgfx.c` with:
+
+1. ✅ Project structure & CMake (macOS only)
+2. ✅ `include/vgfx.h` with full API declarations
+3. ✅ `include/vgfx_config.h` defaults
+4. ✅ `src/vgfx_internal.h` with `vgfx_window` definition
+5. ✅ `src/vgfx.c`:
    - Window lifecycle (create/destroy)
-   - Framebuffer allocation
+   - Framebuffer allocation/free
    - `vgfx_pset`, `vgfx_point`, `vgfx_cls`
    - `vgfx_update` with FPS limiting
-   - Error handling (TLS last error string)
-7. ✅ `src/vgfx_platform_macos.m` with:
+   - Error handling (`vgfx_get_last_error`, TLS)
+6. ✅ `src/vgfx_platform_macos.m`:
    - NSWindow creation
    - NSView subclass for drawing
    - Event loop integration
-   - Framebuffer-to-CGImage-to-view blitting
-   - High-resolution timer
-8. ✅ Unit tests: T1-T6 (window creation, pixels)
-9. ✅ Example: `examples/hello_pixel.c`
+   - Framebuffer→CGImage→view blitting
+   - Timer implementation (`mach_absolute_time` or `clock_gettime`)
+7. ✅ Unit tests: T1–T6 (window creation, pixels)
+8. ✅ Example: `examples/hello_pixel.c`
 
 **Acceptance Criteria:**
-- Builds on macOS without errors/warnings
-- Window appears with correct dimensions
-- Pixels can be set and read back
-- Screen clears to specified color
-- FPS limiting works (manual timing check)
-- No memory leaks (run example under Instruments)
+
+- Builds on macOS (Apple Clang) with zero warnings
+- Window appears with correct dimensions and title
+- Pixels can be set via `vgfx_pset` and read back via `vgfx_point`
+- `vgfx_cls` clears screen to specified color
+- FPS limiting roughly matches target (manual timing check or T15 passes)
+- No memory leaks in basic examples (checked with Instruments/LeakSanitizer)
+- `hello_pixel.c` runs and displays gradient
+
+---
 
 ### 10.2 Phase 1B: Drawing Primitives
 
 **Estimated Effort:** 2 days
 
 **Deliverables:**
-1. ✅ `src/vgfx_draw.c` with:
-   - `bresenham_line()`
+
+1. ✅ `src/vgfx_draw.c`:
+   - Bresenham line algorithm
    - `vgfx_line()` wrapper with clipping
    - `vgfx_rect()` and `vgfx_fill_rect()`
-   - `midpoint_circle()` helper
+   - Midpoint circle helper
    - `vgfx_circle()` and `vgfx_fill_circle()`
-2. ✅ Unit tests: T7-T13 (lines, rectangles, circles)
+2. ✅ Unit tests: T7–T13 (lines, rectangles, circles)
 3. ✅ Example: `examples/bouncing_ball.c` (demonstrates animation + primitives)
 
 **Acceptance Criteria:**
+
 - All drawing primitives produce correct integer geometry
-- Clipping works correctly (no segfaults on OOB draws)
-- Visual tests show smooth shapes
-- Unit tests pass
+- Clipping works correctly (no segfaults on OOB geometry)
+- Visual tests show smooth shapes (no gaps or artifacts)
+- T7–T13 pass
+- `bouncing_ball.c` runs with smooth animation
+
+---
 
 ### 10.3 Phase 1C: Input & Events
 
 **Estimated Effort:** 2-3 days
 
 **Deliverables:**
-1. ✅ Event queue implementation in `src/vgfx.c`
-2. ✅ `vgfx_poll_event()` API
-3. ✅ Input state tracking in `vgfx_window`
+
+1. ✅ Event queue implementation in `vgfx_window` (ring buffer)
+2. ✅ `vgfx_poll_event()` API in `src/vgfx.c`
+3. ✅ Input state tracking in `vgfx_window`:
+   - `key_state[512]` array
+   - `mouse_x`, `mouse_y`, `mouse_button_state[8]`
 4. ✅ macOS event translation in `src/vgfx_platform_macos.m`:
-   - Keyboard events (key down/up, repeat flag)
-   - Mouse events (move, button down/up)
-   - Window events (close, resize, focus)
+   - Keyboard events (NSEventTypeKeyDown/KeyUp, with `isARepeat` flag)
+   - Mouse events (NSEventTypeMouseMoved, LeftMouseDown/Up, etc.)
+   - Window events (NSWindowWillCloseNotification, NSWindowDidResizeNotification, focus)
 5. ✅ `src/vgfx_platform_mock.c` for testing
-6. ✅ Unit tests: T16-T21 (input, events, queue)
+6. ✅ Unit tests: T16–T21 (input, events, queue overflow)
 7. ✅ Example: `examples/input_demo.c` (visualize key/mouse state)
 
 **Acceptance Criteria:**
-- Keyboard state tracked correctly
-- Mouse position/buttons tracked correctly
-- Event queue works (FIFO, overflow handling)
-- Resize event triggers framebuffer reallocation + clear
-- Close event queued (window doesn't close automatically)
-- Unit tests pass with mock backend
 
-### 10.4 Phase 1D: Linux Support
+- Keyboard state tracked correctly (T16 passes)
+- Mouse position/buttons tracked correctly (T17-T18 pass)
+- Event queue works (FIFO, overflow handling) (T19-T20 pass)
+- Resize event triggers framebuffer reallocation + clear (T21 passes)
+- Close event queued (window doesn't close automatically)
+- `input_demo.c` visually reflects input correctly
+
+---
+
+### 10.4 Phase 1D: Linux (X11) Support
 
 **Estimated Effort:** 3-4 days
 
 **Deliverables:**
-1. ✅ `src/vgfx_platform_linux.c` with:
-   - X11 window creation (`XCreateWindow`)
-   - XImage-based framebuffer blitting (`XPutImage`)
-   - Event translation (KeyPress/KeyRelease, MotionNotify, ButtonPress/Release, ConfigureNotify, ClientMessage for WM_DELETE_WINDOW)
-   - High-resolution timer (`clock_gettime`)
-2. ✅ CMakeLists.txt updated for Linux
+
+1. ✅ `src/vgfx_platform_linux.c`:
+   - X11 window creation (`XCreateWindow`, `XMapWindow`)
+   - XImage-based framebuffer blitting (`XPutImage` with 32-bpp RGBA)
+   - Event translation:
+     - `KeyPress`/`KeyRelease` → `VGFX_EVENT_KEY_DOWN`/`UP`
+     - `MotionNotify` → `VGFX_EVENT_MOUSE_MOVE`
+     - `ButtonPress`/`ButtonRelease` → `VGFX_EVENT_MOUSE_DOWN`/`UP`
+     - `ConfigureNotify` → `VGFX_EVENT_RESIZE`
+     - `ClientMessage` (WM_DELETE_WINDOW) → `VGFX_EVENT_CLOSE`
+     - `FocusIn`/`FocusOut` → `VGFX_EVENT_FOCUS_GAINED`/`LOST`
+   - High-resolution timer (`clock_gettime(CLOCK_MONOTONIC)`)
+2. ✅ CMake updated for Linux (find X11)
 3. ✅ Full test suite runs on Linux
 4. ✅ Examples tested on Linux
 
 **Acceptance Criteria:**
-- All Phase 1A-C features work on Linux
-- All unit tests pass
-- Visual tests show correct behavior
-- No X11-specific crashes or artifacts
 
-### 10.5 Phase 1E: Windows Support
+- All Phase 1A-C features work on Linux
+- All unit tests (T1-T21) pass
+- Visual tests (V1-V5) show correct behavior
+- No X11-specific crashes or memory leaks (Valgrind clean)
+
+---
+
+### 10.5 Phase 1E: Windows (Win32) Support
 
 **Estimated Effort:** 3-4 days
 
 **Deliverables:**
-1. ✅ `src/vgfx_platform_win32.c` with:
-   - Win32 window creation (`CreateWindowEx`)
-   - DIB section for framebuffer (`CreateDIBSection`)
+
+1. ✅ `src/vgfx_platform_win32.c`:
+   - Window class registration and creation (`CreateWindowEx`)
+   - DIB section for framebuffer (`CreateDIBSection` with `BI_RGB`, 32-bpp)
    - GDI blitting (`BitBlt` or `StretchDIBits`)
-   - Event translation (WM_KEYDOWN/UP, WM_MOUSEMOVE, WM_LBUTTONDOWN/UP, etc., WM_SIZE, WM_CLOSE)
+   - Message loop and event translation:
+     - `WM_KEYDOWN`/`WM_KEYUP` → `VGFX_EVENT_KEY_DOWN`/`UP`
+     - `WM_MOUSEMOVE` → `VGFX_EVENT_MOUSE_MOVE`
+     - `WM_LBUTTONDOWN`/`UP`, `WM_RBUTTONDOWN`/`UP`, etc. → `VGFX_EVENT_MOUSE_DOWN`/`UP`
+     - `WM_SIZE` → `VGFX_EVENT_RESIZE`
+     - `WM_CLOSE` → `VGFX_EVENT_CLOSE`
+     - `WM_SETFOCUS`/`WM_KILLFOCUS` → `VGFX_EVENT_FOCUS_GAINED`/`LOST`
    - High-resolution timer (`QueryPerformanceCounter`)
-2. ✅ CMakeLists.txt updated for Windows
+2. ✅ CMake updated for Windows (link user32, gdi32)
 3. ✅ Full test suite runs on Windows
 4. ✅ Examples tested on Windows
 
 **Acceptance Criteria:**
+
 - All Phase 1A-C features work on Windows
-- All unit tests pass
-- Visual tests show correct behavior
-- No Win32-specific crashes or artifacts
+- All unit tests (T1-T21) pass
+- Visual tests (V1-V5) show correct behavior
+- No Win32-specific crashes or memory leaks
+
+---
 
 ### 10.6 Documentation & Polish
 
 **Estimated Effort:** 1-2 days
 
 **Deliverables:**
-1. ✅ `README.md` with:
-   - Overview
-   - Build instructions (all platforms)
-   - API quick reference
-   - Example usage
-   - Threading rules
-   - Limitations
-2. ✅ API documentation (Doxygen or similar)
-3. ✅ Example programs documented with comments
-4. ✅ Integration guide for Viper runtime
+
+1. ✅ `README.md`:
+   - Overview & goals
+   - Feature list
+   - Build instructions for each platform
+   - API quick reference (or link to this spec)
+   - Basic usage example
+   - Threading rules & limitations
+   - License information
+2. ✅ API reference (Doxygen or similar, generated from comments in `vgfx.h`)
+3. ✅ Comments in examples explaining API usage
+4. ✅ Integration guide for Viper runtime (`docs/VIPER_INTEGRATION.md`)
+5. ✅ Changelog (`CHANGELOG.md`) for v1.0.0
 
 **Acceptance Criteria:**
-- README is clear and complete
+
+- Documentation is sufficient for new developer to:
+  - Build on all platforms
+  - Run examples
+  - Understand basic API usage
+  - Integrate with Viper
+- API reference covers all public functions with descriptions, parameters, return values
 - Examples are well-commented
-- API reference is accurate
-- Integration guide covers all necessary steps
+- Changelog records all features and changes for v1.0.0
 
 ---
 
 ## 11. Future Phases (Out of Scope for v1.0)
 
 ### Phase 2: Advanced Features
-- Image loading (BMP, PNG via stb_image)
-- Sprite/texture support
-- Bitmap fonts / text rendering
-- Alpha blending modes
-- Palette support (8-bit indexed color)
+
+- **Image loading:** BMP, PNG via stb_image or similar
+- **Sprite/texture support:** Blitting operations, alpha blending
+- **Bitmap fonts / text rendering:** Simple fixed-width font support
+- **Alpha blending modes:** Porter-Duff compositing operators
+- **Palette support:** Optional 8-bit indexed color mode
 
 ### Phase 3: Viper Integration
-- Runtime signatures for ViperGFX functions
-- BASIC frontend support:
+
+- **Runtime bindings:** Viper runtime signatures for ViperGFX functions
+- **BASIC frontend support:**
   ```basic
   SCREEN 800, 600, "My Game"
   PSET 100, 100, RGB(255, 0, 0)
-  LINE (0, 0) - (100, 100), RGB(0, 255, 0)
+  LINE (0, 0)-(100, 100), RGB(0, 255, 0)
   CIRCLE (200, 200), 50, RGB(0, 0, 255)
   ```
-- Integration with Viper's main loop
+- **Event loop integration:** Integrate with Viper's main loop and event model
+- **IL lowering:** BASIC graphics statements → IL → ViperGFX calls
 
 ### Phase 4: Performance Optimization
-- SIMD optimizations (SSE2/NEON) for bulk operations
-- Multi-threaded rendering (tiled framebuffer)
-- Dirty rectangle tracking (avoid full-screen blits)
+
+- **SIMD optimizations:** SSE2/NEON for bulk operations (clear, fill, blit)
+- **Multi-threaded rendering:** Tiled framebuffer with thread pool
+- **Dirty rectangle tracking:** Avoid full-window blits when only small region changed
+- **Framebuffer caching:** Reduce allocations on resize
 
 ---
 
 ## Appendix A: Platform-Specific Notes
 
+> **Note:** The following snippets are illustrative only and are not part of the public API contract. Backends are free to change implementation details as long as they honor the behavior described in sections 1–7.
+
 ### macOS (Cocoa)
 
-**Window Creation:**
+**Window Creation (Conceptual)**
+
 ```objc
 NSWindow* window = [[NSWindow alloc]
     initWithContentRect:NSMakeRect(0, 0, width, height)
-    styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
-               NSWindowStyleMaskResizable)
-    backing:NSBackingStoreBuffered
-    defer:NO];
+              styleMask:(NSWindowStyleMaskTitled |
+                         NSWindowStyleMaskClosable |
+                         (resizable ? NSWindowStyleMaskResizable : 0))
+                backing:NSBackingStoreBuffered
+                  defer:NO];
 
-[window setTitle:@"Title"];
+[window setTitle:@(title_utf8)];
 [window makeKeyAndOrderFront:nil];
 ```
 
-**Framebuffer Blitting:**
+**Framebuffer Blitting (Conceptual)**
+
 ```objc
-// Create CGImageRef from RGBA buffer
-CGDataProviderRef provider = CGDataProviderCreateWithData(
-    NULL, pixels, width * height * 4, NULL);
+// RGBA framebuffer: width × height × 4 bytes
+CGColorSpaceRef cs = CGColorSpaceCreateDeviceRGB();
+CGDataProviderRef provider =
+    CGDataProviderCreateWithData(NULL, pixels, width * height * 4, NULL);
+
 CGImageRef image = CGImageCreate(
-    width, height, 8, 32, width * 4,
-    CGColorSpaceCreateDeviceRGB(),
+    width, height,
+    8,      // bits per component
+    32,     // bits per pixel
+    stride, // bytes per row
+    cs,
     kCGBitmapByteOrderDefault | kCGImageAlphaLast,
-    provider, NULL, false, kCGRenderingIntentDefault);
+    provider,
+    NULL,
+    false,
+    kCGRenderingIntentDefault);
 
-// Draw in NSView's drawRect:
-[image drawInRect:bounds];
+// Inside NSView's drawRect:
+CGContextRef ctx = [[NSGraphicsContext currentContext] CGContext];
+CGContextDrawImage(ctx, self.bounds, image);
+
+// Cleanup
+CGColorSpaceRelease(cs);
+CGImageRelease(image);
+CGDataProviderRelease(provider);
 ```
 
-**Event Handling:**
+**Event Handling (Conceptual)**
+
 ```objc
-NSEvent* event = [NSApp nextEventMatchingMask:NSEventMaskAny
-                       untilDate:[NSDate distantPast]
-                       inMode:NSDefaultRunLoopMode
-                       dequeue:YES];
-[NSApp sendEvent:event];
-```
-
-### Linux (X11)
-
-**Window Creation:**
-```c
-Display* display = XOpenDisplay(NULL);
-Window window = XCreateSimpleWindow(display, root, 0, 0, width, height,
-                                     1, black, white);
-XMapWindow(display, window);
-```
-
-**Framebuffer Blitting:**
-```c
-XImage* ximage = XCreateImage(display, visual, 24, ZPixmap, 0,
-                               (char*)pixels, width, height, 32, stride);
-XPutImage(display, window, gc, ximage, 0, 0, 0, 0, width, height);
-```
-
-**Event Handling:**
-```c
-while (XPending(display)) {
-    XEvent event;
-    XNextEvent(display, &event);
-    // Translate event.type (KeyPress, MotionNotify, etc.)
+NSEvent* event;
+while ((event = [NSApp nextEventMatchingMask:NSEventMaskAny
+                                   untilDate:[NSDate distantPast]
+                                      inMode:NSDefaultRunLoopMode
+                                     dequeue:YES])) {
+    [NSApp sendEvent:event];
+    // Translate NSEvent to ViperGFX events
+    // Update key_state, mouse_x/y, enqueue events
 }
 ```
 
-### Windows (Win32)
+**High-Resolution Timer (Conceptual)**
 
-**Window Creation:**
-```c
-HWND hwnd = CreateWindowEx(0, "ViperGFXClass", "Title",
-                            WS_OVERLAPPEDWINDOW,
-                            CW_USEDEFAULT, CW_USEDEFAULT,
-                            width, height,
-                            NULL, NULL, hInstance, NULL);
-ShowWindow(hwnd, SW_SHOW);
+```objc
+// Option 1: mach_absolute_time (nanoseconds)
+#include <mach/mach_time.h>
+
+uint64_t now = mach_absolute_time();
+mach_timebase_info_data_t timebase;
+mach_timebase_info(&timebase);
+uint64_t ns = now * timebase.numer / timebase.denom;
+return (int64_t)(ns / 1000000); // Convert to milliseconds
+
+// Option 2: clock_gettime (if available)
+struct timespec ts;
+clock_gettime(CLOCK_MONOTONIC, &ts);
+return (int64_t)(ts.tv_sec * 1000 + ts.tv_nsec / 1000000);
 ```
 
-**Framebuffer Blitting (DIB Section):**
+---
+
+### Linux (X11)
+
+**Window Creation (Conceptual)**
+
 ```c
-BITMAPINFO bmi = { sizeof(BITMAPINFOHEADER), width, -height, 1, 32, BI_RGB };
+Display* display = XOpenDisplay(NULL);
+if (!display) {
+    // error
+}
+
+int screen = DefaultScreen(display);
+Window root = RootWindow(display, screen);
+
+Window window = XCreateSimpleWindow(
+    display, root,
+    0, 0,           // x, y
+    width, height,
+    1,              // border width
+    BlackPixel(display, screen),
+    WhitePixel(display, screen)
+);
+
+XStoreName(display, window, title_utf8);
+XSelectInput(display, window,
+             KeyPressMask | KeyReleaseMask |
+             ButtonPressMask | ButtonReleaseMask |
+             PointerMotionMask |
+             StructureNotifyMask |
+             FocusChangeMask);
+
+// Handle window close button (WM_DELETE_WINDOW protocol)
+Atom wm_delete_window = XInternAtom(display, "WM_DELETE_WINDOW", False);
+XSetWMProtocols(display, window, &wm_delete_window, 1);
+
+XMapWindow(display, window);
+XFlush(display);
+```
+
+**Framebuffer Blitting (Conceptual)**
+
+```c
+// RGBA 32-bpp framebuffer
+// May need to swizzle byte order to match X server's visual
+
+XImage* ximage = XCreateImage(
+    display,
+    DefaultVisual(display, screen),
+    32,           // depth
+    ZPixmap,
+    0,            // offset
+    (char*)pixels,
+    width,
+    height,
+    32,           // bitmap_pad
+    stride        // bytes_per_line
+);
+
+GC gc = DefaultGC(display, screen);
+XPutImage(display, window, gc, ximage, 0, 0, 0, 0, width, height);
+XFlush(display);
+
+// Note: XImage does not own pixels; do not XDestroyImage if pixels is managed elsewhere
+```
+
+**Event Handling (Conceptual)**
+
+```c
+while (XPending(display) > 0) {
+    XEvent event;
+    XNextEvent(display, &event);
+
+    switch (event.type) {
+    case KeyPress:
+        // Translate event.xkey.keycode to vgfx_key_t
+        // Set key_state[key] = 1
+        // Enqueue VGFX_EVENT_KEY_DOWN
+        break;
+    case KeyRelease:
+        // Similar to KeyPress
+        break;
+    case MotionNotify:
+        // mouse_x = event.xmotion.x
+        // mouse_y = event.xmotion.y
+        // Enqueue VGFX_EVENT_MOUSE_MOVE
+        break;
+    case ButtonPress:
+        // Translate event.xbutton.button to vgfx_mouse_button_t
+        // Enqueue VGFX_EVENT_MOUSE_DOWN
+        break;
+    case ConfigureNotify:
+        // If size changed:
+        //   Enqueue VGFX_EVENT_RESIZE
+        //   Reallocate framebuffer
+        break;
+    case ClientMessage:
+        if (event.xclient.data.l[0] == wm_delete_window) {
+            // Enqueue VGFX_EVENT_CLOSE
+        }
+        break;
+    case FocusIn:
+        // Enqueue VGFX_EVENT_FOCUS_GAINED
+        break;
+    case FocusOut:
+        // Enqueue VGFX_EVENT_FOCUS_LOST
+        break;
+    }
+}
+```
+
+**High-Resolution Timer (Conceptual)**
+
+```c
+#include <time.h>
+
+struct timespec ts;
+clock_gettime(CLOCK_MONOTONIC, &ts);
+return (int64_t)(ts.tv_sec * 1000 + ts.tv_nsec / 1000000);
+```
+
+---
+
+### Windows (Win32)
+
+**Window Creation (Conceptual)**
+
+```c
+WNDCLASSEX wc = {0};
+wc.cbSize = sizeof(WNDCLASSEX);
+wc.lpfnWndProc = WndProc;
+wc.hInstance = GetModuleHandle(NULL);
+wc.lpszClassName = "ViperGFXClass";
+wc.hCursor = LoadCursor(NULL, IDC_ARROW);
+RegisterClassEx(&wc);
+
+HWND hwnd = CreateWindowEx(
+    0,
+    "ViperGFXClass",
+    title_utf8,
+    WS_OVERLAPPEDWINDOW,
+    CW_USEDEFAULT, CW_USEDEFAULT,
+    width, height,
+    NULL, NULL,
+    GetModuleHandle(NULL),
+    NULL
+);
+
+ShowWindow(hwnd, SW_SHOW);
+UpdateWindow(hwnd);
+```
+
+**Framebuffer Blitting with DIB Section (Conceptual)**
+
+```c
+BITMAPINFO bmi = {0};
+bmi.bmiHeader.biSize        = sizeof(BITMAPINFOHEADER);
+bmi.bmiHeader.biWidth       = width;
+bmi.bmiHeader.biHeight      = -height;  // Negative for top-down
+bmi.bmiHeader.biPlanes      = 1;
+bmi.bmiHeader.biBitCount    = 32;
+bmi.bmiHeader.biCompression = BI_RGB;
+
+void* dib_pixels = NULL;
 HDC hdc = GetDC(hwnd);
-HBITMAP hbmp = CreateDIBSection(hdc, &bmi, DIB_RGB_COLORS, (void**)&pixels, NULL, 0);
+
+HBITMAP hbmp = CreateDIBSection(
+    hdc,
+    &bmi,
+    DIB_RGB_COLORS,
+    &dib_pixels,
+    NULL,
+    0
+);
+
 HDC memdc = CreateCompatibleDC(hdc);
 SelectObject(memdc, hbmp);
 
-// Blit
+// Each frame:
+//   1. Copy RGBA framebuffer into dib_pixels (may need to swizzle BGRA)
+//   2. Blit to window
 BitBlt(hdc, 0, 0, width, height, memdc, 0, 0, SRCCOPY);
+
+ReleaseDC(hwnd, hdc);
 ```
 
-**Event Handling:**
+**Event Handling (Conceptual)**
+
 ```c
 MSG msg;
 while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
     TranslateMessage(&msg);
     DispatchMessage(&msg);
 }
+
+// Window procedure translates WM_* messages to ViperGFX events
+LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    switch (msg) {
+    case WM_KEYDOWN:
+        // Translate wParam (virtual key code) to vgfx_key_t
+        // Enqueue VGFX_EVENT_KEY_DOWN
+        break;
+    case WM_KEYUP:
+        // Similar to WM_KEYDOWN
+        break;
+    case WM_MOUSEMOVE:
+        // mouse_x = LOWORD(lParam)
+        // mouse_y = HIWORD(lParam)
+        // Enqueue VGFX_EVENT_MOUSE_MOVE
+        break;
+    case WM_LBUTTONDOWN:
+    case WM_RBUTTONDOWN:
+    case WM_MBUTTONDOWN:
+        // Enqueue VGFX_EVENT_MOUSE_DOWN
+        break;
+    case WM_LBUTTONUP:
+    case WM_RBUTTONUP:
+    case WM_MBUTTONUP:
+        // Enqueue VGFX_EVENT_MOUSE_UP
+        break;
+    case WM_SIZE:
+        // Enqueue VGFX_EVENT_RESIZE
+        // Reallocate framebuffer
+        break;
+    case WM_CLOSE:
+        // Enqueue VGFX_EVENT_CLOSE
+        // DO NOT call DestroyWindow here
+        return 0;
+    case WM_SETFOCUS:
+        // Enqueue VGFX_EVENT_FOCUS_GAINED
+        break;
+    case WM_KILLFOCUS:
+        // Enqueue VGFX_EVENT_FOCUS_LOST
+        break;
+    default:
+        return DefWindowProc(hwnd, msg, wParam, lParam);
+    }
+    return 0;
+}
+```
+
+**High-Resolution Timer (Conceptual)**
+
+```c
+#include <windows.h>
+
+LARGE_INTEGER freq, now;
+QueryPerformanceFrequency(&freq);
+QueryPerformanceCounter(&now);
+
+return (int64_t)((now.QuadPart * 1000) / freq.QuadPart);
 ```
 
 ---
 
 ## Appendix B: Example Programs
 
-### hello_pixel.c
+### `examples/hello_pixel.c`
 
 ```c
 #include <vgfx.h>
@@ -1553,10 +2149,10 @@ while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
 
 int main(void) {
     vgfx_window_params_t params = {
-        .width = 320,
-        .height = 240,
-        .title = "Hello Pixel",
-        .fps = 60,
+        .width     = 320,
+        .height    = 240,
+        .title     = "Hello Pixel",
+        .fps       = 60,
         .resizable = 0
     };
 
@@ -1568,8 +2164,12 @@ int main(void) {
 
     int running = 1;
     while (running) {
-        if (!vgfx_update(win)) break;
+        if (!vgfx_update(win)) {
+            // Fatal error
+            break;
+        }
 
+        // Handle events
         vgfx_event_t ev;
         while (vgfx_poll_event(win, &ev)) {
             if (ev.type == VGFX_EVENT_CLOSE) {
@@ -1580,7 +2180,11 @@ int main(void) {
         // Draw gradient
         for (int y = 0; y < 240; y++) {
             for (int x = 0; x < 320; x++) {
-                vgfx_color_t c = vgfx_rgb(x * 255 / 320, y * 255 / 240, 128);
+                vgfx_color_t c = vgfx_rgb(
+                    (uint8_t)(x * 255 / 320),
+                    (uint8_t)(y * 255 / 240),
+                    128
+                );
                 vgfx_pset(win, x, y, c);
             }
         }
@@ -1591,28 +2195,53 @@ int main(void) {
 }
 ```
 
-### bouncing_ball.c
+---
+
+### `examples/bouncing_ball.c`
 
 ```c
 #include <vgfx.h>
 #include <stdio.h>
 
 int main(void) {
-    vgfx_window_params_t params = {640, 480, "Bouncing Ball", 60, 0};
+    vgfx_window_params_t params = {
+        .width     = 640,
+        .height    = 480,
+        .title     = "Bouncing Ball",
+        .fps       = 60,
+        .resizable = 1
+    };
+
     vgfx_window_t win = vgfx_create_window(&params);
-    if (!win) return 1;
+    if (!win) {
+        fprintf(stderr, "Error: %s\n", vgfx_get_last_error());
+        return 1;
+    }
 
     int x = 320, y = 240;
     int vx = 3, vy = 2;
     int radius = 20;
+    int width = 640, height = 480;
 
     int running = 1;
     while (running) {
-        if (!vgfx_update(win)) break;
+        if (!vgfx_update(win)) {
+            break;
+        }
 
         vgfx_event_t ev;
         while (vgfx_poll_event(win, &ev)) {
-            if (ev.type == VGFX_EVENT_CLOSE) running = 0;
+            switch (ev.type) {
+            case VGFX_EVENT_CLOSE:
+                running = 0;
+                break;
+            case VGFX_EVENT_RESIZE:
+                width  = ev.data.resize.width;
+                height = ev.data.resize.height;
+                break;
+            default:
+                break;
+            }
         }
 
         // Clear screen
@@ -1623,8 +2252,14 @@ int main(void) {
         y += vy;
 
         // Bounce off walls
-        if (x - radius < 0 || x + radius >= 640) vx = -vx;
-        if (y - radius < 0 || y + radius >= 480) vy = -vy;
+        if (x - radius < 0 || x + radius >= width) {
+            vx = -vx;
+            x = (x - radius < 0) ? radius : width - radius - 1;
+        }
+        if (y - radius < 0 || y + radius >= height) {
+            vy = -vy;
+            y = (y - radius < 0) ? radius : height - radius - 1;
+        }
 
         // Draw ball
         vgfx_fill_circle(win, x, y, radius, VGFX_RED);
@@ -1637,11 +2272,98 @@ int main(void) {
 
 ---
 
+### `examples/input_demo.c`
+
+```c
+#include <vgfx.h>
+#include <stdio.h>
+
+int main(void) {
+    vgfx_window_params_t params = {
+        .width     = 400,
+        .height    = 300,
+        .title     = "Input Demo",
+        .fps       = 60,
+        .resizable = 0
+    };
+
+    vgfx_window_t win = vgfx_create_window(&params);
+    if (!win) {
+        fprintf(stderr, "Error: %s\n", vgfx_get_last_error());
+        return 1;
+    }
+
+    int running = 1;
+    int mouse_x = 0, mouse_y = 0;
+
+    while (running) {
+        if (!vgfx_update(win)) {
+            break;
+        }
+
+        vgfx_event_t ev;
+        while (vgfx_poll_event(win, &ev)) {
+            switch (ev.type) {
+            case VGFX_EVENT_CLOSE:
+                running = 0;
+                break;
+            case VGFX_EVENT_KEY_DOWN:
+                printf("Key pressed: %d%s\n", ev.data.key.key,
+                       ev.data.key.is_repeat ? " (repeat)" : "");
+                break;
+            case VGFX_EVENT_MOUSE_MOVE:
+                mouse_x = ev.data.mouse_move.x;
+                mouse_y = ev.data.mouse_move.y;
+                break;
+            default:
+                break;
+            }
+        }
+
+        // Clear screen
+        vgfx_cls(win, VGFX_BLACK);
+
+        // Draw mouse cursor as crosshair
+        if (mouse_x >= 0 && mouse_x < 400 && mouse_y >= 0 && mouse_y < 300) {
+            vgfx_line(win, mouse_x - 10, mouse_y, mouse_x + 10, mouse_y, VGFX_WHITE);
+            vgfx_line(win, mouse_x, mouse_y - 10, mouse_x, mouse_y + 10, VGFX_WHITE);
+        }
+
+        // Show key states (WASD)
+        if (vgfx_key_down(win, VGFX_KEY_W)) {
+            vgfx_fill_rect(win, 190, 100, 20, 20, VGFX_GREEN);
+        }
+        if (vgfx_key_down(win, VGFX_KEY_A)) {
+            vgfx_fill_rect(win, 160, 130, 20, 20, VGFX_GREEN);
+        }
+        if (vgfx_key_down(win, VGFX_KEY_S)) {
+            vgfx_fill_rect(win, 190, 130, 20, 20, VGFX_GREEN);
+        }
+        if (vgfx_key_down(win, VGFX_KEY_D)) {
+            vgfx_fill_rect(win, 220, 130, 20, 20, VGFX_GREEN);
+        }
+
+        // Show mouse button states
+        if (vgfx_mouse_button(win, VGFX_MOUSE_LEFT)) {
+            vgfx_fill_circle(win, 100, 250, 20, VGFX_RED);
+        }
+        if (vgfx_mouse_button(win, VGFX_MOUSE_RIGHT)) {
+            vgfx_fill_circle(win, 300, 250, 20, VGFX_BLUE);
+        }
+    }
+
+    vgfx_destroy_window(win);
+    return 0;
+}
+```
+
+---
+
 ## Revision History
 
-| Version | Date | Changes |
-|---------|------|---------|
-| 1.0.0 | 2025-11-20 | Initial specification |
+| Version | Date       | Changes                                                      |
+|---------|------------|--------------------------------------------------------------|
+| 1.0.0   | 2025-11-20 | Initial specification with all core features and refinements |
 
 ---
 

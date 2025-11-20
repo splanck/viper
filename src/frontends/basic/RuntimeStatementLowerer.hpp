@@ -53,7 +53,9 @@ class RuntimeStatementLowerer
                           Lowerer::Value slot,
                           Lowerer::RVal value,
                           il::support::SourceLoc loc);
-    void assignArrayElement(const ArrayExpr &target, Lowerer::RVal value, il::support::SourceLoc loc);
+    void assignArrayElement(const ArrayExpr &target,
+                            Lowerer::RVal value,
+                            il::support::SourceLoc loc);
     void lowerLet(const LetStmt &stmt);
 
     // Variable declarations
@@ -68,8 +70,8 @@ class RuntimeStatementLowerer
 
     // Helper methods
     Lowerer::Value emitArrayLengthCheck(Lowerer::Value bound,
-                                         il::support::SourceLoc loc,
-                                         std::string_view labelBase);
+                                        il::support::SourceLoc loc,
+                                        std::string_view labelBase);
 
     Lowerer &lowerer_; ///< Parent lowerer providing context and helpers
 };

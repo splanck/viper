@@ -3,8 +3,8 @@
 add_library(fe_basic STATIC)
 
 target_sources(fe_basic PRIVATE
-    diag/BasicDiag.cpp
-    Options.cpp
+        diag/BasicDiag.cpp
+        Options.cpp
         Token.cpp
         Lexer.cpp
         AST.cpp

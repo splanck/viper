@@ -22,4 +22,3 @@ int main()
     assert(!result.succeeded());
     return 0;
 }
-

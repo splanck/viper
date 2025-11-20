@@ -85,7 +85,7 @@ typedef struct rt_heap_hdr
     uint32_t magic;
     uint16_t kind;
     uint16_t elem_kind;
-    uint32_t flags;   /* debug/status flags: bit0=disposed */
+    uint32_t flags; /* debug/status flags: bit0=disposed */
     size_t refcnt;
     size_t len;
     size_t cap;

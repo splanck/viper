@@ -3,10 +3,10 @@
 
 #include "tests/unit/GTestStub.hpp"
 
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <string>
-#include <filesystem>
 
 #include "tools/ilc/cmd_codegen_arm64.hpp"
 
@@ -39,14 +39,13 @@ TEST(Arm64CLI, CallRI_MarshalImm)
 {
     const std::string in = outPath("arm64_call_ri.il");
     const std::string out = outPath("arm64_call_ri.s");
-    const std::string il =
-        "il 0.1\n"
-        "extern @h(i64, i64) -> i64\n"
-        "func @f(%a:i64, %b:i64) -> i64 {\n"
-        "entry(%a:i64, %b:i64):\n"
-        "  %t0 = call @h(%a, 5)\n"
-        "  ret %t0\n"
-        "}\n";
+    const std::string il = "il 0.1\n"
+                           "extern @h(i64, i64) -> i64\n"
+                           "func @f(%a:i64, %b:i64) -> i64 {\n"
+                           "entry(%a:i64, %b:i64):\n"
+                           "  %t0 = call @h(%a, 5)\n"
+                           "  ret %t0\n"
+                           "}\n";
     writeFile(in, il);
     const char *argv[] = {in.c_str(), "-S", out.c_str()};
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
@@ -59,14 +58,13 @@ TEST(Arm64CLI, CallRR_Swap)
 {
     const std::string in = outPath("arm64_call_swap.il");
     const std::string out = outPath("arm64_call_swap.s");
-    const std::string il =
-        "il 0.1\n"
-        "extern @h(i64, i64) -> i64\n"
-        "func @f(%a:i64, %b:i64) -> i64 {\n"
-        "entry(%a:i64, %b:i64):\n"
-        "  %t0 = call @h(%b, %a)\n"
-        "  ret %t0\n"
-        "}\n";
+    const std::string il = "il 0.1\n"
+                           "extern @h(i64, i64) -> i64\n"
+                           "func @f(%a:i64, %b:i64) -> i64 {\n"
+                           "entry(%a:i64, %b:i64):\n"
+                           "  %t0 = call @h(%b, %a)\n"
+                           "  ret %t0\n"
+                           "}\n";
     writeFile(in, il);
     const char *argv[] = {in.c_str(), "-S", out.c_str()};
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
@@ -85,14 +83,13 @@ TEST(Arm64CLI, CallRRI_ThreeArgs)
 {
     const std::string in = outPath("arm64_call_three.il");
     const std::string out = outPath("arm64_call_three.s");
-    const std::string il =
-        "il 0.1\n"
-        "extern @h(i64, i64, i64) -> i64\n"
-        "func @f(%a:i64, %b:i64, %c:i64) -> i64 {\n"
-        "entry(%a:i64, %b:i64, %c:i64):\n"
-        "  %t0 = call @h(%b, 7, %a)\n"
-        "  ret %t0\n"
-        "}\n";
+    const std::string il = "il 0.1\n"
+                           "extern @h(i64, i64, i64) -> i64\n"
+                           "func @f(%a:i64, %b:i64, %c:i64) -> i64 {\n"
+                           "entry(%a:i64, %b:i64, %c:i64):\n"
+                           "  %t0 = call @h(%b, 7, %a)\n"
+                           "  ret %t0\n"
+                           "}\n";
     writeFile(in, il);
     const char *argv[] = {in.c_str(), "-S", out.c_str()};
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);

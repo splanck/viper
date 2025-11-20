@@ -25,10 +25,10 @@
 ///          the verifier and code generator.
 
 #include "il/runtime/RuntimeSignatures.hpp"
-#include "runtime/rt_oop.h"
 #include "il/runtime/HelperEffects.hpp"
 #include "il/runtime/RuntimeSignatureParser.hpp"
 #include "il/runtime/RuntimeSignaturesData.hpp"
+#include "runtime/rt_oop.h"
 #include "viper/runtime/rt.h"
 #ifndef NDEBUG
 #include "il/runtime/signatures/Registry.hpp"

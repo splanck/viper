@@ -470,7 +470,10 @@ template <typename Derived> class BasicAstWalker : public ExprVisitor, public St
         if (callShouldVisit(stmt))
         {
             walker::detail::visitOptionalChild(*this, stmt, stmt.selector);
-            for (const auto &arm : stmt.arms) { walker::detail::visitChildRange(*this, stmt, arm.body); }
+            for (const auto &arm : stmt.arms)
+            {
+                walker::detail::visitChildRange(*this, stmt, arm.body);
+            }
             walker::detail::visitChildRange(*this, stmt, stmt.elseBody);
         }
         callAfter(stmt);

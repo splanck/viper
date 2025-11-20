@@ -45,7 +45,7 @@ void AsmEmitter::emitPrologue(std::ostream &os, const FramePlan &plan) const
     // Always save FP/LR first
     emitPrologue(os);
     // Save additional callee-saved GPRs from plan in pairs
-    for (std::size_t i = 0; i < plan.saveGPRs.size(); )
+    for (std::size_t i = 0; i < plan.saveGPRs.size();)
     {
         const PhysReg r0 = plan.saveGPRs[i++];
         if (i < plan.saveGPRs.size())
@@ -182,14 +182,16 @@ void AsmEmitter::emitStrToSp(std::ostream &os, PhysReg src, long long offset) co
 void AsmEmitter::emitMovZ(std::ostream &os, PhysReg dst, unsigned imm16, unsigned lsl) const
 {
     os << "  movz " << rn(dst) << ", #" << imm16;
-    if (lsl) os << ", lsl #" << lsl;
+    if (lsl)
+        os << ", lsl #" << lsl;
     os << "\n";
 }
 
 void AsmEmitter::emitMovK(std::ostream &os, PhysReg dst, unsigned imm16, unsigned lsl) const
 {
     os << "  movk " << rn(dst) << ", #" << imm16;
-    if (lsl) os << ", lsl #" << lsl;
+    if (lsl)
+        os << ", lsl #" << lsl;
     os << "\n";
 }
 
@@ -203,9 +205,12 @@ void AsmEmitter::emitMovImm64(std::ostream &os, PhysReg dst, unsigned long long 
     };
     // Always start with MOVZ of the low 16 bits
     emitMovZ(os, dst, chunks[0], 0);
-    if (chunks[1]) emitMovK(os, dst, chunks[1], 16);
-    if (chunks[2]) emitMovK(os, dst, chunks[2], 32);
-    if (chunks[3]) emitMovK(os, dst, chunks[3], 48);
+    if (chunks[1])
+        emitMovK(os, dst, chunks[1], 16);
+    if (chunks[2])
+        emitMovK(os, dst, chunks[2], 32);
+    if (chunks[3])
+        emitMovK(os, dst, chunks[3], 48);
 }
 
 void AsmEmitter::emitRet(std::ostream &os) const
@@ -218,11 +223,18 @@ void AsmEmitter::emitFunction(std::ostream &os, const MFunction &fn) const
     emitFunctionHeader(os, fn.name);
     const bool usePlan = !fn.savedGPRs.empty();
     FramePlan plan;
-    if (usePlan) plan.saveGPRs = fn.savedGPRs;
-    if (usePlan) emitPrologue(os, plan); else emitPrologue(os);
+    if (usePlan)
+        plan.saveGPRs = fn.savedGPRs;
+    if (usePlan)
+        emitPrologue(os, plan);
+    else
+        emitPrologue(os);
     for (const auto &bb : fn.blocks)
         emitBlock(os, bb);
-    if (usePlan) emitEpilogue(os, plan); else emitEpilogue(os);
+    if (usePlan)
+        emitEpilogue(os, plan);
+    else
+        emitEpilogue(os);
 }
 
 void AsmEmitter::emitBlock(std::ostream &os, const MBasicBlock &bb) const
@@ -240,7 +252,9 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &mi) const
     auto imm = [](const MOperand &op) { return op.imm; };
     switch (mi.opc)
     {
-        case K::MovRR: emitMovRR(os, reg(mi.ops[0]), reg(mi.ops[1])); break;
+        case K::MovRR:
+            emitMovRR(os, reg(mi.ops[0]), reg(mi.ops[1]));
+            break;
         case K::MovRI:
         {
             const long long v = imm(mi.ops[1]);
@@ -250,30 +264,68 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &mi) const
                 emitMovImm64(os, reg(mi.ops[0]), static_cast<unsigned long long>(v));
             break;
         }
-        case K::AddRRR: emitAddRRR(os, reg(mi.ops[0]), reg(mi.ops[1]), reg(mi.ops[2])); break;
-        case K::SubRRR: emitSubRRR(os, reg(mi.ops[0]), reg(mi.ops[1]), reg(mi.ops[2])); break;
-        case K::MulRRR: emitMulRRR(os, reg(mi.ops[0]), reg(mi.ops[1]), reg(mi.ops[2])); break;
-        case K::AndRRR: emitAndRRR(os, reg(mi.ops[0]), reg(mi.ops[1]), reg(mi.ops[2])); break;
-        case K::OrrRRR: emitOrrRRR(os, reg(mi.ops[0]), reg(mi.ops[1]), reg(mi.ops[2])); break;
-        case K::EorRRR: emitEorRRR(os, reg(mi.ops[0]), reg(mi.ops[1]), reg(mi.ops[2])); break;
-        case K::AddRI: emitAddRI(os, reg(mi.ops[0]), reg(mi.ops[1]), imm(mi.ops[2])); break;
-        case K::SubRI: emitSubRI(os, reg(mi.ops[0]), reg(mi.ops[1]), imm(mi.ops[2])); break;
-        case K::LslRI: emitLslRI(os, reg(mi.ops[0]), reg(mi.ops[1]), imm(mi.ops[2])); break;
-        case K::LsrRI: emitLsrRI(os, reg(mi.ops[0]), reg(mi.ops[1]), imm(mi.ops[2])); break;
-        case K::AsrRI: emitAsrRI(os, reg(mi.ops[0]), reg(mi.ops[1]), imm(mi.ops[2])); break;
-        case K::CmpRR: emitCmpRR(os, reg(mi.ops[0]), reg(mi.ops[1])); break;
-        case K::CmpRI: emitCmpRI(os, reg(mi.ops[0]), imm(mi.ops[1])); break;
-        case K::Cset: emitCset(os, reg(mi.ops[0]), mi.ops[1].cond); break;
-        case K::SubSpImm: emitSubSp(os, imm(mi.ops[0])); break;
-        case K::AddSpImm: emitAddSp(os, imm(mi.ops[0])); break;
-        case K::StrRegSpImm: emitStrToSp(os, reg(mi.ops[0]), imm(mi.ops[1])); break;
+        case K::AddRRR:
+            emitAddRRR(os, reg(mi.ops[0]), reg(mi.ops[1]), reg(mi.ops[2]));
+            break;
+        case K::SubRRR:
+            emitSubRRR(os, reg(mi.ops[0]), reg(mi.ops[1]), reg(mi.ops[2]));
+            break;
+        case K::MulRRR:
+            emitMulRRR(os, reg(mi.ops[0]), reg(mi.ops[1]), reg(mi.ops[2]));
+            break;
+        case K::AndRRR:
+            emitAndRRR(os, reg(mi.ops[0]), reg(mi.ops[1]), reg(mi.ops[2]));
+            break;
+        case K::OrrRRR:
+            emitOrrRRR(os, reg(mi.ops[0]), reg(mi.ops[1]), reg(mi.ops[2]));
+            break;
+        case K::EorRRR:
+            emitEorRRR(os, reg(mi.ops[0]), reg(mi.ops[1]), reg(mi.ops[2]));
+            break;
+        case K::AddRI:
+            emitAddRI(os, reg(mi.ops[0]), reg(mi.ops[1]), imm(mi.ops[2]));
+            break;
+        case K::SubRI:
+            emitSubRI(os, reg(mi.ops[0]), reg(mi.ops[1]), imm(mi.ops[2]));
+            break;
+        case K::LslRI:
+            emitLslRI(os, reg(mi.ops[0]), reg(mi.ops[1]), imm(mi.ops[2]));
+            break;
+        case K::LsrRI:
+            emitLsrRI(os, reg(mi.ops[0]), reg(mi.ops[1]), imm(mi.ops[2]));
+            break;
+        case K::AsrRI:
+            emitAsrRI(os, reg(mi.ops[0]), reg(mi.ops[1]), imm(mi.ops[2]));
+            break;
+        case K::CmpRR:
+            emitCmpRR(os, reg(mi.ops[0]), reg(mi.ops[1]));
+            break;
+        case K::CmpRI:
+            emitCmpRI(os, reg(mi.ops[0]), imm(mi.ops[1]));
+            break;
+        case K::Cset:
+            emitCset(os, reg(mi.ops[0]), mi.ops[1].cond);
+            break;
+        case K::SubSpImm:
+            emitSubSp(os, imm(mi.ops[0]));
+            break;
+        case K::AddSpImm:
+            emitAddSp(os, imm(mi.ops[0]));
+            break;
+        case K::StrRegSpImm:
+            emitStrToSp(os, reg(mi.ops[0]), imm(mi.ops[1]));
+            break;
         case K::Br:
-            os << "  b " << mi.ops[0].label << "\n"; break;
+            os << "  b " << mi.ops[0].label << "\n";
+            break;
         case K::BCond:
-            os << "  b." << mi.ops[0].cond << " " << mi.ops[1].label << "\n"; break;
+            os << "  b." << mi.ops[0].cond << " " << mi.ops[1].label << "\n";
+            break;
         case K::Bl:
-            os << "  bl " << mi.ops[0].label << "\n"; break;
-        default: break;
+            os << "  bl " << mi.ops[0].label << "\n";
+            break;
+        default:
+            break;
     }
 }
 

@@ -285,16 +285,20 @@ const SemanticAnalyzer::BuiltinSignature &SemanticAnalyzer::builtinSignature(
     {
         static BuiltinSignature cached; // reused per-call; safe since we return a reference
         cached.requiredArgs = view->minArgs;
-        cached.optionalArgs = (view->maxArgs >= view->minArgs) ? (view->maxArgs - view->minArgs) : 0;
+        cached.optionalArgs =
+            (view->maxArgs >= view->minArgs) ? (view->maxArgs - view->minArgs) : 0;
         static SemanticAnalyzer::BuiltinArgSpec argSpecs[8]; // up to 8 args for now
         static SemanticAnalyzer::Type allowedInt[] = {Type::Int};
         static SemanticAnalyzer::Type allowedFloat[] = {Type::Float};
         static SemanticAnalyzer::Type allowedString[] = {Type::String};
         static SemanticAnalyzer::Type allowedBool[] = {Type::Bool};
         static SemanticAnalyzer::Type allowedNumber[] = {Type::Int, Type::Float};
-        static SemanticAnalyzer::Type allowedAny[] = {Type::Int, Type::Float, Type::String, Type::Bool};
+        static SemanticAnalyzer::Type allowedAny[] = {
+            Type::Int, Type::Float, Type::String, Type::Bool};
 
-        auto maskToAllowed = [&](BuiltinArgTypeMask m) -> std::pair<const SemanticAnalyzer::Type *, std::size_t> {
+        auto maskToAllowed =
+            [&](BuiltinArgTypeMask m) -> std::pair<const SemanticAnalyzer::Type *, std::size_t>
+        {
             using M = BuiltinArgTypeMask;
             switch (m)
             {
@@ -349,8 +353,8 @@ const SemanticAnalyzer::BuiltinSignature &SemanticAnalyzer::builtinSignature(
     // Guard against legacy table drift; default to a minimally useful signature.
     const std::size_t idx = static_cast<std::size_t>(builtin);
     static BuiltinSignature kDefault{/*required*/ 0, /*optional*/ 0, nullptr, 0, Type::Unknown};
-    const BuiltinSignature &legacy = (idx < kBuiltinSignatures.size()) ? kBuiltinSignatures[idx]
-                                                                       : kDefault;
+    const BuiltinSignature &legacy =
+        (idx < kBuiltinSignatures.size()) ? kBuiltinSignatures[idx] : kDefault;
     static BuiltinSignature scratch;
     scratch = legacy;
     switch (getBuiltinFixedResult(builtin))

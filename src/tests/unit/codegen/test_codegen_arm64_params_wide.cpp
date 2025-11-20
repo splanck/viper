@@ -3,10 +3,10 @@
 
 #include "tests/unit/GTestStub.hpp"
 
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <string>
-#include <filesystem>
 
 #include "tools/ilc/cmd_codegen_arm64.hpp"
 
@@ -41,13 +41,12 @@ TEST(Arm64CLI, ParamsBeyondX1)
     {
         const std::string in = "arm64_wide_rr.il";
         const std::string out = "arm64_wide_rr.s";
-        const std::string il =
-            "il 0.1\n"
-            "func @f(%a:i64, %b:i64, %c:i64) -> i64 {\n"
-            "entry(%a:i64, %b:i64, %c:i64):\n"
-            "  %t0 = add %c, %a\n"
-            "  ret %t0\n"
-            "}\n";
+        const std::string il = "il 0.1\n"
+                               "func @f(%a:i64, %b:i64, %c:i64) -> i64 {\n"
+                               "entry(%a:i64, %b:i64, %c:i64):\n"
+                               "  %t0 = add %c, %a\n"
+                               "  ret %t0\n"
+                               "}\n";
         const std::string inP = outPath(in);
         const std::string outP = outPath(out);
         writeFile(inP, il);
@@ -65,13 +64,12 @@ TEST(Arm64CLI, ParamsBeyondX1)
     {
         const std::string in = "arm64_wide_ri.il";
         const std::string out = "arm64_wide_ri.s";
-        const std::string il =
-            "il 0.1\n"
-            "func @g(%a:i64, %b:i64, %c:i64, %d:i64) -> i64 {\n"
-            "entry(%a:i64, %b:i64, %c:i64, %d:i64):\n"
-            "  %t0 = sub %d, 7\n"
-            "  ret %t0\n"
-            "}\n";
+        const std::string il = "il 0.1\n"
+                               "func @g(%a:i64, %b:i64, %c:i64, %d:i64) -> i64 {\n"
+                               "entry(%a:i64, %b:i64, %c:i64, %d:i64):\n"
+                               "  %t0 = sub %d, 7\n"
+                               "  ret %t0\n"
+                               "}\n";
         const std::string inP2 = outPath(in);
         const std::string outP2 = outPath(out);
         writeFile(inP2, il);

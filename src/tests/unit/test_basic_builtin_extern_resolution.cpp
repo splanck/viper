@@ -75,4 +75,3 @@ int main()
     test_shadowing_builtin_extern();
     return 0;
 }
-

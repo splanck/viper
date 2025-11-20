@@ -3,10 +3,10 @@
 
 #include "tests/unit/GTestStub.hpp"
 
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <string>
-#include <filesystem>
 
 #include "tools/ilc/cmd_codegen_arm64.hpp"
 
@@ -37,21 +37,26 @@ static std::string readFile(const std::string &path)
 
 TEST(Arm64CLI, ICmpAndSCmpRet)
 {
-    struct Case { const char *op; const char *cset; } cases[] = {
+    struct Case
+    {
+        const char *op;
+        const char *cset;
+    } cases[] = {
         {"icmp_eq", "cset x0, eq"},
         {"icmp_ne", "cset x0, ne"},
         {"scmp_lt", "cset x0, lt"},
         {"scmp_ge", "cset x0, ge"},
     };
+
     for (const auto &c : cases)
     {
         std::string in = std::string("arm64_cmp_") + c.op + ".il";
         std::string out = std::string("arm64_cmp_") + c.op + ".s";
-        std::string il = std::string(
-            "il 0.1\n"
-            "func @f(%a:i64, %b:i64) -> i64 {\n"
-            "entry(%a:i64, %b:i64):\n"
-            "  %t0 = ") + c.op + " %a, %b\n  ret %t0\n}\n";
+        std::string il = std::string("il 0.1\n"
+                                     "func @f(%a:i64, %b:i64) -> i64 {\n"
+                                     "entry(%a:i64, %b:i64):\n"
+                                     "  %t0 = ") +
+                         c.op + " %a, %b\n  ret %t0\n}\n";
         const std::string inP = outPath(in);
         const std::string outP = outPath(out);
         writeFile(inP, il);

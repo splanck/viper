@@ -24,8 +24,8 @@
 ///          object-oriented grammar shares the same recovery behaviour and type
 ///          inference shims as procedural code.
 
-#include "frontends/basic/Parser.hpp"
 #include "frontends/basic/IdentifierUtil.hpp"
+#include "frontends/basic/Parser.hpp"
 #include <cctype>
 #include <string>
 #include <utility>
@@ -210,11 +210,11 @@ StmtPtr Parser::parseClassDecl()
             continue;
 
         Type fieldType = Type::I64;
-        std::string typeName;  // BUG-082 fix: capture type name for object fields
+        std::string typeName; // BUG-082 fix: capture type name for object fields
         if (at(TokenKind::KeywordBoolean) || at(TokenKind::Identifier))
         {
             if (at(TokenKind::Identifier))
-                typeName = peek().lexeme;  // BUG-082: save before parseTypeKeyword consumes it
+                typeName = peek().lexeme; // BUG-082: save before parseTypeKeyword consumes it
             fieldType = parseTypeKeyword();
         }
         else
@@ -237,9 +237,8 @@ StmtPtr Parser::parseClassDecl()
             for (auto &ch : upper)
                 ch = static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
             // If it's not a known primitive keyword, treat it as a class name
-            if (upper != "INTEGER" && upper != "INT" && upper != "LONG" &&
-                upper != "DOUBLE" && upper != "FLOAT" && upper != "SINGLE" &&
-                upper != "STRING" && upper != "BOOLEAN")
+            if (upper != "INTEGER" && upper != "INT" && upper != "LONG" && upper != "DOUBLE" &&
+                upper != "FLOAT" && upper != "SINGLE" && upper != "STRING" && upper != "BOOLEAN")
             {
                 field.objectClassName = typeName;
             }
@@ -264,7 +263,8 @@ StmtPtr Parser::parseClassDecl()
         {
             TokenKind nextKind = peek(1).kind;
             if (nextKind == TokenKind::KeywordSub || nextKind == TokenKind::KeywordFunction ||
-                nextKind == TokenKind::KeywordDestructor || nextKind == TokenKind::KeywordProperty ||
+                nextKind == TokenKind::KeywordDestructor ||
+                nextKind == TokenKind::KeywordProperty ||
                 (nextKind == TokenKind::KeywordEnd && peek(2).kind == TokenKind::KeywordClass))
             {
                 consume();
@@ -377,7 +377,8 @@ StmtPtr Parser::parseClassDecl()
             bool seenGet = false;
             bool seenSet = false;
 
-            auto isIdentEq = [&](const Token &t, std::string_view s) {
+            auto isIdentEq = [&](const Token &t, std::string_view s)
+            {
                 if (t.kind == TokenKind::Identifier)
                 {
                     return equalsIgnoreCase(t.lexeme, s);
@@ -417,11 +418,14 @@ StmtPtr Parser::parseClassDecl()
                     prop->get.access = acc.value_or(prop->access);
                     auto ctx = statementSequencer();
                     ctx.collectStatements(
-                        [&](int, il::support::SourceLoc) {
+                        [&](int, il::support::SourceLoc)
+                        {
                             return at(TokenKind::KeywordEnd) &&
-                                   (peek(1).kind == TokenKind::KeywordGet || isIdentEq(peek(1), "GET"));
+                                   (peek(1).kind == TokenKind::KeywordGet ||
+                                    isIdentEq(peek(1), "GET"));
                         },
-                        [&](int, il::support::SourceLoc, StatementSequencer::TerminatorInfo &) {
+                        [&](int, il::support::SourceLoc, StatementSequencer::TerminatorInfo &)
+                        {
                             consume();
                             consume();
                         },
@@ -460,17 +464,21 @@ StmtPtr Parser::parseClassDecl()
                         }
                         expect(TokenKind::RParen);
                         if (paramTy != propTy)
-                            emitError("B3009", propLoc, "SET parameter type must match property type");
+                            emitError(
+                                "B3009", propLoc, "SET parameter type must match property type");
                         if (!paramName.empty())
                             prop->set.paramName = std::move(paramName);
                     }
                     auto ctx = statementSequencer();
                     ctx.collectStatements(
-                        [&](int, il::support::SourceLoc) {
+                        [&](int, il::support::SourceLoc)
+                        {
                             return at(TokenKind::KeywordEnd) &&
-                                   (peek(1).kind == TokenKind::KeywordSet || isIdentEq(peek(1), "SET"));
+                                   (peek(1).kind == TokenKind::KeywordSet ||
+                                    isIdentEq(peek(1), "SET"));
                         },
-                        [&](int, il::support::SourceLoc, StatementSequencer::TerminatorInfo &) {
+                        [&](int, il::support::SourceLoc, StatementSequencer::TerminatorInfo &)
+                        {
                             consume();
                             consume();
                         },
@@ -479,7 +487,8 @@ StmtPtr Parser::parseClassDecl()
                     continue;
                 }
 
-                emitError("B3010", peek(), "expected GET, SET, or END PROPERTY inside PROPERTY block");
+                emitError(
+                    "B3010", peek(), "expected GET, SET, or END PROPERTY inside PROPERTY block");
                 if (at(TokenKind::EndOfLine))
                     consume();
                 else
@@ -628,13 +637,14 @@ StmtPtr Parser::parseClassDecl()
                     upperName.reserve(identName.size());
                     for (char ch : identName)
                     {
-                        upperName.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(ch))));
+                        upperName.push_back(
+                            static_cast<char>(std::toupper(static_cast<unsigned char>(ch))));
                     }
 
-                    bool isPrimitive = (upperName == "INTEGER" || upperName == "INT" ||
-                                       upperName == "LONG" || upperName == "DOUBLE" ||
-                                       upperName == "FLOAT" || upperName == "SINGLE" ||
-                                       upperName == "STRING");
+                    bool isPrimitive =
+                        (upperName == "INTEGER" || upperName == "INT" || upperName == "LONG" ||
+                         upperName == "DOUBLE" || upperName == "FLOAT" || upperName == "SINGLE" ||
+                         upperName == "STRING");
 
                     if (isPrimitive)
                     {

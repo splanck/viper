@@ -115,7 +115,7 @@ void dce(Module &M)
     for (auto &F : M.functions)
     {
         auto uses = countUses(F);
-        
+
         // Build a predecessor edge index once: for each target label, collect
         // (terminator*, successorIndex) pairs. Speeds up param pruning.
         std::unordered_map<std::string, std::vector<std::pair<Instr *, size_t>>> predEdges;

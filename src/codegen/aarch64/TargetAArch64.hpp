@@ -19,20 +19,71 @@ namespace viper::codegen::aarch64
 // 64-bit general purpose and SIMD registers used by AArch64 ABI.
 enum class PhysReg
 {
-    X0, X1, X2, X3, X4, X5, X6, X7,
-    X8,  // Indirect result / frame pointer in some ABIs; treated as caller-saved here
-    X9, X10, X11, X12, X13, X14, X15,
-    X16, X17, // intra-proc call registers
-    X18,      // platform reserved on some OSes; do not allocate
-    X19, X20, X21, X22, X23, X24, X25, X26, X27, X28,
+    X0,
+    X1,
+    X2,
+    X3,
+    X4,
+    X5,
+    X6,
+    X7,
+    X8, // Indirect result / frame pointer in some ABIs; treated as caller-saved here
+    X9,
+    X10,
+    X11,
+    X12,
+    X13,
+    X14,
+    X15,
+    X16,
+    X17, // intra-proc call registers
+    X18, // platform reserved on some OSes; do not allocate
+    X19,
+    X20,
+    X21,
+    X22,
+    X23,
+    X24,
+    X25,
+    X26,
+    X27,
+    X28,
     X29, // FP
     X30, // LR
     SP,
     // Floating-point / SIMD 64-bit lanes (we model D-registers)
-    V0, V1, V2, V3, V4, V5, V6, V7,
-    V8, V9, V10, V11, V12, V13, V14, V15,
-    V16, V17, V18, V19, V20, V21, V22, V23,
-    V24, V25, V26, V27, V28, V29, V30, V31,
+    V0,
+    V1,
+    V2,
+    V3,
+    V4,
+    V5,
+    V6,
+    V7,
+    V8,
+    V9,
+    V10,
+    V11,
+    V12,
+    V13,
+    V14,
+    V15,
+    V16,
+    V17,
+    V18,
+    V19,
+    V20,
+    V21,
+    V22,
+    V23,
+    V24,
+    V25,
+    V26,
+    V27,
+    V28,
+    V29,
+    V30,
+    V31,
 };
 
 enum class RegClass
@@ -43,8 +94,8 @@ enum class RegClass
 
 inline constexpr int kSlotSizeBytes = 8;
 inline constexpr int kStackAlignment = 16;
-inline constexpr std::size_t kMaxGPRArgs = 8;  // x0..x7
-inline constexpr std::size_t kMaxFPRArgs = 8;  // v0..v7
+inline constexpr std::size_t kMaxGPRArgs = 8; // x0..x7
+inline constexpr std::size_t kMaxFPRArgs = 8; // v0..v7
 
 struct TargetInfo
 {
@@ -65,4 +116,3 @@ struct TargetInfo
 [[nodiscard]] const char *regName(PhysReg reg) noexcept;
 
 } // namespace viper::codegen::aarch64
-

@@ -116,7 +116,8 @@ int main()
     const size_t stored_before = il::support::SourceManagerTestAccess::storedPathCount(dedupeSm);
     const uint32_t dedupeSecond = dedupeSm.addFile("dupe/./file.txt");
     assert(dedupeSecond == dedupeFirst);
-    [[maybe_unused]] const size_t stored_after = il::support::SourceManagerTestAccess::storedPathCount(dedupeSm);
+    [[maybe_unused]] const size_t stored_after =
+        il::support::SourceManagerTestAccess::storedPathCount(dedupeSm);
     assert(stored_before == stored_after);
     assert(dedupeSm.getPath(dedupeFirst) == "dupe/file.txt");
 

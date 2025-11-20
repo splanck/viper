@@ -19,12 +19,12 @@
 #include "frontends/basic/LowerExprBuiltin.hpp"
 #include "frontends/basic/LowerExprLogical.hpp"
 #include "frontends/basic/LowerExprNumeric.hpp"
-#include "frontends/basic/NameMangler_OOP.hpp"
 #include "frontends/basic/Lowerer.hpp"
-#include "il/runtime/RuntimeSignatures.hpp"
+#include "frontends/basic/NameMangler_OOP.hpp"
 #include "frontends/basic/SemanticAnalyzer.hpp"
 #include "frontends/basic/TypeSuffix.hpp"
 #include "frontends/basic/lower/AstVisitor.hpp"
+#include "il/runtime/RuntimeSignatures.hpp"
 
 #include "viper/il/Module.hpp"
 
@@ -193,12 +193,14 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
         }
         else if ((info && info->isObject) || isMemberObjectArray || !moduleObjectClass.empty())
         {
-            // BUG-089/BUG-097 fix: Object array (member, non-member, or module-level): rt_arr_obj_get returns retained ptr
-            // BUG-104 fix: Don't defer release - consuming code handles lifetime
-            // to avoid dominance violations when array access is in conditional blocks (same as BUG-071 for strings)
+            // BUG-089/BUG-097 fix: Object array (member, non-member, or module-level):
+            // rt_arr_obj_get returns retained ptr BUG-104 fix: Don't defer release - consuming code
+            // handles lifetime to avoid dominance violations when array access is in conditional
+            // blocks (same as BUG-071 for strings)
             IlValue val = lowerer_.emitCallRet(
                 IlType(IlType::Kind::Ptr), "rt_arr_obj_get", {access.base, access.index});
-            // Removed: deferReleaseObj calls - consuming code (method calls, assignments) handles object lifetime
+            // Removed: deferReleaseObj calls - consuming code (method calls, assignments) handles
+            // object lifetime
             result_ = Lowerer::RVal{val, IlType(IlType::Kind::Ptr)};
         }
         else
@@ -307,7 +309,8 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
             if (meSym && meSym->slotId)
             {
                 lowerer_.curLoc = expr.loc;
-                IlValue selfArg = lowerer_.emitLoad(IlType(IlType::Kind::Ptr), IlValue::temp(*meSym->slotId));
+                IlValue selfArg =
+                    lowerer_.emitLoad(IlType(IlType::Kind::Ptr), IlValue::temp(*meSym->slotId));
 
                 // Lower arguments and prepend receiver
                 std::vector<IlValue> args;
@@ -323,7 +326,8 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
 
                 // Determine return IL type when available; otherwise emit void call
                 IlType retIl = IlType(IlType::Kind::Void);
-                if (auto retAst = lowerer_.findMethodReturnType(lowerer_.currentClass(), expr.callee))
+                if (auto retAst =
+                        lowerer_.findMethodReturnType(lowerer_.currentClass(), expr.callee))
                 {
                     switch (*retAst)
                     {
@@ -375,6 +379,44 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
         // runtime descriptor (e.g., "Viper.Console.PrintI64"). Otherwise, fall
         // back to user-defined procedure signatures collected from the AST.
         const il::runtime::RuntimeSignature *rtSig = il::runtime::findRuntimeSignature(calleeKey);
+        // If not found and the call is unqualified, try resolving against the
+        // canonical runtime Console namespace (USING Viper.Console case).
+        // This mirrors semantic resolution where USING imports allow unqualified
+        // calls like PrintI64 to bind to Viper.Console.PrintI64.
+        std::string resolvedRuntimeName;
+        if (!rtSig && calleeKey.find('.') == std::string::npos)
+        {
+            // Prefer original callee casing when present to match registry keys.
+            if (!expr.callee.empty())
+            {
+                std::string candidate = std::string("Viper.Console.") + expr.callee;
+                if (const auto *sig = il::runtime::findRuntimeSignature(candidate))
+                {
+                    rtSig = sig;
+                    resolvedRuntimeName = std::move(candidate);
+                }
+            }
+            // If still unknown, try legacy rt_* aliases for common Console print helpers.
+            if (!rtSig)
+            {
+                std::string key = calleeKey; // already canonicalized to lowercase
+                std::string rt;
+                if (key == "printi64")
+                    rt = "rt_print_i64";
+                else if (key == "printstr")
+                    rt = "rt_print_str";
+                else if (key == "printf64" || key == "printf")
+                    rt = "rt_print_f64";
+                if (!rt.empty())
+                {
+                    if (const auto *sig = il::runtime::findRuntimeSignature(rt))
+                    {
+                        rtSig = sig;
+                        resolvedRuntimeName = std::move(rt);
+                    }
+                }
+            }
+        }
         // Fallback: case-insensitive match against runtime symbols when dotted and canonicalized.
         if (!rtSig && calleeKey.find('.') != std::string::npos)
         {
@@ -402,6 +444,17 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
                     rtSig = &kv.second;
                     // Replace calleeResolved with the canonical runtime symbol spelling
                     const_cast<std::string &>(calleeKey) = std::string(name);
+                    // Prefer legacy rt_* alias for emission to align with extern declarations
+                    // and golden IL (map Viper.Console.Print* to rt_print_*).
+                    if (name.find("Viper.Console.Print") == 0)
+                    {
+                        if (name.rfind("PrintI64") == name.size() - 8)
+                            resolvedRuntimeName = "rt_print_i64";
+                        else if (name.rfind("PrintStr") == name.size() - 8)
+                            resolvedRuntimeName = "rt_print_str";
+                        else if (name.rfind("PrintF64") == name.size() - 8)
+                            resolvedRuntimeName = "rt_print_f64";
+                    }
                     break;
                 }
             }
@@ -431,12 +484,16 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
             // Emit direct call to the canonical runtime extern (e.g., @Viper.Console.PrintI64).
             if (rtSig->retType.kind != IlType::Kind::Void)
             {
-                IlValue res = lowerer_.emitCallRet(rtSig->retType, calleeKey, args);
+                const std::string &target =
+                    resolvedRuntimeName.empty() ? calleeKey : resolvedRuntimeName;
+                IlValue res = lowerer_.emitCallRet(rtSig->retType, target, args);
                 result_ = Lowerer::RVal{res, rtSig->retType};
             }
             else
             {
-                lowerer_.emitCall(calleeKey, args);
+                const std::string &target =
+                    resolvedRuntimeName.empty() ? calleeKey : resolvedRuntimeName;
+                lowerer_.emitCall(target, args);
                 result_ = Lowerer::RVal{IlValue::constInt(0), IlType(IlType::Kind::I64)};
             }
         }
@@ -533,7 +590,8 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
                     Lowerer::Value arrHandle =
                         lowerer_.emitLoad(Lowerer::Type(Lowerer::Type::Kind::Ptr), fieldPtr);
 
-                    // BUG-094 fix: Lower all indices and compute flattened index for multi-dimensional arrays
+                    // BUG-094 fix: Lower all indices and compute flattened index for
+                    // multi-dimensional arrays
                     std::vector<Lowerer::Value> indices;
                     for (const auto &arg : expr.args)
                     {
@@ -557,9 +615,9 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
                                  fld->arrayExtents.size() == indices.size())
                         {
                             // Multi-dimensional: compute row-major flattened index
-                            // For extents [E0, E1, ..., E_{N-1}] and indices [i0, i1, ..., i_{N-1}]:
-                            // flat = i0*L1*L2*...*L_{N-1} + i1*L2*...*L_{N-1} + ... + i_{N-1}
-                            // where Lk = (Ek + 1) are inclusive lengths per dimension.
+                            // For extents [E0, E1, ..., E_{N-1}] and indices [i0, i1, ...,
+                            // i_{N-1}]: flat = i0*L1*L2*...*L_{N-1} + i1*L2*...*L_{N-1} + ... +
+                            // i_{N-1} where Lk = (Ek + 1) are inclusive lengths per dimension.
                             std::vector<long long> lengths;
                             for (long long e : fld->arrayExtents)
                                 lengths.push_back(e + 1);
@@ -569,11 +627,10 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
                                 stride *= lengths[i];
 
                             lowerer_.curLoc = expr.loc;
-                            indexVal = lowerer_.emitBinary(
-                                il::core::Opcode::IMulOvf,
-                                Lowerer::Type(Lowerer::Type::Kind::I64),
-                                indices[0],
-                                Lowerer::Value::constInt(stride));
+                            indexVal = lowerer_.emitBinary(il::core::Opcode::IMulOvf,
+                                                           Lowerer::Type(Lowerer::Type::Kind::I64),
+                                                           indices[0],
+                                                           Lowerer::Value::constInt(stride));
 
                             for (size_t k = 1; k < indices.size(); ++k)
                             {
@@ -581,17 +638,17 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
                                 for (size_t i = k + 1; i < lengths.size(); ++i)
                                     stride *= lengths[i];
                                 lowerer_.curLoc = expr.loc;
-                                Lowerer::Value term = lowerer_.emitBinary(
-                                    il::core::Opcode::IMulOvf,
-                                    Lowerer::Type(Lowerer::Type::Kind::I64),
-                                    indices[k],
-                                    Lowerer::Value::constInt(stride));
+                                Lowerer::Value term =
+                                    lowerer_.emitBinary(il::core::Opcode::IMulOvf,
+                                                        Lowerer::Type(Lowerer::Type::Kind::I64),
+                                                        indices[k],
+                                                        Lowerer::Value::constInt(stride));
                                 lowerer_.curLoc = expr.loc;
-                                indexVal = lowerer_.emitBinary(
-                                    il::core::Opcode::IAddOvf,
-                                    Lowerer::Type(Lowerer::Type::Kind::I64),
-                                    indexVal,
-                                    term);
+                                indexVal =
+                                    lowerer_.emitBinary(il::core::Opcode::IAddOvf,
+                                                        Lowerer::Type(Lowerer::Type::Kind::I64),
+                                                        indexVal,
+                                                        term);
                             }
                         }
                         else

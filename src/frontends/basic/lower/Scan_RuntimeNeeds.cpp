@@ -390,7 +390,8 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
                     className += ".";
                 className += stmt.explicitClassQname[i];
             }
-            lowerer_.setSymbolObjectType(stmt.name, lowerer_.resolveQualifiedClassCasing(className));
+            lowerer_.setSymbolObjectType(stmt.name,
+                                         lowerer_.resolveQualifiedClassCasing(className));
         }
         else
         {

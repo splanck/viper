@@ -312,7 +312,8 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
     // flat_index = i0*L1*L2*...*L_{N-1} + i1*L2*...*L_{N-1} + ... + i_{N-2}*L_{N-1} + i_{N-1}
     // where Lk = (Ek + 1) are inclusive lengths per dimension.
     Value index;
-    // For implicit field arrays (e.g., inventory(i) in methods), retrieve extents from active layout
+    // For implicit field arrays (e.g., inventory(i) in methods), retrieve extents from active
+    // layout
     if (memberFieldExtents.empty())
     {
         // Try field scope layout for implicit field arrays
@@ -339,10 +340,8 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
             long long stride = 1;
             for (size_t i = 1; i < lengths.size(); ++i)
                 stride *= lengths[i];
-            Value sum = emitBinary(Opcode::IMulOvf,
-                                   Type(Type::Kind::I64),
-                                   idxVals[0],
-                                   Value::constInt(stride));
+            Value sum = emitBinary(
+                Opcode::IMulOvf, Type(Type::Kind::I64), idxVals[0], Value::constInt(stride));
             for (size_t k = 1; k < idxVals.size(); ++k)
             {
                 stride = 1;
@@ -365,10 +364,8 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
             long long stride = 1;
             for (size_t i = 1; i < lengths.size(); ++i)
                 stride *= lengths[i];
-            Value sum = emitBinary(Opcode::IMulOvf,
-                                   Type(Type::Kind::I64),
-                                   idxVals[0],
-                                   Value::constInt(stride));
+            Value sum = emitBinary(
+                Opcode::IMulOvf, Type(Type::Kind::I64), idxVals[0], Value::constInt(stride));
             for (size_t k = 1; k < idxVals.size(); ++k)
             {
                 stride = 1;
@@ -402,7 +399,8 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
         if (info->type == AstType::Str)
             len = emitCallRet(Type(Type::Kind::I64), "rt_arr_str_len", {base});
         else if (info->isObject || !moduleObjectClass.empty())
-            len = emitCallRet(Type(Type::Kind::I64), "rt_arr_obj_len", {base}); // BUG-097: Check module cache too
+            len = emitCallRet(
+                Type(Type::Kind::I64), "rt_arr_obj_len", {base}); // BUG-097: Check module cache too
         else
             len = emitCallRet(Type(Type::Kind::I64), "rt_arr_i32_len", {base});
     }
@@ -441,7 +439,8 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
     // to avoid cross-block temp reuse issues seen with reference-counted element handling.
     bool isRefCountedArray = false;
     if (isMemberArray)
-        isRefCountedArray = (memberElemAstType == ::il::frontends::basic::Type::Str) || isMemberObjectArray;
+        isRefCountedArray =
+            (memberElemAstType == ::il::frontends::basic::Type::Str) || isMemberObjectArray;
     else if (info)
         isRefCountedArray = (info->type == AstType::Str) || info->isObject;
     else if (!moduleObjectClass.empty())
@@ -467,10 +466,11 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
                 {
                     if (const ClassLayout::Field *fld = it->second.findField(fieldName))
                     {
-                        Value fieldPtr = emitBinary(Opcode::GEP,
-                                                    Type(Type::Kind::Ptr),
-                                                    selfPtr,
-                                                    Value::constInt(static_cast<long long>(fld->offset)));
+                        Value fieldPtr =
+                            emitBinary(Opcode::GEP,
+                                       Type(Type::Kind::Ptr),
+                                       selfPtr,
+                                       Value::constInt(static_cast<long long>(fld->offset)));
                         baseOk = emitLoad(Type(Type::Kind::Ptr), fieldPtr);
                     }
                 }
@@ -491,7 +491,8 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
         Value indexOk = computeFlatIndex(indicesOk);
         return ArrayAccess{baseOk, indexOk};
     }
-    // Non-reference-counted arrays (i32/i64/f64): keep original SSA values to preserve IL golden tests
+    // Non-reference-counted arrays (i32/i64/f64): keep original SSA values to preserve IL golden
+    // tests
     return ArrayAccess{base, index};
 }
 

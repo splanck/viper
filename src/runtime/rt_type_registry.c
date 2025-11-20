@@ -4,8 +4,8 @@
 // Ownership/Lifetime: Runtime may store references to static rt_class_info instances.
 // Links: src/runtime/rt_oop.h
 
-#include "rt_oop.h"
 #include "rt_internal.h"
+#include "rt_oop.h"
 #include <stdlib.h>
 #include <string.h>
 

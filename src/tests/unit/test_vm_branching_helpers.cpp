@@ -13,11 +13,11 @@
 #include "vm/VMContext.hpp"
 #include "vm/ops/common/Branching.hpp"
 
+#include "common/RunProcess.hpp"
 #include <cassert>
 #include <cstdlib>
 #include <string>
 #include <vector>
-#include "common/RunProcess.hpp"
 
 using il::vm::ops::common::Case;
 using il::vm::ops::common::Scalar;
@@ -149,8 +149,10 @@ int main(int argc, char **argv)
 
         // Spawn subprocess of this test with an env var flag.
         std::vector<std::string> argv_vec;
-        for (int i = 0; i < argc; ++i) argv_vec.emplace_back(argv[i]);
-        RunResult rr = run_process(argv_vec, std::nullopt, {{"VIPER_VM_BRANCH_TRAP", std::string("1")}});
+        for (int i = 0; i < argc; ++i)
+            argv_vec.emplace_back(argv[i]);
+        RunResult rr =
+            run_process(argv_vec, std::nullopt, {{"VIPER_VM_BRANCH_TRAP", std::string("1")}});
         assert(rr.exit_code != 0 && "trap should yield a non-zero termination status");
     }
 

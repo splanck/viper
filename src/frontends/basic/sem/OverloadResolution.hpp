@@ -14,8 +14,8 @@
 
 #pragma once
 
-#include "frontends/basic/Semantic_OOP.hpp"
 #include "frontends/basic/DiagnosticEmitter.hpp"
+#include "frontends/basic/Semantic_OOP.hpp"
 #include "support/source_location.hpp"
 
 #include <optional>
@@ -54,4 +54,3 @@ std::optional<ResolvedMethod> resolveMethodOverload(const OopIndex &index,
                                                     il::support::SourceLoc loc);
 
 } // namespace il::frontends::basic::sem
-

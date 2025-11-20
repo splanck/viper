@@ -3,10 +3,10 @@
 
 #include "tests/unit/GTestStub.hpp"
 
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <string>
-#include <filesystem>
 
 #include "tools/ilc/cmd_codegen_arm64.hpp"
 
@@ -41,13 +41,12 @@ TEST(Arm64CLI, ICmpImm)
     {
         const std::string in = "arm64_icmp_imm_eq.il";
         const std::string out = "arm64_icmp_imm_eq.s";
-        const std::string il =
-            "il 0.1\n"
-            "func @f(%a:i64) -> i64 {\n"
-            "entry(%a:i64):\n"
-            "  %t0 = icmp_eq %a, 42\n"
-            "  ret %t0\n"
-            "}\n";
+        const std::string il = "il 0.1\n"
+                               "func @f(%a:i64) -> i64 {\n"
+                               "entry(%a:i64):\n"
+                               "  %t0 = icmp_eq %a, 42\n"
+                               "  ret %t0\n"
+                               "}\n";
         const std::string inP = outPath(in);
         const std::string outP = outPath(out);
         writeFile(inP, il);
@@ -61,13 +60,12 @@ TEST(Arm64CLI, ICmpImm)
     {
         const std::string in = "arm64_icmp_imm_slt.il";
         const std::string out = "arm64_icmp_imm_slt.s";
-        const std::string il =
-            "il 0.1\n"
-            "func @g(%a:i64, %b:i64) -> i64 {\n"
-            "entry(%a:i64, %b:i64):\n"
-            "  %t0 = scmp_lt %b, -7\n"
-            "  ret %t0\n"
-            "}\n";
+        const std::string il = "il 0.1\n"
+                               "func @g(%a:i64, %b:i64) -> i64 {\n"
+                               "entry(%a:i64, %b:i64):\n"
+                               "  %t0 = scmp_lt %b, -7\n"
+                               "  ret %t0\n"
+                               "}\n";
         const std::string inP = outPath(in);
         const std::string outP = outPath(out);
         writeFile(inP, il);

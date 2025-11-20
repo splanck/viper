@@ -23,10 +23,10 @@
 ///          deterministic type resolution during semantic analysis.
 
 #include "frontends/basic/sem/RegistryBuilder.hpp"
-#include "frontends/basic/sem/TypeRegistry.hpp"
 #include "frontends/basic/AST.hpp"
 #include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/DiagnosticEmitter.hpp"
+#include "frontends/basic/sem/TypeRegistry.hpp"
 
 #include <functional>
 #include <string>

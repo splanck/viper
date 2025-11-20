@@ -33,18 +33,22 @@ namespace il::frontends::basic::semutil
 /// @details Sorts case-insensitively and uppercases items; joins with ", ".
 inline std::string formatCandidateList(std::vector<std::string> candidates)
 {
-    auto toLower = [](char c) { return static_cast<char>(std::tolower(static_cast<unsigned char>(c))); };
-    std::sort(candidates.begin(), candidates.end(), [&](const std::string &a, const std::string &b) {
-        const size_t n = std::min(a.size(), b.size());
-        for (size_t i = 0; i < n; ++i)
-        {
-            char ca = toLower(a[i]);
-            char cb = toLower(b[i]);
-            if (ca != cb)
-                return ca < cb;
-        }
-        return a.size() < b.size();
-    });
+    auto toLower = [](char c)
+    { return static_cast<char>(std::tolower(static_cast<unsigned char>(c))); };
+    std::sort(candidates.begin(),
+              candidates.end(),
+              [&](const std::string &a, const std::string &b)
+              {
+                  const size_t n = std::min(a.size(), b.size());
+                  for (size_t i = 0; i < n; ++i)
+                  {
+                      char ca = toLower(a[i]);
+                      char cb = toLower(b[i]);
+                      if (ca != cb)
+                          return ca < cb;
+                  }
+                  return a.size() < b.size();
+              });
     // Uppercase and join
     std::string out;
     for (size_t i = 0; i < candidates.size(); ++i)
@@ -69,8 +73,7 @@ inline void emitAmbiguousType(il::frontends::basic::DiagnosticEmitter &emitter,
     const auto code = std::string(il::frontends::basic::diag::getCode(BasicDiag::NsAmbiguousType));
     const auto cand = formatCandidateList(candidates);
     const auto msg = il::frontends::basic::diag::formatMessage(
-        BasicDiag::NsAmbiguousType,
-        {{"type", typeName}, {"candidates", cand}});
+        BasicDiag::NsAmbiguousType, {{"type", typeName}, {"candidates", cand}});
     emitter.emit(sev, code, loc, length, msg);
 }
 

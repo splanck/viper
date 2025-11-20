@@ -235,7 +235,8 @@ class LowererStmtVisitor final : public lower::AstVisitor, public StmtVisitor
     }
 
     /// @brief Lower a TRY/CATCH statement.
-    /// @details Delegates to Lowerer helper that maps to eh.push/eh.pop and a handler with resume.label.
+    /// @details Delegates to Lowerer helper that maps to eh.push/eh.pop and a handler with
+    /// resume.label.
     void visit(const TryCatchStmt &stmt) override
     {
         lowerer_.lowerTryCatch(stmt);
@@ -636,7 +637,8 @@ void Lowerer::lowerReturn(const ReturnStmt &stmt)
         // epilogue so we return the implicit result (assignment to the
         // function name) rather than emitting a void return which violates
         // the IL verifier's return type.
-        if (il::core::Function *fn = context().function(); fn && fn->retType.kind != Type::Kind::Void)
+        if (il::core::Function *fn = context().function();
+            fn && fn->retType.kind != Type::Kind::Void)
         {
             ProcedureContext &ctx = context();
             Function *func = ctx.function();

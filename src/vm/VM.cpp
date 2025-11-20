@@ -265,11 +265,8 @@ int64_t VM::run()
 /// @param bb     [in,out] Updated to the current basic block after any branch.
 /// @param ip     [in,out] Instruction index within @p bb.
 /// @return Execution result capturing control-flow effects and return value.
-VM::ExecResult VM::executeOpcode(Frame &fr,
-                                 const Instr &in,
-                                 const BlockMap &blocks,
-                                 const BasicBlock *&bb,
-                                 size_t &ip)
+VM::ExecResult VM::executeOpcode(
+    Frame &fr, const Instr &in, const BlockMap &blocks, const BasicBlock *&bb, size_t &ip)
 {
     const size_t index = static_cast<size_t>(in.op);
     const auto &table = (handlerTable_ != nullptr) ? *handlerTable_ : getOpcodeHandlers();

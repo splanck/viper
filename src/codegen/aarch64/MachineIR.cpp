@@ -17,4 +17,3 @@ namespace viper::codegen::aarch64
 {
 // No implementation needed at this phase.
 }
-

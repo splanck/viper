@@ -17,8 +17,8 @@
 #include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/BasicDiagnosticMessages.hpp"
 #include "frontends/basic/IdentifierUtil.hpp"
-#include "frontends/basic/Parser.hpp"
 #include "frontends/basic/Options.hpp"
+#include "frontends/basic/Parser.hpp"
 #include "frontends/basic/ast/ExprNodes.hpp"
 
 #include <cctype>
@@ -218,7 +218,8 @@ Parser::StmtResult Parser::parseCall(int)
                                 // case-insensitive compare for 'Viper'
                                 std::string head = identTok.lexeme;
                                 for (auto &c : head)
-                                    c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+                                    c = static_cast<char>(
+                                        std::tolower(static_cast<unsigned char>(c)));
                                 if (head == "viper")
                                     treatAsQualified = true;
                             }
@@ -674,7 +675,25 @@ StmtPtr Parser::parseSubStatement()
     Token nameTok = expect(TokenKind::Identifier);
     auto sub = std::make_unique<SubDecl>();
     sub->loc = loc;
-    sub->name = nameTok.lexeme;
+    // Support qualified procedure names: Ident ('.' Ident)*
+    std::vector<std::string> segs;
+    if (nameTok.kind == TokenKind::Identifier)
+        segs.push_back(nameTok.lexeme);
+    while (at(TokenKind::Dot) && peek(1).kind == TokenKind::Identifier)
+    {
+        consume(); // '.'
+        Token seg = consume();
+        segs.push_back(seg.lexeme);
+    }
+    if (segs.size() > 1)
+    {
+        sub->name = segs.back();
+        sub->namespacePath.assign(segs.begin(), segs.end() - 1);
+    }
+    else
+    {
+        sub->name = nameTok.lexeme;
+    }
     sub->params = parseParamList();
     if (at(TokenKind::KeywordAs))
     {

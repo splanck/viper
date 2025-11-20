@@ -1,8 +1,8 @@
 // File: tests/unit/types/TestBuiltinExternalTypes.cpp
 // Purpose: Assert that built-in external namespaced types are present in the registry.
 
-#include "frontends/basic/sem/TypeRegistry.hpp"
 #include "frontends/basic/sem/NamespaceRegistry.hpp"
+#include "frontends/basic/sem/TypeRegistry.hpp"
 
 #include <cassert>
 
@@ -21,4 +21,3 @@ int main()
     assert(ns.namespaceExists("Viper.System.Text"));
     return 0;
 }
-

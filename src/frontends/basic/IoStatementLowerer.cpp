@@ -67,9 +67,9 @@ using PrintChArgString = Lowerer::PrintChArgString;
 
 // Forward declarations of file-local helper functions
 PrintChArgString lowerPrintChArgToString(IoStatementLowerer &self,
-                                        const Expr &expr,
-                                        Lowerer::RVal value,
-                                        bool quoteStrings);
+                                         const Expr &expr,
+                                         Lowerer::RVal value,
+                                         bool quoteStrings);
 Value buildPrintChWriteRecord(IoStatementLowerer &self, const PrintChStmt &stmt);
 
 IoStatementLowerer::IoStatementLowerer(Lowerer &lowerer) : lowerer_(lowerer) {}
@@ -202,7 +202,8 @@ void IoStatementLowerer::lowerPrint(const PrintStmt &stmt)
                         lowerer_.emitCall("rt_str_retain_maybe", {value.value});
                     }
 
-                    lowerer_.emitCall("Viper.Console.PrintStr", {value.value});
+                    // Per IL spec and golden tests, PRINT lowers to rt_print_* externs.
+                    lowerer_.emitCall("rt_print_str", {value.value});
 
                     if (isLvalue)
                     {
@@ -216,12 +217,12 @@ void IoStatementLowerer::lowerPrint(const PrintStmt &stmt)
                 }
                 if (value.type.kind == IlType::Kind::F64)
                 {
-                    lowerer_.emitCall("Viper.Console.PrintF64", {value.value});
+                    lowerer_.emitCall("rt_print_f64", {value.value});
                     updateColumn(widthEstimate);
                     break;
                 }
                 value = lowerer_.lowerScalarExpr(std::move(value), stmt.loc);
-                lowerer_.emitCall("Viper.Console.PrintI64", {value.value});
+                lowerer_.emitCall("rt_print_i64", {value.value});
                 updateColumn(widthEstimate);
                 break;
             }
@@ -237,7 +238,7 @@ void IoStatementLowerer::lowerPrint(const PrintStmt &stmt)
                 std::string padding(spaces, ' ');
                 std::string spaceLbl = lowerer_.getStringLabel(padding);
                 Value sp = lowerer_.emitConstStr(spaceLbl);
-                lowerer_.emitCall("Viper.Console.PrintStr", {sp});
+                lowerer_.emitCall("rt_print_str", {sp});
                 break;
             }
             case PrintItem::Kind::Semicolon:
@@ -250,7 +251,7 @@ void IoStatementLowerer::lowerPrint(const PrintStmt &stmt)
     {
         std::string nlLbl = lowerer_.getStringLabel("\n");
         Value nl = lowerer_.emitConstStr(nlLbl);
-        lowerer_.emitCall("Viper.Console.PrintStr", {nl});
+        lowerer_.emitCall("rt_print_str", {nl});
         resetColumn();
     }
 }
@@ -267,10 +268,10 @@ void IoStatementLowerer::lowerPrint(const PrintStmt &stmt)
 /// @param value Result of lowering the expression.
 /// @param quoteStrings Whether string arguments should be quoted for CSV mode.
 /// @return Lowered string value and optional runtime feature dependency.
-PrintChArgString
-lowerPrintChArgToString(IoStatementLowerer &self, const Expr &expr,
-                                            Lowerer::RVal value,
-                                            bool quoteStrings)
+PrintChArgString lowerPrintChArgToString(IoStatementLowerer &self,
+                                         const Expr &expr,
+                                         Lowerer::RVal value,
+                                         bool quoteStrings)
 {
     LocationScope loc(self.lowerer_, expr.loc);
     if (value.type.kind == IlType::Kind::Str)
@@ -278,8 +279,8 @@ lowerPrintChArgToString(IoStatementLowerer &self, const Expr &expr,
         if (!quoteStrings)
             return {value.value, std::nullopt};
 
-        Value quoted =
-            self.lowerer_.emitCallRet(IlType(IlType::Kind::Str), "rt_csv_quote_alloc", {value.value});
+        Value quoted = self.lowerer_.emitCallRet(
+            IlType(IlType::Kind::Str), "rt_csv_quote_alloc", {value.value});
         return {quoted, il::runtime::RuntimeFeature::CsvQuote};
     }
 
@@ -307,7 +308,7 @@ lowerPrintChArgToString(IoStatementLowerer &self, const Expr &expr,
                 break;
         }
         value.value = self.lowerer_.emitCommon(expr.loc).narrow_to(value.value, 64, bits);
-        value  .type = IlType(target);
+        value.type = IlType(target);
     };
 
     switch (numericType)
@@ -374,7 +375,8 @@ Value buildPrintChWriteRecord(IoStatementLowerer &self, const PrintChStmt &stmt)
 
         self.lowerer_.curLoc = arg->loc;
         record = self.lowerer_.emitCallRet(IlType(IlType::Kind::Str), "rt_concat", {record, comma});
-        record = self.lowerer_.emitCallRet(IlType(IlType::Kind::Str), "rt_concat", {record, lowered.text});
+        record = self.lowerer_.emitCallRet(
+            IlType(IlType::Kind::Str), "rt_concat", {record, lowered.text});
     }
 
     if (!hasRecord)
@@ -501,7 +503,13 @@ void IoStatementLowerer::lowerInput(const InputStmt &stmt)
 
     Value line = lowerer_.emitCallRet(IlType(IlType::Kind::Str), "rt_input_line", {});
     // Precompute store kinds for each variable to avoid repeated symbol lookups.
-    enum class StoreKind { I64, F64, I1, Str };
+    enum class StoreKind
+    {
+        I64,
+        F64,
+        I1,
+        Str
+    };
     std::unordered_map<std::string, StoreKind> storeKinds;
     storeKinds.reserve(stmt.vars.size());
     for (const auto &vn : stmt.vars)
@@ -512,10 +520,17 @@ void IoStatementLowerer::lowerInput(const InputStmt &stmt)
         StoreKind k = StoreKind::I64;
         switch (sk.type.kind)
         {
-            case IlType::Kind::Str: k = StoreKind::Str; break;
-            case IlType::Kind::F64: k = StoreKind::F64; break;
-            case IlType::Kind::I1:  k = StoreKind::I1;  break;
-            default: break;
+            case IlType::Kind::Str:
+                k = StoreKind::Str;
+                break;
+            case IlType::Kind::F64:
+                k = StoreKind::F64;
+                break;
+            case IlType::Kind::I1:
+                k = StoreKind::I1;
+                break;
+            default:
+                break;
         }
         storeKinds.emplace(vn, k);
     }
@@ -533,12 +548,11 @@ void IoStatementLowerer::lowerInput(const InputStmt &stmt)
             // Prefer precomputed kind; fallback to a quick requery if missing.
             auto it = storeKinds.find(name);
             IlType::Kind k = (it != storeKinds.end())
-                               ? (it->second == StoreKind::Str
-                                      ? IlType::Kind::Str
-                                      : it->second == StoreKind::F64 ? IlType::Kind::F64
-                                      : it->second == StoreKind::I1  ? IlType::Kind::I1
-                                                                     : IlType::Kind::I64)
-                               : lowerer_.getSlotType(name).type.kind;
+                                 ? (it->second == StoreKind::Str   ? IlType::Kind::Str
+                                    : it->second == StoreKind::F64 ? IlType::Kind::F64
+                                    : it->second == StoreKind::I1  ? IlType::Kind::I1
+                                                                   : IlType::Kind::I64)
+                                 : lowerer_.getSlotType(name).type.kind;
             if (k == IlType::Kind::Str)
             {
                 slotInfo.type = IlType(IlType::Kind::Str);
@@ -657,8 +671,8 @@ void IoStatementLowerer::lowerInputCh(const InputChStmt &stmt)
 
     if (slotInfo.type.kind == IlType::Kind::F64)
     {
-        Value err =
-            lowerer_.emitCallRet(IlType(IlType::Kind::I32), "rt_parse_double", {fieldCstr, parsedSlot});
+        Value err = lowerer_.emitCallRet(
+            IlType(IlType::Kind::I32), "rt_parse_double", {fieldCstr, parsedSlot});
         lowerer_.emitRuntimeErrCheck(
             err, stmt.loc, "inputch_parse", [&](Value code) { lowerer_.emitTrapFromErr(code); });
         Value parsed = lowerer_.emitLoad(IlType(IlType::Kind::F64), parsedSlot);
@@ -666,8 +680,8 @@ void IoStatementLowerer::lowerInputCh(const InputChStmt &stmt)
     }
     else
     {
-        Value err =
-            lowerer_.emitCallRet(IlType(IlType::Kind::I32), "rt_parse_int64", {fieldCstr, parsedSlot});
+        Value err = lowerer_.emitCallRet(
+            IlType(IlType::Kind::I32), "rt_parse_int64", {fieldCstr, parsedSlot});
         lowerer_.emitRuntimeErrCheck(
             err, stmt.loc, "inputch_parse", [&](Value code) { lowerer_.emitTrapFromErr(code); });
         Value parsed = lowerer_.emitLoad(IlType(IlType::Kind::I64), parsedSlot);

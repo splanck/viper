@@ -7,10 +7,10 @@
 #include "../GTestStub.hpp"
 #endif
 
+#include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/Parser.hpp"
 #include "support/diagnostics.hpp"
 #include "support/source_manager.hpp"
-#include "frontends/basic/Lowerer.hpp"
 #include "tests/common/VmFixture.hpp"
 
 using namespace il::frontends::basic;

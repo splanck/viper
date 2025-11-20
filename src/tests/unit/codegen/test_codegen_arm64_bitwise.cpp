@@ -3,10 +3,10 @@
 
 #include "tests/unit/GTestStub.hpp"
 
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <string>
-#include <filesystem>
 
 #include "tools/ilc/cmd_codegen_arm64.hpp"
 
@@ -37,20 +37,25 @@ static std::string readFile(const std::string &path)
 
 TEST(Arm64CLI, BitwiseRR)
 {
-    struct Case { const char *op; const char *expect; } cases[] = {
+    struct Case
+    {
+        const char *op;
+        const char *expect;
+    } cases[] = {
         {"and", "and x0, x0, x1"},
-        {"or",  "orr x0, x0, x1"},
+        {"or", "orr x0, x0, x1"},
         {"xor", "eor x0, x0, x1"},
     };
+
     for (const auto &c : cases)
     {
         std::string in = std::string("arm64_bit_") + c.op + ".il";
         std::string out = std::string("arm64_bit_") + c.op + ".s";
-        std::string il = std::string(
-            "il 0.1\n"
-            "func @f(%a:i64, %b:i64) -> i64 {\n"
-            "entry(%a:i64, %b:i64):\n"
-            "  %t0 = ") + c.op + " %a, %b\n  ret %t0\n}\n";
+        std::string il = std::string("il 0.1\n"
+                                     "func @f(%a:i64, %b:i64) -> i64 {\n"
+                                     "entry(%a:i64, %b:i64):\n"
+                                     "  %t0 = ") +
+                         c.op + " %a, %b\n  ret %t0\n}\n";
         const std::string inP = outPath(in);
         const std::string outP = outPath(out);
         writeFile(inP, il);

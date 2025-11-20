@@ -19,13 +19,12 @@ int main()
 {
     // Positive: basic TRY/CATCH with a catch variable and simple bodies
     {
-        std::string src =
-            "10 TRY\n"
-            "20 PRINT 1\n"
-            "30 CATCH e\n"
-            "40 PRINT ERR()\n"
-            "50 END TRY\n"
-            "60 END\n";
+        std::string src = "10 TRY\n"
+                          "20 PRINT 1\n"
+                          "30 CATCH e\n"
+                          "40 PRINT ERR()\n"
+                          "50 END TRY\n"
+                          "60 END\n";
 
         SourceManager sm;
         uint32_t fid = sm.addFile("try_catch_ok.bas");
@@ -54,11 +53,10 @@ int main()
 
     // Negative: TRY without CATCH should surface a diagnostic but still produce an AST
     {
-        std::string src =
-            "10 TRY\n"
-            "20 PRINT 1\n"
-            "30 END TRY\n"
-            "40 END\n";
+        std::string src = "10 TRY\n"
+                          "20 PRINT 1\n"
+                          "30 END TRY\n"
+                          "40 END\n";
 
         SourceManager sm;
         uint32_t fid = sm.addFile("try_without_catch.bas");
@@ -76,9 +74,8 @@ int main()
 
     // Negative: END TRY without a preceding TRY should not crash
     {
-        std::string src =
-            "10 END TRY\n"
-            "20 END\n";
+        std::string src = "10 END TRY\n"
+                          "20 END\n";
 
         SourceManager sm;
         uint32_t fid = sm.addFile("end_try_without_try.bas");
@@ -92,4 +89,3 @@ int main()
 
     return 0;
 }
-

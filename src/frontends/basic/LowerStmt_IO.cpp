@@ -21,9 +21,9 @@ namespace il::frontends::basic
 
 // Forward declarations for I/O helper functions (defined in IoStatementLowerer.cpp)
 Lowerer::PrintChArgString lowerPrintChArgToString(IoStatementLowerer &self,
-                                                   const Expr &expr,
-                                                   Lowerer::RVal value,
-                                                   bool quoteStrings);
+                                                  const Expr &expr,
+                                                  Lowerer::RVal value,
+                                                  bool quoteStrings);
 Value buildPrintChWriteRecord(IoStatementLowerer &self, const PrintChStmt &stmt);
 
 void Lowerer::lowerOpen(const OpenStmt &stmt)
@@ -66,9 +66,12 @@ void Lowerer::lowerLineInputCh(const LineInputChStmt &stmt)
     ioStmtLowerer_->lowerLineInputCh(stmt);
 }
 
-Lowerer::PrintChArgString Lowerer::lowerPrintChArgToString(const Expr &expr, RVal value, bool quoteStrings)
+Lowerer::PrintChArgString Lowerer::lowerPrintChArgToString(const Expr &expr,
+                                                           RVal value,
+                                                           bool quoteStrings)
 {
-    return ::il::frontends::basic::lowerPrintChArgToString(*ioStmtLowerer_, expr, value, quoteStrings);
+    return ::il::frontends::basic::lowerPrintChArgToString(
+        *ioStmtLowerer_, expr, value, quoteStrings);
 }
 
 Value Lowerer::buildPrintChWriteRecord(const PrintChStmt &stmt)

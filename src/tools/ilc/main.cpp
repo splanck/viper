@@ -18,8 +18,8 @@
 ///          such as pass management or VM execution is delegated to subcommands.
 
 #include "cli.hpp"
-#include "cmd_codegen_x64.hpp"
 #include "cmd_codegen_arm64.hpp"
+#include "cmd_codegen_x64.hpp"
 #include "frontends/basic/Intrinsics.hpp"
 #include "il/core/Module.hpp"
 #include "viper/version.hpp"

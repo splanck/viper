@@ -338,6 +338,7 @@ static il::frontends::basic::BuiltinResultKind resultKindFromMask(TypeMask m)
         return RK::String;
     return RK::Unknown;
 }
+
 BuiltinResultKind getBuiltinFixedResult(BuiltinCallExpr::Builtin b)
 {
     const auto idxv = static_cast<std::size_t>(b);

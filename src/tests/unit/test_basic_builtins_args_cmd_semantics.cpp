@@ -1,6 +1,7 @@
 // File: tests/unit/test_basic_builtins_args_cmd_semantics.cpp
-// Purpose: Verify ARGC/ARG$/COMMAND$ semantic arity validation uses registry arity (no table drift).
-// Key invariants: Wrong arity produces clear diagnostics with 0-0 (COMMAND$) and 1-1 (ARG$).
+// Purpose: Verify ARGC/ARG$/COMMAND$ semantic arity validation uses registry arity (no table
+// drift). Key invariants: Wrong arity produces clear diagnostics with 0-0 (COMMAND$) and 1-1
+// (ARG$).
 
 #include "frontends/basic/BasicCompiler.hpp"
 #include "support/source_manager.hpp"

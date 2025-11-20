@@ -15,9 +15,9 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "frontends/basic/ILTypeUtils.hpp"
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/NameMangler_OOP.hpp"
-#include "frontends/basic/ILTypeUtils.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
 
 #include <string>
@@ -174,8 +174,9 @@ void Lowerer::emitFieldReleaseSequence(Value selfPtr, const ClassLayout &layout)
             {
                 // Single object field: use rt_obj_release_check0
                 requestRuntimeFeature(il::runtime::RuntimeFeature::ObjReleaseChk0);
-                Value needsFree = emitCallRet(Type(Type::Kind::I1), "rt_obj_release_check0", {fieldValue});
-                (void)needsFree;  // Destructor ignores the result
+                Value needsFree =
+                    emitCallRet(Type(Type::Kind::I1), "rt_obj_release_check0", {fieldValue});
+                (void)needsFree; // Destructor ignores the result
             }
             continue;
         }
@@ -223,7 +224,8 @@ void Lowerer::emitClassConstructor(const ClassDecl &klass, const ConstructorDecl
     metadata.irParams.push_back({"ME", Type(Type::Kind::Ptr)});
     for (const auto &param : ctor.params)
     {
-        Type ilParamTy = param.is_array ? Type(Type::Kind::Ptr) : type_conv::astToIlType(param.type);
+        Type ilParamTy =
+            param.is_array ? Type(Type::Kind::Ptr) : type_conv::astToIlType(param.type);
         metadata.irParams.push_back({param.name, ilParamTy});
         if (param.is_array)
         {
@@ -277,7 +279,8 @@ void Lowerer::emitClassConstructor(const ClassDecl &klass, const ConstructorDecl
         {
             // Allocate vtable: slotCount * sizeof(void*) bytes
             const long long bytes = static_cast<long long>(slotCount * 8ULL);
-            Value vtblPtr = emitCallRet(Type(Type::Kind::Ptr), "rt_alloc", {Value::constInt(bytes)});
+            Value vtblPtr =
+                emitCallRet(Type(Type::Kind::Ptr), "rt_alloc", {Value::constInt(bytes)});
 
             // Helper: find concrete implementor along base chain for method @name
             auto findImplementorQClass = [&](const std::string &startQ,
@@ -325,7 +328,8 @@ void Lowerer::emitClassConstructor(const ClassDecl &klass, const ConstructorDecl
             for (std::size_t s = 0; s < slotCount; ++s)
             {
                 const long long offset = static_cast<long long>(s * 8ULL);
-                Value slotPtr = emitBinary(Opcode::GEP, Type(Type::Kind::Ptr), vtblPtr, Value::constInt(offset));
+                Value slotPtr = emitBinary(
+                    Opcode::GEP, Type(Type::Kind::Ptr), vtblPtr, Value::constInt(offset));
                 const std::string &mname = slotToName[s];
                 if (mname.empty())
                 {
@@ -355,7 +359,8 @@ void Lowerer::emitClassConstructor(const ClassDecl &klass, const ConstructorDecl
             markArray(param.name);
             emitStore(Type(Type::Kind::Ptr), slot, Value::null());
         }
-        // BUG-073 fix: Preserve object-class typing for parameters so member calls on params resolve
+        // BUG-073 fix: Preserve object-class typing for parameters so member calls on params
+        // resolve
         if (!param.objectClass.empty())
             setSymbolObjectType(param.name, qualify(param.objectClass));
         else
@@ -363,8 +368,9 @@ void Lowerer::emitClassConstructor(const ClassDecl &klass, const ConstructorDecl
         markSymbolReferenced(param.name);
         auto &info = ensureSymbol(param.name);
         info.slotId = slot.id;
-        Type ilParamTy = (!param.objectClass.empty() || param.is_array) ? Type(Type::Kind::Ptr)
-                                                                        : type_conv::astToIlType(param.type);
+        Type ilParamTy = (!param.objectClass.empty() || param.is_array)
+                             ? Type(Type::Kind::Ptr)
+                             : type_conv::astToIlType(param.type);
         Value incoming = Value::temp(fn.params[1 + i].id);
         if (param.is_array)
             storeArray(slot, incoming);
@@ -606,9 +612,9 @@ void Lowerer::emitClassMethod(const ClassDecl &klass, const MethodDecl &method)
         {
             methodRetType = type_conv::astToIlType(*method.ret);
             methodRetAst = method.ret;
-            // BUG-084 fix: Set the return type for the method name symbol (VB-style implicit return).
-            // This ensures the function return value slot is allocated with the correct type.
-            // Must be done after collectVars() but before allocateLocalSlots().
+            // BUG-084 fix: Set the return type for the method name symbol (VB-style implicit
+            // return). This ensures the function return value slot is allocated with the correct
+            // type. Must be done after collectVars() but before allocateLocalSlots().
             if (findSymbol(method.name))
             {
                 setSymbolType(method.name, *method.ret);
@@ -647,8 +653,9 @@ void Lowerer::emitClassMethod(const ClassDecl &klass, const MethodDecl &method)
         markSymbolReferenced(param.name);
         auto &info = ensureSymbol(param.name);
         info.slotId = slot.id;
-        Type ilParamTy = (!param.objectClass.empty() || param.is_array) ? Type(Type::Kind::Ptr)
-                                                                        : type_conv::astToIlType(param.type);
+        Type ilParamTy = (!param.objectClass.empty() || param.is_array)
+                             ? Type(Type::Kind::Ptr)
+                             : type_conv::astToIlType(param.type);
         Value incoming = Value::temp(fn.params[(method.isStatic ? 0 : 1) + i].id);
         if (param.is_array)
             storeArray(slot, incoming);
@@ -821,8 +828,9 @@ void Lowerer::emitClassMethodWithBody(const ClassDecl &klass,
         markSymbolReferenced(param.name);
         auto &info = ensureSymbol(param.name);
         info.slotId = slot.id;
-        Type ilParamTy = (!param.objectClass.empty() || param.is_array) ? Type(Type::Kind::Ptr)
-                                                                        : type_conv::astToIlType(param.type);
+        Type ilParamTy = (!param.objectClass.empty() || param.is_array)
+                             ? Type(Type::Kind::Ptr)
+                             : type_conv::astToIlType(param.type);
         Value incoming = Value::temp(fn.params[(method.isStatic ? 0 : 1) + i].id);
         if (param.is_array)
             storeArray(slot, incoming);

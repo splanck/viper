@@ -61,7 +61,8 @@ void ControlStatementLowerer::lowerGosub(const GosubStmt &stmt)
     if (!contIndex)
         contIndex = gosubState.registerContinuation(&stmt, ctx.exitIndex());
 
-    Lowerer::Value sp = lowerer_.emitLoad(Lowerer::Type(Lowerer::Type::Kind::I64), gosubState.spSlot());
+    Lowerer::Value sp =
+        lowerer_.emitLoad(Lowerer::Type(Lowerer::Type::Kind::I64), gosubState.spSlot());
 
     auto &lineBlocks = ctx.blockNames().lineBlocks();
     auto destIt = lineBlocks.find(stmt.targetLine);
@@ -69,8 +70,8 @@ void ControlStatementLowerer::lowerGosub(const GosubStmt &stmt)
         return;
 
     Lowerer::BlockNamer *blockNamer = ctx.blockNames().namer();
-    std::string overflowLbl =
-        blockNamer ? blockNamer->generic("gosub_overflow") : lowerer_.mangler.block("gosub_overflow");
+    std::string overflowLbl = blockNamer ? blockNamer->generic("gosub_overflow")
+                                         : lowerer_.mangler.block("gosub_overflow");
     std::string pushLbl =
         blockNamer ? blockNamer->generic("gosub_push") : lowerer_.mangler.block("gosub_push");
 
@@ -87,7 +88,8 @@ void ControlStatementLowerer::lowerGosub(const GosubStmt &stmt)
     ctx.setCurrent(current);
 
     Lowerer::Value limit = Lowerer::Value::constInt(Lowerer::kGosubStackDepth);
-    Lowerer::Value overflow = lowerer_.emitBinary(Lowerer::Opcode::SCmpGE, lowerer_.ilBoolTy(), sp, limit);
+    Lowerer::Value overflow =
+        lowerer_.emitBinary(Lowerer::Opcode::SCmpGE, lowerer_.ilBoolTy(), sp, limit);
     lowerer_.emitCBr(overflow, overflowBlk, pushBlk);
 
     ctx.setCurrent(overflowBlk);
@@ -99,12 +101,20 @@ void ControlStatementLowerer::lowerGosub(const GosubStmt &stmt)
 
     ctx.setCurrent(pushBlk);
 
-    Lowerer::Value offset = lowerer_.emitBinary(Lowerer::Opcode::IMulOvf, Lowerer::Type(Lowerer::Type::Kind::I64), sp, Lowerer::Value::constInt(4));
-    Lowerer::Value slotPtr = lowerer_.emitBinary(Lowerer::Opcode::GEP, Lowerer::Type(Lowerer::Type::Kind::Ptr), gosubState.stackSlot(), offset);
-    lowerer_.emitStore(Lowerer::Type(Lowerer::Type::Kind::I32), slotPtr, Lowerer::Value::constInt(static_cast<long long>(*contIndex)));
+    Lowerer::Value offset = lowerer_.emitBinary(Lowerer::Opcode::IMulOvf,
+                                                Lowerer::Type(Lowerer::Type::Kind::I64),
+                                                sp,
+                                                Lowerer::Value::constInt(4));
+    Lowerer::Value slotPtr = lowerer_.emitBinary(Lowerer::Opcode::GEP,
+                                                 Lowerer::Type(Lowerer::Type::Kind::Ptr),
+                                                 gosubState.stackSlot(),
+                                                 offset);
+    lowerer_.emitStore(Lowerer::Type(Lowerer::Type::Kind::I32),
+                       slotPtr,
+                       Lowerer::Value::constInt(static_cast<long long>(*contIndex)));
 
-    Lowerer::Value nextSp =
-        lowerer_.emitCommon(stmt.loc).add_checked(sp, Lowerer::Value::constInt(1), OverflowPolicy::Checked);
+    Lowerer::Value nextSp = lowerer_.emitCommon(stmt.loc).add_checked(
+        sp, Lowerer::Value::constInt(1), OverflowPolicy::Checked);
     lowerer_.emitStore(Lowerer::Type(Lowerer::Type::Kind::I64), gosubState.spSlot(), nextSp);
 
     Lowerer::BasicBlock *target = &func->blocks[destIt->second];
@@ -151,13 +161,14 @@ void ControlStatementLowerer::lowerGosubReturn(const ReturnStmt &stmt)
 
     auto &gosubState = ctx.gosub();
 
-    Lowerer::Value sp = lowerer_.emitLoad(Lowerer::Type(Lowerer::Type::Kind::I64), gosubState.spSlot());
+    Lowerer::Value sp =
+        lowerer_.emitLoad(Lowerer::Type(Lowerer::Type::Kind::I64), gosubState.spSlot());
 
     Lowerer::BlockNamer *blockNamer = ctx.blockNames().namer();
-    std::string emptyLbl =
-        blockNamer ? blockNamer->generic("gosub_ret_empty") : lowerer_.mangler.block("gosub_ret_empty");
-    std::string contLbl =
-        blockNamer ? blockNamer->generic("gosub_ret_cont") : lowerer_.mangler.block("gosub_ret_cont");
+    std::string emptyLbl = blockNamer ? blockNamer->generic("gosub_ret_empty")
+                                      : lowerer_.mangler.block("gosub_ret_empty");
+    std::string contLbl = blockNamer ? blockNamer->generic("gosub_ret_cont")
+                                     : lowerer_.mangler.block("gosub_ret_cont");
 
     size_t curIdx = static_cast<size_t>(current - &func->blocks[0]);
     size_t emptyIdx = func->blocks.size();
@@ -171,7 +182,8 @@ void ControlStatementLowerer::lowerGosubReturn(const ReturnStmt &stmt)
     current = &func->blocks[curIdx];
     ctx.setCurrent(current);
 
-    Lowerer::Value isEmpty = lowerer_.emitBinary(Lowerer::Opcode::ICmpEq, lowerer_.ilBoolTy(), sp, Lowerer::Value::constInt(0));
+    Lowerer::Value isEmpty = lowerer_.emitBinary(
+        Lowerer::Opcode::ICmpEq, lowerer_.ilBoolTy(), sp, Lowerer::Value::constInt(0));
     lowerer_.emitCBr(isEmpty, emptyBlk, contBlk);
 
     ctx.setCurrent(emptyBlk);
@@ -183,15 +195,24 @@ void ControlStatementLowerer::lowerGosubReturn(const ReturnStmt &stmt)
 
     ctx.setCurrent(contBlk);
 
-    Lowerer::Value nextSp = lowerer_.emitBinary(Lowerer::Opcode::ISubOvf, Lowerer::Type(Lowerer::Type::Kind::I64), sp, Lowerer::Value::constInt(1));
+    Lowerer::Value nextSp = lowerer_.emitBinary(Lowerer::Opcode::ISubOvf,
+                                                Lowerer::Type(Lowerer::Type::Kind::I64),
+                                                sp,
+                                                Lowerer::Value::constInt(1));
     lowerer_.emitStore(Lowerer::Type(Lowerer::Type::Kind::I64), gosubState.spSlot(), nextSp);
 
-    Lowerer::Value offset = lowerer_.emitBinary(Lowerer::Opcode::IMulOvf, Lowerer::Type(Lowerer::Type::Kind::I64), nextSp, Lowerer::Value::constInt(4));
-    Lowerer::Value slotPtr = lowerer_.emitBinary(Lowerer::Opcode::GEP, Lowerer::Type(Lowerer::Type::Kind::Ptr), gosubState.stackSlot(), offset);
+    Lowerer::Value offset = lowerer_.emitBinary(Lowerer::Opcode::IMulOvf,
+                                                Lowerer::Type(Lowerer::Type::Kind::I64),
+                                                nextSp,
+                                                Lowerer::Value::constInt(4));
+    Lowerer::Value slotPtr = lowerer_.emitBinary(Lowerer::Opcode::GEP,
+                                                 Lowerer::Type(Lowerer::Type::Kind::Ptr),
+                                                 gosubState.stackSlot(),
+                                                 offset);
     Lowerer::Value idxVal = lowerer_.emitLoad(Lowerer::Type(Lowerer::Type::Kind::I32), slotPtr);
 
-    std::string invalidLbl =
-        blockNamer ? blockNamer->generic("gosub_ret_invalid") : lowerer_.mangler.block("gosub_ret_invalid");
+    std::string invalidLbl = blockNamer ? blockNamer->generic("gosub_ret_invalid")
+                                        : lowerer_.mangler.block("gosub_ret_invalid");
     size_t invalidIdx = func->blocks.size();
     lowerer_.builder->addBlock(*func, invalidLbl);
     func = ctx.function();

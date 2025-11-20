@@ -238,28 +238,30 @@ VM::ExecResult handleCall(VM &vm,
                     // Use uintptr_t arithmetic to avoid pointer overflow when checking bounds
                     if (width != 0 && binding.stackPtr >= stackBegin && binding.stackPtr < stackEnd)
                     {
-                        const auto stackPtrAddr = reinterpret_cast<std::uintptr_t>(binding.stackPtr);
+                        const auto stackPtrAddr =
+                            reinterpret_cast<std::uintptr_t>(binding.stackPtr);
                         const auto stackEndAddr = reinterpret_cast<std::uintptr_t>(stackEnd);
                         // Safe check: ensure writing 'width' bytes won't exceed stack bounds
-                        // Use subtraction to avoid overflow: (ptr + width <= end) becomes (end - ptr >= width)
+                        // Use subtraction to avoid overflow: (ptr + width <= end) becomes (end -
+                        // ptr >= width)
                         if (stackEndAddr - stackPtrAddr >= width)
-                    {
-                        Slot &mutated = args[index];
-                        if (kind == il::core::Type::Kind::Str)
                         {
-                            auto *slot = reinterpret_cast<rt_string *>(binding.stackPtr);
-                            rt_str_release_maybe(*slot);
-                            rt_string incoming = mutated.str;
-                            rt_str_retain_maybe(incoming);
-                            *slot = incoming;
+                            Slot &mutated = args[index];
+                            if (kind == il::core::Type::Kind::Str)
+                            {
+                                auto *slot = reinterpret_cast<rt_string *>(binding.stackPtr);
+                                rt_str_release_maybe(*slot);
+                                rt_string incoming = mutated.str;
+                                rt_str_retain_maybe(incoming);
+                                *slot = incoming;
+                            }
+                            else
+                            {
+                                void *src = il::vm::slotToArgPointer(mutated, kind);
+                                if (src)
+                                    std::memcpy(binding.stackPtr, src, width);
+                            }
                         }
-                        else
-                        {
-                            void *src = il::vm::slotToArgPointer(mutated, kind);
-                            if (src)
-                                std::memcpy(binding.stackPtr, src, width);
-                        }
-                    }
                     }
                 }
 

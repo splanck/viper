@@ -14,7 +14,8 @@
 using namespace il::frontends::basic;
 using il::core::Module;
 
-namespace {
+namespace
+{
 [[nodiscard]] bool hasGlobalStr(const Module &m, std::string_view name)
 {
     for (const auto &g : m.globals)

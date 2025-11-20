@@ -173,7 +173,8 @@ void Lowerer::lowerTryCatch(const TryCatchStmt &stmt)
     // Create the post-try continuation block with a deterministic label.
     BlockNamer *blockNamer = ctx.blockNames().namer();
     const size_t afterIdx = func->blocks.size();
-    std::string afterLbl = blockNamer ? blockNamer->generic("after_try") : mangler.block("after_try");
+    std::string afterLbl =
+        blockNamer ? blockNamer->generic("after_try") : mangler.block("after_try");
     builder->addBlock(*func, afterLbl);
 
     // Restore pointers that might be invalidated by block creation.
@@ -204,7 +205,8 @@ void Lowerer::lowerTryCatch(const TryCatchStmt &stmt)
     // coverage to the parent line block. This also creates a clean structural
     // region for post-dominator checks.
     func = ctx.function();
-    std::string tryEntryLbl = blockNamer ? blockNamer->generic("try_entry") : mangler.block("try_entry");
+    std::string tryEntryLbl =
+        blockNamer ? blockNamer->generic("try_entry") : mangler.block("try_entry");
     builder->addBlock(*func, tryEntryLbl);
     BasicBlock *tryEntry = &func->blocks.back();
     // Branch from the original current block to the try-entry block.
@@ -270,8 +272,8 @@ void Lowerer::lowerTryCatch(const TryCatchStmt &stmt)
         {
             // Refresh both handler and after_try pointers before emitting the terminator,
             // in case catch-body lowering appended blocks and caused reallocation.
-    func = ctx.function();
-    handlerBlock = ensureErrorHandlerBlock(handlerKey);
+            func = ctx.function();
+            handlerBlock = ensureErrorHandlerBlock(handlerKey);
             afterTry = &func->blocks[afterIdx];
             builder->setInsertPoint(*handlerBlock);
             Value resumeTok2 = Value::temp(handlerBlock->params[1].id);

@@ -28,8 +28,8 @@
 ///          populating that registry so the parsing code that consumes it stays
 ///          uncluttered.
 
-#include "frontends/basic/Parser.hpp"
 #include "frontends/basic/IdentifierUtil.hpp"
+#include "frontends/basic/Parser.hpp"
 #include "frontends/basic/Parser_Stmt_ControlHelpers.hpp"
 
 namespace il::frontends::basic
@@ -79,16 +79,23 @@ StmtPtr Parser::parseTryCatchStatement()
 
     // Collect TRY body until CATCH or END TRY
     auto ctx = statementSequencer();
-    enum class Term { None, Catch, EndTry } term = Term::None;
+    enum class Term
+    {
+        None,
+        Catch,
+        EndTry
+    } term = Term::None;
     auto termInfo = ctx.collectStatements(
-        [&](int, il::support::SourceLoc) {
+        [&](int, il::support::SourceLoc)
+        {
             if (at(TokenKind::KeywordCatch))
                 return true;
             if (at(TokenKind::KeywordEnd) && peek(1).kind == TokenKind::KeywordTry)
                 return true;
             return false;
         },
-        [&](int, il::support::SourceLoc, StatementSequencer::TerminatorInfo &) {
+        [&](int, il::support::SourceLoc, StatementSequencer::TerminatorInfo &)
+        {
             if (at(TokenKind::KeywordCatch))
             {
                 term = Term::Catch;
@@ -126,10 +133,10 @@ StmtPtr Parser::parseTryCatchStatement()
     // Collect CATCH body until END TRY
     bool sawEndTry = false;
     ctx.collectStatements(
-        [&](int, il::support::SourceLoc) {
-            return at(TokenKind::KeywordEnd) && peek(1).kind == TokenKind::KeywordTry;
-        },
-        [&](int, il::support::SourceLoc, StatementSequencer::TerminatorInfo &) {
+        [&](int, il::support::SourceLoc)
+        { return at(TokenKind::KeywordEnd) && peek(1).kind == TokenKind::KeywordTry; },
+        [&](int, il::support::SourceLoc, StatementSequencer::TerminatorInfo &)
+        {
             sawEndTry = true;
             consume(); // END
             consume(); // TRY

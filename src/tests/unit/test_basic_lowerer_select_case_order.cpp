@@ -30,23 +30,22 @@ static int findBlockIndex(const il::core::Function &fn, const std::string &label
 int main()
 {
     // Construct a SELECT CASE with 4+ arms and CASE ELSE to exercise the bug.
-    const std::string src =
-        "10 DIM S$ AS STRING\n"
-        "20 S$ = \"north\"\n"
-        "30 SELECT CASE S$\n"
-        "40   CASE \"north\"\n"
-        "50     PRINT \"N\"\n"
-        "60   CASE \"south\"\n"
-        "70     PRINT \"S\"\n"
-        "80   CASE \"east\"\n"
-        "90     PRINT \"E\"\n"
-        "100  CASE \"west\"\n"
-        "110    PRINT \"W\"\n"
-        "120  CASE ELSE\n"
-        "130    PRINT \"?\"\n"
-        "140 END SELECT\n"
-        "150 PRINT \"Done\"\n"
-        "160 END\n";
+    const std::string src = "10 DIM S$ AS STRING\n"
+                            "20 S$ = \"north\"\n"
+                            "30 SELECT CASE S$\n"
+                            "40   CASE \"north\"\n"
+                            "50     PRINT \"N\"\n"
+                            "60   CASE \"south\"\n"
+                            "70     PRINT \"S\"\n"
+                            "80   CASE \"east\"\n"
+                            "90     PRINT \"E\"\n"
+                            "100  CASE \"west\"\n"
+                            "110    PRINT \"W\"\n"
+                            "120  CASE ELSE\n"
+                            "130    PRINT \"?\"\n"
+                            "140 END SELECT\n"
+                            "150 PRINT \"Done\"\n"
+                            "160 END\n";
 
     SourceManager sm;
     uint32_t fid = sm.addFile("select_case_many.bas");

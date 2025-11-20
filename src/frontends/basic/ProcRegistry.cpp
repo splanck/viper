@@ -19,8 +19,8 @@
 #include "frontends/basic/ProcRegistry.hpp"
 #include "frontends/basic/Diag.hpp"
 #include "frontends/basic/IdentifierUtil.hpp"
-#include "il/runtime/RuntimeSignatures.hpp"
 #include "frontends/basic/types/TypeMapping.hpp"
+#include "il/runtime/RuntimeSignatures.hpp"
 
 #include <unordered_set>
 #include <utility>
@@ -202,8 +202,31 @@ void ProcRegistry::registerProc(const FunctionDecl &f)
 {
     const ProcDescriptor descriptor{
         ProcSignature::Kind::Function, f.ret, std::span<const Param>{f.params}, f.loc};
-    std::string_view nm =
-        f.qualifiedName.empty() ? std::string_view{f.name} : std::string_view{f.qualifiedName};
+    std::string nameBuf;
+    std::string_view nm;
+    if (!f.qualifiedName.empty())
+    {
+        nm = std::string_view{f.qualifiedName};
+    }
+    else if (!f.namespacePath.empty())
+    {
+        // Build a dotted name from namespacePath + name so shadowing checks can fire.
+        nameBuf = JoinQualified(f.namespacePath);
+        if (!nameBuf.empty())
+        {
+            nameBuf.push_back('.');
+            nameBuf += f.name;
+            nm = std::string_view{nameBuf};
+        }
+        else
+        {
+            nm = std::string_view{f.name};
+        }
+    }
+    else
+    {
+        nm = std::string_view{f.name};
+    }
     registerProcImpl(nm, descriptor, f.loc);
 }
 
@@ -214,8 +237,30 @@ void ProcRegistry::registerProc(const SubDecl &s)
 {
     const ProcDescriptor descriptor{
         ProcSignature::Kind::Sub, std::nullopt, std::span<const Param>{s.params}, s.loc};
-    std::string_view nm =
-        s.qualifiedName.empty() ? std::string_view{s.name} : std::string_view{s.qualifiedName};
+    std::string nameBuf;
+    std::string_view nm;
+    if (!s.qualifiedName.empty())
+    {
+        nm = std::string_view{s.qualifiedName};
+    }
+    else if (!s.namespacePath.empty())
+    {
+        nameBuf = JoinQualified(s.namespacePath);
+        if (!nameBuf.empty())
+        {
+            nameBuf.push_back('.');
+            nameBuf += s.name;
+            nm = std::string_view{nameBuf};
+        }
+        else
+        {
+            nm = std::string_view{s.name};
+        }
+    }
+    else
+    {
+        nm = std::string_view{s.name};
+    }
     registerProcImpl(nm, descriptor, s.loc);
 }
 

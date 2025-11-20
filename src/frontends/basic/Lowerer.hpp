@@ -258,9 +258,9 @@ class Lowerer
 
     // Friend declarations for I/O helper functions (must appear after RVal definition)
     friend PrintChArgString lowerPrintChArgToString(IoStatementLowerer &self,
-                                                     const Expr &expr,
-                                                     RVal value,
-                                                     bool quoteStrings);
+                                                    const Expr &expr,
+                                                    RVal value,
+                                                    bool quoteStrings);
     friend Value buildPrintChWriteRecord(IoStatementLowerer &self, const PrintChStmt &stmt);
 
     /// @brief Result of lowering an array access expression.
@@ -552,7 +552,10 @@ class Lowerer
     void lowerLet(const LetStmt &stmt);
     void lowerConst(const ConstStmt &stmt);
     void lowerStatic(const StaticStmt &stmt);
-    void assignScalarSlot(const SlotType &slotInfo, Value slot, RVal value, il::support::SourceLoc loc);
+    void assignScalarSlot(const SlotType &slotInfo,
+                          Value slot,
+                          RVal value,
+                          il::support::SourceLoc loc);
     void assignArrayElement(const ArrayExpr &target, RVal value, il::support::SourceLoc loc);
     void lowerDim(const DimStmt &stmt);
     void lowerReDim(const ReDimStmt &stmt);
@@ -963,7 +966,7 @@ class Lowerer
         Type ilType{Type(Type::Kind::I64)}; ///< IL type used for loads/stores.
         ::il::frontends::basic::Type astType{
             ::il::frontends::basic::Type::I64}; ///< Original AST type.
-        std::string objectClassName;        ///< BUG-082: Class name for object-typed fields.
+        std::string objectClassName;            ///< BUG-082: Class name for object-typed fields.
     };
 
     struct FieldScope
@@ -1084,7 +1087,11 @@ class Lowerer
 
   public:
     /// @brief Clear cached module-level object array and scalar object typing.
-    void clearModuleObjectArrayCache() { moduleObjArrayElemClass_.clear(); moduleObjectClass_.clear(); }
+    void clearModuleObjectArrayCache()
+    {
+        moduleObjArrayElemClass_.clear();
+        moduleObjectClass_.clear();
+    }
 
     /// @brief Scan AST for module-level DIM object arrays and cache their types.
     /// @details Called before lowering procedures so object array element classes
@@ -1117,7 +1124,7 @@ class Lowerer
     /// @brief Lookup the return class name for a method that returns an object.
     /// @return Qualified class name if method returns object, empty string otherwise.
     [[nodiscard]] std::string findMethodReturnClassName(std::string_view className,
-                                                         std::string_view methodName) const;
+                                                        std::string_view methodName) const;
 
     /// @brief Lookup the AST type for a class field.
     std::optional<::il::frontends::basic::Type> findFieldType(std::string_view className,

@@ -32,4 +32,3 @@ int main()
     assert(idx && idx->value == 1);
     return 0;
 }
-
