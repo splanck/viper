@@ -489,11 +489,29 @@ void SemanticAnalyzer::analyze(const Program &prog)
                     // Establish namespace context
                     for (const auto &seg : ns.path)
                         nsStack_.push_back(seg);
+                    // Establish USING scope for this namespace and apply any
+                    // USING directives declared inside the block before
+                    // analyzing procedure bodies.
+                    UsingScope childScope;
+                    if (!usingStack_.empty())
+                    {
+                        // Inherit imports from parent scope; aliases are local.
+                        childScope.imports = usingStack_.back().imports;
+                    }
+                    usingStack_.push_back(std::move(childScope));
+                    // First pass: apply USINGs declared in this namespace.
+                    for (const auto &s : ns.body)
+                    {
+                        if (s && s->stmtKind() == Stmt::Kind::UsingDecl)
+                            analyzeUsingDecl(static_cast<UsingDecl &>(*s));
+                    }
                     scanBodies(ns.body);
                     if (nsStack_.size() >= ns.path.size())
                         nsStack_.resize(nsStack_.size() - ns.path.size());
                     else
                         nsStack_.clear();
+                    if (!usingStack_.empty())
+                        usingStack_.pop_back();
                     break;
                 }
                 case Stmt::Kind::FunctionDecl:
@@ -559,19 +577,37 @@ const ProcSignature *SemanticAnalyzer::resolveCallee(const CallExpr &c,
         bool usedAlias = false;
         std::string usedAliasName;
         std::string usedAliasTarget;
-        if (!segs.empty() && !usingStack_.empty())
+        if (!segs.empty())
         {
             std::string firstCanon = CanonicalizeIdent(segs[0]);
-            const auto &aliases = usingStack_.back().aliases;
-            auto itAlias = aliases.find(firstCanon);
-            if (itAlias != aliases.end())
+            // 1) Prefer the innermost scoped USING aliases (namespace-scoped or file-scoped).
+            if (!usingStack_.empty())
             {
-                std::vector<std::string> expanded = SplitDots(itAlias->second);
-                expanded.insert(expanded.end(), segs.begin() + 1, segs.end());
-                segs = std::move(expanded);
-                usedAlias = true;
-                usedAliasName = firstCanon;
-                usedAliasTarget = itAlias->second;
+                const auto &aliases = usingStack_.back().aliases;
+                auto itAlias = aliases.find(firstCanon);
+                if (itAlias != aliases.end())
+                {
+                    std::vector<std::string> expanded = SplitDots(itAlias->second);
+                    expanded.insert(expanded.end(), segs.begin() + 1, segs.end());
+                    segs = std::move(expanded);
+                    usedAlias = true;
+                    usedAliasName = firstCanon;
+                    usedAliasTarget = itAlias->second;
+                }
+            }
+            // 2) If not found in the scoped USINGs, consult file-scoped UsingContext aliases.
+            if (!usedAlias && usings_.hasAlias(firstCanon))
+            {
+                std::string target = usings_.resolveAlias(firstCanon);
+                if (!target.empty())
+                {
+                    std::vector<std::string> expanded = SplitDots(target);
+                    expanded.insert(expanded.end(), segs.begin() + 1, segs.end());
+                    segs = std::move(expanded);
+                    usedAlias = true;
+                    usedAliasName = firstCanon;
+                    usedAliasTarget = std::move(target);
+                }
             }
         }
 

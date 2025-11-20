@@ -33,7 +33,8 @@ enum class BasicDiag
     NsTypeNotFound,
     NsAliasShadowsNs,
     NsUsingNotFileScope,
-    NsReservedViper
+    NsReservedViper,
+    ReservedRootDecl
 };
 
 struct Replacement
@@ -59,4 +60,3 @@ struct BasicDiagInfo
                                          std::initializer_list<Replacement> replacements = {});
 
 } // namespace il::frontends::basic::diag
-

@@ -14,3 +14,6 @@
 
 // IL/spec version (single source of truth from IL_VERSION file)
 #define VIPER_IL_VERSION_STR "@VIPER_IL_VERSION_STR@"
+
+// Runtime namespace transition flag (1 = dual-publish legacy rt_* aliases)
+#define VIPER_RUNTIME_NS_DUAL @VIPER_RUNTIME_NS_DUAL_DEFINE@

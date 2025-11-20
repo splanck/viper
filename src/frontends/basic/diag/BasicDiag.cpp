@@ -12,7 +12,7 @@ namespace il::frontends::basic::diag
 {
 namespace
 {
-constexpr std::array<BasicDiagInfo, 21> kDiagTable = {
+constexpr std::array<BasicDiagInfo, 22> kDiagTable = {
     {{"BASIC_UNKNOWN_VARIABLE",
       "B1001",
       il::support::Severity::Error,
@@ -90,7 +90,11 @@ constexpr std::array<BasicDiagInfo, 21> kDiagTable = {
      {"NS_RESERVED_VIPER",
       "E_NS_009",
       il::support::Severity::Error,
-      "reserved root namespace 'Viper' cannot be declared or imported"}}};
+      "reserved root namespace 'Viper' cannot be declared or imported"},
+     {"RESERVED_ROOT_DECL",
+      "E_RESERVED_ROOT_DECL",
+      il::support::Severity::Error,
+      "User code may not declare symbols under the reserved root 'Viper'."}}};
 }
 
 const BasicDiagInfo &getInfo(BasicDiag diag)

@@ -97,4 +97,10 @@ void NoteAliasExpansion(DiagnosticEmitter &emitter,
                         std::string_view alias,
                         std::string_view targetQn);
 
+/// @brief Emit error for attempts to declare a procedure that shadows a builtin extern.
+/// @details Used when a user-defined procedure collides with a seeded Viper.* runtime helper.
+void ErrorBuiltinShadow(DiagnosticEmitter &emitter,
+                        std::string_view qname,
+                        il::support::SourceLoc loc);
+
 } // namespace il::frontends::basic::diagx

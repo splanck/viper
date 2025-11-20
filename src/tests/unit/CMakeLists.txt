@@ -23,6 +23,13 @@ if (NOT TARGET test_basic_terminal_scan)
     viper_add_ctest(test_basic_terminal_scan test_basic_terminal_scan)
 endif ()
 
+# Builtin extern resolution tests (resolver + diagnostics)
+if (NOT TARGET test_basic_builtin_extern_resolution)
+    viper_add_test(test_basic_builtin_extern_resolution ${VIPER_TESTS_DIR}/unit/test_basic_builtin_extern_resolution.cpp)
+    target_link_libraries(test_basic_builtin_extern_resolution PRIVATE fe_basic)
+    viper_add_ctest(test_basic_builtin_extern_resolution test_basic_builtin_extern_resolution)
+endif ()
+
 # Parser single-index array test (guards HIGH-2 fix)
 if (NOT TARGET test_basic_parse_array_single_index)
     viper_add_test(test_basic_parse_array_single_index ${VIPER_TESTS_DIR}/unit/test_basic_parse_array_single_index.cpp)
@@ -113,6 +120,13 @@ if (NOT TARGET test_namespace_integration)
     viper_add_test(test_namespace_integration ${VIPER_TESTS_DIR}/unit/test_namespace_integration.cpp)
     target_link_libraries(test_namespace_integration PRIVATE fe_basic)
     viper_add_ctest(test_namespace_integration test_namespace_integration)
+endif ()
+
+# Built-in external types catalog recognition
+if (NOT TARGET test_builtin_external_types)
+    viper_add_test(test_builtin_external_types ${VIPER_TESTS_DIR}/unit/types/TestBuiltinExternalTypes.cpp)
+    target_link_libraries(test_builtin_external_types PRIVATE fe_basic)
+    viper_add_ctest(test_builtin_external_types test_builtin_external_types)
 endif ()
 
 if (NOT TARGET test_using_compiletime_only)

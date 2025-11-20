@@ -152,4 +152,20 @@ void NoteAliasExpansion(DiagnosticEmitter &emitter,
     emitter.emit(il::support::Severity::Note, "N0001", {}, 0, std::move(msg));
 }
 
+void ErrorBuiltinShadow(DiagnosticEmitter &emitter,
+                        std::string_view qname,
+                        il::support::SourceLoc loc)
+{
+    // Emit a distinct diagnostic when a user-defined procedure attempts to shadow
+    // a builtin extern (seeded from Viper.* runtime registry). Keep the message
+    // concise and actionable.
+    std::string msg = std::string("user procedure shadows builtin extern '") +
+                      std::string(qname) + "'";
+    emitter.emit(il::support::Severity::Error,
+                 "E_VIPER_BUILTIN_SHADOW",
+                 loc,
+                 static_cast<uint32_t>(qname.size()),
+                 std::move(msg));
+}
+
 } // namespace il::frontends::basic::diagx

@@ -21,10 +21,12 @@
 #include "frontends/basic/Lowerer.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
 #include "frontends/basic/SemanticAnalyzer.hpp"
+#include "frontends/basic/Options.hpp"
 #include "frontends/basic/NameMangler_OOP.hpp"
 #include "frontends/basic/Semantic_OOP.hpp"
 #include "frontends/basic/ILTypeUtils.hpp"
 #include "frontends/basic/sem/OverloadResolution.hpp"
+#include "frontends/basic/StringUtils.hpp"
 
 #include <cstdint>
 #include <string>
@@ -215,6 +217,40 @@ std::string Lowerer::resolveObjectClass(const Expr &expr) const
 Lowerer::RVal Lowerer::lowerNewExpr(const NewExpr &expr)
 {
     curLoc = expr.loc;
+
+    // Minimal runtime type bridging: NEW Viper.System.Text.StringBuilder()
+    if (FrontendOptions::enableRuntimeTypeBridging())
+    {
+        if (expr.args.empty())
+        {
+            // Match fully-qualified type
+            bool isQualified = false;
+            if (!expr.qualifiedType.empty())
+            {
+                const auto &q = expr.qualifiedType;
+                if (q.size() == 4 && string_utils::iequals(q[0], "Viper") &&
+                    string_utils::iequals(q[1], "System") && string_utils::iequals(q[2], "Text") &&
+                    string_utils::iequals(q[3], "StringBuilder"))
+                {
+                    isQualified = true;
+                }
+            }
+            // Fallback: check dot-joined className
+            if (!isQualified)
+            {
+                if (string_utils::iequals(expr.className, "Viper.System.Text.StringBuilder"))
+                    isQualified = true;
+            }
+            if (isQualified)
+            {
+                // Emit direct call to a runtime helper that returns an object pointer.
+                if (builder)
+                    builder->addExtern("Viper.Strings.Builder.New", Type(Type::Kind::Ptr), {});
+                Value obj = emitCallRet(Type(Type::Kind::Ptr), "Viper.Strings.Builder.New", {});
+                return {obj, Type(Type::Kind::Ptr)};
+            }
+        }
+    }
     std::size_t objectSize = 0;
     std::int64_t classId = 0;
     if (auto layoutIt = classLayouts_.find(expr.className); layoutIt != classLayouts_.end())

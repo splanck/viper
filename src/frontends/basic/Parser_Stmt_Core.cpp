@@ -18,6 +18,7 @@
 #include "frontends/basic/BasicDiagnosticMessages.hpp"
 #include "frontends/basic/IdentifierUtil.hpp"
 #include "frontends/basic/Parser.hpp"
+#include "frontends/basic/Options.hpp"
 #include "frontends/basic/ast/ExprNodes.hpp"
 
 #include <cctype>
@@ -204,6 +205,24 @@ Parser::StmtResult Parser::parseCall(int)
                     if (knownNamespaces_.find(identTok.lexeme) != knownNamespaces_.end())
                     {
                         treatAsQualified = true;
+                    }
+                    else
+                    {
+                        // Feature flag: treat 'Viper' as a known namespace head
+                        // so dotted calls like Viper.Console.F() parse as qualified
+                        // call statements when runtime namespaces are enabled.
+                        if (il::frontends::basic::FrontendOptions::enableRuntimeNamespaces())
+                        {
+                            if (identTok.lexeme.size() == 5 || identTok.lexeme.size() == 6)
+                            {
+                                // case-insensitive compare for 'Viper'
+                                std::string head = identTok.lexeme;
+                                for (auto &c : head)
+                                    c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+                                if (head == "viper")
+                                    treatAsQualified = true;
+                            }
+                        }
                     }
 
                     if (treatAsQualified)

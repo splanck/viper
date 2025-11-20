@@ -29,6 +29,9 @@ Complete language reference for Viper BASIC. This document describes **statement
 - [Statements A–Z](#statements-az)
 - [Expressions & Operators](#expressions--operators)
 - [Built-in Functions](#built-in-functions)
+- [Namespaces & USING](#namespaces--using)
+- [Standard Library & Namespaces](#standard-library--namespaces)
+- [Reserved Root](#reserved-root)
 - [Keyword Index](#keyword-index)
 
 ---
@@ -584,6 +587,80 @@ The following built-ins are available. Use them in expressions (e.g., `LET X = A
 40 PRINT LOC(#1)         ' current byte position
 50 CLOSE #1
 ```
+
+## Standard Library & Namespaces
+
+The Viper standard library exposes procedures under the reserved `Viper.*` root namespace. You can call them fully qualified, or import a namespace with `USING`.
+
+- Fully qualified:
+
+```basic
+Viper.Console.PrintI64(42)
+```
+
+- With USING (same line using `:`):
+
+```basic
+USING Viper.Console : PrintI64(42)
+```
+
+- Or as two lines:
+
+```basic
+USING Viper.Console
+PrintI64(42)
+```
+
+Common procedures (signatures shown as `Name(params)->result`):
+
+- Viper.Console.PrintI64(i64)->void
+- Viper.Console.PrintF64(double)->void
+- Viper.Console.PrintStr(string)->void
+- Viper.Math.Sin(double)->double
+- Viper.Math.Cos(double)->double
+- Viper.Math.Sqrt(double)->double
+- Viper.Math.Pow(double,double)->double
+
+Notes:
+- Printing procedures are available under `Viper.Console.*` and map to the runtime’s integer, floating‑point, and string printers.
+- Math procedures correspond to the BASIC intrinsics (e.g., `SIN`, `COS`, `SQRT`) and use the same parameter/return types shown above.
+
+In addition to procedures, some standard library classes are recognized under `Viper.System.*`. These namespaced runtime types are known to the compiler (e.g., for declarations and NEW), and their method surfaces will be exposed progressively as the library rolls out. You can already declare variables using these types and construct selected ones as support lands.
+
+Examples:
+
+```basic
+DIM sb AS Viper.System.Text.StringBuilder
+```
+
+## Reserved Root
+
+The `Viper` root namespace is reserved for the standard library. User code may not declare symbols under `Viper` (for example, `NAMESPACE Viper.Tools` is an error). You may import and call `Viper.*` library procedures, but define your own symbols under a different root.
+
+## Namespaces & USING
+
+USING can be placed at file scope (before declarations) or inside a `NAMESPACE ... END NAMESPACE` block to scope imports to that namespace body. Scoped USING applies to declarations and calls that follow it within the same namespace.
+
+Example (scoped import inside a namespace):
+
+```basic
+NAMESPACE App
+  USING Viper.Console
+  SUB Main()
+    ' Either unqualified via USING:
+    PrintI64(99)
+    ' Or fully qualified (equivalent):
+    ' Viper.Console.PrintI64(99)
+  END SUB
+END NAMESPACE
+
+' Invoke the namespaced entry point
+App.Main()
+```
+
+Notes:
+- File‑scope USING must appear before any declarations at file scope.
+- Scoped USING inside a namespace does not leak outside the namespace; nested declarations see the import, and it is popped when the namespace ends.
 
 ## Keyword index
 

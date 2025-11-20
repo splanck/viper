@@ -23,6 +23,7 @@
 ///          deterministic type resolution during semantic analysis.
 
 #include "frontends/basic/sem/RegistryBuilder.hpp"
+#include "frontends/basic/sem/TypeRegistry.hpp"
 #include "frontends/basic/AST.hpp"
 #include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/DiagnosticEmitter.hpp"
@@ -50,10 +51,10 @@ void buildNamespaceRegistry(const Program &program,
     // Clear previous state.
     usings.clear();
 
-    // Seed well-known root namespaces available implicitly (Phase 2).
-    // This allows file-scoped `USING System` without requiring an explicit
-    // declaration in every source file.
-    registry.registerNamespace("System");
+    // Seed well-known runtime namespaces and built-in external types.
+    // Catalog-only: registers namespaces and type names; members come later.
+    // This also makes `USING Viper.System.*` resolvable when enabled.
+    seedRuntimeTypeCatalog(registry);
 
     // Maintain namespace stack for qualified name construction.
     std::vector<std::string> nsStack;

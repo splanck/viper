@@ -19,6 +19,8 @@
 #include "frontends/basic/ProcRegistry.hpp"
 #include "frontends/basic/Diag.hpp"
 #include "frontends/basic/IdentifierUtil.hpp"
+#include "il/runtime/RuntimeSignatures.hpp"
+#include "frontends/basic/types/TypeMapping.hpp"
 
 #include <unordered_set>
 #include <utility>
@@ -27,7 +29,11 @@ namespace il::frontends::basic
 {
 
 /// @brief Construct a registry that records diagnostics through @p d.
-ProcRegistry::ProcRegistry(SemanticDiagnostics &d) : de(d) {}
+ProcRegistry::ProcRegistry(SemanticDiagnostics &d) : de(d)
+{
+    // Seed built-in extern procedure signatures from runtime registry.
+    seedRuntimeBuiltins();
+}
 
 /// @brief Remove all procedures registered so far.
 /// @details Clears the internal table so a new compilation unit can start with a
@@ -36,6 +42,7 @@ void ProcRegistry::clear()
 {
     procs_.clear();
     byQualified_.clear();
+    seedRuntimeBuiltins();
 }
 
 /// @brief Build a canonical signature from a descriptor collected during analysis.
@@ -166,9 +173,17 @@ void ProcRegistry::registerProcImpl(std::string_view name,
     auto it = byQualified_.find(key);
     if (it != byQualified_.end())
     {
-        // Duplicate: emit using canonical lowercase to match diagnostics expectations.
+        // Duplicate name: if the existing entry is a builtin extern, report the
+        // dedicated shadowing error; otherwise emit the standard duplicate proc.
         std::string display = key;
-        diagx::ErrorDuplicateProc(de.emitter(), display, it->second.loc, loc);
+        if (it->second.kind == ProcKind::BuiltinExtern)
+        {
+            diagx::ErrorBuiltinShadow(de.emitter(), display, loc);
+        }
+        else
+        {
+            diagx::ErrorDuplicateProc(de.emitter(), display, it->second.loc, loc);
+        }
         return;
     }
 
@@ -250,6 +265,76 @@ const ProcRegistry::ProcEntry *ProcRegistry::LookupExact(std::string_view qualif
 {
     auto it = byQualified_.find(std::string{qualified});
     return it == byQualified_.end() ? nullptr : &it->second;
+}
+
+/// @brief Seed the procedure registry with builtin externs from the runtime registry.
+/// @details Iterates runtime descriptors, selects canonical dotted names (e.g.,
+///          "Viper.*"), maps IL types to BASIC types, and registers them as
+///          procedures so the semantic analyzer can resolve calls like
+///          Viper.Console.PrintI64.
+void ProcRegistry::seedRuntimeBuiltins()
+{
+    using namespace il::runtime;
+    const auto &registry = runtimeRegistry();
+    for (const auto &desc : registry)
+    {
+        // Only publish canonical dotted names; skip legacy flat aliases.
+        if (desc.name.find('.') == std::string_view::npos)
+            continue;
+
+        // Only seed helpers with a generated signature id (back-pointer for lowering).
+        auto sigIdOpt = findRuntimeSignatureId(desc.name);
+        if (!sigIdOpt)
+            continue;
+
+        // Map return type; Void -> SUB (no return), others -> FUNCTION.
+        std::optional<Type> retTy;
+        if (auto mappedRet = types::mapIlToBasic(desc.signature.retType))
+            retTy = *mappedRet;
+        else if (desc.signature.retType.kind != il::core::Type::Kind::Void)
+            continue; // Unsupported return type; skip
+
+        // Map parameter list; fail if any unsupported type present.
+        std::vector<Param> params;
+        params.reserve(desc.signature.paramTypes.size());
+        bool ok = true;
+        for (const auto &p : desc.signature.paramTypes)
+        {
+            auto mapped = types::mapIlToBasic(p);
+            if (!mapped)
+            {
+                ok = false;
+                break;
+            }
+            Param param{};
+            param.name = "p"; // name not used for builtins; placeholder
+            param.type = *mapped;
+            param.is_array = false;
+            params.push_back(std::move(param));
+        }
+        if (!ok)
+            continue;
+
+        // Build ProcSignature directly
+        ProcSignature sig;
+        sig.kind = retTy ? ProcSignature::Kind::Function : ProcSignature::Kind::Sub;
+        sig.retType = retTy;
+        for (const auto &p : params)
+            sig.params.push_back({p.type, p.is_array});
+
+        // Canonical qualified key
+        std::string key = canonicalizeQualifiedFlat(desc.name);
+        if (key.empty())
+            continue;
+        // Avoid duplicate insertions.
+        if (byQualified_.find(key) != byQualified_.end())
+            continue;
+
+        byQualified_.emplace(key, ProcEntry{nullptr, {}, ProcKind::BuiltinExtern, sigIdOpt});
+        // Insert under both display and canonical keys for lookup();
+        procs_.emplace(std::string(desc.name), sig);
+        procs_.emplace(key, sig);
+    }
 }
 
 } // namespace il::frontends::basic

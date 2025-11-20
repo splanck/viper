@@ -34,6 +34,17 @@ enable_language(C)
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 
+# Runtime namespace transition flag: dual-publish legacy rt_* aliases alongside
+# canonical Viper.* names. Default ON for a smoother migration window.
+option(VIPER_RUNTIME_NS_DUAL "Publish legacy rt_* runtime aliases alongside Viper.*" ON)
+
+# Compute numeric define for headers and C++ sources (1/0)
+if(VIPER_RUNTIME_NS_DUAL)
+  set(VIPER_RUNTIME_NS_DUAL_DEFINE 1)
+else()
+  set(VIPER_RUNTIME_NS_DUAL_DEFINE 0)
+endif()
+
 # Emit the generated version header
 configure_file(
   "${CMAKE_SOURCE_DIR}/include/viper/version.hpp.in"
@@ -104,6 +115,7 @@ add_compile_definitions(
   VIPER_ENABLE_OOP=1
   VIPER_VM_TAILCALL=$<BOOL:${VIPER_VM_TAILCALL}>
   VIPER_VM_OPCOUNTS=$<BOOL:${VIPER_VM_OPCOUNTS}>
+  VIPER_RUNTIME_NS_DUAL=$<BOOL:${VIPER_RUNTIME_NS_DUAL}>
 )
 
 if(IL_USE_LIBCXX AND CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND NOT APPLE)

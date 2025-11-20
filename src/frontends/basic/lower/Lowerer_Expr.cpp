@@ -21,6 +21,7 @@
 #include "frontends/basic/LowerExprNumeric.hpp"
 #include "frontends/basic/NameMangler_OOP.hpp"
 #include "frontends/basic/Lowerer.hpp"
+#include "il/runtime/RuntimeSignatures.hpp"
 #include "frontends/basic/SemanticAnalyzer.hpp"
 #include "frontends/basic/TypeSuffix.hpp"
 #include "frontends/basic/lower/AstVisitor.hpp"
@@ -370,41 +371,104 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
             calleeResolved = CanonicalizeIdent(expr.callee);
         }
         const std::string &calleeKey = calleeResolved.empty() ? expr.callee : calleeResolved;
-        const auto *signature = lowerer_.findProcSignature(calleeKey);
-        std::vector<IlValue> args;
-        args.reserve(expr.args.size());
-        for (size_t i = 0; i < expr.args.size(); ++i)
+        // Prefer runtime builtin externs when the name matches a canonical
+        // runtime descriptor (e.g., "Viper.Console.PrintI64"). Otherwise, fall
+        // back to user-defined procedure signatures collected from the AST.
+        const il::runtime::RuntimeSignature *rtSig = il::runtime::findRuntimeSignature(calleeKey);
+        // Fallback: case-insensitive match against runtime symbols when dotted and canonicalized.
+        if (!rtSig && calleeKey.find('.') != std::string::npos)
         {
-            Lowerer::RVal arg = lowerer_.lowerExpr(*expr.args[i]);
-            if (signature && i < signature->paramTypes.size())
+            const auto &rts = il::runtime::runtimeSignatures();
+            for (const auto &kv : rts)
             {
-                IlType paramTy = signature->paramTypes[i];
-                if (paramTy.kind == IlType::Kind::F64)
+                // Case-insensitive compare
+                const std::string_view name = kv.first;
+                if (name.size() != calleeKey.size())
+                    continue;
+                bool eq = true;
+                for (size_t i = 0; i < name.size(); ++i)
                 {
-                    arg = lowerer_.coerceToF64(std::move(arg), expr.loc);
+                    unsigned char a = static_cast<unsigned char>(name[i]);
+                    unsigned char b = static_cast<unsigned char>(calleeKey[i]);
+                    if (std::tolower(a) != std::tolower(b))
+                    {
+                        eq = false;
+                        break;
+                    }
                 }
-                else if (paramTy.kind == IlType::Kind::I64)
+                if (eq)
                 {
-                    arg = lowerer_.coerceToI64(std::move(arg), expr.loc);
-                }
-                else if (paramTy.kind == IlType::Kind::I1)
-                {
-                    arg = lowerer_.coerceToBool(std::move(arg), expr.loc);
+                    // Bind to exact-cased runtime name/signature
+                    rtSig = &kv.second;
+                    // Replace calleeResolved with the canonical runtime symbol spelling
+                    const_cast<std::string &>(calleeKey) = std::string(name);
+                    break;
                 }
             }
-            args.push_back(arg.value);
         }
-        lowerer_.curLoc = expr.loc;
-        const std::string calleeName = lowerer_.resolveCalleeName(calleeKey);
-        if (signature && signature->retType.kind != IlType::Kind::Void)
+        const auto *signature = rtSig ? nullptr : lowerer_.findProcSignature(calleeKey);
+        std::vector<IlValue> args;
+        args.reserve(expr.args.size());
+        if (rtSig)
         {
-            IlValue res = lowerer_.emitCallRet(signature->retType, calleeName, args);
-            result_ = Lowerer::RVal{res, signature->retType};
+            // Coerce arguments according to the runtime signature parameter IL types.
+            for (size_t i = 0; i < expr.args.size(); ++i)
+            {
+                Lowerer::RVal arg = lowerer_.lowerExpr(*expr.args[i]);
+                if (i < rtSig->paramTypes.size())
+                {
+                    IlType paramTy = rtSig->paramTypes[i];
+                    if (paramTy.kind == IlType::Kind::F64)
+                        arg = lowerer_.coerceToF64(std::move(arg), expr.loc);
+                    else if (paramTy.kind == IlType::Kind::I64)
+                        arg = lowerer_.coerceToI64(std::move(arg), expr.loc);
+                    else if (paramTy.kind == IlType::Kind::I1)
+                        arg = lowerer_.coerceToBool(std::move(arg), expr.loc);
+                }
+                args.push_back(arg.value);
+            }
+            lowerer_.curLoc = expr.loc;
+            // Emit direct call to the canonical runtime extern (e.g., @Viper.Console.PrintI64).
+            if (rtSig->retType.kind != IlType::Kind::Void)
+            {
+                IlValue res = lowerer_.emitCallRet(rtSig->retType, calleeKey, args);
+                result_ = Lowerer::RVal{res, rtSig->retType};
+            }
+            else
+            {
+                lowerer_.emitCall(calleeKey, args);
+                result_ = Lowerer::RVal{IlValue::constInt(0), IlType(IlType::Kind::I64)};
+            }
         }
         else
         {
-            lowerer_.emitCall(calleeName, args);
-            result_ = Lowerer::RVal{IlValue::constInt(0), IlType(IlType::Kind::I64)};
+            for (size_t i = 0; i < expr.args.size(); ++i)
+            {
+                Lowerer::RVal arg = lowerer_.lowerExpr(*expr.args[i]);
+                if (signature && i < signature->paramTypes.size())
+                {
+                    IlType paramTy = signature->paramTypes[i];
+                    if (paramTy.kind == IlType::Kind::F64)
+                        arg = lowerer_.coerceToF64(std::move(arg), expr.loc);
+                    else if (paramTy.kind == IlType::Kind::I64)
+                        arg = lowerer_.coerceToI64(std::move(arg), expr.loc);
+                    else if (paramTy.kind == IlType::Kind::I1)
+                        arg = lowerer_.coerceToBool(std::move(arg), expr.loc);
+                }
+                args.push_back(arg.value);
+            }
+            lowerer_.curLoc = expr.loc;
+            const std::string calleeName = lowerer_.resolveCalleeName(calleeKey);
+            if (signature && signature->retType.kind != IlType::Kind::Void)
+            {
+                IlValue res = lowerer_.emitCallRet(signature->retType, calleeName, args);
+                result_ = Lowerer::RVal{res, signature->retType};
+            }
+            else
+            {
+                lowerer_.emitCall(calleeName, args);
+                result_ = Lowerer::RVal{IlValue::constInt(0), IlType(IlType::Kind::I64)};
+            }
         }
     }
 

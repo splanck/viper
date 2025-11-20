@@ -141,8 +141,8 @@ void test_ns_008_scoped_using_allowed()
 140 END NAMESPACE
 )";
     std::string msg = getFirstDiagnostic(source);
-    // Spec: USING inside namespace is an error (E_NS_008)
-    assert(!msg.empty());
+    // Phase 2: USING inside namespace is allowed (no error expected).
+    assert(msg.empty());
 }
 
 // Test E_NS_009: "reserved root namespace 'Viper' cannot be declared or imported"

@@ -258,13 +258,12 @@ function(viper_add_golden_suite_tests)
             "-DEXPECT=${EXPECT_NS_DUP_ALIAS}"
             -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
 
-    file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/using_in_namespace.stderr EXPECT_USING_IN_NS)
-    string(STRIP "${EXPECT_USING_IN_NS}" EXPECT_USING_IN_NS)
-    viper_add_ctest(basic_error_using_in_namespace
+    # Phase 2: USING inside namespace blocks is allowed; ensure no error.
+    viper_add_ctest(basic_using_in_namespace_scoped_ok
             ${CMAKE_COMMAND}
             -DILC=${BASIC_ILC}
             -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/using_in_namespace.bas
-            "-DEXPECT=${EXPECT_USING_IN_NS}"
+            -DEXPECT_EXIT_ZERO=TRUE
             -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
 
     file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/using_after_decl.stderr EXPECT_USING_AFTER_DECL)
@@ -767,6 +766,65 @@ function(viper_add_golden_suite_tests)
             -DIL_FILE=${_VIPER_GOLDEN_DIR}/quickstart.il
             "-DEXPECT=${EXPECT_QUICKSTART}"
             -P ${_VIPER_GOLDEN_DIR}/check_run_output.cmake)
+
+    # IL with namespaced runtime externs should run on the VM
+    file(READ ${_VIPER_GOLDEN_DIR}/il/viper_namespaces/print_i64.stdout EXPECT_VIPER_NS_PRINT_I64)
+    string(STRIP "${EXPECT_VIPER_NS_PRINT_I64}" EXPECT_VIPER_NS_PRINT_I64)
+    viper_add_ctest(il_viper_ns_print_i64
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DIL_FILE=${_VIPER_GOLDEN_DIR}/il/viper_namespaces/print_i64.il
+            "-DEXPECT=${EXPECT_VIPER_NS_PRINT_I64}"
+            -P ${_VIPER_GOLDEN_DIR}/check_run_output.cmake)
+
+    # When dual-publish is enabled, legacy rt_* alias should still work
+    if (VIPER_RUNTIME_NS_DUAL)
+        viper_add_ctest(il_legacy_rt_print_i64
+                ${CMAKE_COMMAND}
+                -DILC=${BASIC_ILC}
+                -DIL_FILE=${_VIPER_GOLDEN_DIR}/il/viper_namespaces/print_i64_legacy.il
+                "-DEXPECT=${EXPECT_VIPER_NS_PRINT_I64}"
+                -P ${_VIPER_GOLDEN_DIR}/check_run_output.cmake)
+    endif ()
+
+    # BASIC calls to Viper.* externs (qualified and via USING)
+    file(READ ${_VIPER_GOLDEN_DIR}/basic_runtime_ns/print_using.stdout EXPECT_BASIC_VIPER_USING)
+    string(STRIP "${EXPECT_BASIC_VIPER_USING}" EXPECT_BASIC_VIPER_USING)
+    viper_add_ctest(basic_runtime_ns_print_using
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_runtime_ns/print_using.bas
+            "-DEXPECT=${EXPECT_BASIC_VIPER_USING}"
+            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
+
+    file(READ ${_VIPER_GOLDEN_DIR}/basic_runtime_ns/print_qualified.stdout EXPECT_BASIC_VIPER_QUAL)
+    string(STRIP "${EXPECT_BASIC_VIPER_QUAL}" EXPECT_BASIC_VIPER_QUAL)
+    viper_add_ctest(basic_runtime_ns_print_qualified
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_runtime_ns/print_qualified.bas
+            "-DEXPECT=${EXPECT_BASIC_VIPER_QUAL}"
+            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
+
+    # USING inside NAMESPACE block should scope imports; fully qualified call prints 99
+    file(READ ${_VIPER_GOLDEN_DIR}/basic_runtime_ns/using_in_namespace.stdout EXPECT_USING_NS)
+    string(STRIP "${EXPECT_USING_NS}" EXPECT_USING_NS)
+    viper_add_ctest(basic_runtime_ns_using_in_namespace
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_runtime_ns/using_in_namespace.bas
+            "-DEXPECT=${EXPECT_USING_NS}"
+            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
+
+    # BASIC error: reserved root declaration under Viper
+    file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/reserved_root_decl.stderr EXPECT_RESERVED_DECL2)
+    string(STRIP "${EXPECT_RESERVED_DECL2}" EXPECT_RESERVED_DECL2)
+    viper_add_ctest(basic_error_reserved_root_decl
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/reserved_root_decl.bas
+            "-DEXPECT=${EXPECT_RESERVED_DECL2}"
+            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
 
     # OOP negative diagnostics
     set(OOP_ERR_DIR ${_VIPER_GOLDEN_DIR}/oop_errors)

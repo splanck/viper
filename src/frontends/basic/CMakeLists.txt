@@ -3,7 +3,8 @@
 add_library(fe_basic STATIC)
 
 target_sources(fe_basic PRIVATE
-        diag/BasicDiag.cpp
+    diag/BasicDiag.cpp
+    Options.cpp
         Token.cpp
         Lexer.cpp
         AST.cpp
@@ -97,6 +98,7 @@ target_sources(fe_basic PRIVATE
         sem/Check_Expr_Binary.cpp
         sem/Check_Expr_Call.cpp
         sem/NamespaceRegistry.cpp
+        sem/TypeRegistry.cpp
         sem/UsingContext.cpp
         sem/TypeResolver.cpp
         sem/RegistryBuilder.cpp
@@ -107,6 +109,7 @@ target_sources(fe_basic PRIVATE
         SemanticAnalyzer.Exprs.cpp
         SemanticAnalyzer.Builtins.cpp
         ScopeTracker.cpp
+        types/TypeMapping.cpp
         passes/CollectProcs.cpp
         constfold/Dispatch.cpp
         constfold/FoldArith.cpp

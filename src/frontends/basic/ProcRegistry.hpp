@@ -53,6 +53,8 @@
 #pragma once
 
 #include <optional>
+#include <cstddef>
+#include "il/runtime/RuntimeSignatures.hpp"
 #include <span>
 #include <string>
 #include <string_view>
@@ -92,10 +94,19 @@ class ProcRegistry
 
     void clear();
 
+    enum class ProcKind : std::uint8_t
+    {
+        User,
+        BuiltinExtern
+    };
+
     struct ProcEntry
     {
         const void *node{nullptr};
         il::support::SourceLoc loc{};
+        ProcKind kind{ProcKind::User};
+        // Back-pointer to runtime signature id when BuiltinExtern.
+        std::optional<il::runtime::RtSig> runtimeSigId{};
     };
 
     void registerProc(const FunctionDecl &f);
@@ -109,6 +120,9 @@ class ProcRegistry
     // P1.3 API additions
     void AddProc(const FunctionDecl *fn, il::support::SourceLoc loc);
     const ProcEntry *LookupExact(std::string_view qualified) const;
+
+    // Seed registry with builtin extern procedures from runtime signatures.
+    void seedRuntimeBuiltins();
 
   private:
     struct ProcDescriptor
@@ -131,3 +145,5 @@ class ProcRegistry
 };
 
 } // namespace il::frontends::basic
+
+// RtSig is now available from included header.

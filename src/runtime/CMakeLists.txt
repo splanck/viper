@@ -30,6 +30,7 @@ set(RT_SOURCES
         rt_type_registry.c
         rt_modvar.c
         rt_args.c
+        rt_ns_bridge.c
 )
 
 set(RT_PUBLIC_HEADERS
@@ -55,6 +56,7 @@ set(RT_PUBLIC_HEADERS
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_string_builder.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_modvar.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_args.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/rt_ns_bridge.h
 )
 
 add_library(viper_runtime STATIC ${RT_SOURCES})

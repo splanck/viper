@@ -123,6 +123,48 @@ void declareRuntimeExtern(build::IRBuilder &b, const il::runtime::RuntimeDescrip
 {
     b.addExtern(std::string(desc.name), desc.signature.retType, desc.signature.paramTypes);
 }
+
+/// @brief Resolve a canonical runtime descriptor for a potentially aliased name.
+/// @details Some helpers have multiple descriptors in the registry that share the
+///          same signature id (e.g., legacy "rt_*" aliases and canonical
+///          "Viper.*" names). Given any known name, prefer the canonical descriptor
+///          when available by matching on the generated signature id; otherwise
+///          fall back to the directly named descriptor.
+/// @param name Any registered runtime helper name (legacy or canonical).
+/// @return Pointer to the preferred descriptor when found; nullptr if unknown.
+const il::runtime::RuntimeDescriptor *resolveCanonicalDescriptor(std::string_view name)
+{
+    using namespace il::runtime;
+
+    const RuntimeDescriptor *desc = findRuntimeDescriptor(name);
+    if (!desc)
+        return nullptr;
+
+    // Identify the generated signature id for the provided descriptor name.
+    if (auto sigId = findRuntimeSignatureId(desc->name))
+    {
+        // Search for a descriptor that shares the same signature id but uses a
+        // canonical namespace-qualified name (prefer entries containing a '.').
+        const RuntimeDescriptor *best = desc;
+        for (const auto &entry : runtimeRegistry())
+        {
+            const auto otherId = findRuntimeSignatureId(entry.name);
+            if (!otherId || *otherId != *sigId)
+                continue;
+            // Prefer names that don't look like legacy flat symbols.
+            const bool isCanonical = entry.name.find('.') != std::string_view::npos;
+            if (isCanonical)
+            {
+                best = &entry;
+                break; // Found a canonical alias; stop searching.
+            }
+        }
+        return best;
+    }
+
+    // No signature id published; return the directly named descriptor.
+    return desc;
+}
 } // namespace
 
 /// @brief Declare every runtime helper required by the current lowering run.
@@ -582,9 +624,11 @@ void Lowerer::declareRequiredRuntime(build::IRBuilder &b)
 
     auto declareManual = [&](std::string_view name)
     {
-        if (const auto *desc = il::runtime::findRuntimeDescriptor(name))
+        if (const auto *desc = resolveCanonicalDescriptor(name))
+        {
             b.addExtern(
                 std::string(desc->name), desc->signature.retType, desc->signature.paramTypes);
+        }
     };
 
     for (const auto &helper : manualHelpers)

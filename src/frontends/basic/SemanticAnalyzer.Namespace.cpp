@@ -24,6 +24,7 @@
 
 #include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/IdentifierUtil.hpp"
+#include "frontends/basic/Options.hpp"
 #include "frontends/basic/SemanticAnalyzer.Internal.hpp"
 #include "frontends/basic/StringUtils.hpp"
 #include <algorithm>
@@ -52,9 +53,11 @@ static bool iequals(std::string_view a, std::string_view b)
 ///          Also maintains nsStack_ for nested namespace tracking.
 void SemanticAnalyzer::analyzeNamespaceDecl(NamespaceDecl &decl)
 {
-    // Check for reserved "Viper" root namespace.
+    // Check for reserved "Viper" root namespace: declarations are never allowed
+    // under the reserved root. Emit a dedicated diagnostic.
     if (!decl.path.empty() && iequals(decl.path[0], "Viper"))
     {
+        // Use the established E_NS_009 diagnostic for reserved root violations.
         de.emit(diag::BasicDiag::NsReservedViper, decl.loc, 1, {});
         return;
     }
@@ -168,15 +171,11 @@ void SemanticAnalyzer::analyzeUsingDecl(UsingDecl &decl)
         return;
     }
 
-    // Disallow USING inside namespace blocks: E_NS_008.
-    if (!nsStack_.empty())
-    {
-        de.emit(diag::BasicDiag::NsUsingNotFileScope, decl.loc, 1, {});
-        return;
-    }
-
-    // Enforce USING-before-decls at file scope: E_NS_005.
-    if (sawDecl_)
+    // Enforce USING-before-decls at file scope only: E_NS_005.
+    // Inside a namespace block, analyzeNamespaceDecl processes USING directives
+    // in a first pass before other declarations, so placement within the block
+    // is handled there.
+    if (sawDecl_ && nsStack_.empty())
     {
         de.emit(diag::BasicDiag::NsUsingAfterDecl, decl.loc, 1, {});
         return;
@@ -190,11 +189,17 @@ void SemanticAnalyzer::analyzeUsingDecl(UsingDecl &decl)
     if (nsPath.empty())
         return;
 
-    // E_NS_009: Check for reserved "Viper" root namespace.
+    // Reserved root "Viper": allow USING when runtime namespaces are enabled;
+    // otherwise retain legacy behavior and reject the import.
     if (!decl.namespacePath.empty() && iequals(decl.namespacePath[0], "Viper"))
     {
-        de.emit(diag::BasicDiag::NsReservedViper, decl.loc, 1, {});
-        return;
+        if (!FrontendOptions::enableRuntimeNamespaces())
+        {
+            de.emit(diag::BasicDiag::NsReservedViper, decl.loc, 1, {});
+            return;
+        }
+        // When enabled, accept USING Viper.* without recording an alias for the root
+        // segment here; normal namespace existence checks still apply below.
     }
 
     // E_NS_001: Namespace must exist in registry (error severity).

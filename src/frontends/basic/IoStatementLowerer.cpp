@@ -202,7 +202,7 @@ void IoStatementLowerer::lowerPrint(const PrintStmt &stmt)
                         lowerer_.emitCall("rt_str_retain_maybe", {value.value});
                     }
 
-                    lowerer_.emitCall("rt_print_str", {value.value});
+                    lowerer_.emitCall("Viper.Console.PrintStr", {value.value});
 
                     if (isLvalue)
                     {
@@ -216,12 +216,12 @@ void IoStatementLowerer::lowerPrint(const PrintStmt &stmt)
                 }
                 if (value.type.kind == IlType::Kind::F64)
                 {
-                    lowerer_.emitCall("rt_print_f64", {value.value});
+                    lowerer_.emitCall("Viper.Console.PrintF64", {value.value});
                     updateColumn(widthEstimate);
                     break;
                 }
                 value = lowerer_.lowerScalarExpr(std::move(value), stmt.loc);
-                lowerer_.emitCall("rt_print_i64", {value.value});
+                lowerer_.emitCall("Viper.Console.PrintI64", {value.value});
                 updateColumn(widthEstimate);
                 break;
             }
@@ -237,7 +237,7 @@ void IoStatementLowerer::lowerPrint(const PrintStmt &stmt)
                 std::string padding(spaces, ' ');
                 std::string spaceLbl = lowerer_.getStringLabel(padding);
                 Value sp = lowerer_.emitConstStr(spaceLbl);
-                lowerer_.emitCall("rt_print_str", {sp});
+                lowerer_.emitCall("Viper.Console.PrintStr", {sp});
                 break;
             }
             case PrintItem::Kind::Semicolon:
@@ -250,7 +250,7 @@ void IoStatementLowerer::lowerPrint(const PrintStmt &stmt)
     {
         std::string nlLbl = lowerer_.getStringLabel("\n");
         Value nl = lowerer_.emitConstStr(nlLbl);
-        lowerer_.emitCall("rt_print_str", {nl});
+        lowerer_.emitCall("Viper.Console.PrintStr", {nl});
         resetColumn();
     }
 }

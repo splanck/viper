@@ -46,8 +46,8 @@ END NAMESPACE
 )";
     DiagnosticEngine de2;
     size_t err2 = parseAndAnalyze(source2, de2);
-    // Spec: USING inside namespace is not allowed (E_NS_008)
-    assert(err2 > 0);
+    // Phase 2: scoped USING inside namespace is allowed (no error expected).
+    assert(err2 == 0);
 }
 
 // Test: USING after first decl (Phase 2 allows file-scoped USING anywhere)
