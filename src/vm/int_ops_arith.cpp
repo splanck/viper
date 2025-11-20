@@ -16,6 +16,8 @@
 
 #include "vm/IntOpSupport.hpp"
 
+#include <cassert>
+
 /// @file
 /// @brief Integer arithmetic opcode handlers for the VM interpreter.
 /// @details The functions in this translation unit evaluate arithmetic and
@@ -701,6 +703,11 @@ VM::ExecResult handleAShr(VM &vm,
                                 uint64_t shifted = value >> shift;
                                 if (isNegative)
                                 {
+                                    // Defensive check: shift must be in range [1, 63] to avoid UB
+                                    // in the expression (64U - shift). The mask at line 692 ensures
+                                    // this, but we assert it explicitly for safety.
+                                    assert(shift > 0 && shift < 64 &&
+                                           "shift must be in range [1, 63]");
                                     const uint64_t mask = (~uint64_t{0}) << (64U - shift);
                                     shifted |= mask;
                                 }

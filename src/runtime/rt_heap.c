@@ -112,6 +112,7 @@ void *rt_heap_alloc(rt_heap_kind_t kind,
     hdr->magic = RT_MAGIC;
     hdr->kind = (uint16_t)kind;
     hdr->elem_kind = (uint16_t)elem_kind;
+    hdr->flags = 0;
     hdr->refcnt = 1;
     hdr->len = init_len;
     hdr->cap = cap;
@@ -288,4 +289,16 @@ void rt_heap_set_len(void *payload, size_t new_len)
     if (!hdr)
         return;
     hdr->len = new_len;
+}
+
+int32_t rt_heap_mark_disposed(void *payload)
+{
+    rt_heap_hdr_t *hdr = payload_to_hdr(payload);
+    if (!hdr)
+        return 0;
+    rt_heap_validate_header(hdr);
+    const uint32_t DISPOSED = 0x1u;
+    const uint32_t was = hdr->flags & DISPOSED;
+    hdr->flags |= DISPOSED;
+    return was ? 1 : 0;
 }

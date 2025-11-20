@@ -64,6 +64,14 @@ union Slot
 
     /// @brief Runtime string handle.
     rt_string str;
+
+    /// @brief Compare two slots for bitwise equality (type-agnostic).
+    /// @note This compares the raw i64 representation. Use only when type is unknown
+    ///       or when comparing integral/pointer types.
+    [[nodiscard]] inline bool bitwiseEquals(const Slot &other) const noexcept
+    {
+        return i64 == other.i64;
+    }
 };
 
 /// @brief Call frame storing registers and operand stack.

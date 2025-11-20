@@ -70,6 +70,7 @@ void register_array_signatures()
     register_signature(make_signature("rt_obj_retain_maybe", {Kind::Ptr}));
     register_signature(make_signature("rt_obj_release_check0", {Kind::Ptr}, {Kind::I1}));
     register_signature(make_signature("rt_obj_free", {Kind::Ptr}));
+    register_signature(make_signature("rt_heap_mark_disposed", {Kind::Ptr}, {Kind::I1}));
 
     // String array operations
     register_signature(make_signature("rt_arr_str_alloc", {Kind::I64}, {Kind::Ptr}));

@@ -85,6 +85,7 @@ typedef struct rt_heap_hdr
     uint32_t magic;
     uint16_t kind;
     uint16_t elem_kind;
+    uint32_t flags;   /* debug/status flags: bit0=disposed */
     size_t refcnt;
     size_t len;
     size_t cap;
@@ -111,6 +112,15 @@ extern "C"
     size_t rt_heap_len(void *payload);
     size_t rt_heap_cap(void *payload);
     void rt_heap_set_len(void *payload, size_t new_len);
+
+    /**
+     * @brief Mark an object payload as disposed (debug aid).
+     * @details Sets a header bit to guard against double-dispose bugs. Returns 0 on first mark,
+     *          1 when the object was already marked as disposed. No-op for NULL payloads.
+     * @param payload Object payload pointer (may be NULL).
+     * @return 0 when marking for the first time; 1 when already disposed.
+     */
+    int32_t rt_heap_mark_disposed(void *payload);
 
 #ifdef __cplusplus
 }

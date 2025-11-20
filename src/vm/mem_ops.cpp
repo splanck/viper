@@ -84,6 +84,9 @@ VM::ExecResult handleAlloca(VM &vm,
     const size_t stackSize = fr.stack.size();
     constexpr size_t alignment = alignof(std::max_align_t);
 
+    // Alignment must be a power of 2 for bitwise operations to work correctly
+    static_assert((alignment & (alignment - 1)) == 0, "alignment must be power of 2");
+
     auto trapOverflow = [&]() -> VM::ExecResult
     {
         RuntimeBridge::trap(
@@ -96,17 +99,16 @@ VM::ExecResult handleAlloca(VM &vm,
     if (addr > stackSize)
         return trapOverflow();
 
+    // Use bitwise operations for alignment (faster than modulo when alignment is power of 2)
+    // Formula: (addr + alignment - 1) & ~(alignment - 1)
+    // This rounds addr up to the next multiple of alignment
     size_t alignedAddr = addr;
     if (alignment > 1)
     {
-        const size_t remainder = alignedAddr % alignment;
-        if (remainder != 0U)
-        {
-            const size_t padding = alignment - remainder;
-            if (alignedAddr > std::numeric_limits<size_t>::max() - padding)
-                return trapOverflow();
-            alignedAddr += padding;
-        }
+        // Check for overflow before adding alignment-1
+        if (alignedAddr > std::numeric_limits<size_t>::max() - (alignment - 1))
+            return trapOverflow();
+        alignedAddr = (alignedAddr + alignment - 1) & ~(alignment - 1);
     }
 
     if (alignedAddr > stackSize)
@@ -169,6 +171,12 @@ VM::ExecResult handleGEP(VM &vm,
     const std::uint64_t magnitude =
         delta >= 0 ? static_cast<std::uint64_t>(delta)
                    : static_cast<std::uint64_t>(-(delta + 1)) + std::uint64_t{1};
+
+    // NOTE: GEP intentionally allows out-of-bounds pointer construction (including
+    // wrapping arithmetic). This matches LLVM GEP semantics where creating an
+    // out-of-bounds pointer is defined behavior, but dereferencing it is not.
+    // The IL spec permits pointer arithmetic to wrap around address space boundaries.
+    // See test_vm_gep_nullptr.cpp for validation of this behavior.
     std::uintptr_t resultAddr = baseAddr;
     if (delta >= 0)
     {

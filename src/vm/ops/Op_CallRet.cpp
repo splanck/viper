@@ -179,7 +179,8 @@ VM::ExecResult handleCall(VM &vm,
             const size_t paramCount = std::min(args.size(), signature->paramTypes.size());
             for (size_t index = 0; index < paramCount; ++index)
             {
-                if (std::memcmp(&args[index], &originalArgs[index], sizeof(Slot)) == 0)
+                // Compare slots using bitwise equality (safe for all types)
+                if (args[index].bitwiseEquals(originalArgs[index]))
                     continue;
 
                 const auto kind = signature->paramTypes[index].kind;
@@ -234,8 +235,14 @@ VM::ExecResult handleCall(VM &vm,
                     };
 
                     const size_t width = copyWidthForKind(kind);
-                    if (width != 0 && binding.stackPtr >= stackBegin &&
-                        binding.stackPtr + width <= stackEnd)
+                    // Use uintptr_t arithmetic to avoid pointer overflow when checking bounds
+                    if (width != 0 && binding.stackPtr >= stackBegin && binding.stackPtr < stackEnd)
+                    {
+                        const auto stackPtrAddr = reinterpret_cast<std::uintptr_t>(binding.stackPtr);
+                        const auto stackEndAddr = reinterpret_cast<std::uintptr_t>(stackEnd);
+                        // Safe check: ensure writing 'width' bytes won't exceed stack bounds
+                        // Use subtraction to avoid overflow: (ptr + width <= end) becomes (end - ptr >= width)
+                        if (stackEndAddr - stackPtrAddr >= width)
                     {
                         Slot &mutated = args[index];
                         if (kind == il::core::Type::Kind::Str)
@@ -252,6 +259,7 @@ VM::ExecResult handleCall(VM &vm,
                             if (src)
                                 std::memcpy(binding.stackPtr, src, width);
                         }
+                    }
                     }
                 }
 

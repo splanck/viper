@@ -612,9 +612,13 @@ bool VM::prepareTrap(VmError &error)
     size_t faultIp = currentContext.hasInstruction ? currentContext.instructionIndex : 0;
     il::support::SourceLoc faultLoc = currentContext.loc;
 
-    for (auto it = execStack.rbegin(); it != execStack.rend(); ++it)
+    // Use index-based iteration to avoid potential iterator invalidation
+    // if exception handling modifies the execution stack
+    const size_t stackSize = execStack.size();
+    for (size_t i = 0; i < stackSize; ++i)
     {
-        ExecState *st = *it;
+        // Iterate in reverse order (from top of stack)
+        ExecState *st = execStack[stackSize - 1 - i];
         Frame &fr = st->fr;
         if (!fr.ehStack.empty())
         {

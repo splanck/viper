@@ -622,7 +622,7 @@ struct DescriptorRow
     RuntimeTrapClass trapClass;
 };
 
-constexpr std::array<DescriptorRow, 124> kDescriptorRows{{
+constexpr std::array<DescriptorRow, 125> kDescriptorRows{{
     DescriptorRow{"rt_abort",
                   std::nullopt,
                   "void(ptr)",
@@ -1465,6 +1465,14 @@ constexpr std::array<DescriptorRow, 124> kDescriptorRows{{
                   "void(ptr)",
                   &DirectHandler<&rt_obj_free, void, void *>::invoke,
                   featureLowering(RuntimeFeature::ObjFree),
+                  nullptr,
+                  0,
+                  RuntimeTrapClass::None},
+    DescriptorRow{"rt_heap_mark_disposed",
+                  std::nullopt,
+                  "i1(ptr)",
+                  &DirectHandler<&rt_heap_mark_disposed, int32_t, void *>::invoke,
+                  kManualLowering,
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
