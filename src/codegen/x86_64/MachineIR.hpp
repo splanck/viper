@@ -1,5 +1,5 @@
 // src/codegen/x86_64/MachineIR.hpp
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //
 // Purpose: Declare the minimal Machine IR representation required by the
 //          x86-64 backend during Phase A bring-up.

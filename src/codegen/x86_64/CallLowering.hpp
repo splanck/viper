@@ -1,5 +1,5 @@
 // src/codegen/x86_64/CallLowering.hpp
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //
 // Purpose: Declare utilities that translate high-level call descriptions into
 //          Machine IR conforming to the SysV AMD64 calling convention.

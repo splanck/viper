@@ -1,5 +1,5 @@
 // src/codegen/aarch64/AsmEmitter.hpp
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //
 // Purpose: Minimal AArch64 assembly emitter for early backend scaffolding.
 //          Provides helpers to emit a simple function prologue/epilogue and

@@ -1,5 +1,5 @@
 // src/codegen/x86_64/ISel.hpp
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //
 // Purpose: Declare the instruction selection helpers that canonicalise the
 //          Machine IR produced by the IL lowering bridge into concrete x86-64

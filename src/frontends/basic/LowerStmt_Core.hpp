@@ -1,5 +1,5 @@
 // File: src/frontends/basic/LowerStmt_Core.hpp
-// License: MIT License. See LICENSE in the project root for full license information.
+// License: GPL-3.0-only. See LICENSE in the project root for full license information.
 // Purpose: Declares core statement-lowering helpers shared across categories.
 // Key invariants: Helpers operate on the active Lowerer context without
 //                 re-dispatching or duplicating state transitions.

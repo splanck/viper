@@ -2,7 +2,7 @@
 // Purpose: Shared utilities for BASIC command-line tools.
 // Key invariants: Helpers must preserve existing CLI diagnostics.
 // Ownership/Lifetime: Callers retain ownership of buffers and SourceManager instances.
-// License: MIT License. See LICENSE in the project root for full license information.
+// License: GPL-3.0-only. See LICENSE in the project root for full license information.
 // Links: docs/codemap.md
 
 #pragma once

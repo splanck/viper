@@ -1,4 +1,4 @@
-// MIT License. See LICENSE in the project root for full license information.
+// GNU General Public License v3. See LICENSE in the project root for full license information.
 // File: src/vm/IntOpSupport.hpp
 // Purpose: Shared helpers for integer opcode handlers, covering trap dispatch and
 //          type-specialised arithmetic templates.

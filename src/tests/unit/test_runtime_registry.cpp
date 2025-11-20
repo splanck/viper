@@ -1,6 +1,6 @@
 // File: tests/unit/test_runtime_registry.cpp
 // Purpose: Validate runtime registry metadata coverage.
-// License: MIT License.
+// License: GPL-3.0-only.
 // Key invariants: Every descriptor publishes a handler and signature mapping.
 // Links: docs/codemap.md
 

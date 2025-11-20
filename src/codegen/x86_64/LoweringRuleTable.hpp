@@ -1,5 +1,5 @@
 // src/codegen/x86_64/LoweringRuleTable.hpp
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //
 // Purpose: Describe declarative lowering rules for x86-64 emission.
 // Invariants: Rule tables are constexpr and reference stateless emitters.

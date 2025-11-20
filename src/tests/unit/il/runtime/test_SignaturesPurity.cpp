@@ -1,6 +1,6 @@
 // File: tests/unit/il/runtime/test_SignaturesPurity.cpp
 // Purpose: Verify runtime signature registry seeds purity/read-only flags for optimisations.
-// License: MIT License. See LICENSE in the project root for full license information.
+// License: GPL-3.0-only. See LICENSE in the project root for full license information.
 // Key invariants: Known math helpers report pure+nothrow; strlen-style helpers report
 // readonly+nothrow. Links: src/il/runtime/signatures/Signatures_Math.cpp,
 // src/il/runtime/signatures/Signatures_Strings.cpp

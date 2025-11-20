@@ -1,5 +1,5 @@
 // File: src/il/transform/SimplifyCFG/ParamCanonicalization.hpp
-// License: MIT (see LICENSE for details).
+// License: GPL-3.0-only (see LICENSE for details).
 // Purpose: Declares parameter canonicalisation routines for SimplifyCFG.
 // Key invariants: Maintains block argument alignment across predecessors.
 // Ownership/Lifetime: Operates on mutable blocks owned by the caller.

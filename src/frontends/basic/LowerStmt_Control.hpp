@@ -1,5 +1,5 @@
 // File: src/frontends/basic/LowerStmt_Control.hpp
-// License: MIT License. See LICENSE in the project root for full license information.
+// License: GPL-3.0-only. See LICENSE in the project root for full license information.
 // Purpose: Declares control-flow lowering helpers for BASIC statements such as
 //          IF, loops, and GOSUB/GOTO constructs.
 // Key invariants: Helpers mutate the current block through the active Lowerer

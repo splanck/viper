@@ -1,5 +1,5 @@
 // src/codegen/aarch64/MachineIR.hpp
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //
 // Purpose: Minimal AArch64 Machine IR scaffolding (Phase A) used by tests and
 //          early integration. Represents a tiny subset of instructions sufficient

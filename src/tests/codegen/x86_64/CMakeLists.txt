@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 # File: tests/codegen/x86_64/CMakeLists.txt
 # Purpose: Build the x86-64 codegen smoke tests that exercise the adapter
 #          ILModule facade and verify minimal assembly output.

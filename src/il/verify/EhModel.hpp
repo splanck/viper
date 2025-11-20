@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Part of the Viper project, under the MIT License.
+// Part of the Viper project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
 // File: src/il/verify/EhModel.hpp

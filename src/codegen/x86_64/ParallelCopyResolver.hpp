@@ -1,5 +1,5 @@
 // src/codegen/x86_64/ParallelCopyResolver.hpp
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //
 // Purpose: Provide a utility for expanding parallel register copy assignments into
 //          a concrete, ordered sequence of moves for the x86-64 backend.

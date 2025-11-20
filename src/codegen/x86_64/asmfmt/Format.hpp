@@ -1,5 +1,5 @@
 // src/codegen/x86_64/asmfmt/Format.hpp
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //
 // Purpose: Provide reusable helpers for formatting x86-64 assembly operands and
 //          literal payloads shared across the code generator.

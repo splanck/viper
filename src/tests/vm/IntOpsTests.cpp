@@ -1,6 +1,6 @@
 // File: tests/vm/IntOpsTests.cpp
 // Purpose: Validate integer VM op semantics for mixed signed cases and traps.
-// License: MIT License. See LICENSE in project root for details.
+// License: GPL-3.0-only. See LICENSE in project root for details.
 
 #include "common/VmFixture.hpp"
 #include "il/build/IRBuilder.hpp"

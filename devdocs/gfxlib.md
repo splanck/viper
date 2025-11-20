@@ -1315,7 +1315,7 @@ vipergfx/
 │   └── input_demo.c              # Keyboard/mouse visualization
 ├── CMakeLists.txt                # Build configuration
 ├── README.md                     # Overview & build instructions
-└── LICENSE                       # License file (e.g., MIT)
+└── LICENSE                       # License file (e.g., GPL-3.0-only)
 ```
 
 ### 8.2 Platform Abstraction

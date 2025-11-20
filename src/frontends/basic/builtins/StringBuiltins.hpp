@@ -1,5 +1,5 @@
 // File: src/frontends/basic/builtins/StringBuiltins.hpp
-// License: MIT License. See LICENSE in the project root for full license information.
+// License: GPL-3.0-only. See LICENSE in the project root for full license information.
 // Purpose: Declares registry and lowering helpers for BASIC string built-ins.
 // Key invariants: Registry lookups return immutable metadata describing name,
 //                 arity, and lowering handler for supported string built-ins.

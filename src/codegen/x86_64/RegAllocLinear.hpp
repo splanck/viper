@@ -1,5 +1,5 @@
 // src/codegen/x86_64/RegAllocLinear.hpp
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //
 // Purpose: Declare the Phase A linear-scan register allocator for the x86-64
 //          backend. The allocator implements a deliberately simple strategy

@@ -1,4 +1,4 @@
-## SPDX-License-Identifier: MIT
+## SPDX-License-Identifier: GPL-3.0-only
 ## File: tests/e2e/test_vm_examples.cmake
 ## Purpose: Validate VM with simple IL examples.
 ## Key invariants: Example programs produce expected outputs.

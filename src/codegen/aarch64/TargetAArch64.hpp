@@ -1,5 +1,5 @@
 // src/codegen/aarch64/TargetAArch64.hpp
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //
 // Purpose: Define physical registers, register classes, and target metadata for the
 //          AArch64 (arm64) ABI backend used by Viper's native code generator on macOS.

@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 # File: tests/perf/CMakeLists.txt
 # Purpose: Performance-oriented regression checks.
 

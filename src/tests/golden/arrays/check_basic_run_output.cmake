@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 # File: tests/golden/arrays/check_basic_run_output.cmake
 # Purpose: Run BASIC frontend on a program and check stdout.
 if (NOT DEFINED ILC)

@@ -4,7 +4,7 @@
 //                 conventions for special values.
 // Ownership/Lifetime: Returned strings own their storage and are independent
 //                     of the helpers.
-// License: MIT (see LICENSE).
+// License: GPL-3.0-only (see LICENSE).
 // Links: docs/il-guide.md#reference
 #pragma once
 

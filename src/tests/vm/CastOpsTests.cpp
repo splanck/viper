@@ -1,6 +1,6 @@
 // File: tests/vm/CastOpsTests.cpp
 // Purpose: Verify VM cast handlers for 1-bit truncation/extension and fp-to-int conversions.
-// License: MIT License. See LICENSE in the project root for details.
+// License: GPL-3.0-only. See LICENSE in the project root for details.
 
 #include "il/build/IRBuilder.hpp"
 #include "vm/VM.hpp"

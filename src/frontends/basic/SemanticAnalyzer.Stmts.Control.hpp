@@ -1,5 +1,5 @@
 // File: src/frontends/basic/SemanticAnalyzer.Stmts.Control.hpp
-// License: MIT License. See LICENSE in the project root for full license
+// License: GPL-3.0-only. See LICENSE in the project root for full license
 //          information.
 // Purpose: Declares helpers specific to control-flow statement analysis for the
 //          BASIC semantic analyzer.

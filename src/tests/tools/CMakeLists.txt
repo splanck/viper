@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 # File: tests/tools/CMakeLists.txt
 # Purpose: CLI and tool-specific smoke tests.
 

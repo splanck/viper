@@ -4,7 +4,7 @@
 //                 statement blocks and optional line labels.
 // Ownership/Lifetime: Helpers operate on Parser-owned StatementSequencer instances
 //                     and return Parser-managed AST nodes.
-// License: MIT; see LICENSE for details.
+// License: GPL-3.0-only; see LICENSE for details.
 // Links: docs/codemap.md
 
 #pragma once

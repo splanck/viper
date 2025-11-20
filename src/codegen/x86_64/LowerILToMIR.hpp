@@ -1,5 +1,5 @@
 // src/codegen/x86_64/LowerILToMIR.hpp
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //
 // Purpose: Declare a bridge that adapts the front-end IL abstraction to the
 //          Machine IR (MIR) form consumed by the x86-64 backend during Phase A.

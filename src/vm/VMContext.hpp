@@ -1,5 +1,5 @@
 // File: src/vm/VMContext.hpp
-// License: MIT License. See LICENSE in the project root for full license information.
+// License: GPL-3.0-only. See LICENSE in the project root for full license information.
 // Purpose: Declares helper utilities for accessing VM execution context shared by
 //          dispatch strategies and opcode handlers.
 // Key invariants: Maintains a thread-local pointer to the active VM for trap

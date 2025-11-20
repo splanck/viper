@@ -1,5 +1,5 @@
 // src/codegen/x86_64/LoweringRules.hpp
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //
 // Purpose: Declare the rule registry that drives IL to MIR lowering.
 // Invariants: Rules are stateless function pairs matched deterministically.

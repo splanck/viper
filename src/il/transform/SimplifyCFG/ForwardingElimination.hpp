@@ -1,5 +1,5 @@
 // File: src/il/transform/SimplifyCFG/ForwardingElimination.hpp
-// License: MIT (see LICENSE for details).
+// License: GPL-3.0-only (see LICENSE for details).
 // Purpose: Declares empty block forwarding elimination for SimplifyCFG.
 // Key invariants: Redirects predecessors without altering live semantics.
 // Ownership/Lifetime: Modifies caller-owned CFG blocks in place.

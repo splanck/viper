@@ -1,5 +1,5 @@
 // src/codegen/aarch64/FramePlan.hpp
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //
 // Purpose: Describe a minimal frame save/restore plan for AArch64 functions.
 //          Used by the emitter to shape prologue/epilogue beyond FP/LR.

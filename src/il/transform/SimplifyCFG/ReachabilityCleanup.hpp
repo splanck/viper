@@ -1,5 +1,5 @@
 // File: src/il/transform/SimplifyCFG/ReachabilityCleanup.hpp
-// License: MIT (see LICENSE for details).
+// License: GPL-3.0-only (see LICENSE for details).
 // Purpose: Declares reachability-based cleanup for SimplifyCFG.
 // Key invariants: Removes only blocks proven unreachable from entry.
 // Ownership/Lifetime: Mutates the caller-owned function in place.

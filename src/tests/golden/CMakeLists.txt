@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 # File: tests/golden/CMakeLists.txt
 # Purpose: Golden tests for BASIC diagnostics and IL optimizations.
 

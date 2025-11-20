@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 # File: tests/cmake/TestHelpers.cmake
 # Purpose: Helper functions to keep the test CMake files concise.
 

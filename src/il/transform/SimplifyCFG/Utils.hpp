@@ -1,5 +1,5 @@
 // File: src/il/transform/SimplifyCFG/Utils.hpp
-// License: MIT (see LICENSE for details).
+// License: GPL-3.0-only (see LICENSE for details).
 // Purpose: Shared helpers for SimplifyCFG transformations.
 // Key invariants: Operates on IL CFG structures without mutating ownership.
 // Ownership/Lifetime: Functions inspect/mutate caller-owned IR structures.

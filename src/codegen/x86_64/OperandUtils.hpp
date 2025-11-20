@@ -1,5 +1,5 @@
 // src/codegen/x86_64/OperandUtils.hpp
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //
 // Purpose: Provide shared utility functions for Machine IR operand manipulation,
 //          reducing code duplication across the x86-64 backend.

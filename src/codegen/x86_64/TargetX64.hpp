@@ -1,5 +1,5 @@
 // src/codegen/x86_64/TargetX64.hpp
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //
 // Purpose: Define physical registers, register classes, and target metadata for the
 //          System V AMD64 ABI backend used by Viper's x86-64 code generator.

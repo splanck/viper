@@ -1,5 +1,5 @@
 // File: src/il/runtime/RuntimeSignaturesData.hpp
-// License: MIT License. See LICENSE in the project root for full license information.
+// License: GPL-3.0-only. See LICENSE in the project root for full license information.
 // Purpose: Provides static runtime signature specifications and symbol metadata.
 // Key invariants: Signature specification order matches RtSig enumerators and symbols.
 // Ownership/Lifetime: Inline constexpr tables with static storage across translation units.

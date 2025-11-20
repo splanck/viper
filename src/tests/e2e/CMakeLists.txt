@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 # File: tests/e2e/CMakeLists.txt
 # Purpose: End-to-end CLI and VM integration tests.
 

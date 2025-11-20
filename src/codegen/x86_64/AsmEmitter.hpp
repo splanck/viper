@@ -1,5 +1,5 @@
 // src/codegen/x86_64/AsmEmitter.hpp
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //
 // Purpose: Declare the x86-64 assembly emitter responsible for translating
 //          Machine IR into textual AT&T syntax and managing associated

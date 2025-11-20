@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 # File: tests/vm/CMakeLists.txt
 # Purpose: Tests covering the VM runtime and debugger support.
 

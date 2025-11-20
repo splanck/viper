@@ -1,5 +1,5 @@
 // src/codegen/aarch64/LowerILToMIR.hpp
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //
 // Purpose: Minimal IL→MIR lowering adapter for AArch64 (Phase A).
 //          Covers the subset of patterns used by the arm64 CLI smoke tests:

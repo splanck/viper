@@ -1,5 +1,5 @@
 // File: src/frontends/basic/LowerStmt_IO.hpp
-// License: MIT License. See LICENSE in the project root for full license information.
+// License: GPL-3.0-only. See LICENSE in the project root for full license information.
 // Purpose: Declares BASIC I/O statement lowering helpers grouped by channel or
 //          terminal operations.
 // Key invariants: Helpers convert BASIC semantics to runtime shims using the

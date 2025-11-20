@@ -1,5 +1,5 @@
 // File: src/frontends/basic/LowererContext.hpp
-// License: MIT License. See LICENSE in the project root for full license
+// License: GPL-3.0-only. See LICENSE in the project root for full license
 //          information.
 // Purpose: Defines helper context structures embedded in Lowerer for
 //          per-procedure state, deterministic block naming, and loop tracking.

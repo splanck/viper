@@ -1,6 +1,6 @@
 // File: tests/vm/ConstNullTests.cpp
 // Purpose: Validate const.null initializes destination slots with zero values for each IL kind.
-// License: MIT License. See LICENSE in the project root for details.
+// License: GPL-3.0-only. See LICENSE in the project root for details.
 
 #include "il/build/IRBuilder.hpp"
 #include "vm/VM.hpp"

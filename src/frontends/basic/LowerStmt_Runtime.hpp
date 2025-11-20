@@ -1,5 +1,5 @@
 // File: src/frontends/basic/LowerStmt_Runtime.hpp
-// License: MIT License. See LICENSE in the project root for full license information.
+// License: GPL-3.0-only. See LICENSE in the project root for full license information.
 // Purpose: Declares runtime-oriented statement lowering helpers, including data
 //          assignment, array allocation, and terminal control statements.
 // Key invariants: Helpers interact with runtime support through the active

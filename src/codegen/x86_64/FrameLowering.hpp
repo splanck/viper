@@ -1,5 +1,5 @@
 // src/codegen/x86_64/FrameLowering.hpp
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //
 // Purpose: Declare utilities responsible for constructing stack frames for the
 //          x86-64 backend during Phase A bring-up. The routines emit function

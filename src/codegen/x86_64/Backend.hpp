@@ -1,5 +1,5 @@
 // src/codegen/x86_64/Backend.hpp
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-only
 //
 // Purpose: Declare the high-level orchestration entry points for the x86-64
 //          backend, enabling Phase A clients to lower IL modules into assembly

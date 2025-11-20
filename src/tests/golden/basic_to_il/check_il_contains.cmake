@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 # File: tests/golden/basic_to_il/check_il_contains.cmake
 # Purpose: Emit IL for a BASIC file and assert presence/absence of substrings.
 

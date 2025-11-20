@@ -1,4 +1,4 @@
-## SPDX-License-Identifier: MIT
+## SPDX-License-Identifier: GPL-3.0-only
 ## File: tests/e2e/test_vm_strings.cmake
 ## Purpose: Ensure VM string operations behave as expected.
 ## Key invariants: Execution output contains specific substrings.

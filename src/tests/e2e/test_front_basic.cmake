@@ -1,4 +1,4 @@
-## SPDX-License-Identifier: MIT
+## SPDX-License-Identifier: GPL-3.0-only
 ## File: tests/e2e/test_front_basic.cmake
 ## Purpose: Exercise BASIC front end via simple programs.
 ## Key invariants: Program output and emitted IL match expectations.

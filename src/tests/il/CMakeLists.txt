@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: GPL-3.0-only
 # File: tests/il/CMakeLists.txt
 # Purpose: IL parser, verifier, and analysis tests.
 

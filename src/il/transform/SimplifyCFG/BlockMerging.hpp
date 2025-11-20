@@ -1,5 +1,5 @@
 // File: src/il/transform/SimplifyCFG/BlockMerging.hpp
-// License: MIT (see LICENSE for details).
+// License: GPL-3.0-only (see LICENSE for details).
 // Purpose: Declares block merging helpers for SimplifyCFG.
 // Key invariants: Merges preserve terminator semantics and argument mapping.
 // Ownership/Lifetime: Mutates predecessor/successor blocks owned by caller.
