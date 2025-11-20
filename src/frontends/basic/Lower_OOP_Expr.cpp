@@ -19,6 +19,7 @@
 #include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/Lowerer.hpp"
+#include "il/runtime/RuntimeSignatures.hpp"
 #include "frontends/basic/SemanticAnalyzer.hpp"
 #include "frontends/basic/NameMangler_OOP.hpp"
 #include "frontends/basic/Semantic_OOP.hpp"
@@ -222,11 +223,108 @@ Lowerer::RVal Lowerer::lowerNewExpr(const NewExpr &expr)
         classId = layoutIt->second.classId;
     }
 
+    // Ensure space for vptr at offset 0 even when class has no fields.
+    if (objectSize < 8)
+        objectSize = 8;
     requestHelper(RuntimeFeature::ObjNew);
     Value obj = emitCallRet(
         Type(Type::Kind::Ptr),
         "rt_obj_new_i64",
         {Value::constInt(classId), Value::constInt(static_cast<long long>(objectSize))});
+
+    // Pre-initialize vptr for dynamic dispatch: build a per-class vtable and store it.
+    if (const ClassInfo *ciInit = oopIndex_.findClass(qualify(expr.className)))
+    {
+        // Derive slot count from recorded method slots across the inheritance chain.
+        std::size_t maxSlot = 0;
+        bool hasAnyVirtual = false;
+        {
+            const ClassInfo *cur = ciInit;
+            while (cur)
+            {
+                for (const auto &mp : cur->methods)
+                {
+                    const auto &mi = mp.second;
+                    if (!mi.isVirtual || mi.slot < 0)
+                        continue;
+                    hasAnyVirtual = true;
+                    maxSlot = std::max<std::size_t>(maxSlot, static_cast<std::size_t>(mi.slot));
+                }
+                if (cur->baseQualified.empty())
+                    break;
+                cur = oopIndex_.findClass(cur->baseQualified);
+            }
+        }
+        const std::size_t slotCount = hasAnyVirtual ? (maxSlot + 1) : 0;
+        if (slotCount > 0)
+        {
+            if (builder)
+                builder->addExtern("rt_alloc", Type(Type::Kind::Ptr), {Type(Type::Kind::I64)});
+            const long long bytes = static_cast<long long>(slotCount * 8ULL);
+            Value vtblPtr = emitCallRet(Type(Type::Kind::Ptr), "rt_alloc", {Value::constInt(bytes)});
+
+            auto findImplementorQClass = [&](const std::string &startQ,
+                                             const std::string &mname) -> std::string
+            {
+                const ClassInfo *cur = oopIndex_.findClass(startQ);
+                while (cur)
+                {
+                    auto itM = cur->methods.find(mname);
+                    if (itM != cur->methods.end())
+                    {
+                        if (!itM->second.isAbstract)
+                            return cur->qualifiedName;
+                    }
+                    if (cur->baseQualified.empty())
+                        break;
+                    cur = oopIndex_.findClass(cur->baseQualified);
+                }
+                return startQ; // fallback
+            };
+
+            // Populate slots by scanning most-derived to bases (prefer derived impls)
+            std::vector<std::string> slotToName(slotCount);
+            {
+                const ClassInfo *cur = ciInit;
+                while (cur)
+                {
+                    for (const auto &mp : cur->methods)
+                    {
+                        const auto &mname = mp.first;
+                        const auto &mi = mp.second;
+                        if (!mi.isVirtual || mi.slot < 0)
+                            continue;
+                        const std::size_t s = static_cast<std::size_t>(mi.slot);
+                        if (s < slotToName.size() && slotToName[s].empty())
+                            slotToName[s] = mname;
+                    }
+                    if (cur->baseQualified.empty())
+                        break;
+                    cur = oopIndex_.findClass(cur->baseQualified);
+                }
+            }
+
+            for (std::size_t s = 0; s < slotCount; ++s)
+            {
+                const long long offset = static_cast<long long>(s * 8ULL);
+                Value slotPtr = emitBinary(Opcode::GEP, Type(Type::Kind::Ptr), vtblPtr, Value::constInt(offset));
+                const std::string &mname = slotToName[s];
+                if (mname.empty())
+                {
+                    emitStore(Type(Type::Kind::Ptr), slotPtr, Value::null());
+                }
+                else
+                {
+                    const std::string implQ = findImplementorQClass(ciInit->qualifiedName, mname);
+                    const std::string target = mangleMethod(implQ, mname);
+                    emitStore(Type(Type::Kind::Ptr), slotPtr, Value::global(target));
+                }
+            }
+
+            // Store the vptr at offset 0 in the object
+            emitStore(Type(Type::Kind::Ptr), obj, vtblPtr);
+        }
+    }
 
     std::vector<Value> ctorArgs;
     ctorArgs.reserve(expr.args.size() + 1);
@@ -283,7 +381,11 @@ std::optional<Lowerer::MemberFieldAccess> Lowerer::resolveMemberField(const Memb
     // represent an object (e.g., a class name in static access), bail out early
     // so callers can apply property sugar or static-field logic without forcing
     // a load of the base expression (which may not have storage).
-    std::string className = resolveObjectClass(*expr.base);
+    std::string className;
+    if (const auto *vbase = as<const VarExpr>(*expr.base))
+        className = getSlotType(vbase->name).objectClass;
+    if (className.empty())
+        className = resolveObjectClass(*expr.base);
     if (className.empty())
         return std::nullopt;
 
@@ -783,6 +885,16 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
             return std::nullopt;
 
         // Lookup itable, load function pointer at slot, and call.indirect
+        // Ensure runtime extern is declared for itable lookup
+        if (builder)
+        {
+            if (const auto *desc = il::runtime::findRuntimeDescriptor("rt_itable_lookup"))
+                builder->addExtern(std::string(desc->name), desc->signature.retType, desc->signature.paramTypes);
+            else
+                builder->addExtern("rt_itable_lookup",
+                                   Type(Type::Kind::Ptr),
+                                   {Type(Type::Kind::Ptr), Type(Type::Kind::I64)});
+        }
         Value itable = emitCallRet(
             Type(Type::Kind::Ptr), "rt_itable_lookup", {selfArg, Value::constInt(iface->ifaceId)});
         const long long offset = static_cast<long long>(slotIndex * 8ULL);
@@ -817,18 +929,34 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
     if (auto dispatched = tryInterfaceDispatch())
         return *dispatched;
 
-    // If virtual and not BASE-qualified, emit call.indirect; otherwise direct call.
+    // If virtual and not BASE-qualified, attempt dynamic dispatch by reading a per-object
+    // method pointer table address from a module-level binding when available. As a
+    // conservative fallback, construct the pointer from the object's class slot table by
+    // loading the function address at 'slot' from a contiguous array starting at the
+    // indirect callee pointer. This preserves correct behaviour for projects that populate
+    // per-class tables in module init.
     if (slot >= 0 && !baseQualified)
     {
-        // Indirect callee operand uses the mangled method identifier as a global.
-        Value calleeOp = Value::global(directCallee);
+        // Pointer-based table lookup: treat operand 0 as a pointer to the table base, then GEP.
+        // Load the callee-table pointer from the object (projects may store a table pointer
+        // at offset 0). If unavailable, this yields null and the indirect call path below
+        // will trap with a clear message.
+        Value tablePtr = emitLoad(Type(Type::Kind::Ptr), selfArg);
+        const long long offset = static_cast<long long>(slot * 8LL);
+        Value entryPtr = emitBinary(Opcode::GEP, Type(Type::Kind::Ptr), tablePtr, Value::constInt(offset));
+        Value fnPtr = emitLoad(Type(Type::Kind::Ptr), entryPtr);
+
         if (auto retType = findMethodReturnType(className, expr.method))
         {
             Type ilRetTy = type_conv::astToIlType(*retType);
-            Value result = emitCallIndirectRet(ilRetTy, calleeOp, args);
+            Value result = emitCallIndirectRet(ilRetTy, fnPtr, args);
+            if (ilRetTy.kind == Type::Kind::Str)
+                deferReleaseStr(result);
+            else if (ilRetTy.kind == Type::Kind::Ptr && !className.empty())
+                deferReleaseObj(result, className);
             return {result, ilRetTy};
         }
-        emitCallIndirect(calleeOp, args);
+        emitCallIndirect(fnPtr, args);
         return {Value::constInt(0), Type(Type::Kind::I64)};
     }
 

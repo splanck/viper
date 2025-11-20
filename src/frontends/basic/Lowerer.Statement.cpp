@@ -109,14 +109,16 @@ void StatementLowering::lowerSequence(const std::vector<const Stmt *> &stmts,
         // Check if this line is an error handler target
         auto &handlerBlocks = ctx.errorHandlers().blocks();
         auto handlerIt = handlerBlocks.find(vLine);
-        il::core::BasicBlock *lineBlock = nullptr;
-        if (handlerIt != handlerBlocks.end())
+        std::optional<size_t> lineBlockIndex;
+        const bool isTryCatchStmt = (stmt.stmtKind() == Stmt::Kind::TryCatch);
+        if (handlerIt != handlerBlocks.end() && !isTryCatchStmt)
         {
             // This line is a handler target - use the handler block
             ctx.setCurrent(&func->blocks[handlerIt->second]);
-            // Keep track of the line block so we can add a trap to it
-            if (lineBlocks.find(vLine) != lineBlocks.end())
-                lineBlock = &func->blocks[lineBlocks[vLine]];
+            // Remember the numeric index of the line block (avoid dangling pointers
+            // across potential vector reallocation during lowering of this stmt).
+            if (auto it = lineBlocks.find(vLine); it != lineBlocks.end())
+                lineBlockIndex = it->second;
         }
         else
         {
@@ -127,12 +129,21 @@ void StatementLowering::lowerSequence(const std::vector<const Stmt *> &stmts,
         lowerer.lowerStmt(stmt);
 
         // If this was a handler target with a line block, add a trap to the line block
-        if (lineBlock && lineBlock->instructions.empty() && !lineBlock->terminated)
+        if (lineBlockIndex)
         {
-            auto *savedCurrent = ctx.current();
-            ctx.setCurrent(lineBlock);
-            lowerer.emitTrap();
-            ctx.setCurrent(savedCurrent);
+            // Refresh pointers after the above lowering, which may have grown fn.blocks
+            func = ctx.function();
+            if (func && *lineBlockIndex < func->blocks.size())
+            {
+                auto *lineBlock = &func->blocks[*lineBlockIndex];
+                if (lineBlock->instructions.empty() && !lineBlock->terminated)
+                {
+                    auto *savedCurrent = ctx.current();
+                    ctx.setCurrent(lineBlock);
+                    lowerer.emitTrap();
+                    ctx.setCurrent(savedCurrent);
+                }
+            }
         }
         auto *current = ctx.current();
         if (current && current->terminated)
@@ -143,7 +154,7 @@ void StatementLowering::lowerSequence(const std::vector<const Stmt *> &stmts,
         }
 
         // Skip automatic branching for handler blocks - control flow is via RESUME
-        bool isHandlerBlock = (handlerIt != handlerBlocks.end());
+        bool isHandlerBlock = (handlerIt != handlerBlocks.end()) && !isTryCatchStmt;
         if (!isHandlerBlock)
         {
             auto *next = (i + 1 < stmts.size())

@@ -182,6 +182,20 @@ int cmdILOpt(int argc, char **argv)
     {
         passList.erase(std::remove(passList.begin(), passList.end(), "mem2reg"), passList.end());
     }
+    // If mem2reg stats are requested, run mem2reg explicitly with stats and
+    // remove it from the pass list to avoid double-running it. This preserves
+    // the pipeline semantics while providing accurate statistics for the first
+    // (and only) mem2reg run.
+    if (mem2regStats)
+    {
+        // Ensure mem2reg does not run again in the pipeline
+        passList.erase(std::remove(passList.begin(), passList.end(), "mem2reg"), passList.end());
+        viper::passes::Mem2RegStats stats{};
+        viper::passes::mem2reg(m, &stats);
+        std::cout << "mem2reg: promoted " << stats.promotedVars
+                  << ", removed loads " << stats.removedLoads
+                  << ", removed stores " << stats.removedStores << "\n";
+    }
     pm.run(m, passList);
     std::ofstream ofs(outFile);
     if (!ofs)

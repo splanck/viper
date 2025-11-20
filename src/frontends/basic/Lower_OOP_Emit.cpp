@@ -243,6 +243,107 @@ void Lowerer::emitClassConstructor(const ClassDecl &klass, const ConstructorDecl
 
     ctx.setCurrent(&fn.blocks.front());
     unsigned selfSlotId = materializeSelfSlot(klass.name, fn);
+
+    // Initialize the object's vptr with a per-instance vtable when virtual slots exist.
+    // This ensures virtual dispatch works even before a global class registry is introduced.
+    // The vtable layout mirrors Semantic_OOP's slot order for the class, pointing each
+    // entry at the most-derived implementation available in the class or its bases.
+    if (const ClassInfo *ciInit = oopIndex_.findClass(qualify(klass.name)))
+    {
+        // Compute vtable size and slot->name mapping robustly from method slots.
+        // Some pipelines may not have ciInit->vtable populated; derive from slots instead.
+        std::size_t maxSlot = 0;
+        bool hasAnyVirtual = false;
+        {
+            const ClassInfo *cur = ciInit;
+            while (cur)
+            {
+                for (const auto &mp : cur->methods)
+                {
+                    const auto &mi = mp.second;
+                    if (!mi.isVirtual || mi.slot < 0)
+                        continue;
+                    hasAnyVirtual = true;
+                    maxSlot = std::max<std::size_t>(maxSlot, static_cast<std::size_t>(mi.slot));
+                }
+                if (cur->baseQualified.empty())
+                    break;
+                cur = oopIndex_.findClass(cur->baseQualified);
+            }
+        }
+
+        const std::size_t slotCount = hasAnyVirtual ? (maxSlot + 1) : 0;
+        if (slotCount > 0)
+        {
+            // Allocate vtable: slotCount * sizeof(void*) bytes
+            const long long bytes = static_cast<long long>(slotCount * 8ULL);
+            Value vtblPtr = emitCallRet(Type(Type::Kind::Ptr), "rt_alloc", {Value::constInt(bytes)});
+
+            // Helper: find concrete implementor along base chain for method @name
+            auto findImplementorQClass = [&](const std::string &startQ,
+                                             const std::string &mname) -> std::string
+            {
+                const ClassInfo *cur = oopIndex_.findClass(startQ);
+                while (cur)
+                {
+                    auto itM = cur->methods.find(mname);
+                    if (itM != cur->methods.end())
+                    {
+                        if (!itM->second.isAbstract)
+                            return cur->qualifiedName;
+                    }
+                    if (cur->baseQualified.empty())
+                        break;
+                    cur = oopIndex_.findClass(cur->baseQualified);
+                }
+                return startQ; // fallback
+            };
+
+            // Populate vtable entries
+            // Build slot -> method name mapping from class + bases
+            std::vector<std::string> slotToName(slotCount);
+            {
+                const ClassInfo *cur = ciInit;
+                while (cur)
+                {
+                    for (const auto &mp : cur->methods)
+                    {
+                        const auto &mname = mp.first;
+                        const auto &mi = mp.second;
+                        if (!mi.isVirtual || mi.slot < 0)
+                            continue;
+                        const std::size_t s = static_cast<std::size_t>(mi.slot);
+                        if (s < slotToName.size())
+                            slotToName[s] = mname; // prefer most-derived assignment first in walk
+                    }
+                    if (cur->baseQualified.empty())
+                        break;
+                    cur = oopIndex_.findClass(cur->baseQualified);
+                }
+            }
+
+            for (std::size_t s = 0; s < slotCount; ++s)
+            {
+                const long long offset = static_cast<long long>(s * 8ULL);
+                Value slotPtr = emitBinary(Opcode::GEP, Type(Type::Kind::Ptr), vtblPtr, Value::constInt(offset));
+                const std::string &mname = slotToName[s];
+                if (mname.empty())
+                {
+                    emitStore(Type(Type::Kind::Ptr), slotPtr, Value::null());
+                }
+                else
+                {
+                    const std::string implQ = findImplementorQClass(ciInit->qualifiedName, mname);
+                    const std::string target = mangleMethod(implQ, mname);
+                    emitStore(Type(Type::Kind::Ptr), slotPtr, Value::global(target));
+                }
+            }
+
+            // Store vptr into the object's header (offset 0)
+            Value selfPtr = loadSelfPointer(selfSlotId);
+            emitStore(Type(Type::Kind::Ptr), selfPtr, vtblPtr);
+        }
+    }
     for (std::size_t i = 0; i < ctor.params.size(); ++i)
     {
         const auto &param = ctor.params[i];

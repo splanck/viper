@@ -516,11 +516,41 @@ class HandlerCoverageTraversal
     /// @return Pointer to the instruction when it terminates the block; null otherwise.
     const Instr *processEhInstruction(const Instr &instr, const BasicBlock &bb, State &state)
     {
-        if (!state.hasResumeToken && !state.handlerStack.empty() &&
-            isPotentialFaultingOpcode(instr.op))
+        if (!state.hasResumeToken && !state.handlerStack.empty() && isPotentialFaultingOpcode(instr.op))
         {
             if (const BasicBlock *handlerBlock = state.handlerStack.back())
-                coverage[handlerBlock].insert(&bb);
+            {
+                // Heuristic: when the current block immediately branches to a trap block,
+                // attribute coverage to the trap successor instead of the current block.
+                if (const Instr *term = model.findTerminator(bb))
+                {
+                    const std::vector<const BasicBlock *> succs = model.gatherSuccessors(*term);
+                    const BasicBlock *trapSucc = nullptr;
+                    for (const BasicBlock *s : succs)
+                    {
+                        if (const Instr *sTerm = model.findTerminator(*s))
+                        {
+                            if (sTerm->op == Opcode::Trap || sTerm->op == Opcode::TrapFromErr)
+                            {
+                                trapSucc = s;
+                                break;
+                            }
+                        }
+                    }
+                    if (trapSucc)
+                    {
+                        coverage[handlerBlock].insert(trapSucc);
+                    }
+                    else
+                    {
+                        coverage[handlerBlock].insert(&bb);
+                    }
+                }
+                else
+                {
+                    coverage[handlerBlock].insert(&bb);
+                }
+            }
         }
 
         if (instr.op == Opcode::EhPush)

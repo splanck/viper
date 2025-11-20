@@ -47,6 +47,8 @@ void Lowerer::lowerOnErrorGoto(const OnErrorGoto &stmt)
 
     curLoc = stmt.loc;
 
+    // NOTE: No-op here; curIdx tracking belongs in lowerTryCatch.
+
     if (stmt.toZero)
     {
         clearActiveErrorHandler();
@@ -100,14 +102,9 @@ void Lowerer::lowerResume(const Resume &stmt)
     if (handlerBlock.params.size() < 2)
         return;
 
-    unsigned tokId = handlerBlock.params[1].id;
-    // Ensure the parameter name is in the function's valueNames so it serializes correctly
-    if (func->valueNames.size() <= tokId)
-        func->valueNames.resize(tokId + 1);
-    if (func->valueNames[tokId].empty())
-        func->valueNames[tokId] = handlerBlock.params[1].name;
-
-    Value resumeTok = Value::temp(tokId);
+    // Retrieve the resume token via the builder to avoid manipulating
+    // function valueNames directly.
+    Value resumeTok = builder->blockParam(handlerBlock, 1);
 
     Instr instr;
     instr.type = Type(Type::Kind::Void);
@@ -168,24 +165,66 @@ void Lowerer::lowerTryCatch(const TryCatchStmt &stmt)
 
     curLoc = stmt.loc;
 
+    // Capture the index of the current block before creating any new blocks,
+    // since appending to the function's block list may reallocate and
+    // invalidate raw pointers stored in the context.
+    const std::size_t curIdx = ctx.currentIndex();
+
     // Create the post-try continuation block with a deterministic label.
     BlockNamer *blockNamer = ctx.blockNames().namer();
     const size_t afterIdx = func->blocks.size();
     std::string afterLbl = blockNamer ? blockNamer->generic("after_try") : mangler.block("after_try");
     builder->addBlock(*func, afterLbl);
 
-    // Prepare handler block keyed by the TRY virtual line number; ensure it has (err, tok) params and eh.entry.
-    // Using virtualLine() avoids collisions when source does not include explicit line numbers.
-    BasicBlock *handler = ensureErrorHandlerBlock(virtualLine(stmt));
-
     // Restore pointers that might be invalidated by block creation.
     func = ctx.function();
     BasicBlock *afterTry = &func->blocks[afterIdx];
 
-    // Push handler and lower the try body in the current block sequence.
-    // Important: Do NOT touch ctx.errorHandlers().setActive* here. TRY/CATCH
-    // composes as a pure push/pop atop any ON ERROR handler.
-    emitEhPush(handler);
+    // Determine a stable handler key. Prefer the first statement inside TRY so
+    // the handler is associated with that line; fall back to the TRY node.
+    int handlerKey = virtualLine(stmt);
+    if (!stmt.tryBody.empty())
+    {
+        for (const auto &sp : stmt.tryBody)
+        {
+            if (sp)
+            {
+                handlerKey = virtualLine(*sp);
+                break;
+            }
+        }
+    }
+
+    // Pre-create handler block keyed by handlerKey so we can capture its label
+    // before creating additional blocks that may reallocate the block vector.
+    BasicBlock *preHandler = ensureErrorHandlerBlock(handlerKey);
+    std::string preHandlerLabel = preHandler ? preHandler->label : std::string{};
+
+    // Emit eh.push in a dedicated try-entry block to avoid attributing inner TRY
+    // coverage to the parent line block. This also creates a clean structural
+    // region for post-dominator checks.
+    func = ctx.function();
+    std::string tryEntryLbl = blockNamer ? blockNamer->generic("try_entry") : mangler.block("try_entry");
+    builder->addBlock(*func, tryEntryLbl);
+    BasicBlock *tryEntry = &func->blocks.back();
+    // Branch from the original current block to the try-entry block.
+    ctx.setCurrentByIndex(curIdx);
+    emitBr(tryEntry);
+    // Start TRY region in the new block.
+    ctx.setCurrent(tryEntry);
+    // Compute handler label deterministically and emit eh.push by label to avoid
+    // dangling block pointers across vector reallocations.
+    std::string handlerLabel = preHandlerLabel;
+    {
+        Instr in;
+        in.op = Opcode::EhPush;
+        in.type = Type(Type::Kind::Void);
+        in.labels.push_back(handlerLabel);
+        in.loc = curLoc;
+        BasicBlock *block = ctx.current();
+        if (block)
+            block->instructions.push_back(std::move(in));
+    }
     for (const auto &st : stmt.tryBody)
     {
         if (!st)
@@ -197,49 +236,20 @@ void Lowerer::lowerTryCatch(const TryCatchStmt &stmt)
     }
 
     // On the normal path, pop the handler and branch to the continuation.
-    // This restores any outer ON ERROR handler that existed prior to TRY.
     if (ctx.current() && !ctx.current()->terminated)
     {
+        // Lowering the try-body may have appended new blocks and reallocated
+        // the function's block vector. Refresh the after_try pointer before use.
+        func = ctx.function();
+        afterTry = &func->blocks[afterIdx];
         emitEhPop();
         emitBr(afterTry);
     }
 
     // Switch insertion to the handler to lower the catch body.
     func = ctx.function();
-    handler = ensureErrorHandlerBlock(virtualLine(stmt));
-    BasicBlock *handlerBlock = handler;
+    BasicBlock *handlerBlock = ensureErrorHandlerBlock(handlerKey);
     ctx.setCurrent(handlerBlock);
-
-    // If a catch variable was provided, attempt to initialise it from ERR().
-    if (stmt.catchVar && !stmt.catchVar->empty())
-    {
-        const std::string &name = *stmt.catchVar;
-        if (auto storage = resolveVariableStorage(name, stmt.loc))
-        {
-            // Extract i32 error code from handler %err and widen/sign-extend to i64.
-            if (handlerBlock->params.size() >= 1)
-            {
-                unsigned errId = handlerBlock->params[0].id;
-                // Ensure parameter names appear for deterministic printing.
-                if (func->valueNames.size() <= errId)
-                    func->valueNames.resize(errId + 1);
-                if (func->valueNames[errId].empty())
-                    func->valueNames[errId] = handlerBlock->params[0].name;
-
-                Value errParam = Value::temp(errId);
-                Value code32 = emitUnary(Opcode::ErrGetCode, Type(Type::Kind::I32), errParam);
-                // Widen to i64 via a store/load pair and arithmetic shift to sign-extend 32->64.
-                Value scratch = emitAlloca(sizeof(std::int64_t));
-                emitStore(Type(Type::Kind::I64), scratch, Value::constInt(0));
-                emitStore(Type(Type::Kind::I32), scratch, code32);
-                Value code64 = emitLoad(Type(Type::Kind::I64), scratch);
-                Value shl = emitBinary(Opcode::Shl, Type(Type::Kind::I64), code64, Value::constInt(32));
-                code64 = emitBinary(Opcode::AShr, Type(Type::Kind::I64), shl, Value::constInt(32));
-
-                emitStore(Type(Type::Kind::I64), storage->pointer, code64);
-            }
-        }
-    }
 
     // Lower the catch body statements.
     for (const auto &st : stmt.catchBody)
@@ -258,13 +268,14 @@ void Lowerer::lowerTryCatch(const TryCatchStmt &stmt)
     {
         if (handlerBlock->params.size() >= 2)
         {
-            unsigned tokId = handlerBlock->params[1].id;
-            if (func->valueNames.size() <= tokId)
-                func->valueNames.resize(tokId + 1);
-            if (func->valueNames[tokId].empty())
-                func->valueNames[tokId] = handlerBlock->params[1].name;
-            Value resumeTok = Value::temp(tokId);
-            builder->emitResumeLabel(resumeTok, *afterTry, stmt.loc);
+            // Refresh both handler and after_try pointers before emitting the terminator,
+            // in case catch-body lowering appended blocks and caused reallocation.
+    func = ctx.function();
+    handlerBlock = ensureErrorHandlerBlock(handlerKey);
+            afterTry = &func->blocks[afterIdx];
+            builder->setInsertPoint(*handlerBlock);
+            Value resumeTok2 = Value::temp(handlerBlock->params[1].id);
+            builder->emitResumeLabel(resumeTok2, *afterTry, stmt.loc);
             handlerBlock->terminated = true;
         }
     }

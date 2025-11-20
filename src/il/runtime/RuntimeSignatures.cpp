@@ -25,6 +25,7 @@
 ///          the verifier and code generator.
 
 #include "il/runtime/RuntimeSignatures.hpp"
+#include "runtime/rt_oop.h"
 #include "il/runtime/HelperEffects.hpp"
 #include "il/runtime/RuntimeSignatureParser.hpp"
 #include "il/runtime/RuntimeSignaturesData.hpp"
@@ -622,7 +623,7 @@ struct DescriptorRow
     RuntimeTrapClass trapClass;
 };
 
-constexpr std::array<DescriptorRow, 125> kDescriptorRows{{
+constexpr std::array<DescriptorRow, 127> kDescriptorRows{{
     DescriptorRow{"rt_abort",
                   std::nullopt,
                   "void(ptr)",
@@ -1441,6 +1442,23 @@ constexpr std::array<DescriptorRow, 125> kDescriptorRows{{
                   "ptr(i64,i64)",
                   &DirectHandler<&rt_obj_new_i64, void *, int64_t, int64_t>::invoke,
                   featureLowering(RuntimeFeature::ObjNew),
+                  nullptr,
+                  0,
+                  RuntimeTrapClass::None},
+    // OOP virtual/interface dispatch helpers
+    DescriptorRow{"rt_get_vfunc",
+                  std::nullopt,
+                  "ptr(ptr,i64)",
+                  &DirectHandler<&rt_get_vfunc, void *, const rt_object *, uint32_t>::invoke,
+                  kManualLowering,
+                  nullptr,
+                  0,
+                  RuntimeTrapClass::None},
+    DescriptorRow{"rt_itable_lookup",
+                  std::nullopt,
+                  "ptr(ptr,i64)",
+                  &DirectHandler<&rt_itable_lookup, void **, void *, int>::invoke,
+                  kManualLowering,
                   nullptr,
                   0,
                   RuntimeTrapClass::None},

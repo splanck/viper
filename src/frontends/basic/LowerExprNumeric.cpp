@@ -119,7 +119,7 @@ NumericExprLowering::NumericOpConfig NumericExprLowering::normalizeNumericOperan
     Lowerer &lowerer = *lowerer_;
     NumericOpConfig config;
 
-    const bool requiresFloat = expr.op == BinaryExpr::Op::Div || expr.op == BinaryExpr::Op::Pow;
+    const bool requiresFloat = expr.op == BinaryExpr::Op::Pow;
     if (requiresFloat)
     {
         auto promoteToF64 = [&](Lowerer::RVal &value, const Expr *node)

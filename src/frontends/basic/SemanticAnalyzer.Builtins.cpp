@@ -262,6 +262,11 @@ const SemanticAnalyzer::BuiltinSignature &SemanticAnalyzer::builtinSignature(
                                               /*args*/ nullptr,
                                               /*count*/ 0,
                                               /*result*/ Type::String};
+    static const BuiltinSignature kErrSig{/*required*/ 0,
+                                          /*optional*/ 0,
+                                          /*args*/ nullptr,
+                                          /*count*/ 0,
+                                          /*result*/ Type::Int};
     switch (builtin)
     {
         case B::Argc:
@@ -270,6 +275,8 @@ const SemanticAnalyzer::BuiltinSignature &SemanticAnalyzer::builtinSignature(
             return kArgGetSig;
         case B::Command:
             return kCommandSig;
+        case B::Err:
+            return kErrSig;
         default:
             break;
     }
@@ -339,7 +346,11 @@ const SemanticAnalyzer::BuiltinSignature &SemanticAnalyzer::builtinSignature(
     }
 
     // Fallback to legacy static table but override fixed result kind when possible to reduce drift.
-    const BuiltinSignature &legacy = kBuiltinSignatures[static_cast<size_t>(builtin)];
+    // Guard against legacy table drift; default to a minimally useful signature.
+    const std::size_t idx = static_cast<std::size_t>(builtin);
+    static BuiltinSignature kDefault{/*required*/ 0, /*optional*/ 0, nullptr, 0, Type::Unknown};
+    const BuiltinSignature &legacy = (idx < kBuiltinSignatures.size()) ? kBuiltinSignatures[idx]
+                                                                       : kDefault;
     static BuiltinSignature scratch;
     scratch = legacy;
     switch (getBuiltinFixedResult(builtin))
