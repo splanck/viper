@@ -79,20 +79,25 @@ struct ClassInfo
     bool isAbstract{false};        ///< True when class is abstract.
     bool isFinal{false};           ///< True when class is final.
     il::support::SourceLoc loc{};  ///< Location of the CLASS keyword.
-    std::vector<FieldInfo> fields; ///< Ordered field declarations.
+    std::vector<FieldInfo> fields;       ///< Ordered instance field declarations.
+    std::vector<FieldInfo> staticFields; ///< Ordered static field declarations.
     bool hasConstructor = false;   ///< True if CLASS declares a constructor.
     bool hasSynthCtor = false;     ///< True when lowering must synthesise a constructor.
     bool hasDestructor = false;    ///< True if CLASS declares a destructor.
+    bool hasStaticCtor = false;    ///< True if CLASS declares a static constructor.
     std::vector<CtorParam> ctorParams; ///< Constructor signature if declared.
 
     /// @brief Extended method metadata used for vtable construction and checks.
     struct MethodInfo
     {
         MethodSig sig;           ///< Signature (params/return/access).
+        bool isStatic = false;   ///< True when declared STATIC (no implicit receiver).
         bool isVirtual = false;  ///< Declared or implied virtual.
         bool isAbstract = false; ///< Declared abstract.
         bool isFinal = false;    ///< Declared final.
         int slot = -1;           ///< Virtual slot index; -1 for non-virtual.
+        bool isPropertyAccessor = false; ///< True when synthesized from a PROPERTY.
+        bool isGetter = false;           ///< True for getter; false for setter when accessor.
     };
 
     /// Declared methods indexed by name.

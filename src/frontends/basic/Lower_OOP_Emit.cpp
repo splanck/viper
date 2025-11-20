@@ -460,9 +460,10 @@ void Lowerer::emitClassMethod(const ClassDecl &klass, const MethodDecl &method)
     collectVars(body);
 
     ProcedureMetadata metadata;
-    metadata.paramCount = 1 + method.params.size();
+    metadata.paramCount = (method.isStatic ? 0 : 1) + method.params.size();
     metadata.bodyStmts = body;
-    metadata.irParams.push_back({"ME", Type(Type::Kind::Ptr)});
+    if (!method.isStatic)
+        metadata.irParams.push_back({"ME", Type(Type::Kind::Ptr)});
     for (const auto &param : method.params)
     {
         // Object-typed parameters should use pointer IL type regardless of AST primitive default
@@ -524,7 +525,8 @@ void Lowerer::emitClassMethod(const ClassDecl &klass, const MethodDecl &method)
     buildProcedureSkeleton(fn, name, metadata);
 
     ctx.setCurrent(&fn.blocks.front());
-    materializeSelfSlot(klass.name, fn);
+    if (!method.isStatic)
+        materializeSelfSlot(klass.name, fn);
     for (std::size_t i = 0; i < method.params.size(); ++i)
     {
         const auto &param = method.params[i];
@@ -546,7 +548,7 @@ void Lowerer::emitClassMethod(const ClassDecl &klass, const MethodDecl &method)
         info.slotId = slot.id;
         Type ilParamTy = (!param.objectClass.empty() || param.is_array) ? Type(Type::Kind::Ptr)
                                                                         : type_conv::astToIlType(param.type);
-        Value incoming = Value::temp(fn.params[1 + i].id);
+        Value incoming = Value::temp(fn.params[(method.isStatic ? 0 : 1) + i].id);
         if (param.is_array)
             storeArray(slot, incoming);
         else
@@ -629,6 +631,171 @@ void Lowerer::emitClassMethod(const ClassDecl &klass, const MethodDecl &method)
     ctx.blockNames().resetNamer();
 }
 
+void Lowerer::emitClassMethodWithBody(const ClassDecl &klass,
+                                      const MethodDecl &method,
+                                      const std::vector<const Stmt *> &bodyStmts)
+{
+    resetLoweringState();
+    ClassContextGuard classGuard(*this, qualify(klass.name));
+    FieldScopeGuard fieldScope(*this, klass.name);
+    collectVars(bodyStmts);
+
+    ProcedureMetadata metadata;
+    metadata.paramCount = (method.isStatic ? 0 : 1) + method.params.size();
+    metadata.bodyStmts = bodyStmts;
+    if (!method.isStatic)
+        metadata.irParams.push_back({"ME", Type(Type::Kind::Ptr)});
+    for (const auto &param : method.params)
+    {
+        const bool isObjectParam = !param.objectClass.empty();
+        Type ilParamTy = (param.is_array || isObjectParam) ? Type(Type::Kind::Ptr)
+                                                           : type_conv::astToIlType(param.type);
+        metadata.irParams.push_back({param.name, ilParamTy});
+        if (param.is_array)
+        {
+            requireArrayI32Retain();
+            requireArrayI32Release();
+        }
+    }
+
+    const bool returnsValue = method.ret.has_value();
+    const bool returnsObject = !method.explicitClassRetQname.empty();
+    Type methodRetType = Type(Type::Kind::Void);
+    std::optional<::il::frontends::basic::Type> methodRetAst;
+    if (returnsValue || returnsObject)
+    {
+        if (returnsObject)
+        {
+            methodRetType = Type(Type::Kind::Ptr);
+            if (findSymbol(method.name))
+            {
+                std::string qualifiedClassName;
+                for (size_t i = 0; i < method.explicitClassRetQname.size(); ++i)
+                {
+                    if (i > 0)
+                        qualifiedClassName += ".";
+                    qualifiedClassName += method.explicitClassRetQname[i];
+                }
+                setSymbolObjectType(method.name, qualifiedClassName);
+            }
+        }
+        else if (returnsValue)
+        {
+            methodRetType = type_conv::astToIlType(*method.ret);
+            methodRetAst = method.ret;
+            if (findSymbol(method.name))
+            {
+                setSymbolType(method.name, *method.ret);
+            }
+        }
+    }
+
+    std::string name = mangleMethod(qualify(klass.name), method.name);
+    Function &fn = builder->startFunction(name, methodRetType, metadata.irParams);
+
+    auto &ctx = context();
+    ctx.setFunction(&fn);
+    ctx.setNextTemp(fn.valueNames.size());
+
+    buildProcedureSkeleton(fn, name, metadata);
+
+    ctx.setCurrent(&fn.blocks.front());
+    if (!method.isStatic)
+        materializeSelfSlot(klass.name, fn);
+    for (std::size_t i = 0; i < method.params.size(); ++i)
+    {
+        const auto &param = method.params[i];
+        metadata.paramNames.insert(param.name);
+        curLoc = param.loc;
+        Value slot = emitAlloca((!param.is_array && param.type == AstType::Bool) ? 1 : 8);
+        if (param.is_array)
+        {
+            markArray(param.name);
+            emitStore(Type(Type::Kind::Ptr), slot, Value::null());
+        }
+        if (!param.objectClass.empty())
+            setSymbolObjectType(param.name, qualify(param.objectClass));
+        else
+            setSymbolType(param.name, param.type);
+        markSymbolReferenced(param.name);
+        auto &info = ensureSymbol(param.name);
+        info.slotId = slot.id;
+        Type ilParamTy = (!param.objectClass.empty() || param.is_array) ? Type(Type::Kind::Ptr)
+                                                                        : type_conv::astToIlType(param.type);
+        Value incoming = Value::temp(fn.params[(method.isStatic ? 0 : 1) + i].id);
+        if (param.is_array)
+            storeArray(slot, incoming);
+        else
+            emitStore(ilParamTy, slot, incoming);
+    }
+    allocateLocalSlots(metadata.paramNames, /*includeParams=*/false);
+
+    Function *func = ctx.function();
+    const size_t exitIdx = ctx.exitIndex();
+
+    if (metadata.bodyStmts.empty())
+    {
+        curLoc = {};
+        func = ctx.function();
+        BasicBlock *exitBlock = &func->blocks[exitIdx];
+        emitBr(exitBlock);
+    }
+    else
+    {
+        lowerStatementSequence(metadata.bodyStmts, /*stopOnTerminated=*/true);
+        if (ctx.current() && !ctx.current()->terminated)
+        {
+            func = ctx.function();
+            BasicBlock *exitBlock = &func->blocks[exitIdx];
+            emitBr(exitBlock);
+        }
+    }
+
+    func = ctx.function();
+    ctx.setCurrent(&func->blocks[exitIdx]);
+    curLoc = {};
+    std::unordered_set<std::string> excludeNames = metadata.paramNames;
+    if (returnsObject)
+    {
+        excludeNames.insert(method.name);
+    }
+    releaseObjectLocals(excludeNames);
+    releaseArrayLocals(metadata.paramNames);
+    curLoc = {};
+    if (returnsValue)
+    {
+        Value retValue = Value::constInt(0);
+        auto methodNameSym = findSymbol(method.name);
+        if (methodNameSym && methodNameSym->slotId.has_value())
+        {
+            Value slot = Value::temp(*methodNameSym->slotId);
+            retValue = emitLoad(methodRetType, slot);
+        }
+        else if (methodRetAst)
+        {
+            switch (*methodRetAst)
+            {
+                case ::il::frontends::basic::Type::I64:
+                    retValue = Value::constInt(0);
+                    break;
+                case ::il::frontends::basic::Type::F64:
+                    retValue = Value::constFloat(0.0);
+                    break;
+                case ::il::frontends::basic::Type::Str:
+                    retValue = emitConstStr(getStringLabel(""));
+                    break;
+                case ::il::frontends::basic::Type::Bool:
+                    retValue = emitBoolConst(false);
+                    break;
+            }
+        }
+        emitRet(retValue);
+    }
+    else
+        emitRetVoid();
+    ctx.blockNames().resetNamer();
+}
+
 /// @brief Lower all class declarations and their members within a program.
 ///
 /// @details Iterates the top-level statements looking for CLASS declarations,
@@ -642,6 +809,25 @@ void Lowerer::emitOopDeclsAndBodies(const Program &prog)
 {
     if (!builder)
         return;
+
+    // Emit module-scope globals for static fields in all classes (once per module)
+    for (const auto &entry : oopIndex_.classes())
+    {
+        const ClassInfo &ci = entry.second;
+        for (const auto &sf : ci.staticFields)
+        {
+            il::core::Global g;
+            // Use qualified class name to keep names unique and readable
+            g.name = ci.qualifiedName + "::" + sf.name;
+            // Object/static string fields are pointers/strings in IL
+            if (!sf.objectClassName.empty())
+                g.type = Type(Type::Kind::Ptr);
+            else
+                g.type = type_conv::astToIlType(sf.type);
+            g.init = std::string(); // zero-initialized by default
+            mod->globals.push_back(std::move(g));
+        }
+    }
 
     // Walk the program and nested namespaces to emit class/interface members.
     std::function<void(const std::vector<StmtPtr> &)> scan;
@@ -666,6 +852,7 @@ void Lowerer::emitOopDeclsAndBodies(const Program &prog)
 
             const auto &klass = static_cast<const ClassDecl &>(*stmt);
             const ConstructorDecl *ctor = nullptr;
+            const ConstructorDecl *staticCtor = nullptr;
             const DestructorDecl *dtor = nullptr;
             std::vector<const MethodDecl *> methods;
             methods.reserve(klass.members.size());
@@ -677,14 +864,53 @@ void Lowerer::emitOopDeclsAndBodies(const Program &prog)
                 switch (member->stmtKind())
                 {
                     case Stmt::Kind::ConstructorDecl:
-                        ctor = static_cast<const ConstructorDecl *>(member.get());
+                    {
+                        auto *c = static_cast<const ConstructorDecl *>(member.get());
+                        if (c->isStatic)
+                            staticCtor = c;
+                        else
+                            ctor = c;
                         break;
+                    }
                     case Stmt::Kind::DestructorDecl:
                         dtor = static_cast<const DestructorDecl *>(member.get());
                         break;
                     case Stmt::Kind::MethodDecl:
                         methods.push_back(static_cast<const MethodDecl *>(member.get()));
                         break;
+                    case Stmt::Kind::PropertyDecl:
+                    {
+                        const auto *prop = static_cast<const PropertyDecl *>(member.get());
+                        // Synthesize and emit getter
+                        if (prop->get.present)
+                        {
+                            MethodDecl getter;
+                            getter.loc = prop->loc;
+                            getter.name = std::string("get_") + prop->name;
+                            getter.access = prop->get.access;
+                            getter.params = {}; // no extra params
+                            getter.ret = prop->type;
+                            getter.isStatic = prop->isStatic;
+                            auto bodyStmts = gatherBody(prop->get.body);
+                            emitClassMethodWithBody(klass, getter, bodyStmts);
+                        }
+                        // Synthesize and emit setter
+                        if (prop->set.present)
+                        {
+                            MethodDecl setter;
+                            setter.loc = prop->loc;
+                            setter.name = std::string("set_") + prop->name;
+                            setter.access = prop->set.access;
+                            Param p;
+                            p.name = prop->set.paramName;
+                            p.type = prop->type;
+                            setter.params = {p};
+                            setter.isStatic = prop->isStatic;
+                            auto bodyStmts = gatherBody(prop->set.body);
+                            emitClassMethodWithBody(klass, setter, bodyStmts);
+                        }
+                        break;
+                    }
                     default:
                         break;
                 }
@@ -708,6 +934,37 @@ void Lowerer::emitOopDeclsAndBodies(const Program &prog)
             emitClassDestructor(klass, dtor);
             for (const auto *method : methods)
                 emitClassMethod(klass, *method);
+
+            // Emit static constructor thunk and register in module-init
+            if (staticCtor)
+            {
+                resetLoweringState();
+                ClassContextGuard classGuard(*this, qualify(klass.name));
+                auto body = gatherBody(staticCtor->body);
+                collectVars(body);
+                ProcedureMetadata metadata;
+                metadata.paramCount = 0;
+                metadata.bodyStmts = body;
+                const std::string cctorName = mangleClassCtor(qualify(klass.name)) + "$static";
+                Function &fn = builder->startFunction(cctorName, Type(Type::Kind::Void), {});
+                context().setFunction(&fn);
+                context().setNextTemp(fn.valueNames.size());
+                buildProcedureSkeleton(fn, cctorName, metadata);
+                context().setCurrent(&fn.blocks.front());
+                // Lower static ctor body
+                lowerStatementSequence(metadata.bodyStmts, /*stopOnTerminated=*/true);
+                if (context().current() && !context().current()->terminated)
+                {
+                    Function *func = context().function();
+                    BasicBlock *exitBlock = &func->blocks[context().exitIndex()];
+                    emitBr(exitBlock);
+                }
+                Function *func = context().function();
+                context().setCurrent(&func->blocks[context().exitIndex()]);
+                emitRetVoid();
+                // Mark for module init call
+                procNameAliases[cctorName] = "__static_ctor";
+            }
         }
     };
 
@@ -843,6 +1100,16 @@ void Lowerer::emitOopDeclsAndBodies(const Program &prog)
         emitCall(fn, {});
     for (const auto &fn : bindThunks)
         emitCall(fn, {});
+    // Call per-class static constructors in class declaration order
+    for (const auto &entry : oopIndex_.classes())
+    {
+        const ClassInfo &ci = entry.second;
+        if (ci.hasStaticCtor)
+        {
+            const std::string cctorName = mangleClassCtor(ci.qualifiedName) + "$static";
+            emitCall(cctorName, {});
+        }
+    }
     emitRetVoid();
 
     // Call module init at the start of main by emitting a call in program emission.

@@ -207,7 +207,10 @@ void printSub(const SubDecl &stmt, Context &ctx)
 void printConstructor(const ConstructorDecl &stmt, Context &ctx)
 {
     auto &os = ctx.stream();
-    os << "(CONSTRUCTOR (";
+    os << "(CONSTRUCTOR";
+    if (stmt.isStatic)
+        os << " STATIC";
+    os << " (";
     printParamList(stmt.params, ctx);
     os << ")";
     ctx.printNumberedBody(stmt.body);
@@ -233,7 +236,10 @@ void printDestructor(const DestructorDecl &stmt, Context &ctx)
 void printMethod(const MethodDecl &stmt, Context &ctx)
 {
     auto &os = ctx.stream();
-    os << "(METHOD " << stmt.name;
+    os << "(METHOD ";
+    if (stmt.isStatic)
+        os << "STATIC ";
+    os << stmt.name;
     if (stmt.ret)
     {
         os << " RET " << typeToString(*stmt.ret);
@@ -250,6 +256,26 @@ void printMethod(const MethodDecl &stmt, Context &ctx)
 ///          methods, and nested declarations.
 /// @param stmt Class declaration AST node.
 /// @param ctx Printer context handling nested emission.
+namespace
+{
+// Specialised print for CLASS fields so we can include STATIC markers.
+void printClassFields(const std::vector<ClassDecl::Field> &fields, Context &ctx)
+{
+    if (fields.empty())
+        return;
+    auto &os = ctx.stream();
+    os << " (FIELDS";
+    for (const auto &field : fields)
+    {
+        os << ' ';
+        if (field.isStatic)
+            os << "STATIC ";
+        os << field.name << ':' << typeToString(field.type);
+    }
+    os << ')';
+}
+} // namespace
+
 void printClass(const ClassDecl &stmt, Context &ctx)
 {
     auto &os = ctx.stream();
@@ -263,7 +289,7 @@ void printClass(const ClassDecl &stmt, Context &ctx)
     {
         os << "<null>";
     }
-    printFields(stmt.fields, ctx);
+    printClassFields(stmt.fields, ctx);
     // Implements list
     if (!stmt.implementsQualifiedNames.empty())
     {
@@ -311,6 +337,40 @@ void printInterface(const InterfaceDecl &stmt, Context &ctx)
         os << stmt.qualifiedName[i];
     }
     ctx.printNumberedBody(stmt.members);
+}
+
+/// @brief Emit a PROPERTY declaration including optional accessors.
+/// @details Prints `(PROPERTY [STATIC] <name> :<type> ...)` and renders GET/SET
+///          blocks when present.
+/// @param stmt Property declaration AST node.
+/// @param ctx Printer context handling nested emission.
+void printProperty(const PropertyDecl &stmt, Context &ctx)
+{
+    auto &os = ctx.stream();
+    os << "(PROPERTY ";
+    if (stmt.isStatic)
+        os << "STATIC ";
+    os << stmt.name << ':' << typeToString(stmt.type);
+    // Getter
+    if (stmt.get.present)
+    {
+        os << " (GET";
+        if (stmt.get.access != stmt.access)
+            os << ' ' << (stmt.get.access == Access::Public ? "PUBLIC" : "PRIVATE");
+        ctx.printNumberedBody(stmt.get.body);
+        os << ')';
+    }
+    // Setter
+    if (stmt.set.present)
+    {
+        os << " (SET";
+        if (stmt.set.access != stmt.access)
+            os << ' ' << (stmt.set.access == Access::Public ? "PUBLIC" : "PRIVATE");
+        os << " param:" << stmt.set.paramName;
+        ctx.printNumberedBody(stmt.set.body);
+        os << ')';
+    }
+    os << ')';
 }
 
 /// @brief Print a DELETE statement targeting a specific expression.

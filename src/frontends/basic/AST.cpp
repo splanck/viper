@@ -969,4 +969,16 @@ void InterfaceDecl::accept(MutStmtVisitor &visitor)
     visitor.visit(*this);
 }
 
+/// @brief Forwards this PROPERTY declaration node to the visitor for double dispatch.
+void PropertyDecl::accept(StmtVisitor &visitor) const
+{
+    visitor.visit(*this);
+}
+
+/// @brief Dispatch this PROPERTY declaration node to a mutable visitor.
+void PropertyDecl::accept(MutStmtVisitor &visitor)
+{
+    visitor.visit(*this);
+}
+
 } // namespace il::frontends::basic

@@ -468,6 +468,14 @@ struct AstPrinter::StmtPrinter final : StmtVisitor
         print_stmt::printMethod(stmt, ctx);
     }
 
+    /// @brief Render a PROPERTY declaration with its accessors.
+    ///
+    /// @param stmt Property declaration captured by the AST printer.
+    void visit(const PropertyDecl &stmt) override
+    {
+        print_stmt::printProperty(stmt, ctx);
+    }
+
     /// @brief Render a CLASS declaration including members.
     ///
     /// @param stmt Class declaration node to print.

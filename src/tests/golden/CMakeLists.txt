@@ -192,6 +192,25 @@ function(viper_add_golden_suite_tests)
             "-DEXPECT=${EXPECT_PRIVATE_FIELD}"
             -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
 
+    # OOP overload/property access diagnostics
+    file(READ ${_VIPER_GOLDEN_DIR}/oop/errors/OverloadAmbiguous.stderr EXPECT_OLOAD_AMBIG)
+    string(STRIP "${EXPECT_OLOAD_AMBIG}" EXPECT_OLOAD_AMBIG)
+    viper_add_ctest(oop_error_overload_ambiguous
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${CMAKE_SOURCE_DIR}/src/tests/golden/oop/errors/OverloadAmbiguous.bas
+            "-DEXPECT=${EXPECT_OLOAD_AMBIG}"
+            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
+
+    file(READ ${_VIPER_GOLDEN_DIR}/oop/errors/PropertyAccessorAccess.stderr EXPECT_PROP_ACCESS)
+    string(STRIP "${EXPECT_PROP_ACCESS}" EXPECT_PROP_ACCESS)
+    viper_add_ctest(oop_error_property_accessor_access
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${CMAKE_SOURCE_DIR}/src/tests/golden/oop/errors/PropertyAccessorAccess.bas
+            "-DEXPECT=${EXPECT_PROP_ACCESS}"
+            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
+
     # Namespace error diagnostics (Track A)
     file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/namespace_notfound.stderr EXPECT_NS_NOTFOUND)
     string(STRIP "${EXPECT_NS_NOTFOUND}" EXPECT_NS_NOTFOUND)

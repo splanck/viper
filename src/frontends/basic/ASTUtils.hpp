@@ -241,6 +241,7 @@ struct DeleteStmt;
 struct ConstructorDecl;
 struct DestructorDecl;
 struct MethodDecl;
+struct PropertyDecl;
 struct ClassDecl;
 struct TypeDecl;
 struct InterfaceDecl;
@@ -287,6 +288,7 @@ STMT_KIND_TRAIT(DeleteStmt, Delete)
 STMT_KIND_TRAIT(ConstructorDecl, ConstructorDecl)
 STMT_KIND_TRAIT(DestructorDecl, DestructorDecl)
 STMT_KIND_TRAIT(MethodDecl, MethodDecl)
+STMT_KIND_TRAIT(PropertyDecl, PropertyDecl)
 STMT_KIND_TRAIT(ClassDecl, ClassDecl)
 STMT_KIND_TRAIT(TypeDecl, TypeDecl)
 STMT_KIND_TRAIT(InterfaceDecl, InterfaceDecl)

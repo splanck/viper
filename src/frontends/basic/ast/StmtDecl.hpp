@@ -132,6 +132,10 @@ struct ConstructorDecl : Stmt
     /// Access specifier (PUBLIC/PRIVATE); defaults to PUBLIC.
     Access access{Access::Public};
 
+    /// Static flag: true for a static constructor (type initializer).
+    /// Ignored for instance constructors; used later for static ctor (D4).
+    bool isStatic{false};
+
     /// Ordered parameters for the constructor.
     std::vector<Param> params;
 
@@ -171,6 +175,9 @@ struct MethodDecl : Stmt
 
     /// Access specifier (PUBLIC/PRIVATE); defaults to PUBLIC.
     Access access{Access::Public};
+
+    /// True if declared STATIC; static methods do not receive an implicit ME receiver.
+    bool isStatic{false};
 
     /// Ordered parameters for the method.
     std::vector<Param> params;
@@ -229,6 +236,8 @@ struct ClassDecl : Stmt
         Type type{Type::I64};
         /// Access specifier (PUBLIC/PRIVATE); defaults to PUBLIC.
         Access access{Access::Public};
+        /// True if field is declared STATIC.
+        bool isStatic{false};
         /// Whether this field is an array (BUG-056 fix).
         bool isArray{false};
         /// Array dimension extents if isArray is true (BUG-056 fix).
@@ -246,6 +255,48 @@ struct ClassDecl : Stmt
     /// Interfaces implemented by this class, each as dotted qualified segments.
     /// Example: implements A.B.I -> { {"A","B","I"} }
     std::vector<std::vector<std::string>> implementsQualifiedNames;
+    void accept(StmtVisitor &visitor) const override;
+    void accept(MutStmtVisitor &visitor) override;
+};
+
+/// @brief PROPERTY declaration inside a CLASS, with optional GET/SET bodies.
+struct PropertyDecl : Stmt
+{
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
+    {
+        return Kind::PropertyDecl;
+    }
+
+    /// Filled by the lowerer: fully-qualified class path segments.
+    std::vector<std::string> qualifiedClass;
+
+    /// Property simple name.
+    std::string name;
+
+    /// Declared type of the property.
+    Type type{Type::I64};
+
+    /// True if declared STATIC; static properties have no receiver.
+    bool isStatic{false};
+
+    /// Overall visibility of the property head.
+    Access access{Access::Public};
+
+    struct Getter
+    {
+        Access access{Access::Public};
+        std::vector<StmtPtr> body;
+        bool present{false};
+    } get;
+
+    struct Setter
+    {
+        Access access{Access::Public};
+        std::string paramName{"value"};
+        std::vector<StmtPtr> body;
+        bool present{false};
+    } set;
+
     void accept(StmtVisitor &visitor) const override;
     void accept(MutStmtVisitor &visitor) override;
 };

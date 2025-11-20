@@ -20,6 +20,8 @@
 #include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/LocationScope.hpp"
 #include "frontends/basic/NameMangler_OOP.hpp"
+#include "frontends/basic/ILTypeUtils.hpp"
+#include "frontends/basic/sem/OverloadResolution.hpp"
 
 #include <cassert>
 
@@ -748,6 +750,116 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt)
                 slotInfo.objectClass = access->objectClassName;
             }
             assignScalarSlot(slotInfo, access->ptr, std::move(value), stmt.loc);
+        }
+        else
+        {
+            // Property setter sugar (instance): base.member = value -> call set_member(base, value)
+            // Property setter sugar (static):   Class.member = value -> call Class.set_member(value)
+            // Static field assignment:          Class.field  = value -> store @Class::field
+
+            std::string className = lowerer_.resolveObjectClass(*member->base);
+            if (!className.empty())
+            {
+                std::string qname = lowerer_.qualify(className);
+                std::string setter = std::string("set_") + member->member;
+                // Overload resolution for instance setter with one user arg (value)
+                auto mapIlToAst = [](Lowerer::Type t) -> ::il::frontends::basic::Type
+                {
+                    using K = Lowerer::Type::Kind;
+                    switch (t.kind)
+                    {
+                        case K::F64: return ::il::frontends::basic::Type::F64;
+                        case K::Str: return ::il::frontends::basic::Type::Str;
+                        case K::I1: return ::il::frontends::basic::Type::Bool;
+                        default: return ::il::frontends::basic::Type::I64;
+                    }
+                };
+                std::vector<::il::frontends::basic::Type> argTypes{mapIlToAst(value.type)};
+                if (auto resolved = sem::resolveMethodOverload(lowerer_.oopIndex_, qname, member->member,
+                                                              /*isStatic*/ false, argTypes,
+                                                              lowerer_.currentClass(),
+                                                              lowerer_.diagnosticEmitter(), stmt.loc))
+                {
+                    setter = resolved->methodName;
+                }
+                else if (lowerer_.diagnosticEmitter())
+                {
+                    return;
+                }
+                std::string callee = mangleMethod(qname, setter);
+                Lowerer::RVal base = lowerer_.lowerExpr(*member->base);
+                std::vector<Lowerer::Value> args{base.value, value.value};
+                lowerer_.emitCall(callee, args);
+                return;
+            }
+
+            if (const auto *v = as<const VarExpr>(*member->base))
+            {
+                // If a symbol with this name exists (local/param/global), treat as instance, not static
+                if (const auto *sym = lowerer_.findSymbol(v->name); sym && sym->slotId)
+                {
+                    // analyzer should have already errored if not a property/field; nothing more to do here
+                    return;
+                }
+                std::string qname = lowerer_.resolveQualifiedClassCasing(lowerer_.qualify(v->name));
+                if (const ClassInfo *ci = lowerer_.oopIndex_.findClass(qname))
+                {
+                    // Prefer static property setter when present
+                    std::string setter = std::string("set_") + member->member;
+                    auto mapIlToAst = [](Lowerer::Type t) -> ::il::frontends::basic::Type
+                    {
+                        using K = Lowerer::Type::Kind;
+                        switch (t.kind)
+                        {
+                            case K::F64: return ::il::frontends::basic::Type::F64;
+                            case K::Str: return ::il::frontends::basic::Type::Str;
+                            case K::I1: return ::il::frontends::basic::Type::Bool;
+                            default: return ::il::frontends::basic::Type::I64;
+                        }
+                    };
+                    std::vector<::il::frontends::basic::Type> argTypes{mapIlToAst(value.type)};
+                    if (auto resolved = sem::resolveMethodOverload(lowerer_.oopIndex_, qname, member->member,
+                                                                  /*isStatic*/ true, argTypes,
+                                                                  lowerer_.currentClass(),
+                                                                  lowerer_.diagnosticEmitter(), stmt.loc))
+                    {
+                        setter = resolved->methodName;
+                    }
+                    else if (lowerer_.diagnosticEmitter())
+                    {
+                        return;
+                    }
+                    auto it = ci->methods.find(setter);
+                    if (it != ci->methods.end() && it->second.isStatic)
+                    {
+                        std::string callee = mangleMethod(ci->qualifiedName, setter);
+                        lowerer_.emitCall(callee, {value.value});
+                        return;
+                    }
+
+                    // Otherwise store into a static field global
+                    for (const auto &sf : ci->staticFields)
+                    {
+                        if (sf.name == member->member)
+                        {
+                            Lowerer::Type ilTy = sf.objectClassName.empty()
+                                                     ? type_conv::astToIlType(sf.type)
+                                                     : Lowerer::Type(Lowerer::Type::Kind::Ptr);
+                            lowerer_.curLoc = stmt.loc;
+                            std::string gname = ci->qualifiedName + "::" + member->member;
+                            Lowerer::Value addr = lowerer_.emitUnary(Lowerer::Opcode::AddrOf,
+                                                                     Lowerer::Type(Lowerer::Type::Kind::Ptr),
+                                                                     Lowerer::Value::global(gname));
+                            // Coerce booleans when needed
+                            Lowerer::RVal vcoerced = value;
+                            if (ilTy.kind == Lowerer::Type::Kind::I1)
+                                vcoerced = lowerer_.coerceToBool(std::move(vcoerced), stmt.loc);
+                            lowerer_.emitStore(ilTy, addr, vcoerced.value);
+                            return;
+                        }
+                    }
+                }
+            }
         }
     }
 }

@@ -23,6 +23,7 @@
 #include "frontends/basic/NameMangler_OOP.hpp"
 #include "frontends/basic/Semantic_OOP.hpp"
 #include "frontends/basic/ILTypeUtils.hpp"
+#include "frontends/basic/sem/OverloadResolution.hpp"
 
 #include <cstdint>
 #include <string>
@@ -278,8 +279,15 @@ std::optional<Lowerer::MemberFieldAccess> Lowerer::resolveMemberField(const Memb
     if (!expr.base)
         return std::nullopt;
 
-    RVal base = lowerExpr(*expr.base);
+    // Only resolve member fields for instance receivers. If the base does not
+    // represent an object (e.g., a class name in static access), bail out early
+    // so callers can apply property sugar or static-field logic without forcing
+    // a load of the base expression (which may not have storage).
     std::string className = resolveObjectClass(*expr.base);
+    if (className.empty())
+        return std::nullopt;
+
+    RVal base = lowerExpr(*expr.base);
     // Access control for fields: Private may only be accessed within the declaring class.
     if (!className.empty())
     {
@@ -376,7 +384,98 @@ Lowerer::RVal Lowerer::lowerMemberAccessExpr(const MemberAccessExpr &expr)
 {
     auto access = resolveMemberField(expr);
     if (!access)
+    {
+        // Fallbacks:
+        // 1) Instance property getter sugar: base.member -> call get_member(base)
+        // 2) Static property getter sugar:  Class.member -> call Class.get_member()
+        // 3) Static field access:           Class.field  -> load @Class::field
+
+        // 1) Instance property sugar
+        if (expr.base)
+        {
+            std::string instClass = resolveObjectClass(*expr.base);
+            if (!instClass.empty())
+            {
+                std::string qname = qualify(instClass);
+                std::string getter = std::string("get_") + expr.member;
+                // Overload resolution for property getter (0 user params)
+                std::string curClass = currentClass();
+                if (auto resolved = sem::resolveMethodOverload(
+                        oopIndex_, qname, expr.member, /*isStatic*/ false, /*args*/ {}, curClass,
+                        diagnosticEmitter(), expr.loc))
+                {
+                    getter = resolved->methodName;
+                }
+                else if (diagnosticEmitter())
+                {
+                    return {Value::constInt(0), Type(Type::Kind::I64)};
+                }
+                std::string callee = mangleMethod(qname, getter);
+                RVal base = lowerExpr(*expr.base);
+                std::vector<Value> args;
+                args.push_back(base.value);
+                Type retTy = Type(Type::Kind::I64);
+                if (auto rt = findMethodReturnType(qname, getter))
+                    retTy = type_conv::astToIlType(*rt);
+                Value result = (retTy.kind == Type(Type::Kind::Void).kind)
+                                   ? (emitCall(callee, args), Value::constInt(0))
+                                   : emitCallRet(retTy, callee, args);
+                return {result, retTy};
+            }
+
+            // 2/3) Static property or static field on a class name
+            if (const auto *v = as<const VarExpr>(*expr.base))
+            {
+                // If a symbol with this name exists (local/param/global), it's not a static access
+                if (const auto *sym = findSymbol(v->name); sym && sym->slotId)
+                {
+                    return {Value::null(), Type(Type::Kind::Ptr)};
+                }
+                // Attempt to resolve the class by current namespace context
+                std::string qname = resolveQualifiedClassCasing(qualify(v->name));
+                if (const ClassInfo *ci = oopIndex_.findClass(qname))
+                {
+                    // Prefer property getter sugar when present (resolve overloads)
+                    std::string getter = std::string("get_") + expr.member;
+                    if (auto resolved = sem::resolveMethodOverload(oopIndex_, qname, expr.member,
+                                                                  /*isStatic*/ true, /*args*/ {},
+                                                                  currentClass(), diagnosticEmitter(), expr.loc))
+                        getter = resolved->methodName;
+                    else if (diagnosticEmitter())
+                        return {Value::constInt(0), Type(Type::Kind::I64)};
+                    auto it = ci->methods.find(getter);
+                    if (it != ci->methods.end() && it->second.isStatic)
+                    {
+                        Type retTy = Type(Type::Kind::I64);
+                        if (auto rt = findMethodReturnType(qname, getter))
+                            retTy = type_conv::astToIlType(*rt);
+                        std::string callee = mangleMethod(ci->qualifiedName, getter);
+                        Value result = (retTy.kind == Type(Type::Kind::Void).kind)
+                                           ? (emitCall(callee, {}), Value::constInt(0))
+                                           : emitCallRet(retTy, callee, {});
+                        return {result, retTy};
+                    }
+
+                    // Otherwise, try a static field load
+                    for (const auto &sf : ci->staticFields)
+                    {
+                        if (sf.name == expr.member)
+                        {
+                            Type ilTy = sf.objectClassName.empty() ? type_conv::astToIlType(sf.type)
+                                                                   : Type(Type::Kind::Ptr);
+                            curLoc = expr.loc;
+                            std::string gname = ci->qualifiedName + "::" + expr.member;
+                            Value addr = emitUnary(Opcode::AddrOf, Type(Type::Kind::Ptr), Value::global(gname));
+                            Value loaded = emitLoad(ilTy, addr);
+                            return {loaded, ilTy};
+                        }
+                    }
+                }
+            }
+        }
+
         return {Value::null(), Type(Type::Kind::Ptr)};
+    }
 
     curLoc = expr.loc;
     Value loaded = emitLoad(access->ilType, access->ptr);
@@ -397,6 +496,76 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
 {
     if (!expr.base)
         return {Value::constInt(0), Type(Type::Kind::I64)};
+
+    // Static method calls: Class.Method(...)
+    if (const auto *vb = as<const VarExpr>(*expr.base))
+    {
+        // If a symbol with this name exists (local/param/global), treat as instance, not static
+        if (const auto *sym = findSymbol(vb->name); sym && sym->slotId)
+        {
+            // fall through to instance path below
+        }
+        else
+        {
+        std::string qname = resolveQualifiedClassCasing(qualify(vb->name));
+        if (const ClassInfo *ci = oopIndex_.findClass(qname))
+        {
+            // Overload resolution for static call
+            std::vector<::il::frontends::basic::Type> argAstTypes;
+            argAstTypes.reserve(expr.args.size());
+            for (const auto &a : expr.args)
+                argAstTypes.push_back(a ? (scanExpr(*a) == ExprType::F64 ? ::il::frontends::basic::Type::F64
+                                                                         : (scanExpr(*a) == ExprType::Str
+                                                                                ? ::il::frontends::basic::Type::Str
+                                                                                : (scanExpr(*a) == ExprType::Bool
+                                                                                       ? ::il::frontends::basic::Type::Bool
+                                                                                       : ::il::frontends::basic::Type::I64)))
+                                         : ::il::frontends::basic::Type::I64);
+            std::string selected = expr.method;
+            if (auto resolved = sem::resolveMethodOverload(
+                    oopIndex_, qname, expr.method, /*isStatic*/ true, argAstTypes, currentClass(),
+                    diagnosticEmitter(), expr.loc))
+            {
+                selected = resolved->methodName;
+            }
+            std::vector<::il::frontends::basic::Type> expectParamAst;
+            if (auto it = ci->methods.find(selected); it != ci->methods.end())
+                expectParamAst = it->second.sig.paramTypes;
+
+            std::vector<Value> args;
+            args.reserve(expr.args.size());
+            for (std::size_t i = 0; i < expr.args.size(); ++i)
+            {
+                RVal lowered = lowerExpr(*expr.args[i]);
+                if (i < expectParamAst.size())
+                {
+                    auto astTy = expectParamAst[i];
+                    if (astTy == ::il::frontends::basic::Type::Bool)
+                        lowered = coerceToBool(std::move(lowered), expr.loc);
+                    else if (astTy == ::il::frontends::basic::Type::F64)
+                        lowered = coerceToF64(std::move(lowered), expr.loc);
+                    else if (astTy == ::il::frontends::basic::Type::I64)
+                        lowered = coerceToI64(std::move(lowered), expr.loc);
+                }
+                args.push_back(lowered.value);
+            }
+
+            std::string callee = mangleMethod(ci->qualifiedName, selected);
+            if (auto retType = findMethodReturnType(qname, selected))
+            {
+                Type ilRetTy = type_conv::astToIlType(*retType);
+                Value result = emitCallRet(ilRetTy, callee, args);
+                if (ilRetTy.kind == Type::Kind::Str)
+                    deferReleaseStr(result);
+                else if (ilRetTy.kind == Type::Kind::Ptr)
+                    deferReleaseObj(result, qname);
+                return {result, ilRetTy};
+            }
+            emitCall(callee, args);
+            return {Value::constInt(0), Type(Type::Kind::I64)};
+        }
+        }
+    }
 
     std::string className = resolveObjectClass(*expr.base);
     // Compute the instance (self) argument. For BASE-qualified calls, use ME.
@@ -531,15 +700,41 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
         }
     }
 
-    // Name of the direct callee when not using virtual dispatch.
-    std::string emitClassName = directQClass;
-    if (!directQClass.empty())
+    // Resolve overload to select the best callee among same-name methods.
+    // Build argument AST types (excluding implicit self).
+    std::vector<::il::frontends::basic::Type> argAstTypes;
+    argAstTypes.reserve(expr.args.size());
+    for (const auto &a : expr.args)
+        argAstTypes.push_back(a ? (scanExpr(*a) == ExprType::F64 ? ::il::frontends::basic::Type::F64
+                                                                 : (scanExpr(*a) == ExprType::Str
+                                                                        ? ::il::frontends::basic::Type::Str
+                                                                        : (scanExpr(*a) == ExprType::Bool
+                                                                               ? ::il::frontends::basic::Type::Bool
+                                                                               : ::il::frontends::basic::Type::I64)))
+                                 : ::il::frontends::basic::Type::I64);
+
+    std::string qc = qname.empty() ? directQClass : qname;
+    std::string curClass = currentClass();
+    std::string selectedName = expr.method;
+    if (!qc.empty())
     {
-        if (const ClassInfo *ci = oopIndex_.findClass(directQClass))
+        if (auto resolved = sem::resolveMethodOverload(oopIndex_, qc, expr.method, false, argAstTypes,
+                                                       curClass, diagnosticEmitter(), expr.loc))
+        {
+            selectedName = resolved->methodName;
+        }
+        else if (diagnosticEmitter())
+        {
+            return {Value::constInt(0), Type(Type::Kind::I64)};
+        }
+    }
+    std::string emitClassName = qc;
+    if (!qc.empty())
+    {
+        if (const ClassInfo *ci = oopIndex_.findClass(qc))
             emitClassName = ci->qualifiedName;
     }
-    std::string directCallee =
-        emitClassName.empty() ? expr.method : mangleMethod(emitClassName, expr.method);
+    std::string directCallee = emitClassName.empty() ? selectedName : mangleMethod(emitClassName, selectedName);
 
     // If virtual and not BASE-qualified, emit call.indirect; otherwise direct call or interface
     // dispatch. Interface dispatch via (expr AS IFACE).Method: detect AS with interface target.
@@ -639,8 +834,8 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
 
     // Direct call path.
     // For BASE-qualified direct calls, consult the resolved base class for return type.
-    const std::string retClassLookup = baseQualified ? directQClass : qname;
-    if (auto retType = findMethodReturnType(retClassLookup, expr.method))
+    const std::string retClassLookup = baseQualified ? directQClass : qc;
+    if (auto retType = findMethodReturnType(retClassLookup, selectedName))
     {
         Type ilRetTy = type_conv::astToIlType(*retType);
         Value result = emitCallRet(ilRetTy, directCallee, args);

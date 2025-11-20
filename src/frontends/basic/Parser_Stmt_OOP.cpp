@@ -121,6 +121,7 @@ StmtPtr Parser::parseClassDecl()
     };
 
     std::optional<Access> curAccess;
+    bool pendingStaticField = false; // single-use STATIC modifier for next field
 
     while (!at(TokenKind::EndOfFile))
     {
@@ -135,6 +136,14 @@ StmtPtr Parser::parseClassDecl()
         {
             curAccess = acc;
             // Continue so the following token sequence forms the actual field.
+            continue;
+        }
+
+        // Single-use STATIC prefix for next field
+        if (at(TokenKind::KeywordStatic))
+        {
+            consume();
+            pendingStaticField = true;
             continue;
         }
 
@@ -217,6 +226,7 @@ StmtPtr Parser::parseClassDecl()
         field.name = fieldNameTok.lexeme;
         field.type = fieldType;
         field.access = curAccess.value_or(Access::Public);
+        field.isStatic = pendingStaticField;
         field.isArray = isArray;
         field.arrayExtents = std::move(extents);
         // BUG-082 fix: Check if this is an object type (not a recognized primitive)
@@ -235,6 +245,7 @@ StmtPtr Parser::parseClassDecl()
             }
         }
         curAccess.reset();
+        pendingStaticField = false;
         decl->fields.push_back(std::move(field));
 
         if (at(TokenKind::EndOfLine))
@@ -253,7 +264,7 @@ StmtPtr Parser::parseClassDecl()
         {
             TokenKind nextKind = peek(1).kind;
             if (nextKind == TokenKind::KeywordSub || nextKind == TokenKind::KeywordFunction ||
-                nextKind == TokenKind::KeywordDestructor ||
+                nextKind == TokenKind::KeywordDestructor || nextKind == TokenKind::KeywordProperty ||
                 (nextKind == TokenKind::KeywordEnd && peek(2).kind == TokenKind::KeywordClass))
             {
                 consume();
@@ -279,6 +290,14 @@ StmtPtr Parser::parseClassDecl()
 
         if (auto acc = parseAccessPrefix())
             curAccess = acc;
+
+        // Optional single-use STATIC modifier for the next member (method/property/ctor)
+        bool pendingStaticMember = false;
+        if (at(TokenKind::KeywordStatic))
+        {
+            consume();
+            pendingStaticMember = true;
+        }
 
         struct Modifiers
         {
@@ -328,6 +347,154 @@ StmtPtr Parser::parseClassDecl()
             }
         }
 
+        // PROPERTY declaration
+        if (at(TokenKind::KeywordProperty))
+        {
+            auto propLoc = peek().loc;
+            consume();
+            Token nameTok = expect(TokenKind::Identifier);
+            if (nameTok.kind != TokenKind::Identifier)
+                break;
+            Token asTok = expect(TokenKind::KeywordAs);
+            if (asTok.kind != TokenKind::KeywordAs)
+                break;
+            Type propTy = Type::I64;
+            if (at(TokenKind::KeywordBoolean) || at(TokenKind::Identifier))
+                propTy = parseTypeKeyword();
+            else
+                expect(TokenKind::Identifier);
+
+            auto prop = std::make_unique<PropertyDecl>();
+            prop->loc = propLoc;
+            prop->name = nameTok.lexeme;
+            prop->type = propTy;
+            prop->access = curAccess.value_or(Access::Public);
+            prop->isStatic = pendingStaticMember;
+
+            if (at(TokenKind::EndOfLine))
+                consume();
+
+            bool seenGet = false;
+            bool seenSet = false;
+
+            auto isIdentEq = [&](const Token &t, std::string_view s) {
+                if (t.kind == TokenKind::Identifier)
+                {
+                    return equalsIgnoreCase(t.lexeme, s);
+                }
+                return false;
+            };
+
+            while (!at(TokenKind::EndOfFile))
+            {
+                while (at(TokenKind::EndOfLine) || at(TokenKind::Colon))
+                    consume();
+                if (at(TokenKind::Number))
+                {
+                    TokenKind nk = peek(1).kind;
+                    if (nk == TokenKind::Identifier || nk == TokenKind::KeywordPublic ||
+                        nk == TokenKind::KeywordPrivate || nk == TokenKind::KeywordEnd)
+                        consume();
+                }
+
+                // END PROPERTY
+                if (at(TokenKind::KeywordEnd) &&
+                    (peek(1).kind == TokenKind::KeywordProperty || isIdentEq(peek(1), "PROPERTY")))
+                {
+                    consume();
+                    consume();
+                    break;
+                }
+
+                // Optional accessor access modifier
+                std::optional<Access> acc = parseAccessPrefix();
+
+                // GET
+                if (at(TokenKind::KeywordGet) || isIdentEq(peek(), "GET"))
+                {
+                    consume();
+                    prop->get.present = true;
+                    prop->get.access = acc.value_or(prop->access);
+                    auto ctx = statementSequencer();
+                    ctx.collectStatements(
+                        [&](int, il::support::SourceLoc) {
+                            return at(TokenKind::KeywordEnd) &&
+                                   (peek(1).kind == TokenKind::KeywordGet || isIdentEq(peek(1), "GET"));
+                        },
+                        [&](int, il::support::SourceLoc, StatementSequencer::TerminatorInfo &) {
+                            consume();
+                            consume();
+                        },
+                        prop->get.body);
+                    seenGet = true;
+                    continue;
+                }
+
+                // SET
+                if (at(TokenKind::KeywordSet) || isIdentEq(peek(), "SET"))
+                {
+                    consume();
+                    prop->set.present = true;
+                    prop->set.access = acc.value_or(prop->access);
+                    if (at(TokenKind::LParen))
+                    {
+                        consume();
+                        std::string paramName;
+                        Type paramTy = propTy;
+                        if (at(TokenKind::Identifier) && peek(1).kind == TokenKind::KeywordAs)
+                        {
+                            paramName = peek().lexeme;
+                            consume();
+                            consume(); // AS
+                            if (at(TokenKind::KeywordBoolean) || at(TokenKind::Identifier))
+                                paramTy = parseTypeKeyword();
+                            else
+                                expect(TokenKind::Identifier);
+                        }
+                        else
+                        {
+                            if (at(TokenKind::KeywordBoolean) || at(TokenKind::Identifier))
+                                paramTy = parseTypeKeyword();
+                            else
+                                expect(TokenKind::Identifier);
+                        }
+                        expect(TokenKind::RParen);
+                        if (paramTy != propTy)
+                            emitError("B3009", propLoc, "SET parameter type must match property type");
+                        if (!paramName.empty())
+                            prop->set.paramName = std::move(paramName);
+                    }
+                    auto ctx = statementSequencer();
+                    ctx.collectStatements(
+                        [&](int, il::support::SourceLoc) {
+                            return at(TokenKind::KeywordEnd) &&
+                                   (peek(1).kind == TokenKind::KeywordSet || isIdentEq(peek(1), "SET"));
+                        },
+                        [&](int, il::support::SourceLoc, StatementSequencer::TerminatorInfo &) {
+                            consume();
+                            consume();
+                        },
+                        prop->set.body);
+                    seenSet = true;
+                    continue;
+                }
+
+                emitError("B3010", peek(), "expected GET, SET, or END PROPERTY inside PROPERTY block");
+                if (at(TokenKind::EndOfLine))
+                    consume();
+                else
+                    consume();
+            }
+
+            if (!seenGet && !seenSet)
+                emitError("B3011", propLoc, "PROPERTY must declare at least one of GET or SET");
+
+            decl->members.push_back(std::move(prop));
+            curAccess.reset();
+            pendingStaticMember = false;
+            continue;
+        }
+
         if (at(TokenKind::KeywordSub))
         {
             auto subLoc = peek().loc;
@@ -351,6 +518,7 @@ StmtPtr Parser::parseClassDecl()
                 auto ctor = std::make_unique<ConstructorDecl>();
                 ctor->loc = subLoc;
                 ctor->access = curAccess.value_or(Access::Public);
+                ctor->isStatic = pendingStaticMember;
                 // Modifiers not allowed on constructors.
                 if (mods.virt || mods.over || mods.abstr || mods.fin)
                 {
@@ -386,6 +554,7 @@ StmtPtr Parser::parseClassDecl()
             method->loc = subLoc;
             method->name = subNameTok.lexeme;
             method->access = curAccess.value_or(Access::Public);
+            method->isStatic = pendingStaticMember;
             method->params = parseParamList();
             method->isVirtual = mods.virt;
             method->isOverride = mods.over;
@@ -424,6 +593,7 @@ StmtPtr Parser::parseClassDecl()
 
             decl->members.push_back(std::move(method));
             curAccess.reset();
+            pendingStaticMember = false;
             continue;
         }
 
@@ -440,6 +610,7 @@ StmtPtr Parser::parseClassDecl()
             method->name = fnNameTok.lexeme;
             method->ret = typeFromSuffix(fnNameTok.lexeme);
             method->access = curAccess.value_or(Access::Public);
+            method->isStatic = pendingStaticMember;
             method->params = parseParamList();
             if (at(TokenKind::KeywordAs))
             {
@@ -531,6 +702,7 @@ StmtPtr Parser::parseClassDecl()
 
             decl->members.push_back(std::move(method));
             curAccess.reset();
+            pendingStaticMember = false;
             continue;
         }
 

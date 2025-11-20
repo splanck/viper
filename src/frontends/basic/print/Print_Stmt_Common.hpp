@@ -261,6 +261,11 @@ void printDestructor(const DestructorDecl &stmt, Context &ctx);
 /// @details Prints the method signature, including any STATIC or SHARED modifiers encoded in
 ///          the AST, then delegates the body rendering to the context utilities.
 void printMethod(const MethodDecl &stmt, Context &ctx);
+/// @brief Emit PROPERTY declarations with optional GET/SET blocks.
+/// @details Prints the property header, optional STATIC marker, type, and
+///          accessor bodies when present. Access modifiers on accessors are
+///          included when they differ from the property headline.
+void printProperty(const PropertyDecl &stmt, Context &ctx);
 
 /// @brief Emit CLASS declarations with nested members.
 /// @details Prints the class header, iterates member declarations, and emits closing `END CLASS`

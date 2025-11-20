@@ -159,3 +159,48 @@ Fully-qualified names (e.g. `A.B.Type`) bypass this search and resolve directly.
 
 Notes:
   - The frontend lowers `IS`/`AS` to runtime helpers (type id queries and itable checks). See also the dispatch and RTTI details in [oop.md](oop.md).
+# Milestone D: Static Members and Properties
+
+## STATIC modifier placement
+
+`STATIC` applies to the next member declaration inside a `CLASS`:
+
+```
+CLASS C
+  STATIC value AS INTEGER      ' static field
+  STATIC SUB Ping()            ' static method
+  STATIC PROPERTY Count AS INTEGER
+    GET: RETURN 0: END GET
+  END PROPERTY
+END CLASS
+```
+
+## PROPERTY blocks
+
+```
+PROPERTY <Name> AS <Type>
+  [<AccessorAccess>] GET
+    <statements>
+  END GET
+  [<AccessorAccess>] SET [(<Param> [AS <Type>])]
+    <statements>
+  END SET
+END PROPERTY
+```
+
+- `<AccessorAccess>`: optional `PUBLIC` or `PRIVATE` on each accessor; defaults to the property head's access.
+- `SET` parameter defaults to the property type and parameter name `value` when not given explicitly.
+
+## Static constructor
+
+One static constructor per class is supported using the standard constructor syntax preceded by `STATIC`:
+
+```
+CLASS A
+  STATIC SUB NEW()
+    ' one-time initialization for the class
+  END SUB
+END CLASS
+```
+
+The static constructor is parameterless and is invoked by the module initializer before any user code runs.

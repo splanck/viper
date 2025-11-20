@@ -984,6 +984,13 @@ class Lowerer
 
     void emitClassMethod(const ClassDecl &klass, const MethodDecl &method);
 
+    /// @brief Emit IL for a BASIC class method, supplying an explicit body.
+    /// @details Variant used by PROPERTY synthesis to reuse accessor bodies
+    ///          without attempting to transfer ownership of AST nodes.
+    void emitClassMethodWithBody(const ClassDecl &klass,
+                                 const MethodDecl &method,
+                                 const std::vector<const Stmt *> &bodyStmts);
+
     unsigned materializeSelfSlot(const std::string &className, Function &fn);
 
     Value loadSelfPointer(unsigned slotId);

@@ -292,6 +292,19 @@ viper_add_basic_namespace_tests()
 viper_add_e2e_codegen_tests()
 viper_add_golden_suite_tests()
 
+# Milestone D unit tests (OOP)
+add_executable(test_oop_static_members ${CMAKE_CURRENT_SOURCE_DIR}/unit/oop/TestStaticMembers.cpp)
+target_link_libraries(test_oop_static_members PRIVATE fe_basic viper_testing)
+viper_add_ctest(test_oop_static_members test_oop_static_members)
+
+add_executable(test_oop_properties ${CMAKE_CURRENT_SOURCE_DIR}/unit/oop/TestProperties.cpp)
+target_link_libraries(test_oop_properties PRIVATE fe_basic viper_testing)
+viper_add_ctest(test_oop_properties test_oop_properties)
+
+add_executable(test_oop_overloads ${CMAKE_CURRENT_SOURCE_DIR}/unit/oop/TestOverloads.cpp)
+target_link_libraries(test_oop_overloads PRIVATE fe_basic viper_testing)
+viper_add_ctest(test_oop_overloads test_oop_overloads)
+
 add_test(NAME basic_repros
         COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/scripts/run_basic_repros.sh
         $<TARGET_FILE:ilc>)

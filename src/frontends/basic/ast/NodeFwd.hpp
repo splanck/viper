@@ -79,6 +79,7 @@ struct DeleteStmt;
 struct ConstructorDecl;
 struct DestructorDecl;
 struct MethodDecl;
+struct PropertyDecl;
 struct ClassDecl;
 struct TypeDecl;
 struct InterfaceDecl;

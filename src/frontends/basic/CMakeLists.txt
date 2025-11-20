@@ -100,6 +100,7 @@ target_sources(fe_basic PRIVATE
         sem/UsingContext.cpp
         sem/TypeResolver.cpp
         sem/RegistryBuilder.cpp
+        sem/OverloadResolution.cpp
         SemanticAnalyzer.Stmts.IO.cpp
         SemanticAnalyzer.Stmts.Runtime.cpp
         Semantic_OOP.cpp

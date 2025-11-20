@@ -310,13 +310,21 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
                     classFieldNames.reserve(classDecl.fields.size());
                     for (const auto &field : classDecl.fields)
                     {
-                        info.fields.push_back(ClassInfo::FieldInfo{field.name,
-                                                                   field.type,
-                                                                   field.access,
-                                                                   field.isArray,
-                                                                   field.arrayExtents,
-                                                                   field.objectClassName});  // BUG-082 fix
-                        classFieldNames.insert(field.name);
+                        ClassInfo::FieldInfo fi{field.name,
+                                                field.type,
+                                                field.access,
+                                                field.isArray,
+                                                field.arrayExtents,
+                                                field.objectClassName}; // BUG-082 fix
+                        if (field.isStatic)
+                        {
+                            info.staticFields.push_back(std::move(fi));
+                        }
+                        else
+                        {
+                            info.fields.push_back(std::move(fi));
+                            classFieldNames.insert(field.name);
+                        }
                     }
 
                     for (const auto &member : classDecl.members)
@@ -325,21 +333,169 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
                             continue;
                         switch (member->stmtKind())
                         {
+                            case Stmt::Kind::PropertyDecl:
+                            {
+                                const auto &prop = static_cast<const PropertyDecl &>(*member);
+                                // Accessor access cannot be more permissive than property access
+                                auto rank = [](Access a) { return a == Access::Public ? 1 : 0; };
+                                if (prop.get.present && rank(prop.get.access) > rank(prop.access))
+                                {
+                                    if (emitter)
+                                    {
+                                        emitter->emit(il::support::Severity::Error,
+                                                      "B2113",
+                                                      prop.loc,
+                                                      1,
+                                                      "getter access cannot be more permissive than property access");
+                                    }
+                                }
+                                if (prop.set.present && rank(prop.set.access) > rank(prop.access))
+                                {
+                                    if (emitter)
+                                    {
+                                        emitter->emit(il::support::Severity::Error,
+                                                      "B2114",
+                                                      prop.loc,
+                                                      1,
+                                                      "setter access cannot be more permissive than property access");
+                                    }
+                                }
+
+                                // Synthesize getter method signature when present
+                                auto synthAccess = [&](Access acc) { return acc; };
+                                if (prop.get.present)
+                                {
+                                    ClassInfo::MethodInfo mi;
+                                    mi.sig.access = synthAccess(prop.get.access);
+                                    mi.sig.returnType = prop.type;
+                                    mi.isStatic = prop.isStatic;
+                                    mi.isPropertyAccessor = true;
+                                    mi.isGetter = true;
+                                    // Name: get_<Name>
+                                    std::string mname = std::string("get_") + prop.name;
+                                    info.methods[mname] = std::move(mi);
+                                    info.methodLocs[mname] = prop.loc;
+
+                                    // Disallow 'ME' in static getter body
+                                    if (prop.isStatic && emitter)
+                                    {
+                                        struct MeUseWalker : public BasicAstWalker<MeUseWalker>
+                                        {
+                                            DiagnosticEmitter *em;
+                                            explicit MeUseWalker(DiagnosticEmitter *e) : em(e) {}
+                                            void visit(const MeExpr &expr)
+                                            {
+                                                if (!em)
+                                                    return;
+                                                em->emit(il::support::Severity::Error,
+                                                         "B2103",
+                                                         expr.loc,
+                                                         1,
+                                                         "'ME' is not allowed in static method");
+                                            }
+                                        } walker(emitter);
+                                        for (const auto &s : prop.get.body)
+                                            if (s)
+                                                walker.walkStmt(*s);
+                                    }
+                                }
+
+                                if (prop.set.present)
+                                {
+                                    ClassInfo::MethodInfo mi;
+                                    mi.sig.access = synthAccess(prop.set.access);
+                                    mi.sig.paramTypes = {prop.type};
+                                    mi.isStatic = prop.isStatic;
+                                    mi.isPropertyAccessor = true;
+                                    mi.isGetter = false;
+                                    std::string mname = std::string("set_") + prop.name;
+                                    info.methods[mname] = std::move(mi);
+                                    info.methodLocs[mname] = prop.loc;
+
+                                    if (prop.isStatic && emitter)
+                                    {
+                                        struct MeUseWalker : public BasicAstWalker<MeUseWalker>
+                                        {
+                                            DiagnosticEmitter *em;
+                                            explicit MeUseWalker(DiagnosticEmitter *e) : em(e) {}
+                                            void visit(const MeExpr &expr)
+                                            {
+                                                if (!em)
+                                                    return;
+                                                em->emit(il::support::Severity::Error,
+                                                         "B2103",
+                                                         expr.loc,
+                                                         1,
+                                                         "'ME' is not allowed in static method");
+                                            }
+                                        } walker(emitter);
+                                        for (const auto &s : prop.set.body)
+                                            if (s)
+                                                walker.walkStmt(*s);
+                                    }
+                                }
+
+                                break;
+                            }
                             case Stmt::Kind::ConstructorDecl:
                             {
                                 const auto &ctor = static_cast<const ConstructorDecl &>(*member);
-                                info.hasConstructor = true;
-                                info.ctorParams.clear();
-                                info.ctorParams.reserve(ctor.params.size());
-                                for (const auto &param : ctor.params)
+                                if (ctor.isStatic)
                                 {
-                                    ClassInfo::CtorParam sigParam;
-                                    sigParam.type = param.type;
-                                    sigParam.isArray = param.is_array;
-                                    info.ctorParams.push_back(sigParam);
+                                    // Static constructor validation: no params, single per class
+                                    if (info.hasStaticCtor && emitter)
+                                    {
+                                        emitter->emit(il::support::Severity::Error,
+                                                      "B2104",
+                                                      ctor.loc,
+                                                      1,
+                                                      "multiple static constructors not allowed");
+                                    }
+                                    info.hasStaticCtor = true;
+                                    if (!ctor.params.empty() && emitter)
+                                    {
+                                        emitter->emit(il::support::Severity::Error,
+                                                      "B2105",
+                                                      ctor.loc,
+                                                      1,
+                                                      "static constructor cannot have parameters");
+                                    }
+                                    // No 'Me' in static constructor body
+                                    // Reuse a simple walker to flag MeExpr
+                                    struct MeUseWalker : public BasicAstWalker<MeUseWalker>
+                                    {
+                                        DiagnosticEmitter *em;
+                                        explicit MeUseWalker(DiagnosticEmitter *e) : em(e) {}
+                                        void visit(const MeExpr &expr)
+                                        {
+                                            if (!em)
+                                                return;
+                                            em->emit(il::support::Severity::Error,
+                                                     "B2106",
+                                                     expr.loc,
+                                                     1,
+                                                     "'ME' is not allowed in static constructor");
+                                        }
+                                    } walker(emitter);
+                                    for (const auto &s : ctor.body)
+                                        if (s)
+                                            walker.walkStmt(*s);
                                 }
-                                checkMemberShadowing(
-                                    ctor.body, classDecl, classFieldNames, emitter);
+                                else
+                                {
+                                    info.hasConstructor = true;
+                                    info.ctorParams.clear();
+                                    info.ctorParams.reserve(ctor.params.size());
+                                    for (const auto &param : ctor.params)
+                                    {
+                                        ClassInfo::CtorParam sigParam;
+                                        sigParam.type = param.type;
+                                        sigParam.isArray = param.is_array;
+                                        info.ctorParams.push_back(sigParam);
+                                    }
+                                    checkMemberShadowing(
+                                        ctor.body, classDecl, classFieldNames, emitter);
+                                }
                                 break;
                             }
                             case Stmt::Kind::DestructorDecl:
@@ -386,12 +542,36 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
                                     method.body, classDecl, classFieldNames, emitter);
                                 ClassInfo::MethodInfo mi;
                                 mi.sig = std::move(sig);
+                                mi.isStatic = method.isStatic;
                                 mi.isVirtual = method.isVirtual || method.isOverride;
                                 mi.isAbstract = method.isAbstract;
                                 mi.isFinal = method.isFinal;
                                 mi.slot = -1;
                                 info.methods[method.name] = std::move(mi);
                                 info.methodLocs[method.name] = method.loc;
+
+                                // Disallow 'ME' in static methods
+                                if (method.isStatic && emitter)
+                                {
+                                    struct MeUseWalker : public BasicAstWalker<MeUseWalker>
+                                    {
+                                        DiagnosticEmitter *em;
+                                        explicit MeUseWalker(DiagnosticEmitter *e) : em(e) {}
+                                        void visit(const MeExpr &expr)
+                                        {
+                                            if (!em)
+                                                return;
+                                            em->emit(il::support::Severity::Error,
+                                                     "B2103",
+                                                     expr.loc,
+                                                     1,
+                                                     "'ME' is not allowed in static method");
+                                        }
+                                    } walker(emitter);
+                                    for (const auto &s : method.body)
+                                        if (s)
+                                            walker.walkStmt(*s);
+                                }
                                 break;
                             }
                             default:
@@ -494,8 +674,28 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
                 {
                     if (!mem)
                         continue;
+                    if (auto *pd = as<const PropertyDecl>(*mem))
+                    {
+                        if (emitter)
+                        {
+                            emitter->emit(il::support::Severity::Error,
+                                          "B2115",
+                                          pd->loc,
+                                          1,
+                                          "interfaces cannot declare properties (methods only)");
+                        }
+                        continue;
+                    }
                     if (auto *md = as<const MethodDecl>(*mem))
                     {
+                        if (md->isStatic && emitter)
+                        {
+                            emitter->emit(il::support::Severity::Error,
+                                          "B2116",
+                                          md->loc,
+                                          1,
+                                          "interfaces cannot declare STATIC methods");
+                        }
                         if (seen.count(md->name))
                         {
                             // E_IFACE_DUP_METHOD: interface '{I}' declares duplicate method '{M}'.
