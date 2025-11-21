@@ -54,6 +54,7 @@ void RuntimeHelperTracker::reset()
     requested_.reset();
     ordered_.clear();
     tracked_.clear();
+    usedNames_.clear();
 }
 
 /// @brief Mark a runtime helper as required.
@@ -108,6 +109,11 @@ void RuntimeHelperTracker::trackRuntime(RuntimeFeature feature)
         // Keep bookkeeping for completeness (no push to ordered_).
         tracked_.insert(feature);
     }
+}
+
+void RuntimeHelperTracker::trackCalleeName(std::string_view name)
+{
+    usedNames_.insert(std::string(name));
 }
 
 namespace
@@ -182,24 +188,51 @@ void RuntimeHelperTracker::declareRequiredRuntime(build::IRBuilder &b, bool boun
 
     auto tryDeclare = [&](const il::runtime::RuntimeDescriptor &d)
     {
-        // Prefer canonical Viper.* names: when a legacy alias and a canonical
-        // entry share the same signature id, emit only the canonical name.
-        const bool isAlias = d.name.find('.') == std::string_view::npos;
-        if (isAlias)
+        // If any variant (alias/canonical) of this signature id was used at a
+        // call site, declare only that used spelling and skip the others.
+        std::optional<std::string_view> usedSpelling;
+        if (auto sigId = il::runtime::findRuntimeSignatureId(d.name))
         {
-            if (auto sigId = il::runtime::findRuntimeSignatureId(d.name))
+            const auto &reg = il::runtime::runtimeRegistry();
+            for (const auto &other : reg)
             {
-                const auto &reg = il::runtime::runtimeRegistry();
-                for (const auto &other : reg)
+                auto otherId = il::runtime::findRuntimeSignatureId(other.name);
+                if (!otherId || *otherId != *sigId)
+                    continue;
+                if (usedNames_.count(std::string(other.name)) > 0)
                 {
-                    const bool isCanonical = other.name.find('.') != std::string_view::npos;
-                    if (!isCanonical)
-                        continue;
-                    auto otherId = il::runtime::findRuntimeSignatureId(other.name);
-                    if (otherId && *otherId == *sigId)
+                    usedSpelling = other.name;
+                    break;
+                }
+            }
+        }
+        if (usedSpelling)
+        {
+            if (*usedSpelling != d.name)
+                return; // another spelling will be declared in-group
+        }
+        else
+        {
+            // No specific spelling used: prefer canonical Viper.* names. If a
+            // canonical exists for this signature id and we're looking at the alias,
+            // skip the alias to avoid duplicates.
+            const bool isAlias = d.name.find('.') == std::string_view::npos;
+            if (isAlias)
+            {
+                if (auto sigId = il::runtime::findRuntimeSignatureId(d.name))
+                {
+                    const auto &reg = il::runtime::runtimeRegistry();
+                    for (const auto &other : reg)
                     {
-                        // Canonical exists; skip alias.
-                        return;
+                        const bool isCanonical = other.name.find('.') != std::string_view::npos;
+                        if (!isCanonical)
+                            continue;
+                        auto otherId = il::runtime::findRuntimeSignatureId(other.name);
+                        if (otherId && *otherId == *sigId)
+                        {
+                            // Canonical exists; skip alias.
+                            return;
+                        }
                     }
                 }
             }
@@ -647,10 +680,10 @@ void Lowerer::declareRequiredRuntime(build::IRBuilder &b)
 
     auto declareManual = [&](std::string_view name)
     {
-        if (const auto *desc = resolveCanonicalDescriptor(name))
+        // Declare the helper using the explicit name requested (alias-safe).
+        if (const auto *desc = il::runtime::findRuntimeDescriptor(name))
         {
-            // Prefer declaring the canonical descriptor name when available.
-            b.addExtern(std::string(desc->name), desc->signature.retType, desc->signature.paramTypes);
+            b.addExtern(std::string(name), desc->signature.retType, desc->signature.paramTypes);
         }
     };
 

@@ -100,6 +100,16 @@ class RuntimeHelperTracker
     std::bitset<kRuntimeFeatureCount> requested_;
     std::vector<RuntimeFeature> ordered_;
     std::unordered_set<RuntimeFeature, RuntimeFeatureHash> tracked_;
+    // Names of runtime callees referenced directly in IL (alias-aware).
+    std::unordered_set<std::string> usedNames_;
+
+  public:
+    /// @brief Record a runtime callee name observed during lowering.
+    /// @details When a call targets a known runtime helper, remember the exact
+    ///          symbol spelling so extern declarations can match call sites.
+    void trackCalleeName(std::string_view name);
+    /// @brief Enumerate callee names recorded so far.
+    const std::unordered_set<std::string> &usedNames() const { return usedNames_; }
 };
 
 } // namespace il::frontends::basic

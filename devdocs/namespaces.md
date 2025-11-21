@@ -699,11 +699,84 @@ Both `List` and `Dictionary` belong to `Collections` namespace after linking.
 
 ---
 
+## Viper.* Runtime Namespace (Implemented)
+
+The Viper standard library exposes runtime functions and types under the reserved `Viper.*` root namespace. This canonical namespace organization is now implemented and available in IL and BASIC code.
+
+### Runtime Functions by Namespace
+
+#### Viper.Console
+
+Console I/O operations:
+- `Viper.Console.PrintStr(str)->void` — Print string
+- `Viper.Console.PrintI64(i64)->void` — Print integer
+- `Viper.Console.PrintF64(f64)->void` — Print double
+- `Viper.Console.ReadLine()->str` — Read line from console
+
+#### Viper.Strings
+
+String manipulation and conversion:
+- `Viper.Strings.Len(str)->i64` — String length
+- `Viper.Strings.Mid(str,i64,i64)->str` — Substring
+- `Viper.Strings.Concat(str,str)->str` — Concatenate strings
+- `Viper.Strings.SplitFields(str,ptr str,i64)->i64` — Split into fields
+- `Viper.Strings.FromInt(i64)->str` — Convert int64 to string
+- `Viper.Strings.FromI16(i16)->str` — Convert int16 to string
+- `Viper.Strings.FromI32(i32)->str` — Convert int32 to string
+- `Viper.Strings.FromSingle(f32)->str` — Convert float to string
+- `Viper.Strings.FromDouble(f64)->str` — Convert double to string
+- `Viper.Strings.FromDoublePrecise(f64)->str` — Precise double to string
+- `Viper.Strings.Builder.New()->ptr` — Create StringBuilder
+
+#### Viper.Convert
+
+Type conversion with error handling:
+- `Viper.Convert.ToInt(str)->i64` — String to int (throws on error)
+- `Viper.Convert.ToDouble(str)->f64` — String to double (throws on error)
+
+#### Viper.Parse
+
+Type parsing with explicit error codes:
+- `Viper.Parse.Int64(cstr,ptr i64)->i32` — Parse int64
+- `Viper.Parse.Double(cstr,ptr f64)->i32` — Parse double
+
+#### Viper.Diagnostics
+
+Error and diagnostic utilities:
+- `Viper.Diagnostics.Trap(str)->void` — Trigger runtime trap
+
+### Runtime Types
+
+Standard library types under `Viper.System.*`:
+
+#### Viper.System
+- `Viper.System.Object` — Base class for all objects
+- `Viper.System.String` — Managed string type
+
+#### Viper.System.Text
+- `Viper.System.Text.StringBuilder` — Mutable string builder (can be constructed with NEW)
+
+#### Viper.System.IO
+- `Viper.System.IO.File` — File operations class
+
+#### Viper.System.Collections
+- `Viper.System.Collections.List` — Dynamic list container
+
+### Legacy Aliases
+
+For backward compatibility, legacy `rt_*` function names are maintained as aliases when built with `-DVIPER_RUNTIME_NS_DUAL=ON` (currently the default). Examples:
+- `rt_print_str` → `Viper.Console.PrintStr`
+- `rt_print_i64` → `Viper.Console.PrintI64`
+- `rt_len` → `Viper.Strings.Len`
+
+New code should use the canonical `Viper.*` names.
+
+---
+
 ## Future Enhancements (Track B)
 
 The following features are planned for future releases:
 
-- **Built-in Viper namespace**: Standard library types under `Viper.*`
 - **Namespace-level visibility**: Control which types are exported from a namespace
 - **Nested namespace imports**: `USING Graphics.Rendering.*` to import all types
 - **Namespace forwarding**: Re-export types from other namespaces

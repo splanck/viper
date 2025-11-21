@@ -590,7 +590,7 @@ The following built-ins are available. Use them in expressions (e.g., `LET X = A
 
 ## Standard Library & Namespaces
 
-The Viper standard library exposes procedures under the reserved `Viper.*` root namespace. You can call them fully qualified, or import a namespace with `USING`.
+The Viper standard library exposes procedures and types under the reserved `Viper.*` root namespace. You can call procedures fully qualified, or import a namespace with `USING`.
 
 - Fully qualified:
 
@@ -611,25 +611,107 @@ USING Viper.Console
 PrintI64(42)
 ```
 
-Common procedures (signatures shown as `Name(params)->result`):
+### Runtime Procedures
 
-- Console: Viper.Console.PrintI64(i64)->void, Viper.Console.PrintF64(f64)->void, Viper.Console.PrintStr(str)->void, Viper.Console.ReadLine()->str
-- Strings: Viper.Strings.Len(str)->i64, Viper.Strings.Mid(str,i64,i64)->str, Viper.Strings.Concat(str,str)->str, Viper.Strings.FromInt(i64)->str, Viper.Strings.FromDouble(f64)->str
-- Convert: Viper.Convert.ToInt(str)->i64, Viper.Convert.ToDouble(str)->f64
-- Parse: Viper.Parse.Int64(cstr, ptr i64)->i32, Viper.Parse.Double(cstr, ptr f64)->i32
-- Diagnostics: Viper.Diagnostics.Trap(str)->void
+All runtime procedures are available under canonical `Viper.*` namespace names. Legacy `rt_*` aliases are maintained for compatibility. Signatures shown as `Name(params)->result`.
 
-Notes:
-- Printing procedures are available under `Viper.Console.*` and map to the runtime’s integer, floating‑point, and string printers.
-- Only helpers present in the runtime registry are listed here; additional families (e.g., terminal control, RNG) are available under legacy `rt_*` forms until namespaced equivalents land.
+#### Viper.Console
 
-In addition to procedures, some standard library classes are recognized under `Viper.System.*`. These namespaced runtime types are known to the compiler (e.g., for declarations and NEW), and their method surfaces will be exposed progressively as the library rolls out. You can already declare variables using these types and construct selected ones as support lands.
+Console I/O operations:
 
-Examples:
+- `Viper.Console.PrintI64(i64)->void` — Print an integer to console
+- `Viper.Console.PrintF64(f64)->void` — Print a floating-point number to console
+- `Viper.Console.PrintStr(str)->void` — Print a string to console
+- `Viper.Console.ReadLine()->str` — Read a line from console input
+
+#### Viper.Strings
+
+String manipulation and conversion:
+
+- `Viper.Strings.Len(str)->i64` — Get string length
+- `Viper.Strings.Mid(str, i64, i64)->str` — Extract substring (start, length)
+- `Viper.Strings.Concat(str, str)->str` — Concatenate two strings
+- `Viper.Strings.SplitFields(str, ptr str, i64)->i64` — Split string into fields
+- `Viper.Strings.FromInt(i64)->str` — Convert int64 to string
+- `Viper.Strings.FromI16(i16)->str` — Convert int16 to string
+- `Viper.Strings.FromI32(i32)->str` — Convert int32 to string
+- `Viper.Strings.FromSingle(f32)->str` — Convert float to string
+- `Viper.Strings.FromDouble(f64)->str` — Convert double to string
+- `Viper.Strings.FromDoublePrecise(f64)->str` — Convert double to string (high precision)
+- `Viper.Strings.Builder.New()->ptr` — Create a new StringBuilder instance
+
+#### Viper.Convert
+
+Type conversion (with automatic handling):
+
+- `Viper.Convert.ToInt(str)->i64` — Convert string to integer (throws on error)
+- `Viper.Convert.ToDouble(str)->f64` — Convert string to double (throws on error)
+
+#### Viper.Parse
+
+Type parsing (with explicit error handling):
+
+- `Viper.Parse.Int64(cstr, ptr i64)->i32` — Parse int64, returns success code
+- `Viper.Parse.Double(cstr, ptr f64)->i32` — Parse double, returns success code
+
+#### Viper.Diagnostics
+
+Error and diagnostic utilities:
+
+- `Viper.Diagnostics.Trap(str)->void` — Trigger a runtime trap with message
+
+### Runtime Types
+
+Standard library classes are recognized under `Viper.System.*`. These namespaced runtime types are known to the compiler for declarations and construction. Their method surfaces are being exposed progressively.
+
+#### Viper.System
+
+Core system types:
+
+- `Viper.System.Object` — Base class for all objects
+- `Viper.System.String` — Managed string type
+
+#### Viper.System.Text
+
+Text processing types:
+
+- `Viper.System.Text.StringBuilder` — Mutable string builder (can be constructed with NEW)
+
+#### Viper.System.IO
+
+I/O types:
+
+- `Viper.System.IO.File` — File operations class
+
+#### Viper.System.Collections
+
+Collection types:
+
+- `Viper.System.Collections.List` — Dynamic list container
+
+### Examples
+
+Using runtime procedures:
+
+```basic
+USING Viper.Console
+USING Viper.Strings
+
+PrintStr("Length: ")
+PrintI64(Len("hello"))
+PrintStr(Concat("hello", " world"))
+```
+
+Using runtime types:
 
 ```basic
 DIM sb AS Viper.System.Text.StringBuilder
+LET sb = NEW Viper.System.Text.StringBuilder()
 ```
+
+### Migration Note
+
+Legacy `rt_*` function names (e.g., `rt_print_str`, `rt_len`) are maintained as aliases to their canonical `Viper.*` counterparts. New code should use the canonical names.
 
 ## Reserved Root
 
@@ -637,28 +719,57 @@ The `Viper` root namespace is reserved for the standard library. User code may n
 
 ## Namespaces & USING
 
-USING can be placed at file scope (before declarations) or inside a `NAMESPACE ... END NAMESPACE` block to scope imports to that namespace body. Scoped USING applies to declarations and calls that follow it within the same namespace.
+**IMPORTANT**: USING directives are **file-scoped only** and must appear at the top of the file before any declarations. USING directives cannot appear inside NAMESPACE, CLASS, or INTERFACE blocks.
 
-Example (scoped import inside a namespace):
+### Correct Usage
 
 ```basic
+' ✓ CORRECT: USING at file scope, before declarations
+USING Viper.Console
+
 NAMESPACE App
-  USING Viper.Console
   SUB Main()
-    ' Either unqualified via USING:
+    ' Use imported namespace without qualification
     PrintI64(99)
-    ' Or fully qualified (equivalent):
-    ' Viper.Console.PrintI64(99)
+    ' Or fully qualified (always works)
+    Viper.Console.PrintI64(99)
   END SUB
 END NAMESPACE
 
-' Invoke the namespaced entry point
 App.Main()
 ```
 
-Notes:
-- File‑scope USING must appear before any declarations at file scope.
-- Scoped USING inside a namespace does not leak outside the namespace; nested declarations see the import, and it is popped when the namespace ends.
+### Incorrect Usage
+
+```basic
+' ✗ WRONG: USING after NAMESPACE declaration (Error: E_NS_005)
+NAMESPACE App
+  SUB Main()
+  END SUB
+END NAMESPACE
+
+USING Viper.Console  ' Error: USING must appear before all declarations
+```
+
+```basic
+' ✗ WRONG: USING inside NAMESPACE block (Error: E_NS_008)
+NAMESPACE App
+  USING Viper.Console  ' Error: USING inside NAMESPACE block not allowed
+  SUB Main()
+  END SUB
+END NAMESPACE
+```
+
+### USING Rules
+
+1. **File scope only**: USING must be at file scope, not inside any block
+2. **Before declarations**: USING must appear before any NAMESPACE, CLASS, or INTERFACE declarations
+3. **File-scoped effect**: Each file's USING directives do not affect other compilation units
+4. **Two forms**:
+   - Simple: `USING Viper.Console` (imports all from namespace)
+   - Aliased: `USING VC = Viper.Console` (creates shorthand alias)
+
+For complete namespace documentation, see [Namespace Reference](../devdocs/namespaces.md).
 
 ## Keyword index
 
