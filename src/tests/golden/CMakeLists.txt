@@ -294,13 +294,12 @@ function(viper_add_golden_suite_tests)
             "-DEXPECT=${EXPECT_RESERVED_DECL}"
             -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
 
-    file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/reserved_root_user_using.stderr EXPECT_RESERVED_USING)
-    string(STRIP "${EXPECT_RESERVED_USING}" EXPECT_RESERVED_USING)
+    # Runtime namespaces enabled: USING Viper.* is allowed; expect successful compile
     viper_add_ctest(basic_error_reserved_root_user_using
             ${CMAKE_COMMAND}
             -DILC=${BASIC_ILC}
             -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/reserved_root_user_using.bas
-            "-DEXPECT=${EXPECT_RESERVED_USING}"
+            -DEXPECT_EXIT_ZERO=TRUE
             -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
 
     file(READ ${_VIPER_GOLDEN_DIR}/vm_trap_loc.stderr EXPECT_VM_TRAP_LOC)
@@ -816,6 +815,18 @@ function(viper_add_golden_suite_tests)
             "-DEXPECT=${EXPECT_USING_NS}"
             -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
 
+    # Additional Viper.* families: Strings, Convert
+    file(READ ${_VIPER_GOLDEN_DIR}/basic_runtime_ns/strings_len.stdout EXPECT_VIPER_STR_LEN)
+    string(STRIP "${EXPECT_VIPER_STR_LEN}" EXPECT_VIPER_STR_LEN)
+    viper_add_ctest(basic_runtime_ns_strings_len
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_runtime_ns/strings_len.bas
+            "-DEXPECT=${EXPECT_VIPER_STR_LEN}"
+            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
+
+    # Additional families can be added incrementally (Strings.Concat, Convert, Parse, Diagnostics)
+
     # BASIC error: reserved root declaration under Viper
     file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/reserved_root_decl.stderr EXPECT_RESERVED_DECL2)
     string(STRIP "${EXPECT_RESERVED_DECL2}" EXPECT_RESERVED_DECL2)
@@ -824,6 +835,22 @@ function(viper_add_golden_suite_tests)
             -DILC=${BASIC_ILC}
             -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/reserved_root_decl.bas
             "-DEXPECT=${EXPECT_RESERVED_DECL2}"
+            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
+
+    # Ambiguous unqualified call when two USING imports provide same name
+    viper_add_ctest(basic_error_ambiguous_using_call
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/ambiguous_using_call.bas
+            "-DEXPECT=ambiguous procedure 'PRINTI64' — matches: My\\.Console\\.PRINTI64, Viper\\.Console\\.PRINTI64"
+            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
+
+    # Shadowing builtin extern should trigger dedicated error
+    viper_add_ctest(basic_error_shadow_builtin_decl
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic_errors/shadow_builtin_decl.bas
+            "-DEXPECT=E_VIPER_BUILTIN_SHADOW"
             -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
 
     # OOP negative diagnostics

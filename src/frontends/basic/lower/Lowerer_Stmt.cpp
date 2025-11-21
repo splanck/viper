@@ -558,6 +558,52 @@ void Lowerer::lowerCallStmt(const CallStmt &stmt)
                 return;
             }
         }
+
+        // Attempt direct lowering for runtime builtin externs by descriptor name.
+        // Handle unqualified calls with USING Viper.Console by probing the canonical
+        // runtime namespace prefix.
+        const il::runtime::RuntimeSignature *rtSig = il::runtime::findRuntimeSignature(calleeKey);
+        if (!rtSig && calleeKey.find('.') == std::string::npos)
+        {
+            if (!ce->callee.empty())
+            {
+                std::string candidate = std::string("Viper.Console.") + ce->callee;
+                if (const auto *sig = il::runtime::findRuntimeSignature(candidate))
+                {
+                    rtSig = sig;
+                    calleeResolved = std::move(candidate);
+                }
+            }
+        }
+        if (rtSig)
+        {
+            std::vector<il::core::Value> args;
+            args.reserve(ce->args.size());
+            for (size_t i = 0; i < ce->args.size(); ++i)
+            {
+                if (!ce->args[i])
+                    continue;
+                auto rv = lowerExpr(*ce->args[i]);
+                if (i < rtSig->paramTypes.size())
+                {
+                    auto pt = rtSig->paramTypes[i];
+                    if (pt.kind == il::core::Type::Kind::F64)
+                        rv = coerceToF64(std::move(rv), ce->loc);
+                    else if (pt.kind == il::core::Type::Kind::I64)
+                        rv = coerceToI64(std::move(rv), ce->loc);
+                    else if (pt.kind == il::core::Type::Kind::I1)
+                        rv = coerceToBool(std::move(rv), ce->loc);
+                }
+                args.push_back(rv.value);
+            }
+            curLoc = ce->loc;
+            const std::string &target = calleeResolved.empty() ? calleeKey : calleeResolved;
+            if (rtSig->retType.kind == il::core::Type::Kind::Void)
+                emitCall(target, args);
+            else
+                (void)emitCallRet(rtSig->retType, target, args);
+            return;
+        }
     }
 
     // Default: lower as expression (SUB path yields a void call; result ignored)

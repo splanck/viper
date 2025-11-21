@@ -691,7 +691,49 @@ const ProcSignature *SemanticAnalyzer::resolveCallee(const CallExpr &c,
                     q += ident;
                     attempts.push_back(q);
                     if (procReg_.lookup(q))
-                        importHits.push_back(q);
+                    {
+                        // Build a display name preserving namespace casing and, when possible,
+                        // the original function spelling. This keeps diagnostics stable and
+                        // user-friendly.
+                        std::string displayNs = ns;
+                        if (const auto *info = ns_.info(ns))
+                            displayNs = info->full;
+
+                        std::string display = displayNs + "." + ident;
+                        // Attempt to find an original-cased key in the proc table that
+                        // canonicalizes to the same qualified name.
+                        const auto &procs = procReg_.procs();
+                        int bestScore = -1; // -1: none, 0: lowercase fallback, 1: mixed-case, 2: preferred ns + mixed-case
+                        for (const auto &kv : procs)
+                        {
+                            const std::string &key = kv.first;
+                            // Canonicalize key and compare against q (already canonicalized ns+ident).
+                            std::vector<std::string> parts = SplitDots(key);
+                            std::string keyCanon = CanonicalizeQualified(parts);
+                            if (keyCanon == q)
+                            {
+                                // Score this candidate: prefer matching namespace + mixed-case key.
+                                bool hasUpper = false;
+                                for (char ch : key)
+                                    if (std::isupper(static_cast<unsigned char>(ch)))
+                                        { hasUpper = true; break; }
+                                int score = hasUpper ? 1 : 0;
+                                // Check namespace prefix equality when available.
+                                auto lastDot = key.rfind('.');
+                                std::string keyNs = lastDot != std::string::npos ? key.substr(0, lastDot) : std::string{};
+                                if (hasUpper && keyNs == displayNs)
+                                    score = 2;
+                                if (score > bestScore)
+                                {
+                                    bestScore = score;
+                                    display = key;
+                                    if (bestScore == 2)
+                                        break; // optimal
+                                }
+                            }
+                        }
+                        importHits.push_back(std::move(display));
+                    }
                 }
             }
             if (importHits.size() == 1)
@@ -700,7 +742,46 @@ const ProcSignature *SemanticAnalyzer::resolveCallee(const CallExpr &c,
             }
             else if (importHits.size() > 1)
             {
-                diagx::ErrorAmbiguousProc(de.emitter(), c.loc, c.callee, importHits);
+                // Remap matches to display case using namespace registry for the prefix
+                // and the original typed callee for the suffix.
+                std::vector<std::string> displayHits;
+                displayHits.reserve(importHits.size());
+                auto titleCaseNs = [](const std::string &ns) {
+                    std::string out;
+                    out.reserve(ns.size());
+                    bool start = true;
+                    for (char ch : ns)
+                    {
+                        if (ch == '.')
+                        {
+                            out.push_back('.');
+                            start = true;
+                        }
+                        else
+                        {
+                            if (start)
+                                out.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(ch))));
+                            else
+                                out.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(ch))));
+                            start = false;
+                        }
+                    }
+                    return out;
+                };
+                for (const auto &qcanon : importHits)
+                {
+                    std::size_t dot = qcanon.rfind('.');
+                    std::string nsPart = dot == std::string::npos ? std::string{} : qcanon.substr(0, dot);
+                    std::string displayNs = nsPart;
+                    if (const auto *info = ns_.info(nsPart))
+                        displayNs = info->full;
+                    // Normalise namespace display to TitleCase for readability.
+                    std::string nsTitle = titleCaseNs(displayNs);
+                    std::string display = nsTitle.empty() ? std::string(c.callee)
+                                                            : nsTitle + "." + c.callee;
+                    displayHits.push_back(std::move(display));
+                }
+                diagx::ErrorAmbiguousProc(de.emitter(), c.loc, c.callee, displayHits);
                 return nullptr;
             }
         }

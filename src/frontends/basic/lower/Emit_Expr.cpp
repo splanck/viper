@@ -32,6 +32,8 @@
 #include "frontends/basic/lower/Emitter.hpp"
 
 #include "viper/il/Module.hpp"
+#include "il/runtime/RuntimeSignatures.hpp"
+#include "il/runtime/RuntimeSignaturesData.hpp"
 
 #include <cassert>
 #include <utility>
@@ -539,14 +541,43 @@ Value Lowerer::narrow32(Value value, il::support::SourceLoc loc)
     return emitCommon(loc).to_iN(value, 32);
 }
 
+namespace {
+// Prefer canonical Viper.* names for runtime calls when available.
+// If an alias name (rt_*) maps to a known signature id that also has a
+// canonical dotted descriptor, rewrite to the canonical Viper.* spelling.
+static std::string mapToCanonicalRuntime(std::string_view name)
+{
+    using il::runtime::findRuntimeSignatureId;
+    using il::runtime::runtimeRegistry;
+
+    // Already canonical
+    if (name.find('.') != std::string_view::npos)
+        return std::string(name);
+
+    if (auto id = findRuntimeSignatureId(name))
+    {
+        // Search descriptors for a dotted name sharing the same signature id.
+        for (const auto &d : runtimeRegistry())
+        {
+            auto otherId = findRuntimeSignatureId(d.name);
+            if (otherId && *otherId == *id && d.name.find('.') != std::string::npos)
+            {
+                return std::string(d.name);
+            }
+        }
+    }
+    return std::string(name);
+}
+} // namespace
+
 void Lowerer::emitCall(const std::string &callee, const std::vector<Value> &args)
 {
-    emitter().emitCall(callee, args);
+    emitter().emitCall(mapToCanonicalRuntime(callee), args);
 }
 
 Value Lowerer::emitCallRet(Type ty, const std::string &callee, const std::vector<Value> &args)
 {
-    return emitter().emitCallRet(ty, callee, args);
+    return emitter().emitCallRet(ty, mapToCanonicalRuntime(callee), args);
 }
 
 /// @brief Request a runtime helper and emit a call in one operation.

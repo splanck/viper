@@ -202,25 +202,19 @@ void SemanticAnalyzer::analyzeUsingDecl(UsingDecl &decl)
         return;
 
     // Reserved root "Viper": by default, reject imports under the reserved root.
-    // When runtime namespaces are enabled, permit USING only for the Console
-    // group (Viper.Console.*) used for builtin extern calls; continue to reject
-    // other Viper.* namespaces.
+    // When runtime namespaces are enabled, permit USING for any Viper.* subtree
+    // (Console, Strings, Convert, Parse, Diagnostics, Math, IO, ...). Bare
+    // "USING Viper" (root only) remains rejected to avoid ambiguous imports.
     if (!decl.namespacePath.empty() && iequals(decl.namespacePath[0], "Viper"))
     {
-        bool allow = false;
-        if (FrontendOptions::enableRuntimeNamespaces())
-        {
-            if (decl.namespacePath.size() >= 2 && iequals(decl.namespacePath[1], "Console"))
-            {
-                allow = true;
-            }
-        }
+        const bool allow = FrontendOptions::enableRuntimeNamespaces() &&
+                           decl.namespacePath.size() >= 2; // allow any Viper.<child>
         if (!allow)
         {
             de.emit(diag::BasicDiag::NsReservedViper, decl.loc, 1, {});
             return;
         }
-        // Accepted: USING Viper.Console (and sub-names). Proceed with normal checks.
+        // Accepted: USING Viper.<any> (and sub-names). Proceed with normal checks.
     }
 
     // E_NS_001: Namespace must exist in registry (error severity).

@@ -1,7 +1,7 @@
 il 0.1
-extern @rt_alloc(i64) -> ptr
-extern @rt_print_f64(f64) -> void
-extern @rt_print_str(str) -> void
+extern @Viper.Memory.Alloc(i64) -> ptr
+extern @Viper.Console.PrintF64(f64) -> void
+extern @Viper.Console.PrintStr(str) -> void
 
 global const str @.L0 = "DONE"
 
@@ -18,7 +18,7 @@ entry:
 
   %n0 = load i64, %n_slot
   %bytes = imul.ovf %n0, 8
-  %abase = call @rt_alloc(%bytes)
+  %abase = call @Viper.Memory.Alloc(%bytes)
   store ptr, %a_slot, %abase
   br label loop_head
 
@@ -51,9 +51,9 @@ done:
   %fsum = sitofp %sum2
   %fn = sitofp %n2
   %avg = fdiv %fsum, %fn
-  call @rt_print_f64(%avg)
+  call @Viper.Console.PrintF64(%avg)
 
   %d = const_str @.L0
-  call @rt_print_str(%d)
+  call @Viper.Console.PrintStr(%d)
   ret 0
 }

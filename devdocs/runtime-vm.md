@@ -200,25 +200,29 @@ example.
 
 The VM runtime bridge recognizes these extern symbols and dispatches them to the C runtime. All symbols documented in the Runtime ABI section above are available for use in IL programs via `extern` declarations.
 
+Compatibility:
+- When built with `-DVIPER_RUNTIME_NS_DUAL=ON`, legacy `@rt_*` externs are accepted as aliases of `@Viper.*`.
+- New code should emit `@Viper.*`.
+
 **Common extern patterns:**
 
 ```il
-# Console I/O
-extern @rt_print_str(str) -> void
-extern @rt_print_i64(i64) -> void
-extern @rt_print_f64(f64) -> void
-extern @rt_input_line() -> str
+# Console I/O (canonical)
+extern @Viper.Console.PrintStr(str) -> void
+extern @Viper.Console.PrintI64(i64) -> void
+extern @Viper.Console.PrintF64(f64) -> void
+extern @Viper.Console.ReadLine() -> str
 
 # String operations
-extern @rt_len(str) -> i64
-extern @rt_concat(str, str) -> str
-extern @rt_substr(str, i64, i64) -> str
-extern @rt_str_eq(str, str) -> i1
+extern @Viper.Strings.Len(str) -> i64
+extern @Viper.Strings.Concat(str, str) -> str
+extern @Viper.Strings.Mid(str, i64, i64) -> str
+extern @rt_str_eq(str, str) -> i1   # no Viper alias yet
 
 # String conversion
-extern @rt_to_int(str) -> i64
-extern @rt_int_to_str(i64) -> str
-extern @rt_f64_to_str(f64) -> str
+extern @Viper.Convert.ToInt(str) -> i64
+extern @Viper.Strings.FromInt(i64) -> str
+extern @Viper.Strings.FromDouble(f64) -> str
 
 # Math
 extern @rt_sqrt(f64) -> f64

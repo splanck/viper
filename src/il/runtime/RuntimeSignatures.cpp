@@ -623,7 +623,7 @@ struct DescriptorRow
     RuntimeTrapClass trapClass;
 };
 
-constexpr std::array<DescriptorRow, 131> kDescriptorRows{{
+constexpr std::array<DescriptorRow, 149> kDescriptorRows{{
     DescriptorRow{"rt_abort",
                   std::nullopt,
                   "void(ptr)",
@@ -1413,10 +1413,28 @@ constexpr std::array<DescriptorRow, 131> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
+// Canonical dotted names for string retain/release, with legacy aliases gated by VIPER_RUNTIME_NS_DUAL
+#if VIPER_RUNTIME_NS_DUAL
+    DescriptorRow{"Viper.Strings.RetainMaybe",
+                  std::nullopt,
+                  "void(string)",
+                  &DirectHandler<&rt_str_retain_maybe, void, rt_string>::invoke,
+                  kManualLowering,
+                  nullptr,
+                  0,
+                  RuntimeTrapClass::None},
     DescriptorRow{"rt_str_retain_maybe",
                   std::nullopt,
                   "void(string)",
                   &DirectHandler<&rt_str_retain_maybe, void, rt_string>::invoke,
+                  kManualLowering,
+                  nullptr,
+                  0,
+                  RuntimeTrapClass::None},
+    DescriptorRow{"Viper.Strings.ReleaseMaybe",
+                  std::nullopt,
+                  "void(string)",
+                  &DirectHandler<&rt_str_release_maybe, void, rt_string>::invoke,
                   kManualLowering,
                   nullptr,
                   0,
@@ -1429,6 +1447,24 @@ constexpr std::array<DescriptorRow, 131> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
+#else
+    DescriptorRow{"Viper.Strings.RetainMaybe",
+                  std::nullopt,
+                  "void(string)",
+                  &DirectHandler<&rt_str_retain_maybe, void, rt_string>::invoke,
+                  kManualLowering,
+                  nullptr,
+                  0,
+                  RuntimeTrapClass::None},
+    DescriptorRow{"Viper.Strings.ReleaseMaybe",
+                  std::nullopt,
+                  "void(string)",
+                  &DirectHandler<&rt_str_release_maybe, void, rt_string>::invoke,
+                  kManualLowering,
+                  nullptr,
+                  0,
+                  RuntimeTrapClass::None},
+#endif
     DescriptorRow{"rt_test_bridge_mutate_str",
                   std::nullopt,
                   "void(string)",
@@ -1563,7 +1599,7 @@ constexpr auto makeFeatureIndex()
     return featureIndex;
 }
 
-constexpr std::array<int, static_cast<std::size_t>(RuntimeFeature::Count)> kFeatureIndex =
+const std::array<int, static_cast<std::size_t>(RuntimeFeature::Count)> kFeatureIndex =
     makeFeatureIndex();
 
 /// @brief Locate the sorted descriptor index entry for a symbol name.

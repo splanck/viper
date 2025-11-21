@@ -30,12 +30,19 @@ endif()
 # ---- End: Viper version wiring ----
 project(Viper LANGUAGES CXX VERSION ${VIPER_SEMVER_NUM})
 enable_language(C)
+# Enable Objective-C for macOS (needed by ViperGFX)
+if(APPLE)
+    enable_language(OBJC)
+endif()
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 
 # Runtime namespace transition flag: dual-publish legacy rt_* aliases alongside
 # canonical Viper.* names. Default ON for a smoother migration window.
+# TODO(v0.3.0): Flip default to OFF once all frontends and examples emit
+#               canonical Viper.* names. Users can re-enable legacy aliases via
+#               -DVIPER_RUNTIME_NS_DUAL=ON to load older IL.
 option(VIPER_RUNTIME_NS_DUAL "Publish legacy rt_* runtime aliases alongside Viper.*" ON)
 
 # Compute numeric define for headers and C++ sources (1/0)
@@ -292,6 +299,10 @@ viper_assert_no_directory_link_libraries("src/runtime" "src/runtime")
 add_subdirectory(src)
 viper_assert_no_directory_link_libraries("src" "src")
 
+# ---- ViperGFX library ----
+add_subdirectory(src/lib/graphics)
+viper_assert_no_directory_link_libraries("src/lib/graphics" "src/lib/graphics")
+
 # ---- ViperTUI subproject ----
 option(BUILD_TUI "Build ViperTUI subproject" ON)
 if(VIPER_INSTALL_TUI AND NOT BUILD_TUI)
@@ -386,6 +397,7 @@ set(VIPER_PUBLIC_LIB_TARGETS
   il_vm
   fe_basic
   il_api
+  vipergfx
 )
 
 install(TARGETS ${VIPER_PUBLIC_LIB_TARGETS}

@@ -613,17 +613,15 @@ PrintI64(42)
 
 Common procedures (signatures shown as `Name(params)->result`):
 
-- Viper.Console.PrintI64(i64)->void
-- Viper.Console.PrintF64(double)->void
-- Viper.Console.PrintStr(string)->void
-- Viper.Math.Sin(double)->double
-- Viper.Math.Cos(double)->double
-- Viper.Math.Sqrt(double)->double
-- Viper.Math.Pow(double,double)->double
+- Console: Viper.Console.PrintI64(i64)->void, Viper.Console.PrintF64(f64)->void, Viper.Console.PrintStr(str)->void, Viper.Console.ReadLine()->str
+- Strings: Viper.Strings.Len(str)->i64, Viper.Strings.Mid(str,i64,i64)->str, Viper.Strings.Concat(str,str)->str, Viper.Strings.FromInt(i64)->str, Viper.Strings.FromDouble(f64)->str
+- Convert: Viper.Convert.ToInt(str)->i64, Viper.Convert.ToDouble(str)->f64
+- Parse: Viper.Parse.Int64(cstr, ptr i64)->i32, Viper.Parse.Double(cstr, ptr f64)->i32
+- Diagnostics: Viper.Diagnostics.Trap(str)->void
 
 Notes:
 - Printing procedures are available under `Viper.Console.*` and map to the runtime’s integer, floating‑point, and string printers.
-- Math procedures correspond to the BASIC intrinsics (e.g., `SIN`, `COS`, `SQRT`) and use the same parameter/return types shown above.
+- Only helpers present in the runtime registry are listed here; additional families (e.g., terminal control, RNG) are available under legacy `rt_*` forms until namespaced equivalents land.
 
 In addition to procedures, some standard library classes are recognized under `Viper.System.*`. These namespaced runtime types are known to the compiler (e.g., for declarations and NEW), and their method surfaces will be exposed progressively as the library rolls out. You can already declare variables using these types and construct selected ones as support lands.
 

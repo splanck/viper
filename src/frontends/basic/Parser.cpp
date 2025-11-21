@@ -21,6 +21,7 @@
 
 #include "frontends/basic/Parser.hpp"
 #include "frontends/basic/ASTUtils.hpp"
+#include "frontends/basic/Options.hpp"
 #include "support/source_manager.hpp"
 #include <array>
 #include <cctype>
@@ -51,6 +52,14 @@ Parser::Parser(std::string_view src,
       suppressUndefinedNamedLabelCheck_(suppressUndefinedLabelCheck)
 {
     tokens_.push_back(lexer_.next());
+
+    // Seed known namespace heads with 'Viper' when runtime namespaces are enabled.
+    // This allows dotted calls like Viper.Console.PrintI64(…) to parse as qualified
+    // calls even without a preceding NAMESPACE Viper … block in user code.
+    if (il::frontends::basic::FrontendOptions::enableRuntimeNamespaces())
+    {
+        knownNamespaces_.insert("Viper");
+    }
 }
 
 /// @brief Create a statement sequencer bound to this parser instance.

@@ -1,0 +1,3 @@
+REM BASIC: Convert string to int via Viper.Convert.ToInt
+USING Viper.Console
+Viper.Console.PrintI64(Viper.Convert.ToInt("42"))

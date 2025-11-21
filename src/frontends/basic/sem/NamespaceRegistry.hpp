@@ -12,6 +12,12 @@
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
+
+namespace il::runtime
+{
+struct RuntimeDescriptor; // fwd decl to avoid including runtime headers here
+}
 
 namespace il::frontends::basic
 {
@@ -89,6 +95,13 @@ class NamespaceRegistry
     /// @param full Fully-qualified namespace path to query.
     /// @return Pointer to NamespaceInfo if found; nullptr otherwise.
     [[nodiscard]] const NamespaceInfo *info(const std::string &full) const;
+
+    /// @brief Seed known namespaces from runtime built-in descriptors.
+    /// @details For each runtime descriptor with a dotted name (e.g., "Viper.Console.PrintI64"),
+    ///          insert all namespace prefixes into the registry: "Viper", "Viper.Console".
+    ///          Names are handled case-insensitively; canonical casing from descriptors is preserved.
+    /// @param descs Runtime descriptor list (typically il::runtime::runtimeRegistry()).
+    void seedFromRuntimeBuiltins(const std::vector<il::runtime::RuntimeDescriptor> &descs);
 
   private:
     /// @brief Convert a string to lowercase for case-insensitive comparison.

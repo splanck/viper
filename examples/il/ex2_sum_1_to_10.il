@@ -1,6 +1,6 @@
 il 0.1
-extern @rt_print_str(str) -> void
-extern @rt_print_i64(i64) -> void
+extern @Viper.Console.PrintStr(str) -> void
+extern @Viper.Console.PrintI64(i64) -> void
 
 global const str @.L0 = "SUM 1..10"
 global const str @.L1 = "DONE"
@@ -12,9 +12,9 @@ entry:
   %s_slot = alloca 8
 
   %h = const_str @.L0
-  call @rt_print_str(%h)
+  call @Viper.Console.PrintStr(%h)
   %nl0 = const_str @.L2
-  call @rt_print_str(%nl0)
+  call @Viper.Console.PrintStr(%nl0)
 
   store i64, %i_slot, 1
   store i64, %s_slot, 0
@@ -37,14 +37,14 @@ loop_body:
 
 done:
   %s2 = load i64, %s_slot
-  call @rt_print_i64(%s2)
+  call @Viper.Console.PrintI64(%s2)
   %nl1 = const_str @.L2
-  call @rt_print_str(%nl1)
+  call @Viper.Console.PrintStr(%nl1)
 
   %d = const_str @.L1
-  call @rt_print_str(%d)
+  call @Viper.Console.PrintStr(%d)
   %nl2 = const_str @.L2
-  call @rt_print_str(%nl2)
+  call @Viper.Console.PrintStr(%nl2)
 
   ret 0
 }

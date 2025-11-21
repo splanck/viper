@@ -27,6 +27,7 @@
 #include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/sem/TypeRegistry.hpp"
+#include "il/runtime/RuntimeSignatures.hpp"
 
 #include <functional>
 #include <string>
@@ -51,7 +52,10 @@ void buildNamespaceRegistry(const Program &program,
     // Clear previous state.
     usings.clear();
 
-    // Seed well-known runtime namespaces and built-in external types.
+    // Seed runtime namespaces from built-in descriptors so USING Viper.* validates.
+    registry.seedFromRuntimeBuiltins(il::runtime::runtimeRegistry());
+
+    // Seed well-known runtime types (classes/interfaces) into the catalog.
     // Catalog-only: registers namespaces and type names; members come later.
     // This also makes `USING Viper.System.*` resolvable when enabled.
     seedRuntimeTypeCatalog(registry);

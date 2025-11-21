@@ -383,7 +383,6 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
         // canonical runtime Console namespace (USING Viper.Console case).
         // This mirrors semantic resolution where USING imports allow unqualified
         // calls like PrintI64 to bind to Viper.Console.PrintI64.
-        std::string resolvedRuntimeName;
         if (!rtSig && calleeKey.find('.') == std::string::npos)
         {
             // Prefer original callee casing when present to match registry keys.
@@ -393,26 +392,38 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
                 if (const auto *sig = il::runtime::findRuntimeSignature(candidate))
                 {
                     rtSig = sig;
-                    resolvedRuntimeName = std::move(candidate);
+                    calleeResolved = std::move(candidate);
                 }
-            }
-            // If still unknown, try legacy rt_* aliases for common Console print helpers.
-            if (!rtSig)
-            {
-                std::string key = calleeKey; // already canonicalized to lowercase
-                std::string rt;
-                if (key == "printi64")
-                    rt = "rt_print_i64";
-                else if (key == "printstr")
-                    rt = "rt_print_str";
-                else if (key == "printf64" || key == "printf")
-                    rt = "rt_print_f64";
-                if (!rt.empty())
+                else
                 {
-                    if (const auto *sig = il::runtime::findRuntimeSignature(rt))
+                    // Case-insensitive fallback against Viper.Console.* when USING is implied.
+                    const auto &rts = il::runtime::runtimeSignatures();
+                    for (const auto &kv : rts)
                     {
-                        rtSig = sig;
-                        resolvedRuntimeName = std::move(rt);
+                        const std::string_view name = kv.first;
+                        constexpr std::string_view prefix = "Viper.Console.";
+                        if (name.size() <= prefix.size() || name.substr(0, prefix.size()) != prefix)
+                            continue;
+                        const std::string_view leaf = name.substr(prefix.size());
+                        if (leaf.size() != calleeKey.size())
+                            continue;
+                        bool eq = true;
+                        for (size_t i = 0; i < leaf.size(); ++i)
+                        {
+                            unsigned char a = static_cast<unsigned char>(leaf[i]);
+                            unsigned char b = static_cast<unsigned char>(calleeKey[i]);
+                            if (std::tolower(a) != std::tolower(b))
+                            {
+                                eq = false;
+                                break;
+                            }
+                        }
+                        if (eq)
+                        {
+                            rtSig = &kv.second;
+                            calleeResolved = std::string(name);
+                            break;
+                        }
                     }
                 }
             }
@@ -444,17 +455,6 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
                     rtSig = &kv.second;
                     // Replace calleeResolved with the canonical runtime symbol spelling
                     const_cast<std::string &>(calleeKey) = std::string(name);
-                    // Prefer legacy rt_* alias for emission to align with extern declarations
-                    // and golden IL (map Viper.Console.Print* to rt_print_*).
-                    if (name.find("Viper.Console.Print") == 0)
-                    {
-                        if (name.rfind("PrintI64") == name.size() - 8)
-                            resolvedRuntimeName = "rt_print_i64";
-                        else if (name.rfind("PrintStr") == name.size() - 8)
-                            resolvedRuntimeName = "rt_print_str";
-                        else if (name.rfind("PrintF64") == name.size() - 8)
-                            resolvedRuntimeName = "rt_print_f64";
-                    }
                     break;
                 }
             }
@@ -484,15 +484,13 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
             // Emit direct call to the canonical runtime extern (e.g., @Viper.Console.PrintI64).
             if (rtSig->retType.kind != IlType::Kind::Void)
             {
-                const std::string &target =
-                    resolvedRuntimeName.empty() ? calleeKey : resolvedRuntimeName;
+                const std::string &target = calleeResolved.empty() ? calleeKey : calleeResolved;
                 IlValue res = lowerer_.emitCallRet(rtSig->retType, target, args);
                 result_ = Lowerer::RVal{res, rtSig->retType};
             }
             else
             {
-                const std::string &target =
-                    resolvedRuntimeName.empty() ? calleeKey : resolvedRuntimeName;
+                const std::string &target = calleeResolved.empty() ? calleeKey : calleeResolved;
                 lowerer_.emitCall(target, args);
                 result_ = Lowerer::RVal{IlValue::constInt(0), IlType(IlType::Kind::I64)};
             }

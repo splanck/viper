@@ -182,6 +182,29 @@ void RuntimeHelperTracker::declareRequiredRuntime(build::IRBuilder &b, bool boun
 
     auto tryDeclare = [&](const il::runtime::RuntimeDescriptor &d)
     {
+        // Prefer canonical Viper.* names: when a legacy alias and a canonical
+        // entry share the same signature id, emit only the canonical name.
+        const bool isAlias = d.name.find('.') == std::string_view::npos;
+        if (isAlias)
+        {
+            if (auto sigId = il::runtime::findRuntimeSignatureId(d.name))
+            {
+                const auto &reg = il::runtime::runtimeRegistry();
+                for (const auto &other : reg)
+                {
+                    const bool isCanonical = other.name.find('.') != std::string_view::npos;
+                    if (!isCanonical)
+                        continue;
+                    auto otherId = il::runtime::findRuntimeSignatureId(other.name);
+                    if (otherId && *otherId == *sigId)
+                    {
+                        // Canonical exists; skip alias.
+                        return;
+                    }
+                }
+            }
+        }
+
         if (declared.insert(std::string(d.name)).second)
         {
             declareRuntimeExtern(b, d);
@@ -248,14 +271,14 @@ void Lowerer::resetManualHelpers()
     manualHelperRequirements_.fill(false);
 }
 
-/// @brief Ensure the trap helper is declared when bounds checks are disabled.
-/// @details When bounds checking is turned off manual trap emission is required
-///          for runtime panic sites.  This toggles the trap helper requirement
-///          so @ref declareRequiredRuntime emits the corresponding extern.
+/// @brief Ensure the trap helper is declared whenever traps are emitted.
+/// @details Several lowering sites emit a call to the runtime trap helper
+///          (e.g., GOSUB overflow/empty return, conversion failures, explicit
+///          diagnostics). This helper must be declared regardless of the
+///          bounds-checking configuration, since traps are not exclusive to
+///          array bounds operations.
 void Lowerer::requireTrap()
 {
-    if (boundsChecks)
-        return;
     setManualHelperRequired(ManualRuntimeHelper::Trap);
 }
 
@@ -626,8 +649,8 @@ void Lowerer::declareRequiredRuntime(build::IRBuilder &b)
     {
         if (const auto *desc = resolveCanonicalDescriptor(name))
         {
-            b.addExtern(
-                std::string(desc->name), desc->signature.retType, desc->signature.paramTypes);
+            // Prefer declaring the canonical descriptor name when available.
+            b.addExtern(std::string(desc->name), desc->signature.retType, desc->signature.paramTypes);
         }
     };
 

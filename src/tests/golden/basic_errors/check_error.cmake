@@ -18,7 +18,14 @@ if (DEFINED EXPECT_EXIT_ZERO)
     endif ()
 endif ()
 
-execute_process(COMMAND ${ILC} front basic -emit-il ${BAS_FILE} RESULT_VARIABLE res OUTPUT_VARIABLE out ERROR_VARIABLE out)
+# For Phase 2 namespace semantics tests, disable runtime namespaces via CLI flag.
+set(_ns_flag "")
+if (BAS_FILE MATCHES "/basic/namespaces_phase2/")
+    set(_ns_flag "--no-runtime-namespaces")
+endif ()
+
+execute_process(COMMAND ${ILC} front basic -emit-il ${BAS_FILE} ${_ns_flag}
+        RESULT_VARIABLE res OUTPUT_VARIABLE out ERROR_VARIABLE out)
 
 if (_expect_exit_zero)
     if (NOT res EQUAL 0)

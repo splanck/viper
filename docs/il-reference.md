@@ -347,8 +347,8 @@ br label exit
 **`call`** — Call a function; arguments must match parameter types.
 
 ```il
-%c0 = call @rt_concat(%a0, %sSp)
-%c2 = call @rt_concat(%c1, %b0)
+%c0 = call @Viper.Strings.Concat(%a0, %sSp)
+%c2 = call @Viper.Strings.Concat(%c1, %b0)
 ```
 
 **`call.indirect`** — Call through a function pointer; first operand is the function pointer, followed by arguments.
@@ -528,9 +528,13 @@ trap.from_err i32 6
 **`extern`** — Declare external function signature (from runtime or other modules).
 
 ```il
-extern @rt_print_str(str) -> void
-extern @rt_print_i64(i64) -> void
+extern @Viper.Console.PrintStr(str) -> void
+extern @Viper.Console.PrintI64(i64) -> void
 ```
+
+Compatibility:
+- When built with `-DVIPER_RUNTIME_NS_DUAL=ON`, legacy `@rt_*` externs are accepted as aliases of `@Viper.*`.
+- New code should emit `@Viper.*`.
 
 **`fptosi`** — Convert floating-point to signed integer (truncates toward zero; may trap on overflow).
 

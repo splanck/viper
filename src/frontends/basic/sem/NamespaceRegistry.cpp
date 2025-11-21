@@ -18,6 +18,9 @@
 #include "frontends/basic/sem/NamespaceRegistry.hpp"
 #include <algorithm>
 #include <cctype>
+#include <string_view>
+
+#include "il/runtime/RuntimeSignatures.hpp"
 
 namespace il::frontends::basic
 {
@@ -125,6 +128,35 @@ const NamespaceRegistry::NamespaceInfo *NamespaceRegistry::info(const std::strin
     if (it == namespaces_.end())
         return nullptr;
     return &it->second;
+}
+
+void NamespaceRegistry::seedFromRuntimeBuiltins(const std::vector<il::runtime::RuntimeDescriptor> &descs)
+{
+    for (const auto &d : descs)
+    {
+        std::string_view name = d.name;
+        // Only consider dotted names: treat as Namespace.Type or Namespace.Member
+        if (name.find('.') == std::string_view::npos)
+            continue;
+
+        // Generate all namespace prefixes up to (but not including) the last segment.
+        // Example: "Viper.Console.PrintI64" → prefixes: "Viper", "Viper.Console".
+        std::string current;
+        current.reserve(name.size());
+        std::size_t start = 0;
+        while (true)
+        {
+            std::size_t dot = name.find('.', start);
+            if (dot == std::string_view::npos)
+                break; // stop before final segment (function/type)
+            if (!current.empty())
+                current.push_back('.');
+            current.append(name.substr(start, dot - start));
+            // Register this namespace prefix (idempotent; preserves first-seen casing).
+            registerNamespace(current);
+            start = dot + 1;
+        }
+    }
 }
 
 } // namespace il::frontends::basic

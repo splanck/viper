@@ -103,12 +103,10 @@ BasicCompilerResult compileBasic(const BasicCompilerInput &input,
 
     result.emitter->addSource(fileId, std::string{input.source});
 
-    // Heuristic feature toggle for test suites:
-    // - Disable runtime namespace features for spec-validation tests under
-    //   basic/namespaces_phase2 to enforce E_NS_008 behaviour.
-    // - Otherwise leave runtime namespaces enabled (default) to allow
-    //   Viper.Console.* and scoped USING in golden tests.
-    if (!input.path.empty() && input.path.find("/basic/namespaces_phase2/") != std::string::npos)
+    // Runtime namespaces feature is controlled globally via FrontendOptions (default ON).
+    // Allow disabling via environment variable for CLI/debugging.
+    const char *ns_disable = std::getenv("VIPER_NO_RUNTIME_NAMESPACES");
+    if (ns_disable && ns_disable[0] == '1')
         FrontendOptions::setEnableRuntimeNamespaces(false);
     else
         FrontendOptions::setEnableRuntimeNamespaces(true);

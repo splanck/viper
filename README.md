@@ -124,8 +124,8 @@ Viper's core philosophy: **frontends lower to a typed IL that is compact, explic
 
 ```il
 il 0.1
-extern @rt_print_str(str) -> void
-extern @rt_print_i64(i64) -> void
+extern @Viper.Console.PrintStr(str) -> void
+extern @Viper.Console.PrintI64(i64) -> void
 global const str @.NL = "\n"
 global const str @.HELLO = "HELLO"
 
@@ -133,13 +133,17 @@ func @main() -> i64 {
 entry:
   %x = add 2, 3
   %y = mul %x, 2
-  call @rt_print_str(const_str @.HELLO)
-  call @rt_print_str(const_str @.NL)
-  call @rt_print_i64(%y)
-  call @rt_print_str(const_str @.NL)
+  call @Viper.Console.PrintStr(const_str @.HELLO)
+  call @Viper.Console.PrintStr(const_str @.NL)
+  call @Viper.Console.PrintI64(%y)
+  call @Viper.Console.PrintStr(const_str @.NL)
   ret 0
 }
 ```
+
+Compatibility:
+- When built with `-DVIPER_RUNTIME_NS_DUAL=ON`, legacy `@rt_*` externs are accepted as aliases of `@Viper.*`.
+- New code should emit `@Viper.*`.
 
 ---
 

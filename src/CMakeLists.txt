@@ -45,6 +45,7 @@ add_library(il_runtime STATIC
         il/runtime/signatures/Signatures_Math.cpp
         il/runtime/signatures/Signatures_Arrays.cpp)
 target_link_libraries(il_runtime PUBLIC viper_il_core viper_runtime)
+target_compile_definitions(il_runtime PUBLIC VIPER_RUNTIME_NS_DUAL=$<BOOL:${VIPER_RUNTIME_NS_DUAL}>)
 target_include_directories(il_runtime PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>

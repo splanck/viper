@@ -22,6 +22,7 @@
 
 #include "cli.hpp"
 #include "frontends/basic/BasicCompiler.hpp"
+#include <cstdlib>
 #include "il/api/expected_api.hpp"
 #include "il/transform/SimplifyCFG.hpp"
 #include "support/diag_expected.hpp"
@@ -53,6 +54,7 @@ struct FrontBasicConfig
     ilc::SharedCliOptions shared;
     std::optional<uint32_t> sourceFileId{};
     std::vector<std::string> programArgs; ///< Arguments to pass to BASIC program after '--'.
+    bool noRuntimeNamespaces{false};
 };
 
 struct LoadedSource
@@ -118,6 +120,10 @@ il::support::Expected<FrontBasicConfig> parseFrontBasicArgs(int argc, char **arg
             for (int j = i + 1; j < argc; ++j)
                 config.programArgs.emplace_back(argv[j]);
             break;
+        }
+        else if (arg == "--no-runtime-namespaces")
+        {
+            config.noRuntimeNamespaces = true;
         }
         else
         {
@@ -208,6 +214,12 @@ int runFrontBasic(const FrontBasicConfig &config,
 
     BasicCompilerInput compilerInput{source, config.sourcePath};
     compilerInput.fileId = config.sourceFileId;
+
+    // Feature control: default ON; allow disabling via CLI for debugging/tests via env var.
+    if (config.noRuntimeNamespaces)
+    {
+        setenv("VIPER_NO_RUNTIME_NAMESPACES", "1", 1);
+    }
 
     auto result = compileBasic(compilerInput, compilerOpts, sm);
     if (!result.succeeded())

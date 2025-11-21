@@ -73,10 +73,10 @@ Create a file `first.il` with the contents:
 ```il
 # Print the number 4 and exit.
 il 0.1
-extern @rt_print_i64(i64) -> void
+extern @Viper.Console.PrintI64(i64) -> void
 func @main() -> i64 {
 entry:
-  call @rt_print_i64(4)    # runtime prints `4\n`
+  call @Viper.Console.PrintI64(4)    # runtime prints `4\n`
   ret 0                    # zero exit code
 }
 ```
@@ -97,14 +97,19 @@ Expected output:
 
 - `# Print the number 4 and exit.` – comments start with `#` and are ignored by the VM.
 - `il 0.1` – required version header (use `il 0.1.2` for experimental features).
-- `extern @rt_print_i64(i64) -> void` – declare a runtime function taking an `i64` and returning `void`.
+- `extern @Viper.Console.PrintI64(i64) -> void` – declare a runtime function taking an `i64` and returning `void`.
 - `func @main() -> i64 {` – define the `@main` function that returns an `i64` exit code.
 - `entry:` – the initial basic block label.
-- `call @rt_print_i64(4)` – invoke the extern with the literal `4`.
+- `call @Viper.Console.PrintI64(4)` – invoke the extern with the literal `4`.
 - `ret 0` – terminate the function and supply the process exit status.
 - `}` – close the function body.
 
-**What just happened?** `rt_print_i64` is supplied by the runtime and prints its argument. Every function ends with a terminator such as `ret` giving the program's exit code.
+Compatibility:
+- When built with `-DVIPER_RUNTIME_NS_DUAL=ON`, legacy `@rt_*` externs are accepted as aliases of `@Viper.*`.
+- New code should emit `@Viper.*`.
+ - Planned: Starting in v0.3.0, legacy `@rt_*` aliases will be OFF by default. Enable with `-DVIPER_RUNTIME_NS_DUAL=ON` if you need to load legacy IL.
+
+**What just happened?** `Viper.Console.PrintI64` is supplied by the runtime and prints its argument. Every function ends with a terminator such as `ret` giving the program's exit code.
 
 **Gotcha:** Every module must start with a version line (e.g., `il 0.1`).
 
@@ -113,13 +118,13 @@ IL is statically typed and uses SSA-style virtual registers (`%v0`, `%t1`, ...).
 
 ```il
 il 0.1
-extern @rt_print_i64(i64) -> void
+extern @Viper.Console.PrintI64(i64) -> void
 func @main() -> i64 {
 entry:
   %p = alloca 8            # reserve 8 bytes on the stack
   store i64, %p, 10        # write constant 10 to memory
   %v0 = load i64, %p       # read it back
-  call @rt_print_i64(%v0)  # prints 10
+  call @Viper.Console.PrintI64(%v0)  # prints 10
   ret 0
 }
 ```
@@ -129,7 +134,7 @@ entry:
 - `%p = alloca 8` – allocate eight bytes of stack memory and bind its address to `%p` (type `ptr`).
 - `store i64, %p, 10` – store the 64‑bit constant `10` into the memory pointed to by `%p`.
 - `%v0 = load i64, %p` – load an `i64` from `%p` into `%v0`.
-- `call @rt_print_i64(%v0)` – pass the loaded value to the runtime print routine.
+- `call @Viper.Console.PrintI64(%v0)` – pass the loaded value to the runtime print routine.
 - `ret 0` – return from `main` with exit code 0.
 
 **What just happened?** `alloca` creates a stack slot, `store` writes to it, and `load` reads from it.
