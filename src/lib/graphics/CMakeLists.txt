@@ -84,11 +84,27 @@ set_target_properties(vipergfx PROPERTIES
 
 # Subdirectories (only if options enabled)
 if(VGFX_BUILD_TESTS)
+    enable_testing()
     add_subdirectory(tests)
 endif()
 
 if(VGFX_BUILD_EXAMPLES)
     add_subdirectory(examples)
+endif()
+
+# Install rules (only for standalone builds)
+if(VGFX_STANDALONE)
+    # Install library
+    install(TARGETS vipergfx
+        ARCHIVE DESTINATION lib
+        LIBRARY DESTINATION lib
+    )
+
+    # Install public headers
+    install(DIRECTORY include/
+        DESTINATION include
+        FILES_MATCHING PATTERN "*.h"
+    )
 endif()
 
 # Summary
