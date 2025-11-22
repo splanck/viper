@@ -23,10 +23,18 @@ void AsmEmitter::emitFunctionHeader(std::ostream &os, const std::string &name) c
     // Keep directives minimal and assembler-agnostic for testing.
     os << ".text\n";
     os << ".align 2\n";
-    // Do not mangle or prefix symbols (e.g., with '_' on Darwin); tests expect
-    // the exact function name to appear in the global directive and label.
+    // Do not mangle or prefix symbols (e.g., with '_' on Darwin) in the emitter;
+    // CLI may rewrite for host toolchain requirements. On Darwin, avoid emitting
+    // .globl for L*-prefixed names (reserved for local/temporary symbols).
     const std::string sym = name;
+#if defined(__APPLE__)
+    if (!(sym.size() >= 1 && sym[0] == 'L'))
+    {
+        os << ".globl " << sym << "\n";
+    }
+#else
     os << ".globl " << sym << "\n";
+#endif
     os << sym << ":\n";
 }
 
@@ -585,58 +593,26 @@ void AsmEmitter::emitFCvtZS(std::ostream &os, PhysReg dstGPR, PhysReg srcFPR) co
 
 void AsmEmitter::emitFunction(std::ostream &os, const MFunction &fn) const
 {
-/// @brief Emits functionheader.
-/// @param os Parameter description needed.
-/// @param fn.name Parameter description needed.
-/// @return Return value description needed.
     emitFunctionHeader(os, fn.name);
     const bool usePlan = !fn.savedGPRs.empty() || fn.localFrameSize > 0;
     FramePlan plan;
-/// @brief Implements if functionality.
-/// @param usePlan Parameter description needed.
-/// @return Return value description needed.
     if (usePlan)
     {
         plan.saveGPRs = fn.savedGPRs;
         plan.saveFPRs = fn.savedFPRs;
         plan.localFrameSize = fn.localFrameSize;
     }
-/// @brief Implements if functionality.
-/// @param usePlan Parameter description needed.
-/// @return Return value description needed.
     if (usePlan)
-/// @brief Emits prologue.
-/// @param os Parameter description needed.
-/// @param plan Parameter description needed.
-/// @return Return value description needed.
         emitPrologue(os, plan);
     else
-/// @brief Emits prologue.
-/// @param os Parameter description needed.
-/// @return Return value description needed.
         emitPrologue(os);
-/// @brief Implements for functionality.
-/// @param fn.blocks Parameter description needed.
-/// @return Return value description needed.
+
     for (const auto &bb : fn.blocks)
-/// @brief Emits block.
-/// @param os Parameter description needed.
-/// @param bb Parameter description needed.
-/// @return Return value description needed.
         emitBlock(os, bb);
-/// @brief Implements if functionality.
-/// @param usePlan Parameter description needed.
-/// @return Return value description needed.
+
     if (usePlan)
-/// @brief Emits epilogue.
-/// @param os Parameter description needed.
-/// @param plan Parameter description needed.
-/// @return Return value description needed.
         emitEpilogue(os, plan);
     else
-/// @brief Emits epilogue.
-/// @param os Parameter description needed.
-/// @return Return value description needed.
         emitEpilogue(os);
 }
 

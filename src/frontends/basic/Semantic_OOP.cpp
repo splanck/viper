@@ -35,7 +35,6 @@
 
 #include "support/diagnostics.hpp"
 
-#include <iostream>
 #include <string>
 #include <unordered_set>
 #include <utility>
@@ -638,20 +637,7 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
         }
     };
 
-    // DEBUG: Print what we're about to scan
-    std::cerr << "[DEBUG buildOopIndex] Scanning program with "
-              << program.procs.size() << " procs and "
-              << program.main.size() << " main statements\n";
-
     scan(program.main);
-
-    // DEBUG: Print indexed classes
-    std::cerr << "[DEBUG buildOopIndex] After scanning main, indexed classes: ";
-    for (const auto &entry : index.classes())
-    {
-        std::cerr << entry.first << " ";
-    }
-    std::cerr << "\n";
 
     // Phase 1b: scan interfaces and assign stable IDs
     auto joinQualified = [](const std::vector<std::string> &segs)

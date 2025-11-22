@@ -211,6 +211,61 @@ Status: Added `src/codegen/common/ArgNormalize.hpp` and started consuming it fro
   - Previously, a ret‑const anywhere in the function short‑circuited emission to a single `mov x0, #imm` in `entry`, breaking `cbr` lowering tests.
   - Now restricted to single‑block functions only. Multi‑block functions lower their control flow and compares as expected.
 
+## Critical Bugs Found (November 2025)
+
+During attempted native compilation of the frogger demo (`demos/frogger/frogger.bas`), three critical bugs were discovered in the ARM64 backend that prevent successful assembly on macOS:
+
+### BUG 1: Incorrect Section Directive for macOS
+- **Location**: `src/codegen/aarch64/cmd_codegen_arm64.cpp:136`
+- **Issue**: The backend emits `.section .rodata` which is ELF/Linux syntax
+- **Error**: `error: unexpected token in '.section' directive`
+- **Root Cause**: Hardcoded Linux-style section directive without platform detection
+- **Fix Required**: Use `__TEXT,__const` for macOS (Mach-O format) instead of `.section .rodata`
+- **Code**:
+  ```cpp
+  os << ".section .rodata\n";  // Current (incorrect for macOS)
+  // Should be: os << "__TEXT,__const\n";  // For macOS
+  ```
+
+### BUG 2: Invalid Label Generation with Negative Numbers
+- **Location**: Label generation in IL→assembly lowering, likely in `cmd_codegen_arm64.cpp` or `LowerILToMIR.cpp`
+- **Issue**: Labels like `L-1000000000_POSITION.INIT` are generated with negative numbers
+- **Error**: `error: unexpected token in argument list` when assembler encounters labels starting with `L-`
+- **Root Cause**: Uninitialized or placeholder ID values (-1000000000) being used in label generation
+- **Examples from frogger.s**:
+  ```asm
+  L-1000000000_POSITION.INIT:      # Invalid
+  L-1000000000_VEHICLE.MOVERIGHT:  # Invalid
+  L-1000000000_FROG.INIT:          # Invalid
+  ```
+- **Fix Required**: Ensure all label IDs are properly initialized with valid positive values before label generation
+
+### BUG 3: Missing Rodata Pool Implementation
+- **Location**: `src/codegen/aarch64/AsmEmitter.cpp` (compared to `src/codegen/x86_64/AsmEmitter.cpp`)
+- **Issue**: No rodata pool for deduplicating string literals and constants
+- **Impact**: Duplicate symbol definitions for string literals (e.g., multiple `L0:` labels)
+- **Root Cause**: The AArch64 backend lacks the rodata pool mechanism present in the x86_64 backend
+- **x86_64 Implementation** (for reference):
+  - Has `RodataPool` class in `AsmEmitter.cpp:25-54`
+  - Deduplicates literals via hash tracking
+  - Emits unique labels for each distinct literal
+- **Fix Required**: Implement similar rodata pool mechanism for AArch64 to prevent duplicate symbols
+
+### Impact Analysis
+These bugs completely prevent native ARM64 compilation of any non-trivial BASIC program on macOS. The frogger demo, which successfully compiles to 12,771 lines of IL and runs correctly in the VM, generates a 56KB assembly file that cannot be assembled due to these issues. The bugs affect:
+- Any program with string literals (BUG 1 & 3)
+- Any OOP program with classes (BUG 2)
+- Cross-platform compatibility (BUG 1)
+
+### Test Case
+To reproduce these bugs:
+```bash
+cd /Users/stephen/git/viper
+./build/src/tools/ilc/ilc front basic -emit-il demos/frogger/frogger.bas > /tmp/frogger.il
+./build/src/tools/ilc/ilc codegen arm64 /tmp/frogger.il -S /tmp/frogger.s
+as /tmp/frogger.s  # Fails with multiple errors
+```
+
 ## New Work Completed
 
 - Minimal call lowering (rr args, ret-forward) — DONE

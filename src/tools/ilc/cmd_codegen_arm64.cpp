@@ -28,6 +28,9 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <unordered_map>
+#include <vector>
+#include <filesystem>
 
 namespace viper::tools::ilc
 {
@@ -128,48 +131,107 @@ std::optional<Options> parseArgs(const ArgvView &args)
     return opts;
 }
 
-// Emit module-level globals (string constants) for AArch64
-static void emitGlobalsAArch64(std::ostream &os, const il::core::Module &mod)
+// A minimal rodata pool for AArch64 string literals that
+// - Deduplicates identical byte sequences
+// - Assigns assembler-safe labels
+// - Provides a mapping from IL global names to pooled labels so that
+//   MIR label operands can be rewritten to the pooled symbol.
+struct RodataPoolAArch64
 {
-    if (mod.globals.empty())
-        return;
-    os << ".section .rodata\n";
-    for (const auto &g : mod.globals)
+    // Content -> pooled label
+    std::unordered_map<std::string, std::string> contentToLabel;
+    // IL global name -> pooled label
+    std::unordered_map<std::string, std::string> nameToLabel;
+    // Emission order for unique contents
+    std::vector<std::pair<std::string, std::string>> ordered; // {label, content}
+
+    static std::string makeSafeLabelForIndex(std::size_t idx)
     {
-        if (g.type.kind != il::core::Type::Kind::Str)
-            continue;
-        os << g.name << ":\n";
+        // Follow a style similar to clang on Darwin: "L.str.<n>"
+        // Keep it valid for both Mach-O and ELF toolchains.
+        return std::string("L.str.") + std::to_string(idx);
+    }
+
+    static std::string escapeAsciz(std::string_view bytes)
+    {
         std::string s;
-        s.reserve(g.init.size());
-        for (unsigned char c : g.init)
+        s.reserve(bytes.size());
+        for (unsigned char c : bytes)
         {
-            if (c == '"' || c == '\\')
+            switch (c)
             {
-                s.push_back('\\');
-                s.push_back(static_cast<char>(c));
-            }
-            else if (c == '\n')
-            {
-                s += "\\n";
-            }
-            else if (c == '\t')
-            {
-                s += "\\t";
-            }
-            else if (c >= 32 && c < 127)
-            {
-                s.push_back(static_cast<char>(c));
-            }
-            else
-            {
-                char buf[5];
-                std::snprintf(buf, sizeof(buf), "\\x%02X", c);
-                s += buf;
+                case '"':
+                case '\\': s.push_back('\\'); s.push_back(static_cast<char>(c)); break;
+                case '\n': s += "\\n"; break;
+                case '\t': s += "\\t"; break;
+                default:
+                    if (c >= 32 && c < 127)
+                    {
+                        s.push_back(static_cast<char>(c));
+                    }
+                    else
+                    {
+                        char buf[5];
+                        std::snprintf(buf, sizeof(buf), "\\x%02X", c);
+                        s += buf;
+                    }
             }
         }
-        os << "  .asciz \"" << s << "\"\n";
+        return s;
     }
-    os << "\n";
+
+    void addString(const std::string &ilName, const std::string &bytes)
+    {
+        // Dedup by content; assign stable label index based on insertion order
+        auto it = contentToLabel.find(bytes);
+        if (it == contentToLabel.end())
+        {
+            const std::string label = makeSafeLabelForIndex(ordered.size());
+            contentToLabel.emplace(bytes, label);
+            ordered.emplace_back(label, bytes);
+            nameToLabel[ilName] = label;
+        }
+        else
+        {
+            nameToLabel[ilName] = it->second;
+        }
+    }
+
+    void buildFromModule(const il::core::Module &mod)
+    {
+        for (const auto &g : mod.globals)
+        {
+            if (g.type.kind == il::core::Type::Kind::Str)
+            {
+                addString(g.name, g.init);
+            }
+        }
+    }
+
+    void emit(std::ostream &os) const
+    {
+        if (ordered.empty())
+            return;
+#if defined(__APPLE__)
+        os << ".section __TEXT,__const\n";
+#else
+        os << ".section .rodata\n";
+#endif
+        for (const auto &pair : ordered)
+        {
+            const std::string &label = pair.first;
+            const std::string &bytes = pair.second;
+            os << label << ":\n";
+            os << "  .asciz \"" << escapeAsciz(bytes) << "\"\n";
+        }
+        os << "\n";
+    }
+};
+
+// Emit module-level string constants using a pooled, assembler-safe scheme
+static void emitGlobalsAArch64(std::ostream &os, const RodataPoolAArch64 &pool)
+{
+    pool.emit(os);
 }
 
 // Minimal helpers adapted from x64 pipeline
@@ -253,11 +315,110 @@ int emitAndMaybeLink(const Options &opts)
     AsmEmitter emitter{ti};
     LowerILToMIR lowerer{ti};
 
+    // Build a pooled view of rodata and emit at file start
+    RodataPoolAArch64 pool;
+    pool.buildFromModule(mod);
+
     std::ostringstream asmStream;
-    emitGlobalsAArch64(asmStream, mod);
+    emitGlobalsAArch64(asmStream, pool);
     for (const auto &fn : mod.functions)
     {
         MFunction mir = lowerer.lowerFunction(fn);
+        // 1) Sanitize basic block labels and (optionally) uniquify across module
+        {
+            std::unordered_map<std::string, std::string> bbMap;
+            bbMap.reserve(mir.blocks.size());
+            const bool uniquify = (mod.functions.size() > 1);
+            auto sanitize = [](std::string_view in) -> std::string {
+                std::string out;
+                out.reserve(in.size() + 2);
+                for (unsigned char ch : in)
+                {
+                    if ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
+                        (ch >= '0' && ch <= '9') || ch == '_' || ch == '.' || ch == '$')
+                    {
+                        out.push_back(static_cast<char>(ch));
+                    }
+                    else if (ch == '-')
+                    {
+                        // Drop '-' (e.g., from negative numeric fragments)
+                    }
+                    else
+                    {
+                        out.push_back('_');
+                    }
+                }
+                if (out.empty() || (out[0] >= '0' && out[0] <= '9'))
+                    out.insert(out.begin(), 'L');
+                return out;
+            };
+            // Build map and rename blocks
+            for (auto &bb : mir.blocks)
+            {
+                const std::string old = bb.name;
+                std::string neu = sanitize(old);
+                if (uniquify)
+                {
+                    // Avoid colliding with function symbol and other functions' labels
+                    neu += "_";
+                    neu += fn.name;
+                }
+                bbMap.emplace(old, neu);
+                bb.name = neu;
+            }
+            // Remap label operands for branches that target basic blocks
+            for (auto &bb : mir.blocks)
+            {
+                for (auto &mi : bb.instrs)
+                {
+                    auto remapIfBB = [&](std::string &lbl) {
+                        auto it = bbMap.find(lbl);
+                        if (it != bbMap.end()) lbl = it->second;
+                    };
+                    switch (mi.opc)
+                    {
+                        case viper::codegen::aarch64::MOpcode::Br:
+                            if (mi.ops.size() >= 1 && mi.ops[0].kind == viper::codegen::aarch64::MOperand::Kind::Label)
+                                remapIfBB(mi.ops[0].label);
+                            break;
+                        case viper::codegen::aarch64::MOpcode::BCond:
+                            if (mi.ops.size() >= 2 && mi.ops[1].kind == viper::codegen::aarch64::MOperand::Kind::Label)
+                                remapIfBB(mi.ops[1].label);
+                            break;
+                        default:
+                            break;
+                    }
+                }
+            }
+        }
+        // Remap labels in MIR that refer to IL string globals to pooled labels
+        for (auto &bb : mir.blocks)
+        {
+            for (auto &mi : bb.instrs)
+            {
+                switch (mi.opc)
+                {
+                    case viper::codegen::aarch64::MOpcode::AdrPage:
+                        if (mi.ops.size() >= 2 && mi.ops[1].kind == viper::codegen::aarch64::MOperand::Kind::Label)
+                        {
+                            auto it = pool.nameToLabel.find(mi.ops[1].label);
+                            if (it != pool.nameToLabel.end())
+                                mi.ops[1].label = it->second;
+                        }
+                        break;
+                    case viper::codegen::aarch64::MOpcode::AddPageOff:
+                        if (mi.ops.size() >= 3 && mi.ops[2].kind == viper::codegen::aarch64::MOperand::Kind::Label)
+                        {
+                            auto it = pool.nameToLabel.find(mi.ops[2].label);
+                            if (it != pool.nameToLabel.end())
+                                mi.ops[2].label = it->second;
+                        }
+                        break;
+                    default:
+                        break;
+                }
+            }
+        }
         [[maybe_unused]] auto ra = allocate(mir, ti);
         emitter.emitFunction(asmStream, mir);
         asmStream << "\n";
@@ -265,11 +426,7 @@ int emitAndMaybeLink(const Options &opts)
 
     std::string asmText = asmStream.str();
 #if defined(__APPLE__)
-    // On Darwin, the system linker expects the C entry point to be `_main`.
-    // Our AArch64 emitter intentionally does not prefix symbols for tests, so
-    // translate `main` to `_main` only at the CLI boundary when linking.
-    // Do a conservative textual rewrite that touches only the exact global
-    // directive and label forms for the function named `main`.
+    // On Darwin, remap function symbols to the leading-underscore form expected by the toolchain.
     auto replace_all = [](std::string &hay, const std::string &from, const std::string &to) {
         std::size_t pos = 0;
         while ((pos = hay.find(from, pos)) != std::string::npos)
@@ -278,8 +435,28 @@ int emitAndMaybeLink(const Options &opts)
             pos += to.size();
         }
     };
+    // Always rewrite `main` to `_main`.
     replace_all(asmText, "\n.globl main\n", "\n.globl _main\n");
     replace_all(asmText, "\nmain:\n", "\n_main:\n");
+    // Rewrite all other function definitions and call sites.
+    for (const auto &fn : mod.functions)
+    {
+        const std::string &name = fn.name;
+        if (name == "main")
+            continue;
+        const bool startsWithL = (!name.empty() && name[0] == 'L');
+        if (!startsWithL)
+            continue; // Limit Darwin underscore remap to problematic L*-prefixed names
+        // Definition sites
+        replace_all(asmText, std::string(".globl ") + name + "\n",
+                    std::string(".globl _") + name + "\n");
+        replace_all(asmText, std::string("\n") + name + ":\n",
+                    std::string("\n_") + name + ":\n");
+        // Call sites (conservative: space-prefixed opcode pattern)
+        replace_all(asmText, std::string(" bl ") + name + "\n",
+                    std::string(" bl _") + name + "\n");
+        // Also handle potential labels used in ADRP/ADD page relocations (globals unlikely here)
+    }
 #endif
 
     // Determine assembly destination
