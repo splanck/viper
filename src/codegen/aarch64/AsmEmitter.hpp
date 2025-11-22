@@ -38,6 +38,17 @@ class AsmEmitter
     void emitMovRR(std::ostream &os, PhysReg dst, PhysReg src) const;
     // mov dst, #imm (immediate move)
     void emitMovRI(std::ostream &os, PhysReg dst, long long imm) const;
+    // Floating-point scalar (64-bit) ops
+    void emitFMovRR(std::ostream &os, PhysReg dst, PhysReg src) const;
+    void emitFMovRI(std::ostream &os, PhysReg dst, double imm) const;
+    void emitFAddRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const;
+    void emitFSubRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const;
+    void emitFMulRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const;
+    void emitFDivRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const;
+    void emitFCmpRR(std::ostream &os, PhysReg lhs, PhysReg rhs) const;
+    // Conversions
+    void emitSCvtF(std::ostream &os, PhysReg dstFPR, PhysReg srcGPR) const;
+    void emitFCvtZS(std::ostream &os, PhysReg dstGPR, PhysReg srcFPR) const;
     void emitAddRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const;
     void emitSubRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const;
     void emitMulRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const;
@@ -68,10 +79,13 @@ class AsmEmitter
     void emitSubSp(std::ostream &os, long long bytes) const;
     void emitAddSp(std::ostream &os, long long bytes) const;
     void emitStrToSp(std::ostream &os, PhysReg src, long long offset) const;
+    void emitStrFprToSp(std::ostream &os, PhysReg src, long long offset) const;
 
     // Load/store from frame pointer (for locals)
     void emitLdrFromFp(std::ostream &os, PhysReg dst, long long offset) const;
     void emitStrToFp(std::ostream &os, PhysReg src, long long offset) const;
+    void emitLdrFprFromFp(std::ostream &os, PhysReg dst, long long offset) const;
+    void emitStrFprToFp(std::ostream &os, PhysReg src, long long offset) const;
 
     // Emit from minimal MIR (Phase A)
     void emitFunction(std::ostream &os, const MFunction &fn) const;
@@ -84,6 +98,21 @@ class AsmEmitter
     [[nodiscard]] static const char *rn(PhysReg r) noexcept
     {
         return regName(r);
+    }
+    // Print FPR as dN (64-bit scalar view)
+    static void printD(std::ostream &os, PhysReg r)
+    {
+        // Map Vn -> dn
+        const char *name = regName(r); // e.g., "v8"
+        if (name[0] == 'v')
+        {
+            os << 'd' << (name + 1);
+        }
+        else
+        {
+            // Fallback: if mis-specified, still print name
+            os << name;
+        }
     }
 };
 

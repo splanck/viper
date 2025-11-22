@@ -1,10 +1,11 @@
 il 0.1.2
-extern @rt_print_str(str) -> void
-extern @rt_print_i64(i64) -> void
-extern @rt_print_f64(f64) -> void
-extern @rt_len(str) -> i64
-extern @rt_substr(str, i64, i64) -> str
+extern @Viper.Console.PrintStr(str) -> void
+extern @Viper.Console.PrintI64(i64) -> void
+extern @Viper.Console.PrintF64(f64) -> void
+extern @Viper.Strings.Len(str) -> i64
+extern @Viper.Strings.Mid(str, i64, i64) -> str
 extern @rt_str_eq(str, str) -> i1
+extern @Viper.Strings.Equals(str, str) -> i1
 extern @rt_str_empty() -> str
 extern @rt_str_retain_maybe(str) -> void
 extern @rt_str_release_maybe(str) -> void
@@ -63,11 +64,11 @@ if_test_0:
   cbr %t9, if_then_0, if_else
 if_then_0:
   .loc 1 2 31
-  call @rt_print_i64(1)
+  call @Viper.Console.PrintI64(1)
   .loc 1 2 31
   %t10 = const_str @.L1
   .loc 1 2 31
-  call @rt_print_str(%t10)
+  call @Viper.Console.PrintStr(%t10)
   .loc 1 2 4
   br if_exit
 if_else:
@@ -95,11 +96,11 @@ if_test_01:
   cbr %t17, if_then_01, if_else1
 if_then_01:
   .loc 1 3 28
-  call @rt_print_i64(2)
+  call @Viper.Console.PrintI64(2)
   .loc 1 3 28
   %t18 = const_str @.L1
   .loc 1 3 28
-  call @rt_print_str(%t18)
+  call @Viper.Console.PrintStr(%t18)
   .loc 1 3 4
   br if_exit1
 if_else1:

@@ -623,7 +623,7 @@ struct DescriptorRow
     RuntimeTrapClass trapClass;
 };
 
-constexpr std::array<DescriptorRow, 165> kDescriptorRows{{
+constexpr std::array<DescriptorRow, 168> kDescriptorRows{{
     DescriptorRow{"rt_abort",
                   std::nullopt,
                   "void(ptr)",
@@ -1099,6 +1099,15 @@ constexpr std::array<DescriptorRow, 165> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
+    // Canonical name for string equality
+    DescriptorRow{"Viper.Strings.Equals",
+                  std::nullopt,
+                  "i1(string,string)",
+                  &DirectHandler<&rt_str_eq, int64_t, rt_string, rt_string>::invoke,
+                  featureLowering(RuntimeFeature::StrEq),
+                  nullptr,
+                  0,
+                  RuntimeTrapClass::None},
     DescriptorRow{"rt_str_lt",
                   std::nullopt,
                   "i1(string,string)",
@@ -1275,7 +1284,25 @@ constexpr std::array<DescriptorRow, 165> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
+    // Canonical name for RANDOMIZE
+    DescriptorRow{"Viper.Math.Randomize",
+                  std::nullopt,
+                  "void(i64)",
+                  &DirectHandler<&rt_randomize_i64, void, long long>::invoke,
+                  featureLowering(RuntimeFeature::RandomizeI64, true),
+                  nullptr,
+                  0,
+                  RuntimeTrapClass::None},
     DescriptorRow{"rt_rnd",
+                  std::nullopt,
+                  "f64()",
+                  &DirectHandler<&rt_rnd, double>::invoke,
+                  featureLowering(RuntimeFeature::Rnd, true),
+                  nullptr,
+                  0,
+                  RuntimeTrapClass::None},
+    // Canonical name for RND
+    DescriptorRow{"Viper.Math.Rnd",
                   std::nullopt,
                   "f64()",
                   &DirectHandler<&rt_rnd, double>::invoke,

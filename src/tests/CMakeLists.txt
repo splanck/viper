@@ -155,6 +155,21 @@ add_executable(test_codegen_arm64_icmp_imm ${CMAKE_CURRENT_SOURCE_DIR}/unit/code
 target_link_libraries(test_codegen_arm64_icmp_imm PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
 viper_add_ctest(test_codegen_arm64_icmp_imm $<TARGET_FILE:test_codegen_arm64_icmp_imm>)
 
+# switch lowering tests for arm64 CLI
+add_executable(test_codegen_arm64_switch ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_switch.cpp)
+target_link_libraries(test_codegen_arm64_switch PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
+viper_add_ctest(test_codegen_arm64_switch $<TARGET_FILE:test_codegen_arm64_switch>)
+
+# trap and EH lowering tests for arm64 CLI
+add_executable(test_codegen_arm64_trap_eh ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_trap_eh.cpp)
+target_link_libraries(test_codegen_arm64_trap_eh PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
+viper_add_ctest(test_codegen_arm64_trap_eh $<TARGET_FILE:test_codegen_arm64_trap_eh>)
+
+# run-native test for arm64 CLI
+add_executable(test_codegen_arm64_run_native ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_run_native.cpp)
+target_link_libraries(test_codegen_arm64_run_native PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
+viper_add_ctest(test_codegen_arm64_run_native $<TARGET_FILE:test_codegen_arm64_run_native>)
+
 # cbr lowering tests for arm64 CLI
 add_executable(test_codegen_arm64_cbr ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_cbr.cpp)
 target_link_libraries(test_codegen_arm64_cbr PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
@@ -174,6 +189,11 @@ viper_add_ctest(test_codegen_arm64_call_args $<TARGET_FILE:test_codegen_arm64_ca
 add_executable(test_codegen_arm64_call_temp_args ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_call_temp_args.cpp)
 target_link_libraries(test_codegen_arm64_call_temp_args PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
 viper_add_ctest(test_codegen_arm64_call_temp_args $<TARGET_FILE:test_codegen_arm64_call_temp_args>)
+
+# integer/FP casts lowering tests for arm64
+add_executable(test_codegen_arm64_casts ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_casts.cpp)
+target_link_libraries(test_codegen_arm64_casts PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
+viper_add_ctest(test_codegen_arm64_casts $<TARGET_FILE:test_codegen_arm64_casts>)
 
 ## call with >8 integer args uses stack area (pending enable after backend support hardens)
 # add_executable(test_codegen_arm64_call_stack_args ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_call_stack_args.cpp)

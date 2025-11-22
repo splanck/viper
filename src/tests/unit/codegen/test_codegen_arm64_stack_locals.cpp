@@ -50,12 +50,12 @@ static il::core::Function buildTestFunction()
     allocaInstr.loc = {1, 1, 0};
     entry.instructions.push_back(allocaInstr);
 
-    // store i64 %0, i64* %1
+    // store i64, %1, %0 (pointer, value)
     core::Instr storeInstr;
     storeInstr.op = core::Opcode::Store;
-    storeInstr.type = core::Type(core::Type::Kind::Void);
-    storeInstr.operands.push_back(core::Value::temp(0)); // value to store (param %0)
+    storeInstr.type = core::Type(core::Type::Kind::I64);
     storeInstr.operands.push_back(core::Value::temp(1)); // pointer (%1 = alloca result)
+    storeInstr.operands.push_back(core::Value::temp(0)); // value to store (param %0)
     storeInstr.loc = {2, 1, 0};
     entry.instructions.push_back(storeInstr);
 

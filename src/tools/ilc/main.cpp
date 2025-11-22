@@ -234,7 +234,7 @@ void usage()
         << "       ilc front basic -run <file.bas> [--trace=il|src] [--stdin-from <file>] "
            "[--max-steps N] [--bounds-checks] [--dump-trap] [--no-runtime-namespaces]\n"
         << "       ilc codegen x64 -S <in.il> [-o <exe>] [--run-native]\n"
-        << "       ilc codegen arm64 <in.il> -S <out.s>\n"
+        << "       ilc codegen arm64 <in.il> [-S <out.s>] [-o <exe|obj>] [-run-native]\n"
         << "       ilc il-opt <in.il> -o <out.il> [--passes p1,p2] [-print-before] [-print-after]"
            " [-verify-each]\n"
         << "\nIL notes:\n"

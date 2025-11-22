@@ -343,7 +343,7 @@ Lowerer::RVal NumericExprLowering::lowerPowBinary(const BinaryExpr &expr,
 
 /// @brief Lower binary operations when operands are strings.
 ///
-/// @details Supports concatenation via `rt_concat` and equality/inequality tests
+/// @details Supports concatenation via `Viper.Strings.Concat` and equality/inequality tests
 ///          via dedicated runtime helpers that preserve BASIC's string
 ///          comparison semantics.
 ///
@@ -362,7 +362,7 @@ Lowerer::RVal NumericExprLowering::lowerStringBinary(const BinaryExpr &expr,
         // Ensure runtime signature is linked for string concatenation.
         lowerer.trackRuntime(Lowerer::RuntimeFeature::Concat);
         // BUG-110: Avoid per-iteration alloca spills; pass operands directly.
-        Value res = lowerer.emitCallRet(IlType(IlKind::Str), "rt_concat", {lhs.value, rhs.value});
+        Value res = lowerer.emitCallRet(IlType(IlKind::Str), "Viper.Strings.Concat", {lhs.value, rhs.value});
         lowerer.deferReleaseStr(res);
         return {res, IlType(IlKind::Str)};
     }

@@ -255,7 +255,7 @@ target_include_directories(il_codegen_x86_64 PUBLIC
 
 add_library(ilc_cmd_arm64 STATIC
         tools/ilc/cmd_codegen_arm64.cpp)
-target_link_libraries(ilc_cmd_arm64 PRIVATE viper_common_opts il_tools_common il_codegen_aarch64 viper::il_full)
+target_link_libraries(ilc_cmd_arm64 PRIVATE viper_common_opts viper_common il_tools_common il_codegen_aarch64 viper::il_full)
 
 add_executable(ilc
         tools/ilc/main.cpp

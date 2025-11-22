@@ -13,6 +13,7 @@
 #include "AsmEmitter.hpp"
 
 #include <iomanip>
+#include <cstring>
 
 namespace viper::codegen::aarch64
 {
@@ -22,8 +23,11 @@ void AsmEmitter::emitFunctionHeader(std::ostream &os, const std::string &name) c
     // Keep directives minimal and assembler-agnostic for testing.
     os << ".text\n";
     os << ".align 2\n";
-    os << ".globl " << name << "\n";
-    os << name << ":\n";
+    // Do not mangle or prefix symbols (e.g., with '_' on Darwin); tests expect
+    // the exact function name to appear in the global directive and label.
+    const std::string sym = name;
+    os << ".globl " << sym << "\n";
+    os << sym << ":\n";
 }
 
 void AsmEmitter::emitPrologue(std::ostream &os) const
@@ -63,6 +67,26 @@ void AsmEmitter::emitPrologue(std::ostream &os, const FramePlan &plan) const
             os << "  str " << rn(r0) << ", [sp, #-16]!\n";
         }
     }
+    // Save callee-saved FPRs (D-registers) in pairs
+    for (std::size_t i = 0; i < plan.saveFPRs.size();)
+    {
+        const PhysReg r0 = plan.saveFPRs[i++];
+        if (i < plan.saveFPRs.size())
+        {
+            const PhysReg r1 = plan.saveFPRs[i++];
+            os << "  stp ";
+            printD(os, r0);
+            os << ", ";
+            printD(os, r1);
+            os << ", [sp, #-16]!\n";
+        }
+        else
+        {
+            os << "  str ";
+            printD(os, r0);
+            os << ", [sp, #-16]!\n";
+        }
+    }
 }
 
 void AsmEmitter::emitEpilogue(std::ostream &os, const FramePlan &plan) const
@@ -83,6 +107,27 @@ void AsmEmitter::emitEpilogue(std::ostream &os, const FramePlan &plan) const
         const PhysReg r0 = plan.saveGPRs[n - 2];
         os << "  ldp " << rn(r0) << ", " << rn(r1) << ", [sp], #16\n";
         n -= 2;
+    }
+    // Restore FPRs in reverse
+    std::size_t nf = plan.saveFPRs.size();
+    if (nf % 2 == 1)
+    {
+        const PhysReg r0 = plan.saveFPRs[nf - 1];
+        os << "  ldr ";
+        printD(os, r0);
+        os << ", [sp], #16\n";
+        --nf;
+    }
+    while (nf > 0)
+    {
+        const PhysReg r1 = plan.saveFPRs[nf - 1];
+        const PhysReg r0 = plan.saveFPRs[nf - 2];
+        os << "  ldp ";
+        printD(os, r0);
+        os << ", ";
+        printD(os, r1);
+        os << ", [sp], #16\n";
+        nf -= 2;
     }
     // Deallocate local frame if needed
     if (plan.localFrameSize > 0)
@@ -189,6 +234,13 @@ void AsmEmitter::emitStrToSp(std::ostream &os, PhysReg src, long long offset) co
     os << "  str " << rn(src) << ", [sp, #" << offset << "]\n";
 }
 
+void AsmEmitter::emitStrFprToSp(std::ostream &os, PhysReg src, long long offset) const
+{
+    os << "  str ";
+    printD(os, src);
+    os << ", [sp, #" << offset << "]\n";
+}
+
 void AsmEmitter::emitLdrFromFp(std::ostream &os, PhysReg dst, long long offset) const
 {
     os << "  ldr " << rn(dst) << ", [x29, #" << offset << "]\n";
@@ -197,6 +249,20 @@ void AsmEmitter::emitLdrFromFp(std::ostream &os, PhysReg dst, long long offset) 
 void AsmEmitter::emitStrToFp(std::ostream &os, PhysReg src, long long offset) const
 {
     os << "  str " << rn(src) << ", [x29, #" << offset << "]\n";
+}
+
+void AsmEmitter::emitLdrFprFromFp(std::ostream &os, PhysReg dst, long long offset) const
+{
+    os << "  ldr ";
+    printD(os, dst);
+    os << ", [x29, #" << offset << "]\n";
+}
+
+void AsmEmitter::emitStrFprToFp(std::ostream &os, PhysReg src, long long offset) const
+{
+    os << "  str ";
+    printD(os, src);
+    os << ", [x29, #" << offset << "]\n";
 }
 
 void AsmEmitter::emitMovZ(std::ostream &os, PhysReg dst, unsigned imm16, unsigned lsl) const
@@ -238,6 +304,90 @@ void AsmEmitter::emitRet(std::ostream &os) const
     os << "  ret\n";
 }
 
+void AsmEmitter::emitFMovRR(std::ostream &os, PhysReg dst, PhysReg src) const
+{
+    os << "  fmov ";
+    printD(os, dst);
+    os << ", ";
+    printD(os, src);
+    os << "\n";
+}
+
+void AsmEmitter::emitFMovRI(std::ostream &os, PhysReg dst, double imm) const
+{
+    os << std::fixed;
+    os << "  fmov ";
+    printD(os, dst);
+    os << ", #" << imm << "\n";
+}
+
+void AsmEmitter::emitFAddRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const
+{
+    os << "  fadd ";
+    printD(os, dst);
+    os << ", ";
+    printD(os, lhs);
+    os << ", ";
+    printD(os, rhs);
+    os << "\n";
+}
+
+void AsmEmitter::emitFSubRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const
+{
+    os << "  fsub ";
+    printD(os, dst);
+    os << ", ";
+    printD(os, lhs);
+    os << ", ";
+    printD(os, rhs);
+    os << "\n";
+}
+
+void AsmEmitter::emitFMulRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const
+{
+    os << "  fmul ";
+    printD(os, dst);
+    os << ", ";
+    printD(os, lhs);
+    os << ", ";
+    printD(os, rhs);
+    os << "\n";
+}
+
+void AsmEmitter::emitFDivRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const
+{
+    os << "  fdiv ";
+    printD(os, dst);
+    os << ", ";
+    printD(os, lhs);
+    os << ", ";
+    printD(os, rhs);
+    os << "\n";
+}
+
+void AsmEmitter::emitFCmpRR(std::ostream &os, PhysReg lhs, PhysReg rhs) const
+{
+    os << "  fcmp ";
+    printD(os, lhs);
+    os << ", ";
+    printD(os, rhs);
+    os << "\n";
+}
+
+void AsmEmitter::emitSCvtF(std::ostream &os, PhysReg dstFPR, PhysReg srcGPR) const
+{
+    os << "  scvtf ";
+    printD(os, dstFPR);
+    os << ", " << rn(srcGPR) << "\n";
+}
+
+void AsmEmitter::emitFCvtZS(std::ostream &os, PhysReg dstGPR, PhysReg srcFPR) const
+{
+    os << "  fcvtzs " << rn(dstGPR) << ", ";
+    printD(os, srcFPR);
+    os << "\n";
+}
+
 void AsmEmitter::emitFunction(std::ostream &os, const MFunction &fn) const
 {
     emitFunctionHeader(os, fn.name);
@@ -246,6 +396,7 @@ void AsmEmitter::emitFunction(std::ostream &os, const MFunction &fn) const
     if (usePlan)
     {
         plan.saveGPRs = fn.savedGPRs;
+        plan.saveFPRs = fn.savedFPRs;
         plan.localFrameSize = fn.localFrameSize;
     }
     if (usePlan)
@@ -271,7 +422,11 @@ void AsmEmitter::emitBlock(std::ostream &os, const MBasicBlock &bb) const
 void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &mi) const
 {
     using K = MOpcode;
-    auto reg = [](const MOperand &op) { return op.reg; };
+    auto reg = [](const MOperand &op) {
+        assert(op.kind == MOperand::Kind::Reg && "expected reg operand");
+        assert(op.reg.isPhys && "unallocated vreg reached emitter");
+        return static_cast<PhysReg>(op.reg.idOrPhys);
+    };
     auto imm = [](const MOperand &op) { return op.imm; };
     switch (mi.opc)
     {
@@ -287,6 +442,39 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &mi) const
                 emitMovImm64(os, reg(mi.ops[0]), static_cast<unsigned long long>(v));
             break;
         }
+        case K::FMovRR:
+            emitFMovRR(os, reg(mi.ops[0]), reg(mi.ops[1]));
+            break;
+        case K::FMovRI:
+        {
+            const long long bits = imm(mi.ops[1]);
+            double dv;
+            static_assert(sizeof(long long) == sizeof(double), "size");
+            std::memcpy(&dv, &bits, sizeof(double));
+            emitFMovRI(os, reg(mi.ops[0]), dv);
+            break;
+        }
+        case K::FAddRRR:
+            emitFAddRRR(os, reg(mi.ops[0]), reg(mi.ops[1]), reg(mi.ops[2]));
+            break;
+        case K::FSubRRR:
+            emitFSubRRR(os, reg(mi.ops[0]), reg(mi.ops[1]), reg(mi.ops[2]));
+            break;
+        case K::FMulRRR:
+            emitFMulRRR(os, reg(mi.ops[0]), reg(mi.ops[1]), reg(mi.ops[2]));
+            break;
+        case K::FDivRRR:
+            emitFDivRRR(os, reg(mi.ops[0]), reg(mi.ops[1]), reg(mi.ops[2]));
+            break;
+        case K::FCmpRR:
+            emitFCmpRR(os, reg(mi.ops[0]), reg(mi.ops[1]));
+            break;
+        case K::SCvtF:
+            emitSCvtF(os, reg(mi.ops[0]), reg(mi.ops[1]));
+            break;
+        case K::FCvtZS:
+            emitFCvtZS(os, reg(mi.ops[0]), reg(mi.ops[1]));
+            break;
         case K::AddRRR:
             emitAddRRR(os, reg(mi.ops[0]), reg(mi.ops[1]), reg(mi.ops[2]));
             break;
@@ -338,11 +526,20 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &mi) const
         case K::StrRegSpImm:
             emitStrToSp(os, reg(mi.ops[0]), imm(mi.ops[1]));
             break;
+        case K::StrFprSpImm:
+            emitStrFprToSp(os, reg(mi.ops[0]), imm(mi.ops[1]));
+            break;
         case K::LdrRegFpImm:
             emitLdrFromFp(os, reg(mi.ops[0]), imm(mi.ops[1]));
             break;
         case K::StrRegFpImm:
             emitStrToFp(os, reg(mi.ops[0]), imm(mi.ops[1]));
+            break;
+        case K::LdrFprFpImm:
+            emitLdrFprFromFp(os, reg(mi.ops[0]), imm(mi.ops[1]));
+            break;
+        case K::StrFprFpImm:
+            emitStrFprToFp(os, reg(mi.ops[0]), imm(mi.ops[1]));
             break;
         case K::Br:
             os << "  b " << mi.ops[0].label << "\n";
@@ -352,6 +549,13 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &mi) const
             break;
         case K::Bl:
             os << "  bl " << mi.ops[0].label << "\n";
+            break;
+        case K::AdrPage:
+            os << "  adrp " << rn(reg(mi.ops[0])) << ", " << mi.ops[1].label << "@PAGE\n";
+            break;
+        case K::AddPageOff:
+            os << "  add " << rn(reg(mi.ops[0])) << ", " << rn(reg(mi.ops[1])) << ", "
+               << mi.ops[2].label << "@PAGEOFF\n";
             break;
         default:
             break;
