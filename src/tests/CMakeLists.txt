@@ -106,6 +106,11 @@ add_executable(test_emit_aarch64_mir_frameplan ${CMAKE_CURRENT_SOURCE_DIR}/unit/
 target_link_libraries(test_emit_aarch64_mir_frameplan PRIVATE viper_testing il_codegen_aarch64)
 viper_add_ctest(test_emit_aarch64_mir_frameplan $<TARGET_FILE:test_emit_aarch64_mir_frameplan>)
 
+# AArch64 rodata pool test
+add_executable(test_aarch64_rodata_pool ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_aarch64_rodata_pool.cpp)
+target_link_libraries(test_aarch64_rodata_pool PRIVATE viper_testing il_codegen_aarch64)
+viper_add_ctest(test_aarch64_rodata_pool $<TARGET_FILE:test_aarch64_rodata_pool>)
+
 # CLI smoke for arm64 -S (ret 0)
 add_executable(test_codegen_arm64_cli ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_cli.cpp)
 target_link_libraries(test_codegen_arm64_cli PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)

@@ -93,32 +93,17 @@ class FnTableDispatchDriver final : public VM::DispatchDriver
     /// @return True when the VM exited cleanly, false when a pause was requested.
     bool run(VM &vm, VMContext &ctx, VM::ExecState &state) override
     {
-/// @brief Implements while functionality.
-/// @param true Parameter description needed.
-/// @return Return value description needed.
         while (true)
         {
             vm.beginDispatch(state);
 
             const il::core::Instr *instr = nullptr;
-/// @brief Implements if functionality.
-/// @param !vm.selectInstruction(state Parameter description needed.
-/// @param instr Parameter description needed.
-/// @return Return value description needed.
             if (!vm.selectInstruction(state, instr))
                 return state.exitRequested;
 
-/// @brief Implements VIPER_VM_DISPATCH_BEFORE functionality.
-/// @param ctx Parameter description needed.
-/// @param instr->op Parameter description needed.
-/// @return Return value description needed.
             VIPER_VM_DISPATCH_BEFORE(ctx, instr->op);
             vm.traceInstruction(*instr, state.fr);
             auto exec = vm.executeOpcode(state.fr, *instr, state.blocks, state.bb, state.ip);
-/// @brief Implements if functionality.
-/// @param vm.finalizeDispatch(state Parameter description needed.
-/// @param exec Parameter description needed.
-/// @return Return value description needed.
             if (vm.finalizeDispatch(state, exec))
                 return true;
         }
@@ -137,31 +122,17 @@ class SwitchDispatchDriver final : public VM::DispatchDriver
     /// @return True when the VM exited normally, false when paused.
     bool run(VM &vm, VMContext &ctx, VM::ExecState &state) override
     {
-/// @brief Implements while functionality.
-/// @param true Parameter description needed.
-/// @return Return value description needed.
         while (true)
         {
             vm.beginDispatch(state);
 
             const il::core::Instr *instr = nullptr;
-/// @brief Implements if functionality.
-/// @param !vm.selectInstruction(state Parameter description needed.
-/// @param instr Parameter description needed.
-/// @return Return value description needed.
             if (!vm.selectInstruction(state, instr))
                 return state.exitRequested;
 
-/// @brief Implements VIPER_VM_DISPATCH_BEFORE functionality.
-/// @param ctx Parameter description needed.
-/// @param instr->op Parameter description needed.
-/// @return Return value description needed.
             VIPER_VM_DISPATCH_BEFORE(ctx, instr->op);
             vm.dispatchOpcodeSwitch(state, *instr);
 
-/// @brief Implements if functionality.
-/// @param state.exitRequested Parameter description needed.
-/// @return Return value description needed.
             if (state.exitRequested)
                 return true;
         }

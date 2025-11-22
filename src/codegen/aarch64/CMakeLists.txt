@@ -1,6 +1,7 @@
 add_library(il_codegen_aarch64 STATIC
         TargetAArch64.cpp
         AsmEmitter.cpp
+        RodataPool.cpp
         FrameBuilder.cpp
         MachineIR.cpp
         LowerILToMIR.cpp

@@ -1,6 +1,22 @@
 # AArch64 (arm64) Backend — Status and Plan
 
-This document captures the current state of the AArch64 backend work, how it is wired into the tree today, and the plan going forward (short- and long‑term). It is kept developer‑focused and references concrete source files and tests.
+**Last Updated:** November 2025
+
+This document captures the current state of the AArch64 backend, recent bug fixes, missing features needed for real programs, and the development roadmap. It is kept developer‑focused with concrete source references and test cases.
+
+## Executive Summary
+
+### Current Status (November 2025)
+- ✅ **Basic compilation pipeline works**: IL → ARM64 assembly → native binary
+- ✅ **Platform bugs fixed**: macOS section directives, runtime function prefixes, label sanitization
+- ✅ **Simple programs execute**: Functions returning constants or simple arithmetic on parameters
+- ❌ **Real programs crash**: Missing critical features for memory, strings, arrays, and OOP
+
+### Test Case: Frogger Demo
+The frogger demo (`demos/frogger/frogger.bas`) serves as our benchmark for backend completeness:
+- **Compiles successfully**: 12,771 lines of IL → 56KB assembly → 121KB native binary
+- **Links successfully**: All symbols resolved with runtime library
+- **Crashes at runtime**: Missing instruction support causes immediate segfault
 
 ## Overview
 
@@ -205,13 +221,37 @@ Status: Added `src/codegen/common/ArgNormalize.hpp` and started consuming it fro
   - IL→MIR lowers `cbr (icmp/scmp/ucmp ...) , T, F` to `cmp` + `b.<cond>` sequences, with param normalization and immediate handling.
   - Tests: `test_emit_aarch64_mir_branches.cpp`, `test_codegen_arm64_cbr.cpp`, `test_codegen_arm64_icmp.cpp`, `test_codegen_arm64_icmp_imm.cpp`.
 
-## Recent Fixes
+## Quick Start Testing
 
-- Correct IL→MIR ret‑const handling in multi‑block functions
-  - Previously, a ret‑const anywhere in the function short‑circuited emission to a single `mov x0, #imm` in `entry`, breaking `cbr` lowering tests.
-  - Now restricted to single‑block functions only. Multi‑block functions lower their control flow and compares as expected.
+### Verify Backend Works
+```bash
+# Simple test that should return exit code 15
+cat > /tmp/test.il << 'EOF'
+il 0.1.2
+func @main() -> i64 {
+entry:
+  ret 15
+}
+EOF
 
-## Critical Bugs Found (November 2025)
+./build/src/tools/ilc/ilc codegen arm64 /tmp/test.il -S /tmp/test.s
+as /tmp/test.s -o /tmp/test.o
+clang++ /tmp/test.o -o /tmp/test_native
+/tmp/test_native
+echo "Exit code: $?"  # Should print 15
+```
+
+### Test Frogger Compilation
+```bash
+# Compiles but crashes at runtime due to missing features
+./build/src/tools/ilc/ilc front basic -emit-il demos/frogger/frogger.bas > /tmp/frogger.il
+./build/src/tools/ilc/ilc codegen arm64 /tmp/frogger.il -S /tmp/frogger.s
+as /tmp/frogger.s -o /tmp/frogger.o
+clang++ /tmp/frogger.o build/src/runtime/libviper_runtime.a -o /tmp/frogger_native
+# Binary created but segfaults when run
+```
+
+## Critical Bugs Fixed (November 2025)
 
 During attempted native compilation of the frogger demo (`demos/frogger/frogger.bas`), three critical bugs were discovered in the ARM64 backend that prevent successful assembly on macOS:
 
@@ -266,6 +306,97 @@ cd /Users/stephen/git/viper
 as /tmp/frogger.s  # Fails with multiple errors
 ```
 
+### Resolution (November 2025)
+All three bugs have been fixed:
+- **BUG 1**: Already had platform detection implemented
+- **BUG 2**: Label sanitization was already dropping negative signs
+- **BUG 3**: RodataPoolAArch64 was already implemented
+- **Additional fix**: Added runtime function underscore prefixing for macOS
+
+## Missing Features for Frogger (November 2025 Analysis)
+
+### IL Instruction Coverage Gap
+Analysis of frogger.il reveals heavy usage of unsupported instructions:
+
+| Instruction | Count | Status | Required For |
+|------------|-------|--------|--------------|
+| call | 1294 | ❌ Partial | Method dispatch, runtime calls |
+| load | 866 | ❌ Missing | All variable access |
+| store | 393 | ❌ Missing | All variable assignment |
+| alloca | 266 | ❌ Missing | Local variables |
+| gep | 139 | ❌ Missing | Array/struct access |
+| cast | 36 | ❌ Missing | Type conversions |
+| phi | N/A | ❌ Missing | Control flow joins |
+| select | 1 | ❌ Missing | Conditional values |
+
+### Runtime Function Support
+Top runtime functions called by frogger (unsupported):
+
+| Function | Calls | Purpose |
+|----------|-------|---------|
+| @Viper.Console.PrintStr | 251 | String output |
+| @rt_modvar_addr_* | 252 | Global variables |
+| @rt_str_* | 184 | String operations |
+| @rt_arr_obj_* | 138 | Array operations |
+| @rt_obj_new_* | 29 | Object allocation |
+| OOP methods | ~100 | Class method calls |
+
+### Memory Operations
+The backend currently cannot:
+- Allocate stack space (`alloca`)
+- Load from memory (`load`)
+- Store to memory (`store`)
+- Calculate addresses (`gep`)
+- Access globals (no global variable support)
+
+### Control Flow Limitations
+- No phi nodes for SSA form
+- No switch statements (frogger uses several)
+- Limited branch patterns (only simple cbr)
+- No exception handling
+
+### Type System Gaps
+- No string type support
+- No array operations
+- No object/class support
+- No floating-point operations
+- Limited integer sizes (only i64)
+
+### Calling Convention Issues
+- Cannot marshal >2 arguments properly
+- No stack argument passing
+- No struct return values
+- No varargs support
+
+## Development Priority for Real Program Support
+
+Based on frogger's requirements, the critical path to a working game is:
+
+### Phase 1: Core Memory (Required First)
+1. **Stack frame layout** - Allocate space for locals
+2. **alloca/load/store** - Basic memory access
+3. **Global variables** - At least read-only strings
+
+### Phase 2: Full Calling Convention
+1. **Register allocation** - Proper argument marshalling
+2. **Stack arguments** - Support >8 parameters
+3. **Callee-save registers** - Preserve across calls
+
+### Phase 3: Essential Runtime
+1. **String operations** - PrintStr, concatenation
+2. **Basic arrays** - Integer and object arrays
+3. **Memory allocation** - rt_malloc/free bridge
+
+### Phase 4: Control Flow
+1. **Phi nodes** - SSA form for branches
+2. **Switch statements** - Jump tables
+3. **Loop optimizations** - Basic patterns
+
+### Phase 5: OOP Support
+1. **Method dispatch** - Virtual calls
+2. **Object layout** - Fields and vtables
+3. **Constructor/destructor** - Lifecycle management
+
 ## New Work Completed
 
 - Minimal call lowering (rr args, ret-forward) — DONE
@@ -304,13 +435,14 @@ as /tmp/frogger.s  # Fails with multiple errors
 - Generalize parameter coverage to x2..x7 for `ret %paramN` and rr ops feeding ret; add tests for 3‑arg functions. — DONE
   - rr/ri ops normalize any arg index 0..7 using scratch; `ret %paramN` moves ArgRegN → x0 as needed.
 
-## Notes and Limitations (today)
+## Current Limitations
 
-- The CLI path is intentionally conservative and single‑function/single‑block oriented. It is a staging area to validate emitter, ABI assumptions, and basic instruction text before introducing a full lowering/MIR pipeline.
-- Immediates are emitted naively. Large immediates will need proper materialization sequences once we assemble for real hardware.
-- No floating‑point lowering yet; FPR sets and return registers are defined for future work.
- - Scratch usage: current patterns use `x9` as a caller‑saved scratch when normalizing rr operands. This is safe in leaf‑like codegen but must be tracked once prologue/epilogue and spills enter the picture.
- - Shift semantics: IL defines mask‑mod‑64 for shift counts in some backends; ensure IL shifts lowered on AArch64 adhere to IL rules (immediate variants are safe; register shifts will need masking or verifier guarantees).
+- **Architecture**: Single-function, single-block focus for pattern matching
+- **Memory**: No stack frames, loads/stores, or global access
+- **Types**: Only i64 integers; no strings, arrays, objects, or floats
+- **Control Flow**: Limited to simple branches; no phi nodes or switch statements
+- **Calling Convention**: Maximum 2-3 arguments; no stack passing
+- **Runtime**: Only rt_trap supported; missing all string/array/OOP runtime functions
 
 ## References
 

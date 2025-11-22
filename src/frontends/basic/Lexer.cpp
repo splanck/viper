@@ -433,27 +433,15 @@ Token Lexer::lexNumber()
     {
         seenExp = true;
         s.push_back(get());
-/// @brief Implements if functionality.
-/// @param peek( Parameter description needed.
-/// @return Return value description needed.
         if (peek() == '+' || peek() == '-')
             s.push_back(get());
-/// @brief Implements while functionality.
-/// @param char>(peek( Parameter description needed.
-/// @return Return value description needed.
         while (std::isdigit(static_cast<unsigned char>(peek())))
             s.push_back(get());
     }
-/// @brief Implements if functionality.
-/// @param peek( Parameter description needed.
-/// @return Return value description needed.
     if (peek() == '#' || peek() == '!' || peek() == '%' || peek() == '&')
         suffix = get();
     (void)seenDot;
     (void)seenExp;
-/// @brief Implements if functionality.
-/// @param '\0' Parameter description needed.
-/// @return Return value description needed.
     if (suffix != '\0')
         s.push_back(suffix);
     return {TokenKind::Number, s, loc};
@@ -476,9 +464,6 @@ Token Lexer::lexIdentifierOrKeyword()
 /// @return Return value description needed.
     while (std::isalnum(static_cast<unsigned char>(peek())) || peek() == '_')
         s.push_back(std::toupper(static_cast<unsigned char>(get())));
-/// @brief Implements if functionality.
-/// @param peek( Parameter description needed.
-/// @return Return value description needed.
     if (peek() == '$' || peek() == '#' || peek() == '!' || peek() == '%' || peek() == '&')
         s.push_back(std::toupper(static_cast<unsigned char>(get())));
     TokenKind kind = lookupKeyword(s);
@@ -500,15 +485,9 @@ Token Lexer::lexString()
 /// @brief Retrieves  value.
 /// @return Return value description needed.
     get(); // consume opening quote
-/// @brief Implements while functionality.
-/// @param !eof( Parameter description needed.
-/// @return Return value description needed.
     while (!eof() && peek() != '"')
     {
         char c = get();
-/// @brief Implements if functionality.
-/// @param !eof( Parameter description needed.
-/// @return Return value description needed.
         if (c == '\\' && !eof())
         {
             s.push_back(c);
