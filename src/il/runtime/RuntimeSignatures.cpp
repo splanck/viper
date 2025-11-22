@@ -623,7 +623,7 @@ struct DescriptorRow
     RuntimeTrapClass trapClass;
 };
 
-constexpr std::array<DescriptorRow, 149> kDescriptorRows{{
+constexpr std::array<DescriptorRow, 165> kDescriptorRows{{
     DescriptorRow{"rt_abort",
                   std::nullopt,
                   "void(ptr)",

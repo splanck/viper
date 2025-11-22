@@ -139,6 +139,10 @@ add_executable(test_codegen_arm64_shift_imm ${CMAKE_CURRENT_SOURCE_DIR}/unit/cod
 target_link_libraries(test_codegen_arm64_shift_imm PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
 viper_add_ctest(test_codegen_arm64_shift_imm $<TARGET_FILE:test_codegen_arm64_shift_imm>)
 
+add_executable(test_codegen_arm64_stack_locals ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_stack_locals.cpp)
+target_link_libraries(test_codegen_arm64_stack_locals PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
+viper_add_ctest(test_codegen_arm64_stack_locals $<TARGET_FILE:test_codegen_arm64_stack_locals>)
+
 add_executable(test_codegen_arm64_icmp ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_icmp.cpp)
 target_link_libraries(test_codegen_arm64_icmp PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
 viper_add_ctest(test_codegen_arm64_icmp $<TARGET_FILE:test_codegen_arm64_icmp>)
@@ -247,6 +251,28 @@ viper_add_test(
         ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_basic_lower_builtin_dispatch.cpp)
 target_link_libraries(test_basic_lower_builtin_dispatch PRIVATE fe_basic)
 viper_add_ctest(test_basic_lower_builtin_dispatch test_basic_lower_builtin_dispatch)
+
+# Runtime class catalog and binding tests
+add_executable(test_runtime_class_catalog ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime_classes/TestRuntimeClassCatalog.cpp)
+target_link_libraries(test_runtime_class_catalog PRIVATE viper_testing fe_basic)
+viper_add_ctest(test_runtime_class_catalog test_runtime_class_catalog)
+
+add_executable(test_runtime_property_binding ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime_classes/TestPropertyBinding.cpp)
+target_link_libraries(test_runtime_property_binding PRIVATE viper_testing fe_basic)
+viper_add_ctest(test_runtime_property_binding test_runtime_property_binding)
+
+add_executable(test_runtime_method_binding ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime_classes/TestMethodBinding.cpp)
+target_link_libraries(test_runtime_method_binding PRIVATE viper_testing fe_basic)
+viper_add_ctest(test_runtime_method_binding test_runtime_method_binding)
+
+add_executable(test_runtime_catalog_targets_resolve ${CMAKE_CURRENT_SOURCE_DIR}/unit/runtime_classes/TestCatalogTargetsResolve.cpp)
+target_link_libraries(test_runtime_catalog_targets_resolve PRIVATE viper_testing fe_basic)
+viper_add_ctest(test_runtime_catalog_targets_resolve test_runtime_catalog_targets_resolve)
+
+# Runtime property diagnostics (read-only setter)
+add_executable(test_frontends_basic_runtime_property_diag ${CMAKE_CURRENT_SOURCE_DIR}/frontends/basic/RuntimePropertyDiagTests.cpp)
+target_link_libraries(test_frontends_basic_runtime_property_diag PRIVATE viper_testing fe_basic)
+viper_add_ctest(test_frontends_basic_runtime_property_diag test_frontends_basic_runtime_property_diag)
 
 viper_add_test(
         test_basic_semantic_new_ctor

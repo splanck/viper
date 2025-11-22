@@ -266,6 +266,25 @@ int64_t rt_len(rt_string s)
     return (int64_t)len;
 }
 
+/// @brief Return 1 when the runtime string is empty; 0 otherwise.
+/// @details Null handles are treated as empty to match rt_len semantics.
+/// @param s Runtime string handle.
+/// @return 1 if empty; 0 otherwise.
+int64_t rt_str_is_empty(rt_string s)
+{
+    return rt_len(s) == 0 ? 1 : 0;
+}
+
+/// @brief Identity constructor from an existing runtime string handle.
+/// @details Used as a thin shim for Viper.Strings.FromStr; returns the input
+///          handle unchanged. Callers manage ownership according to IL/VM rules.
+/// @param s Runtime string handle.
+/// @return The same handle.
+rt_string rt_from_str(rt_string s)
+{
+    return s;
+}
+
 /// @brief Concatenate two runtime strings, consuming the inputs.
 /// @details Computes the combined length, allocates a new string, copies the
 ///          payloads, and releases the input handles when non-null.  Traps on

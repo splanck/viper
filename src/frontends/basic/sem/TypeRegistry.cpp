@@ -12,6 +12,7 @@
 
 #include "frontends/basic/sem/TypeRegistry.hpp"
 #include "frontends/basic/sem/NamespaceRegistry.hpp"
+#include "il/runtime/classes/RuntimeClasses.hpp"
 
 #include <string>
 #include <vector>
@@ -55,6 +56,60 @@ static void ensureNamespaceChain(NamespaceRegistry &registry, const std::string 
 }
 
 } // namespace
+
+std::string TypeRegistry::toLower(std::string_view s)
+{
+    std::string out;
+    out.reserve(s.size());
+    for (unsigned char c : s)
+        out.push_back(static_cast<char>(std::tolower(c)));
+    return out;
+}
+
+void TypeRegistry::seedRuntimeClasses(const std::vector<il::runtime::RuntimeClass> &classes)
+{
+    for (const auto &cls : classes)
+    {
+        std::string key = toLower(cls.qname);
+        kinds_[key] = TypeKind::BuiltinExternalType; // default classification for compatibility
+    }
+    // Prefer the newer BuiltinExternalClass tag for Viper.System.String specifically.
+    // Keep Viper.String under BuiltinExternalType for backward compatibility.
+    auto itSysStr = kinds_.find("viper.system.string");
+    if (itSysStr != kinds_.end())
+        itSysStr->second = TypeKind::BuiltinExternalClass;
+
+    // Add BASIC alias: STRING → Viper.String (compat choice). Both names refer to
+    // the same nominal runtime class surface in practice.
+    kinds_[toLower("Viper.String")] = TypeKind::BuiltinExternalType;
+}
+
+TypeKind TypeRegistry::kindOf(std::string_view qualifiedName) const
+{
+    std::string key = toLower(qualifiedName);
+    if (key == "string")
+    {
+        // BASIC alias resolves to Viper.String for compatibility; callers that
+        // want the System-qualified name can ask for "Viper.System.String".
+        auto it = kinds_.find("viper.string");
+        if (it != kinds_.end())
+            return it->second;
+        // Fallback: try Viper.System.String when present
+        auto it2 = kinds_.find("viper.system.string");
+        if (it2 != kinds_.end())
+            return it2->second;
+    }
+    auto it = kinds_.find(key);
+    if (it == kinds_.end())
+        return TypeKind::Unknown;
+    return it->second;
+}
+
+TypeRegistry &runtimeTypeRegistry()
+{
+    static TypeRegistry reg;
+    return reg;
+}
 
 void seedRuntimeTypeCatalog(NamespaceRegistry &registry)
 {

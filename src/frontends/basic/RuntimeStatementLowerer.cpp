@@ -22,6 +22,7 @@
 #include "frontends/basic/LocationScope.hpp"
 #include "frontends/basic/NameMangler_OOP.hpp"
 #include "frontends/basic/sem/OverloadResolution.hpp"
+#include "frontends/basic/sem/RuntimePropertyIndex.hpp"
 
 #include <cassert>
 
@@ -807,6 +808,69 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt)
         }
         else
         {
+            // Runtime class property setter via catalog (e.g., Viper.String)
+            {
+                Lowerer::RVal baseVal = lowerer_.lowerExpr(*member->base);
+                std::string qClass;
+                {
+                    std::string cls = lowerer_.resolveObjectClass(*member->base);
+                    if (!cls.empty())
+                        qClass = lowerer_.qualify(cls);
+                }
+                if (qClass.empty() && baseVal.type.kind == Lowerer::Type::Kind::Str)
+                    qClass = "Viper.System.String";
+                if (!qClass.empty())
+                {
+                    auto &pidx = runtimePropertyIndex();
+                    auto prop = pidx.find(qClass, member->member);
+                    if (prop)
+                    {
+                        if (prop->readonly || prop->setter.empty())
+                        {
+                            if (auto *em = lowerer_.diagnosticEmitter())
+                            {
+                                std::string msg = "property '" + member->member +
+                                                  "' on '" + qClass + "' is read-only";
+                                em->emit(il::support::Severity::Error,
+                                         "E_PROP_READONLY",
+                                         stmt.loc,
+                                         static_cast<uint32_t>(member->member.size()),
+                                         std::move(msg));
+                            }
+                            return;
+                        }
+                        auto mapTy = [](std::string_view t) -> Lowerer::Type::Kind {
+                            if (t == "i64") return Lowerer::Type::Kind::I64;
+                            if (t == "f64") return Lowerer::Type::Kind::F64;
+                            if (t == "i1")  return Lowerer::Type::Kind::I1;
+                            if (t == "str") return Lowerer::Type::Kind::Str;
+                            return Lowerer::Type::Kind::I64;
+                        };
+                        Lowerer::RVal v = value;
+                        // Coerce according to expected type token
+                        auto k = mapTy(prop->type);
+                        if (k == Lowerer::Type::Kind::I1)
+                            v = lowerer_.coerceToBool(std::move(v), stmt.loc);
+                        else if (k == Lowerer::Type::Kind::F64)
+                            v = lowerer_.coerceToF64(std::move(v), stmt.loc);
+                        else if (k == Lowerer::Type::Kind::I64)
+                            v = lowerer_.coerceToI64(std::move(v), stmt.loc);
+                        lowerer_.emitCall(prop->setter, {baseVal.value, v.value});
+                        return;
+                    }
+                    else if (auto *em = lowerer_.diagnosticEmitter())
+                    {
+                        std::string msg = "no such property '" + member->member +
+                                          "' on '" + qClass + "'";
+                        em->emit(il::support::Severity::Error,
+                                 "E_PROP_NO_SUCH_PROPERTY",
+                                 stmt.loc,
+                                 static_cast<uint32_t>(member->member.size()),
+                                 std::move(msg));
+                        return;
+                    }
+                }
+            }
             // Property setter sugar (instance): base.member = value -> call set_member(base, value)
             // Property setter sugar (static):   Class.member = value -> call
             // Class.set_member(value) Static field assignment:          Class.field  = value ->

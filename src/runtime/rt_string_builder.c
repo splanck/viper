@@ -384,3 +384,44 @@ rt_sb_status rt_sb_printf(rt_string_builder *sb, const char *fmt, ...)
     va_end(args);
     return status;
 }
+
+// --------------------
+// Experimental shims for Viper.Text.StringBuilder
+// These functions are temporary placeholders to allow catalog + signature
+// plumbing to build and be exercised by tools. They intentionally avoid
+// embedding a real rt_string_builder inside the opaque object until the
+// object layout is finalized. Marked TODO to replace with concrete binding.
+
+int64_t rt_text_sb_get_length(void *sb)
+{
+    (void)sb;
+    // TODO: Retrieve tracked character count once object embeds builder state.
+    return 0;
+}
+
+int64_t rt_text_sb_get_capacity(void *sb)
+{
+    (void)sb;
+    // TODO: Retrieve allocated capacity (bytes) once wired.
+    return 0;
+}
+
+void *rt_text_sb_append(void *sb, rt_string s)
+{
+    (void)s;
+    // TODO: Append to internal builder buffer; for now, return receiver for chaining.
+    return sb;
+}
+
+rt_string rt_text_sb_to_string(void *sb)
+{
+    (void)sb;
+    // TODO: Materialize builder contents. For now, return empty string handle.
+    return rt_str_empty();
+}
+
+void rt_text_sb_clear(void *sb)
+{
+    (void)sb;
+    // TODO: Reset builder contents; no-op for experimental stub.
+}

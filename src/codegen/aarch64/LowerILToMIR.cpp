@@ -15,6 +15,9 @@
 #include "il/core/Instr.hpp"
 #include "il/core/Type.hpp"
 
+#include <optional>
+#include <unordered_map>
+
 namespace viper::codegen::aarch64
 {
 namespace
@@ -79,10 +82,108 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
 
     const auto &argOrder = ti_->intArgOrder;
 
+    // Build stack frame layout for allocas (simple i64 scalar locals only)
+    // Map from IL temp ID (alloca result) → frame offset from FP
+    std::unordered_map<unsigned, int> allocaOffsets;
+    int frameOffset = -8; // Start at -8 from FP, allocate downwards
+    for (const auto &bb : fn.blocks)
+    {
+        for (const auto &instr : bb.instructions)
+        {
+            if (instr.op == il::core::Opcode::Alloca && instr.result &&
+                !instr.operands.empty())
+            {
+                // Only support simple i64 allocas for now (8 bytes)
+                if (instr.operands[0].kind == il::core::Value::Kind::ConstInt &&
+                    instr.operands[0].i64 == 8)
+                {
+                    allocaOffsets[*instr.result] = frameOffset;
+                    frameOffset -= 8; // Each i64 is 8 bytes
+                }
+            }
+        }
+    }
+    // Round frame size to 16-byte alignment
+    if (!allocaOffsets.empty())
+    {
+        int frameSizeBytes = -frameOffset - 8; // Total bytes used
+        if (frameSizeBytes % 16 != 0)
+            frameSizeBytes = (frameSizeBytes + 15) & ~15; // Round up to 16
+        mf.localFrameSize = frameSizeBytes;
+    }
+
+    // Helper to get the register holding a value
+    auto getValueReg = [&](const il::core::BasicBlock &bb,
+                           const il::core::Value &val) -> std::optional<PhysReg>
+    {
+        if (val.kind == il::core::Value::Kind::Temp)
+        {
+            // Check if it's a parameter
+            int pIdx = indexOfParam(bb, val.id);
+            if (pIdx >= 0 && pIdx < 8)
+            {
+                return argOrder[static_cast<size_t>(pIdx)];
+            }
+        }
+        return std::nullopt;
+    };
+
     if (!fn.blocks.empty())
     {
         const auto &bb = fn.blocks.front();
         auto &bbMir = bbOut(0);
+
+        // Simple alloca/store/load/ret pattern: %local = alloca i64; store %param0, %local;
+        // %val = load %local; ret %val
+        if (!allocaOffsets.empty() && fn.blocks.size() == 1 && bb.instructions.size() >= 4)
+        {
+            // Look for: alloca, store, load, ret
+            const auto *allocaI = &bb.instructions[bb.instructions.size() - 4];
+            const auto *storeI = &bb.instructions[bb.instructions.size() - 3];
+            const auto *loadI = &bb.instructions[bb.instructions.size() - 2];
+            const auto *retI = &bb.instructions[bb.instructions.size() - 1];
+
+            if (allocaI->op == il::core::Opcode::Alloca && allocaI->result &&
+                storeI->op == il::core::Opcode::Store && storeI->operands.size() == 2 &&
+                loadI->op == il::core::Opcode::Load && loadI->result &&
+                loadI->operands.size() == 1 && retI->op == il::core::Opcode::Ret &&
+                !retI->operands.empty())
+            {
+                const unsigned allocaId = *allocaI->result;
+                const auto &storeVal = storeI->operands[0];
+                const auto &storePtr = storeI->operands[1];
+                const auto &loadPtr = loadI->operands[0];
+                const auto &retVal = retI->operands[0];
+
+                // Check that store and load both target the same alloca
+                if (storePtr.kind == il::core::Value::Kind::Temp &&
+                    storePtr.id == allocaId && loadPtr.kind == il::core::Value::Kind::Temp &&
+                    loadPtr.id == allocaId &&
+                    retVal.kind == il::core::Value::Kind::Temp && retVal.id == *loadI->result)
+                {
+                    // Get offset for this alloca
+                    auto it = allocaOffsets.find(allocaId);
+                    if (it != allocaOffsets.end())
+                    {
+                        const int offset = it->second;
+                        // Get register holding the value to store
+                        auto srcReg = getValueReg(bb, storeVal);
+                        if (srcReg)
+                        {
+                            // str srcReg, [x29, #offset]
+                            bbMir.instrs.push_back(
+                                MInstr{MOpcode::StrRegFpImm,
+                                       {MOperand::regOp(*srcReg), MOperand::immOp(offset)}});
+                            // ldr x0, [x29, #offset]
+                            bbMir.instrs.push_back(MInstr{
+                                MOpcode::LdrRegFpImm,
+                                {MOperand::regOp(PhysReg::X0), MOperand::immOp(offset)}});
+                            return mf;
+                        }
+                    }
+                }
+            }
+        }
 
         // ret %paramN fast-path
         if (fn.blocks.size() == 1 && !bb.instructions.empty() && !bb.params.empty())

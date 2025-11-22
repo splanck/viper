@@ -1,0 +1,66 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/il/runtime/classes/RuntimeClasses.cpp
+// Purpose: Build the runtime class catalog by macro-expanding the declarative
+//          table in RuntimeClasses.inc into C++ descriptors.
+// Invariants:
+//   - Catalog built once in a thread-safe manner (function-local static).
+//   - All strings are static literals; vectors own their element storage.
+// Notes:
+//   - Receiver is arg0; signatures omit the receiver per spec comment in HPP.
+// Links:
+//   - docs/il-guide.md#reference
+//   - docs/codemap.md
+//   - src/il/runtime/classes/RuntimeClasses.inc
+
+#include "il/runtime/classes/RuntimeClasses.hpp"
+
+#include <utility>
+
+namespace il::runtime
+{
+
+namespace
+{
+// Macro helpers to materialize descriptor elements from the .inc file.
+#define RUNTIME_PROP(_name, _type, _getter, _setter)                                            \
+    ::il::runtime::RuntimeProperty{(_name), (_type), (_getter), (_setter), ((_setter) == nullptr)}
+
+#define RUNTIME_PROPS(...) std::vector<::il::runtime::RuntimeProperty>{__VA_ARGS__}
+
+#define RUNTIME_METHOD(_name, _sig, _target)                                                    \
+    ::il::runtime::RuntimeMethod{(_name), (_sig), (_target)}
+
+#define RUNTIME_METHODS(...) std::vector<::il::runtime::RuntimeMethod>{__VA_ARGS__}
+
+#define RUNTIME_CLASS(_qname, _typeId, _layout, _ctor, _props, _methods)                        \
+    catalog.emplace_back(::il::runtime::RuntimeClass{                                           \
+        (_qname),                                                                               \
+        (_layout),                                                                              \
+        (_ctor),                                                                                \
+        ::il::runtime::RuntimeTypeId::_typeId,                                                  \
+        (_props),                                                                               \
+        (_methods)});
+} // namespace
+
+const std::vector<RuntimeClass> &runtimeClassCatalog()
+{
+    static const std::vector<RuntimeClass> catalog_init = [] {
+        std::vector<RuntimeClass> catalog;
+        catalog.reserve(8); // initial seed; grows as we add classes
+
+        // Expand runtime class declarations
+        #include "il/runtime/classes/RuntimeClasses.inc"
+
+        return catalog;
+    }();
+    return catalog_init;
+}
+
+} // namespace il::runtime
+

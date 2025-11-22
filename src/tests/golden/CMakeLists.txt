@@ -367,6 +367,54 @@ function(viper_add_golden_suite_tests)
             "-DEXPECT=${EXPECT_ERRORS_MAP_DIV_ZERO}"
             -P ${_VIPER_GOLDEN_DIR}/check_run_output.cmake)
 
+    # Runtime classes: properties and methods
+    file(READ ${_VIPER_GOLDEN_DIR}/runtime_classes/string_props.stdout EXPECT_STRING_PROPS)
+    string(STRIP "${EXPECT_STRING_PROPS}" EXPECT_STRING_PROPS)
+    viper_add_ctest(runtime_classes_string_props
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/runtime_classes/string_props.bas
+            "-DEXPECT=${EXPECT_STRING_PROPS}"
+            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
+
+    file(READ ${_VIPER_GOLDEN_DIR}/runtime_classes/string_methods.stdout EXPECT_STRING_METHODS)
+    string(STRIP "${EXPECT_STRING_METHODS}" EXPECT_STRING_METHODS)
+    viper_add_ctest(runtime_classes_string_methods
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/runtime_classes/string_methods.bas
+            "-DEXPECT=${EXPECT_STRING_METHODS}"
+            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
+
+    # StringBuilder basic: NEW + Append + Length + ToString
+    file(READ ${_VIPER_GOLDEN_DIR}/runtime_classes/sb_basic.stdout EXPECT_SB_BASIC)
+    string(STRIP "${EXPECT_SB_BASIC}" EXPECT_SB_BASIC)
+    viper_add_ctest(runtime_classes_sb_basic
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/runtime_classes/sb_basic.bas
+            "-DEXPECT=${EXPECT_SB_BASIC}"
+            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
+
+    # BASIC STRING alias behaves like Viper.String
+    file(READ ${_VIPER_GOLDEN_DIR}/runtime_classes/string_alias.stdout EXPECT_STRING_ALIAS)
+    string(STRIP "${EXPECT_STRING_ALIAS}" EXPECT_STRING_ALIAS)
+    viper_add_ctest(runtime_classes_string_alias
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/runtime_classes/string_alias.bas
+            "-DEXPECT=${EXPECT_STRING_ALIAS}"
+            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
+
+    file(READ ${_VIPER_GOLDEN_DIR}/runtime_classes/readonly_prop_set.stderr EXPECT_RO_PROP)
+    string(STRIP "${EXPECT_RO_PROP}" EXPECT_RO_PROP)
+    viper_add_ctest(runtime_classes_readonly_prop_set
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/runtime_classes/readonly_prop_set.bas
+            "-DEXPECT=${EXPECT_RO_PROP}"
+            -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
+
     file(READ ${ERRORS_MAP_DIR}/cast_invalid_expected.out EXPECT_ERRORS_MAP_CAST_INVALID)
     string(STRIP "${EXPECT_ERRORS_MAP_CAST_INVALID}" EXPECT_ERRORS_MAP_CAST_INVALID)
     viper_add_ctest(errors_map_cast_invalid

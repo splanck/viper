@@ -196,6 +196,46 @@ if (NOT TARGET test_vm_opcode_counts)
     viper_add_ctest(test_vm_opcode_counts test_vm_opcode_counts)
 endif ()
 
+# Runtime class catalog seeding test
+if (NOT TARGET test_runtime_class_seeding)
+    viper_add_test(test_runtime_class_seeding ${VIPER_TESTS_DIR}/unit/test_runtime_class_seeding.cpp)
+    target_link_libraries(test_runtime_class_seeding PRIVATE fe_basic)
+    viper_add_ctest(test_runtime_class_seeding test_runtime_class_seeding)
+endif ()
+
+# Runtime class catalog smoke test
+if (NOT TARGET test_runtime_classes_catalog)
+    viper_add_test(test_runtime_classes_catalog ${VIPER_TESTS_DIR}/unit/test_runtime_classes_catalog.cpp)
+    # Link with frontend to ensure catalog is reachable in front-end contexts
+    target_link_libraries(test_runtime_classes_catalog PRIVATE fe_basic)
+    viper_add_ctest(test_runtime_classes_catalog test_runtime_classes_catalog)
+endif ()
+
+# New unit tests for RC-B7 runtime-class pipeline
+if (NOT TARGET test_catalog_basic)
+    viper_add_test(test_catalog_basic ${VIPER_TESTS_DIR}/unit/runtime_classes/TestCatalog.cpp)
+    target_link_libraries(test_catalog_basic PRIVATE fe_basic)
+    viper_add_ctest(test_catalog_basic test_catalog_basic)
+endif ()
+
+if (NOT TARGET test_property_index_basic)
+    viper_add_test(test_property_index_basic ${VIPER_TESTS_DIR}/unit/runtime_classes/TestPropertyIndex.cpp)
+    target_link_libraries(test_property_index_basic PRIVATE fe_basic)
+    viper_add_ctest(test_property_index_basic test_property_index_basic)
+endif ()
+
+if (NOT TARGET test_method_index_basic)
+    viper_add_test(test_method_index_basic ${VIPER_TESTS_DIR}/unit/runtime_classes/TestMethodIndex.cpp)
+    target_link_libraries(test_method_index_basic PRIVATE fe_basic)
+    viper_add_ctest(test_method_index_basic test_method_index_basic)
+endif ()
+
+if (NOT TARGET test_lowering_runtime_class_len)
+    viper_add_test(test_lowering_runtime_class_len ${VIPER_TESTS_DIR}/unit/runtime_classes/TestLowering.cpp)
+    target_link_libraries(test_lowering_runtime_class_len PRIVATE fe_basic)
+    viper_add_ctest(test_lowering_runtime_class_len test_lowering_runtime_class_len)
+endif ()
+
 # Poll callback tests
 if (NOT TARGET test_vm_poll_callback)
     viper_add_test(test_vm_poll_callback ${VIPER_TESTS_DIR}/unit/VM_PollCallbackTests.cpp)

@@ -22,6 +22,7 @@
 #include "cmd_codegen_x64.hpp"
 #include "frontends/basic/Intrinsics.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
+#include "il/runtime/classes/RuntimeClasses.hpp"
 #include "il/core/Module.hpp"
 #include "viper/version.hpp"
 #include <iostream>
@@ -185,6 +186,35 @@ int dumpRuntimeDescriptors()
 }
 } // namespace
 
+namespace
+{
+// --dump-runtime-classes implementation (stable formatting)
+int dumpRuntimeClasses()
+{
+    const auto &classes = il::runtime::runtimeClassCatalog();
+    for (const auto &c : classes)
+    {
+        std::cout << "CLASS " << (c.qname ? c.qname : "<unnamed>")
+                  << " (type: " << (c.layout ? c.layout : "<unknown>") << ")\n";
+        for (const auto &p : c.properties)
+        {
+            std::cout << "  PROP " << (p.name ? p.name : "<unnamed>") << ": "
+                      << (p.type ? p.type : "<type>") << "  \u2192 "
+                      << (p.getter ? p.getter : "<getter>") << "\n";
+        }
+        for (const auto &m : c.methods)
+        {
+            std::cout << "  METH " << (m.name ? m.name : "<unnamed>")
+                      << "(" << (m.signature ? m.signature : "") << ") \u2192 "
+                      << (m.target ? m.target : "<target>") << "\n";
+        }
+        if (c.ctor && std::string(c.ctor).size())
+            std::cout << "  CTOR \u2192 " << c.ctor << "\n";
+    }
+    return 0;
+}
+} // namespace
+
 /// @brief Print synopsis and option hints for the `ilc` CLI.
 ///
 /// @details Step-by-step summary:
@@ -267,6 +297,10 @@ int main(int argc, char **argv)
     if (cmd == "--dump-runtime-descriptors")
     {
         return dumpRuntimeDescriptors();
+    }
+    if (cmd == "--dump-runtime-classes")
+    {
+        return dumpRuntimeClasses();
     }
     if (cmd == "-run")
     {

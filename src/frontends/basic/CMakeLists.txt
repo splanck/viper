@@ -99,6 +99,8 @@ target_sources(fe_basic PRIVATE
         sem/Check_Expr_Call.cpp
         sem/NamespaceRegistry.cpp
         sem/TypeRegistry.cpp
+        sem/RuntimePropertyIndex.cpp
+        sem/RuntimeMethodIndex.cpp
         sem/UsingContext.cpp
         sem/TypeResolver.cpp
         sem/RegistryBuilder.cpp

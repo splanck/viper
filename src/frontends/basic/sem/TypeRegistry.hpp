@@ -19,36 +19,64 @@
 #pragma once
 
 #include <string>
+#include <string_view>
+#include <unordered_map>
+#include <vector>
+
+namespace il::runtime
+{
+struct RuntimeClass; // fwd decl
+}
 
 namespace il::frontends::basic
 {
 
 class NamespaceRegistry;
 
-/// @brief Category for built-in external types to seed.
+/// @brief Category for built-in external types to seed via legacy catalog.
 enum class ExternalTypeCategory
 {
     Class,
     Interface,
 };
 
-/// @brief Catalog entry describing a built-in external type.
+/// @brief Catalog entry describing a built-in external type (legacy seed).
 struct BuiltinExternalType
 {
-    /// Fully-qualified canonical name (e.g., "Viper.System.Text.StringBuilder").
     const char *qualifiedName;
-
-    /// Category (class vs interface) as exposed to BASIC.
     ExternalTypeCategory category;
-
-    /// Opaque tag reserved for future expansion (ABI, runtime id, etc.).
     const char *tag;
 };
 
-/// @brief Seed known built-in external types into the namespace registry.
-/// @details Registers the containing namespaces and the class/interface names so
-///          the type resolver can recognize them in declarations (e.g., DIM ... AS ...).
-///          Methods and fields are intentionally omitted in this phase.
+/// @brief Type classification for TypeRegistry entries.
+enum class TypeKind
+{
+    Unknown,
+    BuiltinExternalType,  // Legacy name kept for compatibility with existing tests
+    BuiltinExternalClass, // Preferred name for runtime class entries
+};
+
+/// @brief Registry of known type names discovered from the runtime class catalog.
+/// @details Provides case-insensitive lookup. BASIC alias "STRING" resolves to
+///          the same entry as "Viper.String".
+class TypeRegistry
+{
+  public:
+    /// @brief Register all runtime classes as BuiltinExternalType entries.
+    void seedRuntimeClasses(const std::vector<il::runtime::RuntimeClass> &classes);
+
+    /// @brief Lookup kind for a qualified type name (case-insensitive).
+    [[nodiscard]] TypeKind kindOf(std::string_view qualifiedName) const;
+
+  private:
+    static std::string toLower(std::string_view s);
+    std::unordered_map<std::string, TypeKind> kinds_;
+};
+
+/// @brief Access the process-wide TypeRegistry singleton.
+TypeRegistry &runtimeTypeRegistry();
+
+/// @brief Seed known built-in external types into the namespace registry (legacy seed).
 void seedRuntimeTypeCatalog(NamespaceRegistry &registry);
 
 } // namespace il::frontends::basic

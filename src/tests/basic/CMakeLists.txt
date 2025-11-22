@@ -595,6 +595,30 @@ function(viper_add_basic_to_il_golden_tests)
             -DGOLDEN=${_VIPER_BASIC_TO_IL_DIR}/string_cmp.il
             -P ${_VIPER_BASIC_TO_IL_CHECK})
 
+    # Property access on Viper.String lowers to canonical getter
+    viper_add_ctest(basic_to_il_string_prop_len
+            ${CMAKE_COMMAND}
+            -DILC=${_VIPER_BASIC_ILC}
+            -DBAS_FILE=${_VIPER_BASIC_TO_IL_DIR}/string_prop_len.bas
+            "-DMUST_HAVE=Viper.String.get_Length"
+            -P ${_VIPER_BASIC_TO_IL_DIR}/check_il_contains.cmake)
+
+    # Method call on Viper.String lowers with receiver-as-arg0
+    viper_add_ctest(basic_to_il_string_method_substring
+            ${CMAKE_COMMAND}
+            -DILC=${_VIPER_BASIC_ILC}
+            -DBAS_FILE=${_VIPER_BASIC_TO_IL_DIR}/string_method_substring.bas
+            "-DMUST_HAVE=Viper.String.Substring"
+            -P ${_VIPER_BASIC_TO_IL_DIR}/check_il_contains.cmake)
+
+    # NEW Viper.String maps to ctor helper when present
+    viper_add_ctest(basic_to_il_string_new_ctor
+            ${CMAKE_COMMAND}
+            -DILC=${_VIPER_BASIC_ILC}
+            -DBAS_FILE=${_VIPER_BASIC_TO_IL_DIR}/string_new_ctor.bas
+            "-DMUST_HAVE=Viper.Strings.FromStr"
+            -P ${_VIPER_BASIC_TO_IL_DIR}/check_il_contains.cmake)
+
     viper_add_ctest(basic_to_il_boolean_literals
             ${CMAKE_COMMAND}
             -DILC=${_VIPER_BASIC_ILC}

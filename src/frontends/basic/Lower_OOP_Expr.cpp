@@ -26,6 +26,9 @@
 #include "frontends/basic/Semantic_OOP.hpp"
 #include "frontends/basic/StringUtils.hpp"
 #include "frontends/basic/sem/OverloadResolution.hpp"
+#include "frontends/basic/sem/RuntimePropertyIndex.hpp"
+#include "frontends/basic/sem/RuntimeMethodIndex.hpp"
+#include "il/runtime/classes/RuntimeClasses.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
 
 #include <cstdint>
@@ -218,6 +221,30 @@ Lowerer::RVal Lowerer::lowerNewExpr(const NewExpr &expr)
 {
     curLoc = expr.loc;
 
+    // Runtime class ctor mapping via catalog (e.g., Viper.Strings.FromStr)
+    {
+        std::string qname = qualify(expr.className);
+        const auto &classes = il::runtime::runtimeClassCatalog();
+        for (const auto &c : classes)
+        {
+            if (string_utils::iequals(qname, c.qname) && c.ctor && std::string(c.ctor).size())
+            {
+                std::vector<Value> args;
+                args.reserve(expr.args.size());
+                for (const auto &a : expr.args)
+                {
+                    RVal v = a ? lowerExpr(*a) : RVal{Value::constInt(0), Type(Type::Kind::I64)};
+                    args.push_back(v.value);
+                }
+                // Heuristic return type: strings return Str; others Ptr
+                Type ret = (qname == std::string("Viper.String")) ? Type(Type::Kind::Str)
+                                                                   : Type(Type::Kind::Ptr);
+                Value obj = emitCallRet(ret, c.ctor, args);
+                return {obj, ret};
+            }
+        }
+    }
+
     // Minimal runtime type bridging: NEW Viper.System.Text.StringBuilder()
     if (FrontendOptions::enableRuntimeTypeBridging())
     {
@@ -243,10 +270,14 @@ Lowerer::RVal Lowerer::lowerNewExpr(const NewExpr &expr)
             }
             if (isQualified)
             {
-                // Emit direct call to a runtime helper that returns an object pointer.
+                // Emit direct call to the canonical System.Text ctor that returns an object pointer.
                 if (builder)
-                    builder->addExtern("Viper.Strings.Builder.New", Type(Type::Kind::Ptr), {});
-                Value obj = emitCallRet(Type(Type::Kind::Ptr), "Viper.Strings.Builder.New", {});
+                    builder->addExtern("Viper.System.Text.StringBuilder.New",
+                                        Type(Type::Kind::Ptr),
+                                        {});
+                Value obj = emitCallRet(Type(Type::Kind::Ptr),
+                                         "Viper.System.Text.StringBuilder.New",
+                                         {});
                 return {obj, Type(Type::Kind::Ptr)};
             }
         }
@@ -525,6 +556,66 @@ Lowerer::RVal Lowerer::lowerMemberAccessExpr(const MemberAccessExpr &expr)
     auto access = resolveMemberField(expr);
     if (!access)
     {
+        // Runtime class property (e.g., Viper.String) getter sugar via catalog
+        if (expr.base)
+        {
+            // Lower base to inspect IL kind and to pass as arg0
+            RVal base = lowerExpr(*expr.base);
+            // Detect STRING alias → Viper.String
+            std::string qClass;
+            // Prefer object class resolution when available
+            {
+                std::string cls = resolveObjectClass(*expr.base);
+                if (!cls.empty())
+                    qClass = qualify(cls);
+            }
+            if (qClass.empty() && base.type.kind == Type::Kind::Str)
+                qClass = "Viper.System.String";
+
+            // Only use runtime property catalog for known runtime classes
+            auto isRuntimeClass = [&](const std::string &qn) {
+                const auto &rc = il::runtime::runtimeClassCatalog();
+                for (const auto &c : rc)
+                    if (string_utils::iequals(qn, c.qname))
+                        return true;
+                return false;
+            };
+            if (!qClass.empty() && isRuntimeClass(qClass))
+            {
+                auto prop = runtimePropertyIndex().find(qClass, expr.member);
+                if (prop)
+                {
+                    // Map scalar token to IL type
+                    auto mapTy = [](std::string_view t) -> Type {
+                        if (t == "i64") return Type(Type::Kind::I64);
+                        if (t == "f64") return Type(Type::Kind::F64);
+                        if (t == "i1")  return Type(Type::Kind::I1);
+                        if (t == "str") return Type(Type::Kind::Str);
+                        if (t == "obj") return Type(Type::Kind::Ptr);
+                        return Type(Type::Kind::I64);
+                    };
+                    Type retTy = mapTy(prop->type);
+                    // Record the property getter spelling so extern declarations
+                    // can include the accessor alongside canonical function names.
+                    runtimeTracker.trackCalleeName(prop->getter);
+                    curLoc = expr.loc;
+                    Value result = emitCallRet(retTy, prop->getter, {base.value});
+                    if (retTy.kind == Type::Kind::Str)
+                        deferReleaseStr(result);
+                    return {result, retTy};
+                }
+                else if (auto *em = diagnosticEmitter())
+                {
+                    std::string msg = "no such property '" + expr.member + "' on '" + qClass + "'";
+                    em->emit(il::support::Severity::Error,
+                             "E_PROP_NO_SUCH_PROPERTY",
+                             expr.loc,
+                             static_cast<uint32_t>(expr.member.size()),
+                             std::move(msg));
+                    return {Value::constInt(0), Type(Type::Kind::I64)};
+                }
+            }
+        }
         // Fallbacks:
         // 1) Instance property getter sugar: base.member -> call get_member(base)
         // 2) Static property getter sugar:  Class.member -> call Class.get_member()
@@ -722,6 +813,109 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
                 emitCall(callee, args);
                 return {Value::constInt(0), Type(Type::Kind::I64)};
             }
+        }
+    }
+
+    // Runtime class method calls via catalog (e.g., Viper.String)
+    {
+        // Determine runtime class qname
+        std::string qClass;
+        {
+            std::string cls = resolveObjectClass(*expr.base);
+            if (!cls.empty())
+                qClass = qualify(cls);
+        }
+        if (qClass.empty())
+        {
+            RVal baseProbe = lowerExpr(*expr.base);
+            if (baseProbe.type.kind == Type::Kind::Str)
+                qClass = "Viper.String";
+        }
+        // Only consult the runtime method catalog for true runtime classes
+        auto isRuntimeClass = [&](const std::string &qn) {
+            const auto &rc = il::runtime::runtimeClassCatalog();
+            for (const auto &c : rc)
+                if (string_utils::iequals(qn, c.qname))
+                    return true;
+            return false;
+        };
+        if (!qClass.empty() && isRuntimeClass(qClass))
+        {
+            auto &midx = runtimeMethodIndex();
+            auto info = midx.find(qClass, expr.method, expr.args.size());
+            if (!info)
+            {
+                if (auto *em = diagnosticEmitter())
+                {
+                    auto cands = midx.candidates(qClass, expr.method);
+                    std::string msg = "no such method '" + expr.method + "' on '" + qClass + "'";
+                    if (!cands.empty())
+                    {
+                        msg += "; candidates: ";
+                        for (size_t i = 0; i < cands.size(); ++i)
+                        {
+                            if (i) msg += ", ";
+                            msg += cands[i];
+                        }
+                    }
+                    em->emit(il::support::Severity::Error,
+                             "E_NO_SUCH_METHOD",
+                             expr.loc,
+                             static_cast<uint32_t>(expr.method.size()),
+                             std::move(msg));
+                }
+                return {Value::constInt(0), Type(Type::Kind::I64)};
+            }
+            // Lower base and build (receiver, args...)
+            RVal base = lowerExpr(*expr.base);
+            std::vector<Value> args;
+            args.reserve(1 + expr.args.size());
+            args.push_back(base.value);
+
+            auto mapBasicToIl = [](BasicType t) -> Type::Kind {
+                switch (t)
+                {
+                    case BasicType::String: return Type::Kind::Str;
+                    case BasicType::Float:  return Type::Kind::F64;
+                    case BasicType::Bool:   return Type::Kind::I1;
+                    case BasicType::Void:   return Type::Kind::Void;
+                    case BasicType::Int:
+                    case BasicType::Unknown:
+                    default:                return Type::Kind::I64;
+                }
+            };
+            // Coerce each user arg to expected BasicType
+            for (size_t i = 0; i < expr.args.size(); ++i)
+            {
+                RVal av = lowerExpr(*expr.args[i]);
+                BasicType expect = (i < info->args.size()) ? info->args[i] : BasicType::Int;
+                if (expect == BasicType::Bool)
+                    av = coerceToBool(std::move(av), expr.loc);
+                else if (expect == BasicType::Float)
+                    av = coerceToF64(std::move(av), expr.loc);
+                else if (expect == BasicType::Int)
+                    av = coerceToI64(std::move(av), expr.loc);
+                args.push_back(av.value);
+            }
+            // Declare extern with receiver + arg types
+            std::vector<Type> paramTypes;
+            paramTypes.reserve(1 + info->args.size());
+            // Receiver: strings use str; others default to ptr
+            paramTypes.push_back(qClass == "Viper.String" ? Type(Type::Kind::Str) : Type(Type::Kind::Ptr));
+            for (BasicType bt : info->args)
+                paramTypes.push_back(Type(mapBasicToIl(bt)));
+
+            Type retTy(mapBasicToIl(info->ret));
+            // Record the catalog target spelling (e.g., Viper.String.Substring)
+            // so extern declarations can include the accessor alongside
+            // canonical function names selected at call sites.
+            runtimeTracker.trackCalleeName(info->target);
+            curLoc = expr.loc;
+            Value result = retTy.kind == Type::Kind::Void ? (emitCall(info->target, args), Value::constInt(0))
+                                                          : emitCallRet(retTy, info->target, args);
+            if (retTy.kind == Type::Kind::Str)
+                deferReleaseStr(result);
+            return {result, retTy.kind == Type::Kind::Void ? Type(Type::Kind::I64) : retTy};
         }
     }
 

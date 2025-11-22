@@ -30,6 +30,9 @@ enum class MOpcode
     AddSpImm,
     // Store to outgoing arg area at [sp, #imm]
     StrRegSpImm,
+    // Load/store from frame pointer (for locals)
+    LdrRegFpImm, // dst, offset - ldr xN, [x29, #offset]
+    StrRegFpImm, // src, offset - str xN, [x29, #offset]
     AddRRR,
     SubRRR,
     MulRRR,
@@ -114,6 +117,8 @@ struct MFunction
     std::vector<MBasicBlock> blocks;
     // Optional: list of callee-saved GPRs to be saved/restored in prologue/epilogue.
     std::vector<PhysReg> savedGPRs;
+    // Size of local frame (stack-allocated locals), in bytes, 16-byte aligned
+    int localFrameSize{0};
 };
 
 } // namespace viper::codegen::aarch64

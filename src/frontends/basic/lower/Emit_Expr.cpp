@@ -542,11 +542,48 @@ Value Lowerer::narrow32(Value value, il::support::SourceLoc loc)
 }
 
 namespace {
-// Preserve explicit runtime call names without remapping.
-// Tests expect rt_* spellings in IL; leave dotted Viper.* calls unchanged too.
+// Prefer canonical Viper.* runtime names when an alias group exists.
+// Falls back to the original spelling when no registry entry is known.
 static std::string mapToCanonicalRuntime(std::string_view name)
 {
-    return std::string(name);
+    using namespace il::runtime;
+
+    const RuntimeDescriptor *desc = findRuntimeDescriptor(name);
+    if (!desc)
+        return std::string(name);
+
+    // Identify a canonical descriptor in the alias group sharing the same
+    // generated signature id. Prefer entries with a namespace ('.' in name),
+    // and when both Viper.String.* and Viper.Strings.* variants are present,
+    // choose Viper.Strings.* for stability and golden expectations.
+    if (auto sigId = findRuntimeSignatureId(desc->name))
+    {
+        const RuntimeDescriptor *best = desc;
+        const RuntimeDescriptor *stringsPreferred = nullptr;
+        const auto &reg = runtimeRegistry();
+        for (const auto &entry : reg)
+        {
+            auto otherId = findRuntimeSignatureId(entry.name);
+            if (!otherId || *otherId != *sigId)
+                continue;
+            const bool isCanonical = entry.name.find('.') != std::string_view::npos;
+            if (!isCanonical)
+                continue;
+            if (entry.name.rfind("Viper.Strings.", 0) == 0)
+            {
+                stringsPreferred = &entry;
+                break; // strongest preference satisfied
+            }
+            // Track a canonical candidate if no Strings.* variant is found.
+            if (best == desc)
+                best = &entry;
+        }
+        if (stringsPreferred)
+            return std::string(stringsPreferred->name);
+        return std::string(best->name);
+    }
+
+    return std::string(desc->name);
 }
 } // namespace
 

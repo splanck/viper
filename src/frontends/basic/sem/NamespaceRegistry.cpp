@@ -21,6 +21,7 @@
 #include <string_view>
 
 #include "il/runtime/RuntimeSignatures.hpp"
+#include "il/runtime/classes/RuntimeClasses.hpp"
 
 namespace il::frontends::basic
 {
@@ -154,6 +155,34 @@ void NamespaceRegistry::seedFromRuntimeBuiltins(const std::vector<il::runtime::R
             current.append(name.substr(start, dot - start));
             // Register this namespace prefix (idempotent; preserves first-seen casing).
             registerNamespace(current);
+            start = dot + 1;
+        }
+    }
+}
+
+void NamespaceRegistry::seedRuntimeClassNamespaces(const std::vector<il::runtime::RuntimeClass> &classes)
+{
+    for (const auto &cls : classes)
+    {
+        std::string_view name = cls.qname;
+        if (name.empty())
+            continue;
+        // Build prefixes including the full class qname as a namespace entry to
+        // avoid USING errors when users write USING Viper.String.
+        std::string current;
+        current.reserve(name.size());
+        std::size_t start = 0;
+        while (start < name.size())
+        {
+            std::size_t dot = name.find('.', start);
+            if (dot == std::string_view::npos)
+                dot = name.size();
+            if (!current.empty())
+                current.push_back('.');
+            current.append(name.substr(start, dot - start));
+            registerNamespace(current);
+            if (dot == name.size())
+                break;
             start = dot + 1;
         }
     }

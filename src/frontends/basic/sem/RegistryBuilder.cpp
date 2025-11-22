@@ -27,6 +27,9 @@
 #include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/sem/TypeRegistry.hpp"
+#include "frontends/basic/sem/RuntimePropertyIndex.hpp"
+#include "frontends/basic/sem/RuntimeMethodIndex.hpp"
+#include "il/runtime/classes/RuntimeClasses.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
 
 #include <functional>
@@ -59,6 +62,8 @@ void buildNamespaceRegistry(const Program &program,
     // Catalog-only: registers namespaces and type names; members come later.
     // This also makes `USING Viper.System.*` resolvable when enabled.
     seedRuntimeTypeCatalog(registry);
+    // Seed class-driven registries (types, properties, methods, namespaces)
+    seedRuntimeClassCatalogs(registry);
 
     // Maintain namespace stack for qualified name construction.
     std::vector<std::string> nsStack;
@@ -181,6 +186,19 @@ void buildNamespaceRegistry(const Program &program,
     };
 
     scan(program.main);
+}
+
+void seedRuntimeClassCatalogs(NamespaceRegistry &registry)
+{
+    const auto &classes = il::runtime::runtimeClassCatalog();
+    // Types
+    runtimeTypeRegistry().seedRuntimeClasses(classes);
+    // Properties
+    runtimePropertyIndex().seed(classes);
+    // Methods
+    runtimeMethodIndex().seed(classes);
+    // Namespace prefixes from class names
+    registry.seedRuntimeClassNamespaces(classes);
 }
 
 } // namespace il::frontends::basic

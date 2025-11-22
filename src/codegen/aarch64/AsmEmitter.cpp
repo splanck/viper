@@ -44,6 +44,11 @@ void AsmEmitter::emitPrologue(std::ostream &os, const FramePlan &plan) const
 {
     // Always save FP/LR first
     emitPrologue(os);
+    // Allocate space for locals if needed
+    if (plan.localFrameSize > 0)
+    {
+        emitSubSp(os, plan.localFrameSize);
+    }
     // Save additional callee-saved GPRs from plan in pairs
     for (std::size_t i = 0; i < plan.saveGPRs.size();)
     {
@@ -78,6 +83,11 @@ void AsmEmitter::emitEpilogue(std::ostream &os, const FramePlan &plan) const
         const PhysReg r0 = plan.saveGPRs[n - 2];
         os << "  ldp " << rn(r0) << ", " << rn(r1) << ", [sp], #16\n";
         n -= 2;
+    }
+    // Deallocate local frame if needed
+    if (plan.localFrameSize > 0)
+    {
+        emitAddSp(os, plan.localFrameSize);
     }
     // Finally FP/LR and ret
     emitEpilogue(os);
@@ -179,6 +189,16 @@ void AsmEmitter::emitStrToSp(std::ostream &os, PhysReg src, long long offset) co
     os << "  str " << rn(src) << ", [sp, #" << offset << "]\n";
 }
 
+void AsmEmitter::emitLdrFromFp(std::ostream &os, PhysReg dst, long long offset) const
+{
+    os << "  ldr " << rn(dst) << ", [x29, #" << offset << "]\n";
+}
+
+void AsmEmitter::emitStrToFp(std::ostream &os, PhysReg src, long long offset) const
+{
+    os << "  str " << rn(src) << ", [x29, #" << offset << "]\n";
+}
+
 void AsmEmitter::emitMovZ(std::ostream &os, PhysReg dst, unsigned imm16, unsigned lsl) const
 {
     os << "  movz " << rn(dst) << ", #" << imm16;
@@ -221,10 +241,13 @@ void AsmEmitter::emitRet(std::ostream &os) const
 void AsmEmitter::emitFunction(std::ostream &os, const MFunction &fn) const
 {
     emitFunctionHeader(os, fn.name);
-    const bool usePlan = !fn.savedGPRs.empty();
+    const bool usePlan = !fn.savedGPRs.empty() || fn.localFrameSize > 0;
     FramePlan plan;
     if (usePlan)
+    {
         plan.saveGPRs = fn.savedGPRs;
+        plan.localFrameSize = fn.localFrameSize;
+    }
     if (usePlan)
         emitPrologue(os, plan);
     else
@@ -314,6 +337,12 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &mi) const
             break;
         case K::StrRegSpImm:
             emitStrToSp(os, reg(mi.ops[0]), imm(mi.ops[1]));
+            break;
+        case K::LdrRegFpImm:
+            emitLdrFromFp(os, reg(mi.ops[0]), imm(mi.ops[1]));
+            break;
+        case K::StrRegFpImm:
+            emitStrToFp(os, reg(mi.ops[0]), imm(mi.ops[1]));
             break;
         case K::Br:
             os << "  b " << mi.ops[0].label << "\n";

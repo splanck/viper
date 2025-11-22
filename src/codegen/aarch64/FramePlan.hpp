@@ -19,6 +19,7 @@ struct FramePlan
 {
     std::vector<PhysReg> saveGPRs; // e.g., X19..X28
     std::vector<PhysReg> saveFPRs; // e.g., V8..V15 (as D regs)
+    int localFrameSize{0};         // bytes for stack-allocated locals (aligned to 16)
 };
 
 } // namespace viper::codegen::aarch64

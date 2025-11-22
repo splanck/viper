@@ -11,6 +11,7 @@
 
 #include "frontends/basic/sem/NamespaceRegistry.hpp"
 #include "frontends/basic/sem/UsingContext.hpp"
+#include "il/runtime/classes/RuntimeClasses.hpp"
 
 namespace il::frontends::basic
 {
@@ -32,5 +33,10 @@ void buildNamespaceRegistry(const Program &program,
                             NamespaceRegistry &registry,
                             UsingContext &usings,
                             DiagnosticEmitter *emitter);
+
+/// @brief Seed runtime class-driven registries in one place.
+/// @details Populates TypeRegistry, RuntimePropertyIndex, RuntimeMethodIndex,
+///          and seeds NamespaceRegistry with class name prefixes.
+void seedRuntimeClassCatalogs(NamespaceRegistry &registry);
 
 } // namespace il::frontends::basic

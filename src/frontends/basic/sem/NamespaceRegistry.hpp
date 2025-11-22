@@ -17,6 +17,7 @@
 namespace il::runtime
 {
 struct RuntimeDescriptor; // fwd decl to avoid including runtime headers here
+struct RuntimeClass;      // fwd decl for class catalog seeding
 }
 
 namespace il::frontends::basic
@@ -102,6 +103,13 @@ class NamespaceRegistry
     ///          Names are handled case-insensitively; canonical casing from descriptors is preserved.
     /// @param descs Runtime descriptor list (typically il::runtime::runtimeRegistry()).
     void seedFromRuntimeBuiltins(const std::vector<il::runtime::RuntimeDescriptor> &descs);
+
+    /// @brief Seed namespaces and dotted prefixes from runtime class catalog.
+    /// @details For each class qualified name (e.g., "Viper.String"), registers
+    ///          all dotted prefixes as namespaces: "Viper", "Viper.String".
+    ///          Idempotent; preserves first-seen casing.
+    /// @param classes Runtime class catalog (runtimeClassCatalog()).
+    void seedRuntimeClassNamespaces(const std::vector<il::runtime::RuntimeClass> &classes);
 
   private:
     /// @brief Convert a string to lowercase for case-insensitive comparison.

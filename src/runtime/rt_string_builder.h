@@ -24,6 +24,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include "rt_string.h"
 
 #ifdef __cplusplus
 extern "C"
@@ -60,6 +61,23 @@ extern "C"
     rt_sb_status rt_sb_append_int(rt_string_builder *sb, int64_t value);
     rt_sb_status rt_sb_append_double(rt_string_builder *sb, double value);
     rt_sb_status rt_sb_printf(rt_string_builder *sb, const char *fmt, ...);
+
+    // --- Experimental Viper.Text.StringBuilder bridge (TODO: wire real state) ---
+    // These shims expose a minimal API surface for the Viper.Text.StringBuilder
+    // runtime class. Implementations currently return sensible defaults and
+    // do not yet bind an embedded rt_string_builder to the opaque object.
+    // They will be replaced with real adapters in a future change.
+
+    // Return builder length (characters). TODO: bind to internal builder state.
+    int64_t rt_text_sb_get_length(void *sb);
+    // Return builder capacity (bytes). TODO: bind to internal builder state.
+    int64_t rt_text_sb_get_capacity(void *sb);
+    // Append a string to the builder and return the receiver for chaining.
+    void *rt_text_sb_append(void *sb, rt_string s);
+    // Materialize the builder as a runtime string.
+    rt_string rt_text_sb_to_string(void *sb);
+    // Clear the builder contents.
+    void rt_text_sb_clear(void *sb);
 
 #ifdef __cplusplus
 }

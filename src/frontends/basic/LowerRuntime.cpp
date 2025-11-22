@@ -208,8 +208,12 @@ void RuntimeHelperTracker::declareRequiredRuntime(build::IRBuilder &b, bool boun
         }
         if (usedSpelling)
         {
-            if (*usedSpelling != d.name)
-                return; // another spelling will be declared in-group
+            // Only declare spellings that were actually used at call sites.
+            // This allows declaring multiple aliases in the same signature
+            // group when both were referenced (e.g., Viper.Strings.Mid and
+            // Viper.String.Substring).
+            if (usedNames_.count(std::string(d.name)) == 0)
+                return;
         }
         else
         {
@@ -235,6 +239,37 @@ void RuntimeHelperTracker::declareRequiredRuntime(build::IRBuilder &b, bool boun
                         }
                     }
                 }
+            }
+
+            // Additional canonical preference: when both Viper.Strings.* and
+            // Viper.String.* exist for the same signature id, prefer the
+            // functions in Viper.Strings.* unless the Viper.String.* spelling
+            // was explicitly used at a call site.
+            if (d.name.rfind("Viper.String.", 0) == 0)
+            {
+                if (auto sigId = il::runtime::findRuntimeSignatureId(d.name))
+                {
+                    const auto &reg = il::runtime::runtimeRegistry();
+                    for (const auto &other : reg)
+                    {
+                        auto otherId = il::runtime::findRuntimeSignatureId(other.name);
+                        if (!otherId || *otherId != *sigId)
+                            continue;
+                        if (other.name.rfind("Viper.Strings.", 0) == 0)
+                        {
+                            // Prefer the Viper.Strings.* variant when no explicit usage forces otherwise.
+                            return;
+                        }
+                    }
+                }
+            }
+
+            // Avoid declaring certain OOP-style or ctor helpers unless used.
+            // Tests/goldens expect these only when referenced.
+            if (d.name == std::string_view{"Viper.String.get_IsEmpty"} ||
+                d.name == std::string_view{"Viper.Strings.FromStr"})
+            {
+                return;
             }
         }
 
@@ -271,6 +306,22 @@ void RuntimeHelperTracker::declareRequiredRuntime(build::IRBuilder &b, bool boun
         const auto *desc = il::runtime::findRuntimeDescriptor(feature);
         assert(desc && "requested runtime feature missing from registry");
         tryDeclare(*desc);
+    }
+
+    // Declare any manually-lowered helpers that were explicitly used at call sites.
+    // This keeps IL lean (no unconditional alias declarations) while ensuring
+    // names like Viper.Text.StringBuilder.* and Viper.Strings.Builder.* appear
+    // only when referenced.
+    for (const auto &name : usedNames_)
+    {
+        // Skip rt_* manual helpers; Lowerer::declareRequiredRuntime handles them
+        if (name.rfind("rt_", 0) == 0)
+            continue;
+        if (const auto *desc = il::runtime::findRuntimeDescriptor(name))
+        {
+            if (declared.insert(std::string(desc->name)).second)
+                declareRuntimeExtern(b, *desc);
+        }
     }
 }
 
@@ -680,10 +731,44 @@ void Lowerer::declareRequiredRuntime(build::IRBuilder &b)
 
     auto declareManual = [&](std::string_view name)
     {
-        // Declare the helper using the explicit name requested (alias-safe).
-        if (const auto *desc = il::runtime::findRuntimeDescriptor(name))
+        // Prefer the spelling observed at call sites when available so extern
+        // declarations match emitted calls (avoids alias duplicates under
+        // dual-namespace mode). Fall back to the provided default name.
+        std::string spelling(name);
+        if (const auto *base = il::runtime::findRuntimeDescriptor(name))
         {
-            b.addExtern(std::string(name), desc->signature.retType, desc->signature.paramTypes);
+            if (auto sigId = il::runtime::findRuntimeSignatureId(base->name))
+            {
+                for (const auto &other : il::runtime::runtimeRegistry())
+                {
+                    auto otherId = il::runtime::findRuntimeSignatureId(other.name);
+                    if (!otherId || *otherId != *sigId)
+                        continue;
+                    if (runtimeTracker.usedNames().count(std::string(other.name)))
+                    {
+                        spelling = std::string(other.name);
+                        break;
+                    }
+                }
+            }
+        }
+        if (const auto *desc = il::runtime::findRuntimeDescriptor(spelling))
+        {
+            // Avoid duplicates when a previous pass declared the chosen spelling.
+            bool alreadyDeclared = false;
+            if (mod)
+            {
+                for (const auto &ex : mod->externs)
+                {
+                    if (ex.name == spelling)
+                    {
+                        alreadyDeclared = true;
+                        break;
+                    }
+                }
+            }
+            if (!alreadyDeclared)
+                b.addExtern(std::string(spelling), desc->signature.retType, desc->signature.paramTypes);
         }
     };
 
@@ -696,6 +781,67 @@ void Lowerer::declareRequiredRuntime(build::IRBuilder &b)
     // Note: String retain/release helpers are declared via the pre-scan and
     // explicit require* hooks in lowering. Avoid unconditional declarations
     // here to keep IL stable and prevent duplicate externs in simple programs.
+
+    // Ensure explicit alias spellings used at call sites are declared when they
+    // map to descriptors marked as ManualLowering. Under dual-namespace mode the
+    // canonical Viper.* variants are declared as Always, and legacy rt_* aliases
+    // are Manual. When lowering emits calls to rt_* names, the alias-specific
+    // externs would otherwise be skipped. Declare those alias spellings here so
+    // the verifier can resolve the callees while preserving stable output.
+    for (const auto &used : runtimeTracker.usedNames())
+    {
+        if (const auto *desc = il::runtime::findRuntimeDescriptor(used))
+        {
+            if (desc->lowering.kind == il::runtime::RuntimeLoweringKind::Manual)
+            {
+                bool alreadyDeclared = false;
+                if (mod)
+                {
+                    for (const auto &ex : mod->externs)
+                    {
+                        if (ex.name == used)
+                        {
+                            alreadyDeclared = true;
+                            break;
+                        }
+                    }
+                }
+                if (!alreadyDeclared)
+                {
+                    b.addExtern(std::string(used), desc->signature.retType, desc->signature.paramTypes);
+                }
+            }
+        }
+    }
+
+    auto ensureExtern = [&](std::string_view name)
+    {
+        if (!mod)
+            return;
+        for (const auto &ex : mod->externs)
+        {
+            if (ex.name == name)
+                return; // already present
+        }
+        if (const auto *desc = il::runtime::findRuntimeDescriptor(name))
+        {
+            b.addExtern(std::string(name), desc->signature.retType, desc->signature.paramTypes);
+        }
+    };
+    const auto &used = runtimeTracker.usedNames();
+    // Declare any used bounds-checked helpers regardless of the global
+    // boundsChecks flag, since some ops (e.g., Diagnostics.Trap) are invoked
+    // explicitly in generated IL even without array bounds checks enabled.
+    for (const auto &name : used)
+    {
+        if (const auto *desc = il::runtime::findRuntimeDescriptor(name))
+        {
+            if (desc->lowering.kind == il::runtime::RuntimeLoweringKind::BoundsChecked)
+            {
+                ensureExtern(name);
+            }
+        }
+    }
 }
 
 } // namespace il::frontends::basic

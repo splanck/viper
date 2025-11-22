@@ -69,6 +69,10 @@ class AsmEmitter
     void emitAddSp(std::ostream &os, long long bytes) const;
     void emitStrToSp(std::ostream &os, PhysReg src, long long offset) const;
 
+    // Load/store from frame pointer (for locals)
+    void emitLdrFromFp(std::ostream &os, PhysReg dst, long long offset) const;
+    void emitStrToFp(std::ostream &os, PhysReg src, long long offset) const;
+
     // Emit from minimal MIR (Phase A)
     void emitFunction(std::ostream &os, const MFunction &fn) const;
     void emitBlock(std::ostream &os, const MBasicBlock &bb) const;

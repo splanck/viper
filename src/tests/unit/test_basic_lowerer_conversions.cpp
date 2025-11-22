@@ -76,7 +76,7 @@ int main()
                     truncLines.push_back(instr.loc.line);
                     break;
                 case il::core::Opcode::Call:
-                    if (instr.callee == "rt_to_double")
+                    if (instr.callee == "rt_to_double" || instr.callee == "Viper.Convert.ToDouble")
                         toDoubleLines.push_back(instr.loc.line);
                     break;
                 default:

@@ -33,6 +33,8 @@ Complete language reference for Viper BASIC. This document describes **statement
 - [Standard Library & Namespaces](#standard-library--namespaces)
 - [Reserved Root](#reserved-root)
 - [Keyword Index](#keyword-index)
+- [Runtime Classes (Viper.*)](#runtime-classes-viper)
+- [Runtime classes (under Viper.System.*)](#runtime-classes-under-vipersystem)
 
 ---
 
@@ -202,6 +204,57 @@ Subroutine call to a line label; returns with RETURN (statement-form).
 100 PRINT "in subroutine"
 110 RETURN
 ```
+
+---
+
+## Runtime Classes (Viper.*)
+
+Runtime classes are built-in types provided by the Viper runtime and exposed under the `Viper.*` namespace. They behave like objects with properties and methods but are implemented by canonical runtime extern functions. The receiver (instance) is passed as the first argument when lowering to the runtime.
+
+- Properties/methods lower to canonical `Viper.*` externs with the receiver as arg0.
+- Behavior and traps match the underlying runtime helpers.
+- BASIC `STRING` is an alias of `Viper.String`.
+- Optional `NEW` is available when a constructor helper is defined.
+
+### Example: `Viper.String`
+
+```basic
+10 DIM s AS Viper.String
+20 LET s = "hello"
+30 PRINT s.Length              ' prints 5
+40 PRINT s.Substring(1, 3)     ' zero-based start, length → "ell"
+50 LET s2 = NEW Viper.String("abc")  ' optional: requires ctor helper
+```
+
+Lowering equivalence (receiver as first argument):
+- `s.Length` → `Viper.String.get_Length(s)`
+- `s.Substring(i, j)` → `Viper.String.Substring(s, i, j)`
+- `NEW Viper.String(x)` → `Viper.Strings.FromStr(x)` (when available)
+
+Null and bounds:
+- Accessing a property/method on a null receiver traps.
+- `Substring` traps on invalid inputs consistent with runtime rules; zero-length results return the empty string.
+
+BASIC `STRING` alias:
+
+```basic
+10 DIM s AS STRING
+20 LET s = "abcd"
+30 PRINT s.Length   ' same as Viper.String
+```
+
+### `Viper.String` API
+
+Properties:
+- `Length: i64` → `Viper.String.get_Length(string)`
+- `IsEmpty: i1` → `Viper.String.get_IsEmpty(string)`
+
+Methods:
+- `Substring(i64 start, i64 length) -> string` → `Viper.String.Substring(string, i64, i64)`
+- `Concat(string other) -> string` → `Viper.String.ConcatSelf(string, string)`
+
+Constructor helper (optional):
+- `FromStr(string s) -> string` → `Viper.Strings.FromStr(string)`
 
 ### GOTO
 
@@ -924,3 +977,41 @@ Example:
 Semantics:
 - Inner exceptions raised between lines 20–39 are caught by the TRY handler.
 - After `END TRY`, the previously active `ON ERROR GOTO Outer` handler continues to apply.
+## Runtime classes (under Viper.System.*)
+
+Runtime-backed classes expose an object surface (properties, methods, constructors) that lower to canonical extern functions provided by the runtime. Two families are currently available:
+
+- Viper.System.String (aliased in BASIC as STRING)
+- Viper.System.Text.StringBuilder
+
+These object members are functional equivalents of the procedural helpers under Viper.Strings.* and Viper.Text.*. The compiler lowers property and method calls to the corresponding extern with the receiver as argument 0.
+
+Examples:
+
+```basic
+10 DIM s AS STRING                 ' STRING is an alias of Viper.System.String
+20 LET s = "hello"
+30 Viper.Console.PrintI64(s.Length)
+40 Viper.Console.PrintStr(s.Substring(2, 3))  ' index base matches MID$: 0-based start
+
+100 DIM sb AS Viper.System.Text.StringBuilder
+110 LET sb = NEW Viper.System.Text.StringBuilder()
+120 ' Depending on your build, APPEND may be a reserved keyword; use the procedural form below if needed.
+130 ' sb.Append("X")
+140 ' or equivalently (procedural): sb = Viper.Text.StringBuilder.Append(sb, "X")
+150 Viper.Console.PrintI64(sb.Length)
+160 Viper.Console.PrintStr(sb.ToString())
+```
+
+Conventions and semantics:
+
+- Properties and methods lower to canonical externs with the receiver as arg0.
+  - Examples: s.Length → call @Viper.Strings.Len(s);
+    s.Substring(i,n) → call @Viper.Strings.Mid(s,i,n);
+    sb.ToString() → call @Viper.Text.StringBuilder.ToString(sb)
+- STRING alias: The BASIC type STRING is the same nominal runtime class as Viper.System.String.
+- Index base: Substring uses the same convention as MID$ — start is 0-based; length is a count.
+- Null receivers trap: Accessing a property or method on a null object raises a runtime trap that can be caught with TRY/CATCH.
+- Procedural equivalence: For every object member there is a procedural helper under Viper.Strings.* or Viper.Text.* with the receiver passed explicitly as the first argument. Use these forms where convenient or when a member name collides with a BASIC keyword (e.g., APPEND).
+
+Cross-reference: See [Standard Library & Namespaces](#standard-library--namespaces) for procedural helpers under Viper.Strings.* and Viper.Text.*.

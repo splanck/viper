@@ -20,6 +20,8 @@
 #include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/IdentifierUtil.hpp"
 #include "frontends/basic/SemanticAnalyzer.Internal.hpp"
+#include "frontends/basic/sem/TypeRegistry.hpp"
+#include "il/runtime/classes/RuntimeClasses.hpp"
 
 #include <limits>
 
@@ -651,6 +653,40 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeNew(NewExpr &expr)
     argTypes.reserve(expr.args.size());
     for (auto &arg : expr.args)
         argTypes.push_back(arg ? visitExpr(*arg) : Type::Unknown);
+
+    // Allow NEW for runtime classes defined in the catalog when a ctor helper exists.
+    {
+        auto &tyreg = runtimeTypeRegistry();
+        if (tyreg.kindOf(expr.className) == TypeKind::BuiltinExternalType)
+        {
+            const auto &classes = il::runtime::runtimeClassCatalog();
+            const std::string canon = Canon(expr.className);
+            const il::runtime::RuntimeClass *found = nullptr;
+            for (const auto &c : classes)
+            {
+                if (Canon(std::string(c.qname)) == canon)
+                {
+                    found = &c;
+                    break;
+                }
+            }
+            if (found)
+            {
+                if (!found->ctor || std::string(found->ctor).empty())
+                {
+                    std::string msg = "runtime class '" + expr.className + "' has no constructor";
+                    de.emit(il::support::Severity::Error,
+                            "E_RUNTIME_CLASS_NO_CTOR",
+                            expr.loc,
+                            static_cast<uint32_t>(expr.className.size()),
+                            std::move(msg));
+                    return Type::Unknown;
+                }
+                // Accept; arguments already visited above; return Unknown semantic type.
+                return Type::Unknown;
+            }
+        }
+    }
 
     const ClassInfo *klass = oopIndex_.findClass(expr.className);
     if (!klass)

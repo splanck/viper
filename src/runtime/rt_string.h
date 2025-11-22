@@ -100,6 +100,9 @@ extern "C"
     /// @return Length in bytes.
     int64_t rt_len(rt_string s);
 
+    /// @brief Return 1 when @p s is empty or NULL; 0 otherwise.
+    int64_t rt_str_is_empty(rt_string s);
+
     /// @brief Concatenate @p a and @p b, consuming both operands.
     /// @param a Left operand; released on success.
     /// @param b Right operand; released on success.
@@ -112,6 +115,9 @@ extern "C"
     /// @param len Number of bytes to copy.
     /// @return Substring or shared empty string when @p len == 0.
     rt_string rt_substr(rt_string s, int64_t start, int64_t len);
+
+    /// @brief Identity constructor for strings; used by Viper.Strings.FromStr.
+    rt_string rt_from_str(rt_string s);
 
     /// @brief Return leftmost @p n characters of @p s.
     /// @param s Source string; traps if NULL.
