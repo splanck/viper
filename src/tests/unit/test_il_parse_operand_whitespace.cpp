@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_il_parse_operand_whitespace.cpp
-// Purpose: Verify OperandParser trims leading whitespace for registers and globals.
+// Purpose: Verify OperandParser trims leading whitespace for registers and globals. 
 // Key invariants: parseValueToken should succeed for whitespace-prefixed identifiers and
-//                 reject tokens lacking a name after the sigil. Ownership/Lifetime:
-//                 Test owns module/state and token buffers. Links: docs/il-guide.md#reference
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/core/Instr.hpp"
 #include "il/core/Module.hpp"

@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_cli_run_return_overflow.cpp
-// Purpose: Ensure cmdRunIL reports an error when VM return value exceeds int range.
+// Purpose: Ensure cmdRunIL reports an error when VM return value exceeds int range. 
 // Key invariants: Overflow must emit diagnostic mentioning "outside host int range" and return
-// non-zero. Ownership/Lifetime: Test owns temporary IL module written to disk. Links:
-// src/tools/ilc/cmd_run_il.cpp
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "tools/ilc/cli.hpp"
 

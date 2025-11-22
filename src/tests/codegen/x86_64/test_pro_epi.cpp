@@ -1,19 +1,24 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/codegen/x86_64/test_pro_epi.cpp
-// Purpose: Verify the x86-64 backend emits a prologue/epilogue sequence that
-//          mirrors the canonical push/mov/sub pattern when lowering a trivial
-//          function.
+// Purpose: Verify the x86-64 backend emits a prologue/epilogue sequence that 
 // Key invariants: Assembly must contain a frame setup using mov %rsp, %rbp,
-//                 a stack pointer decrement (or equivalent add of a negative
-//                 immediate), and a terminating ret instruction.
 // Ownership/Lifetime: Test builds a local IL module and validates the emitted
-//                      assembly text without external dependencies.
 // Links: src/codegen/x86_64/FrameLowering.cpp
+//
+//===----------------------------------------------------------------------===//
 
 #include "codegen/x86_64/Backend.hpp"
 
 #include <string>
 
 #if __has_include(<gtest/gtest.h>)
+#ifdef VIPER_HAS_GTEST
 #include <gtest/gtest.h>
 #define VIPER_HAS_GTEST 1
 #else

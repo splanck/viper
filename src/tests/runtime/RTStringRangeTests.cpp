@@ -1,8 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/runtime/RTStringRangeTests.cpp
-// Purpose: Verify runtime string helpers report negative start/length diagnostics.
+// Purpose: Verify runtime string helpers report negative start/length diagnostics. 
 // Key invariants: LEFT$ and MID$ trap with specific messages on invalid ranges.
-// Ownership: Uses runtime library.
+// Ownership/Lifetime: Uses runtime library.
 // Links: docs/runtime-vm.md#runtime-abi
+//
+//===----------------------------------------------------------------------===//
+
 #include "rt.hpp"
 #include <cassert>
 #include <string>

@@ -1,9 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_namespace_diagnostics.cpp
-// Purpose: Test exact diagnostic messages and positions for namespace errors.
-// Requirements:
-//   - Verify exact text of all E_NS_001 through E_NS_009 diagnostics
-//   - Verify file:line:col positions
-//   - Verify contender list is sorted case-insensitively and comma-separated
+// Purpose: Test exact diagnostic messages and positions for namespace errors. 
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/Parser.hpp"

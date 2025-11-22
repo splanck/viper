@@ -1,16 +1,23 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/codegen/x86_64/test_regalloc_consistency.cpp
-// Purpose: Integration tests validating register allocation outputs against
-//          pre-refactor expectations.
+// Purpose: Integration tests validating register allocation outputs against 
 // Key invariants: Allocation results remain deterministic for representative
-//                 Machine IR corpora.
 // Ownership/Lifetime: Tests construct Machine IR on the stack and run the
-//                     allocator in place.
 // Links: src/codegen/x86_64/RegAllocLinear.hpp
+//
+//===----------------------------------------------------------------------===//
 
 #include "codegen/x86_64/RegAllocLinear.hpp"
 #include "codegen/x86_64/TargetX64.hpp"
 
 #if __has_include(<gtest/gtest.h>)
+#ifdef VIPER_HAS_GTEST
 #include <gtest/gtest.h>
 #define VIPER_HAS_GTEST 1
 #else

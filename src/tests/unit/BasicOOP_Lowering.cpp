@@ -1,11 +1,19 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/BasicOOP_Lowering.cpp
-// Purpose: Ensure BASIC OOP lowering emits runtime helpers and mangled members.
+// Purpose: Ensure BASIC OOP lowering emits runtime helpers and mangled members. 
 // Key invariants: Lowering produces required object runtime externs and class
-//                 member functions with OOP permanently enabled.
 // Ownership/Lifetime: Test owns compilation inputs and inspects resulting module.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
-#if __has_include(<gtest/gtest.h>)
+#ifdef VIPER_HAS_GTEST
 #include <gtest/gtest.h>
 #else
 #include "GTestStub.hpp"

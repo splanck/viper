@@ -1,8 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/runtime/RTInputLineFailTests.cpp
-// Purpose: Verify rt_input_line returns NULL when buffer expansion fails.
+// Purpose: Verify rt_input_line returns NULL when buffer expansion fails. 
 // Key invariants: Function aborts reading on realloc failure and reports trap.
-// Ownership: Uses runtime library; stubs realloc and trap for simulation.
+// Ownership/Lifetime: Uses runtime library; stubs realloc and trap for simulation.
 // Links: docs/runtime-vm.md#runtime-abi
+//
+//===----------------------------------------------------------------------===//
+
 #include "rt.hpp"
 #include <cassert>
 #include <cstring>

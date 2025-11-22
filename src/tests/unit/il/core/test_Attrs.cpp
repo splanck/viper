@@ -1,9 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/il/core/test_Attrs.cpp
-// Purpose: Validate attribute containers for functions, parameters, calls, and runtime signatures.
+// Purpose: Validate attribute containers for functions, parameters, calls, and runtime signatures. 
 // Key invariants: Attribute setters/getters propagate state without affecting other metadata.
 // Ownership/Lifetime: Tests instantiate transient IL structures on the stack.
 // Links: src/il/core/Function.hpp, src/il/core/Param.hpp, src/il/core/Instr.hpp,
-// src/il/runtime/signatures/Registry.hpp
+//
+//===----------------------------------------------------------------------===//
 
 #include "../../GTestStub.hpp"
 

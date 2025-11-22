@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_cli_run_missing_main.cpp
-// Purpose: Validate that cmdRunIL reports missing main without aborting.
+// Purpose: Validate that cmdRunIL reports missing main without aborting. 
 // Key invariants: CLI must emit "missing main" and return non-zero.
 // Ownership/Lifetime: Test owns temporary IL file it writes.
 // Links: src/tools/ilc/cmd_run_il.cpp
+//
+//===----------------------------------------------------------------------===//
 
 #include "tools/ilc/cli.hpp"
 

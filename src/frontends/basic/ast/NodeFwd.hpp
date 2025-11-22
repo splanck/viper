@@ -1,8 +1,18 @@
-// File: src/frontends/basic/ast/NodeFwd.hpp
-// Purpose: Provides forward declarations and common type aliases for BASIC AST nodes.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: frontends/basic/ast/NodeFwd.hpp
+// Purpose: Provides forward declarations and common type aliases for BASIC AST nodes. 
 // Key invariants: Type enumerators align with BASIC scalar kinds.
 // Ownership/Lifetime: Nodes are owned via std::unique_ptr by callers.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include <cstdint>

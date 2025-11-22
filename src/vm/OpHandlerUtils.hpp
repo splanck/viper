@@ -1,8 +1,18 @@
-// File: src/vm/OpHandlerUtils.hpp
-// Purpose: Shared helper routines for VM opcode handlers.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: vm/OpHandlerUtils.hpp
+// Purpose: Shared helper routines for VM opcode handlers. 
 // Key invariants: Helpers operate on VM frames without leaking references.
 // Ownership/Lifetime: Functions mutate frame state in-place without storing globals.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "vm/VM.hpp"

@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_il_liveness.cpp
-// Purpose: Regression tests for liveness analysis on complex control flow.
+// Purpose: Regression tests for liveness analysis on complex control flow. 
 // Key invariants: Live-in/out sets reflect required SSA values across branches.
 // Ownership/Lifetime: Test constructs modules locally and discards on exit.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/api/expected_api.hpp"
 #include "il/core/Module.hpp"

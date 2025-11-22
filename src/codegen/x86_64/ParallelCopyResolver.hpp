@@ -1,16 +1,17 @@
-// src/codegen/x86_64/ParallelCopyResolver.hpp
-// SPDX-License-Identifier: GPL-3.0-only
+//===----------------------------------------------------------------------===//
 //
-// Purpose: Provide a utility for expanding parallel register copy assignments into
-//          a concrete, ordered sequence of moves for the x86-64 backend.
-// Invariants: Each CopyPair represents a single logical transfer from a source
-//             virtual register to a destination virtual register inside a single
-//             register class. Self-copies are ignored and cycles are resolved with
-//             either in-degree analysis or a temporary spill slot.
-// Ownership: Header-only utility with no global state. All temporaries are scoped
-//            to the resolution routine and emitted through the provided CopyEmitter.
-// Notes: The implementation relies solely on the C++ standard library headers
-//        <vector> and <cstdint>.
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: codegen/x86_64/ParallelCopyResolver.hpp
+// Purpose: Provide a utility for expanding parallel register copy assignments into 
+// Key invariants: To be documented.
+// Ownership/Lifetime: Header-only utility with no global state. All temporaries are scoped
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #pragma once
 

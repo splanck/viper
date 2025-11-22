@@ -1,7 +1,18 @@
-// tui/include/tui/widgets/label.hpp
-// @brief Simple text label widget.
-// @invariant Stores immutable text and theme reference.
-// @ownership Label does not own the Theme.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: tui/include/tui/widgets/label.hpp
+// Purpose: Implements functionality for this subsystem.
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include <string>

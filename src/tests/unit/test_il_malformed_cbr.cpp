@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_il_malformed_cbr.cpp
-// Purpose: Ensure serializer handles conditional branches with missing labels.
+// Purpose: Ensure serializer handles conditional branches with missing labels. 
 // Key invariants: Serializer should not crash on malformed cbr instructions.
 // Ownership/Lifetime: Test constructs modules on stack.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"

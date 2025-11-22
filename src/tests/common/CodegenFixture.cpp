@@ -1,10 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/common/CodegenFixture.cpp
-// Purpose: Implement helpers that orchestrate ilc CLI invocations for VM/native
-//          parity tests.
+// Purpose: Implement helpers that orchestrate ilc CLI invocations for VM/native 
 // Key invariants: Command executions are serialized per fixture instance and
-//                 stdout is captured via temporary files.
 // Ownership/Lifetime: The fixture owns a temporary directory and removes it on
-//                      destruction.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "common/CodegenFixture.hpp"
 

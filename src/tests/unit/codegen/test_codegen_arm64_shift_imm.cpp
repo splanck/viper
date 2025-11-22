@@ -1,5 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/codegen/test_codegen_arm64_shift_imm.cpp
-// Purpose: Verify shl/lshr/ashr immediate lowering for param0 and param1.
+// Purpose: Verify shl/lshr/ashr immediate lowering for param0 and param1. 
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "tests/unit/GTestStub.hpp"
 

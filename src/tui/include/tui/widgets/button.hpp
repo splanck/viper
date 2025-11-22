@@ -1,7 +1,18 @@
-// tui/include/tui/widgets/button.hpp
-// @brief Clickable button widget with text.
-// @invariant Callback executed on activation keys.
-// @ownership Button borrows Theme and stores callback.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: tui/include/tui/widgets/button.hpp
+// Purpose: Implements functionality for this subsystem.
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include <functional>

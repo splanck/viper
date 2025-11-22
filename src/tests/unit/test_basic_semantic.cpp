@@ -1,10 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_basic_semantic.cpp
-// Purpose: Unit test verifying BASIC semantic analyzer and lowerer handle a
-//          representative AST without diagnostics.
+// Purpose: Unit test verifying BASIC semantic analyzer and lowerer handle a 
 // Key invariants: Analyzer collects symbols/labels and lowering produces
-//                 functions for user procedures and main.
 // Ownership/Lifetime: Test owns all objects locally.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/Lowerer.hpp"

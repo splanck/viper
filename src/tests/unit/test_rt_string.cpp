@@ -1,8 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_rt_string.cpp
-// Purpose: Verify runtime string helpers including substring operations clamp inputs.
+// Purpose: Verify runtime string helpers including substring operations clamp inputs. 
 // Key invariants: Substring operations clamp start/length and avoid overflow.
-// Ownership: Uses runtime library.
+// Ownership/Lifetime: Uses runtime library.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
+
 #include "rt.hpp"
 #include "rt_internal.h"
 #include <cassert>

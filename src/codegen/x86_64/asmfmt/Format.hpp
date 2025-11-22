@@ -1,15 +1,17 @@
-// src/codegen/x86_64/asmfmt/Format.hpp
-// SPDX-License-Identifier: GPL-3.0-only
+//===----------------------------------------------------------------------===//
 //
-// Purpose: Provide reusable helpers for formatting x86-64 assembly operands and
-//          literal payloads shared across the code generator.
-// Invariants: Helpers operate purely on their inputs and never mutate shared
-//             state; all returned strings are fully escaped and ready for
-//             emission.
-// Ownership: Functions allocate and return std::string values by copy. Callers
-//            own the returned buffers.
-// Notes: Designed for use by the x86-64 AsmEmitter; kept header-only except for
-//        standard library includes.
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: codegen/x86_64/asmfmt/Format.hpp
+// Purpose: Provide reusable helpers for formatting x86-64 assembly operands and 
+// Key invariants: To be documented.
+// Ownership/Lifetime: Functions allocate and return std::string values by copy. Callers
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #pragma once
 

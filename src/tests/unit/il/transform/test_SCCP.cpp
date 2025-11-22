@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/il/transform/test_SCCP.cpp
-// Purpose: Exercise sparse conditional constant propagation on block-parameter SSA.
+// Purpose: Exercise sparse conditional constant propagation on block-parameter SSA. 
 // Key invariants: Constants flowing through block parameters fold branches and prune unreachable
-// blocks. Ownership/Lifetime: Constructs a transient module within the test. Links:
-// docs/il-guide.md#reference
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/transform/SCCP.hpp"
 #include "il/transform/SimplifyCFG.hpp"

@@ -1,9 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_vm_op_schema.cpp
-// Purpose: Validate generated VM opcode schema metadata matches IL opcode info.
+// Purpose: Validate generated VM opcode schema metadata matches IL opcode info. 
 // Key invariants: Generated schema mirrors il::core::Opcode metadata and ensures
-//                 every dispatchable opcode exposes a handler pointer.
 // Ownership/Lifetime: Tests operate on static tables only.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/core/OpcodeInfo.hpp"
 #include "vm/ops/generated/HandlerTable.hpp"

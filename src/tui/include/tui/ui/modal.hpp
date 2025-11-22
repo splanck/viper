@@ -1,7 +1,18 @@
-// tui/include/tui/ui/modal.hpp
-// @brief Modal host and popup widgets handling layered dialogs.
-// @invariant ModalHost routes events to top modal; Popup centers within host.
-// @ownership ModalHost owns root and modals; Popup borrows dismiss callback.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: tui/include/tui/ui/modal.hpp
+// Purpose: Implements functionality for this subsystem.
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "tui/ui/widget.hpp"

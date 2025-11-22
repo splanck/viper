@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/frontends/basic/SemanticAnalyzerBinaryExprTests.cpp
-// Purpose: Exercise BASIC semantic analyzer binary expression rules via table lookup.
+// Purpose: Exercise BASIC semantic analyzer binary expression rules via table lookup. 
 // Key invariants: Each BinaryExpr::Op maps to the expected diagnostics and result handling.
 // Ownership/Lifetime: Tests own parser, analyzer, and diagnostic objects locally.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/Parser.hpp"

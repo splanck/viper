@@ -1,8 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/e2e/support/FloatOut.cpp
-// Purpose: Implement helper that checks floating-point outputs within tolerance.
+// Purpose: Implement helper that checks floating-point outputs within tolerance. 
 // Key invariants: Parses EXPECT≈ lines; each expectation matches one output value.
 // Ownership/Lifetime: Purely functional; no persistent state.
 // Links: docs/testing.md
+//
+//===----------------------------------------------------------------------===//
+
 #include "FloatOut.h"
 
 #include <cmath>

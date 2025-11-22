@@ -1,7 +1,18 @@
-// tui/include/tui/text/LineIndex.hpp
-// @brief Maintains line start offsets reacting to span change notifications.
-// @invariant line_starts_ always begins with zero and remains sorted ascending.
-// @ownership LineIndex owns offset vector; callers retain referenced text buffers.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: tui/include/tui/text/LineIndex.hpp
+// Purpose: Implements functionality for this subsystem.
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include <cstddef>

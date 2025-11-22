@@ -1,8 +1,18 @@
-// File: src/frontends/basic/Parser_Token.hpp
-// Purpose: Token navigation helpers for BASIC parser.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: frontends/basic/Parser_Token.hpp
+// Purpose: Token navigation helpers for BASIC parser. 
 // Key invariants: Buffer always holds current token.
 // Ownership/Lifetime: Parser owns lexer and token buffer.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 /// @brief Test whether the current token matches a given kind.

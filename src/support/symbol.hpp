@@ -1,8 +1,18 @@
-// File: src/support/symbol.hpp
-// Purpose: Defines Symbol handle type for interned strings.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: support/symbol.hpp
+// Purpose: Defines Symbol handle type for interned strings. 
 // Key invariants: Value 0 denotes an invalid symbol.
 // Ownership/Lifetime: Symbols are value types.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include <cstdint>

@@ -1,7 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/VM_StepApiTests.cpp
-// Purpose: Validate Runner step/continue APIs and breakpoint behavior.
-// Notes: Builds a tiny IL module with two instructions and a source breakpoint
-//        on the second; verifies step then continue stops at the breakpoint.
+// Purpose: Validate Runner step/continue APIs and breakpoint behavior. 
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/build/IRBuilder.hpp"
 #include "il/core/BasicBlock.hpp"

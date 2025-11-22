@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/codegen/x86_64/test_pipeline_equivalence.cpp
-// Purpose: Ensure the new pass-managed pipeline produces identical assembly to the direct backend.
+// Purpose: Ensure the new pass-managed pipeline produces identical assembly to the direct backend. 
 // Key invariants: Assembly output must match byte-for-byte for a representative module.
 // Ownership/Lifetime: Test constructs IL module objects locally; no file I/O.
 // Links: src/codegen/x86_64/CodegenPipeline.cpp, src/codegen/x86_64/passes
+//
+//===----------------------------------------------------------------------===//
 
 #include "codegen/x86_64/Backend.hpp"
 #include "codegen/x86_64/passes/EmitPass.hpp"
@@ -20,6 +29,7 @@
 #include <memory>
 
 #if __has_include(<gtest/gtest.h>)
+#ifdef VIPER_HAS_GTEST
 #include <gtest/gtest.h>
 #define VIPER_HAS_GTEST 1
 #else

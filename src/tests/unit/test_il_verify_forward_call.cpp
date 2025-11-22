@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_il_verify_forward_call.cpp
-// Purpose: Ensure the verifier resolves forward callee lookups and rejects duplicates.
+// Purpose: Ensure the verifier resolves forward callee lookups and rejects duplicates. 
 // Key invariants: Forward calls verify successfully; duplicate function names still fail.
 // Ownership/Lifetime: Modules and functions are local to the test.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"

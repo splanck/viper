@@ -1,7 +1,17 @@
-// tui/tests/test_config.cpp
-// @brief Verify configuration loader parses theme, keymap, and editor settings.
-// @invariant Parsed values match expected sample config.
-// @ownership Test owns configuration data only.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: tui/tests/test_config.cpp
+// Purpose: Test suite for this component.
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "tui/config/config.hpp"
 

@@ -1,8 +1,18 @@
-// File: src/vm/OpHandlers_Float.hpp
-// Purpose: Declare floating-point opcode handlers for the VM dispatcher.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: vm/OpHandlers_Float.hpp
+// Purpose: Declare floating-point opcode handlers for the VM dispatcher. 
 // Key invariants: Handlers implement IEEE-754 semantics via host double operations.
 // Ownership/Lifetime: Handlers only mutate the destination slot in the active frame.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "vm/OpHandlerAccess.hpp"

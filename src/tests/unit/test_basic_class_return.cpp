@@ -1,11 +1,19 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_basic_class_return.cpp
-// Purpose: Repro and guard for BUG-040 — ensure FUNCTIONS returning custom
-// //         class types lower RETURN of an object variable as a pointer load.
+// Purpose: Repro and guard for BUG-040 — ensure FUNCTIONS returning custom 
 // Key invariants: The ret operand must originate from a Load typed as Ptr.
 // Ownership/Lifetime: Standalone unit test executable.
 // Links: docs/codemap.md, docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
 
-#if __has_include(<gtest/gtest.h>)
+#ifdef VIPER_HAS_GTEST
 #include <gtest/gtest.h>
 #else
 #include "GTestStub.hpp"

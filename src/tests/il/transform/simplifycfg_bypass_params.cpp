@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/il/transform/simplifycfg_bypass_params.cpp
-// Purpose: Verify SimplifyCFG forwards branch arguments when bypassing blocks with params.
+// Purpose: Verify SimplifyCFG forwards branch arguments when bypassing blocks with params. 
 // Key invariants: Forwarding block removal must preserve branch arguments and remove the block.
 // Ownership/Lifetime: Constructs a local module and runs the pass by value.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/build/IRBuilder.hpp"
 #include "il/transform/SimplifyCFG.hpp"

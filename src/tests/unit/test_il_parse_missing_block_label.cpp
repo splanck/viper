@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_il_parse_missing_block_label.cpp
-// Purpose: Validate that the IL parser diagnoses blocks without labels.
+// Purpose: Validate that the IL parser diagnoses blocks without labels. 
 // Key invariants: Parser identifies empty block headers and reports a line-aware diagnostic.
 // Ownership/Lifetime: Test owns parsing buffers and diagnostics output.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/api/expected_api.hpp"
 #include "il/core/Module.hpp"

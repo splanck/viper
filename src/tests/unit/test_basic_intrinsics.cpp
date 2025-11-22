@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_basic_intrinsics.cpp
-// Purpose: Unit test for BASIC intrinsic registry lookups.
+// Purpose: Unit test for BASIC intrinsic registry lookups. 
 // Key invariants: Verifies parameter counts/types for selected intrinsics.
 // Ownership/Lifetime: Test owns nothing.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/Intrinsics.hpp"
 #include <cassert>

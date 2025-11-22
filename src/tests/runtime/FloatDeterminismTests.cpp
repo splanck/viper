@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/runtime/FloatDeterminismTests.cpp
-// Purpose: Exercise VAL-style parsing for locale-independent behavior.
+// Purpose: Exercise VAL-style parsing for locale-independent behavior. 
 // Key invariants: Special values and decimal formats are deterministic regardless of locale.
-// Ownership: Runtime numeric helpers.
+// Ownership/Lifetime: Runtime numeric helpers.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "viper/runtime/rt.h"
 

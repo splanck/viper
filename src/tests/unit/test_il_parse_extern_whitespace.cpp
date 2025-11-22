@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_il_parse_extern_whitespace.cpp
-// Purpose: Ensure extern declarations tolerate incidental whitespace around names.
+// Purpose: Ensure extern declarations tolerate incidental whitespace around names. 
 // Key invariants: Parser trims extern identifiers so verification resolves calls.
 // Ownership/Lifetime: Test owns IL module and buffers.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/api/expected_api.hpp"
 #include "il/core/Instr.hpp"

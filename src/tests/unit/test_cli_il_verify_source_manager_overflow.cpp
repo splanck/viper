@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_cli_il_verify_source_manager_overflow.cpp
-// Purpose: Ensure il-verify aborts when the SourceManager overflows before loading.
+// Purpose: Ensure il-verify aborts when the SourceManager overflows before loading. 
 // Key invariants: Overflow diagnostic is emitted and module loading is skipped.
 // Ownership/Lifetime: Test owns temporary IL file and captured stream buffers.
 // Links: src/tools/il-verify/il-verify.cpp
+//
+//===----------------------------------------------------------------------===//
 
 #include "support/source_manager.hpp"
 

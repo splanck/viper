@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/frontends/basic/ParserUnknownStatementTests.cpp
-// Purpose: Ensure BASIC parser reports diagnostics for unknown statement keywords.
+// Purpose: Ensure BASIC parser reports diagnostics for unknown statement keywords. 
 // Key invariants: Parser emits B0001 and skips to end-of-line for unrecognized statements.
 // Ownership/Lifetime: Test owns parser/emitter instances and inspects resulting AST/diagnostics.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/Parser.hpp"

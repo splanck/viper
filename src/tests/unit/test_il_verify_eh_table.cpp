@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_il_verify_eh_table.cpp
-// Purpose: Validate verifier diagnostics for exception handler table instructions.
+// Purpose: Validate verifier diagnostics for exception handler table instructions. 
 // Key invariants: EH stack operations enforce successor arity and resume token typing.
 // Ownership/Lifetime: Constructs IL modules locally for verification and discards after use.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"

@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/frontends/basic/ParseMethodCallParenlessTests.cpp
-// Purpose: Ensure BASIC parser accepts zero-arg method calls without parentheses in statement
-// position. Key invariants: A member access at end-of-statement is synthesized into a
-// MethodCallExpr wrapped by CallStmt. Ownership/Lifetime: Test owns parser instance; no shared
-// global state. Links: docs/basic-language.md#procedures-and-functions
+// Purpose: Ensure BASIC parser accepts zero-arg method calls without parentheses in statement 
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/Parser.hpp"
 #include "support/source_manager.hpp"

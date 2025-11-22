@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_vm_runtime_trap_metadata.cpp
-// Purpose: Ensure runtime trap metadata clears stale function/block identifiers when omitted.
+// Purpose: Ensure runtime trap metadata clears stale function/block identifiers when omitted. 
 // Key invariants: Subsequent traps without metadata must not reuse prior function/block names.
-// Ownership: Spawns child processes to capture diagnostics and runtime context output.
+// Ownership/Lifetime: Spawns child processes to capture diagnostics and runtime context output.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/core/Module.hpp"
 #include "support/source_location.hpp"

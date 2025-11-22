@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/tools/FrontBasicRejectBreakFlagTests.cpp
-// Purpose: Ensure the BASIC front-end rejects unsupported debugger flags.
+// Purpose: Ensure the BASIC front-end rejects unsupported debugger flags. 
 // Key invariants: `cmdFrontBasic` must fail fast on `--break` without invoking compilation.
 // Ownership/Lifetime: Test owns argv buffers and captures usage state locally.
 // Links: docs/testing.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "tools/ilc/cli.hpp"
 

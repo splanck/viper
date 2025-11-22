@@ -1,14 +1,17 @@
-// src/codegen/aarch64/RegAllocLinear.hpp
-// SPDX-License-Identifier: GPL-3.0-only
+//===----------------------------------------------------------------------===//
 //
-// Purpose: Declare a minimal linear-scan register allocator for the AArch64
-// //        backend used during bring-up. The allocator supports virtual GPRs,
-// //        assigns physical registers from the target pools, inserts spill
-// //        code using FP-relative slots when pressure exceeds capacity, and
-// //        records callee-saved usage via MFunction::savedGPRs for the
-// //        prologue/epilogue.
-// Invariants: Mutates the supplied Machine IR in-place. All vregs must be
-//             resolved to physical registers before emission.
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: codegen/aarch64/RegAllocLinear.hpp
+// Purpose: Declare a minimal linear-scan register allocator for the AArch64 
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #pragma once
 

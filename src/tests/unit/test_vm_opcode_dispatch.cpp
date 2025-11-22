@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_vm_opcode_dispatch.cpp
-// Purpose: Exercise VM interpreter handlers via a representative IL program.
+// Purpose: Exercise VM interpreter handlers via a representative IL program. 
 // Key invariants: Program executes one opcode from each handler group and returns expected sum.
-// Ownership: Test parses in-memory IL text and executes the VM in-process.
+// Ownership/Lifetime: Test parses in-memory IL text and executes the VM in-process.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/api/expected_api.hpp"
 #include "il/core/Module.hpp"

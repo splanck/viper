@@ -1,8 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/vm/BreakLabelTests.cpp
-// Purpose: Verify that label breakpoints halt execution before block entry.
+// Purpose: Verify that label breakpoints halt execution before block entry. 
 // Key invariants: VM prints a single BREAK line and executes no block instructions.
 // Ownership/Lifetime: Test creates temporary output file.
 // Links: docs/testing.md
+//
+//===----------------------------------------------------------------------===//
+
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>

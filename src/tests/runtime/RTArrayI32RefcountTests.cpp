@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/runtime/RTArrayI32RefcountTests.cpp
-// Purpose: Validate rt_arr_i32 reference-counting and copy-on-resize semantics.
+// Purpose: Validate rt_arr_i32 reference-counting and copy-on-resize semantics. 
 // Key invariants: Shared handles must observe consistent refcounts and aliasing guarantees.
-// Ownership: Tests manage retains/releases explicitly and ensure all arrays are freed.
+// Ownership/Lifetime: Tests manage retains/releases explicitly and ensure all arrays are freed.
 // Links: docs/runtime-vm.md#runtime-abi
+//
+//===----------------------------------------------------------------------===//
 
 #include "viper/runtime/rt.h"
 

@@ -1,8 +1,18 @@
-// File: src/frontends/basic/TypeSuffix.hpp
-// Purpose: Declares helpers for inferring BASIC semantic types from identifier suffixes.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: frontends/basic/TypeSuffix.hpp
+// Purpose: Declares helpers for inferring BASIC semantic types from identifier suffixes. 
 // Key invariants: BASIC suffix characters map to a single AST scalar type.
 // Ownership/Lifetime: Pure utility with no retained state.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "frontends/basic/ast/NodeFwd.hpp"

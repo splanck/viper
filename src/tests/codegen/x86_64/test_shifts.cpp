@@ -1,18 +1,24 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/codegen/x86_64/test_shifts.cpp
-// Purpose: Ensure x86-64 codegen lowers IL shift instructions to the
-//          appropriate immediate and CL-based machine instructions.
+// Purpose: Ensure x86-64 codegen lowers IL shift instructions to the 
 // Key invariants: Generated assembly must contain shl with an immediate
-//                 count and sar/shr using the CL register for variable counts.
 // Ownership/Lifetime: Tests build IL modules locally and inspect emitted
-//                     assembly strings by value without persistent fixtures.
 // Links: src/codegen/x86_64/LowerILToMIR.cpp,
-//        src/codegen/x86_64/AsmEmitter.cpp
+//
+//===----------------------------------------------------------------------===//
 
 #include "codegen/x86_64/Backend.hpp"
 
 #include <string>
 
 #if __has_include(<gtest/gtest.h>)
+#ifdef VIPER_HAS_GTEST
 #include <gtest/gtest.h>
 #define VIPER_HAS_GTEST 1
 #else

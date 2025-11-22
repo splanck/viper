@@ -1,8 +1,18 @@
-// File: src/il/internal/io/ParserState.hpp
-// Purpose: Declares shared parser state for IL text parsing components.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: il/internal/io/ParserState.hpp
+// Purpose: Declares shared parser state for IL text parsing components. 
 // Key invariants: Tracks module/function context while parsing input.
 // Ownership/Lifetime: Holds references to externally owned module data.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "il/core/fwd.hpp"

@@ -1,9 +1,19 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/Basic_Sleep_Lowering.cpp
-// Purpose: Verify SLEEP lowers to a call to rt_sleep_ms and declares extern.
+// Purpose: Verify SLEEP lowers to a call to rt_sleep_ms and declares extern. 
 // Key invariants: Module contains extern @rt_sleep_ms when SLEEP is present.
-// Ownership: Compiles a tiny BASIC snippet and inspects the module and IL text.
+// Ownership/Lifetime: Compiles a tiny BASIC snippet and inspects the module and IL text.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
-#if __has_include(<gtest/gtest.h>)
+#ifdef VIPER_HAS_GTEST
 #include <gtest/gtest.h>
 #else
 #include "GTestStub.hpp"

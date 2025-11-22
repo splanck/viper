@@ -1,8 +1,18 @@
-// File: src/frontends/basic/DiagnosticCodes.hpp
-// Purpose: Centralized diagnostic error codes for BASIC frontend
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: frontends/basic/DiagnosticCodes.hpp
+// Purpose: Centralized diagnostic error codes for BASIC frontend 
 // Key invariants: All codes are unique and follow B#### format
 // Ownership/Lifetime: Static constants with program lifetime
 // Links: docs/basic-diagnostics.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include <string_view>

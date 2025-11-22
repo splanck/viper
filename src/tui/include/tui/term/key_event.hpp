@@ -1,7 +1,18 @@
-// tui/include/tui/term/key_event.hpp
-// @brief POD event types shared across terminal input and UI layers.
-// @invariant Enumeration values match terminal decoding logic.
-// @ownership Simple value types with no dynamic ownership.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: tui/include/tui/term/key_event.hpp
+// Purpose: Implements functionality for this subsystem.
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include <cstdint>

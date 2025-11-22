@@ -1,8 +1,18 @@
-// File: src/il/internal/io/ModuleParser.hpp
-// Purpose: Declares helpers for parsing module-level IL directives.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: il/internal/io/ModuleParser.hpp
+// Purpose: Declares helpers for parsing module-level IL directives. 
 // Key invariants: Operates with ParserState positioned at module scope.
 // Ownership/Lifetime: Updates module metadata and dispatches to function parsing.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "il/internal/io/ParserState.hpp"

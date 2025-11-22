@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/vm/SwitchDispatchTests.cpp
-// Purpose: Ensure the VM dispatch table executes SwitchI32 handlers correctly.
+// Purpose: Ensure the VM dispatch table executes SwitchI32 handlers correctly. 
 // Key invariants: Matching case transfers to correct block, default is taken otherwise.
 // Ownership/Lifetime: Builds ephemeral modules per scenario and executes immediately.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/build/IRBuilder.hpp"
 #include "vm/VM.hpp"

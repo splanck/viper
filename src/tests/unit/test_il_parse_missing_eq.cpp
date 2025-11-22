@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_il_parse_missing_eq.cpp
-// Purpose: Ensure IL parser reports error when result assignment lacks '='.
+// Purpose: Ensure IL parser reports error when result assignment lacks '='. 
 // Key invariants: Parser reports malformed instructions through Expected diagnostics.
 // Ownership/Lifetime: Test constructs modules and buffers locally.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/api/expected_api.hpp"
 #include "il/core/Module.hpp"

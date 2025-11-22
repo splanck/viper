@@ -1,7 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_basic_builtins_args_cmd_semantics.cpp
-// Purpose: Verify ARGC/ARG$/COMMAND$ semantic arity validation uses registry arity (no table
-// drift). Key invariants: Wrong arity produces clear diagnostics with 0-0 (COMMAND$) and 1-1
-// (ARG$).
+// Purpose: Verify ARGC/ARG$/COMMAND$ semantic arity validation uses registry arity (no table 
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/BasicCompiler.hpp"
 #include "support/source_manager.hpp"

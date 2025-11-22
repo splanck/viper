@@ -1,8 +1,18 @@
-// File: src/vm/OpHandlers_Memory.hpp
-// Purpose: Declare memory-related opcode handlers used by the VM dispatcher.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: vm/OpHandlers_Memory.hpp
+// Purpose: Declare memory-related opcode handlers used by the VM dispatcher. 
 // Key invariants: Handlers honour IL semantics for loads, stores, allocations, and pointer ops.
 // Ownership/Lifetime: Handlers mutate VM frames but never retain ownership of VM resources.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "vm/OpHandlerAccess.hpp"

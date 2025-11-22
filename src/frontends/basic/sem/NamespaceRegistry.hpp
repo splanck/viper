@@ -1,11 +1,17 @@
-// File: src/frontends/basic/sem/NamespaceRegistry.hpp
-// Purpose: Records declared namespaces and their types with case-insensitive lookups.
-// Key invariants:
-//   - All lookups are case-insensitive.
-//   - First-seen spelling is preserved as canonical for diagnostics.
-//   - Repeated namespace declarations are merged into one logical namespace.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: frontends/basic/sem/NamespaceRegistry.hpp
+// Purpose: Records declared namespaces and their types with case-insensitive lookups. 
+// Key invariants: // Key invariants:
 // Ownership/Lifetime: Registry is owned by semantic analyzer; lives for compilation.
 // Links: docs/codemap.md, CLAUDE.md
+//
+//===----------------------------------------------------------------------===//
 
 #pragma once
 

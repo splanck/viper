@@ -1,9 +1,18 @@
-// File: src/frontends/basic/LowerExprNumeric.hpp
-// Purpose: Declares numeric expression lowering helpers for the BASIC Lowerer.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: frontends/basic/LowerExprNumeric.hpp
+// Purpose: Declares numeric expression lowering helpers for the BASIC Lowerer. 
 // Key invariants: Helpers reuse Lowerer conversions to maintain consistent type
-//                 coercions across arithmetic operations.
 // Ownership/Lifetime: Borrow the Lowerer reference for on-demand lowering.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "frontends/basic/Lowerer.hpp"

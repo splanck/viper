@@ -1,8 +1,18 @@
-// File: src/vm/RuntimeBridge.hpp
-// Purpose: Declares adapter between VM and runtime library.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: vm/RuntimeBridge.hpp
+// Purpose: Declares adapter between VM and runtime library. 
 // Key invariants: None.
 // Ownership/Lifetime: VM owns the bridge.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "rt.hpp"

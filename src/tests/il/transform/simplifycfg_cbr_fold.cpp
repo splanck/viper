@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/il/transform/simplifycfg_cbr_fold.cpp
-// Purpose: Exercise SimplifyCFG folding of constant conditional branches.
+// Purpose: Exercise SimplifyCFG folding of constant conditional branches. 
 // Key invariants: Conditional branch with constant true becomes unconditional.
 // Ownership/Lifetime: Constructs a local module and runs a pass by value.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/build/IRBuilder.hpp"
 #include "il/transform/SimplifyCFG.hpp"

@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_il_parse_roundtrip.cpp
-// Purpose: Round-trip parse/serialize coverage for parse-roundtrip IL goldens.
+// Purpose: Round-trip parse/serialize coverage for parse-roundtrip IL goldens. 
 // Key invariants: Serializer reproduces canonical text for new opcode forms.
 // Ownership/Lifetime: Test owns all modules and buffers.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/api/expected_api.hpp"
 #include "il/core/Module.hpp"

@@ -1,9 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/PathNormalizeTests.cpp
-// Purpose: Verify normalized paths yield correct basename.
+// Purpose: Verify normalized paths yield correct basename. 
 // Key invariants: Backslashes become slashes; '..' segments collapsed;
-// basename extracted from normalized path.
-// Ownership: Standalone executable.
+// Ownership/Lifetime: Standalone executable.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
+
 #include "viper/vm/debug/Debug.hpp"
 #include <cassert>
 

@@ -1,9 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/runtime/RTInstrTests.cpp
-// Purpose: Validate runtime INSTR search functions.
+// Purpose: Validate runtime INSTR search functions. 
 // Key invariants: 1-based indexing semantics; empty needle returns clamped
-// start; extreme start values clamp to 1.
-// Ownership: Uses runtime library.
+// Ownership/Lifetime: Uses runtime library.
 // Links: docs/runtime-vm.md#runtime-abi
+//
+//===----------------------------------------------------------------------===//
+
 #include "rt.hpp"
 #include <cassert>
 #include <limits.h>

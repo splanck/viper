@@ -1,7 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_il_parse_negative.cpp
-// Purpose: Ensure IL parser rejects malformed constructs, including block params, branch arguments,
-// and numeric literals. Key invariants: Parser returns false for invalid input. Ownership/Lifetime:
-// Test owns all modules and buffers locally. Links: docs/il-guide.md#reference
+// Purpose: Ensure IL parser rejects malformed constructs, including block params, branch arguments, 
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/api/expected_api.hpp"
 #include "il/core/Module.hpp"

@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_basic_expr_loc.cpp
-// Purpose: Verify BASIC expression nodes record source locations.
+// Purpose: Verify BASIC expression nodes record source locations. 
 // Key invariants: Line and column values must match token positions.
-// Ownership: Test owns parsed AST.
+// Ownership/Lifetime: Test owns parsed AST.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/Parser.hpp"
 #include "support/source_manager.hpp"

@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/vm/PowTests.cpp
-// Purpose: Validate VM integration for the BASIC power operator semantics.
+// Purpose: Validate VM integration for the BASIC power operator semantics. 
 // Key invariants: Negative integral exponents succeed; fractional exponents on negative bases trap.
 // Ownership/Lifetime: Builds ephemeral IL modules inside each test case.
 // Links: docs/specs/numerics.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "common/VmFixture.hpp"
 #include "il/build/IRBuilder.hpp"

@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/codegen/x86_64/test_diff_vm_native.cpp
-// Purpose: Ensure the ilc VM runner and native backend produce identical
-//          observable behaviour for a branch-heavy IL program.
+// Purpose: Ensure the ilc VM runner and native backend produce identical 
 // Key invariants: Shared codegen fixture handles filesystem orchestration while
-//                 the parameterized test compares exit codes and stdout.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "common/CodegenFixture.hpp"
 
@@ -13,6 +22,7 @@
 #include <string>
 
 #if __has_include(<gtest/gtest.h>)
+#ifdef VIPER_HAS_GTEST
 #include <gtest/gtest.h>
 #define VIPER_HAS_GTEST 1
 #else

@@ -1,11 +1,18 @@
-// File: src/frontends/basic/LowerExprLogical.hpp
-// Purpose: Declares logical expression lowering helpers that operate on the
-//          BASIC Lowerer implementation.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: frontends/basic/LowerExprLogical.hpp
+// Purpose: Declares logical expression lowering helpers that operate on the 
 // Key invariants: Helper objects reuse Lowerer state and utilities when
-//                 materializing logical values.
 // Ownership/Lifetime: Helpers borrow the Lowerer reference for the duration of
-//                      a single lowering operation.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "frontends/basic/Lowerer.hpp"

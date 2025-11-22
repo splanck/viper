@@ -1,19 +1,17 @@
-// src/codegen/x86_64/FrameLowering.hpp
-// SPDX-License-Identifier: GPL-3.0-only
+//===----------------------------------------------------------------------===//
 //
-// Purpose: Declare utilities responsible for constructing stack frames for the
-//          x86-64 backend during Phase A bring-up. The routines emit function
-//          prologues/epilogues and resolve spill slot displacements after
-//          register allocation has annotated Machine IR with abstract stack
-//          references.
-// Invariants: FrameInfo summarises the size requirements for the various frame
-//             regions. Functions operate directly on Machine IR blocks and
-//             mutate them in-place while preserving deterministic instruction
-//             ordering.
-// Ownership: Callers retain ownership of Machine IR objects. Utilities borrow
-//            references and never allocate dynamic resources beyond standard
-//            containers.
-// Notes: Header depends on MachineIR.hpp and TargetX64.hpp only.
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: codegen/x86_64/FrameLowering.hpp
+// Purpose: Declare utilities responsible for constructing stack frames for the 
+// Key invariants: To be documented.
+// Ownership/Lifetime: Callers retain ownership of Machine IR objects. Utilities borrow
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #pragma once
 

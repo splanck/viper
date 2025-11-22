@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_vm_addr_of.cpp
-// Purpose: Verify VM addr_of instruction returns pointer to global string.
+// Purpose: Verify VM addr_of instruction returns pointer to global string. 
 // Key invariants: Returned pointer's data matches global initializer.
-// Ownership: Test constructs IL module and executes VM.
+// Ownership/Lifetime: Test constructs IL module and executes VM.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/api/expected_api.hpp"
 #include "il/core/Module.hpp"

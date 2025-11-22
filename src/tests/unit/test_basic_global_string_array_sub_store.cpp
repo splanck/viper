@@ -1,8 +1,19 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_basic_global_string_array_sub_store.cpp
-// Purpose: Verify that assigning to a global STRING array from a SUB uses rt_arr_str_put.
+// Purpose: Verify that assigning to a global STRING array from a SUB uses rt_arr_str_put. 
 // Key invariants: Lowering selects string array helper even from SUB scope.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
-#if __has_include(<gtest/gtest.h>)
+#ifdef VIPER_HAS_GTEST
 #include <gtest/gtest.h>
 #else
 #include "GTestStub.hpp"

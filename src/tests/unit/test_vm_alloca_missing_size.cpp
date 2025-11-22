@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_vm_alloca_missing_size.cpp
-// Purpose: Ensure VM traps when alloca is missing size operand.
+// Purpose: Ensure VM traps when alloca is missing size operand. 
 // Key invariants: Alloca without size must emit "missing allocation size" trap.
-// Ownership: Test constructs IL module and executes VM.
+// Ownership/Lifetime: Test constructs IL module and executes VM.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/build/IRBuilder.hpp"
 #include "vm/VM.hpp"

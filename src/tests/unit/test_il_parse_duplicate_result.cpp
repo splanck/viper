@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_il_parse_duplicate_result.cpp
-// Purpose: Ensure the IL parser rejects duplicate SSA result names within a block.
+// Purpose: Ensure the IL parser rejects duplicate SSA result names within a block. 
 // Key invariants: Parser reports diagnostics when a result name is redefined.
 // Ownership/Lifetime: Test owns module and diagnostic buffers constructed from string literals.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/api/expected_api.hpp"
 #include "il/core/Module.hpp"

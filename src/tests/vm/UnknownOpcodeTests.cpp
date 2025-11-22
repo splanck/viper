@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/vm/UnknownOpcodeTests.cpp
-// Purpose: Verify the VM traps gracefully when encountering unmapped opcodes.
+// Purpose: Verify the VM traps gracefully when encountering unmapped opcodes. 
 // Key invariants: Unknown opcode dispatch produces InvalidOperation traps with mnemonic text.
 // Ownership/Lifetime: Builds an ephemeral module executed in a forked child to capture stderr.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
 
 #include "common/TestIRBuilder.hpp"
 

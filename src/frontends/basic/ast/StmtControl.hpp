@@ -1,9 +1,18 @@
-// File: src/frontends/basic/ast/StmtControl.hpp
-// Purpose: Defines BASIC control-flow oriented statement nodes.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: frontends/basic/ast/StmtControl.hpp
+// Purpose: Defines BASIC control-flow oriented statement nodes. 
 // Key invariants: Control statements maintain ownership of nested bodies via
-//                 StmtPtr containers and capture source metadata for diagnostics.
 // Ownership/Lifetime: Statements own nested statements through unique_ptr wrappers.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "frontends/basic/SelectModel.hpp"

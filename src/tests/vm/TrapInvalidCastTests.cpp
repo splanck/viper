@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/vm/TrapInvalidCastTests.cpp
-// Purpose: Ensure InvalidCast traps report kind and instruction index.
+// Purpose: Ensure InvalidCast traps report kind and instruction index. 
 // Key invariants: Diagnostic mentions InvalidCast and instruction #0 for cast op.
 // Ownership/Lifetime: Uses forked VM process to capture stderr.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "common/VmFixture.hpp"
 #include "il/build/IRBuilder.hpp"

@@ -1,7 +1,17 @@
-// tui/tests/test_unicode_width.cpp
-// @brief Tests Unicode width calculation and UTF-8 decoding.
-// @invariant Combining marks and CJK ranges have expected widths.
-// @ownership decode_utf8 returns owned strings used locally.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: tui/tests/test_unicode_width.cpp
+// Purpose: Test suite for this component.
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "tui/util/unicode.hpp"
 

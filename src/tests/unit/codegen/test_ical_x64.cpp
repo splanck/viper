@@ -1,3 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: tests/unit/codegen/test_ical_x64.cpp
+// Purpose: Test suite for this component.
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
+
 #include "codegen/x86_64/Backend.hpp"
 #include "codegen/x86_64/passes/LoweringPass.hpp"
 #include "il/build/IRBuilder.hpp"

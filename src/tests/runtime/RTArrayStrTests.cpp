@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/runtime/RTArrayStrTests.cpp
-// Purpose: Verify basic behavior of the string runtime array helpers.
+// Purpose: Verify basic behavior of the string runtime array helpers. 
 // Key invariants: String elements are properly reference-counted on get/put/release.
-// Ownership: Tests own allocated arrays and release them via rt_arr_str_release().
+// Ownership/Lifetime: Tests own allocated arrays and release them via rt_arr_str_release().
 // Links: docs/runtime-vm.md#runtime-abi
+//
+//===----------------------------------------------------------------------===//
 
 #include "viper/runtime/rt.h"
 

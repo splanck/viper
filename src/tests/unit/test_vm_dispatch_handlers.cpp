@@ -1,9 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_vm_dispatch_handlers.cpp
-// Purpose: Ensure every opcode annotated with a VM dispatch kind has a handler.
+// Purpose: Ensure every opcode annotated with a VM dispatch kind has a handler. 
 // Key invariants: VM opcode handler table provides non-null entries for all
-//                 dispatched opcodes defined in il/core/Opcode.def.
 // Ownership/Lifetime: Test uses static metadata only.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/core/OpcodeInfo.hpp"
 #include "vm/VM.hpp"

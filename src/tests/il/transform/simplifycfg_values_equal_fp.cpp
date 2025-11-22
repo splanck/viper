@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/il/transform/simplifycfg_values_equal_fp.cpp
-// Purpose: Validate SimplifyCFG value comparisons handle floating-point edge cases.
+// Purpose: Validate SimplifyCFG value comparisons handle floating-point edge cases. 
 // Key invariants: Floating constants compare using bit patterns preserving NaN payloads and zero
-// sign. Ownership/Lifetime: Constructs temporary Value objects on the stack only. Links:
-// docs/il-guide.md#reference
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/core/Value.hpp"
 #include "il/transform/SimplifyCFG/Utils.hpp"

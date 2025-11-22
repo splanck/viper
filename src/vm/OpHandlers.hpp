@@ -1,8 +1,18 @@
-// File: src/vm/OpHandlers.hpp
-// Purpose: Aggregate opcode handler category declarations for VM dispatch wiring.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: vm/OpHandlers.hpp
+// Purpose: Aggregate opcode handler category declarations for VM dispatch wiring. 
 // Key invariants: Provides unified access points to handler functions grouped by category.
 // Ownership/Lifetime: Functions exposed through this header do not own VM resources.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "vm/OpHandlerAccess.hpp"

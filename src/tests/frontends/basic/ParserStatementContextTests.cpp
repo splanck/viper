@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/frontends/basic/ParserStatementContextTests.cpp
-// Purpose: Validate BASIC parser statement sequencing helper for colon chains and nested flows.
+// Purpose: Validate BASIC parser statement sequencing helper for colon chains and nested flows. 
 // Key invariants: StatementSequencer centralizes separator handling without altering AST shape.
 // Ownership/Lifetime: Test owns parser/source manager objects and inspects resulting AST.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/Parser.hpp"

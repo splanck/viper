@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_irbuilder_call_ret.cpp
-// Purpose: Verify IRBuilder::emitCall records results for non-void functions.
+// Purpose: Verify IRBuilder::emitCall records results for non-void functions. 
 // Key invariants: Call instruction captures result id and return type.
-// Ownership: Test constructs module and inspects instruction.
+// Ownership/Lifetime: Test constructs module and inspects instruction.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/build/IRBuilder.hpp"
 #include <cassert>

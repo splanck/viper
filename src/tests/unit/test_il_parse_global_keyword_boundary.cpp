@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_il_parse_global_keyword_boundary.cpp
-// Purpose: Verify module parser distinguishes global directives from labels sharing the prefix.
+// Purpose: Verify module parser distinguishes global directives from labels sharing the prefix. 
 // Key invariants: Only bare "global" followed by whitespace/end starts a directive.
 // Ownership/Lifetime: Test owns constructed module and buffers locally.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/api/expected_api.hpp"
 #include "il/core/Module.hpp"

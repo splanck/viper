@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_il_verify_calls_table_interop.cpp
-// Purpose: Validate call verification against extern/function tables including success and failure
-// paths. Key invariants: Matching signatures verify; mismatched arity or argument types surface
-// checkCall_E diagnostics. Ownership/Lifetime: Modules, functions, and externs are local to each
-// test scope. Links: docs/il-guide.md#reference
+// Purpose: Validate call verification against extern/function tables including success and failure 
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Extern.hpp"

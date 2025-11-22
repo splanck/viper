@@ -1,12 +1,19 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/BasicOOP_Parsing.cpp
-// Purpose: Validate BASIC OOP parser accepts a class with field, constructor,
-//          method, and destructor without diagnostics.
+// Purpose: Validate BASIC OOP parser accepts a class with field, constructor, 
 // Key invariants: Parser reports zero diagnostics and produces ClassDecl with
-//                 expected members now that OOP is always enabled.
 // Ownership/Lifetime: Test owns parser, diagnostics, and resulting AST.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
-#if __has_include(<gtest/gtest.h>)
+#ifdef VIPER_HAS_GTEST
 #include <gtest/gtest.h>
 #else
 #include "GTestStub.hpp"

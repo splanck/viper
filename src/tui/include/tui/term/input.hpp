@@ -1,7 +1,18 @@
-// tui/include/tui/term/input.hpp
-// @brief Decode UTF-8 byte streams into key, mouse, and paste events.
-// @invariant Maintains UTF-8 state across feeds.
-// @ownership Does not own input buffers; owns internal event queues.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: tui/include/tui/term/input.hpp
+// Purpose: Implements functionality for this subsystem.
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "tui/term/CsiParser.hpp"

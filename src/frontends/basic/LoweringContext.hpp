@@ -1,8 +1,18 @@
-// File: src/frontends/basic/LoweringContext.hpp
-// Purpose: Declares state container used in BASIC-to-IL lowering.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: frontends/basic/LoweringContext.hpp
+// Purpose: Declares state container used in BASIC-to-IL lowering. 
 // Key invariants: None.
 // Ownership/Lifetime: Does not own referenced module.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include <string>

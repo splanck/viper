@@ -1,9 +1,18 @@
-// File: src/il/transform/SimplifyCFG/ReachabilityCleanup.hpp
-// License: GPL-3.0-only (see LICENSE for details).
-// Purpose: Declares reachability-based cleanup for SimplifyCFG.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: il/transform/SimplifyCFG/ReachabilityCleanup.hpp
+// Purpose: Declares reachability-based cleanup for SimplifyCFG. 
 // Key invariants: Removes only blocks proven unreachable from entry.
 // Ownership/Lifetime: Mutates the caller-owned function in place.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "il/transform/SimplifyCFG.hpp"

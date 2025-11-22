@@ -1,12 +1,24 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/codegen/x86_64/test_addressing_modes.cpp
-// Purpose: Ensure x86-64 codegen emits SIB addressing for base+index*scale+disp and folds LEA.
+// Purpose: Ensure x86-64 codegen emits SIB addressing for base+index*scale+disp and folds LEA. 
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
 // Links: src/codegen/x86_64/Lowering.EmitCommon.cpp, ISel.cpp (foldLeaIntoMem), AsmEmitter.cpp
+//
+//===----------------------------------------------------------------------===//
 
 #include "codegen/x86_64/Backend.hpp"
 
 #include <string>
 
 #if __has_include(<gtest/gtest.h>)
+#ifdef VIPER_HAS_GTEST
 #include <gtest/gtest.h>
 #define VIPER_HAS_GTEST 1
 #else

@@ -1,8 +1,18 @@
-// File: src/frontends/basic/ast/ExprNodes.hpp
-// Purpose: Defines BASIC expression nodes and visitors for the front-end AST.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: frontends/basic/ast/ExprNodes.hpp
+// Purpose: Defines BASIC expression nodes and visitors for the front-end AST. 
 // Key invariants: Expressions retain source locations for diagnostics.
 // Ownership/Lifetime: Nodes are owned via std::unique_ptr managed by callers.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "frontends/basic/ast/NodeFwd.hpp"

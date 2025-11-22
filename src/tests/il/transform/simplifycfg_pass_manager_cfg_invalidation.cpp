@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/il/transform/simplifycfg_pass_manager_cfg_invalidation.cpp
-// Purpose: Ensure PassManager reruns CFG analysis after SimplifyCFG mutates the IR.
+// Purpose: Ensure PassManager reruns CFG analysis after SimplifyCFG mutates the IR. 
 // Key invariants: Cached CFG summaries should be recomputed once the pass modifies control flow.
 // Ownership/Lifetime: Test builds a module locally and executes passes via PassManager.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/build/IRBuilder.hpp"
 #include "il/core/Instr.hpp"

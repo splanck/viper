@@ -1,8 +1,17 @@
-// File: src/tools/common/module_loader.hpp
-// Purpose: Shared helpers for loading and verifying IL modules used by CLI tools.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: tools/common/module_loader.hpp
+// Purpose: Shared helpers for loading and verifying IL modules used by CLI tools. 
 // Key invariants: LoadResult accurately describes success or failure without mutating the output
-// module on I/O failures. Ownership/Lifetime: Callers own provided modules and error streams;
-// helpers borrow them temporarily. Links: docs/codemap.md
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #pragma once
 

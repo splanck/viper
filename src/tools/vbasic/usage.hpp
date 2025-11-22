@@ -1,8 +1,17 @@
-// File: src/tools/vbasic/usage.hpp
-// Purpose: Declarations for vbasic help and usage text.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: tools/vbasic/usage.hpp
+// Purpose: Declarations for vbasic help and usage text. 
 // Key invariants: None.
 // Ownership/Lifetime: N/A.
 // Links: docs/cli-redesign-plan.md
+//
+//===----------------------------------------------------------------------===//
 
 #pragma once
 

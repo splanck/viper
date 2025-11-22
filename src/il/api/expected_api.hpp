@@ -1,8 +1,18 @@
-// File: src/il/api/expected_api.hpp
-// Purpose: Provide Expected-based wrappers for IL parsing and verification entry points.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: il/api/expected_api.hpp
+// Purpose: Provide Expected-based wrappers for IL parsing and verification entry points. 
 // Key invariants: Wrapper success mirrors legacy bool-returning APIs; errors carry diagnostic text
-// only. Ownership/Lifetime: Callers retain ownership of modules and streams passed by reference.
+// Ownership/Lifetime: To be documented.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include <istream>

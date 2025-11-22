@@ -1,8 +1,18 @@
-// File: src/common/Mangle.hpp
-// Purpose: Provide unified mangling for linkable symbols from qualified names.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: common/Mangle.hpp
+// Purpose: Provide unified mangling for linkable symbols from qualified names. 
 // Key invariants: Linkage mangling is ASCII-only, stable, and case-insensitive.
 // Ownership/Lifetime: Header-only declarations; implementation in Mangle.cpp.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include <string>

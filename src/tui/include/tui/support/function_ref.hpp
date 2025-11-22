@@ -1,7 +1,18 @@
-// tui/include/tui/support/function_ref.hpp
-// @brief Lightweight non-owning callable reference for performance-critical callbacks.
-// @invariant Referenced callable must outlive the FunctionRef instance.
-// @ownership FunctionRef stores raw pointer to caller-owned callable without lifetime extension.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: tui/include/tui/support/function_ref.hpp
+// Purpose: Implements functionality for this subsystem.
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include <functional>

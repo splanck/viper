@@ -1,7 +1,17 @@
-// tui/tests/test_search.cpp
-// @brief Tests for TextBuffer search and SearchBar widget.
-// @invariant findAll/findNext locate matches and SearchBar cycles highlights.
-// @ownership Test owns buffer, theme, view, and search bar.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: tui/tests/test_search.cpp
+// Purpose: Test suite for this component.
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "tui/render/screen.hpp"
 #include "tui/style/theme.hpp"

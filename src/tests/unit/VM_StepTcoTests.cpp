@@ -1,6 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/VM_StepTcoTests.cpp
-// Purpose: Verify stepping across a tail-call lands in the callee entry and
-//          triggers a source-line breakpoint there on the next step.
+// Purpose: Verify stepping across a tail-call lands in the callee entry and 
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/build/IRBuilder.hpp"
 #include "il/core/BasicBlock.hpp"

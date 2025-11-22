@@ -1,7 +1,17 @@
-// tui/tests/test_split_status.cpp
-// @brief Verify Splitter layout and StatusBar paint behavior.
-// @invariant Splitter maintains ratios on resize and StatusBar renders bottom text.
-// @ownership Test owns widgets, theme and screen buffer.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: tui/tests/test_split_status.cpp
+// Purpose: Test suite for this component.
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "tui/render/screen.hpp"
 #include "tui/style/theme.hpp"

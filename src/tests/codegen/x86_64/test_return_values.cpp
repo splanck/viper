@@ -1,11 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/codegen/x86_64/test_return_values.cpp
-// Purpose: Ensure the x86-64 backend correctly copies return registers for
-//          integer and floating-point values using the adapter ILModule.
+// Purpose: Ensure the x86-64 backend correctly copies return registers for 
 // Key invariants: The emitted assembly must contain a mov into the canonical
-//                 return register immediately before the function epilogue.
 // Ownership/Lifetime: The IL module is constructed locally for the duration
-//                      of the test and destroyed afterwards.
 // Links: src/codegen/x86_64/Backend.cpp
+//
+//===----------------------------------------------------------------------===//
 
 #include "codegen/x86_64/Backend.hpp"
 
@@ -14,6 +20,7 @@
 #include <string_view>
 
 #if __has_include(<gtest/gtest.h>)
+#ifdef VIPER_HAS_GTEST
 #include <gtest/gtest.h>
 #define VIPER_HAS_GTEST 1
 #else

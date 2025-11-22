@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_il_parse_call_trailing_junk.cpp
-// Purpose: Verify call operand parser rejects trailing tokens after the argument list.
+// Purpose: Verify call operand parser rejects trailing tokens after the argument list. 
 // Key invariants: Parser emits a malformed call diagnostic when extra text follows ')'.
 // Ownership/Lifetime: Test constructs modules and input buffers locally.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/api/expected_api.hpp"
 #include "il/core/Module.hpp"

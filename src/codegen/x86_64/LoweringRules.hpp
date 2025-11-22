@@ -1,10 +1,17 @@
-// src/codegen/x86_64/LoweringRules.hpp
-// SPDX-License-Identifier: GPL-3.0-only
+//===----------------------------------------------------------------------===//
 //
-// Purpose: Declare the rule registry that drives IL to MIR lowering.
-// Invariants: Rules are stateless function pairs matched deterministically.
-// Ownership: Registry stored as process-wide static vector, returned by ref.
-// Notes: Rules operate on MIRBuilder to emit Machine IR sequences.
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: codegen/x86_64/LoweringRules.hpp
+// Purpose: Declare the rule registry that drives IL to MIR lowering. 
+// Key invariants: To be documented.
+// Ownership/Lifetime: Registry stored as process-wide static vector, returned by ref.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #pragma once
 

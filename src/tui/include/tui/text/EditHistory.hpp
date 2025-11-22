@@ -1,7 +1,18 @@
-// tui/include/tui/text/EditHistory.hpp
-// @brief Tracks grouped edit operations supporting undo/redo replay.
-// @invariant Transactions replay in recorded order with preserved payloads.
-// @ownership EditHistory owns stored operation payload strings.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: tui/include/tui/text/EditHistory.hpp
+// Purpose: Implements functionality for this subsystem.
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include <cstddef>

@@ -1,12 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/codegen/x86_64/test_abi_probe.cpp
-// Purpose: Ensure the x86-64 backend honours the SysV ABI when marshalling
-//          mixed integer and floating-point arguments for external calls.
+// Purpose: Ensure the x86-64 backend honours the SysV ABI when marshalling 
 // Key invariants: The emitted assembly must move integer arguments into
-//                 %rdi/%rsi/%rdx/%rcx/%r8/%r9, floating-point arguments into
-//                 %xmm0-%xmm5, and establish a 16-byte-aligned stack frame.
 // Ownership/Lifetime: The test builds an IL module locally and inspects the
-//                      resulting assembly by value without running the code.
 // Links: src/codegen/x86_64/CallLowering.cpp, src/codegen/x86_64/FrameLowering.cpp
+//
+//===----------------------------------------------------------------------===//
 
 #include "codegen/x86_64/Backend.hpp"
 
@@ -15,6 +20,7 @@
 #include <string_view>
 
 #if __has_include(<gtest/gtest.h>)
+#ifdef VIPER_HAS_GTEST
 #include <gtest/gtest.h>
 #define VIPER_HAS_GTEST 1
 #else

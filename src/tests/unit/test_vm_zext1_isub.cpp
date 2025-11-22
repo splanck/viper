@@ -1,9 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_vm_zext1_isub.cpp
-// Purpose: Ensure the VM handles boolean materialisation via zext1 and isub.
+// Purpose: Ensure the VM handles boolean materialisation via zext1 and isub. 
 // Key invariants: Zero-extension results are canonical 0/1 and subtraction yields -1/0 without
-// traps.
-// Ownership: Parses IL text at runtime and executes it through the VM interpreter.
+// Ownership/Lifetime: Parses IL text at runtime and executes it through the VM interpreter.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/api/expected_api.hpp"
 #include "il/core/Module.hpp"

@@ -1,7 +1,19 @@
-// File: src/tests/unit/oop/TestOverloads.cpp
-// Purpose: Exercise overload resolver ambiguity with method vs property same name.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: tests/unit/oop/TestOverloads.cpp
+// Purpose: Exercise overload resolver ambiguity with method vs property same name. 
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
-#if __has_include(<gtest/gtest.h>)
+#ifdef VIPER_HAS_GTEST
 #include <gtest/gtest.h>
 #else
 #include "../GTestStub.hpp"

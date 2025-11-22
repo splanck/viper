@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/vm/ErrorsCoreTests.cpp
-// Purpose: Verify trap.kind emits structured trap diagnostics with kind, IP, and line info.
+// Purpose: Verify trap.kind emits structured trap diagnostics with kind, IP, and line info. 
 // Key invariants: Diagnostics must include the requested trap kind, instruction index, and source
-// line. Ownership/Lifetime: Spawns child VM processes to capture stderr for each trap sample.
+// Ownership/Lifetime: To be documented.
 // Links: docs/specs/errors.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "common/TestIRBuilder.hpp"
 #include "vm/err_bridge.hpp"

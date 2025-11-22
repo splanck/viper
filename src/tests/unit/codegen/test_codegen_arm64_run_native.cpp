@@ -1,5 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/codegen/test_codegen_arm64_run_native.cpp
-// Purpose: Verify `ilc codegen arm64 -run-native` assembles, links, and runs a simple IL main.
+// Purpose: Verify `ilc codegen arm64 -run-native` assembles, links, and runs a simple IL main. 
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "tests/unit/GTestStub.hpp"
 

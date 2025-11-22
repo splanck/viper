@@ -1,7 +1,18 @@
-// tui/include/tui/term/clipboard.hpp
-// @brief Terminal clipboard abstraction using OSC 52 sequences.
-// @invariant Copy emits OSC 52 unless disabled via VIPERTUI_DISABLE_OSC52.
-// @ownership Osc52Clipboard borrows TermIO; MockClipboard owns its buffer.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: tui/include/tui/term/clipboard.hpp
+// Purpose: Implements functionality for this subsystem.
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include <string>

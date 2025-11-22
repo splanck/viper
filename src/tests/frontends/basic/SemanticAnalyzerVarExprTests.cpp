@@ -1,9 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/frontends/basic/SemanticAnalyzerVarExprTests.cpp
-// Purpose: Validate SemanticAnalyzer variable lookup behavior for suffixed names.
+// Purpose: Validate SemanticAnalyzer variable lookup behavior for suffixed names. 
 // Key invariants: Variable lookups respect BASIC type suffix rules and drive
-//                 diagnostics for implicit conversions.
 // Ownership/Lifetime: Tests create parser/analyzer instances per snippet.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/Parser.hpp"

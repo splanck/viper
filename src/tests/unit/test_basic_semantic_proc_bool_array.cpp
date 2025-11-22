@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_basic_semantic_proc_bool_array.cpp
-// Purpose: Ensure semantic analyzer rejects boolean array parameters in procedures.
+// Purpose: Ensure semantic analyzer rejects boolean array parameters in procedures. 
 // Key invariants: Procedure registration forbids array parameters unless i64 or str.
 // Ownership/Lifetime: Test owns constructed AST and diagnostic infrastructure.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/SemanticAnalyzer.hpp"

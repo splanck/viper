@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_il_parse_extern_missing_arrow.cpp
-// Purpose: Ensure IL parser reports error when extern declaration lacks '->'.
+// Purpose: Ensure IL parser reports error when extern declaration lacks '->'. 
 // Key invariants: Parser reports malformed extern declarations through Expected diagnostics.
 // Ownership/Lifetime: Test constructs modules and buffers locally.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/api/expected_api.hpp"
 #include "il/core/Module.hpp"

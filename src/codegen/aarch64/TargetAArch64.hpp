@@ -1,12 +1,17 @@
-// src/codegen/aarch64/TargetAArch64.hpp
-// SPDX-License-Identifier: GPL-3.0-only
+//===----------------------------------------------------------------------===//
 //
-// Purpose: Define physical registers, register classes, and target metadata for the
-//          AArch64 (arm64) ABI backend used by Viper's native code generator on macOS.
-// Invariants: Data remains immutable once constructed; accessors return references to
-//             shared singleton state describing the ABI contract.
-// Ownership: No heap ownership beyond the singleton target info; containers live for the
-//            program lifetime.
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: codegen/aarch64/TargetAArch64.hpp
+// Purpose: Define physical registers, register classes, and target metadata for the 
+// Key invariants: To be documented.
+// Ownership/Lifetime: No heap ownership beyond the singleton target info; containers live for the
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #pragma once
 

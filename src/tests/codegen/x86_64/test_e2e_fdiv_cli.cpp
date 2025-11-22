@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/codegen/x86_64/test_e2e_fdiv_cli.cpp
-// Purpose: Validate VM/native parity for floating-point division IL programs
-//          using the shared codegen fixture.
+// Purpose: Validate VM/native parity for floating-point division IL programs 
 // Key invariants: Floating-point outputs are compared within a configurable
-//                 tolerance after trimming whitespace to avoid formatting noise.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "common/CodegenFixture.hpp"
 
@@ -13,6 +22,7 @@
 #include <string>
 
 #if __has_include(<gtest/gtest.h>)
+#ifdef VIPER_HAS_GTEST
 #include <gtest/gtest.h>
 #define VIPER_HAS_GTEST 1
 #else

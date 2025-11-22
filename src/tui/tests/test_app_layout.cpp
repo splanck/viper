@@ -1,7 +1,17 @@
-// tui/tests/test_app_layout.cpp
-// @brief Verify App layouts and paints stacked widgets correctly.
-// @invariant Top widget occupies first row, bottom widget second row.
-// @ownership Test owns widgets, app, and TermIO.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: tui/tests/test_app_layout.cpp
+// Purpose: Test suite for this component.
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "tui/app.hpp"
 #include "tui/render/screen.hpp"

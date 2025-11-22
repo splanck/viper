@@ -1,9 +1,18 @@
-// File: src/frontends/basic/ast/DeclNodes.hpp
-// Purpose: Defines BASIC declaration aggregates composing higher-level program structure.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: frontends/basic/ast/DeclNodes.hpp
+// Purpose: Defines BASIC declaration aggregates composing higher-level program structure. 
 // Key invariants: Program partitions procedure declarations from main statements while
-//                 preserving source order for subsequent passes.
 // Ownership/Lifetime: Nodes are owned via std::unique_ptr managed by callers.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "frontends/basic/ast/StmtNodesAll.hpp"

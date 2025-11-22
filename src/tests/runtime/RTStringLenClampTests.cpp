@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/runtime/RTStringLenClampTests.cpp
-// Purpose: Ensure rt_len clamps extremely large heap string lengths.
+// Purpose: Ensure rt_len clamps extremely large heap string lengths. 
 // Key invariants: rt_len never overflows int64_t even when heap headers are corrupted.
 // Ownership/Lifetime: Test allocates and releases its own runtime string handle.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "rt_internal.h"
 #include "viper/runtime/rt.h"

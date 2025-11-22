@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_basic_parse_array_single_index.cpp
-// Purpose: Guard against use-after-move in single-index ArrayExpr parsing (HIGH-2).
+// Purpose: Guard against use-after-move in single-index ArrayExpr parsing (HIGH-2). 
 // Key invariants: For single-dimensional access, Parser should populate only 'index'
-//                 and leave 'indices' empty to avoid moved-from pointers.
 // Ownership/Lifetime: Test owns parser and AST.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/Parser.hpp"
 #include "support/source_manager.hpp"

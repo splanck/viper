@@ -1,9 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/frontends/basic/LowererOopConstructorTests.cpp
-// Purpose: Ensure BASIC lowering synthesises default constructors for classes without SUB NEW.
+// Purpose: Ensure BASIC lowering synthesises default constructors for classes without SUB NEW. 
 // Key invariants: Lowered module defines the mangled constructor symbol and NEW expressions
-//                 emit calls to it even when the source lacks an explicit constructor.
 // Ownership/Lifetime: Test owns parser, lowerer, and produced module per scenario.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/Lowerer.hpp"

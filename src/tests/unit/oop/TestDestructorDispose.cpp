@@ -1,11 +1,19 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/oop/TestDestructorDispose.cpp
-// Purpose: Validate parsing of DESTRUCTOR (including STATIC DESTRUCTOR) and
-//          DISPOSE statements in the BASIC OOP frontend.
+// Purpose: Validate parsing of DESTRUCTOR (including STATIC DESTRUCTOR) and 
 // Key invariants: Parser accepts the new forms without diagnostics and builds
-//                 appropriate AST nodes; illegal access modifiers on DESTRUCTOR
-//                 are diagnosed by the parser.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
-#if __has_include(<gtest/gtest.h>)
+#ifdef VIPER_HAS_GTEST
 #include <gtest/gtest.h>
 #else
 #include "../GTestStub.hpp"

@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/il/transform/simplifycfg_merge_single_pred.cpp
-// Purpose: Validate SimplifyCFG merges single-predecessor blocks into their parent.
+// Purpose: Validate SimplifyCFG merges single-predecessor blocks into their parent. 
 // Key invariants: Instructions from the merged block relocate to the predecessor and the block is
-// removed. Ownership/Lifetime: Constructs a local module and applies the pass in place. Links:
-// docs/il-guide.md#reference
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/build/IRBuilder.hpp"
 #include "il/transform/SimplifyCFG.hpp"

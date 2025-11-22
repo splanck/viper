@@ -1,8 +1,19 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_basic_input_typing.cpp
-// Purpose: Verify INPUT emits correct conversions/stores for STRING and SINGLE.
+// Purpose: Verify INPUT emits correct conversions/stores for STRING and SINGLE. 
 // Key invariants: STRING target stores directly; SINGLE target uses rt_to_double.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
-#if __has_include(<gtest/gtest.h>)
+#ifdef VIPER_HAS_GTEST
 #include <gtest/gtest.h>
 #else
 #include "GTestStub.hpp"

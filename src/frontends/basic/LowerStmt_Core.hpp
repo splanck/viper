@@ -1,11 +1,18 @@
-// File: src/frontends/basic/LowerStmt_Core.hpp
-// License: GPL-3.0-only. See LICENSE in the project root for full license information.
-// Purpose: Declares core statement-lowering helpers shared across categories.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: frontends/basic/LowerStmt_Core.hpp
+// Purpose: Declares core statement-lowering helpers shared across categories. 
 // Key invariants: Helpers operate on the active Lowerer context without
-//                 re-dispatching or duplicating state transitions.
 // Ownership/Lifetime: Declarations are included within Lowerer to extend its
-//                     private interface for core statement lowering.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 void lowerStmtList(const StmtList &stmt);

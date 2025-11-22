@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/il/transform/simplifycfg_eh_guard.cpp
-// Purpose: Ensure SimplifyCFG preserves EH-sensitive blocks.
+// Purpose: Ensure SimplifyCFG preserves EH-sensitive blocks. 
 // Key invariants: Blocks containing EH structural ops or resume terminators remain intact.
 // Ownership/Lifetime: Builds a local module and runs SimplifyCFG in place.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"

@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_il_instruction_checker.cpp
-// Purpose: Validate il::verify::verifyInstruction for representative opcodes.
+// Purpose: Validate il::verify::verifyInstruction for representative opcodes. 
 // Key invariants: Checker records results on success and reports mismatches.
 // Ownership/Lifetime: Uses locally constructed IL structures.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Extern.hpp"

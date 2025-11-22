@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/frontends/basic/ParseGotoTests.cpp
-// Purpose: Validate parsing and AST printing of BASIC GOTO statements.
+// Purpose: Validate parsing and AST printing of BASIC GOTO statements. 
 // Key invariants: GOTO resolves the destination to a numeric label for the AST printer.
 // Ownership/Lifetime: Test owns parser, AST, and source manager instances.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/AstPrinter.hpp"
 #include "frontends/basic/Parser.hpp"

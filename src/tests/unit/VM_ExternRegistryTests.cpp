@@ -1,5 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/VM_ExternRegistryTests.cpp
-// Purpose: Test runtime extern registration, canonicalization, and error traps.
+// Purpose: Test runtime extern registration, canonicalization, and error traps. 
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/runtime/signatures/Registry.hpp"
 #include "vm/RuntimeBridge.hpp"

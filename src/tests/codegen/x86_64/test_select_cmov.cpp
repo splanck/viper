@@ -1,16 +1,24 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/codegen/x86_64/test_select_cmov.cpp
-// Purpose: Ensure GPR selects lower to TEST/MOV/CMOV when targeting x86-64.
+// Purpose: Ensure GPR selects lower to TEST/MOV/CMOV when targeting x86-64. 
 // Key invariants: The generated assembly must contain the cmovne idiom in the
-//                 expected order following the select lowering pass.
 // Ownership/Lifetime: Constructs IL locally and inspects emitted assembly by
-//                      value without external fixtures.
 // Links: src/codegen/x86_64/LowerILToMIR.cpp, src/codegen/x86_64/ISel.cpp
+//
+//===----------------------------------------------------------------------===//
 
 #include "codegen/x86_64/Backend.hpp"
 
 #include <string>
 
 #if __has_include(<gtest/gtest.h>)
+#ifdef VIPER_HAS_GTEST
 #include <gtest/gtest.h>
 #define VIPER_HAS_GTEST 1
 #else

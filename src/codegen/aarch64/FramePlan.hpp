@@ -1,10 +1,17 @@
-// src/codegen/aarch64/FramePlan.hpp
-// SPDX-License-Identifier: GPL-3.0-only
+//===----------------------------------------------------------------------===//
 //
-// Purpose: Describe a minimal frame save/restore plan for AArch64 functions.
-//          Used by the emitter to shape prologue/epilogue beyond FP/LR.
-// Invariants: Save lists contain only callee-saved registers; emitter assumes
-//             16-byte stack alignment and uses paired stores when possible.
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: codegen/aarch64/FramePlan.hpp
+// Purpose: Describe a minimal frame save/restore plan for AArch64 functions. 
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #pragma once
 

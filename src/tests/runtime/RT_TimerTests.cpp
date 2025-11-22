@@ -1,7 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/runtime/RT_TimerTests.cpp
-// Purpose: Validate rt_timer_ms returns monotonic increasing values.
+// Purpose: Validate rt_timer_ms returns monotonic increasing values. 
 // Key invariants: Timer values are non-decreasing; elapsed time measurements are reasonably
-// accurate. Ownership: Uses runtime library only. Links: docs/runtime-vm.md
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "viper/runtime/rt.h"
 #include <cassert>

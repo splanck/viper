@@ -1,8 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/vm/SummaryTests.cpp
-// Purpose: Verify VM prints execution summary with instruction count and time.
+// Purpose: Verify VM prints execution summary with instruction count and time. 
 // Key invariants: Summary line includes baked instruction count and time field.
 // Ownership/Lifetime: Test creates temporary output file.
 // Links: docs/testing.md
+//
+//===----------------------------------------------------------------------===//
+
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>

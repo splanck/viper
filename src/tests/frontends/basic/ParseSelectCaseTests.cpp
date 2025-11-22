@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/frontends/basic/ParseSelectCaseTests.cpp
-// Purpose: Validate parsing of BASIC SELECT CASE statements and diagnostics.
+// Purpose: Validate parsing of BASIC SELECT CASE statements and diagnostics. 
 // Key invariants: SELECT CASE requires integer labels, unique CASE ELSE, and END SELECT.
 // Ownership/Lifetime: Tests own parser, diagnostic engine, and AST instances.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/Parser.hpp"

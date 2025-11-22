@@ -1,5 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_using_context.cpp
-// Purpose: Ensure UsingContext preserves declaration order and handles case-insensitive aliases.
+// Purpose: Ensure UsingContext preserves declaration order and handles case-insensitive aliases. 
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/sem/UsingContext.hpp"
 #include <cassert>

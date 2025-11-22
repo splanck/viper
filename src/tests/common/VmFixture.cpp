@@ -1,7 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/common/VmFixture.cpp
-// Purpose: Implement shared VM execution helpers for tests.
+// Purpose: Implement shared VM execution helpers for tests. 
 // Key invariants: Trap helpers fork to isolate VM failures and ensure the parent
-//                 receives diagnostics over a pipe.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "common/VmFixture.hpp"
 

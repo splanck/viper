@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/tools/IlVerifyOverflowDiagOnceTests.cpp
-// Purpose: Ensure il-verify reports SourceManager overflow exactly once.
+// Purpose: Ensure il-verify reports SourceManager overflow exactly once. 
 // Key invariants: Overflow diagnostics are emitted a single time to stderr.
 // Ownership/Lifetime: Test owns temporary file and stream capture buffers.
 // Links: src/tools/il-verify/il-verify.cpp
+//
+//===----------------------------------------------------------------------===//
 
 #include "support/source_manager.hpp"
 

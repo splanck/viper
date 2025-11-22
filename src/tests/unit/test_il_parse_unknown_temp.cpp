@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_il_parse_unknown_temp.cpp
-// Purpose: Ensure IL parser reports an error when encountering an unknown SSA name.
+// Purpose: Ensure IL parser reports an error when encountering an unknown SSA name. 
 // Key invariants: Parser surfaces diagnostics for unresolved temporary references.
 // Ownership/Lifetime: Test constructs modules and diagnostic buffers locally.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/api/expected_api.hpp"
 #include "il/core/Module.hpp"

@@ -1,8 +1,19 @@
-// File: src/tests/unit/oop/TestStaticMembers.cpp
-// Purpose: Verify static fields/methods are lowered as globals/free functions,
-// //         and 'ME' is rejected in static methods.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: tests/unit/oop/TestStaticMembers.cpp
+// Purpose: Verify static fields/methods are lowered as globals/free functions, 
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
-#if __has_include(<gtest/gtest.h>)
+#ifdef VIPER_HAS_GTEST
 #include <gtest/gtest.h>
 #else
 #include "../GTestStub.hpp"

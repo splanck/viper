@@ -1,14 +1,17 @@
-// src/codegen/x86_64/OperandUtils.hpp
-// SPDX-License-Identifier: GPL-3.0-only
+//===----------------------------------------------------------------------===//
 //
-// Purpose: Provide shared utility functions for Machine IR operand manipulation,
-//          reducing code duplication across the x86-64 backend.
-// Invariants: All helpers are stateless and safe to call from any context.
-//             Functions preserve operand semantics and never mutate global state.
-// Ownership: Helpers operate on values or const references; callers retain
-//            ownership of all operands.
-// Notes: This header consolidates helpers previously duplicated in ISel.cpp,
-//        CallLowering.cpp, FrameLowering.cpp, and LowerILToMIR.cpp.
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: codegen/x86_64/OperandUtils.hpp
+// Purpose: Provide shared utility functions for Machine IR operand manipulation, 
+// Key invariants: To be documented.
+// Ownership/Lifetime: Helpers operate on values or const references; callers retain
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #pragma once
 

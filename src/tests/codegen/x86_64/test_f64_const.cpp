@@ -1,18 +1,24 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/codegen/x86_64/test_f64_const.cpp
-// Purpose: Ensure the x86-64 backend materialises f64 literals via the
-//          read-only data pool and loads them using RIP-relative movsd.
+// Purpose: Ensure the x86-64 backend materialises f64 literals via the 
 // Key invariants: Generated assembly must include a .LC_f64_* label in the
-//                 .rodata section and a movsd instruction that references that
-//                 label from the .text section.
 // Ownership/Lifetime: The IL module is created within the test scope and the
-//                     resulting assembly is inspected by value only.
 // Links: src/codegen/x86_64/AsmEmitter.cpp
+//
+//===----------------------------------------------------------------------===//
 
 #include "codegen/x86_64/Backend.hpp"
 
 #include <string>
 
 #if __has_include(<gtest/gtest.h>)
+#ifdef VIPER_HAS_GTEST
 #include <gtest/gtest.h>
 #define VIPER_HAS_GTEST 1
 #else

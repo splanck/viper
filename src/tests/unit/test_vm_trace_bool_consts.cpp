@@ -1,10 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_vm_trace_bool_consts.cpp
-// Purpose: Ensure VM IL traces render boolean constants using textual literals.
+// Purpose: Ensure VM IL traces render boolean constants using textual literals. 
 // Key invariants: Trace output spells const.i1 operands as "true"/"false" to
-//                 match il::core::toString semantics.
-// Ownership: Test constructs IL in-memory and executes the VM with tracing
-//            enabled, capturing stderr output.
+// Ownership/Lifetime: Test constructs IL in-memory and executes the VM with tracing
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/api/expected_api.hpp"
 #include "il/core/Module.hpp"

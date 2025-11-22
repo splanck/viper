@@ -1,7 +1,17 @@
-// tui/tests/test_text_buffer.cpp
-// @brief Tests for piece table TextBuffer operations.
-// @invariant Undo/redo restores buffer content and line index.
-// @ownership Test owns buffer instance and verifies returned strings.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: tui/tests/test_text_buffer.cpp
+// Purpose: Test suite for this component.
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "tui/text/text_buffer.hpp"
 

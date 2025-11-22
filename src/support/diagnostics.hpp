@@ -1,8 +1,18 @@
-// File: src/support/diagnostics.hpp
-// Purpose: Declares diagnostic engine for errors and warnings.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: support/diagnostics.hpp
+// Purpose: Declares diagnostic engine for errors and warnings. 
 // Key invariants: None.
 // Ownership/Lifetime: Engine owns collected diagnostics.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "source_location.hpp"

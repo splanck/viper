@@ -1,8 +1,18 @@
-// File: src/support/result.hpp
-// Purpose: Provides a simple Result type for error handling.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: support/result.hpp
+// Purpose: Provides a simple Result type for error handling. 
 // Key invariants: None.
 // Ownership/Lifetime: Result owns contained value or error.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include <optional>

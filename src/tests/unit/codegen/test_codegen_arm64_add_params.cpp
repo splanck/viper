@@ -1,5 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/codegen/test_codegen_arm64_add_params.cpp
-// Purpose: Verify arm64 CLI lowers simple add of two entry parameters.
+// Purpose: Verify arm64 CLI lowers simple add of two entry parameters. 
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "tests/unit/GTestStub.hpp"
 

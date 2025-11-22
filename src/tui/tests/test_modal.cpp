@@ -1,7 +1,17 @@
-// tui/tests/test_modal.cpp
-// @brief Verify popup blocks events and dismisses on keys.
-// @invariant Underlying widget ignores keys while popup active.
-// @ownership Test owns widgets, modal host, app, and TermIO.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: tui/tests/test_modal.cpp
+// Purpose: Test suite for this component.
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "tui/app.hpp"
 #include "tui/term/term_io.hpp"

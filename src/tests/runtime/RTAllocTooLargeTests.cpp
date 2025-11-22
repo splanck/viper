@@ -1,8 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/runtime/RTAllocTooLargeTests.cpp
-// Purpose: Verify rt_alloc traps when allocation exceeds size_t range.
+// Purpose: Verify rt_alloc traps when allocation exceeds size_t range. 
 // Key invariants: rt_alloc reports "allocation too large" when bytes > SIZE_MAX.
-// Ownership: Uses runtime library.
+// Ownership/Lifetime: Uses runtime library.
 // Links: docs/runtime-vm.md#runtime-abi
+//
+//===----------------------------------------------------------------------===//
+
 #include "rt.hpp"
 #include <cassert>
 #include <stdint.h>

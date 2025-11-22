@@ -1,9 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_vm_gep_offsets.cpp
-// Purpose: Validate VM GEP correctly applies positive and negative byte offsets.
+// Purpose: Validate VM GEP correctly applies positive and negative byte offsets. 
 // Key invariants: Pointer arithmetic advances forward for positive offsets and
-//                 moves backward for negative displacements without wrapping.
-// Ownership: Standalone unit test executable exercising VM memory ops.
+// Ownership/Lifetime: Standalone unit test executable exercising VM memory ops.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"

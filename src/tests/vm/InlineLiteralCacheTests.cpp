@@ -1,6 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/vm/InlineLiteralCacheTests.cpp
-// Purpose: Ensure inline ConstStr operands reuse cached runtime handles for embedded NULs and ASCII
-// strings. License: GPL-3.0-only. See LICENSE in project root for details.
+// Purpose: Ensure inline ConstStr operands reuse cached runtime handles for embedded NULs and ASCII 
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"

@@ -1,11 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_basic_semantic_arrays.cpp
-// Purpose: Verify BASIC semantic analyzer handles array declarations, resizing,
-//          indexing, and bound intrinsics.
+// Purpose: Verify BASIC semantic analyzer handles array declarations, resizing, 
 // Key invariants: DIM establishes array type metadata, REDIM validates existing
-//                 arrays, invalid indexes report errors, and bound intrinsics
-//                 respect zero-based semantics.
 // Ownership/Lifetime: Tests own parser, analyzer, and lowerer instances.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/Lowerer.hpp"

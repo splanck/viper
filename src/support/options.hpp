@@ -1,8 +1,18 @@
-// File: src/support/options.hpp
-// Purpose: Declares command-line option parsing helpers.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: support/options.hpp
+// Purpose: Declares command-line option parsing helpers. 
 // Key invariants: None.
 // Ownership/Lifetime: Caller owns option values.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include <string>

@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_il_parse_branch_missing_label.cpp
-// Purpose: Ensure parser reports a clear diagnostic when branch targets omit labels.
+// Purpose: Ensure parser reports a clear diagnostic when branch targets omit labels. 
 // Key invariants: Parser must detect and describe malformed branch targets before argument parsing.
 // Ownership/Lifetime: Test owns parser inputs and module state locally.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/api/expected_api.hpp"
 #include "il/core/Module.hpp"

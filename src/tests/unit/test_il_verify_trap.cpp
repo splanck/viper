@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_il_verify_trap.cpp
-// Purpose: Ensure Verifier accepts blocks terminated by trap.
+// Purpose: Ensure Verifier accepts blocks terminated by trap. 
 // Key invariants: Blocks ending with Opcode::Trap pass verification.
 // Ownership/Lifetime: Constructs module locally for verification.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"

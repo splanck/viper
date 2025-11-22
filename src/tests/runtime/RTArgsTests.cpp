@@ -1,7 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/runtime/RTArgsTests.cpp
-// Purpose: Verify runtime argument store helpers (rt_args_*).
-// Invariants: Store retains pushed strings; getters return retained copies;
-//             clear releases stored references; cmdline joins with spaces.
+// Purpose: Verify runtime argument store helpers (rt_args_*). 
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "viper/runtime/rt.h"
 

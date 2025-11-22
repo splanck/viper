@@ -1,7 +1,17 @@
-// tui/tests/test_clipboard.cpp
-// @brief Tests for OSC 52 clipboard sequences and env guard.
-// @invariant MockClipboard captures last sequence; StringTermIO captures writes.
-// @ownership MockClipboard owns its buffer.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: tui/tests/test_clipboard.cpp
+// Purpose: Test suite for this component.
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "tui/term/clipboard.hpp"
 #include "tui/term/term_io.hpp"

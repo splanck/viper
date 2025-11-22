@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_vm_error_resume_load_store.cpp
-// Purpose: Ensure Error and ResumeTok memory loads preserve pointer values.
+// Purpose: Ensure Error and ResumeTok memory loads preserve pointer values. 
 // Key invariants: Stored pointers for Error/ResumeTok types must round-trip through memory helpers.
-// Ownership: Standalone unit test executable.
+// Ownership/Lifetime: Standalone unit test executable.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/core/Instr.hpp"
 #include "il/core/Module.hpp"

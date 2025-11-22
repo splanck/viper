@@ -1,7 +1,18 @@
-// tui/include/tui/text/search.hpp
-// @brief Search helpers over TextBuffer for literal and regex queries.
-// @invariant Regex errors return empty results; searches cap buffer size.
-// @ownership Functions borrow TextBuffer and return match positions.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: tui/include/tui/text/search.hpp
+// Purpose: Implements functionality for this subsystem.
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include <optional>

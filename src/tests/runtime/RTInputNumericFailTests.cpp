@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/runtime/RTInputNumericFailTests.cpp
-// Purpose: Ensure INPUT-style numeric parsing traps when trailing junk appears.
+// Purpose: Ensure INPUT-style numeric parsing traps when trailing junk appears. 
 // Key invariants: rt_to_double rejects non-whitespace suffixes and reports the INPUT trap.
-// Ownership: Uses runtime helpers directly.
+// Ownership/Lifetime: Uses runtime helpers directly.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "viper/runtime/rt.h"
 

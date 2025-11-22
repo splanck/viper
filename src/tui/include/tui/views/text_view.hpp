@@ -1,7 +1,18 @@
-// tui/include/tui/views/text_view.hpp
-// @brief Scrollable text view with cursor and selection.
-// @invariant Cursor stays within buffer bounds; selection uses byte offsets.
-// @ownership TextView borrows TextBuffer and Theme.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: tui/include/tui/views/text_view.hpp
+// Purpose: Implements functionality for this subsystem.
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include <cstddef>

@@ -1,7 +1,17 @@
-// tui/tests/test_input_csi.cpp
-// @brief Tests decoding of CSI/SS3 sequences for navigation and function keys.
-// @invariant Decoder handles escape sequences and modifiers across feeds.
-// @ownership InputDecoder owns its event queue only.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: tui/tests/test_input_csi.cpp
+// Purpose: Test suite for this component.
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "tui/term/input.hpp"
 

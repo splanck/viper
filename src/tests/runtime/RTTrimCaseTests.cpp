@@ -1,8 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/runtime/RTTrimCaseTests.cpp
-// Purpose: Validate string trimming and case mapping runtime helpers.
+// Purpose: Validate string trimming and case mapping runtime helpers. 
 // Key invariants: Whitespace includes only space and tab; case maps affect ASCII letters only.
-// Ownership: Uses runtime library.
+// Ownership/Lifetime: Uses runtime library.
 // Links: docs/runtime-vm.md#runtime-abi
+//
+//===----------------------------------------------------------------------===//
+
 #include "rt.hpp"
 #include <cassert>
 

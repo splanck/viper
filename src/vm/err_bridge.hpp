@@ -1,8 +1,18 @@
-// File: src/vm/err_bridge.hpp
-// Purpose: Defines temporary runtime error bridge mapping legacy codes to TrapKind.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: vm/err_bridge.hpp
+// Purpose: Defines temporary runtime error bridge mapping legacy codes to TrapKind. 
 // Key invariants: Mapping remains internal to the VM until runtime emits structured errors.
 // Ownership/Lifetime: Header-only helpers; no dynamic state.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "vm/Trap.hpp"

@@ -1,11 +1,17 @@
-// File: src/frontends/basic/Parser_Stmt_ControlHelpers.hpp
-// Purpose: Provides shared helper utilities for BASIC control-flow statement parsing.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: frontends/basic/Parser_Stmt_ControlHelpers.hpp
+// Purpose: Provides shared helper utilities for BASIC control-flow statement parsing. 
 // Key invariants: Helpers maintain parser sequencing state consistency when collecting
-//                 statement blocks and optional line labels.
 // Ownership/Lifetime: Helpers operate on Parser-owned StatementSequencer instances
-//                     and return Parser-managed AST nodes.
-// License: GPL-3.0-only; see LICENSE for details.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #pragma once
 

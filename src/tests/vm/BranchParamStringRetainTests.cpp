@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/vm/BranchParamStringRetainTests.cpp
-// Purpose: Verify branch parameter transfers retain string handles.
+// Purpose: Verify branch parameter transfers retain string handles. 
 // Key invariants: Branch staging mirrors entry-path retention semantics.
 // Ownership/Lifetime: Builds a synthetic module and inspects runtime headers.
 // Links: docs/testing.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/build/IRBuilder.hpp"
 #include "vm/VM.hpp"

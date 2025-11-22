@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/vm/BranchArgMismatchTests.cpp
-// Purpose: Ensure the VM traps when a branch supplies the wrong number of arguments.
+// Purpose: Ensure the VM traps when a branch supplies the wrong number of arguments. 
 // Key invariants: Branch argument count mismatches produce InvalidOperation traps mentioning the
-// callee block. Ownership/Lifetime: Constructs an in-memory module executed in a subprocess to
-// capture diagnostics. Links: docs/il-guide.md#reference
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "common/VmFixture.hpp"
 #include "il/build/IRBuilder.hpp"

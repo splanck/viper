@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_vm_runtime_bridge_marshalling.cpp
-// Purpose: Validate RuntimeBridge argument and result marshalling for supported types.
+// Purpose: Validate RuntimeBridge argument and result marshalling for supported types. 
 // Key invariants: Each IL type kind maps to the correct Slot storage and runtime buffer.
-// Ownership: Uses runtime library helpers; callers release any allocated resources.
+// Ownership/Lifetime: Uses runtime library helpers; callers release any allocated resources.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "VMTestHook.hpp"
 #include "il/core/BasicBlock.hpp"

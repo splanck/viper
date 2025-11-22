@@ -1,12 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_basic_lower_builtin_dispatch.cpp
-// Purpose: Validate BASIC builtin lowering registers family handlers through the
-//          shared dispatcher and exposes them via the builtin registry.
+// Purpose: Validate BASIC builtin lowering registers family handlers through the 
 // Key invariants: Each builtin family shares the same handler pointer after
-//                 registration and the registry produces non-null handlers for
-//                 supported builtins.
 // Ownership/Lifetime: Test owns the Lowerer instance and relies on the builtin
-//                     registry's process lifetime.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "GTestStub.hpp"
 #include "frontends/basic/BuiltinRegistry.hpp"

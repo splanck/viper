@@ -1,9 +1,17 @@
-// File: src/tools/basic/common.hpp
-// Purpose: Shared utilities for BASIC command-line tools.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: tools/basic/common.hpp
+// Purpose: Shared utilities for BASIC command-line tools. 
 // Key invariants: Helpers must preserve existing CLI diagnostics.
 // Ownership/Lifetime: Callers retain ownership of buffers and SourceManager instances.
-// License: GPL-3.0-only. See LICENSE in the project root for full license information.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #pragma once
 

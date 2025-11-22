@@ -1,9 +1,18 @@
-// File: src/vm/VM.hpp
-// Purpose: Declares stack-based virtual machine executing IL and caching runtime
-//          resources.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: vm/VM.hpp
+// Purpose: Declares stack-based virtual machine executing IL and caching runtime 
 // Key invariants: Inline string literal cache owns one handle per literal.
 // Ownership/Lifetime: VM does not own module or runtime bridge.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "il/core/Opcode.hpp"
@@ -153,13 +162,23 @@ class VM
 #endif
     friend struct detail::ops::OperandDispatcher; ///< Allow shared helpers to evaluate operands
     friend class RuntimeBridge; ///< Runtime bridge accesses trap formatting helpers
+/// @brief Implements vm_raise functionality.
+/// @param kind Parameter description needed.
+/// @param code Parameter description needed.
     friend void vm_raise(TrapKind kind, int32_t code);
+/// @brief Handles error condition.
+/// @param error Parameter description needed.
     friend void vm_raise_from_error(const VmError &error);
     friend struct VMTestHook; ///< Unit tests access interpreter internals
     friend VmError *vm_acquire_trap_token();
     friend const VmError *vm_current_trap_token();
+/// @brief Implements vm_clear_trap_token functionality.
     friend void vm_clear_trap_token();
+/// @brief Implements vm_store_trap_token_message functionality.
+/// @param text Parameter description needed.
     friend void vm_store_trap_token_message(std::string_view text);
+/// @brief Implements vm_current_trap_message functionality.
+/// @return Return value description needed.
     friend std::string vm_current_trap_message();
 
     /// @brief Result of executing one opcode.
@@ -182,18 +201,30 @@ class VM
     {
         using is_transparent = void;
 
+/// @brief Implements operator functionality.
+/// @return Return value description needed.
         size_t operator()(std::string_view sv) const noexcept
         {
             return std::hash<std::string_view>{}(sv);
         }
 
+/// @brief Implements operator functionality.
+/// @return Return value description needed.
         size_t operator()(const std::string &s) const noexcept
         {
+/// @brief Implements return functionality.
+/// @param this Parameter description needed.
+/// @return Return value description needed.
             return (*this)(std::string_view{s});
         }
 
+/// @brief Implements operator functionality.
+/// @return Return value description needed.
         size_t operator()(const char *s) const noexcept
         {
+/// @brief Implements return functionality.
+/// @param this Parameter description needed.
+/// @return Return value description needed.
             return (*this)(std::string_view{s});
         }
     };
@@ -202,31 +233,43 @@ class VM
     {
         using is_transparent = void;
 
+/// @brief Implements operator functionality.
+/// @return Return value description needed.
         bool operator()(std::string_view a, std::string_view b) const noexcept
         {
             return a == b;
         }
 
+/// @brief Implements operator functionality.
+/// @return Return value description needed.
         bool operator()(const std::string &a, const std::string &b) const noexcept
         {
             return a == b;
         }
 
+/// @brief Implements operator functionality.
+/// @return Return value description needed.
         bool operator()(const std::string &a, std::string_view b) const noexcept
         {
             return a == b;
         }
 
+/// @brief Implements operator functionality.
+/// @return Return value description needed.
         bool operator()(std::string_view a, const std::string &b) const noexcept
         {
             return a == b;
         }
 
+/// @brief Implements operator functionality.
+/// @return Return value description needed.
         bool operator()(const char *a, std::string_view b) const noexcept
         {
             return std::string_view{a} == b;
         }
 
+/// @brief Implements operator functionality.
+/// @return Return value description needed.
         bool operator()(std::string_view a, const char *b) const noexcept
         {
             return a == std::string_view{b};
@@ -259,8 +302,12 @@ class VM
     /// @brief Release runtime string handles retained by the VM.
     ~VM();
 
+/// @brief Implements VM functionality.
+/// @return Return value description needed.
     VM(const VM &) = delete;
     VM &operator=(const VM &) = delete;
+/// @brief Implements VM functionality.
+/// @return Return value description needed.
     VM(VM &&) noexcept = default;
     VM &operator=(VM &&) = delete;
 
@@ -335,6 +382,7 @@ class VM
 
     struct DispatchDriverDeleter
     {
+/// @brief Implements operator functionality.
         void operator()(DispatchDriver *driver) const;
     };
 
@@ -465,6 +513,10 @@ class VM
 
     /// @brief Format and record trap diagnostics.
     FrameInfo buildFrameInfo(const VmError &error) const;
+/// @brief Implements recordTrap functionality.
+/// @param error Parameter description needed.
+/// @param frame Parameter description needed.
+/// @return Return value description needed.
     std::string recordTrap(const VmError &error, const FrameInfo &frame);
 
     /// @brief Access active VM instance for thread-local trap reporting.
@@ -521,7 +573,12 @@ class VM
             branchTargetCache;
     };
 
+/// @brief Implements prepareTrap functionality.
+/// @param error Parameter description needed.
+/// @return Return value description needed.
     bool prepareTrap(VmError &error);
+/// @brief Implements throwForTrap functionality.
+/// @param target Parameter description needed.
     [[noreturn]] void throwForTrap(ExecState *target);
 
     struct TrapDispatchSignal : std::exception

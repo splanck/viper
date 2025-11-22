@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/frontends/basic/LexerFileIoTests.cpp
-// Purpose: Ensure BASIC lexer recognizes file I/O related keywords and '#'.
+// Purpose: Ensure BASIC lexer recognizes file I/O related keywords and '#'. 
 // Key invariants: Lexer should classify new keywords distinctly.
 // Ownership/Lifetime: Test owns source buffers used for lexing.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/Lexer.hpp"
 #include "support/source_manager.hpp"

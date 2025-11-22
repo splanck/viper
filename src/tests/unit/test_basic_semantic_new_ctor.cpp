@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_basic_semantic_new_ctor.cpp
-// Purpose: Verify BASIC semantic analysis validates NEW expression constructor calls.
+// Purpose: Verify BASIC semantic analysis validates NEW expression constructor calls. 
 // Key invariants: Analyzer enforces constructor arity/type and accepts matching arguments.
 // Ownership/Lifetime: Test owns parser, analyzer, and diagnostics per scenario.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/Parser.hpp"

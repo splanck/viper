@@ -1,5 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/types/TestBuiltinExternalTypes.cpp
-// Purpose: Assert that built-in external namespaced types are present in the registry.
+// Purpose: Assert that built-in external namespaced types are present in the registry. 
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/sem/NamespaceRegistry.hpp"
 #include "frontends/basic/sem/TypeRegistry.hpp"

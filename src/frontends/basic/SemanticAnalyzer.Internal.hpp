@@ -1,11 +1,18 @@
-// File: src/frontends/basic/SemanticAnalyzer.Internal.hpp
-// Purpose: Declares shared helper utilities for SemanticAnalyzer implementation
-//          split across multiple translation units.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: frontends/basic/SemanticAnalyzer.Internal.hpp
+// Purpose: Declares shared helper utilities for SemanticAnalyzer implementation 
 // Key invariants: Helpers remain internal to the BASIC front end and avoid
-//                 leaking into public headers.
 // Ownership/Lifetime: Stateless free functions used by SemanticAnalyzer
-//                     implementation files.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "frontends/basic/AST.hpp"

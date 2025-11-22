@@ -1,6 +1,17 @@
-// File: src/frontends/basic/types/TypeMapping.cpp
-// Purpose: Map IL core types to BASIC frontend scalar types for proc signatures.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: frontends/basic/types/TypeMapping.cpp
+// Purpose: Map IL core types to BASIC frontend scalar types for proc signatures. 
 // Key invariants: Only scalar types are supported (i64, f64, str, i1). Others are skipped.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/types/TypeMapping.hpp"
 

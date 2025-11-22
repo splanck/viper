@@ -1,7 +1,18 @@
-// tui/include/tui/util/unicode.hpp
-// @brief Unicode helper utilities for width and decoding.
-// @invariant char_width follows basic East Asian width rules.
-// @ownership decode_utf8 returns a new string; caller owns the result.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: tui/include/tui/util/unicode.hpp
+// Purpose: Implements functionality for this subsystem.
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include <cstdint>

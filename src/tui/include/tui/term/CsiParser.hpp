@@ -1,7 +1,18 @@
-// tui/include/tui/term/CsiParser.hpp
-// @brief Helpers for parsing Control Sequence Introducer (CSI) input.
-// @invariant Produces key and mouse events for recognized sequences.
-// @ownership Holds references to caller-owned event buffers.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: tui/include/tui/term/CsiParser.hpp
+// Purpose: Implements functionality for this subsystem.
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "tui/term/key_event.hpp"

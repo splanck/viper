@@ -1,7 +1,18 @@
-// tui/include/tui/term/Utf8Decoder.hpp
-// @brief Incremental UTF-8 decoder producing Unicode codepoints.
-// @invariant Maintains partial multibyte sequences between feed calls.
-// @ownership Owns only the decoder state.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: tui/include/tui/term/Utf8Decoder.hpp
+// Purpose: Implements functionality for this subsystem.
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include <cstdint>

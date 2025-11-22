@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/frontends/basic/BuiltinRegistryTests.cpp
-// Purpose: Verify dynamic BASIC builtin handler registration stores stable keys.
+// Purpose: Verify dynamic BASIC builtin handler registration stores stable keys. 
 // Key invariants: Handler lookups must succeed even when registered with temporary strings.
 // Ownership/Lifetime: Registry owns string keys; tests clean up installed handlers.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/BuiltinRegistry.hpp"
 #include "il/core/Type.hpp"

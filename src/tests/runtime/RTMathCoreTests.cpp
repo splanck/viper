@@ -1,8 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/runtime/RTMathCoreTests.cpp
-// Purpose: Validate basic math runtime wrappers.
+// Purpose: Validate basic math runtime wrappers. 
 // Key invariants: Results match libm within tolerance.
-// Ownership: Uses runtime library.
+// Ownership/Lifetime: Uses runtime library.
 // Links: docs/runtime-vm.md#runtime-abi
+//
+//===----------------------------------------------------------------------===//
+
 #include "viper/runtime/rt.h"
 #include <cassert>
 #include <cmath>

@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_vm_switch_block_label.cpp
-// Purpose: Verify switch traps record the executing block label in diagnostics.
+// Purpose: Verify switch traps record the executing block label in diagnostics. 
 // Key invariants: handleSwitchI32 must attribute out-of-range traps to the active block.
-// Ownership: Constructs a synthetic module and triggers a trap in a forked child process.
+// Ownership/Lifetime: Constructs a synthetic module and triggers a trap in a forked child process.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "VMTestHook.hpp"
 #include "il/build/IRBuilder.hpp"

@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_vm_trap_kind.cpp
-// Purpose: Validate TrapKind helpers provide stable string names and decoding.
+// Purpose: Validate TrapKind helpers provide stable string names and decoding. 
 // Key invariants: Bidirectional mapping covers every TrapKind enumerator and fallback path.
-// Ownership: Standalone unit test executable.
+// Ownership/Lifetime: Standalone unit test executable.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "vm/Trap.hpp"
 

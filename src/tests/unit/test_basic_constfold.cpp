@@ -1,7 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_basic_constfold.cpp
-// Purpose: Unit tests for BASIC constant folder numeric promotion and string rules.
+// Purpose: Unit tests for BASIC constant folder numeric promotion and string rules. 
 // Key invariants: Numeric ops promote to float; string concatenation is folded; invalid mixes keep
-// diagnostics. Ownership/Lifetime: Test owns all objects locally. Links: docs/codemap.md
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/ConstFolder.hpp"
 #include "frontends/basic/DiagnosticEmitter.hpp"

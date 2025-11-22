@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/runtime/RtErrorPlumbingTests.cpp
-// Purpose: Exercise the runtime error plumbing for numeric formatting helpers.
+// Purpose: Exercise the runtime error plumbing for numeric formatting helpers. 
 // Key invariants: Formatting helpers populate Err_None on success.
-// Ownership: Links against the C runtime library.
+// Ownership/Lifetime: Links against the C runtime library.
 // Links: docs/specs/numerics.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "viper/runtime/rt.h"
 

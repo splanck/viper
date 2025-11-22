@@ -1,9 +1,18 @@
-// File: src/il/runtime/RuntimeSignaturesData.hpp
-// License: GPL-3.0-only. See LICENSE in the project root for full license information.
-// Purpose: Provides static runtime signature specifications and symbol metadata.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: il/runtime/RuntimeSignaturesData.hpp
+// Purpose: Provides static runtime signature specifications and symbol metadata. 
 // Key invariants: Signature specification order matches RtSig enumerators and symbols.
 // Ownership/Lifetime: Inline constexpr tables with static storage across translation units.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "il/runtime/RuntimeSignatures.hpp"

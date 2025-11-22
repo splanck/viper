@@ -1,9 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_codegen_x86_64_coalescer.cpp
-// Purpose: Ensure PX_COPY lowering emits deterministic move sequences.
+// Purpose: Ensure PX_COPY lowering emits deterministic move sequences. 
 // Key invariants: Coalescing removes PX_COPY pseudos and releases scratch
-//                 registers.
 // Ownership/Lifetime: Tests construct Machine IR locally and run the allocator.
 // Links: src/codegen/x86_64/ra/Coalescer.hpp
+//
+//===----------------------------------------------------------------------===//
 
 #include "GTestStub.hpp"
 

@@ -1,12 +1,17 @@
-// src/codegen/aarch64/FrameBuilder.hpp
-// SPDX-License-Identifier: GPL-3.0-only
+//===----------------------------------------------------------------------===//
 //
-// Purpose: Centralise AArch64 frame layout construction for Machine IR.
-//          Assigns FP-relative offsets for locals and spills and computes the
-//          total frame size (aligned to 16). Cooperates with the allocator and
-//          lowering by exposing helpers to declare locals/spills and finalise
-//          the layout onto MFunction.
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
 //
+//===----------------------------------------------------------------------===//
+//
+// File: codegen/aarch64/FrameBuilder.hpp
+// Purpose: Centralise AArch64 frame layout construction for Machine IR. 
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #pragma once
 

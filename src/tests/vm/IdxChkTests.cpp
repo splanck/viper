@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/vm/IdxChkTests.cpp
-// Purpose: Verify idx.chk bounds semantics and err.get_* accessors in handler contexts.
+// Purpose: Verify idx.chk bounds semantics and err.get_* accessors in handler contexts. 
 // Key invariants: Out-of-range indices raise Bounds traps and handler error metadata is populated.
 // Ownership/Lifetime: Builds IL modules on the stack and executes them via the VM.
 // Links: docs/specs/errors.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/build/IRBuilder.hpp"
 #include "vm/Trap.hpp"

@@ -1,10 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/analysis/BasicAATests.cpp
-// Purpose: Exercise the BasicAA alias and ModRef queries on synthetic IL.
+// Purpose: Exercise the BasicAA alias and ModRef queries on synthetic IL. 
 // Key invariants: Alias classifications respect pointer identity, distinct allocas,
-//                 and noalias parameters; ModRef classifications fold call and
-//                 registry metadata.
 // Ownership/Lifetime: Constructs temporary IL modules via IRBuilder.
 // Links: docs/dev/analysis.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/analysis/BasicAA.hpp"
 #include "il/build/IRBuilder.hpp"

@@ -1,5 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/frontends/basic/RuntimePropertyDiagTests.cpp
-// Purpose: Verify diagnostics for runtime class property assignment (read-only).
+// Purpose: Verify diagnostics for runtime class property assignment (read-only). 
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/BasicCompiler.hpp"
 #include "support/source_manager.hpp"

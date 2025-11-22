@@ -1,8 +1,17 @@
-// File: src/tools/ilc/cli.hpp
-// Purpose: Declarations for ilc subcommand handlers and usage helper.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: tools/ilc/cli.hpp
+// Purpose: Declarations for ilc subcommand handlers and usage helper. 
 // Key invariants: None.
 // Ownership/Lifetime: N/A.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #pragma once
 

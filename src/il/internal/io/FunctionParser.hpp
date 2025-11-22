@@ -1,8 +1,18 @@
-// File: src/il/internal/io/FunctionParser.hpp
-// Purpose: Declares helpers for parsing IL function definitions.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: il/internal/io/FunctionParser.hpp
+// Purpose: Declares helpers for parsing IL function definitions. 
 // Key invariants: Requires ParserState to track current function and block context.
 // Ownership/Lifetime: Populates the module held by ParserState with parsed functions.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "il/internal/io/ParserState.hpp"

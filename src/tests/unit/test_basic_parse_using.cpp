@@ -1,5 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_basic_parse_using.cpp
-// Purpose: Ensure USING directive parsing captures namespace paths and aliases.
+// Purpose: Ensure USING directive parsing captures namespace paths and aliases. 
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/Parser.hpp"
 #include "support/source_manager.hpp"

@@ -1,12 +1,18 @@
-// File: src/vm/VMContext.hpp
-// License: GPL-3.0-only. See LICENSE in the project root for full license information.
-// Purpose: Declares helper utilities for accessing VM execution context shared by
-//          dispatch strategies and opcode handlers.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: vm/VMContext.hpp
+// Purpose: Declares helper utilities for accessing VM execution context shared by 
 // Key invariants: Maintains a thread-local pointer to the active VM for trap
-//                 reporting and centralises evaluation helpers used during
-//                 interpretation.
 // Ownership/Lifetime: VMContext references a VM instance owned externally.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "vm/VM.hpp"

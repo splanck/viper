@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_il_parse_malformed_func_header.cpp
-// Purpose: Ensure parser rejects function headers missing delimiters.
+// Purpose: Ensure parser rejects function headers missing delimiters. 
 // Key invariants: Parser reports malformed headers through Expected diagnostics.
 // Ownership/Lifetime: Test constructs modules and streams locally.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/api/expected_api.hpp"
 #include "il/core/Module.hpp"

@@ -1,5 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/codegen/test_codegen_arm64_call.cpp
-// Purpose: Verify CLI lowers simple call+ret to `bl <callee>` with args in x0..x7.
+// Purpose: Verify CLI lowers simple call+ret to `bl <callee>` with args in x0..x7. 
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "tests/unit/GTestStub.hpp"
 

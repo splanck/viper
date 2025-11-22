@@ -1,16 +1,17 @@
-// src/codegen/x86_64/AsmEmitter.hpp
-// SPDX-License-Identifier: GPL-3.0-only
+//===----------------------------------------------------------------------===//
 //
-// Purpose: Declare the x86-64 assembly emitter responsible for translating
-//          Machine IR into textual AT&T syntax and managing associated
-//          read-only data pools.
-// Invariants: Emission routines preserve the operand ordering semantics of the
-//             Machine IR while adapting them to the two-operand x86 encoding;
-//             rodata pools deduplicate literals and provide stable labels.
-// Ownership: AsmEmitter holds a non-owning reference to a mutable rodata pool;
-//            clients retain ownership of pools and streams.
-// Notes: Standalone header depending only on MachineIR.hpp and the C++
-//        standard library.
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: codegen/x86_64/AsmEmitter.hpp
+// Purpose: Declare the x86-64 assembly emitter responsible for translating 
+// Key invariants: To be documented.
+// Ownership/Lifetime: AsmEmitter holds a non-owning reference to a mutable rodata pool;
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #pragma once
 

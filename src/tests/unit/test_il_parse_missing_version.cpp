@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_il_parse_missing_version.cpp
-// Purpose: Validate parser errors when the module omits the leading version directive.
+// Purpose: Validate parser errors when the module omits the leading version directive. 
 // Key invariants: Parser should reject modules without an `il` directive before other content or
-// EOF. Ownership/Lifetime: Test owns the module and input streams. Links:
-// docs/il-guide.md#reference
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/api/expected_api.hpp"
 #include "il/core/Module.hpp"

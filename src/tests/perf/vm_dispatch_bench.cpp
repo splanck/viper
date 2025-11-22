@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/perf/vm_dispatch_bench.cpp
-// Purpose: Benchmark interpreter dispatch strategies using a branch-reduced arithmetic loop.
+// Purpose: Benchmark interpreter dispatch strategies using a branch-reduced arithmetic loop. 
 // Key invariants: All dispatch modes execute the same loop body and yield identical checksums.
 // Ownership/Lifetime: Benchmarks build a transient module and execute it immediately.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"

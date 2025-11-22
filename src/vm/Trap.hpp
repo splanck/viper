@@ -1,8 +1,18 @@
-// File: src/vm/Trap.hpp
-// Purpose: Defines trap classification for VM diagnostics.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: vm/Trap.hpp
+// Purpose: Defines trap classification for VM diagnostics. 
 // Key invariants: Enum values map directly to trap categories used in diagnostics.
 // Ownership/Lifetime: Not applicable.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include <cstdint>

@@ -1,13 +1,18 @@
-// File: src/frontends/basic/LowerStmt_Runtime.hpp
-// License: GPL-3.0-only. See LICENSE in the project root for full license information.
-// Purpose: Declares runtime-oriented statement lowering helpers, including data
-//          assignment, array allocation, and terminal control statements.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: frontends/basic/LowerStmt_Runtime.hpp
+// Purpose: Declares runtime-oriented statement lowering helpers, including data 
 // Key invariants: Helpers interact with runtime support through the active
-//                 Lowerer context while preserving ownership rules for strings
-//                 and arrays.
 // Ownership/Lifetime: Declarations extend the Lowerer private interface for
-//                     runtime-facing statements when included from LowerEmit.hpp.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include <string_view>

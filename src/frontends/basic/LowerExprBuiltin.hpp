@@ -1,11 +1,18 @@
-// File: src/frontends/basic/LowerExprBuiltin.hpp
-// Purpose: Declares builtin expression lowering helpers that interact with the
-//          BASIC Lowerer.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: frontends/basic/LowerExprBuiltin.hpp
+// Purpose: Declares builtin expression lowering helpers that interact with the 
 // Key invariants: Builtin lowering preserves runtime feature tracking and
-//                 common coercions provided by Lowerer utilities.
 // Ownership/Lifetime: Helpers borrow the Lowerer reference for a single
-//                      lowering step.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "frontends/basic/Lowerer.hpp"

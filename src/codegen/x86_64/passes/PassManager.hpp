@@ -1,10 +1,17 @@
-// File: src/codegen/x86_64/passes/PassManager.hpp
-// Purpose: Declare a lightweight pass manager orchestrating x86-64 codegen passes.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: codegen/x86_64/passes/PassManager.hpp
+// Purpose: Declare a lightweight pass manager orchestrating x86-64 codegen passes. 
 // Key invariants: Passes run sequentially, short-circuiting on failure while preserving
-//                 diagnostics collected to that point.
 // Ownership/Lifetime: PassManager owns registered passes via unique_ptr and operates on
-//                     caller-owned Module state for the duration of run().
 // Links: docs/codemap.md, src/codegen/x86_64/CodegenPipeline.hpp
+//
+//===----------------------------------------------------------------------===//
 
 #pragma once
 

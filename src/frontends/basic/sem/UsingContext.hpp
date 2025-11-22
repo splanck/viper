@@ -1,11 +1,17 @@
-// File: src/frontends/basic/sem/UsingContext.hpp
-// Purpose: Tracks file-scoped USING directives with declaration order and alias resolution.
-// Key invariants:
-//   - Declaration order is preserved in imports_ vector.
-//   - Alias lookups are case-insensitive.
-//   - Empty alias string indicates namespace import without alias.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: frontends/basic/sem/UsingContext.hpp
+// Purpose: Tracks file-scoped USING directives with declaration order and alias resolution. 
+// Key invariants: // Key invariants:
 // Ownership/Lifetime: Owned by per-file semantic analysis context.
 // Links: docs/codemap.md, CLAUDE.md
+//
+//===----------------------------------------------------------------------===//
 
 #pragma once
 

@@ -1,11 +1,17 @@
-// File: src/frontends/basic/sem/RegistryBuilder.hpp
-// Purpose: Build NamespaceRegistry from parsed BASIC program.
-// Key invariants:
-//   - Registers all declared namespaces, classes, and interfaces.
-//   - Records USING directives in UsingContext.
-//   - Case-insensitive registration with canonical spelling preservation.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: frontends/basic/sem/RegistryBuilder.hpp
+// Purpose: Build NamespaceRegistry from parsed BASIC program. 
+// Key invariants: // Key invariants:
 // Ownership/Lifetime: Does not own registry or usings; caller ensures lifetime.
 // Links: docs/codemap.md, CLAUDE.md
+//
+//===----------------------------------------------------------------------===//
 
 #pragma once
 

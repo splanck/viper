@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_irbuilder_call_unknown.cpp
-// Purpose: Ensure IRBuilder emits an error when call targets are missing.
+// Purpose: Ensure IRBuilder emits an error when call targets are missing. 
 // Key invariants: emitCall must throw for unknown callees.
-// Ownership: Test owns all constructed objects.
+// Ownership/Lifetime: Test owns all constructed objects.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/build/IRBuilder.hpp"
 #include <cassert>

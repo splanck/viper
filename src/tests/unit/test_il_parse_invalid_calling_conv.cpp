@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_il_parse_invalid_calling_conv.cpp
-// Purpose: Ensure the IL parser reports an error for unknown calling conventions.
+// Purpose: Ensure the IL parser reports an error for unknown calling conventions. 
 // Key invariants: Parser produces a diagnostic mentioning the invalid convention and source line.
 // Ownership/Lifetime: Test owns input buffers and module instance locally.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/api/expected_api.hpp"
 #include "il/core/Module.hpp"

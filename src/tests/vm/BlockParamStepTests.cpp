@@ -1,8 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/vm/BlockParamStepTests.cpp
-// Purpose: Ensure block parameters transfer correctly while stepping through a call.
+// Purpose: Ensure block parameters transfer correctly while stepping through a call. 
 // Key invariants: Scripted stepping still yields callee arguments and prints a step break.
 // Ownership/Lifetime: Test creates temporary stderr capture file and deletes it.
 // Links: docs/testing.md
+//
+//===----------------------------------------------------------------------===//
+
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>

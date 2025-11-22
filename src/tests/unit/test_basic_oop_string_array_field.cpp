@@ -1,12 +1,19 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_basic_oop_string_array_field.cpp
-// Purpose: Verify that string array fields in classes store via rt_arr_str_put
-//          and load via rt_arr_str_get when accessed implicitly inside methods.
+// Purpose: Verify that string array fields in classes store via rt_arr_str_put 
 // Key invariants: OOP lowering derives element type from class layout and uses
-//                 the correct runtime helpers for string arrays.
 // Ownership/Lifetime: Compiles BASIC source into an IL module and inspects the
-//                      resulting functions and calls.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
-#if __has_include(<gtest/gtest.h>)
+#ifdef VIPER_HAS_GTEST
 #include <gtest/gtest.h>
 #else
 #include "GTestStub.hpp"

@@ -1,8 +1,18 @@
-// File: src/il/core/OpcodeInfo.hpp
-// Purpose: Declares metadata describing IL opcode signatures and behaviours.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: il/core/OpcodeInfo.hpp
+// Purpose: Declares metadata describing IL opcode signatures and behaviours. 
 // Key invariants: Table entries cover every Opcode enumerator exactly once.
 // Ownership/Lifetime: Metadata is static storage duration and read-only.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "il/core/Opcode.hpp"

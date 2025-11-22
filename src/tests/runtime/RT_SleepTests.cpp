@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/runtime/RT_SleepTests.cpp
-// Purpose: Validate rt_sleep_ms blocks approximately the requested duration.
+// Purpose: Validate rt_sleep_ms blocks approximately the requested duration. 
 // Key invariants: Negative values clamp to zero; elapsed time >= lower bound.
-// Ownership: Uses runtime library only.
+// Ownership/Lifetime: Uses runtime library only.
 // Links: docs/runtime-vm.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "viper/runtime/rt.h"
 #include <cassert>

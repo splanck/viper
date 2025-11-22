@@ -1,8 +1,18 @@
-// File: src/frontends/basic/Semantic_OOP.hpp
-// Purpose: Declares lightweight OOP indexing helpers for BASIC class metadata.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: frontends/basic/Semantic_OOP.hpp
+// Purpose: Declares lightweight OOP indexing helpers for BASIC class metadata. 
 // Key invariants: Index stores one entry per class name with immutable signature data.
 // Ownership/Lifetime: OopIndex stores copies of AST metadata without owning AST nodes.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "frontends/basic/BasicTypes.hpp"

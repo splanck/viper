@@ -1,12 +1,18 @@
-// File: src/frontends/basic/LowerStmt_Control.hpp
-// License: GPL-3.0-only. See LICENSE in the project root for full license information.
-// Purpose: Declares control-flow lowering helpers for BASIC statements such as
-//          IF, loops, and GOSUB/GOTO constructs.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: frontends/basic/LowerStmt_Control.hpp
+// Purpose: Declares control-flow lowering helpers for BASIC statements such as 
 // Key invariants: Helpers mutate the current block through the active Lowerer
-//                 context while preserving deterministic block naming.
 // Ownership/Lifetime: Declarations are included inside Lowerer to extend its
-//                     private control-flow lowering surface.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 /// @brief Control-flow state emitted by structured statement helpers.

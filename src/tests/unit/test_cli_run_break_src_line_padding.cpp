@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_cli_run_break_src_line_padding.cpp
-// Purpose: Ensure cmdRunIL accepts whitespace between colon and line digits.
+// Purpose: Ensure cmdRunIL accepts whitespace between colon and line digits. 
 // Key invariants: --break treats "file:  7" as a source breakpoint and hits it.
 // Ownership/Lifetime: Reuses repository IL sample, no temp files.
 // Links: src/tools/ilc/cmd_run_il.cpp
+//
+//===----------------------------------------------------------------------===//
 
 #include "tools/ilc/cli.hpp"
 

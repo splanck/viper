@@ -1,9 +1,18 @@
-// File: src/frontends/basic/ast/StmtBase.hpp
-// Purpose: Declares the common BASIC statement base class and visitor interfaces.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: frontends/basic/ast/StmtBase.hpp
+// Purpose: Declares the common BASIC statement base class and visitor interfaces. 
 // Key invariants: Visitors enumerate every concrete statement kind and statements
-//                 report their discriminator accurately via stmtKind().
 // Ownership/Lifetime: Statements are owned via std::unique_ptr managed by callers.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "frontends/basic/ast/NodeFwd.hpp"

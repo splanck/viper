@@ -1,7 +1,17 @@
-// tui/tests/test_splitter_keyboard.cpp
-// @brief Verify splitters adjust ratio via Ctrl+Arrow keys.
-// @invariant Ratios clamp to bounds and trigger layout updates.
-// @ownership Splitters own stub child widgets used for measurement.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: tui/tests/test_splitter_keyboard.cpp
+// Purpose: Test suite for this component.
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "tui/widgets/splitter.hpp"
 

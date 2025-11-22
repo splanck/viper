@@ -1,7 +1,18 @@
-// tui/include/tui/render/renderer.hpp
-// @brief ANSI renderer emitting minimal sequences to a TermIO.
-// @invariant Maintains cursor position and current style to avoid redundant sequences.
-// @ownership Renderer borrows the TermIO reference; caller retains ownership.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: tui/include/tui/render/renderer.hpp
+// Purpose: Implements functionality for this subsystem.
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "tui/render/screen.hpp"

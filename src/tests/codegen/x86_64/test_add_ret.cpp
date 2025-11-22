@@ -1,11 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/codegen/x86_64/test_add_ret.cpp
-// Purpose: Verify the x86-64 backend emits expected assembly for a minimal
-//          add/ret function using the adapter ILModule facade.
+// Purpose: Verify the x86-64 backend emits expected assembly for a minimal 
 // Key invariants: The generated assembly must contain the global symbol
-//                 directive and the canonical mov/add/ret sequence.
 // Ownership/Lifetime: Test builds the IL module locally and verifies emitted
-//                      assembly by value without external dependencies.
 // Links: src/codegen/x86_64/Backend.cpp
+//
+//===----------------------------------------------------------------------===//
 
 #include "codegen/x86_64/Backend.hpp"
 
@@ -13,6 +19,7 @@
 #include <string_view>
 
 #if __has_include(<gtest/gtest.h>)
+#ifdef VIPER_HAS_GTEST
 #include <gtest/gtest.h>
 #define VIPER_HAS_GTEST 1
 #else

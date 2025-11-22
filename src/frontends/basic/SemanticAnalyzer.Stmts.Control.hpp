@@ -1,12 +1,18 @@
-// File: src/frontends/basic/SemanticAnalyzer.Stmts.Control.hpp
-// License: GPL-3.0-only. See LICENSE in the project root for full license
-//          information.
-// Purpose: Declares helpers specific to control-flow statement analysis for the
-//          BASIC semantic analyzer.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: frontends/basic/SemanticAnalyzer.Stmts.Control.hpp
+// Purpose: Declares helpers specific to control-flow statement analysis for the 
 // Key invariants: Helpers reuse shared RAII guards to keep loop tracking
-//                 consistent across translation units.
 // Ownership/Lifetime: Non-owning views over SemanticAnalyzer state.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "frontends/basic/SemanticAnalyzer.Stmts.Shared.hpp"

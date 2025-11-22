@@ -1,9 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/vm/SwitchTests.cpp
-// Purpose: Validate VM switch.i32 execution paths and trace/debug diagnostics.
+// Purpose: Validate VM switch.i32 execution paths and trace/debug diagnostics. 
 // Key invariants: Switch instruction selects correct successor and reports it
-// deterministically via trace and debug streams.
 // Ownership/Lifetime: Tests build modules on the fly and execute them immediately.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/build/IRBuilder.hpp"
 #include "vm/VM.hpp"

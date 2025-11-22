@@ -1,10 +1,17 @@
-// src/codegen/x86_64/LoweringRuleTable.hpp
-// SPDX-License-Identifier: GPL-3.0-only
+//===----------------------------------------------------------------------===//
 //
-// Purpose: Describe declarative lowering rules for x86-64 emission.
-// Invariants: Rule tables are constexpr and reference stateless emitters.
-// Ownership: Shared across lowering translation units via inline constexpr data.
-// Notes: Tables are consumed to build matcher thunks inside LoweringRules.cpp.
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: codegen/x86_64/LoweringRuleTable.hpp
+// Purpose: Describe declarative lowering rules for x86-64 emission. 
+// Key invariants: To be documented.
+// Ownership/Lifetime: Shared across lowering translation units via inline constexpr data.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #pragma once
 

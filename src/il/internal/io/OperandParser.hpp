@@ -1,8 +1,18 @@
-// File: src/il/internal/io/OperandParser.hpp
-// Purpose: Declares a helper for parsing textual IL operands.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: il/internal/io/OperandParser.hpp
+// Purpose: Declares a helper for parsing textual IL operands. 
 // Key invariants: Requires ParserState to supply SSA mappings and diagnostics.
 // Ownership/Lifetime: Operates on instructions owned by the parser caller.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "il/core/fwd.hpp"

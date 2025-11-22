@@ -1,8 +1,18 @@
-// File: src/il/internal/io/ParserUtil.hpp
-// Purpose: Declares lexical helpers shared by IL parser components.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: il/internal/io/ParserUtil.hpp
+// Purpose: Declares lexical helpers shared by IL parser components. 
 // Key invariants: None.
 // Ownership/Lifetime: Stateless utility routines operate on caller-provided data.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "support/diag_expected.hpp"

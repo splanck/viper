@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/il/transform/test_LoopSimplify.cpp
-// Purpose: Validate that LoopSimplify inserts preheaders and preserves arguments.
+// Purpose: Validate that LoopSimplify inserts preheaders and preserves arguments. 
 // Key invariants: Entry edge splits into a dedicated preheader with forwarded SSA values.
 // Ownership/Lifetime: Builds a local module for the duration of the test run.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/transform/AnalysisManager.hpp"
 #include "il/transform/LoopSimplify.hpp"

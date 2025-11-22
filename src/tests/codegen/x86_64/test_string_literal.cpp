@@ -1,11 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/codegen/x86_64/test_string_literal.cpp
-// Purpose: Ensure the x86-64 backend materialises string literals via the
-//          runtime helper and emits matching .rodata entries.
+// Purpose: Ensure the x86-64 backend materialises string literals via the 
 // Key invariants: Emitted assembly must include the literal's label, argument
-//                 setup for rt_str_from_lit, and the .rodata payload.
 // Ownership/Lifetime: Test builds the IL module locally and checks the emitted
-//                      assembly by value without touching external resources.
 // Links: src/codegen/x86_64/Backend.cpp
+//
+//===----------------------------------------------------------------------===//
 
 #include "codegen/x86_64/Backend.hpp"
 
@@ -13,6 +19,7 @@
 #include <string_view>
 
 #if __has_include(<gtest/gtest.h>)
+#ifdef VIPER_HAS_GTEST
 #include <gtest/gtest.h>
 #define VIPER_HAS_GTEST 1
 #else

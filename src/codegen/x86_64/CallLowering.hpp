@@ -1,14 +1,17 @@
-// src/codegen/x86_64/CallLowering.hpp
-// SPDX-License-Identifier: GPL-3.0-only
+//===----------------------------------------------------------------------===//
 //
-// Purpose: Declare utilities that translate high-level call descriptions into
-//          Machine IR conforming to the SysV AMD64 calling convention.
-// Invariants: Lowering operates on Machine IR basic blocks in-place and emits
-//             physical register assignments following the ABI ordering.
-// Ownership: Callers retain ownership of Machine IR structures and frame
-//            metadata. The lowering routines borrow references only.
-// Notes: Interface depends on MachineIR.hpp and TargetX64.hpp. FrameInfo is
-//        forward declared to avoid circular dependencies.
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: codegen/x86_64/CallLowering.hpp
+// Purpose: Declare utilities that translate high-level call descriptions into 
+// Key invariants: To be documented.
+// Ownership/Lifetime: Callers retain ownership of Machine IR structures and frame
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #pragma once
 

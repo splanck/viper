@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_vm_runtime_concurrency.cpp
-// Purpose: Verify runtime trap metadata remains isolated per VM under concurrency.
+// Purpose: Verify runtime trap metadata remains isolated per VM under concurrency. 
 // Key invariants: Concurrent runtime calls must preserve distinct trap context.
-// Ownership: Constructs independent modules per thread and overrides vm_trap.
+// Ownership/Lifetime: Constructs independent modules per thread and overrides vm_trap.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/build/IRBuilder.hpp"
 #include "support/source_location.hpp"

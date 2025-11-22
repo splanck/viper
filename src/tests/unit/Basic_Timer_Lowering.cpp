@@ -1,10 +1,19 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/Basic_Timer_Lowering.cpp
-// Purpose: Ensure TIMER() in BASIC lowers to a call to rt_timer_ms.
+// Purpose: Ensure TIMER() in BASIC lowers to a call to rt_timer_ms. 
 // Key invariants: TIMER() produces i64 result via rt_timer_ms call.
-// Ownership: Test harness constructs and inspects lowered IL.
+// Ownership/Lifetime: Test harness constructs and inspects lowered IL.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
-#if __has_include(<gtest/gtest.h>)
+#ifdef VIPER_HAS_GTEST
 #include <gtest/gtest.h>
 #else
 #include "GTestStub.hpp"

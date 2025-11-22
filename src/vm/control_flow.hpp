@@ -1,9 +1,18 @@
-// File: src/vm/control_flow.hpp
-// Purpose: Declare switch dispatch cache structures for VM control flow helpers.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: vm/control_flow.hpp
+// Purpose: Declare switch dispatch cache structures for VM control flow helpers. 
 // Key invariants: Cached dispatch data remains valid for the lifetime of the owning
-//                 instruction and maps case values to successor indices.
 // Ownership/Lifetime: SwitchCache owns memoized backend data keyed by instruction pointer.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include <cstdint>

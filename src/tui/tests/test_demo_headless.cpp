@@ -1,7 +1,17 @@
-// tui/tests/test_demo_headless.cpp
-// @brief Run tui_demo in headless mode; expect clean exit.
-// @invariant VIPERTUI_NO_TTY=1 triggers one-frame render and exit.
-// @ownership None.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: tui/tests/test_demo_headless.cpp
+// Purpose: Test suite for this component.
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include <cassert>
 #include <cstdlib>

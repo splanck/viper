@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_il_parse_duplicate_block.cpp
-// Purpose: Ensure parser rejects duplicate block labels within a function.
+// Purpose: Ensure parser rejects duplicate block labels within a function. 
 // Key invariants: Parsing fails with a "duplicate block" diagnostic referencing the label.
 // Ownership/Lifetime: Test constructs modules and diagnostic buffers locally.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/api/expected_api.hpp"
 #include "il/core/Module.hpp"

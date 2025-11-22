@@ -1,9 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_vm_debug_src_breakpoint.cpp
-// Purpose: Ensure source breakpoints coalesce repeated hits at the same location.
+// Purpose: Ensure source breakpoints coalesce repeated hits at the same location. 
 // Key invariants: Re-executing the same file/line pair without reset should not
-// trigger a new breakpoint hit.
-// Ownership: Standalone unit test executable.
+// Ownership/Lifetime: Standalone unit test executable.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
+
 #include "il/core/Instr.hpp"
 #include "support/source_manager.hpp"
 #include "viper/vm/debug/Debug.hpp"

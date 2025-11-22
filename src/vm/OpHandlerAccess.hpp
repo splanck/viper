@@ -1,8 +1,18 @@
-// File: src/vm/OpHandlerAccess.hpp
-// Purpose: Expose controlled accessors for VM internals to opcode handler code.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: vm/OpHandlerAccess.hpp
+// Purpose: Expose controlled accessors for VM internals to opcode handler code. 
 // Key invariants: Grants read/write access only to members required for handler semantics.
 // Ownership/Lifetime: Accessors operate on VM-owned state without transferring ownership.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "vm/VM.hpp"

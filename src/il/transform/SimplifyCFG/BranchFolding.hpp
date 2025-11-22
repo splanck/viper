@@ -1,9 +1,18 @@
-// File: src/il/transform/SimplifyCFG/BranchFolding.hpp
-// License: GPL-3.0-only (see LICENSE for details).
-// Purpose: Declares branch folding routines for the SimplifyCFG pass.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: il/transform/SimplifyCFG/BranchFolding.hpp
+// Purpose: Declares branch folding routines for the SimplifyCFG pass. 
 // Key invariants: Transformations preserve control flow equivalence.
 // Ownership/Lifetime: Operates on caller-owned functions and blocks.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "il/transform/SimplifyCFG.hpp"

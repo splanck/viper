@@ -1,9 +1,18 @@
-// File: src/il/transform/SimplifyCFG/Utils.hpp
-// License: GPL-3.0-only (see LICENSE for details).
-// Purpose: Shared helpers for SimplifyCFG transformations.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: il/transform/SimplifyCFG/Utils.hpp
+// Purpose: Shared helpers for SimplifyCFG transformations. 
 // Key invariants: Operates on IL CFG structures without mutating ownership.
 // Ownership/Lifetime: Functions inspect/mutate caller-owned IR structures.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "il/core/BasicBlock.hpp"

@@ -1,7 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/vm/DebugScriptTests.cpp
-// Purpose: Validate scripted breakpoint control with step and continue.
+// Purpose: Validate scripted breakpoint control with step and continue. 
 // Key invariants: Exactly two IL trace lines appear between breakpoints; final output matches
-// normal run. Ownership/Lifetime: Test creates and removes temporary files. Links: docs/testing.md
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
+
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>

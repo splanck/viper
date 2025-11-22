@@ -1,9 +1,19 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_basic_oop_object_array_field.cpp
-// Purpose: Verify that object array fields in classes store via rt_arr_obj_put
-//          when assigned implicitly inside methods.
+// Purpose: Verify that object array fields in classes store via rt_arr_obj_put 
 // Key invariants: Lowering selects object array helpers for Ptr RHS.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
-#if __has_include(<gtest/gtest.h>)
+#ifdef VIPER_HAS_GTEST
 #include <gtest/gtest.h>
 #else
 #include "GTestStub.hpp"

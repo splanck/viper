@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_run_process_quotes.cpp
-// Purpose: Verify run_process correctly preserves shell-sensitive characters when quoting
-// arguments. Key invariants: Quotes and backslashes inside arguments survive round-tripping through
-// the helper. Ownership/Lifetime: RunProcess owns no persistent resources; the spawned process
-// terminates immediately. Links: src/common/RunProcess.cpp
+// Purpose: Verify run_process correctly preserves shell-sensitive characters when quoting 
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "common/RunProcess.hpp"
 

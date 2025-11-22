@@ -1,19 +1,15 @@
 //===----------------------------------------------------------------------===//
-//===----------------------------------------------------------------------===//
 //
 // Part of the Viper project, under the GNU GPL v3.
-// See LICENSE in the project root for license information.
+// See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
 //
-// Auto-generated instruction specification tables. The data encodes verifier expectations for
-// every opcode: operand/result arity, type categories, and custom strategy
-// hooks.  Keeping the table in generated form ensures it stays in lockstep with
-// the authoritative specification while still allowing the verifier to include
-// a richly documented source artifact.
-//
-// This file is auto-generated. Do not edit manually.
-// This file is maintained as a committed generated source.
+// File: il/verify/generated/SpecTables.cpp
+// Purpose: Implements functionality for this subsystem.
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
 //
 //===----------------------------------------------------------------------===//
 

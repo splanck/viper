@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/il/IOPrintParseRoundTrip.cpp
-// Purpose: Ensure IL printer/parser round-trip stays stable across fixture corpus.
+// Purpose: Ensure IL printer/parser round-trip stays stable across fixture corpus. 
 // Key invariants: Canonicalized serializer output must match after two parse/print cycles.
 // Ownership/Lifetime: Test-owned modules/streams; files read from disk fixtures.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/api/expected_api.hpp"
 #include "il/core/Module.hpp"

@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_il_function_parser_errors.cpp
-// Purpose: Exercise Expected-returning function parser helpers on failure paths.
+// Purpose: Exercise Expected-returning function parser helpers on failure paths. 
 // Key invariants: Helpers surface structured diagnostics for malformed headers and bodies.
 // Ownership/Lifetime: Tests construct modules and parser states locally.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/core/Module.hpp"
 #include "il/internal/io/FunctionParser.hpp"

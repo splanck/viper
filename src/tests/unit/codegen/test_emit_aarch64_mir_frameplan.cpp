@@ -1,5 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/codegen/test_emit_aarch64_mir_frameplan.cpp
-// Purpose: Verify AsmEmitter.emitFunction respects MFunction::savedGPRs for prologue/epilogue.
+// Purpose: Verify AsmEmitter.emitFunction respects MFunction::savedGPRs for prologue/epilogue. 
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "tests/unit/GTestStub.hpp"
 

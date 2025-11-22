@@ -1,6 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/VM_PollCallbackTests.cpp
-// Purpose: Verify periodic host callback invocation and pause behaviour.
-// Invariants: Default config (N=0 or null callback) incurs no pauses.
+// Purpose: Verify periodic host callback invocation and pause behaviour. 
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/build/IRBuilder.hpp"
 #include "viper/vm/VM.hpp"

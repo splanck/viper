@@ -1,13 +1,17 @@
-// src/codegen/x86_64/Peephole.hpp
-// SPDX-License-Identifier: GPL-3.0-only
+//===----------------------------------------------------------------------===//
 //
-// Purpose: Declare peephole optimisations over the provisional Machine IR for
-//          the x86-64 backend.
-// Invariants: Transformations preserve instruction operand invariants and only
-//             match exact instruction forms deemed safe for Phase A.
-// Ownership: Operates on mutable Machine IR owned by the caller; no new
-//            allocations escape this interface.
-// Notes: Keep the peepholes conservative until broader coverage is required.
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: codegen/x86_64/Peephole.hpp
+// Purpose: Declare peephole optimisations over the provisional Machine IR for 
+// Key invariants: To be documented.
+// Ownership/Lifetime: Operates on mutable Machine IR owned by the caller; no new
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #pragma once
 

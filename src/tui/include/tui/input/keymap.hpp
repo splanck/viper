@@ -1,7 +1,18 @@
-// tui/include/tui/input/keymap.hpp
-// @brief Map key chords to command callbacks with global and widget scopes.
-// @invariant Key chords uniquely identify commands; widget overrides global.
-// @ownership Keymap owns command list but not widget pointers.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: tui/include/tui/input/keymap.hpp
+// Purpose: Implements functionality for this subsystem.
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include <functional>

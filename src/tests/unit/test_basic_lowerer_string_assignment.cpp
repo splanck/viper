@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_basic_lowerer_string_assignment.cpp
-// Purpose: Verify BASIC lowerer retains and releases strings on assignment.
+// Purpose: Verify BASIC lowerer retains and releases strings on assignment. 
 // Key invariants: String variables release old values before retaining new ones.
-// Ownership: Test owns parser, lowerer, and resulting module.
+// Ownership/Lifetime: Test owns parser, lowerer, and resulting module.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/Parser.hpp"

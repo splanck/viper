@@ -1,9 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_codegen_x86_64_allocator.cpp
-// Purpose: Exercise the linear-scan allocator phase in isolation.
+// Purpose: Exercise the linear-scan allocator phase in isolation. 
 // Key invariants: Allocation assigns deterministic registers and rewrites
-//                 operands to their physical counterparts.
 // Ownership/Lifetime: Tests mutate Machine IR in place and inspect the result.
 // Links: src/codegen/x86_64/ra/Allocator.hpp
+//
+//===----------------------------------------------------------------------===//
 
 #include "GTestStub.hpp"
 

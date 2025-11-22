@@ -1,8 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/runtime/RTChrInvalidTests.cpp
-// Purpose: Ensure rt_chr traps on out-of-range input.
+// Purpose: Ensure rt_chr traps on out-of-range input. 
 // Key invariants: Codes outside 0-255 trigger runtime trap.
-// Ownership: Uses runtime library.
+// Ownership/Lifetime: Uses runtime library.
 // Links: docs/runtime-vm.md#runtime-abi
+//
+//===----------------------------------------------------------------------===//
+
 #include "rt.hpp"
 #include <cassert>
 #include <string>

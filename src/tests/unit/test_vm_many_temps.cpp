@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_vm_many_temps.cpp
-// Purpose: Ensure VM handles functions with more than 64 SSA temporaries.
+// Purpose: Ensure VM handles functions with more than 64 SSA temporaries. 
 // Key invariants: Function with 70 temporaries executes and returns expected value.
-// Ownership: Test constructs IL module and executes VM.
+// Ownership/Lifetime: Test constructs IL module and executes VM.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"

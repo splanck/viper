@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/runtime/Int64ToStringTests.cpp
-// Purpose: Lock down runtime formatting for critical 64-bit integer values.
+// Purpose: Lock down runtime formatting for critical 64-bit integer values. 
 // Key invariants: Decimal spellings are canonical and portable across toolchains.
-// Ownership: Runtime integer formatting helpers.
+// Ownership/Lifetime: Runtime integer formatting helpers.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "viper/runtime/rt.h"
 

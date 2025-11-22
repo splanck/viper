@@ -1,8 +1,18 @@
-// File: src/support/arena.hpp
-// Purpose: Declares bump allocator for temporary objects.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: support/arena.hpp
+// Purpose: Declares bump allocator for temporary objects. 
 // Key invariants: None.
 // Ownership/Lifetime: Arena owns all allocated memory.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include <cstddef>

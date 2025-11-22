@@ -1,9 +1,18 @@
-// File: src/frontends/basic/ast/StmtExpr.hpp
-// Purpose: Defines BASIC statement nodes that primarily manipulate expressions or IO.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: frontends/basic/ast/StmtExpr.hpp
+// Purpose: Defines BASIC statement nodes that primarily manipulate expressions or IO. 
 // Key invariants: Expression-owned members are non-null when documented and retain
-//                 ownership semantics described by ExprPtr/LValuePtr aliases.
 // Ownership/Lifetime: Statements own child expressions through unique_ptr wrappers.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "frontends/basic/ast/ExprNodes.hpp"

@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_il_parse_call_string_comma.cpp
-// Purpose: Ensure call operand parsing preserves commas inside string literals.
+// Purpose: Ensure call operand parsing preserves commas inside string literals. 
 // Key invariants: Parser keeps string arguments intact even when containing delimiters.
 // Ownership/Lifetime: Test constructs modules and parser inputs locally.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/api/expected_api.hpp"
 #include "il/core/Instr.hpp"

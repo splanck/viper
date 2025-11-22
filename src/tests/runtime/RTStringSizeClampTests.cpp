@@ -1,8 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/runtime/RTStringSizeClampTests.cpp
-// Purpose: Ensure substring helpers clamp lengths that exceed size_t.
+// Purpose: Ensure substring helpers clamp lengths that exceed size_t. 
 // Key invariants: Requests beyond SIZE_MAX return the full available tail.
-// Ownership: Uses runtime library.
+// Ownership/Lifetime: Uses runtime library.
 // Links: docs/runtime-vm.md#runtime-abi
+//
+//===----------------------------------------------------------------------===//
+
 #include "rt.hpp"
 
 #include <assert.h>

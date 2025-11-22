@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_il_parse_dollar_identifiers.cpp
-// Purpose: Ensure IL parser accepts identifiers containing '$' characters.
+// Purpose: Ensure IL parser accepts identifiers containing '$' characters. 
 // Key invariants: Operand parser should mirror Cursor identifier rules.
 // Ownership/Lifetime: Test owns parsed module and diagnostics stream.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/api/expected_api.hpp"
 #include "il/core/Module.hpp"

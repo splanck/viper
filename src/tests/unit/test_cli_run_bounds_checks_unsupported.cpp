@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_cli_run_bounds_checks_unsupported.cpp
-// Purpose: Ensure ilc run rejects --bounds-checks with a clear diagnostic.
+// Purpose: Ensure ilc run rejects --bounds-checks with a clear diagnostic. 
 // Key invariants: Unsupported flag must emit an explanatory error without invoking usage().
 // Ownership/Lifetime: N/A.
 // Links: src/tools/ilc/cmd_run_il.cpp, src/tools/ilc/cli.cpp
+//
+//===----------------------------------------------------------------------===//
 
 #include "tools/ilc/cli.hpp"
 

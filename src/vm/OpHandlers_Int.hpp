@@ -1,8 +1,18 @@
-// File: src/vm/OpHandlers_Int.hpp
-// Purpose: Declare integer arithmetic, bitwise, and comparison opcode handlers.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: vm/OpHandlers_Int.hpp
+// Purpose: Declare integer arithmetic, bitwise, and comparison opcode handlers. 
 // Key invariants: Handlers implement two's complement semantics and enforce IL traps.
 // Ownership/Lifetime: Handlers operate on VM frames without retaining external resources.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "viper/vm/internal/OpHelpers.hpp"

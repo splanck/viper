@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/VMTestHook.hpp
-// Purpose: Provide privileged access to VM internals for unit tests.
+// Purpose: Provide privileged access to VM internals for unit tests. 
 // Key invariants: Mirror VM friend expectations; must stay in sync across tests.
-// Ownership: Header-only utilities for unit test translation units.
+// Ownership/Lifetime: Header-only utilities for unit test translation units.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #pragma once
 

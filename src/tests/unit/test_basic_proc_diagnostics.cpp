@@ -1,10 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_basic_proc_diagnostics.cpp
-// Purpose: Verify exact messages for duplicate and unknown procedure diagnostics.
-// Key invariants:
-//   - Duplicate proc error includes both definition locations and canonical qname.
-//   - Unknown unqualified proc includes canonical head and tried candidates.
-//   - Unknown qualified proc includes canonical qualified name.
+// Purpose: Verify exact messages for duplicate and unknown procedure diagnostics. 
+// Key invariants: // Key invariants:
 // Ownership/Lifetime: Creates local parser/analyzer per test; uses in-memory source.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/Parser.hpp"

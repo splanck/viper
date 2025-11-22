@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_il_parse_missing_operand_between_commas.cpp
-// Purpose: Ensure parser reports an error when operands include empty tokens.
+// Purpose: Ensure parser reports an error when operands include empty tokens. 
 // Key invariants: Parser must diagnose consecutive commas as missing operands.
 // Ownership/Lifetime: Test owns parser inputs and module state locally.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/api/expected_api.hpp"
 #include "il/core/Module.hpp"

@@ -1,8 +1,18 @@
-// File: src/frontends/basic/ILTypeUtils.hpp
-// Purpose: Helper utilities for IL type checking in BASIC lowering
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: frontends/basic/ILTypeUtils.hpp
+// Purpose: Helper utilities for IL type checking in BASIC lowering 
 // Key invariants: All functions are constexpr-compatible and stateless
 // Ownership/Lifetime: Non-owning utilities operating on IL types
 // Links: docs/codemap.md, docs/il-guide.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "il/core/Type.hpp"

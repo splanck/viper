@@ -1,8 +1,18 @@
-// File: src/runtime/rt.hpp
-// Purpose: Declares C runtime utilities for memory, strings, and I/O.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: runtime/rt.hpp
+// Purpose: Declares C runtime utilities for memory, strings, and I/O. 
 // Key invariants: Reference counts remain non-negative.
 // Ownership/Lifetime: Caller manages returned strings.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include <stdint.h>

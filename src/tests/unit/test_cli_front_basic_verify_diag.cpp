@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_cli_front_basic_verify_diag.cpp
-// Purpose: Ensure cmdFrontBasic reports verifier failures with BASIC source locations.
+// Purpose: Ensure cmdFrontBasic reports verifier failures with BASIC source locations. 
 // Key invariants: Diagnostic text must include the filename and line/column of the failing
-// instruction. Ownership/Lifetime: Test owns temporary BASIC source file and diagnostic buffers.
+// Ownership/Lifetime: To be documented.
 // Links: src/tools/ilc/cmd_front_basic.cpp
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/BasicCompiler.hpp"
 #include "il/core/BasicBlock.hpp"

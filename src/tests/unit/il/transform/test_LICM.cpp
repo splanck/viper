@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/il/transform/test_LICM.cpp
-// Purpose: Validate that LICM hoists trivially safe, loop-invariant instructions.
+// Purpose: Validate that LICM hoists trivially safe, loop-invariant instructions. 
 // Key invariants: LoopSimplify provides a preheader and LICM moves invariant math there.
 // Ownership/Lifetime: Builds a transient module per test invocation.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/transform/AnalysisManager.hpp"
 #include "il/transform/LICM.hpp"

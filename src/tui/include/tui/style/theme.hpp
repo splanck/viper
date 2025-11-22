@@ -1,7 +1,18 @@
-// tui/include/tui/style/theme.hpp
-// @brief Simple color theme with role-based styles.
-// @invariant Provides fixed styles per role.
-// @ownership Theme does not own external resources.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: tui/include/tui/style/theme.hpp
+// Purpose: Implements functionality for this subsystem.
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "tui/render/screen.hpp"

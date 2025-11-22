@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/analysis/GraphOrderTests.cpp
-// Purpose: Verify post-order and reverse-post-order traversals.
+// Purpose: Verify post-order and reverse-post-order traversals. 
 // Key invariants: Entry is last in post-order and first in RPO; each block appears once.
 // Ownership/Lifetime: Builds local modules via IRBuilder.
 // Links: docs/dev/analysis.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/analysis/CFG.hpp"
 #include "il/build/IRBuilder.hpp"

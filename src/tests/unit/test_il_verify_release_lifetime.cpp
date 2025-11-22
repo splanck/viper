@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_il_verify_release_lifetime.cpp
-// Purpose: Validate that the verifier rejects runtime array handle uses after release.
+// Purpose: Validate that the verifier rejects runtime array handle uses after release. 
 // Key invariants: Intra-block release-after-use and double-release must fail verification.
 // Ownership/Lifetime: Constructs modules locally for verification.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Extern.hpp"

@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/runtime/RTSplitFieldsTests.cpp
-// Purpose: Ensure rt_split_fields tokenizes comma-separated input lines.
+// Purpose: Ensure rt_split_fields tokenizes comma-separated input lines. 
 // Key invariants: Fields are trimmed, quotes removed, and extra fields counted.
 // Ownership/Lifetime: Test releases all allocated runtime strings.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "rt.hpp"
 

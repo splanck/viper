@@ -75,6 +75,9 @@ bool isResumeOpcode(Opcode op)
 /// @return @c true when @p op accesses error metadata.
 bool isErrAccessOpcode(Opcode op)
 {
+/// @brief Implements switch functionality.
+/// @param op Parameter description needed.
+/// @return Return value description needed.
     switch (op)
     {
         case Opcode::ErrGetKind:
@@ -142,13 +145,27 @@ Expected<void> FunctionVerifier::run(const Module &module, DiagSink &sink)
 {
     functionMap_.clear();
 
+/// @brief Implements for functionality.
+/// @param module.functions Parameter description needed.
+/// @return Return value description needed.
     for (const auto &fn : module.functions)
     {
+/// @brief Implements if functionality.
+/// @param !functionMap_.emplace(fn.name Parameter description needed.
+/// @param fn Parameter description needed.
+/// @return Return value description needed.
         if (!functionMap_.emplace(fn.name, &fn).second)
             return Expected<void>{makeError({}, "duplicate function @" + fn.name)};
     }
 
+/// @brief Implements for functionality.
+/// @param module.functions Parameter description needed.
+/// @return Return value description needed.
     for (const auto &fn : module.functions)
+/// @brief Implements if functionality.
+/// @param verifyFunction(fn Parameter description needed.
+/// @param sink Parameter description needed.
+/// @return Return value description needed.
         if (auto result = verifyFunction(fn, sink); !result)
             return result;
 
@@ -167,35 +184,71 @@ Expected<void> FunctionVerifier::run(const Module &module, DiagSink &sink)
 /// @return Success or a diagnostic describing the first failure.
 Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &sink)
 {
+/// @brief Implements if functionality.
+/// @param fn.blocks.empty( Parameter description needed.
+/// @return Return value description needed.
     if (fn.blocks.empty())
         return Expected<void>{makeError({}, formatFunctionDiag(fn, "function has no blocks"))};
 
     const std::string &firstLabel = fn.blocks.front().label;
     const bool isEntry = firstLabel == "entry" || firstLabel.rfind("entry_", 0) == 0;
+/// @brief Implements if functionality.
+/// @param !isEntry Parameter description needed.
+/// @return Return value description needed.
     if (!isEntry)
         return Expected<void>{makeError({}, formatFunctionDiag(fn, "first block must be entry"))};
 
+/// @brief Implements if functionality.
+/// @param externs_.find(fn.name Parameter description needed.
+/// @return Return value description needed.
     if (auto it = externs_.find(fn.name); it != externs_.end())
     {
         const Extern *ext = it->second;
         bool sigOk = ext->retType.kind == fn.retType.kind && ext->params.size() == fn.params.size();
+/// @brief Implements if functionality.
+/// @param sigOk Parameter description needed.
+/// @return Return value description needed.
         if (sigOk)
         {
+/// @brief Implements for functionality.
+/// @param ext->params.size( Parameter description needed.
+/// @return Return value description needed.
             for (size_t i = 0; i < ext->params.size(); ++i)
+/// @brief Implements if functionality.
+/// @param fn.params[i].type.kind Parameter description needed.
+/// @return Return value description needed.
                 if (ext->params[i].kind != fn.params[i].type.kind)
                     sigOk = false;
         }
+/// @brief Implements if functionality.
+/// @param !sigOk Parameter description needed.
+/// @return Return value description needed.
         if (!sigOk)
             return Expected<void>{
+/// @brief Handles error condition.
+/// @param {} Parameter description needed.
+/// @param extern" Parameter description needed.
+/// @return Return value description needed.
                 makeError({}, "function @" + fn.name + " signature mismatch with extern")};
     }
 
     std::unordered_set<std::string> labels;
     std::unordered_map<std::string, const BasicBlock *> blockMap;
+/// @brief Implements for functionality.
+/// @param fn.blocks Parameter description needed.
+/// @return Return value description needed.
     for (const auto &bb : fn.blocks)
     {
+/// @brief Implements if functionality.
+/// @param !labels.insert(bb.label Parameter description needed.
+/// @return Return value description needed.
         if (!labels.insert(bb.label).second)
             return Expected<void>{
+/// @brief Handles error condition.
+/// @param {} Parameter description needed.
+/// @param formatFunctionDiag(fn Parameter description needed.
+/// @param bb.label Parameter description needed.
+/// @return Return value description needed.
                 makeError({}, formatFunctionDiag(fn, "duplicate label " + bb.label))};
         blockMap[bb.label] = &bb;
     }
@@ -203,37 +256,89 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
     handlerInfo_.clear();
 
     std::unordered_map<unsigned, Type> temps;
+/// @brief Implements for functionality.
+/// @param fn.params Parameter description needed.
+/// @return Return value description needed.
     for (const auto &param : fn.params)
         temps[param.id] = param.type;
 
+/// @brief Implements for functionality.
+/// @param fn.blocks Parameter description needed.
+/// @return Return value description needed.
     for (const auto &bb : fn.blocks)
+/// @brief Implements if functionality.
+/// @param verifyBlock(fn Parameter description needed.
+/// @param bb Parameter description needed.
+/// @param blockMap Parameter description needed.
+/// @param temps Parameter description needed.
+/// @param sink Parameter description needed.
+/// @return Return value description needed.
         if (auto result = verifyBlock(fn, bb, blockMap, temps, sink); !result)
             return result;
 
+/// @brief Implements for functionality.
+/// @param fn.blocks Parameter description needed.
+/// @return Return value description needed.
     for (const auto &bb : fn.blocks)
     {
+/// @brief Implements for functionality.
+/// @param bb.instructions Parameter description needed.
+/// @return Return value description needed.
         for (const auto &instr : bb.instructions)
         {
+/// @brief Implements if functionality.
+/// @param Opcode::EhPush Parameter description needed.
+/// @return Return value description needed.
             if (instr.op != Opcode::EhPush)
                 continue;
+/// @brief Implements if functionality.
+/// @param instr.labels.empty( Parameter description needed.
+/// @return Return value description needed.
             if (instr.labels.empty())
                 continue;
             const std::string &target = instr.labels.front();
+/// @brief Implements if functionality.
+/// @param handlerInfo_.find(target Parameter description needed.
+/// @return Return value description needed.
             if (handlerInfo_.find(target) == handlerInfo_.end())
             {
                 std::ostringstream message;
                 message << "eh.push target ^" << target << " must name a handler block";
                 return Expected<void>{
+/// @brief Handles error condition.
+/// @param instr.loc Parameter description needed.
+/// @param formatInstrDiag(fn Parameter description needed.
+/// @param bb Parameter description needed.
+/// @param instr Parameter description needed.
+/// @param message.str( Parameter description needed.
+/// @return Return value description needed.
                     makeError(instr.loc, formatInstrDiag(fn, bb, instr, message.str()))};
             }
         }
     }
 
+/// @brief Implements for functionality.
+/// @param fn.blocks Parameter description needed.
+/// @return Return value description needed.
     for (const auto &bb : fn.blocks)
+/// @brief Implements for functionality.
+/// @param bb.instructions Parameter description needed.
+/// @return Return value description needed.
         for (const auto &instr : bb.instructions)
+/// @brief Implements for functionality.
+/// @param instr.labels Parameter description needed.
+/// @return Return value description needed.
             for (const auto &label : instr.labels)
+/// @brief Implements if functionality.
+/// @param !labels.count(label Parameter description needed.
+/// @return Return value description needed.
                 if (!labels.count(label))
                     return Expected<void>{
+/// @brief Handles error condition.
+/// @param {} Parameter description needed.
+/// @param formatFunctionDiag(fn Parameter description needed.
+/// @param label Parameter description needed.
+/// @return Return value description needed.
                         makeError({}, formatFunctionDiag(fn, "unknown label " + label))};
 
     return {};
@@ -262,71 +367,148 @@ Expected<void> FunctionVerifier::verifyBlock(
     DiagSink &sink)
 {
     std::unordered_set<unsigned> defined;
+/// @brief Implements for functionality.
+/// @param temps Parameter description needed.
+/// @return Return value description needed.
     for (const auto &entry : temps)
         defined.insert(entry.first);
 
     TypeInference types(temps, defined);
 
     std::vector<unsigned> paramIds;
+/// @brief Implements if functionality.
+/// @param validateBlockParams_E(fn Parameter description needed.
+/// @param bb Parameter description needed.
+/// @param types Parameter description needed.
+/// @param paramIds Parameter description needed.
+/// @return Return value description needed.
     if (auto result = validateBlockParams_E(fn, bb, types, paramIds); !result)
         return result;
 
     std::optional<HandlerSignature> handlerSignature;
     auto handlerCheck = analyzeHandlerBlock(fn, bb);
+/// @brief Implements if functionality.
+/// @param !handlerCheck Parameter description needed.
+/// @return Return value description needed.
     if (!handlerCheck)
         return Expected<void>{handlerCheck.error()};
     handlerSignature = handlerCheck.value();
+/// @brief Implements if functionality.
+/// @param handlerSignature Parameter description needed.
+/// @return Return value description needed.
     if (handlerSignature)
         handlerInfo_[bb.label] = *handlerSignature;
 
     std::unordered_set<unsigned> released;
 
+/// @brief Implements for functionality.
+/// @param bb.instructions Parameter description needed.
+/// @return Return value description needed.
     for (const auto &instr : bb.instructions)
     {
+/// @brief Implements if functionality.
+/// @param types.ensureOperandsDefined_E(fn Parameter description needed.
+/// @param bb Parameter description needed.
+/// @param instr Parameter description needed.
+/// @return Return value description needed.
         if (auto result = types.ensureOperandsDefined_E(fn, bb, instr); !result)
             return result;
 
+/// @brief Implements if functionality.
+/// @param bb.instructions.front( Parameter description needed.
+/// @return Return value description needed.
         if (instr.op == Opcode::EhEntry && &instr != &bb.instructions.front())
             return Expected<void>{makeError(
                 instr.loc,
+/// @brief Implements formatInstrDiag functionality.
+/// @return Return value description needed.
                 formatInstrDiag(
                     fn, bb, instr, "eh.entry only allowed as first instruction of handler block"))};
 
+/// @brief Implements if functionality.
+/// @param isResumeOpcode(instr.op Parameter description needed.
+/// @return Return value description needed.
         if (isResumeOpcode(instr.op))
         {
+/// @brief Implements if functionality.
+/// @param !handlerSignature Parameter description needed.
+/// @return Return value description needed.
             if (!handlerSignature)
                 return Expected<void>{makeError(
                     instr.loc,
+/// @brief Implements formatInstrDiag functionality.
+/// @param fn Parameter description needed.
+/// @param bb Parameter description needed.
+/// @param instr Parameter description needed.
+/// @param block" Parameter description needed.
+/// @return Return value description needed.
                     formatInstrDiag(fn, bb, instr, "resume.* only allowed in handler block"))};
+/// @brief Implements if functionality.
+/// @param instr.operands.empty( Parameter description needed.
+/// @return Return value description needed.
             if (instr.operands.empty() || instr.operands[0].kind != Value::Kind::Temp ||
                 instr.operands[0].id != handlerSignature->resumeTokenParam)
             {
                 return Expected<void>{makeError(
                     instr.loc,
+/// @brief Implements formatInstrDiag functionality.
+/// @param fn Parameter description needed.
+/// @param bb Parameter description needed.
+/// @param instr Parameter description needed.
+/// @param parameter" Parameter description needed.
+/// @return Return value description needed.
                     formatInstrDiag(fn, bb, instr, "resume.* must use handler %tok parameter"))};
             }
         }
 
+/// @brief Implements if functionality.
+/// @param isErrAccessOpcode(instr.op Parameter description needed.
+/// @return Return value description needed.
         if (isErrAccessOpcode(instr.op))
         {
+/// @brief Implements if functionality.
+/// @param !handlerSignature Parameter description needed.
+/// @return Return value description needed.
             if (!handlerSignature)
             {
                 return Expected<void>{makeError(
                     instr.loc,
+/// @brief Implements formatInstrDiag functionality.
+/// @param fn Parameter description needed.
+/// @param bb Parameter description needed.
+/// @param instr Parameter description needed.
+/// @param block" Parameter description needed.
+/// @return Return value description needed.
                     formatInstrDiag(fn, bb, instr, "err.get_* only allowed in handler block"))};
             }
         }
 
+/// @brief Implements if functionality.
+/// @param isRuntimeArrayRelease(instr Parameter description needed.
+/// @return Return value description needed.
         if (isRuntimeArrayRelease(instr))
         {
+/// @brief Implements if functionality.
+/// @param !instr.operands.empty( Parameter description needed.
+/// @return Return value description needed.
             if (!instr.operands.empty() && instr.operands[0].kind == Value::Kind::Temp)
             {
                 const unsigned id = instr.operands[0].id;
+/// @brief Implements if functionality.
+/// @param released.count(id Parameter description needed.
+/// @return Return value description needed.
                 if (released.count(id) != 0)
                 {
                     std::ostringstream message;
                     message << "double release of %" << id;
                     return Expected<void>{
+/// @brief Handles error condition.
+/// @param instr.loc Parameter description needed.
+/// @param formatInstrDiag(fn Parameter description needed.
+/// @param bb Parameter description needed.
+/// @param instr Parameter description needed.
+/// @param message.str( Parameter description needed.
+/// @return Return value description needed.
                         makeError(instr.loc, formatInstrDiag(fn, bb, instr, message.str()))};
                 }
             }
@@ -335,43 +517,92 @@ Expected<void> FunctionVerifier::verifyBlock(
         {
             const auto checkValue = [&](const Value &value) -> Expected<void>
             {
+/// @brief Implements if functionality.
+/// @param Value::Kind::Temp Parameter description needed.
+/// @return Return value description needed.
                 if (value.kind != Value::Kind::Temp)
                     return Expected<void>{};
                 const unsigned id = value.id;
+/// @brief Implements if functionality.
+/// @param released.count(id Parameter description needed.
+/// @return Return value description needed.
                 if (released.count(id) == 0)
                     return Expected<void>{};
                 std::ostringstream message;
                 message << "use after release of %" << id;
                 return Expected<void>{
+/// @brief Handles error condition.
+/// @param instr.loc Parameter description needed.
+/// @param formatInstrDiag(fn Parameter description needed.
+/// @param bb Parameter description needed.
+/// @param instr Parameter description needed.
+/// @param message.str( Parameter description needed.
+/// @return Return value description needed.
                     makeError(instr.loc, formatInstrDiag(fn, bb, instr, message.str()))};
             };
 
+/// @brief Implements for functionality.
+/// @param instr.operands Parameter description needed.
+/// @return Return value description needed.
             for (const auto &operand : instr.operands)
+/// @brief Implements if functionality.
+/// @param checkValue(operand Parameter description needed.
+/// @return Return value description needed.
                 if (auto result = checkValue(operand); !result)
                     return result;
 
+/// @brief Implements for functionality.
+/// @param instr.brArgs Parameter description needed.
+/// @return Return value description needed.
             for (const auto &bundle : instr.brArgs)
+/// @brief Implements for functionality.
+/// @param bundle Parameter description needed.
+/// @return Return value description needed.
                 for (const auto &argument : bundle)
+/// @brief Implements if functionality.
+/// @param checkValue(argument Parameter description needed.
+/// @return Return value description needed.
                     if (auto result = checkValue(argument); !result)
                         return result;
         }
 
+/// @brief Implements if functionality.
+/// @param verifyInstruction(fn Parameter description needed.
+/// @param bb Parameter description needed.
+/// @param instr Parameter description needed.
+/// @param blockMap Parameter description needed.
+/// @param types Parameter description needed.
+/// @param sink Parameter description needed.
+/// @return Return value description needed.
         if (auto result = verifyInstruction(fn, bb, instr, blockMap, types, sink); !result)
             return result;
 
+/// @brief Implements if functionality.
+/// @param isRuntimeArrayRelease(instr Parameter description needed.
+/// @return Return value description needed.
         if (isRuntimeArrayRelease(instr) && !instr.operands.empty() &&
             instr.operands[0].kind == Value::Kind::Temp)
         {
             released.insert(instr.operands[0].id);
         }
 
+/// @brief Implements if functionality.
+/// @param isTerminator(instr.op Parameter description needed.
+/// @return Return value description needed.
         if (isTerminator(instr.op))
             break;
     }
 
+/// @brief Implements if functionality.
+/// @param checkBlockTerminators_E(fn Parameter description needed.
+/// @param bb Parameter description needed.
+/// @return Return value description needed.
     if (auto result = checkBlockTerminators_E(fn, bb); !result)
         return result;
 
+/// @brief Implements for functionality.
+/// @param paramIds Parameter description needed.
+/// @return Return value description needed.
     for (unsigned id : paramIds)
         types.removeTemp(id);
 
@@ -401,11 +632,20 @@ Expected<void> FunctionVerifier::verifyInstruction(
     DiagSink &sink)
 {
     VerifyCtx ctx{sink, types, externs_, functionMap_, fn, bb, instr};
+/// @brief Implements if functionality.
+/// @param verifyOpcodeSignature_E(ctx Parameter description needed.
+/// @return Return value description needed.
     if (auto result = verifyOpcodeSignature_E(ctx); !result)
         return result;
 
+/// @brief Implements for functionality.
+/// @param strategies_ Parameter description needed.
+/// @return Return value description needed.
     for (const auto &strategy : strategies_)
     {
+/// @brief Implements if functionality.
+/// @param !strategy->matches(instr Parameter description needed.
+/// @return Return value description needed.
         if (!strategy->matches(instr))
             continue;
         return strategy->verify(fn, bb, instr, blockMap, externs_, functionMap_, types, sink);
@@ -427,6 +667,9 @@ std::string FunctionVerifier::formatFunctionDiag(const Function &fn, std::string
 {
     std::ostringstream oss;
     oss << fn.name;
+/// @brief Implements if functionality.
+/// @param !message.empty( Parameter description needed.
+/// @return Return value description needed.
     if (!message.empty())
         oss << ": " << message;
     return oss.str();

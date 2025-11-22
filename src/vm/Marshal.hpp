@@ -1,8 +1,18 @@
-// File: src/vm/Marshal.hpp
-// Purpose: Declares helpers for converting between VM and runtime data types.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: vm/Marshal.hpp
+// Purpose: Declares helpers for converting between VM and runtime data types. 
 // Key invariants: Conversion helpers preserve existing runtime encodings.
 // Ownership/Lifetime: Views returned do not extend the lifetime of underlying data.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "il/core/Value.hpp"

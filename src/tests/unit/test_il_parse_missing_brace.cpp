@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_il_parse_missing_brace.cpp
-// Purpose: Ensure IL parser reports a diagnostic when a function body misses a closing brace.
+// Purpose: Ensure IL parser reports a diagnostic when a function body misses a closing brace. 
 // Key invariants: Parser surfaces EOF diagnostics referencing the final line number.
 // Ownership/Lifetime: Test owns module buffers and diagnostics locally.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/api/expected_api.hpp"
 #include "il/core/Module.hpp"

@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_codegen_x86_64_passes.cpp
-// Purpose: Unit tests for the x86-64 codegen pass manager and individual passes.
+// Purpose: Unit tests for the x86-64 codegen pass manager and individual passes. 
 // Key invariants: Passes respect prerequisite state and report diagnostics accordingly.
 // Ownership/Lifetime: Tests construct Module and Diagnostics instances on the stack.
 // Links: src/codegen/x86_64/passes
+//
+//===----------------------------------------------------------------------===//
 
 #include "GTestStub.hpp"
 

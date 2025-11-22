@@ -1,6 +1,18 @@
-// File: src/frontends/basic/types/TypeMapping.hpp
-// Purpose: Map IL core types to BASIC frontend scalar types for proc signatures.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: frontends/basic/types/TypeMapping.hpp
+// Purpose: Map IL core types to BASIC frontend scalar types for proc signatures. 
+// Key invariants: To be documented.
 // Ownership/Lifetime: Header-only decl; implementation in .cpp.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "frontends/basic/ast/NodeFwd.hpp"

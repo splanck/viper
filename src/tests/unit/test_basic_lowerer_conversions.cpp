@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_basic_lowerer_conversions.cpp
-// Purpose: Verify BASIC lowerer emits conversions for mixed-type statements.
+// Purpose: Verify BASIC lowerer emits conversions for mixed-type statements. 
 // Key invariants: Assignments, prints, and inputs coerce values to target types.
 // Ownership/Lifetime: Test owns parser, lowerer, and resulting module.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/Parser.hpp"

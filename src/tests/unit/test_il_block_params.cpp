@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_il_block_params.cpp
-// Purpose: Verify block parameters and branch arguments in IRBuilder.
+// Purpose: Verify block parameters and branch arguments in IRBuilder. 
 // Key invariants: Parameter counts and branch arities match.
 // Ownership/Lifetime: Uses builder with local module.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/build/IRBuilder.hpp"
 #include <cassert>

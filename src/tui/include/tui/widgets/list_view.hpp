@@ -1,7 +1,18 @@
-// tui/include/tui/widgets/list_view.hpp
-// @brief Selectable list widget with multi-selection and custom renderer.
-// @invariant Cursor and selection indices remain within item range.
-// @ownership ListView borrows Theme; caller owns item strings.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: tui/include/tui/widgets/list_view.hpp
+// Purpose: Implements functionality for this subsystem.
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include <functional>

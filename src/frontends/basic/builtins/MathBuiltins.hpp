@@ -1,11 +1,18 @@
-// File: src/frontends/basic/builtins/MathBuiltins.hpp
-// Purpose: Declares helpers for registering BASIC math builtins in the central
-//          registry used by semantic analysis and lowering.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: frontends/basic/builtins/MathBuiltins.hpp
+// Purpose: Declares helpers for registering BASIC math builtins in the central 
 // Key invariants: Registration writes entries matching BuiltinCallExpr::Builtin
-//                 ordinals; callers must provide full-span tables sized to the
-//                 builtin enum.
 // Ownership/Lifetime: Functions mutate caller-provided tables in-place.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include <span>

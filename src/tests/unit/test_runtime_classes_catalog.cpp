@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_runtime_classes_catalog.cpp
-// Purpose: Smoke test for runtime class catalog exposing Viper.String.
-// Invariants: Catalog contains at least one class; first is Viper.String with
-//             Length and IsEmpty properties.
+// Purpose: Smoke test for runtime class catalog exposing Viper.String. 
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/runtime/classes/RuntimeClasses.hpp"
 

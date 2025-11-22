@@ -1,8 +1,18 @@
-// File: src/support/diag_expected.hpp
-// Purpose: Provides diagnostic helpers and a lightweight Expected container for CLI tools.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: support/diag_expected.hpp
+// Purpose: Provides diagnostic helpers and a lightweight Expected container for CLI tools. 
 // Key invariants: Diagnostics encapsulate a single severity, message, and location; Expected holds
-// either a value or diagnostic. Ownership/Lifetime: Expected owns success payloads or diagnostics;
-// diagnostics own their message buffers. Links: docs/codemap.md
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "support/diagnostics.hpp"

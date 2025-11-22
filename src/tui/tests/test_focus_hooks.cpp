@@ -1,7 +1,17 @@
-// tui/tests/test_focus_hooks.cpp
-// @brief Verify focus change callbacks and unregister behavior.
-// @invariant FocusManager notifies widgets on focus transitions and removal.
-// @ownership Test owns widgets and FocusManager.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: tui/tests/test_focus_hooks.cpp
+// Purpose: Test suite for this component.
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "tui/ui/focus.hpp"
 #include "tui/ui/widget.hpp"

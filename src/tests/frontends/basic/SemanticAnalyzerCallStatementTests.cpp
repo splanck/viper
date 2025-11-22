@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/frontends/basic/SemanticAnalyzerCallStatementTests.cpp
-// Purpose: Validate semantic analysis of CALL statements for SUB vs FUNCTION targets.
+// Purpose: Validate semantic analysis of CALL statements for SUB vs FUNCTION targets. 
 // Key invariants: Statement calls must target SUB procedures; function calls are rejected.
 // Ownership/Lifetime: Tests allocate parser/analyzer per snippet; diagnostics captured locally.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/Parser.hpp"

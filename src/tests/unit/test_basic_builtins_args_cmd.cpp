@@ -1,9 +1,19 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_basic_builtins_args_cmd.cpp
-// Purpose: Ensure ARGC, ARG$, and COMMAND$ compile and lower to correct runtime calls.
+// Purpose: Ensure ARGC, ARG$, and COMMAND$ compile and lower to correct runtime calls. 
 // Key invariants: Module contains calls to rt_args_count, rt_args_get, rt_cmdline.
 // Ownership/Lifetime: Standalone unit test.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
-#if __has_include(<gtest/gtest.h>)
+#ifdef VIPER_HAS_GTEST
 #include <gtest/gtest.h>
 #define VIPER_HAVE_GTEST 1
 #else

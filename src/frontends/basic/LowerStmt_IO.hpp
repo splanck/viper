@@ -1,12 +1,18 @@
-// File: src/frontends/basic/LowerStmt_IO.hpp
-// License: GPL-3.0-only. See LICENSE in the project root for full license information.
-// Purpose: Declares BASIC I/O statement lowering helpers grouped by channel or
-//          terminal operations.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: frontends/basic/LowerStmt_IO.hpp
+// Purpose: Declares BASIC I/O statement lowering helpers grouped by channel or 
 // Key invariants: Helpers convert BASIC semantics to runtime shims using the
-//                 active Lowerer context for diagnostics and block state.
 // Ownership/Lifetime: Declarations extend Lowerer's private interface when
-//                     included from LowerEmit.hpp.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 void lowerOpen(const OpenStmt &stmt);

@@ -1,9 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/common/VmFixture.hpp
-// Purpose: Provide shared helpers for executing IL modules on the VM in tests
-//          while capturing exit codes and trap diagnostics.
+// Purpose: Provide shared helpers for executing IL modules on the VM in tests 
 // Key invariants: Trap execution helpers fork the current process to isolate the
-//                 VM run and capture stderr reliably.
 // Ownership/Lifetime: Stateless helper usable across multiple tests.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #pragma once
 

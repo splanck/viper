@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_il_parse_string_escapes.cpp
-// Purpose: Verify IL parser decodes escaped globals and serializer re-escapes them.
+// Purpose: Verify IL parser decodes escaped globals and serializer re-escapes them. 
 // Key invariants: Parsed globals store literal characters; serialization round-trips escapes.
 // Ownership/Lifetime: Test owns module and buffers.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/api/expected_api.hpp"
 #include "il/core/Module.hpp"

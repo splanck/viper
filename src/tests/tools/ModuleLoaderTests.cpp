@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/tools/ModuleLoaderTests.cpp
-// Purpose: Exercise the shared module loading helpers used by CLI tools.
+// Purpose: Exercise the shared module loading helpers used by CLI tools. 
 // Key invariants: Helpers emit diagnostics on failure and succeed for valid inputs.
 // Ownership/Lifetime: Test owns constructed modules and diagnostic streams.
 // Links: docs/testing.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "support/source_location.hpp"
 #include "support/source_manager.hpp"

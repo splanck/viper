@@ -1,17 +1,17 @@
-// src/codegen/x86_64/ISel.hpp
-// SPDX-License-Identifier: GPL-3.0-only
+//===----------------------------------------------------------------------===//
 //
-// Purpose: Declare the instruction selection helpers that canonicalise the
-//          Machine IR produced by the IL lowering bridge into concrete x86-64
-//          instructions for Phase A.
-// Invariants: Transformations operate locally within a machine function,
-//             preserving operand ordering while upgrading pseudo encodings to
-//             legal instruction forms (e.g. immediate compares, zero-extended
-//             i1 materialisation).
-// Ownership: The selector mutates Machine IR in-place; no dynamic resources are
-//            owned beyond references to the target description supplied at
-//            construction time.
-// Notes: Depends solely on MachineIR.hpp and TargetX64.hpp.
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: codegen/x86_64/ISel.hpp
+// Purpose: Declare the instruction selection helpers that canonicalise the 
+// Key invariants: To be documented.
+// Ownership/Lifetime: The selector mutates Machine IR in-place; no dynamic resources are
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #pragma once
 

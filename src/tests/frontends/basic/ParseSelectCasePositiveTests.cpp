@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/frontends/basic/ParseSelectCasePositiveTests.cpp
-// Purpose: Ensure SELECT CASE with ELSE parses correctly from BASIC source file.
+// Purpose: Ensure SELECT CASE with ELSE parses correctly from BASIC source file. 
 // Key invariants: Parser builds SelectCaseStmt with expected arms and else body.
 // Ownership/Lifetime: Test owns parser, source manager, and AST result.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/Parser.hpp"
 #include "support/source_manager.hpp"

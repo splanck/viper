@@ -1,6 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/codegen/test_regalloc_aarch64_linear.cpp
-// Purpose: Validate AArch64 linear-scan allocator assigns phys regs, spills,
-// //        and records callee-saved usage on pressure.
+// Purpose: Validate AArch64 linear-scan allocator assigns phys regs, spills, 
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "tests/unit/GTestStub.hpp"
 

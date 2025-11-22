@@ -1,13 +1,18 @@
-// File: src/frontends/basic/SemanticAnalyzer.Stmts.Shared.hpp
-// License: GPL-3.0-only. See LICENSE in the project root for full license
-//          information.
-// Purpose: Declares shared helpers for statement semantic analysis, providing
-//          RAII utilities and mutation checks reused across themed statement
-//          translation units.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: frontends/basic/SemanticAnalyzer.Stmts.Shared.hpp
+// Purpose: Declares shared helpers for statement semantic analysis, providing 
 // Key invariants: Helpers operate on an existing SemanticAnalyzer instance and
-//                 never outlive it; loop/variable stacks remain balanced.
 // Ownership/Lifetime: Helpers hold non-owning references to the analyzer.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "frontends/basic/SemanticAnalyzer.hpp"

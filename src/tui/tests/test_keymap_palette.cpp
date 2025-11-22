@@ -1,7 +1,17 @@
-// tui/tests/test_keymap_palette.cpp
-// @brief Validate keymap scopes and CommandPalette filtering/execution.
-// @invariant Widget-specific bindings override global and palette runs callbacks.
-// @ownership Theme and widgets owned by test.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: tui/tests/test_keymap_palette.cpp
+// Purpose: Test suite for this component.
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "tui/input/keymap.hpp"
 #include "tui/render/renderer.hpp"

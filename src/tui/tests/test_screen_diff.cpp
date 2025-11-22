@@ -1,7 +1,17 @@
-// tui/tests/test_screen_diff.cpp
-// @brief Tests diff computation for ScreenBuffer.
-// @invariant computeDiff returns minimal spans of changed cells.
-// @ownership ScreenBuffer owns all buffers; tests take no ownership.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: tui/tests/test_screen_diff.cpp
+// Purpose: Test suite for this component.
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "tui/render/screen.hpp"
 

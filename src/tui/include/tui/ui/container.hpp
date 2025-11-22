@@ -1,7 +1,18 @@
-// tui/include/tui/ui/container.hpp
-// @brief Container widget arranging children in vertical or horizontal stacks.
-// @invariant Children are laid out within the container's rectangle.
-// @ownership Container owns child widgets via unique_ptr.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: tui/include/tui/ui/container.hpp
+// Purpose: Implements functionality for this subsystem.
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "tui/ui/widget.hpp"

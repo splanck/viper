@@ -1,8 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/runtime/RTAllocTests.cpp
-// Purpose: Verify rt_alloc traps on negative allocation sizes.
+// Purpose: Verify rt_alloc traps on negative allocation sizes. 
 // Key invariants: rt_alloc reports "negative allocation" when bytes < 0.
-// Ownership: Uses runtime library.
+// Ownership/Lifetime: Uses runtime library.
 // Links: docs/runtime-vm.md#runtime-abi
+//
+//===----------------------------------------------------------------------===//
+
 #include "rt.hpp"
 #include <cassert>
 #include <string>

@@ -1,6 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/perf/runtime_classes/bench_string_length.cpp
-// Purpose: Microbench comparing procedural Len(s) vs property s.Length lowering.
-// Notes: Uses the BASIC frontend to generate IL so both paths become extern calls.
+// Purpose: Microbench comparing procedural Len(s) vs property s.Length lowering. 
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/BasicCompiler.hpp"
 #include "vm/VM.hpp"

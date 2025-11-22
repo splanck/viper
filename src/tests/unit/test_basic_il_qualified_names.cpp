@@ -1,7 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_basic_il_qualified_names.cpp
-// Purpose: Validate IL emission preserves fully-qualified function names.
+// Purpose: Validate IL emission preserves fully-qualified function names. 
 // Key invariants: Lowering uses decl.qualifiedName; serializer prints names verbatim.
 // Ownership/Lifetime: Local parser/emitter; no persistent state.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "viper/il/IO.hpp"
 #include "viper/il/IRBuilder.hpp"

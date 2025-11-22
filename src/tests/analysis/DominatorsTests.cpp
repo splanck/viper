@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/analysis/DominatorsTests.cpp
-// Purpose: Validate dominator tree construction and queries.
+// Purpose: Validate dominator tree construction and queries. 
 // Key invariants: Immediate dominators and dominance checks reflect CFG structure.
 // Ownership/Lifetime: Builds local modules via IRBuilder.
 // Links: docs/dev/analysis.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/analysis/CFG.hpp"
 #include "il/analysis/Dominators.hpp"

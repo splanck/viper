@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/codegen/x86_64/test_object_only_cli.cpp
-// Purpose: Verify that the x86-64 codegen CLI can assemble IL modules without
-//          linking when requested, ensuring object-only flows succeed.
+// Purpose: Verify that the x86-64 codegen CLI can assemble IL modules without 
 // Key invariants: The CLI must successfully emit an object file even when the
-//                 input module lacks an entry-point function such as @main.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include <chrono>
 #include <cstdint>
@@ -20,6 +29,7 @@
 #endif
 
 #if __has_include(<gtest/gtest.h>)
+#ifdef VIPER_HAS_GTEST
 #include <gtest/gtest.h>
 #define VIPER_HAS_GTEST 1
 #else

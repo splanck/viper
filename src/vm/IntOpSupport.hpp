@@ -1,11 +1,18 @@
-// GNU General Public License v3. See LICENSE in the project root for full license information.
-// File: src/vm/IntOpSupport.hpp
-// Purpose: Shared helpers for integer opcode handlers, covering trap dispatch and
-//          type-specialised arithmetic templates.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: vm/IntOpSupport.hpp
+// Purpose: Shared helpers for integer opcode handlers, covering trap dispatch and 
 // Key invariants: Helpers operate on canonicalised Slot values and honour IL trap
-//                 semantics.
+// Ownership/Lifetime: To be documented.
 // Links: docs/il-guide.md#reference §Integer Arithmetic, §Bitwise and Shifts,
-//        §Comparisons, §Conversions
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "vm/OpHandlerUtils.hpp"

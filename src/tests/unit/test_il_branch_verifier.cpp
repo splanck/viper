@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_il_branch_verifier.cpp
-// Purpose: Validate branch verifier helpers catch structural issues and accept correct inputs.
+// Purpose: Validate branch verifier helpers catch structural issues and accept correct inputs. 
 // Key invariants: Branch argument types, condition operands, and return values are enforced.
 // Ownership/Lifetime: Constructs temporary IL functions for each scenario.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/api/expected_api.hpp"
 #include "il/core/BasicBlock.hpp"

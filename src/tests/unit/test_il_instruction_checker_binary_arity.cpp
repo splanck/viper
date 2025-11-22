@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_il_instruction_checker_binary_arity.cpp
-// Purpose: Regression test ensuring binary arithmetic instructions enforce operand arity.
+// Purpose: Regression test ensuring binary arithmetic instructions enforce operand arity. 
 // Key invariants: iadd.ovf instructions reject operand counts other than two and surface
-// diagnostics. Ownership/Lifetime: Constructs ephemeral IL state in function scope. Links:
-// docs/il-guide.md#reference
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Extern.hpp"

@@ -1,8 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/runtime/RTRandomTests.cpp
-// Purpose: Validate deterministic LCG random generator.
+// Purpose: Validate deterministic LCG random generator. 
 // Key invariants: Sequence reproducible for given seed; outputs in [0,1).
-// Ownership: Uses runtime library.
+// Ownership/Lifetime: Uses runtime library.
 // Links: docs/runtime-vm.md#runtime-abi
+//
+//===----------------------------------------------------------------------===//
+
 #include "viper/runtime/rt.h"
 #include <cassert>
 

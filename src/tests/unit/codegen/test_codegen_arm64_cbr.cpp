@@ -1,5 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/codegen/test_codegen_arm64_cbr.cpp
-// Purpose: Verify CLI lowers cbr with compare conditions to cmp + b.<cond>.
+// Purpose: Verify CLI lowers cbr with compare conditions to cmp + b.<cond>. 
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "tests/unit/GTestStub.hpp"
 

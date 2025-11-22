@@ -1,16 +1,17 @@
-// src/codegen/x86_64/Backend.hpp
-// SPDX-License-Identifier: GPL-3.0-only
+//===----------------------------------------------------------------------===//
 //
-// Purpose: Declare the high-level orchestration entry points for the x86-64
-//          backend, enabling Phase A clients to lower IL modules into assembly
-//          text through a single facade.
-// Invariants: The facade sequences the Phase A pipeline components in a
-//             deterministic order and returns aggregated assembly and diagnostic
-//             text.
-// Ownership: Callers retain ownership of IL modules; generated assembly is
-//            returned by value in the result structure.
-// Notes: Uses the temporary ILModule adapter defined by LowerILToMIR.hpp until
-//        the full IL integration lands.
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: codegen/x86_64/Backend.hpp
+// Purpose: Declare the high-level orchestration entry points for the x86-64 
+// Key invariants: To be documented.
+// Ownership/Lifetime: Callers retain ownership of IL modules; generated assembly is
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #pragma once
 

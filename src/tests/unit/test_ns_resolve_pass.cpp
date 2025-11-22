@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_ns_resolve_pass.cpp
-// Purpose: Test type resolution pass with TypeResolver.
-// Note: Tests are simplified to work within current constraints:
-//       - USING must appear before all declarations (including NAMESPACE)
-//       - Cannot import namespaces defined in same file
+// Purpose: Test type resolution pass with TypeResolver. 
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/Parser.hpp"

@@ -1,12 +1,17 @@
-// src/codegen/aarch64/MachineIR.hpp
-// SPDX-License-Identifier: GPL-3.0-only
+//===----------------------------------------------------------------------===//
 //
-// Purpose: Minimal AArch64 Machine IR scaffolding (Phase A) used by tests and
-//          early integration. Represents a tiny subset of instructions sufficient
-//          to cover current CLI patterns: moves, add/sub/mul (rrr/ri), shifts-by-imm,
-//          compares (rr/ri) with cset, and function/block containers.
-// Invariants: MIR objects are simple POD-like containers; no ownership beyond
-//             standard containers. Opcodes here are intentionally lean.
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: codegen/aarch64/MachineIR.hpp
+// Purpose: Minimal AArch64 Machine IR scaffolding (Phase A) used by tests and 
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #pragma once
 

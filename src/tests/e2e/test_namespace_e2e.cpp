@@ -1,15 +1,17 @@
-// File: tests/e2e/test_namespace_e2e.cpp
-// Purpose: End-to-end multi-file namespace tests proving file-scoped USING and aliasing.
-// Scenarios:
-//   1) Two-file base/derived with USING in second file (success)
-//   2) Three-file alias usage with "USING L = Lib.Core" (success)
-//   3) Multi-file ambiguity with A.T and B.T (E_NS_003)
+//===----------------------------------------------------------------------===//
 //
-// Each scenario uses multiple compilation units to demonstrate:
-// - USING directives are file-scoped
-// - Aliases work across files
-// - Ambiguity detection spans files
-// - Error locations correctly identify source files
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: tests/e2e/test_namespace_e2e.cpp
+// Purpose: End-to-end multi-file namespace tests proving file-scoped USING and aliasing. 
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/Lowerer.hpp"

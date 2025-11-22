@@ -1,10 +1,19 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/BasicTerminalScanTest.cpp
-// Purpose: Verify terminal statements declare required runtime externs during BASIC lowering.
+// Purpose: Verify terminal statements declare required runtime externs during BASIC lowering. 
 // Key invariants: Compiling terminal control statements registers runtime helpers in the module.
 // Ownership/Lifetime: Test owns compilation inputs and diagnostics infrastructure.
 // Links: docs/il-guide.md#reference, src/frontends/basic/LowerStmt_Runtime.cpp
+//
+//===----------------------------------------------------------------------===//
 
-#if __has_include(<gtest/gtest.h>)
+#ifdef VIPER_HAS_GTEST
 #include <gtest/gtest.h>
 #else
 #include "GTestStub.hpp"

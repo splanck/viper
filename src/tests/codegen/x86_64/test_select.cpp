@@ -1,17 +1,24 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/codegen/x86_64/test_select.cpp
-// Purpose: Assert x86-64 select lowering emits cmovne for integer selects and
-//          a branchy movsd sequence for floating-point selects.
+// Purpose: Assert x86-64 select lowering emits cmovne for integer selects and 
 // Key invariants: Generated assembly from the adapter IL must contain the
-//                 expected mnemonic patterns irrespective of register names.
 // Ownership/Lifetime: Tests build IL modules locally and inspect the emitted
-//                     assembly by value without external fixtures.
 // Links: src/codegen/x86_64/ISel.cpp, src/codegen/x86_64/LowerILToMIR.cpp
+//
+//===----------------------------------------------------------------------===//
 
 #include "codegen/x86_64/Backend.hpp"
 
 #include <string>
 
 #if __has_include(<gtest/gtest.h>)
+#ifdef VIPER_HAS_GTEST
 #include <gtest/gtest.h>
 #define VIPER_HAS_GTEST 1
 #else

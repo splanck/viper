@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_il_parse_global_missing_type.cpp
-// Purpose: Ensure IL parser rejects globals that omit a type qualifier.
+// Purpose: Ensure IL parser rejects globals that omit a type qualifier. 
 // Key invariants: Parser must emit a diagnostic before attempting to read the name or initializer.
 // Ownership/Lifetime: Test owns parser state and module instance locally.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/api/expected_api.hpp"
 #include "il/core/Module.hpp"

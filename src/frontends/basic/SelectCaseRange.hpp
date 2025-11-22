@@ -1,8 +1,17 @@
-// File: src/frontends/basic/SelectCaseRange.hpp
-// Purpose: Shared helpers for SELECT CASE range handling across semantic analysis and lowering.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: frontends/basic/SelectCaseRange.hpp
+// Purpose: Shared helpers for SELECT CASE range handling across semantic analysis and lowering. 
 // Key invariants: Maintains consistent 32-bit numeric limits for CASE labels.
 // Ownership/Lifetime: Header-only utilities without state.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #pragma once
 

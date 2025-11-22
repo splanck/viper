@@ -1,20 +1,17 @@
-// src/codegen/x86_64/RegAllocLinear.hpp
-// SPDX-License-Identifier: GPL-3.0-only
+//===----------------------------------------------------------------------===//
 //
-// Purpose: Declare the Phase A linear-scan register allocator for the x86-64
-//          backend. The allocator implements a deliberately simple strategy
-//          tailored for bring-up: it performs block-local live range
-//          approximation, selects registers directly from TargetInfo pools, and
-//          falls back to stack slots when pressure requires spilling.
-// Invariants: AllocationResult captures the mapping from virtual to physical
-//             registers and the total number of stack slots reserved per class.
-// Ownership: Functions operate directly on the supplied MFunction instance and
-//            mutate its instruction streams in-place. No heap ownership beyond
-//            standard containers.
-// Notes: The allocator purposefully omits sophisticated liveness analysis; it
-//        relies on blocks being visited in reverse-post-order and treats values
-//        as live until block termination, which suffices for early backend
-//        validation.
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: codegen/x86_64/RegAllocLinear.hpp
+// Purpose: Declare the Phase A linear-scan register allocator for the x86-64 
+// Key invariants: To be documented.
+// Ownership/Lifetime: Functions operate directly on the supplied MFunction instance and
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #pragma once
 

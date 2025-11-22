@@ -1,13 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/codegen/x86_64/test_udiv_urem.cpp
-// Purpose: Validate unsigned 64-bit division/remainder lowering expands into the
-//          expected guard + DIV sequence that zeroes RDX before executing DIV.
+// Purpose: Validate unsigned 64-bit division/remainder lowering expands into the 
 // Key invariants: Emitted assembly must zero-extend the dividend via XOR on
-//                 EDX, perform a 64-bit DIV instruction, and include the
-//                 division-by-zero guard that branches to the shared trap block.
 // Ownership/Lifetime: Test constructs IL adapter modules locally and inspects
-//                      assembly text returned by the backend without storing
-//                      global state.
 // Links: src/codegen/x86_64/LowerDiv.cpp
+//
+//===----------------------------------------------------------------------===//
 
 #include "codegen/x86_64/Backend.hpp"
 
@@ -15,6 +19,7 @@
 #include <string>
 
 #if __has_include(<gtest/gtest.h>)
+#ifdef VIPER_HAS_GTEST
 #include <gtest/gtest.h>
 #define VIPER_HAS_GTEST 1
 #else

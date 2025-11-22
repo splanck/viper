@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_il_parse_keyword_boundary.cpp
-// Purpose: Ensure IL parser rejects identifiers where keywords are prefixes of longer tokens.
+// Purpose: Ensure IL parser rejects identifiers where keywords are prefixes of longer tokens. 
 // Key invariants: Module parser must not treat 'func' as matching 'function'.
 // Ownership/Lifetime: Test constructs parser inputs locally.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/api/expected_api.hpp"
 #include "il/core/Module.hpp"

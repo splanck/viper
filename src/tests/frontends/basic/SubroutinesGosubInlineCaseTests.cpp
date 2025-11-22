@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/frontends/basic/SubroutinesGosubInlineCaseTests.cpp
-// Purpose: Exercise parsing and execution of GOSUB with named labels and inline CASE bodies.
+// Purpose: Exercise parsing and execution of GOSUB with named labels and inline CASE bodies. 
 // Key invariants: Parser resolves identifier targets for GOSUB and CASE arms execute inline
-// statements. Ownership/Lifetime: Test owns parser/compiler state and evaluates CASE arms locally.
+// Ownership/Lifetime: To be documented.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/BasicCompiler.hpp"
 #include "frontends/basic/Parser.hpp"

@@ -1,7 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_basic_ns_case_insensitive.cpp
-// Purpose: Verify ProcRegistry canonicalizes qualified names case-insensitively and strips
-// suffixes. Key invariants: Duplicate detection and lookup operate on lowercase dotted keys.
+// Purpose: Verify ProcRegistry canonicalizes qualified names case-insensitively and strips 
+// Key invariants: To be documented.
 // Ownership/Lifetime: Local diagnostics/emitter/registry.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/ProcRegistry.hpp"

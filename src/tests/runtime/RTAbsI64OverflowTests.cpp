@@ -1,8 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/runtime/RTAbsI64OverflowTests.cpp
-// Purpose: Verify rt_abs_i64 traps on overflow input.
+// Purpose: Verify rt_abs_i64 traps on overflow input. 
 // Key invariants: Overflowing inputs trigger runtime trap.
-// Ownership: Uses runtime library; stubs vm_trap to capture message.
+// Ownership/Lifetime: Uses runtime library; stubs vm_trap to capture message.
 // Links: docs/runtime-vm.md#runtime-abi
+//
+//===----------------------------------------------------------------------===//
+
 #include "viper/runtime/rt.h"
 #include <cassert>
 #include <climits>

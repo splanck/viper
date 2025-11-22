@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/frontends/basic/ParserLineLabelDiagnosticsTests.cpp
-// Purpose: Ensure BASIC parser does not misreport diagnostics for legitimate line labels.
+// Purpose: Ensure BASIC parser does not misreport diagnostics for legitimate line labels. 
 // Key invariants: Line-number tokens are consumed by the statement sequencer rather than parsed as
-// statements. Ownership/Lifetime: Test owns parser/emitter instances and inspects diagnostic engine
-// state. Links: docs/codemap.md
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/Parser.hpp"

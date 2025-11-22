@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/frontends/basic/SemanticsFileIoTests.cpp
-// Purpose: Validate BASIC semantic analyzer file I/O statement checking.
+// Purpose: Validate BASIC semantic analyzer file I/O statement checking. 
 // Key invariants: OPEN requires string paths and integer channels; CLOSE requires integer channels.
 // Ownership/Lifetime: Tests allocate analyzer resources per snippet.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/Parser.hpp"

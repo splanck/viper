@@ -1,9 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_basic_ast_mutation.cpp
-// Purpose: Regression tests ensuring AST mutation passes update nodes correctly.
+// Purpose: Regression tests ensuring AST mutation passes update nodes correctly. 
 // Key invariants: Const folder short-circuits and loop folding mutate AST; semantic
-//                 analyzer rewrites scoped identifiers consistently.
 // Ownership/Lifetime: Test owns AST objects and infrastructure locally.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/AST.hpp"
 #include "frontends/basic/ConstFolder.hpp"

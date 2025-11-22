@@ -1,7 +1,18 @@
-// tui/include/tui/widgets/splitter.hpp
-// @brief Widgets dividing space between two children horizontally or vertically.
-// @invariant Child rectangles computed from split ratio and parent rect.
-// @ownership Splitter owns child widgets via unique_ptr.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: tui/include/tui/widgets/splitter.hpp
+// Purpose: Implements functionality for this subsystem.
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include <memory>

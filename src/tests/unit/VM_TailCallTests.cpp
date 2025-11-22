@@ -1,6 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/VM_TailCallTests.cpp
-// Purpose: Verify tail-call optimisation maintains constant frame depth.
-// Notes: Runs with VIPER_VM_TAILCALL=1 (set on target) and steps VM to measure depth.
+// Purpose: Verify tail-call optimisation maintains constant frame depth. 
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "VMTestHook.hpp"
 #include "il/build/IRBuilder.hpp"

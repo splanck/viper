@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_runtime_registry.cpp
-// Purpose: Validate runtime registry metadata coverage.
-// License: GPL-3.0-only.
+// Purpose: Validate runtime registry metadata coverage. 
 // Key invariants: Every descriptor publishes a handler and signature mapping.
+// Ownership/Lifetime: To be documented.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/runtime/RuntimeSignatures.hpp"
 #include <cassert>

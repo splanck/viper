@@ -1,8 +1,19 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/oop/TestDestructorChain.cpp
-// Purpose: Verify destructor chaining order: derived body then base body.
-// Invariant: After DISPOSE Derived, global g records 12 (1 then 2).
+// Purpose: Verify destructor chaining order: derived body then base body. 
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
-#if __has_include(<gtest/gtest.h>)
+#ifdef VIPER_HAS_GTEST
 #include <gtest/gtest.h>
 #else
 #include "../GTestStub.hpp"

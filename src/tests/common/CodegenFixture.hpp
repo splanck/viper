@@ -1,14 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/common/CodegenFixture.hpp
-// Purpose: Provide reusable helpers for invoking the ilc CLI in end-to-end
-//          code generation tests.
+// Purpose: Provide reusable helpers for invoking the ilc CLI in end-to-end 
 // Key invariants: Temporary filesystem artefacts are confined to a unique
-//                 directory beneath std::filesystem::temp_directory_path and
-//                 are removed when the fixture is destroyed. CLI invocations
-//                 capture stdout to files to avoid buffering discrepancies.
 // Ownership/Lifetime: The fixture owns its temporary directory for the
-//                      lifetime of the instance.
-// Notes: Shared between gtest-based and standalone tests; avoids duplicating
-//        command orchestration boilerplate across suites.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #pragma once
 

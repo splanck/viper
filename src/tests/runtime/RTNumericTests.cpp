@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/runtime/RTNumericTests.cpp
-// Purpose: Validate BASIC numeric helper semantics in the runtime library.
+// Purpose: Validate BASIC numeric helper semantics in the runtime library. 
 // Key invariants: Banker rounding and conversion overflow reporting behave as specified.
-// Ownership: Uses runtime helpers directly.
+// Ownership/Lifetime: Uses runtime helpers directly.
 // Links: docs/specs/numerics.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "viper/runtime/rt.h"
 

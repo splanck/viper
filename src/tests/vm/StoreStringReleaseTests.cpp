@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/vm/StoreStringReleaseTests.cpp
-// Purpose: Ensure stores to pointers release previous string handles.
+// Purpose: Ensure stores to pointers release previous string handles. 
 // Key invariants: Writing successive strings to the same address balances refcounts.
 // Ownership/Lifetime: Constructs a synthetic module and inspects runtime headers.
 // Links: docs/testing.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/build/IRBuilder.hpp"
 #include "vm/VM.hpp"

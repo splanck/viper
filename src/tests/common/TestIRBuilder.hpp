@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/common/TestIRBuilder.hpp
-// Purpose: Provide a lightweight IR construction helper tailored for tests.
+// Purpose: Provide a lightweight IR construction helper tailored for tests. 
 // Key invariants: Maintains a single active insertion block for SSA emission.
 // Ownership/Lifetime: Owns the underlying Module and VmFixture used by tests.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #pragma once
 

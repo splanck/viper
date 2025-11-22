@@ -38,21 +38,45 @@ namespace
 Type ilTypeForBasicRet(const std::string &fnName, BasicType hint)
 {
     using K = Type::Kind;
+/// @brief Implements if functionality.
+/// @param BasicType::String Parameter description needed.
+/// @return Return value description needed.
     if (hint == BasicType::String)
         return Type(K::Str);
+/// @brief Implements if functionality.
+/// @param BasicType::Float Parameter description needed.
+/// @return Return value description needed.
     if (hint == BasicType::Float)
         return Type(K::F64);
+/// @brief Implements if functionality.
+/// @param BasicType::Int Parameter description needed.
+/// @return Return value description needed.
     if (hint == BasicType::Int)
         return Type(K::I64);
+/// @brief Implements if functionality.
+/// @param BasicType::Bool Parameter description needed.
+/// @return Return value description needed.
     if (hint == BasicType::Bool)
         return Type(K::I1);
+/// @brief Implements if functionality.
+/// @param BasicType::Void Parameter description needed.
+/// @return Return value description needed.
     if (hint == BasicType::Void)
         return Type(K::Void);
+/// @brief Implements if functionality.
+/// @param !fnName.empty( Parameter description needed.
+/// @return Return value description needed.
     if (!fnName.empty())
     {
         char c = fnName.back();
+/// @brief Implements if functionality.
+/// @param '$' Parameter description needed.
+/// @return Return value description needed.
         if (c == '$')
             return Type(K::Str);
+/// @brief Implements if functionality.
+/// @param '#' Parameter description needed.
+/// @return Return value description needed.
         if (c == '#')
             return Type(K::F64);
     }
@@ -76,8 +100,14 @@ void Lowerer::pushNamespace(const std::vector<std::string> &path)
 
 void Lowerer::popNamespace(std::size_t count)
 {
+/// @brief Implements if functionality.
+/// @param nsStack_.empty( Parameter description needed.
+/// @return Return value description needed.
     if (count == 0 || nsStack_.empty())
         return;
+/// @brief Implements if functionality.
+/// @param nsStack_.size( Parameter description needed.
+/// @return Return value description needed.
     if (count > nsStack_.size())
         count = nsStack_.size();
     nsStack_.erase(nsStack_.end() - static_cast<std::ptrdiff_t>(count), nsStack_.end());
@@ -86,14 +116,23 @@ void Lowerer::popNamespace(std::size_t count)
 std::string Lowerer::qualify(const std::string &klass) const
 {
     // Empty name → return as-is.
+/// @brief Implements if functionality.
+/// @param klass.empty( Parameter description needed.
+/// @return Return value description needed.
     if (klass.empty())
         return klass;
 
     // Fully-qualified name (contains '.') → return unchanged.
+/// @brief Implements if functionality.
+/// @param klass.find('.' Parameter description needed.
+/// @return Return value description needed.
     if (klass.find('.') != std::string::npos)
         return klass;
 
     // No active namespace → return unqualified.
+/// @brief Implements if functionality.
+/// @param nsStack_.empty( Parameter description needed.
+/// @return Return value description needed.
     if (nsStack_.empty())
         return klass;
 
@@ -101,11 +140,20 @@ std::string Lowerer::qualify(const std::string &klass) const
     std::string out;
     // Compute final size to reserve capacity conservatively.
     std::size_t size = klass.size();
+/// @brief Implements for functionality.
+/// @param nsStack_ Parameter description needed.
+/// @return Return value description needed.
     for (const auto &s : nsStack_)
         size += s.size() + 1; // segment + dot
     out.reserve(size);
+/// @brief Implements for functionality.
+/// @param nsStack_.size( Parameter description needed.
+/// @return Return value description needed.
     for (std::size_t i = 0; i < nsStack_.size(); ++i)
     {
+/// @brief Implements if functionality.
+/// @param i Parameter description needed.
+/// @return Return value description needed.
         if (i)
             out.push_back('.');
         out.append(nsStack_[i]);
@@ -118,19 +166,34 @@ std::string Lowerer::qualify(const std::string &klass) const
 std::optional<::il::frontends::basic::Type> Lowerer::findMethodReturnType(
     std::string_view className, std::string_view methodName) const
 {
+/// @brief Implements if functionality.
+/// @param className.empty( Parameter description needed.
+/// @return Return value description needed.
     if (className.empty())
         return std::nullopt;
 
     const ClassInfo *info = oopIndex_.findClass(std::string(className));
+/// @brief Implements if functionality.
+/// @param !info Parameter description needed.
+/// @return Return value description needed.
     if (!info)
         return std::nullopt;
 
     auto it = info->methods.find(std::string(methodName));
+/// @brief Implements if functionality.
+/// @param info->methods.end( Parameter description needed.
+/// @return Return value description needed.
     if (it == info->methods.end())
         return std::nullopt;
+/// @brief Implements if functionality.
+/// @param it->second.sig.returnType Parameter description needed.
+/// @return Return value description needed.
     if (it->second.sig.returnType)
         return it->second.sig.returnType;
 
+/// @brief Implements if functionality.
+/// @param inferAstTypeFromSuffix(methodName Parameter description needed.
+/// @return Return value description needed.
     if (auto suffixType = inferAstTypeFromSuffix(methodName))
         return suffixType;
 
@@ -140,18 +203,30 @@ std::optional<::il::frontends::basic::Type> Lowerer::findMethodReturnType(
 std::string Lowerer::findMethodReturnClassName(std::string_view className,
                                                std::string_view methodName) const
 {
+/// @brief Implements if functionality.
+/// @param className.empty( Parameter description needed.
+/// @return Return value description needed.
     if (className.empty())
         return {};
 
     const ClassInfo *info = oopIndex_.findClass(std::string(className));
+/// @brief Implements if functionality.
+/// @param !info Parameter description needed.
+/// @return Return value description needed.
     if (!info)
         return {};
 
     auto it = info->methods.find(std::string(methodName));
+/// @brief Implements if functionality.
+/// @param info->methods.end( Parameter description needed.
+/// @return Return value description needed.
     if (it == info->methods.end())
         return {};
 
     // BUG-099 fix: Return the object class name if method returns an object
+/// @brief Implements if functionality.
+/// @param !it->second.sig.returnClassName.empty( Parameter description needed.
+/// @return Return value description needed.
     if (!it->second.sig.returnClassName.empty())
         return it->second.sig.returnClassName;
 
@@ -161,21 +236,36 @@ std::string Lowerer::findMethodReturnClassName(std::string_view className,
 std::optional<::il::frontends::basic::Type> Lowerer::findFieldType(std::string_view className,
                                                                    std::string_view fieldName) const
 {
+/// @brief Implements if functionality.
+/// @param className.empty( Parameter description needed.
+/// @return Return value description needed.
     if (className.empty())
         return std::nullopt;
 
     const ClassInfo *info = oopIndex_.findClass(std::string(className));
+/// @brief Implements if functionality.
+/// @param !info Parameter description needed.
+/// @return Return value description needed.
     if (!info)
         return std::nullopt;
 
     // Search through fields (case-insensitive comparison)
+/// @brief Implements fieldNameUpper functionality.
+/// @param fieldName Parameter description needed.
+/// @return Return value description needed.
     std::string fieldNameUpper(fieldName);
     std::transform(fieldNameUpper.begin(), fieldNameUpper.end(), fieldNameUpper.begin(), ::toupper);
+/// @brief Implements for functionality.
+/// @param info->fields Parameter description needed.
+/// @return Return value description needed.
     for (const auto &field : info->fields)
     {
         std::string storedNameUpper = field.name;
         std::transform(
             storedNameUpper.begin(), storedNameUpper.end(), storedNameUpper.begin(), ::toupper);
+/// @brief Implements if functionality.
+/// @param fieldNameUpper Parameter description needed.
+/// @return Return value description needed.
         if (storedNameUpper == fieldNameUpper)
             return field.type;
     }
@@ -185,21 +275,36 @@ std::optional<::il::frontends::basic::Type> Lowerer::findFieldType(std::string_v
 
 bool Lowerer::isFieldArray(std::string_view className, std::string_view fieldName) const
 {
+/// @brief Implements if functionality.
+/// @param className.empty( Parameter description needed.
+/// @return Return value description needed.
     if (className.empty())
         return false;
 
     const ClassInfo *info = oopIndex_.findClass(std::string(className));
+/// @brief Implements if functionality.
+/// @param !info Parameter description needed.
+/// @return Return value description needed.
     if (!info)
         return false;
 
     // Search through fields (case-insensitive comparison)
+/// @brief Implements fieldNameUpper functionality.
+/// @param fieldName Parameter description needed.
+/// @return Return value description needed.
     std::string fieldNameUpper(fieldName);
     std::transform(fieldNameUpper.begin(), fieldNameUpper.end(), fieldNameUpper.begin(), ::toupper);
+/// @brief Implements for functionality.
+/// @param info->fields Parameter description needed.
+/// @return Return value description needed.
     for (const auto &field : info->fields)
     {
         std::string storedNameUpper = field.name;
         std::transform(
             storedNameUpper.begin(), storedNameUpper.end(), storedNameUpper.begin(), ::toupper);
+/// @brief Implements if functionality.
+/// @param fieldNameUpper Parameter description needed.
+/// @return Return value description needed.
         if (storedNameUpper == fieldNameUpper)
             return field.isArray;
     }
@@ -216,11 +321,29 @@ bool Lowerer::isFieldArray(std::string_view className, std::string_view fieldNam
 /// @param boundsChecks Enables generation of defensive array bounds logic when true.
 Lowerer::Lowerer(bool boundsChecks)
     : programLowering(std::make_unique<ProgramLowering>(*this)),
+/// @brief Implements procedureLowering functionality.
+/// @param std::make_unique<ProcedureLowering>(*this Parameter description needed.
+/// @return Return value description needed.
       procedureLowering(std::make_unique<ProcedureLowering>(*this)),
+/// @brief Implements statementLowering functionality.
+/// @param std::make_unique<StatementLowering>(*this Parameter description needed.
+/// @return Return value description needed.
       statementLowering(std::make_unique<StatementLowering>(*this)), boundsChecks(boundsChecks),
+/// @brief Emits ter_.
+/// @param std::make_unique<lower::Emitter>(*this Parameter description needed.
+/// @return Return value description needed.
       emitter_(std::make_unique<lower::Emitter>(*this)),
+/// @brief Implements ioStmtLowerer_ functionality.
+/// @param std::make_unique<IoStatementLowerer>(*this Parameter description needed.
+/// @return Return value description needed.
       ioStmtLowerer_(std::make_unique<IoStatementLowerer>(*this)),
+/// @brief Implements ctrlStmtLowerer_ functionality.
+/// @param std::make_unique<ControlStatementLowerer>(*this Parameter description needed.
+/// @return Return value description needed.
       ctrlStmtLowerer_(std::make_unique<ControlStatementLowerer>(*this)),
+/// @brief Implements runtimeStmtLowerer_ functionality.
+/// @param std::make_unique<RuntimeStatementLowerer>(*this Parameter description needed.
+/// @return Return value description needed.
       runtimeStmtLowerer_(std::make_unique<RuntimeStatementLowerer>(*this))
 {
 }

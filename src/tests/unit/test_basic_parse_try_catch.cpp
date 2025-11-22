@@ -1,9 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_basic_parse_try_catch.cpp
-// Purpose: Validate parsing and AST shape for TRY/CATCH in BASIC.
+// Purpose: Validate parsing and AST shape for TRY/CATCH in BASIC. 
 // Key invariants: Parser produces a TryCatchStmt with optional catch variable
-// and collects bodies correctly; negative cases emit diagnostics but do not crash.
 // Ownership/Lifetime: Test constructs parser/source manager per case and inspects AST.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/AstPrinter.hpp"
 #include "frontends/basic/Parser.hpp"

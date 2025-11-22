@@ -1,9 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/frontends/basic/AddFileTests.cpp
-// Purpose: Unit tests for the BASIC ADDFILE directive handling in the parser.
+// Purpose: Unit tests for the BASIC ADDFILE directive handling in the parser. 
 // Key invariants: ADDFILE is handled at file scope, resolves paths relative to
-//                 the including source, detects cycles, and merges AST content.
 // Ownership/Lifetime: Tests create temporary files under the system temp dir.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/BasicCompiler.hpp"
 #include "frontends/basic/DiagnosticEmitter.hpp"

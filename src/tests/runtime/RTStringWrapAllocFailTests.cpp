@@ -1,8 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/runtime/RTStringWrapAllocFailTests.cpp
-// Purpose: Ensure string allocation helpers guard against rt_alloc failures.
+// Purpose: Ensure string allocation helpers guard against rt_alloc failures. 
 // Key invariants: Wrappers must not dereference NULL handles and should trap.
-// Ownership: Overrides vm_trap and rt_alloc via hook to simulate failure.
+// Ownership/Lifetime: Overrides vm_trap and rt_alloc via hook to simulate failure.
 // Links: docs/codemap/runtime-library-c.md
+//
+//===----------------------------------------------------------------------===//
+
 #include "rt.hpp"
 #include "rt_internal.h"
 

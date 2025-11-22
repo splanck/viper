@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/runtime/RTArrayI32Tests.cpp
-// Purpose: Verify basic behavior of the int32 runtime array helpers.
+// Purpose: Verify basic behavior of the int32 runtime array helpers. 
 // Key invariants: Resizing zero-initializes new slots and preserves prior values.
-// Ownership: Tests own allocated arrays and release them via rt_arr_i32_release().
+// Ownership/Lifetime: Tests own allocated arrays and release them via rt_arr_i32_release().
 // Links: docs/runtime-vm.md#runtime-abi
+//
+//===----------------------------------------------------------------------===//
 
 #include "viper/runtime/rt.h"
 

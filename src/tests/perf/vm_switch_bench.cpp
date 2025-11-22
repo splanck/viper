@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/perf/vm_switch_bench.cpp
-// Purpose: Micro-benchmark SwitchI32 dispatch paths to detect major performance regressions.
+// Purpose: Micro-benchmark SwitchI32 dispatch paths to detect major performance regressions. 
 // Key invariants: Both Auto and Linear switch modes execute equivalent IL and produce the same
-// checksum. Ownership/Lifetime: Benchmark builds ephemeral modules per run and executes them
-// immediately. Links: docs/il-guide.md#reference
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"

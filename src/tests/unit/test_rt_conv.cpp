@@ -1,8 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_rt_conv.cpp
-// Purpose: Verify numeric to string runtime conversions.
+// Purpose: Verify numeric to string runtime conversions. 
 // Key invariants: Returned strings match decimal formatting used by PRINT.
-// Ownership: Uses runtime library.
+// Ownership/Lifetime: Uses runtime library.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
+
 #include "rt_internal.h"
 #include <cassert>
 #include <string>

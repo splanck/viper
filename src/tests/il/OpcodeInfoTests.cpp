@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/il/OpcodeInfoTests.cpp
-// Purpose: Exercise opcode metadata enumeration helpers for stability.
+// Purpose: Exercise opcode metadata enumeration helpers for stability. 
 // Key invariants: Enumeration covers every opcode exactly once in declaration order.
 // Ownership/Lifetime: Uses read-only metadata from il::core.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/core/OpcodeInfo.hpp"
 

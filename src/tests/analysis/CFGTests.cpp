@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/analysis/CFGTests.cpp
-// Purpose: Verify CFG successor and predecessor utilities.
+// Purpose: Verify CFG successor and predecessor utilities. 
 // Key invariants: Successor and predecessor sets reflect branch targets.
 // Ownership/Lifetime: Builds a local module via IRBuilder.
 // Links: docs/dev/analysis.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/analysis/CFG.hpp"
 #include "il/build/IRBuilder.hpp"

@@ -1,8 +1,18 @@
-// File: src/frontends/basic/LowerScan.hpp
-// Purpose: Declares AST scanning helpers for BASIC lowering.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: frontends/basic/LowerScan.hpp
+// Purpose: Declares AST scanning helpers for BASIC lowering. 
 // Key invariants: Scanning only mutates bookkeeping flags; no IR is emitted.
 // Ownership/Lifetime: Operates on Lowerer state without owning AST or module.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 public:

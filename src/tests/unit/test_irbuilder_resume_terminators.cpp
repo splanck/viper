@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_irbuilder_resume_terminators.cpp
-// Purpose: Ensure IRBuilder marks blocks terminated after emitting resume instructions.
+// Purpose: Ensure IRBuilder marks blocks terminated after emitting resume instructions. 
 // Key invariants: Resume opcodes behave as terminators when emitted via IRBuilder helpers.
-// Ownership: Test owns its module/function fixtures locally.
+// Ownership/Lifetime: Test owns its module/function fixtures locally.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/build/IRBuilder.hpp"
 

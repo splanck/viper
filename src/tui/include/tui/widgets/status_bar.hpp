@@ -1,7 +1,18 @@
-// tui/include/tui/widgets/status_bar.hpp
-// @brief Single-line status bar showing left and right segments at bottom.
-// @invariant Renders within last row of assigned rectangle.
-// @ownership StatusBar borrows Theme, owns segment strings.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: tui/include/tui/widgets/status_bar.hpp
+// Purpose: Implements functionality for this subsystem.
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include <string>

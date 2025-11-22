@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_basic_diagnostic.cpp
-// Purpose: Ensure DiagnosticEmitter formats BASIC diagnostics with carets and codes.
+// Purpose: Ensure DiagnosticEmitter formats BASIC diagnostics with carets and codes. 
 // Key invariants: Output contains error code and caret underlined range.
 // Ownership/Lifetime: Test owns all objects locally.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/Parser.hpp"

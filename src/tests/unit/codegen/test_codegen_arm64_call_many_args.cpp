@@ -1,6 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/codegen/test_codegen_arm64_call_many_args.cpp
-// Purpose: Verify AArch64 lowering handles >8 integer args with outgoing stack area
-//          and supports constants, params, and local loads as sources.
+// Purpose: Verify AArch64 lowering handles >8 integer args with outgoing stack area 
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "tests/unit/GTestStub.hpp"
 

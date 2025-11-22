@@ -1,8 +1,18 @@
-// File: src/vm/OpHandlers_Control.hpp
-// Purpose: Declare control-flow opcode handlers and shared switch dispatch helpers.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: vm/OpHandlers_Control.hpp
+// Purpose: Declare control-flow opcode handlers and shared switch dispatch helpers. 
 // Key invariants: Handlers maintain VM block state, propagate parameters, and honor trap contracts.
 // Ownership/Lifetime: Functions mutate the active VM frame without taking ownership of VM
-// resources. Links: docs/il-guide.md#reference
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "vm/OpHandlerAccess.hpp"

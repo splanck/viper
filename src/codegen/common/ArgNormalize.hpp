@@ -1,6 +1,17 @@
-// File: src/codegen/common/ArgNormalize.hpp
-// Purpose: Small header-only helpers to normalize IL parameter indices into
-//          canonical working registers for target-specific emitters.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: codegen/common/ArgNormalize.hpp
+// Purpose: Small header-only helpers to normalize IL parameter indices into 
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #pragma once
 

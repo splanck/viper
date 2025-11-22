@@ -1,9 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_il_parse_bom.cpp
-// Purpose: Verify the IL parser tolerates a UTF-8 BOM on the first line.
+// Purpose: Verify the IL parser tolerates a UTF-8 BOM on the first line. 
 // Key invariants: A leading BOM must be stripped before directive matching and
-//                 whitespace trimming must still behave for BOM-free sources.
 // Ownership/Lifetime: Tests own module instances and in-memory buffers.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/api/expected_api.hpp"
 #include "il/core/Module.hpp"

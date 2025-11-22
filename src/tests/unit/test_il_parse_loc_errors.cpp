@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_il_parse_loc_errors.cpp
-// Purpose: Ensure the IL function parser reports malformed .loc directives.
+// Purpose: Ensure the IL function parser reports malformed .loc directives. 
 // Key invariants: ParserState diagnostics identify incorrect location triplets.
 // Ownership/Lifetime: Constructs parser state locally for each scenario.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/core/Module.hpp"
 #include "il/internal/io/FunctionParser.hpp"

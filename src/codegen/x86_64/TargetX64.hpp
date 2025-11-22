@@ -1,13 +1,17 @@
-// src/codegen/x86_64/TargetX64.hpp
-// SPDX-License-Identifier: GPL-3.0-only
+//===----------------------------------------------------------------------===//
 //
-// Purpose: Define physical registers, register classes, and target metadata for the
-//          System V AMD64 ABI backend used by Viper's x86-64 code generator.
-// Invariants: Data remains immutable once constructed; accessors return references to
-//             shared singleton state describing the ABI contract.
-// Ownership: No heap ownership beyond the singleton target info; containers live for the
-//            program lifetime.
-// Notes: Standalone header — depends only on the C++ standard library.
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: codegen/x86_64/TargetX64.hpp
+// Purpose: Define physical registers, register classes, and target metadata for the 
+// Key invariants: To be documented.
+// Ownership/Lifetime: No heap ownership beyond the singleton target info; containers live for the
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #pragma once
 

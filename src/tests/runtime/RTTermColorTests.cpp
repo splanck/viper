@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/runtime/RTTermColorTests.cpp
-// Purpose: Verify rt_term_color_i32 emits correct SGR codes for bright backgrounds.
+// Purpose: Verify rt_term_color_i32 emits correct SGR codes for bright backgrounds. 
 // Key invariants: Background values 8-15 map to ANSI 100-107 without using 48;5.
-// Ownership: Runtime library tests.
+// Ownership/Lifetime: Runtime library tests.
 // Links: docs/runtime-vm.md#runtime-abi
+//
+//===----------------------------------------------------------------------===//
 
 #include "rt.hpp"
 

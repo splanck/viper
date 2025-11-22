@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_vm_gep_nullptr.cpp
-// Purpose: Ensure VM getelementptr on null base with zero offset yields null result.
+// Purpose: Ensure VM getelementptr on null base with zero offset yields null result. 
 // Key invariants: GEP computation must avoid UB and preserve null when offset is zero.
-// Ownership: Standalone unit test executable for VM pointer arithmetic semantics.
+// Ownership/Lifetime: Standalone unit test executable for VM pointer arithmetic semantics.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"

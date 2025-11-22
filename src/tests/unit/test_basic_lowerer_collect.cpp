@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_basic_lowerer_collect.cpp
-// Purpose: Ensure BASIC lowerer collects variables from all statement visitors.
+// Purpose: Ensure BASIC lowerer collects variables from all statement visitors. 
 // Key invariants: RANDOMIZE/RETURN statements must allocate referenced variables.
-// Ownership: Test owns constructed AST and module.
+// Ownership/Lifetime: Test owns constructed AST and module.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/Parser.hpp"

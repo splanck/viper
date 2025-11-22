@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_basic_parse_oop.cpp
-// Purpose: Ensure OOP-specific expressions and statements parse into expected AST nodes.
+// Purpose: Ensure OOP-specific expressions and statements parse into expected AST nodes. 
 // Key invariants: NEW/ME expressions and DELETE statement are recognized with OOP always enabled.
 // Ownership/Lifetime: Test owns parser instance and resulting AST.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/Parser.hpp"
 #include "support/source_manager.hpp"

@@ -1,8 +1,18 @@
-// File: src/frontends/basic/lower/Emitter.hpp
-// Purpose: Declares the IL emission helper composed by the BASIC lowerer.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: frontends/basic/lower/Emitter.hpp
+// Purpose: Declares the IL emission helper composed by the BASIC lowerer. 
 // Key invariants: Appends instructions to the active basic block when one is set.
 // Ownership/Lifetime: References Lowerer state without owning IR structures.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "frontends/basic/ast/NodeFwd.hpp"

@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/runtime/FloatFormattingTests.cpp
-// Purpose: Verify deterministic runtime formatting for floating-point values.
+// Purpose: Verify deterministic runtime formatting for floating-point values. 
 // Key invariants: Canonical spellings are produced regardless of special cases.
-// Ownership: Runtime numeric formatting helpers.
+// Ownership/Lifetime: Runtime numeric formatting helpers.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "viper/runtime/rt.h"
 

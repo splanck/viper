@@ -1,11 +1,17 @@
-// File: src/codegen/x86_64/CodegenPipeline.hpp
-// Purpose: Declare a reusable pipeline that lowers IL modules to native code via the x86-64
-// backend. Key invariants: The pipeline sequences parsing, verification, adaptation, and emission
-// in a
-//                 deterministic order while reporting diagnostics through an aggregated result.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: codegen/x86_64/CodegenPipeline.hpp
+// Purpose: Declare a reusable pipeline that lowers IL modules to native code via the x86-64 
+// Key invariants: To be documented.
 // Ownership/Lifetime: Callers retain ownership of file paths and do not transfer resource
-//                     ownership to the pipeline; results are returned by value.
 // Links: docs/codemap.md, src/codegen/x86_64/Backend.hpp
+//
+//===----------------------------------------------------------------------===//
 
 #pragma once
 

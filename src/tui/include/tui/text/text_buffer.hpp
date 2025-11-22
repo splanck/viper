@@ -1,7 +1,18 @@
-// tui/include/tui/text/text_buffer.hpp
-// @brief Piece-table-backed text buffer composing line index and edit history.
-// @invariant Byte offsets remain stable across helpers; helpers receive change callbacks.
-// @ownership TextBuffer owns storage helpers and returns copies for callers.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: tui/include/tui/text/text_buffer.hpp
+// Purpose: Implements functionality for this subsystem.
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "tui/support/function_ref.hpp"

@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_il_parse_misc_instructions.cpp
-// Purpose: Exercise metadata-driven instruction parsing across varied opcode forms.
+// Purpose: Exercise metadata-driven instruction parsing across varied opcode forms. 
 // Key invariants: Parser accepts operands/results/labels for uncommon opcodes.
 // Ownership/Lifetime: Test owns all modules and buffers.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/api/expected_api.hpp"
 #include "il/core/Instr.hpp"

@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/il/UtilsTests.cpp
-// Purpose: Verify IL utility helpers for block membership and terminators.
+// Purpose: Verify IL utility helpers for block membership and terminators. 
 // Key invariants: Helpers correctly identify instruction containment and terminators.
 // Ownership/Lifetime: Constructs local IL blocks and instructions.
 // Links: docs/dev/analysis.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Instr.hpp"

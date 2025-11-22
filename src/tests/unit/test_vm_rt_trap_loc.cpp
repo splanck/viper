@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_vm_rt_trap_loc.cpp
-// Purpose: Verify runtime-originated traps report instruction source locations.
+// Purpose: Verify runtime-originated traps report instruction source locations. 
 // Key invariants: Trap output includes function, block, and location.
-// Ownership: Test builds IL calling runtime and runs VM.
+// Ownership/Lifetime: Test builds IL calling runtime and runs VM.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/build/IRBuilder.hpp"
 #include "support/source_location.hpp"

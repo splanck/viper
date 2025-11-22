@@ -1,13 +1,18 @@
-// File: src/frontends/basic/LowererContext.hpp
-// License: GPL-3.0-only. See LICENSE in the project root for full license
-//          information.
-// Purpose: Defines helper context structures embedded in Lowerer for
-//          per-procedure state, deterministic block naming, and loop tracking.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: frontends/basic/LowererContext.hpp
+// Purpose: Defines helper context structures embedded in Lowerer for 
 // Key invariants: Context state is reset between procedures and block labels
-//                 remain deterministic within a procedure.
 // Ownership/Lifetime: Owned by Lowerer; references to IL objects are borrowed
-//                     for the duration of lowering.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "il/core/BasicBlock.hpp"

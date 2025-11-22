@@ -1,7 +1,17 @@
-// tui/tests/test_text_view.cpp
-// @brief Navigation and rendering tests for TextView.
-// @invariant Cursor stays within lines and selection paints correctly.
-// @ownership Test owns buffer, theme, and view instances.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: tui/tests/test_text_view.cpp
+// Purpose: Test suite for this component.
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "tui/render/screen.hpp"
 #include "tui/style/theme.hpp"

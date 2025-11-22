@@ -1,8 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/runtime/RTValStrTests.cpp
-// Purpose: Validate VAL and STR$ runtime conversions.
+// Purpose: Validate VAL and STR$ runtime conversions. 
 // Key invariants: Parsing stops at non-numeric; round-trip within tolerance.
-// Ownership: Uses runtime library.
+// Ownership/Lifetime: Uses runtime library.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
+
 #include "rt_internal.h"
 #include "viper/runtime/rt.h"
 #include <cassert>

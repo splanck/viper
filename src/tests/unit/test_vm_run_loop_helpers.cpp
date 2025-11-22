@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_vm_run_loop_helpers.cpp
-// Purpose: Validate VM run loop helper behaviour for debug pauses and trap dispatch.
+// Purpose: Validate VM run loop helper behaviour for debug pauses and trap dispatch. 
 // Key invariants: stepOnce honours breakpoints and trap dispatch clears context.
-// Ownership: Test constructs IL module and runs helper wrappers.
+// Ownership/Lifetime: Test constructs IL module and runs helper wrappers.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"

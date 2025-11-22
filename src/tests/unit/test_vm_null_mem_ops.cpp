@@ -1,7 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_vm_null_mem_ops.cpp
-// Purpose: Verify VM traps when load/store operate on null or misaligned pointers.
+// Purpose: Verify VM traps when load/store operate on null or misaligned pointers. 
 // Key invariants: Null or misaligned pointer operands surface InvalidOperation traps with detail
-// messages. Ownership: Standalone unit test executable. Links: docs/codemap.md
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"

@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/vm/TrapDomainErrorTests.cpp
-// Purpose: Verify DomainError trap diagnostics include kind and instruction index.
+// Purpose: Verify DomainError trap diagnostics include kind and instruction index. 
 // Key invariants: Trap output must mention DomainError and #0 for the trap terminator.
 // Ownership/Lifetime: Spawns child process to capture VM stderr.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "common/VmFixture.hpp"
 #include "il/build/IRBuilder.hpp"

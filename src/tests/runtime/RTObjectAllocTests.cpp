@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/runtime/RTObjectAllocTests.cpp
-// Purpose: Ensure rt_obj_new_i64 returns usable zero-initialized payloads.
+// Purpose: Ensure rt_obj_new_i64 returns usable zero-initialized payloads. 
 // Key invariants: Newly allocated object memory must be zero and writable.
-// Ownership: Releases the object via rt_obj_release_check0 after validation.
+// Ownership/Lifetime: Releases the object via rt_obj_release_check0 after validation.
 // Links: docs/runtime-vm.md#runtime-abi
+//
+//===----------------------------------------------------------------------===//
 
 #include "rt.hpp"
 

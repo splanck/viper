@@ -1,15 +1,17 @@
-// src/codegen/x86_64/MachineIR.hpp
-// SPDX-License-Identifier: GPL-3.0-only
+//===----------------------------------------------------------------------===//
 //
-// Purpose: Declare the minimal Machine IR representation required by the
-//          x86-64 backend during Phase A bring-up.
-// Invariants: Operands capture only the state needed for instruction
-//             selection, scheduling, and emission; structures own their data
-//             and remain valid until mutated explicitly.
-// Ownership: All IR nodes own their contained data outright via value
-//            semantics. No implicit sharing occurs.
-// Notes: Standalone header — depends only on the C++ standard library and
-//        TargetX64.hpp.
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: codegen/x86_64/MachineIR.hpp
+// Purpose: Declare the minimal Machine IR representation required by the 
+// Key invariants: To be documented.
+// Ownership/Lifetime: All IR nodes own their contained data outright via value
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #pragma once
 

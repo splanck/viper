@@ -1,8 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_vm_debug_src_breakpoint_unknown_file.cpp
-// Purpose: Ensure unresolved file ids do not trigger source breakpoints.
+// Purpose: Ensure unresolved file ids do not trigger source breakpoints. 
 // Key invariants: Unknown file ids with matching breakpoints should skip stops.
-// Ownership: Standalone unit test executable.
+// Ownership/Lifetime: Standalone unit test executable.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
+
 #include "il/core/Instr.hpp"
 #include "support/source_manager.hpp"
 #include "viper/vm/debug/Debug.hpp"

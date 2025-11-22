@@ -1,10 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_codegen_x86_64_live_intervals.cpp
-// Purpose: Unit tests covering the live interval analysis used by the
-//          linear-scan allocator.
+// Purpose: Unit tests covering the live interval analysis used by the 
 // Key invariants: Analysis produces deterministic half-open instruction ranges.
 // Ownership/Lifetime: Tests build Machine IR in place and inspect analysis
-//                     results without transferring ownership.
 // Links: src/codegen/x86_64/ra/LiveIntervals.hpp
+//
+//===----------------------------------------------------------------------===//
 
 #include "GTestStub.hpp"
 

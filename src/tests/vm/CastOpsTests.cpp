@@ -1,6 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/vm/CastOpsTests.cpp
-// Purpose: Verify VM cast handlers for 1-bit truncation/extension and fp-to-int conversions.
-// License: GPL-3.0-only. See LICENSE in the project root for details.
+// Purpose: Verify VM cast handlers for 1-bit truncation/extension and fp-to-int conversions. 
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/build/IRBuilder.hpp"
 #include "vm/VM.hpp"

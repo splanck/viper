@@ -1,15 +1,17 @@
-// src/codegen/x86_64/LowerILToMIR.hpp
-// SPDX-License-Identifier: GPL-3.0-only
+//===----------------------------------------------------------------------===//
 //
-// Purpose: Declare a bridge that adapts the front-end IL abstraction to the
-//          Machine IR (MIR) form consumed by the x86-64 backend during Phase A.
-// Invariants: Lowering preserves SSA ids by mapping them to stable virtual
-//             registers within a function and materialises PX_COPY nodes for
-//             block parameter transfers.
-// Ownership: The adapter borrows IL inputs, constructs fresh MIR graphs by
-//            value, and retains call plans internally for later lowering.
-// Notes: IL structures declared here are temporary scaffolding until the real
-//        IL headers are integrated.
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: codegen/x86_64/LowerILToMIR.hpp
+// Purpose: Declare a bridge that adapts the front-end IL abstraction to the 
+// Key invariants: To be documented.
+// Ownership/Lifetime: The adapter borrows IL inputs, constructs fresh MIR graphs by
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #pragma once
 

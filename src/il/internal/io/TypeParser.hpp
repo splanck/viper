@@ -1,8 +1,18 @@
-// File: src/il/internal/io/TypeParser.hpp
-// Purpose: Declares helpers for parsing textual IL type specifiers.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: il/internal/io/TypeParser.hpp
+// Purpose: Declares helpers for parsing textual IL type specifiers. 
 // Key invariants: Type identifiers adhere to docs/il-guide.md#reference definitions.
 // Ownership/Lifetime: Returned Type objects belong to callers.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "il/core/Type.hpp"

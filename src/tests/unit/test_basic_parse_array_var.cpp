@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_basic_parse_array_var.cpp
-// Purpose: Verify Parser distinguishes variable and array references.
+// Purpose: Verify Parser distinguishes variable and array references. 
 // Key invariants: Identifier without parentheses yields VarExpr; with index yields ArrayExpr.
 // Ownership/Lifetime: Test owns parser and AST.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/Parser.hpp"
 #include "support/source_manager.hpp"

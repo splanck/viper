@@ -1,9 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_basic_lowerer_select_case_order.cpp
-// Purpose: Ensure SELECT CASE lowering inserts blocks before the function exit.
+// Purpose: Ensure SELECT CASE lowering inserts blocks before the function exit. 
 // Key invariants: The synthetic 'exit' block in @main must remain the last
-//                 basic block; all SELECT-related blocks must have indices
-//                 strictly less than the exit block index even with many arms.
+// Ownership/Lifetime: To be documented.
 // Links: bugs/basic_bugs.md (BUG-072)
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/Parser.hpp"

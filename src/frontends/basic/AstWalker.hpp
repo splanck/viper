@@ -1,8 +1,18 @@
-// File: src/frontends/basic/AstWalker.hpp
-// Purpose: Provides a reusable recursive AST walker for BASIC front-end passes.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: frontends/basic/AstWalker.hpp
+// Purpose: Provides a reusable recursive AST walker for BASIC front-end passes. 
 // Key invariants: Traversal order matches the legacy visitors for statements and expressions.
 // Ownership/Lifetime: Walker borrows AST nodes without owning them.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "frontends/basic/AstWalkerUtils.hpp"

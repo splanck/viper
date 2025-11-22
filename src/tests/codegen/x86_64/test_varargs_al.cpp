@@ -1,12 +1,24 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/codegen/x86_64/test_varargs_al.cpp
-// Purpose: Verify SysV variadic call lowerer sets %al to #XMM-args.
+// Purpose: Verify SysV variadic call lowerer sets %al to #XMM-args. 
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
 // Links: src/codegen/x86_64/CallLowering.cpp
+//
+//===----------------------------------------------------------------------===//
 
 #include "codegen/x86_64/Backend.hpp"
 
 #include <string>
 
 #if __has_include(<gtest/gtest.h>)
+#ifdef VIPER_HAS_GTEST
 #include <gtest/gtest.h>
 #define VIPER_HAS_GTEST 1
 #else

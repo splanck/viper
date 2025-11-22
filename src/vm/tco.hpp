@@ -1,7 +1,17 @@
-// src/vm/tco.hpp
-// Purpose: Tail-call optimisation helper for reusing the current frame.
-// Invariants: Preserves ehStack and ResumeState; resets IP and block maps.
-// Ownership: Modifies the provided ExecState in place; no allocation beyond vectors.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: vm/tco.hpp
+// Purpose: Tail-call optimisation helper for reusing the current frame. 
+// Key invariants: To be documented.
+// Ownership/Lifetime: Modifies the provided ExecState in place; no allocation beyond vectors.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #pragma once
 

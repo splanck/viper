@@ -1,8 +1,18 @@
-// File: src/vm/VMConstants.hpp
-// Purpose: Centralized constants for VM configuration and limits
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: vm/VMConstants.hpp
+// Purpose: Centralized constants for VM configuration and limits 
 // Key invariants: All constants are compile-time evaluable
 // Ownership/Lifetime: Static constants with program lifetime
 // Links: docs/vm-design.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include <cstddef>

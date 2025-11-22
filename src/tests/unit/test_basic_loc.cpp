@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_basic_loc.cpp
-// Purpose: Ensure BASIC AST and IL instructions retain source locations.
+// Purpose: Ensure BASIC AST and IL instructions retain source locations. 
 // Key invariants: Locations must match expected columns.
-// Ownership: Test owns constructed AST and module.
+// Ownership/Lifetime: Test owns constructed AST and module.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/Parser.hpp"

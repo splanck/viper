@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_il_switch_i32.cpp
-// Purpose: Confirm SwitchI32 opcode metadata, parsing, and passes handle multi-way control flow.
+// Purpose: Confirm SwitchI32 opcode metadata, parsing, and passes handle multi-way control flow. 
 // Key invariants: SwitchI32 must expose correct operands/successors and analyses recognise all
-// edges. Ownership/Lifetime: Test owns parsed module and mutates it locally. Links:
-// docs/il-guide.md#reference
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/analysis/CFG.hpp"
 #include "il/analysis/Dominators.hpp"

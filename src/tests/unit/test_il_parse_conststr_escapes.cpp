@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_il_parse_conststr_escapes.cpp
-// Purpose: Ensure const_str operands decode escape sequences when parsed.
+// Purpose: Ensure const_str operands decode escape sequences when parsed. 
 // Key invariants: Operand parser stores decoded bytes for Value::ConstStr operands.
 // Ownership/Lifetime: Test owns the module produced by the parser.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/api/expected_api.hpp"
 #include "il/core/Module.hpp"

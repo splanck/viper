@@ -1,18 +1,24 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/codegen/x86_64/test_bitwise.cpp
-// Purpose: Validate that x86-64 codegen lowers IL bitwise and/or/xor
-//          sequences into immediate and register forms as expected.
+// Purpose: Validate that x86-64 codegen lowers IL bitwise and/or/xor 
 // Key invariants: Generated assembly must contain an immediate-based and/or
-//                 sequence followed by a register xor using adapter IL.
 // Ownership/Lifetime: Test constructs IL modules locally and inspects emitted
-//                      assembly strings without persistent resources.
 // Links: src/codegen/x86_64/LowerILToMIR.cpp,
-//        src/codegen/x86_64/AsmEmitter.cpp
+//
+//===----------------------------------------------------------------------===//
 
 #include "codegen/x86_64/Backend.hpp"
 
 #include <string>
 
 #if __has_include(<gtest/gtest.h>)
+#ifdef VIPER_HAS_GTEST
 #include <gtest/gtest.h>
 #define VIPER_HAS_GTEST 1
 #else

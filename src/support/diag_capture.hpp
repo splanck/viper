@@ -1,8 +1,18 @@
-// File: src/support/diag_capture.hpp
-// Purpose: Provide a capture-only diagnostic sink to bridge legacy bool plus ostream APIs.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: support/diag_capture.hpp
+// Purpose: Provide a capture-only diagnostic sink to bridge legacy bool plus ostream APIs. 
 // Key invariants: Diagnostics recorded in the capture are printed verbatim and converted into error
-// diagnostics on demand. Ownership/Lifetime: DiagCapture owns its string buffer; returned
-// diagnostics copy the captured message text. Links: docs/codemap.md
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "support/diag_expected.hpp"

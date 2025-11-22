@@ -1,9 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/il/runtime/test_SignaturesPurity.cpp
-// Purpose: Verify runtime signature registry seeds purity/read-only flags for optimisations.
-// License: GPL-3.0-only. See LICENSE in the project root for full license information.
+// Purpose: Verify runtime signature registry seeds purity/read-only flags for optimisations. 
 // Key invariants: Known math helpers report pure+nothrow; strlen-style helpers report
-// readonly+nothrow. Links: src/il/runtime/signatures/Signatures_Math.cpp,
-// src/il/runtime/signatures/Signatures_Strings.cpp
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "../../GTestStub.hpp"
 

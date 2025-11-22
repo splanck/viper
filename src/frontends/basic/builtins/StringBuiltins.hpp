@@ -1,11 +1,18 @@
-// File: src/frontends/basic/builtins/StringBuiltins.hpp
-// License: GPL-3.0-only. See LICENSE in the project root for full license information.
-// Purpose: Declares registry and lowering helpers for BASIC string built-ins.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: frontends/basic/builtins/StringBuiltins.hpp
+// Purpose: Declares registry and lowering helpers for BASIC string built-ins. 
 // Key invariants: Registry lookups return immutable metadata describing name,
-//                 arity, and lowering handler for supported string built-ins.
 // Ownership/Lifetime: Functions operate on the lowering context supplied by
-//                     the BASIC front end; no dynamic allocation is performed.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "frontends/basic/Lowerer.hpp"

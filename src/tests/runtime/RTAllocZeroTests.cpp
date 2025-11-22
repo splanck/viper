@@ -1,10 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/runtime/RTAllocZeroTests.cpp
-// Purpose: Verify rt_alloc handles zero-byte requests without trapping.
+// Purpose: Verify rt_alloc handles zero-byte requests without trapping. 
 // Key invariants: Under glibc, malloc(0) is forced to return NULL so legacy
-//                 behavior would trap. The test asserts the new logic treats
-//                 zero as a valid allocation size.
-// Ownership: Uses runtime library.
+// Ownership/Lifetime: Uses runtime library.
 // Links: docs/runtime-vm.md#runtime-abi
+//
+//===----------------------------------------------------------------------===//
+
 #include "rt.hpp"
 #include <assert.h>
 #include <stddef.h>

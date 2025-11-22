@@ -1,8 +1,18 @@
-// File: src/support/source_location.hpp
-// Purpose: Declares lightweight source location POD for diagnostics and IL metadata.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: support/source_location.hpp
+// Purpose: Declares lightweight source location POD for diagnostics and IL metadata. 
 // Key invariants: file_id == 0 denotes an invalid location; line/column are 1-based when valid.
 // Ownership/Lifetime: Value type with no dynamic ownership.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include <cstdint>

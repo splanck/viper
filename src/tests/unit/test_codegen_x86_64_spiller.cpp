@@ -1,9 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_codegen_x86_64_spiller.cpp
-// Purpose: Validate spill slot management and load/store helpers.
+// Purpose: Validate spill slot management and load/store helpers. 
 // Key invariants: Spill slots grow monotonically and spill insertion releases
-//                 registers back to the allocator pool.
 // Ownership/Lifetime: Tests manipulate VirtualAllocation records directly.
 // Links: src/codegen/x86_64/ra/Spiller.hpp
+//
+//===----------------------------------------------------------------------===//
 
 #include "GTestStub.hpp"
 

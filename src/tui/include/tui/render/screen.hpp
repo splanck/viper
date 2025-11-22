@@ -1,7 +1,18 @@
-// tui/include/tui/render/screen.hpp
-// @brief Offscreen screen buffer composed of styled cells.
-// @invariant Cells are stored in row-major order.
-// @ownership ScreenBuffer owns its cell storage.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: tui/include/tui/render/screen.hpp
+// Purpose: Implements functionality for this subsystem.
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include <cstdint>

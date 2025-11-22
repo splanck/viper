@@ -1,12 +1,17 @@
-// File: tests/integration/test_namespace_integration.cpp
-// Purpose: Exercise full pipeline (parse → semantic → lower) for namespace features.
-// Scenarios:
-//   (a) Base/Derived across namespaces (success)
-//   (b) Interface implementation across namespaces (success)
-//   (c) USING + unqualified usage (success)
-//   (d) Ambiguity across two USINGs (E_NS_003; stable contenders)
-//   (e) USING inside NAMESPACE (E_NS_008)
-//   (f) USING after first decl (E_NS_005)
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: tests/unit/test_namespace_integration.cpp
+// Purpose: Exercise full pipeline (parse → semantic → lower) for namespace features. 
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/Lowerer.hpp"

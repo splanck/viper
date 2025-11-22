@@ -1,10 +1,18 @@
-// File: src/frontends/basic/ast/StmtDecl.hpp
-// Purpose: Defines BASIC statement nodes representing declarations and statement lists.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: frontends/basic/ast/StmtDecl.hpp
+// Purpose: Defines BASIC statement nodes representing declarations and statement lists. 
 // Key invariants: Declaration bodies own their child statements and record source
-//                 metadata for downstream semantic passes.
 // Ownership/Lifetime: Nodes own nested statements via StmtPtr containers and store
-//                     parameter information by value.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "frontends/basic/BasicTypes.hpp"

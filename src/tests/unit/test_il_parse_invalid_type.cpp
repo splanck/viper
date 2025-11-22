@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_il_parse_invalid_type.cpp
-// Purpose: Ensure parser rejects extern declarations with unknown types.
+// Purpose: Ensure parser rejects extern declarations with unknown types. 
 // Key invariants: Parser returns false and reports unknown type diagnostic.
 // Ownership/Lifetime: Test constructs modules and streams locally.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/api/expected_api.hpp"
 #include "il/core/Module.hpp"

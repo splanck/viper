@@ -1,7 +1,18 @@
-// tui/include/tui/config/config.hpp
-// @brief Load INI-like configuration for theme, keymap, and editor settings.
-// @invariant Parsed values remain valid after load.
-// @ownership Config owns parsed data only.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: tui/include/tui/config/config.hpp
+// Purpose: Implements functionality for this subsystem.
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include <string>

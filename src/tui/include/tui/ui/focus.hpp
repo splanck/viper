@@ -1,7 +1,18 @@
-// tui/include/tui/ui/focus.hpp
-// @brief Manage focusable widgets and current focus.
-// @invariant Holds pointers to widgets that remain valid while registered.
-// @ownership FocusManager does not own widgets; widgets must unregister before destruction.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: tui/include/tui/ui/focus.hpp
+// Purpose: Implements functionality for this subsystem.
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include <cstddef>

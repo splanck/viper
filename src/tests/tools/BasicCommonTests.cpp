@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/tools/BasicCommonTests.cpp
-// Purpose: Ensure BASIC tool helpers surface source manager failures.
+// Purpose: Ensure BASIC tool helpers surface source manager failures. 
 // Key invariants: Buffer remains untouched on registration failures.
 // Ownership/Lifetime: Test owns captured streams and buffers.
 // Links: docs/testing.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "support/source_manager.hpp"
 #include "tools/basic/common.hpp"

@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_basic_ast_select_case.cpp
-// Purpose: Ensure BASIC AST can construct SELECT CASE statements.
+// Purpose: Ensure BASIC AST can construct SELECT CASE statements. 
 // Key invariants: Node ownership flows through std::unique_ptr containers.
 // Ownership/Lifetime: Test owns allocated AST nodes locally.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/AST.hpp"
 

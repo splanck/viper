@@ -1,8 +1,18 @@
-// File: src/support/source_manager.hpp
-// Purpose: Declares manager for source file identifiers.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: support/source_manager.hpp
+// Purpose: Declares manager for source file identifiers. 
 // Key invariants: File ID 0 is invalid.
 // Ownership/Lifetime: Manager owns file path strings.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "source_location.hpp"

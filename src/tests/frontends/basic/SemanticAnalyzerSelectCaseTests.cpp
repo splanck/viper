@@ -1,10 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/frontends/basic/SemanticAnalyzerSelectCaseTests.cpp
-// Purpose: Validate semantic analysis rules for SELECT CASE statements.
+// Purpose: Validate semantic analysis rules for SELECT CASE statements. 
 // Key invariants: SELECT CASE requires integer-compatible selectors, unique
-//                 32-bit labels, and at most one CASE ELSE clause.
 // Ownership/Lifetime: Each test instantiates parser/analyzer per snippet;
-//                     diagnostics captured via local engine.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/Parser.hpp"

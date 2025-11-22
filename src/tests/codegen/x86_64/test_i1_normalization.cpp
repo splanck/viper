@@ -1,18 +1,24 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/codegen/x86_64/test_i1_normalization.cpp
-// Purpose: Ensure boolean materialisation via SETcc is followed by a movzx and
-//          widened move to satisfy the SysV ABI i64 return convention.
+// Purpose: Ensure boolean materialisation via SETcc is followed by a movzx and 
 // Key invariants: The generated assembly must include a SETcc, a movz* that
-//                 zero-extends the byte result to a 32-bit register, and a
-//                 subsequent move into %rax before returning.
 // Ownership/Lifetime: The test constructs IL objects locally and validates the
-//                      emitted assembly in-memory without external fixtures.
 // Links: src/codegen/x86_64/ISel.cpp, src/codegen/x86_64/AsmEmitter.cpp
+//
+//===----------------------------------------------------------------------===//
 
 #include "codegen/x86_64/Backend.hpp"
 
 #include <string>
 
 #if __has_include(<gtest/gtest.h>)
+#ifdef VIPER_HAS_GTEST
 #include <gtest/gtest.h>
 #define VIPER_HAS_GTEST 1
 #else

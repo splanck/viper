@@ -1,9 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_vm_trace_unicode_path.cpp
-// Purpose: Verify VM source tracing loads files with non-ASCII paths.
+// Purpose: Verify VM source tracing loads files with non-ASCII paths. 
 // Key invariants: Trace sink must decode cached file contents when the
-//                 SourceManager provides a UTF-8 path.
-// Ownership: Standalone unit test executable.
+// Ownership/Lifetime: Standalone unit test executable.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"

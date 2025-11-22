@@ -1,7 +1,17 @@
-// tui/tests/test_focus.cpp
-// @brief Verify focus cycling and key routing between widgets.
-// @invariant Tab and Shift-Tab change focused widget; Enter dispatches to current.
-// @ownership Test owns widgets, app, and TermIO.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: tui/tests/test_focus.cpp
+// Purpose: Test suite for this component.
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "tui/app.hpp"
 #include "tui/term/input.hpp"

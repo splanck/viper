@@ -1,7 +1,19 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/runtime_classes/TestMethodIndex.cpp
-// Purpose: Verify RuntimeMethodIndex lookup for System.String.Substring maps to Viper.Strings.Mid.
+// Purpose: Verify RuntimeMethodIndex lookup for System.String.Substring maps to Viper.Strings.Mid. 
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
-#if __has_include(<gtest/gtest.h>)
+#ifdef VIPER_HAS_GTEST
 #include <gtest/gtest.h>
 #else
 #include "../GTestStub.hpp"

@@ -663,7 +663,9 @@ Lowerer::RVal Lowerer::lowerMemberAccessExpr(const MemberAccessExpr &expr)
             if (const auto *v = as<const VarExpr>(*expr.base))
             {
                 // If a symbol with this name exists (local/param/global), it's not a static access
-                if (const auto *sym = findSymbol(v->name); sym && sym->slotId)
+                // Module-level symbols may not have a slot yet; presence in the symbol table is
+                // sufficient to classify this as an instance access.
+                if (const auto *sym = findSymbol(v->name); sym)
                 {
                     return {Value::null(), Type(Type::Kind::Ptr)};
                 }
@@ -742,8 +744,9 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
     // Static method calls: Class.Method(...)
     if (const auto *vb = as<const VarExpr>(*expr.base))
     {
-        // If a symbol with this name exists (local/param/global), treat as instance, not static
-        if (const auto *sym = findSymbol(vb->name); sym && sym->slotId)
+        // If a symbol with this name exists (local/param/global), treat as instance, not static.
+        // Module-level variables do not have slots; rely on symbol presence alone.
+        if (const auto *sym = findSymbol(vb->name); sym)
         {
             // fall through to instance path below
         }

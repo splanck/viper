@@ -1,11 +1,17 @@
-// src/codegen/aarch64/AsmEmitter.hpp
-// SPDX-License-Identifier: GPL-3.0-only
+//===----------------------------------------------------------------------===//
 //
-// Purpose: Minimal AArch64 assembly emitter for early backend scaffolding.
-//          Provides helpers to emit a simple function prologue/epilogue and
-//          a subset of integer instructions (ADD, MOV, RET) used by smoke tests.
-// Invariants: Stateless aside from formatting options; uses TargetAArch64 for
-//             register naming and ABI-aligned prologue/epilogue shapes.
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: codegen/aarch64/AsmEmitter.hpp
+// Purpose: Minimal AArch64 assembly emitter for early backend scaffolding. 
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #pragma once
 

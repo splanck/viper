@@ -1,9 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/frontends/basic/SemanticAnalyzerCallTests.cpp
-// Purpose: Validate BASIC semantic analyzer argument count checking for procedure calls.
+// Purpose: Validate BASIC semantic analyzer argument count checking for procedure calls. 
 // Key invariants: Calls with mismatched argument counts emit B2008 diagnostics and halt further
-//                 analysis for that invocation.
 // Ownership/Lifetime: Tests construct parser/analyzer per snippet; diagnostics captured locally.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/Parser.hpp"

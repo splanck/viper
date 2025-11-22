@@ -41,6 +41,8 @@ namespace viper::codegen::x64
 namespace
 {
 
+/// @brief Implements makePattern functionality.
+/// @return Return value description needed.
 constexpr OperandPattern makePattern(OperandKind first = OperandKind::None,
                                      OperandKind second = OperandKind::None,
                                      OperandKind third = OperandKind::None) noexcept
@@ -49,14 +51,23 @@ constexpr OperandPattern makePattern(OperandKind first = OperandKind::None,
     pattern.kinds[0] = first;
     pattern.kinds[1] = second;
     pattern.kinds[2] = third;
+/// @brief Implements if functionality.
+/// @param OperandKind::None Parameter description needed.
+/// @return Return value description needed.
     if (first != OperandKind::None)
     {
         ++pattern.count;
     }
+/// @brief Implements if functionality.
+/// @param OperandKind::None Parameter description needed.
+/// @return Return value description needed.
     if (second != OperandKind::None)
     {
         ++pattern.count;
     }
+/// @brief Implements if functionality.
+/// @param OperandKind::None Parameter description needed.
+/// @return Return value description needed.
     if (third != OperandKind::None)
     {
         ++pattern.count;
@@ -64,14 +75,25 @@ constexpr OperandPattern makePattern(OperandKind first = OperandKind::None,
     return pattern;
 }
 
+/// @brief Implements function functionality.
+/// @param lhs Parameter description needed.
+/// @param rhs Parameter description needed.
+/// @return Return value description needed.
 constexpr EncodingFlag operator|(EncodingFlag lhs, EncodingFlag rhs) noexcept
 {
     return static_cast<EncodingFlag>(static_cast<std::uint32_t>(lhs) |
                                      static_cast<std::uint32_t>(rhs));
 }
 
+/// @brief Checks if flag exists.
+/// @param value Parameter description needed.
+/// @param flag Parameter description needed.
+/// @return Return value description needed.
 [[maybe_unused]] constexpr bool hasFlag(EncodingFlag value, EncodingFlag flag) noexcept
 {
+/// @brief Implements return functionality.
+/// @param static_cast<std::uint32_t>(value Parameter description needed.
+/// @return Return value description needed.
     return (static_cast<std::uint32_t>(value) & static_cast<std::uint32_t>(flag)) != 0U;
 }
 
@@ -80,270 +102,443 @@ static constexpr std::array<EncodingRow, 44> kEncodingTable = {{
      "movq",
      EncodingForm::RegReg,
      OperandOrder::R_R,
+/// @brief Implements makePattern functionality.
+/// @param OperandKind::Reg Parameter description needed.
+/// @param OperandKind::Reg Parameter description needed.
+/// @return Return value description needed.
      makePattern(OperandKind::Reg, OperandKind::Reg),
      EncodingFlag::RequiresModRM | EncodingFlag::REXW},
     {MOpcode::MOVri,
      "movq",
      EncodingForm::RegImm,
      OperandOrder::R_I,
+/// @brief Implements makePattern functionality.
+/// @param OperandKind::Reg Parameter description needed.
+/// @param OperandKind::Imm Parameter description needed.
+/// @return Return value description needed.
      makePattern(OperandKind::Reg, OperandKind::Imm),
      EncodingFlag::UsesImm64},
     {MOpcode::CMOVNErr,
      "cmovne",
      EncodingForm::RegReg,
      OperandOrder::R_R,
+/// @brief Implements makePattern functionality.
+/// @param OperandKind::Reg Parameter description needed.
+/// @param OperandKind::Reg Parameter description needed.
+/// @return Return value description needed.
      makePattern(OperandKind::Reg, OperandKind::Reg),
      EncodingFlag::RequiresModRM},
     {MOpcode::LEA,
      "leaq",
      EncodingForm::Lea,
      OperandOrder::LEA,
+/// @brief Implements makePattern functionality.
+/// @param OperandKind::Reg Parameter description needed.
+/// @param OperandKind::Any Parameter description needed.
+/// @return Return value description needed.
      makePattern(OperandKind::Reg, OperandKind::Any),
      EncodingFlag::RequiresModRM | EncodingFlag::REXW},
     {MOpcode::ADDrr,
      "addq",
      EncodingForm::RegReg,
      OperandOrder::R_R,
+/// @brief Implements makePattern functionality.
+/// @param OperandKind::Reg Parameter description needed.
+/// @param OperandKind::Reg Parameter description needed.
+/// @return Return value description needed.
      makePattern(OperandKind::Reg, OperandKind::Reg),
      EncodingFlag::RequiresModRM | EncodingFlag::REXW},
     {MOpcode::ADDri,
      "addq",
      EncodingForm::RegImm,
      OperandOrder::R_I,
+/// @brief Implements makePattern functionality.
+/// @param OperandKind::Reg Parameter description needed.
+/// @param OperandKind::Imm Parameter description needed.
+/// @return Return value description needed.
      makePattern(OperandKind::Reg, OperandKind::Imm),
      EncodingFlag::RequiresModRM | EncodingFlag::UsesImm32 | EncodingFlag::REXW},
     {MOpcode::ANDrr,
      "andq",
      EncodingForm::RegReg,
      OperandOrder::R_R,
+/// @brief Implements makePattern functionality.
+/// @param OperandKind::Reg Parameter description needed.
+/// @param OperandKind::Reg Parameter description needed.
+/// @return Return value description needed.
      makePattern(OperandKind::Reg, OperandKind::Reg),
      EncodingFlag::RequiresModRM | EncodingFlag::REXW},
     {MOpcode::ANDri,
      "andq",
      EncodingForm::RegImm,
      OperandOrder::R_I,
+/// @brief Implements makePattern functionality.
+/// @param OperandKind::Reg Parameter description needed.
+/// @param OperandKind::Imm Parameter description needed.
+/// @return Return value description needed.
      makePattern(OperandKind::Reg, OperandKind::Imm),
      EncodingFlag::RequiresModRM | EncodingFlag::UsesImm32 | EncodingFlag::REXW},
     {MOpcode::ORrr,
      "orq",
      EncodingForm::RegReg,
      OperandOrder::R_R,
+/// @brief Implements makePattern functionality.
+/// @param OperandKind::Reg Parameter description needed.
+/// @param OperandKind::Reg Parameter description needed.
+/// @return Return value description needed.
      makePattern(OperandKind::Reg, OperandKind::Reg),
      EncodingFlag::RequiresModRM | EncodingFlag::REXW},
     {MOpcode::ORri,
      "orq",
      EncodingForm::RegImm,
      OperandOrder::R_I,
+/// @brief Implements makePattern functionality.
+/// @param OperandKind::Reg Parameter description needed.
+/// @param OperandKind::Imm Parameter description needed.
+/// @return Return value description needed.
      makePattern(OperandKind::Reg, OperandKind::Imm),
      EncodingFlag::RequiresModRM | EncodingFlag::UsesImm32 | EncodingFlag::REXW},
     {MOpcode::XORrr,
      "xorq",
      EncodingForm::RegReg,
      OperandOrder::R_R,
+/// @brief Implements makePattern functionality.
+/// @param OperandKind::Reg Parameter description needed.
+/// @param OperandKind::Reg Parameter description needed.
+/// @return Return value description needed.
      makePattern(OperandKind::Reg, OperandKind::Reg),
      EncodingFlag::RequiresModRM | EncodingFlag::REXW},
     {MOpcode::XORri,
      "xorq",
      EncodingForm::RegImm,
      OperandOrder::R_I,
+/// @brief Implements makePattern functionality.
+/// @param OperandKind::Reg Parameter description needed.
+/// @param OperandKind::Imm Parameter description needed.
+/// @return Return value description needed.
      makePattern(OperandKind::Reg, OperandKind::Imm),
      EncodingFlag::RequiresModRM | EncodingFlag::UsesImm32 | EncodingFlag::REXW},
     {MOpcode::SUBrr,
      "subq",
      EncodingForm::RegReg,
      OperandOrder::R_R,
+/// @brief Implements makePattern functionality.
+/// @param OperandKind::Reg Parameter description needed.
+/// @param OperandKind::Reg Parameter description needed.
+/// @return Return value description needed.
      makePattern(OperandKind::Reg, OperandKind::Reg),
      EncodingFlag::RequiresModRM | EncodingFlag::REXW},
     {MOpcode::SHLri,
      "shlq",
      EncodingForm::ShiftImm,
      OperandOrder::R_I,
+/// @brief Implements makePattern functionality.
+/// @param OperandKind::Reg Parameter description needed.
+/// @param OperandKind::Imm Parameter description needed.
+/// @return Return value description needed.
      makePattern(OperandKind::Reg, OperandKind::Imm),
      EncodingFlag::RequiresModRM | EncodingFlag::UsesImm8 | EncodingFlag::REXW},
     {MOpcode::SHLrc,
      "shlq",
      EncodingForm::ShiftReg,
      OperandOrder::SHIFT,
+/// @brief Implements makePattern functionality.
+/// @param OperandKind::Reg Parameter description needed.
+/// @param OperandKind::Reg Parameter description needed.
+/// @return Return value description needed.
      makePattern(OperandKind::Reg, OperandKind::Reg),
      EncodingFlag::RequiresModRM | EncodingFlag::REXW},
     {MOpcode::SHRri,
      "shrq",
      EncodingForm::ShiftImm,
      OperandOrder::R_I,
+/// @brief Implements makePattern functionality.
+/// @param OperandKind::Reg Parameter description needed.
+/// @param OperandKind::Imm Parameter description needed.
+/// @return Return value description needed.
      makePattern(OperandKind::Reg, OperandKind::Imm),
      EncodingFlag::RequiresModRM | EncodingFlag::UsesImm8 | EncodingFlag::REXW},
     {MOpcode::SHRrc,
      "shrq",
      EncodingForm::ShiftReg,
      OperandOrder::SHIFT,
+/// @brief Implements makePattern functionality.
+/// @param OperandKind::Reg Parameter description needed.
+/// @param OperandKind::Reg Parameter description needed.
+/// @return Return value description needed.
      makePattern(OperandKind::Reg, OperandKind::Reg),
      EncodingFlag::RequiresModRM | EncodingFlag::REXW},
     {MOpcode::SARri,
      "sarq",
      EncodingForm::ShiftImm,
      OperandOrder::R_I,
+/// @brief Implements makePattern functionality.
+/// @param OperandKind::Reg Parameter description needed.
+/// @param OperandKind::Imm Parameter description needed.
+/// @return Return value description needed.
      makePattern(OperandKind::Reg, OperandKind::Imm),
      EncodingFlag::RequiresModRM | EncodingFlag::UsesImm8 | EncodingFlag::REXW},
     {MOpcode::SARrc,
      "sarq",
      EncodingForm::ShiftReg,
      OperandOrder::SHIFT,
+/// @brief Implements makePattern functionality.
+/// @param OperandKind::Reg Parameter description needed.
+/// @param OperandKind::Reg Parameter description needed.
+/// @return Return value description needed.
      makePattern(OperandKind::Reg, OperandKind::Reg),
      EncodingFlag::RequiresModRM | EncodingFlag::REXW},
     {MOpcode::IMULrr,
      "imulq",
      EncodingForm::RegReg,
      OperandOrder::R_R,
+/// @brief Implements makePattern functionality.
+/// @param OperandKind::Reg Parameter description needed.
+/// @param OperandKind::Reg Parameter description needed.
+/// @return Return value description needed.
      makePattern(OperandKind::Reg, OperandKind::Reg),
      EncodingFlag::RequiresModRM | EncodingFlag::REXW},
     {MOpcode::CQO,
      "cqto",
      EncodingForm::Nullary,
      OperandOrder::NONE,
+/// @brief Implements makePattern functionality.
+/// @return Return value description needed.
      makePattern(),
      EncodingFlag::REXW},
     {MOpcode::IDIVrm,
      "idivq",
      EncodingForm::Unary,
      OperandOrder::DIRECT,
+/// @brief Implements makePattern functionality.
+/// @param OperandKind::RegOrMem Parameter description needed.
+/// @return Return value description needed.
      makePattern(OperandKind::RegOrMem),
      EncodingFlag::RequiresModRM | EncodingFlag::REXW},
     {MOpcode::DIVrm,
      "divq",
      EncodingForm::Unary,
      OperandOrder::DIRECT,
+/// @brief Implements makePattern functionality.
+/// @param OperandKind::RegOrMem Parameter description needed.
+/// @return Return value description needed.
      makePattern(OperandKind::RegOrMem),
      EncodingFlag::RequiresModRM | EncodingFlag::REXW},
     {MOpcode::XORrr32,
      "xorl",
      EncodingForm::RegReg,
      OperandOrder::R_R,
+/// @brief Implements makePattern functionality.
+/// @param OperandKind::Reg Parameter description needed.
+/// @param OperandKind::Reg Parameter description needed.
+/// @return Return value description needed.
      makePattern(OperandKind::Reg, OperandKind::Reg),
      EncodingFlag::RequiresModRM},
     {MOpcode::CMPrr,
      "cmpq",
      EncodingForm::RegReg,
      OperandOrder::R_R,
+/// @brief Implements makePattern functionality.
+/// @param OperandKind::Reg Parameter description needed.
+/// @param OperandKind::Reg Parameter description needed.
+/// @return Return value description needed.
      makePattern(OperandKind::Reg, OperandKind::Reg),
      EncodingFlag::RequiresModRM | EncodingFlag::REXW},
     {MOpcode::CMPri,
      "cmpq",
      EncodingForm::RegImm,
      OperandOrder::R_I,
+/// @brief Implements makePattern functionality.
+/// @param OperandKind::Reg Parameter description needed.
+/// @param OperandKind::Imm Parameter description needed.
+/// @return Return value description needed.
      makePattern(OperandKind::Reg, OperandKind::Imm),
      EncodingFlag::RequiresModRM | EncodingFlag::UsesImm32 | EncodingFlag::REXW},
     {MOpcode::SETcc,
      "set",
      EncodingForm::Setcc,
      OperandOrder::SETCC,
+/// @brief Implements makePattern functionality.
+/// @param OperandKind::Imm Parameter description needed.
+/// @param OperandKind::RegOrMem Parameter description needed.
+/// @return Return value description needed.
      makePattern(OperandKind::Imm, OperandKind::RegOrMem),
      EncodingFlag::RequiresModRM | EncodingFlag::UsesCondition},
     {MOpcode::MOVZXrr32,
      "movzbq",
      EncodingForm::RegReg,
      OperandOrder::MOVZX_RR8,
+/// @brief Implements makePattern functionality.
+/// @param OperandKind::Reg Parameter description needed.
+/// @param OperandKind::Reg Parameter description needed.
+/// @return Return value description needed.
      makePattern(OperandKind::Reg, OperandKind::Reg),
      EncodingFlag::RequiresModRM | EncodingFlag::REXW},
     {MOpcode::TESTrr,
      "testq",
      EncodingForm::RegReg,
      OperandOrder::R_R,
+/// @brief Implements makePattern functionality.
+/// @param OperandKind::Reg Parameter description needed.
+/// @param OperandKind::Reg Parameter description needed.
+/// @return Return value description needed.
      makePattern(OperandKind::Reg, OperandKind::Reg),
      EncodingFlag::RequiresModRM | EncodingFlag::REXW},
     {MOpcode::JMP,
      "jmp",
      EncodingForm::Jump,
      OperandOrder::JUMP,
+/// @brief Implements makePattern functionality.
+/// @param OperandKind::LabelOrRegOrMem Parameter description needed.
+/// @return Return value description needed.
      makePattern(OperandKind::LabelOrRegOrMem),
      EncodingFlag::None},
     {MOpcode::JCC,
      "j",
      EncodingForm::Condition,
      OperandOrder::JCC,
+/// @brief Implements makePattern functionality.
+/// @param OperandKind::Imm Parameter description needed.
+/// @param OperandKind::LabelOrRegOrMem Parameter description needed.
+/// @return Return value description needed.
      makePattern(OperandKind::Imm, OperandKind::LabelOrRegOrMem),
      EncodingFlag::UsesCondition},
     {MOpcode::CALL,
      "callq",
      EncodingForm::Call,
      OperandOrder::CALL,
+/// @brief Implements makePattern functionality.
+/// @param OperandKind::Any Parameter description needed.
+/// @return Return value description needed.
      makePattern(OperandKind::Any),
      EncodingFlag::None},
     {MOpcode::UD2,
      "ud2",
      EncodingForm::Nullary,
      OperandOrder::NONE,
+/// @brief Implements makePattern functionality.
+/// @return Return value description needed.
      makePattern(),
      EncodingFlag::None},
     {MOpcode::RET,
      "ret",
      EncodingForm::Nullary,
      OperandOrder::NONE,
+/// @brief Implements makePattern functionality.
+/// @return Return value description needed.
      makePattern(),
      EncodingFlag::None},
     {MOpcode::FADD,
      "addsd",
      EncodingForm::RegReg,
      OperandOrder::R_R,
+/// @brief Implements makePattern functionality.
+/// @param OperandKind::Reg Parameter description needed.
+/// @param OperandKind::Reg Parameter description needed.
+/// @return Return value description needed.
      makePattern(OperandKind::Reg, OperandKind::Reg),
      EncodingFlag::RequiresModRM},
     {MOpcode::FSUB,
      "subsd",
      EncodingForm::RegReg,
      OperandOrder::R_R,
+/// @brief Implements makePattern functionality.
+/// @param OperandKind::Reg Parameter description needed.
+/// @param OperandKind::Reg Parameter description needed.
+/// @return Return value description needed.
      makePattern(OperandKind::Reg, OperandKind::Reg),
      EncodingFlag::RequiresModRM},
     {MOpcode::FMUL,
      "mulsd",
      EncodingForm::RegReg,
      OperandOrder::R_R,
+/// @brief Implements makePattern functionality.
+/// @param OperandKind::Reg Parameter description needed.
+/// @param OperandKind::Reg Parameter description needed.
+/// @return Return value description needed.
      makePattern(OperandKind::Reg, OperandKind::Reg),
      EncodingFlag::RequiresModRM},
     {MOpcode::FDIV,
      "divsd",
      EncodingForm::RegReg,
      OperandOrder::R_R,
+/// @brief Implements makePattern functionality.
+/// @param OperandKind::Reg Parameter description needed.
+/// @param OperandKind::Reg Parameter description needed.
+/// @return Return value description needed.
      makePattern(OperandKind::Reg, OperandKind::Reg),
      EncodingFlag::RequiresModRM},
     {MOpcode::UCOMIS,
      "ucomisd",
      EncodingForm::RegReg,
      OperandOrder::R_R,
+/// @brief Implements makePattern functionality.
+/// @param OperandKind::Reg Parameter description needed.
+/// @param OperandKind::Reg Parameter description needed.
+/// @return Return value description needed.
      makePattern(OperandKind::Reg, OperandKind::Reg),
      EncodingFlag::RequiresModRM},
     {MOpcode::CVTSI2SD,
      "cvtsi2sdq",
      EncodingForm::RegReg,
      OperandOrder::R_R,
+/// @brief Implements makePattern functionality.
+/// @param OperandKind::Reg Parameter description needed.
+/// @param OperandKind::Reg Parameter description needed.
+/// @return Return value description needed.
      makePattern(OperandKind::Reg, OperandKind::Reg),
      EncodingFlag::RequiresModRM | EncodingFlag::REXW},
     {MOpcode::CVTTSD2SI,
      "cvttsd2siq",
      EncodingForm::RegReg,
      OperandOrder::R_R,
+/// @brief Implements makePattern functionality.
+/// @param OperandKind::Reg Parameter description needed.
+/// @param OperandKind::Reg Parameter description needed.
+/// @return Return value description needed.
      makePattern(OperandKind::Reg, OperandKind::Reg),
      EncodingFlag::RequiresModRM | EncodingFlag::REXW},
     {MOpcode::MOVSDrr,
      "movsd",
      EncodingForm::RegReg,
      OperandOrder::R_R,
+/// @brief Implements makePattern functionality.
+/// @param OperandKind::Reg Parameter description needed.
+/// @param OperandKind::Reg Parameter description needed.
+/// @return Return value description needed.
      makePattern(OperandKind::Reg, OperandKind::Reg),
      EncodingFlag::RequiresModRM},
     {MOpcode::MOVSDrm,
      "movsd",
      EncodingForm::RegMem,
      OperandOrder::R_M,
+/// @brief Implements makePattern functionality.
+/// @param OperandKind::Reg Parameter description needed.
+/// @param OperandKind::Mem Parameter description needed.
+/// @return Return value description needed.
      makePattern(OperandKind::Reg, OperandKind::Mem),
      EncodingFlag::RequiresModRM},
     {MOpcode::MOVSDmr,
      "movsd",
      EncodingForm::MemReg,
      OperandOrder::M_R,
+/// @brief Implements makePattern functionality.
+/// @param OperandKind::Mem Parameter description needed.
+/// @param OperandKind::Reg Parameter description needed.
+/// @return Return value description needed.
      makePattern(OperandKind::Mem, OperandKind::Reg),
      EncodingFlag::RequiresModRM},
 }};
 
+/// @brief Implements matchesOperandKind functionality.
+/// @param kind Parameter description needed.
+/// @param operand Parameter description needed.
+/// @return Return value description needed.
 [[nodiscard]] bool matchesOperandKind(OperandKind kind, const Operand &operand) noexcept
 {
+/// @brief Implements switch functionality.
+/// @param kind Parameter description needed.
+/// @return Return value description needed.
     switch (kind)
     {
         case OperandKind::None:
@@ -373,15 +568,27 @@ static constexpr std::array<EncodingRow, 44> kEncodingTable = {{
     return false;
 }
 
+/// @brief Implements matchesPattern functionality.
+/// @return Return value description needed.
 [[nodiscard]] bool matchesPattern(const OperandPattern &pattern,
                                   std::span<const Operand> operands) noexcept
 {
+/// @brief Implements if functionality.
+/// @param static_cast<std::size_t>(pattern.count Parameter description needed.
+/// @return Return value description needed.
     if (static_cast<std::size_t>(pattern.count) != operands.size())
     {
         return false;
     }
+/// @brief Implements for functionality.
+/// @param operands.size( Parameter description needed.
+/// @return Return value description needed.
     for (std::size_t i = 0; i < operands.size(); ++i)
     {
+/// @brief Implements if functionality.
+/// @param !matchesOperandKind(pattern.kinds[i] Parameter description needed.
+/// @param operands[i] Parameter description needed.
+/// @return Return value description needed.
         if (!matchesOperandKind(pattern.kinds[i], operands[i]))
         {
             return false;
@@ -468,6 +675,9 @@ static constexpr std::array<OpFmt, 44> kOpFmt = {{
     {MOpcode::MOVSDmr, "movsd", 2U, 0U},
 }};
 
+/// @brief Retrieves fmt value.
+/// @param opc Parameter description needed.
+/// @return Return value description needed.
 const OpFmt *getFmt(MOpcode opc) noexcept
 {
     const auto needle = static_cast<std::underlying_type_t<MOpcode>>(opc);
@@ -477,10 +687,16 @@ const OpFmt *getFmt(MOpcode opc) noexcept
                          needle,
                          [](const OpFmt &fmt, std::underlying_type_t<MOpcode> value)
                          { return static_cast<std::underlying_type_t<MOpcode>>(fmt.opc) < value; });
+/// @brief Implements if functionality.
+/// @param kOpFmt.end( Parameter description needed.
+/// @return Return value description needed.
     if (it == kOpFmt.end())
     {
         return nullptr;
     }
+/// @brief Implements if functionality.
+/// @param static_cast<std::underlying_type_t<MOpcode>>(it->opc Parameter description needed.
+/// @return Return value description needed.
     if (static_cast<std::underlying_type_t<MOpcode>>(it->opc) != needle)
     {
         return nullptr;
@@ -488,8 +704,15 @@ const OpFmt *getFmt(MOpcode opc) noexcept
     return &*it;
 }
 
+/// @brief Implements encodeRegister functionality.
+/// @param reg Parameter description needed.
+/// @return Return value description needed.
 [[nodiscard]] int encodeRegister(const OpReg &reg) noexcept;
 
+/// @brief Emits operand.
+/// @param operand Parameter description needed.
+/// @param out Parameter description needed.
+/// @param target Parameter description needed.
 template <typename Out> void emitOperand(const Operand &operand, Out &out, const TargetInfo &target)
 {
     static_cast<void>(target);
@@ -509,32 +732,57 @@ template <typename Out> void emitOperand(const Operand &operand, Out &out, const
 }
 
 template <typename Out>
+/// @brief Emits operands.
+/// @param operands Parameter description needed.
+/// @param out Parameter description needed.
+/// @param target Parameter description needed.
 void emitOperands(std::span<const Operand> operands, Out &out, const TargetInfo &target)
 {
     bool first = true;
+/// @brief Implements for functionality.
+/// @param operands Parameter description needed.
+/// @return Return value description needed.
     for (const auto &operand : operands)
     {
+/// @brief Implements if functionality.
+/// @param !first Parameter description needed.
+/// @return Return value description needed.
         if (!first)
         {
             out << ", ";
         }
+/// @brief Emits operand.
+/// @param operand Parameter description needed.
+/// @param out Parameter description needed.
+/// @param target Parameter description needed.
+/// @return Return value description needed.
         emitOperand(operand, out, target);
         first = false;
     }
 }
 
+/// @brief Emits rodatapool.
 void emitRoDataPool(std::span<const std::string> stringLiterals,
                     std::span<const std::size_t> stringLengths,
                     std::span<const double> f64Literals,
                     std::ostream &os)
 {
+/// @brief Implements if functionality.
+/// @param stringLiterals.empty( Parameter description needed.
+/// @return Return value description needed.
     if (stringLiterals.empty() && f64Literals.empty())
     {
         return;
     }
+/// @brief Implements assert functionality.
+/// @param stringLiterals.size( Parameter description needed.
+/// @return Return value description needed.
     assert(stringLiterals.size() == stringLengths.size());
     static_cast<void>(stringLengths);
     os << ".section .rodata\n";
+/// @brief Implements for functionality.
+/// @param stringLiterals.size( Parameter description needed.
+/// @return Return value description needed.
     for (std::size_t i = 0; i < stringLiterals.size(); ++i)
     {
         std::string label;
@@ -544,10 +792,16 @@ void emitRoDataPool(std::span<const std::string> stringLiterals,
         os << label << ":\n";
         os << asmfmt::format_rodata_bytes(stringLiterals[i]);
     }
+/// @brief Implements if functionality.
+/// @param !f64Literals.empty( Parameter description needed.
+/// @return Return value description needed.
     if (!f64Literals.empty())
     {
         os << "  .p2align 3\n";
     }
+/// @brief Implements for functionality.
+/// @param f64Literals.size( Parameter description needed.
+/// @return Return value description needed.
     for (std::size_t i = 0; i < f64Literals.size(); ++i)
     {
         std::string label;
@@ -565,8 +819,14 @@ void emitRoDataPool(std::span<const std::string> stringLiterals,
     }
 }
 
+/// @brief Implements encodeRegister functionality.
+/// @param reg Parameter description needed.
+/// @return Return value description needed.
 [[nodiscard]] int encodeRegister(const OpReg &reg) noexcept
 {
+/// @brief Implements if functionality.
+/// @param reg.isPhys Parameter description needed.
+/// @return Return value description needed.
     if (reg.isPhys)
     {
         return static_cast<int>(reg.idOrPhys);
@@ -576,14 +836,28 @@ void emitRoDataPool(std::span<const std::string> stringLiterals,
 
 } // namespace
 
+/// @brief Implements find_encoding functionality.
+/// @param op Parameter description needed.
+/// @param operands Parameter description needed.
+/// @return Return value description needed.
 const EncodingRow *find_encoding(MOpcode op, std::span<const Operand> operands) noexcept
 {
+/// @brief Implements for functionality.
+/// @param kEncodingTable Parameter description needed.
+/// @return Return value description needed.
     for (const auto &row : kEncodingTable)
     {
+/// @brief Implements if functionality.
+/// @param op Parameter description needed.
+/// @return Return value description needed.
         if (row.opcode != op)
         {
             continue;
         }
+/// @brief Implements if functionality.
+/// @param matchesPattern(row.pattern Parameter description needed.
+/// @param operands Parameter description needed.
+/// @return Return value description needed.
         if (matchesPattern(row.pattern, operands))
         {
             return &row;
@@ -600,6 +874,9 @@ const EncodingRow *find_encoding(MOpcode op, std::span<const Operand> operands) 
 /// @return Index referencing the canonicalised literal.
 int AsmEmitter::RoDataPool::addStringLiteral(std::string bytes)
 {
+/// @brief Implements if functionality.
+/// @param stringLookup_.find(bytes Parameter description needed.
+/// @return Return value description needed.
     if (const auto it = stringLookup_.find(bytes); it != stringLookup_.end())
     {
         return it->second;
@@ -619,6 +896,9 @@ int AsmEmitter::RoDataPool::addStringLiteral(std::string bytes)
 int AsmEmitter::RoDataPool::addF64Literal(double value)
 {
     const auto bits = std::bit_cast<std::uint64_t>(value);
+/// @brief Implements if functionality.
+/// @param f64Lookup_.find(bits Parameter description needed.
+/// @return Return value description needed.
     if (const auto it = f64Lookup_.find(bits); it != f64Lookup_.end())
     {
         return it->second;
@@ -646,8 +926,14 @@ std::string AsmEmitter::RoDataPool::stringLabel(int index) const
 /// @return Number of bytes stored for the literal.
 std::size_t AsmEmitter::RoDataPool::stringByteLength(int index) const
 {
+/// @brief Implements assert functionality.
+/// @param 0 Parameter description needed.
+/// @return Return value description needed.
     assert(index >= 0);
     const auto idx = static_cast<std::size_t>(index);
+/// @brief Implements assert functionality.
+/// @param stringLengths_.size( Parameter description needed.
+/// @return Return value description needed.
     assert(idx < stringLengths_.size());
     return stringLengths_[idx];
 }
@@ -671,10 +957,15 @@ std::string AsmEmitter::RoDataPool::f64Label(int index) const
 /// @param os Output stream receiving assembly text.
 void AsmEmitter::RoDataPool::emit(std::ostream &os) const
 {
+/// @brief Implements if functionality.
+/// @param empty( Parameter description needed.
+/// @return Return value description needed.
     if (empty())
     {
         return;
     }
+/// @brief Emits rodatapool.
+/// @return Return value description needed.
     emitRoDataPool(std::span<const std::string>{stringLiterals_},
                    std::span<const std::size_t>{stringLengths_},
                    std::span<const double>{f64Literals_},
@@ -710,21 +1001,43 @@ void AsmEmitter::emitFunction(std::ostream &os,
     os << ".globl " << linkName << "\n";
     os << linkName << ":\n";
 
+/// @brief Implements for functionality.
+/// @param func.blocks.size( Parameter description needed.
+/// @return Return value description needed.
     for (std::size_t i = 0; i < func.blocks.size(); ++i)
     {
         const auto &block = func.blocks[i];
         const bool isEntry = (i == 0U && block.label == func.name);
+/// @brief Implements if functionality.
+/// @param isEntry Parameter description needed.
+/// @return Return value description needed.
         if (isEntry)
         {
+/// @brief Implements for functionality.
+/// @param block.instructions Parameter description needed.
+/// @return Return value description needed.
             for (const auto &instr : block.instructions)
             {
+/// @brief Emits instruction.
+/// @param os Parameter description needed.
+/// @param instr Parameter description needed.
+/// @param target Parameter description needed.
+/// @return Return value description needed.
                 emitInstruction(os, instr, target);
             }
         }
         else
         {
+/// @brief Emits block.
+/// @param os Parameter description needed.
+/// @param block Parameter description needed.
+/// @param target Parameter description needed.
+/// @return Return value description needed.
             emitBlock(os, block, target);
         }
+/// @brief Implements if functionality.
+/// @param func.blocks.size( Parameter description needed.
+/// @return Return value description needed.
         if (i + 1 < func.blocks.size())
         {
             os << '\n';
@@ -738,6 +1051,9 @@ void AsmEmitter::emitFunction(std::ostream &os,
 /// @param os Output stream receiving the assembly.
 void AsmEmitter::emitRoData(std::ostream &os) const
 {
+/// @brief Implements if functionality.
+/// @param !pool_->empty( Parameter description needed.
+/// @return Return value description needed.
     if (pool_ && !pool_->empty())
     {
         pool_->emit(os);
@@ -766,12 +1082,23 @@ const AsmEmitter::RoDataPool &AsmEmitter::roDataPool() const noexcept
 /// @param target Target lowering information controlling operand formatting.
 void AsmEmitter::emitBlock(std::ostream &os, const MBasicBlock &block, const TargetInfo &target)
 {
+/// @brief Implements if functionality.
+/// @param !block.label.empty( Parameter description needed.
+/// @return Return value description needed.
     if (!block.label.empty())
     {
         os << block.label << ":\n";
     }
+/// @brief Implements for functionality.
+/// @param block.instructions Parameter description needed.
+/// @return Return value description needed.
     for (const auto &instr : block.instructions)
     {
+/// @brief Emits instruction.
+/// @param os Parameter description needed.
+/// @param instr Parameter description needed.
+/// @param target Parameter description needed.
+/// @return Return value description needed.
         emitInstruction(os, instr, target);
     }
 }
@@ -785,14 +1112,23 @@ void AsmEmitter::emitBlock(std::ostream &os, const MBasicBlock &block, const Tar
 /// @param target Target lowering information controlling operand formatting.
 void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &instr, const TargetInfo &target)
 {
+/// @brief Implements if functionality.
+/// @param MOpcode::LABEL Parameter description needed.
+/// @return Return value description needed.
     if (instr.opcode == MOpcode::LABEL)
     {
+/// @brief Implements if functionality.
+/// @param instr.operands.empty( Parameter description needed.
+/// @return Return value description needed.
         if (instr.operands.empty())
         {
             os << ".L?\n";
             return;
         }
         const auto *label = std::get_if<OpLabel>(&instr.operands.front());
+/// @brief Implements if functionality.
+/// @param !label Parameter description needed.
+/// @return Return value description needed.
         if (!label)
         {
             os << "# <invalid label>\n";
@@ -802,6 +1138,9 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &instr, const Ta
         return;
     }
 
+/// @brief Implements if functionality.
+/// @param MOpcode::PX_COPY Parameter description needed.
+/// @return Return value description needed.
     if (instr.opcode == MOpcode::PX_COPY)
     {
         std::string line;
@@ -809,6 +1148,9 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &instr, const Ta
         line.reserve(estimate);
         line.append("  # px_copy");
         bool first = true;
+/// @brief Implements for functionality.
+/// @param instr.operands Parameter description needed.
+/// @return Return value description needed.
         for (const auto &operand : instr.operands)
         {
             line.append(first ? " " : ", ");
@@ -822,6 +1164,9 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &instr, const Ta
 
     const auto operands = std::span<const Operand>{instr.operands};
     const auto *row = find_encoding(instr.opcode, operands);
+/// @brief Implements if functionality.
+/// @param !row Parameter description needed.
+/// @return Return value description needed.
     if (!row)
     {
         // Emit diagnostic comment with opcode number and operand count
@@ -830,6 +1175,12 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &instr, const Ta
         return;
     }
 
+/// @brief Emits _from_row.
+/// @param row Parameter description needed.
+/// @param operands Parameter description needed.
+/// @param os Parameter description needed.
+/// @param target Parameter description needed.
+/// @return Return value description needed.
     emit_from_row(*row, operands, os, target);
 }
 
@@ -840,23 +1191,43 @@ void AsmEmitter::emit_from_row(const EncodingRow &row,
 {
     const auto *fmt = getFmt(row.opcode);
     const auto mnemonic = fmt ? std::string_view{fmt->mnemonic} : row.mnemonic;
+/// @brief Implements if functionality.
+/// @param fmt Parameter description needed.
+/// @return Return value description needed.
     if (fmt)
     {
+/// @brief Implements assert functionality.
+/// @param row.mnemonic Parameter description needed.
+/// @return Return value description needed.
         assert(mnemonic == row.mnemonic);
     }
     os << "  " << mnemonic;
 
+/// @brief Implements if functionality.
+/// @param !fmt Parameter description needed.
+/// @return Return value description needed.
     if (!fmt)
     {
+/// @brief Implements if functionality.
+/// @param !operands.empty( Parameter description needed.
+/// @return Return value description needed.
         if (!operands.empty())
         {
             os << ' ';
+/// @brief Emits operands.
+/// @param operands Parameter description needed.
+/// @param os Parameter description needed.
+/// @param target Parameter description needed.
+/// @return Return value description needed.
             emitOperands(operands, os, target);
         }
         os << '\n';
         return;
     }
 
+/// @brief Implements if functionality.
+/// @param 0U Parameter description needed.
+/// @return Return value description needed.
     if (fmt->operandCount == 0U)
     {
         os << '\n';
@@ -865,8 +1236,14 @@ void AsmEmitter::emit_from_row(const EncodingRow &row,
 
     const auto flags = fmt->flags;
 
+/// @brief Implements if functionality.
+/// @param kFmtLea Parameter description needed.
+/// @return Return value description needed.
     if ((flags & kFmtLea) != 0U)
     {
+/// @brief Implements if functionality.
+/// @param operands.size( Parameter description needed.
+/// @return Return value description needed.
         if (operands.size() < 2)
         {
             os << " #<missing>\n";
@@ -877,8 +1254,14 @@ void AsmEmitter::emit_from_row(const EncodingRow &row,
         return;
     }
 
+/// @brief Implements if functionality.
+/// @param kFmtMovzx8 Parameter description needed.
+/// @return Return value description needed.
     if ((flags & kFmtMovzx8) != 0U)
     {
+/// @brief Implements if functionality.
+/// @param operands.size( Parameter description needed.
+/// @return Return value description needed.
         if (operands.size() < 2)
         {
             os << " #<missing>\n";
@@ -886,6 +1269,9 @@ void AsmEmitter::emit_from_row(const EncodingRow &row,
         }
         const auto *dest = std::get_if<OpReg>(&operands[0]);
         const auto *src = std::get_if<OpReg>(&operands[1]);
+/// @brief Implements if functionality.
+/// @param !src Parameter description needed.
+/// @return Return value description needed.
         if (!dest || !src)
         {
             os << " #<invalid>\n";
@@ -895,8 +1281,14 @@ void AsmEmitter::emit_from_row(const EncodingRow &row,
         return;
     }
 
+/// @brief Implements if functionality.
+/// @param kFmtCall Parameter description needed.
+/// @return Return value description needed.
     if ((flags & kFmtCall) != 0U)
     {
+/// @brief Implements if functionality.
+/// @param operands.empty( Parameter description needed.
+/// @return Return value description needed.
         if (operands.empty())
         {
             os << " #<missing>\n";
@@ -906,31 +1298,55 @@ void AsmEmitter::emit_from_row(const EncodingRow &row,
         return;
     }
 
+/// @brief Implements if functionality.
+/// @param kFmtJump Parameter description needed.
+/// @return Return value description needed.
     if ((flags & kFmtJump) != 0U)
     {
+/// @brief Implements if functionality.
+/// @param kFmtCond Parameter description needed.
+/// @return Return value description needed.
         if ((flags & kFmtCond) != 0U)
         {
             const Operand *branchTarget = nullptr;
             const OpImm *cond = nullptr;
+/// @brief Implements for functionality.
+/// @param operands Parameter description needed.
+/// @return Return value description needed.
             for (const auto &operand : operands)
             {
+/// @brief Implements if functionality.
+/// @param !cond Parameter description needed.
+/// @return Return value description needed.
                 if (!cond)
                 {
                     cond = std::get_if<OpImm>(&operand);
                 }
+/// @brief Implements if functionality.
+/// @param std::holds_alternative<OpLabel>(operand Parameter description needed.
+/// @return Return value description needed.
                 if (!branchTarget && std::holds_alternative<OpLabel>(operand))
                 {
                     branchTarget = &operand;
                 }
             }
+/// @brief Implements if functionality.
+/// @param !operands.empty( Parameter description needed.
+/// @return Return value description needed.
             if (!branchTarget && !operands.empty())
             {
                 branchTarget = &operands.back();
             }
             const auto suffix = cond ? conditionSuffix(cond->val) : std::string_view{"e"};
             os << suffix << ' ';
+/// @brief Implements if functionality.
+/// @param branchTarget Parameter description needed.
+/// @return Return value description needed.
             if (branchTarget)
             {
+/// @brief Implements if functionality.
+/// @param std::holds_alternative<OpLabel>(*branchTarget Parameter description needed.
+/// @return Return value description needed.
                 if (std::holds_alternative<OpLabel>(*branchTarget))
                 {
                     os << formatOperand(*branchTarget, target) << '\n';
@@ -947,6 +1363,9 @@ void AsmEmitter::emit_from_row(const EncodingRow &row,
         }
         else
         {
+/// @brief Implements if functionality.
+/// @param operands.empty( Parameter description needed.
+/// @return Return value description needed.
             if (operands.empty())
             {
                 os << " #<missing>\n";
@@ -954,6 +1373,9 @@ void AsmEmitter::emit_from_row(const EncodingRow &row,
             }
             os << ' ';
             const auto &targetOp = operands.front();
+/// @brief Implements if functionality.
+/// @param std::holds_alternative<OpLabel>(targetOp Parameter description needed.
+/// @return Return value description needed.
             if (std::holds_alternative<OpLabel>(targetOp))
             {
                 os << formatOperand(targetOp, target) << '\n';
@@ -961,6 +1383,11 @@ void AsmEmitter::emit_from_row(const EncodingRow &row,
             else
             {
                 os << '*';
+/// @brief Emits operand.
+/// @param targetOp Parameter description needed.
+/// @param os Parameter description needed.
+/// @param target Parameter description needed.
+/// @return Return value description needed.
                 emitOperand(targetOp, os, target);
                 os << '\n';
             }
@@ -968,16 +1395,27 @@ void AsmEmitter::emit_from_row(const EncodingRow &row,
         return;
     }
 
+/// @brief Implements if functionality.
+/// @param kFmtSetcc Parameter description needed.
+/// @return Return value description needed.
     if ((flags & kFmtSetcc) != 0U)
     {
         const Operand *dest = nullptr;
         const OpImm *cond = nullptr;
+/// @brief Implements for functionality.
+/// @param operands Parameter description needed.
+/// @return Return value description needed.
         for (const auto &operand : operands)
         {
+/// @brief Implements if functionality.
+/// @param !cond Parameter description needed.
+/// @return Return value description needed.
             if (!cond)
             {
                 cond = std::get_if<OpImm>(&operand);
             }
+/// @brief Implements if functionality.
+/// @return Return value description needed.
             if (!dest &&
                 (std::holds_alternative<OpReg>(operand) || std::holds_alternative<OpMem>(operand)))
             {
@@ -986,6 +1424,9 @@ void AsmEmitter::emit_from_row(const EncodingRow &row,
         }
         const auto suffix = cond ? conditionSuffix(cond->val) : std::string_view{"e"};
         os << suffix << ' ';
+/// @brief Implements if functionality.
+/// @param dest Parameter description needed.
+/// @return Return value description needed.
         if (dest)
         {
             os << formatOperand(*dest, target) << '\n';
@@ -997,8 +1438,14 @@ void AsmEmitter::emit_from_row(const EncodingRow &row,
         return;
     }
 
+/// @brief Implements if functionality.
+/// @param kFmtShift Parameter description needed.
+/// @return Return value description needed.
     if ((flags & kFmtShift) != 0U)
     {
+/// @brief Implements if functionality.
+/// @param operands.size( Parameter description needed.
+/// @return Return value description needed.
         if (operands.size() < 2)
         {
             os << " #<missing>\n";
@@ -1009,71 +1456,130 @@ void AsmEmitter::emit_from_row(const EncodingRow &row,
         return;
     }
 
+/// @brief Implements if functionality.
+/// @param kFmtDirect Parameter description needed.
+/// @return Return value description needed.
     if ((flags & kFmtDirect) != 0U)
     {
+/// @brief Implements if functionality.
+/// @param operands.empty( Parameter description needed.
+/// @return Return value description needed.
         if (operands.empty())
         {
             os << '\n';
             return;
         }
         os << ' ';
+/// @brief Emits operands.
+/// @param operands Parameter description needed.
+/// @param os Parameter description needed.
+/// @param target Parameter description needed.
+/// @return Return value description needed.
         emitOperands(operands, os, target);
         os << '\n';
         return;
     }
 
+/// @brief Implements switch functionality.
+/// @param fmt->operandCount Parameter description needed.
+/// @return Return value description needed.
     switch (fmt->operandCount)
     {
         case 1:
         {
+/// @brief Implements if functionality.
+/// @param operands.empty( Parameter description needed.
+/// @return Return value description needed.
             if (operands.empty())
             {
                 os << " #<missing>\n";
                 return;
             }
             os << ' ';
+/// @brief Emits operand.
+/// @param operands.front( Parameter description needed.
+/// @return Return value description needed.
             emitOperand(operands.front(), os, target);
             os << '\n';
             return;
         }
         case 2:
         {
+/// @brief Implements if functionality.
+/// @param operands.size( Parameter description needed.
+/// @return Return value description needed.
             if (operands.size() < 2)
             {
                 os << " #<missing>\n";
                 return;
             }
             os << ' ';
+/// @brief Emits operand.
+/// @param operands[1] Parameter description needed.
+/// @param os Parameter description needed.
+/// @param target Parameter description needed.
+/// @return Return value description needed.
             emitOperand(operands[1], os, target);
             os << ", ";
+/// @brief Emits operand.
+/// @param operands[0] Parameter description needed.
+/// @param os Parameter description needed.
+/// @param target Parameter description needed.
+/// @return Return value description needed.
             emitOperand(operands[0], os, target);
             os << '\n';
             return;
         }
         case 3:
         {
+/// @brief Implements if functionality.
+/// @param operands.size( Parameter description needed.
+/// @return Return value description needed.
             if (operands.size() < 3)
             {
                 os << " #<missing>\n";
                 return;
             }
             os << ' ';
+/// @brief Emits operand.
+/// @param operands[2] Parameter description needed.
+/// @param os Parameter description needed.
+/// @param target Parameter description needed.
+/// @return Return value description needed.
             emitOperand(operands[2], os, target);
             os << ", ";
+/// @brief Emits operand.
+/// @param operands[1] Parameter description needed.
+/// @param os Parameter description needed.
+/// @param target Parameter description needed.
+/// @return Return value description needed.
             emitOperand(operands[1], os, target);
             os << ", ";
+/// @brief Emits operand.
+/// @param operands[0] Parameter description needed.
+/// @param os Parameter description needed.
+/// @param target Parameter description needed.
+/// @return Return value description needed.
             emitOperand(operands[0], os, target);
             os << '\n';
             return;
         }
         default:
         {
+/// @brief Implements if functionality.
+/// @param operands.empty( Parameter description needed.
+/// @return Return value description needed.
             if (operands.empty())
             {
                 os << '\n';
                 return;
             }
             os << ' ';
+/// @brief Emits operands.
+/// @param operands Parameter description needed.
+/// @param os Parameter description needed.
+/// @param target Parameter description needed.
+/// @return Return value description needed.
             emitOperands(operands, os, target);
             os << '\n';
             return;
@@ -1091,6 +1597,11 @@ void AsmEmitter::emit_from_row(const EncodingRow &row,
 std::string AsmEmitter::formatOperand(const Operand &operand, const TargetInfo &target)
 {
     std::ostringstream buffer;
+/// @brief Emits operand.
+/// @param operand Parameter description needed.
+/// @param buffer Parameter description needed.
+/// @param target Parameter description needed.
+/// @return Return value description needed.
     emitOperand(operand, buffer, target);
     return std::move(buffer).str();
 }
@@ -1109,6 +1620,9 @@ std::string AsmEmitter::formatReg(const OpReg &reg, const TargetInfo &)
 
 std::string AsmEmitter::formatReg8(const OpReg &reg, const TargetInfo &target)
 {
+/// @brief Implements if functionality.
+/// @param !reg.isPhys Parameter description needed.
+/// @return Return value description needed.
     if (!reg.isPhys)
     {
         std::ostringstream os;
@@ -1117,6 +1631,9 @@ std::string AsmEmitter::formatReg8(const OpReg &reg, const TargetInfo &target)
     }
 
     const auto phys = static_cast<PhysReg>(reg.idOrPhys);
+/// @brief Implements switch functionality.
+/// @param phys Parameter description needed.
+/// @return Return value description needed.
     switch (phys)
     {
         case PhysReg::RAX:
@@ -1176,6 +1693,9 @@ std::string AsmEmitter::formatMem(const OpMem &mem, const TargetInfo &target)
     asmfmt::MemAddr addr{};
     addr.base = encodeRegister(mem.base);
     addr.disp = mem.disp;
+/// @brief Implements if functionality.
+/// @param mem.hasIndex Parameter description needed.
+/// @return Return value description needed.
     if (mem.hasIndex)
     {
         addr.index = encodeRegister(mem.index);
@@ -1207,8 +1727,13 @@ std::string AsmEmitter::formatRipLabel(const OpRipLabel &label)
 /// @return Assembly string for the shift count operand.
 std::string AsmEmitter::formatShiftCount(const Operand &operand, const TargetInfo &target)
 {
+/// @brief Implements if functionality.
+/// @param std::get_if<OpReg>(&operand Parameter description needed.
+/// @return Return value description needed.
     if (const auto *reg = std::get_if<OpReg>(&operand))
     {
+/// @brief Implements if functionality.
+/// @return Return value description needed.
         if (reg->isPhys && reg->cls == RegClass::GPR &&
             reg->idOrPhys == static_cast<uint16_t>(PhysReg::RCX))
         {
@@ -1258,6 +1783,9 @@ std::string AsmEmitter::formatCallTarget(const Operand &operand, const TargetInf
 /// @return String view containing the condition suffix, defaulting to "e".
 std::string_view AsmEmitter::conditionSuffix(std::int64_t code) noexcept
 {
+/// @brief Implements switch functionality.
+/// @param static_cast<int>(code Parameter description needed.
+/// @return Return value description needed.
     switch (static_cast<int>(code))
     {
         case 0:

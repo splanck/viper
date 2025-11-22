@@ -1,11 +1,17 @@
-// File: src/frontends/basic/sem/TypeResolver.hpp
-// Purpose: Resolve type names using NamespaceRegistry and UsingContext with ambiguity detection.
-// Key invariants:
-//   - Case-insensitive type lookups.
-//   - Ambiguity detection produces sorted, stable contender lists.
-//   - Qualified names bypass USING; simple names use precedence rules.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: frontends/basic/sem/TypeResolver.hpp
+// Purpose: Resolve type names using NamespaceRegistry and UsingContext with ambiguity detection. 
+// Key invariants: // Key invariants:
 // Ownership/Lifetime: TypeResolver does not own registry or context; caller ensures lifetime.
 // Links: docs/codemap.md, CLAUDE.md
+//
+//===----------------------------------------------------------------------===//
 
 #pragma once
 

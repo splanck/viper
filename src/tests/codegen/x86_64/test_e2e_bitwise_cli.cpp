@@ -1,9 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/codegen/x86_64/test_e2e_bitwise_cli.cpp
-// Purpose: Exercise the ilc CLI end-to-end for bitwise IL snippets and ensure
-//          VM/native parity using the shared codegen fixture.
+// Purpose: Exercise the ilc CLI end-to-end for bitwise IL snippets and ensure 
 // Key invariants: The parameterized scenarios describe IL programs that must
-//                 yield identical exit codes and stdout for both execution
-//                 paths.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "common/CodegenFixture.hpp"
 
@@ -14,6 +22,7 @@
 #include <string>
 
 #if __has_include(<gtest/gtest.h>)
+#ifdef VIPER_HAS_GTEST
 #include <gtest/gtest.h>
 #define VIPER_HAS_GTEST 1
 #else

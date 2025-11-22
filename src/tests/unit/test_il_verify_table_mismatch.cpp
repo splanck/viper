@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_il_verify_table_mismatch.cpp
-// Purpose: Ensure verifier reports clear diagnostics for table-driven mismatches.
+// Purpose: Ensure verifier reports clear diagnostics for table-driven mismatches. 
 // Key invariants: Operand and constant typing errors produce stable substrings.
 // Ownership/Lifetime: Constructs verifier modules locally within each test case.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"

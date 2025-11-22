@@ -1,6 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_basic_builtins_arg_get_typing.cpp
-// Purpose: Ensure ARG$ requires integer index (registry-driven semantic signature).
+// Purpose: Ensure ARG$ requires integer index (registry-driven semantic signature). 
 // Key invariants: Passing a string to ARG$ should fail semantic analysis.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "frontends/basic/BasicCompiler.hpp"
 #include "support/source_manager.hpp"

@@ -1,8 +1,17 @@
-// File: src/tools/ilc/break_spec.hpp
-// Purpose: Helpers for parsing --break flag specifications.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: tools/ilc/break_spec.hpp
+// Purpose: Helpers for parsing --break flag specifications. 
 // Key invariants: None.
 // Ownership/Lifetime: N/A.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
 
 #pragma once
 

@@ -1,8 +1,18 @@
-// File: src/support/string_interner.hpp
-// Purpose: Declares string interning and symbol types.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: support/string_interner.hpp
+// Purpose: Declares string interning and symbol types. 
 // Key invariants: Symbol id 0 is invalid.
 // Ownership/Lifetime: Interner owns stored strings.
 // Links: docs/codemap.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include "symbol.hpp"

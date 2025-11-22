@@ -1,13 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/codegen/x86_64/test_div_trap.cpp
-// Purpose: Verify that signed 64-bit division emits a guarded trap sequence
-//          before the IDIV instruction in the x86-64 backend.
+// Purpose: Verify that signed 64-bit division emits a guarded trap sequence 
 // Key invariants: Generated assembly must test the divisor for zero, branch to
-//                 the shared trap block, extend RAX into RDX via CQO, execute
-//                 IDIV, and call the runtime trap when the divisor is zero.
 // Ownership/Lifetime: The test builds an IL module locally, requests assembly
-//                     emission by value, and analyses the resulting text in
-//                     memory without additional allocations.
 // Links: src/codegen/x86_64/LowerDiv.cpp
+//
+//===----------------------------------------------------------------------===//
 
 #include "codegen/x86_64/Backend.hpp"
 #include "common/CodegenFixture.hpp"
@@ -23,6 +27,7 @@
 #include <system_error>
 
 #if __has_include(<gtest/gtest.h>)
+#ifdef VIPER_HAS_GTEST
 #include <gtest/gtest.h>
 #define VIPER_HAS_GTEST 1
 #else

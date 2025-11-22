@@ -1,7 +1,18 @@
-// tui/include/tui/text/PieceTable.hpp
-// @brief Piece table storage for text buffers emitting span change callbacks.
-// @invariant Edits only mutate piece metadata while buffers remain stable.
-// @ownership PieceTable owns original/add buffers and change payload copies.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: tui/include/tui/text/PieceTable.hpp
+// Purpose: Implements functionality for this subsystem.
+// Key invariants: To be documented.
+// Ownership/Lifetime: To be documented.
+// Links: docs/architecture.md
+//
+//===----------------------------------------------------------------------===//
+
 #pragma once
 
 #include <algorithm>

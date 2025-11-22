@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/codegen/x86_64/test_call_indirect.cpp
-// Purpose: Ensure the x86-64 backend can lower an indirect call target and
-//          emit a `callq *...` form in assembly.
+// Purpose: Ensure the x86-64 backend can lower an indirect call target and 
 // Key invariants: The emitted assembly contains an indirect call and a return.
+// Ownership/Lifetime: To be documented.
 // Links: src/codegen/x86_64/Lowering.Mem.cpp, src/codegen/x86_64/AsmEmitter.cpp
+//
+//===----------------------------------------------------------------------===//
 
 #include "codegen/x86_64/Backend.hpp"
 
@@ -10,6 +19,7 @@
 #include <string_view>
 
 #if __has_include(<gtest/gtest.h>)
+#ifdef VIPER_HAS_GTEST
 #include <gtest/gtest.h>
 #define VIPER_HAS_GTEST 1
 #else

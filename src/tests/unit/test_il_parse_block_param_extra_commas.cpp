@@ -1,8 +1,17 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/unit/test_il_parse_block_param_extra_commas.cpp
-// Purpose: Validate that block parameter lists reject empty entries between commas.
+// Purpose: Validate that block parameter lists reject empty entries between commas. 
 // Key invariants: Parser emits diagnostics referencing the empty slot and line number.
 // Ownership/Lifetime: Test constructs module and diagnostic buffers locally.
 // Links: docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
 
 #include "il/api/expected_api.hpp"
 #include "il/core/Module.hpp"

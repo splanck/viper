@@ -1,8 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/vm/TraceILTests.cpp
-// Purpose: Verify IL tracing emits deterministic lines and disables by default.
+// Purpose: Verify IL tracing emits deterministic lines and disables by default. 
 // Key invariants: Trace output matches golden file exactly.
 // Ownership/Lifetime: Test owns temporary files and cleans them up.
 // Links: docs/testing.md
+//
+//===----------------------------------------------------------------------===//
+
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
