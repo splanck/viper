@@ -30,9 +30,6 @@ namespace
 /// @pre instr.op must be Opcode::SwitchI32.
 void requireSwitch(const Instr &instr)
 {
-/// @brief Implements assert functionality.
-/// @param instruction" Parameter description needed.
-/// @return Return value description needed.
     assert(instr.op == Opcode::SwitchI32 && "expected switch instruction");
 }
 
@@ -45,17 +42,8 @@ void requireSwitch(const Instr &instr)
 /// @post The returned reference remains valid for the lifetime of @p instr.
 const std::vector<Value> &argsOrEmpty(const Instr &instr, size_t index)
 {
-/// @brief Implements requireSwitch functionality.
-/// @param instr Parameter description needed.
-/// @return Return value description needed.
     requireSwitch(instr);
-/// @brief Implements assert functionality.
-/// @param instr.labels.size( Parameter description needed.
-/// @return Return value description needed.
     assert(index < instr.labels.size());
-/// @brief Implements assert functionality.
-/// @param instr.brArgs.size( Parameter description needed.
-/// @return Return value description needed.
     assert(index < instr.brArgs.size());
     return instr.brArgs[index];
 }
@@ -68,13 +56,7 @@ const std::vector<Value> &argsOrEmpty(const Instr &instr, size_t index)
 /// @pre instr.operands must contain at least one entry representing the scrutinee.
 const Value &switchScrutinee(const Instr &instr)
 {
-/// @brief Implements requireSwitch functionality.
-/// @param instr Parameter description needed.
-/// @return Return value description needed.
     requireSwitch(instr);
-/// @brief Implements assert functionality.
-/// @param !instr.operands.empty( Parameter description needed.
-/// @return Return value description needed.
     assert(!instr.operands.empty());
     return instr.operands.front();
 }
@@ -86,13 +68,7 @@ const Value &switchScrutinee(const Instr &instr)
 /// @pre instr.labels must contain at least one entry representing the default label.
 const std::string &switchDefaultLabel(const Instr &instr)
 {
-/// @brief Implements requireSwitch functionality.
-/// @param instr Parameter description needed.
-/// @return Return value description needed.
     requireSwitch(instr);
-/// @brief Implements assert functionality.
-/// @param !instr.labels.empty( Parameter description needed.
-/// @return Return value description needed.
     assert(!instr.labels.empty());
     return instr.labels.front();
 }
@@ -112,13 +88,7 @@ const std::vector<Value> &switchDefaultArgs(const Instr &instr)
 /// @pre instr must satisfy requireSwitch().
 size_t switchCaseCount(const Instr &instr)
 {
-/// @brief Implements requireSwitch functionality.
-/// @param instr Parameter description needed.
-/// @return Return value description needed.
     requireSwitch(instr);
-/// @brief Implements if functionality.
-/// @param instr.labels.empty( Parameter description needed.
-/// @return Return value description needed.
     if (instr.labels.empty())
         return 0;
     return instr.labels.size() - 1;
@@ -133,17 +103,8 @@ size_t switchCaseCount(const Instr &instr)
 /// @pre instr.operands must contain the scrutinee followed by case values.
 const Value &switchCaseValue(const Instr &instr, size_t index)
 {
-/// @brief Implements requireSwitch functionality.
-/// @param instr Parameter description needed.
-/// @return Return value description needed.
     requireSwitch(instr);
-/// @brief Implements assert functionality.
-/// @param switchCaseCount(instr Parameter description needed.
-/// @return Return value description needed.
     assert(index < switchCaseCount(instr));
-/// @brief Implements assert functionality.
-/// @param instr.operands.size( Parameter description needed.
-/// @return Return value description needed.
     assert(instr.operands.size() > index + 1);
     return instr.operands[index + 1];
 }
@@ -156,13 +117,7 @@ const Value &switchCaseValue(const Instr &instr, size_t index)
 /// @pre index must be less than switchCaseCount(instr).
 const std::string &switchCaseLabel(const Instr &instr, size_t index)
 {
-/// @brief Implements requireSwitch functionality.
-/// @param instr Parameter description needed.
-/// @return Return value description needed.
     requireSwitch(instr);
-/// @brief Implements assert functionality.
-/// @param switchCaseCount(instr Parameter description needed.
-/// @return Return value description needed.
     assert(index < switchCaseCount(instr));
     return instr.labels[index + 1];
 }

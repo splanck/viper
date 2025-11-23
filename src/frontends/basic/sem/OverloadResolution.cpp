@@ -10,6 +10,7 @@
 
 #include "frontends/basic/sem/OverloadResolution.hpp"
 
+#include "frontends/basic/ast/NodeFwd.hpp"
 #include "frontends/basic/StringUtils.hpp"
 
 namespace il::frontends::basic::sem

@@ -107,6 +107,8 @@ target_sources(fe_basic PRIVATE
         sem/OverloadResolution.cpp
         SemanticAnalyzer.Stmts.IO.cpp
         SemanticAnalyzer.Stmts.Runtime.cpp
+        OopIndex.cpp
+        OopLoweringContext.cpp
         Semantic_OOP.cpp
         SemanticAnalyzer.Exprs.cpp
         SemanticAnalyzer.Builtins.cpp
@@ -126,6 +128,10 @@ target_sources(fe_basic PRIVATE
         BasicCompiler.cpp
         Lower_OOP_Expr.cpp
         Lower_OOP_Stmt.cpp
+        Lower_OOP_Alloc.cpp
+        Lower_OOP_MemberAccess.cpp
+        Lower_OOP_MethodCall.cpp
+        Lower_OOP_Helpers.cpp
         ProcRegistry.cpp
         SemanticDiagnostics.cpp
 )

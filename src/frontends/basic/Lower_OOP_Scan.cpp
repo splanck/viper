@@ -22,6 +22,7 @@
 #include "frontends/basic/AstWalker.hpp"
 #include "frontends/basic/ILTypeUtils.hpp"
 #include "frontends/basic/Lowerer.hpp"
+#include "frontends/basic/Semantic_OOP.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
 
 #include <cstddef>

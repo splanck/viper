@@ -21,6 +21,8 @@
 #include "vm/VM.hpp"
 #include "vm/control_flow.hpp"
 
+#include "runtime/rt_context.h"
+
 #include <algorithm>
 #include <cassert>
 #include <cctype>
@@ -196,15 +198,38 @@ VM::VM(const Module &m, TraceConfig tc, uint64_t ms, DebugCtrl dbg, DebugScript 
     debug.setSourceManager(tc.sm);
     // Cache pointer to opcode handler table once.
     handlerTable_ = &VM::getOpcodeHandlers();
+
+    // Initialize per-VM runtime context for isolated state
+    rtContext = new RtContext();
+    rt_context_init(rtContext);
+
     // Reserve map capacities based on module sizes to reduce rehashing.
     fnMap.reserve(m.functions.size());
     strMap.reserve(m.globals.size());
+    mutableGlobalMap.reserve(m.globals.size());
     // Cache function pointers and constant strings for fast lookup during
     // execution and for resolving runtime bridge requests such as ConstStr.
     for (const auto &f : m.functions)
         fnMap[f.name] = &f;
     for (const auto &g : m.globals)
-        strMap[g.name] = toViperString(g.init, AssumeNullTerminated::Yes);
+    {
+        // Const string globals go into strMap for backward compatibility
+        if (g.type.kind == il::core::Type::Kind::Str && !g.init.empty())
+        {
+            strMap[g.name] = toViperString(g.init, AssumeNullTerminated::Yes);
+        }
+        else
+        {
+            // Mutable globals: allocate zero-initialized storage
+            size_t size = 8; // Default to 8 bytes for most types
+            if (g.type.kind == il::core::Type::Kind::I1)
+                size = 1;
+            void *storage = std::calloc(1, size);
+            if (!storage)
+                throw std::runtime_error("Failed to allocate mutable global storage");
+            mutableGlobalMap[g.name] = storage;
+        }
+    }
 
     // Pre-populate string literal cache to eliminate map lookups on hot path.
     // This scans all const_str operands in the module and creates rt_string

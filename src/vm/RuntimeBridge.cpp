@@ -88,9 +88,6 @@ static bool validateArgumentCount(const RuntimeDescriptor &desc,
                                   const std::string &block)
 {
     const auto expected = desc.signature.paramTypes.size();
-/// @brief Implements if functionality.
-/// @param args.size( Parameter description needed.
-/// @return Return value description needed.
     if (args.size() == expected)
         return true;
 
@@ -118,9 +115,6 @@ static VmResult executeDescriptor(const RuntimeDescriptor &desc,
                                   const RuntimeCallContext &ctx)
 {
     std::span<Slot> argSpan{};
-/// @brief Implements if functionality.
-/// @param argCount Parameter description needed.
-/// @return Return value description needed.
     if (argBegin && argCount)
         argSpan = {argBegin, argCount};
 
@@ -132,15 +126,9 @@ static VmResult executeDescriptor(const RuntimeDescriptor &desc,
     desc.handler(rawArgs.empty() ? nullptr : rawArgs.data(), resultPtr);
 
     std::span<const Slot> readonlyArgs{};
-/// @brief Implements if functionality.
-/// @param argCount Parameter description needed.
-/// @return Return value description needed.
     if (argBegin && argCount)
         readonlyArgs = {argBegin, argCount};
     auto trap = il::vm::classifyPowTrap(desc, powStatus, readonlyArgs, buffers);
-/// @brief Implements if functionality.
-/// @param trap.triggered Parameter description needed.
-/// @return Return value description needed.
     if (trap.triggered)
     {
         // RuntimeBridge::trap escalates into vm_raise when a VM is active.
@@ -198,9 +186,6 @@ struct ContextGuard
     /// @brief Restore the previous context and clear transient diagnostic fields.
     ~ContextGuard()
     {
-/// @brief Implements if functionality.
-/// @param current Parameter description needed.
-/// @return Return value description needed.
         if (current)
         {
             current->loc = {};
@@ -237,30 +222,18 @@ struct TrapCtx
 ///          so higher layers can surface it to the user.
 static void finalizeTrap(TrapCtx &ctx)
 {
-/// @brief Implements if functionality.
-/// @param ctx.vm Parameter description needed.
-/// @return Return value description needed.
     if (ctx.vm)
     {
-/// @brief Implements vm_raise functionality.
-/// @param ctx.kind Parameter description needed.
-/// @return Return value description needed.
         vm_raise(ctx.kind);
         return;
     }
 
     std::string diagnostic = vm_format_error(ctx.error, ctx.frame);
-/// @brief Implements if functionality.
-/// @param !ctx.message.empty( Parameter description needed.
-/// @return Return value description needed.
     if (!ctx.message.empty())
     {
         diagnostic += ": ";
         diagnostic += ctx.message;
     }
-/// @brief Implements rt_abort functionality.
-/// @param diagnostic.c_str( Parameter description needed.
-/// @return Return value description needed.
     rt_abort(diagnostic.c_str());
 }
 
@@ -273,9 +246,6 @@ static void handleOverflow(TrapCtx &ctx, Opcode opcode, const Operands &operands
 {
     (void)opcode;
     (void)operands;
-/// @brief Implements finalizeTrap functionality.
-/// @param ctx Parameter description needed.
-/// @return Return value description needed.
     finalizeTrap(ctx);
 }
 
@@ -288,18 +258,12 @@ static void handleDivByZero(TrapCtx &ctx, Opcode opcode, const Operands &operand
 {
     (void)opcode;
     (void)operands;
-/// @brief Implements finalizeTrap functionality.
-/// @param ctx Parameter description needed.
-/// @return Return value description needed.
     finalizeTrap(ctx);
 }
 
 /// @brief Finalise traps that do not require operand-specific formatting.
 static void handleGenericTrap(TrapCtx &ctx)
 {
-/// @brief Implements finalizeTrap functionality.
-/// @param ctx Parameter description needed.
-/// @return Return value description needed.
     finalizeTrap(ctx);
 }
 
@@ -321,23 +285,12 @@ extern "C" void vm_trap(const char *msg)
 {
     const auto *ctx = il::vm::RuntimeBridge::activeContext();
     const char *trapMsg = msg ? msg : "trap";
-/// @brief Implements if functionality.
-/// @param ctx Parameter description needed.
-/// @return Return value description needed.
     if (ctx)
     {
         il::vm::RuntimeBridge::trap(
             TrapKind::DomainError, trapMsg, ctx->loc, ctx->function, ctx->block);
         return;
     }
-    // No active runtime call context. Avoid re-entering RuntimeBridge::trap which
-    // would attempt to format and route a second trap and can cause recursion when
-    // the formatting path calls back into rt_abort/vm_trap. Instead, emit a minimal
-    // diagnostic and terminate the process with a non-zero status so tests that
-    // expect failure (via fork) observe a failing exit code.
-/// @brief Implements if functionality.
-/// @param trapMsg Parameter description needed.
-/// @return Return value description needed.
     if (trapMsg && *trapMsg)
         std::fprintf(stderr, "%s\n", trapMsg);
     std::_Exit(1);
@@ -366,16 +319,10 @@ std::unordered_map<std::string, ExtRecord> &externRegistry()
     return reg;
 }
 
-/// @brief Implements mapKind functionality.
-/// @param k Parameter description needed.
-/// @return Return value description needed.
 static il::core::Type mapKind(il::runtime::signatures::SigParam::Kind k)
 {
     using K = il::runtime::signatures::SigParam::Kind;
     using il::core::Type;
-/// @brief Implements switch functionality.
-/// @param k Parameter description needed.
-/// @return Return value description needed.
     switch (k)
     {
         case K::I1:
@@ -396,21 +343,12 @@ static il::core::Type mapKind(il::runtime::signatures::SigParam::Kind k)
     return Type(Type::Kind::Void);
 }
 
-/// @brief Implements toRuntimeSig functionality.
-/// @param sig Parameter description needed.
-/// @return Return value description needed.
 static il::runtime::RuntimeSignature toRuntimeSig(const Signature &sig)
 {
     il::runtime::RuntimeSignature rs;
     rs.paramTypes.reserve(sig.params.size());
-/// @brief Implements for functionality.
-/// @param sig.params Parameter description needed.
-/// @return Return value description needed.
     for (const auto &p : sig.params)
         rs.paramTypes.push_back(mapKind(p.kind));
-/// @brief Implements if functionality.
-/// @param !sig.rets.empty( Parameter description needed.
-/// @return Return value description needed.
     if (!sig.rets.empty())
         rs.retType = mapKind(sig.rets.front().kind);
     else
@@ -423,18 +361,9 @@ static il::runtime::RuntimeSignature toRuntimeSig(const Signature &sig)
 }
 } // namespace
 
-/// @brief Implements canonicalizeExternName functionality.
-/// @param n Parameter description needed.
-/// @return Return value description needed.
 std::string canonicalizeExternName(std::string_view n)
 {
-/// @brief Implements out functionality.
-/// @param n Parameter description needed.
-/// @return Return value description needed.
     std::string out(n);
-/// @brief Implements for functionality.
-/// @param out Parameter description needed.
-/// @return Return value description needed.
     for (auto &ch : out)
         ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
     return out;
@@ -471,11 +400,10 @@ Slot RuntimeBridge::call(RuntimeCallContext &ctx,
     il::runtime::RuntimeDescriptor localDesc;
     const il::runtime::RuntimeDescriptor *desc = nullptr;
     {
+        // Canonicalize name before acquiring lock to reduce critical section duration
+        const std::string key = canonicalizeExternName(name);
         std::unique_lock<std::mutex> lock(externMutex());
-        auto it = externRegistry().find(canonicalizeExternName(name));
-/// @brief Implements if functionality.
-/// @param externRegistry( Parameter description needed.
-/// @return Return value description needed.
+        auto it = externRegistry().find(key);
         if (it != externRegistry().end())
         {
             localDesc.name = it->second.pub.name;
@@ -485,14 +413,8 @@ Slot RuntimeBridge::call(RuntimeCallContext &ctx,
             desc = &localDesc;
         }
     }
-/// @brief Implements if functionality.
-/// @param !desc Parameter description needed.
-/// @return Return value description needed.
     if (!desc)
         desc = il::runtime::findRuntimeDescriptor(name);
-/// @brief Implements if functionality.
-/// @param !desc Parameter description needed.
-/// @return Return value description needed.
     if (!desc)
     {
         std::ostringstream os;
@@ -500,14 +422,6 @@ Slot RuntimeBridge::call(RuntimeCallContext &ctx,
         RuntimeBridge::trap(TrapKind::DomainError, os.str(), loc, fn, block);
         return result;
     }
-/// @brief Implements if functionality.
-/// @param !validateArgumentCount(*desc Parameter description needed.
-/// @param name Parameter description needed.
-/// @param args Parameter description needed.
-/// @param loc Parameter description needed.
-/// @param fn Parameter description needed.
-/// @param block Parameter description needed.
-/// @return Return value description needed.
     if (!validateArgumentCount(*desc, name, args, loc, fn, block))
         return result;
 
@@ -515,22 +429,13 @@ Slot RuntimeBridge::call(RuntimeCallContext &ctx,
     ctx.argBegin = args.empty() ? nullptr : const_cast<Slot *>(args.data());
     ctx.argCount = args.size();
 
-/// @brief Implements if functionality.
-/// @param VM::activeInstance( Parameter description needed.
-/// @return Return value description needed.
     if (auto *vm = VM::activeInstance())
     {
         FrameInfo frame{};
         std::optional<RtSig> sigId = il::runtime::findRuntimeSignatureId(name);
         Thunk thunk = nullptr;
-/// @brief Implements if functionality.
-/// @param static_cast<std::size_t>(*sigId Parameter description needed.
-/// @return Return value description needed.
         if (sigId && static_cast<std::size_t>(*sigId) < thunkTable().size())
             thunk = thunkTable()[static_cast<std::size_t>(*sigId)];
-/// @brief Implements if functionality.
-/// @param !thunk Parameter description needed.
-/// @return Return value description needed.
         if (!thunk)
             thunk = &genericThunk;
         result = thunk(*vm, frame, ctx);
@@ -562,17 +467,11 @@ void RuntimeBridge::trap(TrapKind kind,
 {
     TrapCtx ctx{kind, msg, loc, fn, block};
     ctx.vm = VM::activeInstance();
-/// @brief Implements if functionality.
-/// @param ctx.vm Parameter description needed.
-/// @return Return value description needed.
     if (ctx.vm)
     {
         auto populateVm =
             [](VM &vm, const SourceLoc &loc, const std::string &fn, const std::string &block)
         {
-/// @brief Implements if functionality.
-/// @param loc.hasFile( Parameter description needed.
-/// @return Return value description needed.
             if (loc.hasFile())
             {
                 vm.currentContext.loc = loc;
@@ -582,9 +481,6 @@ void RuntimeBridge::trap(TrapKind kind,
             {
                 vm.runtimeContext.loc = {};
             }
-/// @brief Implements if functionality.
-/// @param !fn.empty( Parameter description needed.
-/// @return Return value description needed.
             if (!fn.empty())
             {
                 vm.runtimeContext.function = fn;
@@ -594,9 +490,6 @@ void RuntimeBridge::trap(TrapKind kind,
                 vm.runtimeContext.function.clear();
                 vm.lastTrap.frame.function.clear();
             }
-/// @brief Implements if functionality.
-/// @param !block.empty( Parameter description needed.
-/// @return Return value description needed.
             if (!block.empty())
             {
                 vm.runtimeContext.block = block;
@@ -605,18 +498,9 @@ void RuntimeBridge::trap(TrapKind kind,
             {
                 vm.runtimeContext.block.clear();
             }
-/// @brief Implements if functionality.
-/// @param !loc.hasLine( Parameter description needed.
-/// @return Return value description needed.
             if (!loc.hasLine())
                 vm.lastTrap.frame.line = -1;
         };
-/// @brief Implements populateVm functionality.
-/// @param ctx.vm Parameter description needed.
-/// @param loc Parameter description needed.
-/// @param fn Parameter description needed.
-/// @param block Parameter description needed.
-/// @return Return value description needed.
         populateVm(*ctx.vm, loc, fn, block);
         ctx.vm->runtimeContext.message = msg;
     }
@@ -635,43 +519,21 @@ void RuntimeBridge::trap(TrapKind kind,
             c.frame.line = c.error.line;
             c.frame.handlerInstalled = false;
         };
-/// @brief Implements populateNoVm functionality.
-/// @param ctx Parameter description needed.
-/// @param kind Parameter description needed.
-/// @param loc Parameter description needed.
-/// @param fn Parameter description needed.
-/// @return Return value description needed.
         populateNoVm(ctx, kind, loc, fn);
     }
 
     constexpr Opcode trapOpcode = Opcode::Trap;
     const Operands noOperands{};
 
-/// @brief Implements switch functionality.
-/// @param kind Parameter description needed.
-/// @return Return value description needed.
     switch (kind)
     {
         case TrapKind::Overflow:
-/// @brief Implements handleOverflow functionality.
-/// @param ctx Parameter description needed.
-/// @param trapOpcode Parameter description needed.
-/// @param noOperands Parameter description needed.
-/// @return Return value description needed.
             handleOverflow(ctx, trapOpcode, noOperands);
             return;
         case TrapKind::DivideByZero:
-/// @brief Implements handleDivByZero functionality.
-/// @param ctx Parameter description needed.
-/// @param trapOpcode Parameter description needed.
-/// @param noOperands Parameter description needed.
-/// @return Return value description needed.
             handleDivByZero(ctx, trapOpcode, noOperands);
             return;
         default:
-/// @brief Implements handleGenericTrap functionality.
-/// @param ctx Parameter description needed.
-/// @return Return value description needed.
             handleGenericTrap(ctx);
             return;
     }
@@ -698,27 +560,24 @@ void RuntimeBridge::registerExtern(const ExternDesc &ext)
     rec.handler = reinterpret_cast<il::runtime::RuntimeHandler>(ext.fn);
     const std::string key = canonicalizeExternName(ext.name);
     std::lock_guard<std::mutex> lock(externMutex());
-/// @brief Implements externRegistry functionality.
-/// @return Return value description needed.
-    externRegistry()[key] = std::move(rec);
+    // Use insert_or_assign to avoid default-constructing the value
+    externRegistry().insert_or_assign(key, std::move(rec));
 }
 
 bool RuntimeBridge::unregisterExtern(std::string_view name)
 {
+    // Canonicalize before acquiring lock to minimize locked critical section
+    const std::string key = canonicalizeExternName(name);
     std::lock_guard<std::mutex> lock(externMutex());
-    return externRegistry().erase(canonicalizeExternName(name)) > 0;
+    return externRegistry().erase(key) > 0;
 }
 
-/// @brief Implements findExtern functionality.
-/// @param name Parameter description needed.
-/// @return Return value description needed.
 const ExternDesc *RuntimeBridge::findExtern(std::string_view name)
 {
+    // Canonicalize before acquiring lock to minimize locked critical section
+    const std::string key = canonicalizeExternName(name);
     std::lock_guard<std::mutex> lock(externMutex());
-    auto it = externRegistry().find(canonicalizeExternName(name));
-/// @brief Implements if functionality.
-/// @param externRegistry( Parameter description needed.
-/// @return Return value description needed.
+    auto it = externRegistry().find(key);
     if (it == externRegistry().end())
         return nullptr;
     return &it->second.pub;

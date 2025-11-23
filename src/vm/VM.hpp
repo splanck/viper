@@ -24,6 +24,10 @@
 #include "vm/Trap.hpp"
 #include "vm/VMConfig.hpp"
 #include "vm/control_flow.hpp"
+
+// Forward declare C runtime context struct
+struct RtContext;
+
 #include <array>
 #include <cstdint>
 #include <exception>
@@ -41,6 +45,7 @@ namespace il::vm
 class Runner; // fwd for friend declaration of Runner::Impl
 
 class VMContext;
+class DispatchStrategy; // fwd for friend declaration
 
 namespace detail
 {
@@ -53,6 +58,9 @@ struct OperandDispatcher; ///< Forward declaration of operand evaluation helper
 class FnTableDispatchDriver;
 class SwitchDispatchDriver;
 class ThreadedDispatchDriver;
+class FnTableStrategy;
+class SwitchStrategy;
+class ThreadedStrategy;
 } // namespace detail
 
 /// @brief Scripted debug actions.
@@ -141,7 +149,15 @@ struct Frame
     ResumeState resumeState{};
 };
 
-/// @brief Simple interpreter for the IL.
+/**
+ * @brief Virtual machine for executing Viper IL modules.
+ *
+ * The VM interprets IL bytecode using one of three dispatch strategies:
+ * function table, switch statement, or threaded code (when supported).
+ *
+ * @invariant The module passed to the constructor must outlive the VM instance.
+ * @invariant Only one thread may execute within a VM instance at a time.
+ */
 class VM
 {
   public:
@@ -154,6 +170,7 @@ class VM
     };
 
     friend class VMContext;         ///< Allow context helpers access to internals
+    friend struct ActiveVMGuard;    ///< Allow ActiveVMGuard to access rtContext
     friend struct detail::VMAccess; ///< Allow opcode handlers to access internals via helper
     friend class detail::FnTableDispatchDriver;
     friend class detail::SwitchDispatchDriver;
@@ -161,24 +178,21 @@ class VM
     friend class detail::ThreadedDispatchDriver;
 #endif
     friend struct detail::ops::OperandDispatcher; ///< Allow shared helpers to evaluate operands
+    friend class DispatchStrategy;  ///< Allow dispatch strategies to access execution state
+    friend class detail::FnTableStrategy;
+    friend class detail::SwitchStrategy;
+#if VIPER_THREADING_SUPPORTED
+    friend class detail::ThreadedStrategy;
+#endif
     friend class RuntimeBridge; ///< Runtime bridge accesses trap formatting helpers
-/// @brief Implements vm_raise functionality.
-/// @param kind Parameter description needed.
-/// @param code Parameter description needed.
     friend void vm_raise(TrapKind kind, int32_t code);
 /// @brief Handles error condition.
-/// @param error Parameter description needed.
     friend void vm_raise_from_error(const VmError &error);
     friend struct VMTestHook; ///< Unit tests access interpreter internals
     friend VmError *vm_acquire_trap_token();
     friend const VmError *vm_current_trap_token();
-/// @brief Implements vm_clear_trap_token functionality.
     friend void vm_clear_trap_token();
-/// @brief Implements vm_store_trap_token_message functionality.
-/// @param text Parameter description needed.
     friend void vm_store_trap_token_message(std::string_view text);
-/// @brief Implements vm_current_trap_message functionality.
-/// @return Return value description needed.
     friend std::string vm_current_trap_message();
 
     /// @brief Result of executing one opcode.
@@ -194,6 +208,7 @@ class VM
         Slot value{};
     };
 
+
     /// @brief Block lookup table keyed by label.
     // Use string_view keys to avoid key string copies while relying on the
     // module-owned lifetime of names/labels.
@@ -201,30 +216,18 @@ class VM
     {
         using is_transparent = void;
 
-/// @brief Implements operator functionality.
-/// @return Return value description needed.
         size_t operator()(std::string_view sv) const noexcept
         {
             return std::hash<std::string_view>{}(sv);
         }
 
-/// @brief Implements operator functionality.
-/// @return Return value description needed.
         size_t operator()(const std::string &s) const noexcept
         {
-/// @brief Implements return functionality.
-/// @param this Parameter description needed.
-/// @return Return value description needed.
             return (*this)(std::string_view{s});
         }
 
-/// @brief Implements operator functionality.
-/// @return Return value description needed.
         size_t operator()(const char *s) const noexcept
         {
-/// @brief Implements return functionality.
-/// @param this Parameter description needed.
-/// @return Return value description needed.
             return (*this)(std::string_view{s});
         }
     };
@@ -233,43 +236,31 @@ class VM
     {
         using is_transparent = void;
 
-/// @brief Implements operator functionality.
-/// @return Return value description needed.
         bool operator()(std::string_view a, std::string_view b) const noexcept
         {
             return a == b;
         }
 
-/// @brief Implements operator functionality.
-/// @return Return value description needed.
         bool operator()(const std::string &a, const std::string &b) const noexcept
         {
             return a == b;
         }
 
-/// @brief Implements operator functionality.
-/// @return Return value description needed.
         bool operator()(const std::string &a, std::string_view b) const noexcept
         {
             return a == b;
         }
 
-/// @brief Implements operator functionality.
-/// @return Return value description needed.
         bool operator()(std::string_view a, const std::string &b) const noexcept
         {
             return a == b;
         }
 
-/// @brief Implements operator functionality.
-/// @return Return value description needed.
         bool operator()(const char *a, std::string_view b) const noexcept
         {
             return std::string_view{a} == b;
         }
 
-/// @brief Implements operator functionality.
-/// @return Return value description needed.
         bool operator()(std::string_view a, const char *b) const noexcept
         {
             return a == std::string_view{b};
@@ -281,6 +272,61 @@ class VM
                                         TransparentHashSV,
                                         TransparentEqualSV>;
 
+    /// @brief Aggregate execution state for a running function.
+    /// @details Moved to public section for dispatch strategy access.
+    struct ExecState
+    {
+        Frame fr;                                 ///< Current frame
+        BlockMap blocks;                          ///< Basic block lookup
+        const il::core::BasicBlock *bb = nullptr; ///< Active basic block
+        size_t ip = 0;                            ///< Instruction pointer within @p bb
+        bool skipBreakOnce = false;               ///< Whether to skip next breakpoint
+        const il::core::BasicBlock *callSiteBlock =
+            nullptr;                          ///< Block of the call that entered this frame
+        size_t callSiteIp = 0;                ///< Instruction index of the call in the caller
+        il::support::SourceLoc callSiteLoc{}; ///< Source location of the call site
+        viper::vm::SwitchCache switchCache{}; ///< Memoized switch dispatch data for this frame
+        std::optional<Slot> pendingResult{};  ///< Result staged by threaded interpreter
+        const il::core::Instr *currentInstr =
+            nullptr;                ///< Instruction under execution for inline dispatch
+        bool exitRequested = false; ///< Whether the active loop should exit
+
+        // Host polling configuration/state ----------------------------------
+        struct PollConfig
+        {
+            uint32_t interruptEveryN = 0;
+            std::function<bool(VM &)> pollCallback;
+        } config; ///< Per-run polling configuration
+
+        uint64_t pollTick = 0; ///< Instruction counter for polling cadence
+
+        VM *owner = nullptr; ///< Owning VM used by callbacks
+
+        /// @brief Access the owning VM for this execution state.
+        VM *vm()
+        {
+            return owner;
+        }
+
+        /// @brief Request the interpreter loop to pause at the next boundary.
+        void requestPause()
+        {
+            Slot s{};
+            s.i64 = 1; // generic pause sentinel
+            pendingResult = s;
+            exitRequested = true;
+        }
+
+        /// @brief Cache for resolved branch targets per instruction.
+        std::unordered_map<size_t, const il::core::BasicBlock *> branchCache;
+
+        /// @brief Cache for resolved branch targets per instruction.
+        /// @details Maps an instruction pointer to a vector of resolved
+        ///          BasicBlock* targets in the same order as @c in.labels.
+        std::unordered_map<const il::core::Instr *, std::vector<const il::core::BasicBlock *>>
+            branchTargetCache;
+    };
+
     // Public map aliases for handler-facing utilities
     using FnMap = std::unordered_map<std::string_view,
                                      const il::core::Function *,
@@ -289,10 +335,17 @@ class VM
     using StrMap =
         std::unordered_map<std::string_view, rt_string, TransparentHashSV, TransparentEqualSV>;
 
-    /// @brief Create VM for module @p m.
-    /// @param m IL module to execute.
-    /// @param tc Trace configuration.
-    /// @param maxSteps Abort after executing @p maxSteps instructions (0 = unlimited).
+    /**
+     * @brief Construct a VM for executing an IL module.
+     *
+     * @param m IL module to execute. Must remain valid for VM lifetime.
+     * @param tc Trace configuration for debugging and profiling output.
+     * @param maxSteps Maximum instruction count before forced termination (0 = unlimited).
+     * @param dbg Debug control for breakpoints and single-stepping.
+     * @param script Optional debug script for automated debugging sessions.
+     *
+     * @invariant The module reference must remain valid throughout VM lifetime.
+     */
     VM(const il::core::Module &m,
        TraceConfig tc = {},
        uint64_t maxSteps = 0,
@@ -302,17 +355,20 @@ class VM
     /// @brief Release runtime string handles retained by the VM.
     ~VM();
 
-/// @brief Implements VM functionality.
-/// @return Return value description needed.
     VM(const VM &) = delete;
     VM &operator=(const VM &) = delete;
-/// @brief Implements VM functionality.
-/// @return Return value description needed.
     VM(VM &&) noexcept = default;
     VM &operator=(VM &&) = delete;
 
-    /// @brief Execute the module's entry function.
-    /// @return Exit code from @c main or `1` when the entry point is missing.
+    /**
+     * @brief Execute the module's main function.
+     *
+     * Locates and executes the module's "main" function, handling any
+     * runtime errors that occur during execution.
+     *
+     * @return Exit code from main function, or 1 if main is missing or execution fails.
+     * @throws May propagate exceptions from runtime functions if configured.
+     */
     int64_t run();
 
     /// @brief Function signature for opcode handlers.
@@ -328,6 +384,52 @@ class VM
 
     /// @brief Obtain immutable table mapping opcodes to handlers.
     static const OpcodeHandlerTable &getOpcodeHandlers();
+
+    // Dispatch interface methods - made public for dispatch strategy access
+  public:
+    /// @brief Reset interpreter bookkeeping for a new dispatch cycle.
+    void beginDispatch(ExecState &state);
+
+    /// @brief Select the next instruction to execute.
+    /// @param state Current execution state containing control-flow metadata.
+    /// @param instr Set to point at the instruction when available.
+    /// @return False when execution should halt, leaving @p state updated.
+    bool selectInstruction(ExecState &state, const il::core::Instr *&instr);
+
+    /// @brief Trace an instruction and account for instruction counts.
+    void traceInstruction(const il::core::Instr &instr, Frame &frame);
+
+    /// @brief Apply standard bookkeeping after executing an opcode.
+    /// @return True when the caller should stop dispatching.
+    bool finalizeDispatch(ExecState &state, const ExecResult &exec);
+
+    /// @brief Execute an opcode via function table dispatch.
+    ExecResult executeOpcode(Frame &fr,
+                             const il::core::Instr &in,
+                             const BlockMap &blocks,
+                             const il::core::BasicBlock *&bb,
+                             size_t &ip);
+
+    /// @brief Clear current execution context for trap handling.
+    void clearCurrentContext();
+
+    /// @brief Update current trap context for instruction @p in.
+    void setCurrentContext(Frame &fr,
+                          const il::core::BasicBlock *bb,
+                          size_t ip,
+                          const il::core::Instr &in);
+
+    // dispatchOpcodeSwitch is declared via generated include file
+
+    /// @brief Exception type for trap dispatch control flow.
+    struct TrapDispatchSignal : std::exception
+    {
+        explicit TrapDispatchSignal(ExecState *targetState);
+
+        ExecState *target;
+
+        const char *what() const noexcept override;
+    };
 
   private:
     /// @brief Captures instruction context for trap diagnostics.
@@ -359,6 +461,11 @@ class VM
     /// @ownership Non-owning reference; module must outlive the VM.
     const il::core::Module &mod;
 
+    /// @brief Per-VM runtime context for isolated state.
+    /// @ownership Owned by the VM; initialized on construction, cleaned up on destruction.
+    /// @details Provides isolated RNG, modvar, and other runtime state per VM instance.
+    struct RtContext *rtContext = nullptr;
+
     /// @brief Trace output sink.
     /// @ownership Owned by the VM.
     TraceSink tracer;
@@ -382,7 +489,6 @@ class VM
 
     struct DispatchDriverDeleter
     {
-/// @brief Implements operator functionality.
         void operator()(DispatchDriver *driver) const;
     };
 
@@ -409,6 +515,12 @@ class VM
     /// @brief Interned runtime strings.
     /// @ownership Owned by the VM; manages @c rt_string handles for globals.
     std::unordered_map<std::string_view, rt_string, TransparentHashSV, TransparentEqualSV> strMap;
+
+    /// @brief Storage for mutable module-level globals.
+    /// @ownership Owned by the VM; each global maps to allocated storage.
+    /// @invariant Storage lifetime matches VM lifetime; freed in destructor.
+    std::unordered_map<std::string_view, void *, TransparentHashSV, TransparentEqualSV>
+        mutableGlobalMap;
 
     /// @brief Cached runtime handles for inline string literals containing embedded NULs.
     /// @ownership Owned by the VM; stores @c rt_string handles created via @c rt_string_from_bytes.
@@ -442,12 +554,15 @@ class VM
     TrapState lastTrap{};
     TrapToken trapToken{};
 
+  public:
 #if VIPER_VM_OPCOUNTS
     /// @brief Per-opcode execution counters (enabled via VIPER_VM_OPCOUNTS).
+    /// @note Made public for dispatch strategy access.
     std::array<uint64_t, il::core::kNumOpcodes> opCounts_{};
     /// @brief Runtime toggle for counting.
     bool enableOpcodeCounts = true;
 #endif
+  private:
 
     /// @brief Execute function @p fn with optional arguments.
     /// @param fn Function to execute.
@@ -490,39 +605,18 @@ class VM
     void transferBlockParams(Frame &fr, const il::core::BasicBlock &bb);
 
     /// @brief Execute instruction @p in updating control flow state.
-    /// @param fr Current frame.
-    /// @param in Instruction to execute.
-    /// @param blocks Block lookup table.
-    /// @param bb [in,out] Current basic block.
-    /// @param ip [in,out] Instruction pointer within @p bb.
-    /// @return Result describing jump or return.
-    ExecResult executeOpcode(Frame &fr,
-                             const il::core::Instr &in,
-                             const BlockMap &blocks,
-                             const il::core::BasicBlock *&bb,
-                             size_t &ip);
-
-    /// @brief Update current trap context for instruction @p in.
-    void setCurrentContext(Frame &fr,
-                           const il::core::BasicBlock *bb,
-                           size_t ip,
-                           const il::core::Instr &in);
-
-    /// @brief Clear the active trap context.
-    void clearCurrentContext();
+    // executeOpcode, setCurrentContext, and clearCurrentContext moved to public section
 
     /// @brief Format and record trap diagnostics.
     FrameInfo buildFrameInfo(const VmError &error) const;
-/// @brief Implements recordTrap functionality.
-/// @param error Parameter description needed.
-/// @param frame Parameter description needed.
-/// @return Return value description needed.
     std::string recordTrap(const VmError &error, const FrameInfo &frame);
 
     /// @brief Access active VM instance for thread-local trap reporting.
     static VM *activeInstance();
 
-    /// @brief Aggregate execution state for a running function.
+    // ExecState has been moved to public section for dispatch strategy access
+    // Original private definition removed to avoid duplication
+#if 0
     struct ExecState
     {
         Frame fr;                                 ///< Current frame
@@ -572,23 +666,12 @@ class VM
         std::unordered_map<const il::core::Instr *, std::vector<const il::core::BasicBlock *>>
             branchTargetCache;
     };
+#endif
 
-/// @brief Implements prepareTrap functionality.
-/// @param error Parameter description needed.
-/// @return Return value description needed.
     bool prepareTrap(VmError &error);
-/// @brief Implements throwForTrap functionality.
-/// @param target Parameter description needed.
     [[noreturn]] void throwForTrap(ExecState *target);
 
-    struct TrapDispatchSignal : std::exception
-    {
-        explicit TrapDispatchSignal(ExecState *targetState);
-
-        ExecState *target;
-
-        const char *what() const noexcept override;
-    };
+    // TrapDispatchSignal moved to public section
 
     /// @brief Active execution stack for trap unwinding.
     std::vector<ExecState *> execStack;
@@ -617,21 +700,7 @@ class VM
     /// @brief Handle a trap dispatch signal raised during interpretation.
     bool handleTrapDispatch(const TrapDispatchSignal &signal, ExecState &st);
 
-    /// @brief Reset interpreter bookkeeping for a new dispatch cycle.
-    void beginDispatch(ExecState &state);
-
-    /// @brief Select the next instruction to execute.
-    /// @param state Current execution state containing control-flow metadata.
-    /// @param instr Set to point at the instruction when available.
-    /// @return False when execution should halt, leaving @p state updated.
-    bool selectInstruction(ExecState &state, const il::core::Instr *&instr);
-
-    /// @brief Trace an instruction and account for instruction counts.
-    void traceInstruction(const il::core::Instr &instr, Frame &frame);
-
-    /// @brief Apply standard bookkeeping after executing an opcode.
-    /// @return True when the caller should stop dispatching.
-    bool finalizeDispatch(ExecState &state, const ExecResult &exec);
+    // Dispatch methods moved to public section
 
     /// @brief Fetch the next opcode for switch-based dispatch.
     il::core::Opcode fetchOpcode(ExecState &st);

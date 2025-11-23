@@ -247,6 +247,32 @@ VM::ExecResult handleConstStr(VM &vm,
     return {};
 }
 
+/// @brief Handle the @c gaddr opcode by resolving global variable addresses.
+/// @details Evaluates the global name operand and returns the address of the
+///          mutable global storage, enabling load/store operations on
+///          module-level variables.
+/// @param vm Virtual machine instance executing the instruction.
+/// @param fr Active frame storing operands and results.
+/// @param in Instruction describing the global name operand.
+/// @param blocks Map of basic blocks for the current function (unused).
+/// @param bb Reference to the current block pointer (unused).
+/// @param ip Instruction index within the block (unused).
+/// @return Execution result indicating whether interpretation should continue.
+VM::ExecResult handleGAddr(VM &vm,
+                            Frame &fr,
+                            const Instr &in,
+                            const VM::BlockMap &blocks,
+                            const BasicBlock *&bb,
+                            size_t &ip)
+{
+    (void)blocks;
+    (void)bb;
+    (void)ip;
+    Slot out = VMAccess::eval(vm, fr, in.operands[0]);
+    ops::storeResult(fr, in, out);
+    return {};
+}
+
 /// @brief Handle the @c const.null opcode by writing a type-appropriate null.
 /// @details Inspects the destination type to determine which slot member should
 ///          receive the null value.  Pointer-like types clear the generic pointer

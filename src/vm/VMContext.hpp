@@ -32,12 +32,23 @@ struct ActiveVMGuard
     VM *previous = nullptr; ///< Previously active VM instance.
 };
 
-/// @brief Provides access to interpreter helpers required by dispatch strategies.
-/// @invariant Wraps a valid VM reference throughout its lifetime.
-/// @ownership Does not own the VM; callers manage VM lifetime.
+/**
+ * @brief Execution context providing controlled access to VM internals.
+ *
+ * VMContext encapsulates per-execution state and provides a stable API
+ * for dispatch strategies and runtime functions to interact with the VM.
+ * Each execution creates its own context that tracks the active VM instance.
+ *
+ * @invariant Wraps a valid VM reference throughout its lifetime.
+ * @ownership Non-owning reference to VM; caller manages VM lifetime.
+ */
 class VMContext
 {
   public:
+    /**
+     * @brief Construct a context bound to the given VM instance.
+     * @param vm VM to provide context for. Must outlive this context.
+     */
     explicit VMContext(VM &vm) noexcept;
 
     Slot eval(Frame &fr, const il::core::Value &value) const;

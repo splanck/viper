@@ -31,6 +31,10 @@
 #include "vm/OpHandlers.hpp"
 #include "vm/RuntimeBridge.hpp"
 #include "vm/VMContext.hpp"
+#include "vm/DispatchStrategy.hpp"
+
+#include "runtime/rt_context.h"
+
 #include <algorithm>
 #include <iostream>
 #include <string>
@@ -77,70 +81,59 @@ void VM::DispatchDriverDeleter::operator()(DispatchDriver *driver) const
     delete driver;
 }
 
+// Forward declarations for strategy creation
+std::unique_ptr<DispatchStrategy> createDispatchStrategy(VM::DispatchKind kind);
+
 namespace detail
 {
 
 /// @brief Dispatch driver that uses an opcode-to-function table.
 class FnTableDispatchDriver final : public VM::DispatchDriver
 {
+  private:
+    std::unique_ptr<DispatchStrategy> strategy;
+
   public:
+    FnTableDispatchDriver() : strategy(createDispatchStrategy(VM::DispatchKind::FnTable)) {}
+
     /// @brief Execute the interpreter using the function-table strategy.
-    /// @details Each iteration fetches the next instruction, looks up its
-    ///          handler in the generated table, and executes it before checking
-    ///          for traps or exit conditions.
+    /// @details Delegates to the shared dispatch loop with the function table strategy.
     /// @param vm Virtual machine instance driving execution.
-    /// @param state Execution state being advanced; the VM context is unused.
+    /// @param ctx VM context for trap and debug handling.
+    /// @param state Execution state being advanced.
     /// @return True when the VM exited cleanly, false when a pause was requested.
     bool run(VM &vm, VMContext &ctx, VM::ExecState &state) override
     {
-        while (true)
-        {
-            vm.beginDispatch(state);
-
-            const il::core::Instr *instr = nullptr;
-            if (!vm.selectInstruction(state, instr))
-                return state.exitRequested;
-
-            VIPER_VM_DISPATCH_BEFORE(ctx, instr->op);
-            vm.traceInstruction(*instr, state.fr);
-            auto exec = vm.executeOpcode(state.fr, *instr, state.blocks, state.bb, state.ip);
-            if (vm.finalizeDispatch(state, exec))
-                return true;
-        }
+        return runSharedDispatchLoop(vm, ctx, state, *strategy);
     }
 };
 
 /// @brief Dispatch driver that expands handlers as a large switch statement.
 class SwitchDispatchDriver final : public VM::DispatchDriver
 {
+  private:
+    std::unique_ptr<DispatchStrategy> strategy;
+
   public:
+    SwitchDispatchDriver() : strategy(createDispatchStrategy(VM::DispatchKind::Switch)) {}
+
     /// @brief Execute the interpreter using a switch-based dispatch loop.
-    /// @details Fetches each instruction and jumps directly into the
-    ///          corresponding @c inline_handle_* implementation via a switch.
+    /// @details Delegates to the shared dispatch loop with the switch strategy.
     /// @param vm Virtual machine instance.
+    /// @param ctx VM context for trap and debug handling.
     /// @param state Execution state being advanced.
     /// @return True when the VM exited normally, false when paused.
     bool run(VM &vm, VMContext &ctx, VM::ExecState &state) override
     {
-        while (true)
-        {
-            vm.beginDispatch(state);
-
-            const il::core::Instr *instr = nullptr;
-            if (!vm.selectInstruction(state, instr))
-                return state.exitRequested;
-
-            VIPER_VM_DISPATCH_BEFORE(ctx, instr->op);
-            vm.dispatchOpcodeSwitch(state, *instr);
-
-            if (state.exitRequested)
-                return true;
-        }
+        return runSharedDispatchLoop(vm, ctx, state, *strategy);
     }
 };
 
 #if VIPER_THREADING_SUPPORTED
 /// @brief Dispatch driver that uses computed goto threading.
+/// @note This implementation still uses the original threaded dispatch
+///       because computed gotos require embedding the loop directly.
+///       A future refactor could extract the label handling into the strategy.
 class ThreadedDispatchDriver final : public VM::DispatchDriver
 {
   public:
@@ -154,6 +147,9 @@ class ThreadedDispatchDriver final : public VM::DispatchDriver
     /// @return True when execution terminated normally; false otherwise.
     bool run(VM &vm, VMContext &context, VM::ExecState &state) override
     {
+        // Note: The threaded dispatch requires special handling due to computed gotos.
+        // For now, we keep the original implementation but could refactor this
+        // to use a ThreadedStrategy that encapsulates the label table.
         const il::core::Instr *currentInstr = nullptr;
 
         auto fetchNext = [&]() -> il::core::Opcode
@@ -163,9 +159,6 @@ class ThreadedDispatchDriver final : public VM::DispatchDriver
             const il::core::Instr *instr = nullptr;
             const bool hasInstr = vm.selectInstruction(state, instr);
             currentInstr = instr;
-/// @brief Implements if functionality.
-/// @param !hasInstr Parameter description needed.
-/// @return Return value description needed.
             if (!hasInstr)
                 return instr ? instr->op : il::core::Opcode::Trap;
             return instr->op;
@@ -181,36 +174,20 @@ class ThreadedDispatchDriver final : public VM::DispatchDriver
     do                                                                                             \
     {                                                                                              \
         size_t index = static_cast<size_t>(OPCODE_VALUE);                                          \
-/// @brief Implements if functionality.
-/// @param 1 Parameter description needed.
-/// @return Return value description needed.
         if (index >= kOpLabelCount - 1)                                                            \
             index = kOpLabelCount - 1;                                                             \
         goto *kOpLabels[index];                                                                    \
     } while (false)
 
-/// @brief Implements for functionality.
-/// @param ;; Parameter description needed.
-/// @return Return value description needed.
         for (;;)
         {
             vm.clearCurrentContext();
             try
             {
                 il::core::Opcode opcode = fetchNext();
-/// @brief Implements if functionality.
-/// @param state.exitRequested Parameter description needed.
-/// @return Return value description needed.
                 if (state.exitRequested)
                     return true;
-/// @brief Implements VIPER_VM_DISPATCH_BEFORE functionality.
-/// @param context Parameter description needed.
-/// @param opcode Parameter description needed.
-/// @return Return value description needed.
                 VIPER_VM_DISPATCH_BEFORE(context, opcode);
-/// @brief Implements DISPATCH_TO functionality.
-/// @param opcode Parameter description needed.
-/// @return Return value description needed.
                 DISPATCH_TO(opcode);
 
 #include "vm/ops/generated/ThreadedCases.inc"
@@ -220,15 +197,8 @@ class ThreadedDispatchDriver final : public VM::DispatchDriver
                 vm.trapUnimplemented(opcode);
             }
             }
-/// @brief Implements catch functionality.
-/// @param signal Parameter description needed.
-/// @return Return value description needed.
             catch (const VM::TrapDispatchSignal &signal)
             {
-/// @brief Implements if functionality.
-/// @param !context.handleTrapDispatch(signal Parameter description needed.
-/// @param state Parameter description needed.
-/// @return Return value description needed.
                 if (!context.handleTrapDispatch(signal, state))
                     throw;
             }
@@ -267,9 +237,6 @@ const char *VM::TrapDispatchSignal::what() const noexcept
 int64_t VM::run()
 {
     auto it = fnMap.find("main");
-/// @brief Implements if functionality.
-/// @param fnMap.end( Parameter description needed.
-/// @return Return value description needed.
     if (it == fnMap.end())
     {
         std::cerr << "missing main" << std::endl;
@@ -300,16 +267,10 @@ VM::ExecResult VM::executeOpcode(
     const size_t index = static_cast<size_t>(in.op);
     const auto &table = (handlerTable_ != nullptr) ? *handlerTable_ : getOpcodeHandlers();
     OpcodeHandler handler = index < table.size() ? table[index] : nullptr;
-/// @brief Implements if functionality.
-/// @param !handler Parameter description needed.
-/// @return Return value description needed.
     if (!handler)
     {
         const std::string blockLabel = bb ? bb->label : std::string();
         std::string detail = "unimplemented opcode: " + opcodeMnemonic(in.op);
-/// @brief Implements if functionality.
-/// @param !blockLabel.empty( Parameter description needed.
-/// @return Return value description needed.
         if (!blockLabel.empty())
         {
             detail += " (block " + blockLabel + ')';
@@ -356,13 +317,8 @@ void VM::beginDispatch(ExecState &state)
 /// @return False when execution should stop (due to exit or pause), true otherwise.
 bool VM::selectInstruction(ExecState &state, const Instr *&instr)
 {
-/// @brief Implements if functionality.
-/// @param state.bb->instructions.size( Parameter description needed.
-/// @return Return value description needed.
     if (!state.bb || state.ip >= state.bb->instructions.size()) [[unlikely]]
     {
-/// @brief Implements clearCurrentContext functionality.
-/// @return Return value description needed.
         clearCurrentContext();
         Slot zero{};
         zero.i64 = 0;
@@ -376,18 +332,8 @@ bool VM::selectInstruction(ExecState &state, const Instr *&instr)
     state.currentInstr = &state.bb->instructions[state.ip];
     instr = state.currentInstr;
 /// @brief Sets currentcontext value.
-/// @param state.fr Parameter description needed.
-/// @param state.bb Parameter description needed.
-/// @param state.ip Parameter description needed.
-/// @param state.currentInstr Parameter description needed.
-/// @return Return value description needed.
     setCurrentContext(state.fr, state.bb, state.ip, *state.currentInstr);
 
-/// @brief Implements if functionality.
-/// @param shouldPause(state Parameter description needed.
-/// @param state.currentInstr Parameter description needed.
-/// @param false Parameter description needed.
-/// @return Return value description needed.
     if (auto pause = shouldPause(state, state.currentInstr, false)) [[unlikely]]
     {
         state.pendingResult = *pause;
@@ -421,20 +367,10 @@ void VM::traceInstruction(const Instr &instr, Frame &frame)
 /// @return True when execution of the enclosing function has completed.
 bool VM::finalizeDispatch(ExecState &state, const ExecResult &exec)
 {
-    // Allow embedders to perform post-dispatch polling and request pauses.
-/// @brief Implements VIPER_VM_DISPATCH_AFTER functionality.
-/// @return Return value description needed.
     VIPER_VM_DISPATCH_AFTER(state,
                             state.currentInstr ? state.currentInstr->op : il::core::Opcode::Trap);
-/// @brief Implements if functionality.
-/// @param state.exitRequested Parameter description needed.
-/// @return Return value description needed.
     if (state.exitRequested) [[unlikely]]
     {
-        // Pause requested by hook; ensure a result is staged.
-/// @brief Implements if functionality.
-/// @param !state.pendingResult Parameter description needed.
-/// @return Return value description needed.
         if (!state.pendingResult)
         {
             Slot s{};
@@ -443,9 +379,6 @@ bool VM::finalizeDispatch(ExecState &state, const ExecResult &exec)
         }
         return true;
     }
-/// @brief Implements if functionality.
-/// @param exec.returned Parameter description needed.
-/// @return Return value description needed.
     if (exec.returned) [[unlikely]]
     {
         state.pendingResult = exec.value;
@@ -453,19 +386,11 @@ bool VM::finalizeDispatch(ExecState &state, const ExecResult &exec)
         return true;
     }
 
-/// @brief Implements if functionality.
-/// @param exec.jumped Parameter description needed.
-/// @return Return value description needed.
     if (exec.jumped)
         debug.resetLastHit();
     else [[likely]]
         ++state.ip;
 
-/// @brief Implements if functionality.
-/// @param shouldPause(state Parameter description needed.
-/// @param nullptr Parameter description needed.
-/// @param true Parameter description needed.
-/// @return Return value description needed.
     if (auto pause = shouldPause(state, nullptr, true)) [[unlikely]]
     {
         state.pendingResult = *pause;
@@ -484,9 +409,6 @@ bool VM::finalizeDispatch(ExecState &state, const ExecResult &exec)
 std::unique_ptr<VM::DispatchDriver, VM::DispatchDriverDeleter> VM::makeDispatchDriver(
     DispatchKind kind)
 {
-/// @brief Implements switch functionality.
-/// @param kind Parameter description needed.
-/// @return Return value description needed.
     switch (kind)
     {
         case DispatchKind::FnTable:
@@ -514,32 +436,18 @@ std::unique_ptr<VM::DispatchDriver, VM::DispatchDriverDeleter> VM::makeDispatchD
 Slot VM::runFunctionLoop(ExecState &st)
 {
     VMContext context(*this);
-/// @brief Implements for functionality.
-/// @param ;; Parameter description needed.
-/// @return Return value description needed.
     for (;;)
     {
-/// @brief Implements clearCurrentContext functionality.
-/// @return Return value description needed.
         clearCurrentContext();
         try
         {
-/// @brief Implements if functionality.
-/// @param !dispatchDriver Parameter description needed.
-/// @return Return value description needed.
             if (!dispatchDriver)
                 dispatchDriver = makeDispatchDriver(dispatchKind);
 
             const bool finished = dispatchDriver ? dispatchDriver->run(*this, context, st) : false;
 
-/// @brief Implements if functionality.
-/// @param finished Parameter description needed.
-/// @return Return value description needed.
             if (finished)
             {
-/// @brief Implements if functionality.
-/// @param st.pendingResult Parameter description needed.
-/// @return Return value description needed.
                 if (st.pendingResult)
                     return *st.pendingResult;
                 Slot zero{};
@@ -547,43 +455,36 @@ Slot VM::runFunctionLoop(ExecState &st)
                 return zero;
             }
         }
-/// @brief Implements catch functionality.
-/// @param signal Parameter description needed.
-/// @return Return value description needed.
         catch (const TrapDispatchSignal &signal)
         {
-/// @brief Implements if functionality.
-/// @param !context.handleTrapDispatch(signal Parameter description needed.
-/// @param st Parameter description needed.
-/// @return Return value description needed.
             if (!context.handleTrapDispatch(signal, st))
                 throw;
         }
     }
 }
 
-/// @brief Release resources owned by the VM, including cached strings.
+/// @brief Release resources owned by the VM, including cached strings, mutable globals, and runtime context.
 VM::~VM()
 {
-/// @brief Implements for functionality.
-/// @param strMap Parameter description needed.
-/// @return Return value description needed.
     for (auto &entry : strMap)
-/// @brief Implements rt_str_release_maybe functionality.
-/// @param entry.second Parameter description needed.
-/// @return Return value description needed.
         rt_str_release_maybe(entry.second);
     strMap.clear();
 
-/// @brief Implements for functionality.
-/// @param inlineLiteralCache Parameter description needed.
-/// @return Return value description needed.
     for (auto &entry : inlineLiteralCache)
-/// @brief Implements rt_str_release_maybe functionality.
-/// @param entry.second Parameter description needed.
-/// @return Return value description needed.
         rt_str_release_maybe(entry.second);
     inlineLiteralCache.clear();
+
+    for (auto &entry : mutableGlobalMap)
+        std::free(entry.second);
+    mutableGlobalMap.clear();
+
+    // Cleanup and delete per-VM runtime context
+    if (rtContext)
+    {
+        rt_context_cleanup(rtContext);
+        delete rtContext;
+        rtContext = nullptr;
+    }
 }
 
 #include "vm/ops/generated/InlineHandlersImpl.inc"
@@ -626,9 +527,6 @@ Slot VM::execFunction(const Function &fn, const std::vector<Slot> &args)
         /// @brief Pop the execution state if it is still the active frame.
         ~ExecStackGuard()
         {
-/// @brief Implements if functionality.
-/// @param !vm.execStack.empty( Parameter description needed.
-/// @return Return value description needed.
             if (!vm.execStack.empty() && vm.execStack.back() == state)
                 vm.execStack.pop_back();
         }
@@ -656,8 +554,6 @@ void VM::onTailCall(const Function *from, const Function *to)
 }
 
 #if VIPER_VM_OPCOUNTS
-/// @brief Implements opcodeCounts functionality.
-/// @return Return value description needed.
 const std::array<uint64_t, il::core::kNumOpcodes> &VM::opcodeCounts() const
 {
     return opCounts_;
@@ -672,22 +568,13 @@ std::vector<std::pair<int, uint64_t>> VM::topOpcodes(std::size_t n) const
 {
     std::vector<std::pair<int, uint64_t>> items;
     items.reserve(opCounts_.size());
-/// @brief Implements for functionality.
-/// @param opCounts_.size( Parameter description needed.
-/// @return Return value description needed.
     for (std::size_t i = 0; i < opCounts_.size(); ++i)
-/// @brief Implements if functionality.
-/// @param 0 Parameter description needed.
-/// @return Return value description needed.
         if (opCounts_[i] != 0)
             items.emplace_back(static_cast<int>(i), opCounts_[i]);
     std::partial_sort(items.begin(),
                       items.begin() + std::min(n, items.size()),
                       items.end(),
                       [](const auto &a, const auto &b) { return a.second > b.second; });
-/// @brief Implements if functionality.
-/// @param items.size( Parameter description needed.
-/// @return Return value description needed.
     if (items.size() > n)
         items.resize(n);
     return items;
@@ -732,17 +619,11 @@ bool VM::prepareTrap(VmError &error)
     // Use index-based iteration to avoid potential iterator invalidation
     // if exception handling modifies the execution stack
     const size_t stackSize = execStack.size();
-/// @brief Implements for functionality.
-/// @param ++i Parameter description needed.
-/// @return Return value description needed.
     for (size_t i = 0; i < stackSize; ++i)
     {
         // Iterate in reverse order (from top of stack)
         ExecState *st = execStack[stackSize - 1 - i];
         Frame &fr = st->fr;
-/// @brief Implements if functionality.
-/// @param !fr.ehStack.empty( Parameter description needed.
-/// @return Return value description needed.
         if (!fr.ehStack.empty())
         {
             const auto &record = fr.ehStack.back();
@@ -765,28 +646,16 @@ bool VM::prepareTrap(VmError &error)
             Slot tokSlot{};
             tokSlot.ptr = &fr.resumeState;
 
-            // If the handler belongs to a different function than the active frame
-            // (possible after TCO), rebuild the frame register/param file and block map
-            // to match the handler's owning function to ensure parameter IDs are valid.
-/// @brief Implements if functionality.
-/// @param record.handler Parameter description needed.
-/// @return Return value description needed.
             if (record.handler)
             {
                 // Use reverse map for O(1) lookup instead of O(N*M) linear scan
                 const Function *ownerFn = nullptr;
                 auto it = blockToFunction.find(record.handler);
-/// @brief Implements if functionality.
-/// @param blockToFunction.end( Parameter description needed.
-/// @return Return value description needed.
                 if (it != blockToFunction.end())
                 {
                     ownerFn = it->second;
                 }
 
-/// @brief Implements if functionality.
-/// @param ownerFn Parameter description needed.
-/// @return Return value description needed.
                 if (ownerFn && fr.func != ownerFn)
                 {
                     fr.func = ownerFn;
@@ -795,37 +664,19 @@ bool VM::prepareTrap(VmError &error)
                     // Reuse/compute the maximum SSA value id from the cache to
                     // avoid rescanning the function on trap rebinding.
                     size_t maxSsaId = 0;
-/// @brief Implements if functionality.
-/// @param regCountCache_.find(ownerFn Parameter description needed.
-/// @return Return value description needed.
                     if (auto rc = regCountCache_.find(ownerFn); rc != regCountCache_.end())
                     {
                         maxSsaId = rc->second;
                     }
                     else
                     {
-/// @brief Implements for functionality.
-/// @param ownerFn->params Parameter description needed.
-/// @return Return value description needed.
                         for (const auto &p : ownerFn->params)
                             maxSsaId = std::max(maxSsaId, static_cast<size_t>(p.id));
-/// @brief Implements for functionality.
-/// @param ownerFn->blocks Parameter description needed.
-/// @return Return value description needed.
                         for (const auto &block : ownerFn->blocks)
                         {
-/// @brief Implements for functionality.
-/// @param block.params Parameter description needed.
-/// @return Return value description needed.
                             for (const auto &p : block.params)
                                 maxSsaId = std::max(maxSsaId, static_cast<size_t>(p.id));
-/// @brief Implements for functionality.
-/// @param block.instructions Parameter description needed.
-/// @return Return value description needed.
                             for (const auto &instr : block.instructions)
-/// @brief Implements if functionality.
-/// @param instr.result Parameter description needed.
-/// @return Return value description needed.
                                 if (instr.result)
                                     maxSsaId =
                                         std::max(maxSsaId, static_cast<size_t>(*instr.result));
@@ -836,33 +687,18 @@ bool VM::prepareTrap(VmError &error)
                     fr.regs.resize(maxSsaId + 1);
                     fr.params.assign(fr.regs.size(), std::nullopt);
                     st->blocks.clear();
-/// @brief Implements for functionality.
-/// @param ownerFn->blocks Parameter description needed.
-/// @return Return value description needed.
                     for (const auto &b : ownerFn->blocks)
                         st->blocks[b.label] = &b;
                 }
             }
 
-/// @brief Implements if functionality.
-/// @param !record.handler->params.empty( Parameter description needed.
-/// @return Return value description needed.
             if (!record.handler->params.empty())
             {
                 const auto &params = record.handler->params;
-/// @brief Implements if functionality.
-/// @param fr.params.size( Parameter description needed.
-/// @return Return value description needed.
                 if (params[0].id < fr.params.size())
                     fr.params[params[0].id] = errSlot;
-/// @brief Implements if functionality.
-/// @param params.size( Parameter description needed.
-/// @return Return value description needed.
                 if (params.size() > 1)
                 {
-/// @brief Implements if functionality.
-/// @param fr.params.size( Parameter description needed.
-/// @return Return value description needed.
                     if (params[1].id < fr.params.size())
                         fr.params[params[1].id] = tokSlot;
                 }
@@ -872,12 +708,7 @@ bool VM::prepareTrap(VmError &error)
             st->ip = 0;
             st->skipBreakOnce = false;
 
-/// @brief Implements vm_clear_trap_token functionality.
-/// @return Return value description needed.
             vm_clear_trap_token();
-/// @brief Implements throwForTrap functionality.
-/// @param st Parameter description needed.
-/// @return Return value description needed.
             throwForTrap(st);
             return true; // Unreachable but silences control-path warnings.
         }

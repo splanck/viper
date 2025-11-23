@@ -1,11 +1,14 @@
 // File: src/runtime/rt_modvar.c
 // Purpose: Provide runtime-managed addresses for module-level BASIC variables.
 // Notes: Uses a simple linear table keyed by name+kind; zero-initialized.
+//        Now uses per-VM RtContext instead of global state.
 
 #include "rt_modvar.h"
+#include "rt_context.h"
 #include "rt_internal.h"
 #include "rt_string.h"
 
+#include <assert.h>
 #include <string.h>
 
 typedef enum
@@ -17,18 +20,6 @@ typedef enum
     MV_STR
 } mv_kind_t;
 
-typedef struct
-{
-    char *name;     // owned copy of key
-    mv_kind_t kind; // storage kind
-    void *addr;     // allocated block
-    size_t size;    // bytes
-} modvar_entry_t;
-
-static modvar_entry_t *g_entries = NULL;
-static size_t g_count = 0;
-static size_t g_cap = 0;
-
 static void *mv_alloc(size_t size)
 {
     void *p = rt_alloc((int64_t)size);
@@ -38,31 +29,34 @@ static void *mv_alloc(size_t size)
     return p;
 }
 
-static modvar_entry_t *mv_find_or_create(const char *key, mv_kind_t kind, size_t size)
+static RtModvarEntry *mv_find_or_create(RtContext *ctx, const char *key, mv_kind_t kind, size_t size)
 {
+    assert(ctx && "mv_find_or_create called without active RtContext");
+
     // linear search
-    for (size_t i = 0; i < g_count; ++i)
+    for (size_t i = 0; i < ctx->modvar_count; ++i)
     {
-        if (g_entries[i].kind == kind && strcmp(g_entries[i].name, key) == 0)
-            return &g_entries[i];
+        RtModvarEntry *e = &ctx->modvar_entries[i];
+        if (e->kind == kind && strcmp(e->name, key) == 0)
+            return e;
     }
     // grow table
-    if (g_count == g_cap)
+    if (ctx->modvar_count == ctx->modvar_capacity)
     {
-        size_t newCap = g_cap ? g_cap * 2 : 16;
-        void *np = rt_alloc((int64_t)(newCap * sizeof(modvar_entry_t)));
+        size_t newCap = ctx->modvar_capacity ? ctx->modvar_capacity * 2 : 16;
+        void *np = rt_alloc((int64_t)(newCap * sizeof(RtModvarEntry)));
         if (!np)
             rt_trap("rt_modvar: table alloc failed");
         // move old contents
-        if (g_entries && g_count)
+        if (ctx->modvar_entries && ctx->modvar_count)
         {
-            memcpy(np, g_entries, g_count * sizeof(modvar_entry_t));
+            memcpy(np, ctx->modvar_entries, ctx->modvar_count * sizeof(RtModvarEntry));
         }
-        g_entries = (modvar_entry_t *)np;
-        g_cap = newCap;
+        ctx->modvar_entries = (RtModvarEntry *)np;
+        ctx->modvar_capacity = newCap;
     }
     // insert new
-    modvar_entry_t *e = &g_entries[g_count++];
+    RtModvarEntry *e = &ctx->modvar_entries[ctx->modvar_count++];
     size_t nlen = strlen(key);
     e->name = (char *)rt_alloc((int64_t)(nlen + 1));
     if (!e->name)
@@ -76,10 +70,13 @@ static modvar_entry_t *mv_find_or_create(const char *key, mv_kind_t kind, size_t
 
 static void *mv_addr(rt_string name, mv_kind_t kind, size_t size)
 {
+    RtContext *ctx = rt_get_current_context();
+    assert(ctx && "mv_addr called without active RtContext");
+
     const char *c = rt_string_cstr(name);
     if (!c)
         rt_trap("rt_modvar: null name");
-    modvar_entry_t *e = mv_find_or_create(c, kind, size);
+    RtModvarEntry *e = mv_find_or_create(ctx, c, kind, size);
     return e->addr;
 }
 

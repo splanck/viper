@@ -21,9 +21,10 @@
 #include "frontends/basic/ILTypeUtils.hpp"
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/NameMangler_OOP.hpp"
+#include "frontends/basic/OopLoweringContext.hpp"
 #include "frontends/basic/Options.hpp"
 #include "frontends/basic/SemanticAnalyzer.hpp"
-#include "frontends/basic/Semantic_OOP.hpp"
+#include "frontends/basic/OopIndex.hpp"
 #include "frontends/basic/StringUtils.hpp"
 #include "frontends/basic/sem/OverloadResolution.hpp"
 #include "frontends/basic/sem/RuntimePropertyIndex.hpp"
@@ -1238,6 +1239,81 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
     }
     emitCall(directCallee, args);
     return {Value::constInt(0), Type(Type::Kind::I64)};
+}
+
+// New implementation with OopLoweringContext parameter
+Lowerer::RVal Lowerer::lowerNewExpr(const NewExpr &expr, OopLoweringContext &ctx)
+{
+    curLoc = expr.loc;
+
+    // Use context to look up class information
+    std::string qname = qualify(expr.className);
+    const ClassInfo *classInfo = ctx.findClassInfo(qname);
+
+    // Runtime class ctor mapping via catalog (e.g., Viper.Strings.FromStr)
+    {
+        const auto &classes = il::runtime::runtimeClassCatalog();
+        for (const auto &c : classes)
+        {
+            if (string_utils::iequals(qname, c.qname) && c.ctor && std::string(c.ctor).size())
+            {
+                std::vector<Value> args;
+                args.reserve(expr.args.size());
+                for (const auto &a : expr.args)
+                {
+                    RVal v = a ? lowerExpr(*a) : RVal{Value::constInt(0), Type(Type::Kind::I64)};
+                    args.push_back(v.value);
+                }
+                // Heuristic return type: strings return Str; others Ptr
+                Type ret = (qname == std::string("Viper.String")) ? Type(Type::Kind::Str)
+                                                                   : Type(Type::Kind::Ptr);
+                Value obj = emitCallRet(ret, c.ctor, args);
+                return {obj, ret};
+            }
+        }
+    }
+
+    // Continue with the rest of the implementation using ctx.lowerer for other operations
+    // For now, delegate to the original implementation
+    return lowerNewExpr(expr);
+}
+
+Lowerer::RVal Lowerer::lowerMeExpr(const MeExpr &expr, OopLoweringContext &ctx)
+{
+    // For now, just delegate to the old implementation
+    // TODO: Refactor to use context for ME resolution
+    return lowerMeExpr(expr);
+}
+
+Lowerer::RVal Lowerer::lowerMemberAccessExpr(const MemberAccessExpr &expr, OopLoweringContext &ctx)
+{
+    // For now, just delegate to the old implementation
+    // TODO: Refactor to use context for field resolution
+    return lowerMemberAccessExpr(expr);
+}
+
+Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr, OopLoweringContext &ctx)
+{
+    // For now, just delegate to the old implementation
+    // TODO: Refactor to use context for method resolution
+    return lowerMethodCallExpr(expr);
+}
+
+std::optional<Lowerer::MemberFieldAccess> Lowerer::resolveMemberField(const MemberAccessExpr &expr,
+                                                                      OopLoweringContext &ctx)
+{
+    // For now, just delegate to the old implementation
+    // TODO: Refactor to use context for member field resolution
+    return resolveMemberField(expr);
+}
+
+std::optional<Lowerer::MemberFieldAccess> Lowerer::resolveImplicitField(std::string_view name,
+                                                                        il::support::SourceLoc loc,
+                                                                        OopLoweringContext &ctx)
+{
+    // For now, just delegate to the old implementation
+    // TODO: Refactor to use context for implicit field resolution
+    return resolveImplicitField(name, loc);
 }
 
 } // namespace il::frontends::basic

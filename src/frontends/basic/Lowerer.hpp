@@ -78,7 +78,7 @@
 #include "frontends/basic/LowerRuntime.hpp"
 #include "frontends/basic/LowererContext.hpp"
 #include "frontends/basic/NameMangler.hpp"
-#include "frontends/basic/Semantic_OOP.hpp"
+#include "frontends/basic/OopIndex.hpp"
 #include "frontends/basic/TypeRules.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
 #include "viper/il/IRBuilder.hpp"
@@ -109,6 +109,7 @@ class StatementLowerer;
 class IoStatementLowerer;
 class ControlStatementLowerer;
 class RuntimeStatementLowerer;
+struct OopLoweringContext;
 
 struct LogicalExprLowering;
 struct NumericExprLowering;
@@ -506,18 +507,23 @@ class Lowerer
 
     /// @brief Lower a NEW expression allocating a BASIC object instance.
     RVal lowerNewExpr(const NewExpr &expr);
+    RVal lowerNewExpr(const NewExpr &expr, OopLoweringContext &ctx);
 
     /// @brief Lower a ME expression referencing the implicit instance slot.
     RVal lowerMeExpr(const MeExpr &expr);
+    RVal lowerMeExpr(const MeExpr &expr, OopLoweringContext &ctx);
 
     /// @brief Lower a member access reading a field from an object instance.
     RVal lowerMemberAccessExpr(const MemberAccessExpr &expr);
+    RVal lowerMemberAccessExpr(const MemberAccessExpr &expr, OopLoweringContext &ctx);
 
     /// @brief Lower an object method invocation expression.
     RVal lowerMethodCallExpr(const MethodCallExpr &expr);
+    RVal lowerMethodCallExpr(const MethodCallExpr &expr, OopLoweringContext &ctx);
 
     /// @brief Lower a DELETE statement releasing an object reference.
     void lowerDelete(const DeleteStmt &stmt);
+    void lowerDelete(const DeleteStmt &stmt, OopLoweringContext &ctx);
 
     // Shared argument helpers
     RVal coerceToI64(RVal v, il::support::SourceLoc loc);
@@ -1016,6 +1022,9 @@ class Lowerer
     /// @brief Indexed CLASS metadata collected during scanning.
     OopIndex oopIndex_;
 
+    /// @brief OOP lowering context for passing through the pipeline.
+    std::unique_ptr<OopLoweringContext> oopContext_;
+
     /// @brief Stack of active field scopes while lowering class members.
     std::vector<FieldScope> fieldScopeStack_;
 
@@ -1030,9 +1039,14 @@ class Lowerer
 
     /// @brief Resolve pointer and type information for a member access expression.
     [[nodiscard]] std::optional<MemberFieldAccess> resolveMemberField(const MemberAccessExpr &expr);
+    [[nodiscard]] std::optional<MemberFieldAccess> resolveMemberField(const MemberAccessExpr &expr,
+                                                                      OopLoweringContext &ctx);
 
     [[nodiscard]] std::optional<MemberFieldAccess> resolveImplicitField(std::string_view name,
                                                                         il::support::SourceLoc loc);
+    [[nodiscard]] std::optional<MemberFieldAccess> resolveImplicitField(std::string_view name,
+                                                                        il::support::SourceLoc loc,
+                                                                        OopLoweringContext &ctx);
     [[nodiscard]] std::optional<VariableStorage> resolveVariableStorage(std::string_view name,
                                                                         il::support::SourceLoc loc);
     [[nodiscard]] const FieldScope *activeFieldScope() const;

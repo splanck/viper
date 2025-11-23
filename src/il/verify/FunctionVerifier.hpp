@@ -68,7 +68,17 @@ namespace il::verify
 
 class TypeInference;
 
-/// @brief Validates function declarations, bodies, and intra-function references.
+/**
+ * @brief Validates IL function semantics and type safety.
+ *
+ * Performs comprehensive verification of function bodies including:
+ * - Type inference and checking
+ * - Control flow validation
+ * - SSA form verification
+ * - External function resolution
+ *
+ * @invariant All functions in a module must pass verification before execution.
+ */
 class FunctionVerifier
 {
   public:
@@ -76,10 +86,19 @@ class FunctionVerifier
 
     explicit FunctionVerifier(const ExternMap &externs);
 
-    /// @brief Verify every function within @p module using registered instruction strategies.
-    /// @param module Module whose functions should be validated.
-    /// @param sink Diagnostic sink receiving warnings discovered during verification.
-    /// @return Success on completion or a diagnostic describing the first failure.
+    /**
+     * @brief Verify all functions in the module for correctness.
+     *
+     * Applies instruction-specific verification strategies to validate:
+     * - Type consistency across operations
+     * - Proper SSA form with unique definitions
+     * - Valid control flow targets
+     * - Correct external function usage
+     *
+     * @param module Module containing functions to verify.
+     * @param sink Collector for non-fatal warnings during verification.
+     * @return Success if all functions pass, error with diagnostic on first failure.
+     */
     il::support::Expected<void> run(const il::core::Module &module, DiagSink &sink);
 
     class InstructionStrategy

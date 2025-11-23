@@ -1,0 +1,191 @@
+================================================================================
+BasicDB Development - Bug Log
+================================================================================
+
+BUG-001: Line continuation character (_) not supported
+------------------------------------------------------
+Date: 2024-11-23
+Severity: Medium
+Status: WORKAROUND FOUND
+
+Description:
+The BASIC parser does not recognize the underscore (_) character for line
+continuation in function/subroutine parameter lists.
+
+Example code that fails:
+    PUBLIC SUB SetData(newId AS INTEGER, fname AS STRING, lname AS STRING, _
+                       em AS STRING, ph AS STRING)
+
+Error message:
+    error[B0001]: expected ident, got ?
+
+Workaround:
+Keep all parameters on a single line, even if it makes lines longer.
+
+Working code:
+    PUBLIC SUB SetData(newId AS INTEGER, fname AS STRING, lname AS STRING, em AS STRING, ph AS STRING)
+
+Impact:
+- Forces longer lines
+- Reduces code readability for methods with many parameters
+- Not a blocking issue, just a coding style limitation
+
+
+================================================================================
+
+BUG-002: Constructor SUB New() causes "missing result" error
+-------------------------------------------------------------
+Date: 2024-11-23
+Severity: High  
+Status: WORKAROUND FOUND
+
+Description:
+When a CLASS has a SUB New() constructor, the compiler/VM generates an error:
+"error: RECORD.__ctor:entry_RECORD.__ctor: ret: missing result"
+
+Example code that fails:
+    CLASS Record
+        PUBLIC SUB New()
+            id = 0
+            firstName = ""
+        END SUB
+    END CLASS
+
+Error message:
+    error: RECORD.__ctor:entry_RECORD.__ctor: ret: missing result
+
+Workaround:
+Remove the explicit New() constructor and rely on default field initialization.
+Initialize fields inline where they're declared if needed, or use a separate
+Init() method to set values after construction.
+
+Working code:
+    CLASS Record
+        PUBLIC id AS INTEGER
+        PUBLIC firstName AS STRING
+        
+        PUBLIC SUB Init()
+            id = 0
+            firstName = ""
+        END SUB
+    END CLASS
+
+Impact:
+- Cannot use constructor pattern for initialization  
+- Must rely on explicit Init() methods or inline defaults
+- Reduces OOP capabilities
+
+
+================================================================================
+
+BUG-003: NEW operator for classes is completely broken
+-------------------------------------------------------
+Date: 2024-11-23
+Severity: CRITICAL - BLOCKS OOP
+Status: NO WORKAROUND FOR TRUE OOP
+
+Description:
+The NEW operator for instantiating classes causes a runtime error. This appears
+to be a code generation bug where the automatically-generated constructor
+(__ctor) doesn't properly return a value.
+
+Example code that fails:
+    CLASS TestClass
+        DIM value AS INTEGER
+    END CLASS
+    
+    DIM obj AS TestClass
+    obj = NEW TestClass()  <-- FAILS HERE
+
+Error message:
+    error: TESTCLASS.__ctor:entry_TESTCLASS.__ctor: ret: missing result
+
+Attempted workarounds (all failed):
+- Removing explicit NEW() constructor - still fails
+- Changing PUBLIC to regular method visibility - still fails
+- Changing PUBLIC to DIM for fields - still fails
+- Minimal class with single field - still fails
+
+Workaround:
+Cannot use OOP with instantiation at all. Must use procedural programming with
+global arrays or module-level state. Classes can only be declared for type
+checking but not instantiated.
+
+Impact:
+- COMPLETELY BLOCKS object-oriented programming
+- Cannot create database with class instances
+- Must fall back to procedural/array-based design
+- This is a CRITICAL compiler/runtime bug
+
+Next steps:
+Will implement the database system using procedural programming with parallel
+arrays to store record data, similar to the v0.6 design pattern.
+
+
+================================================================================
+
+BUG-004: CALL keyword not supported for subroutine calls
+---------------------------------------------------------
+Date: 2024-11-23
+Severity: Low
+Status: WORKAROUND FOUND
+
+Description:
+The CALL keyword (traditional BASIC syntax for calling subroutines) is not
+recognized by the parser.
+
+Example code that fails:
+    SUB MySubroutine(param AS INTEGER)
+        PRINT "Value: " + STR$(param)
+    END SUB
+    
+    CALL MySubroutine(42)  <-- FAILS
+
+Error message:
+    error[B0001]: unknown statement 'CALL'; expected keyword or procedure call
+
+Workaround:
+Simply call subroutines directly without the CALL keyword:
+
+Working code:
+    MySubroutine(42)
+
+Impact:
+- Minor syntax incompatibility with traditional BASIC
+- Easy workaround - just remove CALL
+- Does not block any functionality
+
+
+================================================================================
+
+BUG-005: String comparison operators (>, <) not working in some contexts
+-------------------------------------------------------------------------
+Date: 2024-11-23
+Severity: High
+Status: BLOCKING - No simple workaround
+
+Description:
+String comparison using > and < operators causes runtime errors in certain
+contexts, particularly in sorting functions.
+
+Example code that fails:
+    IF REC_LastName$(j) > REC_LastName$(j + 1) THEN
+        ' swap logic
+    END IF
+
+Error message:
+    error: DB_SORTBYLASTNAME:bc_ok1_DB_SORTBYLASTNAME: %60 = call %t43 %t59: unknown callee @rt_str_gt
+
+Impact:
+- BLOCKS sorting by string fields
+- String comparison with > and < operators is broken
+- No simple workaround available
+- Equality comparison (=) seems to work
+- This is a CRITICAL runtime bug
+
+Attempted workarounds:
+- Cannot use > or < for string comparison
+- Would need custom string comparison function, but that would be complex
+
+Note: This blocks the sorting functionality in the database program.
+

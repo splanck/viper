@@ -1,0 +1,77 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/runtime/rt_context.h
+// Purpose: Per-VM runtime context to isolate global state across VM instances.
+// Key invariants: Thread-local binding ensures each thread accesses its active VM's context.
+// Ownership/Lifetime: VM owns RtContext; thread-local pointer is borrowed.
+//
+//===----------------------------------------------------------------------===//
+
+#pragma once
+
+#include <stddef.h>
+#include <stdint.h>
+
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
+    /// @brief Module-level variable entry for per-VM storage.
+    typedef struct RtModvarEntry
+    {
+        char *name;     ///< Owned copy of variable name.
+        int kind;       ///< Storage kind (I64, F64, I1, PTR, STR).
+        void *addr;     ///< Allocated storage block.
+        size_t size;    ///< Size in bytes.
+    } RtModvarEntry;
+
+    /// @brief Per-VM runtime context isolating global state.
+    /// @details Moves runtime global variables into per-VM storage so multiple
+    ///          VM instances can coexist without interfering. Each VM owns one
+    ///          RtContext and binds it to the current thread before execution.
+    typedef struct RtContext
+    {
+        // Random number generator state (from rt_random.c)
+        uint64_t rng_state;
+
+        // Module-level variable table (from rt_modvar.c)
+        RtModvarEntry *modvar_entries;
+        size_t modvar_count;
+        size_t modvar_capacity;
+
+        // Future expansions:
+        // - File channel table (rt_file.c)
+        // - Type registry (rt_type_registry.c)
+        // - Command-line arguments (rt_args.c)
+    } RtContext;
+
+    /// @brief Initialize a runtime context with default values.
+    /// @details Sets RNG to deterministic seed, initializes empty modvar table.
+    /// @param ctx Context to initialize.
+    void rt_context_init(RtContext *ctx);
+
+    /// @brief Cleanup a runtime context and free owned resources.
+    /// @details Frees all modvar entries and their storage.
+    /// @param ctx Context to cleanup.
+    void rt_context_cleanup(RtContext *ctx);
+
+    /// @brief Bind a runtime context to the current thread.
+    /// @details Sets the thread-local context pointer so subsequent runtime calls
+    ///          access this VM's state.
+    /// @param ctx Context to bind (may be NULL to unbind).
+    void rt_set_current_context(RtContext *ctx);
+
+    /// @brief Retrieve the current thread's runtime context.
+    /// @details Returns the context bound via rt_set_current_context.
+    /// @return Active context, or NULL if none bound.
+    RtContext *rt_get_current_context(void);
+
+#ifdef __cplusplus
+}
+#endif

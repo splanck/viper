@@ -15,7 +15,7 @@
 #pragma once
 
 #include "frontends/basic/DiagnosticEmitter.hpp"
-#include "frontends/basic/Semantic_OOP.hpp"
+#include "frontends/basic/OopIndex.hpp"
 #include "support/source_location.hpp"
 
 #include <optional>

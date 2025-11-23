@@ -8,12 +8,12 @@ High-level frontends—like the included BASIC compiler—lower programs into a 
 
 ## Latest Release
 
-**Current Version:** v0.1.1-dev (Early Development Release)
+**Current Version:** v0.1.2-snapshot (Early Development Snapshot)
 
-- 📦 **[Download Source v0.1.1](https://github.com/splanck/viper/releases/tag/v0.1.1-dev)** - Source code archive (no pre-built binaries yet)
+- 📦 **[Download Source v0.1.1](https://github.com/splanck/viper/releases/tag/v0.1.1-dev)** - Latest stable release
 - 📄 **[Release Notes](/devdocs/Viper_Release_Notes.md)** - Full changelog, features, and known issues
-- 🚀 **Highlights:** Improved BASIC frontend, enhanced VM performance, initial ARM64 backend scaffolding
-- ⚠️ **Note:** This is an early development release. Build from source using the instructions below.
+- 🚀 **Highlights:** Object-oriented BASIC (classes, inheritance, methods), exception handling (TRY/CATCH), namespace system, ARM64 backend progress, per-VM runtime isolation
+- ⚠️ **Note:** This is an early development snapshot. Build from source using the instructions below.
 
 ---
 
@@ -84,16 +84,23 @@ Compile to native code (x86-64):
 ### Implemented
 
 **Languages:**
-- **BASIC Frontend**: Complete parser, semantic analysis, OOP features (classes, methods, inheritance), and runtime integration
+- **BASIC Frontend**: Complete parser with full OOP support
+  - **Classes & Inheritance**: Single inheritance, virtual methods, interface implementation
+  - **Object Lifecycle**: Constructors (`NEW`), destructors, disposal tracking
+  - **Exception Handling**: `TRY`/`CATCH` blocks with typed exception handling
+  - **Namespace System**: `USING` directives, canonical `Viper.*` runtime names
 
 **Core Infrastructure:**
 - **Viper IL**: Stable, typed, SSA-style IR with comprehensive verifier
-- **Virtual Machine**: Configurable dispatch strategies:
+  - **v0.1.2 additions**: `gaddr` instruction for mutable module-level globals, enhanced exception handling support
+- **Virtual Machine**: Configurable dispatch strategies with per-VM state isolation
   - `switch` — Classic switch-based jump table (portable)
   - `table` — Function-pointer dispatch (portable)
   - `threaded` — Direct-threaded labels-as-values (GCC/Clang only)
-- **x86-64 Backend**: Native code generation with linear-scan register allocation, instruction selection, and frame lowering
-- **Runtime Libraries**: Portable C implementations for strings, math, file I/O, and memory management
+  - **Per-VM Context**: Isolated RNG state, module variables, and runtime resources
+- **x86-64 Backend**: Native code generation with linear-scan register allocation (Phase A complete)
+- **ARM64 Backend**: Native code generation in active development (Phase A in progress)
+- **Runtime Libraries**: Portable C implementations for strings, math, file I/O, memory management, and OOP support
 
 **Tooling:**
 - **`vbasic`**: Simplified BASIC interpreter/compiler (run or emit IL)
@@ -110,8 +117,10 @@ Compile to native code (x86-64):
 
 ### In Progress
 
+- ARM64 backend (Phase A nearing completion)
 - IL optimization passes (mem2reg, SimplifyCFG, LICM, SCCP)
 - Advanced register allocation (graph coloring)
+- Graphics/TUI subsystem (experimental)
 - Debugger and IDE integration
 - Additional language frontends
 
@@ -155,6 +164,50 @@ entry:
 Compatibility:
 - When built with `-DVIPER_RUNTIME_NS_DUAL=ON`, legacy `@rt_*` externs are accepted as aliases of `@Viper.*`.
 - New code should emit `@Viper.*`.
+
+---
+
+## Object-Oriented Programming
+
+Viper BASIC supports a complete OOP model with classes, inheritance, and interfaces:
+
+**Class Declaration:**
+```basic
+CLASS Animal
+    PRIVATE _name AS STRING
+
+    SUB NEW(name AS STRING)
+        _name = name
+    END SUB
+
+    FUNCTION GetName() AS STRING
+        RETURN _name
+    END FUNCTION
+
+    SUB MakeSound() VIRTUAL
+        PRINT "Generic animal sound"
+    END SUB
+END CLASS
+
+CLASS Dog INHERITS Animal
+    SUB NEW(name AS STRING)
+        SUPER.NEW(name)
+    END SUB
+
+    SUB MakeSound() OVERRIDE
+        PRINT GetName() + " says: Woof!"
+    END SUB
+END CLASS
+```
+
+**Features:**
+- ✅ Single inheritance with `INHERITS`
+- ✅ Virtual methods and `OVERRIDE`
+- ✅ Constructors (`NEW`) and destructors
+- ✅ Interface implementation
+- ✅ Access modifiers (`PRIVATE`, `PUBLIC`)
+- ✅ Exception handling with `TRY`/`CATCH`
+- ✅ Automatic memory management with reference counting
 
 ---
 
@@ -348,14 +401,17 @@ See [Frontend How-To](docs/frontend-howto.md) for a complete implementation guid
 
 | Component | Status |
 |-----------|--------|
-| BASIC Frontend + OOP | Active development |
-| Virtual Machine | Active development |
-| x86-64 Backend | Phase A complete |
-| Runtime Libraries | Active development |
-| IL Verifier | Active development |
-| IL Optimizer | In progress |
-| Debugger/IDE | Planned |
-| TUI Subsystem | Experimental |
+| BASIC Frontend + OOP | ✅ Feature complete |
+| Exception Handling (TRY/CATCH) | ✅ Implemented |
+| Namespace System | ✅ Implemented |
+| Virtual Machine | ✅ Active development |
+| x86-64 Backend | ✅ Phase A complete |
+| ARM64 Backend | 🚧 Phase A in progress |
+| Runtime Libraries | ✅ Active development |
+| IL Verifier | ✅ Active development |
+| IL Optimizer | 🚧 In progress |
+| Graphics/TUI Subsystem | 🧪 Experimental |
+| Debugger/IDE | 📋 Planned |
 
 ---
 
@@ -373,6 +429,8 @@ We are **not currently seeking large feature PRs** while the core design solidif
 
 ## License
 
-Viper is licensed under the GNU General Public License v3.0 (GPLv3).
+Viper is licensed under the **GNU General Public License v3.0 only** (GPL-3.0-only).
+
+This is free software: you are free to change and redistribute it under the terms of the GPLv3. There is NO WARRANTY, to the extent permitted by law.
 
 See [LICENSE](LICENSE) for the full license text.

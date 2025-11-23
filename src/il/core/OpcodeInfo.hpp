@@ -125,6 +125,7 @@ enum class VMDispatch : uint8_t
     Ret,
     AddrOf,
     ConstStr,
+    GAddr,
     ConstNull,
     Call,
     CallIndirect,

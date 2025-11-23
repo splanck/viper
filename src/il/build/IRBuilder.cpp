@@ -62,6 +62,19 @@ il::core::Extern &IRBuilder::addExtern(const std::string &name,
     return mod.externs.back();
 }
 
+/// @brief Add a global variable with specified type.
+/// @param name Global identifier without leading `@`.
+/// @param type Variable type.
+/// @param init Optional initializer (empty for zero-initialized).
+/// @return Reference to the inserted global definition.
+il::core::Global &IRBuilder::addGlobal(const std::string &name,
+                                       il::core::Type type,
+                                       const std::string &init)
+{
+    mod.globals.push_back({name, type, init});
+    return mod.globals.back();
+}
+
 /// @brief Add a UTF-8 string literal as a global value.
 /// @param name Identifier to attach to the global string.
 /// @param value Contents of the string literal.
@@ -69,8 +82,7 @@ il::core::Extern &IRBuilder::addExtern(const std::string &name,
 /// @note The global is always recorded with Type::Kind::Str.
 il::core::Global &IRBuilder::addGlobalStr(const std::string &name, const std::string &value)
 {
-    mod.globals.push_back({name, il::core::Type(il::core::Type::Kind::Str), value});
-    return mod.globals.back();
+    return addGlobal(name, il::core::Type(il::core::Type::Kind::Str), value);
 }
 
 /// @brief Begin building a new function and make it the active insertion target.

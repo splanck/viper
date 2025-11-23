@@ -28,6 +28,7 @@
 
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/NameMangler_OOP.hpp"
+#include "frontends/basic/OopLoweringContext.hpp"
 
 #include <string>
 
@@ -103,6 +104,14 @@ void Lowerer::lowerDelete(const DeleteStmt &stmt)
 
     ctx.setCurrent(contBlk);
     curLoc = stmt.loc;
+}
+
+// New implementation with OopLoweringContext parameter
+void Lowerer::lowerDelete(const DeleteStmt &stmt, OopLoweringContext &oopCtx)
+{
+    // For now, just delegate to the old implementation
+    // TODO: Refactor to use context for class layout and destructor lookups
+    lowerDelete(stmt);
 }
 
 } // namespace il::frontends::basic

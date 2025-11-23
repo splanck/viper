@@ -182,6 +182,7 @@ target_include_directories(il_tools_common PUBLIC
 add_library(il_vm STATIC
         vm/Runner.cpp
         vm/VM.cpp
+        vm/DispatchStrategy.cpp
         vm/tco.cpp
         vm/debug/VM_DebugUtils.cpp
         vm/VMInit.cpp

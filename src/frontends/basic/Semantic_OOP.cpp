@@ -23,6 +23,7 @@
 ///          lowering passes.
 
 #include "frontends/basic/Semantic_OOP.hpp"
+#include "frontends/basic/OopIndex.hpp"
 #include "frontends/basic/AST.hpp"
 #include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/AstWalker.hpp"
@@ -195,39 +196,6 @@ void emitMissingReturn(const ClassDecl &klass, const MethodDecl &method, Diagnos
     emitter->emit(il::support::Severity::Error, "B1007", method.loc, 3, std::move(msg));
 }
 } // namespace
-
-/// @brief Look up a mutable class record by name.
-/// @details Searches the internal @c std::unordered_map for the requested class
-///          name and returns a pointer to the stored @ref ClassInfo instance
-///          when found.  Returning @c nullptr keeps callers explicit about the
-///          missing-class case without performing map insertions.
-/// @param name Class identifier to locate.
-/// @return Pointer to the associated @ref ClassInfo or @c nullptr when absent.
-ClassInfo *OopIndex::findClass(const std::string &name)
-{
-    auto it = classes_.find(name);
-    if (it == classes_.end())
-    {
-        return nullptr;
-    }
-    return &it->second;
-}
-
-/// @brief Look up an immutable class record by name.
-/// @details Const-qualified overload used by read-only consumers.  The method
-///          performs the same map probe as the mutable variant but preserves
-///          const-correctness so callers cannot mutate the stored metadata.
-/// @param name Class identifier to locate.
-/// @return Pointer to the stored @ref ClassInfo or @c nullptr when absent.
-const ClassInfo *OopIndex::findClass(const std::string &name) const
-{
-    auto it = classes_.find(name);
-    if (it == classes_.end())
-    {
-        return nullptr;
-    }
-    return &it->second;
-}
 
 /// @brief Populate the OOP index from a parsed BASIC program.
 /// @details Clears any pre-existing entries then walks the top-level statements
@@ -1169,24 +1137,6 @@ void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *e
             ci.ifaceSlotImpl[ifaceId] = std::move(mapping);
         }
     }
-}
-
-} // namespace il::frontends::basic
-
-namespace il::frontends::basic
-{
-
-int getVirtualSlot(const OopIndex &index,
-                   const std::string &qualifiedClass,
-                   const std::string &methodName)
-{
-    const ClassInfo *ci = index.findClass(qualifiedClass);
-    if (!ci)
-        return -1;
-    auto it = ci->methods.find(methodName);
-    if (it == ci->methods.end())
-        return -1;
-    return it->second.slot;
 }
 
 } // namespace il::frontends::basic

@@ -73,17 +73,28 @@
 namespace il::frontends::basic
 {
 
+/**
+ * @brief Recursive descent parser for BASIC source code.
+ *
+ * Transforms BASIC source text into an abstract syntax tree (AST).
+ * Supports structured programming constructs, OOP, and file inclusion.
+ *
+ * @invariant Source text must remain valid throughout parsing.
+ * @invariant Emits diagnostics through the provided DiagnosticEmitter.
+ */
 class Parser
 {
   public:
-    /// @brief Construct a parser over a BASIC source buffer.
-    /// @param src Source code to parse.
-    /// @param file_id Identifier used for diagnostics.
-    /// @param emitter Optional diagnostic emitter; not owned.
-    /// @param sm Optional source manager for ADDFILE support; not owned.
-    /// @param includeStack Optional include stack for cycle detection; not owned.
-    /// @param suppressUndefinedLabelCheck Suppress undefined-label check (used for included
-    /// parses).
+    /**
+     * @brief Construct a parser for BASIC source text.
+     *
+     * @param src Source code to parse. Must remain valid during parsing.
+     * @param file_id File identifier for diagnostic reporting.
+     * @param emitter Diagnostic emitter for errors and warnings (optional, not owned).
+     * @param sm Source manager for ADDFILE support (optional, not owned).
+     * @param includeStack Stack for detecting circular includes (optional, not owned).
+     * @param suppressUndefinedLabelCheck Skip undefined label validation (for included files).
+     */
     Parser(std::string_view src,
            uint32_t file_id,
            DiagnosticEmitter *emitter = nullptr,
@@ -91,8 +102,15 @@ class Parser
            std::vector<std::string> *includeStack = nullptr,
            bool suppressUndefinedLabelCheck = false);
 
-    /// @brief Parse the entire BASIC program.
-    /// @return Program AST on success or nullptr on failure.
+    /**
+     * @brief Parse the entire BASIC program into an AST.
+     *
+     * Main entry point that parses declarations, statements, and procedures.
+     * Collects diagnostics and validates label references.
+     *
+     * @return Program AST on success, nullptr if parsing fails.
+     * @post Diagnostics are emitted for any syntax errors encountered.
+     */
     std::unique_ptr<Program> parseProgram();
 
   private:

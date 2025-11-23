@@ -42,9 +42,6 @@ Type::Type(Kind k) : kind(k) {}
 /// @return Canonical string name for the provided type tag.
 std::string kindToString(Type::Kind k)
 {
-/// @brief Implements switch functionality.
-/// @param k Parameter description needed.
-/// @return Return value description needed.
     switch (k)
     {
         case Type::Kind::Void:

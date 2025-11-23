@@ -79,9 +79,6 @@ const ProcTable &SemanticAnalyzer::procs() const
 /// @return Pointer to ArrayMetadata if found, nullptr otherwise.
 const ArrayMetadata *SemanticAnalyzer::lookupArrayMetadata(const std::string &name) const
 {
-/// @brief Implements if functionality.
-/// @param arrays_.find(name Parameter description needed.
-/// @return Return value description needed.
     if (auto it = arrays_.find(name); it != arrays_.end())
         return &it->second;
     return nullptr;
@@ -93,9 +90,6 @@ const ArrayMetadata *SemanticAnalyzer::lookupArrayMetadata(const std::string &na
 /// @return Inferred type when known; std::nullopt otherwise.
 std::optional<SemanticAnalyzer::Type> SemanticAnalyzer::lookupVarType(const std::string &name) const
 {
-/// @brief Implements if functionality.
-/// @param varTypes_.find(name Parameter description needed.
-/// @return Return value description needed.
     if (auto it = varTypes_.find(name); it != varTypes_.end())
         return it->second;
     return std::nullopt;
@@ -126,23 +120,12 @@ bool SemanticAnalyzer::isModuleLevelSymbol(const std::string &name) const
 /// @param kind Classification describing how the symbol is being used.
 void SemanticAnalyzer::resolveAndTrackSymbol(std::string &name, SymbolKind kind)
 {
-    // First, try to resolve in local scopes (innermost to outermost)
-/// @brief Implements if functionality.
-/// @param scopes_.resolve(name Parameter description needed.
-/// @return Return value description needed.
     if (auto mapped = scopes_.resolve(name))
     {
         name = *mapped;
     }
     else if (scopes_.hasScope())
     {
-        // In a procedure scope but name not found locally.
-        // Check if it exists at module level - if so, procedures can access it directly.
-        // This implements the baseline behavior: procedures can read/write module globals
-        // without passing them as parameters, unless shadowed by a local.
-/// @brief Implements if functionality.
-/// @param symbols_.count(name Parameter description needed.
-/// @return Return value description needed.
         if (symbols_.count(name) > 0)
         {
             // Name exists at module level and is not shadowed by a local.
@@ -151,44 +134,26 @@ void SemanticAnalyzer::resolveAndTrackSymbol(std::string &name, SymbolKind kind)
         }
     }
 
-/// @brief Implements if functionality.
-/// @param SymbolKind::Reference Parameter description needed.
-/// @return Return value description needed.
     if (kind == SymbolKind::Reference)
         return;
 
     auto insertResult = symbols_.insert(name);
-/// @brief Implements if functionality.
-/// @param activeProcScope_ Parameter description needed.
-/// @return Return value description needed.
     if (insertResult.second && activeProcScope_)
         activeProcScope_->noteSymbolInserted(name);
 
     // BUG-093 fix: Do not override explicitly declared types (from DIM) when processing
     // INPUT statements. Only set default type if the variable has no type yet.
     auto itType = varTypes_.find(name);
-/// @brief Implements if functionality.
-/// @param varTypes_.end( Parameter description needed.
-/// @return Return value description needed.
     if (itType == varTypes_.end())
     {
         Type defaultType = Type::Int;
-/// @brief Implements if functionality.
-/// @param !name.empty( Parameter description needed.
-/// @return Return value description needed.
         if (!name.empty())
         {
-/// @brief Implements if functionality.
-/// @param name.back( Parameter description needed.
-/// @return Return value description needed.
             if (name.back() == '$')
                 defaultType = Type::String;
             else if (name.back() == '#' || name.back() == '!')
                 defaultType = Type::Float;
         }
-/// @brief Implements if functionality.
-/// @param activeProcScope_ Parameter description needed.
-/// @return Return value description needed.
         if (activeProcScope_)
         {
             std::optional<Type> previous;
@@ -213,20 +178,11 @@ size_t levenshtein(const std::string &a, const std::string &b)
     const size_t m = a.size();
     const size_t n = b.size();
     std::vector<size_t> prev(n + 1), cur(n + 1);
-/// @brief Implements for functionality.
-/// @param ++j Parameter description needed.
-/// @return Return value description needed.
     for (size_t j = 0; j <= n; ++j)
         prev[j] = j;
-/// @brief Implements for functionality.
-/// @param ++i Parameter description needed.
-/// @return Return value description needed.
     for (size_t i = 1; i <= m; ++i)
     {
         cur[0] = i;
-/// @brief Implements for functionality.
-/// @param ++j Parameter description needed.
-/// @return Return value description needed.
         for (size_t j = 1; j <= n; ++j)
         {
             size_t cost = a[i - 1] == b[j - 1] ? 0 : 1;
@@ -243,9 +199,6 @@ size_t levenshtein(const std::string &a, const std::string &b)
 /// @return Equivalent semantic type classification.
 SemanticAnalyzer::Type astToSemanticType(::il::frontends::basic::Type ty)
 {
-/// @brief Implements switch functionality.
-/// @param ty Parameter description needed.
-/// @return Return value description needed.
     switch (ty)
     {
         case ::il::frontends::basic::Type::I64:
@@ -276,9 +229,6 @@ const char *builtinName(BuiltinCallExpr::Builtin b)
 const char *semanticTypeName(SemanticAnalyzer::Type type)
 {
     using Type = SemanticAnalyzer::Type;
-/// @brief Implements switch functionality.
-/// @param type Parameter description needed.
-/// @return Return value description needed.
     switch (type)
     {
         case Type::Int:
@@ -305,9 +255,6 @@ const char *semanticTypeName(SemanticAnalyzer::Type type)
 /// @return Keyword name or a placeholder when the operator is not logical.
 const char *logicalOpName(BinaryExpr::Op op)
 {
-/// @brief Implements switch functionality.
-/// @param op Parameter description needed.
-/// @return Return value description needed.
     switch (op)
     {
         case BinaryExpr::Op::LogicalAndShort:
@@ -330,33 +277,18 @@ const char *logicalOpName(BinaryExpr::Op op)
 /// @return String approximating the expression for diagnostics.
 std::string conditionExprText(const Expr &expr)
 {
-/// @brief Implements if functionality.
-/// @param VarExpr>(expr Parameter description needed.
-/// @return Return value description needed.
     if (auto *var = as<const VarExpr>(expr))
         return var->name;
-/// @brief Implements if functionality.
-/// @param IntExpr>(expr Parameter description needed.
-/// @return Return value description needed.
     if (auto *intExpr = as<const IntExpr>(expr))
         return std::to_string(intExpr->value);
-/// @brief Implements if functionality.
-/// @param FloatExpr>(expr Parameter description needed.
-/// @return Return value description needed.
     if (auto *floatExpr = as<const FloatExpr>(expr))
     {
         std::ostringstream oss;
         oss << floatExpr->value;
         return oss.str();
     }
-/// @brief Implements if functionality.
-/// @param BoolExpr>(expr Parameter description needed.
-/// @return Return value description needed.
     if (auto *boolExpr = as<const BoolExpr>(expr))
         return boolExpr->value ? "TRUE" : "FALSE";
-/// @brief Implements if functionality.
-/// @param StringExpr>(expr Parameter description needed.
-/// @return Return value description needed.
     if (auto *strExpr = as<const StringExpr>(expr))
     {
         std::string text = "\"";
@@ -373,14 +305,8 @@ std::string conditionExprText(const Expr &expr)
 /// @return The matching @ref BasicType when the suffix is recognised.
 std::optional<BasicType> suffixBasicType(std::string_view name)
 {
-/// @brief Implements if functionality.
-/// @param name.empty( Parameter description needed.
-/// @return Return value description needed.
     if (name.empty())
         return std::nullopt;
-/// @brief Implements switch functionality.
-/// @param name.back( Parameter description needed.
-/// @return Return value description needed.
     switch (name.back())
     {
         case '$':
@@ -402,9 +328,6 @@ std::optional<BasicType> suffixBasicType(std::string_view name)
 std::optional<SemanticAnalyzer::Type> semanticTypeFromBasic(BasicType type)
 {
     using Type = SemanticAnalyzer::Type;
-/// @brief Implements switch functionality.
-/// @param type Parameter description needed.
-/// @return Return value description needed.
     switch (type)
     {
         case BasicType::Int:

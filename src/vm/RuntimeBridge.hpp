@@ -47,7 +47,16 @@ struct RuntimeCallContext
     std::size_t argCount = 0; ///< Number of argument slots.
 };
 
-/// @brief Provides entry points from the VM into the C runtime library.
+/**
+ * @brief Bridge between VM execution and native runtime functions.
+ *
+ * Provides a registry for external functions and manages the calling
+ * convention between IL code and native C/C++ implementations.
+ * All methods are static as this serves as a global registry.
+ *
+ * @invariant External functions must be registered before VM execution begins.
+ * @invariant Runtime calls maintain a thread-local context stack.
+ */
 class RuntimeBridge
 {
   public:

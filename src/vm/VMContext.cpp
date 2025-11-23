@@ -24,6 +24,8 @@
 #include "vm/RuntimeBridge.hpp"
 #include "vm/Trap.hpp"
 
+#include "runtime/rt_context.h"
+
 #include <exception>
 #include <sstream>
 #include <string>
@@ -44,15 +46,9 @@ thread_local VM *tlsActiveVM = nullptr; ///< Active VM for trap reporting.
 std::string opcodeMnemonic(il::core::Opcode op)
 {
     const size_t index = static_cast<size_t>(op);
-/// @brief Implements if functionality.
-/// @param il::core::kNumOpcodes Parameter description needed.
-/// @return Return value description needed.
     if (index < il::core::kNumOpcodes)
     {
         const auto &info = getOpcodeInfo(op);
-/// @brief Implements if functionality.
-/// @param '\0' Parameter description needed.
-/// @return Return value description needed.
         if (info.name && info.name[0] != '\0')
             return info.name;
     }
@@ -61,22 +57,37 @@ std::string opcodeMnemonic(il::core::Opcode op)
 
 } // namespace
 
-/// @brief Install a VM instance as the thread-local active VM.
+/// @brief Install a VM instance as the thread-local active VM and bind its runtime context.
 /// @details Guards set the thread-local pointer on construction and record the
 ///          previously active VM so trap reporting can access the current
-///          interpreter without explicit plumbing at each call site.
+///          interpreter without explicit plumbing at each call site. Also binds
+///          the VM's runtime context so C runtime calls access this VM's state.
 /// @param vm VM instance that will be considered active for the guard scope.
 ActiveVMGuard::ActiveVMGuard(VM *vm) : previous(tlsActiveVM)
 {
     tlsActiveVM = vm;
+    // Bind the VM's runtime context to this thread
+    if (vm && vm->rtContext)
+    {
+        rt_set_current_context(vm->rtContext);
+    }
 }
 
-/// @brief Restore the previously active VM when the guard leaves scope.
+/// @brief Restore the previously active VM and runtime context when the guard leaves scope.
 /// @details Resets the thread-local pointer to the saved predecessor so nested
 ///          guards correctly restore whichever VM was running before the most
-///          recent activation.
+///          recent activation. Also restores the previous runtime context.
 ActiveVMGuard::~ActiveVMGuard()
 {
+    // Restore the previous VM's runtime context (or NULL if no previous VM)
+    if (previous && previous->rtContext)
+    {
+        rt_set_current_context(previous->rtContext);
+    }
+    else
+    {
+        rt_set_current_context(nullptr);
+    }
     tlsActiveVM = previous;
 }
 
@@ -107,9 +118,6 @@ Slot VMContext::eval(Frame &fr, const il::core::Value &value) const
     auto evalTemp = [&](const il::core::Value &v) -> Slot
     {
         Slot s{};
-/// @brief Implements if functionality.
-/// @param fr.regs.size( Parameter description needed.
-/// @return Return value description needed.
         if (v.id < fr.regs.size())
             return fr.regs[v.id];
 
@@ -121,17 +129,11 @@ Slot VMContext::eval(Frame &fr, const il::core::Value &value) const
         // Build a compact message without iostream overhead.
         std::string message =
             detail::formatRegisterRangeError(v.id, fr.regs.size(), fnName, blockLabel);
-/// @brief Implements if functionality.
-/// @param loc.hasLine( Parameter description needed.
-/// @return Return value description needed.
         if (loc.hasLine())
         {
             message.reserve(message.size() + 24);
             message += ", at line ";
             message += std::to_string(loc.line);
-/// @brief Implements if functionality.
-/// @param loc.hasColumn( Parameter description needed.
-/// @return Return value description needed.
             if (loc.hasColumn())
             {
                 message.push_back(':');
@@ -150,14 +152,8 @@ Slot VMContext::eval(Frame &fr, const il::core::Value &value) const
     {
         Slot s{};
         auto [it, inserted] = vmInstance->inlineLiteralCache.try_emplace(v.str);
-/// @brief Implements if functionality.
-/// @param inserted Parameter description needed.
-/// @return Return value description needed.
         if (inserted)
         {
-/// @brief Implements if functionality.
-/// @param v.str.find('\0' Parameter description needed.
-/// @return Return value description needed.
             if (v.str.find('\0') == std::string::npos)
                 it->second = rt_const_cstr(v.str.c_str());
             else
@@ -170,22 +166,24 @@ Slot VMContext::eval(Frame &fr, const il::core::Value &value) const
     auto evalGlobalAddr = [&](const il::core::Value &v) -> Slot
     {
         Slot s{};
-        // Map to function pointer when name matches a function; also map to runtime string for
-        // globals.
+        // Map to function pointer when name matches a function
         auto fIt = vmInstance->fnMap.find(v.str);
-/// @brief Implements if functionality.
-/// @param vmInstance->fnMap.end( Parameter description needed.
-/// @return Return value description needed.
         if (fIt != vmInstance->fnMap.end())
         {
             s.ptr = const_cast<il::core::Function *>(fIt->second);
             return s;
         }
 
+        // Check mutable globals
+        auto mIt = vmInstance->mutableGlobalMap.find(v.str);
+        if (mIt != vmInstance->mutableGlobalMap.end())
+        {
+            s.ptr = mIt->second;
+            return s;
+        }
+
+        // Fall back to const string globals
         auto it = vmInstance->strMap.find(v.str);
-/// @brief Implements if functionality.
-/// @param vmInstance->strMap.end( Parameter description needed.
-/// @return Return value description needed.
         if (it == vmInstance->strMap.end())
         {
             RuntimeBridge::trap(TrapKind::DomainError, "unknown global", {}, fr.func->name, "");
@@ -198,9 +196,6 @@ Slot VMContext::eval(Frame &fr, const il::core::Value &value) const
     };
 
     Slot slot{};
-/// @brief Implements switch functionality.
-/// @param value.kind Parameter description needed.
-/// @return Return value description needed.
     switch (value.kind)
     {
         case il::core::Value::Kind::Temp:
@@ -235,27 +230,16 @@ std::optional<Slot> VMContext::stepOnce(VM::ExecState &state) const
     vmInstance->beginDispatch(state);
 
     const il::core::Instr *instr = nullptr;
-/// @brief Implements if functionality.
-/// @param !vmInstance->selectInstruction(state Parameter description needed.
-/// @param instr Parameter description needed.
-/// @return Return value description needed.
     if (!vmInstance->selectInstruction(state, instr))
         return state.pendingResult;
 
     // Dispatch hook before executing the opcode (counts, etc.).
 #if VIPER_VM_OPCOUNTS
-/// @brief Implements VIPER_VM_DISPATCH_BEFORE functionality.
-/// @param (*this Parameter description needed.
-/// @return Return value description needed.
     VIPER_VM_DISPATCH_BEFORE((*this), instr->op);
 #endif
 
     vmInstance->traceInstruction(*instr, state.fr);
     auto result = vmInstance->executeOpcode(state.fr, *instr, state.blocks, state.bb, state.ip);
-/// @brief Implements if functionality.
-/// @param vmInstance->finalizeDispatch(state Parameter description needed.
-/// @param result Parameter description needed.
-/// @return Return value description needed.
     if (vmInstance->finalizeDispatch(state, result))
         return state.pendingResult;
 
@@ -271,9 +255,6 @@ std::optional<Slot> VMContext::stepOnce(VM::ExecState &state) const
 /// @return @c true if the signal referred to @p state.
 bool VMContext::handleTrapDispatch(const VM::TrapDispatchSignal &signal, VM::ExecState &state) const
 {
-/// @brief Implements if functionality.
-/// @param state Parameter description needed.
-/// @return Return value description needed.
     if (signal.target != &state)
         return false;
     vmInstance->clearCurrentContext();
@@ -291,10 +272,6 @@ il::core::Opcode VMContext::fetchOpcode(VM::ExecState &state) const
     vmInstance->beginDispatch(state);
 
     const il::core::Instr *instr = nullptr;
-/// @brief Implements if functionality.
-/// @param !vmInstance->selectInstruction(state Parameter description needed.
-/// @param instr Parameter description needed.
-/// @return Return value description needed.
     if (!vmInstance->selectInstruction(state, instr))
         return instr ? instr->op : il::core::Opcode::Trap;
 
@@ -325,9 +302,6 @@ void VMContext::handleInlineResult(VM::ExecState &state, const VM::ExecResult &e
     const std::string blockLabel =
         vmInstance->currentContext.block ? vmInstance->currentContext.block->label : std::string();
     std::string detail = "unimplemented opcode: " + opcodeMnemonic(opcode);
-/// @brief Implements if functionality.
-/// @param !blockLabel.empty( Parameter description needed.
-/// @return Return value description needed.
     if (!blockLabel.empty())
         detail += " (block " + blockLabel + ')';
     RuntimeBridge::trap(
@@ -423,9 +397,6 @@ Slot VM::eval(Frame &fr, const il::core::Value &value)
     auto evalTemp = [&](const il::core::Value &v) -> Slot
     {
         Slot s{};
-/// @brief Implements if functionality.
-/// @param fr.regs.size( Parameter description needed.
-/// @return Return value description needed.
         if (v.id < fr.regs.size())
             return fr.regs[v.id];
 
@@ -436,16 +407,10 @@ Slot VM::eval(Frame &fr, const il::core::Value &value)
 
         std::string message =
             detail::formatRegisterRangeError(v.id, fr.regs.size(), fnName, blockLabel);
-/// @brief Implements if functionality.
-/// @param loc.hasLine( Parameter description needed.
-/// @return Return value description needed.
         if (loc.hasLine())
         {
             std::ostringstream os;
             os << message << ", at line " << loc.line;
-/// @brief Implements if functionality.
-/// @param loc.hasColumn( Parameter description needed.
-/// @return Return value description needed.
             if (loc.hasColumn())
                 os << ':' << loc.column;
             message = os.str();
@@ -462,14 +427,8 @@ Slot VM::eval(Frame &fr, const il::core::Value &value)
     {
         Slot s{};
         auto [it, inserted] = inlineLiteralCache.try_emplace(v.str);
-/// @brief Implements if functionality.
-/// @param inserted Parameter description needed.
-/// @return Return value description needed.
         if (inserted)
         {
-/// @brief Implements if functionality.
-/// @param v.str.find('\0' Parameter description needed.
-/// @return Return value description needed.
             if (v.str.find('\0') == std::string::npos)
                 it->second = rt_const_cstr(v.str.c_str());
             else
@@ -482,22 +441,24 @@ Slot VM::eval(Frame &fr, const il::core::Value &value)
     auto evalGlobalAddr = [&](const il::core::Value &v) -> Slot
     {
         Slot s{};
-        // Map to function pointer when name matches a function; also map to runtime string for
-        // globals.
+        // Map to function pointer when name matches a function
         auto fIt = fnMap.find(v.str);
-/// @brief Implements if functionality.
-/// @param fnMap.end( Parameter description needed.
-/// @return Return value description needed.
         if (fIt != fnMap.end())
         {
             s.ptr = const_cast<il::core::Function *>(fIt->second);
             return s;
         }
 
+        // Check mutable globals
+        auto mIt = mutableGlobalMap.find(v.str);
+        if (mIt != mutableGlobalMap.end())
+        {
+            s.ptr = mIt->second;
+            return s;
+        }
+
+        // Fall back to const string globals
         auto it = strMap.find(v.str);
-/// @brief Implements if functionality.
-/// @param strMap.end( Parameter description needed.
-/// @return Return value description needed.
         if (it == strMap.end())
         {
             RuntimeBridge::trap(TrapKind::DomainError, "unknown global", {}, fr.func->name, "");
@@ -510,9 +471,6 @@ Slot VM::eval(Frame &fr, const il::core::Value &value)
     };
 
     Slot slot{};
-/// @brief Implements switch functionality.
-/// @param value.kind Parameter description needed.
-/// @return Return value description needed.
     switch (value.kind)
     {
         case il::core::Value::Kind::Temp:
@@ -550,22 +508,13 @@ std::optional<Slot> VM::stepOnce(ExecState &state)
         VM &vm;
         VM::ExecState *st;
 
-/// @brief Implements ExecStackGuard functionality.
-/// @param vmRef Parameter description needed.
-/// @param stateRef Parameter description needed.
-/// @return Return value description needed.
         ExecStackGuard(VM &vmRef, VM::ExecState &stateRef) : vm(vmRef), st(&stateRef)
         {
             vm.execStack.push_back(st);
         }
 
-/// @brief Implements ExecStackGuard functionality.
-/// @return Return value description needed.
         ~ExecStackGuard()
         {
-/// @brief Implements if functionality.
-/// @param !vm.execStack.empty( Parameter description needed.
-/// @return Return value description needed.
             if (!vm.execStack.empty() && vm.execStack.back() == st)
                 vm.execStack.pop_back();
         }
@@ -575,15 +524,8 @@ std::optional<Slot> VM::stepOnce(ExecState &state)
     {
         return ctx.stepOnce(state);
     }
-/// @brief Implements catch functionality.
-/// @param signal Parameter description needed.
-/// @return Return value description needed.
     catch (const VM::TrapDispatchSignal &signal)
     {
-/// @brief Implements if functionality.
-/// @param !ctx.handleTrapDispatch(signal Parameter description needed.
-/// @param state Parameter description needed.
-/// @return Return value description needed.
         if (!ctx.handleTrapDispatch(signal, state))
             throw;
         // Trap dispatched; no completed result yet.

@@ -76,6 +76,15 @@ class IRBuilder
                                 il::core::Type ret,
                                 const std::vector<il::core::Type> &params);
 
+    /// @brief Add a global variable.
+    /// @param name Global identifier.
+    /// @param type Variable type.
+    /// @param init Optional initializer (empty for zero-initialized).
+    /// @return Reference to newly added global.
+    il::core::Global &addGlobal(const std::string &name,
+                                il::core::Type type,
+                                const std::string &init = "");
+
     /// @brief Add a global string constant.
     /// @param name Global identifier.
     /// @param value UTF-8 string literal.

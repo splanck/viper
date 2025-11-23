@@ -330,6 +330,13 @@ VM::ExecResult handleConstStr(VM &vm,
                               const il::core::BasicBlock *&bb,
                               size_t &ip);
 
+VM::ExecResult handleGAddr(VM &vm,
+                            Frame &fr,
+                            const il::core::Instr &in,
+                            const VM::BlockMap &blocks,
+                            const il::core::BasicBlock *&bb,
+                            size_t &ip);
+
 VM::ExecResult handleConstNull(VM &vm,
                                Frame &fr,
                                const il::core::Instr &in,

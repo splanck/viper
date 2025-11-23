@@ -50,6 +50,13 @@ if (NOT TARGET test_basic_builtins_args_cmd_semantics)
     viper_add_ctest(test_basic_builtins_args_cmd_semantics test_basic_builtins_args_cmd_semantics)
 endif ()
 
+# Runtime StringBuilder bridge tests
+if (NOT TARGET test_stringbuilder_bridge)
+    viper_add_test(test_stringbuilder_bridge ${VIPER_TESTS_DIR}/unit/test_stringbuilder_bridge.c)
+    target_link_libraries(test_stringbuilder_bridge PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_stringbuilder_bridge test_stringbuilder_bridge)
+endif ()
+
 if (NOT TARGET test_basic_builtins_arg_get_typing)
     viper_add_test(test_basic_builtins_arg_get_typing ${VIPER_TESTS_DIR}/unit/test_basic_builtins_arg_get_typing.cpp)
     target_link_libraries(test_basic_builtins_arg_get_typing PRIVATE fe_basic)

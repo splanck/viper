@@ -119,49 +119,28 @@ Value Value::null()
 /// @return String representation suitable for diagnostics or textual IL.
 std::string toString(const Value &v)
 {
-/// @brief Implements switch functionality.
-/// @param v.kind Parameter description needed.
-/// @return Return value description needed.
     switch (v.kind)
     {
         case Value::Kind::Temp:
             return "%t" + std::to_string(v.id);
         case Value::Kind::ConstInt:
-/// @brief Implements if functionality.
-/// @param v.isBool Parameter description needed.
-/// @return Return value description needed.
             if (v.isBool)
                 return v.i64 != 0 ? "true" : "false";
             return std::to_string(v.i64);
         case Value::Kind::ConstFloat:
         {
-/// @brief Implements if functionality.
-/// @param std::signbit(v.f64 Parameter description needed.
-/// @return Return value description needed.
             if (std::signbit(v.f64) && v.f64 == 0.0)
                 return "-0.0";
             std::ostringstream oss;
             oss.setf(std::ios::fmtflags(0), std::ios::floatfield);
             oss << std::setprecision(std::numeric_limits<double>::digits10 + 2) << v.f64;
             std::string s = oss.str();
-/// @brief Implements if functionality.
-/// @param 0.0 Parameter description needed.
-/// @return Return value description needed.
             if (v.f64 == 0.0)
                 return "0.0";
-/// @brief Implements if functionality.
-/// @param s.find('.' Parameter description needed.
-/// @return Return value description needed.
             if (s.find('.') != std::string::npos)
             {
-/// @brief Implements while functionality.
-/// @param !s.empty( Parameter description needed.
-/// @return Return value description needed.
                 while (!s.empty() && s.back() == '0')
                     s.pop_back();
-/// @brief Implements if functionality.
-/// @param !s.empty( Parameter description needed.
-/// @return Return value description needed.
                 if (!s.empty() && s.back() == '.')
                     s.pop_back();
             }

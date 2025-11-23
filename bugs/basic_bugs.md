@@ -1,12 +1,12 @@
 # VIPER BASIC Known Bugs and Issues
 
-*Last Updated: 2025-11-18*
+*Last Updated: 2025-11-23*
 
-**Bug Statistics**: 106 resolved, 1 outstanding bug, 4 design decisions (111 total documented)
+**Bug Statistics**: 106 resolved, 5 outstanding bugs, 4 design decisions (115 total documented)
 
 **Test Suite Status**: 664/664 tests passing (100%) - All tests passing!
 
-**STATUS**: ⚠️ **4 NEW BUGS FOUND** - Poker game + Frogger performance stress tests (2025-11-18)
+**STATUS**: ⚠️ **8 NEW BUGS FOUND TOTAL** - Poker/Frogger stress tests (2025-11-18) + BasicDB OOP/sorting issues (2025-11-23)
 
 ---
 
@@ -2792,6 +2792,218 @@ End Sub
 **File Location**: `demos/vTris/vtris.bas:218-234`
 
 **Note**: This is expected behavior for reference types in many languages. Not necessarily a bug, but important to understand for proper OOP in Viper BASIC.
+
+---
+
+### BUG-114: Line continuation character (_) not supported
+**Status**: CONFIRMED BUG
+**Discovered**: 2025-11-23 (BasicDB development - method signatures)
+**Category**: Parser / Syntax
+**Severity**: MEDIUM - Workaround available (single-line formatting)
+
+**Symptom**: The BASIC parser does not recognize the underscore (`_`) character for line continuation in function/subroutine parameter lists or other multi-line statements.
+
+**Minimal Reproduction**:
+```basic
+SUB SetData(newId AS INTEGER, fname AS STRING, lname AS STRING, _
+            em AS STRING, ph AS STRING)
+    PRINT "Setting data..."
+END SUB
+```
+
+**Error Message**:
+```
+error[B0001]: expected ident, got ?
+error[B0001]: expected ), got eol
+```
+
+**Impact**:
+- Forces long parameter lists onto single lines
+- Reduces code readability for methods with many parameters
+- Makes functions with 5+ parameters harder to maintain
+- Not a blocking issue, just a style limitation
+
+**Workaround**: Keep all parameters on a single line:
+```basic
+SUB SetData(newId AS INTEGER, fname AS STRING, lname AS STRING, em AS STRING, ph AS STRING)
+    PRINT "Setting data..."
+END SUB
+```
+
+**Test File**: `devdocs/basic/basicdb.bas` - Database with long method signatures
+
+**Expected Behavior**: Line continuation character should allow splitting long statements across multiple lines for readability, as supported in standard BASIC dialects.
+
+**Notes**:
+- This is a parser-level limitation
+- Standard BASIC feature not implemented
+- Low priority as workaround is simple
+
+---
+
+### BUG-115: Constructor SUB New() causes "missing result" error
+**Status**: CONFIRMED BUG
+**Discovered**: 2025-11-23 (BasicDB development - OOP attempt)
+**Category**: OOP / Code Generation
+**Severity**: HIGH - Blocks constructor pattern
+
+**Symptom**: When a CLASS defines an explicit `SUB New()` constructor, the compiler generates code that causes a "ret: missing result" error at runtime during object instantiation.
+
+**Minimal Reproduction**:
+```basic
+CLASS Record
+    PUBLIC id AS INTEGER
+    PUBLIC firstName AS STRING
+
+    PUBLIC SUB New()
+        id = 0
+        firstName = ""
+    END SUB
+END CLASS
+
+DIM rec AS Record
+rec = NEW Record()  ' Runtime error here
+```
+
+**Error Message**:
+```
+error: RECORD.__ctor:entry_RECORD.__ctor: ret: missing result
+```
+
+**Impact**:
+- Cannot use constructor pattern for object initialization
+- Must rely on explicit Init() methods after construction
+- Reduces OOP capabilities and idiomatic usage
+
+**Workaround**: Remove `SUB New()` constructor and use separate Init() method:
+```basic
+CLASS Record
+    PUBLIC id AS INTEGER
+    PUBLIC firstName AS STRING
+
+    PUBLIC SUB Init()
+        id = 0
+        firstName = ""
+    END SUB
+END CLASS
+
+DIM rec AS Record
+rec = NEW Record()
+rec.Init()  ' Call Init after construction
+```
+
+**Test File**: `devdocs/basic/test_class_minimal.bas` - Minimal class with constructor
+
+**Expected Behavior**: `SUB New()` should be called during object instantiation without errors, allowing initialization logic in constructor.
+
+**Related**: BUG-116 (NEW operator broken) - may be same root cause
+
+---
+
+### BUG-116: 🔴 CRITICAL - NEW operator for class instantiation broken
+**Status**: CONFIRMED BUG
+**Discovered**: 2025-11-23 (BasicDB development - OOP attempt)
+**Category**: OOP / Code Generation / Runtime
+**Severity**: CRITICAL - Completely blocks OOP instantiation
+
+**Symptom**: The NEW operator for instantiating classes causes a runtime error. The automatically-generated constructor (`__ctor`) doesn't properly return a value, causing a "ret: missing result" error even for minimal classes without explicit constructors.
+
+**Minimal Reproduction**:
+```basic
+CLASS TestClass
+    DIM value AS INTEGER
+END CLASS
+
+DIM obj AS TestClass
+obj = NEW TestClass()  ' Runtime error here
+```
+
+**Error Message**:
+```
+error: TESTCLASS.__ctor:entry_TESTCLASS.__ctor: ret: missing result
+```
+
+**Impact**:
+- **COMPLETELY BLOCKS object-oriented programming**
+- Cannot instantiate any class objects
+- OOP features are unusable
+- Forces procedural programming approach
+
+**Attempted Workarounds (ALL FAILED)**:
+- Removing explicit NEW() constructor - still fails
+- Changing PUBLIC to regular visibility - still fails
+- Using DIM instead of PUBLIC for fields - still fails
+- Minimal class with single field - still fails
+
+**Current Workaround**:
+- Must use procedural programming with global arrays
+- Cannot use OOP at all for data structures
+- Use parallel arrays instead of object collections
+
+**Test Files**:
+- `devdocs/basic/test_class_minimal.bas` - Minimal reproduction
+- `devdocs/basic/basicdb.bas` - Had to abandon OOP design
+
+**Expected Behavior**: `NEW ClassName()` should instantiate an object and return a valid reference, allowing full OOP usage.
+
+**Root Cause**: The generated `__ctor` function doesn't properly return the object reference. This affects all class instantiation, making OOP fundamentally broken.
+
+**Related**: BUG-115 (Constructor NEW() method) - related symptom
+
+---
+
+### BUG-117: String comparison operators (>, <) runtime error
+**Status**: CONFIRMED BUG
+**Discovered**: 2025-11-23 (BasicDB development - string sorting)
+**Category**: Runtime / String Operations
+**Severity**: HIGH - Blocks string sorting functionality
+
+**Symptom**: String comparison using `>` and `<` operators causes runtime errors in certain contexts, particularly in sorting functions with array element comparisons. The runtime function `@rt_str_gt` appears to be missing or not properly linked.
+
+**Minimal Reproduction**:
+```basic
+DIM names$(10)
+names$(0) = "Smith"
+names$(1) = "Anderson"
+
+DIM i AS INTEGER
+FOR i = 0 TO 0
+    IF names$(i) > names$(i + 1) THEN
+        PRINT "Swap needed"
+    END IF
+NEXT i
+```
+
+**Error Message**:
+```
+error: DB_SORTBYLASTNAME:bc_ok1_DB_SORTBYLASTNAME: %60 = call %t43 %t59:
+unknown callee @rt_str_gt
+```
+
+**Impact**:
+- **BLOCKS sorting by string fields**
+- Cannot implement alphabetical sorting
+- String comparison with `>` and `<` operators unusable
+- Equality comparison (`=`) works fine
+- Limits database and list processing functionality
+
+**Context**: The `basic_audit.md` claims "Full lexicographic string comparison now supported for all relational operators", but this appears to be incomplete or broken in certain contexts (arrays, complex expressions).
+
+**Workaround**:
+- None available for sorting
+- Must comment out string-based sorting functions
+- Can only sort by integer fields
+
+**Test File**: `devdocs/basic/basicdb.bas` - String sorting functions commented out (DB_SortByLastName, DB_SortByFirstName, DB_SortByCity)
+
+**Expected Behavior**: String comparison operators (`>`, `<`, `>=`, `<=`) should work consistently in all contexts, including array element comparisons and sorting loops.
+
+**Notes**:
+- May be related to BUG-031 (String comparison resolved 2025-11-12) - possible regression
+- May be specific to array element comparisons vs simple variable comparisons
+- The runtime function `@rt_str_gt` exists for simple comparisons but may not be called correctly in complex expressions
+
+**Related**: BUG-031 was reportedly resolved, but this issue persists in array/sorting contexts
 
 ---
 

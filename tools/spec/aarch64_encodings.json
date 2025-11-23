@@ -1,0 +1,289 @@
+{
+  "opcodes": [
+    {
+      "enum": "MovRR",
+      "mnemonic": "mov",
+      "format": "RR",
+      "operands": ["dst:reg", "src:reg"],
+      "asm": "mov {dst}, {src}"
+    },
+    {
+      "enum": "MovRI",
+      "mnemonic": "mov",
+      "format": "RI",
+      "operands": ["dst:reg", "imm:imm"],
+      "asm": "mov {dst}, #{imm}",
+      "variants": [
+        {
+          "condition": "imm >= 0 && imm <= 65535",
+          "use_function": "emitMovRI"
+        },
+        {
+          "condition": "default",
+          "use_function": "emitMovImm64"
+        }
+      ]
+    },
+    {
+      "enum": "FMovRR",
+      "mnemonic": "fmov",
+      "format": "RR",
+      "operands": ["dst:reg", "src:reg"],
+      "asm": "fmov {dst}, {src}",
+      "reg_class": "FPR"
+    },
+    {
+      "enum": "FMovRI",
+      "mnemonic": "fmov",
+      "format": "RI",
+      "operands": ["dst:reg", "imm:f64"],
+      "asm": "fmov {dst}, #{imm}",
+      "reg_class": "FPR"
+    },
+    {
+      "enum": "FAddRRR",
+      "mnemonic": "fadd",
+      "format": "RRR",
+      "operands": ["dst:reg", "lhs:reg", "rhs:reg"],
+      "asm": "fadd {dst}, {lhs}, {rhs}",
+      "reg_class": "FPR"
+    },
+    {
+      "enum": "FSubRRR",
+      "mnemonic": "fsub",
+      "format": "RRR",
+      "operands": ["dst:reg", "lhs:reg", "rhs:reg"],
+      "asm": "fsub {dst}, {lhs}, {rhs}",
+      "reg_class": "FPR"
+    },
+    {
+      "enum": "FMulRRR",
+      "mnemonic": "fmul",
+      "format": "RRR",
+      "operands": ["dst:reg", "lhs:reg", "rhs:reg"],
+      "asm": "fmul {dst}, {lhs}, {rhs}",
+      "reg_class": "FPR"
+    },
+    {
+      "enum": "FDivRRR",
+      "mnemonic": "fdiv",
+      "format": "RRR",
+      "operands": ["dst:reg", "lhs:reg", "rhs:reg"],
+      "asm": "fdiv {dst}, {lhs}, {rhs}",
+      "reg_class": "FPR"
+    },
+    {
+      "enum": "FCmpRR",
+      "mnemonic": "fcmp",
+      "format": "RR",
+      "operands": ["lhs:reg", "rhs:reg"],
+      "asm": "fcmp {lhs}, {rhs}",
+      "reg_class": "FPR"
+    },
+    {
+      "enum": "SCvtF",
+      "mnemonic": "scvtf",
+      "format": "RR",
+      "operands": ["dst:fpr", "src:gpr"],
+      "asm": "scvtf {dst}, {src}",
+      "comment": "Convert signed integer to float"
+    },
+    {
+      "enum": "FCvtZS",
+      "mnemonic": "fcvtzs",
+      "format": "RR",
+      "operands": ["dst:gpr", "src:fpr"],
+      "asm": "fcvtzs {dst}, {src}",
+      "comment": "Convert float to signed integer (round toward zero)"
+    },
+    {
+      "enum": "AddRRR",
+      "mnemonic": "add",
+      "format": "RRR",
+      "operands": ["dst:reg", "lhs:reg", "rhs:reg"],
+      "asm": "add {dst}, {lhs}, {rhs}"
+    },
+    {
+      "enum": "SubRRR",
+      "mnemonic": "sub",
+      "format": "RRR",
+      "operands": ["dst:reg", "lhs:reg", "rhs:reg"],
+      "asm": "sub {dst}, {lhs}, {rhs}"
+    },
+    {
+      "enum": "MulRRR",
+      "mnemonic": "mul",
+      "format": "RRR",
+      "operands": ["dst:reg", "lhs:reg", "rhs:reg"],
+      "asm": "mul {dst}, {lhs}, {rhs}"
+    },
+    {
+      "enum": "AndRRR",
+      "mnemonic": "and",
+      "format": "RRR",
+      "operands": ["dst:reg", "lhs:reg", "rhs:reg"],
+      "asm": "and {dst}, {lhs}, {rhs}"
+    },
+    {
+      "enum": "OrrRRR",
+      "mnemonic": "orr",
+      "format": "RRR",
+      "operands": ["dst:reg", "lhs:reg", "rhs:reg"],
+      "asm": "orr {dst}, {lhs}, {rhs}"
+    },
+    {
+      "enum": "EorRRR",
+      "mnemonic": "eor",
+      "format": "RRR",
+      "operands": ["dst:reg", "lhs:reg", "rhs:reg"],
+      "asm": "eor {dst}, {lhs}, {rhs}"
+    },
+    {
+      "enum": "AddRI",
+      "mnemonic": "add",
+      "format": "RRI",
+      "operands": ["dst:reg", "lhs:reg", "imm:imm"],
+      "asm": "add {dst}, {lhs}, #{imm}"
+    },
+    {
+      "enum": "SubRI",
+      "mnemonic": "sub",
+      "format": "RRI",
+      "operands": ["dst:reg", "lhs:reg", "imm:imm"],
+      "asm": "sub {dst}, {lhs}, #{imm}"
+    },
+    {
+      "enum": "LslRI",
+      "mnemonic": "lsl",
+      "format": "RRI",
+      "operands": ["dst:reg", "lhs:reg", "shift:imm"],
+      "asm": "lsl {dst}, {lhs}, #{shift}"
+    },
+    {
+      "enum": "LsrRI",
+      "mnemonic": "lsr",
+      "format": "RRI",
+      "operands": ["dst:reg", "lhs:reg", "shift:imm"],
+      "asm": "lsr {dst}, {lhs}, #{shift}"
+    },
+    {
+      "enum": "AsrRI",
+      "mnemonic": "asr",
+      "format": "RRI",
+      "operands": ["dst:reg", "lhs:reg", "shift:imm"],
+      "asm": "asr {dst}, {lhs}, #{shift}"
+    },
+    {
+      "enum": "CmpRR",
+      "mnemonic": "cmp",
+      "format": "RR",
+      "operands": ["lhs:reg", "rhs:reg"],
+      "asm": "cmp {lhs}, {rhs}"
+    },
+    {
+      "enum": "CmpRI",
+      "mnemonic": "cmp",
+      "format": "RI",
+      "operands": ["lhs:reg", "imm:imm"],
+      "asm": "cmp {lhs}, #{imm}"
+    },
+    {
+      "enum": "Cset",
+      "mnemonic": "cset",
+      "format": "RC",
+      "operands": ["dst:reg", "cond:cond"],
+      "asm": "cset {dst}, {cond}"
+    },
+    {
+      "enum": "SubSpImm",
+      "mnemonic": "sub",
+      "format": "SP",
+      "operands": ["bytes:imm"],
+      "asm": "sub sp, sp, #{bytes}"
+    },
+    {
+      "enum": "AddSpImm",
+      "mnemonic": "add",
+      "format": "SP",
+      "operands": ["bytes:imm"],
+      "asm": "add sp, sp, #{bytes}"
+    },
+    {
+      "enum": "StrRegSpImm",
+      "mnemonic": "str",
+      "format": "RSP",
+      "operands": ["src:reg", "offset:imm"],
+      "asm": "str {src}, [sp, #{offset}]"
+    },
+    {
+      "enum": "StrFprSpImm",
+      "mnemonic": "str",
+      "format": "FSP",
+      "operands": ["src:fpr", "offset:imm"],
+      "asm": "str {src}, [sp, #{offset}]"
+    },
+    {
+      "enum": "LdrRegFpImm",
+      "mnemonic": "ldr",
+      "format": "RFP",
+      "operands": ["dst:reg", "offset:imm"],
+      "asm": "ldr {dst}, [x29, #{offset}]"
+    },
+    {
+      "enum": "StrRegFpImm",
+      "mnemonic": "str",
+      "format": "RFP",
+      "operands": ["src:reg", "offset:imm"],
+      "asm": "str {src}, [x29, #{offset}]"
+    },
+    {
+      "enum": "LdrFprFpImm",
+      "mnemonic": "ldr",
+      "format": "FFP",
+      "operands": ["dst:fpr", "offset:imm"],
+      "asm": "ldr {dst}, [x29, #{offset}]"
+    },
+    {
+      "enum": "StrFprFpImm",
+      "mnemonic": "str",
+      "format": "FFP",
+      "operands": ["src:fpr", "offset:imm"],
+      "asm": "str {src}, [x29, #{offset}]"
+    },
+    {
+      "enum": "Br",
+      "mnemonic": "b",
+      "format": "L",
+      "operands": ["label:label"],
+      "asm": "b {label}"
+    },
+    {
+      "enum": "BCond",
+      "mnemonic": "b",
+      "format": "CL",
+      "operands": ["cond:cond", "label:label"],
+      "asm": "b.{cond} {label}"
+    },
+    {
+      "enum": "Bl",
+      "mnemonic": "bl",
+      "format": "L",
+      "operands": ["label:label"],
+      "asm": "bl {label}"
+    },
+    {
+      "enum": "AdrPage",
+      "mnemonic": "adrp",
+      "format": "RL",
+      "operands": ["dst:reg", "label:label"],
+      "asm": "adrp {dst}, {label}@PAGE"
+    },
+    {
+      "enum": "AddPageOff",
+      "mnemonic": "add",
+      "format": "RRL",
+      "operands": ["dst:reg", "base:reg", "label:label"],
+      "asm": "add {dst}, {base}, {label}@PAGEOFF"
+    }
+  ]
+}

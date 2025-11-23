@@ -15,6 +15,7 @@
 #include "il/core/Instr.hpp"
 #include "il/core/Type.hpp"
 #include "FrameBuilder.hpp"
+#include "OpcodeMappings.hpp"
 
 #include <optional>
 #include <unordered_map>
@@ -27,31 +28,7 @@ using il::core::Opcode;
 
 static const char *condForOpcode(Opcode op)
 {
-    switch (op)
-    {
-        case Opcode::ICmpEq:
-            return "eq";
-        case Opcode::ICmpNe:
-            return "ne";
-        case Opcode::SCmpLT:
-            return "lt";
-        case Opcode::SCmpLE:
-            return "le";
-        case Opcode::SCmpGT:
-            return "gt";
-        case Opcode::SCmpGE:
-            return "ge";
-        case Opcode::UCmpLT:
-            return "lo";
-        case Opcode::UCmpLE:
-            return "ls";
-        case Opcode::UCmpGT:
-            return "hi";
-        case Opcode::UCmpGE:
-            return "hs";
-        default:
-            return nullptr;
-    }
+    return lookupCondition(op);
 }
 
 static int indexOfParam(const il::core::BasicBlock &bb, unsigned tempId)
@@ -172,6 +149,23 @@ static bool materializeValueToVReg(const il::core::Value &v,
         };
 
         const auto &prod = *prodIt;
+
+        // Check for binary operations first using table lookup
+        if (const auto* binOp = lookupBinaryOp(prod.op)) {
+            if (prod.operands.size() == 2) {
+                // Check if this is a shift operation that requires immediate
+                bool isShift = (prod.op == Opcode::Shl || prod.op == Opcode::LShr || prod.op == Opcode::AShr);
+
+                if (binOp->supportsImmediate && prod.operands[1].kind == il::core::Value::Kind::ConstInt) {
+                    return emitRImm(binOp->immOp, prod.operands[0], prod.operands[1].i64);
+                } else if (!isShift) {
+                    // Non-shift operations can use register-register form
+                    return emitRRR(binOp->mirOp, prod.operands[0], prod.operands[1]);
+                }
+            }
+        }
+
+        // Handle other operations
         switch (prod.op)
         {
             case Opcode::ConstStr:
@@ -190,79 +184,27 @@ static bool materializeValueToVReg(const il::core::Value &v,
                     return true;
                 }
                 break;
-            case Opcode::Add:
-            case Opcode::IAddOvf:
-                if (prod.operands.size() == 2)
-                {
-                    if (prod.operands[1].kind == il::core::Value::Kind::ConstInt)
-                        return emitRImm(MOpcode::AddRI, prod.operands[0], prod.operands[1].i64);
-                    return emitRRR(MOpcode::AddRRR, prod.operands[0], prod.operands[1]);
-                }
-                break;
-            case Opcode::Sub:
-            case Opcode::ISubOvf:
-                if (prod.operands.size() == 2)
-                {
-                    if (prod.operands[1].kind == il::core::Value::Kind::ConstInt)
-                        return emitRImm(MOpcode::SubRI, prod.operands[0], prod.operands[1].i64);
-                    return emitRRR(MOpcode::SubRRR, prod.operands[0], prod.operands[1]);
-                }
-                break;
-            case Opcode::Mul:
-            case Opcode::IMulOvf:
-                if (prod.operands.size() == 2)
-                    return emitRRR(MOpcode::MulRRR, prod.operands[0], prod.operands[1]);
-                break;
-            case Opcode::And:
-                if (prod.operands.size() == 2)
-                    return emitRRR(MOpcode::AndRRR, prod.operands[0], prod.operands[1]);
-                break;
-            case Opcode::Or:
-                if (prod.operands.size() == 2)
-                    return emitRRR(MOpcode::OrrRRR, prod.operands[0], prod.operands[1]);
-                break;
-            case Opcode::Xor:
-                if (prod.operands.size() == 2)
-                    return emitRRR(MOpcode::EorRRR, prod.operands[0], prod.operands[1]);
-                break;
-            case Opcode::Shl:
-                if (prod.operands.size() == 2 && prod.operands[1].kind == il::core::Value::Kind::ConstInt)
-                    return emitRImm(MOpcode::LslRI, prod.operands[0], prod.operands[1].i64);
-                break;
-            case Opcode::LShr:
-                if (prod.operands.size() == 2 && prod.operands[1].kind == il::core::Value::Kind::ConstInt)
-                    return emitRImm(MOpcode::LsrRI, prod.operands[0], prod.operands[1].i64);
-                break;
-            case Opcode::AShr:
-                if (prod.operands.size() == 2 && prod.operands[1].kind == il::core::Value::Kind::ConstInt)
-                    return emitRImm(MOpcode::AsrRI, prod.operands[0], prod.operands[1].i64);
-                break;
-            case Opcode::ICmpEq:
-            case Opcode::ICmpNe:
-            case Opcode::SCmpLT:
-            case Opcode::SCmpLE:
-            case Opcode::SCmpGT:
-            case Opcode::SCmpGE:
-            case Opcode::UCmpLT:
-            case Opcode::UCmpLE:
-            case Opcode::UCmpGT:
-            case Opcode::UCmpGE:
-                if (prod.operands.size() == 2)
-                {
-                    uint16_t va = 0, vb = 0;
-                    RegClass ca=RegClass::FPR, cb=RegClass::FPR;
-                    if (!materializeValueToVReg(prod.operands[0], bb, ti, fb, out, tempVReg, nextVRegId, va, ca))
-                        return false;
-                    if (!materializeValueToVReg(prod.operands[1], bb, ti, fb, out, tempVReg, nextVRegId, vb, cb))
-                        return false;
-                    out.instrs.push_back(MInstr{MOpcode::FCmpRR,
-                                                {MOperand::vregOp(RegClass::FPR, va),
-                                                 MOperand::vregOp(RegClass::FPR, vb)}});
-                    outVReg = nextVRegId++;
-                    out.instrs.push_back(MInstr{MOpcode::Cset,
-                                                {MOperand::vregOp(RegClass::GPR, outVReg),
-                                                 MOperand::condOp(condForOpcode(prod.op))}});
-                    return true;
+            default:
+                // Check if it's a comparison operation
+                if (isCompareOp(prod.op)) {
+                    if (prod.operands.size() == 2)
+                    {
+                        uint16_t va = 0, vb = 0;
+                        RegClass ca=RegClass::GPR, cb=RegClass::GPR;
+                        if (!materializeValueToVReg(prod.operands[0], bb, ti, fb, out, tempVReg, nextVRegId, va, ca))
+                            return false;
+                        if (!materializeValueToVReg(prod.operands[1], bb, ti, fb, out, tempVReg, nextVRegId, vb, cb))
+                            return false;
+                        out.instrs.push_back(MInstr{MOpcode::CmpRR,
+                                                    {MOperand::vregOp(RegClass::GPR, va),
+                                                     MOperand::vregOp(RegClass::GPR, vb)}});
+                        outVReg = nextVRegId++;
+                        outCls = RegClass::GPR;
+                        out.instrs.push_back(MInstr{MOpcode::Cset,
+                                                    {MOperand::vregOp(RegClass::GPR, outVReg),
+                                                     MOperand::condOp(condForOpcode(prod.op))}});
+                        return true;
+                    }
                 }
                 break;
             case Opcode::Load:
@@ -280,8 +222,6 @@ static bool materializeValueToVReg(const il::core::Value &v,
                         return true;
                     }
                 }
-                break;
-            default:
                 break;
         }
     }

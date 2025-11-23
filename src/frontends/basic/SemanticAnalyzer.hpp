@@ -63,7 +63,7 @@
 #include "frontends/basic/ProcRegistry.hpp"
 #include "frontends/basic/ScopeTracker.hpp"
 #include "frontends/basic/SemanticDiagnostics.hpp"
-#include "frontends/basic/Semantic_OOP.hpp"
+#include "frontends/basic/OopIndex.hpp"
 #include "frontends/basic/ast/NodeFwd.hpp"
 #include "frontends/basic/sem/NamespaceRegistry.hpp"
 #include "frontends/basic/sem/TypeResolver.hpp"

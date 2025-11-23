@@ -28,12 +28,17 @@
 
 #include "rt_format.h"
 #include "rt_int_format.h"
+#include "rt_object.h"
+#include "rt_ns_bridge.h"
+#include "rt_internal.h"
+#include "rt_string.h"
 
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <assert.h>
 
 /// @brief Determine whether the builder currently points at its inline buffer.
 /// @details Builders start life with @ref rt_string_builder::data referencing
@@ -386,42 +391,115 @@ rt_sb_status rt_sb_printf(rt_string_builder *sb, const char *fmt, ...)
 }
 
 // --------------------
-// Experimental shims for Viper.Text.StringBuilder
-// These functions are temporary placeholders to allow catalog + signature
-// plumbing to build and be exercised by tools. They intentionally avoid
-// embedding a real rt_string_builder inside the opaque object until the
-// object layout is finalized. Marked TODO to replace with concrete binding.
+// Bridge functions for Viper.Text.StringBuilder
+// These functions provide the runtime interface for the OOP StringBuilder class.
+// The StringBuilder object layout has a vptr at offset 0 and an embedded
+// rt_string_builder struct at offset 8 (after the vptr).
+
+#include <assert.h>
+
+// StringBuilder object layout (must match rt_ns_bridge.c)
+typedef struct {
+    void *vptr;  // vtable pointer (8 bytes)
+    rt_string_builder builder;  // embedded builder state
+} StringBuilder;
+
+// Helper to validate and get the embedded builder
+static rt_string_builder *get_builder(void *sb)
+{
+    if (!sb)
+    {
+        // Fail loudly on null StringBuilder
+        assert(0 && "rt_text_sb_* called with null StringBuilder object");
+        return NULL;
+    }
+
+    StringBuilder *obj = (StringBuilder *)sb;
+    // The builder is embedded right after the vptr
+    return &obj->builder;
+}
 
 int64_t rt_text_sb_get_length(void *sb)
 {
-    (void)sb;
-    // TODO: Retrieve tracked character count once object embeds builder state.
-    return 0;
+    rt_string_builder *builder = get_builder(sb);
+    if (!builder)
+        return 0;
+
+    // Return the current string length in bytes
+    // Note: for ASCII/UTF-8, byte length = character count for ASCII chars
+    return (int64_t)builder->len;
 }
 
 int64_t rt_text_sb_get_capacity(void *sb)
 {
-    (void)sb;
-    // TODO: Retrieve allocated capacity (bytes) once wired.
-    return 0;
+    rt_string_builder *builder = get_builder(sb);
+    if (!builder)
+        return 0;
+
+    // Return the current allocated capacity in bytes
+    return (int64_t)builder->cap;
 }
 
 void *rt_text_sb_append(void *sb, rt_string s)
 {
-    (void)s;
-    // TODO: Append to internal builder buffer; for now, return receiver for chaining.
+    rt_string_builder *builder = get_builder(sb);
+    if (!builder)
+        return sb;
+
+    // Get the string data - rt_string is a pointer to struct with data field
+    const char *str_data = s ? s->data : NULL;
+    size_t str_len = s ? rt_len(s) : 0;
+
+    if (str_data && str_len > 0)
+    {
+        // Need to append the string data - we'll have to make a null-terminated copy
+        // or add each character. Since we have the data and length, let's reserve
+        // space and copy directly.
+
+        // First, ensure we have enough space
+        rt_sb_status status = rt_sb_reserve(builder, builder->len + str_len + 1);
+        if (status == RT_SB_OK)
+        {
+            // Copy the string data directly
+            memcpy(builder->data + builder->len, str_data, str_len);
+            builder->len += str_len;
+            builder->data[builder->len] = '\0';
+        }
+        else if (status != RT_SB_ERROR_ALLOC)
+        {
+            // For errors other than allocation failure, fail loudly
+            assert(0 && "rt_text_sb_append failed with unexpected error");
+        }
+        // For allocation failure, silently continue (could alternatively trap)
+    }
+
+    // Return the receiver for method chaining
     return sb;
 }
 
 rt_string rt_text_sb_to_string(void *sb)
 {
-    (void)sb;
-    // TODO: Materialize builder contents. For now, return empty string handle.
-    return rt_str_empty();
+    rt_string_builder *builder = get_builder(sb);
+    if (!builder)
+        return rt_str_empty();
+
+    // Create a string from the builder's current contents
+    // The builder maintains a null-terminated buffer
+    if (builder->len == 0)
+        return rt_str_empty();
+
+    // Allocate and return a new string with the builder's contents
+    return rt_string_from_bytes(builder->data, builder->len);
 }
 
 void rt_text_sb_clear(void *sb)
 {
-    (void)sb;
-    // TODO: Reset builder contents; no-op for experimental stub.
+    rt_string_builder *builder = get_builder(sb);
+    if (!builder)
+        return;
+
+    // Reset the builder to empty state while keeping allocated memory
+    builder->len = 0;
+    if (builder->data)
+        builder->data[0] = '\0';
 }

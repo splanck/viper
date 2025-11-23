@@ -53,16 +53,10 @@ using il::support::Expected;
 /// @return Updated failure result with warnings appended to the error message.
 Expected<void> appendWarnings(Expected<void> failure, const CollectingDiagSink &sink)
 {
-/// @brief Implements if functionality.
-/// @param sink.diagnostics( Parameter description needed.
-/// @return Return value description needed.
     if (sink.diagnostics().empty())
         return failure;
 
     std::ostringstream oss;
-/// @brief Implements for functionality.
-/// @param sink.diagnostics( Parameter description needed.
-/// @return Return value description needed.
     for (const auto &warning : sink.diagnostics())
         il::support::printDiag(warning, oss);
     il::support::printDiag(failure.error(), oss);
@@ -88,34 +82,18 @@ Expected<void> Verifier::verify(const Module &m)
     CollectingDiagSink sink;
 
     ExternVerifier externVerifier;
-/// @brief Implements if functionality.
-/// @param externVerifier.run(m Parameter description needed.
-/// @param sink Parameter description needed.
-/// @return Return value description needed.
     if (auto result = externVerifier.run(m, sink); !result)
         return appendWarnings(result, sink);
 
     GlobalVerifier globalVerifier;
-/// @brief Implements if functionality.
-/// @param globalVerifier.run(m Parameter description needed.
-/// @param sink Parameter description needed.
-/// @return Return value description needed.
     if (auto result = globalVerifier.run(m, sink); !result)
         return appendWarnings(result, sink);
 
     FunctionVerifier functionVerifier(externVerifier.externs());
-/// @brief Implements if functionality.
-/// @param functionVerifier.run(m Parameter description needed.
-/// @param sink Parameter description needed.
-/// @return Return value description needed.
     if (auto result = functionVerifier.run(m, sink); !result)
         return appendWarnings(result, sink);
 
     EhVerifier ehVerifier;
-/// @brief Implements if functionality.
-/// @param ehVerifier.run(m Parameter description needed.
-/// @param sink Parameter description needed.
-/// @return Return value description needed.
     if (auto result = ehVerifier.run(m, sink); !result)
         return appendWarnings(result, sink);
 

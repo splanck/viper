@@ -49,19 +49,10 @@ Parser::Parser(std::string_view src,
                std::vector<std::string> *includeStack,
                bool suppressUndefinedLabelCheck)
     : lexer_(src, file_id), emitter_(emitter), sm_(sm), includeStack_(includeStack),
-/// @brief Implements suppressUndefinedNamedLabelCheck_ functionality.
-/// @param suppressUndefinedLabelCheck Parameter description needed.
-/// @return Return value description needed.
       suppressUndefinedNamedLabelCheck_(suppressUndefinedLabelCheck)
 {
     tokens_.push_back(lexer_.next());
 
-    // Seed known namespace heads with 'Viper' when runtime namespaces are enabled.
-    // This allows dotted calls like Viper.Console.PrintI64(…) to parse as qualified
-    // calls even without a preceding NAMESPACE Viper … block in user code.
-/// @brief Implements if functionality.
-/// @param il::frontends::basic::FrontendOptions::enableRuntimeNamespaces( Parameter description needed.
-/// @return Return value description needed.
     if (il::frontends::basic::FrontendOptions::enableRuntimeNamespaces())
     {
         knownNamespaces_.insert("Viper");
@@ -86,9 +77,6 @@ StatementSequencer Parser::statementSequencer()
 /// @return Newly allocated label number guaranteed not to conflict with any used labels.
 int Parser::allocateSyntheticLabelNumber()
 {
-/// @brief Implements while functionality.
-/// @param usedLabelNumbers_.count(nextSyntheticLabel_ Parameter description needed.
-/// @return Return value description needed.
     while (usedLabelNumbers_.count(nextSyntheticLabel_) != 0)
         ++nextSyntheticLabel_;
     return nextSyntheticLabel_++;
@@ -104,9 +92,6 @@ int Parser::allocateSyntheticLabelNumber()
 int Parser::ensureLabelNumber(const std::string &name)
 {
     auto it = namedLabels_.find(name);
-/// @brief Implements if functionality.
-/// @param namedLabels_.end( Parameter description needed.
-/// @return Return value description needed.
     if (it != namedLabels_.end())
         return it->second.number;
 
@@ -138,9 +123,6 @@ bool Parser::hasLabelName(const std::string &name) const
 std::optional<int> Parser::lookupLabelNumber(const std::string &name) const
 {
     auto it = namedLabels_.find(name);
-/// @brief Implements if functionality.
-/// @param namedLabels_.end( Parameter description needed.
-/// @return Return value description needed.
     if (it == namedLabels_.end())
         return std::nullopt;
     return it->second.number;
@@ -156,9 +138,6 @@ void Parser::noteNamedLabelDefinition(const Token &tok, int labelNumber)
 {
     usedLabelNumbers_.insert(labelNumber);
     auto it = namedLabels_.find(tok.lexeme);
-/// @brief Implements if functionality.
-/// @param namedLabels_.end( Parameter description needed.
-/// @return Return value description needed.
     if (it == namedLabels_.end())
     {
         NamedLabelEntry entry{};
@@ -169,9 +148,6 @@ void Parser::noteNamedLabelDefinition(const Token &tok, int labelNumber)
         return;
     }
 
-/// @brief Implements if functionality.
-/// @param !it->second.defined Parameter description needed.
-/// @return Return value description needed.
     if (!it->second.defined)
     {
         it->second.defined = true;
@@ -181,10 +157,6 @@ void Parser::noteNamedLabelDefinition(const Token &tok, int labelNumber)
 
     std::string msg = "label '" + tok.lexeme + "' already defined";
 /// @brief Emits error.
-/// @param "B0001" Parameter description needed.
-/// @param tok Parameter description needed.
-/// @param std::move(msg Parameter description needed.
-/// @return Return value description needed.
     emitError("B0001", tok, std::move(msg));
 }
 
@@ -199,9 +171,6 @@ void Parser::noteNamedLabelReference(const Token &tok, int labelNumber)
 {
     usedLabelNumbers_.insert(labelNumber);
     auto it = namedLabels_.find(tok.lexeme);
-/// @brief Implements if functionality.
-/// @param namedLabels_.end( Parameter description needed.
-/// @return Return value description needed.
     if (it == namedLabels_.end())
     {
         NamedLabelEntry entry{};
@@ -214,9 +183,6 @@ void Parser::noteNamedLabelReference(const Token &tok, int labelNumber)
 
     auto &entry = it->second;
     entry.referenced = true;
-/// @brief Implements if functionality.
-/// @param !entry.referenceLoc.isValid( Parameter description needed.
-/// @return Return value description needed.
     if (!entry.referenceLoc.isValid())
         entry.referenceLoc = tok.loc;
 }
@@ -239,25 +205,11 @@ void Parser::noteNumericLabelUsage(int labelNumber)
 Parser::StatementParserRegistry Parser::buildStatementRegistry()
 {
     StatementParserRegistry registry;
-/// @brief Implements registerCoreParsers functionality.
-/// @param registry Parameter description needed.
-/// @return Return value description needed.
     registerCoreParsers(registry);
-/// @brief Implements registerControlFlowParsers functionality.
-/// @param registry Parameter description needed.
-/// @return Return value description needed.
     registerControlFlowParsers(registry);
 /// @brief Handles error condition.
-/// @param registry Parameter description needed.
-/// @return Return value description needed.
     registerRuntimeParsers(registry);
-/// @brief Implements registerIoParsers functionality.
-/// @param registry Parameter description needed.
-/// @return Return value description needed.
     registerIoParsers(registry);
-/// @brief Implements registerOopParsers functionality.
-/// @param registry Parameter description needed.
-/// @return Return value description needed.
     registerOopParsers(registry);
     return registry;
 }
@@ -278,9 +230,6 @@ BasicType Parser::parseBasicType()
     {
         std::string result;
         result.reserve(text.size());
-/// @brief Implements for functionality.
-/// @param text Parameter description needed.
-/// @return Return value description needed.
         for (char c : text)
             result.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(c))));
         return result;
@@ -288,62 +237,33 @@ BasicType Parser::parseBasicType()
 
     const Token &tok = peek();
 
-    // Check for BOOLEAN keyword token first
-/// @brief Implements if functionality.
-/// @param TokenKind::KeywordBoolean Parameter description needed.
-/// @return Return value description needed.
     if (tok.kind == TokenKind::KeywordBoolean)
     {
-/// @brief Implements consume functionality.
-/// @return Return value description needed.
         consume();
         return BasicType::Bool;
     }
 
-/// @brief Implements if functionality.
-/// @param TokenKind::Identifier Parameter description needed.
-/// @return Return value description needed.
     if (tok.kind != TokenKind::Identifier)
         return BasicType::Unknown;
 
     std::string upper = toUpper(tok.lexeme);
-/// @brief Implements if functionality.
-/// @param "INT" Parameter description needed.
-/// @return Return value description needed.
     if (upper == "INTEGER" || upper == "LONG" || upper == "INT")
     {
-/// @brief Implements consume functionality.
-/// @return Return value description needed.
         consume();
         return BasicType::Int;
     }
-/// @brief Implements if functionality.
-/// @param "FLOAT" Parameter description needed.
-/// @return Return value description needed.
     if (upper == "DOUBLE" || upper == "FLOAT")
     {
-/// @brief Implements consume functionality.
-/// @return Return value description needed.
         consume();
         return BasicType::Float;
     }
-/// @brief Implements if functionality.
-/// @param "STRING" Parameter description needed.
-/// @return Return value description needed.
     if (upper == "STRING")
     {
-/// @brief Implements consume functionality.
-/// @return Return value description needed.
         consume();
         return BasicType::String;
     }
-/// @brief Implements if functionality.
-/// @param "BOOL" Parameter description needed.
-/// @return Return value description needed.
     if (upper == "BOOLEAN" || upper == "BOOL")
     {
-/// @brief Implements consume functionality.
-/// @return Return value description needed.
         consume();
         return BasicType::Bool;
     }
@@ -387,9 +307,6 @@ std::pair<Parser::StatementParserRegistry::NoArgHandler,
 Parser::StatementParserRegistry::lookup(TokenKind kind) const
 {
     const auto index = static_cast<std::size_t>(kind);
-/// @brief Implements if functionality.
-/// @param entries_.size( Parameter description needed.
-/// @return Return value description needed.
     if (index >= entries_.size())
         return {nullptr, nullptr};
     return entries_[index];
@@ -417,38 +334,18 @@ std::unique_ptr<Program> Parser::parseProgram()
     auto prog = std::make_unique<Program>();
     prog->loc = peek().loc;
     auto seq = statementSequencer();
-/// @brief Implements while functionality.
-/// @param !at(TokenKind::EndOfFile Parameter description needed.
-/// @return Return value description needed.
     while (!at(TokenKind::EndOfFile))
     {
         seq.skipLineBreaks();
-/// @brief Implements if functionality.
-/// @param at(TokenKind::EndOfFile Parameter description needed.
-/// @return Return value description needed.
         if (at(TokenKind::EndOfFile))
             break;
-        // Handle top-level ADDFILE directives before parsing a statement line.
-        // If a leading numeric label precedes ADDFILE, consume and record it.
-/// @brief Implements if functionality.
-/// @param at(TokenKind::Number Parameter description needed.
-/// @return Return value description needed.
         if (at(TokenKind::Number) && peek(1).kind == TokenKind::KeywordAddfile)
         {
             Token numberTok = consume();
-/// @brief Implements noteNumericLabelUsage functionality.
-/// @param std::atoi(numberTok.lexeme.c_str( Parameter description needed.
-/// @return Return value description needed.
             noteNumericLabelUsage(std::atoi(numberTok.lexeme.c_str()));
         }
-/// @brief Implements if functionality.
-/// @param at(TokenKind::KeywordAddfile Parameter description needed.
-/// @return Return value description needed.
         if (at(TokenKind::KeywordAddfile))
         {
-/// @brief Implements if functionality.
-/// @param handleTopLevelAddFile(*prog Parameter description needed.
-/// @return Return value description needed.
             if (handleTopLevelAddFile(*prog))
             {
                 // Either handled or diagnosed; continue to next line.
@@ -456,14 +353,8 @@ std::unique_ptr<Program> Parser::parseProgram()
             }
         }
         auto root = seq.parseStatementLine();
-/// @brief Implements if functionality.
-/// @param !root Parameter description needed.
-/// @return Return value description needed.
         if (!root)
             continue;
-/// @brief Implements if functionality.
-/// @param is<FunctionDecl>(*root Parameter description needed.
-/// @return Return value description needed.
         if (is<FunctionDecl>(*root) || is<SubDecl>(*root))
         {
             prog->procs.push_back(std::move(root));
@@ -473,35 +364,18 @@ std::unique_ptr<Program> Parser::parseProgram()
             prog->main.push_back(std::move(root));
         }
     }
-/// @brief Implements if functionality.
-/// @param !suppressUndefinedNamedLabelCheck_ Parameter description needed.
-/// @return Return value description needed.
     if (!suppressUndefinedNamedLabelCheck_)
     {
         bool hasUndefinedNamedLabel = false;
-/// @brief Implements for functionality.
-/// @param [name Parameter description needed.
-/// @param namedLabels_ Parameter description needed.
-/// @return Return value description needed.
         for (const auto &[name, entry] : namedLabels_)
         {
-/// @brief Implements if functionality.
-/// @param entry.defined Parameter description needed.
-/// @return Return value description needed.
             if (!entry.referenced || entry.defined)
                 continue;
             hasUndefinedNamedLabel = true;
             std::string msg = "Undefined label: " + name;
 /// @brief Emits error.
-/// @param "B0002" Parameter description needed.
-/// @param entry.referenceLoc Parameter description needed.
-/// @param std::move(msg Parameter description needed.
-/// @return Return value description needed.
             emitError("B0002", entry.referenceLoc, std::move(msg));
         }
-/// @brief Implements if functionality.
-/// @param hasUndefinedNamedLabel Parameter description needed.
-/// @return Return value description needed.
         if (hasUndefinedNamedLabel)
             return nullptr;
     }
@@ -514,34 +388,17 @@ std::unique_ptr<Program> Parser::parseProgram()
 
 bool Parser::handleTopLevelAddFile(Program &prog)
 {
-/// @brief Implements if functionality.
-/// @param !at(TokenKind::KeywordAddfile Parameter description needed.
-/// @return Return value description needed.
     if (!at(TokenKind::KeywordAddfile))
         return false;
 
     Token kw = consume(); // ADDFILE
 
-/// @brief Implements if functionality.
-/// @param !emitter_ Parameter description needed.
-/// @return Return value description needed.
     if (!sm_ || !emitter_)
     {
 /// @brief Emits error.
-/// @param "B0001" Parameter description needed.
-/// @param kw.loc Parameter description needed.
-/// @param context" Parameter description needed.
-/// @return Return value description needed.
         emitError("B0001", kw.loc, "ADDFILE is not supported in this parsing context");
-/// @brief Implements syncToStmtBoundary functionality.
-/// @return Return value description needed.
         syncToStmtBoundary();
-/// @brief Implements if functionality.
-/// @param at(TokenKind::EndOfLine Parameter description needed.
-/// @return Return value description needed.
         if (at(TokenKind::EndOfLine))
-/// @brief Implements consume functionality.
-/// @return Return value description needed.
             consume();
         return true;
     }
@@ -549,33 +406,16 @@ bool Parser::handleTopLevelAddFile(Program &prog)
     Token pathTok = expect(TokenKind::String);
     std::string rawPath = pathTok.lexeme;
 
-    // Consume to end of line if any trailing tokens.
-/// @brief Implements while functionality.
-/// @param !at(TokenKind::EndOfFile Parameter description needed.
-/// @return Return value description needed.
     while (!at(TokenKind::EndOfFile) && !at(TokenKind::EndOfLine))
     {
-/// @brief Implements consume functionality.
-/// @return Return value description needed.
         consume();
     }
-/// @brief Implements if functionality.
-/// @param at(TokenKind::EndOfLine Parameter description needed.
-/// @return Return value description needed.
     if (at(TokenKind::EndOfLine))
-/// @brief Implements consume functionality.
-/// @return Return value description needed.
         consume();
 
     // Resolve path relative to including file.
     const uint32_t includingFileId = kw.loc.file_id;
-/// @brief Implements base functionality.
-/// @param sm_->getPath(includingFileId Parameter description needed.
-/// @return Return value description needed.
     std::filesystem::path base(sm_->getPath(includingFileId));
-/// @brief Implements candidate functionality.
-/// @param rawPath Parameter description needed.
-/// @return Return value description needed.
     std::filesystem::path candidate(rawPath);
     std::filesystem::path resolved =
         candidate.is_absolute() ? candidate : base.parent_path() / candidate;
@@ -584,40 +424,19 @@ bool Parser::handleTopLevelAddFile(Program &prog)
     std::filesystem::path canon = std::filesystem::weakly_canonical(resolved, ec);
     const std::string canonStr = ec ? resolved.lexically_normal().string() : canon.string();
 
-    // Cycle and depth checks.
-/// @brief Implements if functionality.
-/// @param includeStack_ Parameter description needed.
-/// @return Return value description needed.
     if (includeStack_)
     {
-/// @brief Implements if functionality.
-/// @param includeStack_->size( Parameter description needed.
-/// @return Return value description needed.
         if (includeStack_->size() >= static_cast<size_t>(maxIncludeDepth_))
         {
 /// @brief Emits error.
-/// @param "B0001" Parameter description needed.
-/// @param kw.loc Parameter description needed.
-/// @param exceeded" Parameter description needed.
-/// @return Return value description needed.
             emitError("B0001", kw.loc, "ADDFILE depth limit exceeded");
             return true;
         }
-/// @brief Implements for functionality.
-/// @param includeStack_ Parameter description needed.
-/// @return Return value description needed.
         for (const auto &p : *includeStack_)
         {
-/// @brief Implements if functionality.
-/// @param canonStr Parameter description needed.
-/// @return Return value description needed.
             if (p == canonStr)
             {
 /// @brief Emits error.
-/// @param "B0001" Parameter description needed.
-/// @param kw.loc Parameter description needed.
-/// @param canonStr Parameter description needed.
-/// @return Return value description needed.
                 emitError("B0001", kw.loc, "cyclic ADDFILE detected: " + canonStr);
                 return true;
             }
@@ -625,25 +444,11 @@ bool Parser::handleTopLevelAddFile(Program &prog)
         includeStack_->push_back(canonStr);
     }
 
-    // Load file contents.
-/// @brief Implements in functionality.
-/// @param canonStr Parameter description needed.
-/// @return Return value description needed.
     std::ifstream in(canonStr);
-/// @brief Implements if functionality.
-/// @param !in Parameter description needed.
-/// @return Return value description needed.
     if (!in)
     {
 /// @brief Emits error.
-/// @param "B0001" Parameter description needed.
-/// @param kw.loc Parameter description needed.
-/// @param canonStr Parameter description needed.
-/// @return Return value description needed.
         emitError("B0001", kw.loc, "unable to open: " + canonStr);
-/// @brief Implements if functionality.
-/// @param !includeStack_->empty( Parameter description needed.
-/// @return Return value description needed.
         if (includeStack_ && !includeStack_->empty())
             includeStack_->pop_back();
         return true;
@@ -653,20 +458,10 @@ bool Parser::handleTopLevelAddFile(Program &prog)
     std::string contents = ss.str();
 
     uint32_t newFileId = sm_->addFile(canonStr);
-/// @brief Implements if functionality.
-/// @param 0 Parameter description needed.
-/// @return Return value description needed.
     if (newFileId == 0)
     {
 /// @brief Emits error.
-/// @param "B0005" Parameter description needed.
-/// @param kw.loc Parameter description needed.
-/// @param std::string{il::support::kSourceManagerFileIdOverflowMessage} Parameter description needed.
-/// @return Return value description needed.
         emitError("B0005", kw.loc, std::string{il::support::kSourceManagerFileIdOverflowMessage});
-/// @brief Implements if functionality.
-/// @param !includeStack_->empty( Parameter description needed.
-/// @return Return value description needed.
         if (includeStack_ && !includeStack_->empty())
             includeStack_->pop_back();
         return true;
@@ -678,42 +473,21 @@ bool Parser::handleTopLevelAddFile(Program &prog)
     // BUG-100 fix: Copy parent's array registry to child so it knows about existing arrays
     child.arrays_ = arrays_;
     auto subprog = child.parseProgram();
-/// @brief Implements if functionality.
-/// @param !subprog Parameter description needed.
-/// @return Return value description needed.
     if (!subprog)
     {
-        // Diagnostics already emitted by child parser.
-/// @brief Implements if functionality.
-/// @param !includeStack_->empty( Parameter description needed.
-/// @return Return value description needed.
         if (includeStack_ && !includeStack_->empty())
             includeStack_->pop_back();
         return true;
     }
 
-    // Merge procs and main.
-/// @brief Implements for functionality.
-/// @param subprog->procs Parameter description needed.
-/// @return Return value description needed.
     for (auto &p : subprog->procs)
         prog.procs.push_back(std::move(p));
-/// @brief Implements for functionality.
-/// @param subprog->main Parameter description needed.
-/// @return Return value description needed.
     for (auto &s : subprog->main)
         prog.main.push_back(std::move(s));
 
-    // BUG-100 fix: Merge array registry so included files' arrays are visible
-/// @brief Implements for functionality.
-/// @param child.arrays_ Parameter description needed.
-/// @return Return value description needed.
     for (const auto &arrName : child.arrays_)
         arrays_.insert(arrName);
 
-/// @brief Implements if functionality.
-/// @param !includeStack_->empty( Parameter description needed.
-/// @return Return value description needed.
     if (includeStack_ && !includeStack_->empty())
         includeStack_->pop_back();
     return true;
@@ -721,33 +495,16 @@ bool Parser::handleTopLevelAddFile(Program &prog)
 
 bool Parser::handleAddFileInto(std::vector<StmtPtr> &dst)
 {
-/// @brief Implements if functionality.
-/// @param !at(TokenKind::KeywordAddfile Parameter description needed.
-/// @return Return value description needed.
     if (!at(TokenKind::KeywordAddfile))
         return false;
 
     Token kw = consume(); // ADDFILE
-/// @brief Implements if functionality.
-/// @param !emitter_ Parameter description needed.
-/// @return Return value description needed.
     if (!sm_ || !emitter_)
     {
 /// @brief Emits error.
-/// @param "B0001" Parameter description needed.
-/// @param kw.loc Parameter description needed.
-/// @param context" Parameter description needed.
-/// @return Return value description needed.
         emitError("B0001", kw.loc, "ADDFILE is not supported in this parsing context");
-/// @brief Implements syncToStmtBoundary functionality.
-/// @return Return value description needed.
         syncToStmtBoundary();
-/// @brief Implements if functionality.
-/// @param at(TokenKind::EndOfLine Parameter description needed.
-/// @return Return value description needed.
         if (at(TokenKind::EndOfLine))
-/// @brief Implements consume functionality.
-/// @return Return value description needed.
             consume();
         return true;
     }
@@ -755,30 +512,14 @@ bool Parser::handleAddFileInto(std::vector<StmtPtr> &dst)
     Token pathTok = expect(TokenKind::String);
     std::string rawPath = pathTok.lexeme;
 
-/// @brief Implements while functionality.
-/// @param !at(TokenKind::EndOfFile Parameter description needed.
-/// @return Return value description needed.
     while (!at(TokenKind::EndOfFile) && !at(TokenKind::EndOfLine))
-/// @brief Implements consume functionality.
-/// @return Return value description needed.
         consume();
-/// @brief Implements if functionality.
-/// @param at(TokenKind::EndOfLine Parameter description needed.
-/// @return Return value description needed.
     if (at(TokenKind::EndOfLine))
-/// @brief Implements consume functionality.
-/// @return Return value description needed.
         consume();
 
     // Resolve path relative to current file
     const uint32_t includingFileId = kw.loc.file_id;
-/// @brief Implements base functionality.
-/// @param sm_->getPath(includingFileId Parameter description needed.
-/// @return Return value description needed.
     std::filesystem::path base(sm_->getPath(includingFileId));
-/// @brief Implements candidate functionality.
-/// @param rawPath Parameter description needed.
-/// @return Return value description needed.
     std::filesystem::path candidate(rawPath);
     std::filesystem::path resolved =
         candidate.is_absolute() ? candidate : base.parent_path() / candidate;
@@ -787,39 +528,19 @@ bool Parser::handleAddFileInto(std::vector<StmtPtr> &dst)
     std::filesystem::path canon = std::filesystem::weakly_canonical(resolved, ec);
     const std::string canonStr = ec ? resolved.lexically_normal().string() : canon.string();
 
-/// @brief Implements if functionality.
-/// @param includeStack_ Parameter description needed.
-/// @return Return value description needed.
     if (includeStack_)
     {
-/// @brief Implements if functionality.
-/// @param includeStack_->size( Parameter description needed.
-/// @return Return value description needed.
         if (includeStack_->size() >= static_cast<size_t>(maxIncludeDepth_))
         {
 /// @brief Emits error.
-/// @param "B0001" Parameter description needed.
-/// @param kw.loc Parameter description needed.
-/// @param exceeded" Parameter description needed.
-/// @return Return value description needed.
             emitError("B0001", kw.loc, "ADDFILE depth limit exceeded");
             return true;
         }
-/// @brief Implements for functionality.
-/// @param includeStack_ Parameter description needed.
-/// @return Return value description needed.
         for (const auto &p : *includeStack_)
         {
-/// @brief Implements if functionality.
-/// @param canonStr Parameter description needed.
-/// @return Return value description needed.
             if (p == canonStr)
             {
 /// @brief Emits error.
-/// @param "B0001" Parameter description needed.
-/// @param kw.loc Parameter description needed.
-/// @param canonStr Parameter description needed.
-/// @return Return value description needed.
                 emitError("B0001", kw.loc, "cyclic ADDFILE detected: " + canonStr);
                 return true;
             }
@@ -827,24 +548,11 @@ bool Parser::handleAddFileInto(std::vector<StmtPtr> &dst)
         includeStack_->push_back(canonStr);
     }
 
-/// @brief Implements in functionality.
-/// @param canonStr Parameter description needed.
-/// @return Return value description needed.
     std::ifstream in(canonStr);
-/// @brief Implements if functionality.
-/// @param !in Parameter description needed.
-/// @return Return value description needed.
     if (!in)
     {
 /// @brief Emits error.
-/// @param "B0001" Parameter description needed.
-/// @param kw.loc Parameter description needed.
-/// @param canonStr Parameter description needed.
-/// @return Return value description needed.
         emitError("B0001", kw.loc, "unable to open: " + canonStr);
-/// @brief Implements if functionality.
-/// @param !includeStack_->empty( Parameter description needed.
-/// @return Return value description needed.
         if (includeStack_ && !includeStack_->empty())
             includeStack_->pop_back();
         return true;
@@ -854,20 +562,10 @@ bool Parser::handleAddFileInto(std::vector<StmtPtr> &dst)
     std::string contents = ss.str();
 
     uint32_t newFileId = sm_->addFile(canonStr);
-/// @brief Implements if functionality.
-/// @param 0 Parameter description needed.
-/// @return Return value description needed.
     if (newFileId == 0)
     {
 /// @brief Emits error.
-/// @param "B0005" Parameter description needed.
-/// @param kw.loc Parameter description needed.
-/// @param std::string{il::support::kSourceManagerFileIdOverflowMessage} Parameter description needed.
-/// @return Return value description needed.
         emitError("B0005", kw.loc, std::string{il::support::kSourceManagerFileIdOverflowMessage});
-/// @brief Implements if functionality.
-/// @param !includeStack_->empty( Parameter description needed.
-/// @return Return value description needed.
         if (includeStack_ && !includeStack_->empty())
             includeStack_->pop_back();
         return true;
@@ -876,33 +574,18 @@ bool Parser::handleAddFileInto(std::vector<StmtPtr> &dst)
 
     Parser child(contents, newFileId, emitter_, sm_, includeStack_, /*suppress*/ true);
     auto subprog = child.parseProgram();
-/// @brief Implements if functionality.
-/// @param !subprog Parameter description needed.
-/// @return Return value description needed.
     if (!subprog)
     {
-/// @brief Implements if functionality.
-/// @param !includeStack_->empty( Parameter description needed.
-/// @return Return value description needed.
         if (includeStack_ && !includeStack_->empty())
             includeStack_->pop_back();
         return true;
     }
 
-/// @brief Implements for functionality.
-/// @param subprog->procs Parameter description needed.
-/// @return Return value description needed.
     for (auto &p : subprog->procs)
         dst.push_back(std::move(p));
-/// @brief Implements for functionality.
-/// @param subprog->main Parameter description needed.
-/// @return Return value description needed.
     for (auto &s : subprog->main)
         dst.push_back(std::move(s));
 
-/// @brief Implements if functionality.
-/// @param !includeStack_->empty( Parameter description needed.
-/// @return Return value description needed.
     if (includeStack_ && !includeStack_->empty())
         includeStack_->pop_back();
     return true;
@@ -914,9 +597,6 @@ bool Parser::handleAddFileInto(std::vector<StmtPtr> &dst)
 
 void Parser::emitError(std::string_view code, const Token &tok, std::string message)
 {
-/// @brief Implements if functionality.
-/// @param emitter_ Parameter description needed.
-/// @return Return value description needed.
     if (emitter_)
     {
         emitter_->emit(il::support::Severity::Error,
@@ -933,9 +613,6 @@ void Parser::emitError(std::string_view code, const Token &tok, std::string mess
 
 void Parser::emitError(std::string_view code, il::support::SourceLoc loc, std::string message)
 {
-/// @brief Implements if functionality.
-/// @param emitter_ Parameter description needed.
-/// @return Return value description needed.
     if (emitter_)
     {
         emitter_->emit(il::support::Severity::Error, std::string(code), loc, 0, std::move(message));
@@ -948,9 +625,6 @@ void Parser::emitError(std::string_view code, il::support::SourceLoc loc, std::s
 
 void Parser::emitWarning(std::string_view code, const Token &tok, std::string message)
 {
-/// @brief Implements if functionality.
-/// @param emitter_ Parameter description needed.
-/// @return Return value description needed.
     if (emitter_)
     {
         emitter_->emit(il::support::Severity::Warning,

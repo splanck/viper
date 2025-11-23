@@ -25,11 +25,29 @@
 ///          the verifier and code generator.
 
 #include "il/runtime/RuntimeSignatures.hpp"
+
 #include "il/runtime/HelperEffects.hpp"
 #include "il/runtime/RuntimeSignatureParser.hpp"
 #include "il/runtime/RuntimeSignaturesData.hpp"
+
+#include "rt.hpp"
+#include "rt_array_obj.h"
+#include "rt_internal.h"
 #include "runtime/rt_oop.h"
 #include "viper/runtime/rt.h"
+
+#include <algorithm>
+#include <array>
+#include <cstdint>
+#include <limits>
+#include <optional>
+#include <span>
+#include <string_view>
+#include <type_traits>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
 #ifndef NDEBUG
 #include "il/runtime/signatures/Registry.hpp"
 #include <cassert>
@@ -44,22 +62,6 @@ void register_math_signatures();
 void register_array_signatures();
 } // namespace il::runtime::signatures
 #endif
-
-#include "rt.hpp"
-#include "rt_array_obj.h"
-#include "rt_internal.h"
-#include "viper/runtime/rt.h"
-#include <algorithm>
-#include <array>
-#include <cstdint>
-#include <limits>
-#include <optional>
-#include <span>
-#include <string_view>
-#include <type_traits>
-#include <unordered_map>
-#include <utility>
-#include <vector>
 
 namespace il::runtime
 {

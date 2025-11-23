@@ -1,4 +1,5 @@
 set(RT_SOURCES
+        rt_context.c
         rt_error.c
         rt_trap.c
         rt_fp.c
@@ -34,6 +35,7 @@ set(RT_SOURCES
 )
 
 set(RT_PUBLIC_HEADERS
+        ${CMAKE_CURRENT_SOURCE_DIR}/rt_context.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_error.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_trap.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt.hpp

@@ -146,23 +146,14 @@ constexpr std::array<KeywordEntry, 97> kKeywordTable{{
 ///         successor.
 constexpr bool isKeywordTableSorted()
 {
-/// @brief Implements for functionality.
-/// @param kKeywordTable.size( Parameter description needed.
-/// @return Return value description needed.
     for (std::size_t i = 1; i < kKeywordTable.size(); ++i)
     {
-/// @brief Implements if functionality.
-/// @param kKeywordTable[i].lexeme Parameter description needed.
-/// @return Return value description needed.
         if (!(kKeywordTable[i - 1].lexeme < kKeywordTable[i].lexeme))
             return false;
     }
     return true;
 }
 
-/// @brief Implements static_assert functionality.
-/// @param isKeywordTableSorted( Parameter description needed.
-/// @return Return value description needed.
 static_assert(isKeywordTableSorted(), "Keyword table must be sorted lexicographically");
 
 /// @brief Lookup a candidate identifier in the keyword table.
@@ -175,35 +166,20 @@ static_assert(isKeywordTableSorted(), "Keyword table must be sorted lexicographi
 /// @return Keyword kind when recognised; @ref TokenKind::Identifier otherwise.
 TokenKind lookupKeyword(std::string_view lexeme)
 {
-/// @brief Implements if functionality.
-/// @param lexeme.size( Parameter description needed.
-/// @return Return value description needed.
     if (lexeme.size() == 2)
     {
         unsigned char first = static_cast<unsigned char>(lexeme[0]);
         unsigned char second = static_cast<unsigned char>(lexeme[1]);
-/// @brief Implements if functionality.
-/// @param std::toupper(first Parameter description needed.
-/// @return Return value description needed.
         if (std::toupper(first) == 'M' && std::toupper(second) == 'E')
             lexeme = "ME";
     }
     auto first = kKeywordTable.begin();
     auto last = kKeywordTable.end();
-/// @brief Implements while functionality.
-/// @param last Parameter description needed.
-/// @return Return value description needed.
     while (first < last)
     {
         auto mid = first + (last - first) / 2;
-/// @brief Implements if functionality.
-/// @param lexeme Parameter description needed.
-/// @return Return value description needed.
         if (mid->lexeme == lexeme)
             return mid->kind;
-/// @brief Implements if functionality.
-/// @param lexeme Parameter description needed.
-/// @return Return value description needed.
         if (mid->lexeme < lexeme)
         {
             first = mid + 1;
@@ -250,15 +226,9 @@ char Lexer::peek() const
 /// @return The consumed character, or '\0' if already at end of input.
 char Lexer::get()
 {
-/// @brief Implements if functionality.
-/// @param src_.size( Parameter description needed.
-/// @return Return value description needed.
     if (pos_ >= src_.size())
         return '\0';
     char c = src_[pos_++];
-/// @brief Implements if functionality.
-/// @param '\n' Parameter description needed.
-/// @return Return value description needed.
     if (c == '\n')
     {
         line_++;
@@ -291,19 +261,12 @@ bool Lexer::eof() const
 ///          newlines in the stream for later tokenisation.
 void Lexer::skipWhitespaceExceptNewline()
 {
-/// @brief Implements while functionality.
-/// @param !eof( Parameter description needed.
-/// @return Return value description needed.
     while (!eof())
     {
         char c = peek();
-/// @brief Implements if functionality.
-/// @param '\r' Parameter description needed.
-/// @return Return value description needed.
         if (c == ' ' || c == '\t' || c == '\r')
         {
 /// @brief Retrieves  value.
-/// @return Return value description needed.
             get();
         }
         else
@@ -322,59 +285,34 @@ void Lexer::skipWhitespaceExceptNewline()
 ///          can emit @ref TokenKind::EndOfLine.
 void Lexer::skipWhitespaceAndComments()
 {
-/// @brief Implements while functionality.
-/// @param true Parameter description needed.
-/// @return Return value description needed.
     while (true)
     {
-/// @brief Implements skipWhitespaceExceptNewline functionality.
-/// @return Return value description needed.
         skipWhitespaceExceptNewline();
 
-/// @brief Implements if functionality.
-/// @param peek( Parameter description needed.
-/// @return Return value description needed.
         if (peek() == '\'')
         {
-/// @brief Implements while functionality.
-/// @param !eof( Parameter description needed.
-/// @return Return value description needed.
             while (!eof() && peek() != '\n')
 /// @brief Retrieves  value.
-/// @return Return value description needed.
                 get();
             continue;
         }
 
-/// @brief Implements if functionality.
-/// @param char>(peek( Parameter description needed.
-/// @return Return value description needed.
         if (std::toupper(static_cast<unsigned char>(peek())) == 'R' && pos_ + 2 < src_.size() &&
             std::toupper(static_cast<unsigned char>(src_[pos_ + 1])) == 'E' &&
             std::toupper(static_cast<unsigned char>(src_[pos_ + 2])) == 'M')
         {
             char after = (pos_ + 3 < src_.size()) ? src_[pos_ + 3] : '\0';
-/// @brief Implements if functionality.
-/// @param char>(after Parameter description needed.
-/// @return Return value description needed.
             if (!std::isalnum(static_cast<unsigned char>(after)) && after != '$' && after != '#' &&
                 after != '!' && after != '%' && after != '&')
             {
 /// @brief Retrieves  value.
-/// @return Return value description needed.
                 get();
 /// @brief Retrieves  value.
-/// @return Return value description needed.
                 get();
 /// @brief Retrieves  value.
-/// @return Return value description needed.
                 get();
-/// @brief Implements while functionality.
-/// @param !eof( Parameter description needed.
-/// @return Return value description needed.
                 while (!eof() && peek() != '\n')
 /// @brief Retrieves  value.
-/// @return Return value description needed.
                     get();
                 continue;
             }
@@ -400,35 +338,20 @@ Token Lexer::lexNumber()
     bool seenDot = false;
     bool seenExp = false;
     char suffix = '\0';
-/// @brief Implements if functionality.
-/// @param peek( Parameter description needed.
-/// @return Return value description needed.
     if (peek() == '.')
     {
         seenDot = true;
         s.push_back(get());
     }
-/// @brief Implements while functionality.
-/// @param char>(peek( Parameter description needed.
-/// @return Return value description needed.
     while (std::isdigit(static_cast<unsigned char>(peek())))
         s.push_back(get());
-/// @brief Implements if functionality.
-/// @param peek( Parameter description needed.
-/// @return Return value description needed.
     if (!seenDot && peek() == '.')
     {
         seenDot = true;
         s.push_back(get());
-/// @brief Implements while functionality.
-/// @param char>(peek( Parameter description needed.
-/// @return Return value description needed.
         while (std::isdigit(static_cast<unsigned char>(peek())))
             s.push_back(get());
     }
-/// @brief Implements if functionality.
-/// @param (peek( Parameter description needed.
-/// @return Return value description needed.
     if ((peek() == 'e' || peek() == 'E'))
     {
         seenExp = true;
@@ -459,9 +382,6 @@ Token Lexer::lexIdentifierOrKeyword()
 {
     il::support::SourceLoc loc{file_id_, line_, column_};
     std::string s;
-/// @brief Implements while functionality.
-/// @param char>(peek( Parameter description needed.
-/// @return Return value description needed.
     while (std::isalnum(static_cast<unsigned char>(peek())) || peek() == '_')
         s.push_back(std::toupper(static_cast<unsigned char>(get())));
     if (peek() == '$' || peek() == '#' || peek() == '!' || peek() == '%' || peek() == '&')
@@ -483,7 +403,6 @@ Token Lexer::lexString()
     il::support::SourceLoc loc{file_id_, line_, column_};
     std::string s;
 /// @brief Retrieves  value.
-/// @return Return value description needed.
     get(); // consume opening quote
     while (!eof() && peek() != '"')
     {
@@ -496,12 +415,8 @@ Token Lexer::lexString()
         }
         s.push_back(c);
     }
-/// @brief Implements if functionality.
-/// @param peek( Parameter description needed.
-/// @return Return value description needed.
     if (peek() == '"')
 /// @brief Retrieves  value.
-/// @return Return value description needed.
         get();
     return {TokenKind::String, s, loc};
 }
@@ -516,57 +431,33 @@ Token Lexer::lexString()
 /// @return The next token, which may be EndOfLine or EndOfFile.
 Token Lexer::next()
 {
-    // Skip leading spaces and tabs but preserve newlines for tokenization.
-/// @brief Implements skipWhitespaceAndComments functionality.
-/// @return Return value description needed.
     skipWhitespaceAndComments();
 
-/// @brief Implements if functionality.
-/// @param eof( Parameter description needed.
-/// @return Return value description needed.
     if (eof())
         return {TokenKind::EndOfFile, "", {file_id_, line_, column_}};
 
     char c = peek();
 
-    // Handle newline explicitly so skipWhitespaceAndComments is called only once.
-/// @brief Implements if functionality.
-/// @param '\n' Parameter description needed.
-/// @return Return value description needed.
     if (c == '\n')
     {
         il::support::SourceLoc loc{file_id_, line_, column_};
 /// @brief Retrieves  value.
-/// @return Return value description needed.
         get();
         return {TokenKind::EndOfLine, "\n", loc};
     }
 
-/// @brief Implements if functionality.
-/// @param char>(c Parameter description needed.
-/// @return Return value description needed.
     if (std::isdigit(static_cast<unsigned char>(c)) ||
         (c == '.' && pos_ + 1 < src_.size() &&
          std::isdigit(static_cast<unsigned char>(src_[pos_ + 1]))))
         return lexNumber();
-/// @brief Implements if functionality.
-/// @param char>(c Parameter description needed.
-/// @return Return value description needed.
     if (std::isalpha(static_cast<unsigned char>(c)))
         return lexIdentifierOrKeyword();
-/// @brief Implements if functionality.
-/// @param '"' Parameter description needed.
-/// @return Return value description needed.
     if (c == '"')
         return lexString();
 
     il::support::SourceLoc loc{file_id_, line_, column_};
 /// @brief Retrieves  value.
-/// @return Return value description needed.
     get();
-/// @brief Implements switch functionality.
-/// @param c Parameter description needed.
-/// @return Return value description needed.
     switch (c)
     {
         case '+':
@@ -586,35 +477,23 @@ Token Lexer::next()
         case '=':
             return {TokenKind::Equal, "=", loc};
         case '<':
-/// @brief Implements if functionality.
-/// @param peek( Parameter description needed.
-/// @return Return value description needed.
             if (peek() == '>')
             {
 /// @brief Retrieves  value.
-/// @return Return value description needed.
                 get();
                 return {TokenKind::NotEqual, "<>", loc};
             }
-/// @brief Implements if functionality.
-/// @param peek( Parameter description needed.
-/// @return Return value description needed.
             if (peek() == '=')
             {
 /// @brief Retrieves  value.
-/// @return Return value description needed.
                 get();
                 return {TokenKind::LessEqual, "<=", loc};
             }
             return {TokenKind::Less, "<", loc};
         case '>':
-/// @brief Implements if functionality.
-/// @param peek( Parameter description needed.
-/// @return Return value description needed.
             if (peek() == '=')
             {
 /// @brief Retrieves  value.
-/// @return Return value description needed.
                 get();
                 return {TokenKind::GreaterEqual, ">=", loc};
             }
@@ -636,31 +515,19 @@ Token Lexer::next()
             // If previous and next chars are digits, this is part of a numeric literal; fallthrough
             // to number logic. Otherwise, return TokenKind::Dot.
             bool prevIsDigit = false;
-/// @brief Implements if functionality.
-/// @param 2 Parameter description needed.
-/// @return Return value description needed.
             if (pos_ >= 2)
             {
                 unsigned char prev = static_cast<unsigned char>(src_[pos_ - 2]);
                 prevIsDigit = std::isdigit(prev) != 0;
             }
             bool nextIsDigit = false;
-/// @brief Implements if functionality.
-/// @param src_.size( Parameter description needed.
-/// @return Return value description needed.
             if (pos_ < src_.size())
             {
                 unsigned char next = static_cast<unsigned char>(src_[pos_]);
                 nextIsDigit = std::isdigit(next) != 0;
             }
-/// @brief Implements if functionality.
-/// @param nextIsDigit Parameter description needed.
-/// @return Return value description needed.
             if (prevIsDigit && nextIsDigit)
             {
-/// @brief Implements if functionality.
-/// @param 1 Parameter description needed.
-/// @return Return value description needed.
                 if (column_ > 1)
                     --column_;
                 --pos_;
