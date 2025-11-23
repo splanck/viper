@@ -6,6 +6,17 @@ High-level frontends—like the included BASIC compiler—lower programs into a 
 
 ---
 
+## Latest Release
+
+**Current Version:** v0.1.1-dev (Early Development Release)
+
+- 📦 **[Download Source v0.1.1](https://github.com/splanck/viper/releases/tag/v0.1.1-dev)** - Source code archive (no pre-built binaries yet)
+- 📄 **[Release Notes](/devdocs/Viper_Release_Notes.md)** - Full changelog, features, and known issues
+- 🚀 **Highlights:** Improved BASIC frontend, enhanced VM performance, initial ARM64 backend scaffolding
+- ⚠️ **Note:** This is an early development release. Build from source using the instructions below.
+
+---
+
 ## What is Viper?
 
 Viper is a complete compiler infrastructure with multiple components:
