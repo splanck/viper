@@ -1,0 +1,511 @@
+# Viper Compiler Platform - Release Notes
+
+> **Development Status**: Pre-Alpha  
+> These are early development releases. Viper is under active development and not ready for production use.  
+> Version 1.0 will be the first production-ready release.
+
+## Version 0.1.1 - Pre-Alpha (November 22, 2025)
+
+### Release Overview
+
+Version 0.1.1 is a pre-alpha development release that introduces native code generation, complete object-oriented programming support, and a modernized runtime architecture. This release represents significant progress toward the eventual 1.0 production release.
+
+### New Features
+
+#### Native Code Generation
+
+Transform BASIC and IL programs into native machine code (experimental):
+
+- **x86-64 backend** implementation
+  - Linear scan register allocation
+  - Instruction selection with pattern matching
+  - Peephole optimizations for generated assembly
+  - Integration with system linkers and runtime libraries
+  - Direct execution of compiled native binaries
+- **AArch64 backend** infrastructure (early development)
+
+Example:
+```bash
+# Compile to native executable
+./vbasic program.bas -o program
+./program
+```
+
+#### Object-Oriented Programming
+
+Complete OOP implementation for the BASIC frontend:
+
+- Classes with single inheritance
+- Interface support with multiple implementation
+- Virtual method dispatch with vtable implementation
+- Method modifiers: `PUBLIC`, `PRIVATE`, `VIRTUAL`, `OVERRIDE`, `ABSTRACT`, `FINAL`
+- Runtime type information with `IS` and `AS` operators
+- Base class method invocation via `BASE.Method()`
+
+Example:
+```basic
+CLASS Shape
+  PRIVATE x AS INTEGER
+  PRIVATE y AS INTEGER
+  
+  PUBLIC SUB New(initX AS INTEGER, initY AS INTEGER)
+    x = initX
+    y = initY
+  END SUB
+  
+  PUBLIC VIRTUAL FUNCTION Area() AS DOUBLE
+    RETURN 0.0
+  END FUNCTION
+END CLASS
+
+CLASS Circle : Shape
+  PRIVATE radius AS DOUBLE
+  
+  PUBLIC OVERRIDE FUNCTION Area() AS DOUBLE
+    RETURN 3.14159 * radius * radius
+  END FUNCTION
+END CLASS
+```
+
+#### Namespace System
+
+Organize code with hierarchical namespaces:
+
+- Define nested namespaces with dotted notation
+- Import namespaces with `USING` directives
+- Create aliases for long namespace paths
+- Type resolution through namespace hierarchy
+- Case-insensitive matching
+
+Example:
+```basic
+NAMESPACE Company.Product.Graphics
+  CLASS Renderer
+    PUBLIC SUB Draw()
+      ' Implementation
+    END SUB
+  END CLASS
+END NAMESPACE
+
+' Use the namespace
+USING Company.Product.Graphics
+DIM r AS Renderer
+r.Draw()
+
+' Or create an alias
+USING Gfx = Company.Product.Graphics
+DIM r2 AS Gfx.Renderer
+```
+
+#### Modern Runtime Architecture
+
+Complete redesign of the runtime library:
+
+- **Migration from `rt_*` to `Viper.*` naming convention**
+  - Old: `rt_print_str`, `rt_print_i64`, `rt_file_open`
+  - New: `Viper.Console.PrintStr`, `Viper.Console.PrintI64`, `Viper.File.Open`
+- **Backward compatibility mode** available via build flag
+- **New runtime components**:
+  - String builder for efficient text manipulation
+  - Enhanced array operations with object support
+  - Time and date functionality
+  - Command-line argument processing
+  - Type registry for runtime reflection
+
+#### Graphics Programming Support
+
+New graphics library for visual applications:
+
+- Cross-platform window management
+- Basic drawing primitives (pixels, lines, shapes)
+- Foundation for game and visualization development
+- Minimal dependencies
+
+Example:
+```basic
+USING Viper.Graphics
+
+DIM win AS Window
+win = Window.Create(800, 600, "My Game")
+
+' Draw a red rectangle
+win.SetColor(255, 0, 0)
+win.DrawRect(100, 100, 200, 150)
+
+win.Present()
+```
+
+### Developer Experience Improvements
+
+#### Simplified Command-Line Tools
+
+New streamlined tools for common tasks:
+
+- `vbasic` - Direct BASIC interpreter/compiler
+- `ilrun` - Direct IL program runner
+
+```bash
+# New simplified syntax
+./vbasic program.bas              # Run directly
+./vbasic program.bas -o output    # Compile to executable
+./ilrun program.il                # Run IL code
+
+# Previous syntax (still supported)
+./build/src/tools/ilc/ilc front basic -run program.bas
+```
+
+#### Enhanced Debugging
+
+- VM stepping debugger for line-by-line execution
+- Improved error messages with context
+- Nine new diagnostic codes for namespace-related issues
+- Stack trace improvements
+
+#### External Function Interface
+
+Register custom C/C++ functions with the VM:
+
+```cpp
+// Define a custom function
+static void times2_handler(void **args, void *result) {
+  const auto x = *reinterpret_cast<const int64_t *>(args[0]);
+  *reinterpret_cast<int64_t *>(result) = x * 2;
+}
+
+// Register with the VM
+il::vm::ExternDesc ext;
+ext.name = "times2";
+ext.fn = reinterpret_cast<void *>(&times2_handler);
+```
+
+### Performance Enhancements
+
+#### VM Optimizations
+- Compile-time evaluation via constexpr functions
+- Improved inline expansion for hot paths
+- Reduced overhead in trap handling
+- Optimized opcode dispatch mechanisms
+
+#### Tail Call Optimization
+- Automatic detection and optimization of tail-recursive calls
+- Stack space savings for functional programming patterns
+
+### Documentation & Examples
+
+#### New Documentation
+- Architecture guide
+- BASIC frontend implementation details
+- Viper Language Specification v0.1 RC1
+- Namespace system reference
+- Contributor guide
+- VM optimization strategies
+- Graphics library integration guide
+
+#### Example Programs
+
+- **vTris** - Complete Tetris implementation showcasing OOP features
+- **Frogger** - Arcade game with high score persistence
+- External function registration examples
+- Namespace usage demonstrations
+- OOP design pattern examples
+
+### Build System Enhancements
+
+#### New Build Options
+```cmake
+VIPER_RUNTIME_NS_DUAL      # Enable legacy rt_* runtime aliases
+VIPER_VM_TAILCALL          # Enable tail call optimization
+IL_SANITIZE_ADDRESS        # Enable address sanitizer
+IL_SANITIZE_UNDEFINED      # Enable undefined behavior sanitizer
+IL_ENABLE_X64_NATIVE_RUN   # Enable native execution support
+```
+
+#### Platform Support
+- Windows (x86-64)
+- Linux (x86-64)
+- macOS (x86-64 and Apple Silicon)
+- Dedicated macOS build script (`buildmac.sh`)
+
+### Project Statistics
+
+| Metric | v0.1.0 | v0.1.1 | Change |
+|--------|--------|--------|--------|
+| Lines of Code | 85,000 | 125,000+ | +47% |
+| Test Cases | 200 | 500+ | +150% |
+| Documentation Files | 15 | 55+ | +267% |
+| Performance | Baseline | 2-3x faster | +200% |
+
+### Bug Fixes
+
+- Fixed numeric overflow handling in arithmetic operations
+- Resolved namespace resolution edge cases
+- Corrected virtual method dispatch in complex inheritance hierarchies
+- Improved memory management in string operations
+- Fixed terminal handling across platforms
+- Enhanced file I/O error reporting
+- Corrected array bounds checking in runtime
+
+### Breaking Changes
+
+1. **Runtime Function Names**: Now use `Viper.*` namespace by default
+   - Enable compatibility: `-DVIPER_RUNTIME_NS_DUAL=ON`
+
+2. **Directory Structure Changes**:
+   - Test directory: `/tests` → `/src/tests`
+   - TUI subsystem: root → `/src/tui`
+
+### Migration Guide
+
+#### Updating Runtime Calls
+
+Option 1 - Update to new names:
+```basic
+' Old (v0.1.0)
+DECLARE SUB rt_print_str(s AS STRING)
+CALL rt_print_str("Hello")
+
+' New (v0.1.1)
+DECLARE SUB Viper.Console.PrintStr(s AS STRING)
+CALL Viper.Console.PrintStr("Hello")
+```
+
+Option 2 - Use compatibility mode:
+```bash
+cmake -S . -B build -DVIPER_RUNTIME_NS_DUAL=ON
+```
+
+---
+
+## Version 0.1.0 - Initial Pre-Alpha (October 28, 2025)
+
+### Initial Release Overview
+
+Version 0.1.0 is the first pre-alpha release of the Viper compiler platform, providing an early working implementation of a compiler toolchain with a BASIC frontend, typed intermediate language, and virtual machine. This initial release establishes the foundation for ongoing development toward version 1.0.
+
+### Core Features
+
+#### BASIC Compiler Frontend
+
+Complete BASIC implementation with modern extensions:
+- Full lexer, parser, and semantic analyzer
+- Type system (integers, floats, strings, arrays)
+- Control flow: `IF/THEN/ELSE`, `FOR/NEXT`, `WHILE/WEND`, `DO/LOOP`
+- Procedures and functions with parameters
+- `SELECT CASE` for multi-way branching
+- Line numbers and labels
+- `GOSUB/RETURN` for subroutines
+
+#### Viper Intermediate Language (IL)
+
+Strongly-typed, SSA-inspired intermediate representation:
+- Human-readable text format
+- Binary format for efficient storage
+- Comprehensive type system
+- Explicit control flow
+- External function declarations
+
+Example:
+```il
+il 0.1
+extern @rt_print_str(str) -> void
+extern @rt_print_i64(i64) -> void
+global const str @.HELLO = "Hello, World!"
+
+func @main() -> i64 {
+entry:
+  %x = add 2, 3
+  %y = mul %x, 2
+  call @rt_print_str(const_str @.HELLO)
+  call @rt_print_i64(%y)
+  ret 0
+}
+```
+
+#### Virtual Machine
+
+High-performance bytecode interpreter:
+- Three dispatch modes:
+  - Switch dispatch - Classic switch-based
+  - Table dispatch - Function pointer table
+  - Threaded dispatch - Direct threading (GCC/Clang)
+- Stack-based execution model
+- Efficient memory management
+- Runtime error handling
+
+#### Runtime Library
+
+Portable C runtime providing:
+- String manipulation
+- Mathematical operations
+- File I/O
+- Memory management
+- Terminal control
+- Random number generation
+
+### Developer Tools
+
+- **ilc** - Compiler driver for BASIC and IL
+- **il-verify** - IL validation with diagnostics
+- **il-dis** - IL disassembler
+- **basic-ast-dump** - AST visualization
+
+### Example Programs
+
+- Text-based Frogger game
+- Chess with AI opponent
+- Mathematical benchmarks
+- File I/O demonstrations
+- 180+ test programs
+
+### Architecture
+
+```
+┌──────────────┐
+│ BASIC Source │
+└──────┬───────┘
+       │ Frontend
+       ▼
+┌──────────────┐
+│   Viper IL   │
+└──────┬───────┘
+       │ VM
+       ▼
+┌──────────────┐
+│   Execution  │
+└──────────────┘
+```
+
+### Technical Specifications
+
+- Language support: BASIC
+- IL version: 0.1
+- Platforms: Windows, Linux, macOS
+- Build system: CMake 3.22+
+- C++ standard: C++17
+- Dependencies: Minimal (standard library only)
+
+---
+
+## Installation
+
+### Prerequisites
+
+- CMake 3.22 or higher
+- C++17 compatible compiler (GCC 9+, Clang 10+, MSVC 2019+)
+- Git for source code
+
+### Building from Source
+
+```bash
+# Clone the repository
+git clone https://github.com/your-org/viper.git
+cd viper
+
+# Configure and build
+cmake -S . -B build \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DVIPER_RUNTIME_NS_DUAL=ON \
+  -DVIPER_VM_TAILCALL=ON
+
+cmake --build build -j$(nproc)
+
+# Run tests
+ctest --test-dir build --output-on-failure
+
+# Install (optional)
+cmake --install build --prefix /usr/local
+```
+
+### Quick Start
+
+Create `hello.bas`:
+```basic
+10 PRINT "Hello from Viper!"
+20 FOR i = 1 TO 5
+30   PRINT "  Iteration "; i
+40 NEXT i
+50 END
+```
+
+Run it:
+```bash
+./vbasic hello.bas
+```
+
+Compile to native:
+```bash
+./vbasic hello.bas -o hello
+./hello
+```
+
+### Example Programs
+
+```bash
+# Tetris game
+./vbasic examples/vTris/vtris_simple.bas -o tetris
+./tetris
+
+# Frogger game
+./vbasic demos/frogger/frogger.bas
+```
+
+---
+
+## Feature Comparison
+
+| Feature | v0.1.0 | v0.1.1 |
+|---------|--------|--------|
+| BASIC Compiler | Complete | Enhanced with OOP |
+| IL Format | Stable | Extended |
+| VM Execution | 3 dispatch modes | Optimized with tail calls |
+| Native Codegen | No | x86-64 complete |
+| OOP Support | No | Classes & Interfaces |
+| Namespaces | No | Full hierarchy |
+| Graphics | No | Basic library |
+| Runtime | `rt_*` functions | `Viper.*` namespace |
+| Debugging | Basic | Stepping debugger |
+| Documentation | 15 files | 55+ files |
+
+---
+
+## Future Roadmap
+
+### Path to v1.0 (Production Release)
+- Stabilize core APIs and IL format
+- Complete test coverage for all components
+- Comprehensive error recovery
+- Performance optimization and benchmarking
+- Production-grade documentation
+
+### Near Term (v0.2.x - v0.9.x)
+- IL optimization passes (mem2reg, SimplifyCFG, LICM)
+- Graph coloring register allocation
+- Additional language frontends
+- Debugger integration with breakpoints
+
+### Post-1.0 Features
+- LLVM IR backend option
+- WebAssembly target
+- Language Server Protocol support
+- Package manager for libraries
+
+### Long Term Vision
+- Self-hosting compiler
+- JIT compilation mode
+- Advanced optimizations
+- Multiple backend targets (ARM64, RISC-V)
+
+---
+
+## Resources
+
+- **Repository**: [GitHub](https://github.com/your-org/viper)
+- **Documentation**: See `docs/` and `devdocs/` directories
+- **Examples**: Browse `examples/` for sample programs
+- **License**: See LICENSE file
+
+---
+
+*Viper Compiler Platform v0.1.1 (Pre-Alpha)*  
+*Released: November 22, 2025*  
+*Note: This is an early development release. Version 1.0 will be the first production release.*
