@@ -2,11 +2,11 @@
 
 *Last Updated: 2025-11-23*
 
-**Bug Statistics**: 106 resolved, 5 outstanding bugs, 4 design decisions (115 total documented)
+**Bug Statistics**: 110 resolved, 1 outstanding bugs, 4 design decisions (115 total documented)
 
 **Test Suite Status**: 664/664 tests passing (100%) - All tests passing!
 
-**STATUS**: ⚠️ **8 NEW BUGS FOUND TOTAL** - Poker/Frogger stress tests (2025-11-18) + BasicDB OOP/sorting issues (2025-11-23)
+**STATUS**: ✅ **4 BUGS FIXED** - OOP constructor regression + string comparison + line continuation (2025-11-23)
 
 ---
 
@@ -393,7 +393,7 @@ Impact:
 ---
 
 ### BUG-114: Line continuation character (_) not supported
-**Status**: CONFIRMED BUG
+**Status**: ✅ **RESOLVED** - Fixed 2025-11-23
 **Discovered**: 2025-11-23 (BasicDB development - method signatures)
 **Category**: Parser / Syntax
 **Severity**: MEDIUM - Workaround available (single-line formatting)
@@ -436,10 +436,17 @@ END SUB
 - Standard BASIC feature not implemented
 - Low priority as workaround is simple
 
+**Resolution** (2025-11-23):
+- **Root Cause**: Lexer did not handle `_` character followed by newline
+- **Fix**: Added case in `Lexer.cpp:538-554` to recognize `_` + newline as line continuation
+- **Implementation**: When `_` is encountered, lexer skips optional whitespace, checks for newline, and recursively calls `next()` to continue on next line
+- **Files Modified**: `src/frontends/basic/Lexer.cpp`
+- **Test Status**: Line continuation now works in all contexts (parameter lists, statements, expressions)
+
 ---
 
 ### BUG-115: Constructor SUB New() causes "missing result" error
-**Status**: CONFIRMED BUG
+**Status**: ✅ **RESOLVED** - Fixed 2025-11-23 (via regression fix)
 **Discovered**: 2025-11-23 (BasicDB development - OOP attempt)
 **Category**: OOP / Code Generation
 **Severity**: HIGH - Blocks constructor pattern
@@ -493,12 +500,20 @@ rec.Init()  ' Call Init after construction
 
 **Expected Behavior**: `SUB New()` should be called during object instantiation without errors, allowing initialization logic in constructor.
 
-**Related**: BUG-116 (NEW operator broken) - may be same root cause
+**Related**: BUG-116 (NEW operator broken) - same root cause
+
+**Resolution** (2025-11-23):
+- **Root Cause**: Critical regression - missing `GAddr` opcode entry in `SpecTables.cpp` caused all opcode specs after index 57 to be misaligned by one position
+- **Impact**: `Ret` opcode (index 64) was getting `TrapKind`'s spec (index 65), causing all void functions to fail with "missing result" error
+- **Fix**: Added missing `GAddr` entry at position 57 in `src/il/verify/generated/SpecTables.cpp:727-738`
+- **Files Modified**: `src/il/verify/generated/SpecTables.cpp`
+- **Test Status**: Constructors now work correctly; all BASIC tests passing (46/46)
+- **Note**: This fix also resolved BUG-116 as they had the same root cause
 
 ---
 
 ### BUG-116: 🔴 CRITICAL - NEW operator for class instantiation broken
-**Status**: CONFIRMED BUG
+**Status**: ✅ **RESOLVED** - Fixed 2025-11-23 (via regression fix)
 **Discovered**: 2025-11-23 (BasicDB development - OOP attempt)
 **Category**: OOP / Code Generation / Runtime
 **Severity**: CRITICAL - Completely blocks OOP instantiation
@@ -545,12 +560,20 @@ error: TESTCLASS.__ctor:entry_TESTCLASS.__ctor: ret: missing result
 
 **Root Cause**: The generated `__ctor` function doesn't properly return the object reference. This affects all class instantiation, making OOP fundamentally broken.
 
-**Related**: BUG-115 (Constructor NEW() method) - related symptom
+**Related**: BUG-115 (Constructor NEW() method) - same root cause
+
+**Resolution** (2025-11-23):
+- **Root Cause**: Critical regression - missing `GAddr` opcode entry in `SpecTables.cpp` caused opcode spec table misalignment
+- **Impact**: ALL void functions (including constructors) failed verification with "ret: missing result" error
+- **Fix**: Added missing `GAddr` opcode specification at index 57 in generated spec table
+- **Files Modified**: `src/il/verify/generated/SpecTables.cpp:727-738`
+- **Test Status**: NEW operator now works; OOP class instantiation fully functional
+- **Note**: Same fix as BUG-115 - both caused by the spec table regression
 
 ---
 
 ### BUG-117: String comparison operators (>, <) runtime error
-**Status**: CONFIRMED BUG
+**Status**: ✅ **RESOLVED** - Fixed 2025-11-23
 **Discovered**: 2025-11-23 (BasicDB development - string sorting)
 **Category**: Runtime / String Operations
 **Severity**: HIGH - Blocks string sorting functionality
@@ -601,6 +624,14 @@ unknown callee @rt_str_gt
 - The runtime function `@rt_str_gt` exists for simple comparisons but may not be called correctly in complex expressions
 
 **Related**: BUG-031 was reportedly resolved, but this issue persists in array/sorting contexts
+
+**Resolution** (2025-11-23):
+- **Root Cause**: String comparison runtime functions (`rt_str_gt`, `rt_str_lt`, `rt_str_le`, `rt_str_ge`) were not being declared as IL externs
+- **Technical Details**: Only `BoundsChecked` lowering kind functions were declared; string comparison functions use `Feature` lowering kind
+- **Fix**: Added `RuntimeLoweringKind::Feature` to extern declaration logic in `LowerRuntime.cpp:839-840`
+- **Files Modified**: `src/frontends/basic/LowerRuntime.cpp`
+- **Test Status**: String comparison operators now work in all contexts (arrays, sorting, complex expressions)
+- **Impact**: String sorting and alphabetical comparisons now fully functional
 
 ---
 

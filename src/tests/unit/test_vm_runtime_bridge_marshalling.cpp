@@ -22,6 +22,7 @@
 #include "il/core/Param.hpp"
 #include "il/core/Type.hpp"
 #include "rt_internal.h"
+#include "runtime/rt_context.h"
 #include "viper/runtime/rt.h"
 #include "vm/Marshal.hpp"
 #include "vm/OpHandlers_Control.hpp"
@@ -47,6 +48,11 @@ int main()
     using il::vm::RuntimeBridge;
     using il::vm::RuntimeCallContext;
     using il::vm::Slot;
+
+    // Initialize runtime context for RNG and other runtime state
+    RtContext rtContext;
+    rt_context_init(&rtContext);
+    rt_set_current_context(&rtContext);
 
     RuntimeCallContext ctx{};
     const SourceLoc loc{};
@@ -416,6 +422,10 @@ int main()
 
     for (bool covered : coveredKinds)
         assert(covered);
+
+    // Cleanup runtime context
+    rt_set_current_context(nullptr);
+    rt_context_cleanup(&rtContext);
 
     return 0;
 }

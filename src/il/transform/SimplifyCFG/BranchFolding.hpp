@@ -20,7 +20,20 @@
 namespace il::transform::simplify_cfg
 {
 
+/// \brief Replace switches with a single reachable case by an unconditional branch.
+/// \details Examines `switch.i32` terminators; when all but one case are
+///          unreachable (or map to the same destination), rewrites the block to
+///          a direct `br` and updates associated branch arguments.
+/// \param ctx Pass context providing function, module, and stats.
+/// \return True when any switch was simplified.
 bool foldTrivialSwitches(SimplifyCFG::SimplifyCFGPassContext &ctx);
+
+/// \brief Simplify conditional branches with constant or identical targets.
+/// \details Handles `cbr` where the condition is a constant, or where both
+///          successors are the same block (or branch arguments are identical),
+///          replacing them with an unconditional branch and trimming params.
+/// \param ctx Pass context providing function, module, and stats.
+/// \return True when any conditional branch was simplified.
 bool foldTrivialConditionalBranches(SimplifyCFG::SimplifyCFGPassContext &ctx);
 
 } // namespace il::transform::simplify_cfg

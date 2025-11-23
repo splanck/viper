@@ -836,7 +836,8 @@ void Lowerer::declareRequiredRuntime(build::IRBuilder &b)
     {
         if (const auto *desc = il::runtime::findRuntimeDescriptor(name))
         {
-            if (desc->lowering.kind == il::runtime::RuntimeLoweringKind::BoundsChecked)
+            if (desc->lowering.kind == il::runtime::RuntimeLoweringKind::BoundsChecked ||
+                desc->lowering.kind == il::runtime::RuntimeLoweringKind::Feature)
             {
                 ensureExtern(name);
             }

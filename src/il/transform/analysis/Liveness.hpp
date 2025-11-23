@@ -57,6 +57,9 @@ class LivenessInfo
       public:
         SetView() = default;
 
+        /// @brief Query whether the set contains @p valueId.
+        /// @param valueId SSA temporary identifier.
+        /// @return True when live; false otherwise.
         bool contains(unsigned valueId) const;
 
         template <typename Fn> void forEach(Fn &&fn) const
@@ -70,8 +73,11 @@ class LivenessInfo
             }
         }
 
+        /// @brief Check whether the set is empty.
         bool empty() const;
 
+        /// @brief Access the underlying bitset representation.
+        /// @return Reference to a vector<bool> view; may reference an empty sentinel.
         const std::vector<bool> &bits() const;
 
       private:
@@ -82,12 +88,17 @@ class LivenessInfo
         friend class LivenessInfo;
     };
 
+    /// @brief Live-in set for @p block.
     SetView liveIn(const core::BasicBlock &block) const;
+    /// @overload
     SetView liveIn(const core::BasicBlock *block) const;
 
+    /// @brief Live-out set for @p block.
     SetView liveOut(const core::BasicBlock &block) const;
+    /// @overload
     SetView liveOut(const core::BasicBlock *block) const;
 
+    /// @brief Total number of SSA value IDs tracked by the analysis.
     std::size_t valueCount() const;
 
   private:
@@ -103,8 +114,13 @@ class LivenessInfo
                                         const CFGInfo &cfg);
 };
 
+/// @brief Build CFG adjacency information for a function.
 CFGInfo buildCFG(core::Module &module, core::Function &fn);
+
+/// @brief Compute liveness sets for @p fn by building a CFG internally.
 LivenessInfo computeLiveness(core::Module &module, core::Function &fn);
+
+/// @brief Compute liveness sets for @p fn using a precomputed CFG.
 LivenessInfo computeLiveness(core::Module &module, core::Function &fn, const CFGInfo &cfg);
 
 } // namespace il::transform

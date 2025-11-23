@@ -53,6 +53,12 @@ class DispatchStrategy
     /// @details The threaded strategy needs to catch TrapDispatchSignal
     ///          while others can let it propagate.
     virtual bool requiresTrapCatch() const { return false; }
+
+    /// @brief Check if this strategy handles tracing and finalization internally.
+    /// @details The switch strategy's inline handlers call handleInlineResult,
+    ///          which traces and finalizes internally. Other strategies return
+    ///          ExecResult and expect the main loop to handle finalization.
+    virtual bool handlesFinalizationInternally() const { return false; }
 };
 
 /// @brief Shared dispatch loop implementation.

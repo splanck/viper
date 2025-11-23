@@ -28,6 +28,7 @@ using memory::handleAddrOf;
 using memory::handleAlloca;
 using memory::handleConstNull;
 using memory::handleConstStr;
+using memory::handleGAddr;
 using memory::handleGEP;
 using memory::handleLoad;
 using memory::handleLoadImpl;

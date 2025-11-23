@@ -64,16 +64,29 @@ bool runSharedDispatchLoop(VM &vm,
                 continue;
             }
         }
+        else if (strategy.handlesFinalizationInternally())
+        {
+            // Switch strategy: inline handlers trace and finalize internally
+            exec = strategy.executeInstruction(vm, state, *instr);
+        }
         else
         {
-            // Function table and switch strategies
+            // Function table strategy: trace here, finalize below
             vm.traceInstruction(*instr, state.fr);
             exec = strategy.executeInstruction(vm, state, *instr);
         }
 
-        // Step 5: Finalize dispatch and check for exit
-        if (vm.finalizeDispatch(state, exec))
+        // Step 5: Finalize dispatch and check for exit (skip if already done internally)
+        if (!strategy.handlesFinalizationInternally())
         {
+            if (vm.finalizeDispatch(state, exec))
+            {
+                return true;
+            }
+        }
+        else if (state.exitRequested)
+        {
+            // Strategy handled finalization, just check if exit was requested
             return true;
         }
     }
@@ -105,6 +118,8 @@ class SwitchStrategy final : public DispatchStrategy
 {
   public:
     Kind getKind() const override { return Kind::Switch; }
+
+    bool handlesFinalizationInternally() const override { return true; }
 
     VM::ExecResult executeInstruction(VM &vm,
                                      VM::ExecState &state,

@@ -155,7 +155,14 @@ VM::ExecResult handleCall(VM &vm,
             const auto &nextInstr = bb->instructions[ip + 1];
             if (nextInstr.op == il::core::Opcode::Ret)
             {
-                if (il::vm::tryTailCall(vm, it->second, std::span<const Slot>{args}))
+                // Only apply TCO if return types are compatible:
+                // - If ret has no operand, callee must return void
+                // - If ret has operand, callee must return non-void (value will be propagated)
+                const bool retHasOperand = !nextInstr.operands.empty();
+                const bool calleeReturnsVoid = (it->second->retType.kind == il::core::Type::Kind::Void);
+                const bool compatibleReturn = (retHasOperand == !calleeReturnsVoid);
+
+                if (compatibleReturn && il::vm::tryTailCall(vm, it->second, std::span<const Slot>{args}))
                 {
                     VM::ExecResult r{};
                     r.jumped = true; // prevent ip++ so entry ip=0 is executed

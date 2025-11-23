@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/runtime/RTRandomTests.cpp
-// Purpose: Validate deterministic LCG random generator. 
+// Purpose: Validate deterministic LCG random generator.
 // Key invariants: Sequence reproducible for given seed; outputs in [0,1).
 // Ownership/Lifetime: Uses runtime library.
 // Links: docs/runtime-vm.md#runtime-abi
@@ -14,10 +14,16 @@
 //===----------------------------------------------------------------------===//
 
 #include "viper/runtime/rt.h"
+#include "runtime/rt_context.h"
 #include <cassert>
 
 int main()
 {
+    // Initialize runtime context for RNG state
+    RtContext rtContext;
+    rt_context_init(&rtContext);
+    rt_set_current_context(&rtContext);
+
     const double expected[] = {0.3450005159944193, 0.7527091985813469, 0.795745269919544};
     rt_randomize_i64(1);
     for (int i = 0; i < 3; ++i)
@@ -37,5 +43,9 @@ int main()
         assert(x >= 0.0);
         assert(x < 1.0);
     }
+
+    // Cleanup runtime context
+    rt_set_current_context(nullptr);
+    rt_context_cleanup(&rtContext);
     return 0;
 }

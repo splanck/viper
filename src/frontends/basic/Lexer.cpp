@@ -535,6 +535,23 @@ Token Lexer::next()
             }
             return {TokenKind::Dot, ".", loc};
         }
+        case '_':
+        {
+            // Line continuation: _ followed by optional whitespace and newline
+            // Skip horizontal whitespace after _
+            while (!eof() && (peek() == ' ' || peek() == '\t' || peek() == '\r'))
+                get();
+
+            // Check if followed by newline
+            if (!eof() && peek() == '\n')
+            {
+                get(); // consume the newline
+                // Recursively get next token (skipping the line break)
+                return next();
+            }
+            // Otherwise, _ is an unknown character
+            return {TokenKind::Unknown, "_", loc};
+        }
     }
     return {TokenKind::Unknown, std::string(1, c), loc};
 }

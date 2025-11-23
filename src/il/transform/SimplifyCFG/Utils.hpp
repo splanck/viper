@@ -90,21 +90,40 @@ using BitVector = llvm_like::BitVector;
 il::core::Instr *findTerminator(il::core::BasicBlock &block);
 const il::core::Instr *findTerminator(const il::core::BasicBlock &block);
 
+/// \brief Compare IL values structurally (ignoring SSA id differences where safe).
 bool valuesEqual(const il::core::Value &lhs, const il::core::Value &rhs);
+
+/// \brief Compare two vectors of IL values element-wise using valuesEqual.
 bool valueVectorsEqual(const std::vector<il::core::Value> &lhs,
                        const std::vector<il::core::Value> &rhs);
+
+/// \brief Substitute temps according to @p mapping; non-temps are returned unchanged.
 il::core::Value substituteValue(const il::core::Value &value,
                                 const std::unordered_map<unsigned, il::core::Value> &mapping);
 
+/// \brief Resolve a basic block index from a label->index map.
 size_t lookupBlockIndex(const std::unordered_map<std::string, size_t> &labelToIndex,
                         const std::string &label);
+
+/// \brief Mark @p successor reachable and push it onto the worklist when newly discovered.
 void enqueueSuccessor(BitVector &reachable, std::deque<size_t> &worklist, size_t successor);
 
+/// \brief Read a debug flag from the environment to enable verbose logging.
 bool readDebugFlagFromEnv();
+
+/// \brief Identify whether an instruction has observable side effects.
 bool hasSideEffects(const il::core::Instr &instr);
+
+/// \brief Check whether a block label denotes an entry block.
 bool isEntryLabel(const std::string &label);
+
+/// \brief Classify resume-family opcodes used by EH.
 bool isResumeOpcode(il::core::Opcode op);
+
+/// \brief Classify EH structural opcodes that constrain CFG transforms.
 bool isEhStructuralOpcode(il::core::Opcode op);
+
+/// \brief Identify blocks that participate in EH and must not be simplified.
 bool isEHSensitiveBlock(const il::core::BasicBlock &block);
 
 } // namespace il::transform::simplify_cfg

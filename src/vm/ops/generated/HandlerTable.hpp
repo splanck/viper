@@ -80,6 +80,7 @@ inline const VM::OpcodeHandlerTable &opcodeHandlers()
         &il::vm::detail::handleStore,
         &il::vm::detail::handleAddrOf,
         &il::vm::detail::handleConstStr,
+        &il::vm::detail::handleGAddr,
         &il::vm::detail::handleConstNull,
         &il::vm::detail::handleCall,
         &il::vm::detail::handleCallIndirect,
