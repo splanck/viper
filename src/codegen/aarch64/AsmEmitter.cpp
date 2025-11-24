@@ -268,6 +268,16 @@ void AsmEmitter::emitStrFprToFp(std::ostream &os, PhysReg src, long long offset)
     os << ", [x29, #" << offset << "]\n";
 }
 
+void AsmEmitter::emitLdrFromBase(std::ostream &os, PhysReg dst, PhysReg base, long long offset) const
+{
+    os << "  ldr " << rn(dst) << ", [" << rn(base) << ", #" << offset << "]\n";
+}
+
+void AsmEmitter::emitStrToBase(std::ostream &os, PhysReg src, PhysReg base, long long offset) const
+{
+    os << "  str " << rn(src) << ", [" << rn(base) << ", #" << offset << "]\n";
+}
+
 void AsmEmitter::emitMovZ(std::ostream &os, PhysReg dst, unsigned imm16, unsigned lsl) const
 {
     os << "  movz " << rn(dst) << ", #" << imm16;
@@ -393,6 +403,20 @@ void AsmEmitter::emitFCvtZS(std::ostream &os, PhysReg dstGPR, PhysReg srcFPR) co
     os << "\n";
 }
 
+void AsmEmitter::emitUCvtF(std::ostream &os, PhysReg dstFPR, PhysReg srcGPR) const
+{
+    os << "  ucvtf ";
+    printD(os, dstFPR);
+    os << ", " << rn(srcGPR) << "\n";
+}
+
+void AsmEmitter::emitFCvtZU(std::ostream &os, PhysReg dstGPR, PhysReg srcFPR) const
+{
+    os << "  fcvtzu " << rn(dstGPR) << ", ";
+    printD(os, srcFPR);
+    os << "\n";
+}
+
 void AsmEmitter::emitFunction(std::ostream &os, const MFunction &fn) const
 {
     emitFunctionHeader(os, fn.name);
@@ -429,6 +453,23 @@ void AsmEmitter::emitBlock(std::ostream &os, const MBasicBlock &bb) const
 
 void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &mi) const
 {
+    // Handle Ret specially since it needs the epilogue
+    if (mi.opc == MOpcode::Ret) {
+        // Emit a basic epilogue
+        // HACK: For functions with locals, we need to restore the stack pointer
+        // We don't have access to the frame size here, so we emit a conservative adjustment
+        // This assumes a standard frame size of 16 bytes for locals (common case)
+        // A proper solution would track the frame plan through the emitter
+
+        // Check if there's likely a local frame by seeing if we have operands
+        // (This is a heuristic - a proper solution needs frame tracking)
+        // For now, always emit the stack adjustment to be safe
+        os << "  add sp, x29, #0\n";  // Restore sp to frame pointer
+        os << "  ldp x29, x30, [sp], #16\n";
+        os << "  ret\n";
+        return;
+    }
+
 #include "generated/OpcodeDispatch.inc"
 }
 

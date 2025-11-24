@@ -50,3 +50,44 @@ Access control applies at the accessor, not the head, when the accessor has a st
 - Disposing `NULL` is a no‑op.
 - Double dispose: debug builds mark objects as disposed at destructor entry and trap when a disposed object is disposed again.
 - Recursion guard: disposing `ME` in a destructor body is diagnosed to prevent infinite recursion.
+
+## Runtime Model (Overview)
+
+This section describes how OOP reference types are represented at runtime and
+how the BASIC frontend discovers and binds built‑in runtime classes.
+
+- Object layout: Every object payload begins with a vptr (pointer to a class
+  vtable). The C struct used by helpers mirrors this:
+
+  - At offset 0: `void **vptr` — points at the class vtable (when used)
+  - Instance fields follow. Some built‑in classes embed helper structs (e.g.,
+    `StringBuilder` embeds an `rt_string_builder`; `List` embeds a dynamic array
+    of object references).
+
+- Class/RTTI: The runtime can register classes via `rt_class_info` so helpers
+  like `rt_get_vfunc` and type checks (`rt_typeid_of`, `rt_type_is_a`) work. The
+  frontend does not require explicit registration for the built‑ins; it lowers
+  to canonical extern calls instead.
+
+- Catalog → Signatures → C:
+
+  - Runtime class catalog (C++): `src/il/runtime/classes/RuntimeClasses.inc` is
+    the single source of truth for built‑in classes and their members
+    (properties + methods). Frontends seed their type/property/method registries
+    from this catalog.
+
+  - Runtime signatures (C++): `src/il/runtime/RuntimeSignatures.inc` maps the
+    canonical names (e.g., `Viper.System.Text.StringBuilder.Append`) to concrete
+    C functions and IL signature strings.
+
+  - C implementations: `src/runtime/rt_*.c` provide the actual behavior
+    (`rt_string_builder.c`, `rt_object.c`, `rt_file_ext.c`, `rt_list.c`, etc.).
+    Many OOP methods are thin bridges over procedural helpers (e.g.,
+    `Viper.Strings.*`).
+
+### Backward‑Compatible Procedural Surface
+
+The legacy procedural runtime (e.g., `Viper.Strings.Len`, `Viper.IO.*`) remains
+available for compatibility and for compiler lowering. New code should prefer
+the OOP runtime classes under `Viper.System.*`. Where applicable the catalog
+maps class members directly onto the procedural targets.

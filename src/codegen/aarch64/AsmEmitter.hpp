@@ -55,6 +55,8 @@ class AsmEmitter
     // Conversions
     void emitSCvtF(std::ostream &os, PhysReg dstFPR, PhysReg srcGPR) const;
     void emitFCvtZS(std::ostream &os, PhysReg dstGPR, PhysReg srcFPR) const;
+    void emitUCvtF(std::ostream &os, PhysReg dstFPR, PhysReg srcGPR) const;
+    void emitFCvtZU(std::ostream &os, PhysReg dstGPR, PhysReg srcFPR) const;
     void emitAddRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const;
     void emitSubRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const;
     void emitMulRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const;
@@ -92,6 +94,10 @@ class AsmEmitter
     void emitStrToFp(std::ostream &os, PhysReg src, long long offset) const;
     void emitLdrFprFromFp(std::ostream &os, PhysReg dst, long long offset) const;
     void emitStrFprToFp(std::ostream &os, PhysReg src, long long offset) const;
+
+    // Load/store from arbitrary base register
+    void emitLdrFromBase(std::ostream &os, PhysReg dst, PhysReg base, long long offset) const;
+    void emitStrToBase(std::ostream &os, PhysReg src, PhysReg base, long long offset) const;
 
     // Emit from minimal MIR (Phase A)
     void emitFunction(std::ostream &os, const MFunction &fn) const;

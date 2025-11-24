@@ -69,5 +69,10 @@ int main()
     assert(msys->ret == BasicType::String);
     assert(msys->args.size() == 2);
 
+    // 5) Additional System types appear in TypeRegistry as builtin externals
+    assert(tyreg.kindOf("Viper.System.Object") == TypeKind::BuiltinExternalType);
+    assert(tyreg.kindOf("Viper.System.IO.File") == TypeKind::BuiltinExternalType);
+    assert(tyreg.kindOf("Viper.System.Collections.List") == TypeKind::BuiltinExternalType);
+
     return 0;
 }

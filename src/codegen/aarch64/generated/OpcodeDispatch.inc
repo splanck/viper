@@ -57,6 +57,12 @@
         case K::FCvtZS:
             emitFCvtZS(os, reg(mi.ops[0]), reg(mi.ops[1]));
             break;
+        case K::UCvtF:
+            emitUCvtF(os, reg(mi.ops[0]), reg(mi.ops[1]));
+            break;
+        case K::FCvtZU:
+            emitFCvtZU(os, reg(mi.ops[0]), reg(mi.ops[1]));
+            break;
         case K::AddRRR:
             emitAddRRR(os, reg(mi.ops[0]), reg(mi.ops[1]), reg(mi.ops[2]));
             break;
@@ -122,6 +128,12 @@
             break;
         case K::StrFprFpImm:
             emitStrFprToFp(os, reg(mi.ops[0]), imm(mi.ops[1]));
+            break;
+        case K::LdrRegBaseImm:
+            emitLdrFromBase(os, reg(mi.ops[0]), reg(mi.ops[1]), imm(mi.ops[2]));
+            break;
+        case K::StrRegBaseImm:
+            emitStrToBase(os, reg(mi.ops[0]), reg(mi.ops[1]), imm(mi.ops[2]));
             break;
         case K::Br:
             os << "  b " << mi.ops[0].label << "\n";

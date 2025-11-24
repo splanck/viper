@@ -21,6 +21,7 @@
 #include "rt_random.h"
 #include "rt_string.h"
 #include "rt_string_builder.h"
+#include "rt_list.h"
 #include "rt_ns_bridge.h"
 #include "rt_modvar.h"
 #include "rt_args.h"
@@ -37,6 +38,16 @@ void rt_sleep_ms(int32_t ms);
 // Return monotonic time in milliseconds since an unspecified epoch.
 // Uses a steady clock; values are non-decreasing and suitable for measuring durations.
 int64_t rt_timer_ms(void);
+
+// --- High-level file helpers for Viper.System.IO.File ---
+// Return 1 if the file exists, 0 otherwise.
+int64_t rt_io_file_exists(rt_string path);
+// Read entire file into a runtime string (empty on error).
+rt_string rt_io_file_read_all_text(rt_string path);
+// Write entire contents to file (truncate or create). Silent on error.
+void rt_io_file_write_all_text(rt_string path, rt_string contents);
+// Delete file path. Silent on error.
+void rt_io_file_delete(rt_string path);
 
 #ifdef __cplusplus
 } // extern "C"

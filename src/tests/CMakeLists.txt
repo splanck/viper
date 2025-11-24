@@ -148,6 +148,23 @@ add_executable(test_codegen_arm64_stack_locals ${CMAKE_CURRENT_SOURCE_DIR}/unit/
 target_link_libraries(test_codegen_arm64_stack_locals PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
 viper_add_ctest(test_codegen_arm64_stack_locals $<TARGET_FILE:test_codegen_arm64_stack_locals>)
 
+# CLI variant: ensure ilc -S path emits FP-relative local accesses
+add_executable(test_codegen_arm64_stack_locals_cli ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_stack_locals_cli.cpp)
+target_link_libraries(test_codegen_arm64_stack_locals_cli PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
+viper_add_ctest(test_codegen_arm64_stack_locals_cli $<TARGET_FILE:test_codegen_arm64_stack_locals_cli>)
+
+add_executable(test_codegen_arm64_gep_load_store ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_gep_load_store.cpp)
+target_link_libraries(test_codegen_arm64_gep_load_store PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
+viper_add_ctest(test_codegen_arm64_gep_load_store $<TARGET_FILE:test_codegen_arm64_gep_load_store>)
+
+add_executable(test_codegen_arm64_const_str_addr ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_const_str_addr.cpp)
+target_link_libraries(test_codegen_arm64_const_str_addr PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
+viper_add_ctest(test_codegen_arm64_const_str_addr $<TARGET_FILE:test_codegen_arm64_const_str_addr>)
+
+add_executable(test_codegen_arm64_ra_many_temps ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_ra_many_temps.cpp)
+target_link_libraries(test_codegen_arm64_ra_many_temps PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
+viper_add_ctest(test_codegen_arm64_ra_many_temps $<TARGET_FILE:test_codegen_arm64_ra_many_temps>)
+
 add_executable(test_codegen_arm64_icmp ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_icmp.cpp)
 target_link_libraries(test_codegen_arm64_icmp PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
 viper_add_ctest(test_codegen_arm64_icmp $<TARGET_FILE:test_codegen_arm64_icmp>)
@@ -190,6 +207,17 @@ add_executable(test_codegen_arm64_call_args ${CMAKE_CURRENT_SOURCE_DIR}/unit/cod
 target_link_libraries(test_codegen_arm64_call_args PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
 viper_add_ctest(test_codegen_arm64_call_args $<TARGET_FILE:test_codegen_arm64_call_args>)
 
+add_executable(test_codegen_arm64_call_mid_block ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_call_mid_block.cpp)
+target_link_libraries(test_codegen_arm64_call_mid_block PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
+viper_add_ctest(test_codegen_arm64_call_mid_block $<TARGET_FILE:test_codegen_arm64_call_mid_block>)
+
+add_executable(test_codegen_arm64_cf_if_else_phi ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_cf_if_else_phi.cpp)
+target_link_libraries(test_codegen_arm64_cf_if_else_phi PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
+viper_add_ctest(test_codegen_arm64_cf_if_else_phi $<TARGET_FILE:test_codegen_arm64_cf_if_else_phi>)
+
+add_executable(test_codegen_arm64_cf_loop_phi ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_cf_loop_phi.cpp)
+target_link_libraries(test_codegen_arm64_cf_loop_phi PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
+viper_add_ctest(test_codegen_arm64_cf_loop_phi $<TARGET_FILE:test_codegen_arm64_cf_loop_phi>)
 # call args with a single non-entry temp
 add_executable(test_codegen_arm64_call_temp_args ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_call_temp_args.cpp)
 target_link_libraries(test_codegen_arm64_call_temp_args PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
@@ -199,6 +227,32 @@ viper_add_ctest(test_codegen_arm64_call_temp_args $<TARGET_FILE:test_codegen_arm
 add_executable(test_codegen_arm64_casts ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_casts.cpp)
 target_link_libraries(test_codegen_arm64_casts PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
 viper_add_ctest(test_codegen_arm64_casts $<TARGET_FILE:test_codegen_arm64_casts>)
+
+add_executable(test_codegen_arm64_print_str ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_print_str.cpp)
+target_link_libraries(test_codegen_arm64_print_str PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
+viper_add_ctest(test_codegen_arm64_print_str $<TARGET_FILE:test_codegen_arm64_print_str>)
+
+add_executable(test_codegen_arm64_modvar_addr ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_modvar_addr.cpp)
+target_link_libraries(test_codegen_arm64_modvar_addr PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
+viper_add_ctest(test_codegen_arm64_modvar_addr $<TARGET_FILE:test_codegen_arm64_modvar_addr>)
+
+# arrays/objects tests for arm64 CLI
+add_executable(test_codegen_arm64_arr_obj_len ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_arr_obj_len.cpp)
+target_link_libraries(test_codegen_arm64_arr_obj_len PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
+viper_add_ctest(test_codegen_arm64_arr_obj_len $<TARGET_FILE:test_codegen_arm64_arr_obj_len>)
+
+add_executable(test_codegen_arm64_obj_field_gep ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_obj_field_gep.cpp)
+target_link_libraries(test_codegen_arm64_obj_field_gep PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
+viper_add_ctest(test_codegen_arm64_obj_field_gep $<TARGET_FILE:test_codegen_arm64_obj_field_gep>)
+
+add_executable(test_codegen_arm64_arr_obj_put_get ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_arr_obj_put_get.cpp)
+target_link_libraries(test_codegen_arm64_arr_obj_put_get PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
+viper_add_ctest(test_codegen_arm64_arr_obj_put_get $<TARGET_FILE:test_codegen_arm64_arr_obj_put_get>)
+
+# ARM64 end-to-end demo tests
+add_executable(test_arm64_demos ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_arm64_demos.cpp)
+target_link_libraries(test_arm64_demos PRIVATE viper_testing viper_common)
+viper_add_ctest(test_arm64_demos $<TARGET_FILE:test_arm64_demos>)
 
 ## call with >8 integer args uses stack area (pending enable after backend support hardens)
 # add_executable(test_codegen_arm64_call_stack_args ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_call_stack_args.cpp)

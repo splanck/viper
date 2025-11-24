@@ -166,13 +166,18 @@ static bool isCmpRI(MOpcode opc) { return opc == MOpcode::CmpRI; }
 static bool isMovRR(MOpcode opc) { return opc == MOpcode::MovRR; }
 static bool isMovRI(MOpcode opc) { return opc == MOpcode::MovRI; }
 static bool isCset(MOpcode opc) { return opc == MOpcode::Cset; }
-static bool isMemLd(MOpcode opc) { return opc == MOpcode::LdrRegFpImm; }
-static bool isMemSt(MOpcode opc) { return opc == MOpcode::StrRegFpImm; }
-static bool isSpAdj(MOpcode opc) { return opc == MOpcode::SubSpImm || opc == MOpcode::AddSpImm; }
-static bool isBranch(MOpcode opc)
+static bool isMemLd(MOpcode opc)
 {
-    return opc == MOpcode::Br || opc == MOpcode::BCond || opc == MOpcode::Bl;
+    return opc == MOpcode::LdrRegFpImm || opc == MOpcode::LdrRegBaseImm;
 }
+static bool isMemSt(MOpcode opc)
+{
+    return opc == MOpcode::StrRegFpImm || opc == MOpcode::StrRegBaseImm ||
+           opc == MOpcode::StrRegSpImm;
+}
+static bool isSpAdj(MOpcode opc) { return opc == MOpcode::SubSpImm || opc == MOpcode::AddSpImm; }
+static bool isBranch(MOpcode opc) { return opc == MOpcode::Br || opc == MOpcode::BCond; }
+static bool isCall(MOpcode opc) { return opc == MOpcode::Bl; }
 
 } // namespace
 
@@ -287,6 +292,27 @@ AllocationResult allocate(MFunction &fn, const TargetInfo &ti)
                 rewritten.push_back(ins);
                 continue;
             }
+            // For calls, conservatively spill all live GPR/FPR states before the call,
+            // since caller-saved registers are clobbered.
+            if (isCall(ins.opc))
+            {
+                std::vector<MInstr> preCall;
+                for (auto &kv : states)
+                {
+                    if (kv.second.hasPhys)
+                        spillVictim(RegClass::GPR, kv.first, preCall);
+                }
+                for (auto &kv : statesFPR)
+                {
+                    if (kv.second.hasPhys)
+                        spillVictim(RegClass::FPR, kv.first, preCall);
+                }
+                for (auto &mi : preCall)
+                    rewritten.push_back(std::move(mi));
+                rewritten.push_back(ins);
+                // After the call, all vregs are considered spilled; future uses will reload.
+                continue;
+            }
 
             std::vector<MInstr> prefix;
             std::vector<MInstr> suffix;
@@ -330,7 +356,7 @@ AllocationResult allocate(MFunction &fn, const TargetInfo &ti)
                     if (idx == 1)
                         return {true, false};
                 }
-                if (ins.opc == MOpcode::SCvtF || ins.opc == MOpcode::FCvtZS)
+                if (ins.opc == MOpcode::SCvtF || ins.opc == MOpcode::FCvtZS || ins.opc == MOpcode::UCvtF || ins.opc == MOpcode::FCvtZU)
                 {
                     return {idx == 1, idx == 0};
                 }

@@ -1,6 +1,6 @@
 // File: src/runtime/rt_ns_bridge.h
-// Purpose: Prototypes for minimal runtime namespace bridging helpers.
-// Notes: Experimental helpers to support namespaced type construction.
+// Purpose: Prototypes for runtime namespace bridging helpers.
+// Notes: Supports namespaced type construction for OOP runtime classes.
 
 #pragma once
 

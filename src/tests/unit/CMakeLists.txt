@@ -243,6 +243,28 @@ if (NOT TARGET test_lowering_runtime_class_len)
     viper_add_ctest(test_lowering_runtime_class_len test_lowering_runtime_class_len)
 endif ()
 
+# System.Text.StringBuilder binding tests (ctor and Capacity getter)
+if (NOT TARGET test_stringbuilder_binding)
+    viper_add_test(test_stringbuilder_binding ${VIPER_TESTS_DIR}/unit/runtime_classes/TestStringBuilderBinding.cpp)
+    target_link_libraries(test_stringbuilder_binding PRIVATE fe_basic)
+    viper_add_ctest(test_stringbuilder_binding test_stringbuilder_binding)
+endif ()
+
+# System.IO.File binding tests
+if (NOT TARGET test_runtime_class_file_binding)
+    viper_add_test(test_runtime_class_file_binding ${VIPER_TESTS_DIR}/unit/runtime_classes/TestRuntimeClassFileBinding.cpp)
+    target_link_libraries(test_runtime_class_file_binding PRIVATE fe_basic)
+    viper_add_ctest(test_runtime_class_file_binding test_runtime_class_file_binding)
+endif ()
+
+# System.Collections.List binding tests
+if (NOT TARGET test_runtime_class_list_binding)
+    viper_add_test(test_runtime_class_list_binding ${VIPER_TESTS_DIR}/unit/runtime_classes/TestRuntimeClassListBinding.cpp)
+    target_link_libraries(test_runtime_class_list_binding PRIVATE fe_basic)
+    viper_add_ctest(test_runtime_class_list_binding test_runtime_class_list_binding)
+endif ()
+
+
 # Poll callback tests
 if (NOT TARGET test_vm_poll_callback)
     viper_add_test(test_vm_poll_callback ${VIPER_TESTS_DIR}/unit/VM_PollCallbackTests.cpp)

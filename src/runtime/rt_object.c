@@ -22,8 +22,12 @@
 
 #include "rt_object.h"
 #include "rt_heap.h"
+#include "rt_oop.h"
+#include "rt_string.h"
 
 #include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
 
 /// @brief Allocate a zeroed payload tagged as a heap object.
 /// @details Requests storage from @ref rt_heap_alloc with the
@@ -92,4 +96,40 @@ void rt_obj_free(void *p)
     if (!p)
         return;
     rt_heap_free_zero_ref(p);
+}
+
+// --- System.Object surface implementations ---
+
+int64_t rt_obj_reference_equals(void *a, void *b)
+{
+    return a == b ? 1 : 0;
+}
+
+int64_t rt_obj_equals(void *self, void *other)
+{
+    // Default: reference equality
+    return self == other ? 1 : 0;
+}
+
+int64_t rt_obj_get_hash_code(void *self)
+{
+    // Use pointer value truncated/extended to 64-bit as stable hash
+    uintptr_t v = (uintptr_t)self;
+    return (int64_t)v;
+}
+
+rt_string rt_obj_to_string(void *self)
+{
+    if (!self)
+        return rt_string_from_bytes("<null>", 6);
+    rt_object *obj = (rt_object *)self;
+    const rt_class_info *ci = rt_get_class_info_from_vptr(obj->vptr);
+    if (!ci || !ci->qname)
+        return rt_string_from_bytes("Object", 6);
+    // Return the class qualified name as the default string representation
+    // (no address to keep determinism and test stability)
+    const char *name = ci->qname;
+    size_t len = 0;
+    while (name[len] != '\0') ++len;
+    return rt_string_from_bytes(name, len);
 }

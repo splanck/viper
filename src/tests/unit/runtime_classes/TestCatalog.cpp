@@ -33,11 +33,16 @@ TEST(RuntimeClassCatalogBasic, ContainsSystemStringMembers)
         return std::string(c.qname) == "Viper.System.String";
     });
     ASSERT_NE(it, cat.end());
-    // Properties include Length
+    // Properties include Length and IsEmpty
     bool hasLenProp = false;
+    bool hasIsEmpty = false;
     for (const auto &p : it->properties)
+    {
         hasLenProp = hasLenProp || std::string(p.name) == "Length";
+        hasIsEmpty = hasIsEmpty || std::string(p.name) == "IsEmpty";
+    }
     EXPECT_TRUE(hasLenProp);
+    EXPECT_TRUE(hasIsEmpty);
     // Methods include Substring
     bool hasSubstr = false;
     for (const auto &m : it->methods)
@@ -52,11 +57,16 @@ TEST(RuntimeClassCatalogBasic, ContainsSystemTextStringBuilderMembers)
         return std::string(c.qname) == "Viper.System.Text.StringBuilder";
     });
     ASSERT_NE(it, cat.end());
-    // Properties include Length (aliased via Viper.Strings.Builder.Length)
+    // Properties include Length and Capacity
     bool hasLenProp = false;
+    bool hasCapProp = false;
     for (const auto &p : it->properties)
+    {
         hasLenProp = hasLenProp || std::string(p.name) == "Length";
+        hasCapProp = hasCapProp || std::string(p.name) == "Capacity";
+    }
     EXPECT_TRUE(hasLenProp);
+    EXPECT_TRUE(hasCapProp);
     // Methods include Append
     bool hasAppend = false;
     for (const auto &m : it->methods)
@@ -64,9 +74,21 @@ TEST(RuntimeClassCatalogBasic, ContainsSystemTextStringBuilderMembers)
     EXPECT_TRUE(hasAppend);
 }
 
+TEST(RuntimeClassCatalogBasic, ContainsAdditionalSystemTypes)
+{
+    const auto &cat = runtimeClassCatalog();
+    auto hasQ = [&](const char *qname) {
+        return std::find_if(cat.begin(), cat.end(), [&](const auto &c) {
+                   return std::string(c.qname) == qname;
+               }) != cat.end();
+    };
+    EXPECT_TRUE(hasQ("Viper.System.Object"));
+    EXPECT_TRUE(hasQ("Viper.System.IO.File"));
+    EXPECT_TRUE(hasQ("Viper.System.Collections.List"));
+}
+
 int main(int argc, char **argv)
 {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
 }
-

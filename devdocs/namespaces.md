@@ -751,16 +751,49 @@ Standard library types under `Viper.System.*`:
 
 #### Viper.System
 - `Viper.System.Object` — Base class for all objects
+  - Methods:
+    - `ToString() -> STRING` — default returns the class qualified name
+    - `Equals(OBJECT other) -> BOOL` — reference equality by default
+    - `GetHashCode() -> I64` — process‑stable hash derived from the object pointer
+    - `ReferenceEquals(OBJECT a, OBJECT b) -> BOOL` — static; reference equality
 - `Viper.System.String` — Managed string type
+  - Properties:
+    - `Length -> I64`
+    - `IsEmpty -> BOOL`
+  - Methods:
+    - `Substring(I64 start, I64 length) -> STRING`
+    - `Concat(STRING other) -> STRING`
 
 #### Viper.System.Text
 - `Viper.System.Text.StringBuilder` — Mutable string builder (can be constructed with NEW)
+  - Constructor: `NEW()`
+  - Properties:
+    - `Length -> I64`
+    - `Capacity -> I64`
+  - Methods:
+    - `Append(STRING) -> OBJECT` (returns the builder for chaining)
+    - `Clear() -> VOID`
+    - `ToString() -> STRING`
 
 #### Viper.System.IO
-- `Viper.System.IO.File` — File operations class
+- `Viper.System.IO.File` — File operations class (static utility)
+  - Methods (static):
+    - `Exists(STRING path) -> BOOL`
+    - `ReadAllText(STRING path) -> STRING`
+    - `WriteAllText(STRING path, STRING contents) -> VOID`
+    - `Delete(STRING path) -> VOID`
 
 #### Viper.System.Collections
-- `Viper.System.Collections.List` — Dynamic list container
+- `Viper.System.Collections.List` — Dynamic list container (stores object references)
+  - Constructor: `NEW()`
+  - Properties:
+    - `Count -> I64`
+  - Methods:
+    - `Add(OBJECT value) -> VOID`
+    - `Clear() -> VOID`
+    - `RemoveAt(I64 index) -> VOID`
+    - `get_Item(I64 index) -> OBJECT`
+    - `set_Item(I64 index, OBJECT value) -> VOID`
 
 ### Legacy Aliases
 
@@ -770,6 +803,73 @@ For backward compatibility, legacy `rt_*` function names are maintained as alias
 - `rt_len` → `Viper.Strings.Len`
 
 New code should use the canonical `Viper.*` names.
+
+### OOP Runtime vs Procedural Helpers
+
+The OOP `Viper.System.*` classes are the preferred surface for new code. The
+legacy procedural helpers (e.g., `Viper.Strings.Len`, `Viper.IO.*`) are still
+exposed and used internally by the compiler and runtime bridges for backwards
+compatibility. Migration is straightforward: replace procedural calls with
+equivalent class property/method calls as listed above.
+
+### Examples
+
+Object methods on user classes:
+
+```basic
+NAMESPACE App
+  CLASS C
+  END CLASS
+END NAMESPACE
+
+DIM o AS App.C
+o = NEW App.C()
+PRINT o.ToString()   ' prints "App.C"
+PRINT o.Equals(o)    ' 1
+```
+
+Working with strings via Viper.System.String:
+
+```basic
+DIM s AS Viper.System.String
+s = "hello"
+PRINT s.Length       ' 5
+PRINT s.IsEmpty      ' 0
+PRINT s.Substring(1, 2)
+```
+
+StringBuilder for efficient text composition:
+
+```basic
+DIM sb AS Viper.System.Text.StringBuilder
+sb = NEW Viper.System.Text.StringBuilder()
+sb.Append("hello").Append(", world")
+PRINT sb.ToString()
+```
+
+File I/O using Viper.System.IO.File:
+
+```basic
+USING Viper.System.IO
+File.WriteAllText("out.txt", "data")
+IF File.Exists("out.txt") THEN
+  PRINT File.ReadAllText("out.txt")
+  File.Delete("out.txt")
+END IF
+```
+
+In‑memory collections with List:
+
+```basic
+DIM list AS Viper.System.Collections.List
+list = NEW Viper.System.Collections.List()
+list.Add(NEW App.C())
+PRINT list.Count
+PRINT list.get_Item(0).ToString()
+list.set_Item(0, list)
+list.RemoveAt(0)
+list.Clear()
+```
 
 ---
 

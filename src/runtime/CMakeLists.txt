@@ -32,6 +32,8 @@ set(RT_SOURCES
         rt_modvar.c
         rt_args.c
         rt_ns_bridge.c
+        rt_file_ext.c
+        rt_list.c
 )
 
 set(RT_PUBLIC_HEADERS

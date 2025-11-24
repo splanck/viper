@@ -41,9 +41,24 @@ TEST(RuntimeMethodIndexBasic, SystemStringSubstringTarget)
     EXPECT_EQ(info->args[1], BasicType::Int);
 }
 
+TEST(RuntimeMethodIndexBasic, SystemObjectMethodsTargets)
+{
+    // Seed from catalog explicitly
+    const auto &cat = il::runtime::runtimeClassCatalog();
+    runtimeMethodIndex().seed(cat);
+
+    // Equals has arity 1
+    auto eq = runtimeMethodIndex().find("Viper.System.Object", "Equals", 1);
+    ASSERT_TRUE(eq.has_value());
+    EXPECT_EQ(eq->target, std::string("Viper.System.Object.Equals"));
+    // ReferenceEquals has arity 2
+    auto re = runtimeMethodIndex().find("Viper.System.Object", "ReferenceEquals", 2);
+    ASSERT_TRUE(re.has_value());
+    EXPECT_EQ(re->target, std::string("Viper.System.Object.ReferenceEquals"));
+}
+
 int main(int argc, char **argv)
 {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
 }
-

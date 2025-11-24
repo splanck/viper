@@ -25,8 +25,11 @@ int main()
     NamespaceRegistry ns;
     seedRuntimeTypeCatalog(ns);
 
-    // Type should be present under its fully-qualified name
+    // Types should be present under their fully-qualified names
     assert(ns.typeExists("Viper.System.Text.StringBuilder"));
+    assert(ns.typeExists("Viper.System.Object"));
+    assert(ns.typeExists("Viper.System.IO.File"));
+    assert(ns.typeExists("Viper.System.Collections.List"));
     // Namespaces should also exist for imports
     assert(ns.namespaceExists("Viper"));
     assert(ns.namespaceExists("Viper.System"));

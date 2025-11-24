@@ -62,15 +62,14 @@ extern "C"
     rt_sb_status rt_sb_append_double(rt_string_builder *sb, double value);
     rt_sb_status rt_sb_printf(rt_string_builder *sb, const char *fmt, ...);
 
-    // --- Experimental Viper.Text.StringBuilder bridge (TODO: wire real state) ---
-    // These shims expose a minimal API surface for the Viper.Text.StringBuilder
-    // runtime class. Implementations currently return sensible defaults and
-    // do not yet bind an embedded rt_string_builder to the opaque object.
-    // They will be replaced with real adapters in a future change.
+    // --- Viper.Text.StringBuilder runtime bridge ---
+    // These adapters implement the Viper.Text.StringBuilder object surface by
+    // operating on the embedded rt_string_builder stored inside the opaque
+    // object (see rt_ns_bridge.c for the layout and construction helper).
 
-    // Return builder length (characters). TODO: bind to internal builder state.
+    // Return builder length (characters) based on embedded state.
     int64_t rt_text_sb_get_length(void *sb);
-    // Return builder capacity (bytes). TODO: bind to internal builder state.
+    // Return builder capacity (bytes) based on embedded state.
     int64_t rt_text_sb_get_capacity(void *sb);
     // Append a string to the builder and return the receiver for chaining.
     void *rt_text_sb_append(void *sb, rt_string s);

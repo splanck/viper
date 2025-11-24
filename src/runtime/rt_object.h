@@ -62,6 +62,16 @@ extern "C"
     /// @param p Pointer to a runtime-managed object to free; must not be NULL.
     void rt_obj_free(void *p);
 
+    // --- System.Object runtime surface ---
+    // Instance methods
+    int64_t rt_obj_equals(void *self, void *other);
+    int64_t rt_obj_get_hash_code(void *self);
+    struct rt_string_impl; // fwd decl is provided in rt_string.h; include where needed
+    struct rt_string_impl *rt_obj_to_string(void *self);
+
+    // Static method: ReferenceEquals(a,b)
+    int64_t rt_obj_reference_equals(void *a, void *b);
+
 #ifdef __cplusplus
 }
 #endif

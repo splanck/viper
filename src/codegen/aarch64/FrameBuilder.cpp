@@ -50,7 +50,14 @@ void FrameBuilder::setMaxOutgoingBytes(int bytes)
 
 void FrameBuilder::finalize()
 {
-    int usedBytes = -minOffset_;
+    // Account for any previously assigned locals/spills on the function as well as
+    // slots assigned via this builder instance.
+    int mostNegative = minOffset_;
+    for (const auto &L : fn_->frame.locals)
+        mostNegative = std::min(mostNegative, L.offset);
+    for (const auto &S : fn_->frame.spills)
+        mostNegative = std::min(mostNegative, S.offset);
+    int usedBytes = -mostNegative;
     // Account for FP-LR area implicitly; our offsets start at -8, so usedBytes already counts slots.
     // Add any reserved outgoing-arg area.
     usedBytes += fn_->frame.maxOutgoingBytes;
@@ -77,4 +84,3 @@ int FrameBuilder::assignAlignedSlot(int sizeBytes, int alignBytes)
 }
 
 } // namespace viper::codegen::aarch64
-

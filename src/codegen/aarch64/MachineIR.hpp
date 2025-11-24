@@ -42,6 +42,8 @@ enum class MOpcode
     // Integer<->Float conversions (64-bit)
     SCvtF,   // scvtf dDst, xSrc
     FCvtZS,  // fcvtzs xDst, dSrc
+    UCvtF,   // ucvtf dDst, xSrc
+    FCvtZU,  // fcvtzu xDst, dSrc
     // Stack pointer adjust (for outgoing arg area)
     SubSpImm,
     AddSpImm,
@@ -53,6 +55,9 @@ enum class MOpcode
     StrRegFpImm, // src, offset - str xN, [x29, #offset]
     LdrFprFpImm, // dst(FPR), offset - ldr dN, [x29, #offset]
     StrFprFpImm, // src(FPR), offset - str dN, [x29, #offset]
+    // Load/store from arbitrary base register (heap/global)
+    LdrRegBaseImm, // dst, base, offset - ldr xN, [xM, #offset]
+    StrRegBaseImm, // src, base, offset - str xN, [xM, #offset]
     AddRRR,
     SubRRR,
     MulRRR,
@@ -70,6 +75,7 @@ enum class MOpcode
     Br,    // b label
     BCond, // b.<cond> label
     Bl,    // bl <label> (call)
+    Ret,   // ret (return from function)
     // Address materialisation for globals (Mach-O style)
     AdrPage,    // dst, label  => adrp dst, label@PAGE
     AddPageOff, // dst, base, label => add dst, base, label@PAGEOFF

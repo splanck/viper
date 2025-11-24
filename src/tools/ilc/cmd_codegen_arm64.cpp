@@ -173,7 +173,18 @@ static int assembleToObj(const std::string &asmPath, const std::string &objPath,
 static int linkToExe(const std::string &asmPath, const std::string &exePath,
                      std::ostream &out, std::ostream &err)
 {
-    const RunResult rr = run_process({"cc", "-arch", "arm64", asmPath, "-o", exePath});
+    // Link against the built runtime static library to satisfy rt_* calls.
+    // When executed under CTest, cwd is the build directory, so the runtime
+    // archive is reachable at src/runtime/libviper_runtime.a.
+    auto try_link = [&](const char *libPath) -> RunResult {
+        return run_process({"cc", "-arch", "arm64", asmPath, libPath, "-o", exePath});
+    };
+    RunResult rr = try_link("src/runtime/libviper_runtime.a");
+    if (rr.exit_code != 0)
+    {
+        // Fallback for tests whose CWD is build/src/tests
+        rr = try_link("../runtime/libviper_runtime.a");
+    }
     if (rr.exit_code == -1)
     {
         err << "error: failed to launch system linker command\n";
@@ -346,13 +357,45 @@ int emitAndMaybeLink(const Options &opts)
                         std::string(" bl _") + name + "\n");
         }
         // Remap common runtime calls when producing a native object/binary
-        const char *runtime_funcs[] = {"rt_trap", "rt_concat", "rt_print", "rt_input",
-                                       "rt_malloc", "rt_free", "rt_memcpy", "rt_memset"};
+        const char *runtime_funcs[] = {"rt_trap",      "rt_concat",   "rt_print",  "rt_input",
+                                       "rt_malloc",    "rt_free",     "rt_memcpy", "rt_memset",
+                                       "rt_const_cstr", "rt_print_str"};
         for (const char *rtfn : runtime_funcs)
         {
             replace_all(asmText, std::string(" bl ") + rtfn + "\n",
                         std::string(" bl _") + rtfn + "\n");
         }
+        // Prefix underscores for externs referenced by name (e.g., Viper.Console.PrintStr)
+        for (const auto &ex : mod.externs)
+        {
+            // Skip rt_* already handled above
+            if (ex.name.rfind("rt_", 0) == 0)
+                continue;
+            // Only map when an explicit call site is present
+            const std::string from = std::string(" bl ") + ex.name + "\n";
+            // Map Viper.Console.* to their rt_* equivalents when possible
+            if (ex.name.rfind("Viper.Console.", 0) == 0)
+            {
+                const std::string suffix = ex.name.substr(std::string("Viper.Console.").size());
+                std::string rt_equiv;
+                if (suffix == "PrintStr")
+                    rt_equiv = "rt_print_str";
+                else if (suffix == "PrintI64")
+                    rt_equiv = "rt_print_i64";
+                else if (suffix == "PrintF64")
+                    rt_equiv = "rt_print_f64";
+                if (!rt_equiv.empty())
+                    replace_all(asmText, from, std::string(" bl _") + rt_equiv + "\n");
+                else
+                    replace_all(asmText, from, std::string(" bl _") + ex.name + "\n");
+            }
+            else
+            {
+                replace_all(asmText, from, std::string(" bl _") + ex.name + "\n");
+            }
+        }
+        // Generic safety net: prefix any remaining direct runtime calls (rt_*)
+        replace_all(asmText, " bl rt_", " bl _rt_");
     }
 #endif
 

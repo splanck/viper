@@ -817,6 +817,72 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
                 emitCall(callee, args);
                 return {Value::constInt(0), Type(Type::Kind::I64)};
             }
+            else
+            {
+                // Static call on a runtime class from the catalog (no receiver)
+                auto isRuntimeClass = [&](const std::string &qn) {
+                    const auto &rc = il::runtime::runtimeClassCatalog();
+                    for (const auto &c : rc)
+                        if (string_utils::iequals(qn, c.qname))
+                            return true;
+                    return false;
+                };
+                if (isRuntimeClass(qname))
+                {
+                    auto &midx = runtimeMethodIndex();
+                    auto info = midx.find(qname, expr.method, expr.args.size());
+                    if (!info)
+                    {
+                        if (auto *em = diagnosticEmitter())
+                        {
+                            auto cands = midx.candidates(qname, expr.method);
+                            std::string msg = "no such method '" + expr.method + "' on '" + qname + "'";
+                            if (!cands.empty())
+                            {
+                                msg += "; candidates: ";
+                                for (size_t i = 0; i < cands.size(); ++i)
+                                {
+                                    if (i) msg += ", ";
+                                    msg += cands[i];
+                                }
+                            }
+                            em->emit(il::support::Severity::Error,
+                                     "E_NO_SUCH_METHOD",
+                                     expr.loc,
+                                     static_cast<uint32_t>(expr.method.size()),
+                                     std::move(msg));
+                        }
+                        return {Value::constInt(0), Type(Type::Kind::I64)};
+                    }
+                    std::vector<Value> args;
+                    args.reserve(expr.args.size());
+                    for (const auto &a : expr.args)
+                    {
+                        RVal av = lowerExpr(*a);
+                        args.push_back(av.value);
+                    }
+                    auto mapBasicToIl = [](BasicType t) -> Type::Kind {
+                        switch (t)
+                        {
+                            case BasicType::String: return Type::Kind::Str;
+                            case BasicType::Float:  return Type::Kind::F64;
+                            case BasicType::Bool:   return Type::Kind::I1;
+                            case BasicType::Void:   return Type::Kind::Void;
+                            case BasicType::Int:
+                            case BasicType::Unknown:
+                            default:                return Type::Kind::I64;
+                        }
+                    };
+                    Type retTy(mapBasicToIl(info->ret));
+                    runtimeTracker.trackCalleeName(info->target);
+                    curLoc = expr.loc;
+                    Value result = retTy.kind == Type::Kind::Void ? (emitCall(info->target, args), Value::constInt(0))
+                                                                  : emitCallRet(retTy, info->target, args);
+                    if (retTy.kind == Type::Kind::Str)
+                        deferReleaseStr(result);
+                    return {result, retTy.kind == Type::Kind::Void ? Type(Type::Kind::I64) : retTy};
+                }
+            }
         }
     }
 
@@ -920,6 +986,46 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
             if (retTy.kind == Type::Kind::Str)
                 deferReleaseStr(result);
             return {result, retTy.kind == Type::Kind::Void ? Type(Type::Kind::I64) : retTy};
+        }
+
+        // Fallback: Object methods on any instance (Viper.System.Object.*)
+        {
+            auto &midx = runtimeMethodIndex();
+            auto info = midx.find("Viper.System.Object", expr.method, expr.args.size());
+            if (info)
+            {
+                // Lower base and build (receiver, args...)
+                RVal base = lowerExpr(*expr.base);
+                std::vector<Value> args;
+                args.reserve(1 + expr.args.size());
+                args.push_back(base.value);
+                for (size_t i = 0; i < expr.args.size(); ++i)
+                {
+                    RVal av = lowerExpr(*expr.args[i]);
+                    args.push_back(av.value);
+                }
+                // Receiver is ptr; args are passed as-is; ret type from info
+                auto mapBasicToIl = [](BasicType t) -> Type::Kind {
+                    switch (t)
+                    {
+                        case BasicType::String: return Type::Kind::Str;
+                        case BasicType::Float:  return Type::Kind::F64;
+                        case BasicType::Bool:   return Type::Kind::I1;
+                        case BasicType::Void:   return Type::Kind::Void;
+                        case BasicType::Int:
+                        case BasicType::Unknown:
+                        default:                return Type::Kind::I64;
+                    }
+                };
+                Type retTy(mapBasicToIl(info->ret));
+                runtimeTracker.trackCalleeName(info->target);
+                curLoc = expr.loc;
+                Value result = retTy.kind == Type::Kind::Void ? (emitCall(info->target, args), Value::constInt(0))
+                                                              : emitCallRet(retTy, info->target, args);
+                if (retTy.kind == Type::Kind::Str)
+                    deferReleaseStr(result);
+                return {result, retTy.kind == Type::Kind::Void ? Type(Type::Kind::I64) : retTy};
+            }
         }
     }
 

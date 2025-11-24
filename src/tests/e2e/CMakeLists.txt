@@ -398,6 +398,15 @@ function(viper_add_e2e_vm_suite)
             -P ${_VIPER_E2E_DIR}/test_mem2reg_stats_multi.cmake)
 endfunction()
 
+# OOP runtime e2e: List + String + Object (avoids reserved keyword collisions)
+viper_add_ctest(oop_collections_string_report
+        ${CMAKE_COMMAND}
+        -DILC=$<TARGET_FILE:ilc>
+        -DBAS_FILE=${CMAKE_SOURCE_DIR}/src/tests/e2e/oop/collections_string_report.bas
+        -DGOLDEN=${CMAKE_SOURCE_DIR}/src/tests/e2e/oop/collections_string_report.bas.out
+        -P ${CMAKE_SOURCE_DIR}/src/tests/e2e/test_basic_math_phase1.cmake)
+set_tests_properties(oop_collections_string_report PROPERTIES LABELS VM)
+
 function(viper_add_e2e_codegen_tests)
     if (DEFINED VIPER_E2E_CODEGEN_DONE)
         return()

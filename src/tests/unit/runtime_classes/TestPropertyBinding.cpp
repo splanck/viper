@@ -56,6 +56,22 @@ TEST(RuntimePropertyBinding, EmitsViperStringGetterExtern)
     EXPECT_TRUE(hasExtern(result.module, "Viper.String.get_Length"));
 }
 
+TEST(RuntimePropertyBinding, EmitsSystemStringIsEmptyGetterExtern)
+{
+    il::support::SourceManager sm;
+    il::frontends::basic::BasicCompilerOptions opts{};
+    const char *kSrcIsEmpty = R"BASIC(
+10 DIM s AS Viper.System.String
+20 PRINT s.IsEmpty
+30 END
+)BASIC";
+    std::string source(kSrcIsEmpty);
+    il::frontends::basic::BasicCompilerInput input{source, "prop_isempty.bas"};
+    auto result = il::frontends::basic::compileBasic(input, opts, sm);
+    ASSERT_TRUE(result.succeeded());
+    EXPECT_TRUE(hasExtern(result.module, "Viper.String.get_IsEmpty"));
+}
+
 int main(int argc, char **argv)
 {
     ::testing::InitGoogleTest(&argc, argv);

@@ -192,6 +192,36 @@ function(viper_add_golden_suite_tests)
             "-DEXPECT=${EXPECT_BAD_MATH_FUNCS}"
             -P ${_VIPER_GOLDEN_DIR}/basic_errors/check_error.cmake)
 
+    # ------------------------------------------------------------------
+    # OOP runtime end-to-end examples
+    # ------------------------------------------------------------------
+    file(READ ${_VIPER_GOLDEN_DIR}/oop_runtime/file_and_stringbuilder.stdout EXPECT_OOP_FILE_SB)
+    string(STRIP "${EXPECT_OOP_FILE_SB}" EXPECT_OOP_FILE_SB)
+    viper_add_ctest(oop_runtime_file_and_stringbuilder
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/oop_runtime/file_and_stringbuilder.bas
+            "-DEXPECT=${EXPECT_OOP_FILE_SB}"
+            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
+
+    file(READ ${_VIPER_GOLDEN_DIR}/oop_runtime/list_counts.stdout EXPECT_OOP_LIST_COUNTS)
+    string(STRIP "${EXPECT_OOP_LIST_COUNTS}" EXPECT_OOP_LIST_COUNTS)
+    viper_add_ctest(oop_runtime_list_counts
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/oop_runtime/list_counts.bas
+            "-DEXPECT=${EXPECT_OOP_LIST_COUNTS}"
+            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
+
+    file(READ ${_VIPER_GOLDEN_DIR}/oop_runtime/file_exists_toggle.stdout EXPECT_OOP_FILE_EXISTS)
+    string(STRIP "${EXPECT_OOP_FILE_EXISTS}" EXPECT_OOP_FILE_EXISTS)
+    viper_add_ctest(oop_runtime_file_exists_toggle
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/oop_runtime/file_exists_toggle.bas
+            "-DEXPECT=${EXPECT_OOP_FILE_EXISTS}"
+            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
+
     # PRIVATE member access errors
     file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/private_method_access.stderr EXPECT_PRIVATE_METHOD)
     string(STRIP "${EXPECT_PRIVATE_METHOD}" EXPECT_PRIVATE_METHOD)
