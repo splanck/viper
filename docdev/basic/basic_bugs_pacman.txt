@@ -1,0 +1,137 @@
+BUGS PACMAN - Bug Documentation
+================================
+
+This file documents bugs encountered during development of bugs_pacman.bas
+
+================================================================================
+BUG #1: AND operator for bitwise operations
+================================================================================
+Date: During initial development
+Location: PlayDeathAnimation() and other bit manipulation code
+Code: If (i And 1) = 0 Then
+Error: error[E1002]: Logical operator AND requires BOOLEAN operands, got INT and INT.
+
+Description:
+The AND keyword in Viper BASIC is strictly a logical AND for boolean expressions,
+not a bitwise AND for integer operations. This differs from many BASIC dialects
+where AND serves both purposes.
+
+Workaround:
+Use modulo operation instead of bitwise AND for checking odd/even:
+  If (i Mod 2) = 0 Then   ' Instead of If (i And 1) = 0 Then
+
+For other bitwise operations, restructure logic to avoid them.
+
+Status: WORKAROUND APPLIED
+================================================================================
+
+================================================================================
+BUG #2: Nested If inside class functions causes code generation error
+================================================================================
+Date: During initial development
+Location: Ghost.GetDisplayChar() function
+Code:
+  If PowerModeTimer < 50 And flashFrame < 2 Then
+      Return "W"
+  Else
+      Return "M"
+  End If
+
+Error: error: GHOST.GETDISPLAYCHAR:if_then_2_GHOST.GETDISPLAYCHAR: cbr %t43
+       label if_test_4_GHOST.GETDISPLAYCHAR label if_else_3_GHOST.GETDISPLAYCHAR
+
+Description:
+Complex nested If/Then/Else constructs inside class member functions can cause
+code generation errors related to branch label resolution.
+
+Workaround:
+Flatten the control flow using a result variable:
+  Dim result As String
+  result = "M"
+  If PowerModeTimer < 50 Then
+      If flashFrame < 2 Then
+          result = "W"
+      End If
+  End If
+  Return result
+
+Status: WORKAROUND APPLIED
+================================================================================
+
+================================================================================
+BUG #3: Runtime memory corruption / heap assertion (RESOLVED)
+================================================================================
+Date: During initial development
+Location: During gameplay (after initialization)
+Error: Assertion failed: (hdr->magic == RT_MAGIC), function payload_to_hdr,
+       file rt_heap.c, line 48.
+
+Description:
+The program starts, displays the menu, and begins rendering the game but crashes
+with a heap corruption error. This was caused by complex nested boolean
+expressions with 'And' operators inside class methods, and other code patterns.
+
+Root Cause:
+The 'And' operator in boolean expressions was generating incorrect IL code
+in certain contexts (inside class methods with multiple conditions).
+
+Workaround:
+1. Replace all 'And' expressions with nested If statements
+2. Use Mod instead of 'And' for bitwise operations
+3. Simplify class method return logic
+
+Status: RESOLVED
+================================================================================
+
+================================================================================
+BUG #4: Method calls on array-copied objects don't work
+================================================================================
+Date: During initial development
+Location: ResetPositions() function
+Code:
+  g = Ghosts(i)
+  g.ResetGhost()   ' <-- This fails with "unknown procedure"
+
+Error: error[B1006]: unknown procedure 'g.resetghost'
+
+Description:
+When copying an object from an array into a local variable, method calls on
+that local variable fail to resolve. The compiler doesn't recognize the method.
+
+Workaround:
+Inline the method logic directly in the calling code instead of calling the
+method on the copied object:
+
+  g = Ghosts(i)
+  ' Instead of g.ResetGhost(), inline the code:
+  g.X = g.StartX
+  g.Y = g.StartY
+  ' etc...
+  Ghosts(i) = g
+
+Status: WORKAROUND APPLIED
+================================================================================
+
+================================================================================
+BUG #5: LOCATE with out-of-range values causes trap
+================================================================================
+Date: During initial development
+Location: DrawGhost() function
+Error: Trap @DRAWGHOST#8 line 1424: InvalidCast (code=0): value out of range
+       in cast.si_narrow.chk
+
+Description:
+Using LOCATE with row/column values outside the valid terminal range (typically
+1-24 rows, 1-80 columns) causes a runtime trap instead of being silently
+ignored or clamped.
+
+Workaround:
+Add bounds checking before every LOCATE call:
+  If sy < 1 Then sy = 1
+  If sy > 24 Then sy = 24
+  If sx < 1 Then sx = 1
+  If sx > 80 Then sx = 80
+  LOCATE sy, sx
+
+Status: WORKAROUND APPLIED
+================================================================================

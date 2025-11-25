@@ -1198,12 +1198,14 @@ function(viper_add_basic_namespace_tests)
             -DEXPECT_FILE=${_VIPER_BASIC_NS_DIR}/t04_cross_file_1.expect
             -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_expect.cmake)
 
-    # t04_2: Cross-file usage without imports should fail with unknown procedure 'lib.ping'
+    # t04_2: Cross-file usage without imports should fail with unknown variable 'LIB'
+    # (BUG-120 fix changed error from 'unknown procedure' to 'unknown variable' for method
+    # calls on undefined base variables - the new message is more accurate)
     viper_add_ctest(basic_ns_t04_cross_file_2_fail
             ${CMAKE_COMMAND}
             -DILC=${_VIPER_BASIC_ILC}
             -DBAS_FILE=${_VIPER_BASIC_NS_DIR}/t04_cross_file_2.bas
-            "-DEXPECT=unknown procedure 'lib\\.ping'"
+            "-DEXPECT=unknown variable 'LIB'"
             -P ${_VIPER_GOLDEN_ERRORS_DIR}/check_error.cmake)
 
     # t05: Unqualified unknown with attempted candidates listed

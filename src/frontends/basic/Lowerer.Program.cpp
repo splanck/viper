@@ -104,6 +104,13 @@ void ProgramLowering::run(const Program &prog, il::core::Module &module)
 
     lowerer.scanOOP(prog);     // Must scan OOP first to populate classLayouts_
     lowerer.scanProgram(prog); // Then scan program (needs classLayouts_ for field assignments)
+
+    // BUG-097 fix: Cache module-level object arrays BEFORE emitting OOP bodies.
+    // Class methods may reference global arrays (e.g., g_widgets(i).Update()),
+    // and resolveObjectClass needs the element class info during method lowering.
+    // Previously this was only called in emitProgram, which runs AFTER emitOopDeclsAndBodies.
+    lowerer.cacheModuleObjectArraysFromAST(prog.main);
+
     // Ensure procedure signature/alias table is populated before emitting OOP bodies
     // so method calls to module-level procedures resolve correctly.
     lowerer.collectProcedureSignatures(prog);

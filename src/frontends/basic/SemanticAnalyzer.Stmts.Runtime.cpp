@@ -68,23 +68,37 @@ void SemanticAnalyzer::analyzeCallStmt(CallStmt &stmt)
     if (auto *me = as<MethodCallExpr>(*stmt.call))
     {
         // Best-effort analysis: visit receiver and args to trigger diagnostics.
-        // BUG-037 fix: Detect undefined variables in method calls and suggest qualified call syntax
+        // BUG-037 fix: Detect undefined variables in method calls and suggest qualified call syntax.
+        // BUG-120 fix: Only emit error for unknown base if the base variable looks like a namespace
+        // (not a class-qualified class name). If the parser produced a MethodCallExpr, it has already
+        // determined this is NOT a namespace-qualified call. Procedure-local object variables may
+        // not be in symbols_ yet during semantic analysis but will be handled correctly by the lowerer.
         if (me->base)
         {
             if (auto *varExpr = as<VarExpr>(*me->base))
             {
-                // Check if the base variable exists; if not, this might be a qualified call
+                // Check if the base variable exists; if not, this might be a qualified call.
+                // However, only emit the error if the name is a known namespace. Otherwise,
+                // it's likely a local object variable that will be resolved during lowering.
                 if (symbols_.find(std::string{varExpr->name}) == symbols_.end())
                 {
-                    // Variable not found - could be a namespace-qualified call attempt
-                    std::vector<std::string> segments;
-                    segments.push_back(std::string{varExpr->name});
-                    segments.push_back(me->method);
-                    std::string qualifiedName = CanonicalizeQualified(segments);
-                    std::vector<std::string> attempts;
-                    diagx::ErrorUnknownProcWithTries(
-                        de.emitter(), stmt.loc, qualifiedName, attempts);
-                    return;
+                    // Only error if this looks like a namespace-qualified call.
+                    // If it's a simple local variable name (not registered as a namespace),
+                    // let the lowerer handle it - it might be an object instance.
+                    bool looksLikeNamespace = oopIndex_.findClass(varExpr->name) != nullptr;
+                    if (looksLikeNamespace)
+                    {
+                        std::vector<std::string> segments;
+                        segments.push_back(std::string{varExpr->name});
+                        segments.push_back(me->method);
+                        std::string qualifiedName = CanonicalizeQualified(segments);
+                        std::vector<std::string> attempts;
+                        diagx::ErrorUnknownProcWithTries(
+                            de.emitter(), stmt.loc, qualifiedName, attempts);
+                        return;
+                    }
+                    // Otherwise, skip the error - the lowerer will handle this case
+                    // (either as an object method call or emit a more specific error).
                 }
             }
             visitExpr(*me->base);

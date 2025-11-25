@@ -197,7 +197,12 @@ Lowerer::CtrlState Lowerer::emitIf(const IfStmt &stmt)
 
     if (!fallthrough)
     {
-        func->blocks.pop_back();
+        // BUG-119 fix: Erase the exit block by index instead of pop_back().
+        // When lowerCondBranch handles And/Or expressions, it adds intermediate
+        // blocks (e.g., and_rhs) after the exit block. pop_back() would remove
+        // those instead of the intended exit block.
+        func->blocks.erase(func->blocks.begin() +
+                           static_cast<std::ptrdiff_t>(blocks.exitIdx));
         func = ctx.function();
         ctx.setCurrent(&func->blocks[blocks.elseIdx]);
         state.cur = ctx.current();
