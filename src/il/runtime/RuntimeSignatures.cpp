@@ -625,7 +625,8 @@ struct DescriptorRow
     RuntimeTrapClass trapClass;
 };
 
-constexpr std::array<DescriptorRow, 184> kDescriptorRows{{
+// Use deduced array size to avoid mismatches that would create an empty default row.
+constexpr auto kDescriptorRows = std::to_array<DescriptorRow>({
     DescriptorRow{"rt_abort",
                   std::nullopt,
                   "void(ptr)",
@@ -1559,7 +1560,7 @@ constexpr std::array<DescriptorRow, 184> kDescriptorRows{{
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-}};
+});
 
 struct Descriptor
 {

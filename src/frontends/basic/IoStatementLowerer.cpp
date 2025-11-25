@@ -221,6 +221,8 @@ void IoStatementLowerer::lowerPrint(const PrintStmt &stmt)
                     updateColumn(widthEstimate);
                     break;
                 }
+                // Booleans are handled by lowerScalarExpr which calls coerceToI64,
+                // converting to BASIC logical -1/0 (True=-1, False=0).
                 value = lowerer_.lowerScalarExpr(std::move(value), stmt.loc);
                 lowerer_.emitCall("Viper.Console.PrintI64", {value.value});
                 updateColumn(widthEstimate);

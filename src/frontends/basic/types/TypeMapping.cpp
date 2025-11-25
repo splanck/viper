@@ -33,6 +33,10 @@ std::optional<Type> mapIlToBasic(const il::core::Type &ilType)
             return Type::Bool;
         case K::Void:
             return std::nullopt; // Indicates SUB/void
+        case K::Ptr:
+            // Treat opaque pointers as integer handles for BASIC signature purposes.
+            // Semantic/OOP layers handle object identity and method resolution.
+            return Type::I64;
         default:
             return std::nullopt; // Unsupported (i16/i32/ptr/error/resumetok)
     }

@@ -220,6 +220,7 @@ function(viper_add_golden_suite_tests)
             -DILC=${BASIC_ILC}
             -DBAS_FILE=${_VIPER_GOLDEN_DIR}/oop_runtime/file_exists_toggle.bas
             "-DEXPECT=${EXPECT_OOP_FILE_EXISTS}"
+            -DCLEANUP_FILE=${CMAKE_CURRENT_BINARY_DIR}/tmp_exists.txt
             -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
 
     # PRIVATE member access errors

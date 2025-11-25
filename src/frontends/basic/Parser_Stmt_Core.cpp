@@ -188,8 +188,9 @@ Parser::StmtResult Parser::parseCall(int)
                     sawAdditionalDot = true;
                     i += 2;
                 }
-                // Require final identifier followed by '('
-                if (peek(i).kind != TokenKind::Identifier || peek(i + 1).kind != TokenKind::LParen)
+                // Require final name segment (identifier or keyword APPEND) followed by '('
+                if (!((peek(i).kind == TokenKind::Identifier || peek(i).kind == TokenKind::KeywordAppend) &&
+                      peek(i + 1).kind == TokenKind::LParen))
                     ok = false;
 
                 if (ok)
@@ -208,20 +209,27 @@ Parser::StmtResult Parser::parseCall(int)
                     }
                     else
                     {
-                        // Feature flag: treat 'Viper' as a known namespace head
-                        // so dotted calls like Viper.Console.F() parse as qualified
-                        // call statements when runtime namespaces are enabled.
+                        // When runtime namespaces are enabled, accept multi-segment
+                        // dotted calls even if the head is not pre-registered as a
+                        // namespace (e.g., Viper.IO.File.*).
                         if (il::frontends::basic::FrontendOptions::enableRuntimeNamespaces())
                         {
-                            if (identTok.lexeme.size() == 5 || identTok.lexeme.size() == 6)
+                            if (sawAdditionalDot)
                             {
-                                // case-insensitive compare for 'Viper'
-                                std::string head = identTok.lexeme;
-                                for (auto &c : head)
-                                    c = static_cast<char>(
-                                        std::tolower(static_cast<unsigned char>(c)));
-                                if (head == "viper")
-                                    treatAsQualified = true;
+                                treatAsQualified = true;
+                            }
+                            else
+                            {
+                                // Also accept explicit 'Viper' regardless of registry seeding.
+                                if (identTok.lexeme.size() == 5 || identTok.lexeme.size() == 6)
+                                {
+                                    std::string head = identTok.lexeme;
+                                    for (auto &c : head)
+                                        c = static_cast<char>(
+                                            std::tolower(static_cast<unsigned char>(c)));
+                                    if (head == "viper")
+                                        treatAsQualified = true;
+                                }
                             }
                         }
                     }

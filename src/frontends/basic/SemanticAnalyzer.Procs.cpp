@@ -880,10 +880,26 @@ std::vector<SemanticAnalyzer::Type> SemanticAnalyzer::checkCallArgs(const CallEx
             want = Type::String;
         else if (expectTy == ::il::frontends::basic::Type::Bool)
             want = Type::Bool;
+        // Relax type checking for selected runtime helpers that operate on opaque pointers.
+        // Permit pointer-typed values to match integer-typed parameters for
+        // Viper.Text.StringBuilder.* canonical helpers.
+        bool relaxPtrArg = false;
+        if (!c.calleeQualified.empty())
+        {
+            // Build canonical lowercase name
+            std::string qcanon = CanonicalizeQualified(c.calleeQualified);
+            if (qcanon.rfind("viper.text.stringbuilder.", 0) == 0)
+            {
+                relaxPtrArg = true;
+            }
+        }
         if (argTy != Type::Unknown && argTy != want)
         {
-            std::string msg = "argument type mismatch";
-            de.emit(il::support::Severity::Error, "B2001", c.loc, 1, std::move(msg));
+            if (!(relaxPtrArg && want == Type::Int))
+            {
+                std::string msg = "argument type mismatch";
+                de.emit(il::support::Severity::Error, "B2001", c.loc, 1, std::move(msg));
+            }
         }
     }
     return argTys;

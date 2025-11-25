@@ -327,10 +327,10 @@ void ProcRegistry::seedRuntimeBuiltins()
         if (desc.name.find('.') == std::string_view::npos)
             continue;
 
-        // Only seed helpers with a generated signature id (back-pointer for lowering).
+        // Prefer helpers with a generated signature id (back-pointer for lowering),
+        // but also seed descriptors without one so dotted runtime names like
+        // Viper.IO.File.* resolve during semantic analysis.
         auto sigIdOpt = findRuntimeSignatureId(desc.name);
-        if (!sigIdOpt)
-            continue;
 
         // Map return type; Void -> SUB (no return), others -> FUNCTION.
         std::optional<Type> retTy;

@@ -524,7 +524,9 @@ ExprPtr Parser::parsePrimary()
                     sawAdditionalDot = true;
                     i += 2;
                 }
-                if (peek(i).kind != TokenKind::Identifier || peek(i + 1).kind != TokenKind::LParen)
+                // Accept final segment as identifier or keyword APPEND (e.g., Viper.Text.StringBuilder.Append)
+                if (!((peek(i).kind == TokenKind::Identifier || peek(i).kind == TokenKind::KeywordAppend) &&
+                      peek(i + 1).kind == TokenKind::LParen))
                     ok = false;
                 // BUG-082 fix: Only treat as qualified procedure call if the first identifier
                 // is a known namespace. This applies to both single-dot (obj.Method) and
@@ -532,7 +534,11 @@ ExprPtr Parser::parsePrimary()
                 // on object members as namespace-qualified procedure calls.
                 if (ok && knownNamespaces_.find(head.lexeme) == knownNamespaces_.end())
                 {
-                    ok = false;
+                    // Permit multi-segment dotted calls even when the head is not a known
+                    // namespace to support forms like Viper.IO.File.* when runtime namespaces
+                    // are enabled.
+                    if (!sawAdditionalDot)
+                        ok = false;
                 }
             }
             if (ok)
@@ -641,10 +647,15 @@ std::pair<std::vector<std::string>, il::support::SourceLoc> Parser::parseQualifi
     while (at(TokenKind::Dot))
     {
         consume();
-        Token ident = expect(TokenKind::Identifier);
-        if (ident.kind != TokenKind::Identifier)
-            break;
-        segs.push_back(ident.lexeme);
+        // Allow identifier or selected keywords (e.g., APPEND) inside qualified names
+        if (at(TokenKind::Identifier) || at(TokenKind::KeywordAppend))
+        {
+            Token ident = peek();
+            consume();
+            segs.push_back(ident.lexeme);
+            continue;
+        }
+        break;
     }
     return {segs, startLoc};
 }
@@ -716,9 +727,18 @@ ExprPtr Parser::parsePostfix(ExprPtr expr)
     while (expr && at(TokenKind::Dot))
     {
         consume();
-        Token ident = expect(TokenKind::Identifier);
+        // Permit certain keyword tokens (e.g., APPEND) as method names in dotted member access
+        // to support runtime namespaces like Viper.Text.StringBuilder.Append(...).
+        if (!(at(TokenKind::Identifier) || at(TokenKind::KeywordAppend)))
+        {
+            // Preserve original expectation for diagnostics when not matching.
+            Token ident = expect(TokenKind::Identifier);
+            (void)ident; // fall through; error already emitted if not identifier
+        }
+        Token ident = peek();
+        consume();
         std::string member;
-        if (ident.kind == TokenKind::Identifier)
+        if (ident.kind == TokenKind::Identifier || ident.kind == TokenKind::KeywordAppend)
             member = ident.lexeme;
 
         if (at(TokenKind::LParen))

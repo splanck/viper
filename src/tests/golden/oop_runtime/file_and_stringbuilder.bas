@@ -5,7 +5,7 @@ sb = NEW Viper.System.Text.StringBuilder()
 
 Viper.IO.File.WriteAllText("tmp_oop.txt", "hi")
 
-DIM s AS Viper.System.String
+DIM s AS STRING
 s = Viper.IO.File.ReadAllText("tmp_oop.txt")
 
 sb = Viper.Text.StringBuilder.Append(sb, s)

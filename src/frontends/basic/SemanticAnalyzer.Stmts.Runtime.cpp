@@ -659,7 +659,18 @@ void SemanticAnalyzer::analyzeDim(DimStmt &d)
                 previous = itType->second;
             activeProcScope_->noteVarTypeMutation(d.name, previous);
         }
-        varTypes_[d.name] = astToSemanticType(d.type);
+        // Check for explicit class type Viper.System.String -> treat as String
+        Type dimType = astToSemanticType(d.type);
+        if (!d.explicitClassQname.empty())
+        {
+            std::string qname = JoinDots(d.explicitClassQname);
+            if (string_utils::iequals(qname, "viper.system.string") ||
+                string_utils::iequals(qname, "viper.string"))
+            {
+                dimType = Type::String;
+            }
+        }
+        varTypes_[d.name] = dimType;
     }
 }
 

@@ -10,6 +10,10 @@ endif ()
 if (NOT DEFINED EXPECT)
     message(FATAL_ERROR "EXPECT not set")
 endif ()
+# Optional pre-test cleanup for files created by previous test runs
+if (DEFINED CLEANUP_FILE)
+    file(REMOVE "${CLEANUP_FILE}")
+endif ()
 execute_process(
         COMMAND ${ILC} front basic -run ${BAS_FILE}
         RESULT_VARIABLE res
