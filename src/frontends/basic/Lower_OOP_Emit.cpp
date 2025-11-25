@@ -1219,11 +1219,9 @@ void Lowerer::emitOopDeclsAndBodies(const Program &prog)
         Value vtablePtr = emitCallRet(Type(Type::Kind::Ptr), "rt_alloc", {Value::constInt(8LL)});
         // Register the class with rt_register_class_direct(typeId, vtable, qname, 0)
         std::string qnameLabel = getStringLabel(ci.qualifiedName);
-        emitCall("rt_register_class_direct",
-                 {Value::constInt(typeId),
-                  vtablePtr,
-                  emitConstStr(qnameLabel),
-                  Value::constInt(0LL)});
+        emitCall(
+            "rt_register_class_direct",
+            {Value::constInt(typeId), vtablePtr, emitConstStr(qnameLabel), Value::constInt(0LL)});
     }
 
     for (const auto &fn : regThunks)

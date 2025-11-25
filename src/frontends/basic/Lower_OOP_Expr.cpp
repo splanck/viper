@@ -312,7 +312,8 @@ Lowerer::RVal Lowerer::lowerNewExpr(const NewExpr &expr)
         if (itLayout != classLayouts_.end())
         {
             const long long typeId = (long long)itLayout->second.classId;
-            Value vtblPtr = emitCallRet(Type(Type::Kind::Ptr), "rt_get_class_vtable", {Value::constInt(typeId)});
+            Value vtblPtr = emitCallRet(
+                Type(Type::Kind::Ptr), "rt_get_class_vtable", {Value::constInt(typeId)});
             // Store the vptr at offset 0 in the object
             emitStore(Type(Type::Kind::Ptr), obj, vtblPtr);
         }

@@ -612,60 +612,6 @@ class VM
     /// @brief Access active VM instance for thread-local trap reporting.
     static VM *activeInstance();
 
-    // ExecState has been moved to public section for dispatch strategy access
-    // Original private definition removed to avoid duplication
-#if 0
-    struct ExecState
-    {
-        Frame fr;                                 ///< Current frame
-        BlockMap blocks;                          ///< Basic block lookup
-        const il::core::BasicBlock *bb = nullptr; ///< Active basic block
-        size_t ip = 0;                            ///< Instruction pointer within @p bb
-        bool skipBreakOnce = false;               ///< Whether to skip next breakpoint
-        const il::core::BasicBlock *callSiteBlock =
-            nullptr;                          ///< Block of the call that entered this frame
-        size_t callSiteIp = 0;                ///< Instruction index of the call in the caller
-        il::support::SourceLoc callSiteLoc{}; ///< Source location of the call site
-        viper::vm::SwitchCache switchCache{}; ///< Memoized switch dispatch data for this frame
-        std::optional<Slot> pendingResult{};  ///< Result staged by threaded interpreter
-        const il::core::Instr *currentInstr =
-            nullptr;                ///< Instruction under execution for inline dispatch
-        bool exitRequested = false; ///< Whether the active loop should exit
-
-        // Host polling configuration/state ----------------------------------
-        struct PollConfig
-        {
-            uint32_t interruptEveryN = 0;
-            std::function<bool(VM &)> pollCallback;
-        } config; ///< Per-run polling configuration
-
-        uint64_t pollTick = 0; ///< Instruction counter for polling cadence
-
-        VM *owner = nullptr; ///< Owning VM used by callbacks
-
-        /// @brief Access the owning VM for this execution state.
-        VM *vm()
-        {
-            return owner;
-        }
-
-        /// @brief Request the interpreter loop to pause at the next boundary.
-        void requestPause()
-        {
-            Slot s{};
-            s.i64 = 1; // generic pause sentinel
-            pendingResult = s;
-            exitRequested = true;
-        }
-
-        /// @brief Cache for resolved branch targets per instruction.
-        /// @details Maps an instruction pointer to a vector of resolved
-        ///          BasicBlock* targets in the same order as @c in.labels.
-        std::unordered_map<const il::core::Instr *, std::vector<const il::core::BasicBlock *>>
-            branchTargetCache;
-    };
-#endif
-
     bool prepareTrap(VmError &error);
     [[noreturn]] void throwForTrap(ExecState *target);
 

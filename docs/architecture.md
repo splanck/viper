@@ -15,7 +15,7 @@ This document outlines the current C++ layout of the Viper compiler stack. It re
 - IL Core/IO/Verify/Analysis/Transform — Intermediate Language data structures, parsers/serializers, verifier, analysis passes, and transforms
 - VM — Stack-based interpreter for IL with tracing, debugging, and runtime bridge
 - Frontends — BASIC front end lowering to IL
-- Codegen — Native code generation backends (x86_64 implemented; AArch64 scaffolding)
+- Codegen — Native code generation backends (x86_64 and AArch64)
 - Tools — CLI entry points (ilc, vbasic, ilrun, il-verify, il-dis, BASIC helpers)
 - Runtime — C runtime library and ABI bridge used by IL and VM
 
@@ -30,6 +30,8 @@ This document outlines the current C++ layout of the Viper compiler stack. It re
 - src/il/transform — Pass framework and built-in passes (DCE, SCCP, LICM, SimplifyCFG, Mem2Reg)
 - src/vm — VM core (`VM.hpp/.cpp`), opcode handlers, debug/tracing, runtime bridge
 - src/codegen/x86_64 — X64 lowering, machine IR, register allocation pipeline
+- src/codegen/aarch64 — ARM64 lowering, machine IR, linear-scan register allocation
+- src/codegen/common — Shared codegen utilities (argument normalization, label utilities)
 - src/tools/ilc — Unified compiler driver (run IL, front basic, il-opt, codegen)
 - src/tools/vbasic — Friendly BASIC wrapper over `ilc front basic`
 - src/tools/ilrun — Friendly IL runner wrapper over `ilc -run`
@@ -52,7 +54,8 @@ Public headers are under `include/viper/...`:
   - `-run <file.il>` — Execute IL on the VM
   - `front basic -emit-il|-run <file.bas>` — BASIC compile/run
   - `il-opt <in.il> -o <out.il> [--passes ...]` — Optimizer
-  - `codegen x64 -S <in.il> [-o exe] [--run-native]` — Native path
+  - `codegen x64 -S <in.il> [-o exe] [--run-native]` — x86-64 native path
+  - `codegen arm64 <in.il> -S <out.s>` — AArch64 assembly generation
 - `vbasic` — Convenience wrapper for BASIC (`vbasic script.bas --emit-il|-o`)
 - `ilrun` — Convenience wrapper for IL execution (`ilrun program.il`)
 - `il-verify` — IL structural/type verifier

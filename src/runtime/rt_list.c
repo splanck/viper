@@ -16,8 +16,8 @@
 #include "rt_list.h"
 
 #include "rt_array_obj.h"
-#include "rt_internal.h"
 #include "rt_heap.h"
+#include "rt_internal.h"
 #include "rt_object.h"
 
 #include <assert.h>

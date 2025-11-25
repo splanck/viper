@@ -108,12 +108,11 @@ RUNTIME_CLASS(
     "obj",
     "Viper.Collections.List.New",
     RUNTIME_PROPS(RUNTIME_PROP("Count", "i64", "Viper.Collections.List.get_Count", nullptr)),
-    RUNTIME_METHODS(
-        RUNTIME_METHOD("Add", "void(obj)", "Viper.Collections.List.Add"),
-        RUNTIME_METHOD("Clear", "void()", "Viper.Collections.List.Clear"),
-        RUNTIME_METHOD("RemoveAt", "void(i64)", "Viper.Collections.List.RemoveAt"),
-        RUNTIME_METHOD("get_Item", "obj(i64)", "Viper.Collections.List.get_Item"),
-        RUNTIME_METHOD("set_Item", "void(i64,obj)", "Viper.Collections.List.set_Item")))
+    RUNTIME_METHODS(RUNTIME_METHOD("Add", "void(obj)", "Viper.Collections.List.Add"),
+                    RUNTIME_METHOD("Clear", "void()", "Viper.Collections.List.Clear"),
+                    RUNTIME_METHOD("RemoveAt", "void(i64)", "Viper.Collections.List.RemoveAt"),
+                    RUNTIME_METHOD("get_Item", "obj(i64)", "Viper.Collections.List.get_Item"),
+                    RUNTIME_METHOD("set_Item", "void(i64,obj)", "Viper.Collections.List.set_Item")))
 
 // Legacy/compat alias under Viper.System.Collections; maps to the same externs
 RUNTIME_CLASS(

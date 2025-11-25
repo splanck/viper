@@ -99,7 +99,7 @@ Compile to native code (x86-64):
   - `threaded` — Direct-threaded labels-as-values (GCC/Clang only)
   - **Per-VM Context**: Isolated RNG state, module variables, and runtime resources
 - **x86-64 Backend**: Native code generation with linear-scan register allocation (Phase A complete)
-- **ARM64 Backend**: Native code generation in active development (Phase A in progress)
+- **ARM64 Backend**: Native code generation with linear-scan register allocation (functional for core operations)
 - **Runtime Libraries**: Portable C implementations for strings, math, file I/O, memory management, and OOP support
 
 **Tooling:**
@@ -117,7 +117,7 @@ Compile to native code (x86-64):
 
 ### In Progress
 
-- ARM64 backend (Phase A nearing completion)
+- ARM64 backend (functional, ongoing enhancements)
 - IL optimization passes (mem2reg, SimplifyCFG, LICM, SCCP)
 - Advanced register allocation (graph coloring)
 - Graphics/TUI subsystem (experimental)
@@ -233,15 +233,15 @@ END CLASS
           │               │
           ▼               ▼
 ┌──────────────┐   ┌──────────────────────┐
-│   Virtual    │   │  Backend (x86-64)    │
-│   Machine    │   │   Native Codegen     │
+│   Virtual    │   │  Backend (x86-64,    │
+│   Machine    │   │  ARM64) Native Code  │
 └──────────────┘   └──────────────────────┘
 ```
 
 - **Frontends** lower source languages to a common, typed IL
 - **Verifier** enforces type safety, control-flow correctness, and SSA properties
 - **VM** executes IL with configurable dispatch strategies
-- **Backend** compiles IL to native machine code (x86-64 with System V ABI)
+- **Backend** compiles IL to native machine code (x86-64 with System V ABI, ARM64 with AAPCS64)
 
 ---
 
@@ -406,7 +406,7 @@ See [Frontend How-To](docs/frontend-howto.md) for a complete implementation guid
 | Namespace System | ✅ Implemented |
 | Virtual Machine | ✅ Active development |
 | x86-64 Backend | ✅ Phase A complete |
-| ARM64 Backend | 🚧 Phase A in progress |
+| ARM64 Backend | ✅ Functional (ongoing enhancements) |
 | Runtime Libraries | ✅ Active development |
 | IL Verifier | ✅ Active development |
 | IL Optimizer | 🚧 In progress |

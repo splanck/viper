@@ -554,49 +554,40 @@ Tracks reads/writes to specific memory ranges.
 
 ```
 src/vm/
-├── VM.hpp                      # Main VM class
-├── VM.cpp                      # Core interpreter logic
-├── VMContext.hpp               # Execution context helpers
-├── VMContext.cpp
+├── VM.hpp/cpp                  # Main VM class and core interpreter logic
+├── VMContext.hpp/cpp           # Execution context helpers
 ├── VMConfig.hpp                # Build configuration
+├── VMConstants.hpp             # VM constants
 ├── Runner.cpp                  # Public API facade
 ├── VMInit.cpp                  # VM initialization
 │
-├── OpHandlers.hpp              # Handler aggregation
-├── OpHandlers.cpp              # Handler table generation
+├── OpHandlers.hpp/cpp          # Handler aggregation and table generation
+├── OpHandlerUtils.hpp/cpp      # Handler utility functions
+├── OpHandlerAccess.hpp         # Handler access utilities
 ├── OpHandlers_Control.hpp      # Control flow handlers
 ├── OpHandlers_Int.hpp          # Integer arithmetic handlers
 ├── OpHandlers_Float.hpp        # Float arithmetic handlers
 ├── OpHandlers_Memory.hpp       # Memory operation handlers
+├── IntOpSupport.hpp            # Integer operation support
+│
+├── DispatchStrategy.hpp/cpp    # Pluggable dispatch strategies
 │
 ├── ops/
 │   ├── Op_CallRet.cpp          # Call/return implementation
 │   ├── Op_BranchSwitch.cpp     # Branch/switch implementation
 │   ├── Op_TrapEh.cpp           # Trap/exception handling
-│   ├── common/
-│   │   └── Branching.hpp       # Shared branch helpers
-│   └── generated/
-│       ├── HandlerTable.hpp    # Generated handler table
-│       ├── OpSchema.hpp        # Opcode metadata
-│       ├── InlineHandlersDecl.inc
-│       ├── SwitchDispatchDecl.inc
-│       ├── ThreadedLabels.inc
-│       └── ThreadedCases.inc
+│   ├── common/                 # Shared helpers
+│   ├── schema/                 # Opcode schema definitions
+│   └── generated/              # Generated dispatch tables
 │
-├── RuntimeBridge.hpp           # Runtime integration
-├── RuntimeBridge.cpp
-├── Marshal.hpp                 # Value marshalling
-├── Marshal.cpp
+├── RuntimeBridge.hpp/cpp       # Runtime integration
+├── Marshal.hpp/cpp             # Value marshalling
 │
-├── Trap.hpp                    # Trap definitions
-├── Trap.cpp
-├── err_bridge.hpp              # Error bridge helpers
-├── err_bridge.cpp
+├── Trap.hpp/cpp                # Trap definitions and formatting
+├── err_bridge.hpp/cpp          # Error bridge helpers
 │
-├── control_flow.hpp            # Control flow utilities
-├── control_flow.cpp
-├── tco.hpp                     # Tail-call optimization
-├── tco.cpp
+├── control_flow.hpp/cpp        # Control flow utilities
+├── tco.hpp/cpp                 # Tail-call optimization
 │
 ├── int_ops_arith.cpp           # Integer arithmetic implementations
 ├── int_ops_cmp.cpp             # Integer comparison implementations
@@ -604,12 +595,8 @@ src/vm/
 ├── fp_ops.cpp                  # Floating-point implementations
 ├── mem_ops.cpp                 # Memory operation implementations
 │
-└── debug/
-    ├── Debug.cpp               # Debug controller
-    ├── Trace.cpp               # Trace formatting
-    ├── VMDebug.cpp             # VM debug integration
-    ├── VM_DebugUtils.cpp       # Debug utilities
-    └── DebugScript.cpp         # Scripted debugging
+└── debug/                      # Debug and tracing subsystem
+    └── *.cpp                   # Debug controller, trace, scripting
 ```
 
 ### Key Files by Functionality

@@ -35,35 +35,48 @@ namespace viper::codegen::x64::passes
 {
 namespace
 {
+
 /// @brief Emit a backend-unsupported diagnostic and terminate lowering.
-/// @details Centralises the failure path so that every unsupported feature
-///          surfaces via @ref phaseAUnsupported with a consistent message.
-///          The function never returns because Phase A lowering cannot recover
-///          once it encounters an unsupported construct.
 [[noreturn]] void reportUnsupported(std::string detail)
 {
     viper::codegen::x64::phaseAUnsupported(detail.c_str());
 }
 
-/// @brief Translate an IL module into the intermediate adapter representation.
-/// @details Walks each IL function, block, and instruction while mapping types
-///          to backend value kinds. During conversion the helper records
-///          diagnostics for unsupported patterns and ensures label/value IDs
-///          remain consistent for later passes.
-/// @param module IL module produced by the front-end pipeline.
-/// @return Backend adapter module ready for Phase B code generation.
-ILModule convertToAdapterModule(const il::core::Module &module)
+/// @brief Adapter module builder that converts IL to backend IR.
+/// @details Encapsulates the conversion logic, maintaining state for value kinds
+///          and providing helper methods for different instruction categories.
+class ModuleAdapter
 {
-    using viper::codegen::x64::ILBlock;
-    using viper::codegen::x64::ILFunction;
-    using viper::codegen::x64::ILModule;
-    using viper::codegen::x64::ILValue;
+  public:
+    explicit ModuleAdapter() = default;
+
+    /// @brief Convert an IL module to the backend adapter representation.
+    ILModule adapt(const il::core::Module &module)
+    {
+        ILModule result{};
+        result.funcs.reserve(module.functions.size());
+
+        for (const auto &func : module.functions)
+        {
+            result.funcs.push_back(adaptFunction(func));
+        }
+
+        return result;
+    }
+
+  private:
+    /// @brief Map from SSA ids to their value kinds.
+    std::unordered_map<unsigned, ILValue::Kind> valueKinds_{};
+
+    /// @brief Current function being adapted (for return type access).
+    const il::core::Function *currentFunc_{nullptr};
+
+    //-------------------------------------------------------------------------
+    // Type Conversion
+    //-------------------------------------------------------------------------
 
     /// @brief Map an IL type to the backend adapter value classification.
-    /// @details Consolidates the lowering decisions that collapse several IL
-    ///          integer sizes onto a single 64-bit kind while rejecting
-    ///          unsupported constructs such as resume tokens.
-    const auto typeToKind = [](const il::core::Type &type) -> ILValue::Kind
+    static ILValue::Kind typeToKind(const il::core::Type &type)
     {
         using il::core::Type;
         switch (type.kind)
@@ -87,26 +100,24 @@ ILModule convertToAdapterModule(const il::core::Module &module)
                 reportUnsupported("non-scalar IL type encountered during Phase A lowering");
         }
         reportUnsupported("unknown IL type kind encountered during Phase A lowering");
-    };
+    }
+
+    //-------------------------------------------------------------------------
+    // Value Construction Helpers
+    //-------------------------------------------------------------------------
 
     /// @brief Construct an adapter value representing a block label.
-    /// @details Assigns the sentinel ID expected by the backend so labels can
-    ///          participate in operand lists without colliding with SSA
-    ///          temporaries.
-    const auto makeLabelValue = [](std::string name) -> ILValue
+    static ILValue makeLabelValue(std::string name)
     {
         ILValue label{};
         label.kind = ILValue::Kind::LABEL;
         label.label = std::move(name);
         label.id = -1;
         return label;
-    };
+    }
 
     /// @brief Create an immediate adapter value storing a condition code.
-    /// @details Wraps raw integers into @ref ILValue objects so branches and
-    ///          selects can share the same operand representation as other
-    ///          instructions.
-    const auto makeCondImmediate = [](int code) -> ILValue
+    static ILValue makeCondImmediate(int code)
     {
         ILValue imm{};
         imm.kind = ILValue::Kind::I64;
@@ -114,13 +125,10 @@ ILModule convertToAdapterModule(const il::core::Module &module)
             static_cast<long long>(code), 64, il::common::integer::OverflowPolicy::Wrap);
         imm.id = -1;
         return imm;
-    };
+    }
 
     /// @brief Translate IL comparison opcodes into backend condition codes.
-    /// @details The encoding matches the expectations of the backend Phase B
-    ///          lowering logic and groups signed/unsigned comparisons so they
-    ///          can reuse the same adapter opcode.
-    const auto condCodeFor = [](il::core::Opcode op) -> int
+    static int condCodeFor(il::core::Opcode op)
     {
         using il::core::Opcode;
         switch (op)
@@ -154,553 +162,567 @@ ILModule convertToAdapterModule(const il::core::Module &module)
             default:
                 return 0;
         }
-    };
-
-    ILModule adapted{};
-    adapted.funcs.reserve(module.functions.size());
-
-    for (const auto &func : module.functions)
-    {
-        ILFunction adaptedFunc{};
-        adaptedFunc.name = func.name;
-
-        std::unordered_map<unsigned, ILValue::Kind> valueKinds{};
-        valueKinds.reserve(func.valueNames.size() + func.params.size());
-
-        for (const auto &param : func.params)
-        {
-            valueKinds.emplace(param.id, typeToKind(param.type));
-        }
-
-        for (const auto &block : func.blocks)
-        {
-            ILBlock adaptedBlock{};
-            adaptedBlock.name = block.label;
-
-            for (const auto &param : block.params)
-            {
-                const ILValue::Kind kind = typeToKind(param.type);
-                adaptedBlock.paramIds.push_back(static_cast<int>(param.id));
-                adaptedBlock.paramKinds.push_back(kind);
-                valueKinds[param.id] = kind;
-            }
-
-            /// @brief Convert an IL operand into the backend adapter value.
-            /// @details Uses recorded kind information when available and falls
-            ///          back to @p hint for immediates so consumers receive
-            ///          strongly typed operands. Unrecognised SSA ids trigger a
-            ///          fatal diagnostic because the adapter would otherwise
-            ///          produce inconsistent code.
-            const auto convertValue = [&valueKinds](const il::core::Value &value,
-                                                    std::optional<ILValue::Kind> hint) -> ILValue
-            {
-                ILValue converted{};
-                converted.id = -1;
-
-                switch (value.kind)
-                {
-                    case il::core::Value::Kind::Temp:
-                    {
-                        const auto it = valueKinds.find(value.id);
-                        if (it == valueKinds.end())
-                        {
-                            reportUnsupported(
-                                "ssa temp without registered kind in Phase A lowering");
-                        }
-                        converted.kind = it->second;
-                        converted.id = static_cast<int>(value.id);
-                        break;
-                    }
-                    case il::core::Value::Kind::ConstInt:
-                    {
-                        converted.kind =
-                            hint.value_or(value.isBool ? ILValue::Kind::I1 : ILValue::Kind::I64);
-                        converted.i64 = value.i64;
-                        break;
-                    }
-                    case il::core::Value::Kind::ConstFloat:
-                        converted.kind = ILValue::Kind::F64;
-                        converted.f64 = value.f64;
-                        break;
-                    case il::core::Value::Kind::ConstStr:
-                        converted.kind = ILValue::Kind::STR;
-                        converted.str = value.str;
-                        converted.strLen = static_cast<std::uint64_t>(value.str.size());
-                        break;
-                    case il::core::Value::Kind::GlobalAddr:
-                        converted.kind = ILValue::Kind::LABEL;
-                        converted.label = value.str;
-                        break;
-                    case il::core::Value::Kind::NullPtr:
-                        converted.kind = ILValue::Kind::PTR;
-                        converted.i64 = 0;
-                        break;
-                }
-
-                if (hint && value.kind != il::core::Value::Kind::Temp)
-                {
-                    converted.kind = *hint;
-                }
-
-                return converted;
-            };
-
-            /// @brief Append converted operands to an adapter instruction.
-            /// @details Iterates the IL operand list, supplying parallel hints
-            ///          so constants can be forced to the correct type. The
-            ///          helper keeps hint lookup bounds-checked and delegates
-            ///          to @p convertValue for the actual conversion work.
-            const auto convertOperands =
-                [&](const il::core::Instr &instr,
-                    std::initializer_list<std::optional<ILValue::Kind>> hints,
-                    viper::codegen::x64::ILInstr &out)
-            {
-                std::size_t index = 0;
-                for (const auto &operand : instr.operands)
-                {
-                    const std::optional<ILValue::Kind> hint =
-                        index < hints.size() ? *(hints.begin() + static_cast<std::ptrdiff_t>(index))
-                                             : std::optional<ILValue::Kind>{};
-                    out.ops.push_back(convertValue(operand, hint));
-                    ++index;
-                }
-            };
-
-            for (const auto &instr : block.instructions)
-            {
-                viper::codegen::x64::ILInstr adaptedInstr{};
-                adaptedInstr.resultId = -1;
-
-                /// @brief Record the kind associated with the instruction result.
-                /// @details Updates the adapter instruction metadata and caches
-                ///          the mapping in @p valueKinds when the IL instruction
-                ///          yields an SSA identifier. The helper returns the
-                ///          deduced kind so callers can reuse it immediately.
-                const auto setResultKind = [&](const il::core::Type &type) -> ILValue::Kind
-                {
-                    const ILValue::Kind kind = typeToKind(type);
-                    if (instr.result)
-                    {
-                        adaptedInstr.resultId = static_cast<int>(*instr.result);
-                        adaptedInstr.resultKind = kind;
-                        valueKinds[*instr.result] = kind;
-                    }
-                    else
-                    {
-                        adaptedInstr.resultKind = kind;
-                    }
-                    return kind;
-                };
-
-                switch (instr.op)
-                {
-                    case il::core::Opcode::Add:
-                    case il::core::Opcode::FAdd:
-                    {
-                        const ILValue::Kind kind = setResultKind(instr.type);
-                        adaptedInstr.opcode = "add";
-                        convertOperands(instr, {kind, kind}, adaptedInstr);
-                        break;
-                    }
-                    case il::core::Opcode::Sub:
-                    case il::core::Opcode::FSub:
-                    {
-                        const ILValue::Kind kind = setResultKind(instr.type);
-                        adaptedInstr.opcode = "sub";
-                        convertOperands(instr, {kind, kind}, adaptedInstr);
-                        break;
-                    }
-                    case il::core::Opcode::Mul:
-                    case il::core::Opcode::FMul:
-                    {
-                        const ILValue::Kind kind = setResultKind(instr.type);
-                        adaptedInstr.opcode = "mul";
-                        convertOperands(instr, {kind, kind}, adaptedInstr);
-                        break;
-                    }
-                    case il::core::Opcode::FDiv:
-                    {
-                        adaptedInstr.opcode = "fdiv";
-                        adaptedInstr.resultKind = ILValue::Kind::F64;
-                        if (instr.result)
-                        {
-                            adaptedInstr.resultId = static_cast<int>(*instr.result);
-                            valueKinds[*instr.result] = ILValue::Kind::F64;
-                        }
-                        convertOperands(
-                            instr, {ILValue::Kind::F64, ILValue::Kind::F64}, adaptedInstr);
-                        break;
-                    }
-                    case il::core::Opcode::SDiv:
-                    case il::core::Opcode::SDivChk0:
-                    {
-                        setResultKind(instr.type);
-                        adaptedInstr.opcode = "sdiv";
-                        convertOperands(
-                            instr, {ILValue::Kind::I64, ILValue::Kind::I64}, adaptedInstr);
-                        break;
-                    }
-                    case il::core::Opcode::SRem:
-                    case il::core::Opcode::SRemChk0:
-                    {
-                        setResultKind(instr.type);
-                        adaptedInstr.opcode = "srem";
-                        convertOperands(
-                            instr, {ILValue::Kind::I64, ILValue::Kind::I64}, adaptedInstr);
-                        break;
-                    }
-                    case il::core::Opcode::UDiv:
-                    case il::core::Opcode::UDivChk0:
-                    {
-                        setResultKind(instr.type);
-                        adaptedInstr.opcode = "udiv";
-                        convertOperands(
-                            instr, {ILValue::Kind::I64, ILValue::Kind::I64}, adaptedInstr);
-                        break;
-                    }
-                    case il::core::Opcode::URem:
-                    case il::core::Opcode::URemChk0:
-                    {
-                        setResultKind(instr.type);
-                        adaptedInstr.opcode = "urem";
-                        convertOperands(
-                            instr, {ILValue::Kind::I64, ILValue::Kind::I64}, adaptedInstr);
-                        break;
-                    }
-                    case il::core::Opcode::Shl:
-                    {
-                        const ILValue::Kind kind = setResultKind(instr.type);
-                        adaptedInstr.opcode = "shl";
-                        convertOperands(instr, {kind, ILValue::Kind::I64}, adaptedInstr);
-                        break;
-                    }
-                    case il::core::Opcode::LShr:
-                    {
-                        const ILValue::Kind kind = setResultKind(instr.type);
-                        adaptedInstr.opcode = "lshr";
-                        convertOperands(instr, {kind, ILValue::Kind::I64}, adaptedInstr);
-                        break;
-                    }
-                    case il::core::Opcode::AShr:
-                    {
-                        const ILValue::Kind kind = setResultKind(instr.type);
-                        adaptedInstr.opcode = "ashr";
-                        convertOperands(instr, {kind, ILValue::Kind::I64}, adaptedInstr);
-                        break;
-                    }
-                    case il::core::Opcode::And:
-                    {
-                        if (instr.result)
-                        {
-                            adaptedInstr.resultId = static_cast<int>(*instr.result);
-                            adaptedInstr.resultKind = ILValue::Kind::I64;
-                            valueKinds[*instr.result] = ILValue::Kind::I64;
-                        }
-                        else
-                        {
-                            adaptedInstr.resultKind = ILValue::Kind::I64;
-                        }
-                        adaptedInstr.opcode = "and";
-                        convertOperands(
-                            instr, {ILValue::Kind::I64, ILValue::Kind::I64}, adaptedInstr);
-                        break;
-                    }
-                    case il::core::Opcode::Or:
-                    {
-                        if (instr.result)
-                        {
-                            adaptedInstr.resultId = static_cast<int>(*instr.result);
-                            adaptedInstr.resultKind = ILValue::Kind::I64;
-                            valueKinds[*instr.result] = ILValue::Kind::I64;
-                        }
-                        else
-                        {
-                            adaptedInstr.resultKind = ILValue::Kind::I64;
-                        }
-                        adaptedInstr.opcode = "or";
-                        convertOperands(
-                            instr, {ILValue::Kind::I64, ILValue::Kind::I64}, adaptedInstr);
-                        break;
-                    }
-                    case il::core::Opcode::Xor:
-                    {
-                        if (instr.result)
-                        {
-                            adaptedInstr.resultId = static_cast<int>(*instr.result);
-                            adaptedInstr.resultKind = ILValue::Kind::I64;
-                            valueKinds[*instr.result] = ILValue::Kind::I64;
-                        }
-                        else
-                        {
-                            adaptedInstr.resultKind = ILValue::Kind::I64;
-                        }
-                        adaptedInstr.opcode = "xor";
-                        convertOperands(
-                            instr, {ILValue::Kind::I64, ILValue::Kind::I64}, adaptedInstr);
-                        break;
-                    }
-                    case il::core::Opcode::ICmpEq:
-                    case il::core::Opcode::ICmpNe:
-                    case il::core::Opcode::SCmpLT:
-                    case il::core::Opcode::SCmpLE:
-                    case il::core::Opcode::SCmpGT:
-                    case il::core::Opcode::SCmpGE:
-                    case il::core::Opcode::UCmpGT:
-                    case il::core::Opcode::UCmpGE:
-                    case il::core::Opcode::UCmpLT:
-                    case il::core::Opcode::UCmpLE:
-                    {
-                        adaptedInstr.opcode = "cmp";
-                        if (instr.result)
-                        {
-                            adaptedInstr.resultId = static_cast<int>(*instr.result);
-                            adaptedInstr.resultKind = ILValue::Kind::I1;
-                            valueKinds[*instr.result] = ILValue::Kind::I1;
-                        }
-                        else
-                        {
-                            adaptedInstr.resultKind = ILValue::Kind::I1;
-                        }
-                        convertOperands(
-                            instr, {ILValue::Kind::I64, ILValue::Kind::I64}, adaptedInstr);
-                        adaptedInstr.ops.push_back(makeCondImmediate(condCodeFor(instr.op)));
-                        break;
-                    }
-                    case il::core::Opcode::FCmpEQ:
-                    case il::core::Opcode::FCmpNE:
-                    case il::core::Opcode::FCmpLT:
-                    case il::core::Opcode::FCmpLE:
-                    case il::core::Opcode::FCmpGT:
-                    case il::core::Opcode::FCmpGE:
-                    {
-                        adaptedInstr.opcode = "fcmp";
-                        if (instr.result)
-                        {
-                            adaptedInstr.resultId = static_cast<int>(*instr.result);
-                            adaptedInstr.resultKind = ILValue::Kind::I1;
-                            valueKinds[*instr.result] = ILValue::Kind::I1;
-                        }
-                        else
-                        {
-                            adaptedInstr.resultKind = ILValue::Kind::I1;
-                        }
-                        convertOperands(
-                            instr, {ILValue::Kind::F64, ILValue::Kind::F64}, adaptedInstr);
-                        adaptedInstr.ops.push_back(makeCondImmediate(condCodeFor(instr.op)));
-                        break;
-                    }
-                    case il::core::Opcode::Call:
-                    {
-                        if (instr.type.kind != il::core::Type::Kind::Void)
-                        {
-                            setResultKind(instr.type);
-                        }
-                        else if (instr.result)
-                        {
-                            reportUnsupported("void call returning SSA id in Phase A lowering");
-                        }
-                        adaptedInstr.opcode = "call";
-                        adaptedInstr.ops.push_back(makeLabelValue(instr.callee));
-                        for (const auto &operand : instr.operands)
-                        {
-                            adaptedInstr.ops.push_back(convertValue(operand, std::nullopt));
-                        }
-                        break;
-                    }
-                    case il::core::Opcode::EhPush:
-                    {
-                        adaptedInstr.opcode = "eh.push";
-                        // Operand: handler label
-                        convertOperands(instr, {std::nullopt}, adaptedInstr);
-                        if (adaptedInstr.ops.size() > 1)
-                        {
-                            adaptedInstr.ops.resize(1);
-                        }
-                        break;
-                    }
-                    case il::core::Opcode::EhPop:
-                    {
-                        adaptedInstr.opcode = "eh.pop";
-                        adaptedInstr.resultKind = ILValue::Kind::I64; // unused
-                        break;
-                    }
-                    case il::core::Opcode::EhEntry:
-                    {
-                        adaptedInstr.opcode = "eh.entry";
-                        adaptedInstr.resultKind = ILValue::Kind::I64; // unused
-                        break;
-                    }
-                    case il::core::Opcode::Load:
-                    {
-                        const ILValue::Kind resultKind = setResultKind(instr.type);
-                        adaptedInstr.opcode = "load";
-                        convertOperands(
-                            instr, {ILValue::Kind::PTR, ILValue::Kind::I64}, adaptedInstr);
-                        if (adaptedInstr.ops.size() > 2)
-                        {
-                            adaptedInstr.ops.resize(2);
-                        }
-                        (void)resultKind;
-                        break;
-                    }
-                    case il::core::Opcode::Store:
-                    {
-                        adaptedInstr.opcode = "store";
-                        convertOperands(instr,
-                                        {std::nullopt, ILValue::Kind::PTR, ILValue::Kind::I64},
-                                        adaptedInstr);
-                        if (adaptedInstr.ops.size() > 3)
-                        {
-                            adaptedInstr.ops.resize(3);
-                        }
-                        break;
-                    }
-                    case il::core::Opcode::Zext1:
-                    {
-                        const ILValue::Kind kind = setResultKind(instr.type);
-                        adaptedInstr.opcode = "zext";
-                        convertOperands(instr, {ILValue::Kind::I1}, adaptedInstr);
-                        (void)kind;
-                        break;
-                    }
-                    case il::core::Opcode::Trunc1:
-                    {
-                        const ILValue::Kind kind = setResultKind(instr.type);
-                        adaptedInstr.opcode = "trunc";
-                        convertOperands(instr, {ILValue::Kind::I64}, adaptedInstr);
-                        (void)kind;
-                        break;
-                    }
-                    case il::core::Opcode::CastSiToFp:
-                    {
-                        setResultKind(instr.type);
-                        adaptedInstr.opcode = "sitofp";
-                        convertOperands(instr, {ILValue::Kind::I64}, adaptedInstr);
-                        break;
-                    }
-                    case il::core::Opcode::CastFpToSiRteChk:
-                    {
-                        setResultKind(instr.type);
-                        adaptedInstr.opcode = "fptosi";
-                        convertOperands(instr, {ILValue::Kind::F64}, adaptedInstr);
-                        break;
-                    }
-                    case il::core::Opcode::Ret:
-                    {
-                        adaptedInstr.opcode = "ret";
-                        if (!instr.operands.empty())
-                        {
-                            const auto returnKind =
-                                func.retType.kind == il::core::Type::Kind::Void
-                                    ? std::optional<ILValue::Kind>{}
-                                    : std::optional<ILValue::Kind>{typeToKind(func.retType)};
-                            adaptedInstr.ops.push_back(
-                                convertValue(instr.operands.front(), returnKind));
-                        }
-                        break;
-                    }
-                    case il::core::Opcode::Br:
-                    {
-                        adaptedInstr.opcode = "br";
-                        if (!instr.labels.empty())
-                        {
-                            adaptedInstr.ops.push_back(makeLabelValue(instr.labels.front()));
-                        }
-                        const std::size_t succCount = instr.labels.size();
-                        adaptedBlock.terminatorEdges.reserve(adaptedBlock.terminatorEdges.size() +
-                                                             succCount);
-                        for (std::size_t idx = 0; idx < succCount; ++idx)
-                        {
-                            viper::codegen::x64::ILBlock::EdgeArg edge{};
-                            edge.to = instr.labels[idx];
-                            if (idx < instr.brArgs.size())
-                            {
-                                for (const auto &arg : instr.brArgs[idx])
-                                {
-                                    if (arg.kind != il::core::Value::Kind::Temp)
-                                    {
-                                        reportUnsupported(
-                                            "non-SSA block argument in Phase A lowering");
-                                    }
-                                    edge.argIds.push_back(static_cast<int>(arg.id));
-                                }
-                            }
-                            adaptedBlock.terminatorEdges.push_back(std::move(edge));
-                        }
-                        break;
-                    }
-                    case il::core::Opcode::CBr:
-                    {
-                        adaptedInstr.opcode = "cbr";
-                        if (instr.operands.empty())
-                        {
-                            reportUnsupported("conditional branch missing condition operand");
-                        }
-                        adaptedInstr.ops.push_back(
-                            convertValue(instr.operands.front(), ILValue::Kind::I1));
-                        const std::size_t succCount = instr.labels.size();
-                        for (std::size_t idx = 0; idx < succCount; ++idx)
-                        {
-                            adaptedInstr.ops.push_back(makeLabelValue(instr.labels[idx]));
-                        }
-                        adaptedBlock.terminatorEdges.reserve(adaptedBlock.terminatorEdges.size() +
-                                                             succCount);
-                        for (std::size_t idx = 0; idx < succCount; ++idx)
-                        {
-                            viper::codegen::x64::ILBlock::EdgeArg edge{};
-                            edge.to = instr.labels[idx];
-                            if (idx < instr.brArgs.size())
-                            {
-                                for (const auto &arg : instr.brArgs[idx])
-                                {
-                                    if (arg.kind != il::core::Value::Kind::Temp)
-                                    {
-                                        reportUnsupported(
-                                            "non-SSA block argument in Phase A lowering");
-                                    }
-                                    edge.argIds.push_back(static_cast<int>(arg.id));
-                                }
-                            }
-                            adaptedBlock.terminatorEdges.push_back(std::move(edge));
-                        }
-                        break;
-                    }
-                    case il::core::Opcode::Trap:
-                    {
-                        adaptedInstr.opcode = "trap";
-                        break;
-                    }
-                    default:
-                        reportUnsupported(std::string{"IL opcode '"} +
-                                          il::core::toString(instr.op) +
-                                          "' not supported by x86-64 Phase A");
-                }
-
-                adaptedBlock.instrs.push_back(std::move(adaptedInstr));
-            }
-
-            adaptedFunc.blocks.push_back(std::move(adaptedBlock));
-        }
-
-        adapted.funcs.push_back(std::move(adaptedFunc));
     }
 
-    return adapted;
-}
+    //-------------------------------------------------------------------------
+    // Value Conversion
+    //-------------------------------------------------------------------------
+
+    /// @brief Convert an IL operand into the backend adapter value.
+    ILValue convertValue(const il::core::Value &value, std::optional<ILValue::Kind> hint)
+    {
+        ILValue converted{};
+        converted.id = -1;
+
+        switch (value.kind)
+        {
+            case il::core::Value::Kind::Temp:
+            {
+                const auto it = valueKinds_.find(value.id);
+                if (it == valueKinds_.end())
+                {
+                    reportUnsupported("ssa temp without registered kind in Phase A lowering");
+                }
+                converted.kind = it->second;
+                converted.id = static_cast<int>(value.id);
+                break;
+            }
+            case il::core::Value::Kind::ConstInt:
+            {
+                converted.kind =
+                    hint.value_or(value.isBool ? ILValue::Kind::I1 : ILValue::Kind::I64);
+                converted.i64 = value.i64;
+                break;
+            }
+            case il::core::Value::Kind::ConstFloat:
+                converted.kind = ILValue::Kind::F64;
+                converted.f64 = value.f64;
+                break;
+            case il::core::Value::Kind::ConstStr:
+                converted.kind = ILValue::Kind::STR;
+                converted.str = value.str;
+                converted.strLen = static_cast<std::uint64_t>(value.str.size());
+                break;
+            case il::core::Value::Kind::GlobalAddr:
+                converted.kind = ILValue::Kind::LABEL;
+                converted.label = value.str;
+                break;
+            case il::core::Value::Kind::NullPtr:
+                converted.kind = ILValue::Kind::PTR;
+                converted.i64 = 0;
+                break;
+        }
+
+        if (hint && value.kind != il::core::Value::Kind::Temp)
+        {
+            converted.kind = *hint;
+        }
+
+        return converted;
+    }
+
+    /// @brief Append converted operands to an adapter instruction.
+    void convertOperands(const il::core::Instr &instr,
+                         std::initializer_list<std::optional<ILValue::Kind>> hints,
+                         ILInstr &out)
+    {
+        std::size_t index = 0;
+        for (const auto &operand : instr.operands)
+        {
+            const std::optional<ILValue::Kind> hint =
+                index < hints.size() ? *(hints.begin() + static_cast<std::ptrdiff_t>(index))
+                                     : std::optional<ILValue::Kind>{};
+            out.ops.push_back(convertValue(operand, hint));
+            ++index;
+        }
+    }
+
+    //-------------------------------------------------------------------------
+    // Result Registration
+    //-------------------------------------------------------------------------
+
+    /// @brief Record the kind associated with the instruction result.
+    ILValue::Kind setResultKind(ILInstr &out, const il::core::Instr &instr,
+                                const il::core::Type &type)
+    {
+        const ILValue::Kind kind = typeToKind(type);
+        if (instr.result)
+        {
+            out.resultId = static_cast<int>(*instr.result);
+            out.resultKind = kind;
+            valueKinds_[*instr.result] = kind;
+        }
+        else
+        {
+            out.resultKind = kind;
+        }
+        return kind;
+    }
+
+    /// @brief Set result kind to a fixed type (for bitwise ops that always produce I64).
+    void setFixedResultKind(ILInstr &out, const il::core::Instr &instr, ILValue::Kind kind)
+    {
+        if (instr.result)
+        {
+            out.resultId = static_cast<int>(*instr.result);
+            out.resultKind = kind;
+            valueKinds_[*instr.result] = kind;
+        }
+        else
+        {
+            out.resultKind = kind;
+        }
+    }
+
+    //-------------------------------------------------------------------------
+    // Function/Block Adaptation
+    //-------------------------------------------------------------------------
+
+    /// @brief Adapt an entire IL function.
+    ILFunction adaptFunction(const il::core::Function &func)
+    {
+        currentFunc_ = &func;
+        valueKinds_.clear();
+        valueKinds_.reserve(func.valueNames.size() + func.params.size());
+
+        ILFunction adapted{};
+        adapted.name = func.name;
+
+        // Register parameter kinds
+        for (const auto &param : func.params)
+        {
+            valueKinds_.emplace(param.id, typeToKind(param.type));
+        }
+
+        // Adapt each block
+        for (const auto &block : func.blocks)
+        {
+            adapted.blocks.push_back(adaptBlock(block));
+        }
+
+        return adapted;
+    }
+
+    /// @brief Adapt an IL block.
+    ILBlock adaptBlock(const il::core::BasicBlock &block)
+    {
+        ILBlock adapted{};
+        adapted.name = block.label;
+
+        // Register block parameter kinds
+        for (const auto &param : block.params)
+        {
+            const ILValue::Kind kind = typeToKind(param.type);
+            adapted.paramIds.push_back(static_cast<int>(param.id));
+            adapted.paramKinds.push_back(kind);
+            valueKinds_[param.id] = kind;
+        }
+
+        // Adapt each instruction
+        for (const auto &instr : block.instructions)
+        {
+            adaptInstruction(instr, adapted);
+        }
+
+        return adapted;
+    }
+
+    //-------------------------------------------------------------------------
+    // Instruction Adaptation (by category)
+    //-------------------------------------------------------------------------
+
+    /// @brief Adapt a single instruction and append to block.
+    void adaptInstruction(const il::core::Instr &instr, ILBlock &block)
+    {
+        ILInstr out{};
+        out.resultId = -1;
+
+        switch (instr.op)
+        {
+            // Arithmetic operations
+            case il::core::Opcode::Add:
+            case il::core::Opcode::FAdd:
+                adaptBinaryArithmetic(instr, out, "add");
+                break;
+            case il::core::Opcode::Sub:
+            case il::core::Opcode::FSub:
+                adaptBinaryArithmetic(instr, out, "sub");
+                break;
+            case il::core::Opcode::Mul:
+            case il::core::Opcode::FMul:
+                adaptBinaryArithmetic(instr, out, "mul");
+                break;
+            case il::core::Opcode::FDiv:
+                adaptFDiv(instr, out);
+                break;
+
+            // Division and remainder
+            case il::core::Opcode::SDiv:
+            case il::core::Opcode::SDivChk0:
+                adaptIntDiv(instr, out, "sdiv");
+                break;
+            case il::core::Opcode::SRem:
+            case il::core::Opcode::SRemChk0:
+                adaptIntDiv(instr, out, "srem");
+                break;
+            case il::core::Opcode::UDiv:
+            case il::core::Opcode::UDivChk0:
+                adaptIntDiv(instr, out, "udiv");
+                break;
+            case il::core::Opcode::URem:
+            case il::core::Opcode::URemChk0:
+                adaptIntDiv(instr, out, "urem");
+                break;
+
+            // Shift operations
+            case il::core::Opcode::Shl:
+                adaptShift(instr, out, "shl");
+                break;
+            case il::core::Opcode::LShr:
+                adaptShift(instr, out, "lshr");
+                break;
+            case il::core::Opcode::AShr:
+                adaptShift(instr, out, "ashr");
+                break;
+
+            // Bitwise operations
+            case il::core::Opcode::And:
+                adaptBitwise(instr, out, "and");
+                break;
+            case il::core::Opcode::Or:
+                adaptBitwise(instr, out, "or");
+                break;
+            case il::core::Opcode::Xor:
+                adaptBitwise(instr, out, "xor");
+                break;
+
+            // Integer comparisons
+            case il::core::Opcode::ICmpEq:
+            case il::core::Opcode::ICmpNe:
+            case il::core::Opcode::SCmpLT:
+            case il::core::Opcode::SCmpLE:
+            case il::core::Opcode::SCmpGT:
+            case il::core::Opcode::SCmpGE:
+            case il::core::Opcode::UCmpGT:
+            case il::core::Opcode::UCmpGE:
+            case il::core::Opcode::UCmpLT:
+            case il::core::Opcode::UCmpLE:
+                adaptIntCompare(instr, out);
+                break;
+
+            // Float comparisons
+            case il::core::Opcode::FCmpEQ:
+            case il::core::Opcode::FCmpNE:
+            case il::core::Opcode::FCmpLT:
+            case il::core::Opcode::FCmpLE:
+            case il::core::Opcode::FCmpGT:
+            case il::core::Opcode::FCmpGE:
+                adaptFloatCompare(instr, out);
+                break;
+
+            // Call
+            case il::core::Opcode::Call:
+                adaptCall(instr, out);
+                break;
+
+            // Exception handling
+            case il::core::Opcode::EhPush:
+                adaptEhPush(instr, out);
+                break;
+            case il::core::Opcode::EhPop:
+                adaptEhPop(out);
+                break;
+            case il::core::Opcode::EhEntry:
+                adaptEhEntry(out);
+                break;
+
+            // Memory operations
+            case il::core::Opcode::Load:
+                adaptLoad(instr, out);
+                break;
+            case il::core::Opcode::Store:
+                adaptStore(instr, out);
+                break;
+
+            // Cast operations
+            case il::core::Opcode::Zext1:
+                adaptZext(instr, out);
+                break;
+            case il::core::Opcode::Trunc1:
+                adaptTrunc(instr, out);
+                break;
+            case il::core::Opcode::CastSiToFp:
+                adaptSiToFp(instr, out);
+                break;
+            case il::core::Opcode::CastFpToSiRteChk:
+                adaptFpToSi(instr, out);
+                break;
+
+            // Control flow
+            case il::core::Opcode::Ret:
+                adaptRet(instr, out);
+                break;
+            case il::core::Opcode::Br:
+                adaptBr(instr, out, block);
+                break;
+            case il::core::Opcode::CBr:
+                adaptCBr(instr, out, block);
+                break;
+            case il::core::Opcode::Trap:
+                out.opcode = "trap";
+                break;
+
+            default:
+                reportUnsupported(std::string{"IL opcode '"} + il::core::toString(instr.op) +
+                                  "' not supported by x86-64 Phase A");
+        }
+
+        block.instrs.push_back(std::move(out));
+    }
+
+    //-------------------------------------------------------------------------
+    // Arithmetic Instruction Adapters
+    //-------------------------------------------------------------------------
+
+    void adaptBinaryArithmetic(const il::core::Instr &instr, ILInstr &out, const char *opcode)
+    {
+        const ILValue::Kind kind = setResultKind(out, instr, instr.type);
+        out.opcode = opcode;
+        convertOperands(instr, {kind, kind}, out);
+    }
+
+    void adaptFDiv(const il::core::Instr &instr, ILInstr &out)
+    {
+        out.opcode = "fdiv";
+        out.resultKind = ILValue::Kind::F64;
+        if (instr.result)
+        {
+            out.resultId = static_cast<int>(*instr.result);
+            valueKinds_[*instr.result] = ILValue::Kind::F64;
+        }
+        convertOperands(instr, {ILValue::Kind::F64, ILValue::Kind::F64}, out);
+    }
+
+    void adaptIntDiv(const il::core::Instr &instr, ILInstr &out, const char *opcode)
+    {
+        setResultKind(out, instr, instr.type);
+        out.opcode = opcode;
+        convertOperands(instr, {ILValue::Kind::I64, ILValue::Kind::I64}, out);
+    }
+
+    void adaptShift(const il::core::Instr &instr, ILInstr &out, const char *opcode)
+    {
+        const ILValue::Kind kind = setResultKind(out, instr, instr.type);
+        out.opcode = opcode;
+        convertOperands(instr, {kind, ILValue::Kind::I64}, out);
+    }
+
+    void adaptBitwise(const il::core::Instr &instr, ILInstr &out, const char *opcode)
+    {
+        setFixedResultKind(out, instr, ILValue::Kind::I64);
+        out.opcode = opcode;
+        convertOperands(instr, {ILValue::Kind::I64, ILValue::Kind::I64}, out);
+    }
+
+    //-------------------------------------------------------------------------
+    // Comparison Instruction Adapters
+    //-------------------------------------------------------------------------
+
+    void adaptIntCompare(const il::core::Instr &instr, ILInstr &out)
+    {
+        out.opcode = "cmp";
+        setFixedResultKind(out, instr, ILValue::Kind::I1);
+        convertOperands(instr, {ILValue::Kind::I64, ILValue::Kind::I64}, out);
+        out.ops.push_back(makeCondImmediate(condCodeFor(instr.op)));
+    }
+
+    void adaptFloatCompare(const il::core::Instr &instr, ILInstr &out)
+    {
+        out.opcode = "fcmp";
+        setFixedResultKind(out, instr, ILValue::Kind::I1);
+        convertOperands(instr, {ILValue::Kind::F64, ILValue::Kind::F64}, out);
+        out.ops.push_back(makeCondImmediate(condCodeFor(instr.op)));
+    }
+
+    //-------------------------------------------------------------------------
+    // Call Instruction Adapter
+    //-------------------------------------------------------------------------
+
+    void adaptCall(const il::core::Instr &instr, ILInstr &out)
+    {
+        if (instr.type.kind != il::core::Type::Kind::Void)
+        {
+            setResultKind(out, instr, instr.type);
+        }
+        else if (instr.result)
+        {
+            reportUnsupported("void call returning SSA id in Phase A lowering");
+        }
+        out.opcode = "call";
+        out.ops.push_back(makeLabelValue(instr.callee));
+        for (const auto &operand : instr.operands)
+        {
+            out.ops.push_back(convertValue(operand, std::nullopt));
+        }
+    }
+
+    //-------------------------------------------------------------------------
+    // Exception Handling Adapters
+    //-------------------------------------------------------------------------
+
+    void adaptEhPush(const il::core::Instr &instr, ILInstr &out)
+    {
+        out.opcode = "eh.push";
+        convertOperands(instr, {std::nullopt}, out);
+        if (out.ops.size() > 1)
+        {
+            out.ops.resize(1);
+        }
+    }
+
+    void adaptEhPop(ILInstr &out)
+    {
+        out.opcode = "eh.pop";
+        out.resultKind = ILValue::Kind::I64; // unused
+    }
+
+    void adaptEhEntry(ILInstr &out)
+    {
+        out.opcode = "eh.entry";
+        out.resultKind = ILValue::Kind::I64; // unused
+    }
+
+    //-------------------------------------------------------------------------
+    // Memory Operation Adapters
+    //-------------------------------------------------------------------------
+
+    void adaptLoad(const il::core::Instr &instr, ILInstr &out)
+    {
+        setResultKind(out, instr, instr.type);
+        out.opcode = "load";
+        convertOperands(instr, {ILValue::Kind::PTR, ILValue::Kind::I64}, out);
+        if (out.ops.size() > 2)
+        {
+            out.ops.resize(2);
+        }
+    }
+
+    void adaptStore(const il::core::Instr &instr, ILInstr &out)
+    {
+        out.opcode = "store";
+        convertOperands(instr, {std::nullopt, ILValue::Kind::PTR, ILValue::Kind::I64}, out);
+        if (out.ops.size() > 3)
+        {
+            out.ops.resize(3);
+        }
+    }
+
+    //-------------------------------------------------------------------------
+    // Cast Operation Adapters
+    //-------------------------------------------------------------------------
+
+    void adaptZext(const il::core::Instr &instr, ILInstr &out)
+    {
+        setResultKind(out, instr, instr.type);
+        out.opcode = "zext";
+        convertOperands(instr, {ILValue::Kind::I1}, out);
+    }
+
+    void adaptTrunc(const il::core::Instr &instr, ILInstr &out)
+    {
+        setResultKind(out, instr, instr.type);
+        out.opcode = "trunc";
+        convertOperands(instr, {ILValue::Kind::I64}, out);
+    }
+
+    void adaptSiToFp(const il::core::Instr &instr, ILInstr &out)
+    {
+        setResultKind(out, instr, instr.type);
+        out.opcode = "sitofp";
+        convertOperands(instr, {ILValue::Kind::I64}, out);
+    }
+
+    void adaptFpToSi(const il::core::Instr &instr, ILInstr &out)
+    {
+        setResultKind(out, instr, instr.type);
+        out.opcode = "fptosi";
+        convertOperands(instr, {ILValue::Kind::F64}, out);
+    }
+
+    //-------------------------------------------------------------------------
+    // Control Flow Adapters
+    //-------------------------------------------------------------------------
+
+    void adaptRet(const il::core::Instr &instr, ILInstr &out)
+    {
+        out.opcode = "ret";
+        if (!instr.operands.empty())
+        {
+            const auto returnKind = currentFunc_->retType.kind == il::core::Type::Kind::Void
+                                        ? std::optional<ILValue::Kind>{}
+                                        : std::optional<ILValue::Kind>{typeToKind(currentFunc_->retType)};
+            out.ops.push_back(convertValue(instr.operands.front(), returnKind));
+        }
+    }
+
+    void adaptBr(const il::core::Instr &instr, ILInstr &out, ILBlock &block)
+    {
+        out.opcode = "br";
+        if (!instr.labels.empty())
+        {
+            out.ops.push_back(makeLabelValue(instr.labels.front()));
+        }
+        addTerminatorEdges(instr, block);
+    }
+
+    void adaptCBr(const il::core::Instr &instr, ILInstr &out, ILBlock &block)
+    {
+        out.opcode = "cbr";
+        if (instr.operands.empty())
+        {
+            reportUnsupported("conditional branch missing condition operand");
+        }
+        out.ops.push_back(convertValue(instr.operands.front(), ILValue::Kind::I1));
+        for (const auto &label : instr.labels)
+        {
+            out.ops.push_back(makeLabelValue(label));
+        }
+        addTerminatorEdges(instr, block);
+    }
+
+    /// @brief Add terminator edges for branch instructions.
+    void addTerminatorEdges(const il::core::Instr &instr, ILBlock &block)
+    {
+        const std::size_t succCount = instr.labels.size();
+        block.terminatorEdges.reserve(block.terminatorEdges.size() + succCount);
+
+        for (std::size_t idx = 0; idx < succCount; ++idx)
+        {
+            ILBlock::EdgeArg edge{};
+            edge.to = instr.labels[idx];
+            if (idx < instr.brArgs.size())
+            {
+                for (const auto &arg : instr.brArgs[idx])
+                {
+                    if (arg.kind != il::core::Value::Kind::Temp)
+                    {
+                        reportUnsupported("non-SSA block argument in Phase A lowering");
+                    }
+                    edge.argIds.push_back(static_cast<int>(arg.id));
+                }
+            }
+            block.terminatorEdges.push_back(std::move(edge));
+        }
+    }
+};
 
 } // namespace
 
 /// @brief Execute Phase A lowering for the provided pipeline module.
-/// @details Replaces the module's adapter representation with a freshly
-///          constructed one derived from the IL module. Diagnostics are routed
-///          through @ref reportUnsupported which terminates the process when an
-///          unsupported feature is encountered.
-/// @param module Pipeline state containing the IL module to adapt.
-/// @param diags  Unused diagnostics sink (reserved for future richer reporting).
-/// @return @c true when lowering completed successfully.
 bool LoweringPass::run(Module &module, Diagnostics &)
 {
-    module.lowered = convertToAdapterModule(module.il);
+    ModuleAdapter adapter{};
+    module.lowered = adapter.adapt(module.il);
     return true;
 }
 

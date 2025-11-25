@@ -4,9 +4,11 @@ audience: developers
 last-updated: 2025-11-13
 ---
 
-# Viper Backend — x86-64 Native Code Generation
+# Viper Backend — Native Code Generation
 
-Comprehensive guide to the Viper x86-64 backend, a native code generator that compiles Viper IL programs to executable machine code. This document covers the backend's design philosophy, compilation pipeline, code generation strategies, and source code organization.
+Comprehensive guide to the Viper native backends (x86-64 and AArch64), which compile Viper IL programs to executable machine code. This document covers the backend's design philosophy, compilation pipeline, code generation strategies, and source code organization.
+
+> **Note:** The x86-64 backend is fully featured. The AArch64 backend is functional with core operations; see the [AArch64 Backend](#aarch64-backend) section for details.
 
 ---
 
@@ -22,8 +24,9 @@ Comprehensive guide to the Viper x86-64 backend, a native code generator that co
 8. [Frame Lowering](#frame-lowering)
 9. [Assembly Emission](#assembly-emission)
 10. [Calling Convention](#calling-convention)
-11. [Source Code Guide](#source-code-guide)
-12. [Implementation Phases](#implementation-phases)
+11. [AArch64 Backend](#aarch64-backend)
+12. [Source Code Guide](#source-code-guide)
+13. [Implementation Phases](#implementation-phases)
 
 ---
 
@@ -786,80 +789,122 @@ movq   %rax, %v_result # Capture return value
 
 ---
 
+## AArch64 Backend
+
+### Overview
+
+The AArch64 backend targets 64-bit ARM processors (Apple Silicon, ARM servers). It shares design principles with the x86-64 backend but is tailored for the ARM instruction set and AAPCS64 calling convention.
+
+### Key Characteristics
+
+| Feature | Description |
+|---------|-------------|
+| **Target** | AArch64 (ARM64) architecture |
+| **ABI** | AAPCS64 (ARM Procedure Call Standard) |
+| **Output** | ARM assembly (GAS-compatible) |
+| **Strategy** | SSA-based with linear scan register allocation |
+| **Status** | Functional for core operations |
+
+### Supported Features
+
+- Integer arithmetic (add, sub, mul)
+- Floating-point arithmetic (fadd, fsub, fmul, fdiv)
+- Bitwise operations (and, or, xor, shifts)
+- Comparisons and conditional branches
+- Function calls (direct)
+- Switch statements
+- Local variables (FP-relative addressing)
+- Array and object operations
+
+### AArch64 Register Usage
+
+**Integer Arguments:** X0-X7
+**Float Arguments:** V0-V7 (D registers)
+**Return Values:** X0 (integer), V0 (float)
+**Callee-saved:** X19-X28
+**Caller-saved:** X9-X15
+**Frame Pointer:** X29 (FP)
+**Link Register:** X30 (LR)
+**Stack Pointer:** SP
+
+### Source Files
+
+```
+src/codegen/aarch64/
+├── AsmEmitter.hpp/cpp      # ARM assembly emission
+├── FrameBuilder.hpp/cpp    # Stack frame construction
+├── FramePlan.hpp           # Frame layout planning
+├── LowerILToMIR.hpp/cpp    # IL → MIR lowering
+├── MachineIR.hpp/cpp       # Machine IR structures
+├── OpcodeMappings.hpp      # IL opcode to MIR mapping
+├── RegAllocLinear.hpp/cpp  # Linear scan allocator
+├── RodataPool.hpp/cpp      # Read-only data management
+├── TargetAArch64.hpp/cpp   # Target description
+└── generated/              # Generated dispatch tables
+```
+
+### Usage
+
+```bash
+# Generate ARM assembly from IL
+ilc codegen arm64 program.il -S program.s
+
+# Assemble and link (macOS)
+as program.s -o program.o
+clang++ program.o build/src/runtime/libviper_runtime.a -o program
+```
+
+---
+
 ## Source Code Guide
 
 ### Directory Structure
 
 ```
-src/codegen/x86_64/
-├── Backend.hpp                # High-level facade
-├── Backend.cpp                # Pipeline orchestration
-├── CodegenPipeline.hpp        # End-to-end pipeline
-├── CodegenPipeline.cpp
+src/codegen/
+├── common/                        # Shared utilities
+│   ├── ArgNormalize.hpp           # Argument normalization
+│   └── LabelUtil.hpp              # Label generation helpers
 │
-├── MachineIR.hpp              # MIR data structures
-├── MachineIR.cpp
-├── TargetX64.hpp              # x86-64 target description
-├── TargetX64.cpp
+├── aarch64/                       # ARM64 backend (see above)
 │
-├── LowerILToMIR.hpp           # IL → MIR lowering
-├── LowerILToMIR.cpp
-├── LoweringRules.hpp          # Lowering rule registry
-├── LoweringRules.cpp
-├── LoweringRuleTable.hpp      # Rule table generator
-├── LoweringRuleTable.cpp
-├── Lowering.*.cpp             # Lowering by category:
-│   ├── Lowering.Arith.cpp     #   Arithmetic ops
-│   ├── Lowering.Bitwise.cpp   #   Bitwise ops
-│   ├── Lowering.CF.cpp        #   Control flow
-│   ├── Lowering.Mem.cpp       #   Memory ops
-│   ├── Lowering.EH.cpp        #   Exception handling
-│   └── Lowering.EmitCommon.*  #   Shared helpers
-│
-├── ISel.hpp                   # Instruction selection
-├── ISel.cpp
-├── Peephole.hpp               # Peephole optimization
-├── Peephole.cpp
-├── LowerDiv.cpp               # Division/modulo lowering
-├── Unsupported.hpp            # Unsupported opcode tracking
-│
-├── CallLowering.hpp           # Calling convention
-├── CallLowering.cpp
-├── FrameLowering.hpp          # Stack frame layout
-├── FrameLowering.cpp
-│
-├── RegAllocLinear.hpp         # Register allocation
-├── RegAllocLinear.cpp
-├── ParallelCopyResolver.hpp   # Parallel copy resolution
-├── OperandUtils.hpp           # Operand utilities
-│
-├── ra/                        # Register allocation internals
-│   ├── Allocator.hpp          #   Linear scan allocator
-│   ├── Allocator.cpp
-│   ├── LiveIntervals.hpp      #   Live interval analysis
-│   ├── LiveIntervals.cpp
-│   ├── Spiller.hpp            #   Spill code insertion
-│   ├── Spiller.cpp
-│   ├── Coalescer.hpp          #   Copy coalescing
-│   └── Coalescer.cpp
-│
-├── AsmEmitter.hpp             # Assembly emission
-├── AsmEmitter.cpp
-├── asmfmt/
-│   ├── Format.hpp             #   Formatting helpers
-│   └── Format.cpp
-│
-└── passes/                    # Pipeline passes
-    ├── PassManager.hpp        #   Pass orchestration
-    ├── PassManager.cpp
-    ├── LoweringPass.hpp       #   IL lowering pass
-    ├── LoweringPass.cpp
-    ├── LegalizePass.hpp       #   Instruction selection pass
-    ├── LegalizePass.cpp
-    ├── RegAllocPass.hpp       #   Register allocation pass
-    ├── RegAllocPass.cpp
-    ├── EmitPass.hpp           #   Assembly emission pass
-    └── EmitPass.cpp
+└── x86_64/                        # x86-64 backend
+    ├── Backend.hpp                # High-level facade
+    ├── Backend.cpp                # Pipeline orchestration
+    ├── CodegenPipeline.hpp/cpp    # End-to-end pipeline
+    ├── MachineIR.hpp/cpp          # MIR data structures
+    ├── TargetX64.hpp/cpp          # x86-64 target description
+    ├── LowerILToMIR.hpp/cpp       # IL → MIR lowering
+    ├── LoweringRules.hpp/cpp      # Lowering rule registry
+    ├── LoweringRuleTable.hpp/cpp  # Rule table generator
+    ├── Lowering.Arith.cpp         # Arithmetic ops lowering
+    ├── Lowering.Bitwise.cpp       # Bitwise ops lowering
+    ├── Lowering.CF.cpp            # Control flow lowering
+    ├── Lowering.Mem.cpp           # Memory ops lowering
+    ├── Lowering.EH.cpp            # Exception handling lowering
+    ├── Lowering.EmitCommon.*      # Shared lowering helpers
+    ├── ISel.hpp/cpp               # Instruction selection
+    ├── Peephole.hpp/cpp           # Peephole optimization
+    ├── LowerDiv.cpp               # Division/modulo lowering
+    ├── Unsupported.hpp            # Unsupported opcode tracking
+    ├── CallLowering.hpp/cpp       # Calling convention
+    ├── FrameLowering.hpp/cpp      # Stack frame layout
+    ├── RegAllocLinear.hpp/cpp     # Register allocation
+    ├── ParallelCopyResolver.hpp   # Parallel copy resolution
+    ├── OperandUtils.hpp           # Operand utilities
+    ├── ra/                        # Register allocation internals
+    │   ├── Allocator.hpp/cpp      # Linear scan allocator
+    │   ├── LiveIntervals.hpp/cpp  # Live interval analysis
+    │   ├── Spiller.hpp/cpp        # Spill code insertion
+    │   └── Coalescer.hpp/cpp      # Copy coalescing
+    ├── AsmEmitter.hpp/cpp         # Assembly emission
+    ├── asmfmt/Format.hpp/cpp      # Formatting helpers
+    └── passes/                    # Pipeline passes
+        ├── PassManager.hpp/cpp    # Pass orchestration
+        ├── LoweringPass.hpp/cpp   # IL lowering pass
+        ├── LegalizePass.hpp/cpp   # Instruction selection pass
+        ├── RegAllocPass.hpp/cpp   # Register allocation pass
+        └── EmitPass.hpp/cpp       # Assembly emission pass
 ```
 
 ### Key Files by Functionality

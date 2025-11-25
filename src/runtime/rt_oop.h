@@ -34,8 +34,8 @@
 
 #pragma once
 
-#include <stdint.h>
 #include "rt_string.h"
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C"
@@ -107,7 +107,10 @@ extern "C"
     // Allocates metadata and registers it in the per-VM registry so lookups by
     // vtable pointer succeed and Object.ToString can render the qualified name.
     void rt_register_class_direct(int type_id, void **vtable, const char *qname, int vslot_count);
-    void rt_register_class_direct_rs(int type_id, void **vtable, rt_string qname, int64_t vslot_count);
+    void rt_register_class_direct_rs(int type_id,
+                                     void **vtable,
+                                     rt_string qname,
+                                     int64_t vslot_count);
 
     // Lookup the canonical vtable pointer for a registered class type id.
     // Returns NULL when unknown.

@@ -751,14 +751,16 @@ DescriptorRow{"Viper.Console.PrintStr",
                   RuntimeTrapClass::None},
 
     // OOP class registration (compiler-emitted module init)
-    DescriptorRow{"rt_register_class_direct",
-                  std::nullopt,
-                  "void(i64,ptr,string,i64)",
-                  &DirectHandler<&rt_register_class_direct_rs, void, int64_t, void **, rt_string, int64_t>::invoke,
-                  kManualLowering,
-                  nullptr,
-                  0,
-                  RuntimeTrapClass::None},
+    DescriptorRow{
+        "rt_register_class_direct",
+        std::nullopt,
+        "void(i64,ptr,string,i64)",
+        &DirectHandler<&rt_register_class_direct_rs, void, int64_t, void **, rt_string, int64_t>::
+            invoke,
+        kManualLowering,
+        nullptr,
+        0,
+        RuntimeTrapClass::None},
 
     DescriptorRow{"rt_get_class_vtable",
                   std::nullopt,

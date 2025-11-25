@@ -14,7 +14,7 @@ If you're new to the IL, start with the [IL Quickstart](il-quickstart.md).
 
 - Multi-language front ends (begin with BASIC) that all lower to a common IL "thin waist."
 - Interpreter backend that executes IL directly for fast bring-up, tests, and debugging.
-- Native backend that translates IL to assembly (x86-64 SysV first), assembled and linked into runnable binaries.
+- Native backends that translate IL to assembly (x86-64 SysV and ARM64 AAPCS64), assembled and linked into runnable binaries.
 - Small, solo-friendly codebase with clear module boundaries, strong tests, and a stable runtime ABI.
 
 ## High-level pipeline
@@ -25,8 +25,8 @@ The core stages and artifacts:
 - **Lowering:** AST → IL module (functions, blocks, instructions).
 - **Optimization passes:** constant folding, dead code elimination, peephole rewriting.
 - **Execution backends:**
-  - **VM interpreter** (primary today).
-  - **Code generation** (experimental, planned to target x86-64 SysV first).
+  - **VM interpreter** — primary development/debugging target.
+  - **Code generation** — x86-64 SysV (Phase A complete), ARM64 AAPCS64 (functional).
 
 ```text
 +-----------------------+        +-----------------------+
@@ -80,7 +80,7 @@ When the native backend is enabled, the same IL feeds the code generator instead
 - **IL core:** `src/il/core/`, `src/il/io/`, `src/il/build/`, `src/il/verify/`.
 - **Passes:** `src/il/transform/`.
 - **VM:** `src/vm/`, `src/runtime/`.
-- **Code generation:** `src/codegen/`.
+- **Code generation:** `src/codegen/` (x86_64, aarch64, common).
 - **Support utilities:** `src/support/`.
 - **Tools:** `src/tools/ilc/` (driver and subcommands), `src/tools/`.
 - **Docs & examples:** `docs/`, `examples/`, `tests/` (`unit/`, `golden/`, `e2e/`).
@@ -208,7 +208,10 @@ Runtime services manage heap-allocated strings with reference counting. Extern c
 
 ### Code generation
 
-`src/codegen/x86_64/` contains the experimental backend. It does not yet produce runnable machine code but outlines the long-term plan to translate IL modules to SysV x86-64, reusing existing passes for optimization.
+`src/codegen/` contains native backends for x86-64 and ARM64:
+
+- **x86-64** (`src/codegen/x86_64/`) — Fully functional Phase A backend targeting System V AMD64 ABI. Features linear-scan register allocation, complete opcode coverage, and AT&T assembly output.
+- **ARM64** (`src/codegen/aarch64/`) — Functional backend targeting AAPCS64 (Apple Silicon, Linux ARM64). Features linear-scan register allocation, core integer/float operations, and function calls.
 
 Pipeline expectations:
 
@@ -293,7 +296,7 @@ Modules declare an IL version (`il 0.1.2`) at the top. The runtime ABI aims to r
   support/           # shared utilities
   il/                # core types, IR, builder, verifier, I/O
   vm/                # interpreter
-  codegen/x86_64/    # SysV backend (experimental)
+  codegen/           # Native backends (x86_64, aarch64, common)
   frontends/basic/   # BASIC lexer, parser, AST, lowering
   tools/ilc/         # CLI driver and subcommands
 /tests/
@@ -303,7 +306,7 @@ Modules declare an IL version (`il 0.1.2`) at the top. The runtime ABI aims to r
 /scripts/            # dev scripts (format, lint, build, test)
 ```
 
-Top-level CMake targets include `il_core`, `il_vm`, `il_codegen_x86_64`, `frontend_basic`, `librt`, CLI executables (`ilc`, `il-dis`, `il-verify`), and dedicated test binaries.
+Top-level CMake targets include `il_core`, `il_vm`, `il_codegen_x86_64`, `il_codegen_aarch64`, `frontend_basic`, `librt`, CLI executables (`ilc`, `vbasic`, `ilrun`, `il-dis`, `il-verify`), and dedicated test binaries.
 
 ### Tooling & Build
 
@@ -385,18 +388,26 @@ The runtime provides a comprehensive C ABI with the following components:
 - Flags like `--trace` and `--trace-calls` expose executed instructions and frame transitions.
 - Traps propagate structured errors with location metadata, enabling pretty diagnostics at the CLI layer.
 
-### Codegen (`il::codegen::x86_64`)
+### Codegen
 
-#### Pipeline
+#### x86-64 (`viper::codegen::x64`)
 
-1. Lower IL to target-friendly form (optional MIR).
-2. Compute liveness for virtual registers.
-3. Run linear-scan register allocation with spill slot reuse.
-4. Select instructions via greedy patterns.
-5. Emit prologues/epilogues preserving ABI invariants.
-6. Marshal calls to SysV conventions (GP and FP register assignments).
-7. Output assembly (`.s`), assemble, and link with the runtime.
-8. Optionally emit debug annotations (comments today, DWARF later).
+Phase A complete. Pipeline:
+
+1. Lower IL to MIR (Machine IR with virtual registers).
+2. Instruction selection and legalization.
+3. Linear-scan register allocation with spilling.
+4. Frame layout (callee-saved registers, spill area, outgoing args).
+5. Assembly emission (AT&T syntax, GAS-compatible).
+
+#### ARM64 (`viper::codegen::aarch64`)
+
+Functional for core operations. Pipeline:
+
+1. Lower IL to AArch64 MIR.
+2. Linear-scan register allocation.
+3. Frame construction (FP-relative addressing).
+4. Assembly emission (ARM GAS syntax).
 
 ## Archived blueprint highlights
 

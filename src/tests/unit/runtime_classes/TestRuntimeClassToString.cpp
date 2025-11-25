@@ -13,17 +13,20 @@
 
 #include "tests/unit/GTestStub.hpp"
 
-extern "C" {
-#include "runtime/rt_context.h"
-#include "runtime/rt_oop.h"
+extern "C"
+{
+#include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_string.h"
-#include "rt_internal.h"
+#include "runtime/rt_context.h"
+#include "runtime/rt_oop.h"
 }
 
 TEST(RuntimeClasses, ToString_UsesRegisteredQName)
 {
-    RtContext ctx{}; rt_context_init(&ctx); rt_set_current_context(&ctx);
+    RtContext ctx{};
+    rt_context_init(&ctx);
+    rt_set_current_context(&ctx);
 
     // Allocate a dummy vtable (at least one slot for stability)
     void **vtbl = (void **)rt_heap_alloc(RT_HEAP_OBJECT, RT_ELEM_NONE, 1, 8, 8);
