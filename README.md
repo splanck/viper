@@ -111,7 +111,7 @@ Compile to native code (x86-64):
 - **`basic-ast-dump`**: BASIC AST visualizer
 
 **Quality Assurance:**
-- Extensive golden test suite across all layers
+- Comprehensive test suite with 735+ tests across all layers
 - Deterministic numeric semantics (overflow checking, banker's rounding)
 - Unified error model across frontends, IL, and VM
 

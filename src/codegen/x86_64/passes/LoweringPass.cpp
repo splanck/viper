@@ -242,7 +242,8 @@ class ModuleAdapter
     //-------------------------------------------------------------------------
 
     /// @brief Record the kind associated with the instruction result.
-    ILValue::Kind setResultKind(ILInstr &out, const il::core::Instr &instr,
+    ILValue::Kind setResultKind(ILInstr &out,
+                                const il::core::Instr &instr,
                                 const il::core::Type &type)
     {
         const ILValue::Kind kind = typeToKind(type);
@@ -658,9 +659,10 @@ class ModuleAdapter
         out.opcode = "ret";
         if (!instr.operands.empty())
         {
-            const auto returnKind = currentFunc_->retType.kind == il::core::Type::Kind::Void
-                                        ? std::optional<ILValue::Kind>{}
-                                        : std::optional<ILValue::Kind>{typeToKind(currentFunc_->retType)};
+            const auto returnKind =
+                currentFunc_->retType.kind == il::core::Type::Kind::Void
+                    ? std::optional<ILValue::Kind>{}
+                    : std::optional<ILValue::Kind>{typeToKind(currentFunc_->retType)};
             out.ops.push_back(convertValue(instr.operands.front(), returnKind));
         }
     }

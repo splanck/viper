@@ -33,15 +33,20 @@ Requirements: CMake 3.20+, Clang or GCC with C++17 support. See the top-level RE
 
 ### 5. How do I run a BASIC program?
 
-Use the `ilc` tool (formerly `vbasic`):
+Use the `vbasic` tool:
 
 ```bash
-./build/src/tools/ilc/ilc front basic -run myprogram.bas
+./build/src/tools/vbasic/vbasic myprogram.bas
 ```
 
-For additional options including debugging and IL output:
+For additional options:
 ```bash
-./build/src/tools/ilc/ilc front basic --help
+./build/src/tools/vbasic/vbasic --help
+```
+
+The advanced `ilc` command is also available:
+```bash
+./build/src/tools/ilc/ilc front basic -run myprogram.bas
 ```
 
 ### 6. Where can I find example programs?
@@ -219,17 +224,17 @@ For code-level documentation, see header comments in source files.
 **Build and run a program:**
 ```bash
 cmake --build build -j
-./build/src/tools/ilc/ilc front basic -run program.bas
+./build/src/tools/vbasic/vbasic program.bas
 ```
 
 **Run with debugging:**
 ```bash
-./build/src/tools/ilc/ilc front basic -run program.bas -break program.bas:10
+./build/src/tools/ilrun/ilrun program.il --break main:10
 ```
 
 **View generated IL:**
 ```bash
-./build/src/tools/ilc/ilc front basic -emit-il program.bas
+./build/src/tools/vbasic/vbasic program.bas --emit-il
 ```
 
 **Run tests:**

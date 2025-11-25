@@ -1,12 +1,12 @@
 ---
 status: active
 audience: public
-last-verified: 2025-09-23
+last-verified: 2025-11-25
 ---
 
 # Viper Architecture Overview
 
-**Purpose:** This document explains how Viper compiles and runs programs end-to-end: front ends (e.g., BASIC) → intermediate language (IL) → optimization passes → execution on the VM interpreter → (future) native code generation. It merges prior overview notes and archived blueprints so contributors have a single map to the system; deep dives live in linked pages.
+**Purpose:** This document explains how Viper compiles and runs programs end-to-end: front ends (e.g., BASIC) → intermediate language (IL) → optimization passes → execution on the VM interpreter → native code generation. It merges prior overview notes and archived blueprints so contributors have a single map to the system; deep dives live in linked pages.
 
 If you're new to the IL, start with the [IL Quickstart](il-quickstart.md).
 

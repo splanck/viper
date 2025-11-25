@@ -1,22 +1,31 @@
----
-status: active
-audience: developers
-last-verified: 2025-11-18
----
+# Code Map
 
-# Code Map (Index)
+Source code organization for the Viper compiler toolchain.
 
-This is a short index that points to the canonical, detailed code map under `devdocs/`.
+> **Full documentation**: See [/devdocs/codemap.md](/devdocs/codemap.md) for detailed file-by-file breakdowns.
 
-- Developer code map: `devdocs/codemap.md`
-- Categories:
-  - Docs — `devdocs/codemap/docs.md`
-  - Front End (BASIC) — `devdocs/codemap/front-end-basic.md`
-  - IL Core/Build/IO/API/Analysis/Transform/Verification — `devdocs/codemap/il-*.md`
-  - Runtime Library (C) — `devdocs/codemap/runtime-library-c.md`
-  - VM Runtime — `devdocs/codemap/vm-runtime.md`
-  - Codegen — `devdocs/codemap/codegen.md`
-  - Support/Tools/TUI — `devdocs/codemap/{support,tools,tui}.md`
+## Quick Reference
 
-For a high-level overview of the C++ directories, see `docs/architecture.md`.
+| Directory | Purpose |
+|-----------|---------|
+| `src/il/` | Intermediate Language core, builder, I/O, verifier, transforms |
+| `src/vm/` | Virtual machine interpreter |
+| `src/codegen/` | Native code generation (x86-64, ARM64) |
+| `src/frontends/basic/` | BASIC frontend (lexer, parser, semantic analysis, lowering) |
+| `src/runtime/` | C runtime library (strings, arrays, I/O, OOP) |
+| `src/support/` | Shared utilities (arena, diagnostics, source manager) |
+| `src/tools/` | CLI tools (vbasic, ilrun, ilc, il-verify, il-dis) |
+| `src/lib/graphics/` | ViperGFX 2D graphics library |
+| `src/tui/` | Terminal UI library |
 
+## Detailed Codemaps
+
+See `/devdocs/codemap/` for detailed breakdowns:
+
+- **IL Layer**: il-core, il-build, il-i-o, il-verification, il-analysis, il-transform
+- **Frontends**: front-end-basic
+- **Backends**: codegen (x86-64, ARM64), vm-runtime
+- **Runtime**: runtime-library-c
+- **Tools**: tools, support, graphics, tui
+
+For architecture overview, see [architecture.md](architecture.md).

@@ -236,8 +236,7 @@ static MInstr makeStrFp(PhysReg src, int offset)
 class LinearAllocator
 {
   public:
-    LinearAllocator(MFunction &fn, const TargetInfo &ti)
-        : fn_(fn), ti_(ti), fb_(fn)
+    LinearAllocator(MFunction &fn, const TargetInfo &ti) : fn_(fn), ti_(ti), fb_(fn)
     {
         pools_.build(ti);
     }
@@ -324,8 +323,11 @@ class LinearAllocator
     // Register materialization
     //-------------------------------------------------------------------------
 
-    void materialize(MReg &r, bool isUse, bool isDef,
-                     std::vector<MInstr> &prefix, std::vector<MInstr> &suffix,
+    void materialize(MReg &r,
+                     bool isUse,
+                     bool isDef,
+                     std::vector<MInstr> &prefix,
+                     std::vector<MInstr> &suffix,
                      std::vector<PhysReg> &scratch)
     {
         if (r.isPhys)
@@ -352,8 +354,12 @@ class LinearAllocator
         r.idOrPhys = static_cast<uint16_t>(st.phys);
     }
 
-    void handleSpilledOperand(MReg &r, bool isFPR, bool isUse, bool isDef,
-                              std::vector<MInstr> &prefix, std::vector<MInstr> &suffix,
+    void handleSpilledOperand(MReg &r,
+                              bool isFPR,
+                              bool isUse,
+                              bool isDef,
+                              std::vector<MInstr> &prefix,
+                              std::vector<MInstr> &suffix,
                               std::vector<PhysReg> &scratch)
     {
         PhysReg tmp = isFPR ? pools_.takeFPR() : pools_.takeGPR();
@@ -465,8 +471,8 @@ class LinearAllocator
                 return {true, false};
         }
 
-        if (ins.opc == MOpcode::SCvtF || ins.opc == MOpcode::FCvtZS ||
-            ins.opc == MOpcode::UCvtF || ins.opc == MOpcode::FCvtZU)
+        if (ins.opc == MOpcode::SCvtF || ins.opc == MOpcode::FCvtZS || ins.opc == MOpcode::UCvtF ||
+            ins.opc == MOpcode::FCvtZU)
         {
             return {idx == 1, idx == 0};
         }

@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2025-09-23
+last-verified: 2025-11-25
 ---
 
 # Contributor Guide
@@ -15,7 +15,7 @@ last-verified: 2025-09-23
 <a id="style-guide"></a>
 ## Style Guide
 
-See [AGENTS.md](../../AGENTS.md) for project-wide policies. This guide defines
+See [CLAUDE.md](../../CLAUDE.md) for project-wide policies. This guide defines
 comment conventions and file headers for the Viper codebase. All contributors
 must follow these rules when adding new code or updating existing files.
 

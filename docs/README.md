@@ -1,22 +1,18 @@
----
-status: active
-audience: public
-last-verified: 2025-11-13
----
-
 # Viper Documentation
 
-Welcome to the Viper compiler toolchain documentation. This directory contains language references, quickstart guides, and implementation guides for working with Viper.
+Welcome to the Viper compiler toolchain documentation. This directory contains language references, tutorials, and implementation guides.
 
-> For developers: Architecture docs, code maps, and contributor guides are in `/devdocs`.
+> **Developer resources**: Architecture docs, code maps, and contributor guides are in `/devdocs`.
 
 ---
 
-## Getting Started
+## Quick Links
 
-New to Viper? Start here:
-
-- [Getting Started](getting-started.md) — Quick setup guide for building and running the toolchain locally
+| Document | Description |
+|----------|-------------|
+| [Getting Started](getting-started.md) | Build, install, and run your first program |
+| [BASIC Tutorial](basic-language.md) | Learn Viper BASIC by example |
+| [IL Guide](il-guide.md) | Comprehensive IL specification |
 
 ---
 
@@ -24,46 +20,36 @@ New to Viper? Start here:
 
 ### Viper BASIC
 
-Learn the Viper BASIC language and its features:
-
-- [BASIC Tutorial](basic-language.md) — Learn Viper BASIC by example with hands-on walkthroughs
-- [BASIC Reference](basic-reference.md) — Complete language reference for Viper BASIC syntax and semantics
+- **[BASIC Tutorial](basic-language.md)** — Learn Viper BASIC with hands-on examples
+- **[BASIC Reference](basic-reference.md)** — Complete language specification
 
 ### Intermediate Language (IL)
 
-Understand Viper's intermediate representation:
-
-- [IL Guide](il-guide.md) — Comprehensive IL guide covering quickstart, reference, lowering rules, and optimization passes
-- [IL Quickstart](il-quickstart.md) — Fast-track introduction to Viper IL for developers
-- [IL Reference](il-reference.md) — Normative specification for Viper IL opcodes, types, and semantics
+- **[IL Guide](il-guide.md)** — Comprehensive guide to Viper IL
+- **[IL Quickstart](il-quickstart.md)** — Fast introduction for developers
+- **[IL Reference](il-reference.md)** — Complete opcode and type reference
 
 ---
 
 ## Implementation Guides
 
-### Frontend Development
+### Frontends
 
-Building a new language frontend for Viper:
-
-- [Frontend How-To](frontend-howto.md) — Complete implementation guide for writing a Viper frontend in C++
+- **[Frontend How-To](frontend-howto.md)** — Build your own language frontend
 
 ### Virtual Machine
 
-Understanding the Viper VM execution engine:
+- **[VM Architecture](vm.md)** — VM design, dispatch strategies, and internals
 
-- [VM Architecture](vm.md) — Comprehensive guide to the VM's design, execution model, and source code
+### Native Code Generation
 
-### Backend Development
-
-Building native code generators for Viper:
-
-- [Backend Guide](backend.md) — Complete guide to the x86-64 backend architecture, code generation pipeline, and register allocation
+- **[Backend Guide](backend.md)** — x86-64 and ARM64 code generation
 
 ---
 
 ## Additional Resources
 
-- Examples: See `/examples` for runnable BASIC programs and IL modules
-- Developer Documentation: See `/devdocs` for architecture, code maps, and contributor guides
-- Tools: The `ilc` compiler driver and wrappers (`vbasic`, `ilrun`, `il-verify`, `il-dis`) provide common workflows
-
+- **Examples**: See `/examples` for runnable BASIC programs and IL modules
+- **Graphics Library**: See [graphics-library.md](graphics-library.md) for the ViperGFX 2D graphics API
+- **FAQ**: See [faq.md](faq.md) for frequently asked questions
+- **Developer Docs**: See `/devdocs` for architecture and contributor guides

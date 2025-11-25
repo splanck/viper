@@ -252,8 +252,7 @@ void emitMissingReturn(const ClassDecl &klass, const MethodDecl &method, Diagnos
 class OopIndexBuilder
 {
   public:
-    OopIndexBuilder(OopIndex &index, DiagnosticEmitter *emitter)
-        : index_(index), emitter_(emitter)
+    OopIndexBuilder(OopIndex &index, DiagnosticEmitter *emitter) : index_(index), emitter_(emitter)
     {
     }
 
@@ -628,8 +627,8 @@ void OopIndexBuilder::scanClasses(const std::vector<StmtPtr> &stmts)
                 for (const auto &seg : ns.path)
                     nsStack_.push_back(seg);
                 scanClasses(ns.body);
-                nsStack_.resize(
-                    nsStack_.size() >= ns.path.size() ? nsStack_.size() - ns.path.size() : 0);
+                nsStack_.resize(nsStack_.size() >= ns.path.size() ? nsStack_.size() - ns.path.size()
+                                                                  : 0);
                 break;
             }
             case Stmt::Kind::ClassDecl:
