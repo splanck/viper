@@ -132,10 +132,10 @@ std::vector<const BasicBlock *> EhModel::gatherSuccessors(const Instr &terminato
 }
 
 /// @brief Retrieve the terminator instruction for @p block.
-/// @details Scans the block's instruction list for the last element and checks
-///          whether it is a terminator.  Non-terminating blocks yield
-///          @c nullptr, allowing callers to differentiate between fallthrough
-///          and explicit control transfers.
+/// @details Scans the block's instruction list and returns the first
+///          instruction classified as a terminator.  Non-terminating blocks
+///          yield @c nullptr, allowing callers to differentiate between
+///          fallthrough and explicit control transfers.
 /// @param block Basic block whose terminator is requested.
 /// @return Pointer to the terminator instruction, or nullptr when absent.
 const Instr *EhModel::findTerminator(const BasicBlock &block) const

@@ -222,29 +222,8 @@ rt_string rt_input_line(void)
     }
     if (len > 0 && buf[len - 1] == '\r')
         len--;
-    buf[len] = '\0';
-    rt_string s = (rt_string)rt_alloc(sizeof(*s));
-    if (!s)
-    {
-        free(buf);
-        rt_trap("rt_input_line: alloc");
-        return NULL;
-    }
-    char *payload = (char *)rt_heap_alloc(RT_HEAP_STRING, RT_ELEM_NONE, 1, len, len + 1);
-    if (!payload)
-    {
-        free(buf);
-        rt_trap("out of memory");
-        return NULL;
-    }
-    memcpy(payload, buf, len + 1);
-    s->data = payload;
-    rt_heap_hdr_t *hdr = rt_heap_hdr(payload);
-    assert(hdr);
-    assert(hdr->kind == RT_HEAP_STRING);
-    s->heap = hdr;
-    s->literal_len = 0;
-    s->literal_refs = 0;
+    // Construct runtime string from the accumulated buffer and release temp.
+    rt_string s = rt_string_from_bytes(buf, len);
     free(buf);
     return s;
 }

@@ -66,6 +66,21 @@ static enum Err rt_file_err_from_errno(int err, enum Err fallback)
     {
         case ENOENT:
             return Err_FileNotFound;
+        case EINVAL:
+        case EISDIR:
+        case ENOTDIR:
+            // Operation invalid for current state or object kind
+            return Err_InvalidOperation;
+        case ENOSPC: // No space left on device
+        case EFBIG:  // File too large
+        case EIO:
+        case EPIPE:
+        case EAGAIN:
+        case EACCES:
+        case EPERM:
+        case EBADF:
+            // Permission, transient, or device/storage I/O errors
+            return Err_IOError;
         default:
             return fallback;
     }
@@ -377,6 +392,9 @@ bool rt_file_read_line(RtFile *file, rt_string *out_line, RtError *out_err)
         return false;
     }
 
+    bool ok = false;
+    rt_string s = NULL;
+
     for (;;)
     {
         char ch = 0;
@@ -389,7 +407,7 @@ bool rt_file_read_line(RtFile *file, rt_string *out_line, RtError *out_err)
             if (len == SIZE_MAX || len + 1 >= cap)
             {
                 if (!rt_file_line_buffer_grow(&buffer, &cap, len, out_err))
-                    return false;
+                    goto cleanup;
             }
             buffer[len++] = ch;
             continue;
@@ -398,9 +416,8 @@ bool rt_file_read_line(RtFile *file, rt_string *out_line, RtError *out_err)
         {
             if (len == 0)
             {
-                free(buffer);
                 rt_file_set_error(out_err, Err_EOF, 0);
-                return false;
+                goto cleanup;
             }
             break;
         }
@@ -408,9 +425,8 @@ bool rt_file_read_line(RtFile *file, rt_string *out_line, RtError *out_err)
             continue;
 
         int err = errno ? errno : EIO;
-        free(buffer);
         rt_file_set_error(out_err, rt_file_err_from_errno(err, Err_IOError), err);
-        return false;
+        goto cleanup;
     }
 
     if (len > 0 && buffer[len - 1] == '\r')
@@ -421,42 +437,54 @@ bool rt_file_read_line(RtFile *file, rt_string *out_line, RtError *out_err)
         char *nbuf = (char *)realloc(buffer, len + 1);
         if (!nbuf)
         {
-            free(buffer);
             rt_file_set_error(out_err, Err_RuntimeError, ENOMEM);
-            return false;
+            goto cleanup;
         }
         buffer = nbuf;
     }
     buffer[len] = '\0';
 
-    rt_string s = (rt_string)calloc(1, sizeof(*s));
+    s = (rt_string)calloc(1, sizeof(*s));
     if (!s)
     {
-        free(buffer);
         rt_file_set_error(out_err, Err_RuntimeError, ENOMEM);
-        return false;
+        goto cleanup;
     }
 
-    char *payload = (char *)rt_heap_alloc(RT_HEAP_STRING, RT_ELEM_NONE, 1, len, len + 1);
-    if (!payload)
     {
-        free(buffer);
-        free(s);
-        rt_file_set_error(out_err, Err_RuntimeError, ENOMEM);
-        return false;
+        char *payload = (char *)rt_heap_alloc(RT_HEAP_STRING, RT_ELEM_NONE, 1, len, len + 1);
+        if (!payload)
+        {
+            rt_file_set_error(out_err, Err_RuntimeError, ENOMEM);
+            goto cleanup;
+        }
+        memcpy(payload, buffer, len + 1);
+
+        s->data = payload;
+        s->heap = rt_heap_hdr(payload);
+        s->literal_len = 0;
+        s->literal_refs = 0;
     }
-
-    memcpy(payload, buffer, len + 1);
-    free(buffer);
-
-    s->data = payload;
-    s->heap = rt_heap_hdr(payload);
-    s->literal_len = 0;
-    s->literal_refs = 0;
 
     *out_line = s;
     rt_file_set_ok(out_err);
-    return true;
+    ok = true;
+
+cleanup:
+    if (!ok)
+    {
+        if (s)
+        {
+            free(s);
+            s = NULL;
+        }
+    }
+    if (buffer)
+    {
+        free(buffer);
+        buffer = NULL;
+    }
+    return ok;
 }
 
 /// @brief Adjust the file position indicator.

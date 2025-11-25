@@ -144,8 +144,10 @@ if(_viper_link_opts)
   target_link_options(viper_common_opts INTERFACE ${_viper_link_opts})
 endif()
 
-if(APPLE)
-  target_link_options(viper_common_opts INTERFACE -Wl,-no_warn_duplicate_libraries)
+# Silence benign duplicate-library warnings on macOS early so it applies to all targets
+option(VIPER_SUPPRESS_DUPLIB_WARN "Suppress ld64 duplicate library warnings" ON)
+if(APPLE AND VIPER_SUPPRESS_DUPLIB_WARN)
+  add_link_options(-Wl,-no_warn_duplicate_libraries)
 endif()
 
 function(viper_assert_no_directory_link_libraries dir label)
@@ -440,17 +442,5 @@ install(FILES
   "${CMAKE_CURRENT_BINARY_DIR}/ViperConfigVersion.cmake"
   DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/Viper
 )
-
-set(CPACK_PACKAGE_NAME "Viper")
-set(CPACK_PACKAGE_VENDOR "Viper Project")
-set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
-set(CPACK_GENERATOR "TGZ;ZIP")
-include(CPack)
-
-# Silence benign duplicate-library warnings on macOS
-option(VIPER_SUPPRESS_DUPLIB_WARN "Suppress ld64 duplicate library warnings" ON)
-if(APPLE AND VIPER_SUPPRESS_DUPLIB_WARN)
-  add_link_options(-Wl,-no_warn_duplicate_libraries)
-endif()
 
 viper_assert_no_directory_link_libraries("." "root project")
