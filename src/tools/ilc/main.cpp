@@ -21,13 +21,13 @@
 #include "cmd_codegen_arm64.hpp"
 #include "cmd_codegen_x64.hpp"
 #include "frontends/basic/Intrinsics.hpp"
+#include "il/core/Module.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
 #include "il/runtime/classes/RuntimeClasses.hpp"
-#include "il/core/Module.hpp"
 #include "viper/version.hpp"
+#include <algorithm>
 #include <iostream>
 #include <sstream>
-#include <algorithm>
 #include <string>
 #include <string_view>
 
@@ -58,9 +58,9 @@ namespace
 // --dump-runtime-descriptors implementation (stable formatting)
 int dumpRuntimeDescriptors()
 {
+    using il::runtime::findRuntimeSignatureId;
     using il::runtime::RuntimeDescriptor;
     using il::runtime::runtimeRegistry;
-    using il::runtime::findRuntimeSignatureId;
 
     const auto &reg = runtimeRegistry();
 
@@ -68,8 +68,13 @@ int dumpRuntimeDescriptors()
     {
         std::optional<il::runtime::RtSig> sig{};
         il::runtime::RuntimeHandler handler{nullptr};
-        bool operator==(const Key &o) const noexcept { return sig == o.sig && handler == o.handler; }
+
+        bool operator==(const Key &o) const noexcept
+        {
+            return sig == o.sig && handler == o.handler;
+        }
     };
+
     struct KeyHash
     {
         std::size_t operator()(const Key &k) const noexcept
@@ -91,34 +96,46 @@ int dumpRuntimeDescriptors()
         groups[k].push_back(&d);
     }
 
-    auto typeListToString = [](const std::vector<il::core::Type> &ts) -> std::string {
+    auto typeListToString = [](const std::vector<il::core::Type> &ts) -> std::string
+    {
         std::ostringstream os;
         for (size_t i = 0; i < ts.size(); ++i)
         {
-            if (i) os << ',';
+            if (i)
+                os << ',';
             os << ts[i].toString();
         }
         return os.str();
     };
 
-    auto effectsToString = [](const il::runtime::RuntimeSignature &s, il::runtime::RuntimeTrapClass trap) -> std::string {
+    auto effectsToString = [](const il::runtime::RuntimeSignature &s,
+                              il::runtime::RuntimeTrapClass trap) -> std::string
+    {
         std::vector<std::string> items;
         items.push_back(s.nothrow ? "NoThrow" : "MayThrow");
-        if (s.readonly) items.push_back("ReadOnly");
-        if (s.pure) items.push_back("Pure");
+        if (s.readonly)
+            items.push_back("ReadOnly");
+        if (s.pure)
+            items.push_back("Pure");
         if (trap != il::runtime::RuntimeTrapClass::None)
         {
             switch (trap)
             {
-            case il::runtime::RuntimeTrapClass::PowDomainOverflow: items.emplace_back("Trap:PowDomainOverflow"); break;
-            default: items.emplace_back("Trap:Unknown"); break;
+                case il::runtime::RuntimeTrapClass::PowDomainOverflow:
+                    items.emplace_back("Trap:PowDomainOverflow");
+                    break;
+                default:
+                    items.emplace_back("Trap:Unknown");
+                    break;
             }
         }
-        if (items.empty()) return std::string("None");
+        if (items.empty())
+            return std::string("None");
         std::ostringstream os;
         for (size_t i = 0; i < items.size(); ++i)
         {
-            if (i) os << ", ";
+            if (i)
+                os << ", ";
             os << items[i];
         }
         return os.str();
@@ -128,7 +145,8 @@ int dumpRuntimeDescriptors()
     // Build an index map for first descriptor pointer order
     std::unordered_map<const RuntimeDescriptor *, size_t> order;
     order.reserve(reg.size());
-    for (size_t i = 0; i < reg.size(); ++i) order[&reg[i]] = i;
+    for (size_t i = 0; i < reg.size(); ++i)
+        order[&reg[i]] = i;
 
     std::vector<std::pair<size_t, std::vector<const RuntimeDescriptor *>>> orderedGroups;
     orderedGroups.reserve(groups.size());
@@ -140,7 +158,9 @@ int dumpRuntimeDescriptors()
         size_t firstIdx = order[vec.front()];
         orderedGroups.emplace_back(firstIdx, vec);
     }
-    std::sort(orderedGroups.begin(), orderedGroups.end(), [](auto &a, auto &b) { return a.first < b.first; });
+    std::sort(orderedGroups.begin(),
+              orderedGroups.end(),
+              [](auto &a, auto &b) { return a.first < b.first; });
 
     for (const auto &entry : orderedGroups)
     {
@@ -149,15 +169,21 @@ int dumpRuntimeDescriptors()
         const RuntimeDescriptor *canonical = vec.front();
         for (const auto *d : vec)
         {
-            if (d->name.rfind("Viper.", 0) == 0) { canonical = d; break; }
+            if (d->name.rfind("Viper.", 0) == 0)
+            {
+                canonical = d;
+                break;
+            }
         }
 
         // collect aliases (rt_* only)
         std::vector<std::string_view> aliases;
         for (const auto *d : vec)
         {
-            if (d == canonical) continue;
-            if (d->name.rfind("rt_", 0) == 0) aliases.push_back(d->name);
+            if (d == canonical)
+                continue;
+            if (d->name.rfind("rt_", 0) == 0)
+                aliases.push_back(d->name);
         }
 
         // Print block
@@ -172,14 +198,16 @@ int dumpRuntimeDescriptors()
         {
             for (size_t i = 0; i < aliases.size(); ++i)
             {
-                if (i) std::cout << ", ";
+                if (i)
+                    std::cout << ", ";
                 std::cout << aliases[i];
             }
             std::cout << "\n";
         }
 
         const auto &sig = canonical->signature;
-        std::cout << "  SIGNATURE: " << sig.retType.toString() << '(' << typeListToString(sig.paramTypes) << ")\n";
+        std::cout << "  SIGNATURE: " << sig.retType.toString() << '('
+                  << typeListToString(sig.paramTypes) << ")\n";
         std::cout << "  EFFECTS: " << effectsToString(sig, canonical->trapClass) << "\n";
     }
     return 0;
@@ -204,8 +232,8 @@ int dumpRuntimeClasses()
         }
         for (const auto &m : c.methods)
         {
-            std::cout << "  METH " << (m.name ? m.name : "<unnamed>")
-                      << "(" << (m.signature ? m.signature : "") << ") \u2192 "
+            std::cout << "  METH " << (m.name ? m.name : "<unnamed>") << "("
+                      << (m.signature ? m.signature : "") << ") \u2192 "
                       << (m.target ? m.target : "<target>") << "\n";
         }
         if (c.ctor && std::string(c.ctor).size())
@@ -230,7 +258,8 @@ void usage()
         << "Usage: ilc -run <file.il> [--trace=il|src] [--stdin-from <file>] [--max-steps N]"
            " [--break label|file:line]* [--break-src file:line]* [--watch name]* [--bounds-checks] "
            "[--count] [--time] [--dump-trap]\n"
-        << "       ilc front basic -emit-il <file.bas> [--bounds-checks] [--no-runtime-namespaces]\n"
+        << "       ilc front basic -emit-il <file.bas> [--bounds-checks] "
+           "[--no-runtime-namespaces]\n"
         << "       ilc front basic -run <file.bas> [--trace=il|src] [--stdin-from <file>] "
            "[--max-steps N] [--bounds-checks] [--dump-trap] [--no-runtime-namespaces]\n"
         << "       ilc codegen x64 -S <in.il> [-o <exe>] [--run-native]\n"

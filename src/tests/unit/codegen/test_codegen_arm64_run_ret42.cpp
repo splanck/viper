@@ -26,12 +26,11 @@ static std::string outPath(const std::string &name)
 TEST(Arm64CLI, RunNative_Ret42)
 {
     const std::string in = outPath("ret42.il");
-    const std::string il =
-        "il 0.1\n"
-        "func @main() -> i64 {\n"
-        "entry:\n"
-        "  ret 42\n"
-        "}\n";
+    const std::string il = "il 0.1\n"
+                           "func @main() -> i64 {\n"
+                           "entry:\n"
+                           "  ret 42\n"
+                           "}\n";
     {
         std::ofstream ofs(in);
         ASSERT_TRUE(static_cast<bool>(ofs));

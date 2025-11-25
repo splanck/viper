@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_using_context.cpp
-// Purpose: Ensure UsingContext preserves declaration order and handles case-insensitive aliases. 
+// Purpose: Ensure UsingContext preserves declaration order and handles case-insensitive aliases.
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md

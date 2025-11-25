@@ -34,17 +34,16 @@ static void writeFile(const std::string &path, const std::string &text)
 TEST(Arm64CLI, ObjField_Gep_LoadStore_Run)
 {
     const std::string in = outPath("arm64_obj_field_gep.il");
-    const std::string il =
-        "il 0.1\n"
-        "extern @rt_obj_new_i64(i64, i64) -> ptr\n"
-        "func @main() -> i64 {\n"
-        "entry:\n"
-        "  %p = call @rt_obj_new_i64(0, 16)\n"
-        "  %f = gep %p, 8\n"
-        "  store i64, %f, 7\n"
-        "  %v = load i64, %f\n"
-        "  ret %v\n"
-        "}\n";
+    const std::string il = "il 0.1\n"
+                           "extern @rt_obj_new_i64(i64, i64) -> ptr\n"
+                           "func @main() -> i64 {\n"
+                           "entry:\n"
+                           "  %p = call @rt_obj_new_i64(0, 16)\n"
+                           "  %f = gep %p, 8\n"
+                           "  store i64, %f, 7\n"
+                           "  %v = load i64, %f\n"
+                           "  ret %v\n"
+                           "}\n";
     writeFile(in, il);
     const char *argv[] = {in.c_str(), "-run-native"};
     const int rc = cmd_codegen_arm64(2, const_cast<char **>(argv));
@@ -56,4 +55,3 @@ int main(int argc, char **argv)
     testing::InitGoogleTest(&argc, &argv);
     return RUN_ALL_TESTS();
 }
-

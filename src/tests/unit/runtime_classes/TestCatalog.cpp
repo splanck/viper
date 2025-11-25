@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/runtime_classes/TestCatalog.cpp
-// Purpose: Validate runtimeClassCatalog() contains expected System.* entries and members. 
+// Purpose: Validate runtimeClassCatalog() contains expected System.* entries and members.
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md
@@ -29,9 +29,10 @@ using il::runtime::runtimeClassCatalog;
 TEST(RuntimeClassCatalogBasic, ContainsSystemStringMembers)
 {
     const auto &cat = runtimeClassCatalog();
-    auto it = std::find_if(cat.begin(), cat.end(), [](const auto &c) {
-        return std::string(c.qname) == "Viper.System.String";
-    });
+    auto it =
+        std::find_if(cat.begin(),
+                     cat.end(),
+                     [](const auto &c) { return std::string(c.qname) == "Viper.System.String"; });
     ASSERT_NE(it, cat.end());
     // Properties include Length and IsEmpty
     bool hasLenProp = false;
@@ -53,9 +54,10 @@ TEST(RuntimeClassCatalogBasic, ContainsSystemStringMembers)
 TEST(RuntimeClassCatalogBasic, ContainsSystemTextStringBuilderMembers)
 {
     const auto &cat = runtimeClassCatalog();
-    auto it = std::find_if(cat.begin(), cat.end(), [](const auto &c) {
-        return std::string(c.qname) == "Viper.System.Text.StringBuilder";
-    });
+    auto it = std::find_if(cat.begin(),
+                           cat.end(),
+                           [](const auto &c)
+                           { return std::string(c.qname) == "Viper.System.Text.StringBuilder"; });
     ASSERT_NE(it, cat.end());
     // Properties include Length and Capacity
     bool hasLenProp = false;
@@ -77,10 +79,12 @@ TEST(RuntimeClassCatalogBasic, ContainsSystemTextStringBuilderMembers)
 TEST(RuntimeClassCatalogBasic, ContainsAdditionalSystemTypes)
 {
     const auto &cat = runtimeClassCatalog();
-    auto hasQ = [&](const char *qname) {
-        return std::find_if(cat.begin(), cat.end(), [&](const auto &c) {
-                   return std::string(c.qname) == qname;
-               }) != cat.end();
+    auto hasQ = [&](const char *qname)
+    {
+        return std::find_if(cat.begin(),
+                            cat.end(),
+                            [&](const auto &c)
+                            { return std::string(c.qname) == qname; }) != cat.end();
     };
     EXPECT_TRUE(hasQ("Viper.System.Object"));
     EXPECT_TRUE(hasQ("Viper.System.IO.File"));

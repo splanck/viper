@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_basic_ast_printer.cpp
-// Purpose: Validate BASIC AST printer output for representative nodes. 
+// Purpose: Validate BASIC AST printer output for representative nodes.
 // Key invariants: Printer emits stable textual form for statements/expressions.
 // Ownership/Lifetime: Tests allocate AST nodes with std::unique_ptr.
 // Links: docs/codemap.md

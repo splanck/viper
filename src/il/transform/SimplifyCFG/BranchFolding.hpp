@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: il/transform/SimplifyCFG/BranchFolding.hpp
-// Purpose: Declares branch folding routines for the SimplifyCFG pass. 
+// Purpose: Declares branch folding routines for the SimplifyCFG pass.
 // Key invariants: Transformations preserve control flow equivalence.
 // Ownership/Lifetime: Operates on caller-owned functions and blocks.
 // Links: docs/codemap.md

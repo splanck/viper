@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: common/Mangle.hpp
-// Purpose: Provide unified mangling for linkable symbols from qualified names. 
+// Purpose: Provide unified mangling for linkable symbols from qualified names.
 // Key invariants: Linkage mangling is ASCII-only, stable, and case-insensitive.
 // Ownership/Lifetime: Header-only declarations; implementation in Mangle.cpp.
 // Links: docs/codemap.md

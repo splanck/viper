@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/runtime/RTAllocTests.cpp
-// Purpose: Verify rt_alloc traps on negative allocation sizes. 
+// Purpose: Verify rt_alloc traps on negative allocation sizes.
 // Key invariants: rt_alloc reports "negative allocation" when bytes < 0.
 // Ownership/Lifetime: Uses runtime library.
 // Links: docs/runtime-vm.md#runtime-abi

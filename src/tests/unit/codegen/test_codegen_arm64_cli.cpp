@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/codegen/test_codegen_arm64_cli.cpp
-// Purpose: Smoke test for `ilc codegen arm64 -S` handling of `ret 0`. 
+// Purpose: Smoke test for `ilc codegen arm64 -S` handling of `ret 0`.
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md

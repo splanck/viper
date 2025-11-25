@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_vm_alloca_missing_size.cpp
-// Purpose: Ensure VM traps when alloca is missing size operand. 
+// Purpose: Ensure VM traps when alloca is missing size operand.
 // Key invariants: Alloca without size must emit "missing allocation size" trap.
 // Ownership/Lifetime: Test constructs IL module and executes VM.
 // Links: docs/codemap.md

@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/codegen/test_codegen_arm64_call_stack_args.cpp
-// Purpose: Verify CLI marshals >8 integer args by using stack slots. 
+// Purpose: Verify CLI marshals >8 integer args by using stack slots.
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md

@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_using_compiletime_only.cpp
-// Purpose: Verify that USING directives produce no runtime artifacts. 
+// Purpose: Verify that USING directives produce no runtime artifacts.
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md

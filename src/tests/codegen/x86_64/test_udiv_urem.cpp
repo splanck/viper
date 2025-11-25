@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/codegen/x86_64/test_udiv_urem.cpp
-// Purpose: Validate unsigned 64-bit division/remainder lowering expands into the 
+// Purpose: Validate unsigned 64-bit division/remainder lowering expands into the
 // Key invariants: Emitted assembly must zero-extend the dividend via XOR on
 // Ownership/Lifetime: Test constructs IL adapter modules locally and inspects
 // Links: src/codegen/x86_64/LowerDiv.cpp

@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/codegen/x86_64/test_bitwise.cpp
-// Purpose: Validate that x86-64 codegen lowers IL bitwise and/or/xor 
+// Purpose: Validate that x86-64 codegen lowers IL bitwise and/or/xor
 // Key invariants: Generated assembly must contain an immediate-based and/or
 // Ownership/Lifetime: Test constructs IL modules locally and inspects emitted
 // Links: src/codegen/x86_64/LowerILToMIR.cpp,

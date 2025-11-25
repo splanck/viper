@@ -214,7 +214,7 @@ void emitOperands(std::span<const Operand> operands, Out &out, const TargetInfo 
         {
             out << ", ";
         }
-/// @brief Emits operand.
+        /// @brief Emits operand.
         emitOperand(operand, out, target);
         first = false;
     }
@@ -373,7 +373,7 @@ void AsmEmitter::RoDataPool::emit(std::ostream &os) const
     {
         return;
     }
-/// @brief Emits rodatapool.
+    /// @brief Emits rodatapool.
     emitRoDataPool(std::span<const std::string>{stringLiterals_},
                    std::span<const std::size_t>{stringLengths_},
                    std::span<const double>{f64Literals_},
@@ -417,13 +417,13 @@ void AsmEmitter::emitFunction(std::ostream &os,
         {
             for (const auto &instr : block.instructions)
             {
-/// @brief Emits instruction.
+                /// @brief Emits instruction.
                 emitInstruction(os, instr, target);
             }
         }
         else
         {
-/// @brief Emits block.
+            /// @brief Emits block.
             emitBlock(os, block, target);
         }
         if (i + 1 < func.blocks.size())
@@ -473,7 +473,7 @@ void AsmEmitter::emitBlock(std::ostream &os, const MBasicBlock &block, const Tar
     }
     for (const auto &instr : block.instructions)
     {
-/// @brief Emits instruction.
+        /// @brief Emits instruction.
         emitInstruction(os, instr, target);
     }
 }
@@ -532,7 +532,7 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &instr, const Ta
         return;
     }
 
-/// @brief Emits _from_row.
+    /// @brief Emits _from_row.
     emit_from_row(*row, operands, os, target);
 }
 
@@ -554,7 +554,7 @@ void AsmEmitter::emit_from_row(const EncodingRow &row,
         if (!operands.empty())
         {
             os << ' ';
-/// @brief Emits operands.
+            /// @brief Emits operands.
             emitOperands(operands, os, target);
         }
         os << '\n';
@@ -665,7 +665,7 @@ void AsmEmitter::emit_from_row(const EncodingRow &row,
             else
             {
                 os << '*';
-/// @brief Emits operand.
+                /// @brief Emits operand.
                 emitOperand(targetOp, os, target);
                 os << '\n';
             }
@@ -722,7 +722,7 @@ void AsmEmitter::emit_from_row(const EncodingRow &row,
             return;
         }
         os << ' ';
-/// @brief Emits operands.
+        /// @brief Emits operands.
         emitOperands(operands, os, target);
         os << '\n';
         return;
@@ -738,7 +738,7 @@ void AsmEmitter::emit_from_row(const EncodingRow &row,
                 return;
             }
             os << ' ';
-/// @brief Emits operand.
+            /// @brief Emits operand.
             emitOperand(operands.front(), os, target);
             os << '\n';
             return;
@@ -751,10 +751,10 @@ void AsmEmitter::emit_from_row(const EncodingRow &row,
                 return;
             }
             os << ' ';
-/// @brief Emits operand.
+            /// @brief Emits operand.
             emitOperand(operands[1], os, target);
             os << ", ";
-/// @brief Emits operand.
+            /// @brief Emits operand.
             emitOperand(operands[0], os, target);
             os << '\n';
             return;
@@ -767,13 +767,13 @@ void AsmEmitter::emit_from_row(const EncodingRow &row,
                 return;
             }
             os << ' ';
-/// @brief Emits operand.
+            /// @brief Emits operand.
             emitOperand(operands[2], os, target);
             os << ", ";
-/// @brief Emits operand.
+            /// @brief Emits operand.
             emitOperand(operands[1], os, target);
             os << ", ";
-/// @brief Emits operand.
+            /// @brief Emits operand.
             emitOperand(operands[0], os, target);
             os << '\n';
             return;
@@ -786,7 +786,7 @@ void AsmEmitter::emit_from_row(const EncodingRow &row,
                 return;
             }
             os << ' ';
-/// @brief Emits operands.
+            /// @brief Emits operands.
             emitOperands(operands, os, target);
             os << '\n';
             return;
@@ -804,7 +804,7 @@ void AsmEmitter::emit_from_row(const EncodingRow &row,
 std::string AsmEmitter::formatOperand(const Operand &operand, const TargetInfo &target)
 {
     std::ostringstream buffer;
-/// @brief Emits operand.
+    /// @brief Emits operand.
     emitOperand(operand, buffer, target);
     return std::move(buffer).str();
 }

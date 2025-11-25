@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/vm/BranchParamStringRetainTests.cpp
-// Purpose: Verify branch parameter transfers retain string handles. 
+// Purpose: Verify branch parameter transfers retain string handles.
 // Key invariants: Branch staging mirrors entry-path retention semantics.
 // Ownership/Lifetime: Builds a synthetic module and inspects runtime headers.
 // Links: docs/testing.md

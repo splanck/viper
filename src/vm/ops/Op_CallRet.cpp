@@ -159,10 +159,12 @@ VM::ExecResult handleCall(VM &vm,
                 // - If ret has no operand, callee must return void
                 // - If ret has operand, callee must return non-void (value will be propagated)
                 const bool retHasOperand = !nextInstr.operands.empty();
-                const bool calleeReturnsVoid = (it->second->retType.kind == il::core::Type::Kind::Void);
+                const bool calleeReturnsVoid =
+                    (it->second->retType.kind == il::core::Type::Kind::Void);
                 const bool compatibleReturn = (retHasOperand == !calleeReturnsVoid);
 
-                if (compatibleReturn && il::vm::tryTailCall(vm, it->second, std::span<const Slot>{args}))
+                if (compatibleReturn &&
+                    il::vm::tryTailCall(vm, it->second, std::span<const Slot>{args}))
                 {
                     VM::ExecResult r{};
                     r.jumped = true; // prevent ip++ so entry ip=0 is executed

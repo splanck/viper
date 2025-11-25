@@ -55,4 +55,3 @@ inline std::string sanitizeLabel(std::string_view in, std::string_view suffix = 
 }
 
 } // namespace viper::codegen::common
-

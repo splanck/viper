@@ -213,7 +213,7 @@ Lowerer::Lowerer(bool boundsChecks)
     : programLowering(std::make_unique<ProgramLowering>(*this)),
       procedureLowering(std::make_unique<ProcedureLowering>(*this)),
       statementLowering(std::make_unique<StatementLowering>(*this)), boundsChecks(boundsChecks),
-/// @brief Emits ter_.
+      /// @brief Emits ter_.
       emitter_(std::make_unique<lower::Emitter>(*this)),
       ioStmtLowerer_(std::make_unique<IoStatementLowerer>(*this)),
       ctrlStmtLowerer_(std::make_unique<ControlStatementLowerer>(*this)),

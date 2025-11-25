@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: vm/VMConstants.hpp
-// Purpose: Centralized constants for VM configuration and limits 
+// Purpose: Centralized constants for VM configuration and limits
 // Key invariants: All constants are compile-time evaluable
 // Ownership/Lifetime: Static constants with program lifetime
 // Links: docs/vm-design.md

@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_il_block_params.cpp
-// Purpose: Verify block parameters and branch arguments in IRBuilder. 
+// Purpose: Verify block parameters and branch arguments in IRBuilder.
 // Key invariants: Parameter counts and branch arities match.
 // Ownership/Lifetime: Uses builder with local module.
 // Links: docs/il-guide.md#reference

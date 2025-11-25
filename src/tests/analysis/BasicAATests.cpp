@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/analysis/BasicAATests.cpp
-// Purpose: Exercise the BasicAA alias and ModRef queries on synthetic IL. 
+// Purpose: Exercise the BasicAA alias and ModRef queries on synthetic IL.
 // Key invariants: Alias classifications respect pointer identity, distinct allocas,
 // Ownership/Lifetime: Constructs temporary IL modules via IRBuilder.
 // Links: docs/dev/analysis.md

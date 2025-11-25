@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: codegen/x86_64/passes/PassManager.hpp
-// Purpose: Declare a lightweight pass manager orchestrating x86-64 codegen passes. 
+// Purpose: Declare a lightweight pass manager orchestrating x86-64 codegen passes.
 // Key invariants: Passes run sequentially, short-circuiting on failure while preserving
 // Ownership/Lifetime: PassManager owns registered passes via unique_ptr and operates on
 // Links: docs/codemap.md, src/codegen/x86_64/CodegenPipeline.hpp

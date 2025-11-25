@@ -1080,8 +1080,9 @@ void Lowerer::emitOopDeclsAndBodies(const Program &prog)
     // Start recursive scan from the program's main statements.
     scan(prog.main);
 
-    // Synthesize interface registration and binding thunks, and a module init.
-    // 1) Interface registration thunks
+    // Synthesize interface registration, binding thunks, and a module init.
+
+    // 2) Interface registration thunks
     std::vector<std::string> regThunks;
     for (const auto &p : oopIndex_.interfacesByQname())
     {
@@ -1196,7 +1197,7 @@ void Lowerer::emitOopDeclsAndBodies(const Program &prog)
         }
     }
 
-    // 3) Module init that calls reg thunks first, then bind thunks.
+    // 3) Module init that calls iface reg thunks, then bind thunks.
     const std::string initName = mangleOopModuleInit();
     Function &initF = builder->startFunction(initName, Type(Type::Kind::Void), {});
     context().setFunction(&initF);
@@ -1205,6 +1206,26 @@ void Lowerer::emitOopDeclsAndBodies(const Program &prog)
     builder->addBlock(initF, "entry");
     context().setCurrent(&initF.blocks.front());
     initF.blocks.front().terminated = false;
+
+    // Register each class with its qualified name so Object.ToString works
+    for (const auto &entry : oopIndex_.classes())
+    {
+        const ClassInfo &ci = entry.second;
+        auto itLayout = classLayouts_.find(ci.name);
+        if (itLayout == classLayouts_.end())
+            continue;
+        const long long typeId = (long long)itLayout->second.classId;
+        // Allocate a minimal vtable (8 bytes) for the class
+        Value vtablePtr = emitCallRet(Type(Type::Kind::Ptr), "rt_alloc", {Value::constInt(8LL)});
+        // Register the class with rt_register_class_direct(typeId, vtable, qname, 0)
+        std::string qnameLabel = getStringLabel(ci.qualifiedName);
+        emitCall("rt_register_class_direct",
+                 {Value::constInt(typeId),
+                  vtablePtr,
+                  emitConstStr(qnameLabel),
+                  Value::constInt(0LL)});
+    }
+
     for (const auto &fn : regThunks)
         emitCall(fn, {});
     for (const auto &fn : bindThunks)

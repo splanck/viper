@@ -49,16 +49,15 @@ TEST(Arm64CLI, GepLoadStore_NonStack)
     const std::string in = "arm64_cli_gep.il";
     const std::string out = "arm64_cli_gep.s";
     // Function takes base pointer and byte offset, does *(base+off)++, returns original
-    const std::string il =
-        "il 0.1\n"
-        "func @bump(%p:ptr, %off:i64) -> i64 {\n"
-        "entry(%p:ptr, %off:i64):\n"
-        "  %addr = gep %p, %off\n"
-        "  %v = load i64, %addr\n"
-        "  %one = add %v, 1\n"
-        "  store i64, %addr, %one\n"
-        "  ret %v\n"
-        "}\n";
+    const std::string il = "il 0.1\n"
+                           "func @bump(%p:ptr, %off:i64) -> i64 {\n"
+                           "entry(%p:ptr, %off:i64):\n"
+                           "  %addr = gep %p, %off\n"
+                           "  %v = load i64, %addr\n"
+                           "  %one = add %v, 1\n"
+                           "  store i64, %addr, %one\n"
+                           "  ret %v\n"
+                           "}\n";
 
     const std::string inP = outPath(in);
     const std::string outP = outPath(out);
@@ -84,4 +83,3 @@ int main(int argc, char **argv)
     testing::InitGoogleTest(&argc, &argv);
     return RUN_ALL_TESTS();
 }
-

@@ -26,11 +26,11 @@
 #include "frontends/basic/AST.hpp"
 #include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/DiagnosticEmitter.hpp"
-#include "frontends/basic/sem/TypeRegistry.hpp"
-#include "frontends/basic/sem/RuntimePropertyIndex.hpp"
 #include "frontends/basic/sem/RuntimeMethodIndex.hpp"
-#include "il/runtime/classes/RuntimeClasses.hpp"
+#include "frontends/basic/sem/RuntimePropertyIndex.hpp"
+#include "frontends/basic/sem/TypeRegistry.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
+#include "il/runtime/classes/RuntimeClasses.hpp"
 
 #include <functional>
 #include <string>
@@ -60,7 +60,8 @@ void buildNamespaceRegistry(const Program &program,
 
     // Seed well-known runtime types (classes/interfaces) into the catalog.
     // Catalog-only: registers namespaces and type names; members come later.
-    // This also makes `USING Viper.System.*` resolvable when enabled.
+    // Canonical runtime classes use the Viper.* namespace; Viper.System.* names
+    // remain available as compatibility aliases via the runtime catalogs.
     seedRuntimeTypeCatalog(registry);
     // Seed class-driven registries (types, properties, methods, namespaces)
     seedRuntimeClassCatalogs(registry);

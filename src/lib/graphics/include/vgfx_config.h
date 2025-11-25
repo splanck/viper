@@ -37,7 +37,7 @@
 ///          vgfx_window_params_t is zero or negative.  Must be in range
 ///          [1, VGFX_MAX_WIDTH].
 #ifndef VGFX_DEFAULT_WIDTH
-#define VGFX_DEFAULT_WIDTH   640
+#define VGFX_DEFAULT_WIDTH 640
 #endif
 
 /// @def VGFX_DEFAULT_HEIGHT
@@ -46,7 +46,7 @@
 ///          vgfx_window_params_t is zero or negative.  Must be in range
 ///          [1, VGFX_MAX_HEIGHT].
 #ifndef VGFX_DEFAULT_HEIGHT
-#define VGFX_DEFAULT_HEIGHT  480
+#define VGFX_DEFAULT_HEIGHT 480
 #endif
 
 /// @def VGFX_DEFAULT_TITLE
@@ -54,7 +54,7 @@
 /// @details UTF-8 encoded string used as the window caption.  The platform
 ///          backend may truncate or modify the title based on OS conventions.
 #ifndef VGFX_DEFAULT_TITLE
-#define VGFX_DEFAULT_TITLE   "ViperGFX"
+#define VGFX_DEFAULT_TITLE "ViperGFX"
 #endif
 
 /// @def VGFX_DEFAULT_FPS
@@ -69,7 +69,7 @@
 ///
 ///          This macro must be positive.
 #ifndef VGFX_DEFAULT_FPS
-#define VGFX_DEFAULT_FPS     60
+#define VGFX_DEFAULT_FPS 60
 #endif
 
 //===----------------------------------------------------------------------===//
@@ -86,7 +86,7 @@
 ///          and will lead to undefined behavior.  The entire API assumes
 ///          4 bytes per pixel.
 #ifndef VGFX_COLOR_DEPTH
-#define VGFX_COLOR_DEPTH     32  /* RGBA (8-8-8-8) - DO NOT CHANGE */
+#define VGFX_COLOR_DEPTH 32 /* RGBA (8-8-8-8) - DO NOT CHANGE */
 #endif
 
 /// @def VGFX_FRAMEBUFFER_ALIGNMENT
@@ -116,7 +116,7 @@
 ///          This limit ensures width * height * 4 fits in size_t on all
 ///          supported platforms.
 #ifndef VGFX_MAX_WIDTH
-#define VGFX_MAX_WIDTH       4096
+#define VGFX_MAX_WIDTH 4096
 #endif
 
 /// @def VGFX_MAX_HEIGHT
@@ -128,7 +128,7 @@
 ///          This limit ensures width * height * 4 fits in size_t on all
 ///          supported platforms.
 #ifndef VGFX_MAX_HEIGHT
-#define VGFX_MAX_HEIGHT      4096
+#define VGFX_MAX_HEIGHT 4096
 #endif
 
 /// @def VGFX_EVENT_QUEUE_SIZE

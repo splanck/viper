@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: codegen/x86_64/ISel.hpp
-// Purpose: Declare the instruction selection helpers that canonicalise the 
+// Purpose: Declare the instruction selection helpers that canonicalise the
 // Key invariants: To be documented.
 // Ownership/Lifetime: The selector mutates Machine IR in-place; no dynamic resources are
 // Links: docs/architecture.md

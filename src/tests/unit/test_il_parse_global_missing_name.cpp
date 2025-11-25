@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_il_parse_global_missing_name.cpp
-// Purpose: Ensure IL parser diagnoses globals referenced without a name. 
+// Purpose: Ensure IL parser diagnoses globals referenced without a name.
 // Key invariants: Operand parser must reject bare '@' operands with a clear diagnostic.
 // Ownership/Lifetime: Test owns parser inputs and module state locally.
 // Links: docs/il-guide.md#reference

@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/codegen/test_codegen_arm64_bitwise.cpp
-// Purpose: Verify and/or/xor lowering on two entry params. 
+// Purpose: Verify and/or/xor lowering on two entry params.
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md

@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: codegen/x86_64/passes/EmitPass.hpp
-// Purpose: Declare the final emission pass for the x86-64 codegen pipeline. 
+// Purpose: Declare the final emission pass for the x86-64 codegen pipeline.
 // Key invariants: Emission requires register allocation to have marked completion.
 // Ownership/Lifetime: Pass stores backend configuration by value and mutates Module state.
 // Links: docs/codemap.md

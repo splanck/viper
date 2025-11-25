@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/vm/CastOpsTests.cpp
-// Purpose: Verify VM cast handlers for 1-bit truncation/extension and fp-to-int conversions. 
+// Purpose: Verify VM cast handlers for 1-bit truncation/extension and fp-to-int conversions.
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md

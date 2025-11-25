@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_il_parse_block_param_prefix.cpp
-// Purpose: Ensure block headers reject parameters missing the '%' prefix. 
+// Purpose: Ensure block headers reject parameters missing the '%' prefix.
 // Key invariants: Parser reports descriptive diagnostics for malformed block parameter names.
 // Ownership/Lifetime: Test constructs modules and diagnostic buffers locally.
 // Links: docs/il-guide.md#reference

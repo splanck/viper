@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: frontends/basic/ast/NodeFwd.hpp
-// Purpose: Provides forward declarations and common type aliases for BASIC AST nodes. 
+// Purpose: Provides forward declarations and common type aliases for BASIC AST nodes.
 // Key invariants: Type enumerators align with BASIC scalar kinds.
 // Ownership/Lifetime: Nodes are owned via std::unique_ptr by callers.
 // Links: docs/codemap.md

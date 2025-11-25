@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_codegen_x86_64_live_intervals.cpp
-// Purpose: Unit tests covering the live interval analysis used by the 
+// Purpose: Unit tests covering the live interval analysis used by the
 // Key invariants: Analysis produces deterministic half-open instruction ranges.
 // Ownership/Lifetime: Tests build Machine IR in place and inspect analysis
 // Links: src/codegen/x86_64/ra/LiveIntervals.hpp

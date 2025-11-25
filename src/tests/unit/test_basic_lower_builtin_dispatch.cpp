@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_basic_lower_builtin_dispatch.cpp
-// Purpose: Validate BASIC builtin lowering registers family handlers through the 
+// Purpose: Validate BASIC builtin lowering registers family handlers through the
 // Key invariants: Each builtin family shares the same handler pointer after
 // Ownership/Lifetime: Test owns the Lowerer instance and relies on the builtin
 // Links: docs/codemap.md

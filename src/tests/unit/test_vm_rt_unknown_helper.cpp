@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_vm_rt_unknown_helper.cpp
-// Purpose: Ensure runtime bridge traps when unknown runtime helpers are invoked. 
+// Purpose: Ensure runtime bridge traps when unknown runtime helpers are invoked.
 // Key invariants: Calls to helpers absent from the runtime registry must produce traps in all build
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md

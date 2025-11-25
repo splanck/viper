@@ -34,22 +34,21 @@ static void writeFile(const std::string &path, const std::string &text)
 TEST(Arm64CLI, ArrObj_PutGet_NonNull_Run)
 {
     const std::string in = outPath("arm64_arr_obj_put_get.il");
-    const std::string il =
-        "il 0.1\n"
-        "extern @rt_arr_obj_new(i64) -> ptr\n"
-        "extern @rt_arr_obj_put(ptr, i64, ptr) -> void\n"
-        "extern @rt_arr_obj_get(ptr, i64) -> ptr\n"
-        "extern @rt_obj_new_i64(i64, i64) -> ptr\n"
-        "func @main() -> i64 {\n"
-        "entry:\n"
-        "  %arr = call @rt_arr_obj_new(1)\n"
-        "  %obj = call @rt_obj_new_i64(0, 16)\n"
-        "  call @rt_arr_obj_put(%arr, 0, %obj)\n"
-        "  %got = call @rt_arr_obj_get(%arr, 0)\n"
-        "  %isnull = icmp.eq %got, 0\n"
-        "  %res = select %isnull, 0, 1\n"
-        "  ret %res\n"
-        "}\n";
+    const std::string il = "il 0.1\n"
+                           "extern @rt_arr_obj_new(i64) -> ptr\n"
+                           "extern @rt_arr_obj_put(ptr, i64, ptr) -> void\n"
+                           "extern @rt_arr_obj_get(ptr, i64) -> ptr\n"
+                           "extern @rt_obj_new_i64(i64, i64) -> ptr\n"
+                           "func @main() -> i64 {\n"
+                           "entry:\n"
+                           "  %arr = call @rt_arr_obj_new(1)\n"
+                           "  %obj = call @rt_obj_new_i64(0, 16)\n"
+                           "  call @rt_arr_obj_put(%arr, 0, %obj)\n"
+                           "  %got = call @rt_arr_obj_get(%arr, 0)\n"
+                           "  %isnull = icmp.eq %got, 0\n"
+                           "  %res = select %isnull, 0, 1\n"
+                           "  ret %res\n"
+                           "}\n";
     writeFile(in, il);
     const char *argv[] = {in.c_str(), "-run-native"};
     const int rc = cmd_codegen_arm64(2, const_cast<char **>(argv));
@@ -61,4 +60,3 @@ int main(int argc, char **argv)
     testing::InitGoogleTest(&argc, &argv);
     return RUN_ALL_TESTS();
 }
-

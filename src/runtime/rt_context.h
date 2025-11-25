@@ -25,11 +25,31 @@ extern "C"
     /// @brief Module-level variable entry for per-VM storage.
     typedef struct RtModvarEntry
     {
-        char *name;     ///< Owned copy of variable name.
-        int kind;       ///< Storage kind (I64, F64, I1, PTR, STR).
-        void *addr;     ///< Allocated storage block.
-        size_t size;    ///< Size in bytes.
+        char *name;  ///< Owned copy of variable name.
+        int kind;    ///< Storage kind (I64, F64, I1, PTR, STR).
+        void *addr;  ///< Allocated storage block.
+        size_t size; ///< Size in bytes.
     } RtModvarEntry;
+
+    // Forward declarations for opaque per-module state stored in context
+    struct RtFileChannelEntry;
+
+    typedef struct RtFileState
+    {
+        struct RtFileChannelEntry *entries;
+        size_t count;
+        size_t capacity;
+    } RtFileState;
+
+    typedef struct RtTypeRegistryState
+    {
+        void *classes;
+        size_t classes_len, classes_cap;
+        void *ifaces;
+        size_t ifaces_len, ifaces_cap;
+        void *bindings;
+        size_t bindings_len, bindings_cap;
+    } RtTypeRegistryState;
 
     /// @brief Per-VM runtime context isolating global state.
     /// @details Moves runtime global variables into per-VM storage so multiple
@@ -45,9 +65,14 @@ extern "C"
         size_t modvar_count;
         size_t modvar_capacity;
 
+        // File channel table (rt_file.c)
+        RtFileState file_state;
+
+        // Type registry (rt_type_registry.c)
+        RtTypeRegistryState type_registry;
+
         // Future expansions:
-        // - File channel table (rt_file.c)
-        // - Type registry (rt_type_registry.c)
+        // - Command-line arguments (rt_args.c)
         // - Command-line arguments (rt_args.c)
     } RtContext;
 
@@ -71,6 +96,11 @@ extern "C"
     /// @details Returns the context bound via rt_set_current_context.
     /// @return Active context, or NULL if none bound.
     RtContext *rt_get_current_context(void);
+
+    /// @brief Access the process-wide legacy runtime context.
+    /// @details Initializes on first use. Used to preserve single-VM behaviour when
+    ///          no VM-bound context is active.
+    RtContext *rt_legacy_context(void);
 
 #ifdef __cplusplus
 }

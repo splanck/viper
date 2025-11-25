@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/runtime/RTAbsI64OverflowTests.cpp
-// Purpose: Verify rt_abs_i64 traps on overflow input. 
+// Purpose: Verify rt_abs_i64 traps on overflow input.
 // Key invariants: Overflowing inputs trigger runtime trap.
 // Ownership/Lifetime: Uses runtime library; stubs vm_trap to capture message.
 // Links: docs/runtime-vm.md#runtime-abi

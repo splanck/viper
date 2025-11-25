@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/runtime/FloatFormattingTests.cpp
-// Purpose: Verify deterministic runtime formatting for floating-point values. 
+// Purpose: Verify deterministic runtime formatting for floating-point values.
 // Key invariants: Canonical spellings are produced regardless of special cases.
 // Ownership/Lifetime: Runtime numeric formatting helpers.
 // Links: docs/codemap.md

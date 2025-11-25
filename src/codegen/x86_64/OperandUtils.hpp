@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: codegen/x86_64/OperandUtils.hpp
-// Purpose: Provide shared utility functions for Machine IR operand manipulation, 
+// Purpose: Provide shared utility functions for Machine IR operand manipulation,
 // Key invariants: To be documented.
 // Ownership/Lifetime: Helpers operate on values or const references; callers retain
 // Links: docs/architecture.md

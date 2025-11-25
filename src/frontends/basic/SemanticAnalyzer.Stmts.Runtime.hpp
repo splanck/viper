@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: frontends/basic/SemanticAnalyzer.Stmts.Runtime.hpp
-// Purpose: Declares helpers specific to runtime/data-manipulation statement 
+// Purpose: Declares helpers specific to runtime/data-manipulation statement
 // Key invariants: Runtime helpers mirror the analyzer's internal state while
 // Ownership/Lifetime: Helpers borrow SemanticAnalyzer state.
 // Links: docs/codemap.md

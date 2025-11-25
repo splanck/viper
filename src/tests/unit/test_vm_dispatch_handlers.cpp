@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_vm_dispatch_handlers.cpp
-// Purpose: Ensure every opcode annotated with a VM dispatch kind has a handler. 
+// Purpose: Ensure every opcode annotated with a VM dispatch kind has a handler.
 // Key invariants: VM opcode handler table provides non-null entries for all
 // Ownership/Lifetime: Test uses static metadata only.
 // Links: docs/il-guide.md#reference

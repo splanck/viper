@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tools/common/module_loader.hpp
-// Purpose: Shared helpers for loading and verifying IL modules used by CLI tools. 
+// Purpose: Shared helpers for loading and verifying IL modules used by CLI tools.
 // Key invariants: LoadResult accurately describes success or failure without mutating the output
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md

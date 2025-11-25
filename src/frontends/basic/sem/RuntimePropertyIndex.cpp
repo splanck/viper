@@ -64,4 +64,3 @@ RuntimePropertyIndex &runtimePropertyIndex()
 }
 
 } // namespace il::frontends::basic
-

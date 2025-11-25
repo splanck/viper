@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_vm_addr_of.cpp
-// Purpose: Verify VM addr_of instruction returns pointer to global string. 
+// Purpose: Verify VM addr_of instruction returns pointer to global string.
 // Key invariants: Returned pointer's data matches global initializer.
 // Ownership/Lifetime: Test constructs IL module and executes VM.
 // Links: docs/il-guide.md#reference

@@ -13,8 +13,8 @@
 
 #pragma once
 
-#include "vm/VM.hpp"
 #include "il/core/Opcode.hpp"
+#include "vm/VM.hpp"
 
 namespace il::vm
 {
@@ -32,9 +32,9 @@ class DispatchStrategy
     /// @brief Strategy identifier for diagnostics and configuration.
     enum class Kind
     {
-        FnTable,  ///< Function table lookup
-        Switch,   ///< Switch statement dispatch
-        Threaded  ///< Computed goto threading
+        FnTable, ///< Function table lookup
+        Switch,  ///< Switch statement dispatch
+        Threaded ///< Computed goto threading
     };
 
     /// @brief Get the kind of this strategy.
@@ -46,19 +46,25 @@ class DispatchStrategy
     /// @param instr Instruction to execute
     /// @return Execution result from the handler
     virtual VM::ExecResult executeInstruction(VM &vm,
-                                             VM::ExecState &state,
-                                             const il::core::Instr &instr) = 0;
+                                              VM::ExecState &state,
+                                              const il::core::Instr &instr) = 0;
 
     /// @brief Check if this strategy requires special trap handling.
     /// @details The threaded strategy needs to catch TrapDispatchSignal
     ///          while others can let it propagate.
-    virtual bool requiresTrapCatch() const { return false; }
+    virtual bool requiresTrapCatch() const
+    {
+        return false;
+    }
 
     /// @brief Check if this strategy handles tracing and finalization internally.
     /// @details The switch strategy's inline handlers call handleInlineResult,
     ///          which traces and finalizes internally. Other strategies return
     ///          ExecResult and expect the main loop to handle finalization.
-    virtual bool handlesFinalizationInternally() const { return false; }
+    virtual bool handlesFinalizationInternally() const
+    {
+        return false;
+    }
 };
 
 /// @brief Shared dispatch loop implementation.
@@ -71,8 +77,8 @@ class DispatchStrategy
 /// @param strategy Dispatch strategy to use for instruction execution
 /// @return True when dispatch terminated normally, false when paused
 bool runSharedDispatchLoop(VM &vm,
-                          VMContext &context,
-                          VM::ExecState &state,
-                          DispatchStrategy &strategy);
+                           VMContext &context,
+                           VM::ExecState &state,
+                           DispatchStrategy &strategy);
 
 } // namespace il::vm

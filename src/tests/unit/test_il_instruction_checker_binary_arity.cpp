@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_il_instruction_checker_binary_arity.cpp
-// Purpose: Regression test ensuring binary arithmetic instructions enforce operand arity. 
+// Purpose: Regression test ensuring binary arithmetic instructions enforce operand arity.
 // Key invariants: iadd.ovf instructions reject operand counts other than two and surface
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md

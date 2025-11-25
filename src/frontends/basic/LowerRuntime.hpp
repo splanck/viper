@@ -108,8 +108,12 @@ class RuntimeHelperTracker
     /// @details When a call targets a known runtime helper, remember the exact
     ///          symbol spelling so extern declarations can match call sites.
     void trackCalleeName(std::string_view name);
+
     /// @brief Enumerate callee names recorded so far.
-    const std::unordered_set<std::string> &usedNames() const { return usedNames_; }
+    const std::unordered_set<std::string> &usedNames() const
+    {
+        return usedNames_;
+    }
 };
 
 } // namespace il::frontends::basic

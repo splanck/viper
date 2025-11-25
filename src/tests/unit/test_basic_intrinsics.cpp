@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_basic_intrinsics.cpp
-// Purpose: Unit test for BASIC intrinsic registry lookups. 
+// Purpose: Unit test for BASIC intrinsic registry lookups.
 // Key invariants: Verifies parameter counts/types for selected intrinsics.
 // Ownership/Lifetime: Test owns nothing.
 // Links: docs/codemap.md

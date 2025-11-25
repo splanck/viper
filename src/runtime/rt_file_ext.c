@@ -130,4 +130,3 @@ void rt_io_file_delete(rt_string path)
         return;
     (void)unlink(cpath);
 }
-

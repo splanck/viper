@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/codegen/test_codegen_arm64_trap_eh.cpp
-// Purpose: Verify AArch64 lowering for IL traps and EH markers. 
+// Purpose: Verify AArch64 lowering for IL traps and EH markers.
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md
@@ -83,16 +83,15 @@ TEST(Arm64CLI, EhMarkersNoop)
 {
     const std::string in = outPath("arm64_eh.il");
     const std::string out = outPath("arm64_eh.s");
-    const std::string il =
-        "il 0.1\n"
-        "func @errors_demo() -> i64 {\n"
-        "entry:\n"
-        "  eh.push ^handle\n"
-        "  trap.from_err i32 6\n"
-        "handler ^handle(%err:Error, %tok:ResumeTok):\n"
-        "  eh.entry\n"
-        "  resume.same %tok\n"
-        "}\n";
+    const std::string il = "il 0.1\n"
+                           "func @errors_demo() -> i64 {\n"
+                           "entry:\n"
+                           "  eh.push ^handle\n"
+                           "  trap.from_err i32 6\n"
+                           "handler ^handle(%err:Error, %tok:ResumeTok):\n"
+                           "  eh.entry\n"
+                           "  resume.same %tok\n"
+                           "}\n";
     writeFile(in, il);
     const char *argv[] = {in.c_str(), "-S", out.c_str()};
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);

@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_vm_unknown_global.cpp
-// Purpose: Ensure VM traps when referencing undefined globals. 
+// Purpose: Ensure VM traps when referencing undefined globals.
 // Key invariants: Missing global names must emit "unknown global" trap.
 // Ownership/Lifetime: Test constructs IL module and executes VM.
 // Links: docs/codemap.md

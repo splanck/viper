@@ -3,7 +3,8 @@
 **Version:** 1.0.0
 **Status:** ✅ Phase 1 Complete (macOS)
 
-ViperGFX is a pure software-rendered, single-window, cross-platform 2D graphics library written in C99. It provides window management, pixel operations, drawing primitives, and input handling with zero external dependencies.
+ViperGFX is a pure software-rendered, single-window, cross-platform 2D graphics library written in C99. It provides
+window management, pixel operations, drawing primitives, and input handling with zero external dependencies.
 
 ## Features
 
@@ -17,12 +18,12 @@ ViperGFX is a pure software-rendered, single-window, cross-platform 2D graphics 
 
 ## Platform Support
 
-| Platform | Status | Backend |
-|----------|--------|---------|
+| Platform | Status         | Backend                                    |
+|----------|----------------|--------------------------------------------|
 | macOS    | ✅ **Complete** | Cocoa/AppKit (`src/vgfx_platform_macos.m`) |
-| Linux    | ⏳ Stub only | X11 (`src/vgfx_platform_linux.c`) |
-| Windows  | ⏳ Stub only | Win32 GDI (`src/vgfx_platform_win32.c`) |
-| Testing  | ✅ Complete | Mock backend (`src/vgfx_platform_mock.c`) |
+| Linux    | ⏳ Stub only    | X11 (`src/vgfx_platform_linux.c`)          |
+| Windows  | ⏳ Stub only    | Win32 GDI (`src/vgfx_platform_win32.c`)    |
+| Testing  | ✅ Complete     | Mock backend (`src/vgfx_platform_mock.c`)  |
 
 ## Building Standalone
 
@@ -137,6 +138,7 @@ int main(void) {
 ```
 
 Compile and link:
+
 ```bash
 gcc main.c -o myapp -Iinclude -Llib -lvipergfx -framework Cocoa
 ```
@@ -199,6 +201,7 @@ ViperGFX is **single-threaded** and **not thread-safe**:
 - Do **not** call ViperGFX functions from worker threads or signal handlers
 
 **Correct usage:**
+
 ```c
 // GOOD: All calls from main thread
 int main(void) {
@@ -209,6 +212,7 @@ int main(void) {
 ```
 
 **Incorrect usage:**
+
 ```c
 // BAD: Calling from worker thread
 void* worker_thread(void* arg) {
@@ -225,9 +229,9 @@ void* worker_thread(void* arg) {
 4. **No Text Rendering** - No built-in font/text support (primitives only)
 5. **No Image Loading** - No PNG/JPEG support (raw pixels only)
 6. **Platform Support**:
-   - ✅ macOS: Full support (Cocoa backend)
-   - ⏳ Linux: Stub only (X11 backend needs implementation)
-   - ⏳ Windows: Stub only (Win32 backend needs implementation)
+    - ✅ macOS: Full support (Cocoa backend)
+    - ⏳ Linux: Stub only (X11 backend needs implementation)
+    - ⏳ Windows: Stub only (Win32 backend needs implementation)
 
 ### Performance Characteristics
 
@@ -256,12 +260,12 @@ ctest -V
 
 ### Test Suites
 
-| Test Suite | Tests | Description |
-|------------|-------|-------------|
-| **test_window** | T1-T3 | Window lifecycle: create, destroy, size queries |
-| **test_pixels** | T4-T6, T14 | Pixel operations: pset, point, cls, framebuffer access |
-| **test_drawing** | T7-T13 | Drawing primitives: lines, rectangles, circles (outline & filled) |
-| **test_input** | T16-T21 | Input handling: keyboard, mouse, event queue, overflow, resize |
+| Test Suite       | Tests      | Description                                                       |
+|------------------|------------|-------------------------------------------------------------------|
+| **test_window**  | T1-T3      | Window lifecycle: create, destroy, size queries                   |
+| **test_pixels**  | T4-T6, T14 | Pixel operations: pset, point, cls, framebuffer access            |
+| **test_drawing** | T7-T13     | Drawing primitives: lines, rectangles, circles (outline & filled) |
+| **test_input**   | T16-T21    | Input handling: keyboard, mouse, event queue, overflow, resize    |
 
 **Total: 20 tests, 100% pass rate**
 
@@ -275,6 +279,7 @@ Tests use `vgfx_platform_mock.c` which provides:
 - **Headless testing**: Run in CI/CD without X11/Cocoa/Win32
 
 Example:
+
 ```c
 vgfx_window_t win = vgfx_create_window(&params);
 
@@ -311,6 +316,7 @@ cd build-gfx
 #### `basic_draw.c` - Interactive Demo (macOS only)
 
 Full-featured interactive example demonstrating:
+
 - Window creation with resizing enabled
 - All drawing primitives (rectangles, circles, lines)
 - Event handling (keyboard, mouse, close)
@@ -318,10 +324,12 @@ Full-featured interactive example demonstrating:
 - 60 FPS with smooth animation
 
 **Controls:**
+
 - Close window or press ESC to exit
 - Watch real-time rendering
 
 **Output:**
+
 ```
 ViperGFX v1.0.0 - Basic Drawing Example
 Window created: 640x480
@@ -332,15 +340,18 @@ Window destroyed
 
 #### `quick_test.c` - Automated Visual Test
 
-Automated test that creates a window, draws a test pattern, and exits after 30 frames. Used for verifying the macOS backend works correctly.
+Automated test that creates a window, draws a test pattern, and exits after 30 frames. Used for verifying the macOS
+backend works correctly.
 
 **Features:**
+
 - Non-interactive (auto-exits)
 - Draws test pattern (rectangles, circles, lines)
 - Verifies 30 frames at 60 FPS
 - Suitable for automated testing
 
 **Output:**
+
 ```
 ViperGFX macOS Backend Test
 ============================
@@ -360,18 +371,21 @@ SUCCESS: All checks passed
 #### `api_test.c` - API Validation
 
 Comprehensive API validation that works with **all backends** (including mock):
+
 - Window creation and parameter validation
 - Framebuffer access and pixel operations
 - Drawing primitive functionality
 - Error handling verification
 
 **Features:**
+
 - Platform-agnostic (works with mock backend)
 - Tests all public API functions
 - Validates return values and error states
 - Useful for porting to new platforms
 
 **Output:**
+
 ```
 === ViperGFX API Test ===
 Version: 1.0.0
@@ -432,10 +446,10 @@ src/lib/graphics/
 
 - **[INTEGRATION.md](INTEGRATION.md)** - CMake build system integration into Viper
 - **[docs/VIPER_INTEGRATION.md](docs/VIPER_INTEGRATION.md)** - Runtime integration guide for BASIC language support
-  - BASIC statement mapping (SCREEN, PSET, LINE, CIRCLE, etc.)
-  - Runtime architecture and main loop integration
-  - Memory management and error handling
-  - Performance optimization strategies
+    - BASIC statement mapping (SCREEN, PSET, LINE, CIRCLE, etc.)
+    - Runtime architecture and main loop integration
+    - Memory management and error handling
+    - Performance optimization strategies
 
 ### Implementation Details
 
@@ -450,9 +464,9 @@ src/lib/graphics/
 - **C99-compliant compiler** (GCC, Clang, or MSVC)
 - **CMake 3.10+**
 - **Platform SDK**:
-  - macOS: Xcode Command Line Tools (Cocoa framework)
-  - Linux: X11 development libraries (planned)
-  - Windows: Windows SDK (planned)
+    - macOS: Xcode Command Line Tools (Cocoa framework)
+    - Linux: X11 development libraries (planned)
+    - Windows: Windows SDK (planned)
 
 ### Runtime Requirements
 
@@ -475,7 +489,8 @@ See [LICENSE](../../LICENSE) for details.
 
 ## Contributing
 
-ViperGFX is part of the larger Viper project. For questions or contributions, see the main [Viper documentation](../../docs/README.md).
+ViperGFX is part of the larger Viper project. For questions or contributions, see the
+main [Viper documentation](../../docs/README.md).
 
 ### Platform Backend Implementation
 
@@ -487,6 +502,7 @@ To implement a new platform backend:
 4. Test with the mock backend test suite
 
 Required functions:
+
 - `vgfx_platform_init_window()`
 - `vgfx_platform_destroy_window()`
 - `vgfx_platform_process_events()`

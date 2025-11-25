@@ -1443,7 +1443,8 @@ constexpr auto kDescriptorRows = std::to_array<DescriptorRow>({
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-// Canonical dotted names for string retain/release, with legacy aliases gated by VIPER_RUNTIME_NS_DUAL
+// Canonical dotted names for string retain/release, with legacy aliases gated by
+// VIPER_RUNTIME_NS_DUAL
 #if VIPER_RUNTIME_NS_DUAL
     DescriptorRow{"Viper.Strings.RetainMaybe",
                   std::nullopt,

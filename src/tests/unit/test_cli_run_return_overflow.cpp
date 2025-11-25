@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_cli_run_return_overflow.cpp
-// Purpose: Ensure cmdRunIL reports an error when VM return value exceeds int range. 
+// Purpose: Ensure cmdRunIL reports an error when VM return value exceeds int range.
 // Key invariants: Overflow must emit diagnostic mentioning "outside host int range" and return
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md

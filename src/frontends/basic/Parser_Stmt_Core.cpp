@@ -189,7 +189,8 @@ Parser::StmtResult Parser::parseCall(int)
                     i += 2;
                 }
                 // Require final name segment (identifier or keyword APPEND) followed by '('
-                if (!((peek(i).kind == TokenKind::Identifier || peek(i).kind == TokenKind::KeywordAppend) &&
+                if (!((peek(i).kind == TokenKind::Identifier ||
+                       peek(i).kind == TokenKind::KeywordAppend) &&
                       peek(i + 1).kind == TokenKind::LParen))
                     ok = false;
 

@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_vm_alloca_overflow.cpp
-// Purpose: Ensure VM traps when alloca exceeds frame stack capacity. 
+// Purpose: Ensure VM traps when alloca exceeds frame stack capacity.
 // Key invariants: Alloca larger than stack size must emit "stack overflow in alloca" trap.
 // Ownership/Lifetime: Test constructs IL module and executes VM.
 // Links: docs/codemap.md

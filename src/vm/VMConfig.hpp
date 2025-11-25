@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: vm/VMConfig.hpp
-// Purpose: Defines compile-time configuration flags for the VM subsystem. 
+// Purpose: Defines compile-time configuration flags for the VM subsystem.
 // Key invariants: To be documented.
 // Ownership/Lifetime: Shared header; no owning object or runtime state.
 // Links: docs/architecture.md

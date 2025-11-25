@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_codegen_x86_64_coalescer.cpp
-// Purpose: Ensure PX_COPY lowering emits deterministic move sequences. 
+// Purpose: Ensure PX_COPY lowering emits deterministic move sequences.
 // Key invariants: Coalescing removes PX_COPY pseudos and releases scratch
 // Ownership/Lifetime: Tests construct Machine IR locally and run the allocator.
 // Links: src/codegen/x86_64/ra/Coalescer.hpp

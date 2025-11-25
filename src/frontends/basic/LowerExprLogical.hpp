@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: frontends/basic/LowerExprLogical.hpp
-// Purpose: Declares logical expression lowering helpers that operate on the 
+// Purpose: Declares logical expression lowering helpers that operate on the
 // Key invariants: Helper objects reuse Lowerer state and utilities when
 // Ownership/Lifetime: Helpers borrow the Lowerer reference for the duration of
 // Links: docs/codemap.md

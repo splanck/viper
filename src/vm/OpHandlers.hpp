@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: vm/OpHandlers.hpp
-// Purpose: Aggregate opcode handler category declarations for VM dispatch wiring. 
+// Purpose: Aggregate opcode handler category declarations for VM dispatch wiring.
 // Key invariants: Provides unified access points to handler functions grouped by category.
 // Ownership/Lifetime: Functions exposed through this header do not own VM resources.
 // Links: docs/il-guide.md#reference

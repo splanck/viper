@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/frontends/basic/ParseFileIoTests.cpp
-// Purpose: Validate parsing of BASIC OPEN/CLOSE statements for file I/O. 
+// Purpose: Validate parsing of BASIC OPEN/CLOSE statements for file I/O.
 // Key invariants: AST printer reflects mode enum numeric values and fields.
 // Ownership/Lifetime: Test owns parser and AST instances.
 // Links: docs/codemap.md

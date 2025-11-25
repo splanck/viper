@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/perf/vm_switch_bench.cpp
-// Purpose: Micro-benchmark SwitchI32 dispatch paths to detect major performance regressions. 
+// Purpose: Micro-benchmark SwitchI32 dispatch paths to detect major performance regressions.
 // Key invariants: Both Auto and Linear switch modes execute equivalent IL and produce the same
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md

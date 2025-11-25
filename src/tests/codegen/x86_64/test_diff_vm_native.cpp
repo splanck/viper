@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/codegen/x86_64/test_diff_vm_native.cpp
-// Purpose: Ensure the ilc VM runner and native backend produce identical 
+// Purpose: Ensure the ilc VM runner and native backend produce identical
 // Key invariants: Shared codegen fixture handles filesystem orchestration while
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md

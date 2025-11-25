@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: frontends/basic/LowerStmt_Runtime.hpp
-// Purpose: Declares runtime-oriented statement lowering helpers, including data 
+// Purpose: Declares runtime-oriented statement lowering helpers, including data
 // Key invariants: Helpers interact with runtime support through the active
 // Ownership/Lifetime: Declarations extend the Lowerer private interface for
 // Links: docs/codemap.md

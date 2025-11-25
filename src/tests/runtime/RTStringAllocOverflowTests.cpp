@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/runtime/RTStringAllocOverflowTests.cpp
-// Purpose: Ensure rt_string_alloc traps when length+1 would overflow. 
+// Purpose: Ensure rt_string_alloc traps when length+1 would overflow.
 // Key invariants: Runtime string allocation guards against size_t overflow.
 // Ownership/Lifetime: Uses runtime library.
 // Links: docs/runtime-vm.md#runtime-abi

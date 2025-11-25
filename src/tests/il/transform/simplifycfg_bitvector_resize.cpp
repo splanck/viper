@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/il/transform/simplifycfg_bitvector_resize.cpp
-// Purpose: Validate SimplifyCFG utility BitVector resize preserves set bits. 
+// Purpose: Validate SimplifyCFG utility BitVector resize preserves set bits.
 // Key invariants: Growing fills new bits with the provided value; shrinking keeps leading bits.
 // Ownership/Lifetime: Operates on a local BitVector instance within the test.
 // Links: docs/il-guide.md#reference

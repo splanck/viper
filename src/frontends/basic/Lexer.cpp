@@ -266,7 +266,7 @@ void Lexer::skipWhitespaceExceptNewline()
         char c = peek();
         if (c == ' ' || c == '\t' || c == '\r')
         {
-/// @brief Retrieves  value.
+            /// @brief Retrieves  value.
             get();
         }
         else
@@ -292,7 +292,7 @@ void Lexer::skipWhitespaceAndComments()
         if (peek() == '\'')
         {
             while (!eof() && peek() != '\n')
-/// @brief Retrieves  value.
+                /// @brief Retrieves  value.
                 get();
             continue;
         }
@@ -305,14 +305,14 @@ void Lexer::skipWhitespaceAndComments()
             if (!std::isalnum(static_cast<unsigned char>(after)) && after != '$' && after != '#' &&
                 after != '!' && after != '%' && after != '&')
             {
-/// @brief Retrieves  value.
+                /// @brief Retrieves  value.
                 get();
-/// @brief Retrieves  value.
+                /// @brief Retrieves  value.
                 get();
-/// @brief Retrieves  value.
+                /// @brief Retrieves  value.
                 get();
                 while (!eof() && peek() != '\n')
-/// @brief Retrieves  value.
+                    /// @brief Retrieves  value.
                     get();
                 continue;
             }
@@ -402,7 +402,7 @@ Token Lexer::lexString()
 {
     il::support::SourceLoc loc{file_id_, line_, column_};
     std::string s;
-/// @brief Retrieves  value.
+    /// @brief Retrieves  value.
     get(); // consume opening quote
     while (!eof() && peek() != '"')
     {
@@ -416,7 +416,7 @@ Token Lexer::lexString()
         s.push_back(c);
     }
     if (peek() == '"')
-/// @brief Retrieves  value.
+        /// @brief Retrieves  value.
         get();
     return {TokenKind::String, s, loc};
 }
@@ -441,7 +441,7 @@ Token Lexer::next()
     if (c == '\n')
     {
         il::support::SourceLoc loc{file_id_, line_, column_};
-/// @brief Retrieves  value.
+        /// @brief Retrieves  value.
         get();
         return {TokenKind::EndOfLine, "\n", loc};
     }
@@ -456,7 +456,7 @@ Token Lexer::next()
         return lexString();
 
     il::support::SourceLoc loc{file_id_, line_, column_};
-/// @brief Retrieves  value.
+    /// @brief Retrieves  value.
     get();
     switch (c)
     {
@@ -479,13 +479,13 @@ Token Lexer::next()
         case '<':
             if (peek() == '>')
             {
-/// @brief Retrieves  value.
+                /// @brief Retrieves  value.
                 get();
                 return {TokenKind::NotEqual, "<>", loc};
             }
             if (peek() == '=')
             {
-/// @brief Retrieves  value.
+                /// @brief Retrieves  value.
                 get();
                 return {TokenKind::LessEqual, "<=", loc};
             }
@@ -493,7 +493,7 @@ Token Lexer::next()
         case '>':
             if (peek() == '=')
             {
-/// @brief Retrieves  value.
+                /// @brief Retrieves  value.
                 get();
                 return {TokenKind::GreaterEqual, ">=", loc};
             }

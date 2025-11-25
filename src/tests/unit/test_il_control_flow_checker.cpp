@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_il_control_flow_checker.cpp
-// Purpose: Check il::verify control-flow helpers for common failure modes. 
+// Purpose: Check il::verify control-flow helpers for common failure modes.
 // Key invariants: Functions emit diagnostics for invalid block structure.
 // Ownership/Lifetime: Constructs temporary IL functions.
 // Links: docs/il-guide.md#reference

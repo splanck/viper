@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: frontends/basic/LineUtils.hpp
-// Purpose: Provide helpers for reasoning about BASIC line labels. 
+// Purpose: Provide helpers for reasoning about BASIC line labels.
 // Key invariants: Treats non-positive integers as synthetic/unlabeled statements.
 // Ownership/Lifetime: Header-only utility with no state.
 // Links: docs/codemap.md

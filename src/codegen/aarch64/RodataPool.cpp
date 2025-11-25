@@ -34,9 +34,16 @@ std::string RodataPool::escapeAsciz(std::string_view bytes)
         switch (c)
         {
             case '"':
-            case '\\': s.push_back('\\'); s.push_back(static_cast<char>(c)); break;
-            case '\n': s += "\\n"; break;
-            case '\t': s += "\\t"; break;
+            case '\\':
+                s.push_back('\\');
+                s.push_back(static_cast<char>(c));
+                break;
+            case '\n':
+                s += "\\n";
+                break;
+            case '\t':
+                s += "\\t";
+                break;
             default:
                 if (c >= 32 && c < 127)
                 {
@@ -98,4 +105,3 @@ void RodataPool::emit(std::ostream &os) const
 }
 
 } // namespace viper::codegen::aarch64
-

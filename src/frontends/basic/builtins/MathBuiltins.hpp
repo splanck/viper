@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: frontends/basic/builtins/MathBuiltins.hpp
-// Purpose: Declares helpers for registering BASIC math builtins in the central 
+// Purpose: Declares helpers for registering BASIC math builtins in the central
 // Key invariants: Registration writes entries matching BuiltinCallExpr::Builtin
 // Ownership/Lifetime: Functions mutate caller-provided tables in-place.
 // Links: docs/codemap.md

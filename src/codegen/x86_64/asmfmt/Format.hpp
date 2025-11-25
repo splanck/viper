@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: codegen/x86_64/asmfmt/Format.hpp
-// Purpose: Provide reusable helpers for formatting x86-64 assembly operands and 
+// Purpose: Provide reusable helpers for formatting x86-64 assembly operands and
 // Key invariants: To be documented.
 // Ownership/Lifetime: Functions allocate and return std::string values by copy. Callers
 // Links: docs/architecture.md

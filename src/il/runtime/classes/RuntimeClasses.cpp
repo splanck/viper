@@ -28,34 +28,48 @@ namespace il::runtime
 namespace
 {
 // Macro helpers to materialize descriptor elements from the .inc file.
-#define RUNTIME_PROP(_name, _type, _getter, _setter)                                            \
-    ::il::runtime::RuntimeProperty{(_name), (_type), (_getter), (_setter), ((_setter) == nullptr)}
+#define RUNTIME_PROP(_name, _type, _getter, _setter)                                               \
+    ::il::runtime::RuntimeProperty                                                                 \
+    {                                                                                              \
+        (_name), (_type), (_getter), (_setter), ((_setter) == nullptr)                             \
+    }
 
-#define RUNTIME_PROPS(...) std::vector<::il::runtime::RuntimeProperty>{__VA_ARGS__}
+#define RUNTIME_PROPS(...)                                                                         \
+    std::vector<::il::runtime::RuntimeProperty>                                                    \
+    {                                                                                              \
+        __VA_ARGS__                                                                                \
+    }
 
-#define RUNTIME_METHOD(_name, _sig, _target)                                                    \
-    ::il::runtime::RuntimeMethod{(_name), (_sig), (_target)}
+#define RUNTIME_METHOD(_name, _sig, _target)                                                       \
+    ::il::runtime::RuntimeMethod                                                                   \
+    {                                                                                              \
+        (_name), (_sig), (_target)                                                                 \
+    }
 
-#define RUNTIME_METHODS(...) std::vector<::il::runtime::RuntimeMethod>{__VA_ARGS__}
+#define RUNTIME_METHODS(...)                                                                       \
+    std::vector<::il::runtime::RuntimeMethod>                                                      \
+    {                                                                                              \
+        __VA_ARGS__                                                                                \
+    }
 
-#define RUNTIME_CLASS(_qname, _typeId, _layout, _ctor, _props, _methods)                        \
-    catalog.emplace_back(::il::runtime::RuntimeClass{                                           \
-        (_qname),                                                                               \
-        (_layout),                                                                              \
-        (_ctor),                                                                                \
-        ::il::runtime::RuntimeTypeId::_typeId,                                                  \
-        (_props),                                                                               \
-        (_methods)});
+#define RUNTIME_CLASS(_qname, _typeId, _layout, _ctor, _props, _methods)                           \
+    catalog.emplace_back(::il::runtime::RuntimeClass{(_qname),                                     \
+                                                     (_layout),                                    \
+                                                     (_ctor),                                      \
+                                                     ::il::runtime::RuntimeTypeId::_typeId,        \
+                                                     (_props),                                     \
+                                                     (_methods)});
 } // namespace
 
 const std::vector<RuntimeClass> &runtimeClassCatalog()
 {
-    static const std::vector<RuntimeClass> catalog_init = [] {
+    static const std::vector<RuntimeClass> catalog_init = []
+    {
         std::vector<RuntimeClass> catalog;
         catalog.reserve(8); // initial seed; grows as we add classes
 
-        // Expand runtime class declarations
-        #include "il/runtime/classes/RuntimeClasses.inc"
+// Expand runtime class declarations
+#include "il/runtime/classes/RuntimeClasses.inc"
 
         return catalog;
     }();
@@ -63,4 +77,3 @@ const std::vector<RuntimeClass> &runtimeClassCatalog()
 }
 
 } // namespace il::runtime
-

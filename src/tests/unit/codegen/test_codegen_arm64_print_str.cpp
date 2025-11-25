@@ -43,19 +43,18 @@ TEST(Arm64CLI, PrintConstStrAsm)
 {
     const std::string in = outPath("arm64_print_str.il");
     const std::string out = outPath("arm64_print_str.s");
-    const std::string il =
-        "il 0.1\n"
-        "extern @Viper.Console.PrintStr(str) -> void\n"
-        "global const str @.Lmsg = \"Hello\"\n"
-        "func @main() -> i64 {\n"
-        "entry:\n"
-        "  %p = const_str @.Lmsg\n"
-        "  call @Viper.Console.PrintStr(%p)\n"
-        "  %z = alloca 8\n"
-        "  store i64, %z, 0\n"
-        "  %r = load i64, %z\n"
-        "  ret %r\n"
-        "}\n";
+    const std::string il = "il 0.1\n"
+                           "extern @Viper.Console.PrintStr(str) -> void\n"
+                           "global const str @.Lmsg = \"Hello\"\n"
+                           "func @main() -> i64 {\n"
+                           "entry:\n"
+                           "  %p = const_str @.Lmsg\n"
+                           "  call @Viper.Console.PrintStr(%p)\n"
+                           "  %z = alloca 8\n"
+                           "  store i64, %z, 0\n"
+                           "  %r = load i64, %z\n"
+                           "  ret %r\n"
+                           "}\n";
     writeFile(in, il);
     const char *argv[] = {in.c_str(), "-S", out.c_str()};
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
@@ -67,19 +66,18 @@ TEST(Arm64CLI, PrintConstStrAsm)
 TEST(Arm64CLI, PrintConstStrRunNative)
 {
     const std::string in = outPath("arm64_print_str_run.il");
-    const std::string il =
-        "il 0.1\n"
-        "extern @Viper.Console.PrintStr(str) -> void\n"
-        "global const str @.Lmsg = \"Hello\"\n"
-        "func @main() -> i64 {\n"
-        "entry:\n"
-        "  %p = const_str @.Lmsg\n"
-        "  call @Viper.Console.PrintStr(%p)\n"
-        "  %z = alloca 8\n"
-        "  store i64, %z, 0\n"
-        "  %r = load i64, %z\n"
-        "  ret %r\n"
-        "}\n";
+    const std::string il = "il 0.1\n"
+                           "extern @Viper.Console.PrintStr(str) -> void\n"
+                           "global const str @.Lmsg = \"Hello\"\n"
+                           "func @main() -> i64 {\n"
+                           "entry:\n"
+                           "  %p = const_str @.Lmsg\n"
+                           "  call @Viper.Console.PrintStr(%p)\n"
+                           "  %z = alloca 8\n"
+                           "  store i64, %z, 0\n"
+                           "  %r = load i64, %z\n"
+                           "  ret %r\n"
+                           "}\n";
     writeFile(in, il);
     const char *argv[] = {in.c_str(), "-run-native"};
     // Ensure we can assemble/link/run; exit code 0

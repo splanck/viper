@@ -49,19 +49,18 @@ TEST(Arm64CLI, Select_ConstArms)
 {
     const std::string in = outPath("arm64_select_const.il");
     const std::string out = outPath("arm64_select_const.s");
-    const std::string il =
-        "il 0.1\n"
-        "func @f(%x:i64) -> i64 {\n"
-        "entry(%x:i64):\n"
-        "  %cond = scmp_gt %x, 0\n"
-        "  cbr %cond, then, els\n"
-        "then():\n"
-        "  br join(1)\n"
-        "els():\n"
-        "  br join(0)\n"
-        "join(%v:i64):\n"
-        "  ret %v\n"
-        "}\n";
+    const std::string il = "il 0.1\n"
+                           "func @f(%x:i64) -> i64 {\n"
+                           "entry(%x:i64):\n"
+                           "  %cond = scmp_gt %x, 0\n"
+                           "  cbr %cond, then, els\n"
+                           "then():\n"
+                           "  br join(1)\n"
+                           "els():\n"
+                           "  br join(0)\n"
+                           "join(%v:i64):\n"
+                           "  ret %v\n"
+                           "}\n";
     writeFile(in, il);
     const char *argv[] = {in.c_str(), "-S", out.c_str()};
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
@@ -78,25 +77,24 @@ TEST(Arm64CLI, Select_LoadArms)
 {
     const std::string in = outPath("arm64_select_load.il");
     const std::string out = outPath("arm64_select_load.s");
-    const std::string il =
-        "il 0.1\n"
-        "func @g(%x:i64) -> i64 {\n"
-        "entry(%x:i64):\n"
-        "  %a = alloca 8\n"
-        "  %b = alloca 8\n"
-        "  store i64, %a, 11\n"
-        "  store i64, %b, 22\n"
-        "  %cond = scmp_gt %x, 0\n"
-        "  cbr %cond, then, els\n"
-        "then():\n"
-        "  %av = load i64, %a\n"
-        "  br join(%av)\n"
-        "els():\n"
-        "  %bv = load i64, %b\n"
-        "  br join(%bv)\n"
-        "join(%v:i64):\n"
-        "  ret %v\n"
-        "}\n";
+    const std::string il = "il 0.1\n"
+                           "func @g(%x:i64) -> i64 {\n"
+                           "entry(%x:i64):\n"
+                           "  %a = alloca 8\n"
+                           "  %b = alloca 8\n"
+                           "  store i64, %a, 11\n"
+                           "  store i64, %b, 22\n"
+                           "  %cond = scmp_gt %x, 0\n"
+                           "  cbr %cond, then, els\n"
+                           "then():\n"
+                           "  %av = load i64, %a\n"
+                           "  br join(%av)\n"
+                           "els():\n"
+                           "  %bv = load i64, %b\n"
+                           "  br join(%bv)\n"
+                           "join(%v:i64):\n"
+                           "  ret %v\n"
+                           "}\n";
     writeFile(in, il);
     const char *argv[] = {in.c_str(), "-S", out.c_str()};
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
@@ -113,4 +111,3 @@ int main(int argc, char **argv)
     testing::InitGoogleTest(&argc, &argv);
     return RUN_ALL_TESTS();
 }
-

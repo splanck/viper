@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/codegen/test_target_aarch64.cpp
-// Purpose: Smoke test for AArch64 target descriptor: register naming, ABI sets, and arg orders. 
+// Purpose: Smoke test for AArch64 target descriptor: register naming, ABI sets, and arg orders.
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md

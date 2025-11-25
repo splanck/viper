@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: codegen/x86_64/TargetX64.hpp
-// Purpose: Define physical registers, register classes, and target metadata for the 
+// Purpose: Define physical registers, register classes, and target metadata for the
 // Key invariants: To be documented.
 // Ownership/Lifetime: No heap ownership beyond the singleton target info; containers live for the
 // Links: docs/architecture.md

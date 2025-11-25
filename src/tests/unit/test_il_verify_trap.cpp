@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_il_verify_trap.cpp
-// Purpose: Ensure Verifier accepts blocks terminated by trap. 
+// Purpose: Ensure Verifier accepts blocks terminated by trap.
 // Key invariants: Blocks ending with Opcode::Trap pass verification.
 // Ownership/Lifetime: Constructs module locally for verification.
 // Links: docs/il-guide.md#reference

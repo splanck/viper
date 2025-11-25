@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/codegen/x86_64/test_varargs_al.cpp
-// Purpose: Verify SysV variadic call lowerer sets %al to #XMM-args. 
+// Purpose: Verify SysV variadic call lowerer sets %al to #XMM-args.
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
 // Links: src/codegen/x86_64/CallLowering.cpp

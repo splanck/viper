@@ -14,10 +14,10 @@
 
 #include "RegAllocLinear.hpp"
 
+#include "FrameBuilder.hpp"
 #include <algorithm>
 #include <unordered_map>
 #include <unordered_set>
-#include "FrameBuilder.hpp"
 
 namespace viper::codegen::aarch64
 {
@@ -74,9 +74,11 @@ struct Pools
 static bool isArgRegister(PhysReg r, const TargetInfo &ti)
 {
     for (auto ar : ti.intArgOrder)
-        if (ar == r) return true;
+        if (ar == r)
+            return true;
     for (auto ar : ti.f64ArgOrder)
-        if (ar == r) return true;
+        if (ar == r)
+            return true;
     return false;
 }
 
@@ -176,23 +178,56 @@ static bool isUseDefImmLike(MOpcode opc)
     }
 }
 
-static bool isCmpRR(MOpcode opc) { return opc == MOpcode::CmpRR; }
-static bool isCmpRI(MOpcode opc) { return opc == MOpcode::CmpRI; }
-static bool isMovRR(MOpcode opc) { return opc == MOpcode::MovRR; }
-static bool isMovRI(MOpcode opc) { return opc == MOpcode::MovRI; }
-static bool isCset(MOpcode opc) { return opc == MOpcode::Cset; }
+static bool isCmpRR(MOpcode opc)
+{
+    return opc == MOpcode::CmpRR;
+}
+
+static bool isCmpRI(MOpcode opc)
+{
+    return opc == MOpcode::CmpRI;
+}
+
+static bool isMovRR(MOpcode opc)
+{
+    return opc == MOpcode::MovRR;
+}
+
+static bool isMovRI(MOpcode opc)
+{
+    return opc == MOpcode::MovRI;
+}
+
+static bool isCset(MOpcode opc)
+{
+    return opc == MOpcode::Cset;
+}
+
 static bool isMemLd(MOpcode opc)
 {
     return opc == MOpcode::LdrRegFpImm || opc == MOpcode::LdrRegBaseImm;
 }
+
 static bool isMemSt(MOpcode opc)
 {
     return opc == MOpcode::StrRegFpImm || opc == MOpcode::StrRegBaseImm ||
            opc == MOpcode::StrRegSpImm;
 }
-static bool isSpAdj(MOpcode opc) { return opc == MOpcode::SubSpImm || opc == MOpcode::AddSpImm; }
-static bool isBranch(MOpcode opc) { return opc == MOpcode::Br || opc == MOpcode::BCond; }
-static bool isCall(MOpcode opc) { return opc == MOpcode::Bl; }
+
+static bool isSpAdj(MOpcode opc)
+{
+    return opc == MOpcode::SubSpImm || opc == MOpcode::AddSpImm;
+}
+
+static bool isBranch(MOpcode opc)
+{
+    return opc == MOpcode::Br || opc == MOpcode::BCond;
+}
+
+static bool isCall(MOpcode opc)
+{
+    return opc == MOpcode::Bl;
+}
 
 } // namespace
 
@@ -205,7 +240,8 @@ AllocationResult allocate(MFunction &fn, const TargetInfo &ti)
     buildPools(ti, pools);
     FrameBuilder fb{fn};
 
-    auto spillVictim = [&](RegClass cls, uint16_t id, std::vector<MInstr> &prefix) {
+    auto spillVictim = [&](RegClass cls, uint16_t id, std::vector<MInstr> &prefix)
+    {
         auto &st = (cls == RegClass::GPR) ? states[id] : statesFPR[id];
         if (!st.hasPhys)
             return;
@@ -217,16 +253,21 @@ AllocationResult allocate(MFunction &fn, const TargetInfo &ti)
         }
         else
         {
-            prefix.push_back(MInstr{MOpcode::StrFprFpImm,
-                                    {MOperand::regOp(st.phys), MOperand::immOp(off)}});
+            prefix.push_back(
+                MInstr{MOpcode::StrFprFpImm, {MOperand::regOp(st.phys), MOperand::immOp(off)}});
             releaseFPR(pools, st.phys);
         }
         st.hasPhys = false;
         st.spilled = true;
     };
 
-    auto materialize = [&](MReg &r, bool isUse, bool isDef, std::vector<MInstr> &prefix,
-                           std::vector<MInstr> &suffix, std::vector<PhysReg> &scratch) {
+    auto materialize = [&](MReg &r,
+                           bool isUse,
+                           bool isDef,
+                           std::vector<MInstr> &prefix,
+                           std::vector<MInstr> &suffix,
+                           std::vector<PhysReg> &scratch)
+    {
         if (r.isPhys)
         {
             // Track callee-saved usage for frame plan if used as temp.
@@ -252,16 +293,16 @@ AllocationResult allocate(MFunction &fn, const TargetInfo &ti)
             if (isUse)
             {
                 if (isF)
-                    prefix.push_back(MInstr{MOpcode::LdrFprFpImm,
-                                            {MOperand::regOp(tmp), MOperand::immOp(off)}});
+                    prefix.push_back(
+                        MInstr{MOpcode::LdrFprFpImm, {MOperand::regOp(tmp), MOperand::immOp(off)}});
                 else
                     prefix.push_back(makeLdrFp(tmp, off));
             }
             if (isDef)
             {
                 if (isF)
-                    suffix.push_back(MInstr{MOpcode::StrFprFpImm,
-                                            {MOperand::regOp(tmp), MOperand::immOp(off)}});
+                    suffix.push_back(
+                        MInstr{MOpcode::StrFprFpImm, {MOperand::regOp(tmp), MOperand::immOp(off)}});
                 else
                     suffix.push_back(makeStrFp(tmp, off));
             }
@@ -283,7 +324,7 @@ AllocationResult allocate(MFunction &fn, const TargetInfo &ti)
                 pools.calleeUsed.insert(phys);
             }
             if (isF && std::find(ti.calleeSavedFPR.begin(), ti.calleeSavedFPR.end(), phys) !=
-                            ti.calleeSavedFPR.end())
+                           ti.calleeSavedFPR.end())
             {
                 pools.calleeUsedFPR.insert(phys);
             }
@@ -333,7 +374,8 @@ AllocationResult allocate(MFunction &fn, const TargetInfo &ti)
             std::vector<MInstr> suffix;
             std::vector<PhysReg> scratch;
 
-            auto rolesFor = [&](std::size_t idx) -> std::pair<bool, bool> {
+            auto rolesFor = [&](std::size_t idx) -> std::pair<bool, bool>
+            {
                 // returns {isUse, isDef}
                 switch (ins.opc)
                 {
@@ -371,7 +413,8 @@ AllocationResult allocate(MFunction &fn, const TargetInfo &ti)
                     if (idx == 1)
                         return {true, false};
                 }
-                if (ins.opc == MOpcode::SCvtF || ins.opc == MOpcode::FCvtZS || ins.opc == MOpcode::UCvtF || ins.opc == MOpcode::FCvtZU)
+                if (ins.opc == MOpcode::SCvtF || ins.opc == MOpcode::FCvtZS ||
+                    ins.opc == MOpcode::UCvtF || ins.opc == MOpcode::FCvtZU)
                 {
                     return {idx == 1, idx == 0};
                 }
@@ -414,8 +457,10 @@ AllocationResult allocate(MFunction &fn, const TargetInfo &ti)
                 return {true, false};
             };
 
-            // Opportunistic spilling: if no free GPRs and we see a new def, spill the earliest state
-            auto maybeSpill = [&](std::size_t operandIdx, RegClass cls) {
+            // Opportunistic spilling: if no free GPRs and we see a new def, spill the earliest
+            // state
+            auto maybeSpill = [&](std::size_t operandIdx, RegClass cls)
+            {
                 if (cls == RegClass::GPR)
                 {
                     if (!pools.gprFree.empty())

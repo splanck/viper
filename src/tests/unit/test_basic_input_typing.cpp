@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_basic_input_typing.cpp
-// Purpose: Verify INPUT emits correct conversions/stores for STRING and SINGLE. 
+// Purpose: Verify INPUT emits correct conversions/stores for STRING and SINGLE.
 // Key invariants: STRING target stores directly; SINGLE target uses rt_to_double.
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md

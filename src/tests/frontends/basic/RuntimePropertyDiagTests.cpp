@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/frontends/basic/RuntimePropertyDiagTests.cpp
-// Purpose: Verify diagnostics for runtime class property assignment (read-only). 
+// Purpose: Verify diagnostics for runtime class property assignment (read-only).
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md
@@ -23,11 +23,10 @@ using namespace il::support;
 
 int main()
 {
-    const char *src =
-        "10 DIM s AS Viper.String\n"
-        "20 LET s = \"abcd\"\n"
-        "30 s.Length = 5\n"
-        "40 END\n";
+    const char *src = "10 DIM s AS Viper.String\n"
+                      "20 LET s = \"abcd\"\n"
+                      "30 s.Length = 5\n"
+                      "40 END\n";
 
     SourceManager sm;
     BasicCompilerOptions opts{};
@@ -42,4 +41,3 @@ int main()
     assert(out.find("error[E_PROP_READONLY]") != std::string::npos);
     return 0;
 }
-

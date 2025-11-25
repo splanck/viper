@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/vm/TrapDivideByZeroTests.cpp
-// Purpose: Ensure DivideByZero traps report kind and instruction index. 
+// Purpose: Ensure DivideByZero traps report kind and instruction index.
 // Key invariants: Diagnostic mentions DivideByZero and instruction #0 for the failing op.
 // Ownership/Lifetime: Forks child VM process to capture trap output.
 // Links: docs/codemap.md

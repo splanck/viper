@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/frontends/basic/ParseOnErrorTests.cpp
-// Purpose: Validate parsing of ON ERROR and RESUME statements in BASIC front-end. 
+// Purpose: Validate parsing of ON ERROR and RESUME statements in BASIC front-end.
 // Key invariants: AST printer output reflects statement variants precisely.
 // Ownership/Lifetime: Test owns parser and AST instances.
 // Links: docs/codemap.md

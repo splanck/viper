@@ -259,11 +259,11 @@ VM::ExecResult handleConstStr(VM &vm,
 /// @param ip Instruction index within the block (unused).
 /// @return Execution result indicating whether interpretation should continue.
 VM::ExecResult handleGAddr(VM &vm,
-                            Frame &fr,
-                            const Instr &in,
-                            const VM::BlockMap &blocks,
-                            const BasicBlock *&bb,
-                            size_t &ip)
+                           Frame &fr,
+                           const Instr &in,
+                           const VM::BlockMap &blocks,
+                           const BasicBlock *&bb,
+                           size_t &ip)
 {
     (void)blocks;
     (void)bb;

@@ -14,7 +14,7 @@
 namespace il::frontends::basic
 {
 
-const ClassInfo* OopLoweringContext::findClassInfo(const std::string &className)
+const ClassInfo *OopLoweringContext::findClassInfo(const std::string &className)
 {
     // Check cache first
     auto it = classCache.find(className);
@@ -24,7 +24,7 @@ const ClassInfo* OopLoweringContext::findClassInfo(const std::string &className)
     }
 
     // Look up in OOP index
-    const ClassInfo* info = oopIndex.findClass(className);
+    const ClassInfo *info = oopIndex.findClass(className);
     classCache[className] = info;
     return info;
 }

@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_basic_parse_array_single_index.cpp
-// Purpose: Guard against use-after-move in single-index ArrayExpr parsing (HIGH-2). 
+// Purpose: Guard against use-after-move in single-index ArrayExpr parsing (HIGH-2).
 // Key invariants: For single-dimensional access, Parser should populate only 'index'
 // Ownership/Lifetime: Test owns parser and AST.
 // Links: docs/architecture.md

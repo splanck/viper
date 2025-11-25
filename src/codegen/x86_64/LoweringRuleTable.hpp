@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: codegen/x86_64/LoweringRuleTable.hpp
-// Purpose: Describe declarative lowering rules for x86-64 emission. 
+// Purpose: Describe declarative lowering rules for x86-64 emission.
 // Key invariants: To be documented.
 // Ownership/Lifetime: Shared across lowering translation units via inline constexpr data.
 // Links: docs/architecture.md

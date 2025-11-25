@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/frontends/basic/SubroutinesGosubInlineCaseTests.cpp
-// Purpose: Exercise parsing and execution of GOSUB with named labels and inline CASE bodies. 
+// Purpose: Exercise parsing and execution of GOSUB with named labels and inline CASE bodies.
 // Key invariants: Parser resolves identifier targets for GOSUB and CASE arms execute inline
 // Ownership/Lifetime: To be documented.
 // Links: docs/codemap.md

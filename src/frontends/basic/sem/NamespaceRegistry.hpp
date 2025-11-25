@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: frontends/basic/sem/NamespaceRegistry.hpp
-// Purpose: Records declared namespaces and their types with case-insensitive lookups. 
+// Purpose: Records declared namespaces and their types with case-insensitive lookups.
 // Key invariants: // Key invariants:
 // Ownership/Lifetime: Registry is owned by semantic analyzer; lives for compilation.
 // Links: docs/codemap.md, CLAUDE.md
@@ -24,7 +24,7 @@ namespace il::runtime
 {
 struct RuntimeDescriptor; // fwd decl to avoid including runtime headers here
 struct RuntimeClass;      // fwd decl for class catalog seeding
-}
+} // namespace il::runtime
 
 namespace il::frontends::basic
 {
@@ -106,7 +106,8 @@ class NamespaceRegistry
     /// @brief Seed known namespaces from runtime built-in descriptors.
     /// @details For each runtime descriptor with a dotted name (e.g., "Viper.Console.PrintI64"),
     ///          insert all namespace prefixes into the registry: "Viper", "Viper.Console".
-    ///          Names are handled case-insensitively; canonical casing from descriptors is preserved.
+    ///          Names are handled case-insensitively; canonical casing from descriptors is
+    ///          preserved.
     /// @param descs Runtime descriptor list (typically il::runtime::runtimeRegistry()).
     void seedFromRuntimeBuiltins(const std::vector<il::runtime::RuntimeDescriptor> &descs);
 

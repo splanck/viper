@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_basic_proc_diagnostics.cpp
-// Purpose: Verify exact messages for duplicate and unknown procedure diagnostics. 
+// Purpose: Verify exact messages for duplicate and unknown procedure diagnostics.
 // Key invariants: // Key invariants:
 // Ownership/Lifetime: Creates local parser/analyzer per test; uses in-memory source.
 // Links: docs/architecture.md

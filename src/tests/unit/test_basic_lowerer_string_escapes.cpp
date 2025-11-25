@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_basic_lowerer_string_escapes.cpp
-// Purpose: Ensure BASIC lowering decodes escapes before emitting string globals. 
+// Purpose: Ensure BASIC lowering decodes escapes before emitting string globals.
 // Key invariants: Lowered globals store literal characters rather than escape sequences.
 // Ownership/Lifetime: Test owns parser, program, and module instances.
 // Links: docs/codemap.md

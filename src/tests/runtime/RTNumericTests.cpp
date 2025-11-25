@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/runtime/RTNumericTests.cpp
-// Purpose: Validate BASIC numeric helper semantics in the runtime library. 
+// Purpose: Validate BASIC numeric helper semantics in the runtime library.
 // Key invariants: Banker rounding and conversion overflow reporting behave as specified.
 // Ownership/Lifetime: Uses runtime helpers directly.
 // Links: docs/specs/numerics.md

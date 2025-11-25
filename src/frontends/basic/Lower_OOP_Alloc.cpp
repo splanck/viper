@@ -12,16 +12,16 @@
 // Links: docs/codemap.md
 //===----------------------------------------------------------------------===//
 
-#include "frontends/basic/Lower_OOP_Internal.hpp"
 #include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/ILTypeUtils.hpp"
+#include "frontends/basic/Lower_OOP_Internal.hpp"
 #include "frontends/basic/NameMangler_OOP.hpp"
-#include "frontends/basic/Options.hpp"
 #include "frontends/basic/OopIndex.hpp"
+#include "frontends/basic/Options.hpp"
 #include "frontends/basic/StringUtils.hpp"
-#include "il/runtime/classes/RuntimeClasses.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
+#include "il/runtime/classes/RuntimeClasses.hpp"
 
 #include <cstdint>
 #include <string>

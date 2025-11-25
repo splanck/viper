@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_type_resolver.cpp
-// Purpose: Ensure TypeResolver resolves types using namespace registry and using context. 
+// Purpose: Ensure TypeResolver resolves types using namespace registry and using context.
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md

@@ -3,17 +3,21 @@
  * Tests drawing primitives (lines, rectangles, circles)
  */
 
-#include "vgfx.h"
 #include "test_harness.h"
+#include "vgfx.h"
 #include <math.h>
 
 /* Helper: Count pixels of a given color in window */
-static int count_pixels(vgfx_window_t win, int32_t w, int32_t h, vgfx_color_t target) {
+static int count_pixels(vgfx_window_t win, int32_t w, int32_t h, vgfx_color_t target)
+{
     int count = 0;
     vgfx_color_t color;
-    for (int32_t y = 0; y < h; y++) {
-        for (int32_t x = 0; x < w; x++) {
-            if (vgfx_point(win, x, y, &color) && color == target) {
+    for (int32_t y = 0; y < h; y++)
+    {
+        for (int32_t x = 0; x < w; x++)
+        {
+            if (vgfx_point(win, x, y, &color) && color == target)
+            {
                 count++;
             }
         }
@@ -22,16 +26,12 @@ static int count_pixels(vgfx_window_t win, int32_t w, int32_t h, vgfx_color_t ta
 }
 
 /* T7: Line Drawing – Horizontal */
-void test_line_horizontal(void) {
+void test_line_horizontal(void)
+{
     TEST_BEGIN("T7: Line Drawing - Horizontal");
 
     vgfx_window_params_t params = {
-        .width = 200,
-        .height = 200,
-        .title = "Test",
-        .fps = 0,
-        .resizable = 0
-    };
+        .width = 200, .height = 200, .title = "Test", .fps = 0, .resizable = 0};
 
     vgfx_window_t win = vgfx_create_window(&params);
     ASSERT_NOT_NULL(win);
@@ -41,7 +41,8 @@ void test_line_horizontal(void) {
 
     /* Check pixels on line are white */
     vgfx_color_t color;
-    for (int32_t x = 10; x <= 50; x++) {
+    for (int32_t x = 10; x <= 50; x++)
+    {
         int ok = vgfx_point(win, x, 10, &color);
         ASSERT_EQ(ok, 1);
         ASSERT_EQ(color, 0xFFFFFF);
@@ -61,16 +62,12 @@ void test_line_horizontal(void) {
 }
 
 /* T8: Line Drawing – Vertical */
-void test_line_vertical(void) {
+void test_line_vertical(void)
+{
     TEST_BEGIN("T8: Line Drawing - Vertical");
 
     vgfx_window_params_t params = {
-        .width = 200,
-        .height = 200,
-        .title = "Test",
-        .fps = 0,
-        .resizable = 0
-    };
+        .width = 200, .height = 200, .title = "Test", .fps = 0, .resizable = 0};
 
     vgfx_window_t win = vgfx_create_window(&params);
     ASSERT_NOT_NULL(win);
@@ -80,7 +77,8 @@ void test_line_vertical(void) {
 
     /* Check all pixels on line are red */
     vgfx_color_t color;
-    for (int32_t y = 10; y <= 30; y++) {
+    for (int32_t y = 10; y <= 30; y++)
+    {
         int ok = vgfx_point(win, 20, y, &color);
         ASSERT_EQ(ok, 1);
         ASSERT_EQ(color, 0xFF0000);
@@ -91,16 +89,12 @@ void test_line_vertical(void) {
 }
 
 /* T9: Line Drawing – Diagonal */
-void test_line_diagonal(void) {
+void test_line_diagonal(void)
+{
     TEST_BEGIN("T9: Line Drawing - Diagonal");
 
     vgfx_window_params_t params = {
-        .width = 200,
-        .height = 200,
-        .title = "Test",
-        .fps = 0,
-        .resizable = 0
-    };
+        .width = 200, .height = 200, .title = "Test", .fps = 0, .resizable = 0};
 
     vgfx_window_t win = vgfx_create_window(&params);
     ASSERT_NOT_NULL(win);
@@ -133,16 +127,12 @@ void test_line_diagonal(void) {
 }
 
 /* T10: Rectangle Outline */
-void test_rectangle_outline(void) {
+void test_rectangle_outline(void)
+{
     TEST_BEGIN("T10: Rectangle Outline");
 
     vgfx_window_params_t params = {
-        .width = 100,
-        .height = 100,
-        .title = "Test",
-        .fps = 0,
-        .resizable = 0
-    };
+        .width = 100, .height = 100, .title = "Test", .fps = 0, .resizable = 0};
 
     vgfx_window_t win = vgfx_create_window(&params);
     ASSERT_NOT_NULL(win);
@@ -154,28 +144,32 @@ void test_rectangle_outline(void) {
     int ok;
 
     /* Check top edge: x in [10, 30), y = 10 */
-    for (int32_t x = 10; x < 30; x++) {
+    for (int32_t x = 10; x < 30; x++)
+    {
         ok = vgfx_point(win, x, 10, &color);
         ASSERT_EQ(ok, 1);
         ASSERT_EQ(color, 0xFFFFFF);
     }
 
     /* Check bottom edge: x in [10, 30), y = 24 */
-    for (int32_t x = 10; x < 30; x++) {
+    for (int32_t x = 10; x < 30; x++)
+    {
         ok = vgfx_point(win, x, 24, &color);
         ASSERT_EQ(ok, 1);
         ASSERT_EQ(color, 0xFFFFFF);
     }
 
     /* Check left edge: y in [10, 25), x = 10 */
-    for (int32_t y = 10; y < 25; y++) {
+    for (int32_t y = 10; y < 25; y++)
+    {
         ok = vgfx_point(win, 10, y, &color);
         ASSERT_EQ(ok, 1);
         ASSERT_EQ(color, 0xFFFFFF);
     }
 
     /* Check right edge: y in [10, 25), x = 29 */
-    for (int32_t y = 10; y < 25; y++) {
+    for (int32_t y = 10; y < 25; y++)
+    {
         ok = vgfx_point(win, 29, y, &color);
         ASSERT_EQ(ok, 1);
         ASSERT_EQ(color, 0xFFFFFF);
@@ -191,16 +185,12 @@ void test_rectangle_outline(void) {
 }
 
 /* T11: Filled Rectangle */
-void test_filled_rectangle(void) {
+void test_filled_rectangle(void)
+{
     TEST_BEGIN("T11: Filled Rectangle");
 
     vgfx_window_params_t params = {
-        .width = 100,
-        .height = 100,
-        .title = "Test",
-        .fps = 0,
-        .resizable = 0
-    };
+        .width = 100, .height = 100, .title = "Test", .fps = 0, .resizable = 0};
 
     vgfx_window_t win = vgfx_create_window(&params);
     ASSERT_NOT_NULL(win);
@@ -212,8 +202,10 @@ void test_filled_rectangle(void) {
     int ok;
 
     /* Check all pixels in [5, 15) × [5, 15) are red */
-    for (int32_t y = 5; y < 15; y++) {
-        for (int32_t x = 5; x < 15; x++) {
+    for (int32_t y = 5; y < 15; y++)
+    {
+        for (int32_t x = 5; x < 15; x++)
+        {
             ok = vgfx_point(win, x, y, &color);
             ASSERT_EQ(ok, 1);
             ASSERT_EQ(color, 0xFF0000);
@@ -234,16 +226,12 @@ void test_filled_rectangle(void) {
 }
 
 /* T12: Circle Outline – Sanity */
-void test_circle_outline(void) {
+void test_circle_outline(void)
+{
     TEST_BEGIN("T12: Circle Outline - Sanity");
 
     vgfx_window_params_t params = {
-        .width = 200,
-        .height = 200,
-        .title = "Test",
-        .fps = 0,
-        .resizable = 0
-    };
+        .width = 200, .height = 200, .title = "Test", .fps = 0, .resizable = 0};
 
     vgfx_window_t win = vgfx_create_window(&params);
     ASSERT_NOT_NULL(win);
@@ -285,16 +273,12 @@ void test_circle_outline(void) {
 }
 
 /* T13: Filled Circle – Sanity */
-void test_filled_circle(void) {
+void test_filled_circle(void)
+{
     TEST_BEGIN("T13: Filled Circle - Sanity");
 
     vgfx_window_params_t params = {
-        .width = 200,
-        .height = 200,
-        .title = "Test",
-        .fps = 0,
-        .resizable = 0
-    };
+        .width = 200, .height = 200, .title = "Test", .fps = 0, .resizable = 0};
 
     vgfx_window_t win = vgfx_create_window(&params);
     ASSERT_NOT_NULL(win);
@@ -330,7 +314,7 @@ void test_filled_circle(void) {
     /* Count green pixels - should be approximately π × 30² ≈ 2827 (within ±10%) */
     int green_count = count_pixels(win, 200, 200, 0x00FF00);
     int expected = (int)(3.14159 * 30 * 30); /* ~2827 */
-    int tolerance = expected / 10; /* 10% */
+    int tolerance = expected / 10;           /* 10% */
     ASSERT_TRUE(green_count >= expected - tolerance && green_count <= expected + tolerance);
 
     /* Check pixel outside radius is black */
@@ -343,7 +327,8 @@ void test_filled_circle(void) {
 }
 
 /* Main test runner */
-int main(void) {
+int main(void)
+{
     printf("========================================\n");
     printf("ViperGFX Drawing Tests (T7-T13)\n");
     printf("========================================\n");

@@ -130,6 +130,7 @@ rt_string rt_obj_to_string(void *self)
     // (no address to keep determinism and test stability)
     const char *name = ci->qname;
     size_t len = 0;
-    while (name[len] != '\0') ++len;
+    while (name[len] != '\0')
+        ++len;
     return rt_string_from_bytes(name, len);
 }

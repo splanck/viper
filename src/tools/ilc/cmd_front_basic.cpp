@@ -22,7 +22,6 @@
 
 #include "cli.hpp"
 #include "frontends/basic/BasicCompiler.hpp"
-#include <cstdlib>
 #include "il/api/expected_api.hpp"
 #include "il/transform/SimplifyCFG.hpp"
 #include "support/diag_expected.hpp"
@@ -33,6 +32,7 @@
 #include "viper/vm/VM.hpp"
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <optional>

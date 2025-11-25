@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/il/transform/simplifycfg_bypass_params.cpp
-// Purpose: Verify SimplifyCFG forwards branch arguments when bypassing blocks with params. 
+// Purpose: Verify SimplifyCFG forwards branch arguments when bypassing blocks with params.
 // Key invariants: Forwarding block removal must preserve branch arguments and remove the block.
 // Ownership/Lifetime: Constructs a local module and runs the pass by value.
 // Links: docs/il-guide.md#reference

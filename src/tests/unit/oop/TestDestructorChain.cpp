@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/oop/TestDestructorChain.cpp
-// Purpose: Verify destructor chaining order: derived body then base body. 
+// Purpose: Verify destructor chaining order: derived body then base body.
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md

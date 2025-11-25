@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/il/transform/test_LICM.cpp
-// Purpose: Validate that LICM hoists trivially safe, loop-invariant instructions. 
+// Purpose: Validate that LICM hoists trivially safe, loop-invariant instructions.
 // Key invariants: LoopSimplify provides a preheader and LICM moves invariant math there.
 // Ownership/Lifetime: Builds a transient module per test invocation.
 // Links: docs/il-guide.md#reference

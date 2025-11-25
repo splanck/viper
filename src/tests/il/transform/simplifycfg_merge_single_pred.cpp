@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/il/transform/simplifycfg_merge_single_pred.cpp
-// Purpose: Validate SimplifyCFG merges single-predecessor blocks into their parent. 
+// Purpose: Validate SimplifyCFG merges single-predecessor blocks into their parent.
 // Key invariants: Instructions from the merged block relocate to the predecessor and the block is
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md

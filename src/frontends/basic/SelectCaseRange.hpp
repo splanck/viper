@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: frontends/basic/SelectCaseRange.hpp
-// Purpose: Shared helpers for SELECT CASE range handling across semantic analysis and lowering. 
+// Purpose: Shared helpers for SELECT CASE range handling across semantic analysis and lowering.
 // Key invariants: Maintains consistent 32-bit numeric limits for CASE labels.
 // Ownership/Lifetime: Header-only utilities without state.
 // Links: docs/codemap.md

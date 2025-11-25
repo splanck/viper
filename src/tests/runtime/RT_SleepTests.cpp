@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/runtime/RT_SleepTests.cpp
-// Purpose: Validate rt_sleep_ms blocks approximately the requested duration. 
+// Purpose: Validate rt_sleep_ms blocks approximately the requested duration.
 // Key invariants: Negative values clamp to zero; elapsed time >= lower bound.
 // Ownership/Lifetime: Uses runtime library only.
 // Links: docs/runtime-vm.md

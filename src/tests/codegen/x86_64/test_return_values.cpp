@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/codegen/x86_64/test_return_values.cpp
-// Purpose: Ensure the x86-64 backend correctly copies return registers for 
+// Purpose: Ensure the x86-64 backend correctly copies return registers for
 // Key invariants: The emitted assembly must contain a mov into the canonical
 // Ownership/Lifetime: The IL module is constructed locally for the duration
 // Links: src/codegen/x86_64/Backend.cpp

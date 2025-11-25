@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/il/transform/simplifycfg_shrink_params.cpp
-// Purpose: Ensure SimplifyCFG drops block params that are identical across predecessors. 
+// Purpose: Ensure SimplifyCFG drops block params that are identical across predecessors.
 // Key invariants: Shared param is replaced by common value and removed from param list.
 // Ownership/Lifetime: Constructs a local module and applies the pass in place.
 // Links: docs/il-guide.md#reference

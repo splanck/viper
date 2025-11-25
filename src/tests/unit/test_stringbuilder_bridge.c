@@ -1,16 +1,18 @@
 // Test harness for StringBuilder bridge functions
 // Tests the OOP StringBuilder <-> internal rt_string_builder bridge
 
-#include <stdio.h>
-#include <string.h>
 #include <assert.h>
 #include <stdbool.h>
+#include <stdio.h>
+#include <string.h>
 
 // Runtime declarations - normally from headers
 // Need access to the string structure for testing
 struct rt_heap_hdr;
 typedef struct rt_heap_hdr rt_heap_hdr_t;
-struct rt_string_impl {
+
+struct rt_string_impl
+{
     char *data;
     rt_heap_hdr_t *heap;
     size_t literal_len;
@@ -27,6 +29,7 @@ extern void rt_text_sb_clear(void *sb);
 extern rt_string rt_string_from_bytes(const char *bytes, size_t len);
 extern rt_string rt_str_empty(void);
 extern int64_t rt_len(rt_string s);
+
 // Runtime initialization not needed for these tests
 
 // Helper to create string from C string
@@ -40,44 +43,57 @@ static bool test_passed = false;
 static int tests_run = 0;
 static int tests_failed = 0;
 
-#define TEST_START(name) \
-    printf("  Testing %s... ", name); \
-    fflush(stdout); \
-    test_passed = true; \
+#define TEST_START(name)                                                                           \
+    printf("  Testing %s... ", name);                                                              \
+    fflush(stdout);                                                                                \
+    test_passed = true;                                                                            \
     tests_run++;
 
-#define TEST_END() \
-    if (test_passed) { \
-        printf("✓\n"); \
-    } else { \
-        printf("✗\n"); \
-        tests_failed++; \
+#define TEST_END()                                                                                 \
+    if (test_passed)                                                                               \
+    {                                                                                              \
+        printf("✓\n");                                                                             \
+    }                                                                                              \
+    else                                                                                           \
+    {                                                                                              \
+        printf("✗\n");                                                                             \
+        tests_failed++;                                                                            \
     }
 
-#define ASSERT_EQ(expected, actual) \
-    do { \
-        if ((expected) != (actual)) { \
-            printf("\n    FAILED: Expected %lld, got %lld at line %d\n", \
-                   (long long)(expected), (long long)(actual), __LINE__); \
-            test_passed = false; \
-        } \
+#define ASSERT_EQ(expected, actual)                                                                \
+    do                                                                                             \
+    {                                                                                              \
+        if ((expected) != (actual))                                                                \
+        {                                                                                          \
+            printf("\n    FAILED: Expected %lld, got %lld at line %d\n",                           \
+                   (long long)(expected),                                                          \
+                   (long long)(actual),                                                            \
+                   __LINE__);                                                                      \
+            test_passed = false;                                                                   \
+        }                                                                                          \
     } while (0)
 
-#define ASSERT_STR_EQ(expected, actual) \
-    do { \
-        if (strcmp((expected), (actual)) != 0) { \
-            printf("\n    FAILED: Expected '%s', got '%s' at line %d\n", \
-                   (expected), (actual), __LINE__); \
-            test_passed = false; \
-        } \
+#define ASSERT_STR_EQ(expected, actual)                                                            \
+    do                                                                                             \
+    {                                                                                              \
+        if (strcmp((expected), (actual)) != 0)                                                     \
+        {                                                                                          \
+            printf("\n    FAILED: Expected '%s', got '%s' at line %d\n",                           \
+                   (expected),                                                                     \
+                   (actual),                                                                       \
+                   __LINE__);                                                                      \
+            test_passed = false;                                                                   \
+        }                                                                                          \
     } while (0)
 
-#define ASSERT_TRUE(cond) \
-    do { \
-        if (!(cond)) { \
-            printf("\n    FAILED: Condition false at line %d\n", __LINE__); \
-            test_passed = false; \
-        } \
+#define ASSERT_TRUE(cond)                                                                          \
+    do                                                                                             \
+    {                                                                                              \
+        if (!(cond))                                                                               \
+        {                                                                                          \
+            printf("\n    FAILED: Condition false at line %d\n", __LINE__);                        \
+            test_passed = false;                                                                   \
+        }                                                                                          \
     } while (0)
 
 // Tests
@@ -213,9 +229,7 @@ void test_method_chaining(void)
 
     // Chain multiple appends
     void *result = rt_text_sb_append(
-        rt_text_sb_append(
-            rt_text_sb_append(sb, make_string("A")),
-            make_string("B")),
+        rt_text_sb_append(rt_text_sb_append(sb, make_string("A")), make_string("B")),
         make_string("C"));
 
     ASSERT_TRUE(result == sb);
@@ -270,10 +284,13 @@ int main(void)
     printf("Tests passed: %d\n", tests_run - tests_failed);
     printf("Tests failed: %d\n", tests_failed);
 
-    if (tests_failed == 0) {
+    if (tests_failed == 0)
+    {
         printf("\nAll tests PASSED! ✓\n");
         return 0;
-    } else {
+    }
+    else
+    {
         printf("\nSome tests FAILED! ✗\n");
         return 1;
     }

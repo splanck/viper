@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/frontends/basic/ParseMethodCallStatementTests.cpp
-// Purpose: Ensure BASIC parser recognizes object method call statements. 
+// Purpose: Ensure BASIC parser recognizes object method call statements.
 // Key invariants: Method invocation lowers to CallStmt with MethodCallExpr base/selector.
 // Ownership/Lifetime: Test constructs parser/AST per run; no shared resources.
 // Links: docs/codemap.md

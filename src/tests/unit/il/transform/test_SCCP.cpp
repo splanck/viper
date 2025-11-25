@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/il/transform/test_SCCP.cpp
-// Purpose: Exercise sparse conditional constant propagation on block-parameter SSA. 
+// Purpose: Exercise sparse conditional constant propagation on block-parameter SSA.
 // Key invariants: Constants flowing through block parameters fold branches and prune unreachable
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md

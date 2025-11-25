@@ -1,7 +1,7 @@
 REM Example: Mixed usage with List + String + (optional) File I/O
 
-DIM list AS Viper.System.Collections.List
-list = NEW Viper.System.Collections.List()
+DIM list AS Viper.Collections.List
+list = NEW Viper.Collections.List()
 
 list.Add("alpha")
 list.Add("beta")
@@ -14,4 +14,3 @@ REM Optional file roundtrip (enable if your build exposes Viper.IO.File.*)
 'Viper.IO.File.WriteAllText("oop_mixed_report.tmp", joined)
 'PRINT Viper.IO.File.ReadAllText("oop_mixed_report.tmp")
 'Viper.IO.File.Delete("oop_mixed_report.tmp")
-

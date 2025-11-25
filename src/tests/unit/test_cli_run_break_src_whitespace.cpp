@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_cli_run_break_src_whitespace.cpp
-// Purpose: Ensure cmdRunIL trims whitespace around breakpoint file specs. 
+// Purpose: Ensure cmdRunIL trims whitespace around breakpoint file specs.
 // Key invariants: Both --break and --break-src accept padded file paths.
 // Ownership/Lifetime: Uses repository IL sample, no temp files.
 // Links: src/tools/ilc/cmd_run_il.cpp

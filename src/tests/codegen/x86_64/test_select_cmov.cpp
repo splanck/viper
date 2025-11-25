@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/codegen/x86_64/test_select_cmov.cpp
-// Purpose: Ensure GPR selects lower to TEST/MOV/CMOV when targeting x86-64. 
+// Purpose: Ensure GPR selects lower to TEST/MOV/CMOV when targeting x86-64.
 // Key invariants: The generated assembly must contain the cmovne idiom in the
 // Ownership/Lifetime: Constructs IL locally and inspects emitted assembly by
 // Links: src/codegen/x86_64/LowerILToMIR.cpp, src/codegen/x86_64/ISel.cpp

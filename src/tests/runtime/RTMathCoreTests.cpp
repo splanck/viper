@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/runtime/RTMathCoreTests.cpp
-// Purpose: Validate basic math runtime wrappers. 
+// Purpose: Validate basic math runtime wrappers.
 // Key invariants: Results match libm within tolerance.
 // Ownership/Lifetime: Uses runtime library.
 // Links: docs/runtime-vm.md#runtime-abi

@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_basic_lexer.cpp
-// Purpose: Unit tests for BASIC lexer tokenization across common statements. 
+// Purpose: Unit tests for BASIC lexer tokenization across common statements.
 // Key invariants: Tokens emitted match expected kinds and lexemes.
 // Ownership/Lifetime: N/A (test).
 // Links: docs/codemap.md

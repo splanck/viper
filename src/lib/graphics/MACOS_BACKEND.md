@@ -6,7 +6,8 @@
 
 ## Overview
 
-The macOS backend provides a complete Cocoa-based implementation of the ViperGFX platform abstraction layer. It creates native NSWindow instances, handles all input events, and renders the software framebuffer using CoreGraphics.
+The macOS backend provides a complete Cocoa-based implementation of the ViperGFX platform abstraction layer. It creates
+native NSWindow instances, handles all input events, and renders the software framebuffer using CoreGraphics.
 
 ## Architecture
 
@@ -59,6 +60,7 @@ Stored in `vgfx_window->platform_data` as an opaque pointer.
 **Purpose:** Renders the RGBA framebuffer to screen using CoreGraphics.
 
 **Key Features:**
+
 - Holds weak reference to `vgfx_window*`
 - Implements `drawRect:` to create CGImage from framebuffer
 - Handles coordinate system conversion (Cocoa uses bottom-left origin, we use top-left)
@@ -66,6 +68,7 @@ Stored in `vgfx_window->platform_data` as an opaque pointer.
 - Accepts first responder to receive keyboard events
 
 **Rendering Process:**
+
 1. Create `CGDataProvider` from `win->pixels` buffer
 2. Create `CGImage` with RGBA format (`kCGImageAlphaLast`)
 3. Flip coordinate system with CTM transformation
@@ -79,11 +82,13 @@ Stored in `vgfx_window->platform_data` as an opaque pointer.
 **Implemented Delegate Methods:**
 
 #### `windowShouldClose:`
+
 - Enqueues `VGFX_EVENT_CLOSE`
 - Returns `NO` (prevents actual close, lets user handle event)
 - Sets `close_requested` flag
 
 #### `windowDidResize:`
+
 - Detects actual size changes (ignores no-ops)
 - Updates `win->width`, `win->height`, `win->stride`
 - Reallocates framebuffer with `malloc()`
@@ -91,6 +96,7 @@ Stored in `vgfx_window->platform_data` as an opaque pointer.
 - Enqueues `VGFX_EVENT_RESIZE` with new dimensions
 
 #### `windowDidBecomeKey:` / `windowDidResignKey:`
+
 - Enqueues `VGFX_EVENT_FOCUS_GAINED` / `VGFX_EVENT_FOCUS_LOST`
 
 ### 4. Keyboard Event Translation
@@ -98,16 +104,18 @@ Stored in `vgfx_window->platform_data` as an opaque pointer.
 **Function:** `translate_keycode(unsigned short keycode, NSString* chars)`
 
 **Strategy:**
+
 1. **Character-based mapping** (preferred):
-   - Uses `charactersIgnoringModifiers` and uppercase conversion
-   - Maps A-Z, 0-9, SPACE directly via character value
+    - Uses `charactersIgnoringModifiers` and uppercase conversion
+    - Maps A-Z, 0-9, SPACE directly via character value
 
 2. **Keycode-based mapping** (fallback for special keys):
-   - `0x24` / `0x4C` → `VGFX_KEY_ENTER`
-   - `0x35` → `VGFX_KEY_ESCAPE`
-   - `0x7B`-`0x7E` → Arrow keys
+    - `0x24` / `0x4C` → `VGFX_KEY_ENTER`
+    - `0x35` → `VGFX_KEY_ESCAPE`
+    - `0x7B`-`0x7E` → Arrow keys
 
 **Handles:**
+
 - Key repeat flag (`isARepeat`)
 - Updates `win->key_state[]` array
 - Enqueues `VGFX_EVENT_KEY_DOWN` / `VGFX_EVENT_KEY_UP`
@@ -115,19 +123,23 @@ Stored in `vgfx_window->platform_data` as an opaque pointer.
 ### 5. Mouse Event Translation
 
 **Supported Events:**
+
 - `NSEventTypeMouseMoved` / `*MouseDragged` → `VGFX_EVENT_MOUSE_MOVE`
 - `NSEventTypeLeftMouseDown/Up` → Left button
 - `NSEventTypeRightMouseDown/Up` → Right button
 - `NSEventTypeOtherMouseDown/Up` → Middle button
 
 **Coordinate Conversion:**
+
 ```objc
 int32_t x = (int32_t)location.x;
 int32_t y = (int32_t)(contentRect.size.height - location.y - 1);
 ```
+
 Converts from Cocoa's bottom-left origin to top-left origin.
 
 **State Tracking:**
+
 - Updates `win->mouse_x`, `win->mouse_y`
 - Updates `win->mouse_button_state[]` array
 - Enqueues button events with coordinates
@@ -137,6 +149,7 @@ Converts from Cocoa's bottom-left origin to top-left origin.
 ### `vgfx_platform_init_window`
 
 **Steps:**
+
 1. Initialize `NSApplication` singleton
 2. Set activation policy to `NSApplicationActivationPolicyRegular`
 3. Allocate `vgfx_macos_platform` structure
@@ -149,12 +162,14 @@ Converts from Cocoa's bottom-left origin to top-left origin.
 10. Activate application
 
 **Error Handling:**
+
 - Returns 0 on allocation failure or window creation failure
 - Sets appropriate error via `vgfx_internal_set_error()`
 
 ### `vgfx_platform_destroy_window`
 
 **Steps:**
+
 1. Remove window delegate (prevents callbacks during destruction)
 2. Close window
 3. Release Objective-C objects (ARC or manual retain/release)
@@ -164,6 +179,7 @@ Converts from Cocoa's bottom-left origin to top-left origin.
 ### `vgfx_platform_process_events`
 
 **Event Loop:**
+
 ```objc
 while ((event = [NSApp nextEventMatchingMask:NSEventMaskAny
                                    untilDate:[NSDate distantPast]
@@ -175,6 +191,7 @@ while ((event = [NSApp nextEventMatchingMask:NSEventMaskAny
 ```
 
 **Key Points:**
+
 - Uses `[NSDate distantPast]` for non-blocking poll
 - Processes all pending events in one call
 - Sends events to NSApp first (required for proper window behavior)
@@ -183,6 +200,7 @@ while ((event = [NSApp nextEventMatchingMask:NSEventMaskAny
 ### `vgfx_platform_present`
 
 **Steps:**
+
 1. Mark view as needing display: `[view setNeedsDisplay:YES]`
 2. Force immediate redraw: `[view displayIfNeeded]`
 
@@ -191,6 +209,7 @@ while ((event = [NSApp nextEventMatchingMask:NSEventMaskAny
 ### `vgfx_platform_now_ms`
 
 **Implementation:**
+
 - Uses `mach_absolute_time()` for high-resolution monotonic timer
 - Converts to milliseconds using `mach_timebase_info`
 - Thread-safe initialization of timebase info
@@ -198,6 +217,7 @@ while ((event = [NSApp nextEventMatchingMask:NSEventMaskAny
 ### `vgfx_platform_sleep_ms`
 
 **Implementation:**
+
 - Uses POSIX `nanosleep()` for accurate sleep
 - Converts milliseconds to `timespec` structure
 
@@ -206,6 +226,7 @@ while ((event = [NSApp nextEventMatchingMask:NSEventMaskAny
 ### Test Results
 
 ✅ **quick_test** - Automated visual test
+
 ```
 ViperGFX macOS Backend Test
 ============================
@@ -231,6 +252,7 @@ Window displayed with graphics for ~0.5 seconds
 ```
 
 ✅ **basic_draw** - Interactive example
+
 - Window displays correctly
 - All drawing primitives render properly
 - Keyboard input works (ESC to exit)
@@ -241,6 +263,7 @@ Window displayed with graphics for ~0.5 seconds
 ### Visual Verification
 
 The test pattern displays:
+
 - Red filled square with white outline
 - Green filled circle with white outline
 - Blue filled rectangle
@@ -259,15 +282,20 @@ All shapes render correctly with proper pixel-perfect accuracy.
 
 ## Known Limitations
 
-1. **Main Thread Requirement:** All Cocoa calls must happen on the main thread. The current implementation assumes the user calls all ViperGFX functions from the main thread.
+1. **Main Thread Requirement:** All Cocoa calls must happen on the main thread. The current implementation assumes the
+   user calls all ViperGFX functions from the main thread.
 
-2. **Retina/HiDPI:** Currently renders at logical points, not backing pixels. For Retina displays, this means 1 ViperGFX pixel = 1 logical point (which may be 2x2 or more backing pixels).
+2. **Retina/HiDPI:** Currently renders at logical points, not backing pixels. For Retina displays, this means 1 ViperGFX
+   pixel = 1 logical point (which may be 2x2 or more backing pixels).
 
-3. **Menu Bar:** No application menu is created. The window can be interacted with, but there's no "About" or "Quit" menu.
+3. **Menu Bar:** No application menu is created. The window can be interacted with, but there's no "About" or "Quit"
+   menu.
 
-4. **Key Mapping:** Only supports the Phase 1 key set (A-Z, 0-9, arrows, Enter, Escape, Space). Additional keys require extending `translate_keycode()`.
+4. **Key Mapping:** Only supports the Phase 1 key set (A-Z, 0-9, arrows, Enter, Escape, Space). Additional keys require
+   extending `translate_keycode()`.
 
-5. **Performance:** Software rendering to RGBA buffer and CGImage creation happens every frame. For very large windows or high frame rates, this may be a bottleneck.
+5. **Performance:** Software rendering to RGBA buffer and CGImage creation happens every frame. For very large windows
+   or high frame rates, this may be a bottleneck.
 
 ## Future Enhancements (Out of Scope for v1.0)
 
@@ -300,4 +328,6 @@ All shapes render correctly with proper pixel-perfect accuracy.
 
 ## Summary
 
-The macOS Cocoa backend is **production-ready** for ViperGFX v1.0. It provides a complete, working implementation of all platform requirements with proper event handling, efficient rendering, and robust error handling. The implementation follows Apple's best practices for Cocoa development and integrates cleanly with the ViperGFX core.
+The macOS Cocoa backend is **production-ready** for ViperGFX v1.0. It provides a complete, working implementation of all
+platform requirements with proper event handling, efficient rendering, and robust error handling. The implementation
+follows Apple's best practices for Cocoa development and integrates cleanly with the ViperGFX core.

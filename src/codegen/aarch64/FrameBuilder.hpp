@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: codegen/aarch64/FrameBuilder.hpp
-// Purpose: Centralise AArch64 frame layout construction for Machine IR. 
+// Purpose: Centralise AArch64 frame layout construction for Machine IR.
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md
@@ -49,4 +49,3 @@ class FrameBuilder
 };
 
 } // namespace viper::codegen::aarch64
-

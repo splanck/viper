@@ -38,10 +38,10 @@
 
 #ifdef _WIN32
 
-#include <windows.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <windows.h>
 
 //===----------------------------------------------------------------------===//
 // Platform Data Structure
@@ -53,16 +53,17 @@
 ///          DIB section for framebuffer, and cached dimensions.
 ///
 /// @invariant hwnd != NULL implies hdc != NULL && memdc != NULL && hbmp != NULL
-typedef struct {
-    HINSTANCE hInstance;       ///< Application instance handle
-    HWND      hwnd;            ///< Native Win32 window handle
-    HDC       hdc;             ///< Device context for window
-    HDC       memdc;           ///< Memory DC for off-screen rendering
-    HBITMAP   hbmp;            ///< DIB section bitmap handle
-    void*     dib_pixels;      ///< Pointer to DIB pixel data (BGRA format)
-    int       width;           ///< Cached window width
-    int       height;          ///< Cached window height
-    int       close_requested; ///< 1 if WM_CLOSE received, 0 otherwise
+typedef struct
+{
+    HINSTANCE hInstance; ///< Application instance handle
+    HWND hwnd;           ///< Native Win32 window handle
+    HDC hdc;             ///< Device context for window
+    HDC memdc;           ///< Memory DC for off-screen rendering
+    HBITMAP hbmp;        ///< DIB section bitmap handle
+    void *dib_pixels;    ///< Pointer to DIB pixel data (BGRA format)
+    int width;           ///< Cached window width
+    int height;          ///< Cached window height
+    int close_requested; ///< 1 if WM_CLOSE received, 0 otherwise
 } vgfx_win32_data;
 
 //===----------------------------------------------------------------------===//
@@ -83,19 +84,24 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
 /// @return Allocated UTF-16 string, or NULL on failure
 ///
 /// @post Return value must be freed with free() by caller
-static WCHAR* utf8_to_utf16(const char* utf8) {
-    if (!utf8) return NULL;
+static WCHAR *utf8_to_utf16(const char *utf8)
+{
+    if (!utf8)
+        return NULL;
 
     /* Get required buffer size */
     int wlen = MultiByteToWideChar(CP_UTF8, 0, utf8, -1, NULL, 0);
-    if (wlen <= 0) return NULL;
+    if (wlen <= 0)
+        return NULL;
 
     /* Allocate buffer */
-    WCHAR* wstr = (WCHAR*)malloc(wlen * sizeof(WCHAR));
-    if (!wstr) return NULL;
+    WCHAR *wstr = (WCHAR *)malloc(wlen * sizeof(WCHAR));
+    if (!wstr)
+        return NULL;
 
     /* Convert */
-    if (MultiByteToWideChar(CP_UTF8, 0, utf8, -1, wstr, wlen) == 0) {
+    if (MultiByteToWideChar(CP_UTF8, 0, utf8, -1, wstr, wlen) == 0)
+    {
         free(wstr);
         return NULL;
     }
@@ -122,27 +128,39 @@ static WCHAR* utf8_to_utf16(const char* utf8) {
 ///            - VK_LEFT/RIGHT/UP/DOWN: Arrow keys
 ///            - VK_RETURN: VGFX_KEY_ENTER
 ///            - VK_ESCAPE: VGFX_KEY_ESCAPE
-static vgfx_key_t translate_vk(WPARAM vk) {
+static vgfx_key_t translate_vk(WPARAM vk)
+{
     /* Letters A-Z (VK_A = 0x41 = 'A') */
-    if (vk >= 'A' && vk <= 'Z') {
+    if (vk >= 'A' && vk <= 'Z')
+    {
         return (vgfx_key_t)vk;
     }
 
     /* Digits 0-9 (VK_0 = 0x30 = '0') */
-    if (vk >= '0' && vk <= '9') {
+    if (vk >= '0' && vk <= '9')
+    {
         return (vgfx_key_t)vk;
     }
 
     /* Special keys */
-    switch (vk) {
-        case VK_SPACE:  return VGFX_KEY_SPACE;
-        case VK_RETURN: return VGFX_KEY_ENTER;
-        case VK_ESCAPE: return VGFX_KEY_ESCAPE;
-        case VK_LEFT:   return VGFX_KEY_LEFT;
-        case VK_RIGHT:  return VGFX_KEY_RIGHT;
-        case VK_UP:     return VGFX_KEY_UP;
-        case VK_DOWN:   return VGFX_KEY_DOWN;
-        default:        return VGFX_KEY_UNKNOWN;
+    switch (vk)
+    {
+        case VK_SPACE:
+            return VGFX_KEY_SPACE;
+        case VK_RETURN:
+            return VGFX_KEY_ENTER;
+        case VK_ESCAPE:
+            return VGFX_KEY_ESCAPE;
+        case VK_LEFT:
+            return VGFX_KEY_LEFT;
+        case VK_RIGHT:
+            return VGFX_KEY_RIGHT;
+        case VK_UP:
+            return VGFX_KEY_UP;
+        case VK_DOWN:
+            return VGFX_KEY_DOWN;
+        default:
+            return VGFX_KEY_UNKNOWN;
     }
 }
 
@@ -168,156 +186,152 @@ static vgfx_key_t translate_vk(WPARAM vk) {
 ///            - WM_KEYDOWN/WM_KEYUP: Keyboard input
 ///            - WM_MOUSEMOVE: Mouse movement
 ///            - WM_LBUTTONDOWN/UP, WM_RBUTTONDOWN/UP, WM_MBUTTONDOWN/UP: Mouse buttons
-static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
+static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
+{
     /* Retrieve vgfx_window pointer stored in GWLP_USERDATA */
-    struct vgfx_window* win = (struct vgfx_window*)GetWindowLongPtr(hwnd, GWLP_USERDATA);
+    struct vgfx_window *win = (struct vgfx_window *)GetWindowLongPtr(hwnd, GWLP_USERDATA);
 
-    if (!win) {
+    if (!win)
+    {
         /* Window not fully initialized yet, use default processing */
         return DefWindowProcW(hwnd, msg, wparam, lparam);
     }
 
-    vgfx_win32_data* w32 = (vgfx_win32_data*)win->platform_data;
+    vgfx_win32_data *w32 = (vgfx_win32_data *)win->platform_data;
     int64_t timestamp = vgfx_platform_now_ms();
 
-    switch (msg) {
-        case WM_CLOSE: {
+    switch (msg)
+    {
+        case WM_CLOSE:
+        {
             /* User clicked close button - enqueue CLOSE event but don't destroy window */
-            if (w32) {
+            if (w32)
+            {
                 w32->close_requested = 1;
             }
 
-            vgfx_event_t event = {
-                .type = VGFX_EVENT_CLOSE,
-                .time_ms = timestamp
-            };
+            vgfx_event_t event = {.type = VGFX_EVENT_CLOSE, .time_ms = timestamp};
             vgfx_internal_enqueue_event(win, &event);
-            return 0;  /* Handled (don't call DefWindowProc) */
+            return 0; /* Handled (don't call DefWindowProc) */
         }
 
-        case WM_SIZE: {
+        case WM_SIZE:
+        {
             /* Window resized */
             int new_width = LOWORD(lparam);
             int new_height = HIWORD(lparam);
 
-            if (w32 && (new_width != w32->width || new_height != w32->height)) {
+            if (w32 && (new_width != w32->width || new_height != w32->height))
+            {
                 w32->width = new_width;
                 w32->height = new_height;
 
-                vgfx_event_t event = {
-                    .type = VGFX_EVENT_RESIZE,
-                    .time_ms = timestamp,
-                    .data.resize = { .width = new_width, .height = new_height }
-                };
+                vgfx_event_t event = {.type = VGFX_EVENT_RESIZE,
+                                      .time_ms = timestamp,
+                                      .data.resize = {.width = new_width, .height = new_height}};
                 vgfx_internal_enqueue_event(win, &event);
             }
             return 0;
         }
 
-        case WM_SETFOCUS: {
+        case WM_SETFOCUS:
+        {
             /* Window gained focus */
-            vgfx_event_t event = {
-                .type = VGFX_EVENT_FOCUS_GAINED,
-                .time_ms = timestamp
-            };
+            vgfx_event_t event = {.type = VGFX_EVENT_FOCUS_GAINED, .time_ms = timestamp};
             vgfx_internal_enqueue_event(win, &event);
             return 0;
         }
 
-        case WM_KILLFOCUS: {
+        case WM_KILLFOCUS:
+        {
             /* Window lost focus */
-            vgfx_event_t event = {
-                .type = VGFX_EVENT_FOCUS_LOST,
-                .time_ms = timestamp
-            };
+            vgfx_event_t event = {.type = VGFX_EVENT_FOCUS_LOST, .time_ms = timestamp};
             vgfx_internal_enqueue_event(win, &event);
             return 0;
         }
 
-        case WM_KEYDOWN: {
+        case WM_KEYDOWN:
+        {
             /* Key pressed */
             vgfx_key_t key = translate_vk(wparam);
-            if (key != VGFX_KEY_UNKNOWN && key < 512) {
+            if (key != VGFX_KEY_UNKNOWN && key < 512)
+            {
                 /* Detect repeat: bit 30 of lparam indicates previous key state */
                 int is_repeat = (lparam & (1 << 30)) ? 1 : 0;
-                win->key_state[key] = 1;  /* Update input state */
+                win->key_state[key] = 1; /* Update input state */
 
-                vgfx_event_t event = {
-                    .type = VGFX_EVENT_KEY_DOWN,
-                    .time_ms = timestamp,
-                    .data.key = { .key = key, .is_repeat = is_repeat }
-                };
+                vgfx_event_t event = {.type = VGFX_EVENT_KEY_DOWN,
+                                      .time_ms = timestamp,
+                                      .data.key = {.key = key, .is_repeat = is_repeat}};
                 vgfx_internal_enqueue_event(win, &event);
             }
             return 0;
         }
 
-        case WM_KEYUP: {
+        case WM_KEYUP:
+        {
             /* Key released */
             vgfx_key_t key = translate_vk(wparam);
-            if (key != VGFX_KEY_UNKNOWN && key < 512) {
-                win->key_state[key] = 0;  /* Update input state */
+            if (key != VGFX_KEY_UNKNOWN && key < 512)
+            {
+                win->key_state[key] = 0; /* Update input state */
 
-                vgfx_event_t event = {
-                    .type = VGFX_EVENT_KEY_UP,
-                    .time_ms = timestamp,
-                    .data.key = { .key = key, .is_repeat = 0 }
-                };
+                vgfx_event_t event = {.type = VGFX_EVENT_KEY_UP,
+                                      .time_ms = timestamp,
+                                      .data.key = {.key = key, .is_repeat = 0}};
                 vgfx_internal_enqueue_event(win, &event);
             }
             return 0;
         }
 
-        case WM_MOUSEMOVE: {
+        case WM_MOUSEMOVE:
+        {
             /* Mouse moved */
-            int32_t x = (int32_t)(short)LOWORD(lparam);  /* Signed 16-bit */
+            int32_t x = (int32_t)(short)LOWORD(lparam); /* Signed 16-bit */
             int32_t y = (int32_t)(short)HIWORD(lparam);
 
-            win->mouse_x = x;  /* Update input state */
+            win->mouse_x = x; /* Update input state */
             win->mouse_y = y;
 
-            vgfx_event_t event = {
-                .type = VGFX_EVENT_MOUSE_MOVE,
-                .time_ms = timestamp,
-                .data.mouse_move = { .x = x, .y = y }
-            };
+            vgfx_event_t event = {.type = VGFX_EVENT_MOUSE_MOVE,
+                                  .time_ms = timestamp,
+                                  .data.mouse_move = {.x = x, .y = y}};
             vgfx_internal_enqueue_event(win, &event);
             return 0;
         }
 
-        case WM_LBUTTONDOWN: {
+        case WM_LBUTTONDOWN:
+        {
             /* Left mouse button pressed */
             int32_t x = (int32_t)(short)LOWORD(lparam);
             int32_t y = (int32_t)(short)HIWORD(lparam);
 
             win->mouse_button_state[VGFX_MOUSE_LEFT] = 1;
 
-            vgfx_event_t event = {
-                .type = VGFX_EVENT_MOUSE_DOWN,
-                .time_ms = timestamp,
-                .data.mouse_button = { .x = x, .y = y, .button = VGFX_MOUSE_LEFT }
-            };
+            vgfx_event_t event = {.type = VGFX_EVENT_MOUSE_DOWN,
+                                  .time_ms = timestamp,
+                                  .data.mouse_button = {.x = x, .y = y, .button = VGFX_MOUSE_LEFT}};
             vgfx_internal_enqueue_event(win, &event);
             return 0;
         }
 
-        case WM_LBUTTONUP: {
+        case WM_LBUTTONUP:
+        {
             /* Left mouse button released */
             int32_t x = (int32_t)(short)LOWORD(lparam);
             int32_t y = (int32_t)(short)HIWORD(lparam);
 
             win->mouse_button_state[VGFX_MOUSE_LEFT] = 0;
 
-            vgfx_event_t event = {
-                .type = VGFX_EVENT_MOUSE_UP,
-                .time_ms = timestamp,
-                .data.mouse_button = { .x = x, .y = y, .button = VGFX_MOUSE_LEFT }
-            };
+            vgfx_event_t event = {.type = VGFX_EVENT_MOUSE_UP,
+                                  .time_ms = timestamp,
+                                  .data.mouse_button = {.x = x, .y = y, .button = VGFX_MOUSE_LEFT}};
             vgfx_internal_enqueue_event(win, &event);
             return 0;
         }
 
-        case WM_RBUTTONDOWN: {
+        case WM_RBUTTONDOWN:
+        {
             /* Right mouse button pressed */
             int32_t x = (int32_t)(short)LOWORD(lparam);
             int32_t y = (int32_t)(short)HIWORD(lparam);
@@ -327,13 +341,13 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
             vgfx_event_t event = {
                 .type = VGFX_EVENT_MOUSE_DOWN,
                 .time_ms = timestamp,
-                .data.mouse_button = { .x = x, .y = y, .button = VGFX_MOUSE_RIGHT }
-            };
+                .data.mouse_button = {.x = x, .y = y, .button = VGFX_MOUSE_RIGHT}};
             vgfx_internal_enqueue_event(win, &event);
             return 0;
         }
 
-        case WM_RBUTTONUP: {
+        case WM_RBUTTONUP:
+        {
             /* Right mouse button released */
             int32_t x = (int32_t)(short)LOWORD(lparam);
             int32_t y = (int32_t)(short)HIWORD(lparam);
@@ -343,13 +357,13 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
             vgfx_event_t event = {
                 .type = VGFX_EVENT_MOUSE_UP,
                 .time_ms = timestamp,
-                .data.mouse_button = { .x = x, .y = y, .button = VGFX_MOUSE_RIGHT }
-            };
+                .data.mouse_button = {.x = x, .y = y, .button = VGFX_MOUSE_RIGHT}};
             vgfx_internal_enqueue_event(win, &event);
             return 0;
         }
 
-        case WM_MBUTTONDOWN: {
+        case WM_MBUTTONDOWN:
+        {
             /* Middle mouse button pressed */
             int32_t x = (int32_t)(short)LOWORD(lparam);
             int32_t y = (int32_t)(short)HIWORD(lparam);
@@ -359,13 +373,13 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
             vgfx_event_t event = {
                 .type = VGFX_EVENT_MOUSE_DOWN,
                 .time_ms = timestamp,
-                .data.mouse_button = { .x = x, .y = y, .button = VGFX_MOUSE_MIDDLE }
-            };
+                .data.mouse_button = {.x = x, .y = y, .button = VGFX_MOUSE_MIDDLE}};
             vgfx_internal_enqueue_event(win, &event);
             return 0;
         }
 
-        case WM_MBUTTONUP: {
+        case WM_MBUTTONUP:
+        {
             /* Middle mouse button released */
             int32_t x = (int32_t)(short)LOWORD(lparam);
             int32_t y = (int32_t)(short)HIWORD(lparam);
@@ -375,13 +389,13 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
             vgfx_event_t event = {
                 .type = VGFX_EVENT_MOUSE_UP,
                 .time_ms = timestamp,
-                .data.mouse_button = { .x = x, .y = y, .button = VGFX_MOUSE_MIDDLE }
-            };
+                .data.mouse_button = {.x = x, .y = y, .button = VGFX_MOUSE_MIDDLE}};
             vgfx_internal_enqueue_event(win, &event);
             return 0;
         }
 
-        case WM_PAINT: {
+        case WM_PAINT:
+        {
             /* Window needs redraw - validate to prevent endless loop */
             PAINTSTRUCT ps;
             BeginPaint(hwnd, &ps);
@@ -418,13 +432,15 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
 ///            - Overlapped with title bar, borders, system menu
 ///            - Resizable (if params->resizable is true)
 ///            - Has close button (generates CLOSE event, doesn't auto-destroy)
-int vgfx_platform_init_window(struct vgfx_window* win,
-                               const vgfx_window_params_t* params) {
-    if (!win || !params) return 0;
+int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_t *params)
+{
+    if (!win || !params)
+        return 0;
 
     /* Allocate platform data structure */
-    vgfx_win32_data* w32 = (vgfx_win32_data*)calloc(1, sizeof(vgfx_win32_data));
-    if (!w32) {
+    vgfx_win32_data *w32 = (vgfx_win32_data *)calloc(1, sizeof(vgfx_win32_data));
+    if (!w32)
+    {
         vgfx_internal_set_error(VGFX_ERR_ALLOC, "Failed to allocate Win32 platform data");
         return 0;
     }
@@ -439,7 +455,8 @@ int vgfx_platform_init_window(struct vgfx_window* win,
 
     /* Register window class (once per process) */
     static int class_registered = 0;
-    if (!class_registered) {
+    if (!class_registered)
+    {
         WNDCLASSEXW wc = {0};
         wc.cbSize = sizeof(WNDCLASSEXW);
         wc.style = CS_HREDRAW | CS_VREDRAW | CS_OWNDC;
@@ -449,7 +466,8 @@ int vgfx_platform_init_window(struct vgfx_window* win,
         wc.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
         wc.lpszClassName = L"ViperGFXClass";
 
-        if (!RegisterClassExW(&wc)) {
+        if (!RegisterClassExW(&wc))
+        {
             free(w32);
             win->platform_data = NULL;
             vgfx_internal_set_error(VGFX_ERR_PLATFORM, "Failed to register Win32 window class");
@@ -459,8 +477,9 @@ int vgfx_platform_init_window(struct vgfx_window* win,
     }
 
     /* Convert UTF-8 title to UTF-16 */
-    WCHAR* wtitle = utf8_to_utf16(params->title);
-    if (!wtitle) {
+    WCHAR *wtitle = utf8_to_utf16(params->title);
+    if (!wtitle)
+    {
         free(w32);
         win->platform_data = NULL;
         vgfx_internal_set_error(VGFX_ERR_PLATFORM, "Failed to convert window title");
@@ -469,35 +488,36 @@ int vgfx_platform_init_window(struct vgfx_window* win,
 
     /* Determine window style */
     DWORD style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
-    if (params->resizable) {
+    if (params->resizable)
+    {
         style |= WS_THICKFRAME | WS_MAXIMIZEBOX;
     }
 
     /* Adjust window rect to account for borders/title bar */
-    RECT rect = { 0, 0, params->width, params->height };
+    RECT rect = {0, 0, params->width, params->height};
     AdjustWindowRect(&rect, style, FALSE);
     int win_width = rect.right - rect.left;
     int win_height = rect.bottom - rect.top;
 
     /* Create window */
-    w32->hwnd = CreateWindowExW(
-        0,                      /* Extended style */
-        L"ViperGFXClass",       /* Class name */
-        wtitle,                 /* Window title */
-        style,                  /* Style */
-        CW_USEDEFAULT,          /* X position (default) */
-        CW_USEDEFAULT,          /* Y position (default) */
-        win_width,              /* Width (including borders) */
-        win_height,             /* Height (including borders) */
-        NULL,                   /* Parent window */
-        NULL,                   /* Menu */
-        w32->hInstance,         /* Instance */
-        NULL                    /* Additional data */
+    w32->hwnd = CreateWindowExW(0,                /* Extended style */
+                                L"ViperGFXClass", /* Class name */
+                                wtitle,           /* Window title */
+                                style,            /* Style */
+                                CW_USEDEFAULT,    /* X position (default) */
+                                CW_USEDEFAULT,    /* Y position (default) */
+                                win_width,        /* Width (including borders) */
+                                win_height,       /* Height (including borders) */
+                                NULL,             /* Parent window */
+                                NULL,             /* Menu */
+                                w32->hInstance,   /* Instance */
+                                NULL              /* Additional data */
     );
 
     free(wtitle);
 
-    if (!w32->hwnd) {
+    if (!w32->hwnd)
+    {
         free(w32);
         win->platform_data = NULL;
         vgfx_internal_set_error(VGFX_ERR_PLATFORM, "Failed to create Win32 window");
@@ -509,7 +529,8 @@ int vgfx_platform_init_window(struct vgfx_window* win,
 
     /* Get device context for window */
     w32->hdc = GetDC(w32->hwnd);
-    if (!w32->hdc) {
+    if (!w32->hdc)
+    {
         DestroyWindow(w32->hwnd);
         free(w32);
         win->platform_data = NULL;
@@ -519,7 +540,8 @@ int vgfx_platform_init_window(struct vgfx_window* win,
 
     /* Create memory DC for double-buffering */
     w32->memdc = CreateCompatibleDC(w32->hdc);
-    if (!w32->memdc) {
+    if (!w32->memdc)
+    {
         ReleaseDC(w32->hwnd, w32->hdc);
         DestroyWindow(w32->hwnd);
         free(w32);
@@ -532,21 +554,20 @@ int vgfx_platform_init_window(struct vgfx_window* win,
     BITMAPINFO bmi = {0};
     bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
     bmi.bmiHeader.biWidth = params->width;
-    bmi.bmiHeader.biHeight = -params->height;  /* Negative = top-down */
+    bmi.bmiHeader.biHeight = -params->height; /* Negative = top-down */
     bmi.bmiHeader.biPlanes = 1;
     bmi.bmiHeader.biBitCount = 32;
     bmi.bmiHeader.biCompression = BI_RGB;
 
-    w32->hbmp = CreateDIBSection(
-        w32->memdc,
-        &bmi,
-        DIB_RGB_COLORS,
-        &w32->dib_pixels,  /* Pointer to pixel data */
-        NULL,
-        0
-    );
+    w32->hbmp = CreateDIBSection(w32->memdc,
+                                 &bmi,
+                                 DIB_RGB_COLORS,
+                                 &w32->dib_pixels, /* Pointer to pixel data */
+                                 NULL,
+                                 0);
 
-    if (!w32->hbmp || !w32->dib_pixels) {
+    if (!w32->hbmp || !w32->dib_pixels)
+    {
         DeleteDC(w32->memdc);
         ReleaseDC(w32->hwnd, w32->hdc);
         DestroyWindow(w32->hwnd);
@@ -575,32 +596,38 @@ int vgfx_platform_init_window(struct vgfx_window* win,
 /// @pre  win != NULL
 /// @post platform_data freed and set to NULL
 /// @post Win32 window destroyed (if it existed)
-void vgfx_platform_destroy_window(struct vgfx_window* win) {
-    if (!win || !win->platform_data) return;
+void vgfx_platform_destroy_window(struct vgfx_window *win)
+{
+    if (!win || !win->platform_data)
+        return;
 
-    vgfx_win32_data* w32 = (vgfx_win32_data*)win->platform_data;
+    vgfx_win32_data *w32 = (vgfx_win32_data *)win->platform_data;
 
     /* Delete DIB section */
-    if (w32->hbmp) {
+    if (w32->hbmp)
+    {
         DeleteObject(w32->hbmp);
         w32->hbmp = NULL;
         w32->dib_pixels = NULL;
     }
 
     /* Delete memory DC */
-    if (w32->memdc) {
+    if (w32->memdc)
+    {
         DeleteDC(w32->memdc);
         w32->memdc = NULL;
     }
 
     /* Release window DC */
-    if (w32->hdc && w32->hwnd) {
+    if (w32->hdc && w32->hwnd)
+    {
         ReleaseDC(w32->hwnd, w32->hdc);
         w32->hdc = NULL;
     }
 
     /* Destroy window */
-    if (w32->hwnd) {
+    if (w32->hwnd)
+    {
         DestroyWindow(w32->hwnd);
         w32->hwnd = NULL;
     }
@@ -625,15 +652,19 @@ void vgfx_platform_destroy_window(struct vgfx_window* win) {
 /// @post All pending messages processed and translated
 /// @post win->key_state and win->mouse_* updated to reflect current input state
 /// @post Corresponding vgfx_event_t enqueued for each message
-int vgfx_platform_process_events(struct vgfx_window* win) {
-    if (!win || !win->platform_data) return 0;
+int vgfx_platform_process_events(struct vgfx_window *win)
+{
+    if (!win || !win->platform_data)
+        return 0;
 
-    vgfx_win32_data* w32 = (vgfx_win32_data*)win->platform_data;
-    if (!w32->hwnd) return 0;
+    vgfx_win32_data *w32 = (vgfx_win32_data *)win->platform_data;
+    if (!w32->hwnd)
+        return 0;
 
     /* Process all pending messages without blocking */
     MSG msg;
-    while (PeekMessageW(&msg, w32->hwnd, 0, 0, PM_REMOVE)) {
+    while (PeekMessageW(&msg, w32->hwnd, 0, 0, PM_REMOVE))
+    {
         TranslateMessage(&msg);
         DispatchMessageW(&msg);
     }
@@ -658,18 +689,22 @@ int vgfx_platform_process_events(struct vgfx_window* win) {
 ///            - Source (win->pixels): RGBA (Red, Green, Blue, Alpha)
 ///            - Destination (DIB): BGRA (Blue, Green, Red, Alpha)
 ///            - Conversion swaps R and B channels
-int vgfx_platform_present(struct vgfx_window* win) {
-    if (!win || !win->platform_data) return 0;
+int vgfx_platform_present(struct vgfx_window *win)
+{
+    if (!win || !win->platform_data)
+        return 0;
 
-    vgfx_win32_data* w32 = (vgfx_win32_data*)win->platform_data;
-    if (!w32->hwnd || !w32->hdc || !w32->memdc || !w32->dib_pixels) return 0;
+    vgfx_win32_data *w32 = (vgfx_win32_data *)win->platform_data;
+    if (!w32->hwnd || !w32->hdc || !w32->memdc || !w32->dib_pixels)
+        return 0;
 
     /* Copy framebuffer to DIB with RGBA→BGRA conversion */
-    uint8_t* src = win->pixels;
-    uint8_t* dst = (uint8_t*)w32->dib_pixels;
+    uint8_t *src = win->pixels;
+    uint8_t *dst = (uint8_t *)w32->dib_pixels;
     int pixel_count = win->width * win->height;
 
-    for (int i = 0; i < pixel_count; i++) {
+    for (int i = 0; i < pixel_count; i++)
+    {
         uint8_t r = src[0];
         uint8_t g = src[1];
         uint8_t b = src[2];
@@ -686,15 +721,17 @@ int vgfx_platform_present(struct vgfx_window* win) {
     }
 
     /* Blit from memory DC to window DC */
-    if (!BitBlt(
-        w32->hdc,           /* Destination DC (window) */
-        0, 0,               /* Destination x, y */
-        win->width,         /* Width */
-        win->height,        /* Height */
-        w32->memdc,         /* Source DC (memory) */
-        0, 0,               /* Source x, y */
-        SRCCOPY             /* Raster operation (copy) */
-    )) {
+    if (!BitBlt(w32->hdc, /* Destination DC (window) */
+                0,
+                0,           /* Destination x, y */
+                win->width,  /* Width */
+                win->height, /* Height */
+                w32->memdc,  /* Source DC (memory) */
+                0,
+                0,      /* Source x, y */
+                SRCCOPY /* Raster operation (copy) */
+                ))
+    {
         return 0;
     }
 
@@ -708,7 +745,8 @@ int vgfx_platform_present(struct vgfx_window* win) {
 /// @return Milliseconds since arbitrary epoch (monotonic)
 ///
 /// @post Return value >= previous calls within the same process
-int64_t vgfx_platform_now_ms(void) {
+int64_t vgfx_platform_now_ms(void)
+{
     LARGE_INTEGER freq, counter;
     QueryPerformanceFrequency(&freq);
     QueryPerformanceCounter(&counter);
@@ -720,8 +758,10 @@ int64_t vgfx_platform_now_ms(void) {
 ///          without sleeping.  Used for FPS limiting.
 ///
 /// @param ms Duration to sleep in milliseconds
-void vgfx_platform_sleep_ms(int32_t ms) {
-    if (ms > 0) {
+void vgfx_platform_sleep_ms(int32_t ms)
+{
+    if (ms > 0)
+    {
         Sleep((DWORD)ms);
     }
 }

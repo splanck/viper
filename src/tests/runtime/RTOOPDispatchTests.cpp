@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/runtime/RTOOPDispatchTests.cpp
-// Purpose: Validate rt_get_vfunc bounds checking and null handling. 
+// Purpose: Validate rt_get_vfunc bounds checking and null handling.
 // Key invariants: Out-of-bounds slot access returns NULL; null object returns NULL.
 // Ownership/Lifetime: Uses runtime library only.
 // Links: docs/runtime-vm.md, docs/oop.md

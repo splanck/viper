@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/runtime_classes/TestRuntimeClassCatalog.cpp
-// Purpose: Verify runtime class catalog ingestion and TypeRegistry seeding. 
+// Purpose: Verify runtime class catalog ingestion and TypeRegistry seeding.
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md
@@ -19,13 +19,13 @@
 #include "../GTestStub.hpp"
 #endif
 
+#include "frontends/basic/sem/TypeRegistry.hpp"
 #include "il/runtime/classes/RuntimeClasses.hpp"
 #include <algorithm>
-#include "frontends/basic/sem/TypeRegistry.hpp"
 
-using il::runtime::runtimeClassCatalog;
 using il::frontends::basic::runtimeTypeRegistry;
 using il::frontends::basic::TypeKind;
+using il::runtime::runtimeClassCatalog;
 
 TEST(RuntimeClassCatalog, ContainsViperString)
 {
@@ -56,9 +56,10 @@ TEST(RuntimeClassCatalog, ContainsViperSystemString)
     const auto &cat = runtimeClassCatalog();
     EXPECT_TRUE(cat.size() >= 2u);
 
-    const auto it = std::find_if(cat.begin(), cat.end(), [](const auto &c) {
-        return std::string(c.qname) == "Viper.System.String";
-    });
+    const auto it =
+        std::find_if(cat.begin(),
+                     cat.end(),
+                     [](const auto &c) { return std::string(c.qname) == "Viper.System.String"; });
     ASSERT_NE(it, cat.end());
 
     // Check a couple of members

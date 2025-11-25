@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/runtime/RTChrAscTests.cpp
-// Purpose: Validate CHR$ and ASC runtime helpers. 
+// Purpose: Validate CHR$ and ASC runtime helpers.
 // Key invariants: CHR$ validates 0-255 range; ASC returns 0 for empty string.
 // Ownership/Lifetime: Uses runtime library.
 // Links: docs/runtime-vm.md#runtime-abi

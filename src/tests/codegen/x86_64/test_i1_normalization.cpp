@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/codegen/x86_64/test_i1_normalization.cpp
-// Purpose: Ensure boolean materialisation via SETcc is followed by a movzx and 
+// Purpose: Ensure boolean materialisation via SETcc is followed by a movzx and
 // Key invariants: The generated assembly must include a SETcc, a movz* that
 // Ownership/Lifetime: The test constructs IL objects locally and validates the
 // Links: src/codegen/x86_64/ISel.cpp, src/codegen/x86_64/AsmEmitter.cpp

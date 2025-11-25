@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/oop/TestDestructorDispose.cpp
-// Purpose: Validate parsing of DESTRUCTOR (including STATIC DESTRUCTOR) and 
+// Purpose: Validate parsing of DESTRUCTOR (including STATIC DESTRUCTOR) and
 // Key invariants: Parser accepts the new forms without diagnostics and builds
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md

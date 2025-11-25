@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: codegen/aarch64/FramePlan.hpp
-// Purpose: Describe a minimal frame save/restore plan for AArch64 functions. 
+// Purpose: Describe a minimal frame save/restore plan for AArch64 functions.
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md

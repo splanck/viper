@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_il_error_resume_ir.cpp
-// Purpose: Exercise construction of error-handling IL primitives in memory. 
+// Purpose: Exercise construction of error-handling IL primitives in memory.
 // Key invariants: Handler parameters adopt Error/ResumeTok nominal types.
 // Ownership/Lifetime: Owns local module/function instances only.
 // Links: docs/specs/errors.md

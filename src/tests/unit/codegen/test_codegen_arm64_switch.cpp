@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/codegen/test_codegen_arm64_switch.cpp
-// Purpose: Verify AArch64 lowering for IL switch.i32 into cmp + b.eq chains. 
+// Purpose: Verify AArch64 lowering for IL switch.i32 into cmp + b.eq chains.
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md
@@ -51,18 +51,17 @@ TEST(Arm64CLI, SwitchSmall)
 {
     const std::string in = outPath("arm64_switch_small.il");
     const std::string out = outPath("arm64_switch_small.s");
-    const std::string il =
-        "il 0.1\n"
-        "func @f(%x:i64) -> i64 {\n"
-        "entry(%x:i64):\n"
-        "  switch.i32 %x, ^Ld, 1 -> ^L1, 2 -> ^L2\n"
-        "L1():\n"
-        "  ret 10\n"
-        "L2():\n"
-        "  ret 20\n"
-        "Ld():\n"
-        "  ret 0\n"
-        "}\n";
+    const std::string il = "il 0.1\n"
+                           "func @f(%x:i64) -> i64 {\n"
+                           "entry(%x:i64):\n"
+                           "  switch.i32 %x, ^Ld, 1 -> ^L1, 2 -> ^L2\n"
+                           "L1():\n"
+                           "  ret 10\n"
+                           "L2():\n"
+                           "  ret 20\n"
+                           "Ld():\n"
+                           "  ret 0\n"
+                           "}\n";
     writeFile(in, il);
     const char *argv[] = {in.c_str(), "-S", out.c_str()};
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);

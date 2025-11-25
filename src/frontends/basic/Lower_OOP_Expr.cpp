@@ -21,16 +21,16 @@
 #include "frontends/basic/ILTypeUtils.hpp"
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/NameMangler_OOP.hpp"
+#include "frontends/basic/OopIndex.hpp"
 #include "frontends/basic/OopLoweringContext.hpp"
 #include "frontends/basic/Options.hpp"
 #include "frontends/basic/SemanticAnalyzer.hpp"
-#include "frontends/basic/OopIndex.hpp"
 #include "frontends/basic/StringUtils.hpp"
 #include "frontends/basic/sem/OverloadResolution.hpp"
-#include "frontends/basic/sem/RuntimePropertyIndex.hpp"
 #include "frontends/basic/sem/RuntimeMethodIndex.hpp"
-#include "il/runtime/classes/RuntimeClasses.hpp"
+#include "frontends/basic/sem/RuntimePropertyIndex.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
+#include "il/runtime/classes/RuntimeClasses.hpp"
 
 #include <cstdint>
 #include <string>
@@ -239,14 +239,14 @@ Lowerer::RVal Lowerer::lowerNewExpr(const NewExpr &expr)
                 }
                 // Heuristic return type: strings return Str; others Ptr
                 Type ret = (qname == std::string("Viper.String")) ? Type(Type::Kind::Str)
-                                                                   : Type(Type::Kind::Ptr);
+                                                                  : Type(Type::Kind::Ptr);
                 Value obj = emitCallRet(ret, c.ctor, args);
                 return {obj, ret};
             }
         }
     }
 
-    // Minimal runtime type bridging: NEW Viper.System.Text.StringBuilder()
+    // Minimal runtime type bridging: NEW Viper.Text.StringBuilder() (System.* alias supported)
     if (FrontendOptions::enableRuntimeTypeBridging())
     {
         if (expr.args.empty())
@@ -256,7 +256,14 @@ Lowerer::RVal Lowerer::lowerNewExpr(const NewExpr &expr)
             if (!expr.qualifiedType.empty())
             {
                 const auto &q = expr.qualifiedType;
-                if (q.size() == 4 && string_utils::iequals(q[0], "Viper") &&
+                if (q.size() == 3 && string_utils::iequals(q[0], "Viper") &&
+                    string_utils::iequals(q[1], "Text") &&
+                    string_utils::iequals(q[2], "StringBuilder"))
+                {
+                    isQualified = true;
+                }
+                // Also accept legacy alias: Viper.System.Text.StringBuilder
+                if (!isQualified && q.size() == 4 && string_utils::iequals(q[0], "Viper") &&
                     string_utils::iequals(q[1], "System") && string_utils::iequals(q[2], "Text") &&
                     string_utils::iequals(q[3], "StringBuilder"))
                 {
@@ -266,19 +273,17 @@ Lowerer::RVal Lowerer::lowerNewExpr(const NewExpr &expr)
             // Fallback: check dot-joined className
             if (!isQualified)
             {
-                if (string_utils::iequals(expr.className, "Viper.System.Text.StringBuilder"))
+                if (string_utils::iequals(expr.className, "Viper.Text.StringBuilder") ||
+                    string_utils::iequals(expr.className, "Viper.System.Text.StringBuilder"))
                     isQualified = true;
             }
             if (isQualified)
             {
-                // Emit direct call to the canonical System.Text ctor that returns an object pointer.
+                // Emit direct call to the canonical Text ctor that returns an object pointer.
+                const char *ctorCanonical = "Viper.Text.StringBuilder.New";
                 if (builder)
-                    builder->addExtern("Viper.System.Text.StringBuilder.New",
-                                        Type(Type::Kind::Ptr),
-                                        {});
-                Value obj = emitCallRet(Type(Type::Kind::Ptr),
-                                         "Viper.System.Text.StringBuilder.New",
-                                         {});
+                    builder->addExtern(ctorCanonical, Type(Type::Kind::Ptr), {});
+                Value obj = emitCallRet(Type(Type::Kind::Ptr), ctorCanonical, {});
                 return {obj, Type(Type::Kind::Ptr)};
             }
         }
@@ -300,97 +305,14 @@ Lowerer::RVal Lowerer::lowerNewExpr(const NewExpr &expr)
         "rt_obj_new_i64",
         {Value::constInt(classId), Value::constInt(static_cast<long long>(objectSize))});
 
-    // Pre-initialize vptr for dynamic dispatch: build a per-class vtable and store it.
-    if (const ClassInfo *ciInit = oopIndex_.findClass(qualify(expr.className)))
+    // Pre-initialize vptr from canonical per-class vtable pointer via registry
+    if (oopIndex_.findClass(qualify(expr.className)))
     {
-        // Derive slot count from recorded method slots across the inheritance chain.
-        std::size_t maxSlot = 0;
-        bool hasAnyVirtual = false;
+        auto itLayout = classLayouts_.find(expr.className);
+        if (itLayout != classLayouts_.end())
         {
-            const ClassInfo *cur = ciInit;
-            while (cur)
-            {
-                for (const auto &mp : cur->methods)
-                {
-                    const auto &mi = mp.second;
-                    if (!mi.isVirtual || mi.slot < 0)
-                        continue;
-                    hasAnyVirtual = true;
-                    maxSlot = std::max<std::size_t>(maxSlot, static_cast<std::size_t>(mi.slot));
-                }
-                if (cur->baseQualified.empty())
-                    break;
-                cur = oopIndex_.findClass(cur->baseQualified);
-            }
-        }
-        const std::size_t slotCount = hasAnyVirtual ? (maxSlot + 1) : 0;
-        if (slotCount > 0)
-        {
-            if (builder)
-                builder->addExtern("rt_alloc", Type(Type::Kind::Ptr), {Type(Type::Kind::I64)});
-            const long long bytes = static_cast<long long>(slotCount * 8ULL);
-            Value vtblPtr =
-                emitCallRet(Type(Type::Kind::Ptr), "rt_alloc", {Value::constInt(bytes)});
-
-            auto findImplementorQClass = [&](const std::string &startQ,
-                                             const std::string &mname) -> std::string
-            {
-                const ClassInfo *cur = oopIndex_.findClass(startQ);
-                while (cur)
-                {
-                    auto itM = cur->methods.find(mname);
-                    if (itM != cur->methods.end())
-                    {
-                        if (!itM->second.isAbstract)
-                            return cur->qualifiedName;
-                    }
-                    if (cur->baseQualified.empty())
-                        break;
-                    cur = oopIndex_.findClass(cur->baseQualified);
-                }
-                return startQ; // fallback
-            };
-
-            // Populate slots by scanning most-derived to bases (prefer derived impls)
-            std::vector<std::string> slotToName(slotCount);
-            {
-                const ClassInfo *cur = ciInit;
-                while (cur)
-                {
-                    for (const auto &mp : cur->methods)
-                    {
-                        const auto &mname = mp.first;
-                        const auto &mi = mp.second;
-                        if (!mi.isVirtual || mi.slot < 0)
-                            continue;
-                        const std::size_t s = static_cast<std::size_t>(mi.slot);
-                        if (s < slotToName.size() && slotToName[s].empty())
-                            slotToName[s] = mname;
-                    }
-                    if (cur->baseQualified.empty())
-                        break;
-                    cur = oopIndex_.findClass(cur->baseQualified);
-                }
-            }
-
-            for (std::size_t s = 0; s < slotCount; ++s)
-            {
-                const long long offset = static_cast<long long>(s * 8ULL);
-                Value slotPtr = emitBinary(
-                    Opcode::GEP, Type(Type::Kind::Ptr), vtblPtr, Value::constInt(offset));
-                const std::string &mname = slotToName[s];
-                if (mname.empty())
-                {
-                    emitStore(Type(Type::Kind::Ptr), slotPtr, Value::null());
-                }
-                else
-                {
-                    const std::string implQ = findImplementorQClass(ciInit->qualifiedName, mname);
-                    const std::string target = mangleMethod(implQ, mname);
-                    emitStore(Type(Type::Kind::Ptr), slotPtr, Value::global(target));
-                }
-            }
-
+            const long long typeId = (long long)itLayout->second.classId;
+            Value vtblPtr = emitCallRet(Type(Type::Kind::Ptr), "rt_get_class_vtable", {Value::constInt(typeId)});
             // Store the vptr at offset 0 in the object
             emitStore(Type(Type::Kind::Ptr), obj, vtblPtr);
         }
@@ -571,10 +493,11 @@ Lowerer::RVal Lowerer::lowerMemberAccessExpr(const MemberAccessExpr &expr)
                     qClass = qualify(cls);
             }
             if (qClass.empty() && base.type.kind == Type::Kind::Str)
-                qClass = "Viper.System.String";
+                qClass = "Viper.String";
 
             // Only use runtime property catalog for known runtime classes
-            auto isRuntimeClass = [&](const std::string &qn) {
+            auto isRuntimeClass = [&](const std::string &qn)
+            {
                 const auto &rc = il::runtime::runtimeClassCatalog();
                 for (const auto &c : rc)
                     if (string_utils::iequals(qn, c.qname))
@@ -584,15 +507,23 @@ Lowerer::RVal Lowerer::lowerMemberAccessExpr(const MemberAccessExpr &expr)
             if (!qClass.empty() && isRuntimeClass(qClass))
             {
                 auto prop = runtimePropertyIndex().find(qClass, expr.member);
+                if (!prop && string_utils::iequals(qClass, "Viper.String"))
+                    prop = runtimePropertyIndex().find("Viper.System.String", expr.member);
                 if (prop)
                 {
                     // Map scalar token to IL type
-                    auto mapTy = [](std::string_view t) -> Type {
-                        if (t == "i64") return Type(Type::Kind::I64);
-                        if (t == "f64") return Type(Type::Kind::F64);
-                        if (t == "i1")  return Type(Type::Kind::I1);
-                        if (t == "str") return Type(Type::Kind::Str);
-                        if (t == "obj") return Type(Type::Kind::Ptr);
+                    auto mapTy = [](std::string_view t) -> Type
+                    {
+                        if (t == "i64")
+                            return Type(Type::Kind::I64);
+                        if (t == "f64")
+                            return Type(Type::Kind::F64);
+                        if (t == "i1")
+                            return Type(Type::Kind::I1);
+                        if (t == "str")
+                            return Type(Type::Kind::Str);
+                        if (t == "obj")
+                            return Type(Type::Kind::Ptr);
                         return Type(Type::Kind::I64);
                     };
                     Type retTy = mapTy(prop->type);
@@ -820,7 +751,8 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
             else
             {
                 // Static call on a runtime class from the catalog (no receiver)
-                auto isRuntimeClass = [&](const std::string &qn) {
+                auto isRuntimeClass = [&](const std::string &qn)
+                {
                     const auto &rc = il::runtime::runtimeClassCatalog();
                     for (const auto &c : rc)
                         if (string_utils::iequals(qn, c.qname))
@@ -836,13 +768,15 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
                         if (auto *em = diagnosticEmitter())
                         {
                             auto cands = midx.candidates(qname, expr.method);
-                            std::string msg = "no such method '" + expr.method + "' on '" + qname + "'";
+                            std::string msg =
+                                "no such method '" + expr.method + "' on '" + qname + "'";
                             if (!cands.empty())
                             {
                                 msg += "; candidates: ";
                                 for (size_t i = 0; i < cands.size(); ++i)
                                 {
-                                    if (i) msg += ", ";
+                                    if (i)
+                                        msg += ", ";
                                     msg += cands[i];
                                 }
                             }
@@ -861,23 +795,30 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
                         RVal av = lowerExpr(*a);
                         args.push_back(av.value);
                     }
-                    auto mapBasicToIl = [](BasicType t) -> Type::Kind {
+                    auto mapBasicToIl = [](BasicType t) -> Type::Kind
+                    {
                         switch (t)
                         {
-                            case BasicType::String: return Type::Kind::Str;
-                            case BasicType::Float:  return Type::Kind::F64;
-                            case BasicType::Bool:   return Type::Kind::I1;
-                            case BasicType::Void:   return Type::Kind::Void;
+                            case BasicType::String:
+                                return Type::Kind::Str;
+                            case BasicType::Float:
+                                return Type::Kind::F64;
+                            case BasicType::Bool:
+                                return Type::Kind::I1;
+                            case BasicType::Void:
+                                return Type::Kind::Void;
                             case BasicType::Int:
                             case BasicType::Unknown:
-                            default:                return Type::Kind::I64;
+                            default:
+                                return Type::Kind::I64;
                         }
                     };
                     Type retTy(mapBasicToIl(info->ret));
                     runtimeTracker.trackCalleeName(info->target);
                     curLoc = expr.loc;
-                    Value result = retTy.kind == Type::Kind::Void ? (emitCall(info->target, args), Value::constInt(0))
-                                                                  : emitCallRet(retTy, info->target, args);
+                    Value result = retTy.kind == Type::Kind::Void
+                                       ? (emitCall(info->target, args), Value::constInt(0))
+                                       : emitCallRet(retTy, info->target, args);
                     if (retTy.kind == Type::Kind::Str)
                         deferReleaseStr(result);
                     return {result, retTy.kind == Type::Kind::Void ? Type(Type::Kind::I64) : retTy};
@@ -902,7 +843,8 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
                 qClass = "Viper.String";
         }
         // Only consult the runtime method catalog for true runtime classes
-        auto isRuntimeClass = [&](const std::string &qn) {
+        auto isRuntimeClass = [&](const std::string &qn)
+        {
             const auto &rc = il::runtime::runtimeClassCatalog();
             for (const auto &c : rc)
                 if (string_utils::iequals(qn, c.qname))
@@ -924,7 +866,8 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
                         msg += "; candidates: ";
                         for (size_t i = 0; i < cands.size(); ++i)
                         {
-                            if (i) msg += ", ";
+                            if (i)
+                                msg += ", ";
                             msg += cands[i];
                         }
                     }
@@ -942,16 +885,22 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
             args.reserve(1 + expr.args.size());
             args.push_back(base.value);
 
-            auto mapBasicToIl = [](BasicType t) -> Type::Kind {
+            auto mapBasicToIl = [](BasicType t) -> Type::Kind
+            {
                 switch (t)
                 {
-                    case BasicType::String: return Type::Kind::Str;
-                    case BasicType::Float:  return Type::Kind::F64;
-                    case BasicType::Bool:   return Type::Kind::I1;
-                    case BasicType::Void:   return Type::Kind::Void;
+                    case BasicType::String:
+                        return Type::Kind::Str;
+                    case BasicType::Float:
+                        return Type::Kind::F64;
+                    case BasicType::Bool:
+                        return Type::Kind::I1;
+                    case BasicType::Void:
+                        return Type::Kind::Void;
                     case BasicType::Int:
                     case BasicType::Unknown:
-                    default:                return Type::Kind::I64;
+                    default:
+                        return Type::Kind::I64;
                 }
             };
             // Coerce each user arg to expected BasicType
@@ -971,7 +920,8 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
             std::vector<Type> paramTypes;
             paramTypes.reserve(1 + info->args.size());
             // Receiver: strings use str; others default to ptr
-            paramTypes.push_back(qClass == "Viper.String" ? Type(Type::Kind::Str) : Type(Type::Kind::Ptr));
+            paramTypes.push_back(qClass == "Viper.String" ? Type(Type::Kind::Str)
+                                                          : Type(Type::Kind::Ptr));
             for (BasicType bt : info->args)
                 paramTypes.push_back(Type(mapBasicToIl(bt)));
 
@@ -981,17 +931,20 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
             // canonical function names selected at call sites.
             runtimeTracker.trackCalleeName(info->target);
             curLoc = expr.loc;
-            Value result = retTy.kind == Type::Kind::Void ? (emitCall(info->target, args), Value::constInt(0))
-                                                          : emitCallRet(retTy, info->target, args);
+            Value result = retTy.kind == Type::Kind::Void
+                               ? (emitCall(info->target, args), Value::constInt(0))
+                               : emitCallRet(retTy, info->target, args);
             if (retTy.kind == Type::Kind::Str)
                 deferReleaseStr(result);
             return {result, retTy.kind == Type::Kind::Void ? Type(Type::Kind::I64) : retTy};
         }
 
-        // Fallback: Object methods on any instance (Viper.System.Object.*)
+        // Fallback: Object methods on any instance (Viper.Object.*, System alias supported)
         {
             auto &midx = runtimeMethodIndex();
-            auto info = midx.find("Viper.System.Object", expr.method, expr.args.size());
+            auto info = midx.find("Viper.Object", expr.method, expr.args.size());
+            if (!info)
+                info = midx.find("Viper.System.Object", expr.method, expr.args.size());
             if (info)
             {
                 // Lower base and build (receiver, args...)
@@ -1005,26 +958,54 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
                     args.push_back(av.value);
                 }
                 // Receiver is ptr; args are passed as-is; ret type from info
-                auto mapBasicToIl = [](BasicType t) -> Type::Kind {
+                auto mapBasicToIl = [](BasicType t) -> Type::Kind
+                {
                     switch (t)
                     {
-                        case BasicType::String: return Type::Kind::Str;
-                        case BasicType::Float:  return Type::Kind::F64;
-                        case BasicType::Bool:   return Type::Kind::I1;
-                        case BasicType::Void:   return Type::Kind::Void;
+                        case BasicType::String:
+                            return Type::Kind::Str;
+                        case BasicType::Float:
+                            return Type::Kind::F64;
+                        case BasicType::Bool:
+                            return Type::Kind::I1;
+                        case BasicType::Void:
+                            return Type::Kind::Void;
                         case BasicType::Int:
                         case BasicType::Unknown:
-                        default:                return Type::Kind::I64;
+                        default:
+                            return Type::Kind::I64;
                     }
                 };
                 Type retTy(mapBasicToIl(info->ret));
                 runtimeTracker.trackCalleeName(info->target);
                 curLoc = expr.loc;
-                Value result = retTy.kind == Type::Kind::Void ? (emitCall(info->target, args), Value::constInt(0))
-                                                              : emitCallRet(retTy, info->target, args);
+                Value result = retTy.kind == Type::Kind::Void
+                                   ? (emitCall(info->target, args), Value::constInt(0))
+                                   : emitCallRet(retTy, info->target, args);
                 if (retTy.kind == Type::Kind::Str)
                     deferReleaseStr(result);
                 return {result, retTy.kind == Type::Kind::Void ? Type(Type::Kind::I64) : retTy};
+            }
+            // As a last resort, special-case common Object methods to legacy targets
+            if (string_utils::iequals(expr.method, "ToString") && expr.args.size() == 0)
+            {
+                curLoc = expr.loc;
+                RVal base = lowerExpr(*expr.base);
+                runtimeTracker.trackCalleeName("Viper.System.Object.ToString");
+                Value result = emitCallRet(
+                    Type(Type::Kind::Str), "Viper.System.Object.ToString", {base.value});
+                deferReleaseStr(result);
+                return {result, Type(Type::Kind::Str)};
+            }
+            if (string_utils::iequals(expr.method, "Equals") && expr.args.size() == 1)
+            {
+                curLoc = expr.loc;
+                RVal base = lowerExpr(*expr.base);
+                RVal rhs = lowerExpr(*expr.args[0]);
+                runtimeTracker.trackCalleeName("Viper.System.Object.Equals");
+                Value result = emitCallRet(
+                    Type(Type::Kind::I1), "Viper.System.Object.Equals", {base.value, rhs.value});
+                return {result, Type(Type::Kind::I1)};
             }
         }
     }
@@ -1372,7 +1353,7 @@ Lowerer::RVal Lowerer::lowerNewExpr(const NewExpr &expr, OopLoweringContext &ctx
                 }
                 // Heuristic return type: strings return Str; others Ptr
                 Type ret = (qname == std::string("Viper.String")) ? Type(Type::Kind::Str)
-                                                                   : Type(Type::Kind::Ptr);
+                                                                  : Type(Type::Kind::Ptr);
                 Value obj = emitCallRet(ret, c.ctor, args);
                 return {obj, ret};
             }
@@ -1386,30 +1367,30 @@ Lowerer::RVal Lowerer::lowerNewExpr(const NewExpr &expr, OopLoweringContext &ctx
 
 Lowerer::RVal Lowerer::lowerMeExpr(const MeExpr &expr, OopLoweringContext &ctx)
 {
-    // For now, just delegate to the old implementation
-    // TODO: Refactor to use context for ME resolution
+    // For now, delegate to the existing implementation.
+    // TODO: Refactor to use OopLoweringContext for ME resolution (code-organization consistency).
     return lowerMeExpr(expr);
 }
 
 Lowerer::RVal Lowerer::lowerMemberAccessExpr(const MemberAccessExpr &expr, OopLoweringContext &ctx)
 {
-    // For now, just delegate to the old implementation
-    // TODO: Refactor to use context for field resolution
+    // For now, delegate to the existing implementation.
+    // TODO: Refactor to use OopLoweringContext for member field resolution (unify patterns).
     return lowerMemberAccessExpr(expr);
 }
 
 Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr, OopLoweringContext &ctx)
 {
-    // For now, just delegate to the old implementation
-    // TODO: Refactor to use context for method resolution
+    // For now, delegate to the existing implementation.
+    // TODO: Refactor to use OopLoweringContext for method resolution (unify patterns).
     return lowerMethodCallExpr(expr);
 }
 
 std::optional<Lowerer::MemberFieldAccess> Lowerer::resolveMemberField(const MemberAccessExpr &expr,
                                                                       OopLoweringContext &ctx)
 {
-    // For now, just delegate to the old implementation
-    // TODO: Refactor to use context for member field resolution
+    // For now, delegate to the existing implementation.
+    // TODO: Refactor to use OopLoweringContext for member field resolution (unify patterns).
     return resolveMemberField(expr);
 }
 
@@ -1417,8 +1398,8 @@ std::optional<Lowerer::MemberFieldAccess> Lowerer::resolveImplicitField(std::str
                                                                         il::support::SourceLoc loc,
                                                                         OopLoweringContext &ctx)
 {
-    // For now, just delegate to the old implementation
-    // TODO: Refactor to use context for implicit field resolution
+    // For now, delegate to the existing implementation.
+    // TODO: Refactor to use OopLoweringContext for implicit field resolution (unify patterns).
     return resolveImplicitField(name, loc);
 }
 

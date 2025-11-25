@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/vm/ErrorsEhTests.cpp
-// Purpose: Validate VM error handlers resume execution using resume.next and resume.label. 
+// Purpose: Validate VM error handlers resume execution using resume.next and resume.label.
 // Key invariants: Handlers receive resume tokens and normal execution continues as specified.
 // Ownership/Lifetime: Builds IL modules on the stack and executes them via the VM.
 // Links: docs/specs/errors.md

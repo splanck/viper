@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: il/utils/Utils.hpp
-// Purpose: Provide small helper utilities for IL blocks and instructions. 
+// Purpose: Provide small helper utilities for IL blocks and instructions.
 // Key invariants: Non-owning queries that depend only on il_core types.
 // Ownership/Lifetime: Callers retain ownership of IL structures.
 // Links: docs/dev/analysis.md

@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: codegen/aarch64/AsmEmitter.hpp
-// Purpose: Minimal AArch64 assembly emitter for early backend scaffolding. 
+// Purpose: Minimal AArch64 assembly emitter for early backend scaffolding.
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md
@@ -114,6 +114,7 @@ class AsmEmitter
     {
         return regName(r);
     }
+
     // Print FPR as dN (64-bit scalar view)
     static void printD(std::ostream &os, PhysReg r)
     {

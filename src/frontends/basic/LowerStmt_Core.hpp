@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: frontends/basic/LowerStmt_Core.hpp
-// Purpose: Declares core statement-lowering helpers shared across categories. 
+// Purpose: Declares core statement-lowering helpers shared across categories.
 // Key invariants: Helpers operate on the active Lowerer context without
 // Ownership/Lifetime: Declarations are included within Lowerer to extend its
 // Links: docs/codemap.md

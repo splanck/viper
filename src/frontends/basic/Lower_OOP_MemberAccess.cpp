@@ -12,10 +12,10 @@
 // Links: docs/codemap.md
 //===----------------------------------------------------------------------===//
 
-#include "frontends/basic/Lower_OOP_Internal.hpp"
 #include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/ILTypeUtils.hpp"
+#include "frontends/basic/Lower_OOP_Internal.hpp"
 #include "frontends/basic/NameMangler_OOP.hpp"
 #include "frontends/basic/OopIndex.hpp"
 #include "frontends/basic/StringUtils.hpp"

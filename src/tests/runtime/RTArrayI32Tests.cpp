@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/runtime/RTArrayI32Tests.cpp
-// Purpose: Verify basic behavior of the int32 runtime array helpers. 
+// Purpose: Verify basic behavior of the int32 runtime array helpers.
 // Key invariants: Resizing zero-initializes new slots and preserves prior values.
 // Ownership/Lifetime: Tests own allocated arrays and release them via rt_arr_i32_release().
 // Links: docs/runtime-vm.md#runtime-abi

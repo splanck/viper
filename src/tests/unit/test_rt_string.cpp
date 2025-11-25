@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_rt_string.cpp
-// Purpose: Verify runtime string helpers including substring operations clamp inputs. 
+// Purpose: Verify runtime string helpers including substring operations clamp inputs.
 // Key invariants: Substring operations clamp start/length and avoid overflow.
 // Ownership/Lifetime: Uses runtime library.
 // Links: docs/codemap.md

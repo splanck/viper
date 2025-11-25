@@ -27,6 +27,8 @@
 
 #include "rt_file_path.h"
 
+#include "rt_context.h"
+#include "rt_internal.h"
 #include <stdlib.h>
 
 typedef struct RtFileChannelEntry
@@ -37,9 +39,37 @@ typedef struct RtFileChannelEntry
     bool at_eof;
 } RtFileChannelEntry;
 
-static RtFileChannelEntry *g_channel_entries = NULL;
-static size_t g_channel_count = 0;
-static size_t g_channel_capacity = 0;
+static inline RtContext *rt_get_or_legacy(void)
+{
+    RtContext *ctx = rt_get_current_context();
+    if (!ctx)
+        return rt_legacy_context();
+    return ctx;
+}
+
+static inline RtFileChannelEntry *rtf_entries(void)
+{
+    RtContext *ctx = rt_get_or_legacy();
+    return (RtFileChannelEntry *)ctx->file_state.entries;
+}
+
+static inline size_t *rtf_count(void)
+{
+    RtContext *ctx = rt_get_or_legacy();
+    return &ctx->file_state.count;
+}
+
+static inline size_t *rtf_capacity(void)
+{
+    RtContext *ctx = rt_get_or_legacy();
+    return &ctx->file_state.capacity;
+}
+
+static inline void rtf_set_entries(RtFileChannelEntry *ptr)
+{
+    RtContext *ctx = rt_get_or_legacy();
+    ctx->file_state.entries = ptr;
+}
 
 /// @brief Locate an existing channel entry without modifying the table.
 /// @details Performs a linear scan over the populated prefix of the table so
@@ -51,10 +81,12 @@ static RtFileChannelEntry *rt_file_find_channel(int32_t channel)
 {
     if (channel < 0)
         return NULL;
-    for (size_t i = 0; i < g_channel_count; ++i)
+    RtFileChannelEntry *entries = rtf_entries();
+    size_t count = entries ? *rtf_count() : 0;
+    for (size_t i = 0; i < count; ++i)
     {
-        if (g_channel_entries[i].channel == channel)
-            return &g_channel_entries[i];
+        if (entries[i].channel == channel)
+            return &entries[i];
     }
     return NULL;
 }
@@ -73,25 +105,30 @@ static RtFileChannelEntry *rt_file_prepare_channel(int32_t channel)
     if (entry)
         return entry;
 
-    if (g_channel_count == g_channel_capacity)
+    RtFileChannelEntry *entries = rtf_entries();
+    size_t *pcount = rtf_count();
+    size_t *pcap = rtf_capacity();
+    if (!pcount || !pcap)
+        return NULL;
+    if (*pcount == *pcap)
     {
-        size_t new_capacity = g_channel_capacity ? g_channel_capacity * 2 : 4;
+        size_t new_capacity = *pcap ? (*pcap) * 2 : 4;
         RtFileChannelEntry *new_entries =
-            (RtFileChannelEntry *)realloc(g_channel_entries, new_capacity * sizeof(*new_entries));
+            (RtFileChannelEntry *)realloc(entries, new_capacity * sizeof(*new_entries));
         if (!new_entries)
             return NULL;
-        for (size_t i = g_channel_capacity; i < new_capacity; ++i)
+        for (size_t i = *pcap; i < new_capacity; ++i)
         {
             new_entries[i].channel = 0;
             new_entries[i].in_use = false;
             new_entries[i].at_eof = false;
             rt_file_init(&new_entries[i].file);
         }
-        g_channel_entries = new_entries;
-        g_channel_capacity = new_capacity;
+        rtf_set_entries(new_entries);
+        *pcap = new_capacity;
     }
-
-    entry = &g_channel_entries[g_channel_count++];
+    entries = rtf_entries();
+    entry = &entries[(*pcount)++];
     entry->channel = channel;
     entry->in_use = false;
     entry->at_eof = false;

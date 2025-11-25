@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: il/transform/SimplifyCFG/Utils.hpp
-// Purpose: Shared helpers for SimplifyCFG transformations. 
+// Purpose: Shared helpers for SimplifyCFG transformations.
 // Key invariants: Operates on IL CFG structures without mutating ownership.
 // Ownership/Lifetime: Functions inspect/mutate caller-owned IR structures.
 // Links: docs/codemap.md

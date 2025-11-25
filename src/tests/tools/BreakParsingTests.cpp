@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/tools/BreakParsingTests.cpp
-// Purpose: Verify heuristic parsing of --break flag arguments. 
+// Purpose: Verify heuristic parsing of --break flag arguments.
 // Key invariants: Tokens with path hints parse as source lines; empty prefixes are rejected.
 // Ownership/Lifetime: N/A.
 // Links: docs/testing.md

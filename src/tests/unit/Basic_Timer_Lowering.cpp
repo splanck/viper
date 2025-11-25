@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/Basic_Timer_Lowering.cpp
-// Purpose: Ensure TIMER() in BASIC lowers to a call to rt_timer_ms. 
+// Purpose: Ensure TIMER() in BASIC lowers to a call to rt_timer_ms.
 // Key invariants: TIMER() produces i64 result via rt_timer_ms call.
 // Ownership/Lifetime: Test harness constructs and inspects lowered IL.
 // Links: docs/codemap.md

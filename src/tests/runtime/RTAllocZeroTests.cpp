@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/runtime/RTAllocZeroTests.cpp
-// Purpose: Verify rt_alloc handles zero-byte requests without trapping. 
+// Purpose: Verify rt_alloc handles zero-byte requests without trapping.
 // Key invariants: Under glibc, malloc(0) is forced to return NULL so legacy
 // Ownership/Lifetime: Uses runtime library.
 // Links: docs/runtime-vm.md#runtime-abi

@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/frontends/basic/SemanticAnalyzerVarExprTests.cpp
-// Purpose: Validate SemanticAnalyzer variable lookup behavior for suffixed names. 
+// Purpose: Validate SemanticAnalyzer variable lookup behavior for suffixed names.
 // Key invariants: Variable lookups respect BASIC type suffix rules and drive
 // Ownership/Lifetime: Tests create parser/analyzer instances per snippet.
 // Links: docs/codemap.md

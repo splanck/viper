@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/runtime/RTArrayStrTests.cpp
-// Purpose: Verify basic behavior of the string runtime array helpers. 
+// Purpose: Verify basic behavior of the string runtime array helpers.
 // Key invariants: String elements are properly reference-counted on get/put/release.
 // Ownership/Lifetime: Tests own allocated arrays and release them via rt_arr_str_release().
 // Links: docs/runtime-vm.md#runtime-abi

@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_il_parse_first_error.cpp
-// Purpose: Ensure IL parser surfaces only the first diagnostic for malformed input. 
+// Purpose: Ensure IL parser surfaces only the first diagnostic for malformed input.
 // Key invariants: Parser stops after first fatal error and returns a single diagnostic payload.
 // Ownership/Lifetime: Test owns all streams and module storage.
 // Links: docs/il-guide.md#reference

@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/codegen/test_emit_aarch64_mir_minimal.cpp
-// Purpose: Verify minimal AArch64 MIR emission: header, prologue, add, epilogue. 
+// Purpose: Verify minimal AArch64 MIR emission: header, prologue, add, epilogue.
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md

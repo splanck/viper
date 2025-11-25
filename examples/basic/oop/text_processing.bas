@@ -5,6 +5,7 @@ REM If your build treats these as reserved, use the procedural helpers as shown.
 REM Variant A: Object members (may collide with keywords)
 'USING Viper.System.IO
 '
+" Legacy alias example (System.*):
 'DIM sb AS Viper.System.Text.StringBuilder
 'sb = NEW Viper.System.Text.StringBuilder()
 '
@@ -21,8 +22,8 @@ REM Variant A: Object members (may collide with keywords)
 'File.Delete("oop_text_proc.tmp")
 
 REM Variant B: Procedural helpers (portable across builds)
-DIM sb AS Viper.System.Text.StringBuilder
-sb = NEW Viper.System.Text.StringBuilder()
+DIM sb AS Viper.Text.StringBuilder
+sb = NEW Viper.Text.StringBuilder()
 sb = Viper.Text.StringBuilder.Append(sb, "hello")
 sb = Viper.Text.StringBuilder.Append(sb, " ")
 sb = Viper.Text.StringBuilder.Append(sb, "world")
@@ -33,4 +34,3 @@ REM Use Viper.IO.File.* helpers when available in your build
 'Viper.IO.File.WriteAllText("oop_text_proc.tmp", sb.ToString())
 'PRINT Viper.IO.File.ReadAllText("oop_text_proc.tmp")
 'Viper.IO.File.Delete("oop_text_proc.tmp")
-

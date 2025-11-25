@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/il/CallIndirectRoundTrip.cpp
-// Purpose: Ensure call.indirect parses, prints, and executes via VM for a simple case. 
+// Purpose: Ensure call.indirect parses, prints, and executes via VM for a simple case.
 // Key invariants: Indirect calls resolve by global function name; no args required.
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md

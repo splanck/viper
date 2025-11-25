@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_il_parse_extern_extra_commas.cpp
-// Purpose: Ensure extern declarations reject empty parameter slots separated by commas. 
+// Purpose: Ensure extern declarations reject empty parameter slots separated by commas.
 // Key invariants: Parser emits diagnostics for malformed extern parameter lists.
 // Ownership/Lifetime: Test constructs modules and diagnostic buffers locally.
 // Links: docs/il-guide.md#reference

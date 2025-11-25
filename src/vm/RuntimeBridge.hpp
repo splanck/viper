@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: vm/RuntimeBridge.hpp
-// Purpose: Declares adapter between VM and runtime library. 
+// Purpose: Declares adapter between VM and runtime library.
 // Key invariants: None.
 // Ownership/Lifetime: VM owns the bridge.
 // Links: docs/il-guide.md#reference

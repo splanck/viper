@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_basic_lowerer_runtime_helpers.cpp
-// Purpose: Verify BASIC lowering requests runtime helpers via the shared AST walker. 
+// Purpose: Verify BASIC lowering requests runtime helpers via the shared AST walker.
 // Key invariants: Array assignment, PRINT #, and INPUT trigger their respective helpers.
 // Ownership/Lifetime: Test constructs AST via parser and owns emitted module.
 // Links: docs/codemap.md

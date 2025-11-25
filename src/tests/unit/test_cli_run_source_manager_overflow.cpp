@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_cli_run_source_manager_overflow.cpp
-// Purpose: Ensure cmdRunIL aborts immediately when the SourceManager overflows. 
+// Purpose: Ensure cmdRunIL aborts immediately when the SourceManager overflows.
 // Key invariants: Overflow diagnostic is emitted and VM execution is skipped.
 // Ownership/Lifetime: Test owns temporary IL file and diagnostic buffers.
 // Links: src/tools/ilc/cmd_run_il.cpp

@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: il/api/expected_api.hpp
-// Purpose: Provide Expected-based wrappers for IL parsing and verification entry points. 
+// Purpose: Provide Expected-based wrappers for IL parsing and verification entry points.
 // Key invariants: Wrapper success mirrors legacy bool-returning APIs; errors carry diagnostic text
 // Ownership/Lifetime: To be documented.
 // Links: docs/il-guide.md#reference

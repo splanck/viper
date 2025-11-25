@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_il_pass_manager.cpp
-// Purpose: Exercise PassManager pipelines, analysis caching, and preservation semantics. 
+// Purpose: Exercise PassManager pipelines, analysis caching, and preservation semantics.
 // Key invariants: Custom analyses should only recompute when passes invalidate them.
 // Ownership/Lifetime: Test constructs a module in-memory and runs passes locally.
 // Links: docs/codemap.md

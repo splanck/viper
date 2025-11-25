@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/runtime_classes/TestMethodIndex.cpp
-// Purpose: Verify RuntimeMethodIndex lookup for System.String.Substring maps to Viper.Strings.Mid. 
+// Purpose: Verify RuntimeMethodIndex lookup for System.String.Substring maps to Viper.Strings.Mid.
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md
@@ -22,8 +22,8 @@
 #include "frontends/basic/sem/RuntimeMethodIndex.hpp"
 #include "il/runtime/classes/RuntimeClasses.hpp"
 
-using il::frontends::basic::runtimeMethodIndex;
 using il::frontends::basic::BasicType;
+using il::frontends::basic::runtimeMethodIndex;
 
 TEST(RuntimeMethodIndexBasic, SystemStringSubstringTarget)
 {

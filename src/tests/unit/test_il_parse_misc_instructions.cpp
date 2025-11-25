@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_il_parse_misc_instructions.cpp
-// Purpose: Exercise metadata-driven instruction parsing across varied opcode forms. 
+// Purpose: Exercise metadata-driven instruction parsing across varied opcode forms.
 // Key invariants: Parser accepts operands/results/labels for uncommon opcodes.
 // Ownership/Lifetime: Test owns all modules and buffers.
 // Links: docs/il-guide.md#reference

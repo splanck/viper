@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: frontends/basic/LowerStmt_IO.hpp
-// Purpose: Declares BASIC I/O statement lowering helpers grouped by channel or 
+// Purpose: Declares BASIC I/O statement lowering helpers grouped by channel or
 // Key invariants: Helpers convert BASIC semantics to runtime shims using the
 // Ownership/Lifetime: Declarations extend Lowerer's private interface when
 // Links: docs/codemap.md

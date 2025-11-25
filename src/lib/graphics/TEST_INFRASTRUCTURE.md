@@ -6,7 +6,8 @@
 
 ## Overview
 
-The ViperGFX test infrastructure provides deterministic unit testing without requiring real OS windowing systems. This enables automated testing in CI environments and ensures consistent behavior across platforms.
+The ViperGFX test infrastructure provides deterministic unit testing without requiring real OS windowing systems. This
+enables automated testing in CI environments and ensures consistent behavior across platforms.
 
 ## Architecture
 
@@ -28,12 +29,14 @@ Mock Library (libvipergfx_mock.a)
 **Purpose:** Test-only backend that simulates window behavior without creating real OS windows.
 
 **Key Features:**
+
 - **No real OS resources:** Pure in-memory implementation
 - **Deterministic time control:** Mock clock for FPS testing
 - **Event injection API:** Programmatically inject keyboard, mouse, and window events
 - **Zero dependencies:** No graphics libraries or windowing systems
 
 **Implementation:**
+
 ```c
 /* Mock platform state */
 static int64_t g_mock_time_ms = 0;
@@ -52,6 +55,7 @@ int64_t vgfx_platform_now_ms(void) { return g_mock_time_ms; }
 **File:** `tests/vgfx_mock.h`
 
 **Time Control:**
+
 ```c
 void vgfx_mock_set_time_ms(int64_t ms);
 int64_t vgfx_mock_get_time_ms(void);
@@ -59,6 +63,7 @@ void vgfx_mock_advance_time_ms(int64_t delta_ms);
 ```
 
 **Event Injection:**
+
 ```c
 void vgfx_mock_inject_key_event(vgfx_window_t win, vgfx_key_t key, int down);
 void vgfx_mock_inject_mouse_move(vgfx_window_t win, int32_t x, int32_t y);
@@ -73,6 +78,7 @@ void vgfx_mock_inject_focus(vgfx_window_t win, int gained);
 **File:** `tests/test_harness.h`
 
 **Assertion Macros:**
+
 ```c
 TEST_BEGIN(name)                  // Start test case
 TEST_END()                        // Mark test as passed
@@ -88,6 +94,7 @@ TEST_RETURN_CODE()                // Return 0 if all passed, 1 otherwise
 ```
 
 **Output Format:**
+
 ```
 [ RUN      ] Test Name
 [       OK ] Test Name
@@ -100,17 +107,20 @@ TEST_RETURN_CODE()                // Return 0 if all passed, 1 otherwise
 ### 4. Test Suites
 
 #### test_window.c (T1-T3)
+
 - **T1:** Window creation with valid parameters
 - **T2:** Window creation with dimensions exceeding maximum
 - **T3:** Invalid dimensions use defaults
 
 #### test_pixels.c (T4-T6, T14)
+
 - **T4:** Pixel set/get operations
 - **T5:** Out-of-bounds writes are ignored
 - **T6:** Clear screen fills all pixels
 - **T14:** Direct framebuffer access
 
 #### test_drawing.c (T7-T13)
+
 - **T7:** Horizontal line drawing
 - **T8:** Vertical line drawing
 - **T9:** Diagonal line drawing
@@ -120,6 +130,7 @@ TEST_RETURN_CODE()                // Return 0 if all passed, 1 otherwise
 - **T13:** Filled circle (cardinal points + area count)
 
 #### test_input.c (T16-T21)
+
 - **T16:** Keyboard input with mock events
 - **T17:** Mouse position (in-bounds and out-of-bounds)
 - **T18:** Mouse button state
@@ -189,6 +200,7 @@ TOTAL              20     20      ✅ PASS
 ### Coverage
 
 The test suite validates:
+
 - ✅ Window lifecycle (create, destroy, resize)
 - ✅ Framebuffer operations (pixel read/write, clear)
 - ✅ Drawing primitives (lines, rectangles, circles)
@@ -203,9 +215,11 @@ The test suite validates:
 
 **Issue:** SPSC ring buffer with "one empty slot" strategy can only hold `SIZE-1` elements.
 
-**Solution:** Internal array size is `VGFX_EVENT_QUEUE_SIZE + 1` (257 slots) to provide documented capacity of 256 events.
+**Solution:** Internal array size is `VGFX_EVENT_QUEUE_SIZE + 1` (257 slots) to provide documented capacity of 256
+events.
 
 **Files Modified:**
+
 - `include/vgfx_config.h`: Documents capacity as 256
 - `src/vgfx_internal.h`: Defines `VGFX_INTERNAL_EVENT_QUEUE_SLOTS` (257)
 - `src/vgfx.c`: Uses internal constant for modulo operations
@@ -217,6 +231,7 @@ The test suite validates:
 **Root Cause:** Initial scanlines before loop only drew `cy±y` lines, missing `cy±x` lines needed for full coverage.
 
 **Solution:** Added initial scanlines for all 4-way symmetry:
+
 ```c
 hline(cx - x, cx + x, cy + y, ctx);  /* Top */
 hline(cx - x, cx + x, cy - y, ctx);  /* Bottom */
@@ -229,6 +244,7 @@ hline(cx - y, cx + y, cy - x, ctx);  /* Center lower */
 **Issue:** Event queue dropped newest events instead of oldest (LIFO instead of FIFO).
 
 **Solution:** When queue is full, advance tail to drop oldest event before inserting new event:
+
 ```c
 if (next_head == win->event_tail) {
     if (oldest_is_close) {
@@ -270,7 +286,8 @@ if (next_head == win->event_tail) {
 
 ## Summary
 
-The ViperGFX test infrastructure provides **production-quality automated testing** without requiring real OS windows. All 20 tests pass, validating correctness of:
+The ViperGFX test infrastructure provides **production-quality automated testing** without requiring real OS windows.
+All 20 tests pass, validating correctness of:
 
 ✅ **Core API** - Window management, framebuffer access
 ✅ **Drawing** - Lines, rectangles, circles (outline and filled)

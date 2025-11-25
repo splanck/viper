@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_il_opt_passes.cpp
-// Purpose: Ensure il-opt respects explicit pass ordering and trims tokens. 
+// Purpose: Ensure il-opt respects explicit pass ordering and trims tokens.
 // Key invariants: Command runs without invoking usage() and applies both passes.
 // Ownership/Lifetime: Temporary files created during the test are removed at exit.
 // Links: src/tools/ilc/cmd_il_opt.cpp

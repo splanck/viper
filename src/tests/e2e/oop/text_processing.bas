@@ -1,7 +1,7 @@
 REM Text processing demo: File + StringBuilder + String (procedural to avoid keyword collisions)
 
-DIM sb AS Viper.System.Text.StringBuilder
-sb = NEW Viper.System.Text.StringBuilder()
+DIM sb AS Viper.Text.StringBuilder
+sb = NEW Viper.Text.StringBuilder()
 
 REM Build content using procedural helper to avoid APPEND keyword
 sb = Viper.Text.StringBuilder.Append(sb, "hello")

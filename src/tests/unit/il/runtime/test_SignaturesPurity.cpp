@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/il/runtime/test_SignaturesPurity.cpp
-// Purpose: Verify runtime signature registry seeds purity/read-only flags for optimisations. 
+// Purpose: Verify runtime signature registry seeds purity/read-only flags for optimisations.
 // Key invariants: Known math helpers report pure+nothrow; strlen-style helpers report
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md

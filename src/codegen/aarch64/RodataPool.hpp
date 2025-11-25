@@ -19,7 +19,10 @@
 #include <utility>
 #include <vector>
 
-namespace il::core { struct Module; }
+namespace il::core
+{
+struct Module;
+}
 
 namespace viper::codegen::aarch64
 {
@@ -28,7 +31,10 @@ class RodataPool
 {
   public:
     // Map IL global string name to pooled label
-    const std::unordered_map<std::string, std::string> &nameToLabel() const noexcept { return nameToLabel_; }
+    const std::unordered_map<std::string, std::string> &nameToLabel() const noexcept
+    {
+        return nameToLabel_;
+    }
 
     // Build the pool from module globals (string constants only)
     void buildFromModule(const il::core::Module &mod);
@@ -50,4 +56,3 @@ class RodataPool
 };
 
 } // namespace viper::codegen::aarch64
-

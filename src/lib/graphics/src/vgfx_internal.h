@@ -35,8 +35,8 @@
 
 #include "vgfx.h"
 #include "vgfx_config.h"
-#include <stdint.h>
 #include <stddef.h>
+#include <stdint.h>
 
 //===----------------------------------------------------------------------===//
 // Internal Constants
@@ -68,28 +68,29 @@
 /// @invariant mouse_x, mouse_y reflect last known cursor position
 /// @invariant key_state[k] is 1 if key k is pressed, 0 if released
 /// @invariant platform_data is allocated/owned by the platform backend
-struct vgfx_window {
+struct vgfx_window
+{
     //===------------------------------------------------------------------===//
     // Window Properties
     //===------------------------------------------------------------------===//
 
     /// @brief Window width in pixels (immutable after creation).
-    int32_t  width;
+    int32_t width;
 
     /// @brief Window height in pixels (immutable after creation).
-    int32_t  height;
+    int32_t height;
 
     /// @brief Target frame rate for this window.
     /// @details fps > 0: Target that specific FPS with frame limiting.
     ///          fps < 0: Unlimited (no frame rate limiting).
     ///          fps == 0: Should not occur after vgfx_create_window().
-    int32_t  fps;
+    int32_t fps;
 
     /// @brief Whether the window is resizable (1 = yes, 0 = no).
     /// @details Currently for metadata only; resizing is not fully supported
     ///          in v1 (would require framebuffer reallocation and event queue
     ///          handling).
-    int32_t  resizable;
+    int32_t resizable;
 
     //===------------------------------------------------------------------===//
     // Framebuffer
@@ -99,10 +100,10 @@ struct vgfx_window {
     /// @details Memory is aligned to VGFX_FRAMEBUFFER_ALIGNMENT and owned by
     ///          this structure.  Each pixel is 4 consecutive bytes: R, G, B, A.
     ///          Pixel at (x, y) is at pixels[y * stride + x * 4].
-    uint8_t* pixels;
+    uint8_t *pixels;
 
     /// @brief Row stride in bytes (always width * 4 for contiguous rows).
-    int32_t  stride;
+    int32_t stride;
 
     //===------------------------------------------------------------------===//
     // Event Queue (Lock-Free SPSC Ring Buffer)
@@ -116,18 +117,18 @@ struct vgfx_window {
     /// @brief Next write position (producer index).
     /// @details Modified only by the platform thread in vgfx_internal_enqueue_event().
     ///          When (head + 1) % SLOTS == tail, the queue is full.
-    int32_t      event_head;
+    int32_t event_head;
 
     /// @brief Next read position (consumer index).
     /// @details Modified only by the application thread in vgfx_poll_event().
     ///          When head == tail, the queue is empty.
-    int32_t      event_tail;
+    int32_t event_tail;
 
     /// @brief Count of events dropped since last vgfx_get_overflow() call.
     /// @details Incremented by the platform thread when the queue is full and
     ///          a non-CLOSE event would have been enqueued.  Reset to zero by
     ///          vgfx_get_overflow().
-    int32_t      event_overflow;
+    int32_t event_overflow;
 
     //===------------------------------------------------------------------===//
     // Input State
@@ -178,7 +179,7 @@ struct vgfx_window {
     ///          points to a structure containing NSWindow, NSView, etc.  On
     ///          Linux, it would contain X11 Display/Window handles.  Must be
     ///          freed by vgfx_platform_destroy_window().
-    void* platform_data;
+    void *platform_data;
 };
 
 //===----------------------------------------------------------------------===//
@@ -205,8 +206,7 @@ struct vgfx_window {
 /// @pre  win->pixels != NULL (framebuffer already allocated by core)
 /// @post On success: win->platform_data != NULL, native window visible
 /// @post On failure: win->platform_data == NULL, error set
-int vgfx_platform_init_window(struct vgfx_window* win,
-                               const vgfx_window_params_t* params);
+int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_t *params);
 
 /// @brief Destroy platform-specific window resources.
 /// @details Closes the native OS window and frees win->platform_data.  Must
@@ -217,7 +217,7 @@ int vgfx_platform_init_window(struct vgfx_window* win,
 ///
 /// @pre  win != NULL
 /// @post win->platform_data == NULL, native window destroyed
-void vgfx_platform_destroy_window(struct vgfx_window* win);
+void vgfx_platform_destroy_window(struct vgfx_window *win);
 
 /// @brief Process pending OS events and update window state.
 /// @details Polls the OS event queue, translates native events into
@@ -235,7 +235,7 @@ void vgfx_platform_destroy_window(struct vgfx_window* win);
 /// @pre  win != NULL
 /// @pre  win->platform_data != NULL
 /// @post win->key_state, mouse_*, and event queue are updated
-int vgfx_platform_process_events(struct vgfx_window* win);
+int vgfx_platform_process_events(struct vgfx_window *win);
 
 /// @brief Present (blit) the framebuffer to the native window.
 /// @details Transfers the contents of win->pixels to the OS window surface
@@ -250,7 +250,7 @@ int vgfx_platform_process_events(struct vgfx_window* win);
 /// @pre  win->pixels != NULL
 /// @pre  win->platform_data != NULL
 /// @post Framebuffer contents are visible in the native window
-int vgfx_platform_present(struct vgfx_window* win);
+int vgfx_platform_present(struct vgfx_window *win);
 
 /// @brief Sleep for the specified duration.
 /// @details Used by vgfx_present() for frame rate limiting.  The actual sleep
@@ -288,7 +288,7 @@ int64_t vgfx_platform_now_ms(void);
 ///
 /// @pre  msg != NULL
 /// @post vgfx_get_last_error() returns code, vgfx_get_last_error_message() returns msg
-void vgfx_internal_set_error(vgfx_error_t code, const char* msg);
+void vgfx_internal_set_error(vgfx_error_t code, const char *msg);
 
 /// @brief Enqueue an event into the window's lock-free ring buffer.
 /// @details Attempts to add the event to the queue.  If the queue is full:
@@ -304,7 +304,7 @@ void vgfx_internal_set_error(vgfx_error_t code, const char* msg);
 /// @pre  win != NULL
 /// @pre  event != NULL
 /// @post Event is in the queue OR event_overflow incremented
-int vgfx_internal_enqueue_event(struct vgfx_window* win, const vgfx_event_t* event);
+int vgfx_internal_enqueue_event(struct vgfx_window *win, const vgfx_event_t *event);
 
 /// @brief Dequeue the next event from the window's ring buffer.
 /// @details Removes and returns the oldest event from the queue.  If the queue
@@ -320,7 +320,7 @@ int vgfx_internal_enqueue_event(struct vgfx_window* win, const vgfx_event_t* eve
 /// @pre  out_event != NULL
 /// @post If 1 returned: out_event contains the next event, event_tail advanced
 /// @post If 0 returned: out_event unchanged, queue is empty
-int vgfx_internal_dequeue_event(struct vgfx_window* win, vgfx_event_t* out_event);
+int vgfx_internal_dequeue_event(struct vgfx_window *win, vgfx_event_t *out_event);
 
 /// @brief Peek at the next event without removing it from the queue.
 /// @details Returns the oldest event without advancing event_tail.  Useful for
@@ -334,7 +334,7 @@ int vgfx_internal_dequeue_event(struct vgfx_window* win, vgfx_event_t* out_event
 /// @pre  out_event != NULL
 /// @post If 1 returned: out_event contains the next event, queue unchanged
 /// @post If 0 returned: out_event unchanged, queue is empty
-int vgfx_internal_peek_event(struct vgfx_window* win, vgfx_event_t* out_event);
+int vgfx_internal_peek_event(struct vgfx_window *win, vgfx_event_t *out_event);
 
 /// @brief Check if pixel coordinates are within the window's bounds.
 /// @details Fast bounds check for drawing operations.  Returns true if the
@@ -346,7 +346,8 @@ int vgfx_internal_peek_event(struct vgfx_window* win, vgfx_event_t* out_event);
 /// @return 1 if (x, y) is in bounds, 0 otherwise
 ///
 /// @post Return value is 1 iff win != NULL && 0 <= x < width && 0 <= y < height
-static inline int vgfx_internal_in_bounds(struct vgfx_window* win, int32_t x, int32_t y) {
+static inline int vgfx_internal_in_bounds(struct vgfx_window *win, int32_t x, int32_t y)
+{
     return (win && x >= 0 && x < win->width && y >= 0 && y < win->height);
 }
 

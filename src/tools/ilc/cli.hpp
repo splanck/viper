@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tools/ilc/cli.hpp
-// Purpose: Declarations for ilc subcommand handlers and usage helper. 
+// Purpose: Declarations for ilc subcommand handlers and usage helper.
 // Key invariants: None.
 // Ownership/Lifetime: N/A.
 // Links: docs/codemap.md

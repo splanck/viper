@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_il_parse_global_trailing_characters.cpp
-// Purpose: Ensure IL parser rejects globals that include trailing characters after string literals. 
+// Purpose: Ensure IL parser rejects globals that include trailing characters after string literals.
 // Key invariants: Parser emits a diagnostic referencing unexpected trailing characters.
 // Ownership/Lifetime: Test owns parsing streams and module instance.
 // Links: docs/il-guide.md#reference

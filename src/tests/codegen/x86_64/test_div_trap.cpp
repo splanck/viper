@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/codegen/x86_64/test_div_trap.cpp
-// Purpose: Verify that signed 64-bit division emits a guarded trap sequence 
+// Purpose: Verify that signed 64-bit division emits a guarded trap sequence
 // Key invariants: Generated assembly must test the divisor for zero, branch to
 // Ownership/Lifetime: The test builds an IL module locally, requests assembly
 // Links: src/codegen/x86_64/LowerDiv.cpp

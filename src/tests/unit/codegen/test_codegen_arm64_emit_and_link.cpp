@@ -36,12 +36,11 @@ TEST(Arm64CLI, EmitAsmAndLinkExe)
     const std::string in = outPath("emit_link.il");
     const std::string asmOut = outPath("emit_link.s");
     const std::string exeOut = outPath("emit_link_exe");
-    const std::string il =
-        "il 0.1\n"
-        "func @main() -> i64 {\n"
-        "entry:\n"
-        "  ret 0\n"
-        "}\n";
+    const std::string il = "il 0.1\n"
+                           "func @main() -> i64 {\n"
+                           "entry:\n"
+                           "  ret 0\n"
+                           "}\n";
     writeFile(in, il);
     {
         const char *argv[] = {in.c_str(), "-S", asmOut.c_str()};
@@ -60,4 +59,3 @@ int main(int argc, char **argv)
     testing::InitGoogleTest(&argc, &argv);
     return RUN_ALL_TESTS();
 }
-

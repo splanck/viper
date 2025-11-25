@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: il/transform/SimplifyCFG/ParamCanonicalization.hpp
-// Purpose: Declares parameter canonicalisation routines for SimplifyCFG. 
+// Purpose: Declares parameter canonicalisation routines for SimplifyCFG.
 // Key invariants: Maintains block argument alignment across predecessors.
 // Ownership/Lifetime: Operates on mutable blocks owned by the caller.
 // Links: docs/codemap.md

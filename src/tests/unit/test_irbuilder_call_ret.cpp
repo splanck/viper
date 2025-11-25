@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_irbuilder_call_ret.cpp
-// Purpose: Verify IRBuilder::emitCall records results for non-void functions. 
+// Purpose: Verify IRBuilder::emitCall records results for non-void functions.
 // Key invariants: Call instruction captures result id and return type.
 // Ownership/Lifetime: Test constructs module and inspects instruction.
 // Links: docs/codemap.md

@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_basic_lexer_high_bit.cpp
-// Purpose: Ensure BASIC lexer handles high-bit characters without UB. 
+// Purpose: Ensure BASIC lexer handles high-bit characters without UB.
 // Key invariants: None.
 // Ownership/Lifetime: N/A (test).
 // Links: docs/codemap.md

@@ -3,21 +3,17 @@
  * Tests keyboard, mouse, and event queue with mock backend
  */
 
+#include "test_harness.h"
 #include "vgfx.h"
 #include "vgfx_mock.h"
-#include "test_harness.h"
 
 /* T16: Keyboard Input (Mock Backend) */
-void test_keyboard_input(void) {
+void test_keyboard_input(void)
+{
     TEST_BEGIN("T16: Keyboard Input (Mock Backend)");
 
     vgfx_window_params_t params = {
-        .width = 640,
-        .height = 480,
-        .title = "Test",
-        .fps = 0,
-        .resizable = 0
-    };
+        .width = 640, .height = 480, .title = "Test", .fps = 0, .resizable = 0};
 
     vgfx_window_t win = vgfx_create_window(&params);
     ASSERT_NOT_NULL(win);
@@ -41,16 +37,12 @@ void test_keyboard_input(void) {
 }
 
 /* T17: Mouse Position (Mock Backend) */
-void test_mouse_position(void) {
+void test_mouse_position(void)
+{
     TEST_BEGIN("T17: Mouse Position (Mock Backend)");
 
     vgfx_window_params_t params = {
-        .width = 640,
-        .height = 480,
-        .title = "Test",
-        .fps = 0,
-        .resizable = 0
-    };
+        .width = 640, .height = 480, .title = "Test", .fps = 0, .resizable = 0};
 
     vgfx_window_t win = vgfx_create_window(&params);
     ASSERT_NOT_NULL(win);
@@ -79,16 +71,12 @@ void test_mouse_position(void) {
 }
 
 /* T18: Mouse Button (Mock Backend) */
-void test_mouse_button(void) {
+void test_mouse_button(void)
+{
     TEST_BEGIN("T18: Mouse Button (Mock Backend)");
 
     vgfx_window_params_t params = {
-        .width = 640,
-        .height = 480,
-        .title = "Test",
-        .fps = 0,
-        .resizable = 0
-    };
+        .width = 640, .height = 480, .title = "Test", .fps = 0, .resizable = 0};
 
     vgfx_window_t win = vgfx_create_window(&params);
     ASSERT_NOT_NULL(win);
@@ -110,16 +98,12 @@ void test_mouse_button(void) {
 }
 
 /* T19: Event Queue – Basic */
-void test_event_queue_basic(void) {
+void test_event_queue_basic(void)
+{
     TEST_BEGIN("T19: Event Queue - Basic");
 
     vgfx_window_params_t params = {
-        .width = 640,
-        .height = 480,
-        .title = "Test",
-        .fps = 0,
-        .resizable = 0
-    };
+        .width = 640, .height = 480, .title = "Test", .fps = 0, .resizable = 0};
 
     vgfx_window_t win = vgfx_create_window(&params);
     ASSERT_NOT_NULL(win);
@@ -157,23 +141,20 @@ void test_event_queue_basic(void) {
 }
 
 /* T20: Event Queue – Overflow */
-void test_event_queue_overflow(void) {
+void test_event_queue_overflow(void)
+{
     TEST_BEGIN("T20: Event Queue - Overflow");
 
     vgfx_window_params_t params = {
-        .width = 640,
-        .height = 480,
-        .title = "Test",
-        .fps = 0,
-        .resizable = 0
-    };
+        .width = 640, .height = 480, .title = "Test", .fps = 0, .resizable = 0};
 
     vgfx_window_t win = vgfx_create_window(&params);
     ASSERT_NOT_NULL(win);
 
     /* Inject VGFX_EVENT_QUEUE_SIZE + 44 events */
     int total_events = VGFX_EVENT_QUEUE_SIZE + 44;
-    for (int i = 0; i < total_events; i++) {
+    for (int i = 0; i < total_events; i++)
+    {
         /* Alternate between two different keys to track which are dropped */
         vgfx_key_t key = (i < 44) ? VGFX_KEY_A : VGFX_KEY_B;
         vgfx_mock_inject_key_event(win, key, 1);
@@ -184,7 +165,8 @@ void test_event_queue_overflow(void) {
     /* Count delivered events - should be exactly VGFX_EVENT_QUEUE_SIZE */
     int delivered = 0;
     vgfx_event_t ev;
-    while (vgfx_poll_event(win, &ev)) {
+    while (vgfx_poll_event(win, &ev))
+    {
         delivered++;
     }
     ASSERT_EQ(delivered, VGFX_EVENT_QUEUE_SIZE);
@@ -198,16 +180,12 @@ void test_event_queue_overflow(void) {
 }
 
 /* T21: Resize Event */
-void test_resize_event(void) {
+void test_resize_event(void)
+{
     TEST_BEGIN("T21: Resize Event");
 
     vgfx_window_params_t params = {
-        .width = 640,
-        .height = 480,
-        .title = "Test",
-        .fps = 0,
-        .resizable = 1
-    };
+        .width = 640, .height = 480, .title = "Test", .fps = 0, .resizable = 1};
 
     vgfx_window_t win = vgfx_create_window(&params);
     ASSERT_NOT_NULL(win);
@@ -233,8 +211,10 @@ void test_resize_event(void) {
 
     /* Check all pixels are black (framebuffer cleared) */
     vgfx_color_t color;
-    for (int32_t y = 0; y < 100; y++) {
-        for (int32_t x = 0; x < 100; x++) {
+    for (int32_t y = 0; y < 100; y++)
+    {
+        for (int32_t x = 0; x < 100; x++)
+        {
             ok = vgfx_point(win, x, y, &color);
             ASSERT_EQ(ok, 1);
             ASSERT_EQ(color, 0x000000);
@@ -246,7 +226,8 @@ void test_resize_event(void) {
 }
 
 /* Main test runner */
-int main(void) {
+int main(void)
+{
     printf("========================================\n");
     printf("ViperGFX Input Tests (T16-T21)\n");
     printf("========================================\n");

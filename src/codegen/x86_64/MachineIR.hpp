@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: codegen/x86_64/MachineIR.hpp
-// Purpose: Declare the minimal Machine IR representation required by the 
+// Purpose: Declare the minimal Machine IR representation required by the
 // Key invariants: To be documented.
 // Ownership/Lifetime: All IR nodes own their contained data outright via value
 // Links: docs/architecture.md

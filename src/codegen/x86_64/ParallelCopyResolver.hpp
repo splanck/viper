@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: codegen/x86_64/ParallelCopyResolver.hpp
-// Purpose: Provide a utility for expanding parallel register copy assignments into 
+// Purpose: Provide a utility for expanding parallel register copy assignments into
 // Key invariants: To be documented.
 // Ownership/Lifetime: Header-only utility with no global state. All temporaries are scoped
 // Links: docs/architecture.md

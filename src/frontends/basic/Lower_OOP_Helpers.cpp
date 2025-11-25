@@ -11,13 +11,13 @@
 // Links: docs/codemap.md
 //===----------------------------------------------------------------------===//
 
-#include "frontends/basic/Lower_OOP_Internal.hpp"
 #include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/DiagnosticEmitter.hpp"
+#include "frontends/basic/Lower_OOP_Internal.hpp"
 #include "frontends/basic/NameMangler_OOP.hpp"
 #include "frontends/basic/OopIndex.hpp"
-#include "frontends/basic/StringUtils.hpp"
 #include "frontends/basic/SemanticAnalyzer.hpp"
+#include "frontends/basic/StringUtils.hpp"
 
 #include <string>
 
@@ -192,7 +192,8 @@ std::string Lowerer::resolveObjectClass(const Expr &expr) const
     return {};
 }
 
-// TODO: Move emitOopDeclsAndBodies here from Lower_OOP_Emit.cpp (lines 917-1226)
-// This function orchestrates the overall OOP code generation process
+// TODO: Centralize OOP decl/body emission helpers here for cohesion with
+//       other OOP lowering utilities (currently implemented in Lower_OOP_Emit.cpp).
+//       This is a code-organization refactor; existing OOP behavior is complete.
 
 } // namespace il::frontends::basic

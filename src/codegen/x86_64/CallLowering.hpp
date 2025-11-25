@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: codegen/x86_64/CallLowering.hpp
-// Purpose: Declare utilities that translate high-level call descriptions into 
+// Purpose: Declare utilities that translate high-level call descriptions into
 // Key invariants: To be documented.
 // Ownership/Lifetime: Callers retain ownership of Machine IR structures and frame
 // Links: docs/architecture.md

@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: il/internal/io/ModuleParser.hpp
-// Purpose: Declares helpers for parsing module-level IL directives. 
+// Purpose: Declares helpers for parsing module-level IL directives.
 // Key invariants: Operates with ParserState positioned at module scope.
 // Ownership/Lifetime: Updates module metadata and dispatches to function parsing.
 // Links: docs/il-guide.md#reference

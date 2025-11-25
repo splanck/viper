@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: frontends/basic/ast/StmtControl.hpp
-// Purpose: Defines BASIC control-flow oriented statement nodes. 
+// Purpose: Defines BASIC control-flow oriented statement nodes.
 // Key invariants: Control statements maintain ownership of nested bodies via
 // Ownership/Lifetime: Statements own nested statements through unique_ptr wrappers.
 // Links: docs/codemap.md

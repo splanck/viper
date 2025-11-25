@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: codegen/x86_64/RegAllocLinear.hpp
-// Purpose: Declare the Phase A linear-scan register allocator for the x86-64 
+// Purpose: Declare the Phase A linear-scan register allocator for the x86-64
 // Key invariants: To be documented.
 // Ownership/Lifetime: Functions operate directly on the supplied MFunction instance and
 // Links: docs/architecture.md

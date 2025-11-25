@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_namespace_diagnostics.cpp
-// Purpose: Test exact diagnostic messages and positions for namespace errors. 
+// Purpose: Test exact diagnostic messages and positions for namespace errors.
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md

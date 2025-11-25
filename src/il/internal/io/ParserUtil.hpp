@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: il/internal/io/ParserUtil.hpp
-// Purpose: Declares lexical helpers shared by IL parser components. 
+// Purpose: Declares lexical helpers shared by IL parser components.
 // Key invariants: None.
 // Ownership/Lifetime: Stateless utility routines operate on caller-provided data.
 // Links: docs/il-guide.md#reference

@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: frontends/basic/passes/CollectProcs.hpp
-// Purpose: Post-parse pass to collect procedures declared inside namespaces and 
+// Purpose: Post-parse pass to collect procedures declared inside namespaces and
 // Key invariants: Qualified names are lowercase ASCII with dot separators.
 // Ownership/Lifetime: Mutates the parsed AST in-place; no ownership transfers.
 // Links: docs/codemap.md

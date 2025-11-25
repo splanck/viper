@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_lowerer_namespace.cpp
-// Purpose: Test namespace qualification in the BASIC lowerer. 
+// Purpose: Test namespace qualification in the BASIC lowerer.
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md

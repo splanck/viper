@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/types/TestBuiltinExternalTypes.cpp
-// Purpose: Assert that built-in external namespaced types are present in the registry. 
+// Purpose: Assert that built-in external namespaced types are present in the registry.
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md

@@ -156,7 +156,7 @@ void Parser::noteNamedLabelDefinition(const Token &tok, int labelNumber)
     }
 
     std::string msg = "label '" + tok.lexeme + "' already defined";
-/// @brief Emits error.
+    /// @brief Emits error.
     emitError("B0001", tok, std::move(msg));
 }
 
@@ -207,7 +207,7 @@ Parser::StatementParserRegistry Parser::buildStatementRegistry()
     StatementParserRegistry registry;
     registerCoreParsers(registry);
     registerControlFlowParsers(registry);
-/// @brief Handles error condition.
+    /// @brief Handles error condition.
     registerRuntimeParsers(registry);
     registerIoParsers(registry);
     registerOopParsers(registry);
@@ -373,7 +373,7 @@ std::unique_ptr<Program> Parser::parseProgram()
                 continue;
             hasUndefinedNamedLabel = true;
             std::string msg = "Undefined label: " + name;
-/// @brief Emits error.
+            /// @brief Emits error.
             emitError("B0002", entry.referenceLoc, std::move(msg));
         }
         if (hasUndefinedNamedLabel)
@@ -395,7 +395,7 @@ bool Parser::handleTopLevelAddFile(Program &prog)
 
     if (!sm_ || !emitter_)
     {
-/// @brief Emits error.
+        /// @brief Emits error.
         emitError("B0001", kw.loc, "ADDFILE is not supported in this parsing context");
         syncToStmtBoundary();
         if (at(TokenKind::EndOfLine))
@@ -428,7 +428,7 @@ bool Parser::handleTopLevelAddFile(Program &prog)
     {
         if (includeStack_->size() >= static_cast<size_t>(maxIncludeDepth_))
         {
-/// @brief Emits error.
+            /// @brief Emits error.
             emitError("B0001", kw.loc, "ADDFILE depth limit exceeded");
             return true;
         }
@@ -436,7 +436,7 @@ bool Parser::handleTopLevelAddFile(Program &prog)
         {
             if (p == canonStr)
             {
-/// @brief Emits error.
+                /// @brief Emits error.
                 emitError("B0001", kw.loc, "cyclic ADDFILE detected: " + canonStr);
                 return true;
             }
@@ -447,7 +447,7 @@ bool Parser::handleTopLevelAddFile(Program &prog)
     std::ifstream in(canonStr);
     if (!in)
     {
-/// @brief Emits error.
+        /// @brief Emits error.
         emitError("B0001", kw.loc, "unable to open: " + canonStr);
         if (includeStack_ && !includeStack_->empty())
             includeStack_->pop_back();
@@ -460,7 +460,7 @@ bool Parser::handleTopLevelAddFile(Program &prog)
     uint32_t newFileId = sm_->addFile(canonStr);
     if (newFileId == 0)
     {
-/// @brief Emits error.
+        /// @brief Emits error.
         emitError("B0005", kw.loc, std::string{il::support::kSourceManagerFileIdOverflowMessage});
         if (includeStack_ && !includeStack_->empty())
             includeStack_->pop_back();
@@ -501,7 +501,7 @@ bool Parser::handleAddFileInto(std::vector<StmtPtr> &dst)
     Token kw = consume(); // ADDFILE
     if (!sm_ || !emitter_)
     {
-/// @brief Emits error.
+        /// @brief Emits error.
         emitError("B0001", kw.loc, "ADDFILE is not supported in this parsing context");
         syncToStmtBoundary();
         if (at(TokenKind::EndOfLine))
@@ -532,7 +532,7 @@ bool Parser::handleAddFileInto(std::vector<StmtPtr> &dst)
     {
         if (includeStack_->size() >= static_cast<size_t>(maxIncludeDepth_))
         {
-/// @brief Emits error.
+            /// @brief Emits error.
             emitError("B0001", kw.loc, "ADDFILE depth limit exceeded");
             return true;
         }
@@ -540,7 +540,7 @@ bool Parser::handleAddFileInto(std::vector<StmtPtr> &dst)
         {
             if (p == canonStr)
             {
-/// @brief Emits error.
+                /// @brief Emits error.
                 emitError("B0001", kw.loc, "cyclic ADDFILE detected: " + canonStr);
                 return true;
             }
@@ -551,7 +551,7 @@ bool Parser::handleAddFileInto(std::vector<StmtPtr> &dst)
     std::ifstream in(canonStr);
     if (!in)
     {
-/// @brief Emits error.
+        /// @brief Emits error.
         emitError("B0001", kw.loc, "unable to open: " + canonStr);
         if (includeStack_ && !includeStack_->empty())
             includeStack_->pop_back();
@@ -564,7 +564,7 @@ bool Parser::handleAddFileInto(std::vector<StmtPtr> &dst)
     uint32_t newFileId = sm_->addFile(canonStr);
     if (newFileId == 0)
     {
-/// @brief Emits error.
+        /// @brief Emits error.
         emitError("B0005", kw.loc, std::string{il::support::kSourceManagerFileIdOverflowMessage});
         if (includeStack_ && !includeStack_->empty())
             includeStack_->pop_back();

@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: codegen/x86_64/AsmEmitter.hpp
-// Purpose: Declare the x86-64 assembly emitter responsible for translating 
+// Purpose: Declare the x86-64 assembly emitter responsible for translating
 // Key invariants: To be documented.
 // Ownership/Lifetime: AsmEmitter holds a non-owning reference to a mutable rodata pool;
 // Links: docs/architecture.md

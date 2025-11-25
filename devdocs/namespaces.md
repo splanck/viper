@@ -745,55 +745,38 @@ Type parsing with explicit error codes:
 Error and diagnostic utilities:
 - `Viper.Diagnostics.Trap(str)->void` — Trigger runtime trap
 
-### Runtime Types
+### Runtime Classes (Viper.*)
 
-Standard library types under `Viper.System.*`:
+Canonical runtime classes are exposed under the `Viper.*` root and are used directly by the BASIC frontend. These are first‑class and tested:
 
-#### Viper.System
-- `Viper.System.Object` — Base class for all objects
+#### Viper
+- `Viper.Object` — Base class for all objects
   - Methods:
     - `ToString() -> STRING` — default returns the class qualified name
     - `Equals(OBJECT other) -> BOOL` — reference equality by default
     - `GetHashCode() -> I64` — process‑stable hash derived from the object pointer
     - `ReferenceEquals(OBJECT a, OBJECT b) -> BOOL` — static; reference equality
-- `Viper.System.String` — Managed string type
-  - Properties:
-    - `Length -> I64`
-    - `IsEmpty -> BOOL`
-  - Methods:
-    - `Substring(I64 start, I64 length) -> STRING`
-    - `Concat(STRING other) -> STRING`
+- `Viper.String` — Managed string type (BASIC `STRING` is an alias)
+  - Properties: `Length -> I64`, `IsEmpty -> BOOL`
+  - Methods: `Substring(I64 start, I64 length) -> STRING`, `Concat(STRING other) -> STRING`
 
-#### Viper.System.Text
-- `Viper.System.Text.StringBuilder` — Mutable string builder (can be constructed with NEW)
-  - Constructor: `NEW()`
-  - Properties:
-    - `Length -> I64`
-    - `Capacity -> I64`
-  - Methods:
-    - `Append(STRING) -> OBJECT` (returns the builder for chaining)
-    - `Clear() -> VOID`
-    - `ToString() -> STRING`
+#### Viper.Text
+- `Viper.Text.StringBuilder` — Mutable string builder
+  - Ctor: `NEW()`
+  - Properties: `Length -> I64`, `Capacity -> I64`
+  - Methods: `Append(STRING) -> OBJECT` (returns the builder for chaining), `Clear() -> VOID`, `ToString() -> STRING`
 
-#### Viper.System.IO
-- `Viper.System.IO.File` — File operations class (static utility)
-  - Methods (static):
-    - `Exists(STRING path) -> BOOL`
-    - `ReadAllText(STRING path) -> STRING`
-    - `WriteAllText(STRING path, STRING contents) -> VOID`
-    - `Delete(STRING path) -> VOID`
+#### Viper.IO
+- `Viper.IO.File` — File operations class (static utility)
+  - Methods (static): `Exists(STRING) -> BOOL`, `ReadAllText(STRING) -> STRING`, `WriteAllText(STRING,STRING) -> VOID`, `Delete(STRING) -> VOID`
 
-#### Viper.System.Collections
-- `Viper.System.Collections.List` — Dynamic list container (stores object references)
-  - Constructor: `NEW()`
-  - Properties:
-    - `Count -> I64`
-  - Methods:
-    - `Add(OBJECT value) -> VOID`
-    - `Clear() -> VOID`
-    - `RemoveAt(I64 index) -> VOID`
-    - `get_Item(I64 index) -> OBJECT`
-    - `set_Item(I64 index, OBJECT value) -> VOID`
+#### Viper.Collections
+- `Viper.Collections.List` — Dynamic list of object references (non‑generic)
+  - Ctor: `NEW()`; Property: `Count -> I64`
+  - Methods: `Add(OBJECT)`, `Clear()`, `RemoveAt(I64)`, `get_Item(I64)->OBJECT`, `set_Item(I64,OBJECT)`
+
+Aliases (`Viper.System.*`):
+- For compatibility, `Viper.System.*` names remain as optional aliases that map to the same runtime externs (e.g., `Viper.System.Text.StringBuilder`, `Viper.System.Collections.List`). New code should prefer the canonical `Viper.*` names.
 
 ### Legacy Aliases
 
@@ -806,11 +789,7 @@ New code should use the canonical `Viper.*` names.
 
 ### OOP Runtime vs Procedural Helpers
 
-The OOP `Viper.System.*` classes are the preferred surface for new code. The
-legacy procedural helpers (e.g., `Viper.Strings.Len`, `Viper.IO.*`) are still
-exposed and used internally by the compiler and runtime bridges for backwards
-compatibility. Migration is straightforward: replace procedural calls with
-equivalent class property/method calls as listed above.
+The OOP `Viper.*` classes are the preferred surface for new code. The legacy procedural helpers (e.g., `Viper.Strings.Len`, `Viper.IO.*`) remain available and are used internally by some lowering bridges for backwards compatibility. Migration is straightforward: replace procedural calls with equivalent class property/method calls as listed above.
 
 ### Examples
 
@@ -828,10 +807,10 @@ PRINT o.ToString()   ' prints "App.C"
 PRINT o.Equals(o)    ' 1
 ```
 
-Working with strings via Viper.System.String:
+Working with strings via Viper.String:
 
 ```basic
-DIM s AS Viper.System.String
+DIM s AS Viper.String
 s = "hello"
 PRINT s.Length       ' 5
 PRINT s.IsEmpty      ' 0
@@ -841,16 +820,16 @@ PRINT s.Substring(1, 2)
 StringBuilder for efficient text composition:
 
 ```basic
-DIM sb AS Viper.System.Text.StringBuilder
-sb = NEW Viper.System.Text.StringBuilder()
+DIM sb AS Viper.Text.StringBuilder
+sb = NEW Viper.Text.StringBuilder()
 sb.Append("hello").Append(", world")
 PRINT sb.ToString()
 ```
 
-File I/O using Viper.System.IO.File:
+File I/O using Viper.IO.File:
 
 ```basic
-USING Viper.System.IO
+USING Viper.IO
 File.WriteAllText("out.txt", "data")
 IF File.Exists("out.txt") THEN
   PRINT File.ReadAllText("out.txt")

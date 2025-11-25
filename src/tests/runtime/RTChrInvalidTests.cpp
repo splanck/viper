@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/runtime/RTChrInvalidTests.cpp
-// Purpose: Ensure rt_chr traps on out-of-range input. 
+// Purpose: Ensure rt_chr traps on out-of-range input.
 // Key invariants: Codes outside 0-255 trigger runtime trap.
 // Ownership/Lifetime: Uses runtime library.
 // Links: docs/runtime-vm.md#runtime-abi

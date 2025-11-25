@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/codegen/x86_64/test_call_indirect.cpp
-// Purpose: Ensure the x86-64 backend can lower an indirect call target and 
+// Purpose: Ensure the x86-64 backend can lower an indirect call target and
 // Key invariants: The emitted assembly contains an indirect call and a return.
 // Ownership/Lifetime: To be documented.
 // Links: src/codegen/x86_64/Lowering.Mem.cpp, src/codegen/x86_64/AsmEmitter.cpp

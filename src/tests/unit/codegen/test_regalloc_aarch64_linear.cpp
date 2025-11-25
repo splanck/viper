@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/codegen/test_regalloc_aarch64_linear.cpp
-// Purpose: Validate AArch64 linear-scan allocator assigns phys regs, spills, 
+// Purpose: Validate AArch64 linear-scan allocator assigns phys regs, spills,
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md
@@ -19,8 +19,8 @@
 #include <string>
 
 #include "codegen/aarch64/AsmEmitter.hpp"
-#include "codegen/aarch64/MachineIR.hpp"
 #include "codegen/aarch64/FrameBuilder.hpp"
+#include "codegen/aarch64/MachineIR.hpp"
 #include "codegen/aarch64/RegAllocLinear.hpp"
 #include "codegen/aarch64/TargetAArch64.hpp"
 

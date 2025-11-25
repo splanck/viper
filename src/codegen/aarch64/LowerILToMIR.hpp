@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: codegen/aarch64/LowerILToMIR.hpp
-// Purpose: Minimal IL→MIR lowering adapter for AArch64 (Phase A). 
+// Purpose: Minimal IL→MIR lowering adapter for AArch64 (Phase A).
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md

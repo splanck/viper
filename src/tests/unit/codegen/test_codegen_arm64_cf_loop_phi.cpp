@@ -44,21 +44,20 @@ TEST(Arm64CLI, CF_Loop_Phi)
     const std::string in = outPath("arm64_cf_loop.il");
     const std::string out = outPath("arm64_cf_loop.s");
     // Sum 1..10 using loop-carried phi
-    const std::string il =
-        "il 0.1\n"
-        "func @main() -> i64 {\n"
-        "entry:\n"
-        "  br loop(0, 0)\n"
-        "loop(%i:i64, %acc:i64):\n"
-        "  %c = scmp_ge %i, 10\n"
-        "  cbr %c, exit(%acc), body(%i, %acc)\n"
-        "body(%i:i64, %acc:i64):\n"
-        "  %i1 = iadd.ovf %i, 1\n"
-        "  %acc1 = iadd.ovf %acc, %i1\n"
-        "  br loop(%i1, %acc1)\n"
-        "exit(%res:i64):\n"
-        "  ret %res\n"
-        "}\n";
+    const std::string il = "il 0.1\n"
+                           "func @main() -> i64 {\n"
+                           "entry:\n"
+                           "  br loop(0, 0)\n"
+                           "loop(%i:i64, %acc:i64):\n"
+                           "  %c = scmp_ge %i, 10\n"
+                           "  cbr %c, exit(%acc), body(%i, %acc)\n"
+                           "body(%i:i64, %acc:i64):\n"
+                           "  %i1 = iadd.ovf %i, 1\n"
+                           "  %acc1 = iadd.ovf %acc, %i1\n"
+                           "  br loop(%i1, %acc1)\n"
+                           "exit(%res:i64):\n"
+                           "  ret %res\n"
+                           "}\n";
     writeFile(in, il);
     const char *argv[] = {in.c_str(), "-S", out.c_str()};
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);

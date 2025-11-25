@@ -52,15 +52,14 @@ TEST(Arm64CLI, StackLocals_AllocaStoreLoad)
     const std::string in = "arm64_cli_stack_locals.il";
     const std::string out = "arm64_cli_stack_locals.s";
     // Minimal IL: one i64 param, alloca 8, store param into it, load back, return
-    const std::string il =
-        "il 0.1\n"
-        "func @test_local(%a:i64) -> i64 {\n"
-        "entry(%a:i64):\n"
-        "  %t0 = alloca 8\n"
-        "  store i64, %t0, %a\n"
-        "  %t1 = load i64, %t0\n"
-        "  ret %t1\n"
-        "}\n";
+    const std::string il = "il 0.1\n"
+                           "func @test_local(%a:i64) -> i64 {\n"
+                           "entry(%a:i64):\n"
+                           "  %t0 = alloca 8\n"
+                           "  store i64, %t0, %a\n"
+                           "  %t1 = load i64, %t0\n"
+                           "  ret %t1\n"
+                           "}\n";
 
     const std::string inP = outPath(in);
     const std::string outP = outPath(out);
@@ -91,4 +90,3 @@ int main(int argc, char **argv)
     testing::InitGoogleTest(&argc, &argv);
     return RUN_ALL_TESTS();
 }
-

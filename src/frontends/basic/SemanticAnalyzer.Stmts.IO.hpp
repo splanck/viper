@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: frontends/basic/SemanticAnalyzer.Stmts.IO.hpp
-// Purpose: Declares helpers specific to IO-oriented statement analysis for the 
+// Purpose: Declares helpers specific to IO-oriented statement analysis for the
 // Key invariants: IO helpers leverage shared utilities without mutating public
 // Ownership/Lifetime: Helpers borrow SemanticAnalyzer state.
 // Links: docs/codemap.md

@@ -28,17 +28,17 @@
 
 #include "rt_format.h"
 #include "rt_int_format.h"
-#include "rt_object.h"
-#include "rt_ns_bridge.h"
 #include "rt_internal.h"
+#include "rt_ns_bridge.h"
+#include "rt_object.h"
 #include "rt_string.h"
 
+#include <assert.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <assert.h>
 
 /// @brief Determine whether the builder currently points at its inline buffer.
 /// @details Builders start life with @ref rt_string_builder::data referencing
@@ -399,9 +399,10 @@ rt_sb_status rt_sb_printf(rt_string_builder *sb, const char *fmt, ...)
 #include <assert.h>
 
 // StringBuilder object layout (must match rt_ns_bridge.c)
-typedef struct {
-    void *vptr;  // vtable pointer (8 bytes)
-    rt_string_builder builder;  // embedded builder state
+typedef struct
+{
+    void *vptr;                // vtable pointer (8 bytes)
+    rt_string_builder builder; // embedded builder state
 } StringBuilder;
 
 // Helper to validate and get the embedded builder

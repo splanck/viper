@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: codegen/x86_64/LowerILToMIR.hpp
-// Purpose: Declare a bridge that adapts the front-end IL abstraction to the 
+// Purpose: Declare a bridge that adapts the front-end IL abstraction to the
 // Key invariants: To be documented.
 // Ownership/Lifetime: The adapter borrows IL inputs, constructs fresh MIR graphs by
 // Links: docs/architecture.md

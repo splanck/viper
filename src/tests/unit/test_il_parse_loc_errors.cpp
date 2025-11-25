@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_il_parse_loc_errors.cpp
-// Purpose: Ensure the IL function parser reports malformed .loc directives. 
+// Purpose: Ensure the IL function parser reports malformed .loc directives.
 // Key invariants: ParserState diagnostics identify incorrect location triplets.
 // Ownership/Lifetime: Constructs parser state locally for each scenario.
 // Links: docs/il-guide.md#reference

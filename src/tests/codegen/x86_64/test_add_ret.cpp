@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/codegen/x86_64/test_add_ret.cpp
-// Purpose: Verify the x86-64 backend emits expected assembly for a minimal 
+// Purpose: Verify the x86-64 backend emits expected assembly for a minimal
 // Key invariants: The generated assembly must contain the global symbol
 // Ownership/Lifetime: Test builds the IL module locally and verifies emitted
 // Links: src/codegen/x86_64/Backend.cpp

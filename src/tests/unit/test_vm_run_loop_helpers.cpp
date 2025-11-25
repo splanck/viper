@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_vm_run_loop_helpers.cpp
-// Purpose: Validate VM run loop helper behaviour for debug pauses and trap dispatch. 
+// Purpose: Validate VM run loop helper behaviour for debug pauses and trap dispatch.
 // Key invariants: stepOnce honours breakpoints and trap dispatch clears context.
 // Ownership/Lifetime: Test constructs IL module and runs helper wrappers.
 // Links: docs/codemap.md

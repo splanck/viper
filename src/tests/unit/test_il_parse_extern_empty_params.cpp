@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_il_parse_extern_empty_params.cpp
-// Purpose: Ensure extern declarations allow empty parameter lists with whitespace. 
+// Purpose: Ensure extern declarations allow empty parameter lists with whitespace.
 // Key invariants: Parser tolerates whitespace-only parameter slices without emitting errors.
 // Ownership/Lifetime: Test owns IL module and buffers.
 // Links: docs/il-guide.md#reference

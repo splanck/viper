@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: support/diag_expected.hpp
-// Purpose: Provides diagnostic helpers and a lightweight Expected container for CLI tools. 
+// Purpose: Provides diagnostic helpers and a lightweight Expected container for CLI tools.
 // Key invariants: Diagnostics encapsulate a single severity, message, and location; Expected holds
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md

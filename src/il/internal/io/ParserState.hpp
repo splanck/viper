@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: il/internal/io/ParserState.hpp
-// Purpose: Declares shared parser state for IL text parsing components. 
+// Purpose: Declares shared parser state for IL text parsing components.
 // Key invariants: Tracks module/function context while parsing input.
 // Ownership/Lifetime: Holds references to externally owned module data.
 // Links: docs/il-guide.md#reference

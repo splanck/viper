@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_basic_semantic_components.cpp
-// Purpose: Unit tests for scope tracking, procedure registration, and diagnostics. 
+// Purpose: Unit tests for scope tracking, procedure registration, and diagnostics.
 // Key invariants: Components operate independently and report expected state.
 // Ownership/Lifetime: Test owns all objects locally.
 // Links: docs/codemap.md

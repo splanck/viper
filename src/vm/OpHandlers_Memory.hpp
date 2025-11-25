@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: vm/OpHandlers_Memory.hpp
-// Purpose: Declare memory-related opcode handlers used by the VM dispatcher. 
+// Purpose: Declare memory-related opcode handlers used by the VM dispatcher.
 // Key invariants: Handlers honour IL semantics for loads, stores, allocations, and pointer ops.
 // Ownership/Lifetime: Handlers mutate VM frames but never retain ownership of VM resources.
 // Links: docs/il-guide.md#reference
@@ -331,11 +331,11 @@ VM::ExecResult handleConstStr(VM &vm,
                               size_t &ip);
 
 VM::ExecResult handleGAddr(VM &vm,
-                            Frame &fr,
-                            const il::core::Instr &in,
-                            const VM::BlockMap &blocks,
-                            const il::core::BasicBlock *&bb,
-                            size_t &ip);
+                           Frame &fr,
+                           const il::core::Instr &in,
+                           const VM::BlockMap &blocks,
+                           const il::core::BasicBlock *&bb,
+                           size_t &ip);
 
 VM::ExecResult handleConstNull(VM &vm,
                                Frame &fr,

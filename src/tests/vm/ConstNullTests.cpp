@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/vm/ConstNullTests.cpp
-// Purpose: Validate const.null initializes destination slots with zero values for each IL kind. 
+// Purpose: Validate const.null initializes destination slots with zero values for each IL kind.
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md

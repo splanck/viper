@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/runtime/RTInputLineTests.cpp
-// Purpose: Ensure rt_input_line handles lines longer than the initial buffer and EOF-terminated 
+// Purpose: Ensure rt_input_line handles lines longer than the initial buffer and EOF-terminated
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md

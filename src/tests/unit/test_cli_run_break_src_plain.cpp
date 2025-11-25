@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_cli_run_break_src_plain.cpp
-// Purpose: Ensure cmdRunIL treats bare path:line breakpoints as source breaks. 
+// Purpose: Ensure cmdRunIL treats bare path:line breakpoints as source breaks.
 // Key invariants: `--break foo:7` hits a source breakpoint with the foo module.
 // Ownership/Lifetime: Creates a temporary IL file under the OS temp directory.
 // Links: src/tools/ilc/cmd_run_il.cpp

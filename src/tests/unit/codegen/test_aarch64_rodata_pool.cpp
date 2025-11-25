@@ -26,7 +26,8 @@ TEST(AArch64Rodata, DedupAndEmit)
     il::core::Module m;
     m.globals.push_back({"@.L0", il::core::Type(il::core::Type::Kind::Str), std::string("Hello")});
     m.globals.push_back({"@.L1", il::core::Type(il::core::Type::Kind::Str), std::string("Hello")});
-    m.globals.push_back({"@.L2", il::core::Type(il::core::Type::Kind::Str), std::string("World\n")});
+    m.globals.push_back(
+        {"@.L2", il::core::Type(il::core::Type::Kind::Str), std::string("World\n")});
 
     RodataPool pool;
     pool.buildFromModule(m);
@@ -53,4 +54,3 @@ int main(int argc, char **argv)
     testing::InitGoogleTest(&argc, &argv);
     return RUN_ALL_TESTS();
 }
-

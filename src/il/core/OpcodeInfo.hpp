@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: il/core/OpcodeInfo.hpp
-// Purpose: Declares metadata describing IL opcode signatures and behaviours. 
+// Purpose: Declares metadata describing IL opcode signatures and behaviours.
 // Key invariants: Table entries cover every Opcode enumerator exactly once.
 // Ownership/Lifetime: Metadata is static storage duration and read-only.
 // Links: docs/il-guide.md#reference

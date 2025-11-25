@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: frontends/basic/types/TypeMapping.cpp
-// Purpose: Map IL core types to BASIC frontend scalar types for proc signatures. 
+// Purpose: Map IL core types to BASIC frontend scalar types for proc signatures.
 // Key invariants: Only scalar types are supported (i64, f64, str, i1). Others are skipped.
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md

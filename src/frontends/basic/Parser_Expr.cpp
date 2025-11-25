@@ -524,8 +524,10 @@ ExprPtr Parser::parsePrimary()
                     sawAdditionalDot = true;
                     i += 2;
                 }
-                // Accept final segment as identifier or keyword APPEND (e.g., Viper.Text.StringBuilder.Append)
-                if (!((peek(i).kind == TokenKind::Identifier || peek(i).kind == TokenKind::KeywordAppend) &&
+                // Accept final segment as identifier or keyword APPEND (e.g.,
+                // Viper.Text.StringBuilder.Append)
+                if (!((peek(i).kind == TokenKind::Identifier ||
+                       peek(i).kind == TokenKind::KeywordAppend) &&
                       peek(i + 1).kind == TokenKind::LParen))
                     ok = false;
                 // BUG-082 fix: Only treat as qualified procedure call if the first identifier

@@ -12,10 +12,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "vm/DispatchStrategy.hpp"
-#include "vm/VMContext.hpp"
-#include "vm/OpHandlers.hpp"
-#include "il/core/Instr.hpp"
 #include "il/core/BasicBlock.hpp"
+#include "il/core/Instr.hpp"
+#include "vm/OpHandlers.hpp"
+#include "vm/VMContext.hpp"
 
 namespace il::vm
 {
@@ -25,9 +25,9 @@ namespace il::vm
 ///          selection, debug hooks, trap handling, and exit conditions.
 ///          The strategy is only responsible for executing individual instructions.
 bool runSharedDispatchLoop(VM &vm,
-                          VMContext &context,
-                          VM::ExecState &state,
-                          DispatchStrategy &strategy)
+                           VMContext &context,
+                           VM::ExecState &state,
+                           DispatchStrategy &strategy)
 {
     while (true)
     {
@@ -103,11 +103,14 @@ namespace detail
 class FnTableStrategy final : public DispatchStrategy
 {
   public:
-    Kind getKind() const override { return Kind::FnTable; }
+    Kind getKind() const override
+    {
+        return Kind::FnTable;
+    }
 
     VM::ExecResult executeInstruction(VM &vm,
-                                     VM::ExecState &state,
-                                     const il::core::Instr &instr) override
+                                      VM::ExecState &state,
+                                      const il::core::Instr &instr) override
     {
         return vm.executeOpcode(state.fr, instr, state.blocks, state.bb, state.ip);
     }
@@ -117,13 +120,19 @@ class FnTableStrategy final : public DispatchStrategy
 class SwitchStrategy final : public DispatchStrategy
 {
   public:
-    Kind getKind() const override { return Kind::Switch; }
+    Kind getKind() const override
+    {
+        return Kind::Switch;
+    }
 
-    bool handlesFinalizationInternally() const override { return true; }
+    bool handlesFinalizationInternally() const override
+    {
+        return true;
+    }
 
     VM::ExecResult executeInstruction(VM &vm,
-                                     VM::ExecState &state,
-                                     const il::core::Instr &instr) override
+                                      VM::ExecState &state,
+                                      const il::core::Instr &instr) override
     {
         // The switch dispatch is handled inline
         vm.dispatchOpcodeSwitch(state, instr);
@@ -158,15 +167,21 @@ class ThreadedStrategy final : public DispatchStrategy
     }
 
   public:
-    Kind getKind() const override { return Kind::Threaded; }
+    Kind getKind() const override
+    {
+        return Kind::Threaded;
+    }
 
-    bool requiresTrapCatch() const override { return true; }
+    bool requiresTrapCatch() const override
+    {
+        return true;
+    }
 
     VM::ExecResult executeInstruction(VM &vm,
-                                     VM::ExecState &state,
-                                     const il::core::Instr &instr) override
+                                      VM::ExecState &state,
+                                      const il::core::Instr &instr) override
     {
-        void **labels = static_cast<void**>(getOpcodeLabels());
+        void **labels = static_cast<void **>(getOpcodeLabels());
         const size_t kOpLabelCount = il::core::kNumOpcodes;
 
         // Dispatch to the appropriate label

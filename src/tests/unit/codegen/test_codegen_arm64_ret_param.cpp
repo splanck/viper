@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/codegen/test_codegen_arm64_ret_param.cpp
-// Purpose: Verify returning parameters lowers to correct moves/no-op. 
+// Purpose: Verify returning parameters lowers to correct moves/no-op.
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md

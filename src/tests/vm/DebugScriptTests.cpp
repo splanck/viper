@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/vm/DebugScriptTests.cpp
-// Purpose: Validate scripted breakpoint control with step and continue. 
+// Purpose: Validate scripted breakpoint control with step and continue.
 // Key invariants: Exactly two IL trace lines appear between breakpoints; final output matches
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md

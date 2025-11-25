@@ -24,10 +24,10 @@ namespace il::frontends::basic
 
 struct RuntimePropertyInfo
 {
-    std::string type;    ///< IL scalar type string (e.g., "i64", "i1").
-    std::string getter;  ///< Canonical extern target for getter.
-    std::string setter;  ///< Canonical extern target for setter (empty if none).
-    bool readonly{false};///< True if setter is empty.
+    std::string type;     ///< IL scalar type string (e.g., "i64", "i1").
+    std::string getter;   ///< Canonical extern target for getter.
+    std::string setter;   ///< Canonical extern target for setter (empty if none).
+    bool readonly{false}; ///< True if setter is empty.
 };
 
 class RuntimePropertyIndex

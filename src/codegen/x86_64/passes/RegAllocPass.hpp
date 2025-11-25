@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: codegen/x86_64/passes/RegAllocPass.hpp
-// Purpose: Declare the register allocation stage placeholder for the x86-64 pipeline. 
+// Purpose: Declare the register allocation stage placeholder for the x86-64 pipeline.
 // Key invariants: Register allocation requires legalisation to have succeeded first.
 // Ownership/Lifetime: Stateless pass that marks progress through the pipeline.
 // Links: docs/codemap.md

@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_il_parse_missing_paren.cpp
-// Purpose: Ensure extern declarations without parentheses are rejected. 
+// Purpose: Ensure extern declarations without parentheses are rejected.
 // Key invariants: Parser diagnostics include the missing token reference and line number.
 // Ownership/Lifetime: Test owns module buffers and diagnostics.
 // Links: docs/il-guide.md#reference

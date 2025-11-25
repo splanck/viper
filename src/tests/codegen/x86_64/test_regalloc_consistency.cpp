@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/codegen/x86_64/test_regalloc_consistency.cpp
-// Purpose: Integration tests validating register allocation outputs against 
+// Purpose: Integration tests validating register allocation outputs against
 // Key invariants: Allocation results remain deterministic for representative
 // Ownership/Lifetime: Tests construct Machine IR on the stack and run the
 // Links: src/codegen/x86_64/RegAllocLinear.hpp

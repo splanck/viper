@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/common/VmFixture.cpp
-// Purpose: Implement shared VM execution helpers for tests. 
+// Purpose: Implement shared VM execution helpers for tests.
 // Key invariants: Trap helpers fork to isolate VM failures and ensure the parent
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md

@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_il_switch_i32.cpp
-// Purpose: Confirm SwitchI32 opcode metadata, parsing, and passes handle multi-way control flow. 
+// Purpose: Confirm SwitchI32 opcode metadata, parsing, and passes handle multi-way control flow.
 // Key invariants: SwitchI32 must expose correct operands/successors and analyses recognise all
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md

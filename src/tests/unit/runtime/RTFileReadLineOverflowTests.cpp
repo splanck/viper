@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/runtime/RTFileReadLineOverflowTests.cpp
-// Purpose: Ensure rt_file_read_line's buffer growth guard reports overflow instead of reallocating. 
+// Purpose: Ensure rt_file_read_line's buffer growth guard reports overflow instead of reallocating.
 // Key invariants: Buffer is released on failure and error surfaces Err_RuntimeError with ERANGE.
 // Ownership/Lifetime: Test owns the temporary buffer allocated for exercising the guard.
 // Links: docs/codemap.md

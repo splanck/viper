@@ -1,7 +1,7 @@
 REM Use procedural helpers to avoid BASIC keyword collisions and binding gaps
 
-DIM sb AS Viper.System.Text.StringBuilder
-sb = NEW Viper.System.Text.StringBuilder()
+DIM sb AS Viper.Text.StringBuilder
+sb = NEW Viper.Text.StringBuilder()
 
 Viper.IO.File.WriteAllText("tmp_oop.txt", "hi")
 

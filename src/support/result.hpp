@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: support/result.hpp
-// Purpose: Provides a simple Result type for error handling. 
+// Purpose: Provides a simple Result type for error handling.
 // Key invariants: None.
 // Ownership/Lifetime: Result owns contained value or error.
 // Links: docs/codemap.md

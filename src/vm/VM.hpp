@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: vm/VM.hpp
-// Purpose: Declares stack-based virtual machine executing IL and caching runtime 
+// Purpose: Declares stack-based virtual machine executing IL and caching runtime
 // Key invariants: Inline string literal cache owns one handle per literal.
 // Ownership/Lifetime: VM does not own module or runtime bridge.
 // Links: docs/il-guide.md#reference
@@ -178,7 +178,7 @@ class VM
     friend class detail::ThreadedDispatchDriver;
 #endif
     friend struct detail::ops::OperandDispatcher; ///< Allow shared helpers to evaluate operands
-    friend class DispatchStrategy;  ///< Allow dispatch strategies to access execution state
+    friend class DispatchStrategy; ///< Allow dispatch strategies to access execution state
     friend class detail::FnTableStrategy;
     friend class detail::SwitchStrategy;
 #if VIPER_THREADING_SUPPORTED
@@ -186,7 +186,7 @@ class VM
 #endif
     friend class RuntimeBridge; ///< Runtime bridge accesses trap formatting helpers
     friend void vm_raise(TrapKind kind, int32_t code);
-/// @brief Handles error condition.
+    /// @brief Handles error condition.
     friend void vm_raise_from_error(const VmError &error);
     friend struct VMTestHook; ///< Unit tests access interpreter internals
     friend VmError *vm_acquire_trap_token();
@@ -207,7 +207,6 @@ class VM
         /// @brief Return value when @c returned is true.
         Slot value{};
     };
-
 
     /// @brief Block lookup table keyed by label.
     // Use string_view keys to avoid key string copies while relying on the
@@ -415,9 +414,9 @@ class VM
 
     /// @brief Update current trap context for instruction @p in.
     void setCurrentContext(Frame &fr,
-                          const il::core::BasicBlock *bb,
-                          size_t ip,
-                          const il::core::Instr &in);
+                           const il::core::BasicBlock *bb,
+                           size_t ip,
+                           const il::core::Instr &in);
 
     // dispatchOpcodeSwitch is declared via generated include file
 
@@ -563,7 +562,6 @@ class VM
     bool enableOpcodeCounts = true;
 #endif
   private:
-
     /// @brief Execute function @p fn with optional arguments.
     /// @param fn Function to execute.
     /// @param args Argument slots for the callee's entry block.

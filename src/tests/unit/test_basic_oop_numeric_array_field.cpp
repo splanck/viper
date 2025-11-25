@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_basic_oop_numeric_array_field.cpp
-// Purpose: Verify that numeric array fields in classes store via rt_arr_i32_set 
+// Purpose: Verify that numeric array fields in classes store via rt_arr_i32_set
 // Key invariants: OOP lowering derives element type from class layout and uses
 // Ownership/Lifetime: Compiles BASIC source into an IL module and inspects the
 // Links: docs/architecture.md

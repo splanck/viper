@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/vm/TrapOverflowTests.cpp
-// Purpose: Ensure Overflow traps report kind and instruction index. 
+// Purpose: Ensure Overflow traps report kind and instruction index.
 // Key invariants: Diagnostic must mention Overflow and instruction #0.
 // Ownership/Lifetime: Forks child VM process to capture trap diagnostics.
 // Links: docs/codemap.md

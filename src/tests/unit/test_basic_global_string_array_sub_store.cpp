@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_basic_global_string_array_sub_store.cpp
-// Purpose: Verify that assigning to a global STRING array from a SUB uses rt_arr_str_put. 
+// Purpose: Verify that assigning to a global STRING array from a SUB uses rt_arr_str_put.
 // Key invariants: Lowering selects string array helper even from SUB scope.
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md

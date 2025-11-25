@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: frontends/basic/builtins/StringBuiltins.hpp
-// Purpose: Declares registry and lowering helpers for BASIC string built-ins. 
+// Purpose: Declares registry and lowering helpers for BASIC string built-ins.
 // Key invariants: Registry lookups return immutable metadata describing name,
 // Ownership/Lifetime: Functions operate on the lowering context supplied by
 // Links: docs/codemap.md

@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/analysis/AcyclicTests.cpp
-// Purpose: Verify cycle detection and topological ordering for CFGs. 
+// Purpose: Verify cycle detection and topological ordering for CFGs.
 // Key invariants: topoOrder returns empty on cycles; order respects DAG edges.
 // Ownership/Lifetime: Builds local modules via IRBuilder.
 // Links: docs/dev/analysis.md

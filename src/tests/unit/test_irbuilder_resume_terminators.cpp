@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_irbuilder_resume_terminators.cpp
-// Purpose: Ensure IRBuilder marks blocks terminated after emitting resume instructions. 
+// Purpose: Ensure IRBuilder marks blocks terminated after emitting resume instructions.
 // Key invariants: Resume opcodes behave as terminators when emitted via IRBuilder helpers.
 // Ownership/Lifetime: Test owns its module/function fixtures locally.
 // Links: docs/il-guide.md#reference

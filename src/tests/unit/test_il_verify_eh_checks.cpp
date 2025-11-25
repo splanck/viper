@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_il_verify_eh_checks.cpp
-// Purpose: Validate EhModel and EhChecks invariants across representative EH scenarios. 
+// Purpose: Validate EhModel and EhChecks invariants across representative EH scenarios.
 // Key invariants: Stack balance and resume-edge diagnostics mirror legacy behaviour.
 // Ownership/Lifetime: Constructs temporary IL functions for verification.
 // Links: docs/il-guide.md#reference

@@ -35,6 +35,7 @@
 #pragma once
 
 #include <stdint.h>
+#include "rt_string.h"
 
 #ifdef __cplusplus
 extern "C"
@@ -101,6 +102,16 @@ extern "C"
 
     // Convenience: direct registration without aggregate build in IL.
     void rt_register_interface_direct(int iface_id, const char *qname, int slot_count);
+
+    // Convenience: direct class registration used by compiler-emitted module init.
+    // Allocates metadata and registers it in the per-VM registry so lookups by
+    // vtable pointer succeed and Object.ToString can render the qualified name.
+    void rt_register_class_direct(int type_id, void **vtable, const char *qname, int vslot_count);
+    void rt_register_class_direct_rs(int type_id, void **vtable, rt_string qname, int64_t vslot_count);
+
+    // Lookup the canonical vtable pointer for a registered class type id.
+    // Returns NULL when unknown.
+    void **rt_get_class_vtable(int type_id);
 
 #ifdef __cplusplus
 }

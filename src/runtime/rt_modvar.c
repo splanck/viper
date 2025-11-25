@@ -29,7 +29,10 @@ static void *mv_alloc(size_t size)
     return p;
 }
 
-static RtModvarEntry *mv_find_or_create(RtContext *ctx, const char *key, mv_kind_t kind, size_t size)
+static RtModvarEntry *mv_find_or_create(RtContext *ctx,
+                                        const char *key,
+                                        mv_kind_t kind,
+                                        size_t size)
 {
     assert(ctx && "mv_find_or_create called without active RtContext");
 

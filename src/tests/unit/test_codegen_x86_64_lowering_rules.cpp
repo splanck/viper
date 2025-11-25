@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_codegen_x86_64_lowering_rules.cpp
-// Purpose: Validate table-driven selection of x86-64 lowering rules. 
+// Purpose: Validate table-driven selection of x86-64 lowering rules.
 // Key invariants: Rule lookup honours opcode prefixes and operand shapes.
 // Ownership/Lifetime: Constructs IL instructions on the stack without touching MIR.
 // Links: src/codegen/x86_64/LoweringRules.cpp, src/codegen/x86_64/LoweringRuleTable.hpp

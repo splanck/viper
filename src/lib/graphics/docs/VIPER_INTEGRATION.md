@@ -22,7 +22,9 @@
 
 ## Overview
 
-This document describes how ViperGFX integrates into the Viper runtime to provide graphics capabilities for BASIC programs. The integration enables classic BASIC graphics statements like `SCREEN`, `PSET`, `LINE`, `CIRCLE`, and input handling through familiar constructs like `INKEY$` and mouse functions.
+This document describes how ViperGFX integrates into the Viper runtime to provide graphics capabilities for BASIC
+programs. The integration enables classic BASIC graphics statements like `SCREEN`, `PSET`, `LINE`, `CIRCLE`, and input
+handling through familiar constructs like `INKEY$` and mouse functions.
 
 ### Design Principles
 
@@ -95,7 +97,8 @@ target_include_directories(viper_runtime PRIVATE
 )
 ```
 
-The runtime links against `libvipergfx.a` as a private dependency, making graphics functionality available to runtime functions without exposing ViperGFX headers to IL or frontend layers.
+The runtime links against `libvipergfx.a` as a private dependency, making graphics functionality available to runtime
+functions without exposing ViperGFX headers to IL or frontend layers.
 
 ---
 
@@ -108,6 +111,7 @@ The runtime links against `libvipergfx.a` as a private dependency, making graphi
 Opens the graphics window and initializes the graphics subsystem.
 
 **BASIC:**
+
 ```basic
 SCREEN 1    ' 320x200, 4 colors
 SCREEN 2    ' 640x200, monochrome
@@ -118,6 +122,7 @@ SCREEN 13   ' 320x200, 256 colors
 ```
 
 **Runtime Function:**
+
 ```c
 // src/runtime/viper_gfx_screen.c
 void Viper_Graphics_Screen(int32_t mode) {
@@ -165,16 +170,19 @@ void Viper_Graphics_Screen(int32_t mode) {
 Sets a pixel at the specified coordinates.
 
 **BASIC:**
+
 ```basic
 PSET (100, 100), 15    ' White pixel at (100, 100)
 ```
 
 **IL:**
+
 ```
 call @Viper.Graphics.Pset(i32 100, i32 100, i32 15)
 ```
 
 **Runtime Function:**
+
 ```c
 void Viper_Graphics_Pset(int32_t x, int32_t y, int32_t color) {
     if (!g_viper_graphics_window) {
@@ -193,6 +201,7 @@ void Viper_Graphics_Pset(int32_t x, int32_t y, int32_t color) {
 Draws a line or box between two points.
 
 **BASIC:**
+
 ```basic
 LINE (0, 0)-(100, 100), 15           ' White diagonal line
 LINE (10, 10)-(50, 50), 4, B         ' Red box outline
@@ -200,6 +209,7 @@ LINE (10, 10)-(50, 50), 4, BF        ' Red filled box
 ```
 
 **Runtime Functions:**
+
 ```c
 void Viper_Graphics_Line(int32_t x1, int32_t y1, int32_t x2, int32_t y2,
                          int32_t color) {
@@ -236,12 +246,14 @@ void Viper_Graphics_Box(int32_t x1, int32_t y1, int32_t x2, int32_t y2,
 Draws a circle or ellipse.
 
 **BASIC:**
+
 ```basic
 CIRCLE (160, 100), 50, 2              ' Red circle
 CIRCLE (160, 100), 50, 2, , , 0.5     ' Red ellipse (aspect ratio 0.5)
 ```
 
 **Runtime Function:**
+
 ```c
 void Viper_Graphics_Circle(int32_t cx, int32_t cy, int32_t radius,
                            int32_t color) {
@@ -272,6 +284,7 @@ void Viper_Graphics_CircleFilled(int32_t cx, int32_t cy, int32_t radius,
 Clears the screen to the background color.
 
 **BASIC:**
+
 ```basic
 CLS        ' Clear to black
 CLS 1      ' Clear graphics viewport only
@@ -279,6 +292,7 @@ CLS 2      ' Clear text viewport only
 ```
 
 **Runtime Function:**
+
 ```c
 void Viper_Graphics_Cls(int32_t mode) {
     if (!g_viper_graphics_window) {
@@ -299,12 +313,14 @@ void Viper_Graphics_Cls(int32_t mode) {
 Returns a string representing the last key pressed.
 
 **BASIC:**
+
 ```basic
 k$ = INKEY$
 IF k$ = CHR$(27) THEN END    ' ESC to exit
 ```
 
 **Runtime Function:**
+
 ```c
 ViperString* Viper_Input_Inkey(void) {
     if (!g_viper_graphics_window) {
@@ -327,6 +343,7 @@ ViperString* Viper_Input_Inkey(void) {
 #### Mouse Functions
 
 **BASIC:**
+
 ```basic
 x = MOUSEX      ' Get mouse X coordinate
 y = MOUSEY      ' Get mouse Y coordinate
@@ -334,6 +351,7 @@ b = MOUSEBUTTON ' Get button state (1=left, 2=right, 4=middle)
 ```
 
 **Runtime Functions:**
+
 ```c
 int32_t Viper_Input_MouseX(void) {
     if (!g_viper_graphics_window) return 0;
@@ -577,7 +595,8 @@ Program End   → Viper_Runtime_Shutdown()
 
 ### Framebuffer Ownership
 
-ViperGFX **owns the framebuffer** - the runtime never directly allocates or frees framebuffer memory. All pixel operations go through ViperGFX APIs.
+ViperGFX **owns the framebuffer** - the runtime never directly allocates or frees framebuffer memory. All pixel
+operations go through ViperGFX APIs.
 
 **Direct framebuffer access** (for advanced use cases):
 
@@ -630,11 +649,11 @@ if (!win) {
 
 ### Mapping to BASIC Errors
 
-| ViperGFX Error | BASIC Error | Description |
-|----------------|-------------|-------------|
-| `VGFX_ERR_ALLOC` | Out of Memory (7) | Failed to allocate framebuffer |
-| `VGFX_ERR_PLATFORM` | Device I/O Error (57) | Platform-specific failure (window creation, etc.) |
-| `VGFX_ERR_INVALID_PARAM` | Illegal Function Call (5) | Invalid parameters to graphics function |
+| ViperGFX Error           | BASIC Error               | Description                                       |
+|--------------------------|---------------------------|---------------------------------------------------|
+| `VGFX_ERR_ALLOC`         | Out of Memory (7)         | Failed to allocate framebuffer                    |
+| `VGFX_ERR_PLATFORM`      | Device I/O Error (57)     | Platform-specific failure (window creation, etc.) |
+| `VGFX_ERR_INVALID_PARAM` | Illegal Function Call (5) | Invalid parameters to graphics function           |
 
 ### Runtime Error Handling
 
@@ -731,40 +750,40 @@ vgfx_set_fps(g_viper_graphics_window, 0);
 ### Planned Features (Post-v1.0)
 
 1. **PAINT Statement**
-   - Flood fill algorithm
-   - Pattern fills
-   - Boundary detection
+    - Flood fill algorithm
+    - Pattern fills
+    - Boundary detection
 
 2. **Sprite Support**
-   - `GET` and `PUT` statements
-   - Sprite arrays
-   - Transparency/masking
+    - `GET` and `PUT` statements
+    - Sprite arrays
+    - Transparency/masking
 
 3. **Text Rendering**
-   - Bitmap font support
-   - `LOCATE` and `PRINT` in graphics mode
-   - Multiple fonts
+    - Bitmap font support
+    - `LOCATE` and `PRINT` in graphics mode
+    - Multiple fonts
 
 4. **Palette Customization**
-   - `PALETTE` statement
-   - Custom color definitions
-   - Palette animation
+    - `PALETTE` statement
+    - Custom color definitions
+    - Palette animation
 
 5. **Advanced Shapes**
-   - Ellipses
-   - Arcs
-   - Bezier curves
-   - Polygons
+    - Ellipses
+    - Arcs
+    - Bezier curves
+    - Polygons
 
 6. **Screen Paging**
-   - Multiple pages (active vs. visual)
-   - `PCOPY` for page-to-page copying
-   - Double buffering
+    - Multiple pages (active vs. visual)
+    - `PCOPY` for page-to-page copying
+    - Double buffering
 
 7. **View Ports**
-   - `VIEW` statement
-   - Clipping regions
-   - Coordinate transformation
+    - `VIEW` statement
+    - Clipping regions
+    - Coordinate transformation
 
 ### Linux and Windows Support
 
@@ -814,6 +833,7 @@ When integrating ViperGFX into the Viper runtime:
 ### Contact
 
 For questions about ViperGFX runtime integration, see:
+
 - `/src/lib/graphics/gfxlib.md` - Complete API specification
 - `/src/lib/graphics/README.md` - Library documentation
 - `/src/lib/graphics/examples/` - Example programs

@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: il/transform/SimplifyCFG/ReachabilityCleanup.hpp
-// Purpose: Declares reachability-based cleanup for SimplifyCFG. 
+// Purpose: Declares reachability-based cleanup for SimplifyCFG.
 // Key invariants: Removes only blocks proven unreachable from entry.
 // Ownership/Lifetime: Mutates the caller-owned function in place.
 // Links: docs/codemap.md

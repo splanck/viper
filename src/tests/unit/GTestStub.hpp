@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/GTestStub.hpp
-// Purpose: Minimal GoogleTest-compatible shim for environments without gtest. 
+// Purpose: Minimal GoogleTest-compatible shim for environments without gtest.
 // Key invariants: Provides EXPECT_TRUE/ASSERT_TRUE/EXPECT_NE macros and TEST registration.
 // Ownership/Lifetime: Static registry persists for program lifetime.
 // Links: https://github.com/google/googletest (reference for API shape)

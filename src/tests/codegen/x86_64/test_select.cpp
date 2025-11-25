@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/codegen/x86_64/test_select.cpp
-// Purpose: Assert x86-64 select lowering emits cmovne for integer selects and 
+// Purpose: Assert x86-64 select lowering emits cmovne for integer selects and
 // Key invariants: Generated assembly from the adapter IL must contain the
 // Ownership/Lifetime: Tests build IL modules locally and inspect the emitted
 // Links: src/codegen/x86_64/ISel.cpp, src/codegen/x86_64/LowerILToMIR.cpp

@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_cli_run_invalid_break_line.cpp
-// Purpose: Ensure cmdRunIL gracefully rejects malformed break line numbers. 
+// Purpose: Ensure cmdRunIL gracefully rejects malformed break line numbers.
 // Key invariants: Invalid --break/--break-src arguments must report usage and fail.
 // Ownership/Lifetime: N/A.
 // Links: src/tools/ilc/cmd_run_il.cpp

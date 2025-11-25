@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: vm/IntOpSupport.hpp
-// Purpose: Shared helpers for integer opcode handlers, covering trap dispatch and 
+// Purpose: Shared helpers for integer opcode handlers, covering trap dispatch and
 // Key invariants: Helpers operate on canonicalised Slot values and honour IL trap
 // Ownership/Lifetime: To be documented.
 // Links: docs/il-guide.md#reference §Integer Arithmetic, §Bitwise and Shifts,

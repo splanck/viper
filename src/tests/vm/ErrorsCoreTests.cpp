@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/vm/ErrorsCoreTests.cpp
-// Purpose: Verify trap.kind emits structured trap diagnostics with kind, IP, and line info. 
+// Purpose: Verify trap.kind emits structured trap diagnostics with kind, IP, and line info.
 // Key invariants: Diagnostics must include the requested trap kind, instruction index, and source
 // Ownership/Lifetime: To be documented.
 // Links: docs/specs/errors.md

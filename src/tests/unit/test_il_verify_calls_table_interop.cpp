@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_il_verify_calls_table_interop.cpp
-// Purpose: Validate call verification against extern/function tables including success and failure 
+// Purpose: Validate call verification against extern/function tables including success and failure
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md

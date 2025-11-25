@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/oop/TestStaticMembers.cpp
-// Purpose: Verify static fields/methods are lowered as globals/free functions, 
+// Purpose: Verify static fields/methods are lowered as globals/free functions,
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md

@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: vm/VMContext.hpp
-// Purpose: Declares helper utilities for accessing VM execution context shared by 
+// Purpose: Declares helper utilities for accessing VM execution context shared by
 // Key invariants: Maintains a thread-local pointer to the active VM for trap
 // Ownership/Lifetime: VMContext references a VM instance owned externally.
 // Links: docs/il-guide.md#reference

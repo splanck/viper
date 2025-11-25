@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/vm/InlineLiteralCacheTests.cpp
-// Purpose: Ensure inline ConstStr operands reuse cached runtime handles for embedded NULs and ASCII 
+// Purpose: Ensure inline ConstStr operands reuse cached runtime handles for embedded NULs and ASCII
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md

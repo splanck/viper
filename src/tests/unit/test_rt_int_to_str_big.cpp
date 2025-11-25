@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_rt_int_to_str_big.cpp
-// Purpose: Ensure rt_int_to_str handles integers with more than 31 digits. 
+// Purpose: Ensure rt_int_to_str handles integers with more than 31 digits.
 // Key invariants: Dynamic buffer allocation is used when snprintf reports
 // Ownership/Lifetime: Uses runtime library.
 // Links: docs/codemap.md

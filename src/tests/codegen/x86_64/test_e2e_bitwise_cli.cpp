@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/codegen/x86_64/test_e2e_bitwise_cli.cpp
-// Purpose: Exercise the ilc CLI end-to-end for bitwise IL snippets and ensure 
+// Purpose: Exercise the ilc CLI end-to-end for bitwise IL snippets and ensure
 // Key invariants: The parameterized scenarios describe IL programs that must
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md

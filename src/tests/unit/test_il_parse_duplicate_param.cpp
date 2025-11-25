@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_il_parse_duplicate_param.cpp
-// Purpose: Ensure the IL parser rejects duplicate parameter names in function headers. 
+// Purpose: Ensure the IL parser rejects duplicate parameter names in function headers.
 // Key invariants: Parser reports diagnostics without clobbering existing temporaries.
 // Ownership/Lifetime: Test owns module and diagnostic buffers constructed from string literals.
 // Links: docs/il-guide.md#reference

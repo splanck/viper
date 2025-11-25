@@ -6,20 +6,19 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_runtime_class_seeding.cpp
-// Purpose: Validate seeding of TypeRegistry, Property/Method indexes, and NamespaceRegistry from class catalog. 
-// Key invariants: To be documented.
-// Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Purpose: Validate seeding of TypeRegistry, Property/Method indexes, and NamespaceRegistry from
+// class catalog. Key invariants: To be documented. Ownership/Lifetime: To be documented. Links:
+// docs/architecture.md
 //
 //===----------------------------------------------------------------------===//
 
-#include "frontends/basic/sem/RegistryBuilder.hpp"
-#include "frontends/basic/sem/NamespaceRegistry.hpp"
-#include "frontends/basic/sem/TypeRegistry.hpp"
-#include "frontends/basic/sem/RuntimePropertyIndex.hpp"
-#include "frontends/basic/sem/RuntimeMethodIndex.hpp"
-#include "frontends/basic/sem/UsingContext.hpp"
 #include "frontends/basic/AST.hpp"
+#include "frontends/basic/sem/NamespaceRegistry.hpp"
+#include "frontends/basic/sem/RegistryBuilder.hpp"
+#include "frontends/basic/sem/RuntimeMethodIndex.hpp"
+#include "frontends/basic/sem/RuntimePropertyIndex.hpp"
+#include "frontends/basic/sem/TypeRegistry.hpp"
+#include "frontends/basic/sem/UsingContext.hpp"
 
 #include <cassert>
 

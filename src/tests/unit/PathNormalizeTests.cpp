@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/PathNormalizeTests.cpp
-// Purpose: Verify normalized paths yield correct basename. 
+// Purpose: Verify normalized paths yield correct basename.
 // Key invariants: Backslashes become slashes; '..' segments collapsed;
 // Ownership/Lifetime: Standalone executable.
 // Links: docs/codemap.md

@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_ns_resolve_pass.cpp
-// Purpose: Test type resolution pass with TypeResolver. 
+// Purpose: Test type resolution pass with TypeResolver.
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md

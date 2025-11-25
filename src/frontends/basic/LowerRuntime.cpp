@@ -257,7 +257,8 @@ void RuntimeHelperTracker::declareRequiredRuntime(build::IRBuilder &b, bool boun
                             continue;
                         if (other.name.rfind("Viper.Strings.", 0) == 0)
                         {
-                            // Prefer the Viper.Strings.* variant when no explicit usage forces otherwise.
+                            // Prefer the Viper.Strings.* variant when no explicit usage forces
+                            // otherwise.
                             return;
                         }
                     }
@@ -768,7 +769,8 @@ void Lowerer::declareRequiredRuntime(build::IRBuilder &b)
                 }
             }
             if (!alreadyDeclared)
-                b.addExtern(std::string(spelling), desc->signature.retType, desc->signature.paramTypes);
+                b.addExtern(
+                    std::string(spelling), desc->signature.retType, desc->signature.paramTypes);
         }
     };
 
@@ -808,7 +810,8 @@ void Lowerer::declareRequiredRuntime(build::IRBuilder &b)
                 }
                 if (!alreadyDeclared)
                 {
-                    b.addExtern(std::string(used), desc->signature.retType, desc->signature.paramTypes);
+                    b.addExtern(
+                        std::string(used), desc->signature.retType, desc->signature.paramTypes);
                 }
             }
         }

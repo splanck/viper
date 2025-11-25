@@ -56,7 +56,7 @@ This document records small grammar extensions supported by the BASIC frontend s
 
 - Semantics:
   - Simple form: Makes types from the specified namespace available for unqualified lookup.
-  - Alias form: Creates a shorthand alias for the namespace path, e.g. `USING Sys = Viper.System.IO`.
+  - Alias form: Creates a shorthand alias for the namespace path, e.g. `USING IO = Viper.IO` (canonical). System‑qualified aliases like `USING Sys = Viper.System.IO` are also accepted for compatibility.
   - Multiple `USING` directives accumulate; type resolution checks them in declaration order.
   - If multiple imported namespaces contain the same type name, an unqualified reference is ambiguous (E_NS_003).
   - Aliases must be unique within a file (E_NS_004).
@@ -66,6 +66,7 @@ This document records small grammar extensions supported by the BASIC frontend s
   USING Collections
   USING Utils.Helpers
   USING DB = Application.Database
+  USING IO = Viper.IO
 
   NAMESPACE Collections
     CLASS List
@@ -74,7 +75,7 @@ This document records small grammar extensions supported by the BASIC frontend s
   END NAMESPACE
 
   REM Can now reference List unqualified (via USING Collections)
-  REM Or use DB.Connection (via alias)
+  REM Or use DB.Connection (via alias) and IO.File (canonical alias)
 
 ### Type Resolution Precedence
 

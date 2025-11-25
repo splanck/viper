@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/oop/TestOverloads.cpp
-// Purpose: Exercise overload resolver ambiguity with method vs property same name. 
+// Purpose: Exercise overload resolver ambiguity with method vs property same name.
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md

@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/vm/IntOpsTests.cpp
-// Purpose: Validate integer VM op semantics for mixed signed cases and traps. 
+// Purpose: Validate integer VM op semantics for mixed signed cases and traps.
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md

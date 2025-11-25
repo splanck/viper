@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_namespace_integration.cpp
-// Purpose: Exercise full pipeline (parse → semantic → lower) for namespace features. 
+// Purpose: Exercise full pipeline (parse → semantic → lower) for namespace features.
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md

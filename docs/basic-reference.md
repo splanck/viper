@@ -34,7 +34,7 @@ Complete language reference for Viper BASIC. This document describes **statement
 - [Reserved Root](#reserved-root)
 - [Keyword Index](#keyword-index)
 - [Runtime Classes (Viper.*)](#runtime-classes-viper)
-- [Runtime classes (under Viper.System.*)](#runtime-classes-under-vipersystem)
+- [Runtime classes (Viper.*)](#runtime-classes-viper)
 
 ---
 
@@ -255,6 +255,25 @@ Methods:
 
 Constructor helper (optional):
 - `FromStr(string s) -> string` → `Viper.Strings.FromStr(string)`
+
+### `Viper.Collections.List` (non-generic)
+
+Canonical, non-generic list that stores object references (opaque `obj`). Type safety is enforced by user code; the runtime does not check element types.
+
+Properties:
+- `Count: i64` → `Viper.Collections.List.get_Count(obj)`
+
+Methods:
+- `Add(obj value) -> void` → `Viper.Collections.List.Add(obj,obj)`
+- `Clear() -> void` → `Viper.Collections.List.Clear(obj)`
+- `RemoveAt(i64 index) -> void` → `Viper.Collections.List.RemoveAt(obj,i64)`
+- `get_Item(i64 index) -> obj` → `Viper.Collections.List.get_Item(obj,i64)`
+- `set_Item(i64 index, obj value) -> void` → `Viper.Collections.List.set_Item(obj,i64,obj)`
+
+Semantics:
+- Indexes are zero-based. Negative or out-of-range indexes trap at runtime (bounds error).
+- `Clear()` resets `Count` to 0.
+- Elements are stored as opaque references; no automatic type conversions are performed.
 
 ### GOTO
 
@@ -740,7 +759,8 @@ I/O types:
 
 Collection types:
 
-- `Viper.System.Collections.List` — Dynamic list container
+- `Viper.Collections.List` — Dynamic list container (canonical)
+- `Viper.System.Collections.List` — Legacy alias of `Viper.Collections.List`
 
 ### Examples
 
@@ -758,8 +778,8 @@ PrintStr(Concat("hello", " world"))
 Using runtime types:
 
 ```basic
-DIM sb AS Viper.System.Text.StringBuilder
-LET sb = NEW Viper.System.Text.StringBuilder()
+DIM sb AS Viper.Text.StringBuilder
+LET sb = NEW Viper.Text.StringBuilder()
 ```
 
 ### Migration Note
@@ -977,7 +997,7 @@ Example:
 Semantics:
 - Inner exceptions raised between lines 20–39 are caught by the TRY handler.
 - After `END TRY`, the previously active `ON ERROR GOTO Outer` handler continues to apply.
-## Runtime classes (under Viper.System.*)
+## Runtime classes (Viper.*)
 
 Runtime-backed classes expose an object surface (properties, methods, constructors) that lower to canonical extern functions provided by the runtime. Two families are currently available:
 
@@ -994,8 +1014,8 @@ Examples:
 30 Viper.Console.PrintI64(s.Length)
 40 Viper.Console.PrintStr(s.Substring(2, 3))  ' index base matches MID$: 0-based start
 
-100 DIM sb AS Viper.System.Text.StringBuilder
-110 LET sb = NEW Viper.System.Text.StringBuilder()
+100 DIM sb AS Viper.Text.StringBuilder
+110 LET sb = NEW Viper.Text.StringBuilder()
 120 ' Depending on your build, APPEND may be a reserved keyword; use the procedural form below if needed.
 130 ' sb.Append("X")
 140 ' or equivalently (procedural): sb = Viper.Text.StringBuilder.Append(sb, "X")

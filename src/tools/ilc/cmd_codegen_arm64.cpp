@@ -14,16 +14,17 @@
 
 #include "codegen/aarch64/AsmEmitter.hpp"
 #include "codegen/aarch64/LowerILToMIR.hpp"
-#include "codegen/aarch64/RodataPool.hpp"
-#include "codegen/common/LabelUtil.hpp"
 #include "codegen/aarch64/RegAllocLinear.hpp"
+#include "codegen/aarch64/RodataPool.hpp"
 #include "codegen/common/ArgNormalize.hpp"
+#include "codegen/common/LabelUtil.hpp"
+#include "common/RunProcess.hpp"
 #include "il/core/Instr.hpp"
 #include "il/core/Type.hpp"
 #include "il/core/Value.hpp"
 #include "tools/common/module_loader.hpp"
-#include "common/RunProcess.hpp"
 
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <optional>
@@ -32,7 +33,6 @@
 #include <string_view>
 #include <unordered_map>
 #include <vector>
-#include <filesystem>
 
 namespace viper::tools::ilc
 {
@@ -134,7 +134,10 @@ std::optional<Options> parseArgs(const ArgvView &args)
 }
 
 // Emit module-level string constants using a pooled, assembler-safe scheme
-static void emitGlobalsAArch64(std::ostream &os, const viper::codegen::aarch64::RodataPool &pool) { pool.emit(os); }
+static void emitGlobalsAArch64(std::ostream &os, const viper::codegen::aarch64::RodataPool &pool)
+{
+    pool.emit(os);
+}
 
 // Minimal helpers adapted from x64 pipeline
 static bool writeTextFile(const std::string &path, const std::string &text, std::ostream &err)
@@ -154,8 +157,10 @@ static bool writeTextFile(const std::string &path, const std::string &text, std:
     return true;
 }
 
-static int assembleToObj(const std::string &asmPath, const std::string &objPath,
-                         std::ostream &out, std::ostream &err)
+static int assembleToObj(const std::string &asmPath,
+                         const std::string &objPath,
+                         std::ostream &out,
+                         std::ostream &err)
 {
     const RunResult rr = run_process({"cc", "-arch", "arm64", "-c", asmPath, "-o", objPath});
     if (rr.exit_code == -1)
@@ -163,22 +168,25 @@ static int assembleToObj(const std::string &asmPath, const std::string &objPath,
         err << "error: failed to launch system assembler command\n";
         return -1;
     }
-    if (!rr.out.empty()) out << rr.out;
+    if (!rr.out.empty())
+        out << rr.out;
 #if defined(_WIN32)
-    if (!rr.err.empty()) err << rr.err;
+    if (!rr.err.empty())
+        err << rr.err;
 #endif
     return rr.exit_code == 0 ? 0 : 1;
 }
 
-static int linkToExe(const std::string &asmPath, const std::string &exePath,
-                     std::ostream &out, std::ostream &err)
+static int linkToExe(const std::string &asmPath,
+                     const std::string &exePath,
+                     std::ostream &out,
+                     std::ostream &err)
 {
     // Link against the built runtime static library to satisfy rt_* calls.
     // When executed under CTest, cwd is the build directory, so the runtime
     // archive is reachable at src/runtime/libviper_runtime.a.
-    auto try_link = [&](const char *libPath) -> RunResult {
-        return run_process({"cc", "-arch", "arm64", asmPath, libPath, "-o", exePath});
-    };
+    auto try_link = [&](const char *libPath) -> RunResult
+    { return run_process({"cc", "-arch", "arm64", asmPath, libPath, "-o", exePath}); };
     RunResult rr = try_link("src/runtime/libviper_runtime.a");
     if (rr.exit_code != 0)
     {
@@ -190,9 +198,11 @@ static int linkToExe(const std::string &asmPath, const std::string &exePath,
         err << "error: failed to launch system linker command\n";
         return -1;
     }
-    if (!rr.out.empty()) out << rr.out;
+    if (!rr.out.empty())
+        out << rr.out;
 #if defined(_WIN32)
-    if (!rr.err.empty()) err << rr.err;
+    if (!rr.err.empty())
+        err << rr.err;
 #endif
     return rr.exit_code == 0 ? 0 : 1;
 }
@@ -205,9 +215,11 @@ static int runExe(const std::string &exePath, std::ostream &out, std::ostream &e
         err << "error: failed to execute '" << exePath << "'\n";
         return -1;
     }
-    if (!rr.out.empty()) out << rr.out;
+    if (!rr.out.empty())
+        out << rr.out;
 #if defined(_WIN32)
-    if (!rr.err.empty()) err << rr.err;
+    if (!rr.err.empty())
+        err << rr.err;
 #endif
     return rr.exit_code;
 }
@@ -266,18 +278,22 @@ int emitAndMaybeLink(const Options &opts)
             {
                 for (auto &mi : bb.instrs)
                 {
-                    auto remapIfBB = [&](std::string &lbl) {
+                    auto remapIfBB = [&](std::string &lbl)
+                    {
                         auto it = bbMap.find(lbl);
-                        if (it != bbMap.end()) lbl = it->second;
+                        if (it != bbMap.end())
+                            lbl = it->second;
                     };
                     switch (mi.opc)
                     {
                         case viper::codegen::aarch64::MOpcode::Br:
-                            if (mi.ops.size() >= 1 && mi.ops[0].kind == viper::codegen::aarch64::MOperand::Kind::Label)
+                            if (mi.ops.size() >= 1 &&
+                                mi.ops[0].kind == viper::codegen::aarch64::MOperand::Kind::Label)
                                 remapIfBB(mi.ops[0].label);
                             break;
                         case viper::codegen::aarch64::MOpcode::BCond:
-                            if (mi.ops.size() >= 2 && mi.ops[1].kind == viper::codegen::aarch64::MOperand::Kind::Label)
+                            if (mi.ops.size() >= 2 &&
+                                mi.ops[1].kind == viper::codegen::aarch64::MOperand::Kind::Label)
                                 remapIfBB(mi.ops[1].label);
                             break;
                         default:
@@ -294,7 +310,8 @@ int emitAndMaybeLink(const Options &opts)
                 switch (mi.opc)
                 {
                     case viper::codegen::aarch64::MOpcode::AdrPage:
-                        if (mi.ops.size() >= 2 && mi.ops[1].kind == viper::codegen::aarch64::MOperand::Kind::Label)
+                        if (mi.ops.size() >= 2 &&
+                            mi.ops[1].kind == viper::codegen::aarch64::MOperand::Kind::Label)
                         {
                             const auto &n2l = pool.nameToLabel();
                             auto it = n2l.find(mi.ops[1].label);
@@ -303,7 +320,8 @@ int emitAndMaybeLink(const Options &opts)
                         }
                         break;
                     case viper::codegen::aarch64::MOpcode::AddPageOff:
-                        if (mi.ops.size() >= 3 && mi.ops[2].kind == viper::codegen::aarch64::MOperand::Kind::Label)
+                        if (mi.ops.size() >= 3 &&
+                            mi.ops[2].kind == viper::codegen::aarch64::MOperand::Kind::Label)
                         {
                             const auto &n2l = pool.nameToLabel();
                             auto it = n2l.find(mi.ops[2].label);
@@ -338,7 +356,8 @@ int emitAndMaybeLink(const Options &opts)
 #if defined(__APPLE__)
     if (opts.output_o || opts.run_native)
     {
-        auto replace_all = [](std::string &hay, const std::string &from, const std::string &to) {
+        auto replace_all = [](std::string &hay, const std::string &from, const std::string &to)
+        {
             std::size_t pos = 0;
             while ((pos = hay.find(from, pos)) != std::string::npos)
             {
@@ -358,21 +377,29 @@ int emitAndMaybeLink(const Options &opts)
             const bool startsWithL = (!name.empty() && name[0] == 'L');
             if (!startsWithL)
                 continue;
-            replace_all(asmText, std::string(".globl ") + name + "\n",
+            replace_all(asmText,
+                        std::string(".globl ") + name + "\n",
                         std::string(".globl _") + name + "\n");
-            replace_all(asmText, std::string("\n") + name + ":\n",
-                        std::string("\n_") + name + ":\n");
-            replace_all(asmText, std::string(" bl ") + name + "\n",
-                        std::string(" bl _") + name + "\n");
+            replace_all(
+                asmText, std::string("\n") + name + ":\n", std::string("\n_") + name + ":\n");
+            replace_all(
+                asmText, std::string(" bl ") + name + "\n", std::string(" bl _") + name + "\n");
         }
         // Remap common runtime calls when producing a native object/binary
-        const char *runtime_funcs[] = {"rt_trap",      "rt_concat",   "rt_print",  "rt_input",
-                                       "rt_malloc",    "rt_free",     "rt_memcpy", "rt_memset",
-                                       "rt_const_cstr", "rt_print_str"};
+        const char *runtime_funcs[] = {"rt_trap",
+                                       "rt_concat",
+                                       "rt_print",
+                                       "rt_input",
+                                       "rt_malloc",
+                                       "rt_free",
+                                       "rt_memcpy",
+                                       "rt_memset",
+                                       "rt_const_cstr",
+                                       "rt_print_str"};
         for (const char *rtfn : runtime_funcs)
         {
-            replace_all(asmText, std::string(" bl ") + rtfn + "\n",
-                        std::string(" bl _") + rtfn + "\n");
+            replace_all(
+                asmText, std::string(" bl ") + rtfn + "\n", std::string(" bl _") + rtfn + "\n");
         }
         // Prefix underscores for externs referenced by name (e.g., Viper.Console.PrintStr)
         for (const auto &ex : mod.externs)
@@ -429,8 +456,9 @@ int emitAndMaybeLink(const Options &opts)
     }
 
     // Otherwise, link to a default executable path and run (or just link if run_native=false)
-    std::filesystem::path exe = opts.output_o ? std::filesystem::path(*opts.output_o)
-                                              : std::filesystem::path(opts.input_il).replace_extension("");
+    std::filesystem::path exe = opts.output_o
+                                    ? std::filesystem::path(*opts.output_o)
+                                    : std::filesystem::path(opts.input_il).replace_extension("");
     if (exe.extension().empty())
     {
         // Keep as derived without extension

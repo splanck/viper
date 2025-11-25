@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: codegen/x86_64/Backend.hpp
-// Purpose: Declare the high-level orchestration entry points for the x86-64 
+// Purpose: Declare the high-level orchestration entry points for the x86-64
 // Key invariants: To be documented.
 // Ownership/Lifetime: Callers retain ownership of IL modules; generated assembly is
 // Links: docs/architecture.md

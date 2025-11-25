@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_ns_registry_builder.cpp
-// Purpose: Test buildNamespaceRegistry populates registry from AST. 
+// Purpose: Test buildNamespaceRegistry populates registry from AST.
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md

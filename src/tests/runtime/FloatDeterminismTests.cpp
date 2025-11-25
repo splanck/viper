@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/runtime/FloatDeterminismTests.cpp
-// Purpose: Exercise VAL-style parsing for locale-independent behavior. 
+// Purpose: Exercise VAL-style parsing for locale-independent behavior.
 // Key invariants: Special values and decimal formats are deterministic regardless of locale.
 // Ownership/Lifetime: Runtime numeric helpers.
 // Links: docs/codemap.md

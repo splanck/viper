@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_basic_constfold.cpp
-// Purpose: Unit tests for BASIC constant folder numeric promotion and string rules. 
+// Purpose: Unit tests for BASIC constant folder numeric promotion and string rules.
 // Key invariants: Numeric ops promote to float; string concatenation is folded; invalid mixes keep
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md

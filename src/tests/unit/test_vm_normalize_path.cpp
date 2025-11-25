@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_vm_normalize_path.cpp
-// Purpose: Verify debug path normalization collapses separators and dot segments. 
+// Purpose: Verify debug path normalization collapses separators and dot segments.
 // Key invariants: Backslashes become slashes; './' removed; 'dir/../' collapsed.
 // Ownership/Lifetime: Standalone executable.
 // Links: docs/codemap.md

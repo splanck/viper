@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/codegen/test_emit_aarch64_mir_bitwise.cpp
-// Purpose: Verify MIR bitwise rr emission for and/or/xor. 
+// Purpose: Verify MIR bitwise rr emission for and/or/xor.
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md

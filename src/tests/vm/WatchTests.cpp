@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/vm/WatchTests.cpp
-// Purpose: Verify watched scalars print only on value changes. 
+// Purpose: Verify watched scalars print only on value changes.
 // Key invariants: Output lines appear only when the value differs.
 // Ownership/Lifetime: Test creates and removes a temporary file.
 // Links: docs/testing.md

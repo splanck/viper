@@ -131,7 +131,8 @@ const NamespaceRegistry::NamespaceInfo *NamespaceRegistry::info(const std::strin
     return &it->second;
 }
 
-void NamespaceRegistry::seedFromRuntimeBuiltins(const std::vector<il::runtime::RuntimeDescriptor> &descs)
+void NamespaceRegistry::seedFromRuntimeBuiltins(
+    const std::vector<il::runtime::RuntimeDescriptor> &descs)
 {
     for (const auto &d : descs)
     {
@@ -160,7 +161,8 @@ void NamespaceRegistry::seedFromRuntimeBuiltins(const std::vector<il::runtime::R
     }
 }
 
-void NamespaceRegistry::seedRuntimeClassNamespaces(const std::vector<il::runtime::RuntimeClass> &classes)
+void NamespaceRegistry::seedRuntimeClassNamespaces(
+    const std::vector<il::runtime::RuntimeClass> &classes)
 {
     for (const auto &cls : classes)
     {

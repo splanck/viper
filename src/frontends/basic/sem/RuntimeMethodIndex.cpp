@@ -21,7 +21,9 @@ std::string RuntimeMethodIndex::toLower(std::string_view s)
     return out;
 }
 
-std::string RuntimeMethodIndex::keyFor(std::string_view cls, std::string_view method, std::size_t arity)
+std::string RuntimeMethodIndex::keyFor(std::string_view cls,
+                                       std::string_view method,
+                                       std::size_t arity)
 {
     std::string key;
     key.reserve(cls.size() + method.size() + 8);
@@ -58,8 +60,10 @@ bool RuntimeMethodIndex::parseSignature(std::string_view sig, RuntimeMethodInfo 
         return false;
     std::string_view retTok = sig.substr(0, lparen);
     // trim spaces
-    while (!retTok.empty() && std::isspace(static_cast<unsigned char>(retTok.front()))) retTok.remove_prefix(1);
-    while (!retTok.empty() && std::isspace(static_cast<unsigned char>(retTok.back()))) retTok.remove_suffix(1);
+    while (!retTok.empty() && std::isspace(static_cast<unsigned char>(retTok.front())))
+        retTok.remove_prefix(1);
+    while (!retTok.empty() && std::isspace(static_cast<unsigned char>(retTok.back())))
+        retTok.remove_suffix(1);
     out.ret = mapIlToken(retTok);
     std::string_view args = sig.substr(lparen + 1, rparen - lparen - 1);
     out.args.clear();
@@ -72,7 +76,8 @@ bool RuntimeMethodIndex::parseSignature(std::string_view sig, RuntimeMethodInfo 
         if (pos >= args.size())
             break;
         std::size_t start = pos;
-        while (pos < args.size() && args[pos] != ',' && !std::isspace(static_cast<unsigned char>(args[pos])))
+        while (pos < args.size() && args[pos] != ',' &&
+               !std::isspace(static_cast<unsigned char>(args[pos])))
             ++pos;
         std::string_view tok = args.substr(start, pos - start);
         if (!tok.empty())

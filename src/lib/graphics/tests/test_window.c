@@ -3,21 +3,17 @@
  * Tests window creation with various parameters
  */
 
-#include "vgfx.h"
 #include "test_harness.h"
+#include "vgfx.h"
 #include <string.h>
 
 /* T1: Window Creation – Valid Parameters */
-void test_window_valid_params(void) {
+void test_window_valid_params(void)
+{
     TEST_BEGIN("T1: Window Creation - Valid Parameters");
 
     vgfx_window_params_t params = {
-        .width = 800,
-        .height = 600,
-        .title = "Test",
-        .fps = 60,
-        .resizable = 1
-    };
+        .width = 800, .height = 600, .title = "Test", .fps = 60, .resizable = 1};
 
     vgfx_window_t win = vgfx_create_window(&params);
     ASSERT_NOT_NULL(win);
@@ -36,21 +32,17 @@ void test_window_valid_params(void) {
 }
 
 /* T2: Window Creation – Dimensions Exceed Max */
-void test_window_exceed_max(void) {
+void test_window_exceed_max(void)
+{
     TEST_BEGIN("T2: Window Creation - Dimensions Exceed Max");
 
     vgfx_window_params_t params = {
-        .width = 5000,
-        .height = 5000,
-        .title = "Test",
-        .fps = 60,
-        .resizable = 0
-    };
+        .width = 5000, .height = 5000, .title = "Test", .fps = 60, .resizable = 0};
 
     vgfx_window_t win = vgfx_create_window(&params);
     ASSERT_NULL(win);
 
-    const char* error = vgfx_get_last_error();
+    const char *error = vgfx_get_last_error();
     ASSERT_NOT_NULL(error);
     ASSERT_TRUE(strstr(error, "exceed maximum") != NULL);
 
@@ -58,16 +50,12 @@ void test_window_exceed_max(void) {
 }
 
 /* T3: Window Creation – Invalid Dimensions Use Defaults */
-void test_window_invalid_dimensions_use_defaults(void) {
+void test_window_invalid_dimensions_use_defaults(void)
+{
     TEST_BEGIN("T3: Window Creation - Invalid Dimensions Use Defaults");
 
     vgfx_window_params_t params = {
-        .width = 0,
-        .height = -10,
-        .title = "Test",
-        .fps = 60,
-        .resizable = 0
-    };
+        .width = 0, .height = -10, .title = "Test", .fps = 60, .resizable = 0};
 
     vgfx_window_t win = vgfx_create_window(&params);
     ASSERT_NOT_NULL(win);
@@ -83,7 +71,8 @@ void test_window_invalid_dimensions_use_defaults(void) {
 }
 
 /* Main test runner */
-int main(void) {
+int main(void)
+{
     printf("========================================\n");
     printf("ViperGFX Window Tests (T1-T3)\n");
     printf("========================================\n");

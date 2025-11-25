@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_basic_emit_common.cpp
-// Purpose: Validate the BASIC emit helpers produce expected IR patterns. 
+// Purpose: Validate the BASIC emit helpers produce expected IR patterns.
 // Key invariants: Checked addition, boolean logic, and narrowing appear with correct opcodes.
 // Ownership/Lifetime: Test owns parser, lowerer, and resulting module.
 // Links: docs/codemap.md

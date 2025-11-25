@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/runtime/RTAllocZeroFillTests.cpp
-// Purpose: Verify rt_alloc returns zero-initialized memory. 
+// Purpose: Verify rt_alloc returns zero-initialized memory.
 // Key invariants: Memory returned from rt_alloc must contain only zero bytes.
 // Ownership/Lifetime: Uses runtime library and frees allocated memory.
 // Links: docs/runtime-vm.md#runtime-abi

@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/VM_TailCallTests.cpp
-// Purpose: Verify tail-call optimisation maintains constant frame depth. 
+// Purpose: Verify tail-call optimisation maintains constant frame depth.
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md

@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_basic_expr_loc.cpp
-// Purpose: Verify BASIC expression nodes record source locations. 
+// Purpose: Verify BASIC expression nodes record source locations.
 // Key invariants: Line and column values must match token positions.
 // Ownership/Lifetime: Test owns parsed AST.
 // Links: docs/codemap.md

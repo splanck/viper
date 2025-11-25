@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_il_parse_bom.cpp
-// Purpose: Verify the IL parser tolerates a UTF-8 BOM on the first line. 
+// Purpose: Verify the IL parser tolerates a UTF-8 BOM on the first line.
 // Key invariants: A leading BOM must be stripped before directive matching and
 // Ownership/Lifetime: Tests own module instances and in-memory buffers.
 // Links: docs/il-guide.md#reference

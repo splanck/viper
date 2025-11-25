@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_basic_builtins_args_cmd.cpp
-// Purpose: Ensure ARGC, ARG$, and COMMAND$ compile and lower to correct runtime calls. 
+// Purpose: Ensure ARGC, ARG$, and COMMAND$ compile and lower to correct runtime calls.
 // Key invariants: Module contains calls to rt_args_count, rt_args_get, rt_cmdline.
 // Ownership/Lifetime: Standalone unit test.
 // Links: docs/architecture.md

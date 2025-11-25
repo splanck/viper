@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_vm_trap_loc.cpp
-// Purpose: Verify VM trap messages include instruction source locations. 
+// Purpose: Verify VM trap messages include instruction source locations.
 // Key invariants: Trap output must reference function, block, and location.
 // Ownership/Lifetime: Test constructs IL module and executes VM.
 // Links: docs/codemap.md

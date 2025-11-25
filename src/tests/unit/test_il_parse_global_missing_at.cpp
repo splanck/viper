@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_il_parse_global_missing_at.cpp
-// Purpose: Ensure IL parser reports diagnostics when global names lack '@'. 
+// Purpose: Ensure IL parser reports diagnostics when global names lack '@'.
 // Key invariants: Parser surfaces the missing-at diagnostic instead of slicing strings unsafely.
 // Ownership/Lifetime: Test owns parsing streams and module instance.
 // Links: docs/il-guide.md#reference

@@ -187,7 +187,7 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
         }
         if (!sigOk)
             return Expected<void>{
-/// @brief Handles error condition.
+                /// @brief Handles error condition.
                 makeError({}, "function @" + fn.name + " signature mismatch with extern")};
     }
 
@@ -197,7 +197,7 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
     {
         if (!labels.insert(bb.label).second)
             return Expected<void>{
-/// @brief Handles error condition.
+                /// @brief Handles error condition.
                 makeError({}, formatFunctionDiag(fn, "duplicate label " + bb.label))};
         blockMap[bb.label] = &bb;
     }
@@ -226,7 +226,7 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
                 std::ostringstream message;
                 message << "eh.push target ^" << target << " must name a handler block";
                 return Expected<void>{
-/// @brief Handles error condition.
+                    /// @brief Handles error condition.
                     makeError(instr.loc, formatInstrDiag(fn, bb, instr, message.str()))};
             }
         }
@@ -237,7 +237,7 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
             for (const auto &label : instr.labels)
                 if (!labels.count(label))
                     return Expected<void>{
-/// @brief Handles error condition.
+                        /// @brief Handles error condition.
                         makeError({}, formatFunctionDiag(fn, "unknown label " + label))};
 
     return {};
@@ -331,7 +331,7 @@ Expected<void> FunctionVerifier::verifyBlock(
                     std::ostringstream message;
                     message << "double release of %" << id;
                     return Expected<void>{
-/// @brief Handles error condition.
+                        /// @brief Handles error condition.
                         makeError(instr.loc, formatInstrDiag(fn, bb, instr, message.str()))};
                 }
             }
@@ -348,7 +348,7 @@ Expected<void> FunctionVerifier::verifyBlock(
                 std::ostringstream message;
                 message << "use after release of %" << id;
                 return Expected<void>{
-/// @brief Handles error condition.
+                    /// @brief Handles error condition.
                     makeError(instr.loc, formatInstrDiag(fn, bb, instr, message.str()))};
             };
 

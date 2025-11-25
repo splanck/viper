@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_il_parse_keyword_boundary.cpp
-// Purpose: Ensure IL parser rejects identifiers where keywords are prefixes of longer tokens. 
+// Purpose: Ensure IL parser rejects identifiers where keywords are prefixes of longer tokens.
 // Key invariants: Module parser must not treat 'func' as matching 'function'.
 // Ownership/Lifetime: Test constructs parser inputs locally.
 // Links: docs/il-guide.md#reference

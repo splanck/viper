@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_il_parse_extern_missing_arrow.cpp
-// Purpose: Ensure IL parser reports error when extern declaration lacks '->'. 
+// Purpose: Ensure IL parser reports error when extern declaration lacks '->'.
 // Key invariants: Parser reports malformed extern declarations through Expected diagnostics.
 // Ownership/Lifetime: Test constructs modules and buffers locally.
 // Links: docs/il-guide.md#reference

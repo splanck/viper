@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/il/IOPrintParseRoundTrip.cpp
-// Purpose: Ensure IL printer/parser round-trip stays stable across fixture corpus. 
+// Purpose: Ensure IL printer/parser round-trip stays stable across fixture corpus.
 // Key invariants: Canonicalized serializer output must match after two parse/print cycles.
 // Ownership/Lifetime: Test-owned modules/streams; files read from disk fixtures.
 // Links: docs/il-guide.md#reference

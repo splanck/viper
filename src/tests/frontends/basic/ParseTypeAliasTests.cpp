@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/frontends/basic/ParseTypeAliasTests.cpp
-// Purpose: Verify BASIC parser recognises type aliases like INT in AS clauses. 
+// Purpose: Verify BASIC parser recognises type aliases like INT in AS clauses.
 // Key invariants: `parseTypeKeyword` normalises identifier spellings before mapping.
 // Ownership/Lifetime: Test constructs parser instances per scenario; no shared state.
 // Links: docs/codemap.md

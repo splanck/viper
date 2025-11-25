@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_codegen_x86_64_spiller.cpp
-// Purpose: Validate spill slot management and load/store helpers. 
+// Purpose: Validate spill slot management and load/store helpers.
 // Key invariants: Spill slots grow monotonically and spill insertion releases
 // Ownership/Lifetime: Tests manipulate VirtualAllocation records directly.
 // Links: src/codegen/x86_64/ra/Spiller.hpp

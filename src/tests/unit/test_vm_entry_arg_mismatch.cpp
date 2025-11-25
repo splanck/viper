@@ -6,10 +6,10 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_vm_entry_arg_mismatch.cpp
-// Purpose: Ensure VM traps when entry frame argument counts do not match block parameters. 
+// Purpose: Ensure VM traps when entry frame argument counts do not match block parameters.
 // Key invariants: Calling a function with mismatched argument count emits InvalidOperation trap.
-// Ownership/Lifetime: Builds synthetic module and executes VM in forked child to capture diagnostics.
-// Links: docs/codemap.md
+// Ownership/Lifetime: Builds synthetic module and executes VM in forked child to capture
+// diagnostics. Links: docs/codemap.md
 //
 //===----------------------------------------------------------------------===//
 

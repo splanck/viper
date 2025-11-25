@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: frontends/basic/Parser_Stmt_ControlHelpers.hpp
-// Purpose: Provides shared helper utilities for BASIC control-flow statement parsing. 
+// Purpose: Provides shared helper utilities for BASIC control-flow statement parsing.
 // Key invariants: Helpers maintain parser sequencing state consistency when collecting
 // Ownership/Lifetime: Helpers operate on Parser-owned StatementSequencer instances
 // Links: docs/codemap.md

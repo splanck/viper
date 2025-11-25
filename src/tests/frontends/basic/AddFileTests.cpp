@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/frontends/basic/AddFileTests.cpp
-// Purpose: Unit tests for the BASIC ADDFILE directive handling in the parser. 
+// Purpose: Unit tests for the BASIC ADDFILE directive handling in the parser.
 // Key invariants: ADDFILE is handled at file scope, resolves paths relative to
 // Ownership/Lifetime: Tests create temporary files under the system temp dir.
 // Links: docs/codemap.md

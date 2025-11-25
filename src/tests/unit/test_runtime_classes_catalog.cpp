@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_runtime_classes_catalog.cpp
-// Purpose: Smoke test for runtime class catalog exposing Viper.String. 
+// Purpose: Smoke test for runtime class catalog exposing Viper.String.
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
 // Links: docs/il-guide.md#reference
@@ -32,4 +32,3 @@ int main()
 
     return 0;
 }
-

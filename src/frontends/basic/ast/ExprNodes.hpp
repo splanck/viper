@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: frontends/basic/ast/ExprNodes.hpp
-// Purpose: Defines BASIC expression nodes and visitors for the front-end AST. 
+// Purpose: Defines BASIC expression nodes and visitors for the front-end AST.
 // Key invariants: Expressions retain source locations for diagnostics.
 // Ownership/Lifetime: Nodes are owned via std::unique_ptr managed by callers.
 // Links: docs/codemap.md

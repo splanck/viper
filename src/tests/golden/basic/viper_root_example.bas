@@ -1,18 +1,21 @@
 REM ============================================================================
 REM viper_root_example.bas
 REM Purpose: Illustrative example showing hypothetical Viper.* namespace usage.
-REM Track A: Demonstrates syntax; "Viper" root is reserved for future built-ins
-REM Track B: (Future) Will provide actual Viper.System.*, Viper.IO.*, etc.
-REM
-REM NOTE: This program demonstrates the INTENDED syntax for Track B.
-REM       Attempting to declare "NAMESPACE Viper" produces E_NS_009 error.
-REM       Built-in Viper namespaces will be provided by the runtime in Track B.
+REM Track A: Demonstrates syntax; "Viper" root is reserved for built-ins
+REM Canonical runtime classes are provided under Viper.* (String, Object, IO.File,
+REM Text.StringBuilder, Collections.List). System.* names are kept as aliases.
 REM ============================================================================
 
-REM In Track B (future), users would write:
-REM   USING Viper.System.Text
-REM   USING Viper.IO.FileSystem
-REM And then use StringBuilder, File, etc. without qualification.
+REM Example: Using canonical runtime classes
+DIM sb AS Viper.Text.StringBuilder
+sb = NEW Viper.Text.StringBuilder()
+sb = Viper.Text.StringBuilder.Append(sb, "hello")
+sb = Viper.Text.StringBuilder.Append(sb, " ")
+sb = Viper.Text.StringBuilder.Append(sb, "world")
+PRINT sb.ToString()
+
+Viper.IO.File.WriteAllText("viper_root_example.tmp", sb.ToString())
+PRINT Viper.IO.File.Exists("viper_root_example.tmp")
 
 REM For Track A, we demonstrate the reserved namespace error is correctly caught.
 REM The following would be illegal and produce E_NS_009:
@@ -24,10 +27,5 @@ NAMESPACE MyApplication
   END CLASS
 END NAMESPACE
 
-REM When Track B is implemented, user code will coexist with Viper.* namespaces
-REM Example (Track B future):
-REM   CLASS MyHelper : Viper.System.Object
-REM   END CLASS
-
-PRINT "Viper namespace example (illustrative for Track B)"
+PRINT "Viper namespace example (canonical Viper.* classes)"
 END

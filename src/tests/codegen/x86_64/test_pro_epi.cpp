@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/codegen/x86_64/test_pro_epi.cpp
-// Purpose: Verify the x86-64 backend emits a prologue/epilogue sequence that 
+// Purpose: Verify the x86-64 backend emits a prologue/epilogue sequence that
 // Key invariants: Assembly must contain a frame setup using mov %rsp, %rbp,
 // Ownership/Lifetime: Test builds a local IL module and validates the emitted
 // Links: src/codegen/x86_64/FrameLowering.cpp

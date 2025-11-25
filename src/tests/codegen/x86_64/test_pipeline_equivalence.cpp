@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/codegen/x86_64/test_pipeline_equivalence.cpp
-// Purpose: Ensure the new pass-managed pipeline produces identical assembly to the direct backend. 
+// Purpose: Ensure the new pass-managed pipeline produces identical assembly to the direct backend.
 // Key invariants: Assembly output must match byte-for-byte for a representative module.
 // Ownership/Lifetime: Test constructs IL module objects locally; no file I/O.
 // Links: src/codegen/x86_64/CodegenPipeline.cpp, src/codegen/x86_64/passes

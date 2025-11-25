@@ -30,9 +30,8 @@ namespace
 [[nodiscard]] bool hasExtern(const il::core::Module &module, std::string_view name)
 {
     const auto &externs = module.externs;
-    return std::any_of(externs.begin(), externs.end(), [&](const il::core::Extern &e) {
-        return e.name == name;
-    });
+    return std::any_of(
+        externs.begin(), externs.end(), [&](const il::core::Extern &e) { return e.name == name; });
 }
 } // namespace
 
@@ -59,4 +58,3 @@ int main(int argc, char **argv)
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
 }
-

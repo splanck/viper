@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_basic_semantic.cpp
-// Purpose: Unit test verifying BASIC semantic analyzer and lowerer handle a 
+// Purpose: Unit test verifying BASIC semantic analyzer and lowerer handle a
 // Key invariants: Analyzer collects symbols/labels and lowering produces
 // Ownership/Lifetime: Test owns all objects locally.
 // Links: docs/codemap.md

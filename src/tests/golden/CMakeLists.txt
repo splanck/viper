@@ -223,6 +223,16 @@ function(viper_add_golden_suite_tests)
             -DCLEANUP_FILE=${CMAKE_CURRENT_BINARY_DIR}/tmp_exists.txt
             -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
 
+    # User-defined class ToString() prints qualified name
+    file(READ ${_VIPER_GOLDEN_DIR}/oop_runtime/user_class_tostring.stdout EXPECT_USER_CLASS_TOSTRING)
+    string(STRIP "${EXPECT_USER_CLASS_TOSTRING}" EXPECT_USER_CLASS_TOSTRING)
+    viper_add_ctest(oop_runtime_user_class_tostring
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/oop_runtime/user_class_tostring.bas
+            "-DEXPECT=${EXPECT_USER_CLASS_TOSTRING}"
+            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
+
     # PRIVATE member access errors
     file(READ ${_VIPER_GOLDEN_DIR}/basic_errors/private_method_access.stderr EXPECT_PRIVATE_METHOD)
     string(STRIP "${EXPECT_PRIVATE_METHOD}" EXPECT_PRIVATE_METHOD)

@@ -48,14 +48,13 @@ TEST(Arm64CLI, ConstStr_AddressMaterialization)
 {
     const std::string in = "arm64_cli_const_str.il";
     const std::string out = "arm64_cli_const_str.s";
-    const std::string il =
-        "il 0.1\n"
-        "global const str @.Lmsg = \"hi\"\n"
-        "func @get() -> ptr {\n"
-        "entry:\n"
-        "  %p = const_str @.Lmsg\n"
-        "  ret %p\n"
-        "}\n";
+    const std::string il = "il 0.1\n"
+                           "global const str @.Lmsg = \"hi\"\n"
+                           "func @get() -> ptr {\n"
+                           "entry:\n"
+                           "  %p = const_str @.Lmsg\n"
+                           "  ret %p\n"
+                           "}\n";
 
     const std::string inP = outPath(in);
     const std::string outP = outPath(out);
@@ -80,4 +79,3 @@ int main(int argc, char **argv)
     testing::InitGoogleTest(&argc, &argv);
     return RUN_ALL_TESTS();
 }
-

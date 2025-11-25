@@ -14,29 +14,36 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
-#include <string>
 #include <sstream>
-#include <vector>
+#include <string>
 #include <sys/wait.h>
+#include <vector>
 
-struct RunResult {
+struct RunResult
+{
     int exit_code;
     std::string out;
     std::string err;
 };
 
 // Simple process runner using system()
-static RunResult run_process(const std::vector<std::string>& args) {
+static RunResult run_process(const std::vector<std::string> &args)
+{
     RunResult result;
 
     // Build command string
     std::string cmd;
-    for (const auto& arg : args) {
-        if (!cmd.empty()) cmd += " ";
+    for (const auto &arg : args)
+    {
+        if (!cmd.empty())
+            cmd += " ";
         // Simple quoting - may need improvement for complex cases
-        if (arg.find(' ') != std::string::npos) {
+        if (arg.find(' ') != std::string::npos)
+        {
             cmd += "\"" + arg + "\"";
-        } else {
+        }
+        else
+        {
             cmd += arg;
         }
     }
@@ -48,7 +55,8 @@ static RunResult run_process(const std::vector<std::string>& args) {
 
     // Run command
     result.exit_code = std::system(cmd.c_str());
-    if (result.exit_code != -1) {
+    if (result.exit_code != -1)
+    {
         result.exit_code = WEXITSTATUS(result.exit_code);
     }
 
@@ -71,7 +79,8 @@ static RunResult run_process(const std::vector<std::string>& args) {
 }
 
 // Only run these tests on macOS ARM64 or when ARM64_E2E_TESTS is set
-static bool shouldRunARM64Tests() {
+static bool shouldRunARM64Tests()
+{
 #ifdef __APPLE__
 #ifdef __aarch64__
     return true;
@@ -80,24 +89,30 @@ static bool shouldRunARM64Tests() {
     return std::getenv("ARM64_E2E_TESTS") != nullptr;
 }
 
-static std::string getBuildDir() {
+static std::string getBuildDir()
+{
     // Assume we're running from the build directory
     return ".";
 }
 
-static bool fileExists(const std::string& path) {
+static bool fileExists(const std::string &path)
+{
     return std::filesystem::exists(path);
 }
 
-static bool writeFile(const std::string& path, const std::string& content) {
+static bool writeFile(const std::string &path, const std::string &content)
+{
     std::ofstream out(path);
-    if (!out) return false;
+    if (!out)
+        return false;
     out << content;
     return out.good();
 }
 
-TEST(ARM64E2E, MinimalPrintTest) {
-    if (!shouldRunARM64Tests()) {
+TEST(ARM64E2E, MinimalPrintTest)
+{
+    if (!shouldRunARM64Tests())
+    {
         // Skip test silently if not on ARM64
         return;
     }
@@ -106,16 +121,16 @@ TEST(ARM64E2E, MinimalPrintTest) {
     const std::string vbasic = buildDir + "/src/tools/vbasic/vbasic";
     const std::string ilc = buildDir + "/src/tools/ilc/ilc";
 
-    if (!fileExists(vbasic) || !fileExists(ilc)) {
+    if (!fileExists(vbasic) || !fileExists(ilc))
+    {
         return;
     }
 
     // Create a minimal BASIC program
     const std::string basFile = "/tmp/test_minimal.bas";
     const std::string ilFile = "/tmp/test_minimal.il";
-    const std::string basicCode =
-        "REM Minimal ARM64 test\n"
-        "PRINT \"ARM64_TEST\"\n";
+    const std::string basicCode = "REM Minimal ARM64 test\n"
+                                  "PRINT \"ARM64_TEST\"\n";
 
     ASSERT_TRUE(writeFile(basFile, basicCode));
 
@@ -132,8 +147,10 @@ TEST(ARM64E2E, MinimalPrintTest) {
     EXPECT_NE(rr.exit_code, -1); // Program crashed
 }
 
-TEST(ARM64E2E, ArrayOperationsTest) {
-    if (!shouldRunARM64Tests()) {
+TEST(ARM64E2E, ArrayOperationsTest)
+{
+    if (!shouldRunARM64Tests())
+    {
         return;
     }
 
@@ -141,19 +158,19 @@ TEST(ARM64E2E, ArrayOperationsTest) {
     const std::string vbasic = buildDir + "/src/tools/vbasic/vbasic";
     const std::string ilc = buildDir + "/src/tools/ilc/ilc";
 
-    if (!fileExists(vbasic) || !fileExists(ilc)) {
+    if (!fileExists(vbasic) || !fileExists(ilc))
+    {
         return;
     }
 
     // Create a BASIC program that uses arrays
     const std::string basFile = "/tmp/test_arrays.bas";
     const std::string ilFile = "/tmp/test_arrays.il";
-    const std::string basicCode =
-        "REM Array test\n"
-        "DIM arr(3) AS INTEGER\n"
-        "arr(0) = 10\n"
-        "arr(1) = 20\n"
-        "arr(2) = 30\n";
+    const std::string basicCode = "REM Array test\n"
+                                  "DIM arr(3) AS INTEGER\n"
+                                  "arr(0) = 10\n"
+                                  "arr(1) = 20\n"
+                                  "arr(2) = 30\n";
 
     ASSERT_TRUE(writeFile(basFile, basicCode));
 
@@ -165,13 +182,15 @@ TEST(ARM64E2E, ArrayOperationsTest) {
     // Compile IL to ARM64 assembly (don't run yet due to potential issues)
     const std::string asmFile = "/tmp/test_arrays.s";
     rr = run_process({ilc, "codegen", "arm64", ilFile, "-S", asmFile});
-    EXPECT_EQ(rr.exit_code, 0); // ilc codegen failed
+    EXPECT_EQ(rr.exit_code, 0);       // ilc codegen failed
     EXPECT_TRUE(fileExists(asmFile)); // Assembly file not generated
 }
 
 // Test that Frogger compiles to assembly (may not link/run yet)
-TEST(ARM64E2E, FroggerCompilesToAsm) {
-    if (!shouldRunARM64Tests()) {
+TEST(ARM64E2E, FroggerCompilesToAsm)
+{
+    if (!shouldRunARM64Tests())
+    {
         return;
     }
 
@@ -180,11 +199,13 @@ TEST(ARM64E2E, FroggerCompilesToAsm) {
     const std::string ilc = buildDir + "/src/tools/ilc/ilc";
     const std::string froggerBas = "../demos/frogger/frogger.bas";
 
-    if (!fileExists(vbasic) || !fileExists(ilc)) {
+    if (!fileExists(vbasic) || !fileExists(ilc))
+    {
         return;
     }
 
-    if (!fileExists(froggerBas)) {
+    if (!fileExists(froggerBas))
+    {
         return;
     }
 
@@ -198,21 +219,24 @@ TEST(ARM64E2E, FroggerCompilesToAsm) {
 
     // Compile IL to ARM64 assembly
     rr = run_process({ilc, "codegen", "arm64", ilFile, "-S", asmFile});
-    EXPECT_EQ(rr.exit_code, 0); // ilc codegen failed on Frogger
+    EXPECT_EQ(rr.exit_code, 0);       // ilc codegen failed on Frogger
     EXPECT_TRUE(fileExists(asmFile)); // Frogger assembly not generated
 
     // Verify assembly has expected content
     std::ifstream asmIn(asmFile);
     std::string asmContent((std::istreambuf_iterator<char>(asmIn)),
-                          std::istreambuf_iterator<char>());
+                           std::istreambuf_iterator<char>());
     EXPECT_TRUE(asmContent.find("_main:") != std::string::npos ||
                 asmContent.find("main:") != std::string::npos); // Assembly missing main function
-    EXPECT_TRUE(asmContent.find("rt_arr_obj") != std::string::npos); // Assembly missing array operations
+    EXPECT_TRUE(asmContent.find("rt_arr_obj") !=
+                std::string::npos); // Assembly missing array operations
 }
 
 // Test that vTris compiles to assembly
-TEST(ARM64E2E, VtrisCompilesToAsm) {
-    if (!shouldRunARM64Tests()) {
+TEST(ARM64E2E, VtrisCompilesToAsm)
+{
+    if (!shouldRunARM64Tests())
+    {
         return;
     }
 
@@ -221,11 +245,13 @@ TEST(ARM64E2E, VtrisCompilesToAsm) {
     const std::string ilc = buildDir + "/src/tools/ilc/ilc";
     const std::string vtrisBas = "../demos/vTris/vtris.bas";
 
-    if (!fileExists(vbasic) || !fileExists(ilc)) {
+    if (!fileExists(vbasic) || !fileExists(ilc))
+    {
         return;
     }
 
-    if (!fileExists(vtrisBas)) {
+    if (!fileExists(vtrisBas))
+    {
         return;
     }
 
@@ -239,11 +265,12 @@ TEST(ARM64E2E, VtrisCompilesToAsm) {
 
     // Compile IL to ARM64 assembly
     rr = run_process({ilc, "codegen", "arm64", ilFile, "-S", asmFile});
-    EXPECT_EQ(rr.exit_code, 0); // ilc codegen failed on vTris
+    EXPECT_EQ(rr.exit_code, 0);       // ilc codegen failed on vTris
     EXPECT_TRUE(fileExists(asmFile)); // vTris assembly not generated
 }
 
-int main(int argc, char **argv) {
+int main(int argc, char **argv)
+{
     testing::InitGoogleTest(&argc, &argv);
     return RUN_ALL_TESTS();
 }

@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_vm_debug_src_breakpoint.cpp
-// Purpose: Ensure source breakpoints coalesce repeated hits at the same location. 
+// Purpose: Ensure source breakpoints coalesce repeated hits at the same location.
 // Key invariants: Re-executing the same file/line pair without reset should not
 // Ownership/Lifetime: Standalone unit test executable.
 // Links: docs/codemap.md

@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_vm_error_resume_load_store.cpp
-// Purpose: Ensure Error and ResumeTok memory loads preserve pointer values. 
+// Purpose: Ensure Error and ResumeTok memory loads preserve pointer values.
 // Key invariants: Stored pointers for Error/ResumeTok types must round-trip through memory helpers.
 // Ownership/Lifetime: Standalone unit test executable.
 // Links: docs/codemap.md

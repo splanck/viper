@@ -33,18 +33,18 @@
 
 #include "vgfx.h"
 #include "vgfx_internal.h"
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdio.h>
 
 //===----------------------------------------------------------------------===//
 // Platform-Specific Headers for Aligned Allocation
 //===----------------------------------------------------------------------===//
 
 #if defined(_WIN32)
-    #include <malloc.h>
+#include <malloc.h>
 #elif defined(__APPLE__) || defined(__linux__)
-    #include <stdlib.h>
+#include <stdlib.h>
 #endif
 
 //===----------------------------------------------------------------------===//
@@ -56,20 +56,20 @@
 //===----------------------------------------------------------------------===//
 
 #if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
-    /// @brief C11 thread-local error message string.
-    _Thread_local static const char* g_last_error_str = NULL;
-    /// @brief C11 thread-local error code.
-    _Thread_local static vgfx_error_t g_last_error_code = VGFX_ERR_NONE;
+/// @brief C11 thread-local error message string.
+_Thread_local static const char *g_last_error_str = NULL;
+/// @brief C11 thread-local error code.
+_Thread_local static vgfx_error_t g_last_error_code = VGFX_ERR_NONE;
 #elif defined(_WIN32)
-    /// @brief Windows TLS error message string.
-    __declspec(thread) static const char* g_last_error_str = NULL;
-    /// @brief Windows TLS error code.
-    __declspec(thread) static vgfx_error_t g_last_error_code = VGFX_ERR_NONE;
+/// @brief Windows TLS error message string.
+__declspec(thread) static const char *g_last_error_str = NULL;
+/// @brief Windows TLS error code.
+__declspec(thread) static vgfx_error_t g_last_error_code = VGFX_ERR_NONE;
 #else
-    /// @brief Fallback global error message (not thread-safe).
-    static const char* g_last_error_str = NULL;
-    /// @brief Fallback global error code (not thread-safe).
-    static vgfx_error_t g_last_error_code = VGFX_ERR_NONE;
+/// @brief Fallback global error message (not thread-safe).
+static const char *g_last_error_str = NULL;
+/// @brief Fallback global error code (not thread-safe).
+static vgfx_error_t g_last_error_code = VGFX_ERR_NONE;
 #endif
 
 //===----------------------------------------------------------------------===//
@@ -99,17 +99,20 @@ static vgfx_log_fn g_log_callback = NULL;
 /// @post g_last_error_str == msg
 /// @post Message printed to stderr (if msg != NULL)
 /// @post Log callback invoked (if set and msg != NULL)
-void vgfx_internal_set_error(vgfx_error_t code, const char* msg) {
+void vgfx_internal_set_error(vgfx_error_t code, const char *msg)
+{
     g_last_error_code = code;
     g_last_error_str = msg;
 
     /* Print to stderr */
-    if (msg) {
+    if (msg)
+    {
         fprintf(stderr, "vgfx: %s\n", msg);
     }
 
     /* Call logging callback if set */
-    if (g_log_callback && msg) {
+    if (g_log_callback && msg)
+    {
         g_log_callback(msg);
     }
 }
@@ -122,9 +125,12 @@ void vgfx_internal_set_error(vgfx_error_t code, const char* msg) {
 /// @param min   Minimum allowed value
 /// @param max   Maximum allowed value
 /// @return value clamped to [min, max]
-static inline int32_t clamp_int(int32_t value, int32_t min, int32_t max) {
-    if (value < min) return min;
-    if (value > max) return max;
+static inline int32_t clamp_int(int32_t value, int32_t min, int32_t max)
+{
+    if (value < min)
+        return min;
+    if (value > max)
+        return max;
     return value;
 }
 
@@ -140,12 +146,14 @@ static inline int32_t clamp_int(int32_t value, int32_t min, int32_t max) {
 ///
 /// @pre  alignment is a power of 2
 /// @post On success: returned pointer is aligned to alignment
-static void* aligned_alloc_wrapper(size_t alignment, size_t size) {
+static void *aligned_alloc_wrapper(size_t alignment, size_t size)
+{
 #if defined(_WIN32)
     return _aligned_malloc(size, alignment);
 #elif defined(__APPLE__) || defined(__linux__)
-    void* ptr = NULL;
-    if (posix_memalign(&ptr, alignment, size) == 0) {
+    void *ptr = NULL;
+    if (posix_memalign(&ptr, alignment, size) == 0)
+    {
         return ptr;
     }
     return NULL;
@@ -162,7 +170,8 @@ static void* aligned_alloc_wrapper(size_t alignment, size_t size) {
 /// @param ptr Pointer to memory returned by aligned_alloc_wrapper() (may be NULL)
 ///
 /// @post Memory is freed and ptr is invalid
-static void aligned_free_wrapper(void* ptr) {
+static void aligned_free_wrapper(void *ptr)
+{
 #if defined(_WIN32)
     _aligned_free(ptr);
 #else
@@ -193,26 +202,35 @@ static void aligned_free_wrapper(void* ptr) {
 /// @pre  win != NULL
 /// @pre  event != NULL
 /// @post Event is in queue OR event_overflow incremented (non-CLOSE dropped)
-int vgfx_internal_enqueue_event(struct vgfx_window* win, const vgfx_event_t* event) {
-    if (!win || !event) return 0;
+int vgfx_internal_enqueue_event(struct vgfx_window *win, const vgfx_event_t *event)
+{
+    if (!win || !event)
+        return 0;
 
     int32_t next_head = (win->event_head + 1) % VGFX_INTERNAL_EVENT_QUEUE_SLOTS;
 
     /* Queue full? */
-    if (next_head == win->event_tail) {
+    if (next_head == win->event_tail)
+    {
         /* FIFO eviction: drop oldest event to make room for new event.
          * Exception: Never drop CLOSE events - they signal window destruction. */
-        if (win->event_queue[win->event_tail].type == VGFX_EVENT_CLOSE) {
+        if (win->event_queue[win->event_tail].type == VGFX_EVENT_CLOSE)
+        {
             /* Oldest event is CLOSE - can't drop it */
-            if (event->type == VGFX_EVENT_CLOSE) {
+            if (event->type == VGFX_EVENT_CLOSE)
+            {
                 /* Duplicate CLOSE event - drop the new one (no overflow increment) */
                 return 0;
-            } else {
+            }
+            else
+            {
                 /* New event is regular - drop it to preserve CLOSE */
                 win->event_overflow++;
                 return 0;
             }
-        } else {
+        }
+        else
+        {
             /* Oldest event is not CLOSE - drop it to make room for new event */
             win->event_tail = (win->event_tail + 1) % VGFX_INTERNAL_EVENT_QUEUE_SLOTS;
             win->event_overflow++;
@@ -237,11 +255,14 @@ int vgfx_internal_enqueue_event(struct vgfx_window* win, const vgfx_event_t* eve
 /// @pre  out_event != NULL
 /// @post If 1 returned: out_event contains oldest event, event_tail advanced
 /// @post If 0 returned: out_event unchanged, queue is empty
-int vgfx_internal_dequeue_event(struct vgfx_window* win, vgfx_event_t* out_event) {
-    if (!win || !out_event) return 0;
+int vgfx_internal_dequeue_event(struct vgfx_window *win, vgfx_event_t *out_event)
+{
+    if (!win || !out_event)
+        return 0;
 
     /* Queue empty? */
-    if (win->event_head == win->event_tail) {
+    if (win->event_head == win->event_tail)
+    {
         return 0;
     }
 
@@ -263,11 +284,14 @@ int vgfx_internal_dequeue_event(struct vgfx_window* win, vgfx_event_t* out_event
 /// @pre  out_event != NULL
 /// @post If 1 returned: out_event contains oldest event, queue unchanged
 /// @post If 0 returned: out_event unchanged, queue is empty
-int vgfx_internal_peek_event(struct vgfx_window* win, vgfx_event_t* out_event) {
-    if (!win || !out_event) return 0;
+int vgfx_internal_peek_event(struct vgfx_window *win, vgfx_event_t *out_event)
+{
+    if (!win || !out_event)
+        return 0;
 
     /* Queue empty? */
-    if (win->event_head == win->event_tail) {
+    if (win->event_head == win->event_tail)
+    {
         return 0;
     }
 
@@ -285,7 +309,8 @@ int vgfx_internal_peek_event(struct vgfx_window* win, vgfx_event_t* out_event) {
 ///          Example: Version 1.2.3 returns 0x00010203
 ///
 /// @return Packed version number
-uint32_t vgfx_version(void) {
+uint32_t vgfx_version(void)
+{
     return (VGFX_VERSION_MAJOR << 16) | (VGFX_VERSION_MINOR << 8) | VGFX_VERSION_PATCH;
 }
 
@@ -293,7 +318,8 @@ uint32_t vgfx_version(void) {
 /// @details Returns a static string in "major.minor.patch" format.
 ///
 /// @return Pointer to static version string (e.g., "1.0.0")
-const char* vgfx_version_string(void) {
+const char *vgfx_version_string(void)
+{
     return "1.0.0";
 }
 
@@ -307,7 +333,8 @@ const char* vgfx_version_string(void) {
 ///          until vgfx_clear_last_error() is called.
 ///
 /// @return Error message string, or NULL if no error has occurred
-const char* vgfx_get_last_error(void) {
+const char *vgfx_get_last_error(void)
+{
     return g_last_error_str;
 }
 
@@ -316,7 +343,8 @@ const char* vgfx_get_last_error(void) {
 ///
 /// @post vgfx_get_last_error() returns NULL
 /// @post vgfx_last_error_code() returns VGFX_OK
-void vgfx_clear_error(void) {
+void vgfx_clear_error(void)
+{
     g_last_error_str = NULL;
     g_last_error_code = VGFX_ERR_NONE;
 }
@@ -325,7 +353,8 @@ void vgfx_clear_error(void) {
 /// @details Returns the error code set by the most recent error in this thread.
 ///
 /// @return Error code (VGFX_OK if no error)
-vgfx_error_t vgfx_last_error_code(void) {
+vgfx_error_t vgfx_last_error_code(void)
+{
     return g_last_error_code;
 }
 
@@ -337,7 +366,8 @@ vgfx_error_t vgfx_last_error_code(void) {
 /// @param fn Logging callback function (or NULL to disable)
 ///
 /// @post Future errors will invoke fn(message) if fn != NULL
-void vgfx_set_log_callback(vgfx_log_fn fn) {
+void vgfx_set_log_callback(vgfx_log_fn fn)
+{
     g_log_callback = fn;
 }
 
@@ -353,10 +383,14 @@ void vgfx_set_log_callback(vgfx_log_fn fn) {
 /// @param fps Target FPS (clamped to [1, 1000]) or negative for unlimited
 ///
 /// @post vgfx_get_default_fps() returns fps (clamped if positive)
-void vgfx_set_default_fps(int32_t fps) {
-    if (fps > 0) {
+void vgfx_set_default_fps(int32_t fps)
+{
+    if (fps > 0)
+    {
         g_default_fps = clamp_int(fps, 1, 1000);
-    } else {
+    }
+    else
+    {
         g_default_fps = fps; /* Allow negative for unlimited */
     }
 }
@@ -366,7 +400,8 @@ void vgfx_set_default_fps(int32_t fps) {
 ///          default (VGFX_DEFAULT_FPS = 60).
 ///
 /// @return Global default FPS (positive, or negative for unlimited)
-int32_t vgfx_get_default_fps(void) {
+int32_t vgfx_get_default_fps(void)
+{
     return g_default_fps;
 }
 
@@ -379,14 +414,21 @@ int32_t vgfx_get_default_fps(void) {
 ///
 /// @pre  window != NULL
 /// @post window->fps is updated to fps (or g_default_fps if fps == 0)
-void vgfx_set_fps(vgfx_window_t window, int32_t fps) {
-    if (!window) return;
+void vgfx_set_fps(vgfx_window_t window, int32_t fps)
+{
+    if (!window)
+        return;
 
-    if (fps == 0) {
+    if (fps == 0)
+    {
         window->fps = g_default_fps;
-    } else if (fps > 0) {
+    }
+    else if (fps > 0)
+    {
         window->fps = clamp_int(fps, 1, 1000);
-    } else {
+    }
+    else
+    {
         window->fps = fps; /* Allow negative for unlimited */
     }
 }
@@ -396,8 +438,10 @@ void vgfx_set_fps(vgfx_window_t window, int32_t fps) {
 ///
 /// @param window Window handle
 /// @return Window's FPS limit, or -1 if window is NULL
-int32_t vgfx_get_fps(vgfx_window_t window) {
-    if (!window) return -1;
+int32_t vgfx_get_fps(vgfx_window_t window)
+{
+    if (!window)
+        return -1;
     return window->fps;
 }
 
@@ -414,7 +458,8 @@ int32_t vgfx_get_fps(vgfx_window_t window) {
 ///            - resizable: 0 (false)
 ///
 /// @return Window parameters initialized with defaults
-vgfx_window_params_t vgfx_window_params_default(void) {
+vgfx_window_params_t vgfx_window_params_default(void)
+{
     vgfx_window_params_t params;
     params.width = VGFX_DEFAULT_WIDTH;
     params.height = VGFX_DEFAULT_HEIGHT;
@@ -440,37 +485,46 @@ vgfx_window_params_t vgfx_window_params_default(void) {
 ///
 /// @post On success: Window is visible, framebuffer cleared to black with alpha=0xFF
 /// @post On failure: Error state set, no resources leaked
-vgfx_window_t vgfx_create_window(const vgfx_window_params_t* params) {
+vgfx_window_t vgfx_create_window(const vgfx_window_params_t *params)
+{
     /* Apply defaults if params is NULL or fields are invalid */
     vgfx_window_params_t actual_params;
 
-    if (params) {
+    if (params)
+    {
         actual_params = *params;
-    } else {
+    }
+    else
+    {
         actual_params = vgfx_window_params_default();
     }
 
     /* Apply defaults for invalid fields */
-    if (actual_params.width <= 0) {
+    if (actual_params.width <= 0)
+    {
         actual_params.width = VGFX_DEFAULT_WIDTH;
     }
-    if (actual_params.height <= 0) {
+    if (actual_params.height <= 0)
+    {
         actual_params.height = VGFX_DEFAULT_HEIGHT;
     }
-    if (!actual_params.title) {
+    if (!actual_params.title)
+    {
         actual_params.title = VGFX_DEFAULT_TITLE;
     }
 
     /* Validate dimensions against safety limits */
-    if (actual_params.width > VGFX_MAX_WIDTH || actual_params.height > VGFX_MAX_HEIGHT) {
+    if (actual_params.width > VGFX_MAX_WIDTH || actual_params.height > VGFX_MAX_HEIGHT)
+    {
         vgfx_internal_set_error(VGFX_ERR_INVALID_PARAM,
-            "Window dimensions exceed maximum (4096x4096)");
+                                "Window dimensions exceed maximum (4096x4096)");
         return NULL;
     }
 
     /* Allocate window structure */
-    struct vgfx_window* win = (struct vgfx_window*)calloc(1, sizeof(struct vgfx_window));
-    if (!win) {
+    struct vgfx_window *win = (struct vgfx_window *)calloc(1, sizeof(struct vgfx_window));
+    if (!win)
+    {
         vgfx_internal_set_error(VGFX_ERR_ALLOC, "Failed to allocate window structure");
         return NULL;
     }
@@ -482,18 +536,24 @@ vgfx_window_t vgfx_create_window(const vgfx_window_params_t* params) {
     win->stride = win->width * 4;
 
     /* Set FPS (apply default if params.fps == 0, clamp if positive) */
-    if (actual_params.fps == 0) {
+    if (actual_params.fps == 0)
+    {
         win->fps = g_default_fps;
-    } else if (actual_params.fps > 0) {
+    }
+    else if (actual_params.fps > 0)
+    {
         win->fps = clamp_int(actual_params.fps, 1, 1000);
-    } else {
+    }
+    else
+    {
         win->fps = actual_params.fps; /* Negative = unlimited */
     }
 
     /* Allocate framebuffer (aligned for cache performance) */
     size_t fb_size = (size_t)win->width * (size_t)win->height * 4;
-    win->pixels = (uint8_t*)aligned_alloc_wrapper(VGFX_FRAMEBUFFER_ALIGNMENT, fb_size);
-    if (!win->pixels) {
+    win->pixels = (uint8_t *)aligned_alloc_wrapper(VGFX_FRAMEBUFFER_ALIGNMENT, fb_size);
+    if (!win->pixels)
+    {
         free(win);
         vgfx_internal_set_error(VGFX_ERR_ALLOC, "Failed to allocate framebuffer");
         return NULL;
@@ -503,7 +563,8 @@ vgfx_window_t vgfx_create_window(const vgfx_window_params_t* params) {
     memset(win->pixels, 0, fb_size);
 
     /* Set all alpha channels to 0xFF (fully opaque) */
-    for (size_t i = 3; i < fb_size; i += 4) {
+    for (size_t i = 3; i < fb_size; i += 4)
+    {
         win->pixels[i] = 0xFF;
     }
 
@@ -523,7 +584,8 @@ vgfx_window_t vgfx_create_window(const vgfx_window_params_t* params) {
     win->next_frame_deadline = vgfx_platform_now_ms();
 
     /* Initialize platform-specific resources (native window, etc.) */
-    if (!vgfx_platform_init_window(win, &actual_params)) {
+    if (!vgfx_platform_init_window(win, &actual_params))
+    {
         aligned_free_wrapper(win->pixels);
         free(win);
         /* Error already set by platform backend */
@@ -540,14 +602,17 @@ vgfx_window_t vgfx_create_window(const vgfx_window_params_t* params) {
 /// @param window Window handle (may be NULL)
 ///
 /// @post If window != NULL: Native window closed, all resources freed, handle invalid
-void vgfx_destroy_window(vgfx_window_t window) {
-    if (!window) return;
+void vgfx_destroy_window(vgfx_window_t window)
+{
+    if (!window)
+        return;
 
     /* Destroy platform resources (native window, platform_data) */
     vgfx_platform_destroy_window(window);
 
     /* Free framebuffer */
-    if (window->pixels) {
+    if (window->pixels)
+    {
         aligned_free_wrapper(window->pixels);
     }
 
@@ -573,30 +638,36 @@ void vgfx_destroy_window(vgfx_window_t window) {
 /// @post Framebuffer contents visible on screen
 /// @post If fps > 0: slept until frame deadline
 /// @post window->last_frame_time_ms updated with frame duration
-int32_t vgfx_update(vgfx_window_t window) {
-    if (!window) return 0;
+int32_t vgfx_update(vgfx_window_t window)
+{
+    if (!window)
+        return 0;
 
     int64_t frame_start = vgfx_platform_now_ms();
 
     /* Process OS events (keyboard, mouse, window) */
-    if (!vgfx_platform_process_events(window)) {
+    if (!vgfx_platform_process_events(window))
+    {
         vgfx_internal_set_error(VGFX_ERR_PLATFORM, "Event processing error");
         return 0;
     }
 
     /* Present framebuffer to native window */
-    if (!vgfx_platform_present(window)) {
+    if (!vgfx_platform_present(window))
+    {
         vgfx_internal_set_error(VGFX_ERR_PLATFORM, "Failed to present framebuffer");
         return 0;
     }
 
     /* FPS limiting (only if fps > 0) */
-    if (window->fps > 0) {
+    if (window->fps > 0)
+    {
         int64_t now = vgfx_platform_now_ms();
         int32_t target_frame_time = 1000 / window->fps;
 
         /* Sleep if we're ahead of schedule */
-        if (now < window->next_frame_deadline) {
+        if (now < window->next_frame_deadline)
+        {
             int32_t sleep_time = (int32_t)(window->next_frame_deadline - now);
             vgfx_platform_sleep_ms(sleep_time);
             now = vgfx_platform_now_ms();
@@ -606,7 +677,8 @@ int32_t vgfx_update(vgfx_window_t window) {
         window->next_frame_deadline += target_frame_time;
 
         /* Resync if we fell behind by more than one frame (prevents runaway) */
-        if (window->next_frame_deadline < now - target_frame_time) {
+        if (window->next_frame_deadline < now - target_frame_time)
+        {
             window->next_frame_deadline = now;
         }
     }
@@ -624,8 +696,10 @@ int32_t vgfx_update(vgfx_window_t window) {
 ///
 /// @param window Window handle
 /// @return Last frame duration in milliseconds, or -1 if window is NULL
-int32_t vgfx_frame_time_ms(vgfx_window_t window) {
-    if (!window) return -1;
+int32_t vgfx_frame_time_ms(vgfx_window_t window)
+{
+    if (!window)
+        return -1;
     return (int32_t)window->last_frame_time_ms;
 }
 
@@ -639,11 +713,15 @@ int32_t vgfx_frame_time_ms(vgfx_window_t window) {
 ///
 /// @post If width != NULL: *width contains window width
 /// @post If height != NULL: *height contains window height
-int32_t vgfx_get_size(vgfx_window_t window, int32_t* width, int32_t* height) {
-    if (!window) return 0;
+int32_t vgfx_get_size(vgfx_window_t window, int32_t *width, int32_t *height)
+{
+    if (!window)
+        return 0;
 
-    if (width) *width = window->width;
-    if (height) *height = window->height;
+    if (width)
+        *width = window->width;
+    if (height)
+        *height = window->height;
     return 1;
 }
 
@@ -664,8 +742,10 @@ int32_t vgfx_get_size(vgfx_window_t window, int32_t* width, int32_t* height) {
 /// @pre  out_event != NULL
 /// @post If 1 returned: out_event contains oldest event, event removed from queue
 /// @post If 0 returned: out_event unchanged, queue is empty
-int32_t vgfx_poll_event(vgfx_window_t window, vgfx_event_t* out_event) {
-    if (!window || !out_event) return 0;
+int32_t vgfx_poll_event(vgfx_window_t window, vgfx_event_t *out_event)
+{
+    if (!window || !out_event)
+        return 0;
     return vgfx_internal_dequeue_event(window, out_event);
 }
 
@@ -681,8 +761,10 @@ int32_t vgfx_poll_event(vgfx_window_t window, vgfx_event_t* out_event) {
 /// @pre  out_event != NULL
 /// @post If 1 returned: out_event contains oldest event, queue unchanged
 /// @post If 0 returned: out_event unchanged, queue is empty
-int32_t vgfx_peek_event(vgfx_window_t window, vgfx_event_t* out_event) {
-    if (!window || !out_event) return 0;
+int32_t vgfx_peek_event(vgfx_window_t window, vgfx_event_t *out_event)
+{
+    if (!window || !out_event)
+        return 0;
     return vgfx_internal_peek_event(window, out_event);
 }
 
@@ -694,12 +776,15 @@ int32_t vgfx_peek_event(vgfx_window_t window, vgfx_event_t* out_event) {
 /// @return Number of events discarded, or 0 if window is NULL
 ///
 /// @post Event queue is empty
-int32_t vgfx_flush_events(vgfx_window_t window) {
-    if (!window) return 0;
+int32_t vgfx_flush_events(vgfx_window_t window)
+{
+    if (!window)
+        return 0;
 
     int32_t count = 0;
     vgfx_event_t dummy;
-    while (vgfx_internal_dequeue_event(window, &dummy)) {
+    while (vgfx_internal_dequeue_event(window, &dummy))
+    {
         count++;
     }
     return count;
@@ -715,8 +800,10 @@ int32_t vgfx_flush_events(vgfx_window_t window) {
 /// @return Number of events dropped since last query, or 0 if window is NULL
 ///
 /// @post window->event_overflow == 0
-int32_t vgfx_event_overflow_count(vgfx_window_t window) {
-    if (!window) return 0;
+int32_t vgfx_event_overflow_count(vgfx_window_t window)
+{
+    if (!window)
+        return 0;
 
     int32_t count = window->event_overflow;
     window->event_overflow = 0; /* Reset after reading */
@@ -738,9 +825,11 @@ int32_t vgfx_event_overflow_count(vgfx_window_t window) {
 /// @param color  RGB color (format: 0x00RRGGBB)
 ///
 /// @post If (x, y) in bounds: pixel at (x, y) is set to color with alpha=0xFF
-void vgfx_pset(vgfx_window_t window, int32_t x, int32_t y, vgfx_color_t color) {
+void vgfx_pset(vgfx_window_t window, int32_t x, int32_t y, vgfx_color_t color)
+{
     /* Silent no-op if out of bounds or NULL window */
-    if (!vgfx_internal_in_bounds(window, x, y)) return;
+    if (!vgfx_internal_in_bounds(window, x, y))
+        return;
 
     int32_t offset = y * window->stride + x * 4;
     window->pixels[offset + 0] = (color >> 16) & 0xFF; /* R */
@@ -760,8 +849,10 @@ void vgfx_pset(vgfx_window_t window, int32_t x, int32_t y, vgfx_color_t color) {
 /// @return 1 on success, 0 if out of bounds, window is NULL, or out_color is NULL
 ///
 /// @post If 1 returned: *out_color contains RGB color at (x, y)
-int32_t vgfx_point(vgfx_window_t window, int32_t x, int32_t y, vgfx_color_t* out_color) {
-    if (!vgfx_internal_in_bounds(window, x, y) || !out_color) return 0;
+int32_t vgfx_point(vgfx_window_t window, int32_t x, int32_t y, vgfx_color_t *out_color)
+{
+    if (!vgfx_internal_in_bounds(window, x, y) || !out_color)
+        return 0;
 
     int32_t offset = y * window->stride + x * 4;
     uint8_t r = window->pixels[offset + 0];
@@ -780,15 +871,18 @@ int32_t vgfx_point(vgfx_window_t window, int32_t x, int32_t y, vgfx_color_t* out
 /// @param color  RGB color (format: 0x00RRGGBB)
 ///
 /// @post All pixels are set to color with alpha=0xFF
-void vgfx_cls(vgfx_window_t window, vgfx_color_t color) {
-    if (!window) return;
+void vgfx_cls(vgfx_window_t window, vgfx_color_t color)
+{
+    if (!window)
+        return;
 
     uint8_t r = (color >> 16) & 0xFF;
     uint8_t g = (color >> 8) & 0xFF;
     uint8_t b = (color >> 0) & 0xFF;
 
     size_t pixel_count = (size_t)window->width * (size_t)window->height;
-    for (size_t i = 0; i < pixel_count; i++) {
+    for (size_t i = 0; i < pixel_count; i++)
+    {
         window->pixels[i * 4 + 0] = r;
         window->pixels[i * 4 + 1] = g;
         window->pixels[i * 4 + 2] = b;
@@ -804,16 +898,16 @@ void vgfx_cls(vgfx_window_t window, vgfx_color_t color) {
 //===----------------------------------------------------------------------===//
 
 /* Forward declarations for drawing primitives (implemented in vgfx_draw.c) */
-void vgfx_draw_line(vgfx_window_t window, int32_t x1, int32_t y1,
-                    int32_t x2, int32_t y2, vgfx_color_t color);
-void vgfx_draw_rect(vgfx_window_t window, int32_t x, int32_t y,
-                    int32_t w, int32_t h, vgfx_color_t color);
-void vgfx_draw_fill_rect(vgfx_window_t window, int32_t x, int32_t y,
-                         int32_t w, int32_t h, vgfx_color_t color);
-void vgfx_draw_circle(vgfx_window_t window, int32_t cx, int32_t cy,
-                      int32_t radius, vgfx_color_t color);
-void vgfx_draw_fill_circle(vgfx_window_t window, int32_t cx, int32_t cy,
-                           int32_t radius, vgfx_color_t color);
+void vgfx_draw_line(
+    vgfx_window_t window, int32_t x1, int32_t y1, int32_t x2, int32_t y2, vgfx_color_t color);
+void vgfx_draw_rect(
+    vgfx_window_t window, int32_t x, int32_t y, int32_t w, int32_t h, vgfx_color_t color);
+void vgfx_draw_fill_rect(
+    vgfx_window_t window, int32_t x, int32_t y, int32_t w, int32_t h, vgfx_color_t color);
+void vgfx_draw_circle(
+    vgfx_window_t window, int32_t cx, int32_t cy, int32_t radius, vgfx_color_t color);
+void vgfx_draw_fill_circle(
+    vgfx_window_t window, int32_t cx, int32_t cy, int32_t radius, vgfx_color_t color);
 
 /// @brief Draw a line from (x1, y1) to (x2, y2).
 /// @details Uses Bresenham's line algorithm (implemented in vgfx_draw.c).
@@ -824,8 +918,9 @@ void vgfx_draw_fill_circle(vgfx_window_t window, int32_t cx, int32_t cy,
 /// @param x2     End X coordinate
 /// @param y2     End Y coordinate
 /// @param color  RGB color (format: 0x00RRGGBB)
-void vgfx_line(vgfx_window_t window, int32_t x1, int32_t y1,
-               int32_t x2, int32_t y2, vgfx_color_t color) {
+void vgfx_line(
+    vgfx_window_t window, int32_t x1, int32_t y1, int32_t x2, int32_t y2, vgfx_color_t color)
+{
     vgfx_draw_line(window, x1, y1, x2, y2, color);
 }
 
@@ -839,8 +934,8 @@ void vgfx_line(vgfx_window_t window, int32_t x1, int32_t y1,
 /// @param w      Width in pixels
 /// @param h      Height in pixels
 /// @param color  RGB color (format: 0x00RRGGBB)
-void vgfx_rect(vgfx_window_t window, int32_t x, int32_t y,
-               int32_t w, int32_t h, vgfx_color_t color) {
+void vgfx_rect(vgfx_window_t window, int32_t x, int32_t y, int32_t w, int32_t h, vgfx_color_t color)
+{
     vgfx_draw_rect(window, x, y, w, h, color);
 }
 
@@ -854,8 +949,9 @@ void vgfx_rect(vgfx_window_t window, int32_t x, int32_t y,
 /// @param w      Width in pixels
 /// @param h      Height in pixels
 /// @param color  RGB color (format: 0x00RRGGBB)
-void vgfx_fill_rect(vgfx_window_t window, int32_t x, int32_t y,
-                    int32_t w, int32_t h, vgfx_color_t color) {
+void vgfx_fill_rect(
+    vgfx_window_t window, int32_t x, int32_t y, int32_t w, int32_t h, vgfx_color_t color)
+{
     vgfx_draw_fill_rect(window, x, y, w, h, color);
 }
 
@@ -868,8 +964,8 @@ void vgfx_fill_rect(vgfx_window_t window, int32_t x, int32_t y,
 /// @param cy     Center Y coordinate
 /// @param radius Radius in pixels
 /// @param color  RGB color (format: 0x00RRGGBB)
-void vgfx_circle(vgfx_window_t window, int32_t cx, int32_t cy,
-                 int32_t radius, vgfx_color_t color) {
+void vgfx_circle(vgfx_window_t window, int32_t cx, int32_t cy, int32_t radius, vgfx_color_t color)
+{
     vgfx_draw_circle(window, cx, cy, radius, color);
 }
 
@@ -882,8 +978,9 @@ void vgfx_circle(vgfx_window_t window, int32_t cx, int32_t cy,
 /// @param cy     Center Y coordinate
 /// @param radius Radius in pixels
 /// @param color  RGB color (format: 0x00RRGGBB)
-void vgfx_fill_circle(vgfx_window_t window, int32_t cx, int32_t cy,
-                      int32_t radius, vgfx_color_t color) {
+void vgfx_fill_circle(
+    vgfx_window_t window, int32_t cx, int32_t cy, int32_t radius, vgfx_color_t color)
+{
     vgfx_draw_fill_circle(window, cx, cy, radius, color);
 }
 
@@ -902,10 +999,14 @@ void vgfx_fill_circle(vgfx_window_t window, int32_t cx, int32_t cy,
 /// @post If r != NULL: *r contains red component [0, 255]
 /// @post If g != NULL: *g contains green component [0, 255]
 /// @post If b != NULL: *b contains blue component [0, 255]
-void vgfx_color_to_rgb(vgfx_color_t color, uint8_t* r, uint8_t* g, uint8_t* b) {
-    if (r) *r = (color >> 16) & 0xFF;
-    if (g) *g = (color >> 8) & 0xFF;
-    if (b) *b = (color >> 0) & 0xFF;
+void vgfx_color_to_rgb(vgfx_color_t color, uint8_t *r, uint8_t *g, uint8_t *b)
+{
+    if (r)
+        *r = (color >> 16) & 0xFF;
+    if (g)
+        *g = (color >> 8) & 0xFF;
+    if (b)
+        *b = (color >> 0) & 0xFF;
 }
 
 //===----------------------------------------------------------------------===//
@@ -921,8 +1022,10 @@ void vgfx_color_to_rgb(vgfx_color_t color, uint8_t* r, uint8_t* g, uint8_t* b) {
 /// @return 1 if key is pressed, 0 if released, window is NULL, or key is invalid
 ///
 /// @pre  key < 512
-int32_t vgfx_key_down(vgfx_window_t window, vgfx_key_t key) {
-    if (!window || key == VGFX_KEY_UNKNOWN || key >= 512) return 0;
+int32_t vgfx_key_down(vgfx_window_t window, vgfx_key_t key)
+{
+    if (!window || key == VGFX_KEY_UNKNOWN || key >= 512)
+        return 0;
     return window->key_state[key] != 0;
 }
 
@@ -938,16 +1041,20 @@ int32_t vgfx_key_down(vgfx_window_t window, vgfx_key_t key) {
 ///
 /// @post If x != NULL: *x contains cursor X coordinate
 /// @post If y != NULL: *y contains cursor Y coordinate
-int32_t vgfx_mouse_pos(vgfx_window_t window, int32_t* x, int32_t* y) {
-    if (!window) return 0;
+int32_t vgfx_mouse_pos(vgfx_window_t window, int32_t *x, int32_t *y)
+{
+    if (!window)
+        return 0;
 
     /* Always fill output pointers */
-    if (x) *x = window->mouse_x;
-    if (y) *y = window->mouse_y;
+    if (x)
+        *x = window->mouse_x;
+    if (y)
+        *y = window->mouse_y;
 
     /* Return 1 if inside bounds, 0 otherwise */
-    return (window->mouse_x >= 0 && window->mouse_x < window->width &&
-            window->mouse_y >= 0 && window->mouse_y < window->height);
+    return (window->mouse_x >= 0 && window->mouse_x < window->width && window->mouse_y >= 0 &&
+            window->mouse_y < window->height);
 }
 
 /// @brief Check if a mouse button is currently pressed.
@@ -959,8 +1066,10 @@ int32_t vgfx_mouse_pos(vgfx_window_t window, int32_t* x, int32_t* y) {
 /// @return 1 if button is pressed, 0 if released, window is NULL, or button is invalid
 ///
 /// @pre  button < 8
-int32_t vgfx_mouse_button(vgfx_window_t window, vgfx_mouse_button_t button) {
-    if (!window || button >= 8) return 0;
+int32_t vgfx_mouse_button(vgfx_window_t window, vgfx_mouse_button_t button)
+{
+    if (!window || button >= 8)
+        return 0;
     return window->mouse_button_state[button] != 0;
 }
 
@@ -983,8 +1092,10 @@ int32_t vgfx_mouse_button(vgfx_window_t window, vgfx_mouse_button_t button) {
 ///
 /// @warning Direct framebuffer access bypasses bounds checking.  Incorrect
 ///          writes may corrupt memory.  Prefer vgfx_pset() for safety.
-int32_t vgfx_get_framebuffer(vgfx_window_t window, vgfx_framebuffer_t* out_info) {
-    if (!window || !out_info) return 0;
+int32_t vgfx_get_framebuffer(vgfx_window_t window, vgfx_framebuffer_t *out_info)
+{
+    if (!window || !out_info)
+        return 0;
 
     out_info->pixels = window->pixels;
     out_info->width = window->width;

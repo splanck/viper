@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: vm/OpHandlers_Control.hpp
-// Purpose: Declare control-flow opcode handlers and shared switch dispatch helpers. 
+// Purpose: Declare control-flow opcode handlers and shared switch dispatch helpers.
 // Key invariants: Handlers maintain VM block state, propagate parameters, and honor trap contracts.
 // Ownership/Lifetime: Functions mutate the active VM frame without taking ownership of VM
 // Links: docs/architecture.md

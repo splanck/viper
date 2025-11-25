@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_il_parse_comment.cpp
-// Purpose: Ensure IL parser ignores comment lines. 
+// Purpose: Ensure IL parser ignores comment lines.
 // Key invariants: Parser treats lines starting with '//' as comments.
 // Ownership/Lifetime: Test owns modules and buffers locally.
 // Links: docs/il-guide.md#reference

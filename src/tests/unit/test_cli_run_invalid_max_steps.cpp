@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_cli_run_invalid_max_steps.cpp
-// Purpose: Verify --max-steps parsing rejects malformed values without throwing. 
+// Purpose: Verify --max-steps parsing rejects malformed values without throwing.
 // Key invariants: Invalid max step specifications must trigger usage() and non-zero exit.
 // Ownership/Lifetime: N/A.
 // Links: src/tools/ilc/cli.cpp, src/tools/ilc/cmd_run_il.cpp

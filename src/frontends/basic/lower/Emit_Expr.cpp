@@ -31,9 +31,9 @@
 #include "frontends/basic/SemanticAnalyzer.hpp"
 #include "frontends/basic/lower/Emitter.hpp"
 
-#include "viper/il/Module.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
 #include "il/runtime/RuntimeSignaturesData.hpp"
+#include "viper/il/Module.hpp"
 
 #include <cassert>
 #include <utility>
@@ -541,7 +541,8 @@ Value Lowerer::narrow32(Value value, il::support::SourceLoc loc)
     return emitCommon(loc).to_iN(value, 32);
 }
 
-namespace {
+namespace
+{
 // Prefer canonical Viper.* runtime names when an alias group exists.
 // Falls back to the original spelling when no registry entry is known.
 static std::string mapToCanonicalRuntime(std::string_view name)

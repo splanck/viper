@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: il/transform/SimplifyCFG/ForwardingElimination.hpp
-// Purpose: Declares empty block forwarding elimination for SimplifyCFG. 
+// Purpose: Declares empty block forwarding elimination for SimplifyCFG.
 // Key invariants: Redirects predecessors without altering live semantics.
 // Ownership/Lifetime: Modifies caller-owned CFG blocks in place.
 // Links: docs/codemap.md

@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_il_parse_call_string_comma.cpp
-// Purpose: Ensure call operand parsing preserves commas inside string literals. 
+// Purpose: Ensure call operand parsing preserves commas inside string literals.
 // Key invariants: Parser keeps string arguments intact even when containing delimiters.
 // Ownership/Lifetime: Test constructs modules and parser inputs locally.
 // Links: docs/il-guide.md#reference

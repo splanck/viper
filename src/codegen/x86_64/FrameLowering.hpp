@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: codegen/x86_64/FrameLowering.hpp
-// Purpose: Declare utilities responsible for constructing stack frames for the 
+// Purpose: Declare utilities responsible for constructing stack frames for the
 // Key invariants: To be documented.
 // Ownership/Lifetime: Callers retain ownership of Machine IR objects. Utilities borrow
 // Links: docs/architecture.md

@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_il_parse_duplicate_block.cpp
-// Purpose: Ensure parser rejects duplicate block labels within a function. 
+// Purpose: Ensure parser rejects duplicate block labels within a function.
 // Key invariants: Parsing fails with a "duplicate block" diagnostic referencing the label.
 // Ownership/Lifetime: Test constructs modules and diagnostic buffers locally.
 // Links: docs/il-guide.md#reference

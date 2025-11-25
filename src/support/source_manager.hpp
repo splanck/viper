@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: support/source_manager.hpp
-// Purpose: Declares manager for source file identifiers. 
+// Purpose: Declares manager for source file identifiers.
 // Key invariants: File ID 0 is invalid.
 // Ownership/Lifetime: Manager owns file path strings.
 // Links: docs/codemap.md

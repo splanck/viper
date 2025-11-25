@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_vm_many_temps.cpp
-// Purpose: Ensure VM handles functions with more than 64 SSA temporaries. 
+// Purpose: Ensure VM handles functions with more than 64 SSA temporaries.
 // Key invariants: Function with 70 temporaries executes and returns expected value.
 // Ownership/Lifetime: Test constructs IL module and executes VM.
 // Links: docs/il-guide.md#reference

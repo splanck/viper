@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/codegen/x86_64/test_string_literal.cpp
-// Purpose: Ensure the x86-64 backend materialises string literals via the 
+// Purpose: Ensure the x86-64 backend materialises string literals via the
 // Key invariants: Emitted assembly must include the literal's label, argument
 // Ownership/Lifetime: Test builds the IL module locally and checks the emitted
 // Links: src/codegen/x86_64/Backend.cpp

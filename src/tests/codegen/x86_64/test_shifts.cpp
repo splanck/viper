@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/codegen/x86_64/test_shifts.cpp
-// Purpose: Ensure x86-64 codegen lowers IL shift instructions to the 
+// Purpose: Ensure x86-64 codegen lowers IL shift instructions to the
 // Key invariants: Generated assembly must contain shl with an immediate
 // Ownership/Lifetime: Tests build IL modules locally and inspect emitted
 // Links: src/codegen/x86_64/LowerILToMIR.cpp,

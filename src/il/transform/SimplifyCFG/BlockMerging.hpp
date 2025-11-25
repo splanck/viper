@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: il/transform/SimplifyCFG/BlockMerging.hpp
-// Purpose: Declares block merging helpers for SimplifyCFG. 
+// Purpose: Declares block merging helpers for SimplifyCFG.
 // Key invariants: Merges preserve terminator semantics and argument mapping.
 // Ownership/Lifetime: Mutates predecessor/successor blocks owned by caller.
 // Links: docs/codemap.md

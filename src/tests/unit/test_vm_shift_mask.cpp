@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_vm_shift_mask.cpp
-// Purpose: Verify VM shift handlers mask the shift amount to avoid undefined behaviour. 
+// Purpose: Verify VM shift handlers mask the shift amount to avoid undefined behaviour.
 // Key invariants: Left-shift by >= 64 on i64 operands behaves as modulo-64 shift.
 // Ownership/Lifetime: Constructs IL module programmatically and executes via VM interpreter.
 // Links: docs/il-guide.md#reference §Integer Arithmetic

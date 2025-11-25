@@ -12,8 +12,8 @@
 
 #include "AsmEmitter.hpp"
 
-#include <iomanip>
 #include <cstring>
+#include <iomanip>
 
 namespace viper::codegen::aarch64
 {
@@ -57,7 +57,7 @@ void AsmEmitter::emitPrologue(std::ostream &os, const FramePlan &plan) const
     emitPrologue(os);
     if (plan.localFrameSize > 0)
     {
-/// @brief Emits subsp.
+        /// @brief Emits subsp.
         emitSubSp(os, plan.localFrameSize);
     }
     for (std::size_t i = 0; i < plan.saveGPRs.size();)
@@ -135,7 +135,7 @@ void AsmEmitter::emitEpilogue(std::ostream &os, const FramePlan &plan) const
     }
     if (plan.localFrameSize > 0)
     {
-/// @brief Emits addsp.
+        /// @brief Emits addsp.
         emitAddSp(os, plan.localFrameSize);
     }
     emitEpilogue(os);
@@ -268,7 +268,10 @@ void AsmEmitter::emitStrFprToFp(std::ostream &os, PhysReg src, long long offset)
     os << ", [x29, #" << offset << "]\n";
 }
 
-void AsmEmitter::emitLdrFromBase(std::ostream &os, PhysReg dst, PhysReg base, long long offset) const
+void AsmEmitter::emitLdrFromBase(std::ostream &os,
+                                 PhysReg dst,
+                                 PhysReg base,
+                                 long long offset) const
 {
     os << "  ldr " << rn(dst) << ", [" << rn(base) << ", #" << offset << "]\n";
 }
@@ -304,13 +307,13 @@ void AsmEmitter::emitMovImm64(std::ostream &os, PhysReg dst, unsigned long long 
     };
     emitMovZ(os, dst, chunks[0], 0);
     if (chunks[1])
-/// @brief Emits movk.
+        /// @brief Emits movk.
         emitMovK(os, dst, chunks[1], 16);
     if (chunks[2])
-/// @brief Emits movk.
+        /// @brief Emits movk.
         emitMovK(os, dst, chunks[2], 32);
     if (chunks[3])
-/// @brief Emits movk.
+        /// @brief Emits movk.
         emitMovK(os, dst, chunks[3], 48);
 }
 
@@ -450,14 +453,15 @@ void AsmEmitter::emitBlock(std::ostream &os, const MBasicBlock &bb) const
     if (!bb.name.empty())
         os << bb.name << ":\n";
     for (const auto &mi : bb.instrs)
-/// @brief Emits instruction.
+        /// @brief Emits instruction.
         emitInstruction(os, mi);
 }
 
 void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &mi) const
 {
     // Handle Ret specially since it needs the epilogue
-    if (mi.opc == MOpcode::Ret) {
+    if (mi.opc == MOpcode::Ret)
+    {
         // Emit epilogue using the stored frame plan from emitFunction
         if (currentPlanValid_ && currentPlan_)
             emitEpilogue(os, *currentPlan_);

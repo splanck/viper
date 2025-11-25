@@ -41,18 +41,19 @@ struct OopLoweringContext
 
     /// @brief Cache for resolved class info.
     /// @details Maps qualified class names to their metadata, avoiding repeated lookups.
-    std::unordered_map<std::string, const ClassInfo*> classCache;
+    std::unordered_map<std::string, const ClassInfo *> classCache;
 
     /// @brief Create a context for OOP lowering.
     /// @param lowerer Reference to the active lowering state.
     /// @param oopIndex Reference to the OOP metadata index.
-    OopLoweringContext(Lowerer &lowerer, OopIndex &oopIndex)
-        : lowerer(lowerer), oopIndex(oopIndex) {}
+    OopLoweringContext(Lowerer &lowerer, OopIndex &oopIndex) : lowerer(lowerer), oopIndex(oopIndex)
+    {
+    }
 
     /// @brief Look up class info with caching.
     /// @param className Qualified class name.
     /// @return Pointer to class info or nullptr if not found.
-    const ClassInfo* findClassInfo(const std::string &className);
+    const ClassInfo *findClassInfo(const std::string &className);
 };
 
 } // namespace il::frontends::basic

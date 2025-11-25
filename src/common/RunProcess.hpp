@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: common/RunProcess.hpp
-// Purpose: Declare cross-platform process execution helpers for CLI utilities. 
+// Purpose: Declare cross-platform process execution helpers for CLI utilities.
 // Key invariants: RunResult captures exit codes and aggregated stdout/stderr text.
 // Ownership/Lifetime: Callers own argument buffers; helper copies command text as needed.
 // Links: docs/codemap.md

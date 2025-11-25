@@ -22,9 +22,9 @@
 #ifndef RT_STRING_BUILDER_H
 #define RT_STRING_BUILDER_H
 
+#include "rt_string.h"
 #include <stddef.h>
 #include <stdint.h>
-#include "rt_string.h"
 
 #ifdef __cplusplus
 extern "C"

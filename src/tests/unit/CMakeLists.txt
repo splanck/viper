@@ -264,6 +264,12 @@ if (NOT TARGET test_runtime_class_list_binding)
     viper_add_ctest(test_runtime_class_list_binding test_runtime_class_list_binding)
 endif ()
 
+if (NOT TARGET test_runtime_class_tostring_user)
+    viper_add_test(test_runtime_class_tostring_user ${VIPER_TESTS_DIR}/unit/runtime_classes/TestRuntimeClassToString.cpp)
+    target_link_libraries(test_runtime_class_tostring_user PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_runtime_class_tostring_user test_runtime_class_tostring_user)
+endif ()
+
 
 # Poll callback tests
 if (NOT TARGET test_vm_poll_callback)

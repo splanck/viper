@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: vm/OpHandlerUtils.hpp
-// Purpose: Shared helper routines for VM opcode handlers. 
+// Purpose: Shared helper routines for VM opcode handlers.
 // Key invariants: Helpers operate on VM frames without leaking references.
 // Ownership/Lifetime: Functions mutate frame state in-place without storing globals.
 // Links: docs/il-guide.md#reference

@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_basic_parse_loops.cpp
-// Purpose: Verify loop parsing shares body handling without regressing NEXT/WEND semantics. 
+// Purpose: Verify loop parsing shares body handling without regressing NEXT/WEND semantics.
 // Key invariants: Loop bodies exclude terminators and preserve nested statement line numbers.
 // Ownership/Lifetime: Test owns parser, AST, and source manager instances.
 // Links: docs/codemap.md

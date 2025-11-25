@@ -31,7 +31,7 @@
 
 #include "vgfx.h"
 #include "vgfx_internal.h"
-#include <stdlib.h>  /* abs */
+#include <stdlib.h> /* abs */
 
 //===----------------------------------------------------------------------===//
 // Context Structures for Algorithm Callbacks
@@ -44,17 +44,19 @@
 /// @brief Context for single-pixel plotting callbacks.
 /// @details Passed to plot_callback() by the Bresenham line and midpoint
 ///          circle algorithms.  Contains window handle and color.
-typedef struct {
-    struct vgfx_window* win;    ///< Target window for drawing
-    vgfx_color_t        color;  ///< Color to plot (RGB 24-bit)
+typedef struct
+{
+    struct vgfx_window *win; ///< Target window for drawing
+    vgfx_color_t color;      ///< Color to plot (RGB 24-bit)
 } plot_context_t;
 
 /// @brief Context for horizontal line drawing callbacks.
 /// @details Passed to hline_callback() by the filled circle algorithm.
 ///          Contains window handle and color for scanline fills.
-typedef struct {
-    struct vgfx_window* win;    ///< Target window for drawing
-    vgfx_color_t        color;  ///< Color for scanline (RGB 24-bit)
+typedef struct
+{
+    struct vgfx_window *win; ///< Target window for drawing
+    vgfx_color_t color;      ///< Color for scanline (RGB 24-bit)
 } hline_context_t;
 
 //===----------------------------------------------------------------------===//
@@ -75,10 +77,14 @@ typedef struct {
 /// @pre  win != NULL
 /// @post If (x, y) in bounds: pixel is set to color with alpha=0xFF
 /// @post If (x, y) out of bounds: no-op (silent discard)
-static inline void plot_pixel_checked(struct vgfx_window* win, int32_t x, int32_t y,
-                                       vgfx_color_t color) {
+static inline void plot_pixel_checked(struct vgfx_window *win,
+                                      int32_t x,
+                                      int32_t y,
+                                      vgfx_color_t color)
+{
     /* Bounds check - silently discard out-of-bounds pixels */
-    if (x < 0 || x >= win->width || y < 0 || y >= win->height) {
+    if (x < 0 || x >= win->width || y < 0 || y >= win->height)
+    {
         return;
     }
 
@@ -86,10 +92,10 @@ static inline void plot_pixel_checked(struct vgfx_window* win, int32_t x, int32_
     uint8_t r = (uint8_t)((color >> 16) & 0xFF);
     uint8_t g = (uint8_t)((color >> 8) & 0xFF);
     uint8_t b = (uint8_t)(color & 0xFF);
-    uint8_t a = 0xFF;  /* Opaque alpha (required by RGBA format) */
+    uint8_t a = 0xFF; /* Opaque alpha (required by RGBA format) */
 
     /* Write to framebuffer in RGBA format (4 bytes per pixel) */
-    uint8_t* pixel = win->pixels + (y * win->stride) + (x * 4);
+    uint8_t *pixel = win->pixels + (y * win->stride) + (x * 4);
     pixel[0] = r;
     pixel[1] = g;
     pixel[2] = b;
@@ -112,8 +118,9 @@ static inline void plot_pixel_checked(struct vgfx_window* win, int32_t x, int32_
 /// @param ctx Opaque context pointer (actually plot_context_t*)
 ///
 /// @pre  ctx points to a valid plot_context_t structure
-static void plot_callback(int32_t x, int32_t y, void* ctx) {
-    plot_context_t* pctx = (plot_context_t*)ctx;
+static void plot_callback(int32_t x, int32_t y, void *ctx)
+{
+    plot_context_t *pctx = (plot_context_t *)ctx;
     plot_pixel_checked(pctx->win, x, y, pctx->color);
 }
 
@@ -129,25 +136,31 @@ static void plot_callback(int32_t x, int32_t y, void* ctx) {
 ///
 /// @pre  ctx points to a valid hline_context_t structure
 /// @post Horizontal line segment drawn from max(x0, 0) to min(x1, width-1) at y
-static void hline_callback(int32_t x0, int32_t x1, int32_t y, void* ctx) {
-    hline_context_t* hctx = (hline_context_t*)ctx;
-    struct vgfx_window* win = hctx->win;
+static void hline_callback(int32_t x0, int32_t x1, int32_t y, void *ctx)
+{
+    hline_context_t *hctx = (hline_context_t *)ctx;
+    struct vgfx_window *win = hctx->win;
     vgfx_color_t color = hctx->color;
 
     /* Bounds check Y coordinate (reject entire scanline if out of bounds) */
-    if (y < 0 || y >= win->height) return;
+    if (y < 0 || y >= win->height)
+        return;
 
     /* Ensure x0 <= x1 (swap if needed) */
-    if (x0 > x1) {
+    if (x0 > x1)
+    {
         int32_t tmp = x0;
         x0 = x1;
         x1 = tmp;
     }
 
     /* Clip X coordinates to window bounds [0, width) */
-    if (x0 < 0) x0 = 0;
-    if (x1 >= win->width) x1 = win->width - 1;
-    if (x0 > x1) return;  /* Scanline entirely clipped */
+    if (x0 < 0)
+        x0 = 0;
+    if (x1 >= win->width)
+        x1 = win->width - 1;
+    if (x0 > x1)
+        return; /* Scanline entirely clipped */
 
     /* Extract color components once for efficiency */
     uint8_t r = (uint8_t)((color >> 16) & 0xFF);
@@ -156,8 +169,9 @@ static void hline_callback(int32_t x0, int32_t x1, int32_t y, void* ctx) {
     uint8_t a = 0xFF;
 
     /* Draw horizontal line segment (scanline fill) */
-    uint8_t* scanline = win->pixels + (y * win->stride) + (x0 * 4);
-    for (int32_t x = x0; x <= x1; x++) {
+    uint8_t *scanline = win->pixels + (y * win->stride) + (x0 * 4);
+    for (int32_t x = x0; x <= x1; x++)
+    {
         scanline[0] = r;
         scanline[1] = g;
         scanline[2] = b;
@@ -198,10 +212,13 @@ static void hline_callback(int32_t x0, int32_t x1, int32_t y, void* ctx) {
 ///
 /// @pre  plot != NULL
 /// @post plot() called for each pixel along the line from (x0, y0) to (x1, y1)
-static void bresenham_line(int32_t x0, int32_t y0,
-                           int32_t x1, int32_t y1,
-                           void (*plot)(int32_t x, int32_t y, void* ctx),
-                           void* ctx) {
+static void bresenham_line(int32_t x0,
+                           int32_t y0,
+                           int32_t x1,
+                           int32_t y1,
+                           void (*plot)(int32_t x, int32_t y, void *ctx),
+                           void *ctx)
+{
     /* Calculate absolute deltas (line extents) */
     int32_t dx = abs(x1 - x0);
     int32_t dy = abs(y1 - y0);
@@ -220,24 +237,28 @@ static void bresenham_line(int32_t x0, int32_t y0,
     int32_t y = y0;
 
     /* Iterate until we reach the endpoint (inclusive) */
-    while (1) {
+    while (1)
+    {
         /* Plot current pixel */
         plot(x, y, ctx);
 
         /* Check if we've reached the endpoint */
-        if (x == x1 && y == y1) break;
+        if (x == x1 && y == y1)
+            break;
 
         /* Calculate 2 * error for comparison (avoids division) */
         int32_t e2 = 2 * err;
 
         /* Step in X direction if error threshold exceeded */
-        if (e2 > -dy) {
+        if (e2 > -dy)
+        {
             err -= dy;
             x += sx;
         }
 
         /* Step in Y direction if error threshold exceeded */
-        if (e2 < dx) {
+        if (e2 < dx)
+        {
             err += dx;
             y += sy;
         }
@@ -280,17 +301,22 @@ static void bresenham_line(int32_t x0, int32_t y0,
 /// @pre  radius >= 0
 /// @post plot() called for all pixels on the circle perimeter (if radius > 0)
 /// @post plot() called once at (cx, cy) if radius == 0
-static void midpoint_circle(int32_t cx, int32_t cy, int32_t radius,
-                            void (*plot)(int32_t x, int32_t y, void* ctx),
-                            void* ctx) {
+static void midpoint_circle(int32_t cx,
+                            int32_t cy,
+                            int32_t radius,
+                            void (*plot)(int32_t x, int32_t y, void *ctx),
+                            void *ctx)
+{
     /* Special case: radius 0 is just a single point at the center */
-    if (radius == 0) {
+    if (radius == 0)
+    {
         plot(cx, cy, ctx);
         return;
     }
 
     /* Negative radius is invalid (reject without drawing) */
-    if (radius < 0) return;
+    if (radius < 0)
+        return;
 
     /* Initial position in first octant: (0, radius)
      * This corresponds to the topmost point of the circle */
@@ -304,24 +330,28 @@ static void midpoint_circle(int32_t cx, int32_t cy, int32_t radius,
 
     /* Plot initial 8 symmetric points (all octants at x=0)
      * Each octant has a reflection about the X axis, Y axis, and Y=X line */
-    plot(cx + x, cy + y, ctx);  /* Octant 2:  90° (top) */
-    plot(cx - x, cy + y, ctx);  /* Octant 1:  90° (top, mirrored) */
-    plot(cx + x, cy - y, ctx);  /* Octant 7: 270° (bottom) */
-    plot(cx - x, cy - y, ctx);  /* Octant 6: 270° (bottom, mirrored) */
-    plot(cx + y, cy + x, ctx);  /* Octant 3:   0° (right) */
-    plot(cx - y, cy + x, ctx);  /* Octant 0: 180° (left) */
-    plot(cx + y, cy - x, ctx);  /* Octant 4:   0° (right, mirrored) */
-    plot(cx - y, cy - x, ctx);  /* Octant 5: 180° (left, mirrored) */
+    plot(cx + x, cy + y, ctx); /* Octant 2:  90° (top) */
+    plot(cx - x, cy + y, ctx); /* Octant 1:  90° (top, mirrored) */
+    plot(cx + x, cy - y, ctx); /* Octant 7: 270° (bottom) */
+    plot(cx - x, cy - y, ctx); /* Octant 6: 270° (bottom, mirrored) */
+    plot(cx + y, cy + x, ctx); /* Octant 3:   0° (right) */
+    plot(cx - y, cy + x, ctx); /* Octant 0: 180° (left) */
+    plot(cx + y, cy - x, ctx); /* Octant 4:   0° (right, mirrored) */
+    plot(cx - y, cy - x, ctx); /* Octant 5: 180° (left, mirrored) */
 
     /* Iterate through first octant (while x < y, i.e., slope > -1) */
-    while (x < y) {
-        x++;  /* Always step horizontally in first octant */
+    while (x < y)
+    {
+        x++; /* Always step horizontally in first octant */
 
         /* Update decision parameter and Y coordinate based on midpoint test */
-        if (d < 0) {
+        if (d < 0)
+        {
             /* Midpoint is inside circle: step horizontally only (x+1, y) */
             d += 2 * x + 1;
-        } else {
+        }
+        else
+        {
             /* Midpoint is outside circle: step diagonally (x+1, y-1) */
             y--;
             d += 2 * (x - y) + 1;
@@ -368,18 +398,22 @@ static void midpoint_circle(int32_t cx, int32_t cy, int32_t radius,
 /// @pre  hline != NULL
 /// @pre  radius >= 0
 /// @post hline() called for all horizontal scanlines filling the circle interior
-static void filled_circle(int32_t cx, int32_t cy, int32_t radius,
-                          void (*hline)(int32_t x0, int32_t x1,
-                                        int32_t y, void* ctx),
-                          void* ctx) {
+static void filled_circle(int32_t cx,
+                          int32_t cy,
+                          int32_t radius,
+                          void (*hline)(int32_t x0, int32_t x1, int32_t y, void *ctx),
+                          void *ctx)
+{
     /* Special case: radius 0 is just a single point (degenerate scanline) */
-    if (radius == 0) {
+    if (radius == 0)
+    {
         hline(cx, cx, cy, ctx);
         return;
     }
 
     /* Negative radius is invalid (reject without drawing) */
-    if (radius < 0) return;
+    if (radius < 0)
+        return;
 
     /* Initial position in first octant (same as outline algorithm) */
     int32_t x = 0;
@@ -388,19 +422,23 @@ static void filled_circle(int32_t cx, int32_t cy, int32_t radius,
 
     /* Fill initial horizontal lines (corresponds to initial 8-way symmetry)
      * These are the scanlines at y = cy ± radius and y = cy ± 0 */
-    hline(cx - x, cx + x, cy + y, ctx);  /* Top: y = cy + radius */
-    hline(cx - x, cx + x, cy - y, ctx);  /* Bottom: y = cy - radius */
-    hline(cx - y, cx + y, cy + x, ctx);  /* Middle upper: y = cy + 0 = cy */
-    hline(cx - y, cx + y, cy - x, ctx);  /* Middle lower: y = cy - 0 = cy */
+    hline(cx - x, cx + x, cy + y, ctx); /* Top: y = cy + radius */
+    hline(cx - x, cx + x, cy - y, ctx); /* Bottom: y = cy - radius */
+    hline(cx - y, cx + y, cy + x, ctx); /* Middle upper: y = cy + 0 = cy */
+    hline(cx - y, cx + y, cy - x, ctx); /* Middle lower: y = cy - 0 = cy */
 
     /* Iterate through first octant (while x < y) */
-    while (x < y) {
+    while (x < y)
+    {
         x++;
 
         /* Update decision parameter (same as outline algorithm) */
-        if (d < 0) {
+        if (d < 0)
+        {
             d += 2 * x + 1;
-        } else {
+        }
+        else
+        {
             y--;
             d += 2 * (x - y) + 1;
         }
@@ -409,10 +447,10 @@ static void filled_circle(int32_t cx, int32_t cy, int32_t radius,
          * Two scanlines span the width at y = cy ± y (outer)
          * Two scanlines span the width at y = cy ± x (inner)
          * Together these fill the entire circle interior */
-        hline(cx - x, cx + x, cy + y, ctx);  /* Upper half, outer */
-        hline(cx - x, cx + x, cy - y, ctx);  /* Lower half, outer */
-        hline(cx - y, cx + y, cy + x, ctx);  /* Upper half, inner */
-        hline(cx - y, cx + y, cy - x, ctx);  /* Lower half, inner */
+        hline(cx - x, cx + x, cy + y, ctx); /* Upper half, outer */
+        hline(cx - x, cx + x, cy - y, ctx); /* Lower half, outer */
+        hline(cx - y, cx + y, cy + x, ctx); /* Upper half, inner */
+        hline(cx - y, cx + y, cy - x, ctx); /* Lower half, inner */
     }
 }
 
@@ -438,16 +476,15 @@ static void filled_circle(int32_t cx, int32_t cy, int32_t radius,
 ///
 /// @pre  window is a valid struct vgfx_window*
 /// @post Line pixels drawn from (x1, y1) to (x2, y2) in the framebuffer
-void vgfx_draw_line(vgfx_window_t window, int32_t x1, int32_t y1,
-                    int32_t x2, int32_t y2, vgfx_color_t color) {
-    struct vgfx_window* win = (struct vgfx_window*)window;
-    if (!win) return;
+void vgfx_draw_line(
+    vgfx_window_t window, int32_t x1, int32_t y1, int32_t x2, int32_t y2, vgfx_color_t color)
+{
+    struct vgfx_window *win = (struct vgfx_window *)window;
+    if (!win)
+        return;
 
     /* Set up plot context (passed to bresenham_line via plot_callback) */
-    plot_context_t ctx = {
-        .win = win,
-        .color = color
-    };
+    plot_context_t ctx = {.win = win, .color = color};
 
     /* Draw line using Bresenham algorithm */
     bresenham_line(x1, y1, x2, y2, plot_callback, &ctx);
@@ -467,10 +504,12 @@ void vgfx_draw_line(vgfx_window_t window, int32_t x1, int32_t y1,
 ///
 /// @pre  window is a valid struct vgfx_window*
 /// @post Rectangle outline drawn at (x, y) with dimensions w × h
-void vgfx_draw_rect(vgfx_window_t window, int32_t x, int32_t y,
-                    int32_t w, int32_t h, vgfx_color_t color) {
+void vgfx_draw_rect(
+    vgfx_window_t window, int32_t x, int32_t y, int32_t w, int32_t h, vgfx_color_t color)
+{
     /* Trivial reject: zero or negative dimensions (invalid rectangle) */
-    if (w <= 0 || h <= 0) return;
+    if (w <= 0 || h <= 0)
+        return;
 
     /* Draw four edges of rectangle using line primitive
      * Top:    (x, y) to (x+w-1, y)
@@ -478,9 +517,9 @@ void vgfx_draw_rect(vgfx_window_t window, int32_t x, int32_t y,
      * Left:   (x, y) to (x, y+h-1)
      * Right:  (x+w-1, y) to (x+w-1, y+h-1)
      */
-    vgfx_draw_line(window, x, y, x + w - 1, y, color);             /* Top */
+    vgfx_draw_line(window, x, y, x + w - 1, y, color);                 /* Top */
     vgfx_draw_line(window, x, y + h - 1, x + w - 1, y + h - 1, color); /* Bottom */
-    vgfx_draw_line(window, x, y, x, y + h - 1, color);             /* Left */
+    vgfx_draw_line(window, x, y, x, y + h - 1, color);                 /* Left */
     vgfx_draw_line(window, x + w - 1, y, x + w - 1, y + h - 1, color); /* Right */
 }
 
@@ -498,13 +537,16 @@ void vgfx_draw_rect(vgfx_window_t window, int32_t x, int32_t y,
 ///
 /// @pre  window is a valid struct vgfx_window*
 /// @post Rectangle filled at (x, y) with dimensions w × h (clipped to window)
-void vgfx_draw_fill_rect(vgfx_window_t window, int32_t x, int32_t y,
-                          int32_t w, int32_t h, vgfx_color_t color) {
-    struct vgfx_window* win = (struct vgfx_window*)window;
-    if (!win) return;
+void vgfx_draw_fill_rect(
+    vgfx_window_t window, int32_t x, int32_t y, int32_t w, int32_t h, vgfx_color_t color)
+{
+    struct vgfx_window *win = (struct vgfx_window *)window;
+    if (!win)
+        return;
 
     /* Trivial reject: zero or negative dimensions (invalid rectangle) */
-    if (w <= 0 || h <= 0) return;
+    if (w <= 0 || h <= 0)
+        return;
 
     /* Clip rectangle to window bounds [0, width) × [0, height) */
     int32_t x1 = (x < 0) ? 0 : x;
@@ -513,7 +555,8 @@ void vgfx_draw_fill_rect(vgfx_window_t window, int32_t x, int32_t y,
     int32_t y2 = (y + h > win->height) ? win->height : y + h;
 
     /* Check if rectangle is completely out of bounds (no pixels to draw) */
-    if (x1 >= x2 || y1 >= y2) return;
+    if (x1 >= x2 || y1 >= y2)
+        return;
 
     /* Extract color components once for efficiency (avoid repeated bit shifts) */
     uint8_t r = (uint8_t)((color >> 16) & 0xFF);
@@ -522,17 +565,19 @@ void vgfx_draw_fill_rect(vgfx_window_t window, int32_t x, int32_t y,
     uint8_t a = 0xFF;
 
     /* Fill each scanline (row-by-row rendering) */
-    for (int32_t row = y1; row < y2; row++) {
+    for (int32_t row = y1; row < y2; row++)
+    {
         /* Compute scanline base address (start of row) */
-        uint8_t* scanline = win->pixels + (row * win->stride) + (x1 * 4);
+        uint8_t *scanline = win->pixels + (row * win->stride) + (x1 * 4);
 
         /* Fill scanline with color (column-by-column) */
-        for (int32_t col = x1; col < x2; col++) {
+        for (int32_t col = x1; col < x2; col++)
+        {
             scanline[0] = r;
             scanline[1] = g;
             scanline[2] = b;
             scanline[3] = a;
-            scanline += 4;  /* Advance to next pixel (4 bytes = RGBA) */
+            scanline += 4; /* Advance to next pixel (4 bytes = RGBA) */
         }
     }
 }
@@ -550,19 +595,19 @@ void vgfx_draw_fill_rect(vgfx_window_t window, int32_t x, int32_t y,
 ///
 /// @pre  window is a valid struct vgfx_window*
 /// @post Circle outline drawn centered at (cx, cy) with given radius
-void vgfx_draw_circle(vgfx_window_t window, int32_t cx, int32_t cy,
-                      int32_t radius, vgfx_color_t color) {
-    struct vgfx_window* win = (struct vgfx_window*)window;
-    if (!win) return;
+void vgfx_draw_circle(
+    vgfx_window_t window, int32_t cx, int32_t cy, int32_t radius, vgfx_color_t color)
+{
+    struct vgfx_window *win = (struct vgfx_window *)window;
+    if (!win)
+        return;
 
     /* Trivial reject: negative radius (invalid circle) */
-    if (radius < 0) return;
+    if (radius < 0)
+        return;
 
     /* Set up plot context (passed to midpoint_circle via plot_callback) */
-    plot_context_t ctx = {
-        .win = win,
-        .color = color
-    };
+    plot_context_t ctx = {.win = win, .color = color};
 
     /* Draw circle outline using midpoint algorithm */
     midpoint_circle(cx, cy, radius, plot_callback, &ctx);
@@ -581,19 +626,19 @@ void vgfx_draw_circle(vgfx_window_t window, int32_t cx, int32_t cy,
 ///
 /// @pre  window is a valid struct vgfx_window*
 /// @post Filled circle drawn centered at (cx, cy) with given radius
-void vgfx_draw_fill_circle(vgfx_window_t window, int32_t cx, int32_t cy,
-                            int32_t radius, vgfx_color_t color) {
-    struct vgfx_window* win = (struct vgfx_window*)window;
-    if (!win) return;
+void vgfx_draw_fill_circle(
+    vgfx_window_t window, int32_t cx, int32_t cy, int32_t radius, vgfx_color_t color)
+{
+    struct vgfx_window *win = (struct vgfx_window *)window;
+    if (!win)
+        return;
 
     /* Trivial reject: negative radius (invalid circle) */
-    if (radius < 0) return;
+    if (radius < 0)
+        return;
 
     /* Set up horizontal line context (passed to filled_circle via hline_callback) */
-    hline_context_t ctx = {
-        .win = win,
-        .color = color
-    };
+    hline_context_t ctx = {.win = win, .color = color};
 
     /* Fill circle using scanline algorithm */
     filled_circle(cx, cy, radius, hline_callback, &ctx);

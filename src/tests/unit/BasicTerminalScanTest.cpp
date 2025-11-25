@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/BasicTerminalScanTest.cpp
-// Purpose: Verify terminal statements declare required runtime externs during BASIC lowering. 
+// Purpose: Verify terminal statements declare required runtime externs during BASIC lowering.
 // Key invariants: Compiling terminal control statements registers runtime helpers in the module.
 // Ownership/Lifetime: Test owns compilation inputs and diagnostics infrastructure.
 // Links: docs/il-guide.md#reference, src/frontends/basic/LowerStmt_Runtime.cpp

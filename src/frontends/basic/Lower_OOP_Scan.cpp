@@ -62,7 +62,8 @@ template <typename FieldRange>
 [[nodiscard]] Lowerer::ClassLayout buildLayout(const FieldRange &fields)
 {
     Lowerer::ClassLayout layout;
-    std::size_t offset = 0;
+    // Reserve header for vptr at offset 0; fields start after pointer-sized header.
+    std::size_t offset = kPointerSize;
     for (const auto &field : fields)
     {
         offset = alignTo(offset, kFieldAlignment);
@@ -124,7 +125,8 @@ class OopScanWalker final : public BasicAstWalker<OopScanWalker>
         // computing offsets and sizes. TypeDecl fields do not support arrays
         // and continue to use the generic builder below.
         Lowerer::ClassLayout layout;
-        std::size_t offset = 0;
+        // Reserve header for vptr at offset 0; fields start after pointer-sized header.
+        std::size_t offset = kPointerSize;
         for (const auto &field : decl.fields)
         {
             offset = alignTo(offset, kFieldAlignment);

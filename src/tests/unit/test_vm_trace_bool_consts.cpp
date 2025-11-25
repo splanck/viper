@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_vm_trace_bool_consts.cpp
-// Purpose: Ensure VM IL traces render boolean constants using textual literals. 
+// Purpose: Ensure VM IL traces render boolean constants using textual literals.
 // Key invariants: Trace output spells const.i1 operands as "true"/"false" to
 // Ownership/Lifetime: Test constructs IL in-memory and executes the VM with tracing
 // Links: docs/il-guide.md#reference

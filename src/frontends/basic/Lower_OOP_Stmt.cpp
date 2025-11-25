@@ -109,8 +109,9 @@ void Lowerer::lowerDelete(const DeleteStmt &stmt)
 // New implementation with OopLoweringContext parameter
 void Lowerer::lowerDelete(const DeleteStmt &stmt, OopLoweringContext &oopCtx)
 {
-    // For now, just delegate to the old implementation
-    // TODO: Refactor to use context for class layout and destructor lookups
+    // For now, delegate to the existing implementation.
+    // TODO: Refactor to use OopLoweringContext for class layout + destructor lookups
+    //       (consistency across OOP lowering entry points; behavior is already correct).
     lowerDelete(stmt);
 }
 

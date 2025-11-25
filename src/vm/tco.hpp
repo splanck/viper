@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: vm/tco.hpp
-// Purpose: Tail-call optimisation helper for reusing the current frame. 
+// Purpose: Tail-call optimisation helper for reusing the current frame.
 // Key invariants: To be documented.
 // Ownership/Lifetime: Modifies the provided ExecState in place; no allocation beyond vectors.
 // Links: docs/architecture.md

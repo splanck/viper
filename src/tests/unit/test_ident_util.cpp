@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_ident_util.cpp
-// Purpose: Unit tests for identifier/path canonicalization utilities. 
+// Purpose: Unit tests for identifier/path canonicalization utilities.
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md

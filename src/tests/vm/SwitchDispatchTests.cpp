@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/vm/SwitchDispatchTests.cpp
-// Purpose: Ensure the VM dispatch table executes SwitchI32 handlers correctly. 
+// Purpose: Ensure the VM dispatch table executes SwitchI32 handlers correctly.
 // Key invariants: Matching case transfers to correct block, default is taken otherwise.
 // Ownership/Lifetime: Builds ephemeral modules per scenario and executes immediately.
 // Links: docs/il-guide.md#reference

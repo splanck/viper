@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: frontends/basic/DiagnosticCodes.hpp
-// Purpose: Centralized diagnostic error codes for BASIC frontend 
+// Purpose: Centralized diagnostic error codes for BASIC frontend
 // Key invariants: All codes are unique and follow B#### format
 // Ownership/Lifetime: Static constants with program lifetime
 // Links: docs/basic-diagnostics.md

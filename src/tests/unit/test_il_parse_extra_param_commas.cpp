@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_il_parse_extra_param_commas.cpp
-// Purpose: Ensure function headers reject empty parameter slots separated by commas. 
+// Purpose: Ensure function headers reject empty parameter slots separated by commas.
 // Key invariants: Parser reports detailed diagnostics for malformed parameter lists.
 // Ownership/Lifetime: Test constructs modules and diagnostic buffers locally.
 // Links: docs/il-guide.md#reference

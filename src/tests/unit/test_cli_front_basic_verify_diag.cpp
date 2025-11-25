@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_cli_front_basic_verify_diag.cpp
-// Purpose: Ensure cmdFrontBasic reports verifier failures with BASIC source locations. 
+// Purpose: Ensure cmdFrontBasic reports verifier failures with BASIC source locations.
 // Key invariants: Diagnostic text must include the filename and line/column of the failing
 // Ownership/Lifetime: To be documented.
 // Links: src/tools/ilc/cmd_front_basic.cpp

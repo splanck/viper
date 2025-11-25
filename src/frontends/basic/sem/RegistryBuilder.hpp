@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: frontends/basic/sem/RegistryBuilder.hpp
-// Purpose: Build NamespaceRegistry from parsed BASIC program. 
+// Purpose: Build NamespaceRegistry from parsed BASIC program.
 // Key invariants: // Key invariants:
 // Ownership/Lifetime: Does not own registry or usings; caller ensures lifetime.
 // Links: docs/codemap.md, CLAUDE.md

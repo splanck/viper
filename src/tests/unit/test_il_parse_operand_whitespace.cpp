@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_il_parse_operand_whitespace.cpp
-// Purpose: Verify OperandParser trims leading whitespace for registers and globals. 
+// Purpose: Verify OperandParser trims leading whitespace for registers and globals.
 // Key invariants: parseValueToken should succeed for whitespace-prefixed identifiers and
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md

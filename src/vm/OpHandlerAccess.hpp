@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: vm/OpHandlerAccess.hpp
-// Purpose: Expose controlled accessors for VM internals to opcode handler code. 
+// Purpose: Expose controlled accessors for VM internals to opcode handler code.
 // Key invariants: Grants read/write access only to members required for handler semantics.
 // Ownership/Lifetime: Accessors operate on VM-owned state without transferring ownership.
 // Links: docs/il-guide.md#reference

@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/codegen/test_codegen_arm64_call_many_args.cpp
-// Purpose: Verify AArch64 lowering handles >8 integer args with outgoing stack area 
+// Purpose: Verify AArch64 lowering handles >8 integer args with outgoing stack area
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md
@@ -69,7 +69,8 @@ TEST(Arm64CLI, CallManyArgs_WithParamsConstsAndLoad)
     const std::string asmText = readFile(out);
     // First eight in x0..x7
     EXPECT_NE(asmText.find("bl h"), std::string::npos);
-    EXPECT_NE(asmText.find("mov x0, x0"), std::string::npos); // a -> x0 (may be elided if already x0)
+    EXPECT_NE(asmText.find("mov x0, x0"),
+              std::string::npos); // a -> x0 (may be elided if already x0)
     EXPECT_NE(asmText.find("mov x1, #1"), std::string::npos);
     EXPECT_NE(asmText.find("mov x2, x1"), std::string::npos); // b -> x2
     EXPECT_NE(asmText.find("mov x3, #2"), std::string::npos);
@@ -127,4 +128,3 @@ int main(int argc, char **argv)
     testing::InitGoogleTest(&argc, &argv);
     return RUN_ALL_TESTS();
 }
-

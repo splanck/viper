@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/oop/TestDispose.cpp
-// Purpose: Validate DISPOSE null is no-op and double DISPOSE traps (debug). 
+// Purpose: Validate DISPOSE null is no-op and double DISPOSE traps (debug).
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md

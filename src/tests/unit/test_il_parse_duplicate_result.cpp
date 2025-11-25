@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_il_parse_duplicate_result.cpp
-// Purpose: Ensure the IL parser rejects duplicate SSA result names within a block. 
+// Purpose: Ensure the IL parser rejects duplicate SSA result names within a block.
 // Key invariants: Parser reports diagnostics when a result name is redefined.
 // Ownership/Lifetime: Test owns module and diagnostic buffers constructed from string literals.
 // Links: docs/il-guide.md#reference

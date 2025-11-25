@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/VM_StepApiTests.cpp
-// Purpose: Validate Runner step/continue APIs and breakpoint behavior. 
+// Purpose: Validate Runner step/continue APIs and breakpoint behavior.
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md

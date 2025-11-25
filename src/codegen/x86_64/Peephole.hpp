@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: codegen/x86_64/Peephole.hpp
-// Purpose: Declare peephole optimisations over the provisional Machine IR for 
+// Purpose: Declare peephole optimisations over the provisional Machine IR for
 // Key invariants: To be documented.
 // Ownership/Lifetime: Operates on mutable Machine IR owned by the caller; no new
 // Links: docs/architecture.md

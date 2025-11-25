@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_basic_lowerer_select_case_order.cpp
-// Purpose: Ensure SELECT CASE lowering inserts blocks before the function exit. 
+// Purpose: Ensure SELECT CASE lowering inserts blocks before the function exit.
 // Key invariants: The synthetic 'exit' block in @main must remain the last
 // Ownership/Lifetime: To be documented.
 // Links: bugs/basic_bugs.md (BUG-072)

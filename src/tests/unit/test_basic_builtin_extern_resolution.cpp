@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_basic_builtin_extern_resolution.cpp
-// Purpose: Validate resolution of builtin extern calls (dotted and via USING), 
+// Purpose: Validate resolution of builtin extern calls (dotted and via USING),
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md

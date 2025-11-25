@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/frontends/basic/LowererOopConstructorTests.cpp
-// Purpose: Ensure BASIC lowering synthesises default constructors for classes without SUB NEW. 
+// Purpose: Ensure BASIC lowering synthesises default constructors for classes without SUB NEW.
 // Key invariants: Lowered module defines the mangled constructor symbol and NEW expressions
 // Ownership/Lifetime: Test owns parser, lowerer, and produced module per scenario.
 // Links: docs/codemap.md

@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/il/core/test_MemoryEffects.cpp
-// Purpose: Validate opcode memory effect classification helpers. 
+// Purpose: Validate opcode memory effect classification helpers.
 // Key invariants: Pure arithmetic remains memory-free; loads/stores/calls conservatively marked.
 // Ownership/Lifetime: Test constructs transient function objects on the stack.
 // Links: src/il/core/OpcodeInfo.hpp

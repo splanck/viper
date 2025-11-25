@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_runtime_registry.cpp
-// Purpose: Validate runtime registry metadata coverage. 
+// Purpose: Validate runtime registry metadata coverage.
 // Key invariants: Every descriptor publishes a handler and signature mapping.
 // Ownership/Lifetime: To be documented.
 // Links: docs/codemap.md

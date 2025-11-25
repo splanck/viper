@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: il/runtime/RuntimeSignaturesData.hpp
-// Purpose: Provides static runtime signature specifications and symbol metadata. 
+// Purpose: Provides static runtime signature specifications and symbol metadata.
 // Key invariants: Signature specification order matches RtSig enumerators and symbols.
 // Ownership/Lifetime: Inline constexpr tables with static storage across translation units.
 // Links: docs/il-guide.md#reference

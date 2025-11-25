@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/codegen/test_codegen_arm64_call_temp_args.cpp
-// Purpose: Verify CLI lowers calls with a single non-entry temp argument by computing into X9. 
+// Purpose: Verify CLI lowers calls with a single non-entry temp argument by computing into X9.
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md

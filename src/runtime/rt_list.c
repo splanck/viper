@@ -16,6 +16,7 @@
 #include "rt_list.h"
 
 #include "rt_array_obj.h"
+#include "rt_internal.h"
 #include "rt_heap.h"
 #include "rt_object.h"
 
@@ -80,28 +81,40 @@ void rt_list_add(void *list, void *elem)
 
 void *rt_list_get_item(void *list, int64_t index)
 {
+    if (!list)
+        rt_trap("rt_list_get_item: null list");
+    if (index < 0)
+        rt_trap("rt_list_get_item: negative index");
     rt_list_impl *L = as_list(list);
     size_t len = rt_arr_obj_len(L->arr);
     if ((uint64_t)index >= (uint64_t)len)
-        return NULL;
+        rt_trap("rt_list_get_item: index out of bounds");
     return rt_arr_obj_get(L->arr, (size_t)index);
 }
 
 void rt_list_set_item(void *list, int64_t index, void *elem)
 {
+    if (!list)
+        rt_trap("rt_list_set_item: null list");
+    if (index < 0)
+        rt_trap("rt_list_set_item: negative index");
     rt_list_impl *L = as_list(list);
     size_t len = rt_arr_obj_len(L->arr);
     if ((uint64_t)index >= (uint64_t)len)
-        return;
+        rt_trap("rt_list_set_item: index out of bounds");
     rt_arr_obj_put(L->arr, (size_t)index, elem);
 }
 
 void rt_list_remove_at(void *list, int64_t index)
 {
+    if (!list)
+        rt_trap("rt_list_remove_at: null list");
+    if (index < 0)
+        rt_trap("rt_list_remove_at: negative index");
     rt_list_impl *L = as_list(list);
     size_t len = rt_arr_obj_len(L->arr);
     if ((uint64_t)index >= (uint64_t)len)
-        return;
+        rt_trap("rt_list_remove_at: index out of bounds");
     // Shift elements left from index
     if (len > 0)
     {
@@ -117,4 +130,3 @@ void rt_list_remove_at(void *list, int64_t index)
         L->arr = rt_arr_obj_resize(L->arr, len - 1);
     }
 }
-

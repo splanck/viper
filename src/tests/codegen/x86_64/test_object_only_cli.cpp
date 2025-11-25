@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/codegen/x86_64/test_object_only_cli.cpp
-// Purpose: Verify that the x86-64 codegen CLI can assemble IL modules without 
+// Purpose: Verify that the x86-64 codegen CLI can assemble IL modules without
 // Key invariants: The CLI must successfully emit an object file even when the
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md

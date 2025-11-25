@@ -958,15 +958,18 @@ END CLASS
 
 ### Conclusion
 
-OOP support in Viper BASIC is **severely limited**:
-- ✅ Basic OOP structure works (classes, objects, methods)
-- ✅ Integer properties and operations work well
-- ❌ String properties completely broken
-- ❌ Local string variables in methods don't work
-- ❌ Can't access global strings from methods  
-- ❌ FUNCTION methods cause code generation errors
+OOP support in Viper BASIC is now broadly usable and tested:
+- ✅ Classes, methods, properties (incl. strings) supported
+- ✅ Local and global strings in methods work and are reference‑counted correctly
+- ✅ Core runtime classes are available under canonical `Viper.*` namespaces:
+  - `Viper.String` (BASIC `STRING` alias), `Viper.Object`
+  - `Viper.Text.StringBuilder`
+  - `Viper.IO.File`
+  - `Viper.Collections.List` (non‑generic, object references)
+- ✅ Interfaces and dynamic dispatch via vtables/itables exist; OOP lowering is covered by golden/e2e tests
+- ♻️ Legacy `Viper.System.*` names are supported as aliases for compatibility
 
-**Practical Impact**: Can only build trivial OOP programs with integer state. Any real-world OOP application requiring strings is impossible. The procedural file-based approach (database.bas) is more powerful than the OOP approach (db_oop.bas).
+**Practical Impact**: Realistic OOP examples work, including string properties, text processing using StringBuilder and File I/O, and collections using List. Prefer the `Viper.*` classes for new code; use `Viper.System.*` only when required for legacy compatibility.
 
 
 ---

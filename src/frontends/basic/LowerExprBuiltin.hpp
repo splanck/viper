@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: frontends/basic/LowerExprBuiltin.hpp
-// Purpose: Declares builtin expression lowering helpers that interact with the 
+// Purpose: Declares builtin expression lowering helpers that interact with the
 // Key invariants: Builtin lowering preserves runtime feature tracking and
 // Ownership/Lifetime: Helpers borrow the Lowerer reference for a single
 // Links: docs/codemap.md

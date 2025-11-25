@@ -113,8 +113,18 @@ TypeRegistry &runtimeTypeRegistry()
 
 void seedRuntimeTypeCatalog(NamespaceRegistry &registry)
 {
-    // Minimal catalog of canonical types under Viper.System.*. Methods/fields are TBD.
+    // Seed a minimal catalog of built-in runtime types. Canonical names live
+    // under Viper.* and are defined by the runtime class catalog
+    // (src/il/runtime/classes/RuntimeClasses.inc). Compat aliases (Viper.System.*)
+    // may also be registered to ease migration.
     static const BuiltinExternalType kTypes[] = {
+        // Canonical forms
+        {"Viper.Object", ExternalTypeCategory::Class, "viper:Object"},
+        {"Viper.String", ExternalTypeCategory::Class, "viper:String"},
+        {"Viper.Text.StringBuilder", ExternalTypeCategory::Class, "viper.text:StringBuilder"},
+        {"Viper.IO.File", ExternalTypeCategory::Class, "viper.io:File"},
+        {"Viper.Collections.List", ExternalTypeCategory::Class, "viper.coll:List"},
+        // Compat aliases (System.*)
         {"Viper.System.Object", ExternalTypeCategory::Class, "sys:Object"},
         {"Viper.System.String", ExternalTypeCategory::Class, "sys:String"},
         {"Viper.System.Text.StringBuilder", ExternalTypeCategory::Class, "sys.text:StringBuilder"},

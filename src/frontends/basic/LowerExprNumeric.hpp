@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: frontends/basic/LowerExprNumeric.hpp
-// Purpose: Declares numeric expression lowering helpers for the BASIC Lowerer. 
+// Purpose: Declares numeric expression lowering helpers for the BASIC Lowerer.
 // Key invariants: Helpers reuse Lowerer conversions to maintain consistent type
 // Ownership/Lifetime: Borrow the Lowerer reference for on-demand lowering.
 // Links: docs/codemap.md

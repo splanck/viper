@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/codegen/x86_64/test_addressing_modes.cpp
-// Purpose: Ensure x86-64 codegen emits SIB addressing for base+index*scale+disp and folds LEA. 
+// Purpose: Ensure x86-64 codegen emits SIB addressing for base+index*scale+disp and folds LEA.
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
 // Links: src/codegen/x86_64/Lowering.EmitCommon.cpp, ISel.cpp (foldLeaIntoMem), AsmEmitter.cpp

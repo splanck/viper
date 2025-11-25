@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/codegen/x86_64/test_abi_probe.cpp
-// Purpose: Ensure the x86-64 backend honours the SysV ABI when marshalling 
+// Purpose: Ensure the x86-64 backend honours the SysV ABI when marshalling
 // Key invariants: The emitted assembly must move integer arguments into
 // Ownership/Lifetime: The test builds an IL module locally and inspects the
 // Links: src/codegen/x86_64/CallLowering.cpp, src/codegen/x86_64/FrameLowering.cpp

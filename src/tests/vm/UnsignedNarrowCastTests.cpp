@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/vm/UnsignedNarrowCastTests.cpp
-// Purpose: Verify unsigned narrowing casts accept full unsigned ranges without trapping. 
+// Purpose: Verify unsigned narrowing casts accept full unsigned ranges without trapping.
 // Key invariants: cast.ui_narrow.chk must succeed for values representable in the target width.
 // Ownership/Lifetime: Builds throwaway modules executed via VmFixture.
 // Links: docs/architecture.md

@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/codegen/test_codegen_arm64_icmp.cpp
-// Purpose: Verify icmp/scmp/ucmp lowering using cmp + cset, feeding ret. 
+// Purpose: Verify icmp/scmp/ucmp lowering using cmp + cset, feeding ret.
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md

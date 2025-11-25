@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/common/CodegenFixture.cpp
-// Purpose: Implement helpers that orchestrate ilc CLI invocations for VM/native 
+// Purpose: Implement helpers that orchestrate ilc CLI invocations for VM/native
 // Key invariants: Command executions are serialized per fixture instance and
 // Ownership/Lifetime: The fixture owns a temporary directory and removes it on
 // Links: docs/architecture.md

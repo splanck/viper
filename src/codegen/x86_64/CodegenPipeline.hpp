@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: codegen/x86_64/CodegenPipeline.hpp
-// Purpose: Declare a reusable pipeline that lowers IL modules to native code via the x86-64 
+// Purpose: Declare a reusable pipeline that lowers IL modules to native code via the x86-64
 // Key invariants: To be documented.
 // Ownership/Lifetime: Callers retain ownership of file paths and do not transfer resource
 // Links: docs/codemap.md, src/codegen/x86_64/Backend.hpp

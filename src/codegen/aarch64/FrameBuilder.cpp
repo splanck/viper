@@ -58,8 +58,8 @@ void FrameBuilder::finalize()
     for (const auto &S : fn_->frame.spills)
         mostNegative = std::min(mostNegative, S.offset);
     int usedBytes = -mostNegative;
-    // Account for FP-LR area implicitly; our offsets start at -8, so usedBytes already counts slots.
-    // Add any reserved outgoing-arg area.
+    // Account for FP-LR area implicitly; our offsets start at -8, so usedBytes already counts
+    // slots. Add any reserved outgoing-arg area.
     usedBytes += fn_->frame.maxOutgoingBytes;
     // Round up to 16-byte alignment.
     if (usedBytes % kStackAlignment != 0)

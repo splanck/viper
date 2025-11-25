@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/il/transform/simplifycfg_values_equal_fp.cpp
-// Purpose: Validate SimplifyCFG value comparisons handle floating-point edge cases. 
+// Purpose: Validate SimplifyCFG value comparisons handle floating-point edge cases.
 // Key invariants: Floating constants compare using bit patterns preserving NaN payloads and zero
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md

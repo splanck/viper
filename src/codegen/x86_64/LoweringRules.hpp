@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: codegen/x86_64/LoweringRules.hpp
-// Purpose: Declare the rule registry that drives IL to MIR lowering. 
+// Purpose: Declare the rule registry that drives IL to MIR lowering.
 // Key invariants: To be documented.
 // Ownership/Lifetime: Registry stored as process-wide static vector, returned by ref.
 // Links: docs/architecture.md

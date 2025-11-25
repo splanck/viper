@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/vm/IntUnsignedOpsTests.cpp
-// Purpose: Validate VM handlers for signed/unsigned div/rem opcodes including traps. 
+// Purpose: Validate VM handlers for signed/unsigned div/rem opcodes including traps.
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md

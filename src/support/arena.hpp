@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: support/arena.hpp
-// Purpose: Declares bump allocator for temporary objects. 
+// Purpose: Declares bump allocator for temporary objects.
 // Key invariants: None.
 // Ownership/Lifetime: Arena owns all allocated memory.
 // Links: docs/codemap.md

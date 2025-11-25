@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/runtime/RTInputLineFailTests.cpp
-// Purpose: Verify rt_input_line returns NULL when buffer expansion fails. 
+// Purpose: Verify rt_input_line returns NULL when buffer expansion fails.
 // Key invariants: Function aborts reading on realloc failure and reports trap.
 // Ownership/Lifetime: Uses runtime library; stubs realloc and trap for simulation.
 // Links: docs/runtime-vm.md#runtime-abi

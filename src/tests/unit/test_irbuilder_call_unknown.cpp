@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_irbuilder_call_unknown.cpp
-// Purpose: Ensure IRBuilder emits an error when call targets are missing. 
+// Purpose: Ensure IRBuilder emits an error when call targets are missing.
 // Key invariants: emitCall must throw for unknown callees.
 // Ownership/Lifetime: Test owns all constructed objects.
 // Links: docs/codemap.md

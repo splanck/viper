@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: codegen/aarch64/RegAllocLinear.hpp
-// Purpose: Declare a minimal linear-scan register allocator for the AArch64 
+// Purpose: Declare a minimal linear-scan register allocator for the AArch64
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md
@@ -29,4 +29,3 @@ struct AllocationResult
 [[nodiscard]] AllocationResult allocate(MFunction &fn, const TargetInfo &ti);
 
 } // namespace viper::codegen::aarch64
-

@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/runtime/RTInstrTests.cpp
-// Purpose: Validate runtime INSTR search functions. 
+// Purpose: Validate runtime INSTR search functions.
 // Key invariants: 1-based indexing semantics; empty needle returns clamped
 // Ownership/Lifetime: Uses runtime library.
 // Links: docs/runtime-vm.md#runtime-abi

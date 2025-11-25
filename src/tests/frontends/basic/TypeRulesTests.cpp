@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/frontends/basic/TypeRulesTests.cpp
-// Purpose: Validate BASIC numeric type promotion and operator result helpers. 
+// Purpose: Validate BASIC numeric type promotion and operator result helpers.
 // Key invariants: TypeRules provides deterministic lattice-based results.
 // Ownership/Lifetime: Standalone executable using simple assertions.
 // Links: docs/codemap.md

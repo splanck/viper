@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/BasicOOP_Lowering.cpp
-// Purpose: Ensure BASIC OOP lowering emits runtime helpers and mangled members. 
+// Purpose: Ensure BASIC OOP lowering emits runtime helpers and mangled members.
 // Key invariants: Lowering produces required object runtime externs and class
 // Ownership/Lifetime: Test owns compilation inputs and inspects resulting module.
 // Links: docs/codemap.md
@@ -161,7 +161,8 @@ TEST(BasicOOPLoweringTest, StoresMemberAssignmentIntoField)
                 if (instr.operands[0].kind == il::core::Value::Kind::Temp)
                 {
                     auto it = gepOffsets.find(instr.operands[0].id);
-                    if (it != gepOffsets.end() && it->second == 0)
+                    // Field offset is 8 (after vptr at offset 0)
+                    if (it != gepOffsets.end() && it->second == 8)
                         storeUsesOffset = true;
                 }
                 break;
@@ -216,7 +217,8 @@ TEST(BasicOOPLoweringTest, StoresImplicitMemberAssignmentIntoField)
                 if (instr.operands[0].kind == il::core::Value::Kind::Temp)
                 {
                     auto it = gepOffsets.find(instr.operands[0].id);
-                    if (it != gepOffsets.end() && it->second == 0)
+                    // Field offset is 8 (after vptr at offset 0)
+                    if (it != gepOffsets.end() && it->second == 8)
                         storeUsesOffset = true;
                 }
                 break;
@@ -267,7 +269,8 @@ TEST(BasicOOPLoweringTest, LoadsMemberAccessFromField)
                 instr.operands[0].kind == il::core::Value::Kind::Temp)
             {
                 auto it = gepOffsets.find(instr.operands[0].id);
-                if (it != gepOffsets.end() && it->second == 0)
+                // Field offset is 8 (after vptr at offset 0)
+                if (it != gepOffsets.end() && it->second == 8)
                 {
                     sawLoad = true;
                     break;
@@ -325,7 +328,8 @@ TEST(BasicOOPLoweringTest, MemberFieldAccessibleAcrossMethods)
                 instr.operands[0].kind == il::core::Value::Kind::Temp)
             {
                 auto it = gepOffsets.find(instr.operands[0].id);
-                if (it != gepOffsets.end() && it->second == 0)
+                // Field offset is 8 (after vptr at offset 0)
+                if (it != gepOffsets.end() && it->second == 8)
                     sawFieldStore = true;
             }
         }
@@ -353,7 +357,8 @@ TEST(BasicOOPLoweringTest, MemberFieldAccessibleAcrossMethods)
                 instr.operands[0].kind == il::core::Value::Kind::Temp && instr.result)
             {
                 auto it = gepOffsets.find(instr.operands[0].id);
-                if (it != gepOffsets.end() && it->second == 0)
+                // Field offset is 8 (after vptr at offset 0)
+                if (it != gepOffsets.end() && it->second == 8)
                 {
                     sawFieldLoad = true;
                     loadedTemp = *instr.result;
@@ -412,14 +417,16 @@ TEST(BasicOOPLoweringTest, MemberAccessOutsideMethodsStoresAndLoads)
                 instr.operands[1].i64 == 9)
             {
                 auto it = gepOffsets.find(instr.operands[0].id);
-                if (it != gepOffsets.end() && it->second == 0)
+                // Field offset is 8 (after vptr at offset 0)
+                if (it != gepOffsets.end() && it->second == 8)
                     sawStore = true;
             }
             if (instr.op == il::core::Opcode::Load && !instr.operands.empty() &&
                 instr.operands[0].kind == il::core::Value::Kind::Temp)
             {
                 auto it = gepOffsets.find(instr.operands[0].id);
-                if (it != gepOffsets.end() && it->second == 0)
+                // Field offset is 8 (after vptr at offset 0)
+                if (it != gepOffsets.end() && it->second == 8)
                     sawLoad = true;
             }
         }
@@ -507,14 +514,16 @@ TEST(BasicOOPLoweringTest, BareFieldNameBindsToInstance)
                 instr.operands[0].kind == il::core::Value::Kind::Temp)
             {
                 auto it = gepOffsets.find(instr.operands[0].id);
-                if (it != gepOffsets.end() && it->second == 0)
+                // Field offset is 8 (after vptr at offset 0)
+                if (it != gepOffsets.end() && it->second == 8)
                     sawLoad = true;
             }
             if (instr.op == il::core::Opcode::Store && !instr.operands.empty() &&
                 instr.operands[0].kind == il::core::Value::Kind::Temp)
             {
                 auto it = gepOffsets.find(instr.operands[0].id);
-                if (it != gepOffsets.end() && it->second == 0)
+                // Field offset is 8 (after vptr at offset 0)
+                if (it != gepOffsets.end() && it->second == 8)
                     sawStore = true;
             }
         }

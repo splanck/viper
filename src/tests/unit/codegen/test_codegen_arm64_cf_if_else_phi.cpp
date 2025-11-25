@@ -43,19 +43,18 @@ TEST(Arm64CLI, CF_IfElse_Phi)
 {
     const std::string in = outPath("arm64_cf_ifelse.il");
     const std::string out = outPath("arm64_cf_ifelse.s");
-    const std::string il =
-        "il 0.1\n"
-        "func @f(%x:i64) -> i64 {\n"
-        "entry(%x:i64):\n"
-        "  %cond = scmp_gt %x, 0\n"
-        "  cbr %cond, then, else\n"
-        "then:\n"
-        "  br join(1)\n"
-        "else:\n"
-        "  br join(2)\n"
-        "join(%v:i64):\n"
-        "  ret %v\n"
-        "}\n";
+    const std::string il = "il 0.1\n"
+                           "func @f(%x:i64) -> i64 {\n"
+                           "entry(%x:i64):\n"
+                           "  %cond = scmp_gt %x, 0\n"
+                           "  cbr %cond, then, else\n"
+                           "then:\n"
+                           "  br join(1)\n"
+                           "else:\n"
+                           "  br join(2)\n"
+                           "join(%v:i64):\n"
+                           "  ret %v\n"
+                           "}\n";
     writeFile(in, il);
     const char *argv[] = {in.c_str(), "-S", out.c_str()};
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);

@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_il_parse_missing_operand_between_commas.cpp
-// Purpose: Ensure parser reports an error when operands include empty tokens. 
+// Purpose: Ensure parser reports an error when operands include empty tokens.
 // Key invariants: Parser must diagnose consecutive commas as missing operands.
 // Ownership/Lifetime: Test owns parser inputs and module state locally.
 // Links: docs/il-guide.md#reference

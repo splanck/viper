@@ -23,12 +23,12 @@
 ///          lowering passes.
 
 #include "frontends/basic/Semantic_OOP.hpp"
-#include "frontends/basic/OopIndex.hpp"
 #include "frontends/basic/AST.hpp"
 #include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/AstWalker.hpp"
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/IdentifierUtil.hpp"
+#include "frontends/basic/OopIndex.hpp"
 #include "frontends/basic/SemanticDiagUtil.hpp"
 #include "frontends/basic/SemanticDiagnostics.hpp"
 #include "frontends/basic/StringUtils.hpp"

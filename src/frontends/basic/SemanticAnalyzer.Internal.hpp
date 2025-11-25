@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: frontends/basic/SemanticAnalyzer.Internal.hpp
-// Purpose: Declares shared helper utilities for SemanticAnalyzer implementation 
+// Purpose: Declares shared helper utilities for SemanticAnalyzer implementation
 // Key invariants: Helpers remain internal to the BASIC front end and avoid
 // Ownership/Lifetime: Stateless free functions used by SemanticAnalyzer
 // Links: docs/codemap.md

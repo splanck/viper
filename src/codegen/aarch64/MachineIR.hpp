@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: codegen/aarch64/MachineIR.hpp
-// Purpose: Minimal AArch64 Machine IR scaffolding (Phase A) used by tests and 
+// Purpose: Minimal AArch64 Machine IR scaffolding (Phase A) used by tests and
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md
@@ -15,12 +15,12 @@
 
 #pragma once
 
+#include <cassert>
 #include <cstdint>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
-#include <cassert>
 
 #include "codegen/aarch64/TargetAArch64.hpp"
 
@@ -40,10 +40,10 @@ enum class MOpcode
     FDivRRR,
     FCmpRR,
     // Integer<->Float conversions (64-bit)
-    SCvtF,   // scvtf dDst, xSrc
-    FCvtZS,  // fcvtzs xDst, dSrc
-    UCvtF,   // ucvtf dDst, xSrc
-    FCvtZU,  // fcvtzu xDst, dSrc
+    SCvtF,  // scvtf dDst, xSrc
+    FCvtZS, // fcvtzs xDst, dSrc
+    UCvtF,  // ucvtf dDst, xSrc
+    FCvtZU, // fcvtzu xDst, dSrc
     // Stack pointer adjust (for outgoing arg area)
     SubSpImm,
     AddSpImm,
@@ -169,14 +169,29 @@ struct MFunction
     std::vector<PhysReg> savedFPRs;
     // Size of local frame (stack-allocated locals), in bytes, 16-byte aligned
     int localFrameSize{0};
-    struct StackLocal { unsigned tempId{0}; int size{0}; int align{8}; int offset{0}; };
-    struct SpillSlot { uint16_t vreg{0}; int size{8}; int align{8}; int offset{0}; };
+
+    struct StackLocal
+    {
+        unsigned tempId{0};
+        int size{0};
+        int align{8};
+        int offset{0};
+    };
+
+    struct SpillSlot
+    {
+        uint16_t vreg{0};
+        int size{8};
+        int align{8};
+        int offset{0};
+    };
+
     struct FrameLayout
     {
         std::vector<StackLocal> locals; // locals keyed by IL temp id
-        std::vector<SpillSlot> spills;   // spills keyed by vreg id
-        int totalBytes{0};               // total frame size (locals + spills + outgoing), aligned
-        int maxOutgoingBytes{0};         // optional max outgoing arg area (bytes)
+        std::vector<SpillSlot> spills;  // spills keyed by vreg id
+        int totalBytes{0};              // total frame size (locals + spills + outgoing), aligned
+        int maxOutgoingBytes{0};        // optional max outgoing arg area (bytes)
 
         // Helpers
         int getLocalOffset(unsigned tempId) const
@@ -186,6 +201,7 @@ struct MFunction
                     return L.offset;
             return 0;
         }
+
         int getSpillOffset(uint16_t vreg) const
         {
             for (const auto &S : spills)

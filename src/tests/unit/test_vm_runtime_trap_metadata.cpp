@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_vm_runtime_trap_metadata.cpp
-// Purpose: Ensure runtime trap metadata clears stale function/block identifiers when omitted. 
+// Purpose: Ensure runtime trap metadata clears stale function/block identifiers when omitted.
 // Key invariants: Subsequent traps without metadata must not reuse prior function/block names.
 // Ownership/Lifetime: Spawns child processes to capture diagnostics and runtime context output.
 // Links: docs/codemap.md

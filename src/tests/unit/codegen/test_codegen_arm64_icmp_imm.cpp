@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/codegen/test_codegen_arm64_icmp_imm.cpp
-// Purpose: Verify integer compares against immediates using cmp #imm + cset. 
+// Purpose: Verify integer compares against immediates using cmp #imm + cset.
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md

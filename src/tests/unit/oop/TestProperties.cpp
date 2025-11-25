@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/oop/TestProperties.cpp
-// Purpose: Verify PROPERTY synthesis produces get_/set_ accessors for instance/static. 
+// Purpose: Verify PROPERTY synthesis produces get_/set_ accessors for instance/static.
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md

@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_vm_gep_offsets.cpp
-// Purpose: Validate VM GEP correctly applies positive and negative byte offsets. 
+// Purpose: Validate VM GEP correctly applies positive and negative byte offsets.
 // Key invariants: Pointer arithmetic advances forward for positive offsets and
 // Ownership/Lifetime: Standalone unit test executable exercising VM memory ops.
 // Links: docs/il-guide.md#reference

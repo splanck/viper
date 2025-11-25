@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: frontends/basic/Parser_Token.hpp
-// Purpose: Token navigation helpers for BASIC parser. 
+// Purpose: Token navigation helpers for BASIC parser.
 // Key invariants: Buffer always holds current token.
 // Ownership/Lifetime: Parser owns lexer and token buffer.
 // Links: docs/codemap.md

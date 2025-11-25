@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: frontends/basic/ast/StmtExpr.hpp
-// Purpose: Defines BASIC statement nodes that primarily manipulate expressions or IO. 
+// Purpose: Defines BASIC statement nodes that primarily manipulate expressions or IO.
 // Key invariants: Expression-owned members are non-null when documented and retain
 // Ownership/Lifetime: Statements own child expressions through unique_ptr wrappers.
 // Links: docs/codemap.md

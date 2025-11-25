@@ -43,19 +43,18 @@ TEST(Arm64CLI, ModvarAddr_LoadStore)
 {
     const std::string in = outPath("arm64_modvar_addr.il");
     const std::string out = outPath("arm64_modvar_addr.s");
-    const std::string il =
-        "il 0.1\n"
-        "extern @rt_modvar_addr_i64(str) -> ptr\n"
-        "global const str @.Lname = \"counter\"\n"
-        "func @f() -> i64 {\n"
-        "entry:\n"
-        "  %n = const_str @.Lname\n"
-        "  %p = call @rt_modvar_addr_i64(%n)\n"
-        "  %v = load i64, %p\n"
-        "  %v1 = add %v, 1\n"
-        "  store i64, %p, %v1\n"
-        "  ret %v1\n"
-        "}\n";
+    const std::string il = "il 0.1\n"
+                           "extern @rt_modvar_addr_i64(str) -> ptr\n"
+                           "global const str @.Lname = \"counter\"\n"
+                           "func @f() -> i64 {\n"
+                           "entry:\n"
+                           "  %n = const_str @.Lname\n"
+                           "  %p = call @rt_modvar_addr_i64(%n)\n"
+                           "  %v = load i64, %p\n"
+                           "  %v1 = add %v, 1\n"
+                           "  store i64, %p, %v1\n"
+                           "  ret %v1\n"
+                           "}\n";
     writeFile(in, il);
     const char *argv[] = {in.c_str(), "-S", out.c_str()};
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);

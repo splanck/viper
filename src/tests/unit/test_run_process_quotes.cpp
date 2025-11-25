@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_run_process_quotes.cpp
-// Purpose: Verify run_process correctly preserves shell-sensitive characters when quoting 
+// Purpose: Verify run_process correctly preserves shell-sensitive characters when quoting
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md

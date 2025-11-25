@@ -34,21 +34,20 @@ static void writeFile(const std::string &path, const std::string &text)
 TEST(Arm64CLI, ArrObj_Len_Run)
 {
     const std::string in = outPath("arm64_arr_obj_len.il");
-    const std::string il =
-        "il 0.1\n"
-        "extern @rt_arr_obj_new(i64) -> ptr\n"
-        "extern @rt_arr_obj_len(ptr) -> i64\n"
-        "func @main() -> i64 {\n"
-        "entry:\n"
-        "  %a = call @rt_arr_obj_new(3)\n"
-        "  %n = call @rt_arr_obj_len(%a)\n"
-        "  %ok = icmp_eq %n, 3\n"
-        "  cbr %ok, ^yes, ^no\n"
-        "yes:\n"
-        "  ret 0\n"
-        "no:\n"
-        "  ret 1\n"
-        "}\n";
+    const std::string il = "il 0.1\n"
+                           "extern @rt_arr_obj_new(i64) -> ptr\n"
+                           "extern @rt_arr_obj_len(ptr) -> i64\n"
+                           "func @main() -> i64 {\n"
+                           "entry:\n"
+                           "  %a = call @rt_arr_obj_new(3)\n"
+                           "  %n = call @rt_arr_obj_len(%a)\n"
+                           "  %ok = icmp_eq %n, 3\n"
+                           "  cbr %ok, ^yes, ^no\n"
+                           "yes:\n"
+                           "  ret 0\n"
+                           "no:\n"
+                           "  ret 1\n"
+                           "}\n";
     writeFile(in, il);
     const char *argv[] = {in.c_str(), "-run-native"};
     const int rc = cmd_codegen_arm64(2, const_cast<char **>(argv));

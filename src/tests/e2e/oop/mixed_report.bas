@@ -1,8 +1,8 @@
 REM Mixed usage: String + List + File + StringBuilder (procedural helpers to avoid keyword collisions)
 
 DIM s AS STRING
-DIM sb AS Viper.System.Text.StringBuilder
-sb = NEW Viper.System.Text.StringBuilder()
+DIM sb AS Viper.Text.StringBuilder
+sb = NEW Viper.Text.StringBuilder()
 
 REM Seed base text
 s = "alpha beta"
@@ -13,8 +13,8 @@ DIM s2 AS STRING
 s1 = s.Substring(0, 5)
 s2 = s.Substring(6, 4)
 
-DIM list AS Viper.System.Collections.List
-list = NEW Viper.System.Collections.List()
+DIM list AS Viper.Collections.List
+list = NEW Viper.Collections.List()
 list.Add(s1)
 list.Add(s2)
 

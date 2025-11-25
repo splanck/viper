@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tools/ilc/break_spec.hpp
-// Purpose: Helpers for parsing --break flag specifications. 
+// Purpose: Helpers for parsing --break flag specifications.
 // Key invariants: None.
 // Ownership/Lifetime: N/A.
 // Links: docs/codemap.md

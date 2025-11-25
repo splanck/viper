@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: frontends/basic/SemanticAnalyzer.Stmts.Shared.hpp
-// Purpose: Declares shared helpers for statement semantic analysis, providing 
+// Purpose: Declares shared helpers for statement semantic analysis, providing
 // Key invariants: Helpers operate on an existing SemanticAnalyzer instance and
 // Ownership/Lifetime: Helpers hold non-owning references to the analyzer.
 // Links: docs/codemap.md

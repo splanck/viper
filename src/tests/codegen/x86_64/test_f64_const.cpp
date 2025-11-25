@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/codegen/x86_64/test_f64_const.cpp
-// Purpose: Ensure the x86-64 backend materialises f64 literals via the 
+// Purpose: Ensure the x86-64 backend materialises f64 literals via the
 // Key invariants: Generated assembly must include a .LC_f64_* label in the
 // Ownership/Lifetime: The IL module is created within the test scope and the
 // Links: src/codegen/x86_64/AsmEmitter.cpp

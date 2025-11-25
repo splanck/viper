@@ -28,10 +28,10 @@
 #include "il/core/Module.hpp"
 #include "il/core/Opcode.hpp"
 #include "il/core/Value.hpp"
+#include "vm/DispatchStrategy.hpp"
 #include "vm/OpHandlers.hpp"
 #include "vm/RuntimeBridge.hpp"
 #include "vm/VMContext.hpp"
-#include "vm/DispatchStrategy.hpp"
 
 #include "runtime/rt_context.h"
 
@@ -331,7 +331,7 @@ bool VM::selectInstruction(ExecState &state, const Instr *&instr)
 
     state.currentInstr = &state.bb->instructions[state.ip];
     instr = state.currentInstr;
-/// @brief Sets currentcontext value.
+    /// @brief Sets currentcontext value.
     setCurrentContext(state.fr, state.bb, state.ip, *state.currentInstr);
 
     if (auto pause = shouldPause(state, state.currentInstr, false)) [[unlikely]]
@@ -463,7 +463,8 @@ Slot VM::runFunctionLoop(ExecState &st)
     }
 }
 
-/// @brief Release resources owned by the VM, including cached strings, mutable globals, and runtime context.
+/// @brief Release resources owned by the VM, including cached strings, mutable globals, and runtime
+/// context.
 VM::~VM()
 {
     for (auto &entry : strMap)

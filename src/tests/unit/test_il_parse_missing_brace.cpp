@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_il_parse_missing_brace.cpp
-// Purpose: Ensure IL parser reports a diagnostic when a function body misses a closing brace. 
+// Purpose: Ensure IL parser reports a diagnostic when a function body misses a closing brace.
 // Key invariants: Parser surfaces EOF diagnostics referencing the final line number.
 // Ownership/Lifetime: Test owns module buffers and diagnostics locally.
 // Links: docs/il-guide.md#reference

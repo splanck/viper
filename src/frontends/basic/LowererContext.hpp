@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: frontends/basic/LowererContext.hpp
-// Purpose: Defines helper context structures embedded in Lowerer for 
+// Purpose: Defines helper context structures embedded in Lowerer for
 // Key invariants: Context state is reset between procedures and block labels
 // Ownership/Lifetime: Owned by Lowerer; references to IL objects are borrowed
 // Links: docs/codemap.md

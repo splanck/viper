@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/frontends/basic/SemanticAnalyzerGosubTests.cpp
-// Purpose: Ensure BASIC semantic analysis validates GOSUB targets. 
+// Purpose: Ensure BASIC semantic analysis validates GOSUB targets.
 // Key invariants: Referenced line numbers must exist among collected labels.
 // Ownership/Lifetime: Tests own parser, analyzer, and diagnostic infrastructure.
 // Links: docs/codemap.md

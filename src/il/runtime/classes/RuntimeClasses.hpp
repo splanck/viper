@@ -61,10 +61,10 @@ struct RuntimeMethod
 /// @brief Describes a runtime class and its members.
 struct RuntimeClass
 {
-    const char *qname;   ///< Fully-qualified name (e.g., "Viper.String").
-    const char *layout;  ///< Layout descriptor (opaque until object model defined).
-    const char *ctor;    ///< Optional ctor helper extern; may be nullptr.
-    RuntimeTypeId typeId;///< Stable type identifier.
+    const char *qname;    ///< Fully-qualified name (e.g., "Viper.String").
+    const char *layout;   ///< Layout descriptor (opaque until object model defined).
+    const char *ctor;     ///< Optional ctor helper extern; may be nullptr.
+    RuntimeTypeId typeId; ///< Stable type identifier.
     std::vector<RuntimeProperty> properties; ///< Declared properties.
     std::vector<RuntimeMethod> methods;      ///< Declared methods.
 };

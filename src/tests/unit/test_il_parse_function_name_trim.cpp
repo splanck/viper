@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_il_parse_function_name_trim.cpp
-// Purpose: Ensure function headers trim trailing whitespace from symbol names. 
+// Purpose: Ensure function headers trim trailing whitespace from symbol names.
 // Key invariants: Parser normalises function identifiers; verifier resolves calls.
 // Ownership/Lifetime: Test owns module buffers parsed from string literals.
 // Links: docs/il-guide.md#reference

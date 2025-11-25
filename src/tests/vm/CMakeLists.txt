@@ -196,6 +196,11 @@ function(viper_add_vm_unit_tests)
     target_link_libraries(test_vm_rt_unknown_helper PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
     viper_add_ctest(test_vm_rt_unknown_helper test_vm_rt_unknown_helper)
 
+    # Multi-VM isolation tests (per-VM RtContext state)
+    viper_add_test(test_vm_multi_isolation ${_VIPER_VM_DIR}/MultiVMIsolationTests.cpp)
+    target_link_libraries(test_vm_multi_isolation PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
+    viper_add_ctest(test_vm_multi_isolation test_vm_multi_isolation)
+
     viper_add_test(test_vm_runtime_concurrency ${VIPER_TESTS_DIR}/unit/test_vm_runtime_concurrency.cpp)
     target_link_libraries(test_vm_runtime_concurrency PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} Threads::Threads)
     viper_add_ctest(test_vm_runtime_concurrency test_vm_runtime_concurrency)

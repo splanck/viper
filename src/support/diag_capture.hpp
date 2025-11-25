@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: support/diag_capture.hpp
-// Purpose: Provide a capture-only diagnostic sink to bridge legacy bool plus ostream APIs. 
+// Purpose: Provide a capture-only diagnostic sink to bridge legacy bool plus ostream APIs.
 // Key invariants: Diagnostics recorded in the capture are printed verbatim and converted into error
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md

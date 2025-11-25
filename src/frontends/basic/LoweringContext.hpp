@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: frontends/basic/LoweringContext.hpp
-// Purpose: Declares state container used in BASIC-to-IL lowering. 
+// Purpose: Declares state container used in BASIC-to-IL lowering.
 // Key invariants: None.
 // Ownership/Lifetime: Does not own referenced module.
 // Links: docs/codemap.md

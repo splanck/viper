@@ -75,7 +75,8 @@ class VarCollectWalker final : public BasicAstWalker<VarCollectWalker>
                 return;
             // NOTE: Currently all referenced variables get local slots.
             // TODO: Skip allocation for module-level globals once IL supports
-            //       mutable module-level globals (not just string constants).
+            //       mutable module-scope globals (beyond string constants). This is
+            //       about IL representation, not OOP runtime capability.
             lowerer_.markSymbolReferenced(expr.name);
             // Track module-level symbols referenced in procedures (not @main)
             // for cross-proc sharing via runtime-backed storage.

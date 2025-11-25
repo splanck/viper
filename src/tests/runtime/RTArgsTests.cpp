@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/runtime/RTArgsTests.cpp
-// Purpose: Verify runtime argument store helpers (rt_args_*). 
+// Purpose: Verify runtime argument store helpers (rt_args_*).
 // Key invariants: To be documented.
 // Ownership/Lifetime: To be documented.
 // Links: docs/architecture.md

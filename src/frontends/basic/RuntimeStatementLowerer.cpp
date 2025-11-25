@@ -21,6 +21,7 @@
 #include "frontends/basic/ILTypeUtils.hpp"
 #include "frontends/basic/LocationScope.hpp"
 #include "frontends/basic/NameMangler_OOP.hpp"
+#include "frontends/basic/StringUtils.hpp"
 #include "frontends/basic/sem/OverloadResolution.hpp"
 #include "frontends/basic/sem/RuntimePropertyIndex.hpp"
 
@@ -818,19 +819,21 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt)
                         qClass = lowerer_.qualify(cls);
                 }
                 if (qClass.empty() && baseVal.type.kind == Lowerer::Type::Kind::Str)
-                    qClass = "Viper.System.String";
+                    qClass = "Viper.String";
                 if (!qClass.empty())
                 {
                     auto &pidx = runtimePropertyIndex();
                     auto prop = pidx.find(qClass, member->member);
+                    if (!prop && string_utils::iequals(qClass, "Viper.String"))
+                        prop = pidx.find("Viper.System.String", member->member);
                     if (prop)
                     {
                         if (prop->readonly || prop->setter.empty())
                         {
                             if (auto *em = lowerer_.diagnosticEmitter())
                             {
-                                std::string msg = "property '" + member->member +
-                                                  "' on '" + qClass + "' is read-only";
+                                std::string msg = "property '" + member->member + "' on '" +
+                                                  qClass + "' is read-only";
                                 em->emit(il::support::Severity::Error,
                                          "E_PROP_READONLY",
                                          stmt.loc,
@@ -839,11 +842,16 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt)
                             }
                             return;
                         }
-                        auto mapTy = [](std::string_view t) -> Lowerer::Type::Kind {
-                            if (t == "i64") return Lowerer::Type::Kind::I64;
-                            if (t == "f64") return Lowerer::Type::Kind::F64;
-                            if (t == "i1")  return Lowerer::Type::Kind::I1;
-                            if (t == "str") return Lowerer::Type::Kind::Str;
+                        auto mapTy = [](std::string_view t) -> Lowerer::Type::Kind
+                        {
+                            if (t == "i64")
+                                return Lowerer::Type::Kind::I64;
+                            if (t == "f64")
+                                return Lowerer::Type::Kind::F64;
+                            if (t == "i1")
+                                return Lowerer::Type::Kind::I1;
+                            if (t == "str")
+                                return Lowerer::Type::Kind::Str;
                             return Lowerer::Type::Kind::I64;
                         };
                         Lowerer::RVal v = value;
@@ -860,8 +868,8 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt)
                     }
                     else if (auto *em = lowerer_.diagnosticEmitter())
                     {
-                        std::string msg = "no such property '" + member->member +
-                                          "' on '" + qClass + "'";
+                        std::string msg =
+                            "no such property '" + member->member + "' on '" + qClass + "'";
                         em->emit(il::support::Severity::Error,
                                  "E_PROP_NO_SUCH_PROPERTY",
                                  stmt.loc,

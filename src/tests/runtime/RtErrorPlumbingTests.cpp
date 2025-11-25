@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/runtime/RtErrorPlumbingTests.cpp
-// Purpose: Exercise the runtime error plumbing for numeric formatting helpers. 
+// Purpose: Exercise the runtime error plumbing for numeric formatting helpers.
 // Key invariants: Formatting helpers populate Err_None on success.
 // Ownership/Lifetime: Links against the C runtime library.
 // Links: docs/specs/numerics.md

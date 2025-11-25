@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_basic_ns_case_insensitive.cpp
-// Purpose: Verify ProcRegistry canonicalizes qualified names case-insensitively and strips 
+// Purpose: Verify ProcRegistry canonicalizes qualified names case-insensitively and strips
 // Key invariants: To be documented.
 // Ownership/Lifetime: Local diagnostics/emitter/registry.
 // Links: docs/architecture.md

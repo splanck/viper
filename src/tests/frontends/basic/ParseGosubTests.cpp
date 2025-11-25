@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/frontends/basic/ParseGosubTests.cpp
-// Purpose: Validate parsing and AST printing of BASIC GOSUB statements. 
+// Purpose: Validate parsing and AST printing of BASIC GOSUB statements.
 // Key invariants: GOSUB resolves the target line to a numeric label and prints via AstPrinter.
 // Ownership/Lifetime: Test owns parser, AST, and source manager instances.
 // Links: docs/codemap.md

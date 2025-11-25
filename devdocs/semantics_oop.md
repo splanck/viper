@@ -77,8 +77,8 @@ how the BASIC frontend discovers and binds built‑in runtime classes.
     from this catalog.
 
   - Runtime signatures (C++): `src/il/runtime/RuntimeSignatures.inc` maps the
-    canonical names (e.g., `Viper.System.Text.StringBuilder.Append`) to concrete
-    C functions and IL signature strings.
+    canonical names (e.g., `Viper.Text.StringBuilder.Append`, `Viper.IO.File.ReadAllText`) to concrete
+    C functions and IL signature strings. System‑qualified names are supported as aliases where noted.
 
   - C implementations: `src/runtime/rt_*.c` provide the actual behavior
     (`rt_string_builder.c`, `rt_object.c`, `rt_file_ext.c`, `rt_list.c`, etc.).
@@ -88,6 +88,6 @@ how the BASIC frontend discovers and binds built‑in runtime classes.
 ### Backward‑Compatible Procedural Surface
 
 The legacy procedural runtime (e.g., `Viper.Strings.Len`, `Viper.IO.*`) remains
-available for compatibility and for compiler lowering. New code should prefer
-the OOP runtime classes under `Viper.System.*`. Where applicable the catalog
-maps class members directly onto the procedural targets.
+available for compatibility and for some bridges. New code should prefer the OOP
+runtime classes under `Viper.*` (canonical). Where applicable, the catalog maps
+class members directly onto the procedural targets.

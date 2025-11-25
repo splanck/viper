@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: vm/Trap.hpp
-// Purpose: Defines trap classification for VM diagnostics. 
+// Purpose: Defines trap classification for VM diagnostics.
 // Key invariants: Enum values map directly to trap categories used in diagnostics.
 // Ownership/Lifetime: Not applicable.
 // Links: docs/il-guide.md#reference

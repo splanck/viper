@@ -6,7 +6,8 @@
 
 ## Overview
 
-ViperGFX has been successfully integrated into the Viper project as a library component under `/src/lib/graphics`. The library builds as part of the main Viper build system and its tests are included in the Viper test suite.
+ViperGFX has been successfully integrated into the Viper project as a library component under `/src/lib/graphics`. The
+library builds as part of the main Viper build system and its tests are included in the Viper test suite.
 
 ## Integration Changes
 
@@ -42,6 +43,7 @@ ViperGFX has been successfully integrated into the Viper project as a library co
 #### Root CMakeLists.txt Changes
 
 **Added Objective-C Language:**
+
 ```cmake
 enable_language(C)
 # Enable Objective-C for macOS (needed by ViperGFX)
@@ -51,6 +53,7 @@ endif()
 ```
 
 **Added Graphics Subdirectory:**
+
 ```cmake
 # ---- ViperGFX library ----
 add_subdirectory(src/lib/graphics)
@@ -58,6 +61,7 @@ viper_assert_no_directory_link_libraries("src/lib/graphics" "src/lib/graphics")
 ```
 
 **Added to Public Library Targets:**
+
 ```cmake
 set(VIPER_PUBLIC_LIB_TARGETS
   viper_support
@@ -70,6 +74,7 @@ set(VIPER_PUBLIC_LIB_TARGETS
 #### Graphics CMakeLists.txt Changes
 
 **Modified to Support Integrated Build:**
+
 ```cmake
 # Can be built standalone or via add_subdirectory
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
@@ -88,6 +93,7 @@ endif()
 ```
 
 This allows the graphics library to be built either:
+
 1. **Standalone** - As a separate project with its own CMake configuration
 2. **Integrated** - As part of the Viper build, using Viper's settings
 
@@ -148,21 +154,25 @@ Test project /Users/stephen/git/viper/build
 ## Integration Benefits
 
 ### 1. Unified Build System
+
 - Single `cmake` invocation builds entire Viper project including graphics
 - Consistent compiler flags and optimization settings
 - Shared build options (testing, warnings, sanitizers)
 
 ### 2. Integrated Test Suite
+
 - Graphics tests run alongside Viper tests via `ctest`
 - Automated CI/CD integration
 - Consistent test reporting format
 
 ### 3. Library Installation
+
 - `vipergfx` included in `VIPER_PUBLIC_LIB_TARGETS`
 - Installed with Viper package
 - Available via `ViperTargets.cmake` export
 
 ### 4. Dependency Management
+
 - Graphics library can be used by other Viper components
 - Proper CMake target linkage
 - Header visibility controlled via target properties
@@ -180,6 +190,7 @@ target_include_directories(your_target PRIVATE
 ```
 
 From C/C++ code:
+
 ```c
 #include "vgfx.h"
 
@@ -236,6 +247,7 @@ ctest --test-dir build
 ```
 
 This is useful for:
+
 - Developing the graphics library independently
 - Testing on different platforms
 - Using ViperGFX in non-Viper projects
@@ -243,17 +255,17 @@ This is useful for:
 ## Files Modified
 
 1. **CMakeLists.txt** (root)
-   - Added Objective-C language enablement
-   - Added `src/lib/graphics` subdirectory
-   - Added `vipergfx` to public library targets
+    - Added Objective-C language enablement
+    - Added `src/lib/graphics` subdirectory
+    - Added `vipergfx` to public library targets
 
 2. **src/lib/graphics/CMakeLists.txt**
-   - Modified to support both standalone and integrated builds
-   - Uses Viper's build options when integrated
-   - Maintains backward compatibility with standalone builds
+    - Modified to support both standalone and integrated builds
+    - Uses Viper's build options when integrated
+    - Maintains backward compatibility with standalone builds
 
 3. **Directory structure**
-   - Moved from `/lib/graphics` to `/src/lib/graphics`
+    - Moved from `/lib/graphics` to `/src/lib/graphics`
 
 ## Test Coverage
 
@@ -267,9 +279,11 @@ All 20 tests (T1-T21) pass successfully:
 ## Platform Support
 
 Currently integrated and tested:
+
 - ✅ **macOS** (Cocoa backend) - Full support with Objective-C
 
 Future platforms (stubs exist):
+
 - ⏳ **Linux** (X11 backend) - Needs implementation
 - ⏳ **Windows** (Win32 backend) - Needs implementation
 
