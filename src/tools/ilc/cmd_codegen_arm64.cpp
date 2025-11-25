@@ -224,6 +224,15 @@ int emitAndMaybeLink(const Options &opts)
     }
 
     using namespace viper::codegen::aarch64;
+
+    // Host gating for --run-native: only allow on macOS arm64
+    if (opts.run_native)
+    {
+#if !(defined(__APPLE__) && (defined(__aarch64__) || defined(__arm64__)))
+        std::cerr << "error: --run-native is only supported on macOS arm64 hosts\n";
+        return 1;
+#endif
+    }
     auto &ti = darwinTarget();
     AsmEmitter emitter{ti};
     LowerILToMIR lowerer{ti};

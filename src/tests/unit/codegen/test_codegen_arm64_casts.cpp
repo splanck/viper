@@ -111,6 +111,8 @@ TEST(Arm64Casts, FpToSiRteChk)
     EXPECT_NE(asmText.find("b.ne .Ltrap_fpcast"), std::string::npos);
 }
 
+// Keep this file minimal and focused on the core cast patterns.
+
 int main(int argc, char **argv)
 {
     testing::InitGoogleTest(&argc, &argv);
