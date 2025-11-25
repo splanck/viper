@@ -70,14 +70,27 @@ struct Pools
     std::unordered_set<PhysReg> calleeUsedFPR{};
 };
 
+// Check if a register is an argument register (X0-X7 or V0-V7)
+static bool isArgRegister(PhysReg r, const TargetInfo &ti)
+{
+    for (auto ar : ti.intArgOrder)
+        if (ar == r) return true;
+    for (auto ar : ti.f64ArgOrder)
+        if (ar == r) return true;
+    return false;
+}
+
 static void buildPools(const TargetInfo &ti, Pools &out)
 {
     out.gprFree.clear();
     out.fprFree.clear();
     // Prefer caller-saved first for temporaries, then callee-saved.
+    // IMPORTANT: Exclude argument registers (X0-X7) from the initial free pool
+    // because parameters live in these registers and we don't want to clobber them
+    // before they're consumed. Use X9-X15 and callee-saved registers instead.
     for (auto r : ti.callerSavedGPR)
     {
-        if (isAllocatableGPR(r))
+        if (isAllocatableGPR(r) && !isArgRegister(r, ti))
             out.gprFree.push_back(r);
     }
     for (auto r : ti.calleeSavedGPR)
@@ -85,9 +98,11 @@ static void buildPools(const TargetInfo &ti, Pools &out)
         if (isAllocatableGPR(r))
             out.gprFree.push_back(r);
     }
+    // For FPR, also exclude argument registers V0-V7
     for (auto r : ti.callerSavedFPR)
     {
-        out.fprFree.push_back(r);
+        if (!isArgRegister(r, ti))
+            out.fprFree.push_back(r);
     }
     for (auto r : ti.calleeSavedFPR)
     {

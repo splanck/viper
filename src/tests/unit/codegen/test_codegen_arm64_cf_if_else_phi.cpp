@@ -60,12 +60,14 @@ TEST(Arm64CLI, CF_IfElse_Phi)
     const char *argv[] = {in.c_str(), "-S", out.c_str()};
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
-    // Expect conditional branch and edge stores followed by loads in join
-    EXPECT_NE(asmText.find("b.ne"), std::string::npos);
-    EXPECT_NE(asmText.find(".edge.t."), std::string::npos);
-    EXPECT_NE(asmText.find(".edge.f."), std::string::npos);
-    EXPECT_NE(asmText.find("str x"), std::string::npos);
-    EXPECT_NE(asmText.find("ldr x"), std::string::npos);
+    // Expect conditional branch and register moves for phi (no edge blocks, no stack traffic)
+    // Any conditional branch should be present (b.<cond>)
+    EXPECT_NE(asmText.find("b."), std::string::npos);
+    EXPECT_EQ(asmText.find(".edge.t."), std::string::npos);
+    EXPECT_EQ(asmText.find(".edge.f."), std::string::npos);
+    EXPECT_EQ(asmText.find(" str x"), std::string::npos);
+    EXPECT_EQ(asmText.find(" ldr x"), std::string::npos);
+    EXPECT_NE(asmText.find(" mov x"), std::string::npos);
 }
 
 int main(int argc, char **argv)
@@ -73,4 +75,3 @@ int main(int argc, char **argv)
     testing::InitGoogleTest(&argc, &argv);
     return RUN_ALL_TESTS();
 }
-

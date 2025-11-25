@@ -33,6 +33,8 @@ TEST(AArch64MIR, FramePlanEmitFunction)
     mf.savedGPRs = {PhysReg::X19, PhysReg::X20, PhysReg::X21};
     mf.blocks.emplace_back();
     mf.blocks.back().name = "entry";
+    // Return - triggers epilogue emission
+    mf.blocks.back().instrs.push_back(MInstr{MOpcode::Ret, {}});
 
     std::ostringstream os;
     emitter.emitFunction(os, mf);

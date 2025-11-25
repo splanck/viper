@@ -63,11 +63,12 @@ TEST(Arm64CLI, CF_Loop_Phi)
     const char *argv[] = {in.c_str(), "-S", out.c_str()};
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
-    // Expect stores on edges and loads in headers
-    EXPECT_NE(asmText.find(".edge.t."), std::string::npos);
-    EXPECT_NE(asmText.find(".edge.f."), std::string::npos);
-    EXPECT_NE(asmText.find("str x"), std::string::npos);
-    EXPECT_NE(asmText.find("ldr x"), std::string::npos);
+    // Expect register moves implementing phi and branches; no edge labels or stack traffic
+    EXPECT_EQ(asmText.find(".edge.t."), std::string::npos);
+    EXPECT_EQ(asmText.find(".edge.f."), std::string::npos);
+    EXPECT_EQ(asmText.find(" str x"), std::string::npos);
+    EXPECT_EQ(asmText.find(" ldr x"), std::string::npos);
+    EXPECT_NE(asmText.find(" mov x"), std::string::npos);
 }
 
 int main(int argc, char **argv)
@@ -75,4 +76,3 @@ int main(int argc, char **argv)
     testing::InitGoogleTest(&argc, &argv);
     return RUN_ALL_TESTS();
 }
-

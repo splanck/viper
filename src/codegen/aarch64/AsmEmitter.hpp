@@ -106,6 +106,9 @@ class AsmEmitter
 
   private:
     const TargetInfo *target_{nullptr};
+    // Mutable state used during emitFunction to pass frame plan to Ret instructions
+    mutable const FramePlan *currentPlan_{nullptr};
+    mutable bool currentPlanValid_{false};
 
     [[nodiscard]] static const char *rn(PhysReg r) noexcept
     {

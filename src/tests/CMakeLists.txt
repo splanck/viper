@@ -157,6 +157,10 @@ add_executable(test_codegen_arm64_gep_load_store ${CMAKE_CURRENT_SOURCE_DIR}/uni
 target_link_libraries(test_codegen_arm64_gep_load_store PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
 viper_add_ctest(test_codegen_arm64_gep_load_store $<TARGET_FILE:test_codegen_arm64_gep_load_store>)
 
+add_executable(test_codegen_arm64_array_access ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_array_access.cpp)
+target_link_libraries(test_codegen_arm64_array_access PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
+viper_add_ctest(test_codegen_arm64_array_access $<TARGET_FILE:test_codegen_arm64_array_access>)
+
 add_executable(test_codegen_arm64_const_str_addr ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_const_str_addr.cpp)
 target_link_libraries(test_codegen_arm64_const_str_addr PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
 viper_add_ctest(test_codegen_arm64_const_str_addr $<TARGET_FILE:test_codegen_arm64_const_str_addr>)
@@ -254,10 +258,20 @@ add_executable(test_arm64_demos ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_arm64_demos
 target_link_libraries(test_arm64_demos PRIVATE viper_testing viper_common)
 viper_add_ctest(test_arm64_demos $<TARGET_FILE:test_arm64_demos>)
 
-## call with >8 integer args uses stack area (pending enable after backend support hardens)
-# add_executable(test_codegen_arm64_call_stack_args ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_call_stack_args.cpp)
-# target_link_libraries(test_codegen_arm64_call_stack_args PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
-# viper_add_ctest(test_codegen_arm64_call_stack_args $<TARGET_FILE:test_codegen_arm64_call_stack_args>)
+## call with >8 integer args uses stack area
+add_executable(test_codegen_arm64_call_stack_args ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_call_stack_args.cpp)
+target_link_libraries(test_codegen_arm64_call_stack_args PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
+viper_add_ctest(test_codegen_arm64_call_stack_args $<TARGET_FILE:test_codegen_arm64_call_stack_args>)
+
+## Comprehensive calling convention tests
+add_executable(test_codegen_arm64_call_convention ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_call_convention.cpp)
+target_link_libraries(test_codegen_arm64_call_convention PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
+viper_add_ctest(test_codegen_arm64_call_convention $<TARGET_FILE:test_codegen_arm64_call_convention>)
+
+## Floating-point support tests
+add_executable(test_codegen_arm64_fp ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_fp.cpp)
+target_link_libraries(test_codegen_arm64_fp PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
+viper_add_ctest(test_codegen_arm64_fp $<TARGET_FILE:test_codegen_arm64_fp>)
 
 viper_add_ctest(NoAssertFalseGuard
         ${CMAKE_COMMAND}

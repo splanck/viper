@@ -37,6 +37,8 @@ TEST(AArch64MIR, PrologueAddEpilogue)
                                {MOperand::regOp(PhysReg::X0),
                                 MOperand::regOp(PhysReg::X0),
                                 MOperand::regOp(PhysReg::X1)}});
+    // Return - triggers epilogue emission
+    bb.instrs.push_back(MInstr{MOpcode::Ret, {}});
 
     std::ostringstream os;
     emit.emitFunction(os, fn);
