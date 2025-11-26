@@ -231,7 +231,7 @@ std::optional<Slot> VMContext::stepOnce(VM::ExecState &state) const
 
     const il::core::Instr *instr = nullptr;
     if (!vmInstance->selectInstruction(state, instr))
-        return state.pendingResult;
+        return state.hasPendingResult ? std::optional<Slot>(state.pendingResult) : std::nullopt;
 
     // Dispatch hook before executing the opcode (counts, etc.).
 #if VIPER_VM_OPCOUNTS
@@ -241,7 +241,7 @@ std::optional<Slot> VMContext::stepOnce(VM::ExecState &state) const
     vmInstance->traceInstruction(*instr, state.fr);
     auto result = vmInstance->executeOpcode(state.fr, *instr, state.blocks, state.bb, state.ip);
     if (vmInstance->finalizeDispatch(state, result))
-        return state.pendingResult;
+        return state.hasPendingResult ? std::optional<Slot>(state.pendingResult) : std::nullopt;
 
     return std::nullopt;
 }

@@ -142,8 +142,8 @@ class SwitchStrategy final : public DispatchStrategy
         {
             VM::ExecResult result{};
             result.returned = true;
-            if (state.pendingResult)
-                result.value = *state.pendingResult;
+            if (state.hasPendingResult)
+                result.value = state.pendingResult;
             return result;
         }
 

@@ -198,7 +198,10 @@ inline VM::ExecResult handleLoadImpl(VM &vm,
 
     const size_t alignment = inline_impl::minimumAlignmentFor(in.type.kind);
     const uintptr_t rawPtr = reinterpret_cast<uintptr_t>(ptr);
-    if (alignment > 1U && rawPtr % alignment != 0U)
+    // Fast-path: use bitmask for power-of-two alignments; fall back to modulo otherwise.
+    if (alignment > 1U && (((alignment & (alignment - 1U)) == 0U)
+                               ? ((rawPtr & (static_cast<uintptr_t>(alignment) - 1U)) != 0U)
+                               : ((rawPtr % alignment) != 0U)))
     {
         const std::string blockLabel = bb ? bb->label : std::string();
         RuntimeBridge::trap(TrapKind::InvalidOperation,
@@ -242,7 +245,10 @@ inline VM::ExecResult handleStoreImpl(VM &vm,
 
     const size_t alignment = inline_impl::minimumAlignmentFor(in.type.kind);
     const uintptr_t rawPtr = reinterpret_cast<uintptr_t>(ptr);
-    if (alignment > 1U && rawPtr % alignment != 0U)
+    // Fast-path: use bitmask for power-of-two alignments; fall back to modulo otherwise.
+    if (alignment > 1U && (((alignment & (alignment - 1U)) == 0U)
+                               ? ((rawPtr & (static_cast<uintptr_t>(alignment) - 1U)) != 0U)
+                               : ((rawPtr % alignment) != 0U)))
     {
         RuntimeBridge::trap(TrapKind::InvalidOperation,
                             "misaligned store",

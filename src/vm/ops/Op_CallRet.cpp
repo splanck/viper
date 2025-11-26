@@ -103,45 +103,13 @@ VM::ExecResult handleCall(VM &vm,
     (void)blocks;
     (void)ip;
 
-    struct ArgBinding
-    {
-        Slot *reg = nullptr;
-        uint8_t *stackPtr = nullptr;
-    };
-
     // Evaluate operands up front so argument propagation is explicit and
     // deterministic before dispatch.  This mirrors the IL semantics and avoids
-    // leaking partially evaluated slots if a bridge call traps.  The original
-    // values are preserved so post-call synchronisation can detect mutations.
+    // leaking partially evaluated slots if a bridge call traps.
     std::vector<Slot> args;
     args.reserve(in.operands.size());
-    std::vector<Slot> originalArgs;
-    originalArgs.reserve(in.operands.size());
-    std::vector<ArgBinding> bindings;
-    bindings.reserve(in.operands.size());
-
-    uint8_t *const stackBegin = fr.stack.data();
-    uint8_t *const stackEnd = stackBegin + fr.stack.size();
-
     for (const auto &op : in.operands)
-    {
-        Slot value = VMAccess::eval(vm, fr, op);
-
-        ArgBinding binding{};
-        if (op.kind == il::core::Value::Kind::Temp && op.id < fr.regs.size())
-            binding.reg = &fr.regs[op.id];
-
-        if (value.ptr)
-        {
-            auto *ptr = static_cast<uint8_t *>(value.ptr);
-            if (ptr >= stackBegin && ptr < stackEnd)
-                binding.stackPtr = ptr;
-        }
-
-        bindings.push_back(binding);
-        originalArgs.push_back(value);
-        args.push_back(value);
-    }
+        args.push_back(VMAccess::eval(vm, fr, op));
 
     Slot out{};
     const auto &fnMap = VMAccess::functionMap(vm);
@@ -179,8 +147,40 @@ VM::ExecResult handleCall(VM &vm,
     {
         const std::string functionName = fr.func ? fr.func->name : std::string{};
         const std::string blockLabel = bb ? bb->label : std::string{};
+
+        // Build bindings and original values lazily only for runtime calls
+        struct ArgBinding
+        {
+            Slot *reg = nullptr;
+            uint8_t *stackPtr = nullptr;
+        };
+        std::vector<ArgBinding> bindings;
+        bindings.reserve(in.operands.size());
+        std::vector<Slot> originalArgs;
+        originalArgs.reserve(in.operands.size());
+
+        uint8_t *const stackBegin = fr.stack.data();
+        uint8_t *const stackEnd = stackBegin + fr.stack.size();
+
+        for (size_t i = 0; i < in.operands.size(); ++i)
+        {
+            const auto &op = in.operands[i];
+            ArgBinding binding{};
+            if (op.kind == il::core::Value::Kind::Temp && op.id < fr.regs.size())
+                binding.reg = &fr.regs[op.id];
+            if (args[i].ptr)
+            {
+                auto *ptr = static_cast<uint8_t *>(args[i].ptr);
+                if (ptr >= stackBegin && ptr < stackEnd)
+                    binding.stackPtr = ptr;
+            }
+            bindings.push_back(binding);
+            originalArgs.push_back(args[i]);
+        }
+
         out = RuntimeBridge::call(
-            VMAccess::runtimeContext(vm), in.callee, args, in.loc, functionName, blockLabel);
+            VMAccess::runtimeContext(vm), std::string_view(in.callee), std::span<const Slot>{args},
+            in.loc, functionName, blockLabel);
 
         const auto *signature = il::runtime::findRuntimeSignature(in.callee);
         if (signature)
@@ -244,15 +244,10 @@ VM::ExecResult handleCall(VM &vm,
                     };
 
                     const size_t width = copyWidthForKind(kind);
-                    // Use uintptr_t arithmetic to avoid pointer overflow when checking bounds
                     if (width != 0 && binding.stackPtr >= stackBegin && binding.stackPtr < stackEnd)
                     {
-                        const auto stackPtrAddr =
-                            reinterpret_cast<std::uintptr_t>(binding.stackPtr);
+                        const auto stackPtrAddr = reinterpret_cast<std::uintptr_t>(binding.stackPtr);
                         const auto stackEndAddr = reinterpret_cast<std::uintptr_t>(stackEnd);
-                        // Safe check: ensure writing 'width' bytes won't exceed stack bounds
-                        // Use subtraction to avoid overflow: (ptr + width <= end) becomes (end -
-                        // ptr >= width)
                         if (stackEndAddr - stackPtrAddr >= width)
                         {
                             Slot &mutated = args[index];
@@ -264,11 +259,9 @@ VM::ExecResult handleCall(VM &vm,
                                 rt_str_retain_maybe(incoming);
                                 *slot = incoming;
                             }
-                            else
+                            else if (void *src = il::vm::slotToArgPointer(mutated, kind))
                             {
-                                void *src = il::vm::slotToArgPointer(mutated, kind);
-                                if (src)
-                                    std::memcpy(binding.stackPtr, src, width);
+                                std::memcpy(binding.stackPtr, src, width);
                             }
                         }
                     }
@@ -335,7 +328,8 @@ VM::ExecResult handleCallIndirect(VM &vm,
             const std::string functionName = fr.func ? fr.func->name : std::string{};
             const std::string blockLabel = bb ? bb->label : std::string{};
             out = RuntimeBridge::call(
-                VMAccess::runtimeContext(vm), calleeName, args, in.loc, functionName, blockLabel);
+                VMAccess::runtimeContext(vm), std::string_view(calleeName),
+                std::span<const Slot>{args}, in.loc, functionName, blockLabel);
         }
     }
     else

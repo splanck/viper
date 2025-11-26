@@ -3,8 +3,8 @@
 LBL_Add:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_Add(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -15,8 +15,8 @@ LBL_Add:
 LBL_Sub:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_Sub(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -27,8 +27,8 @@ LBL_Sub:
 LBL_Mul:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_Mul(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -39,8 +39,8 @@ LBL_Mul:
 LBL_IAddOvf:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_IAddOvf(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -51,8 +51,8 @@ LBL_IAddOvf:
 LBL_ISubOvf:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_ISubOvf(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -63,8 +63,8 @@ LBL_ISubOvf:
 LBL_IMulOvf:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_IMulOvf(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -75,8 +75,8 @@ LBL_IMulOvf:
 LBL_SDiv:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_SDiv(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -87,8 +87,8 @@ LBL_SDiv:
 LBL_UDiv:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_UDiv(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -99,8 +99,8 @@ LBL_UDiv:
 LBL_SRem:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_SRem(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -111,8 +111,8 @@ LBL_SRem:
 LBL_URem:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_URem(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -123,8 +123,8 @@ LBL_URem:
 LBL_SDivChk0:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_SDivChk0(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -135,8 +135,8 @@ LBL_SDivChk0:
 LBL_UDivChk0:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_UDivChk0(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -147,8 +147,8 @@ LBL_UDivChk0:
 LBL_SRemChk0:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_SRemChk0(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -159,8 +159,8 @@ LBL_SRemChk0:
 LBL_URemChk0:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_URemChk0(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -171,8 +171,8 @@ LBL_URemChk0:
 LBL_IdxChk:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_IdxChk(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -183,8 +183,8 @@ LBL_IdxChk:
 LBL_And:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_And(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -195,8 +195,8 @@ LBL_And:
 LBL_Or:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_Or(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -207,8 +207,8 @@ LBL_Or:
 LBL_Xor:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_Xor(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -219,8 +219,8 @@ LBL_Xor:
 LBL_Shl:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_Shl(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -231,8 +231,8 @@ LBL_Shl:
 LBL_LShr:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_LShr(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -243,8 +243,8 @@ LBL_LShr:
 LBL_AShr:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_AShr(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -255,8 +255,8 @@ LBL_AShr:
 LBL_FAdd:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_FAdd(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -267,8 +267,8 @@ LBL_FAdd:
 LBL_FSub:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_FSub(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -279,8 +279,8 @@ LBL_FSub:
 LBL_FMul:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_FMul(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -291,8 +291,8 @@ LBL_FMul:
 LBL_FDiv:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_FDiv(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -303,8 +303,8 @@ LBL_FDiv:
 LBL_ICmpEq:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_ICmpEq(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -315,8 +315,8 @@ LBL_ICmpEq:
 LBL_ICmpNe:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_ICmpNe(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -327,8 +327,8 @@ LBL_ICmpNe:
 LBL_SCmpLT:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_SCmpLT(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -339,8 +339,8 @@ LBL_SCmpLT:
 LBL_SCmpLE:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_SCmpLE(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -351,8 +351,8 @@ LBL_SCmpLE:
 LBL_SCmpGT:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_SCmpGT(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -363,8 +363,8 @@ LBL_SCmpGT:
 LBL_SCmpGE:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_SCmpGE(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -375,8 +375,8 @@ LBL_SCmpGE:
 LBL_UCmpLT:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_UCmpLT(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -387,8 +387,8 @@ LBL_UCmpLT:
 LBL_UCmpLE:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_UCmpLE(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -399,8 +399,8 @@ LBL_UCmpLE:
 LBL_UCmpGT:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_UCmpGT(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -411,8 +411,8 @@ LBL_UCmpGT:
 LBL_UCmpGE:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_UCmpGE(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -423,8 +423,8 @@ LBL_UCmpGE:
 LBL_FCmpEQ:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_FCmpEQ(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -435,8 +435,8 @@ LBL_FCmpEQ:
 LBL_FCmpNE:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_FCmpNE(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -447,8 +447,8 @@ LBL_FCmpNE:
 LBL_FCmpLT:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_FCmpLT(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -459,8 +459,8 @@ LBL_FCmpLT:
 LBL_FCmpLE:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_FCmpLE(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -471,8 +471,8 @@ LBL_FCmpLE:
 LBL_FCmpGT:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_FCmpGT(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -483,8 +483,8 @@ LBL_FCmpGT:
 LBL_FCmpGE:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_FCmpGE(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -495,8 +495,8 @@ LBL_FCmpGE:
 LBL_Sitofp:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_Sitofp(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -507,8 +507,8 @@ LBL_Sitofp:
 LBL_Fptosi:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_Fptosi(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -519,8 +519,8 @@ LBL_Fptosi:
 LBL_CastFpToSiRteChk:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_CastFpToSiRteChk(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -531,8 +531,8 @@ LBL_CastFpToSiRteChk:
 LBL_CastFpToUiRteChk:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_CastFpToUiRteChk(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -543,8 +543,8 @@ LBL_CastFpToUiRteChk:
 LBL_CastSiNarrowChk:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_CastSiNarrowChk(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -555,8 +555,8 @@ LBL_CastSiNarrowChk:
 LBL_CastUiNarrowChk:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_CastUiNarrowChk(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -567,8 +567,8 @@ LBL_CastUiNarrowChk:
 LBL_CastSiToFp:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_CastSiToFp(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -579,8 +579,8 @@ LBL_CastSiToFp:
 LBL_CastUiToFp:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_CastUiToFp(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -591,8 +591,8 @@ LBL_CastUiToFp:
 LBL_Zext1:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_Zext1(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -603,8 +603,8 @@ LBL_Zext1:
 LBL_Trunc1:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_Trunc1(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -615,8 +615,8 @@ LBL_Trunc1:
 LBL_Alloca:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_Alloca(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -627,8 +627,8 @@ LBL_Alloca:
 LBL_GEP:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_GEP(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -639,8 +639,8 @@ LBL_GEP:
 LBL_Load:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_Load(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -651,8 +651,8 @@ LBL_Load:
 LBL_Store:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_Store(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -663,8 +663,8 @@ LBL_Store:
 LBL_AddrOf:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_AddrOf(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -675,8 +675,8 @@ LBL_AddrOf:
 LBL_ConstStr:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_ConstStr(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -687,8 +687,8 @@ LBL_ConstStr:
 LBL_ConstNull:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_ConstNull(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -699,8 +699,8 @@ LBL_ConstNull:
 LBL_Call:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_Call(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -711,8 +711,8 @@ LBL_Call:
 LBL_SwitchI32:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_SwitchI32(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -723,8 +723,8 @@ LBL_SwitchI32:
 LBL_Br:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_Br(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -735,8 +735,8 @@ LBL_Br:
 LBL_CBr:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_CBr(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -747,8 +747,8 @@ LBL_CBr:
 LBL_Ret:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_Ret(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -759,8 +759,8 @@ LBL_Ret:
 LBL_TrapKind:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_TrapKind(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -771,8 +771,8 @@ LBL_TrapKind:
 LBL_TrapFromErr:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_TrapFromErr(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -783,8 +783,8 @@ LBL_TrapFromErr:
 LBL_TrapErr:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_TrapErr(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -795,8 +795,8 @@ LBL_TrapErr:
 LBL_ErrGetKind:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_ErrGetKind(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -807,8 +807,8 @@ LBL_ErrGetKind:
 LBL_ErrGetCode:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_ErrGetCode(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -819,8 +819,8 @@ LBL_ErrGetCode:
 LBL_ErrGetIp:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_ErrGetIp(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -831,8 +831,8 @@ LBL_ErrGetIp:
 LBL_ErrGetLine:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_ErrGetLine(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -843,8 +843,8 @@ LBL_ErrGetLine:
 LBL_EhPush:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_EhPush(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -855,8 +855,8 @@ LBL_EhPush:
 LBL_EhPop:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_EhPop(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -867,8 +867,8 @@ LBL_EhPop:
 LBL_ResumeSame:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_ResumeSame(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -879,8 +879,8 @@ LBL_ResumeSame:
 LBL_ResumeNext:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_ResumeNext(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -891,8 +891,8 @@ LBL_ResumeNext:
 LBL_ResumeLabel:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_ResumeLabel(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -903,8 +903,8 @@ LBL_ResumeLabel:
 LBL_EhEntry:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_EhEntry(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)
@@ -915,8 +915,8 @@ LBL_EhEntry:
 LBL_Trap:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = vm.executeOpcode(state.fr, *currentInstr, state.blocks, state.bb, state.ip);
-    if (vm.finalizeDispatch(state, exec))
+    vm.inline_handle_Trap(state);
+    if (state.exitRequested)
         return true;
     opcode = fetchNext();
     if (state.exitRequested)

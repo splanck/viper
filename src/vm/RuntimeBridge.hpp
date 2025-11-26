@@ -22,7 +22,8 @@
 
 #include <cstddef>
 #include <string>
-#include <vector>
+#include <string_view>
+#include <span>
 
 namespace il::runtime
 {
@@ -68,8 +69,24 @@ class RuntimeBridge
     /// @param block Calling block label.
     /// @return Result slot from runtime call.
     static Slot call(RuntimeCallContext &ctx,
-                     const std::string &name,
+                     std::string_view name,
+                     std::span<const Slot> args,
+                     const il::support::SourceLoc &loc,
+                     const std::string &fn,
+                     const std::string &block);
+
+    // Backward-compatible overload accepting std::vector to avoid callers copying into spans.
+    static Slot call(RuntimeCallContext &ctx,
+                     std::string_view name,
                      const std::vector<Slot> &args,
+                     const il::support::SourceLoc &loc,
+                     const std::string &fn,
+                     const std::string &block);
+
+    // Convenience overload: initializer-list of Slots
+    static Slot call(RuntimeCallContext &ctx,
+                     std::string_view name,
+                     std::initializer_list<Slot> args,
                      const il::support::SourceLoc &loc,
                      const std::string &fn,
                      const std::string &block);

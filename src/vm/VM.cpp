@@ -304,7 +304,7 @@ std::optional<Slot> VM::shouldPause(ExecState &st, const Instr *in, bool postExe
 void VM::beginDispatch(ExecState &state)
 {
     state.exitRequested = false;
-    state.pendingResult.reset();
+    state.hasPendingResult = false;
     state.currentInstr = nullptr;
 }
 
@@ -323,6 +323,7 @@ bool VM::selectInstruction(ExecState &state, const Instr *&instr)
         Slot zero{};
         zero.i64 = 0;
         state.pendingResult = zero;
+        state.hasPendingResult = true;
         state.exitRequested = true;
         state.currentInstr = nullptr;
         instr = nullptr;
@@ -337,6 +338,7 @@ bool VM::selectInstruction(ExecState &state, const Instr *&instr)
     if (auto pause = shouldPause(state, state.currentInstr, false)) [[unlikely]]
     {
         state.pendingResult = *pause;
+        state.hasPendingResult = true;
         state.exitRequested = true;
         state.currentInstr = nullptr;
         instr = nullptr;
@@ -371,17 +373,19 @@ bool VM::finalizeDispatch(ExecState &state, const ExecResult &exec)
                             state.currentInstr ? state.currentInstr->op : il::core::Opcode::Trap);
     if (state.exitRequested) [[unlikely]]
     {
-        if (!state.pendingResult)
+        if (!state.hasPendingResult)
         {
             Slot s{};
             s.i64 = 1;
             state.pendingResult = s;
+            state.hasPendingResult = true;
         }
         return true;
     }
     if (exec.returned) [[unlikely]]
     {
         state.pendingResult = exec.value;
+        state.hasPendingResult = true;
         state.exitRequested = true;
         return true;
     }
@@ -394,11 +398,12 @@ bool VM::finalizeDispatch(ExecState &state, const ExecResult &exec)
     if (auto pause = shouldPause(state, nullptr, true)) [[unlikely]]
     {
         state.pendingResult = *pause;
+        state.hasPendingResult = true;
         state.exitRequested = true;
         return true;
     }
 
-    state.pendingResult.reset();
+    state.hasPendingResult = false;
     state.exitRequested = false;
     return false;
 }
@@ -448,8 +453,8 @@ Slot VM::runFunctionLoop(ExecState &st)
 
             if (finished)
             {
-                if (st.pendingResult)
-                    return *st.pendingResult;
+                if (st.hasPendingResult)
+                    return st.pendingResult;
                 Slot zero{};
                 zero.i64 = 0;
                 return zero;

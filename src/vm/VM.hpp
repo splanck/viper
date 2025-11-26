@@ -285,7 +285,8 @@ class VM
         size_t callSiteIp = 0;                ///< Instruction index of the call in the caller
         il::support::SourceLoc callSiteLoc{}; ///< Source location of the call site
         viper::vm::SwitchCache switchCache{}; ///< Memoized switch dispatch data for this frame
-        std::optional<Slot> pendingResult{};  ///< Result staged by threaded interpreter
+        Slot pendingResult{};                 ///< Result staged by interpreter
+        bool hasPendingResult = false;        ///< Whether pendingResult is valid
         const il::core::Instr *currentInstr =
             nullptr;                ///< Instruction under execution for inline dispatch
         bool exitRequested = false; ///< Whether the active loop should exit
@@ -313,6 +314,7 @@ class VM
             Slot s{};
             s.i64 = 1; // generic pause sentinel
             pendingResult = s;
+            hasPendingResult = true;
             exitRequested = true;
         }
 

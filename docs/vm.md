@@ -749,3 +749,51 @@ Allows embedding applications to maintain responsiveness.
 - `src/vm/` — VM implementation
 - `src/rt/` — C runtime library
 - `tests/vm/` — VM unit tests
+# Viper VM — Performance Tuning and Benchmarking
+
+This guide summarizes runtime tuning knobs for the VM and how to benchmark dispatch performance across modes.
+
+## Dispatch Modes
+
+- Env `VIPER_DISPATCH`:
+  - `table`: function-table dispatch via `executeOpcode`
+  - `switch`: inline switch dispatch with generated handlers
+  - `threaded`: computed goto (if built with `VIPER_VM_THREADED`)
+
+- Env `VIPER_ENABLE_OPCOUNTS` (default on): enable per-opcode execution counters. You can query counts via `Runner::opcodeCounts()` or the `--count` flag in `ilc -run`.
+
+- Env `VIPER_INTERRUPT_EVERY_N`: periodically invoke a host callback every N instructions (see `RunConfig::interruptEveryN`).
+
+## Switch Backend Heuristics
+
+Switch dispatch selects a backend per instruction. Heuristics can be tuned via env:
+
+- `VIPER_SWITCH_DENSE_MAX_RANGE` (default `4096`): maximum value range to consider a dense jump table.
+- `VIPER_SWITCH_DENSE_MIN_DENSITY` (default `0.60`): minimum case density for dense backend.
+- `VIPER_SWITCH_HASH_MIN_CASES` (default `64`): minimum number of cases before hashing is considered.
+- `VIPER_SWITCH_HASH_MAX_DENSITY` (default `0.15`): maximum density to prefer hashed backend.
+
+If `VIPER_SWITCH_MODE` is set to `dense|sorted|hashed|linear|auto`, it overrides the heuristic for all instructions.
+
+## Benchmarking
+
+Use the helper script to compare dispatch performance across modes:
+
+- Script: `scripts/vm_benchmark.sh`
+- Output: appends to `bugs/vm_benchmarks.md`
+
+Environment variables:
+
+- `RUNS_PER_CASE` (default `3`): number of runs per (mode, program) pair.
+- `IL_GLOB` (default `examples/il/*.il`): glob for IL programs to benchmark (relative to repo root).
+- `ILC_BIN`: optional path to `ilc`; otherwise auto-detected under `build/`.
+
+Each invocation writes a timestamped section header and a per-row timestamp, along with averages and min/max timings, the actual dispatch kind, and instruction counts extracted from `--count` and `--time` summaries.
+
+Example:
+
+```
+RUNS_PER_CASE=5 IL_GLOB='src/tests/il/e2e/*.il' scripts/vm_benchmark.sh
+```
+
+The script sets `VIPER_DEBUG_VM=1` so the VM prints the resolved dispatch kind, and `VIPER_ENABLE_OPCOUNTS=1` to capture counts.

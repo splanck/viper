@@ -34,6 +34,7 @@
 #include <unordered_set>
 #include <variant>
 #include <vector>
+#include <cstdlib>
 
 namespace il::vm::detail::control
 {
@@ -110,15 +111,57 @@ inline viper::vm::SwitchCacheEntry::Kind chooseBackend(const SwitchMeta &meta)
     if (meta.values.empty())
         return viper::vm::SwitchCacheEntry::Sorted;
 
+    struct Tunables
+    {
+        int64_t denseMaxRange = 4096;
+        double denseMinDensity = 0.60;
+        std::size_t hashMinCases = 64;
+        double hashMaxDensity = 0.15;
+    };
+
+    static const Tunables t = []
+    {
+        Tunables tv{};
+        if (const char *s = std::getenv("VIPER_SWITCH_DENSE_MAX_RANGE"))
+        {
+            char *end = nullptr;
+            long long v = std::strtoll(s, &end, 10);
+            if (end && *end == '\0' && v > 0)
+                tv.denseMaxRange = static_cast<int64_t>(v);
+        }
+        if (const char *s = std::getenv("VIPER_SWITCH_DENSE_MIN_DENSITY"))
+        {
+            char *end = nullptr;
+            double v = std::strtod(s, &end);
+            if (end && *end == '\0' && v > 0.0 && v <= 1.0)
+                tv.denseMinDensity = v;
+        }
+        if (const char *s = std::getenv("VIPER_SWITCH_HASH_MIN_CASES"))
+        {
+            char *end = nullptr;
+            long v = std::strtol(s, &end, 10);
+            if (end && *end == '\0' && v >= 0)
+                tv.hashMinCases = static_cast<std::size_t>(v);
+        }
+        if (const char *s = std::getenv("VIPER_SWITCH_HASH_MAX_DENSITY"))
+        {
+            char *end = nullptr;
+            double v = std::strtod(s, &end);
+            if (end && *end == '\0' && v > 0.0 && v <= 1.0)
+                tv.hashMaxDensity = v;
+        }
+        return tv;
+    }();
+
     const auto [minIt, maxIt] = std::minmax_element(meta.values.begin(), meta.values.end());
     const int64_t minv = *minIt;
     const int64_t maxv = *maxIt;
     const int64_t range = maxv - minv + 1;
     const double density = static_cast<double>(meta.values.size()) / static_cast<double>(range);
 
-    if (range <= 4096 && density >= 0.60)
+    if (range <= t.denseMaxRange && density >= t.denseMinDensity)
         return viper::vm::SwitchCacheEntry::Dense;
-    if (meta.values.size() >= 64 && density < 0.15)
+    if (meta.values.size() >= t.hashMinCases && density < t.hashMaxDensity)
         return viper::vm::SwitchCacheEntry::Hashed;
     return viper::vm::SwitchCacheEntry::Sorted;
 }

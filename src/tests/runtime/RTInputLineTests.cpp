@@ -29,7 +29,11 @@ static rt_string read_line(const std::string &data)
     close(fds[1]);
     dup2(fds[0], 0);
     close(fds[0]);
-    clearerr(stdin);
+    // After dup2, we need to associate stdin with the new fd properly.
+    // clearerr alone doesn't reset the stream's internal buffer state.
+    // Use freopen with /dev/stdin to force the stream to sync with the new fd.
+    FILE *reopened = freopen("/dev/stdin", "r", stdin);
+    assert(reopened == stdin);
     return rt_input_line();
 }
 

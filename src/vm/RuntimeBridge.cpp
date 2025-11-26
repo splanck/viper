@@ -81,8 +81,8 @@ using Thunk = VmResult (*)(VM &, FrameInfo &, const RuntimeCallContext &);
 /// @param block Name of the basic block executing the call.
 /// @return True when counts match; false when a trap was raised.
 static bool validateArgumentCount(const RuntimeDescriptor &desc,
-                                  const std::string &name,
-                                  const std::vector<Slot> &args,
+                                  std::string_view name,
+                                  std::span<const Slot> args,
                                   const SourceLoc &loc,
                                   const std::string &fn,
                                   const std::string &block)
@@ -384,8 +384,8 @@ std::string canonicalizeExternName(std::string_view n)
 /// @param block Block label executing the call.
 /// @return Slot containing the runtime result or zero on trap.
 Slot RuntimeBridge::call(RuntimeCallContext &ctx,
-                         const std::string &name,
-                         const std::vector<Slot> &args,
+                         std::string_view name,
+                         std::span<const Slot> args,
                          const SourceLoc &loc,
                          const std::string &fn,
                          const std::string &block)
@@ -550,6 +550,26 @@ const RuntimeCallContext *RuntimeBridge::activeContext()
 bool RuntimeBridge::hasActiveVm()
 {
     return VM::activeInstance() != nullptr;
+}
+
+Slot RuntimeBridge::call(RuntimeCallContext &ctx,
+                         std::string_view name,
+                         const std::vector<Slot> &args,
+                         const SourceLoc &loc,
+                         const std::string &fn,
+                         const std::string &block)
+{
+    return RuntimeBridge::call(ctx, name, std::span<const Slot>{args.data(), args.size()}, loc, fn, block);
+}
+
+Slot RuntimeBridge::call(RuntimeCallContext &ctx,
+                         std::string_view name,
+                         std::initializer_list<Slot> args,
+                         const SourceLoc &loc,
+                         const std::string &fn,
+                         const std::string &block)
+{
+    return RuntimeBridge::call(ctx, name, std::span<const Slot>{args.begin(), args.size()}, loc, fn, block);
 }
 
 void RuntimeBridge::registerExtern(const ExternDesc &ext)
