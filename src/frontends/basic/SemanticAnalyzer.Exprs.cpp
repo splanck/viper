@@ -399,57 +399,14 @@ class SemanticAnalyzerExprVisitor final : public MutExprVisitor
 
 /// @brief Resolve a variable reference and compute its semantic type.
 ///
-/// @details Tracks the symbol for later use, suggests corrections via
-///          Levenshtein distance when unresolved, and applies BASIC suffix rules
-///          when no explicit declaration is available.  Diagnostics are emitted
-///          for unknown variables.
+/// @details Delegates to @ref sem::analyzeVarExpr which handles symbol tracking,
+///          Levenshtein suggestions for typos, and BASIC suffix rules.
 ///
 /// @param v Variable expression under analysis.
 /// @return Semantic type inferred for the variable.
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeVar(VarExpr &v)
 {
-    resolveAndTrackSymbol(v.name, SymbolKind::Reference);
-    if (!symbols_.count(v.name))
-    {
-        std::string best;
-        size_t bestDist = std::numeric_limits<size_t>::max();
-        for (const auto &s : symbols_)
-        {
-            size_t d = levenshtein(v.name, s);
-            if (d < bestDist)
-            {
-                bestDist = d;
-                best = s;
-            }
-        }
-        std::string suggestion;
-        if (!best.empty())
-        {
-            suggestion = "; did you mean '" + best + "'?";
-        }
-        de.emit(
-            diag::BasicDiag::UnknownVariable,
-            v.loc,
-            static_cast<uint32_t>(v.name.size()),
-            std::initializer_list<diag::Replacement>{diag::Replacement{"name", v.name},
-                                                     diag::Replacement{"suggestion", suggestion}});
-        return Type::Unknown;
-    }
-    auto it = varTypes_.find(v.name);
-    if (it != varTypes_.end())
-        return it->second;
-    if (!v.name.empty())
-    {
-        // BASIC suffix rules provide implicit types for undeclared variables:
-        // '$' for STRING and '#'/'!' for floating point. Tracking this here keeps
-        // later passes aligned with language defaults even when declarations are
-        // omitted in source.
-        if (v.name.back() == '$')
-            return Type::String;
-        if (v.name.back() == '#' || v.name.back() == '!')
-            return Type::Float;
-    }
-    return Type::Int;
+    return sem::analyzeVarExpr(*this, v);
 }
 
 /// @brief Analyse a unary expression using helper utilities.
@@ -787,192 +744,40 @@ void SemanticAnalyzer::insertImplicitCast(Expr &expr, Type target)
 
 /// @brief Analyse an array element access.
 ///
-/// @details Validates that the referenced symbol is an array, ensures the index
-///          expression resolves to an integer, and emits warnings for constant
-///          indices that fall outside known bounds.
+/// @details Delegates to @ref sem::analyzeArrayExpr which validates that the
+///          referenced symbol is an array, ensures index expressions resolve to
+///          integers, and emits warnings for constant indices that fall outside
+///          known bounds.
 ///
 /// @param a Array expression under analysis.
 /// @return Semantic type of the accessed element or Unknown on error.
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeArray(ArrayExpr &a)
 {
-    resolveAndTrackSymbol(a.name, SymbolKind::Reference);
-    if (!arrays_.count(a.name))
-    {
-        de.emit(diag::BasicDiag::UnknownArray,
-                a.loc,
-                static_cast<uint32_t>(a.name.size()),
-                std::initializer_list<diag::Replacement>{diag::Replacement{"name", a.name}});
-        // Visit all indices for type checking even on error path
-        // For backward compatibility, check deprecated 'index' field first
-        if (a.index)
-            visitExpr(*a.index);
-        for (auto &indexPtr : a.indices)
-        {
-            if (indexPtr)
-                visitExpr(*indexPtr);
-        }
-        return Type::Unknown;
-    }
-    if (auto itType = varTypes_.find(a.name); itType != varTypes_.end() &&
-                                              itType->second != Type::ArrayInt &&
-                                              itType->second != Type::ArrayString)
-    {
-        de.emit(diag::BasicDiag::NotAnArray,
-                a.loc,
-                static_cast<uint32_t>(a.name.size()),
-                std::initializer_list<diag::Replacement>{diag::Replacement{"name", a.name}});
-        // Visit all indices for type checking even on error path
-        // For backward compatibility, check deprecated 'index' field first
-        if (a.index)
-            visitExpr(*a.index);
-        for (auto &indexPtr : a.indices)
-        {
-            if (indexPtr)
-                visitExpr(*indexPtr);
-        }
-        return Type::Unknown;
-    }
-
-    // Validate each index expression (supports multi-dimensional arrays)
-    // For backward compatibility: use 'index' for single-dim, 'indices' for multi-dim
-    if (a.index)
-    {
-        // Single-dimensional array (backward compatible path)
-        Type ty = visitExpr(*a.index);
-        if (ty == Type::Float)
-        {
-            if (auto *floatLiteral = as<FloatExpr>(*a.index))
-            {
-                insertImplicitCast(*a.index, Type::Int);
-                std::string msg = "narrowing conversion from FLOAT to INT in array index";
-                de.emit(il::support::Severity::Warning, "B2002", a.loc, 1, std::move(msg));
-            }
-            else
-            {
-                std::string msg = "index type mismatch";
-                de.emit(il::support::Severity::Error, "B2001", a.loc, 1, std::move(msg));
-            }
-        }
-        else if (ty != Type::Unknown && ty != Type::Int)
-        {
-            std::string msg = "index type mismatch";
-            de.emit(il::support::Severity::Error, "B2001", a.loc, 1, std::move(msg));
-        }
-
-        // Bounds check for single-dimensional arrays
-        auto it = arrays_.find(a.name);
-        if (it != arrays_.end() && !it->second.extents.empty() && it->second.extents.size() == 1)
-        {
-            long long arraySize = it->second.extents[0];
-            if (arraySize >= 0)
-            {
-                if (auto *ci = as<const IntExpr>(*a.index))
-                {
-                    if (ci->value < 0 || ci->value >= arraySize)
-                    {
-                        std::string msg = "index out of bounds";
-                        de.emit(il::support::Severity::Warning, "B3001", a.loc, 1, std::move(msg));
-                    }
-                }
-            }
-        }
-    }
-    else
-    {
-        // Multi-dimensional array (new path)
-        for (auto &indexPtr : a.indices)
-        {
-            if (!indexPtr)
-                continue;
-            Type ty = visitExpr(*indexPtr);
-            if (ty == Type::Float)
-            {
-                if (auto *floatLiteral = as<FloatExpr>(*indexPtr))
-                {
-                    insertImplicitCast(*indexPtr, Type::Int);
-                    std::string msg = "narrowing conversion from FLOAT to INT in array index";
-                    de.emit(il::support::Severity::Warning, "B2002", a.loc, 1, std::move(msg));
-                }
-                else
-                {
-                    std::string msg = "index type mismatch";
-                    de.emit(il::support::Severity::Error, "B2001", a.loc, 1, std::move(msg));
-                }
-            }
-            else if (ty != Type::Unknown && ty != Type::Int)
-            {
-                std::string msg = "index type mismatch";
-                de.emit(il::support::Severity::Error, "B2001", a.loc, 1, std::move(msg));
-            }
-        }
-        // TODO: Bounds check for multi-dimensional arrays
-    }
-
-    // Return element type based on array type
-    auto itType = varTypes_.find(a.name);
-    if (itType != varTypes_.end() && itType->second == Type::ArrayString)
-        return Type::String;
-
-    return Type::Int;
+    return sem::analyzeArrayExpr(*this, a);
 }
 
 /// @brief Analyse an `LBOUND` expression returning the lower index bound.
 ///
-/// @details Confirms the referenced symbol is a known array and emits
-///          diagnostics otherwise.
+/// @details Delegates to @ref sem::analyzeLBoundExpr which confirms the
+///          referenced symbol is a known array and emits diagnostics otherwise.
 ///
 /// @param expr LBOUND expression node.
 /// @return Integer type on success or Unknown when diagnostics were emitted.
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeLBound(LBoundExpr &expr)
 {
-    resolveAndTrackSymbol(expr.name, SymbolKind::Reference);
-    if (!arrays_.count(expr.name))
-    {
-        de.emit(diag::BasicDiag::UnknownArray,
-                expr.loc,
-                static_cast<uint32_t>(expr.name.size()),
-                std::initializer_list<diag::Replacement>{diag::Replacement{"name", expr.name}});
-        return Type::Unknown;
-    }
-    if (auto itType = varTypes_.find(expr.name);
-        itType != varTypes_.end() && itType->second != Type::ArrayInt)
-    {
-        de.emit(diag::BasicDiag::NotAnArray,
-                expr.loc,
-                static_cast<uint32_t>(expr.name.size()),
-                std::initializer_list<diag::Replacement>{diag::Replacement{"name", expr.name}});
-        return Type::Unknown;
-    }
-    return Type::Int;
+    return sem::analyzeLBoundExpr(*this, expr);
 }
 
 /// @brief Analyse a `UBOUND` expression returning the upper index bound.
 ///
-/// @details Shares the same validation steps as @ref analyzeLBound.
+/// @details Delegates to @ref sem::analyzeUBoundExpr which shares the same
+///          validation steps as LBOUND analysis.
 ///
 /// @param expr UBOUND expression node.
 /// @return Integer type on success or Unknown when diagnostics were emitted.
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeUBound(UBoundExpr &expr)
 {
-    resolveAndTrackSymbol(expr.name, SymbolKind::Reference);
-    if (!arrays_.count(expr.name))
-    {
-        de.emit(diag::BasicDiag::UnknownArray,
-                expr.loc,
-                static_cast<uint32_t>(expr.name.size()),
-                std::initializer_list<diag::Replacement>{diag::Replacement{"name", expr.name}});
-        return Type::Unknown;
-    }
-    if (auto itType = varTypes_.find(expr.name);
-        itType != varTypes_.end() && itType->second != Type::ArrayInt)
-    {
-        de.emit(diag::BasicDiag::NotAnArray,
-                expr.loc,
-                static_cast<uint32_t>(expr.name.size()),
-                std::initializer_list<diag::Replacement>{diag::Replacement{"name", expr.name}});
-        return Type::Unknown;
-    }
-    return Type::Int;
+    return sem::analyzeUBoundExpr(*this, expr);
 }
 
 /// @brief Visit an expression tree and compute its semantic type.

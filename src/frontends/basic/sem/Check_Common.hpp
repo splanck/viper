@@ -21,6 +21,7 @@
 #include "frontends/basic/SemanticAnalyzer.Internal.hpp"
 
 #include <cassert>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -304,6 +305,55 @@ class ExprCheckContext
         return analyzer_->inferCallType(expr, sig);
     }
 
+    // Variable analysis helpers
+    void resolveAndTrackSymbol(std::string &name, SemanticAnalyzer::SymbolKind kind)
+    {
+        analyzer_->resolveAndTrackSymbol(name, kind);
+    }
+
+    void resolveAndTrackSymbolRef(const std::string &name)
+    {
+        std::string nameCopy = name;
+        analyzer_->resolveAndTrackSymbol(nameCopy, SemanticAnalyzer::SymbolKind::Reference);
+    }
+
+    [[nodiscard]] bool hasSymbol(const std::string &name) const
+    {
+        return analyzer_->symbols_.count(name) != 0;
+    }
+
+    [[nodiscard]] const std::unordered_set<std::string> &symbols() const noexcept
+    {
+        return analyzer_->symbols_;
+    }
+
+    [[nodiscard]] std::optional<SemanticAnalyzer::Type> varType(const std::string &name) const
+    {
+        auto it = analyzer_->varTypes_.find(name);
+        if (it != analyzer_->varTypes_.end())
+            return it->second;
+        return std::nullopt;
+    }
+
+    // Array analysis helpers
+    [[nodiscard]] bool hasArray(const std::string &name) const
+    {
+        return analyzer_->arrays_.count(name) != 0;
+    }
+
+    [[nodiscard]] const ArrayMetadata *arrayMetadata(const std::string &name) const
+    {
+        auto it = analyzer_->arrays_.find(name);
+        if (it != analyzer_->arrays_.end())
+            return &it->second;
+        return nullptr;
+    }
+
+    void insertImplicitCast(Expr &expr, SemanticAnalyzer::Type target)
+    {
+        analyzer_->insertImplicitCast(expr, target);
+    }
+
   private:
     SemanticAnalyzer *analyzer_{nullptr};
 };
@@ -352,5 +402,9 @@ void analyzeReturn(SemanticAnalyzer &analyzer, ReturnStmt &stmt);
 SemanticAnalyzer::Type analyzeUnaryExpr(SemanticAnalyzer &analyzer, const UnaryExpr &expr);
 SemanticAnalyzer::Type analyzeBinaryExpr(SemanticAnalyzer &analyzer, const BinaryExpr &expr);
 SemanticAnalyzer::Type analyzeCallExpr(SemanticAnalyzer &analyzer, const CallExpr &expr);
+SemanticAnalyzer::Type analyzeVarExpr(SemanticAnalyzer &analyzer, VarExpr &expr);
+SemanticAnalyzer::Type analyzeArrayExpr(SemanticAnalyzer &analyzer, ArrayExpr &expr);
+SemanticAnalyzer::Type analyzeLBoundExpr(SemanticAnalyzer &analyzer, LBoundExpr &expr);
+SemanticAnalyzer::Type analyzeUBoundExpr(SemanticAnalyzer &analyzer, UBoundExpr &expr);
 
 } // namespace il::frontends::basic::sem

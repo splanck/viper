@@ -1,5 +1,5 @@
 // Generated from tools/spec/x86_64_encodings.json
-// DO NOT EDIT - regenerate with tools/gen_x86_64_encodings.py
+// DO NOT EDIT - regenerate with CMake (cmake/GenX86Encodings.cmake)
 
 static constexpr std::array<EncodingRow, 44> kEncodingTable = {{
     {MOpcode::MOVrr,
@@ -267,3 +267,4 @@ static constexpr std::array<EncodingRow, 44> kEncodingTable = {{
      makePattern(OperandKind::Mem, OperandKind::Reg, OperandKind::None),
      EncodingFlag::RequiresModRM},
 }};
+

@@ -44,6 +44,7 @@ target_sources(fe_basic PRIVATE
         Lowerer.Procedure.cpp
         Lowerer.Statement.cpp
         ProcedureSymbolTracker.cpp
+        BasicSymbolQuery.cpp
         BuiltinRegistry.cpp
         builtins/MathBuiltins.cpp
         builtins/StringBuiltins.cpp
@@ -99,6 +100,8 @@ target_sources(fe_basic PRIVATE
         sem/Check_Expr_Unary.cpp
         sem/Check_Expr_Binary.cpp
         sem/Check_Expr_Call.cpp
+        sem/Check_Expr_Var.cpp
+        sem/Check_Expr_Array.cpp
         sem/NamespaceRegistry.cpp
         sem/TypeRegistry.cpp
         sem/RuntimePropertyIndex.cpp
@@ -123,6 +126,7 @@ target_sources(fe_basic PRIVATE
         constfold/FoldCompare.cpp
         constfold/FoldStrings.cpp
         constfold/FoldCasts.cpp
+        constfold/FoldBuiltins.cpp
         ConstFolder.cpp
         Intrinsics.cpp
         Diag.cpp

@@ -161,22 +161,12 @@ std::optional<::il::frontends::basic::Type> Lowerer::findFieldType(std::string_v
     if (className.empty())
         return std::nullopt;
 
-    const ClassInfo *info = oopIndex_.findClass(std::string(className));
-    if (!info)
+    // Use the OopIndex API for case-insensitive field lookup
+    const auto *field = oopIndex_.findField(std::string(className), fieldName);
+    if (!field)
         return std::nullopt;
 
-    std::string fieldNameUpper(fieldName);
-    std::transform(fieldNameUpper.begin(), fieldNameUpper.end(), fieldNameUpper.begin(), ::toupper);
-    for (const auto &field : info->fields)
-    {
-        std::string storedNameUpper = field.name;
-        std::transform(
-            storedNameUpper.begin(), storedNameUpper.end(), storedNameUpper.begin(), ::toupper);
-        if (storedNameUpper == fieldNameUpper)
-            return field.type;
-    }
-
-    return std::nullopt;
+    return field->type;
 }
 
 bool Lowerer::isFieldArray(std::string_view className, std::string_view fieldName) const
@@ -184,22 +174,12 @@ bool Lowerer::isFieldArray(std::string_view className, std::string_view fieldNam
     if (className.empty())
         return false;
 
-    const ClassInfo *info = oopIndex_.findClass(std::string(className));
-    if (!info)
+    // Use the OopIndex API for case-insensitive field lookup
+    const auto *field = oopIndex_.findField(std::string(className), fieldName);
+    if (!field)
         return false;
 
-    std::string fieldNameUpper(fieldName);
-    std::transform(fieldNameUpper.begin(), fieldNameUpper.end(), fieldNameUpper.begin(), ::toupper);
-    for (const auto &field : info->fields)
-    {
-        std::string storedNameUpper = field.name;
-        std::transform(
-            storedNameUpper.begin(), storedNameUpper.end(), storedNameUpper.begin(), ::toupper);
-        if (storedNameUpper == fieldNameUpper)
-            return field.isArray;
-    }
-
-    return false;
+    return field->isArray;
 }
 
 /// @brief Construct a lowering driver composed of specialised helper stages.

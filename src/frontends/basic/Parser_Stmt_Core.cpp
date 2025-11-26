@@ -61,21 +61,6 @@ bool Parser::isKnownProcedureName(const std::string &name) const
     return knownProcedures_.find(name) != knownProcedures_.end();
 }
 
-/// @brief Attempt to parse a BASIC `LET` assignment statement.
-/// @details The parser peeks at the current token and, when it observes the
-///          `LET` keyword, forwards to @ref parseLetStatement to build the AST
-///          node.  When the keyword is absent a disengaged optional is returned
-///          so callers can continue exploring other productions without
-///          consuming input.
-/// @return Parsed statement when the rule matched; otherwise an empty optional.
-Parser::StmtResult Parser::parseLet()
-{
-    if (!at(TokenKind::KeywordLet))
-        return std::nullopt;
-    auto stmt = parseLetStatement();
-    return StmtResult(std::move(stmt));
-}
-
 Parser::StmtResult Parser::parseImplicitLet()
 {
     if (!isImplicitAssignmentStart())

@@ -69,30 +69,29 @@ void Parser::registerOopParsers(StatementParserRegistry &registry)
 
 /// @brief Parse a single BASIC statement based on the current token.
 ///
-/// @details Delegates parsing to specialised helpers that either return a
-///          constructed statement or report an error before invoking
-///          @ref resyncAfterError for recovery.  The dispatcher keeps the
-///          per-statement logic isolated, improving readability and making the
-///          recovery strategy consistent across statement kinds.
+/// @details Statement dispatch follows a prioritized order:
+///          1. Leading line number errors (early diagnostics)
+///          2. Soft keywords (LINE INPUT - identifier-based, not a reserved keyword)
+///          3. Registry lookup (all keyword-based statements: IF, SELECT, FOR, etc.)
+///          4. Implicit LET (identifier = expression patterns)
+///          5. Procedure calls (identifier-based invocations)
+///          6. Unknown statement fallback with error recovery
+///
+///          The registry-first approach ensures keyword dispatch is table-driven
+///          and new statements can be added by registering handlers without
+///          modifying this function.
 ///
 /// @param line One-based line number attached to the statement from the
 ///        original source listing.
 /// @return Owned AST node on success; @c nullptr when recovery is required.
 StmtPtr Parser::parseStatement(int line)
 {
+    // 1. Diagnose unexpected leading line numbers before statement content.
     if (auto handled = parseLeadingLineNumberError())
         return std::move(*handled);
-    if (auto stmt = parseIf(line))
-        return std::move(*stmt);
-    if (auto stmt = parseSelect(line))
-        return std::move(*stmt);
-    if (auto stmt = parseFor(line))
-        return std::move(*stmt);
-    if (auto stmt = parseWhile(line))
-        return std::move(*stmt);
-    if (auto stmt = parseDo(line))
-        return std::move(*stmt);
-    // Soft keyword: LINE INPUT (only in statement position)
+
+    // 2. Soft keyword: LINE INPUT (identifier "LINE" followed by INPUT keyword).
+    //    Must be checked before registry lookup since LINE is not a reserved keyword.
     if (at(TokenKind::Identifier) && peek(1).kind == TokenKind::KeywordInput)
     {
         auto toUpper = [](std::string_view text)
@@ -112,15 +111,23 @@ StmtPtr Parser::parseStatement(int line)
         }
     }
 
-    if (auto stmt = parseLet())
-        return std::move(*stmt);
-    if (auto stmt = parseImplicitLet())
-        return std::move(*stmt);
-    if (auto stmt = parseCall(line))
-        return std::move(*stmt);
+    // 3. Registry lookup: handles all keyword-based statements (IF, SELECT, FOR,
+    //    WHILE, DO, LET, PRINT, DIM, SUB, FUNCTION, CLASS, etc.) via table-driven
+    //    dispatch. This is the primary statement parsing path.
     if (auto stmt = parseRegisteredStatement(line))
         return std::move(*stmt);
 
+    // 4. Implicit LET: identifier = expression (assignment without LET keyword).
+    //    Must follow registry check since explicit LET is handled by the registry.
+    if (auto stmt = parseImplicitLet())
+        return std::move(*stmt);
+
+    // 5. Procedure calls: identifier-based invocations (foo(), obj.method()).
+    //    Requires lookahead to distinguish from variable references.
+    if (auto stmt = parseCall(line))
+        return std::move(*stmt);
+
+    // 6. Unknown statement: emit diagnostic and synchronize to statement boundary.
     Token offendingTok = peek();
     reportUnknownStatement(offendingTok);
     resyncAfterError();
@@ -250,50 +257,6 @@ StmtPtr Parser::parseUsingDecl()
         consume();
 
     return decl;
-}
-
-Parser::StmtResult Parser::parseIf(int line)
-{
-    if (!at(TokenKind::KeywordIf))
-        return std::nullopt;
-    auto stmt = parseIfStatement(line);
-    return StmtResult(std::move(stmt));
-}
-
-Parser::StmtResult Parser::parseSelect(int line)
-{
-    static_cast<void>(line);
-    if (!at(TokenKind::KeywordSelect))
-        return std::nullopt;
-    auto stmt = parseSelectCaseStatement();
-    return StmtResult(std::move(stmt));
-}
-
-Parser::StmtResult Parser::parseFor(int line)
-{
-    static_cast<void>(line);
-    if (!at(TokenKind::KeywordFor))
-        return std::nullopt;
-    auto stmt = parseForStatement();
-    return StmtResult(std::move(stmt));
-}
-
-Parser::StmtResult Parser::parseWhile(int line)
-{
-    static_cast<void>(line);
-    if (!at(TokenKind::KeywordWhile))
-        return std::nullopt;
-    auto stmt = parseWhileStatement();
-    return StmtResult(std::move(stmt));
-}
-
-Parser::StmtResult Parser::parseDo(int line)
-{
-    static_cast<void>(line);
-    if (!at(TokenKind::KeywordDo))
-        return std::nullopt;
-    auto stmt = parseDoStatement();
-    return StmtResult(std::move(stmt));
 }
 
 Parser::StmtResult Parser::parseLeadingLineNumberError()

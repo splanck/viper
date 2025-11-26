@@ -247,35 +247,6 @@ class Parser
     /// @return Optional statement; disengaged when no handler matches.
     StmtResult parseRegisteredStatement(int line);
 
-    /// @brief Parse an IF statement when the corresponding keyword is present.
-    /// @param line One-based line number propagated to the statement.
-    /// @return Parsed statement when successful; otherwise empty optional.
-    StmtResult parseIf(int line);
-
-    /// @brief Parse a SELECT CASE statement when the keyword is present.
-    /// @param line Line number used for diagnostics.
-    /// @return Parsed statement or empty optional if not matched.
-    StmtResult parseSelect(int line);
-
-    /// @brief Parse a FOR statement beginning at the current token.
-    /// @param line Line metadata to attach to the statement.
-    /// @return Parsed statement or empty optional if the keyword is absent.
-    StmtResult parseFor(int line);
-
-    /// @brief Parse a WHILE statement when the current token matches.
-    /// @param line Line metadata to propagate.
-    /// @return Parsed statement or empty optional when not applicable.
-    StmtResult parseWhile(int line);
-
-    /// @brief Try parsing a DO loop statement when the keyword matches.
-    /// @param line Line metadata to propagate.
-    /// @return Parsed statement or empty optional when not applicable.
-    StmtResult parseDo(int line);
-
-    /// @brief Parse a LET assignment statement when the keyword is present.
-    /// @return Parsed statement or empty optional when not applicable.
-    StmtResult parseLet();
-
     /// @brief Parse an assignment statement without an explicit LET keyword.
     /// @return Parsed statement or empty optional when the pattern does not match.
     StmtResult parseImplicitLet();

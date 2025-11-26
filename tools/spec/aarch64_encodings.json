@@ -97,6 +97,22 @@
       "comment": "Convert float to signed integer (round toward zero)"
     },
     {
+      "enum": "UCvtF",
+      "mnemonic": "ucvtf",
+      "format": "RR",
+      "operands": ["dst:fpr", "src:gpr"],
+      "asm": "ucvtf {dst}, {src}",
+      "comment": "Convert unsigned integer to float"
+    },
+    {
+      "enum": "FCvtZU",
+      "mnemonic": "fcvtzu",
+      "format": "RR",
+      "operands": ["dst:gpr", "src:fpr"],
+      "asm": "fcvtzu {dst}, {src}",
+      "comment": "Convert float to unsigned integer (round toward zero)"
+    },
+    {
       "enum": "AddRRR",
       "mnemonic": "add",
       "format": "RRR",
@@ -249,6 +265,20 @@
       "format": "FFP",
       "operands": ["src:fpr", "offset:imm"],
       "asm": "str {src}, [x29, #{offset}]"
+    },
+    {
+      "enum": "LdrRegBaseImm",
+      "mnemonic": "ldr",
+      "format": "RBI",
+      "operands": ["dst:reg", "base:reg", "offset:imm"],
+      "asm": "ldr {dst}, [{base}, #{offset}]"
+    },
+    {
+      "enum": "StrRegBaseImm",
+      "mnemonic": "str",
+      "format": "RBI",
+      "operands": ["src:reg", "base:reg", "offset:imm"],
+      "asm": "str {src}, [{base}, #{offset}]"
     },
     {
       "enum": "Br",

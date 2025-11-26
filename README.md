@@ -307,7 +307,7 @@ END CLASS
 - **CMake** 3.20 or later
 - **C++20 compiler**: Clang (recommended), GCC 11+, or MSVC
 - **Ninja** (optional): For faster multi-config builds
-- **Python 3.x** (optional): For helper scripts
+ - No external scripting runtimes required
 
 ### Build
 

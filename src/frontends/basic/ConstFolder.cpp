@@ -25,15 +25,8 @@
 #include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/constfold/Dispatch.hpp"
 
-#include "viper/il/io/FormatUtils.hpp"
 #include <array>
-#include <cctype>
-#include <cmath>
-#include <cstdint>
-#include <cstdlib>
-#include <limits>
 #include <optional>
-#include <string>
 #include <utility>
 
 namespace il::frontends::basic
@@ -132,122 +125,6 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
         exprSlot() = std::move(replacement);
     }
 
-    /// @brief Extract a finite numeric value from an expression if possible.
-    /// @param expr Expression pointer to inspect.
-    /// @return Finite double value or empty optional when non-numeric.
-    std::optional<double> getFiniteDouble(const ExprPtr &expr) const
-    {
-        if (!expr)
-            return std::nullopt;
-        auto numeric = cf::numeric_from_expr(*expr);
-        if (!numeric)
-            return std::nullopt;
-        double value = numeric->isFloat ? numeric->f : static_cast<double>(numeric->i);
-        if (!std::isfinite(value))
-            return std::nullopt;
-        return value;
-    }
-
-    /// @brief Interpret an expression as an integer number of digits.
-    /// @param expr Expression to inspect.
-    /// @return Rounded digit count within 32-bit range or empty optional when invalid.
-    std::optional<int> getRoundedDigits(const ExprPtr &expr) const
-    {
-        auto value = getFiniteDouble(expr);
-        if (!value)
-            return std::nullopt;
-        double rounded = std::nearbyint(*value);
-        if (!std::isfinite(rounded))
-            return std::nullopt;
-        if (rounded < static_cast<double>(std::numeric_limits<int32_t>::min()) ||
-            rounded > static_cast<double>(std::numeric_limits<int32_t>::max()))
-            return std::nullopt;
-        return static_cast<int>(rounded);
-    }
-
-    /// @brief Round a floating value to the specified decimal digits.
-    /// @param value Floating-point value to round.
-    /// @param digits Positive for fractional digits, negative for integral multiples.
-    /// @return Rounded result or empty optional when intermediate computations overflow.
-    std::optional<double> roundToDigits(double value, int digits) const
-    {
-        if (!std::isfinite(value))
-            return std::nullopt;
-
-        if (digits == 0)
-        {
-            double rounded = std::nearbyint(value);
-            if (!std::isfinite(rounded))
-                return std::nullopt;
-            return rounded;
-        }
-
-        double scaleExponent = static_cast<double>(std::abs(digits));
-        double scale = std::pow(10.0, scaleExponent);
-        if (!std::isfinite(scale) || scale == 0.0)
-            return std::nullopt;
-
-        double scaled = digits > 0 ? value * scale : value / scale;
-        if (!std::isfinite(scaled))
-            return std::nullopt;
-
-        double rounded = std::nearbyint(scaled);
-        if (!std::isfinite(rounded))
-            return std::nullopt;
-
-        double result = digits > 0 ? rounded / scale : rounded * scale;
-        if (!std::isfinite(result))
-            return std::nullopt;
-        return result;
-    }
-
-    /// @brief Parse a string literal using BASIC's VAL semantics.
-    /// @param expr String literal expression to parse.
-    /// @return Parsed double or empty optional when the string is not a valid number.
-    std::optional<double> parseValLiteral(const StringExpr &expr) const
-    {
-        const std::string &s = expr.value;
-        const char *raw = s.c_str();
-        while (*raw && std::isspace(static_cast<unsigned char>(*raw)))
-            ++raw;
-
-        if (*raw == '\0')
-            return 0.0;
-
-        auto isDigit = [](char ch) { return ch >= '0' && ch <= '9'; };
-
-        if (*raw == '+' || *raw == '-')
-        {
-            char next = raw[1];
-            if (next == '.')
-            {
-                if (!isDigit(raw[2]))
-                    return 0.0;
-            }
-            else if (!isDigit(next))
-            {
-                return 0.0;
-            }
-        }
-        else if (*raw == '.')
-        {
-            if (!isDigit(raw[1]))
-                return 0.0;
-        }
-        else if (!isDigit(*raw))
-        {
-            return 0.0;
-        }
-
-        char *endp = nullptr;
-        double parsed = std::strtod(raw, &endp);
-        if (endp == raw)
-            return 0.0;
-        if (!std::isfinite(parsed))
-            return std::nullopt;
-        return parsed;
-    }
-
     /// @brief Fold LEN builtin calls when the argument is a literal.
     /// @param expr Builtin call expression being visited.
     /// @return @c true when the expression was replaced with a constant.
@@ -319,12 +196,10 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
     {
         if (expr.args.size() != 1 || !expr.args[0])
             return false;
-        if (auto *literal = as<StringExpr>(*expr.args[0]))
+        if (auto folded = cf::foldValLiteral(*expr.args[0]))
         {
-            auto parsed = parseValLiteral(*literal);
-            if (!parsed)
-                return false;
-            replaceWithFloat(*parsed, expr.loc);
+            folded->loc = expr.loc;
+            replaceWithExpr(std::move(folded));
             return true;
         }
         return false;
@@ -335,16 +210,15 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
     /// @return @c true when the expression was replaced with a constant.
     bool tryFoldInt(BuiltinCallExpr &expr)
     {
-        if (expr.args.size() != 1)
+        if (expr.args.size() != 1 || !expr.args[0])
             return false;
-        auto value = getFiniteDouble(expr.args[0]);
-        if (!value)
-            return false;
-        double floored = std::floor(*value);
-        if (!std::isfinite(floored))
-            return false;
-        replaceWithFloat(floored, expr.loc);
-        return true;
+        if (auto folded = cf::foldIntLiteral(*expr.args[0]))
+        {
+            folded->loc = expr.loc;
+            replaceWithExpr(std::move(folded));
+            return true;
+        }
+        return false;
     }
 
     /// @brief Fold FIX builtin calls for literal numeric arguments.
@@ -352,16 +226,15 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
     /// @return @c true when the expression was replaced with a constant.
     bool tryFoldFix(BuiltinCallExpr &expr)
     {
-        if (expr.args.size() != 1)
+        if (expr.args.size() != 1 || !expr.args[0])
             return false;
-        auto value = getFiniteDouble(expr.args[0]);
-        if (!value)
-            return false;
-        double truncated = std::trunc(*value);
-        if (!std::isfinite(truncated))
-            return false;
-        replaceWithFloat(truncated, expr.loc);
-        return true;
+        if (auto folded = cf::foldFixLiteral(*expr.args[0]))
+        {
+            folded->loc = expr.loc;
+            replaceWithExpr(std::move(folded));
+            return true;
+        }
+        return false;
     }
 
     /// @brief Fold ROUND builtin calls when arguments are literal.
@@ -371,25 +244,14 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
     {
         if (expr.args.empty() || !expr.args[0])
             return false;
-
-        auto value = getFiniteDouble(expr.args[0]);
-        if (!value)
-            return false;
-
-        int digits = 0;
-        if (expr.args.size() >= 2 && expr.args[1])
+        const Expr *digits = (expr.args.size() >= 2 && expr.args[1]) ? expr.args[1].get() : nullptr;
+        if (auto folded = cf::foldRoundLiteral(*expr.args[0], digits))
         {
-            auto parsedDigits = getRoundedDigits(expr.args[1]);
-            if (!parsedDigits)
-                return false;
-            digits = *parsedDigits;
+            folded->loc = expr.loc;
+            replaceWithExpr(std::move(folded));
+            return true;
         }
-
-        auto result = roundToDigits(*value, digits);
-        if (!result)
-            return false;
-        replaceWithFloat(*result, expr.loc);
-        return true;
+        return false;
     }
 
     /// @brief Fold STR builtin calls when the argument is literal numeric.
@@ -397,16 +259,15 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
     /// @return @c true when the expression was replaced with a string literal.
     bool tryFoldStr(BuiltinCallExpr &expr)
     {
-        if (expr.args.size() != 1)
+        if (expr.args.size() != 1 || !expr.args[0])
             return false;
-        auto numeric = cf::numeric_from_expr(*expr.args[0]);
-        if (!numeric)
-            return false;
-
-        std::string formatted = numeric->isFloat ? viper::il::io::format_float(numeric->f)
-                                                 : viper::il::io::format_integer(numeric->i);
-        replaceWithStr(std::move(formatted), expr.loc);
-        return true;
+        if (auto folded = cf::foldStrLiteral(*expr.args[0]))
+        {
+            folded->loc = expr.loc;
+            replaceWithExpr(std::move(folded));
+            return true;
+        }
+        return false;
     }
 
     /// @brief Fold CHR$ builtin calls when the argument is a literal integer.

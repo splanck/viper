@@ -114,6 +114,21 @@ AST::ExprPtr foldRightLiteral(const AST::Expr &source, const AST::Expr &count);
 /// @brief Fold CHR$ builtin when the argument is a literal integer.
 AST::ExprPtr foldChrLiteral(const AST::Expr &arg);
 
+/// @brief Fold VAL builtin when the argument is a literal string.
+AST::ExprPtr foldValLiteral(const AST::Expr &arg);
+
+/// @brief Fold INT builtin (floor) when the argument is a literal numeric.
+AST::ExprPtr foldIntLiteral(const AST::Expr &arg);
+
+/// @brief Fold FIX builtin (truncate) when the argument is a literal numeric.
+AST::ExprPtr foldFixLiteral(const AST::Expr &arg);
+
+/// @brief Fold ROUND builtin when arguments are literal.
+AST::ExprPtr foldRoundLiteral(const AST::Expr &value, const AST::Expr *digits);
+
+/// @brief Fold STR$ builtin when the argument is a literal numeric.
+AST::ExprPtr foldStrLiteral(const AST::Expr &arg);
+
 /// @brief Check whether @p expr can be folded to a literal value.
 bool can_fold(const AST::Expr &expr);
 

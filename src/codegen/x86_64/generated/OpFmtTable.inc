@@ -1,5 +1,5 @@
 // Generated from tools/spec/x86_64_encodings.json
-// DO NOT EDIT - regenerate with tools/gen_x86_64_encodings.py
+// DO NOT EDIT - regenerate with CMake (cmake/GenX86Encodings.cmake)
 
 static constexpr std::array<OpFmt, 44> kOpFmt = {{
     {MOpcode::MOVrr, "movq", 2U, 0U},
@@ -47,3 +47,4 @@ static constexpr std::array<OpFmt, 44> kOpFmt = {{
     {MOpcode::MOVSDrm, "movsd", 2U, 0U},
     {MOpcode::MOVSDmr, "movsd", 2U, 0U},
 }};
+

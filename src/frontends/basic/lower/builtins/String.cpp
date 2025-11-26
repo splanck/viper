@@ -125,25 +125,16 @@ Lowerer::RVal lowerStringBuiltin(BuiltinLowerContext &ctx)
 } // namespace
 
 /// @brief Install specialised string builtin lowerers into the shared registry.
-/// @details Registers the string dispatcher for every builtin supported by the
-///          specialised registry.  Each entry binds the BASIC builtin identifier
-///          to @ref lowerStringBuiltin so the front-end automatically picks up
-///          future enhancements without touching the registrar again.
+/// @details Registers the string dispatcher for builtins that need custom
+///          procedural lowering. Builtins with straightforward declarative rules
+///          (LEN, MID$, LEFT$, RIGHT$, INSTR, LTRIM$, RTRIM$, TRIM$, UCASE$,
+///          LCASE$, CHR$, ASC) are handled by the generic rule-driven lowering
+///          path in Common.cpp using specifications from builtin_registry.inc.
 void registerStringBuiltins()
 {
-    register_builtin(getBuiltinInfo(Builtin::Len).name, &lowerStringBuiltin);
-    register_builtin(getBuiltinInfo(Builtin::Mid).name, &lowerStringBuiltin);
-    register_builtin(getBuiltinInfo(Builtin::Left).name, &lowerStringBuiltin);
-    register_builtin(getBuiltinInfo(Builtin::Right).name, &lowerStringBuiltin);
+    // STR$ requires type-based dispatch logic to select the right runtime helper
     register_builtin(getBuiltinInfo(Builtin::Str).name, &lowerStringBuiltin);
-    register_builtin(getBuiltinInfo(Builtin::Instr).name, &lowerStringBuiltin);
-    register_builtin(getBuiltinInfo(Builtin::Ltrim).name, &lowerStringBuiltin);
-    register_builtin(getBuiltinInfo(Builtin::Rtrim).name, &lowerStringBuiltin);
-    register_builtin(getBuiltinInfo(Builtin::Trim).name, &lowerStringBuiltin);
-    register_builtin(getBuiltinInfo(Builtin::Ucase).name, &lowerStringBuiltin);
-    register_builtin(getBuiltinInfo(Builtin::Lcase).name, &lowerStringBuiltin);
-    register_builtin(getBuiltinInfo(Builtin::Chr).name, &lowerStringBuiltin);
-    register_builtin(getBuiltinInfo(Builtin::Asc).name, &lowerStringBuiltin);
+    // INKEY$/GETKEY$ are registered for string dispatch but fall through to generic
     register_builtin(getBuiltinInfo(Builtin::InKey).name, &lowerStringBuiltin);
     register_builtin(getBuiltinInfo(Builtin::GetKey).name, &lowerStringBuiltin);
 }

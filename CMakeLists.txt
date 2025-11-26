@@ -224,11 +224,14 @@ add_custom_target(clean-all
   COMMAND ${CMAKE_COMMAND} -P ${CMAKE_SOURCE_DIR}/cmake/clean-source.cmake
   COMMENT "Clean build tree and remove source-generated files")
 
-# CI-safe helper: normalize IL headers to current IL_VERSION
+# CI-safe helper: normalize IL version macro in generated header (no Python)
 add_custom_target(bump_il
-  COMMAND "${CMAKE_SOURCE_DIR}/scripts/rel/bump_il_version.py"
-  WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-  COMMENT "Normalize IL headers to IL_VERSION"
+  COMMAND ${CMAKE_COMMAND}
+          -DIL_VERSION_FILE=${CMAKE_SOURCE_DIR}/src/buildmeta/IL_VERSION
+          -DHEADER_FILE=${CMAKE_BINARY_DIR}/generated/viper/version.hpp
+          -P ${CMAKE_SOURCE_DIR}/cmake/BumpIlVersion.cmake
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
+  COMMENT "Normalize IL version macro in generated header"
 )
 
 # Stronger cleanup that also removes built binaries and CMake cache/files.

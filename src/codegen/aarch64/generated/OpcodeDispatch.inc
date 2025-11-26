@@ -1,5 +1,5 @@
 // Generated from tools/spec/aarch64_encodings.json
-// DO NOT EDIT - regenerate with tools/gen_aarch64_encodings.py
+// DO NOT EDIT - regenerate with CMake (cmake/GenAArch64Dispatch.cmake)
 
 // This file contains the opcode dispatch logic for emitInstruction
 

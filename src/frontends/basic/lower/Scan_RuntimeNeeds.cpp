@@ -15,6 +15,7 @@
 
 #include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/AstWalker.hpp"
+#include "frontends/basic/BasicSymbolQuery.hpp"
 #include "frontends/basic/BuiltinRegistry.hpp"
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/ProcedureSymbolTracker.hpp"
@@ -46,7 +47,7 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
     ///
     /// @param lowerer Lowerer used to accumulate runtime requirements.
     explicit RuntimeNeedsScanner(Lowerer &lowerer) noexcept
-        : lowerer_(lowerer), tracker_(lowerer, /*trackCrossProc=*/false)
+        : lowerer_(lowerer), tracker_(lowerer, /*trackCrossProc=*/false), query_(lowerer)
     {
     }
 
@@ -112,8 +113,8 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
         tracker_.trackArray(expr.name);
 
         // Determine array element type and require appropriate runtime functions
-        const auto *info = lowerer_.findSymbol(expr.name);
-        if (info && info->type == Type::Str)
+        auto elemType = query_.getArrayElementType(expr.name);
+        if (elemType && *elemType == Type::Str)
         {
             // String array
             lowerer_.requireArrayStrLen();
@@ -773,15 +774,9 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
     /// @return Best-effort type derived from semantic analysis or naming convention.
     Type inferVariableType(const std::string &name)
     {
-        // BUG-001 FIX: Query semantic analyzer for value-based type inference
-        if (lowerer_.semanticAnalyzer_)
-        {
-            if (auto semaType = lowerer_.semanticAnalyzer_->lookupVarType(name))
-            {
-                if (auto astType = convertSemanticType(*semaType))
-                    return *astType;
-            }
-        }
+        // BUG-001 FIX: Query semantic analyzer via facade for value-based type inference
+        if (auto inferredType = query_.lookupInferredType(name))
+            return *inferredType;
         // Fall back to suffix-based inference
         return inferAstTypeFromName(name);
     }
@@ -792,7 +787,7 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
     /// @param fallback Type inferred from naming conventions when unresolved.
     void ensureSymbolType(const std::string &name, Type fallback)
     {
-        if (const auto *info = lowerer_.findSymbol(name); !info || !info->hasType)
+        if (!query_.hasExplicitType(name))
             lowerer_.setSymbolType(name, fallback);
     }
 
@@ -820,8 +815,8 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
         }
         if (!targetIsObject)
         {
-            if (const auto *sym = lowerer_.findSymbol(var.name); sym && sym->isObject)
-                targetIsObject = true;
+            // Use facade for object check
+            targetIsObject = query_.isSymbolObject(var.name);
         }
         if (targetIsObject)
         {
@@ -831,14 +826,16 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
             lowerer_.requestRuntimeFeature(Feature::ObjFree);
         }
         ensureSymbolType(var.name, inferVariableType(var.name));
-        if (const auto *info = lowerer_.findSymbol(var.name); info && info->isArray)
+        // Use facade for array check
+        if (query_.isSymbolArray(var.name))
         {
             lowerer_.requireArrayI32Retain();
             lowerer_.requireArrayI32Release();
             return;
         }
-        const auto *symInfo = lowerer_.findSymbol(var.name);
-        if ((symInfo ? symInfo->type : inferVariableType(var.name)) == Type::Str)
+        // Use facade for type lookup
+        auto symType = query_.getSymbolType(var.name);
+        if ((symType.value_or(inferVariableType(var.name))) == Type::Str)
         {
             lowerer_.requireStrRetainMaybe();
             lowerer_.requireStrReleaseMaybe();
@@ -856,8 +853,8 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
         tracker_.trackArray(arr.name);
 
         // Determine array element type and require appropriate runtime functions
-        const auto *info = lowerer_.findSymbol(arr.name);
-        if (info && info->type == Type::Str)
+        auto elemType = query_.getArrayElementType(arr.name);
+        if (elemType && *elemType == Type::Str)
         {
             // String array
             lowerer_.requireArrayStrLen();
@@ -931,6 +928,7 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
 
     Lowerer &lowerer_;
     ProcedureSymbolTracker tracker_;
+    BasicSymbolQuery query_;
     std::vector<std::string> inputVarNames_{};
     int lvalueDepth_{0};
 };

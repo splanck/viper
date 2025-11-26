@@ -159,6 +159,42 @@ class OopIndex
     /// @brief Find a class by name (const overload).
     [[nodiscard]] const ClassInfo *findClass(const std::string &name) const;
 
+    // =========================================================================
+    // Field Query API
+    // =========================================================================
+
+    /// @brief Find a field in a class (case-insensitive).
+    /// @param className Qualified class name.
+    /// @param fieldName Field identifier to find.
+    /// @return Pointer to field info or nullptr if not found.
+    [[nodiscard]] const ClassInfo::FieldInfo *findField(const std::string &className,
+                                                        std::string_view fieldName) const;
+
+    /// @brief Find a field in a class or any of its base classes (case-insensitive).
+    /// @param className Qualified class name to start search from.
+    /// @param fieldName Field identifier to find.
+    /// @return Pointer to field info or nullptr if not found in hierarchy.
+    [[nodiscard]] const ClassInfo::FieldInfo *findFieldInHierarchy(const std::string &className,
+                                                                   std::string_view fieldName) const;
+
+    // =========================================================================
+    // Method Query API
+    // =========================================================================
+
+    /// @brief Find a method in a class by name.
+    /// @param className Qualified class name.
+    /// @param methodName Method identifier to find.
+    /// @return Pointer to method info or nullptr if not found.
+    [[nodiscard]] const ClassInfo::MethodInfo *findMethod(const std::string &className,
+                                                          std::string_view methodName) const;
+
+    /// @brief Find a method in a class or any of its base classes.
+    /// @param className Qualified class name to start search from.
+    /// @param methodName Method identifier to find.
+    /// @return Pointer to method info or nullptr if not found in hierarchy.
+    [[nodiscard]] const ClassInfo::MethodInfo *findMethodInHierarchy(
+        const std::string &className, std::string_view methodName) const;
+
     /// @brief Access the interface table by qualified name.
     [[nodiscard]] IfaceTable &interfacesByQname() noexcept
     {
