@@ -43,6 +43,7 @@ target_sources(fe_basic PRIVATE
         Lowerer.Program.cpp
         Lowerer.Procedure.cpp
         Lowerer.Statement.cpp
+        ProcedureSymbolTracker.cpp
         BuiltinRegistry.cpp
         builtins/MathBuiltins.cpp
         builtins/StringBuiltins.cpp
@@ -58,6 +59,7 @@ target_sources(fe_basic PRIVATE
         LowerStmt_IO.cpp
         LowerStmt_Runtime.cpp
         LowerRuntime.cpp
+        RuntimeCallHelpers.cpp
         LowerScan.cpp
         lower/BuiltinCommon.cpp
         lower/builtins/Common.cpp
@@ -132,6 +134,7 @@ target_sources(fe_basic PRIVATE
         Lower_OOP_MemberAccess.cpp
         Lower_OOP_MethodCall.cpp
         Lower_OOP_Helpers.cpp
+        Lower_OOP_RuntimeHelpers.cpp
         ProcRegistry.cpp
         SemanticDiagnostics.cpp
 )

@@ -17,6 +17,7 @@
 #include "frontends/basic/AstWalker.hpp"
 #include "frontends/basic/BuiltinRegistry.hpp"
 #include "frontends/basic/Lowerer.hpp"
+#include "frontends/basic/ProcedureSymbolTracker.hpp"
 #include "frontends/basic/SemanticAnalyzer.hpp"
 #include "frontends/basic/TypeRules.hpp"
 #include "frontends/basic/TypeSuffix.hpp"
@@ -44,7 +45,10 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
     /// @brief Construct a scanner bound to the lowering context.
     ///
     /// @param lowerer Lowerer used to accumulate runtime requirements.
-    explicit RuntimeNeedsScanner(Lowerer &lowerer) noexcept : lowerer_(lowerer) {}
+    explicit RuntimeNeedsScanner(Lowerer &lowerer) noexcept
+        : lowerer_(lowerer), tracker_(lowerer, /*trackCrossProc=*/false)
+    {
+    }
 
     /// @brief Analyse a single statement and record runtime requirements.
     ///
@@ -105,8 +109,7 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
     {
         if (lvalueDepth_ > 0)
             return;
-        lowerer_.markSymbolReferenced(expr.name);
-        lowerer_.markArray(expr.name);
+        tracker_.trackArray(expr.name);
 
         // Determine array element type and require appropriate runtime functions
         const auto *info = lowerer_.findSymbol(expr.name);
@@ -130,11 +133,7 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
     /// @param expr LBOUND expression referencing an array.
     void after(const LBoundExpr &expr)
     {
-        if (!expr.name.empty())
-        {
-            lowerer_.markSymbolReferenced(expr.name);
-            lowerer_.markArray(expr.name);
-        }
+        tracker_.trackArray(expr.name);
     }
 
     /// @brief Mark array usage and request runtime support for UBOUND.
@@ -142,11 +141,7 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
     /// @param expr UBOUND expression referencing an array.
     void after(const UBoundExpr &expr)
     {
-        if (!expr.name.empty())
-        {
-            lowerer_.markSymbolReferenced(expr.name);
-            lowerer_.markArray(expr.name);
-        }
+        tracker_.trackArray(expr.name);
         lowerer_.requireArrayI32Len();
     }
 
@@ -398,10 +393,11 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
             lowerer_.setSymbolType(stmt.name, stmt.type);
         }
 
-        lowerer_.markSymbolReferenced(stmt.name);
+        // Use tracker for unified symbol tracking
+        tracker_.track(stmt.name, stmt.isArray);
+
         if (stmt.isArray)
         {
-            lowerer_.markArray(stmt.name);
             if (stmt.type == Type::Str)
             {
                 // String array
@@ -425,8 +421,7 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
     {
         if (stmt.name.empty())
             return;
-        lowerer_.markSymbolReferenced(stmt.name);
-        lowerer_.markArray(stmt.name);
+        tracker_.trackArray(stmt.name);
         lowerer_.requireArrayI32Resize();
         lowerer_.requireArrayI32Retain();
         lowerer_.requireArrayI32Release();
@@ -440,7 +435,7 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
         if (stmt.name.empty())
             return;
         lowerer_.setSymbolType(stmt.name, stmt.type);
-        lowerer_.markSymbolReferenced(stmt.name);
+        tracker_.trackScalar(stmt.name);
         if (stmt.type == Type::Str)
         {
             lowerer_.requireStrRetainMaybe();
@@ -858,8 +853,7 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
         if (arr.name.empty())
             return;
         ensureSymbolType(arr.name, inferVariableType(arr.name));
-        lowerer_.markSymbolReferenced(arr.name);
-        lowerer_.markArray(arr.name);
+        tracker_.trackArray(arr.name);
 
         // Determine array element type and require appropriate runtime functions
         const auto *info = lowerer_.findSymbol(arr.name);
@@ -936,6 +930,7 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
     }
 
     Lowerer &lowerer_;
+    ProcedureSymbolTracker tracker_;
     std::vector<std::string> inputVarNames_{};
     int lvalueDepth_{0};
 };

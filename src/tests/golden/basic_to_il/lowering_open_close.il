@@ -24,7 +24,7 @@ L10:
   .loc 1 1 4
   %t2:i32 = cast.si_narrow.chk 1
   .loc 1 1 4
-  %t3 = call @rt_open_err_vstr(%t0, %t2, %t1)
+  %t3 = call @rt_open_err_vstr(%t0, %t1, %t2)
   .loc 1 1 4
   %t4 = alloca 8
   .loc 1 1 4

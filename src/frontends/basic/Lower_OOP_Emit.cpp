@@ -16,6 +16,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/basic/ILTypeUtils.hpp"
+#include "frontends/basic/Lower_OOP_RuntimeHelpers.hpp"
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/NameMangler_OOP.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
@@ -282,62 +283,25 @@ void Lowerer::emitClassConstructor(const ClassDecl &klass, const ConstructorDecl
             Value vtblPtr =
                 emitCallRet(Type(Type::Kind::Ptr), "rt_alloc", {Value::constInt(bytes)});
 
-            // Helper: find concrete implementor along base chain for method @name
-            auto findImplementorQClass = [&](const std::string &startQ,
-                                             const std::string &mname) -> std::string
-            {
-                const ClassInfo *cur = oopIndex_.findClass(startQ);
-                while (cur)
-                {
-                    auto itM = cur->methods.find(mname);
-                    if (itM != cur->methods.end())
-                    {
-                        if (!itM->second.isAbstract)
-                            return cur->qualifiedName;
-                    }
-                    if (cur->baseQualified.empty())
-                        break;
-                    cur = oopIndex_.findClass(cur->baseQualified);
-                }
-                return startQ; // fallback
-            };
-
-            // Populate vtable entries
-            // Build slot -> method name mapping from class + bases
-            std::vector<std::string> slotToName(slotCount);
-            {
-                const ClassInfo *cur = ciInit;
-                while (cur)
-                {
-                    for (const auto &mp : cur->methods)
-                    {
-                        const auto &mname = mp.first;
-                        const auto &mi = mp.second;
-                        if (!mi.isVirtual || mi.slot < 0)
-                            continue;
-                        const std::size_t s = static_cast<std::size_t>(mi.slot);
-                        if (s < slotToName.size())
-                            slotToName[s] = mname; // prefer most-derived assignment first in walk
-                    }
-                    if (cur->baseQualified.empty())
-                        break;
-                    cur = oopIndex_.findClass(cur->baseQualified);
-                }
-            }
+            // Populate vtable using consolidated helper
+            std::size_t unusedMaxSlot = 0;
+            std::vector<std::string> slotToName =
+                OopEmitHelper::buildVtableSlotMap(oopIndex_, ciInit->qualifiedName, unusedMaxSlot);
 
             for (std::size_t s = 0; s < slotCount; ++s)
             {
                 const long long offset = static_cast<long long>(s * 8ULL);
                 Value slotPtr = emitBinary(
                     Opcode::GEP, Type(Type::Kind::Ptr), vtblPtr, Value::constInt(offset));
-                const std::string &mname = slotToName[s];
+                const std::string &mname = (s < slotToName.size()) ? slotToName[s] : "";
                 if (mname.empty())
                 {
                     emitStore(Type(Type::Kind::Ptr), slotPtr, Value::null());
                 }
                 else
                 {
-                    const std::string implQ = findImplementorQClass(ciInit->qualifiedName, mname);
+                    const std::string implQ =
+                        OopEmitHelper::findImplementorClass(oopIndex_, ciInit->qualifiedName, mname);
                     const std::string target = mangleMethod(implQ, mname);
                     emitStore(Type(Type::Kind::Ptr), slotPtr, Value::global(target));
                 }
@@ -348,121 +312,25 @@ void Lowerer::emitClassConstructor(const ClassDecl &klass, const ConstructorDecl
             emitStore(Type(Type::Kind::Ptr), selfPtr, vtblPtr);
         }
     }
-    for (std::size_t i = 0; i < ctor.params.size(); ++i)
-    {
-        const auto &param = ctor.params[i];
-        metadata.paramNames.insert(param.name);
-        curLoc = param.loc;
-        Value slot = emitAlloca((!param.is_array && param.type == AstType::Bool) ? 1 : 8);
-        if (param.is_array)
-        {
-            markArray(param.name);
-            emitStore(Type(Type::Kind::Ptr), slot, Value::null());
-        }
-        // BUG-073 fix: Preserve object-class typing for parameters so member calls on params
-        // resolve
-        if (!param.objectClass.empty())
-            setSymbolObjectType(param.name, qualify(param.objectClass));
-        else
-            setSymbolType(param.name, param.type);
-        markSymbolReferenced(param.name);
-        auto &info = ensureSymbol(param.name);
-        info.slotId = slot.id;
-        Type ilParamTy = (!param.objectClass.empty() || param.is_array)
-                             ? Type(Type::Kind::Ptr)
-                             : type_conv::astToIlType(param.type);
-        Value incoming = Value::temp(fn.params[1 + i].id);
-        if (param.is_array)
-            storeArray(slot, incoming);
-        else
-            emitStore(ilParamTy, slot, incoming);
-    }
+    // Initialize parameters using consolidated helper (BUG-073 fix)
+    OopEmitHelper helper(*this);
+    helper.emitAllParamInits(ctor.params, fn, /*selfOffset=*/1, metadata.paramNames);
     allocateLocalSlots(metadata.paramNames, /*includeParams=*/false);
 
-    // BUG-056: Initialize array fields declared with extents.
-    // For each array field, allocate an array handle of the declared length
-    // and store it into the instance field slot before executing user code.
-    {
-        if (const ClassLayout *layout = findClassLayout(klass.name))
-        {
-            Value selfPtr = loadSelfPointer(selfSlotId);
-            for (const auto &field : klass.fields)
-            {
-                if (!field.isArray || field.arrayExtents.empty())
-                    continue;
-
-                // Compute total length as the product of inclusive extents
-                // BASIC DIM uses inclusive upper bounds (e.g., DIM a(7) => 8 elements)
-                long long total = 1;
-                for (long long e : field.arrayExtents)
-                    total *= (e + 1);
-                Value length = Value::constInt(total);
-
-                // Find field offset in layout
-                const auto *fi = layout->findField(field.name);
-                if (!fi)
-                    continue;
-
-                // Allocate appropriate array type
-                Value handle;
-                if (field.type == AstType::Str)
-                {
-                    requireArrayStrAlloc();
-                    handle = emitCallRet(Type(Type::Kind::Ptr), "rt_arr_str_alloc", {length});
-                }
-                else if (!field.objectClassName.empty())
-                {
-                    // BUG-089 fix: Allocate object array for object-typed fields
-                    requireArrayObjNew();
-                    handle = emitCallRet(Type(Type::Kind::Ptr), "rt_arr_obj_new", {length});
-                }
-                else
-                {
-                    requireArrayI32New();
-                    handle = emitCallRet(Type(Type::Kind::Ptr), "rt_arr_i32_new", {length});
-                }
-
-                // Store handle into object field
-                Value fieldPtr = emitBinary(Opcode::GEP,
-                                            Type(Type::Kind::Ptr),
-                                            selfPtr,
-                                            Value::constInt(static_cast<long long>(fi->offset)));
-                emitStore(Type(Type::Kind::Ptr), fieldPtr, handle);
-            }
-        }
-    }
+    // BUG-056, BUG-089: Initialize array fields declared with extents.
+    helper.emitArrayFieldInits(klass, selfSlotId);
 
     // Do not cache pointers into blocks vector; later addBlock() may reallocate.
-    Function *func = ctx.function();
     const size_t exitIdx = ctx.exitIndex();
 
-    if (metadata.bodyStmts.empty())
-    {
-        curLoc = {};
-        func = ctx.function();
-        BasicBlock *exitBlock = &func->blocks[exitIdx];
-        emitBr(exitBlock);
-    }
-    else
-    {
-        lowerStatementSequence(metadata.bodyStmts, /*stopOnTerminated=*/true);
-        if (ctx.current() && !ctx.current()->terminated)
-        {
-            func = ctx.function();
-            BasicBlock *exitBlock = &func->blocks[exitIdx];
-            emitBr(exitBlock);
-        }
-    }
+    // Lower body and branch to exit using consolidated helper
+    helper.emitBodyAndBranchToExit(metadata.bodyStmts, exitIdx);
 
-    func = ctx.function();
+    Function *func = ctx.function();
     ctx.setCurrent(&func->blocks[exitIdx]);
-    curLoc = {};
-    releaseDeferredTemps();
-    releaseObjectLocals(metadata.paramNames);
-    // BUG-105 fix: Don't release object/array parameters - they are borrowed references from caller
-    // releaseObjectParams(metadata.paramNames);  // REMOVED
-    releaseArrayLocals(metadata.paramNames);
-    // releaseArrayParams(metadata.paramNames);  // REMOVED
+
+    // Release resources using consolidated epilogue helper (BUG-105 fix)
+    helper.emitMethodEpilogue(metadata.paramNames, metadata.paramNames);
     curLoc = {};
     emitRetVoid();
     ctx.blockNames().resetNamer();
@@ -509,40 +377,23 @@ void Lowerer::emitClassDestructor(const ClassDecl &klass, const DestructorDecl *
     allocateLocalSlots(metadata.paramNames, /*includeParams=*/false);
 
     // Do not cache pointers into blocks vector; later addBlock() may reallocate.
-    Function *func = ctx.function();
     const size_t exitIdx = ctx.exitIndex();
 
-    if (!metadata.bodyStmts.empty())
-    {
-        lowerStatementSequence(metadata.bodyStmts, /*stopOnTerminated=*/true);
-        if (ctx.current() && !ctx.current()->terminated)
-        {
-            func = ctx.function();
-            BasicBlock *exitBlock = &func->blocks[exitIdx];
-            emitBr(exitBlock);
-        }
-    }
-    else
-    {
-        curLoc = {};
-        func = ctx.function();
-        BasicBlock *exitBlock = &func->blocks[exitIdx];
-        emitBr(exitBlock);
-    }
+    // Lower body and branch to exit using consolidated helper
+    OopEmitHelper helper(*this);
+    helper.emitBodyAndBranchToExit(metadata.bodyStmts, exitIdx);
 
-    func = ctx.function();
+    Function *func = ctx.function();
     ctx.setCurrent(&func->blocks[exitIdx]);
     curLoc = {};
 
+    // Release fields (destructor-specific)
     Value selfPtr = loadSelfPointer(selfSlotId);
     if (const ClassLayout *layout = findClassLayout(klass.name))
         emitFieldReleaseSequence(selfPtr, *layout);
 
-    releaseObjectLocals(metadata.paramNames);
-    // BUG-105 fix: Don't release object/array parameters - they are borrowed references from caller
-    // releaseObjectParams(metadata.paramNames);  // REMOVED
-    releaseArrayLocals(metadata.paramNames);
-    // releaseArrayParams(metadata.paramNames);  // REMOVED
+    // Release resources using consolidated epilogue helper (BUG-105 fix)
+    helper.emitMethodEpilogue(metadata.paramNames, metadata.paramNames);
     curLoc = {};
     emitRetVoid();
     ctx.blockNames().resetNamer();
@@ -634,72 +485,29 @@ void Lowerer::emitClassMethod(const ClassDecl &klass, const MethodDecl &method)
     ctx.setCurrent(&fn.blocks.front());
     if (!method.isStatic)
         materializeSelfSlot(klass.name, fn);
-    for (std::size_t i = 0; i < method.params.size(); ++i)
-    {
-        const auto &param = method.params[i];
-        metadata.paramNames.insert(param.name);
-        curLoc = param.loc;
-        Value slot = emitAlloca((!param.is_array && param.type == AstType::Bool) ? 1 : 8);
-        if (param.is_array)
-        {
-            markArray(param.name);
-            emitStore(Type(Type::Kind::Ptr), slot, Value::null());
-        }
-        // Preserve object-class typing for parameters so member calls on params resolve
-        if (!param.objectClass.empty())
-            setSymbolObjectType(param.name, qualify(param.objectClass));
-        else
-            setSymbolType(param.name, param.type);
-        markSymbolReferenced(param.name);
-        auto &info = ensureSymbol(param.name);
-        info.slotId = slot.id;
-        Type ilParamTy = (!param.objectClass.empty() || param.is_array)
-                             ? Type(Type::Kind::Ptr)
-                             : type_conv::astToIlType(param.type);
-        Value incoming = Value::temp(fn.params[(method.isStatic ? 0 : 1) + i].id);
-        if (param.is_array)
-            storeArray(slot, incoming);
-        else
-            emitStore(ilParamTy, slot, incoming);
-    }
+
+    // Initialize parameters using consolidated helper (BUG-073 fix)
+    OopEmitHelper helper(*this);
+    const std::size_t selfOffset = method.isStatic ? 0 : 1;
+    helper.emitAllParamInits(method.params, fn, selfOffset, metadata.paramNames);
     allocateLocalSlots(metadata.paramNames, /*includeParams=*/false);
 
     // Do not cache pointers into blocks vector; later addBlock() may reallocate.
-    Function *func = ctx.function();
     const size_t exitIdx = ctx.exitIndex();
 
-    if (metadata.bodyStmts.empty())
-    {
-        curLoc = {};
-        func = ctx.function();
-        BasicBlock *exitBlock = &func->blocks[exitIdx];
-        emitBr(exitBlock);
-    }
-    else
-    {
-        lowerStatementSequence(metadata.bodyStmts, /*stopOnTerminated=*/true);
-        if (ctx.current() && !ctx.current()->terminated)
-        {
-            func = ctx.function();
-            BasicBlock *exitBlock = &func->blocks[exitIdx];
-            emitBr(exitBlock);
-        }
-    }
+    // Lower body and branch to exit using consolidated helper
+    helper.emitBodyAndBranchToExit(metadata.bodyStmts, exitIdx);
 
-    func = ctx.function();
+    Function *func = ctx.function();
     ctx.setCurrent(&func->blocks[exitIdx]);
-    curLoc = {};
+
     // BUG-099 fix: Exclude method name from release if it returns an object
     std::unordered_set<std::string> excludeNames = metadata.paramNames;
     if (returnsObject)
-    {
         excludeNames.insert(method.name);
-    }
-    releaseObjectLocals(excludeNames);
-    // BUG-105 fix: Don't release object/array parameters - they are borrowed references from caller
-    // releaseObjectParams(metadata.paramNames);  // REMOVED
-    releaseArrayLocals(metadata.paramNames);
-    // releaseArrayParams(metadata.paramNames);  // REMOVED
+
+    // Release resources using consolidated epilogue helper (BUG-105 fix)
+    helper.emitMethodEpilogue(metadata.paramNames, excludeNames);
     curLoc = {};
     if (returnsValue)
     {
@@ -810,66 +618,28 @@ void Lowerer::emitClassMethodWithBody(const ClassDecl &klass,
     ctx.setCurrent(&fn.blocks.front());
     if (!method.isStatic)
         materializeSelfSlot(klass.name, fn);
-    for (std::size_t i = 0; i < method.params.size(); ++i)
-    {
-        const auto &param = method.params[i];
-        metadata.paramNames.insert(param.name);
-        curLoc = param.loc;
-        Value slot = emitAlloca((!param.is_array && param.type == AstType::Bool) ? 1 : 8);
-        if (param.is_array)
-        {
-            markArray(param.name);
-            emitStore(Type(Type::Kind::Ptr), slot, Value::null());
-        }
-        if (!param.objectClass.empty())
-            setSymbolObjectType(param.name, qualify(param.objectClass));
-        else
-            setSymbolType(param.name, param.type);
-        markSymbolReferenced(param.name);
-        auto &info = ensureSymbol(param.name);
-        info.slotId = slot.id;
-        Type ilParamTy = (!param.objectClass.empty() || param.is_array)
-                             ? Type(Type::Kind::Ptr)
-                             : type_conv::astToIlType(param.type);
-        Value incoming = Value::temp(fn.params[(method.isStatic ? 0 : 1) + i].id);
-        if (param.is_array)
-            storeArray(slot, incoming);
-        else
-            emitStore(ilParamTy, slot, incoming);
-    }
+
+    // Initialize parameters using consolidated helper (BUG-073 fix)
+    OopEmitHelper helper(*this);
+    const std::size_t selfOffset = method.isStatic ? 0 : 1;
+    helper.emitAllParamInits(method.params, fn, selfOffset, metadata.paramNames);
     allocateLocalSlots(metadata.paramNames, /*includeParams=*/false);
 
-    Function *func = ctx.function();
     const size_t exitIdx = ctx.exitIndex();
 
-    if (metadata.bodyStmts.empty())
-    {
-        curLoc = {};
-        func = ctx.function();
-        BasicBlock *exitBlock = &func->blocks[exitIdx];
-        emitBr(exitBlock);
-    }
-    else
-    {
-        lowerStatementSequence(metadata.bodyStmts, /*stopOnTerminated=*/true);
-        if (ctx.current() && !ctx.current()->terminated)
-        {
-            func = ctx.function();
-            BasicBlock *exitBlock = &func->blocks[exitIdx];
-            emitBr(exitBlock);
-        }
-    }
+    // Lower body and branch to exit using consolidated helper
+    helper.emitBodyAndBranchToExit(metadata.bodyStmts, exitIdx);
 
-    func = ctx.function();
+    Function *func = ctx.function();
     ctx.setCurrent(&func->blocks[exitIdx]);
-    curLoc = {};
+
+    // BUG-099 fix: Exclude method name from release if it returns an object
     std::unordered_set<std::string> excludeNames = metadata.paramNames;
     if (returnsObject)
-    {
         excludeNames.insert(method.name);
-    }
-    releaseObjectLocals(excludeNames);
-    releaseArrayLocals(metadata.paramNames);
+
+    // Release resources using consolidated epilogue helper (BUG-105 fix)
+    helper.emitMethodEpilogue(metadata.paramNames, excludeNames);
     curLoc = {};
     if (returnsValue)
     {
@@ -1145,28 +915,7 @@ void Lowerer::emitOopDeclsAndBodies(const Program &prog)
             Value itablePtr =
                 emitCallRet(Type(Type::Kind::Ptr), "rt_alloc", {Value::constInt(bytes)});
 
-            // Helper: find concrete implementor along base chain for method @name
-            auto findImplementorQClass = [&](const std::string &startQ,
-                                             const std::string &mname) -> std::string
-            {
-                const ClassInfo *cur = oopIndex_.findClass(startQ);
-                while (cur)
-                {
-                    auto itM = cur->methods.find(mname);
-                    if (itM != cur->methods.end())
-                    {
-                        // Prefer non-abstract method implementation
-                        if (!itM->second.isAbstract)
-                            return cur->qualifiedName;
-                    }
-                    if (cur->baseQualified.empty())
-                        break;
-                    cur = oopIndex_.findClass(cur->baseQualified);
-                }
-                return startQ; // fallback
-            };
-
-            // Populate itable slots in interface slot order
+            // Populate itable slots in interface slot order using consolidated helper
             auto mapIt = ci.ifaceSlotImpl.find(ifaceId);
             for (std::size_t s = 0; s < slotCount; ++s)
             {
@@ -1184,7 +933,8 @@ void Lowerer::emitOopDeclsAndBodies(const Program &prog)
                 }
                 else
                 {
-                    const std::string implQ = findImplementorQClass(ci.qualifiedName, mname);
+                    const std::string implQ =
+                        OopEmitHelper::findImplementorClass(oopIndex_, ci.qualifiedName, mname);
                     const std::string targetLabel = mangleMethod(implQ, mname);
                     emitStore(Type(Type::Kind::Ptr), slotPtr, Value::global(targetLabel));
                 }

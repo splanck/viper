@@ -17,6 +17,7 @@
 
 #include "RuntimeStatementLowerer.hpp"
 #include "Lowerer.hpp"
+#include "RuntimeCallHelpers.hpp"
 #include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/ILTypeUtils.hpp"
 #include "frontends/basic/LocationScope.hpp"
@@ -44,11 +45,9 @@ RuntimeStatementLowerer::RuntimeStatementLowerer(Lowerer &lowerer) : lowerer_(lo
 /// @param s AST node representing the @c BEEP statement.
 void RuntimeStatementLowerer::visit(const BeepStmt &s)
 {
-    LocationScope loc(lowerer_, s.loc);
-    lowerer_.emitRuntimeHelper(il::runtime::RuntimeFeature::TermBell,
-                               "rt_bell",
-                               il::core::Type(il::core::Type::Kind::Void),
-                               {});
+    RuntimeCallBuilder(lowerer_)
+        .at(s.loc)
+        .callHelperVoid(RuntimeFeature::TermBell, "rt_bell");
 }
 
 /// @brief Lower the BASIC @c CLS statement to a runtime helper call.
@@ -60,11 +59,9 @@ void RuntimeStatementLowerer::visit(const BeepStmt &s)
 /// @param s AST node representing the @c CLS statement.
 void RuntimeStatementLowerer::visit(const ClsStmt &s)
 {
-    LocationScope loc(lowerer_, s.loc);
-    lowerer_.emitRuntimeHelper(il::runtime::RuntimeFeature::TermCls,
-                               "rt_term_cls",
-                               il::core::Type(il::core::Type::Kind::Void),
-                               {});
+    RuntimeCallBuilder(lowerer_)
+        .at(s.loc)
+        .callHelperVoid(RuntimeFeature::TermCls, "rt_term_cls");
 }
 
 /// @brief Lower the BASIC @c COLOR statement to the runtime helper.
@@ -77,7 +74,6 @@ void RuntimeStatementLowerer::visit(const ClsStmt &s)
 /// @param s AST node describing the @c COLOR statement.
 void RuntimeStatementLowerer::visit(const ColorStmt &s)
 {
-    LocationScope loc(lowerer_, s.loc);
     auto fg = lowerer_.ensureI64(lowerer_.lowerExpr(*s.fg), s.loc);
     Value bgv = Value::constInt(-1);
     if (s.bg)
@@ -85,12 +81,12 @@ void RuntimeStatementLowerer::visit(const ColorStmt &s)
         auto bg = lowerer_.ensureI64(lowerer_.lowerExpr(*s.bg), s.loc);
         bgv = bg.value;
     }
-    Value fg32 = lowerer_.narrow32(fg.value, s.loc);
-    Value bg32 = lowerer_.narrow32(bgv, s.loc);
-    lowerer_.emitRuntimeHelper(il::runtime::RuntimeFeature::TermColor,
-                               "rt_term_color_i32",
-                               il::core::Type(il::core::Type::Kind::Void),
-                               {fg32, bg32});
+
+    RuntimeCallBuilder(lowerer_)
+        .at(s.loc)
+        .argNarrow32(fg.value)
+        .argNarrow32(bgv)
+        .callHelperVoid(RuntimeFeature::TermColor, "rt_term_color_i32");
 }
 
 /// @brief Lower the BASIC @c LOCATE statement that positions the cursor.
@@ -103,7 +99,6 @@ void RuntimeStatementLowerer::visit(const ColorStmt &s)
 /// @param s AST node describing the @c LOCATE statement.
 void RuntimeStatementLowerer::visit(const LocateStmt &s)
 {
-    LocationScope loc(lowerer_, s.loc);
     auto row = lowerer_.ensureI64(lowerer_.lowerExpr(*s.row), s.loc);
     Value colv = Value::constInt(1);
     if (s.col)
@@ -111,12 +106,12 @@ void RuntimeStatementLowerer::visit(const LocateStmt &s)
         auto col = lowerer_.ensureI64(lowerer_.lowerExpr(*s.col), s.loc);
         colv = col.value;
     }
-    Value row32 = lowerer_.narrow32(row.value, s.loc);
-    Value col32 = lowerer_.narrow32(colv, s.loc);
-    lowerer_.emitRuntimeHelper(il::runtime::RuntimeFeature::TermLocate,
-                               "rt_term_locate_i32",
-                               il::core::Type(il::core::Type::Kind::Void),
-                               {row32, col32});
+
+    RuntimeCallBuilder(lowerer_)
+        .at(s.loc)
+        .argNarrow32(row.value)
+        .argNarrow32(colv)
+        .callHelperVoid(RuntimeFeature::TermLocate, "rt_term_locate_i32");
 }
 
 /// @brief Lower the BASIC @c CURSOR statement to control cursor visibility.
@@ -128,13 +123,10 @@ void RuntimeStatementLowerer::visit(const LocateStmt &s)
 /// @param s AST node representing the @c CURSOR statement.
 void RuntimeStatementLowerer::visit(const CursorStmt &s)
 {
-    LocationScope loc(lowerer_, s.loc);
-    Value show = Value::constInt(s.visible ? 1 : 0);
-    Value show32 = lowerer_.narrow32(show, s.loc);
-    lowerer_.emitRuntimeHelper(il::runtime::RuntimeFeature::TermCursor,
-                               "rt_term_cursor_visible_i32",
-                               il::core::Type(il::core::Type::Kind::Void),
-                               {show32});
+    RuntimeCallBuilder(lowerer_)
+        .at(s.loc)
+        .argNarrow32(Value::constInt(s.visible ? 1 : 0))
+        .callHelperVoid(RuntimeFeature::TermCursor, "rt_term_cursor_visible_i32");
 }
 
 /// @brief Lower the BASIC @c ALTSCREEN statement to control alternate screen buffer.
@@ -146,13 +138,10 @@ void RuntimeStatementLowerer::visit(const CursorStmt &s)
 /// @param s AST node representing the @c ALTSCREEN statement.
 void RuntimeStatementLowerer::visit(const AltScreenStmt &s)
 {
-    LocationScope loc(lowerer_, s.loc);
-    Value enable = Value::constInt(s.enable ? 1 : 0);
-    Value enable32 = lowerer_.narrow32(enable, s.loc);
-    lowerer_.emitRuntimeHelper(il::runtime::RuntimeFeature::TermAltScreen,
-                               "rt_term_alt_screen_i32",
-                               il::core::Type(il::core::Type::Kind::Void),
-                               {enable32});
+    RuntimeCallBuilder(lowerer_)
+        .at(s.loc)
+        .argNarrow32(Value::constInt(s.enable ? 1 : 0))
+        .callHelperVoid(RuntimeFeature::TermAltScreen, "rt_term_alt_screen_i32");
 }
 
 /// @brief Lower the BASIC SLEEP statement to the runtime helper.
@@ -164,11 +153,13 @@ void RuntimeStatementLowerer::visit(const AltScreenStmt &s)
 /// @param s AST node describing the SLEEP statement.
 void RuntimeStatementLowerer::visit(const SleepStmt &s)
 {
-    LocationScope loc(lowerer_, s.loc);
     auto ms = lowerer_.ensureI64(lowerer_.lowerExpr(*s.ms), s.loc);
-    Value ms32 = lowerer_.narrow32(ms.value, s.loc);
-    lowerer_.requireSleepMs();
-    lowerer_.emitCallRet(il::core::Type(il::core::Type::Kind::Void), "rt_sleep_ms", {ms32});
+
+    RuntimeCallBuilder(lowerer_)
+        .at(s.loc)
+        .argNarrow32(ms.value)
+        .withManualHelper(&Lowerer::requireSleepMs)
+        .call("rt_sleep_ms");
 }
 
 /// @brief Assign a value to a scalar slot with BASIC-compatible coercions.

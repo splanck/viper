@@ -17,6 +17,7 @@
 
 #include "IoStatementLowerer.hpp"
 #include "Lowerer.hpp"
+#include "RuntimeCallHelpers.hpp"
 #include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/LocationScope.hpp"
 #include "frontends/basic/SemanticAnalyzer.hpp"
@@ -88,16 +89,13 @@ void IoStatementLowerer::lowerOpen(const OpenStmt &stmt)
 
     Lowerer::RVal path = lowerer_.lowerExpr(*stmt.pathExpr);
     Lowerer::RVal channel = lowerer_.lowerExpr(*stmt.channelExpr);
-    channel = lowerer_.normalizeChannelToI32(std::move(channel), stmt.loc);
 
-    Value modeValue = lowerer_.emitCommon(stmt.loc).narrow_to(
-        Value::constInt(static_cast<int32_t>(stmt.mode)), 64, 32);
-
-    Value err = lowerer_.emitCallRet(
-        IlType(IlType::Kind::I32), "rt_open_err_vstr", {path.value, modeValue, channel.value});
-
-    lowerer_.emitRuntimeErrCheck(
-        err, stmt.loc, "open", [&](Value code) { lowerer_.emitTrapFromErr(code); });
+    RuntimeCallBuilder(lowerer_)
+        .at(stmt.loc)
+        .arg(path.value)
+        .argNarrow32(Value::constInt(static_cast<int64_t>(stmt.mode)))
+        .argChannel(channel.value, channel.type)
+        .callWithErrCheck(IlType(IlType::Kind::I32), "rt_open_err_vstr", "open");
 }
 
 /// @brief Lower a CLOSE statement that releases an open channel.
@@ -108,17 +106,15 @@ void IoStatementLowerer::lowerOpen(const OpenStmt &stmt)
 /// @param stmt Parsed CLOSE statement.
 void IoStatementLowerer::lowerClose(const CloseStmt &stmt)
 {
-    LocationScope loc(lowerer_, stmt.loc);
     if (!stmt.channelExpr)
         return;
 
     Lowerer::RVal channel = lowerer_.lowerExpr(*stmt.channelExpr);
-    channel = lowerer_.normalizeChannelToI32(std::move(channel), stmt.loc);
 
-    Value err = lowerer_.emitCallRet(IlType(IlType::Kind::I32), "rt_close_err", {channel.value});
-
-    lowerer_.emitRuntimeErrCheck(
-        err, stmt.loc, "close", [&](Value code) { lowerer_.emitTrapFromErr(code); });
+    RuntimeCallBuilder(lowerer_)
+        .at(stmt.loc)
+        .argChannel(channel.value, channel.type)
+        .callWithErrCheck(IlType(IlType::Kind::I32), "rt_close_err", "close");
 }
 
 /// @brief Lower a SEEK statement that repositions a file channel.
@@ -130,21 +126,17 @@ void IoStatementLowerer::lowerClose(const CloseStmt &stmt)
 /// @param stmt Parsed SEEK statement.
 void IoStatementLowerer::lowerSeek(const SeekStmt &stmt)
 {
-    LocationScope loc(lowerer_, stmt.loc);
     if (!stmt.channelExpr || !stmt.positionExpr)
         return;
 
     Lowerer::RVal channel = lowerer_.lowerExpr(*stmt.channelExpr);
-    channel = lowerer_.normalizeChannelToI32(std::move(channel), stmt.loc);
-
     Lowerer::RVal position = lowerer_.lowerExpr(*stmt.positionExpr);
-    position = lowerer_.ensureI64(std::move(position), stmt.loc);
 
-    Value err = lowerer_.emitCallRet(
-        IlType(IlType::Kind::I32), "rt_seek_ch_err", {channel.value, position.value});
-
-    lowerer_.emitRuntimeErrCheck(
-        err, stmt.loc, "seek", [&](Value code) { lowerer_.emitTrapFromErr(code); });
+    RuntimeCallBuilder(lowerer_)
+        .at(stmt.loc)
+        .argChannel(channel.value, channel.type)
+        .argI64(position.value, position.type)
+        .callWithErrCheck(IlType(IlType::Kind::I32), "rt_seek_ch_err", "seek");
 }
 
 /// @brief Lower a PRINT statement to a series of runtime calls.

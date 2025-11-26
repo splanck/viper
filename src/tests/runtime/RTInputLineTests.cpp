@@ -27,14 +27,27 @@ static rt_string read_line(const std::string &data)
     if (!data.empty())
         (void)write(fds[1], data.data(), data.size());
     close(fds[1]);
+
+    // Save original stdin fd before replacing
+    int saved_stdin = dup(0);
+    assert(saved_stdin >= 0);
+
     dup2(fds[0], 0);
     close(fds[0]);
-    // After dup2, we need to associate stdin with the new fd properly.
-    // clearerr alone doesn't reset the stream's internal buffer state.
-    // Use freopen with /dev/stdin to force the stream to sync with the new fd.
-    FILE *reopened = freopen("/dev/stdin", "r", stdin);
-    assert(reopened == stdin);
-    return rt_input_line();
+
+    // Clear any buffered state and error flags on stdin
+    clearerr(stdin);
+    // Discard any buffered input by seeking (no-op on pipes but clears buffer)
+    fflush(stdin);
+
+    rt_string result = rt_input_line();
+
+    // Restore original stdin
+    dup2(saved_stdin, 0);
+    close(saved_stdin);
+    clearerr(stdin);
+
+    return result;
 }
 
 static void feed_and_check(size_t len, bool with_newline)

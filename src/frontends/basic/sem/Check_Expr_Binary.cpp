@@ -29,6 +29,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/basic/ASTUtils.hpp"
+#include "frontends/basic/NumericRules.hpp"
 #include "frontends/basic/sem/Check_Common.hpp"
 
 #include <array>
@@ -37,6 +38,9 @@
 namespace il::frontends::basic::semantic_analyzer_detail
 {
 using Type = SemanticAnalyzer::Type;
+
+// Import shared numeric rules to avoid duplication
+namespace nr = numeric_rules;
 
 /// @brief Count the number of binary operator rules described in the table.
 ///
@@ -51,138 +55,59 @@ constexpr std::size_t exprRuleCount() noexcept
     return static_cast<std::size_t>(BinaryExpr::Op::LogicalOr) + 1;
 }
 
-/// @brief Determine whether an operand type is treated as numeric for checks.
-///
-/// Numeric operands include integers, floats, and "unknown" placeholders.  The
-/// unknown category preserves diagnostics emitted earlier while still allowing
-/// later validation passes to proceed without cascading errors.
-///
-/// @param type Semantic type of the operand expression.
-/// @return True when the operand is considered numeric.
+// Use shared numeric rules - these aliases preserve the original API while
+// delegating to the centralized implementation in NumericRules.hpp.
 constexpr bool isNumericType(Type type) noexcept
 {
-    return type == Type::Int || type == Type::Float || type == Type::Unknown;
+    return nr::isNumeric(type);
 }
 
-/// @brief Determine whether an operand participates in integer-only operations.
-///
-/// The helper recognises integer and unknown operands, aligning with language
-/// rules for operators like MOD and IDIV.  Unknown values avoid duplicate
-/// diagnostics when prior analysis already reported an error.
-///
-/// @param type Semantic type of the operand expression.
-/// @return True when the operand is allowed in integer-only contexts.
 constexpr bool isIntegerType(Type type) noexcept
 {
-    return type == Type::Int || type == Type::Unknown;
+    return nr::isInteger(type);
 }
 
-/// @brief Determine whether an operand is acceptable for boolean-only rules.
-///
-/// Logical operators require strict Boolean types. Unknown placeholders are
-/// accepted to allow continued validation after earlier errors. The helper is
-/// used by logical operator validators and diagnostic messaging.
-///
-/// @param type Semantic type of the operand expression.
-/// @return True for boolean or unknown operands.
 constexpr bool isBooleanType(Type type) noexcept
 {
-    return type == Type::Bool || type == Type::Unknown;
+    return nr::isBoolean(type);
 }
 
-/// @brief Check whether the semantic type maps to a BASIC string value.
-///
-/// String-only operators (e.g., concatenation) rely on this to ensure both
-/// operands participate in text operations.  Unknown values are excluded so the
-/// validator can emit diagnostics when operands are missing or invalid.
-///
-/// @param type Semantic type of the operand expression.
-/// @return True when the operand type is string.
 constexpr bool isStringType(Type type) noexcept
 {
-    return type == Type::String;
+    return nr::isString(type);
 }
 
-/// @brief Infer the result type for arithmetic operations that accept numerics.
-///
-/// By delegating to @ref commonNumericType the helper enforces consistent
-/// promotion rules (int vs float).  Keeping the wrapper clarifies the intent
-/// when wiring the rule table.
-///
-/// @param lhs Type of the left-hand operand.
-/// @param rhs Type of the right-hand operand.
-/// @return Resulting numeric type or Unknown if promotion fails.
+// Result type functions using shared numeric rules.
+// These wrap the centralized implementations for use in the rule table.
+
 Type numericResult(Type lhs, Type rhs) noexcept
 {
-    return commonNumericType(lhs, rhs);
+    return nr::arithmeticResultType(lhs, rhs);
 }
 
-/// @brief Determine the result type for division operations.
-///
-/// Division always returns a float when both operands are numeric.  Non-numeric
-/// operands propagate an unknown result so callers can suppress redundant
-/// diagnostics after the validator runs.
-///
-/// @param lhs Type of the dividend operand.
-/// @param rhs Type of the divisor operand.
-/// @return Float for valid numeric operands; Unknown otherwise.
 Type divisionResult(Type lhs, Type rhs) noexcept
 {
-    if (!isNumericType(lhs) || !isNumericType(rhs))
-        return Type::Unknown;
-    return Type::Float;
+    return nr::divisionResultType(lhs, rhs);
 }
 
-/// @brief Determine the result type for addition, including string concatenation.
-///
-/// BASIC allows `+` to concatenate strings.  When both operands are string the
-/// helper returns string; otherwise it follows numeric promotion semantics so the
-/// rule behaves consistently with subtraction/multiplication.
-///
-/// @param lhs Type of the left operand.
-/// @param rhs Type of the right operand.
-/// @return String when both operands are string; otherwise numeric promotion.
 Type addResult(Type lhs, Type rhs) noexcept
 {
-    // If either operand is a string, BASIC treats '+' as concatenation
-    // and the result is a string.
-    if (lhs == Type::String || rhs == Type::String)
-        return Type::String;
-    return commonNumericType(lhs, rhs);
+    return nr::addResultType(lhs, rhs);
 }
 
-/// @brief Compute the result type for exponentiation.
-///
-/// BASIC exponentiation always yields a floating-point result regardless of
-/// operand types.  Diagnostics ensure invalid operands are reported before this
-/// function is consulted.
-///
-/// @return Always @c Type::Float.
-Type powResult(Type, Type) noexcept
+Type powResult(Type lhs, Type rhs) noexcept
 {
-    return Type::Float;
+    return nr::powerResultType(lhs, rhs);
 }
 
-/// @brief Compute the result type for integer-only arithmetic.
-///
-/// Operators such as MOD and IDIV produce integer results when operands are
-/// valid.  The validator enforces integer operands prior to calling this helper.
-///
-/// @return Always @c Type::Int.
-Type integerResult(Type, Type) noexcept
+Type integerResult(Type lhs, Type rhs) noexcept
 {
-    return Type::Int;
+    return nr::integerOnlyResultType(lhs, rhs);
 }
 
-/// @brief Compute the result type for boolean-producing operations.
-///
-/// Comparisons and logical operations evaluate to BOOLEAN results.
-/// The validator component ensures operands meet the requirements.
-///
-/// @return Always @c Type::Bool.
-Type booleanResult(Type, Type) noexcept
+Type booleanResult(Type lhs, Type rhs) noexcept
 {
-    return Type::Bool;
+    return nr::comparisonResultType(lhs, rhs);
 }
 
 /// @brief Check whether the RHS of a binary expression is a literal zero value.
@@ -348,17 +273,10 @@ void validateLogicalOperands(sem::ExprCheckContext &context,
 }
 
 /// @brief Calculate the common numeric type used for implicit promotions.
-///
-/// When either operand is floating-point the result promotes to float; otherwise
-/// it stays integer.  Unknown operands bypass promotion so subsequent rules can
-/// continue emitting diagnostics without guessing.
-///
-/// @param lhs Type of the left operand.
-/// @param rhs Type of the right operand.
-/// @return Resulting numeric type after promotion.
+/// @details Delegates to the shared numeric rules implementation.
 SemanticAnalyzer::Type commonNumericType(Type lhs, Type rhs) noexcept
 {
-    return (lhs == Type::Float || rhs == Type::Float) ? Type::Float : Type::Int;
+    return nr::promoteNumeric(lhs, rhs);
 }
 
 /// @brief Format a diagnostic message for logical operand mismatches.

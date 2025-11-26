@@ -21,7 +21,7 @@
 
 #include "frontends/basic/LowerExprNumeric.hpp"
 #include "frontends/basic/ASTUtils.hpp"
-
+#include "frontends/basic/NumericRules.hpp"
 #include "frontends/basic/TypeSuffix.hpp"
 
 #include <functional>
@@ -36,34 +36,24 @@ using namespace il::core;
 using IlType = il::core::Type;
 using IlKind = IlType::Kind;
 
+// Import shared numeric rules
+namespace nr = numeric_rules;
+
 namespace
 {
 
-/// @brief Check whether an IL type represents a BASIC integer category.
-///
-/// @param kind IL type kind to inspect.
-/// @return True if the kind is one of the signed integer variants.
+// Use shared numeric rules for IL type predicates and promotion.
+// These inline wrappers preserve the original API while delegating
+// to the centralized implementation in NumericRules.hpp.
+
 bool isIntegerKind(IlKind kind)
 {
-    return kind == IlKind::I16 || kind == IlKind::I32 || kind == IlKind::I64;
+    return nr::isIlInteger(kind);
 }
 
-/// @brief Choose an integer arithmetic type compatible with both operands.
-///
-/// @details Prefers the narrowest common type to preserve BASIC's integer
-///          semantics when both operands are narrow integers; otherwise promotes
-///          to 64-bit.
-///
-/// @param lhsKind Type of the left-hand operand.
-/// @param rhsKind Type of the right-hand operand.
-/// @return Result type suitable for integer arithmetic.
 IlType integerArithmeticType(IlKind lhsKind, IlKind rhsKind)
 {
-    if (lhsKind == IlKind::I16 && rhsKind == IlKind::I16)
-        return IlType(IlKind::I16);
-    if (lhsKind == IlKind::I32 && rhsKind == IlKind::I32)
-        return IlType(IlKind::I32);
-    return IlType(IlKind::I64);
+    return IlType(nr::promoteIlInteger(lhsKind, rhsKind));
 }
 
 } // namespace
@@ -119,7 +109,8 @@ NumericExprLowering::NumericOpConfig NumericExprLowering::normalizeNumericOperan
     Lowerer &lowerer = *lowerer_;
     NumericOpConfig config;
 
-    const bool requiresFloat = expr.op == BinaryExpr::Op::Pow;
+    // Use shared rule to determine if operator requires float operands
+    const bool requiresFloat = nr::requiresFloatOperands(expr.op);
     if (requiresFloat)
     {
         auto promoteToF64 = [&](Lowerer::RVal &value, const Expr *node)
@@ -149,7 +140,8 @@ NumericExprLowering::NumericOpConfig NumericExprLowering::normalizeNumericOperan
         return config;
     }
 
-    if (lhs.type.kind == IlKind::F64 || rhs.type.kind == IlKind::F64)
+    // Use shared rule to check if either operand is float
+    if (nr::isIlFloat(lhs.type.kind) || nr::isIlFloat(rhs.type.kind))
     {
         lhs = lowerer.coerceToF64(std::move(lhs), expr.loc);
         rhs = lowerer.coerceToF64(std::move(rhs), expr.loc);

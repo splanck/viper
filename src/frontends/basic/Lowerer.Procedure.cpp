@@ -18,6 +18,7 @@
 #include "frontends/basic/ASTUtils.hpp"
 
 #include "frontends/basic/AstWalker.hpp"
+#include "frontends/basic/ProcedureSymbolTracker.hpp"
 #include "frontends/basic/EmitCommon.hpp"
 #include "frontends/basic/LineUtils.hpp"
 #include "frontends/basic/LoweringPipeline.hpp"
@@ -54,12 +55,15 @@ namespace
 ///          referenced and, when necessary, records array-ness so the lowering
 ///          stage can allocate the correct slot types.  The walker never mutates
 ///          the AST; it solely updates the owning @ref Lowerer state.
+///
+///          Uses ProcedureSymbolTracker to centralize symbol tracking logic,
+///          avoiding duplication with RuntimeNeedsScanner.
 class VarCollectWalker final : public BasicAstWalker<VarCollectWalker>
 {
   public:
     /// @brief Create a walker bound to the current lowering instance.
     /// @param lowerer Owning lowering driver whose symbol tables are updated.
-    explicit VarCollectWalker(Lowerer &lowerer) noexcept : lowerer_(lowerer) {}
+    explicit VarCollectWalker(Lowerer &lowerer) noexcept : lowerer_(lowerer), tracker_(lowerer) {}
 
     /// @brief Record usage of a scalar variable expression.
     /// @details Marks the referenced symbol so a stack slot can be allocated
@@ -69,24 +73,7 @@ class VarCollectWalker final : public BasicAstWalker<VarCollectWalker>
     /// @param expr Variable expression encountered during traversal.
     void after(const VarExpr &expr)
     {
-        if (!expr.name.empty())
-        {
-            if (lowerer_.isFieldInScope(expr.name))
-                return;
-            // NOTE: Currently all referenced variables get local slots.
-            // TODO: Skip allocation for module-level globals once IL supports
-            //       mutable module-scope globals (beyond string constants). This is
-            //       about IL representation, not OOP runtime capability.
-            lowerer_.markSymbolReferenced(expr.name);
-            // Track module-level symbols referenced in procedures (not @main)
-            // for cross-proc sharing via runtime-backed storage.
-            if (auto sema = lowerer_.semanticAnalyzer())
-            {
-                const auto *fn = lowerer_.context().function();
-                if (((fn == nullptr) || fn->name != "main") && sema->isModuleLevelSymbol(expr.name))
-                    lowerer_.markCrossProcGlobal(expr.name);
-            }
-        }
+        tracker_.trackScalar(expr.name);
     }
 
     /// @brief Record usage of an array element expression.
@@ -96,19 +83,7 @@ class VarCollectWalker final : public BasicAstWalker<VarCollectWalker>
     /// @param expr Array expression encountered during traversal.
     void after(const ArrayExpr &expr)
     {
-        if (!expr.name.empty())
-        {
-            if (lowerer_.isFieldInScope(expr.name))
-                return;
-            lowerer_.markSymbolReferenced(expr.name);
-            lowerer_.markArray(expr.name);
-            if (auto sema = lowerer_.semanticAnalyzer())
-            {
-                const auto *fn = lowerer_.context().function();
-                if (((fn == nullptr) || fn->name != "main") && sema->isModuleLevelSymbol(expr.name))
-                    lowerer_.markCrossProcGlobal(expr.name);
-            }
-        }
+        tracker_.trackArray(expr.name);
     }
 
     /// @brief Record usage of an array lower-bound expression.
@@ -117,13 +92,7 @@ class VarCollectWalker final : public BasicAstWalker<VarCollectWalker>
     /// @param expr Lower-bound expression inspected by the walker.
     void after(const LBoundExpr &expr)
     {
-        if (!expr.name.empty())
-        {
-            if (lowerer_.isFieldInScope(expr.name))
-                return;
-            lowerer_.markSymbolReferenced(expr.name);
-            lowerer_.markArray(expr.name);
-        }
+        tracker_.trackArray(expr.name);
     }
 
     /// @brief Record usage of an array upper-bound expression.
@@ -132,13 +101,7 @@ class VarCollectWalker final : public BasicAstWalker<VarCollectWalker>
     /// @param expr Upper-bound expression inspected by the walker.
     void after(const UBoundExpr &expr)
     {
-        if (!expr.name.empty())
-        {
-            if (lowerer_.isFieldInScope(expr.name))
-                return;
-            lowerer_.markSymbolReferenced(expr.name);
-            lowerer_.markArray(expr.name);
-        }
+        tracker_.trackArray(expr.name);
     }
 
     /// @brief Track variables introduced by DIM statements.
@@ -245,13 +208,13 @@ class VarCollectWalker final : public BasicAstWalker<VarCollectWalker>
     {
         for (const auto &name : stmt.vars)
         {
-            if (!name.empty() && !lowerer_.isFieldInScope(name))
-                lowerer_.markSymbolReferenced(name);
+            tracker_.trackScalar(name);
         }
     }
 
   private:
     Lowerer &lowerer_;
+    ProcedureSymbolTracker tracker_;
 };
 
 } // namespace

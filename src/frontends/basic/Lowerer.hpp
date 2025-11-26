@@ -77,6 +77,8 @@
 #include "frontends/basic/IdentifierUtil.hpp"
 #include "frontends/basic/LowerRuntime.hpp"
 #include "frontends/basic/LowererContext.hpp"
+#include "frontends/basic/LowererRuntimeHelpers.hpp"
+#include "frontends/basic/LowererTypes.hpp"
 #include "frontends/basic/NameMangler.hpp"
 #include "frontends/basic/OopIndex.hpp"
 #include "frontends/basic/TypeRules.hpp"
@@ -227,6 +229,8 @@ class Lowerer
     friend class IoStatementLowerer;
     friend class ControlStatementLowerer;
     friend class RuntimeStatementLowerer;
+    friend class OopEmitHelper;
+    friend class RuntimeCallBuilder;
 
     using Module = il::core::Module;
     using Function = il::core::Function;
@@ -244,18 +248,9 @@ class Lowerer
     using ForBlocks = ::il::frontends::basic::ForBlocks;
 
   public:
-    struct RVal
-    {
-        Value value;
-        Type type;
-    };
-
-    /// @brief Result of lowering a PRINT# argument to a string.
-    struct PrintChArgString
-    {
-        Value text;
-        std::optional<il::runtime::RuntimeFeature> feature;
-    };
+    // Re-export types from LowererTypes.hpp for API compatibility
+    using RVal = ::il::frontends::basic::RVal;
+    using PrintChArgString = ::il::frontends::basic::PrintChArgString;
 
     // Friend declarations for I/O helper functions (must appear after RVal definition)
     friend PrintChArgString lowerPrintChArgToString(IoStatementLowerer &self,
@@ -264,36 +259,10 @@ class Lowerer
                                                     bool quoteStrings);
     friend Value buildPrintChWriteRecord(IoStatementLowerer &self, const PrintChStmt &stmt);
 
-    /// @brief Result of lowering an array access expression.
-    struct ArrayAccess
-    {
-        Value base;  ///< Array handle loaded from the BASIC slot.
-        Value index; ///< Zero-based element index, coerced to i64.
-    };
-
-    /// @brief Classify how an array access will be consumed.
-    enum class ArrayAccessKind
-    {
-        Load,  ///< The caller will read from the computed element.
-        Store, ///< The caller will write to the computed element.
-    };
-
-    /// @brief Aggregated metadata for a BASIC symbol.
-    struct SymbolInfo
-    {
-        AstType type{AstType::I64};     ///< BASIC type derived from declarations or suffixes.
-        bool hasType{false};            ///< True when @ref type was explicitly recorded.
-        bool isArray{false};            ///< True when symbol refers to an array.
-        bool isBoolean{false};          ///< True when scalar bool storage is required.
-        bool referenced{false};         ///< Tracks whether lowering observed the symbol.
-        bool isStatic{false};           ///< True when symbol is a STATIC procedure-local variable.
-        std::optional<unsigned> slotId; ///< Stack slot id for the variable when materialized.
-        std::optional<unsigned>
-            arrayLengthSlot;     ///< Optional slot for array length (bounds checks).
-        std::string stringLabel; ///< Cached label for deduplicated string literals.
-        bool isObject{false};    ///< True when symbol references an object slot.
-        std::string objectClass; ///< Class name for object symbols; empty otherwise.
-    };
+    // Re-export more types from LowererTypes.hpp
+    using ArrayAccess = ::il::frontends::basic::ArrayAccess;
+    using ArrayAccessKind = ::il::frontends::basic::ArrayAccessKind;
+    using SymbolInfo = ::il::frontends::basic::SymbolInfo;
 
   private:
     /// @brief Aggregates state shared across helper stages of program lowering.
@@ -304,38 +273,12 @@ class Lowerer
         BasicBlock *entry{nullptr};
     };
 
-    struct SlotType
-    {
-        Type type{Type(Type::Kind::I64)};
-        bool isArray{false};
-        bool isBoolean{false};
-        bool isObject{false};
-        std::string objectClass;
-    };
-
-    struct VariableStorage
-    {
-        SlotType slotInfo;
-        Value pointer;
-        bool isField{false};
-    };
-
-    /// @brief Cached signature for a user-defined procedure.
-    struct ProcedureSignature
-    {
-        Type retType{Type(Type::Kind::I64)}; ///< Declared return type.
-        std::vector<Type> paramTypes;        ///< Declared parameter types.
-    };
-
-  private:
-    /// @brief Layout of blocks emitted for an IF/ELSEIF chain.
-    struct IfBlocks
-    {
-        std::vector<size_t> tests; ///< indexes of test blocks
-        std::vector<size_t> thens; ///< indexes of THEN blocks
-        size_t elseIdx;            ///< index of ELSE block
-        size_t exitIdx;            ///< index of common exit block
-    };
+    // Re-export private types from LowererTypes.hpp
+    using SlotType = ::il::frontends::basic::SlotType;
+    using VariableStorage = ::il::frontends::basic::VariableStorage;
+    using ProcedureSignature = ::il::frontends::basic::ProcedureSignature;
+    using IfBlocks = ::il::frontends::basic::IfBlocks;
+    using CtrlState = ::il::frontends::basic::CtrlState;
 
     // Note: ProcedureContext, BlockNamer, and ForBlocks are defined in LowererContext.hpp
 
@@ -593,24 +536,6 @@ class Lowerer
     // Control flow lowering (formerly LowerStmt_Control.hpp)
     // -------------------------------------------------------------------------
 
-    /// @brief Control-flow state emitted by structured statement helpers.
-    /// @details `cur` tracks the block left active after lowering, while
-    ///          `after` stores the merge/done block when it survives the
-    ///          lowering step. Helpers mark `fallthrough` when execution can
-    ///          reach `after` without an explicit transfer, ensuring callers
-    ///          can reason about terminators consistently.
-    struct CtrlState
-    {
-        BasicBlock *cur{nullptr};   ///< Block left active after lowering.
-        BasicBlock *after{nullptr}; ///< Merge/done block if retained.
-        bool fallthrough{false};    ///< True when `after` remains reachable.
-
-        [[nodiscard]] bool terminated() const
-        {
-            return !cur || cur->terminated;
-        }
-    };
-
     /// @brief Emit blocks for an IF/ELSEIF chain.
     /// @param conds Number of conditions (IF + ELSEIFs).
     /// @return Indices for test/then blocks and ELSE/exit blocks.
@@ -812,60 +737,16 @@ class Lowerer
 
     RuntimeHelperTracker runtimeTracker;
 
-    enum class ManualRuntimeHelper : std::size_t
-    {
-        Trap = 0,
-        ArrayI32New,
-        ArrayI32Resize,
-        ArrayI32Len,
-        ArrayI32Get,
-        ArrayI32Set,
-        ArrayI32Retain,
-        ArrayI32Release,
-        ArrayStrAlloc,
-        ArrayStrRelease,
-        ArrayStrGet,
-        ArrayStrPut,
-        ArrayStrLen,
-        // Object arrays (ptr elements)
-        ArrayObjNew,
-        ArrayObjLen,
-        ArrayObjGet,
-        ArrayObjPut,
-        ArrayObjResize,
-        ArrayObjRelease,
-        ArrayOobPanic,
-        OpenErrVstr,
-        CloseErr,
-        SeekChErr,
-        WriteChErr,
-        PrintlnChErr,
-        LineInputChErr,
-        EofCh,
-        LofCh,
-        LocCh,
-        StrRetainMaybe,
-        StrReleaseMaybe,
-        SleepMs,
-        TimerMs,
-        // Module-level variable address helpers
-        ModvarAddrI64,
-        ModvarAddrF64,
-        ModvarAddrI1,
-        ModvarAddrPtr,
-        ModvarAddrStr,
-        Count
-    };
-
-    static constexpr std::size_t manualRuntimeHelperCount =
-        static_cast<std::size_t>(ManualRuntimeHelper::Count);
+    // Re-export ManualRuntimeHelper from LowererRuntimeHelpers.hpp
+    using ManualRuntimeHelper = ::il::frontends::basic::ManualRuntimeHelper;
+    static constexpr std::size_t manualRuntimeHelperCount = kManualRuntimeHelperCount;
 
     static constexpr std::size_t manualRuntimeHelperIndex(ManualRuntimeHelper helper) noexcept
     {
-        return static_cast<std::size_t>(helper);
+        return ::il::frontends::basic::manualRuntimeHelperIndex(helper);
     }
 
-    std::array<bool, manualRuntimeHelperCount> manualHelperRequirements_{};
+    ManualHelperRequirements manualHelperRequirements_{};
 
     void setManualHelperRequired(ManualRuntimeHelper helper);
     [[nodiscard]] bool isManualHelperRequired(ManualRuntimeHelper helper) const;
@@ -923,63 +804,10 @@ class Lowerer
     void declareRequiredRuntime(build::IRBuilder &b);
 #include "frontends/basic/LowerScan.hpp"
   public:
-    /// @brief Computed memory layout for a BASIC CLASS or TYPE declaration.
-    struct ClassLayout
-    {
-        /// @brief Metadata describing a single field within the class layout.
-        struct Field
-        {
-            std::string name;
-            AstType type{AstType::I64};
-            std::size_t offset{0};
-            std::size_t size{0};
-            /// @brief True when this field is declared as an array.
-            /// @details Preserves array metadata from the AST so lowering can
-            ///          distinguish implicit field-array accesses inside
-            ///          methods (e.g., `inventory(i)`) from scalar fields.
-            bool isArray{false};
-            /// @brief Declared array extents (upper bounds per dimension).
-            /// @details Used for multi-dimensional index linearization. Each
-            ///          entry is an inclusive upper bound; length = bound + 1.
-            std::vector<long long> arrayExtents{};
-            /// @brief BUG-082 fix: Class name for object-typed fields.
-            /// @details Empty for primitive types; holds the class name for object references.
-            std::string objectClassName;
-        };
-
-        /// @brief Ordered field entries preserving declaration order.
-        std::vector<Field> fields;
-        /// @brief Mapping from field name to its index within @ref fields.
-        std::unordered_map<std::string, std::size_t> fieldIndex;
-        /// @brief Total storage size in bytes rounded up to the alignment requirement.
-        std::size_t size{0};
-        /// @brief Stable identifier assigned during OOP scanning for runtime dispatch.
-        std::int64_t classId{0};
-
-        [[nodiscard]] const Field *findField(std::string_view name) const
-        {
-            auto it = fieldIndex.find(std::string(name));
-            if (it == fieldIndex.end())
-                return nullptr;
-            return &fields[it->second];
-        }
-    };
-
-    /// @brief Describes the address and type of a resolved member field.
-    struct MemberFieldAccess
-    {
-        Value ptr;                          ///< Pointer to the field storage.
-        Type ilType{Type(Type::Kind::I64)}; ///< IL type used for loads/stores.
-        ::il::frontends::basic::Type astType{
-            ::il::frontends::basic::Type::I64}; ///< Original AST type.
-        std::string objectClassName;            ///< BUG-082: Class name for object-typed fields.
-    };
-
-    struct FieldScope
-    {
-        const ClassLayout *layout{nullptr};
-        std::unordered_map<std::string, SymbolInfo> symbols;
-    };
+    // Re-export OOP types from LowererTypes.hpp
+    using ClassLayout = ::il::frontends::basic::ClassLayout;
+    using MemberFieldAccess = ::il::frontends::basic::MemberFieldAccess;
+    using FieldScope = ::il::frontends::basic::FieldScope;
 
   private:
     /// @brief Scan program OOP constructs to populate class layouts and runtime requests.

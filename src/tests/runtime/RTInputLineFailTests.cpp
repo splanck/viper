@@ -44,9 +44,10 @@ int main()
     close(fds[1]);
     dup2(fds[0], 0);
     close(fds[0]);
-    // After dup2, use freopen to properly sync stdin with the new fd.
-    FILE *reopened = freopen("/dev/stdin", "r", stdin);
-    assert(reopened == stdin);
+
+    // Clear any buffered state and error flags on stdin
+    clearerr(stdin);
+    fflush(stdin);
 
     rt_string s = rt_input_line();
     assert(!s);

@@ -13,13 +13,42 @@
 
 #pragma once
 
+#include "frontends/basic/Lower_OOP_RuntimeHelpers.hpp"
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/OopLoweringContext.hpp"
+
+#include <functional>
+#include <string>
+#include <string_view>
 
 namespace il::frontends::basic
 {
 
 // Internal helper functions shared between OOP lowering translation units.
 // These are implementation details and should not be exposed in the public Lowerer interface.
+
+// -------------------------------------------------------------------------
+// Centralized OOP Resolution Helpers
+// -------------------------------------------------------------------------
+// These helpers consolidate patterns that were duplicated across OOP lowering
+// code (BUG-061, BUG-082, BUG-089, etc.).
+
+/// @brief Resolve the object class of a non-array field.
+/// @param layout Class layout to search.
+/// @param fieldName Name of the field to look up.
+/// @param qualify Optional function to qualify the class name.
+/// @return Qualified class name if field is an object type, empty otherwise.
+std::string resolveFieldObjectClass(const ClassLayout *layout,
+                                    std::string_view fieldName,
+                                    const std::function<std::string(const std::string &)> &qualify);
+
+/// @brief Resolve the element class of an array field.
+/// @param layout Class layout to search.
+/// @param fieldName Name of the array field to look up.
+/// @param qualify Optional function to qualify the class name.
+/// @return Qualified class name if field is an object array, empty otherwise.
+std::string resolveFieldArrayElementClass(const ClassLayout *layout,
+                                          std::string_view fieldName,
+                                          const std::function<std::string(const std::string &)> &qualify);
 
 } // namespace il::frontends::basic
