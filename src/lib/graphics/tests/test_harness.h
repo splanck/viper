@@ -1,3 +1,19 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/lib/graphics/tests/test_harness.h
+// Purpose: Lightweight test harness utilities for ViperGFX C tests.
+// Key invariants: Header-only; no global state; safe for inclusion in multiple
+//                 translation units.
+// Ownership/Lifetime: N/A (declarations/macros only).
+// Links: docs/vgfx-testing.md
+//
+//===----------------------------------------------------------------------===//
+
 /*
  * ViperGFX - Simple Test Harness
  * Provides assertion macros for unit testing
@@ -152,3 +168,18 @@ extern "C"
 #ifdef __cplusplus
 }
 #endif
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/lib/graphics/tests/test_harness.h
+// Purpose: Lightweight test harness utilities for ViperGFX C tests.
+// Key invariants: Header-only; no global state; safe for inclusion in multiple
+//                 translation units.
+// Ownership/Lifetime: N/A (declarations/macros only).
+// Links: docs/vgfx-testing.md
+//
+//===----------------------------------------------------------------------===//

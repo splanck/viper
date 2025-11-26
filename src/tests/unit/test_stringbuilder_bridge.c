@@ -1,3 +1,18 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/tests/unit/test_stringbuilder_bridge.c
+// Purpose: C test harness for StringBuilder OOP bridge and runtime integration.
+// Key invariants: Tests are self-contained; do not require global runtime init;
+//                 exercise append/clear/ToString and capacity behavior.
+// Ownership/Lifetime: Test binary manages any allocations created via bridge APIs.
+// Links: docs/runtime-stringbuilder.md
+//
+//===----------------------------------------------------------------------===//
 // Test harness for StringBuilder bridge functions
 // Tests the OOP StringBuilder <-> internal rt_string_builder bridge
 
@@ -33,6 +48,9 @@ extern int64_t rt_len(rt_string s);
 // Runtime initialization not needed for these tests
 
 // Helper to create string from C string
+/// What: Create a runtime string from a C string.
+/// Why:  Simplify tests by avoiding repetitive conversions.
+/// How:  Uses rt_string_from_bytes when non-null, otherwise returns rt_str_empty().
 static rt_string make_string(const char *s)
 {
     return s ? rt_string_from_bytes(s, strlen(s)) : rt_str_empty();

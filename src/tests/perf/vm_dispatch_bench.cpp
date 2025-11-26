@@ -6,10 +6,17 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/perf/vm_dispatch_bench.cpp
-// Purpose: Benchmark interpreter dispatch strategies using a branch-reduced arithmetic loop.
-// Key invariants: All dispatch modes execute the same loop body and yield identical checksums.
-// Ownership/Lifetime: Benchmarks build a transient module and execute it immediately.
+// Purpose: Comprehensive benchmark for interpreter dispatch strategies.
+// Key invariants: All dispatch modes execute identical code and yield identical checksums.
+// Ownership/Lifetime: Benchmarks build transient modules and execute immediately.
 // Links: docs/il-guide.md#reference
+//
+// Benchmark scenarios:
+// 1. Arithmetic-heavy: Tests ALU throughput (add, mul, sub)
+// 2. Branch-heavy: Tests control flow prediction and dispatch overhead
+// 3. Memory-heavy: Tests load/store with GEP operations
+// 4. Mixed workload: Realistic mix of all operation types
+// 5. Call-heavy: Tests function call dispatch overhead
 //
 //===----------------------------------------------------------------------===//
 
@@ -24,18 +31,23 @@
 
 #include <chrono>
 #include <cstdlib>
+#include <iomanip>
 #include <iostream>
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 using namespace il::core;
 
 namespace
 {
 
-constexpr size_t kLoopIterations = 250'000;
-constexpr size_t kBenchmarkRuns = 5;
+constexpr size_t kLoopIterations = 500'000;
+constexpr size_t kBenchmarkRuns = 3;
+constexpr size_t kBranchIterations = 200'000;
+constexpr size_t kMemoryIterations = 100'000;
+constexpr size_t kCallIterations = 100'000;
 
 int64_t computeExpectedSum(size_t iterations)
 {

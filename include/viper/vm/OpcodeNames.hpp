@@ -1,7 +1,18 @@
-// include/viper/vm/OpcodeNames.hpp
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: include/viper/vm/OpcodeNames.hpp
 // Purpose: Provide a stable opcode->name helper for VM diagnostics.
-// Invariants: Forwards to the canonical IL opcode name table; no duplication.
-// Ownership: Header-only convenience; no state or allocation.
+// Key invariants: Forwards to the canonical IL opcode name table to avoid
+//                 duplication and drift.
+// Ownership/Lifetime: Header-only convenience; no state or allocation.
+// Links: docs/il-guide.md
+//
+//===----------------------------------------------------------------------===//
 
 #pragma once
 
@@ -22,4 +33,3 @@ inline std::string_view opcodeName(il::core::Opcode op) noexcept
 }
 
 } // namespace il::vm
-

@@ -24,6 +24,9 @@ extern "C"
 {
 #endif
 
+    /// What: snprintf-compatible formatting wrapper.
+    /// Why:  Allow tests to interpose formatting and capture output.
+    /// How:  Forwards to platform snprintf by default; may be overridden in tests.
     int rt_snprintf(char *str, size_t size, const char *fmt, ...);
 
 #ifdef __cplusplus

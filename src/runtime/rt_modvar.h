@@ -15,10 +15,29 @@ extern "C"
 #endif
 
     // Return addresses to runtime-managed storage for module-level variables.
+    /// What: Address of a 64-bit integer module variable named @p name.
+    /// Why:  Provide stable storage for BASIC global variables.
+    /// How:  Looks up/creates a slot keyed by name and returns its address.
     void *rt_modvar_addr_i64(rt_string name);
+
+    /// What: Address of a 64-bit floating module variable named @p name.
+    /// Why:  Provide stable storage for BASIC global variables.
+    /// How:  Looks up/creates a slot keyed by name and returns its address.
     void *rt_modvar_addr_f64(rt_string name);
+
+    /// What: Address of a boolean (i1) module variable named @p name.
+    /// Why:  Provide stable storage for BASIC global variables.
+    /// How:  Looks up/creates a slot keyed by name and returns its address.
     void *rt_modvar_addr_i1(rt_string name);
+
+    /// What: Address of a pointer module variable named @p name.
+    /// Why:  Provide stable storage for BASIC global variables.
+    /// How:  Looks up/creates a slot keyed by name and returns its address.
     void *rt_modvar_addr_ptr(rt_string name);
+
+    /// What: Address of a string module variable named @p name.
+    /// Why:  Provide stable storage for BASIC global variables.
+    /// How:  Looks up/creates a slot keyed by name and returns its address.
     void *rt_modvar_addr_str(rt_string name);
 
 #ifdef __cplusplus

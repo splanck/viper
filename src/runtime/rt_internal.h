@@ -47,6 +47,9 @@ extern "C"
         RT_INPUT_GROW_OVERFLOW = 2
     } rt_input_grow_result;
 
+    /// What: Attempt to grow an input buffer in-place.
+    /// Why:  Expand buffers during I/O without excessive reallocations.
+    /// How:  Computes a safe new capacity, reallocates, and updates pointers.
     rt_input_grow_result rt_input_try_grow(char **buf, size_t *cap);
 
     typedef void *(*rt_alloc_hook_fn)(int64_t bytes, void *(*next)(int64_t bytes));

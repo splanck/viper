@@ -25,7 +25,9 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-// Return 1 if the file at path exists, 0 otherwise.
+/// What: Return 1 if the file at @p path exists, 0 otherwise.
+/// Why:  Support Viper.IO.File.Exists semantics from the runtime.
+/// How:  Converts @p path to a host path and calls stat().
 int64_t rt_io_file_exists(rt_string path)
 {
     const char *cpath = NULL;
@@ -37,7 +39,9 @@ int64_t rt_io_file_exists(rt_string path)
     return 0;
 }
 
-// Read entire file into a runtime string. Return empty string on error.
+/// What: Read entire file into a runtime string. Return empty on error.
+/// Why:  Provide a convenience API for small text files in examples/tests.
+/// How:  Opens the file, reads all bytes, returns an rt_string view of them.
 rt_string rt_io_file_read_all_text(rt_string path)
 {
     const char *cpath = NULL;
@@ -92,7 +96,9 @@ rt_string rt_io_file_read_all_text(rt_string path)
     return s ? s : rt_str_empty();
 }
 
-// Write entire contents to path, truncating or creating the file. Silent on error.
+/// What: Write @p contents to @p path, truncating or creating the file.
+/// Why:  Complement read_all_text with a simple write primitive.
+/// How:  Opens with O_WRONLY|O_CREAT|O_TRUNC and writes all bytes, retrying on EINTR.
 void rt_io_file_write_all_text(rt_string path, rt_string contents)
 {
     const char *cpath = NULL;
@@ -122,7 +128,9 @@ void rt_io_file_write_all_text(rt_string path, rt_string contents)
     (void)close(fd);
 }
 
-// Delete the file at path. Silent on error.
+/// What: Delete the file at @p path.
+/// Why:  Allow simple cleanup without surfacing platform-specific APIs.
+/// How:  Converts to host path and calls unlink(); errors are ignored.
 void rt_io_file_delete(rt_string path)
 {
     const char *cpath = NULL;

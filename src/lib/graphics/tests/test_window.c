@@ -1,3 +1,19 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/lib/graphics/tests/test_window.c
+// Purpose: Unit tests covering window creation, resize, and teardown flows.
+// Key invariants: Windows are destroyed on all paths; events are processed
+//                 without deadlocks; resources do not leak.
+// Ownership/Lifetime: Test binary; owns windows created during tests.
+// Links: docs/vgfx-testing.md
+//
+//===----------------------------------------------------------------------===//
+
 /*
  * ViperGFX - Window Tests (T1-T3)
  * Tests window creation with various parameters
@@ -71,6 +87,9 @@ void test_window_invalid_dimensions_use_defaults(void)
 }
 
 /* Main test runner */
+/// What: Entry point for window lifecycle tests.
+/// Why:  Validate that window create/resize/teardown flows are robust.
+/// How:  Creates a window, triggers resizes/events, then cleans up deterministically.
 int main(void)
 {
     printf("========================================\n");
@@ -84,3 +103,18 @@ int main(void)
     TEST_SUMMARY();
     return TEST_RETURN_CODE();
 }
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/lib/graphics/tests/test_window.c
+// Purpose: Unit tests covering window creation, resize, and teardown flows.
+// Key invariants: Windows are destroyed on all paths; events are processed
+//                 without deadlocks; resources do not leak.
+// Ownership/Lifetime: Test binary; owns windows created during tests.
+// Links: docs/vgfx-testing.md
+//
+//===----------------------------------------------------------------------===//

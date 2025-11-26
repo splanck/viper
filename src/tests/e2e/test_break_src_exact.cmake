@@ -14,7 +14,9 @@ if (NOT DEFINED ROOT)
     message(FATAL_ERROR "ROOT not set")
 endif ()
 get_filename_component(SRC_NAME ${SRC_FILE} NAME)
-set(BREAK_FILE ${ROOT}/break.txt)
+# Use a unique temp file per test to avoid races when tests run in parallel
+get_filename_component(GOLDEN_NAME ${GOLDEN} NAME_WE)
+set(BREAK_FILE ${ROOT}/break_${GOLDEN_NAME}_${LINE}.txt)
 
 execute_process(COMMAND ${ILC} -run ${SRC_FILE} --break ${SRC_FILE}:${LINE}
         ERROR_FILE ${BREAK_FILE}
@@ -44,3 +46,5 @@ if (NOT OUT STREQUAL EXP)
     message(FATAL_ERROR "break output mismatch (basename)")
 endif ()
 
+# Clean up temp file on success
+file(REMOVE ${BREAK_FILE})

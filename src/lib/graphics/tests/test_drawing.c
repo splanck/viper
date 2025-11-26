@@ -1,3 +1,20 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/lib/graphics/tests/test_drawing.c
+// Purpose: Unit tests for ViperGFX drawing primitives and rendering pipeline.
+// Key invariants: Tests are deterministic; validate pixel output where
+//                 applicable; avoid environment-specific assumptions.
+// Ownership/Lifetime: Test binary; creates and destroys windows/textures as
+//                     needed.
+// Links: docs/vgfx-testing.md
+//
+//===----------------------------------------------------------------------===//
+
 /*
  * ViperGFX - Drawing Tests (T7-T13)
  * Tests drawing primitives (lines, rectangles, circles)
@@ -327,6 +344,9 @@ void test_filled_circle(void)
 }
 
 /* Main test runner */
+/// What: Entry point for drawing tests covering primitive rendering.
+/// Why:  Ensure that core drawing operations work end-to-end.
+/// How:  Creates a surface/window, issues draw calls, then validates output.
 int main(void)
 {
     printf("========================================\n");
@@ -344,3 +364,19 @@ int main(void)
     TEST_SUMMARY();
     return TEST_RETURN_CODE();
 }
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/lib/graphics/tests/test_drawing.c
+// Purpose: Unit tests for ViperGFX drawing primitives and rendering pipeline.
+// Key invariants: Tests are deterministic; validate pixel output where
+//                 applicable; avoid environment-specific assumptions.
+// Ownership/Lifetime: Test binary; creates and destroys windows/textures as
+//                     needed.
+// Links: docs/vgfx-testing.md
+//
+//===----------------------------------------------------------------------===//

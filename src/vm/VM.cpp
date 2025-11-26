@@ -594,8 +594,11 @@ std::vector<std::pair<int, uint64_t>> VM::topOpcodes(std::size_t n) const
 /// @param in Instruction being executed.
 void VM::setCurrentContext(Frame &fr, const BasicBlock *bb, size_t ip, const Instr &in)
 {
-    currentContext.function = fr.func;
-    currentContext.block = bb;
+    // Optimize: only update fields that changed (common case: same function/block)
+    if (currentContext.function != fr.func) [[unlikely]]
+        currentContext.function = fr.func;
+    if (currentContext.block != bb) [[unlikely]]
+        currentContext.block = bb;
     currentContext.instructionIndex = ip;
     currentContext.hasInstruction = true;
     currentContext.loc = in.loc;
@@ -618,9 +621,29 @@ void VM::clearCurrentContext()
 /// @return True when a handler was found and control transferred.
 bool VM::prepareTrap(VmError &error)
 {
-    const BasicBlock *faultBlock = currentContext.block;
-    size_t faultIp = currentContext.hasInstruction ? currentContext.instructionIndex : 0;
-    il::support::SourceLoc faultLoc = currentContext.loc;
+    // Derive trap context from execution stack for better performance.
+    // This avoids updating currentContext on every instruction dispatch.
+    const BasicBlock *faultBlock = nullptr;
+    size_t faultIp = 0;
+    il::support::SourceLoc faultLoc{};
+
+    if (!execStack.empty())
+    {
+        // Get context from the active execution state
+        const ExecState *activeState = execStack.back();
+        faultBlock = activeState->bb;
+        faultIp = activeState->ip;
+        // Get source location from the current instruction
+        if (faultBlock && faultIp < faultBlock->instructions.size())
+            faultLoc = faultBlock->instructions[faultIp].loc;
+    }
+    else if (currentContext.hasInstruction)
+    {
+        // Fallback to currentContext if no active execution state
+        faultBlock = currentContext.block;
+        faultIp = currentContext.instructionIndex;
+        faultLoc = currentContext.loc;
+    }
 
     // Use index-based iteration to avoid potential iterator invalidation
     // if exception handling modifies the execution stack

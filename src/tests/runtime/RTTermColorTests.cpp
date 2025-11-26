@@ -21,6 +21,8 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include <poll.h>
+#include <termios.h>
+#include <fcntl.h>
 
 #if defined(__linux__)
 #include <pty.h>
@@ -33,12 +35,18 @@
 namespace
 {
 
-std::string capture_sgr(int fg, int bg)
+std::string capture_sgr_once(int fg, int bg)
 {
     int master = -1;
     int slave = -1;
     int rc = openpty(&master, &slave, nullptr, nullptr, nullptr);
     assert(rc == 0);
+
+    // Set PTY to raw mode - no buffering, no echo, no processing
+    struct termios tio;
+    tcgetattr(slave, &tio);
+    cfmakeraw(&tio);
+    tcsetattr(slave, TCSANOW, &tio);
 
     pid_t pid = fork();
     assert(pid >= 0);
@@ -52,54 +60,45 @@ std::string capture_sgr(int fg, int bg)
         _exit(0);
     }
 
+    // Parent: close slave so read() gets EOF when child exits
     close(slave);
 
-    // Read output using poll with timeout BEFORE waiting for child
-    // This ensures we capture the data while the PTY is still active
+    // Read from master until EOF (child exit closes slave -> master gets EOF)
+    // Use blocking read - this is reliable because we closed the slave in parent
     std::string result;
     char buf[64];
 
-    struct pollfd pfd;
-    pfd.fd = master;
-    pfd.events = POLLIN;
-
-    // Keep reading until no more data or child exits
-    for (int attempts = 0; attempts < 10; ++attempts)
+    while (true)
     {
-        int prc = poll(&pfd, 1, 50); // 50ms timeout per attempt
-        if (prc > 0 && (pfd.revents & POLLIN))
-        {
-            ssize_t n = read(master, buf, sizeof(buf));
-            if (n > 0)
-            {
-                result.append(buf, static_cast<size_t>(n));
-                // Got data, check if there's more
-                continue;
-            }
-        }
-        // Check if child has exited
-        int status = 0;
-        pid_t wpid = waitpid(pid, &status, WNOHANG);
-        if (wpid == pid)
-        {
-            // Child exited, do one more read attempt
-            prc = poll(&pfd, 1, 10);
-            if (prc > 0 && (pfd.revents & POLLIN))
-            {
-                ssize_t n = read(master, buf, sizeof(buf));
-                if (n > 0)
-                    result.append(buf, static_cast<size_t>(n));
-            }
-            break;
-        }
+        ssize_t n = read(master, buf, sizeof(buf));
+        if (n <= 0)
+            break; // EOF or error
+        result.append(buf, static_cast<size_t>(n));
     }
 
-    // Ensure child is reaped
+    // Reap child
     int status = 0;
     waitpid(pid, &status, 0);
 
     close(master);
     return result;
+}
+
+// PTY operations can be flaky on macOS - retry up to 3 times
+std::string capture_sgr(int fg, int bg)
+{
+    for (int attempt = 0; attempt < 3; ++attempt)
+    {
+        std::string result = capture_sgr_once(fg, bg);
+        // For empty expected output (fg=-1, bg=-1), empty is correct
+        // For non-empty expected output, retry if we got nothing
+        if (fg == -1 && bg == -1)
+            return result; // Empty is expected
+        if (!result.empty())
+            return result;
+        // Got empty when we expected data - retry
+    }
+    return ""; // All retries failed
 }
 
 } // namespace

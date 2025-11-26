@@ -24,19 +24,22 @@ typedef struct rt_iface_reg {
   int slot_count;    // number of method slots in the interface
 } rt_iface_reg;
 
-// Register interface metadata with the runtime.
-// Stability: iface_id values are process-local and assigned at module load.
-// Re-registering an already known interface is idempotent.
+/// What: Register interface metadata with the runtime.
+/// Why:  Establish a stable interface identity and slot count for binding.
+/// How:  Inserts or verifies an entry keyed by @c iface_id and @c qname.
+///       Re-registering an already known interface is idempotent.
 void rt_register_interface(const rt_iface_reg *iface);
 
-// Bind a class (identified by type_id) to an interface implementation.
-// The itable_slots pointer must reference an array of function pointers with
-// length equal to the registered slot_count for the interface.
-// Stability: type_id and iface_id are process-local and assigned at module load.
+/// What: Bind a class (by @p type_id) to an interface implementation.
+/// Why:  Make interface dispatch resolve to the class's method table.
+/// How:  Associates @p itable_slots (size must equal registered @c slot_count)
+///       with the (type_id, iface_id) pair in the runtime registry.
 void rt_bind_interface(int type_id, int iface_id, void **itable_slots);
 
-// Resolve the dynamic type id of an object instance.
-// Returns a non-negative type id; returns 0 or a sentinel for null instances.
+/// What: Resolve the dynamic type id of @p obj.
+/// Why:  Enable RTTI queries and interface dispatch at runtime.
+/// How:  Reads the vptr/type metadata embedded at object offset 0; returns 0
+///       for null instances.
 int rt_typeid_of(void *obj);
 
 // Return non-zero when type_id is-a test_type_id (same type or derived class).
@@ -51,4 +54,3 @@ void *rt_cast_as(void *obj, int target_type_id);
 #ifdef __cplusplus
 } // extern "C"
 #endif
-

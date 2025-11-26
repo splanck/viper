@@ -64,7 +64,14 @@ struct RunConfig
 class Runner
 {
   public:
+    /// What: Construct a runner over @p module with optional @p config.
+    /// Why:  Provide a simple façade to execute IL without exposing VM internals.
+    /// How:  Builds a VM instance, applies tracing/debug config, and seeds externs/args.
     Runner(const il::core::Module &module, RunConfig config = {});
+
+    /// What: Destroy the runner and release owned VM resources.
+    /// Why:  Ensure clean shutdown of tracing, debug, and runtime bridges.
+    /// How:  Destroys the pimpl instance which owns the underlying VM.
     ~Runner();
 
     Runner(const Runner &) = delete;
@@ -82,12 +89,30 @@ class Runner
     [[nodiscard]] std::optional<std::string> lastTrapMessage() const;
 
     // Opcode counting façade
+    /// What: Read-only view of per-opcode execution counts.
+    /// Why:  Aid performance tuning and hot-spot analysis.
+    /// How:  Returns an internal map-like container owned by the runner.
     [[nodiscard]] const auto &opcodeCounts() const;
+
+    /// What: Reset all opcode execution counters to zero.
+    /// Why:  Start a fresh measurement window.
+    /// How:  Clears the internal counting table.
     void resetOpcodeCounts();
+
+    /// What: Return the top-N most executed opcodes and their counts.
+    /// Why:  Quickly summarise hot opcodes for profiling.
+    /// How:  Produces a vector of (opcode, count) pairs sorted by count desc.
     [[nodiscard]] std::vector<std::pair<int, uint64_t>> topOpcodes(std::size_t n) const;
 
     // Extern registration façade
+    /// What: Register a foreign function helper for name-based resolution.
+    /// Why:  Allow host integrations to surface functions callable from IL.
+    /// How:  Adds or replaces an entry in the VM's extern table.
     void registerExtern(const ExternDesc &);
+
+    /// What: Remove a previously registered extern by @p name.
+    /// Why:  Keep the extern surface in sync with host lifecycle.
+    /// How:  Erases from the extern table; returns true if an entry was removed.
     bool unregisterExtern(std::string_view name);
 
     //===------------------------------------------------------------------===//

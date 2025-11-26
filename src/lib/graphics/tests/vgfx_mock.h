@@ -1,3 +1,19 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/lib/graphics/tests/vgfx_mock.h
+// Purpose: Simple mocks/fakes for the ViperGFX C API used in tests.
+// Key invariants: Provide ABI-compatible signatures; avoid platform-specific
+//                 behavior; explicit, predictable defaults.
+// Ownership/Lifetime: Header-only declarations; concrete fakes defined in tests.
+// Links: docs/vgfx-testing.md
+//
+//===----------------------------------------------------------------------===//
+
 /*
  * ViperGFX - Mock Platform Backend API (Tests Only)
  * Declarations for event injection and time control functions
@@ -55,3 +71,18 @@ extern "C"
 #ifdef __cplusplus
 }
 #endif
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/lib/graphics/tests/vgfx_mock.h
+// Purpose: Simple mocks/fakes for the ViperGFX C API used in tests.
+// Key invariants: Provide ABI-compatible signatures; avoid platform-specific
+//                 behavior; explicit, predictable defaults.
+// Ownership/Lifetime: Header-only declarations; concrete fakes defined in tests.
+// Links: docs/vgfx-testing.md
+//
+//===----------------------------------------------------------------------===//

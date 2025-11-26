@@ -57,6 +57,7 @@ static rt_heap_hdr_t *payload_to_hdr(void *payload)
 ///          the recognised values.  Assertions fire in debug builds to surface
 ///          memory corruptions or misuse of the allocator.
 /// @param hdr Header pointer returned by @ref payload_to_hdr.
+#ifndef NDEBUG
 static void rt_heap_validate_header(const rt_heap_hdr_t *hdr)
 {
     assert(hdr);
@@ -72,6 +73,11 @@ static void rt_heap_validate_header(const rt_heap_hdr_t *hdr)
             assert(!"rt_heap_validate_header: unknown heap kind");
     }
 }
+#define RT_HEAP_VALIDATE(hdr) rt_heap_validate_header(hdr)
+#else
+// In release builds, skip validation for performance
+#define RT_HEAP_VALIDATE(hdr) ((void)0)
+#endif
 
 /// @brief Allocate a reference-counted heap block.
 /// @details Reserves memory for the header plus payload, zero-initialises the
@@ -131,13 +137,23 @@ void *rt_heap_alloc(rt_heap_kind_t kind,
 /// @param payload Shared payload pointer; `NULL` pointers are ignored.
 void rt_heap_retain(void *payload)
 {
-    rt_heap_hdr_t *hdr = payload_to_hdr(payload);
-    if (!hdr)
+    // Fast path: inline NULL check and header lookup
+    if (!payload)
         return;
-    rt_heap_validate_header(hdr);
+
+    uint8_t *raw = (uint8_t *)payload;
+    rt_heap_hdr_t *hdr = (rt_heap_hdr_t *)(raw - sizeof(rt_heap_hdr_t));
+
+    // Debug validation (no-op in release builds)
+    RT_HEAP_VALIDATE(hdr);
     assert(hdr->refcnt > 0);
-    // Guard against overflow. Saturate at SIZE_MAX-1 and trap so callers can
-    // diagnose leaks or cyclic ownership patterns before wraparound to zero.
+
+    // Fast path: just increment (overflow check only for extreme cases)
+#ifdef NDEBUG
+    // Release build: skip overflow check for common case
+    hdr->refcnt++;
+#else
+    // Debug build: guard against overflow
     if (hdr->refcnt >= SIZE_MAX - 1)
     {
         rt_trap("refcount overflow");
@@ -146,6 +162,7 @@ void rt_heap_retain(void *payload)
     hdr->refcnt++;
 #ifdef VIPER_RC_DEBUG
     fprintf(stderr, "rt_heap_retain(%p) => %zu\n", payload, hdr->refcnt);
+#endif
 #endif
 }
 
@@ -164,7 +181,7 @@ static size_t rt_heap_release_impl(rt_heap_hdr_t *hdr, void *payload, int free_w
 {
     if (!hdr)
         return 0;
-    rt_heap_validate_header(hdr);
+    RT_HEAP_VALIDATE(hdr);
     assert(hdr->refcnt > 0);
     size_t next = --hdr->refcnt;
 #ifdef VIPER_RC_DEBUG
@@ -218,7 +235,7 @@ void rt_heap_free_zero_ref(void *payload)
     rt_heap_hdr_t *hdr = payload_to_hdr(payload);
     if (!hdr)
         return;
-    rt_heap_validate_header(hdr);
+    RT_HEAP_VALIDATE(hdr);
     if (hdr->refcnt != 0)
         return;
     memset(hdr, 0, sizeof(*hdr));
@@ -245,7 +262,7 @@ void *rt_heap_data(rt_heap_hdr_t *h)
 {
     if (!h)
         return NULL;
-    rt_heap_validate_header(h);
+    RT_HEAP_VALIDATE(h);
     return (void *)((uint8_t *)h + sizeof(rt_heap_hdr_t));
 }
 

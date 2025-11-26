@@ -70,19 +70,108 @@ extern "C"
 {
 #endif
 
-    double rt_sqrt(double);
-    double rt_floor(double);
-    double rt_ceil(double);
-    double rt_sin(double);
-    double rt_cos(double);
-    double rt_tan(double);
-    double rt_atan(double);
-    double rt_exp(double);
-    double rt_log(double);
-    long long rt_sgn_i64(long long);
-    double rt_sgn_f64(double);
-    long long rt_abs_i64(long long);
-    double rt_abs_f64(double);
+    /// What: Square root of @p x.
+    /// Why:  Implement BASIC's SQR over double-precision values.
+    /// How:  Delegates to platform libm; see checked variants for traps.
+    /// @param x Input (must be non-negative for real result).
+    /// @return sqrt(x) as double; may return NaN for negative inputs (unchecked variant).
+    double rt_sqrt(double x);
+
+    /// What: Floor of @p x (largest integer <= x).
+    /// Why:  Provide explicit downward rounding.
+    /// How:  Wraps platform floor() with C ABI.
+    /// What: Floor of @p x (largest integer <= x).
+    /// @param x Input.
+    /// @return Floor value as double.
+    double rt_floor(double x);
+
+    /// What: Ceil of @p x (smallest integer >= x).
+    /// Why:  Provide explicit upward rounding.
+    /// How:  Wraps platform ceil() with C ABI.
+    /// What: Ceil of @p x (smallest integer >= x).
+    /// @param x Input.
+    /// @return Ceil value as double.
+    double rt_ceil(double x);
+
+    /// What: Sine of @p x (radians).
+    /// Why:  BASIC trigonometric support.
+    /// How:  Wraps platform sin().
+    /// What: Sine of @p x (radians).
+    /// @param x Angle in radians.
+    /// @return sin(x).
+    double rt_sin(double x);
+
+    /// What: Cosine of @p x (radians).
+    /// Why:  BASIC trigonometric support.
+    /// How:  Wraps platform cos().
+    /// What: Cosine of @p x (radians).
+    /// @param x Angle in radians.
+    /// @return cos(x).
+    double rt_cos(double x);
+
+    /// What: Tangent of @p x (radians).
+    /// Why:  BASIC trigonometric support.
+    /// How:  Wraps platform tan().
+    /// What: Tangent of @p x (radians).
+    /// @param x Angle in radians.
+    /// @return tan(x) which may overflow near odd multiples of pi/2.
+    double rt_tan(double x);
+
+    /// What: Arctangent of @p x (radians).
+    /// Why:  BASIC trigonometric support.
+    /// How:  Wraps platform atan().
+    /// What: Arctangent of @p x (radians).
+    /// @param x Input.
+    /// @return atan(x) in range (-pi/2, pi/2).
+    double rt_atan(double x);
+
+    /// What: Exponential e^@p x.
+    /// Why:  BASIC exponential support.
+    /// How:  Wraps platform exp().
+    /// What: Exponential e^@p x.
+    /// @param x Input.
+    /// @return exp(x); may overflow to +INF for large x.
+    double rt_exp(double x);
+
+    /// What: Natural logarithm ln(@p x).
+    /// Why:  BASIC logarithm support.
+    /// How:  Wraps platform log(); see checked variants for domain handling.
+    /// What: Natural logarithm ln(@p x).
+    /// @param x Input (x > 0 for real result).
+    /// @return ln(x); returns -INF for x=0 and NaN for x<0 (unchecked variant).
+    double rt_log(double x);
+
+    /// What: Sign of @p x as -1, 0, or +1 (integer variant).
+    /// Why:  Implement BASIC SGN for integers.
+    /// How:  Compares against zero and returns sentinel values.
+    /// What: Sign of @p x as -1, 0, or +1 (integer variant).
+    /// @param x Input integer.
+    /// @return -1 when x<0; 0 when x==0; +1 when x>0.
+    long long rt_sgn_i64(long long x);
+
+    /// What: Sign of @p x as -1.0, 0.0, or +1.0 (float variant).
+    /// Why:  Implement BASIC SGN for floating-point numbers.
+    /// How:  Compares against zero and returns sentinel values.
+    /// What: Sign of @p x as -1.0, 0.0, or +1.0 (float variant).
+    /// @param x Input.
+    /// @return -1.0, 0.0, or +1.0 accordingly (NaN propagates per implementation).
+    double rt_sgn_f64(double x);
+
+    /// What: Absolute value of @p x (integer variant).
+    /// Why:  Implement BASIC ABS for integers.
+    /// How:  Branchless or two's-complement-safe computation.
+    /// What: Absolute value of @p x (integer variant).
+    /// @param x Input integer.
+    /// @return |x| (beware two's-complement minimum edge case if used directly).
+    long long rt_abs_i64(long long x);
+
+    /// What: Absolute value of @p x (float variant).
+    /// Why:  Implement BASIC ABS for floating-point numbers.
+    /// How:  Clears the sign bit or calls platform fabs().
+    /// What: Absolute value of @p x (float variant).
+    /// @param x Input.
+    /// @return |x|.
+    double rt_abs_f64(double x);
 
 #ifdef __cplusplus
 }

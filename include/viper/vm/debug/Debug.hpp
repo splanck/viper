@@ -254,11 +254,29 @@ struct DebugAction
 class DebugScript
 {
   public:
+    /// What: Construct an empty debug script.
+    /// Why:  Allow hosts to build scripts programmatically.
+    /// How:  Starts with no pending actions.
     DebugScript() = default;
+
+    /// What: Load a debug script from @p path.
+    /// Why:  Automate stepping and continue sequences from a file.
+    /// How:  Parses simple directives into an action queue.
     explicit DebugScript(const std::string &path);
 
+    /// What: Query whether the script has any actions.
+    /// Why:  Determine whether automation remains pending.
+    /// How:  Checks for emptiness of the internal action queue.
     bool empty() const;
+
+    /// What: Append a step action with @p count instructions.
+    /// Why:  Build scripts procedurally or during REPL sessions.
+    /// How:  Enqueues a DebugAction{Step, count}.
     void addStep(uint64_t count);
+
+    /// What: Pop and return the next script action (or Continue if empty).
+    /// Why:  Drive the debugger loop with pending automation.
+    /// How:  Dequeues from the action queue; defaults to Continue when empty.
     DebugAction nextAction();
 
   private:

@@ -1,3 +1,19 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/lib/graphics/examples/quick_test.c
+// Purpose: Minimal ViperGFX smoke test for CI and manual verification.
+// Key invariants: Keeps runtime short; prints clear diagnostics; exits cleanly.
+// Ownership/Lifetime: Demonstration code; owns and releases any created
+//                     resources.
+// Links: docs/vgfx.md
+//
+//===----------------------------------------------------------------------===//
+
 /*
  * ViperGFX Quick Test - Creates window, draws, and auto-exits
  * Used for automated testing of the macOS backend
@@ -109,3 +125,18 @@ int main(void)
 
     return 0;
 }
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/lib/graphics/examples/quick_test.c
+// Purpose: Minimal ViperGFX smoke test for CI and manual verification.
+// Key invariants: Keeps runtime short; prints clear diagnostics; exits cleanly.
+// Ownership/Lifetime: Demonstration code; owns and releases any created
+//                     resources.
+// Links: docs/vgfx.md
+//
+//===----------------------------------------------------------------------===//

@@ -1,3 +1,19 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/lib/graphics/tests/test_pixels.c
+// Purpose: Unit tests for pixel format conversions and low-level blits.
+// Key invariants: Round-trip conversions preserve color; blits respect bounds;
+//                 no undefined behavior in edge cases.
+// Ownership/Lifetime: Test-only code; allocates and frees test buffers.
+// Links: docs/vgfx-testing.md
+//
+//===----------------------------------------------------------------------===//
+
 /*
  * ViperGFX - Pixel Tests (T4-T6, T14)
  * Tests pixel operations and framebuffer access
@@ -130,6 +146,9 @@ void test_framebuffer_access(void)
 }
 
 /* Main test runner */
+/// What: Entry point for pixel-format tests focusing on conversions and blits.
+/// Why:  Catch regressions in color handling and buffer operations.
+/// How:  Exercises conversion functions and blitters with known-good cases.
 int main(void)
 {
     printf("========================================\n");
@@ -144,3 +163,18 @@ int main(void)
     TEST_SUMMARY();
     return TEST_RETURN_CODE();
 }
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/lib/graphics/tests/test_pixels.c
+// Purpose: Unit tests for pixel format conversions and low-level blits.
+// Key invariants: Round-trip conversions preserve color; blits respect bounds;
+//                 no undefined behavior in edge cases.
+// Ownership/Lifetime: Test-only code; allocates and frees test buffers.
+// Links: docs/vgfx-testing.md
+//
+//===----------------------------------------------------------------------===//

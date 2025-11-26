@@ -1,3 +1,21 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/lib/graphics/examples/basic_draw.c
+// Purpose: ViperGFX example showing window creation, primitive drawing, and
+//          basic event handling.
+// Key invariants: Keeps example code minimal and side-effect free beyond the
+//                 graphics system; exits cleanly on close/ESC.
+// Ownership/Lifetime: Demonstration program; resources owned and released by
+//                     the example.
+// Links: docs/vgfx.md
+//
+//===----------------------------------------------------------------------===//
+
 /*
  * ViperGFX Example: Basic Drawing
  * Demonstrates window creation, drawing primitives, and event handling
@@ -6,6 +24,9 @@
 #include <stdio.h>
 #include <vgfx.h>
 
+/// What: Entry point for the Basic Drawing example.
+/// Why:  Demonstrates ViperGFX window lifecycle and primitive rendering.
+/// How:  Creates a window, draws shapes, and processes events until exit.
 int main(void)
 {
     printf("ViperGFX v%d.%d.%d - Basic Drawing Example\n",

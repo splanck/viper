@@ -64,12 +64,27 @@ extern "C"
 
     // --- System.Object runtime surface ---
     // Instance methods
+    /// What: Value equality check between @p self and @p other.
+    /// Why:  Implement System.Object.Equals semantics for runtime objects.
+    /// How:  Compares identity by default; types may override for value semantics.
     int64_t rt_obj_equals(void *self, void *other);
+
+    /// What: Compute a hash code for @p self.
+    /// Why:  Support hashed collections and equality-based lookups.
+    /// How:  Uses identity or type-specific hashing where available.
     int64_t rt_obj_get_hash_code(void *self);
+
     struct rt_string_impl; // fwd decl is provided in rt_string.h; include where needed
+
+    /// What: Convert @p self to a runtime string.
+    /// Why:  Provide a textual representation for diagnostics and printing.
+    /// How:  Uses type-specific ToString or a default fallback.
     struct rt_string_impl *rt_obj_to_string(void *self);
 
     // Static method: ReferenceEquals(a,b)
+    /// What: Identity equality check for two object references.
+    /// Why:  Expose reference equality independent of Equals overrides.
+    /// How:  Returns 1 when pointers are identical, 0 otherwise.
     int64_t rt_obj_reference_equals(void *a, void *b);
 
 #ifdef __cplusplus

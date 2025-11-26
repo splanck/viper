@@ -98,27 +98,119 @@ extern "C"
 {
 #endif
 
+    /// What: Allocate a new heap object with header + payload.
+    /// Why:  Provide a unified allocation path for all runtime reference types (strings,
+    ///       arrays, objects) with consistent metadata and refcount semantics.
+    /// How:  Allocates a contiguous block consisting of an rt_heap_hdr_t followed by a
+    ///       payload region sized for @p init_cap elements of @p elem_size. Initializes
+    ///       header fields (magic/kind/elem_kind/refcnt/len/cap) and returns a pointer to
+    ///       the payload (i.e., immediately after the header).
+    ///
+    /// @param kind       Logical heap object kind (string/array/object).
+    /// @param elem_kind  Element type tag for arrays (RT_ELEM_*); RT_ELEM_NONE for others.
+    /// @param elem_size  Size in bytes of one logical element in the payload.
+    /// @param init_len   Initial logical length; must be <= init_cap.
+    /// @param init_cap   Initial capacity in elements; 0 permitted (no payload).
+    /// @return Payload pointer on success; NULL on allocation failure or invalid params.
+    ///
+    /// @pre init_len <= init_cap.
+    /// @post refcnt == 1; len == init_len; cap == init_cap.
+    /// @errors Returns NULL when size computations overflow or malloc fails.
+    /// @thread-safety Not thread-safe; callers must synchronize allocations.
     void *rt_heap_alloc(rt_heap_kind_t kind,
                         rt_elem_kind_t elem_kind,
                         size_t elem_size,
                         size_t init_len,
                         size_t init_cap);
+
+    /// What: Increment the reference count of @p payload.
+    /// Why:  Share ownership of a heap object safely across callers.
+    /// How:  Increments header refcnt when @p payload != NULL.
+    ///
+    /// @param payload Payload pointer previously returned by rt_heap_alloc (may be NULL).
+    /// @post refcnt is increased by 1 when payload != NULL.
+    /// @thread-safety Not atomic; external synchronization required for shared objects.
     void rt_heap_retain(void *payload);
+
+    /// What: Decrement the reference count of @p payload, freeing on zero.
+    /// Why:  Release ownership and perform automatic cleanup when no references remain.
+    /// How:  Decrements header refcnt and frees header+payload when it reaches zero.
+    ///
+    /// @param payload Payload pointer or NULL (NULL is ignored).
+    /// @return New reference count after decrement (0 when freed). Undefined when payload is NULL.
+    /// @errors Behavior is undefined if refcnt underflows (double-free); debug builds may assert.
+    /// @thread-safety Not atomic; external synchronization required for shared objects.
     size_t rt_heap_release(void *payload);
+
+    /// What: Decrement refcount without immediate free.
+    /// Why:  Allow batched cleanup in contexts where immediate free is unsafe (e.g.,
+    ///       re-entrant callbacks) or to avoid deep recursive frees.
+    /// How:  Decrements the refcount and records the payload for deferred reclamation
+    ///       by a later sweep; does not free the object even when reaching zero.
+    ///
+    /// @param payload Payload pointer or NULL (NULL is ignored).
+    /// @return New reference count after decrement.
+    /// @remarks Call rt_heap_free_zero_ref() later to reclaim memory.
     size_t rt_heap_release_deferred(void *payload);
+
+    /// What: Free a payload whose refcount is already zero.
+    /// Why:  Provide an explicit free entry point after deferred release or external handoff.
+    /// How:  Validates zero refcnt (in debug) and deallocates header+payload.
+    ///
+    /// @param payload Payload pointer with refcnt == 0; NULL is ignored.
+    /// @pre Either a prior rt_heap_release_deferred() to zero or external setting to zero.
     void rt_heap_free_zero_ref(void *payload);
+
+    /// What: Retrieve the header from a payload pointer.
+    /// Why:  Access metadata (len/cap/refcnt/kind) associated with the payload.
+    /// How:  Computes header address by subtracting sizeof(rt_heap_hdr_t) from the payload.
+    ///
+    /// @param payload Payload pointer as returned by allocation APIs.
+    /// @return Pointer to the associated rt_heap_hdr_t.
     rt_heap_hdr_t *rt_heap_hdr(void *payload);
+
+    /// What: Retrieve the payload address from a header pointer.
+    /// Why:  Convert between header/payload views when manipulating metadata.
+    /// How:  Returns a pointer immediately after the header structure.
+    ///
+    /// @param h Header pointer from rt_heap_hdr().
+    /// @return Payload pointer.
     void *rt_heap_data(rt_heap_hdr_t *h);
+
+    /// What: Read the current logical length from the header.
+    /// Why:  Share size metadata access across runtime components.
+    /// How:  Returns header->len for @p payload.
+    ///
+    /// @param payload Payload pointer.
+    /// @return Logical element count.
     size_t rt_heap_len(void *payload);
+
+    /// What: Read the current capacity from the header.
+    /// Why:  Share capacity metadata access across runtime components.
+    /// How:  Returns header->cap for @p payload.
+    ///
+    /// @param payload Payload pointer.
+    /// @return Capacity in elements.
     size_t rt_heap_cap(void *payload);
+
+    /// What: Update the logical length stored in the header.
+    /// Why:  Record changes after append/resize operations.
+    /// How:  Writes header->len to @p new_len for @p payload.
+    ///
+    /// @param payload Payload pointer.
+    /// @param new_len New logical length; must be <= current capacity.
+    /// @pre 0 <= new_len <= cap.
+    /// @post Subsequent rt_heap_len(payload) == new_len.
     void rt_heap_set_len(void *payload, size_t new_len);
 
     /**
      * @brief Mark an object payload as disposed (debug aid).
-     * @details Sets a header bit to guard against double-dispose bugs. Returns 0 on first mark,
-     *          1 when the object was already marked as disposed. No-op for NULL payloads.
+     * @details Sets a header bit to guard against double-dispose bugs in higher-level
+     *          object lifecycles. Intended for assertions/diagnostics; does not change
+     *          the refcount. No-op for NULL payloads.
      * @param payload Object payload pointer (may be NULL).
-     * @return 0 when marking for the first time; 1 when already disposed.
+     * @return 0 when marking for the first time; 1 when already marked disposed.
+     * @thread-safety Not synchronized.
      */
     int32_t rt_heap_mark_disposed(void *payload);
 

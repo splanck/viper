@@ -115,20 +115,20 @@ VMContext::VMContext(VM &vm) noexcept : vmInstance(&vm)
 /// @return Slot populated with the evaluated payload.
 Slot VMContext::eval(Frame &fr, const il::core::Value &value) const
 {
-    auto evalTemp = [&](const il::core::Value &v) -> Slot
+    // Fast path: Temp is the most common case - inline hot path, branch to cold error
+    if (value.kind == il::core::Value::Kind::Temp) [[likely]]
     {
-        Slot s{};
-        if (v.id < fr.regs.size())
-            return fr.regs[v.id];
+        if (value.id < fr.regs.size()) [[likely]]
+            return fr.regs[value.id];
 
+        // Cold path: register out of range
         const std::string fnName = fr.func ? fr.func->name : std::string("<unknown>");
         const il::core::BasicBlock *block = vmInstance->currentContext.block;
         const std::string blockLabel = block ? block->label : std::string();
         const auto loc = vmInstance->currentContext.loc;
 
-        // Build a compact message without iostream overhead.
         std::string message =
-            detail::formatRegisterRangeError(v.id, fr.regs.size(), fnName, blockLabel);
+            detail::formatRegisterRangeError(value.id, fr.regs.size(), fnName, blockLabel);
         if (loc.hasLine())
         {
             message.reserve(message.size() + 24);
@@ -145,76 +145,82 @@ Slot VMContext::eval(Frame &fr, const il::core::Value &value) const
             message += ", at unknown location";
         }
         RuntimeBridge::trap(TrapKind::InvalidOperation, message, loc, fnName, blockLabel);
-        return s;
-    };
+        return Slot{};
+    }
 
-    auto evalConstStr = [&](const il::core::Value &v) -> Slot
+    // Fast path: ConstInt - just extract the value directly (no function call)
+    if (value.kind == il::core::Value::Kind::ConstInt) [[likely]]
     {
-        Slot s{};
-        auto [it, inserted] = vmInstance->inlineLiteralCache.try_emplace(v.str);
-        if (inserted)
-        {
-            if (v.str.find('\0') == std::string::npos)
-                it->second = rt_const_cstr(v.str.c_str());
-            else
-                it->second = rt_string_from_bytes(v.str.data(), v.str.size());
-        }
-        s.str = it->second;
-        return s;
-    };
+        Slot slot{};
+        slot.i64 = value.i64;
+        return slot;
+    }
 
-    auto evalGlobalAddr = [&](const il::core::Value &v) -> Slot
+    // Fast path: ConstFloat - just extract the value directly
+    if (value.kind == il::core::Value::Kind::ConstFloat)
     {
-        Slot s{};
-        // Map to function pointer when name matches a function
-        auto fIt = vmInstance->fnMap.find(v.str);
-        if (fIt != vmInstance->fnMap.end())
-        {
-            s.ptr = const_cast<il::core::Function *>(fIt->second);
-            return s;
-        }
+        Slot slot{};
+        slot.f64 = value.f64;
+        return slot;
+    }
 
-        // Check mutable globals
-        auto mIt = vmInstance->mutableGlobalMap.find(v.str);
-        if (mIt != vmInstance->mutableGlobalMap.end())
-        {
-            s.ptr = mIt->second;
-            return s;
-        }
-
-        // Fall back to const string globals
-        auto it = vmInstance->strMap.find(v.str);
-        if (it == vmInstance->strMap.end())
-        {
-            RuntimeBridge::trap(TrapKind::DomainError, "unknown global", {}, fr.func->name, "");
-        }
-        else
-        {
-            s.str = it->second;
-        }
-        return s;
-    };
-
-    Slot slot{};
+    // Less common cases
     switch (value.kind)
     {
-        case il::core::Value::Kind::Temp:
-            return evalTemp(value);
-        case il::core::Value::Kind::ConstInt:
-            slot.i64 = toI64(value);
-            return slot;
-        case il::core::Value::Kind::ConstFloat:
-            slot.f64 = toF64(value);
-            return slot;
         case il::core::Value::Kind::ConstStr:
-            return evalConstStr(value);
+        {
+            Slot s{};
+            auto [it, inserted] = vmInstance->inlineLiteralCache.try_emplace(value.str);
+            if (inserted)
+            {
+                if (value.str.find('\0') == std::string::npos)
+                    it->second = rt_const_cstr(value.str.c_str());
+                else
+                    it->second = rt_string_from_bytes(value.str.data(), value.str.size());
+            }
+            s.str = it->second;
+            return s;
+        }
         case il::core::Value::Kind::GlobalAddr:
-            return evalGlobalAddr(value);
+        {
+            Slot s{};
+            // Map to function pointer when name matches a function
+            auto fIt = vmInstance->fnMap.find(value.str);
+            if (fIt != vmInstance->fnMap.end())
+            {
+                s.ptr = const_cast<il::core::Function *>(fIt->second);
+                return s;
+            }
+
+            // Check mutable globals
+            auto mIt = vmInstance->mutableGlobalMap.find(value.str);
+            if (mIt != vmInstance->mutableGlobalMap.end())
+            {
+                s.ptr = mIt->second;
+                return s;
+            }
+
+            // Fall back to const string globals
+            auto it = vmInstance->strMap.find(value.str);
+            if (it == vmInstance->strMap.end())
+            {
+                RuntimeBridge::trap(TrapKind::DomainError, "unknown global", {}, fr.func->name, "");
+            }
+            else
+            {
+                s.str = it->second;
+            }
+            return s;
+        }
         case il::core::Value::Kind::NullPtr:
+        {
+            Slot slot{};
             slot.ptr = nullptr;
             return slot;
+        }
+        default:
+            return Slot{};
     }
-    return slot;
 }
 
 /// @brief Execute a single interpreter step for the bound VM.
@@ -476,10 +482,10 @@ Slot VM::eval(Frame &fr, const il::core::Value &value)
         case il::core::Value::Kind::Temp:
             return evalTemp(value);
         case il::core::Value::Kind::ConstInt:
-            slot.i64 = toI64(value);
+            slot.i64 = value.i64;  // Direct access avoids toI64() function call
             return slot;
         case il::core::Value::Kind::ConstFloat:
-            slot.f64 = toF64(value);
+            slot.f64 = value.f64;  // Direct access avoids toF64() function call
             return slot;
         case il::core::Value::Kind::ConstStr:
             return evalConstStr(value);
