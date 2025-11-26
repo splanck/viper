@@ -24,15 +24,15 @@
 
 using il::frontends::basic::runtimePropertyIndex;
 
-TEST(RuntimePropertyIndexBasic, SystemStringLengthGetter)
+TEST(RuntimePropertyIndexBasic, StringLengthGetter)
 {
     // Seed from catalog explicitly to avoid test-order coupling
     const auto &cat = il::runtime::runtimeClassCatalog();
     runtimePropertyIndex().seed(cat);
 
-    auto info = runtimePropertyIndex().find("Viper.System.String", "Length");
+    auto info = runtimePropertyIndex().find("Viper.String", "Length");
     ASSERT_TRUE(info.has_value());
-    EXPECT_EQ(info->getter, std::string("Viper.Strings.Len"));
+    EXPECT_EQ(info->getter, std::string("Viper.String.get_Length"));
 }
 
 int main(int argc, char **argv)

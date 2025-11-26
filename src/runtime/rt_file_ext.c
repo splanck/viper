@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/rt_file_ext.c
-// Purpose: High-level file helpers backing Viper.System.IO.File static methods.
+// Purpose: High-level file helpers backing Viper.IO.File static methods.
 //          These thin wrappers bridge OOP-style calls to the existing runtime
 //          file and string utilities.
 //

@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/rt_list.h
-// Purpose: Runtime-backed list of object references for Viper.System.Collections.List.
+// Purpose: Runtime-backed list of object references for Viper.Collections.List.
 //
 //===----------------------------------------------------------------------===//
 

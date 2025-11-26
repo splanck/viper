@@ -1,0 +1,13 @@
+Object.ToString: Object
+Object.GetHashCode: ok
+Object.Equals(self): true
+String.Length: 11
+String.IsEmpty: 0
+String.Substring(0,5): Hello
+StringBuilder.ToString: Hello World
+StringBuilder.Length: 11
+List.Count: 2
+List.get_Item(0).ToString: Object
+List.Count after remove: 1
+List.Count after clear: 0
+All canonical OOP runtime tests passed!

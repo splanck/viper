@@ -403,8 +403,8 @@ bool VM::finalizeDispatch(ExecState &state, const ExecResult &exec)
         return true;
     }
 
-    state.hasPendingResult = false;
-    state.exitRequested = false;
+    // Note: exitRequested and hasPendingResult will be reset by beginDispatch
+    // at the start of the next iteration, so we skip redundant writes here.
     return false;
 }
 

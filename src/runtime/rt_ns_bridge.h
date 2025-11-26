@@ -10,7 +10,6 @@ extern "C"
 #endif
 
     // Allocate an opaque object instance for Viper.Text.StringBuilder.
-    // The legacy alias Viper.System.Text.StringBuilder maps to the same helper.
     // Returns a pointer managed by the runtime object heap (refcounted).
     void *rt_ns_stringbuilder_new(void);
 

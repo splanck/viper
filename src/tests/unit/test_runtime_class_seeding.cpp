@@ -40,8 +40,6 @@ int main()
     assert(tyreg.kindOf("Viper.String") == TypeKind::BuiltinExternalType);
     // STRING alias behaves like Viper.String
     assert(tyreg.kindOf("STRING") == TypeKind::BuiltinExternalType);
-    // And Viper.System.String recognized as BuiltinExternalClass
-    assert(tyreg.kindOf("Viper.System.String") == TypeKind::BuiltinExternalClass);
 
     // 2) PropertyIndex: Viper.String.Length exists
     auto &pidx = runtimePropertyIndex();
@@ -49,9 +47,6 @@ int main()
     assert(p.has_value());
     assert(p->readonly);
     assert(p->type == "i64");
-    // Viper.System.String.Length exists (maps to Viper.Strings.Len)
-    auto psys = pidx.find("Viper.System.String", "Length");
-    assert(psys.has_value());
 
     // 3) NamespaceRegistry: Viper.String exists as a namespace prefix
     assert(ns.namespaceExists("Viper"));
@@ -63,15 +58,11 @@ int main()
     assert(m.has_value());
     assert(m->ret == BasicType::String);
     assert(m->args.size() == 2);
-    auto msys = midx.find("Viper.System.String", "Substring", 2);
-    assert(msys.has_value());
-    assert(msys->ret == BasicType::String);
-    assert(msys->args.size() == 2);
 
-    // 5) Additional System types appear in TypeRegistry as builtin externals
-    assert(tyreg.kindOf("Viper.System.Object") == TypeKind::BuiltinExternalType);
-    assert(tyreg.kindOf("Viper.System.IO.File") == TypeKind::BuiltinExternalType);
-    assert(tyreg.kindOf("Viper.System.Collections.List") == TypeKind::BuiltinExternalType);
+    // 5) Canonical Viper.* types appear in TypeRegistry as builtin externals
+    assert(tyreg.kindOf("Viper.Object") == TypeKind::BuiltinExternalType);
+    assert(tyreg.kindOf("Viper.IO.File") == TypeKind::BuiltinExternalType);
+    assert(tyreg.kindOf("Viper.Collections.List") == TypeKind::BuiltinExternalType);
 
     return 0;
 }

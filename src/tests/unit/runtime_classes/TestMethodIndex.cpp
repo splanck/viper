@@ -25,15 +25,15 @@
 using il::frontends::basic::BasicType;
 using il::frontends::basic::runtimeMethodIndex;
 
-TEST(RuntimeMethodIndexBasic, SystemStringSubstringTarget)
+TEST(RuntimeMethodIndexBasic, StringSubstringTarget)
 {
     // Seed from catalog explicitly
     const auto &cat = il::runtime::runtimeClassCatalog();
     runtimeMethodIndex().seed(cat);
 
-    auto info = runtimeMethodIndex().find("Viper.System.String", "Substring", 2);
+    auto info = runtimeMethodIndex().find("Viper.String", "Substring", 2);
     ASSERT_TRUE(info.has_value());
-    EXPECT_EQ(info->target, std::string("Viper.Strings.Mid"));
+    EXPECT_EQ(info->target, std::string("Viper.String.Substring"));
     // Also assert ret/args types where helpful
     EXPECT_EQ(info->ret, BasicType::String);
     ASSERT_EQ(info->args.size(), 2u);
@@ -41,20 +41,20 @@ TEST(RuntimeMethodIndexBasic, SystemStringSubstringTarget)
     EXPECT_EQ(info->args[1], BasicType::Int);
 }
 
-TEST(RuntimeMethodIndexBasic, SystemObjectMethodsTargets)
+TEST(RuntimeMethodIndexBasic, ObjectMethodsTargets)
 {
     // Seed from catalog explicitly
     const auto &cat = il::runtime::runtimeClassCatalog();
     runtimeMethodIndex().seed(cat);
 
     // Equals has arity 1
-    auto eq = runtimeMethodIndex().find("Viper.System.Object", "Equals", 1);
+    auto eq = runtimeMethodIndex().find("Viper.Object", "Equals", 1);
     ASSERT_TRUE(eq.has_value());
-    EXPECT_EQ(eq->target, std::string("Viper.System.Object.Equals"));
+    EXPECT_EQ(eq->target, std::string("Viper.Object.Equals"));
     // ReferenceEquals has arity 2
-    auto re = runtimeMethodIndex().find("Viper.System.Object", "ReferenceEquals", 2);
+    auto re = runtimeMethodIndex().find("Viper.Object", "ReferenceEquals", 2);
     ASSERT_TRUE(re.has_value());
-    EXPECT_EQ(re->target, std::string("Viper.System.Object.ReferenceEquals"));
+    EXPECT_EQ(re->target, std::string("Viper.Object.ReferenceEquals"));
 }
 
 int main(int argc, char **argv)

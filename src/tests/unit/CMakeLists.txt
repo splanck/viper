@@ -264,6 +264,20 @@ if (NOT TARGET test_runtime_class_list_binding)
     viper_add_ctest(test_runtime_class_list_binding test_runtime_class_list_binding)
 endif ()
 
+# Viper.Console binding tests
+if (NOT TARGET test_console_binding)
+    viper_add_test(test_console_binding ${VIPER_TESTS_DIR}/unit/runtime_classes/TestConsoleBinding.cpp)
+    target_link_libraries(test_console_binding PRIVATE fe_basic)
+    viper_add_ctest(test_console_binding test_console_binding)
+endif ()
+
+# Viper.Convert binding tests
+if (NOT TARGET test_convert_binding)
+    viper_add_test(test_convert_binding ${VIPER_TESTS_DIR}/unit/runtime_classes/TestConvertBinding.cpp)
+    target_link_libraries(test_convert_binding PRIVATE fe_basic)
+    viper_add_ctest(test_convert_binding test_convert_binding)
+endif ()
+
 if (NOT TARGET test_runtime_class_tostring_user)
     viper_add_test(test_runtime_class_tostring_user ${VIPER_TESTS_DIR}/unit/runtime_classes/TestRuntimeClassToString.cpp)
     target_link_libraries(test_runtime_class_tostring_user PRIVATE ${VIPER_RUNTIME_TEST_LIBS})

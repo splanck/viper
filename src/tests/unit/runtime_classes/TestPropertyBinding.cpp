@@ -55,12 +55,12 @@ TEST(RuntimePropertyBinding, EmitsViperStringGetterExtern)
     EXPECT_TRUE(hasExtern(result.module, "Viper.String.get_Length"));
 }
 
-TEST(RuntimePropertyBinding, EmitsSystemStringIsEmptyGetterExtern)
+TEST(RuntimePropertyBinding, EmitsViperStringIsEmptyGetterExtern)
 {
     il::support::SourceManager sm;
     il::frontends::basic::BasicCompilerOptions opts{};
     const char *kSrcIsEmpty = R"BASIC(
-10 DIM s AS Viper.System.String
+10 DIM s AS Viper.String
 20 PRINT s.IsEmpty
 30 END
 )BASIC";

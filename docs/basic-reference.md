@@ -734,33 +734,32 @@ Error and diagnostic utilities:
 
 ### Runtime Types
 
-Standard library classes are recognized under `Viper.System.*`. These namespaced runtime types are known to the compiler for declarations and construction. Their method surfaces are being exposed progressively.
+Standard library classes are recognized under `Viper.*`. These namespaced runtime types are known to the compiler for declarations and construction. Their method surfaces are being exposed progressively.
 
-#### Viper.System
+#### Viper
 
-Core system types:
+Core types:
 
-- `Viper.System.Object` — Base class for all objects
-- `Viper.System.String` — Managed string type
+- `Viper.Object` — Base class for all objects
+- `Viper.String` — Managed string type
 
-#### Viper.System.Text
+#### Viper.Text
 
 Text processing types:
 
-- `Viper.System.Text.StringBuilder` — Mutable string builder (can be constructed with NEW)
+- `Viper.Text.StringBuilder` — Mutable string builder (can be constructed with NEW)
 
-#### Viper.System.IO
+#### Viper.IO
 
 I/O types:
 
-- `Viper.System.IO.File` — File operations class
+- `Viper.IO.File` — File operations class
 
-#### Viper.System.Collections
+#### Viper.Collections
 
 Collection types:
 
-- `Viper.Collections.List` — Dynamic list container (canonical)
-- `Viper.System.Collections.List` — Legacy alias of `Viper.Collections.List`
+- `Viper.Collections.List` — Dynamic list container
 
 ### Examples
 
@@ -1001,15 +1000,15 @@ Semantics:
 
 Runtime-backed classes expose an object surface (properties, methods, constructors) that lower to canonical extern functions provided by the runtime. Two families are currently available:
 
-- Viper.System.String (aliased in BASIC as STRING)
-- Viper.System.Text.StringBuilder
+- Viper.String (aliased in BASIC as STRING)
+- Viper.Text.StringBuilder
 
 These object members are functional equivalents of the procedural helpers under Viper.Strings.* and Viper.Text.*. The compiler lowers property and method calls to the corresponding extern with the receiver as argument 0.
 
 Examples:
 
 ```basic
-10 DIM s AS STRING                 ' STRING is an alias of Viper.System.String
+10 DIM s AS STRING                 ' STRING is an alias of Viper.String
 20 LET s = "hello"
 30 Viper.Console.PrintI64(s.Length)
 40 Viper.Console.PrintStr(s.Substring(2, 3))  ' index base matches MID$: 0-based start
@@ -1029,7 +1028,7 @@ Conventions and semantics:
   - Examples: s.Length → call @Viper.Strings.Len(s);
     s.Substring(i,n) → call @Viper.Strings.Mid(s,i,n);
     sb.ToString() → call @Viper.Text.StringBuilder.ToString(sb)
-- STRING alias: The BASIC type STRING is the same nominal runtime class as Viper.System.String.
+- STRING alias: The BASIC type STRING is the same nominal runtime class as Viper.String.
 - Index base: Substring uses the same convention as MID$ — start is 0-based; length is a count.
 - Null receivers trap: Accessing a property or method on a null object raises a runtime trap that can be caught with TRY/CATCH.
 - Procedural equivalence: For every object member there is a procedural helper under Viper.Strings.* or Viper.Text.* with the receiver passed explicitly as the first argument. Use these forms where convenient or when a member name collides with a BASIC keyword (e.g., APPEND).

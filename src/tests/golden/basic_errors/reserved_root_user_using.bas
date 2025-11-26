@@ -1,7 +1,7 @@
 REM Test E_NS_009: reserved root namespace "Viper" (USING)
 REM User code cannot import Viper or Viper.* namespaces
 
-USING Viper.System.Text
+USING Viper.Text
 
 NAMESPACE MyApplication
   CLASS Program

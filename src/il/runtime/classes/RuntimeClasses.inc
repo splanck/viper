@@ -22,7 +22,7 @@ RUNTIME_CLASS("Viper.String",
               RUNTIME_PROPS(RUNTIME_PROP("Length", "i64", "Viper.String.get_Length", nullptr),
                             RUNTIME_PROP("IsEmpty", "i1", "Viper.String.get_IsEmpty", nullptr)),
               RUNTIME_METHODS(RUNTIME_METHOD("Substring", "str(i64,i64)", "Viper.String.Substring"),
-                              RUNTIME_METHOD("Concat", "str(str)", "Viper.String.ConcatSelf")))
+                              RUNTIME_METHOD("Concat", "str(str)", "Viper.String.Concat")))
 
 // Viper.Text.StringBuilder — catalog + runtime shims
 // Notes:
@@ -43,63 +43,39 @@ RUNTIME_CLASS(
         RUNTIME_METHOD("ToString", "str()", "Viper.Text.StringBuilder.ToString"),
         RUNTIME_METHOD("Clear", "void()", "Viper.Text.StringBuilder.Clear")))
 
-// RC-B1: Add system-qualified aliases that map object members to procedural
-// Viper.Strings.* externs. These entries coexist with the canonical
-// Viper.String and Viper.Text.StringBuilder to preserve existing behaviour.
-RUNTIME_CLASS(
-    "Viper.System.String",
-    RTCLS_String,
-    "str", /* runtime string handle (opaque) */
-    "",    /* ctor unused: strings created via literals/ops */
-    RUNTIME_PROPS(RUNTIME_PROP("Length", "i64", "Viper.Strings.Len", nullptr),
-                  RUNTIME_PROP("IsEmpty", "i1", "Viper.String.get_IsEmpty", nullptr)
-                  /* Note: IsEmpty helper not present under Viper.Strings; omit for now. */
-                  ),
-    RUNTIME_METHODS(RUNTIME_METHOD("Substring", "str(i64,i64)", "Viper.Strings.Mid"),
-                    RUNTIME_METHOD("Concat", "str(str)", "Viper.Strings.Concat")))
+// Viper.System.String removed - use Viper.String instead
 
-RUNTIME_CLASS("Viper.System.Text.StringBuilder",
-              RTCLS_StringBuilder,
-              "obj",                                 /* opaque builder handle */
-              "Viper.System.Text.StringBuilder.New", /* canonical ctor helper present in registry */
-              RUNTIME_PROPS(RUNTIME_PROP("Length", "i64", "Viper.Strings.Builder.Length", nullptr),
-                            RUNTIME_PROP("Capacity",
-                                         "i64",
-                                         "Viper.Text.StringBuilder.get_Capacity",
-                                         nullptr)),
-              RUNTIME_METHODS(
-                  /* Procedural builder methods are exposed under Viper.Text.* in this repo. */
-                  RUNTIME_METHOD("Append", "obj(str)", "Viper.Text.StringBuilder.Append"),
-                  RUNTIME_METHOD("ToString", "str()", "Viper.Text.StringBuilder.ToString"),
-                  RUNTIME_METHOD("Clear", "void()", "Viper.Text.StringBuilder.Clear")))
+// Viper.System.Text.StringBuilder removed - use Viper.Text.StringBuilder instead
 
-// Minimal seed entries for additional System types. Methods/properties will be
-// defined in future changes; the goal here is to make the types visible to the
-// compiler and runtime catalogs.
+// Canonical base object class for all Viper types
 RUNTIME_CLASS(
-    "Viper.System.Object",
+    "Viper.Object",
     RTCLS_Object,
     "obj",
     "", /* no ctor; base class only */
     RUNTIME_PROPS(),
     RUNTIME_METHODS(
-        RUNTIME_METHOD("Equals", "i1(obj)", "Viper.System.Object.Equals"),
-        RUNTIME_METHOD("GetHashCode", "i64()", "Viper.System.Object.GetHashCode"),
-        RUNTIME_METHOD("ToString", "str()", "Viper.System.Object.ToString"),
-        /* Model ReferenceEquals as a class-level method entry for binding */
-        RUNTIME_METHOD("ReferenceEquals", "i1(obj,obj)", "Viper.System.Object.ReferenceEquals")))
+        RUNTIME_METHOD("Equals", "i1(obj)", "Viper.Object.Equals"),
+        RUNTIME_METHOD("GetHashCode", "i64()", "Viper.Object.GetHashCode"),
+        RUNTIME_METHOD("ToString", "str()", "Viper.Object.ToString"),
+        RUNTIME_METHOD("ReferenceEquals", "i1(obj,obj)", "Viper.Object.ReferenceEquals")))
 
-RUNTIME_CLASS("Viper.System.IO.File",
-              RTCLS_File,
-              "obj",
-              "", /* static utility class; no instance ctor */
-              RUNTIME_PROPS(),
-              RUNTIME_METHODS(
-                  /* Static utility methods mapped to Viper.IO.File.* */
-                  RUNTIME_METHOD("Exists", "i1(str)", "Viper.IO.File.Exists"),
-                  RUNTIME_METHOD("ReadAllText", "str(str)", "Viper.IO.File.ReadAllText"),
-                  RUNTIME_METHOD("WriteAllText", "void(str,str)", "Viper.IO.File.WriteAllText"),
-                  RUNTIME_METHOD("Delete", "void(str)", "Viper.IO.File.Delete")))
+// Viper.System.Object removed - use Viper.Object instead
+
+// Canonical file utility class
+RUNTIME_CLASS(
+    "Viper.IO.File",
+    RTCLS_File,
+    "obj",
+    "", /* static utility class; no instance ctor */
+    RUNTIME_PROPS(),
+    RUNTIME_METHODS(
+        RUNTIME_METHOD("Exists", "i1(str)", "Viper.IO.File.Exists"),
+        RUNTIME_METHOD("ReadAllText", "str(str)", "Viper.IO.File.ReadAllText"),
+        RUNTIME_METHOD("WriteAllText", "void(str,str)", "Viper.IO.File.WriteAllText"),
+        RUNTIME_METHOD("Delete", "void(str)", "Viper.IO.File.Delete")))
+
+// Viper.System.IO.File removed - use Viper.IO.File instead
 
 // Canonical non-generic list under Viper.Collections
 RUNTIME_CLASS(
@@ -114,16 +90,47 @@ RUNTIME_CLASS(
                     RUNTIME_METHOD("get_Item", "obj(i64)", "Viper.Collections.List.get_Item"),
                     RUNTIME_METHOD("set_Item", "void(i64,obj)", "Viper.Collections.List.set_Item")))
 
-// Legacy/compat alias under Viper.System.Collections; maps to the same externs
+// Viper.System.Collections.List removed - use Viper.Collections.List instead
+
+// Canonical math utility class with common mathematical functions
 RUNTIME_CLASS(
-    "Viper.System.Collections.List",
-    RTCLS_List,
+    "Viper.Math",
+    RTCLS_Math,
     "obj",
-    "Viper.System.Collections.List.New",
-    RUNTIME_PROPS(RUNTIME_PROP("Count", "i64", "Viper.System.Collections.List.get_Count", nullptr)),
+    "", /* static utility class; no instance ctor */
+    RUNTIME_PROPS(),
     RUNTIME_METHODS(
-        RUNTIME_METHOD("Add", "void(obj)", "Viper.System.Collections.List.Add"),
-        RUNTIME_METHOD("Clear", "void()", "Viper.System.Collections.List.Clear"),
-        RUNTIME_METHOD("RemoveAt", "void(i64)", "Viper.System.Collections.List.RemoveAt"),
-        RUNTIME_METHOD("get_Item", "obj(i64)", "Viper.System.Collections.List.get_Item"),
-        RUNTIME_METHOD("set_Item", "void(i64,obj)", "Viper.System.Collections.List.set_Item")))
+        RUNTIME_METHOD("Abs", "f64(f64)", "Viper.Math.Abs"),
+        RUNTIME_METHOD("Sqrt", "f64(f64)", "Viper.Math.Sqrt"),
+        RUNTIME_METHOD("Sin", "f64(f64)", "Viper.Math.Sin"),
+        RUNTIME_METHOD("Cos", "f64(f64)", "Viper.Math.Cos"),
+        RUNTIME_METHOD("Tan", "f64(f64)", "Viper.Math.Tan"),
+        RUNTIME_METHOD("Floor", "f64(f64)", "Viper.Math.Floor"),
+        RUNTIME_METHOD("Ceil", "f64(f64)", "Viper.Math.Ceil"),
+        RUNTIME_METHOD("Pow", "f64(f64,f64)", "Viper.Math.Pow"),
+        RUNTIME_METHOD("Log", "f64(f64)", "Viper.Math.Log"),
+        RUNTIME_METHOD("Exp", "f64(f64)", "Viper.Math.Exp")))
+
+// Canonical console I/O utility class
+RUNTIME_CLASS(
+    "Viper.Console",
+    RTCLS_Console,
+    "obj",
+    "", /* static utility class; no instance ctor */
+    RUNTIME_PROPS(),
+    RUNTIME_METHODS(
+        RUNTIME_METHOD("WriteLine", "void(str)", "Viper.Console.PrintStr"),
+        RUNTIME_METHOD("ReadLine", "str()", "Viper.Console.ReadLine")))
+
+// Canonical type conversion utility class
+RUNTIME_CLASS(
+    "Viper.Convert",
+    RTCLS_Convert,
+    "obj",
+    "", /* static utility class; no instance ctor */
+    RUNTIME_PROPS(),
+    RUNTIME_METHODS(
+        RUNTIME_METHOD("ToInt64", "i64(str)", "Viper.Convert.ToInt"),
+        RUNTIME_METHOD("ToDouble", "f64(str)", "Viper.Convert.ToDouble"),
+        RUNTIME_METHOD("ToString_Int", "str(i64)", "Viper.Strings.FromInt"),
+        RUNTIME_METHOD("ToString_Double", "str(f64)", "Viper.Strings.FromDouble")))

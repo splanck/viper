@@ -9,7 +9,7 @@
     &&LBL_FCmpGE, &&LBL_Sitofp, &&LBL_Fptosi, &&LBL_CastFpToSiRteChk, &&LBL_CastFpToUiRteChk,
     &&LBL_CastSiNarrowChk, &&LBL_CastUiNarrowChk, &&LBL_CastSiToFp, &&LBL_CastUiToFp, &&LBL_Zext1,
     &&LBL_Trunc1, &&LBL_Alloca, &&LBL_GEP, &&LBL_Load, &&LBL_Store, &&LBL_AddrOf, &&LBL_ConstStr,
-    &&LBL_ConstNull, &&LBL_Call, &&LBL_SwitchI32, &&LBL_Br, &&LBL_CBr, &&LBL_Ret, &&LBL_TrapKind,
+    &&LBL_GAddr, &&LBL_ConstNull, &&LBL_Call, &&LBL_CallIndirect, &&LBL_SwitchI32, &&LBL_Br, &&LBL_CBr, &&LBL_Ret, &&LBL_TrapKind,
     &&LBL_TrapFromErr, &&LBL_TrapErr, &&LBL_ErrGetKind, &&LBL_ErrGetCode, &&LBL_ErrGetIp,
     &&LBL_ErrGetLine, &&LBL_EhPush, &&LBL_EhPop, &&LBL_ResumeSame, &&LBL_ResumeNext,
     &&LBL_ResumeLabel, &&LBL_EhEntry, &&LBL_Trap, &&LBL_UNIMPL,

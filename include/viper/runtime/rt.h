@@ -39,7 +39,7 @@ void rt_sleep_ms(int32_t ms);
 // Uses a steady clock; values are non-decreasing and suitable for measuring durations.
 int64_t rt_timer_ms(void);
 
-// --- High-level file helpers for Viper.System.IO.File ---
+// --- High-level file helpers for Viper.IO.File ---
 // Return 1 if the file exists, 0 otherwise.
 int64_t rt_io_file_exists(rt_string path);
 // Read entire file into a runtime string (empty on error).

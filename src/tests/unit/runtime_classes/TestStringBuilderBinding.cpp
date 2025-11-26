@@ -40,8 +40,8 @@ TEST(RuntimeClassBinding, EmitsStringBuilderCapacityAndCtorExterns)
     il::support::SourceManager sm;
     il::frontends::basic::BasicCompilerOptions opts{};
     const char *kSrc = R"BASIC(
-10 DIM sb AS Viper.System.Text.StringBuilder
-20 sb = NEW Viper.System.Text.StringBuilder()
+10 DIM sb AS Viper.Text.StringBuilder
+20 sb = NEW Viper.Text.StringBuilder()
 30 PRINT sb.Capacity
 40 END
 )BASIC";
@@ -49,7 +49,7 @@ TEST(RuntimeClassBinding, EmitsStringBuilderCapacityAndCtorExterns)
     il::frontends::basic::BasicCompilerInput input{source, "sb_capacity.bas"};
     auto result = il::frontends::basic::compileBasic(input, opts, sm);
     ASSERT_TRUE(result.succeeded());
-    EXPECT_TRUE(hasExtern(result.module, "Viper.System.Text.StringBuilder.New"));
+    EXPECT_TRUE(hasExtern(result.module, "Viper.Text.StringBuilder.New"));
     EXPECT_TRUE(hasExtern(result.module, "Viper.Text.StringBuilder.get_Capacity"));
 }
 

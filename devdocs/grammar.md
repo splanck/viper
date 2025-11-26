@@ -56,7 +56,7 @@ This document records small grammar extensions supported by the BASIC frontend s
 
 - Semantics:
   - Simple form: Makes types from the specified namespace available for unqualified lookup.
-  - Alias form: Creates a shorthand alias for the namespace path, e.g. `USING IO = Viper.IO` (canonical). System‑qualified aliases like `USING Sys = Viper.System.IO` are also accepted for compatibility.
+  - Alias form: Creates a shorthand alias for the namespace path, e.g. `USING IO = Viper.IO` or `USING Text = Viper.Text`.
   - Multiple `USING` directives accumulate; type resolution checks them in declaration order.
   - If multiple imported namespaces contain the same type name, an unqualified reference is ambiguous (E_NS_003).
   - Aliases must be unique within a file (E_NS_004).

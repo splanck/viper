@@ -775,8 +775,15 @@ Canonical runtime classes are exposed under the `Viper.*` root and are used dire
   - Ctor: `NEW()`; Property: `Count -> I64`
   - Methods: `Add(OBJECT)`, `Clear()`, `RemoveAt(I64)`, `get_Item(I64)->OBJECT`, `set_Item(I64,OBJECT)`
 
-Aliases (`Viper.System.*`):
-- For compatibility, `Viper.System.*` names remain as optional aliases that map to the same runtime externs (e.g., `Viper.System.Text.StringBuilder`, `Viper.System.Collections.List`). New code should prefer the canonical `Viper.*` names.
+#### Viper.Math
+- `Viper.Math` — Mathematical functions (static utility)
+  - Methods (static): `Abs(F64)->F64`, `Sqrt(F64)->F64`, `Sin(F64)->F64`, `Cos(F64)->F64`, `Tan(F64)->F64`, `Floor(F64)->F64`, `Ceil(F64)->F64`, `Pow(F64,F64)->F64`, `Log(F64)->F64`, `Exp(F64)->F64`
+
+#### Viper.Console
+- `Viper.Console` — Console I/O (static utility)
+  - Methods (static): `WriteLine(STRING)->VOID`, `ReadLine()->STRING`
+
+**Note:** Legacy `Viper.System.*` aliases have been removed. Use the canonical `Viper.*` names.
 
 ### Legacy Aliases
 
@@ -840,8 +847,8 @@ END IF
 In‑memory collections with List:
 
 ```basic
-DIM list AS Viper.System.Collections.List
-list = NEW Viper.System.Collections.List()
+DIM list AS Viper.Collections.List
+list = NEW Viper.Collections.List()
 list.Add(NEW App.C())
 PRINT list.Count
 PRINT list.get_Item(0).ToString()

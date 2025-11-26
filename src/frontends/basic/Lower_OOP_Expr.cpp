@@ -987,14 +987,14 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
                     deferReleaseStr(result);
                 return {result, retTy.kind == Type::Kind::Void ? Type(Type::Kind::I64) : retTy};
             }
-            // As a last resort, special-case common Object methods to legacy targets
+            // As a last resort, special-case common Object methods to canonical targets
             if (string_utils::iequals(expr.method, "ToString") && expr.args.size() == 0)
             {
                 curLoc = expr.loc;
                 RVal base = lowerExpr(*expr.base);
-                runtimeTracker.trackCalleeName("Viper.System.Object.ToString");
+                runtimeTracker.trackCalleeName("Viper.Object.ToString");
                 Value result = emitCallRet(
-                    Type(Type::Kind::Str), "Viper.System.Object.ToString", {base.value});
+                    Type(Type::Kind::Str), "Viper.Object.ToString", {base.value});
                 deferReleaseStr(result);
                 return {result, Type(Type::Kind::Str)};
             }
@@ -1003,9 +1003,9 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
                 curLoc = expr.loc;
                 RVal base = lowerExpr(*expr.base);
                 RVal rhs = lowerExpr(*expr.args[0]);
-                runtimeTracker.trackCalleeName("Viper.System.Object.Equals");
+                runtimeTracker.trackCalleeName("Viper.Object.Equals");
                 Value result = emitCallRet(
-                    Type(Type::Kind::I1), "Viper.System.Object.Equals", {base.value, rhs.value});
+                    Type(Type::Kind::I1), "Viper.Object.Equals", {base.value, rhs.value});
                 return {result, Type(Type::Kind::I1)};
             }
         }

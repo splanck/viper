@@ -1,7 +1,7 @@
 //===----------------------------------------------------------------------===//
 // Part of the Viper project, under the GNU GPL v3.
 // File: tests/unit/runtime_classes/TestRuntimeClassListBinding.cpp
-// Purpose: Ensure instance calls to Viper.System.Collections.List bind to externs.
+// Purpose: Ensure instance calls to Viper.Collections.List bind to externs.
 //===----------------------------------------------------------------------===//
 
 #ifdef VIPER_HAS_GTEST
@@ -33,8 +33,8 @@ TEST(RuntimeClassListBinding, EmitsListExterns)
     il::support::SourceManager sm;
     il::frontends::basic::BasicCompilerOptions opts{};
     const char *kSrc = R"BASIC(
-10 DIM l AS Viper.System.Collections.List
-20 l = NEW Viper.System.Collections.List()
+10 DIM l AS Viper.Collections.List
+20 l = NEW Viper.Collections.List()
 30 l.Add(l)
 40 PRINT l.Count
 50 l.RemoveAt(0)
@@ -47,13 +47,13 @@ TEST(RuntimeClassListBinding, EmitsListExterns)
     il::frontends::basic::BasicCompilerInput input{source, "list_binding.bas"};
     auto result = il::frontends::basic::compileBasic(input, opts, sm);
     ASSERT_TRUE(result.succeeded());
-    EXPECT_TRUE(hasExtern(result.module, "Viper.System.Collections.List.New"));
-    EXPECT_TRUE(hasExtern(result.module, "Viper.System.Collections.List.Add"));
-    EXPECT_TRUE(hasExtern(result.module, "Viper.System.Collections.List.get_Count"));
-    EXPECT_TRUE(hasExtern(result.module, "Viper.System.Collections.List.RemoveAt"));
-    EXPECT_TRUE(hasExtern(result.module, "Viper.System.Collections.List.Clear"));
-    EXPECT_TRUE(hasExtern(result.module, "Viper.System.Collections.List.get_Item"));
-    EXPECT_TRUE(hasExtern(result.module, "Viper.System.Collections.List.set_Item"));
+    EXPECT_TRUE(hasExtern(result.module, "Viper.Collections.List.New"));
+    EXPECT_TRUE(hasExtern(result.module, "Viper.Collections.List.Add"));
+    EXPECT_TRUE(hasExtern(result.module, "Viper.Collections.List.get_Count"));
+    EXPECT_TRUE(hasExtern(result.module, "Viper.Collections.List.RemoveAt"));
+    EXPECT_TRUE(hasExtern(result.module, "Viper.Collections.List.Clear"));
+    EXPECT_TRUE(hasExtern(result.module, "Viper.Collections.List.get_Item"));
+    EXPECT_TRUE(hasExtern(result.module, "Viper.Collections.List.set_Item"));
 }
 
 int main(int argc, char **argv)

@@ -78,12 +78,36 @@ how the BASIC frontend discovers and binds built‑in runtime classes.
 
   - Runtime signatures (C++): `src/il/runtime/RuntimeSignatures.inc` maps the
     canonical names (e.g., `Viper.Text.StringBuilder.Append`, `Viper.IO.File.ReadAllText`) to concrete
-    C functions and IL signature strings. System‑qualified names are supported as aliases where noted.
+    C functions and IL signature strings.
 
   - C implementations: `src/runtime/rt_*.c` provide the actual behavior
     (`rt_string_builder.c`, `rt_object.c`, `rt_file_ext.c`, `rt_list.c`, etc.).
     Many OOP methods are thin bridges over procedural helpers (e.g.,
     `Viper.Strings.*`).
+
+### Canonical Runtime Classes
+
+The following built‑in classes are available under the `Viper.*` namespace:
+
+- `Viper.Object` — Base class for all objects
+  - Methods: `ToString()`, `Equals(obj)`, `GetHashCode()`, `ReferenceEquals(obj,obj)`
+- `Viper.String` — Managed string type
+  - Properties: `Length`, `IsEmpty`
+  - Methods: `Substring(i64,i64)`, `Concat(str)`
+- `Viper.Text.StringBuilder` — Mutable string builder
+  - Properties: `Length`, `Capacity`
+  - Methods: `Append(str)`, `ToString()`, `Clear()`
+- `Viper.IO.File` — File operations (static utility class)
+  - Methods: `Exists(str)`, `ReadAllText(str)`, `WriteAllText(str,str)`, `Delete(str)`
+- `Viper.Collections.List` — Dynamic list of object references
+  - Properties: `Count`
+  - Methods: `Add(obj)`, `Clear()`, `RemoveAt(i64)`, `get_Item(i64)`, `set_Item(i64,obj)`
+- `Viper.Math` — Mathematical functions (static utility class)
+  - Methods: `Abs(f64)`, `Sqrt(f64)`, `Sin(f64)`, `Cos(f64)`, `Tan(f64)`, `Floor(f64)`, `Ceil(f64)`, `Pow(f64,f64)`, `Log(f64)`, `Exp(f64)`
+- `Viper.Console` — Console I/O (static utility class)
+  - Methods: `WriteLine(str)`, `ReadLine()`
+
+**Note:** Legacy `Viper.System.*` aliases have been removed. Use the canonical `Viper.*` names.
 
 ### Backward‑Compatible Procedural Surface
 

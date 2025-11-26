@@ -20,6 +20,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <poll.h>
 
 #if defined(__linux__)
 #include <pty.h>
@@ -53,23 +54,51 @@ std::string capture_sgr(int fg, int bg)
 
     close(slave);
 
+    // Read output using poll with timeout BEFORE waiting for child
+    // This ensures we capture the data while the PTY is still active
     std::string result;
     char buf[64];
-    ssize_t n = 0;
-    while ((n = read(master, buf, sizeof(buf))) > 0)
+
+    struct pollfd pfd;
+    pfd.fd = master;
+    pfd.events = POLLIN;
+
+    // Keep reading until no more data or child exits
+    for (int attempts = 0; attempts < 10; ++attempts)
     {
-        result.append(buf, static_cast<size_t>(n));
-        if (n < static_cast<ssize_t>(sizeof(buf)))
+        int prc = poll(&pfd, 1, 50); // 50ms timeout per attempt
+        if (prc > 0 && (pfd.revents & POLLIN))
         {
+            ssize_t n = read(master, buf, sizeof(buf));
+            if (n > 0)
+            {
+                result.append(buf, static_cast<size_t>(n));
+                // Got data, check if there's more
+                continue;
+            }
+        }
+        // Check if child has exited
+        int status = 0;
+        pid_t wpid = waitpid(pid, &status, WNOHANG);
+        if (wpid == pid)
+        {
+            // Child exited, do one more read attempt
+            prc = poll(&pfd, 1, 10);
+            if (prc > 0 && (pfd.revents & POLLIN))
+            {
+                ssize_t n = read(master, buf, sizeof(buf));
+                if (n > 0)
+                    result.append(buf, static_cast<size_t>(n));
+            }
             break;
         }
     }
 
-    close(master);
-
+    // Ensure child is reaped
     int status = 0;
     waitpid(pid, &status, 0);
 
+    close(master);
     return result;
 }
 

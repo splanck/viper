@@ -967,9 +967,9 @@ OOP support in Viper BASIC is now broadly usable and tested:
   - `Viper.IO.File`
   - `Viper.Collections.List` (non‑generic, object references)
 - ✅ Interfaces and dynamic dispatch via vtables/itables exist; OOP lowering is covered by golden/e2e tests
-- ♻️ Legacy `Viper.System.*` names are supported as aliases for compatibility
+- ♻️ Legacy `Viper.System.*` names are supported as type aliases for backward compatibility
 
-**Practical Impact**: Realistic OOP examples work, including string properties, text processing using StringBuilder and File I/O, and collections using List. Prefer the `Viper.*` classes for new code; use `Viper.System.*` only when required for legacy compatibility.
+**Practical Impact**: Realistic OOP examples work, including string properties, text processing using StringBuilder and File I/O, and collections using List. Use the canonical `Viper.*` classes for all new code.
 
 
 ---

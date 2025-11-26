@@ -51,32 +51,6 @@ TEST(RuntimeClassCatalog, TypeRegistryResolvesBuiltinExternal)
     EXPECT_EQ(tyreg.kindOf("STRING"), TypeKind::BuiltinExternalType);
 }
 
-TEST(RuntimeClassCatalog, ContainsViperSystemString)
-{
-    const auto &cat = runtimeClassCatalog();
-    EXPECT_TRUE(cat.size() >= 2u);
-
-    const auto it =
-        std::find_if(cat.begin(),
-                     cat.end(),
-                     [](const auto &c) { return std::string(c.qname) == "Viper.System.String"; });
-    ASSERT_NE(it, cat.end());
-
-    // Check a couple of members
-    const auto &cls = *it;
-    // Expect at least Length property
-    bool hasLen = false;
-    for (const auto &p : cls.properties)
-        hasLen = hasLen || std::string(p.name) == "Length";
-    EXPECT_TRUE(hasLen);
-
-    // Expect Substring method
-    bool hasSubstr = false;
-    for (const auto &m : cls.methods)
-        hasSubstr = hasSubstr || std::string(m.name) == "Substring";
-    EXPECT_TRUE(hasSubstr);
-}
-
 int main(int argc, char **argv)
 {
     ::testing::InitGoogleTest(&argc, argv);

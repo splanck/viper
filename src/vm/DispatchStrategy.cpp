@@ -154,18 +154,11 @@ class SwitchStrategy final : public DispatchStrategy
 
 #if VIPER_THREADING_SUPPORTED
 /// @brief Threaded (computed goto) dispatch strategy.
+/// @note The actual threaded dispatch implementation is in ThreadedDispatchDriver (VM.cpp)
+///       because computed gotos require the labels and goto*'s in the same function.
+///       This class exists for the strategy interface but isn't used directly.
 class ThreadedStrategy final : public DispatchStrategy
 {
-  private:
-    /// @brief Label table for computed goto dispatch
-    static void *getOpcodeLabels()
-    {
-        static void *labels[] = {
-#include "vm/ops/generated/ThreadedLabels.inc"
-        };
-        return labels;
-    }
-
   public:
     Kind getKind() const override
     {
@@ -181,17 +174,9 @@ class ThreadedStrategy final : public DispatchStrategy
                                       VM::ExecState &state,
                                       const il::core::Instr &instr) override
     {
-        void **labels = static_cast<void **>(getOpcodeLabels());
-        const size_t kOpLabelCount = il::core::kNumOpcodes;
-
-        // Dispatch to the appropriate label
-        size_t index = static_cast<size_t>(instr.op);
-        if (index >= kOpLabelCount - 1)
-            index = kOpLabelCount - 1;
-
-        // For threaded dispatch, we need to integrate the generated code
-        // This is complex because the labels are embedded in the original implementation
-        // For now, fall back to function table execution
+        // Threaded dispatch is handled by ThreadedDispatchDriver in VM.cpp
+        // which contains the actual computed goto loop. This fallback uses
+        // function table dispatch for compatibility.
         return vm.executeOpcode(state.fr, instr, state.blocks, state.bb, state.ip);
     }
 };

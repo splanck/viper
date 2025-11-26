@@ -26,13 +26,13 @@
 
 using il::runtime::runtimeClassCatalog;
 
-TEST(RuntimeClassCatalogBasic, ContainsSystemStringMembers)
+TEST(RuntimeClassCatalogBasic, ContainsStringMembers)
 {
     const auto &cat = runtimeClassCatalog();
     auto it =
         std::find_if(cat.begin(),
                      cat.end(),
-                     [](const auto &c) { return std::string(c.qname) == "Viper.System.String"; });
+                     [](const auto &c) { return std::string(c.qname) == "Viper.String"; });
     ASSERT_NE(it, cat.end());
     // Properties include Length and IsEmpty
     bool hasLenProp = false;
@@ -51,13 +51,13 @@ TEST(RuntimeClassCatalogBasic, ContainsSystemStringMembers)
     EXPECT_TRUE(hasSubstr);
 }
 
-TEST(RuntimeClassCatalogBasic, ContainsSystemTextStringBuilderMembers)
+TEST(RuntimeClassCatalogBasic, ContainsTextStringBuilderMembers)
 {
     const auto &cat = runtimeClassCatalog();
     auto it = std::find_if(cat.begin(),
                            cat.end(),
                            [](const auto &c)
-                           { return std::string(c.qname) == "Viper.System.Text.StringBuilder"; });
+                           { return std::string(c.qname) == "Viper.Text.StringBuilder"; });
     ASSERT_NE(it, cat.end());
     // Properties include Length and Capacity
     bool hasLenProp = false;
@@ -76,7 +76,7 @@ TEST(RuntimeClassCatalogBasic, ContainsSystemTextStringBuilderMembers)
     EXPECT_TRUE(hasAppend);
 }
 
-TEST(RuntimeClassCatalogBasic, ContainsAdditionalSystemTypes)
+TEST(RuntimeClassCatalogBasic, ContainsCanonicalTypes)
 {
     const auto &cat = runtimeClassCatalog();
     auto hasQ = [&](const char *qname)
@@ -86,9 +86,9 @@ TEST(RuntimeClassCatalogBasic, ContainsAdditionalSystemTypes)
                             [&](const auto &c)
                             { return std::string(c.qname) == qname; }) != cat.end();
     };
-    EXPECT_TRUE(hasQ("Viper.System.Object"));
-    EXPECT_TRUE(hasQ("Viper.System.IO.File"));
-    EXPECT_TRUE(hasQ("Viper.System.Collections.List"));
+    EXPECT_TRUE(hasQ("Viper.Object"));
+    EXPECT_TRUE(hasQ("Viper.IO.File"));
+    EXPECT_TRUE(hasQ("Viper.Collections.List"));
 }
 
 int main(int argc, char **argv)

@@ -3,8 +3,8 @@ REM OOP e2e: List + String + Object (no StringBuilder/File to avoid keyword coll
 CLASS Person
 END CLASS
 
-DIM list AS Viper.System.Collections.List
-list = NEW Viper.System.Collections.List()
+DIM list AS Viper.Collections.List
+list = NEW Viper.Collections.List()
 
 DIM p1 AS Person
 DIM p2 AS Person

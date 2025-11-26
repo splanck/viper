@@ -3,11 +3,11 @@ REM Note: Some BASIC keywords (APPEND, DELETE) may conflict with member names.
 REM If your build treats these as reserved, use the procedural helpers as shown.
 
 REM Variant A: Object members (may collide with keywords)
-'USING Viper.System.IO
+'USING Viper.IO
 '
-" Legacy alias example (System.*):
-'DIM sb AS Viper.System.Text.StringBuilder
-'sb = NEW Viper.System.Text.StringBuilder()
+' Canonical namespace example:
+'DIM sb AS Viper.Text.StringBuilder
+'sb = NEW Viper.Text.StringBuilder()
 '
 'sb.Append("hello")
 'sb.Append(" ")
