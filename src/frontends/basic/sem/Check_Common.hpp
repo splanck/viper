@@ -311,10 +311,9 @@ class ExprCheckContext
         analyzer_->resolveAndTrackSymbol(name, kind);
     }
 
-    void resolveAndTrackSymbolRef(const std::string &name)
+    void resolveAndTrackSymbolRef(std::string &name)
     {
-        std::string nameCopy = name;
-        analyzer_->resolveAndTrackSymbol(nameCopy, SemanticAnalyzer::SymbolKind::Reference);
+        analyzer_->resolveAndTrackSymbol(name, SemanticAnalyzer::SymbolKind::Reference);
     }
 
     [[nodiscard]] bool hasSymbol(const std::string &name) const

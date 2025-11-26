@@ -649,7 +649,8 @@ il::core::Value BuiltinLowerContext::emitCall(il::core::Type type,
                                               const char *runtime,
                                               const std::vector<il::core::Value> &args)
 {
-    return lowering_.emitCallRet(type, runtime, args);
+    // Use lowerer_->emitCallRet to ensure runtime tracking happens
+    return lowerer_->emitCallRet(type, runtime, args);
 }
 
 /// @brief Emit a unary IL instruction.
