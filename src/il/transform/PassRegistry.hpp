@@ -247,4 +247,19 @@ void registerDSEPass(PassRegistry &registry);
 /// @brief Register an EarlyCSE/GVN-lite pass (placeholder).
 void registerEarlyCSEPass(PassRegistry &registry);
 
+/// @brief Register the GVN + redundant load elimination pass.
+void registerGVNPass(PassRegistry &registry);
+
+/// @brief Register the IndVarSimplify pass.
+void registerIndVarSimplifyPass(PassRegistry &registry);
+
+/// @brief Register the simple function inliner module pass.
+void registerInlinePass(PassRegistry &registry);
+
+/// @brief Register the check optimization pass.
+void registerCheckOptPass(PassRegistry &registry);
+
+/// @brief Register the late cleanup pass.
+void registerLateCleanupPass(PassRegistry &registry);
+
 } // namespace il::transform

@@ -515,6 +515,43 @@ function(viper_add_il_utils_test)
             test_il_sccp_phi_branch PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
     viper_add_ctest(test_il_sccp_phi_branch test_il_sccp_phi_branch)
 
+    # Induction variable simplification tests
+    viper_add_test(
+            test_il_indvars_basic
+            ${VIPER_TESTS_DIR}/unit/il/transform/test_IndVarSimplify.cpp)
+    target_link_libraries(
+            test_il_indvars_basic PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
+    viper_add_ctest(test_il_indvars_basic test_il_indvars_basic)
+
+    # GVN + Redundant Load Elimination tests
+    viper_add_test(
+            test_il_gvn_basic
+            ${VIPER_TESTS_DIR}/unit/il/transform/test_GVN.cpp)
+    target_link_libraries(
+            test_il_gvn_basic PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
+    viper_add_ctest(test_il_gvn_basic test_il_gvn_basic)
+
+    viper_add_test(
+            test_il_inline_basic
+            ${VIPER_TESTS_DIR}/unit/il/transform/test_Inline.cpp)
+    target_link_libraries(
+            test_il_inline_basic PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
+    viper_add_ctest(test_il_inline_basic test_il_inline_basic)
+
+    viper_add_test(
+            test_il_check_opt
+            ${VIPER_TESTS_DIR}/unit/il/transform/test_CheckOpt.cpp)
+    target_link_libraries(
+            test_il_check_opt PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
+    viper_add_ctest(test_il_check_opt test_il_check_opt)
+
+    viper_add_test(
+            test_il_late_cleanup
+            ${VIPER_TESTS_DIR}/unit/il/transform/test_LateCleanup.cpp)
+    target_link_libraries(
+            test_il_late_cleanup PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
+    viper_add_ctest(test_il_late_cleanup test_il_late_cleanup)
+
     viper_add_test(test_il_opcode_info ${_VIPER_IL_DIR}/OpcodeInfoTests.cpp)
     target_link_libraries(test_il_opcode_info PRIVATE ${VIPER_IL_CORE_IO_LIBS})
     viper_add_ctest(test_il_opcode_info test_il_opcode_info)

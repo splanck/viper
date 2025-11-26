@@ -26,6 +26,8 @@
 #include "il/analysis/CFG.hpp"
 #include "il/analysis/Dominators.hpp"
 #include "il/io/Serializer.hpp"
+#include "il/transform/CheckOpt.hpp"
+#include "il/transform/LateCleanup.hpp"
 #include "il/transform/LICM.hpp"
 #include "il/transform/PipelineExecutor.hpp"
 #include "il/transform/SimplifyCFG.hpp"
@@ -88,6 +90,11 @@ PassManager::PassManager()
     registerMem2RegPass(passRegistry_);
     registerDSEPass(passRegistry_);
     registerEarlyCSEPass(passRegistry_);
+    registerGVNPass(passRegistry_);
+    registerIndVarSimplifyPass(passRegistry_);
+    registerInlinePass(passRegistry_);
+    registerCheckOptPass(passRegistry_);
+    registerLateCleanupPass(passRegistry_);
 
     // Pre-register common pipelines
     registerPipeline("O0", {"simplify-cfg", "dce"});
@@ -104,18 +111,24 @@ PassManager::PassManager()
                       "dce"});
     registerPipeline("O2",
                      {"loop-simplify",
+                      "indvars",
                       "simplify-cfg",
                       "mem2reg",
                       "simplify-cfg",
                       "sccp",
+                      "check-opt",
                       "dce",
+                      "simplify-cfg",
+                      "inline",
                       "simplify-cfg",
                       "licm",
                       "simplify-cfg",
+                      "gvn",
                       "earlycse",
                       "dse",
                       "peephole",
-                      "dce"});
+                      "dce",
+                      "late-cleanup"});
     registerConstFoldPass(passRegistry_);
     registerPeepholePass(passRegistry_);
     registerDCEPass(passRegistry_);

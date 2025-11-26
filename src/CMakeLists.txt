@@ -120,6 +120,7 @@ target_include_directories(il_api PUBLIC
 
 add_library(il_analysis STATIC
         il/analysis/CFG.cpp
+        il/analysis/CallGraph.cpp
         il/analysis/Dominators.cpp)
 target_link_libraries(il_analysis PUBLIC viper_il_core)
 target_include_directories(il_analysis PUBLIC
@@ -132,6 +133,9 @@ add_library(il_transform STATIC
         il/transform/PassManager.cpp
         il/transform/PassRegistry.cpp
         il/transform/PipelineExecutor.cpp
+        il/transform/CheckOpt.cpp
+        il/transform/LateCleanup.cpp
+        il/transform/Inline.cpp
         il/transform/Peephole.cpp
         il/transform/ConstFold.cpp
         il/transform/DCE.cpp
@@ -140,6 +144,8 @@ add_library(il_transform STATIC
         il/transform/DSE.cpp
         il/transform/LoopSimplify.cpp
         il/transform/LICM.cpp
+        il/transform/IndVarSimplify.cpp
+        il/transform/GVN.cpp
         il/transform/SCCP.cpp
         il/transform/SimplifyCFG.cpp
         il/transform/SimplifyCFG/BlockMerging.cpp
