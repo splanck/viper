@@ -23,6 +23,9 @@ std::optional<Type> mapIlToBasic(const il::core::Type &ilType)
     using K = il::core::Type::Kind;
     switch (ilType.kind)
     {
+        case K::I32:
+            // Map 32-bit integers to BASIC integer type (64-bit internal).
+            return Type::I64;
         case K::I64:
             return Type::I64;
         case K::F64:

@@ -263,11 +263,11 @@ END FUNCTION
 - **Verification**: ✅ Fixed and verified (2025-11-27)
 
 ### BUG-OOP-017: Single-line IF with colon only applies condition to first statement
-- **Status**: Open
+- **Status**: Fixed (2025-11-27) ✅ Verified
 - **Discovered**: 2025-11-27
 - **Game**: Test infrastructure
 - **Severity**: Medium
-- **Component**: BASIC Frontend / Parser or Lowering
+- **Component**: BASIC Frontend / Parser
 - **Description**: When using single-line IF with colon-separated statements, only the first statement after THEN is conditional. Subsequent statements on the same line execute unconditionally.
 - **Steps to Reproduce**:
 ```basic
@@ -291,8 +291,71 @@ IF x = 0 THEN
     b = 1
 END IF
 ```
-- **Root Cause**: TBD - likely in Parser or ControlStatementLowerer colon handling
-- **Fix Required**: All statements after THEN on a single-line IF should be conditional
+- **Root Cause**: The single-line IF parser (`parseIfBranchBody`) parsed only a single
+  statement after THEN and returned immediately, allowing subsequent colon-separated
+  statements to be parsed at the top level. It did not collect a list of statements for the
+  branch body nor did it stop on ELSE/ELSEIF on the same line.
+- **Fix Applied**: Updated `src/frontends/basic/Parser_Stmt_ControlHelpers.hpp` to collect a
+  colon-separated list for single-line IF branch bodies until a line break or an
+  `ELSE/ELSEIF` token is encountered. The collected statements are wrapped in a `StmtList`
+  and attached to the branch so all on-line statements are conditional.
+- **Verification**: Adjusted `ParserStatementContextTests` to assert both `PRINT` statements
+  appear inside the IF’s `then_branch` for `"IF FLAG THEN PRINT 1: PRINT 2"`. Test build
+  passes.
+
+### BUG-OOP-018: Viper.* runtime classes not callable from BASIC
+- **Status**: Fixed (2025-11-27) ✅ Verified
+- **Discovered**: 2025-11-27
+- **Game**: Centipede
+- **Severity**: High
+- **Component**: BASIC Frontend / OOP Runtime Integration
+- **Description**: The Viper.* OOP runtime classes (Viper.Terminal, Viper.Time, Viper.Random, Viper.Math, Viper.String, Viper.Collections.List, etc.) cannot be called from BASIC code. These are documented as the official OOP runtime but are not exposed as callable procedures.
+- **Steps to Reproduce**:
+```basic
+SUB TestTerminal()
+    Viper.Terminal.SetPosition(1, 1)
+    Viper.Terminal.SetColor(7, 0)
+    Viper.Terminal.Clear()
+END SUB
+
+SUB TestTime()
+    DIM t AS INTEGER
+    t = Viper.Time.GetTickCount()
+    Viper.Time.SleepMs(100)
+END SUB
+
+TestTerminal()
+TestTime()
+```
+- **Expected**: Viper.* runtime methods should be callable like any other procedure
+- **Actual**: Error "unknown procedure 'viper.terminal.setposition'" for all Viper.* calls
+- **Workaround**: Use raw ANSI escape codes for terminal control:
+```basic
+DIM ESC AS STRING
+ESC = CHR(27)
+PRINT ESC; "[2J"            ' Clear screen
+PRINT ESC; "["; row; ";"; col; "H"  ' Move cursor
+PRINT ESC; "[32m"           ' Set color
+```
+- **Root Cause**: The BASIC semantic layer seeds callable externs from the runtime registry,
+  but there were no canonical dotted entries for `Viper.Terminal.*` and `Viper.Time.*` in the
+  registry, and 32‑bit integer parameter types (`i32`) were not mapped to BASIC integer during
+  signature seeding, causing unknown-procedure errors.
+- **Fix Applied**:
+  - Added canonical dotted runtime descriptors in `src/il/runtime/RuntimeSignatures.cpp`:
+    `Viper.Terminal.Clear` → `rt_term_cls`, `Viper.Terminal.SetPosition` → `rt_term_locate_i32`,
+    `Viper.Terminal.SetColor` → `rt_term_color_i32`, `Viper.Terminal.SetCursorVisible` →
+    `rt_term_cursor_visible_i32`, `Viper.Terminal.SetAltScreen` → `rt_term_alt_screen_i32`,
+    `Viper.Terminal.Bell` → `rt_bell`; `Viper.Time.SleepMs` → `rt_sleep_ms`,
+    `Viper.Time.GetTickCount` → `rt_timer_ms`.
+  - Relaxed type mapping to accept IL `i32` as BASIC integer by updating
+    `src/frontends/basic/types/TypeMapping.cpp` (map `I32` → `Type::I64`) so ProcRegistry can
+    seed these externs.
+  - ProcRegistry already seeds builtins from the runtime registry; NamespaceRegistry now
+    observes `Viper.Terminal`/`Viper.Time` from the dotted names for USING/qualification.
+- **Verification**: Added `tests/frontends/basic/ViperRuntimeCallTests.cpp` ensuring:
+  - The analyzer’s `ProcRegistry` contains the new `Viper.Terminal.*`/`Viper.Time.*` entries.
+  - A BASIC snippet calling these methods analyzes with zero errors.
 
 ---
 
@@ -613,6 +676,7 @@ PRINT "After call: "; m.GetValue()   ' Prints 42
 | **BUG-OOP-015** | ✅ Fixed | Functions cannot be called as statements | 2025-11-27 |
 | **BUG-OOP-016** | ✅ Fixed | INTEGER variable type mismatch when passed to functions | 2025-11-27 |
 | **BUG-OOP-017** | Open | Single-line IF colon only applies condition to first statement | 2025-11-27 |
+| **BUG-OOP-018** | Open | Viper.* runtime classes not callable from BASIC | 2025-11-27 |
 
 ---
 
@@ -620,6 +684,7 @@ PRINT "After call: "; m.GetValue()   ' Prints 42
 
 ### Open Bugs
 - **BUG-OOP-017** - Single-line IF with colon-separated statements only applies condition to first statement (Medium severity - workaround: use block IF)
+- **BUG-OOP-018** - Viper.* runtime classes (Viper.Terminal, Viper.Time, etc.) not callable from BASIC code (High severity - workaround: use raw ANSI escape codes)
 
 ### Recently Fixed (2025-11-27)
 - **BUG-OOP-010** - DIM inside FOR loop now works

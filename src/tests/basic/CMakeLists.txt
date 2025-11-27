@@ -231,6 +231,15 @@ function(viper_add_basic_main_tests)
     viper_add_ctest(
             test_frontends_basic_parse_unknown_stmt test_frontends_basic_parse_unknown_stmt)
 
+    # Viper.* runtime calls should resolve in semantics (Terminal/Time)
+    viper_add_test(
+            test_frontends_basic_viper_runtime_calls
+            ${VIPER_TESTS_DIR}/frontends/basic/ViperRuntimeCallTests.cpp)
+    target_link_libraries(test_frontends_basic_viper_runtime_calls PRIVATE ${VIPER_BASIC_LIBS})
+    viper_add_ctest(
+            test_frontends_basic_viper_runtime_calls
+            test_frontends_basic_viper_runtime_calls)
+
     # Paren-less zero-arg method call in statement position is accepted
     viper_add_test(
             test_frontends_basic_parse_method_call_parenless
