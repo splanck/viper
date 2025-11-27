@@ -1,0 +1,16 @@
+.TH il-verify 1 "Viper" "viper-il-verify" "User Commands"
+.SH NAME
+il-verify \- Verify a Viper IL module for structural correctness
+.SH SYNOPSIS
+.B il-verify
+\fIFILE.il\fR
+.br
+.B il-verify
+\fB--version\fR
+.SH DESCRIPTION
+Parses a textual IL module and runs the structural verifier, reporting diagnostics to stderr. Prints \fCOK\fR on success.
+.SH EXIT STATUS
+0 on success; 1 on argument, I/O, parse, or verification failure.
+.SH SEE ALSO
+\fBilc\fR(1), \fBilrun\fR(1)
+

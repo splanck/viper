@@ -339,10 +339,17 @@ if(BUILD_EXAMPLES)
   target_include_directories(example_vm_smoke_combined PRIVATE ${CMAKE_SOURCE_DIR}/include ${CMAKE_BINARY_DIR}/generated)
 endif()
 
-# Man pages (section 1)
-install(DIRECTORY ${CMAKE_SOURCE_DIR}/docs/man/
-        DESTINATION ${CMAKE_INSTALL_MANDIR}/man1
-        FILES_MATCHING PATTERN "*.1")
+# Man pages (sections 1 and 7)
+if(EXISTS ${CMAKE_SOURCE_DIR}/man/man1)
+  install(DIRECTORY ${CMAKE_SOURCE_DIR}/man/man1/
+          DESTINATION ${CMAKE_INSTALL_MANDIR}/man1
+          FILES_MATCHING PATTERN "*.1")
+endif()
+if(EXISTS ${CMAKE_SOURCE_DIR}/man/man7)
+  install(DIRECTORY ${CMAKE_SOURCE_DIR}/man/man7/
+          DESTINATION ${CMAKE_INSTALL_MANDIR}/man7
+          FILES_MATCHING PATTERN "*.7")
+endif()
 
 # Uninstall convenience target (uses install_manifest.txt)
 if(NOT TARGET uninstall)

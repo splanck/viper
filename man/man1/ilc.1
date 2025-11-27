@@ -1,0 +1,86 @@
+.TH ilc 1 "Viper" "viper-ilc" "User Commands"
+.SH NAME
+ilc \- Viper IL compiler, runner, optimizer, and codegen driver
+.SH SYNOPSIS
+.B ilc
+\fB-run\fR \fIFILE.il\fR [\fIrun-options\fR]
+.br
+.B ilc front basic
+\fB-emit-il\fR \fIFILE.bas\fR [--bounds-checks] [--no-runtime-namespaces]
+.br
+.B ilc front basic
+\fB-run\fR \fIFILE.bas\fR [\fIrun-options\fR] [--no-runtime-namespaces]
+.br
+.B ilc codegen x64
+\fB-S\fR \fIin.il\fR [\fB-o\fR \fIexe\fR] [\fB--run-native\fR]
+.br
+.B ilc codegen arm64
+\fIin.il\fR [\fB-S\fR \fIout.s\fR] [\fB-o\fR \fIexe|obj\fR] [\fB-run-native\fR]
+.br
+.B ilc il-opt
+\fIin.il\fR \fB-o\fR \fIout.il\fR [\fB--passes\fR p1,p2] [\fB-print-before\fR] [\fB-print-after\fR] [\fB-verify-each\fR]
+.br
+.B ilc
+\fB--version\fR
+.SH DESCRIPTION
+The \fBilc\fR tool is the Swiss army knife for Viper IL: it can run IL modules, drive the BASIC frontend, perform IL optimizations, and emit native code for supported targets.
+.PP
+When used with \fB-run\fR, \fBilc\fR executes a textual IL module that defines a \fCfunc @main()\fR entry point.
+.PP
+The \fBfront basic\fR subcommand compiles BASIC source to IL or runs it directly via the interpreter, optionally enabling bounds checks and controlling runtime namespace emission.
+.PP
+The \fBcodegen\fR subcommands invoke target backends (x64, arm64) to emit assembly or build/run native executables when toolchains are available.
+.SH RUN OPTIONS
+These options apply to \fBilc -run\fR and \fBilc front basic -run\fR:
+.TP
+\fB--trace\fR[=\fIil\fR|\fIsrc\fR]
+Enable execution tracing at IL or source level.
+.TP
+\fB--stdin-from\fR \fIFILE\fR
+Redirect program stdin from file.
+.TP
+\fB--max-steps\fR \fIN\fR
+Limit total instructions executed; 0 disables the limit.
+.TP
+\fB--bounds-checks\fR
+Enable runtime array bounds checks.
+.TP
+\fB--break\fR \fILABEL\fR|\fIFILE:LINE\fR
+Set a breakpoint by IL label or source location.
+.TP
+\fB--break-src\fR \fIFILE:LINE\fR
+Set a source breakpoint.
+.TP
+\fB--watch\fR \fINAME\fR
+Watch a variable and log stores.
+.TP
+\fB--count\fR
+Show per-opcode execution counts.
+.TP
+\fB--time\fR
+Show wall-clock runtime.
+.TP
+\fB--dump-trap\fR
+Show detailed trap diagnostics.
+.SH FRONT BASIC OPTIONS
+.TP
+\fB--no-runtime-namespaces\fR
+Disable runtime namespace emission in IL.
+.SH CODEGEN OPTIONS
+See SYNOPSIS for per-target switches. \fB--run-native\fR builds and runs the produced binary when toolchains are configured.
+.SH EXAMPLES
+.TP
+Run an IL module with tracing and a breakpoint
+.nf
+ilc -run prog.il --trace --break main:12
+.fi
+.TP
+Compile BASIC to IL and save to a file
+.nf
+ilc front basic -emit-il prog.bas -o prog.il
+.fi
+.SH EXIT STATUS
+Returns 0 on success; non-zero on argument, I/O, parse, verification, or runtime errors.
+.SH SEE ALSO
+\fBilrun\fR(1), \fBil-verify\fR(1), \fBvbasic\fR(1)
+

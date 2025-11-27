@@ -1,0 +1,33 @@
+.TH viper 7 "Viper" "Project overview" "Miscellanea"
+.SH NAME
+viper \- Overview of the Viper IL toolchain and runtime
+.SH DESCRIPTION
+Viper is a modular IL and runtime system with:
+.IP \(bu 2
+An interpreter (VM) with pluggable dispatch strategies.
+.IP \(bu 2
+Frontends, including a BASIC dialect that lowers to IL.
+.IP \(bu 2
+Backends for native code emission on supported targets.
+.PP
+Common user-facing tools:
+.TP
+\fBilc\fR(1)
+Multi-tool driver (run IL, compile BASIC, optimize IL, codegen).
+.TP
+\fBilrun\fR(1)
+Simple IL runner.
+.TP
+\fBvbasic\fR(1)
+BASIC interpreter / IL emitter.
+.TP
+\fBil-verify\fR(1)
+IL verifier.
+.TP
+\fBbasic-ast-dump\fR(1), \fBbasic-lex-dump\fR(1)
+Developer utilities for parsing/lexing BASIC.
+.SH FILES
+Textual IL files typically end with \fC.il\fR. BASIC sources use \fC.bas\fR.
+.SH SEE ALSO
+\fBilc\fR(1), \fBilrun\fR(1), \fBvbasic\fR(1), \fBil-verify\fR(1)
+

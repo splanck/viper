@@ -1,0 +1,55 @@
+.TH ilrun 1 "Viper" "viper-ilrun" "User Commands"
+.SH NAME
+ilrun \- Run a Viper IL program
+.SH SYNOPSIS
+.B ilrun
+[\fIoptions\fR] \fIFILE.il\fR
+.SH DESCRIPTION
+\fBilrun\fR is a user-friendly wrapper for executing textual Viper IL files that define a \fCfunc @main()\fR entry point. It mirrors the \fBilc -run\fR engine but with simpler syntax.
+.SH OPTIONS
+.TP
+\fB--trace\fR[=\fIil\fR|\fIsrc\fR]
+Enable execution tracing at IL or source level.
+.TP
+\fB--stdin-from\fR \fIFILE\fR
+Redirect program stdin from file.
+.TP
+\fB--max-steps\fR \fIN\fR
+Limit total instructions executed; 0 disables the limit.
+.TP
+\fB--bounds-checks\fR
+Enable runtime array bounds checks.
+.TP
+\fB--break\fR \fILABEL\fR|\fIFILE:LINE\fR
+Set a breakpoint by IL label or source location.
+.TP
+\fB--break-src\fR \fIFILE:LINE\fR
+Set a source breakpoint.
+.TP
+\fB--watch\fR \fINAME\fR
+Watch a variable and log stores.
+.TP
+\fB--count\fR
+Show per-opcode execution counts.
+.TP
+\fB--time\fR
+Show wall-clock runtime.
+.TP
+\fB--dump-trap\fR
+Show detailed trap diagnostics.
+.TP
+\fB-h\fR, \fB--help\fR
+Display help and exit.
+.TP
+\fB--version\fR
+Print version and exit.
+.SH EXAMPLES
+Run with tracing and a breakpoint at source line 10:
+.nf
+ilrun program.il --trace --break-src main.bas:10
+.fi
+.SH EXIT STATUS
+0 on success; non-zero on error.
+.SH SEE ALSO
+\fBilc\fR(1), \fBil-verify\fR(1)
+
