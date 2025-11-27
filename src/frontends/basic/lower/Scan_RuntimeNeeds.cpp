@@ -543,27 +543,29 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
     /// @param stmt INPUT# statement describing the destination variable.
     void after(const InputChStmt &stmt)
     {
-        const auto &name = stmt.target.name;
-        if (name.empty())
-            return;
-
-        Type astTy = inferVariableType(name);
-        switch (astTy)
+        for (const auto &ref : stmt.targets)
         {
-            case Type::Str:
-                break;
-            case Type::F64:
-                lowerer_.requestHelper(Lowerer::RuntimeFeature::ParseDouble);
-                lowerer_.requestHelper(Lowerer::RuntimeFeature::Val);
-                break;
-            default:
-                lowerer_.requestHelper(Lowerer::RuntimeFeature::ParseInt64);
-                lowerer_.requestHelper(Lowerer::RuntimeFeature::Val);
-                break;
+            const auto &name = ref.name;
+            if (name.empty())
+                continue;
+            Type astTy = inferVariableType(name);
+            switch (astTy)
+            {
+                case Type::Str:
+                    break;
+                case Type::F64:
+                    lowerer_.requestHelper(Lowerer::RuntimeFeature::ParseDouble);
+                    lowerer_.requestHelper(Lowerer::RuntimeFeature::Val);
+                    break;
+                default:
+                    lowerer_.requestHelper(Lowerer::RuntimeFeature::ParseInt64);
+                    lowerer_.requestHelper(Lowerer::RuntimeFeature::Val);
+                    break;
+            }
+            const auto *info = lowerer_.findSymbol(name);
+            if (!info || !info->hasType)
+                lowerer_.setSymbolType(name, astTy);
         }
-        const auto *info = lowerer_.findSymbol(name);
-        if (!info || !info->hasType)
-            lowerer_.setSymbolType(name, astTy);
     }
 
     /// @brief Ensure LINE INPUT# requests error-reporting helpers.

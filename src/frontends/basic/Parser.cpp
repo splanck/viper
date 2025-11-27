@@ -472,6 +472,9 @@ bool Parser::handleTopLevelAddFile(Program &prog)
     Parser child(contents, newFileId, emitter_, sm_, includeStack_, /*suppress*/ true);
     // BUG-100 fix: Copy parent's array registry to child so it knows about existing arrays
     child.arrays_ = arrays_;
+    // Propagate known namespaces so qualified-name parsing inside includes
+    // recognizes the same namespace heads as the parent parser.
+    child.knownNamespaces_ = knownNamespaces_;
     auto subprog = child.parseProgram();
     if (!subprog)
     {
@@ -573,6 +576,12 @@ bool Parser::handleAddFileInto(std::vector<StmtPtr> &dst)
     emitter_->addSource(newFileId, contents);
 
     Parser child(contents, newFileId, emitter_, sm_, includeStack_, /*suppress*/ true);
+    // Keep parsing behaviour consistent with the including context by
+    // propagating selected state to the child parser.
+    // - Arrays: disambiguate name(args) as array vs call consistently.
+    // - Namespaces: preserve the set of known namespace heads for qualified calls.
+    child.arrays_ = arrays_;
+    child.knownNamespaces_ = knownNamespaces_;
     auto subprog = child.parseProgram();
     if (!subprog)
     {

@@ -60,6 +60,7 @@ StmtPtr Parser::parsePrintStatement()
         stmt->mode = PrintChStmt::Mode::Print;
         stmt->channelExpr = parseExpression();
         stmt->trailingNewline = true;
+        bool lastWasSemicolon = false;
         if (at(TokenKind::Comma))
         {
             consume();
@@ -69,11 +70,26 @@ StmtPtr Parser::parsePrintStatement()
                     break;
                 if (isStatementStart(peek().kind))
                     break;
+                if (at(TokenKind::Semicolon))
+                {
+                    consume();
+                    lastWasSemicolon = true;
+                    continue;
+                }
+                lastWasSemicolon = false;
                 stmt->args.push_back(parseExpression());
+                if (at(TokenKind::Semicolon))
+                {
+                    consume();
+                    lastWasSemicolon = true;
+                    continue;
+                }
                 if (!at(TokenKind::Comma))
                     break;
                 consume();
             }
+            if (lastWasSemicolon)
+                stmt->trailingNewline = false;
         }
         return stmt;
     }
@@ -230,23 +246,21 @@ StmtPtr Parser::parseInputStatement()
         Token channelTok = expect(TokenKind::Number);
         int channel = std::atoi(channelTok.lexeme.c_str());
         expect(TokenKind::Comma);
-        Token targetTok = expect(TokenKind::Identifier);
         auto stmt = std::make_unique<InputChStmt>();
         stmt->loc = loc;
         stmt->channel = channel;
-        stmt->target.name = targetTok.lexeme;
-        stmt->target.loc = targetTok.loc;
-
-        if (at(TokenKind::Comma))
+        // Parse one or more comma-separated identifier targets
+        while (true)
         {
-            Token extra = peek();
-            emitError("B0001", extra, "INPUT # with multiple targets not yet supported");
-            while (!at(TokenKind::EndOfFile) && !at(TokenKind::EndOfLine) && !at(TokenKind::Colon))
-            {
-                consume();
-            }
+            Token targetTok = expect(TokenKind::Identifier);
+            NameRef ref;
+            ref.name = targetTok.lexeme;
+            ref.loc = targetTok.loc;
+            stmt->targets.push_back(std::move(ref));
+            if (!at(TokenKind::Comma))
+                break;
+            consume();
         }
-
         return stmt;
     }
     ExprPtr prompt;

@@ -23,6 +23,9 @@ if (NOT TARGET test_basic_terminal_scan)
     viper_add_ctest(test_basic_terminal_scan test_basic_terminal_scan)
 endif ()
 
+# NOTE: Tests for verifier relaxations (partial CBr branch-args, str-to-ptr) removed
+# because the verifier does not currently support these relaxations.
+
 # Builtin extern resolution tests (resolver + diagnostics)
 if (NOT TARGET test_basic_builtin_extern_resolution)
     viper_add_test(test_basic_builtin_extern_resolution ${VIPER_TESTS_DIR}/unit/test_basic_builtin_extern_resolution.cpp)

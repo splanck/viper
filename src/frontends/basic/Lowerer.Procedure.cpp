@@ -844,6 +844,7 @@ void ProcedureLowering::collectProcedureSignatures(const Program &prog)
         Lowerer::ProcedureSignature sig;
         sig.retType = ret;
         sig.paramTypes.reserve(params.size());
+        sig.byRefFlags.reserve(params.size());
         for (const auto &p : params)
         {
             // BUG-060 fix: Handle object-typed parameters
@@ -857,11 +858,17 @@ void ProcedureLowering::collectProcedureSignatures(const Program &prog)
                 // Object parameter - use Ptr type
                 ty = il::core::Type(il::core::Type::Kind::Ptr);
             }
+            else if (p.isByRef)
+            {
+                // BYREF scalar/string/bool pass pointer to storage
+                ty = il::core::Type(il::core::Type::Kind::Ptr);
+            }
             else
             {
                 ty = coreTypeForAstType(p.type);
             }
             sig.paramTypes.push_back(ty);
+            sig.byRefFlags.push_back(p.isByRef);
         }
         return sig;
     };
@@ -1136,6 +1143,11 @@ Lowerer::ProcedureMetadata Lowerer::collectProcedureMetadata(const std::vector<P
         else if (!p.objectClass.empty())
         {
             // Object parameter - use Ptr type
+            ty = Type(Type::Kind::Ptr);
+        }
+        else if (p.isByRef)
+        {
+            // BYREF scalar/string/bool as pointer
             ty = Type(Type::Kind::Ptr);
         }
         else
@@ -1482,7 +1494,8 @@ void Lowerer::resetLoweringState()
 void Lowerer::cacheModuleObjectArraysFromAST(const std::vector<StmtPtr> &main)
 {
     moduleObjArrayElemClass_.clear();
-    moduleObjectClass_.clear(); // BUG-107 fix: Also clear scalar object cache
+    moduleObjectClass_.clear();    // BUG-107 fix: Also clear scalar object cache
+    moduleStrArrayNames_.clear();  // BUG-OOP-011 fix: Also clear string array cache
 
     // Walk main body statements looking for DIM declarations of objects (arrays and scalars)
     for (const auto &stmtPtr : main)
@@ -1493,7 +1506,16 @@ void Lowerer::cacheModuleObjectArraysFromAST(const std::vector<StmtPtr> &main)
         if (stmtPtr->stmtKind() == Stmt::Kind::Dim)
         {
             const auto *dim = as<const DimStmt>(*stmtPtr);
-            if (dim && !dim->explicitClassQname.empty())
+            if (!dim)
+                continue;
+
+            // BUG-OOP-011 fix: Cache string arrays
+            if (dim->isArray && dim->type == AstType::Str)
+            {
+                moduleStrArrayNames_.insert(dim->name);
+            }
+
+            if (!dim->explicitClassQname.empty())
             {
                 // Join qualified class name segments with dots
                 std::string className;
@@ -1518,6 +1540,7 @@ void Lowerer::cacheModuleObjectArraysFromAST(const std::vector<StmtPtr> &main)
 void Lowerer::cacheModuleObjectArraysFromSymbols()
 {
     moduleObjArrayElemClass_.clear();
+    moduleStrArrayNames_.clear(); // BUG-OOP-011 fix
     for (const auto &p : symbols)
     {
         const std::string &name = p.first;
@@ -1525,6 +1548,11 @@ void Lowerer::cacheModuleObjectArraysFromSymbols()
         if (info.isArray && info.isObject && !info.objectClass.empty())
         {
             moduleObjArrayElemClass_[name] = info.objectClass;
+        }
+        // BUG-OOP-011 fix: Also cache string arrays
+        if (info.isArray && info.type == AstType::Str)
+        {
+            moduleStrArrayNames_.insert(name);
         }
     }
 }
@@ -1535,6 +1563,11 @@ std::string Lowerer::lookupModuleArrayElemClass(std::string_view name) const
     if (it == moduleObjArrayElemClass_.end())
         return {};
     return it->second;
+}
+
+bool Lowerer::isModuleStrArray(std::string_view name) const
+{
+    return moduleStrArrayNames_.count(std::string{name}) > 0;
 }
 
 /// @brief Allocate stack slots and store incoming arguments for parameters.
@@ -1559,7 +1592,12 @@ void Lowerer::materializeParams(const std::vector<Param> &params)
         bool isBoolParam = !p.is_array && p.type == AstType::Bool;
         // BUG-060 fix: Object parameters need pointer slots
         bool isObjectParam = !p.objectClass.empty();
-        Value slot = emitAlloca(isBoolParam ? 1 : 8);
+        // BYREF params: incoming pointer is the slot.
+        const size_t ilIndex = (ilParamOffset + i);
+        Value incoming = (ilIndex < func->params.size()) ? Value::temp(func->params[ilIndex].id)
+                                                         : Value::null();
+        bool byRef = p.isByRef;
+        Value slot = byRef ? incoming : emitAlloca(isBoolParam ? 1 : 8);
         if (p.is_array)
         {
             markArray(p.name);
@@ -1577,17 +1615,20 @@ void Lowerer::materializeParams(const std::vector<Param> &params)
         markSymbolReferenced(p.name);
         auto &info = ensureSymbol(p.name);
         info.slotId = slot.id;
-        const size_t ilIndex = i + ilParamOffset;
+        info.isByRefParam = byRef;
         if (ilIndex >= func->params.size())
             continue;
         il::core::Type ty = func->params[ilIndex].type;
-        Value incoming = Value::temp(func->params[ilIndex].id);
         if (p.is_array)
         {
             // BUG-086 fix: Pass element type and object array flag to storeArray
             // so it uses the correct runtime functions (i32, str, or obj).
             bool isObjectArray = !p.objectClass.empty();
             storeArray(slot, incoming, p.type, isObjectArray);
+        }
+        else if (byRef)
+        {
+            // Storage is alias to caller; nothing to store.
         }
         else
         {

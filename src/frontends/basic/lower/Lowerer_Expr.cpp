@@ -148,6 +148,9 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
             moduleObjectClass = lowerer_.lookupModuleArrayElemClass(expr.name);
         }
 
+        // BUG-OOP-011 fix: Check module-level string array cache
+        bool isModuleStrArray = lowerer_.isModuleStrArray(expr.name);
+
         bool isMemberArray = expr.name.find('.') != std::string::npos;
         ::il::frontends::basic::Type memberElemAstType = ::il::frontends::basic::Type::I64;
         bool isMemberObjectArray = false; // BUG-089: Track if member array holds objects
@@ -180,8 +183,10 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
                 memberObjectClass = field->objectClassName;
         }
 
+        // BUG-OOP-011 fix: Also check module-level string array cache
         if ((info && info->type == ::il::frontends::basic::Type::Str) ||
-            (isMemberArray && memberElemAstType == ::il::frontends::basic::Type::Str))
+            (isMemberArray && memberElemAstType == ::il::frontends::basic::Type::Str) ||
+            isModuleStrArray)
         {
             // String array: use rt_arr_str_get (returns retained handle)
             // BUG-071 fix: Don't defer release - consuming code handles lifetime
@@ -499,6 +504,22 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
         {
             for (size_t i = 0; i < expr.args.size(); ++i)
             {
+                // BYREF support: when the signature marks parameter i as BYREF, pass address-of
+                // the variable storage when possible.
+                if (signature && i < signature->byRefFlags.size() && signature->byRefFlags[i])
+                {
+                    const ExprPtr &argExpr = expr.args[i];
+                    if (auto *v = dynamic_cast<const VarExpr *>(argExpr.get()))
+                    {
+                        if (auto storage = lowerer_.resolveVariableStorage(v->name, expr.loc))
+                        {
+                            args.push_back(storage->pointer);
+                            continue;
+                        }
+                    }
+                    // Fallback: if cannot take address, coerce as normal (diagnostics may surface elsewhere)
+                }
+
                 Lowerer::RVal arg = lowerer_.lowerExpr(*expr.args[i]);
                 if (signature && i < signature->paramTypes.size())
                 {
@@ -1082,13 +1103,16 @@ TypeRules::NumericType Lowerer::classifyNumericType(const Expr &expr)
                 case BuiltinCallExpr::Builtin::Cdbl:
                     result_ = NumericType::Double;
                     return;
+                // BUG-OOP-016 fix: Int, Fix, Floor, Ceil, Abs return integers
                 case BuiltinCallExpr::Builtin::Int:
                 case BuiltinCallExpr::Builtin::Fix:
-                case BuiltinCallExpr::Builtin::Round:
-                case BuiltinCallExpr::Builtin::Sqr:
-                case BuiltinCallExpr::Builtin::Abs:
                 case BuiltinCallExpr::Builtin::Floor:
                 case BuiltinCallExpr::Builtin::Ceil:
+                case BuiltinCallExpr::Builtin::Abs:
+                    result_ = NumericType::Long;
+                    return;
+                case BuiltinCallExpr::Builtin::Round:
+                case BuiltinCallExpr::Builtin::Sqr:
                 case BuiltinCallExpr::Builtin::Sin:
                 case BuiltinCallExpr::Builtin::Cos:
                 case BuiltinCallExpr::Builtin::Pow:

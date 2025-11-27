@@ -157,6 +157,15 @@ function(viper_add_basic_main_tests)
     viper_add_ctest(
             test_frontends_basic_lowerer_select_case test_frontends_basic_lowerer_select_case)
 
+    # END inside SUB lowering should verify (trap-based termination)
+    viper_add_test(
+            test_frontends_basic_lowerer_end_in_sub
+            ${VIPER_TESTS_DIR}/frontends/basic/LowererEndInSubTests.cpp)
+    target_link_libraries(test_frontends_basic_lowerer_end_in_sub PRIVATE ${VIPER_BASIC_LIBS} viper_il_verify)
+    viper_add_ctest(
+            test_frontends_basic_lowerer_end_in_sub
+            test_frontends_basic_lowerer_end_in_sub)
+
     viper_add_test(
             test_frontends_basic_lowerer_oop_default_ctor
             ${VIPER_TESTS_DIR}/frontends/basic/LowererOopConstructorTests.cpp)

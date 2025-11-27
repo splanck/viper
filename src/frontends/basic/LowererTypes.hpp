@@ -68,6 +68,7 @@ struct SymbolInfo
     std::string stringLabel;     ///< Cached label for deduplicated string literals.
     bool isObject{false};        ///< True when symbol references an object slot.
     std::string objectClass;     ///< Class name for object symbols; empty otherwise.
+    bool isByRefParam{false};    ///< True when symbol represents a BYREF parameter.
 };
 
 /// @brief Slot type and metadata for variable storage.
@@ -93,6 +94,7 @@ struct ProcedureSignature
 {
     il::core::Type retType{il::core::Type(il::core::Type::Kind::I64)}; ///< Declared return type.
     std::vector<il::core::Type> paramTypes;                            ///< Declared parameter types.
+    std::vector<bool> byRefFlags;                                      ///< True when parameter is BYREF.
 };
 
 /// @brief Computed memory layout for a BASIC CLASS or TYPE declaration.

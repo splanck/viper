@@ -535,11 +535,24 @@ std::vector<Param> Parser::parseParamList()
     }
     while (true)
     {
+        bool sawByRef = false;
+        if (at(TokenKind::KeywordByRef))
+        {
+            consume();
+            sawByRef = true;
+        }
+        else if (at(TokenKind::KeywordByVal))
+        {
+            consume();
+            // BYVAL is the default, just consume and continue
+        }
+
         Token id = expect(TokenKind::Identifier);
         Param p;
         p.loc = id.loc;
         p.name = id.lexeme;
         p.type = typeFromSuffix(id.lexeme);
+        p.isByRef = sawByRef;
         if (at(TokenKind::LParen))
         {
             consume();
@@ -549,36 +562,63 @@ std::vector<Param> Parser::parseParamList()
         if (at(TokenKind::KeywordAs))
         {
             consume();
-            if (at(TokenKind::KeywordBoolean) || at(TokenKind::Identifier))
+            // Support primitive types and qualified class names after AS
+            if (at(TokenKind::Identifier))
             {
-                // BUG-060 fix: Capture the type name before parseTypeKeyword() consumes it
-                std::string typeName;
-                if (at(TokenKind::Identifier))
+                // Determine if this is a primitive keyword or a class name
+                auto toUpper = [](std::string_view text)
                 {
-                    typeName = peek().lexeme;
-                }
-                p.type = parseTypeKeyword();
-                // If parseTypeKeyword() returned default I64, the identifier might be a class name
-                if (p.type == Type::I64 && !typeName.empty())
-                {
-                    // Check if it's a known class (case-insensitive)
-                    // For now, assume any unrecognized identifier is a class name
-                    // The semantic analyzer will validate it later
-                    std::string upperName;
-                    upperName.reserve(typeName.size());
-                    for (char ch : typeName)
+                    std::string result;
+                    result.reserve(text.size());
+                    for (char ch : text)
                     {
                         unsigned char byte = static_cast<unsigned char>(ch);
-                        upperName.push_back(static_cast<char>(std::toupper(byte)));
+                        result.push_back(static_cast<char>(std::toupper(byte)));
                     }
-                    // Only treat as object class if it's NOT a primitive type keyword
-                    if (upperName != "INTEGER" && upperName != "INT" && upperName != "LONG" &&
-                        upperName != "DOUBLE" && upperName != "FLOAT" && upperName != "SINGLE" &&
-                        upperName != "STRING")
+                    return result;
+                };
+                std::string first = peek().lexeme;
+                std::string upper = toUpper(first);
+                const bool isPrimitive = (upper == "INTEGER" || upper == "INT" || upper == "LONG" ||
+                                          upper == "DOUBLE" || upper == "FLOAT" ||
+                                          upper == "SINGLE" || upper == "STRING" ||
+                                          upper == "BOOLEAN");
+                if (isPrimitive)
+                {
+                    p.type = parseTypeKeyword();
+                }
+                else
+                {
+                    // Parse qualified class name: Ident ('.' Ident)*
+                    auto [segs, startLoc] = parseQualifiedIdentSegments();
+                    (void)startLoc;
+                    // Canonicalize segments; semantic analyzer validates existence
+                    for (auto &seg : segs)
+                        seg = CanonicalizeIdent(seg);
+                    // Join dotted form into objectClass string (lower casing preserved by Canonicalize)
+                    if (!segs.empty())
                     {
-                        p.objectClass = typeName;
+                        std::string cls;
+                        for (size_t i = 0; i < segs.size(); ++i)
+                        {
+                            if (i)
+                                cls.push_back('.');
+                            cls += segs[i];
+                        }
+                        p.objectClass = std::move(cls);
+                        // Ensure IL param type becomes pointer later
+                        p.type = Type::I64;
+                    }
+                    else
+                    {
+                        // Fallback: treat as primitive keyword path
+                        p.type = parseTypeKeyword();
                     }
                 }
+            }
+            else if (at(TokenKind::KeywordBoolean))
+            {
+                p.type = parseTypeKeyword();
             }
             else
             {

@@ -187,7 +187,21 @@ void printInputChannel(const InputChStmt &stmt, Context &ctx)
     os << "(INPUT#";
     ctx.style.writeChannelPrefix();
     os << stmt.channel;
-    os << " target=" << stmt.target.name << ')';
+    os << " targets=";
+    if (stmt.targets.empty())
+    {
+        ctx.style.writeNull();
+    }
+    else
+    {
+        for (std::size_t i = 0; i < stmt.targets.size(); ++i)
+        {
+            if (i)
+                os << ',';
+            os << stmt.targets[i].name;
+        }
+    }
+    os << ')';
 }
 
 /// @brief Render a `LINE INPUT#` statement capturing channel and destination.

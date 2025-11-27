@@ -766,6 +766,9 @@ void Emitter::releaseObjectParams(const std::unordered_set<std::string> &paramNa
             continue;
         if (!paramNames.contains(name))
             continue;
+        // Skip BYREF parameters (callee does not own storage)
+        if (info.isByRefParam)
+            continue;
         if (!info.slotId)
             continue;
         releaseSlot(info);

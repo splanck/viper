@@ -90,7 +90,7 @@ void registerMathBuiltinScanRules(std::span<BuiltinScanRule> rules)
     using Feature = BuiltinScanRule::Feature;
 
     rules[idx(B::Int)] = {
-        ResultSpec{ResultSpec::Kind::Fixed, Lowerer::ExprType::F64, 0},
+        ResultSpec{ResultSpec::Kind::Fixed, Lowerer::ExprType::I64, 0},
         BuiltinScanRule::ArgTraversal::Explicit,
         {0},
         {Feature{Feature::Action::Track,
@@ -304,6 +304,7 @@ void registerMathBuiltinLoweringRules(std::span<BuiltinLoweringRule> rules)
     using Transform = LowerRule::ArgTransform;
     using Feature = LowerRule::Feature;
 
+    // BUG-OOP-016 fix: INT() returns F64 from rt_int_floor (semantic analyzer handles type inference)
     rules[idx(B::Int)] = {
         ResultSpec{ResultSpec::Kind::Fixed, Lowerer::ExprType::F64, 0},
         {Variant{.condition = Condition::Always,

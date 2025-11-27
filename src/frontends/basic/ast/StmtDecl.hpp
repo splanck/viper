@@ -37,6 +37,9 @@ struct Param
     /// True if parameter declared with ().
     bool is_array{false};
 
+    /// True if parameter declared BYREF (pass-by-reference).
+    bool isByRef{false};
+
     /// Source location of the parameter name.
     il::support::SourceLoc loc{};
 

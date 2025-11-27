@@ -812,6 +812,11 @@ const ProcSignature *SemanticAnalyzer::resolveCallee(const CallExpr &c,
     }
     if (sig->kind != expectedKind)
     {
+        // Allow calling functions as statements by accepting FUNCTION where SUB is expected.
+        if (expectedKind == ProcSignature::Kind::Sub && sig->kind == ProcSignature::Kind::Function)
+        {
+            return sig;
+        }
         if (expectedKind == ProcSignature::Kind::Function)
         {
             std::string msg = "subroutine '" + c.callee +

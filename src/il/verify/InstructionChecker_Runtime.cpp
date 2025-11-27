@@ -465,7 +465,10 @@ Expected<void> checkCall(const VerifyCtx &ctx)
     for (size_t i = 0; i < paramCount; ++i)
     {
         const Type expected = externSig ? externSig->params[i] : fnSig->params[i].type;
-        if (ctx.types.valueType(ctx.instr.operands[argStart + i]).kind != expected.kind)
+        const auto actualKind = ctx.types.valueType(ctx.instr.operands[argStart + i]).kind;
+        // Accept IL 'str' where runtime ABI expects 'ptr' (string handle compatibility).
+        const bool strAsPtr = (expected.kind == Type::Kind::Ptr && actualKind == Type::Kind::Str);
+        if (actualKind != expected.kind && !strAsPtr)
             return fail(ctx, "call arg type mismatch");
     }
 

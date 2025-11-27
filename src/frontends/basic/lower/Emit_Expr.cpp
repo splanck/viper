@@ -114,6 +114,9 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
         moduleObjectClass = lookupModuleArrayElemClass(expr.name);
     }
 
+    // BUG-OOP-011 fix: Check module-level string array cache
+    bool isModuleStrArrayVar = !isMemberArray && isModuleStrArray(expr.name);
+
     // When accessing array fields, we'll compute 'base' by loading the pointer from
     // the object's field; otherwise we load from variable storage as usual.
     Type::Kind memberElemIlKind = Type::Kind::I64; // default element kind
@@ -194,7 +197,8 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
                 requireArrayI32Set();
         }
     }
-    else if (info && info->type == AstType::Str)
+    // BUG-OOP-011 fix: Also check module-level string array cache
+    else if ((info && info->type == AstType::Str) || isModuleStrArrayVar)
     {
         requireArrayStrLen();
         if (kind == ArrayAccessKind::Load)
@@ -397,10 +401,11 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
     }
     else
     {
-        assert(info && "info must be non-null for non-member arrays");
-        if (info->type == AstType::Str)
+        // BUG-OOP-011 fix: info may be null for module-level arrays accessed from procedures
+        // In that case we rely on isModuleStrArrayVar and moduleObjectClass caches
+        if ((info && info->type == AstType::Str) || isModuleStrArrayVar)
             len = emitCallRet(Type(Type::Kind::I64), "rt_arr_str_len", {base});
-        else if (info->isObject || !moduleObjectClass.empty())
+        else if ((info && info->isObject) || !moduleObjectClass.empty())
             len = emitCallRet(
                 Type(Type::Kind::I64), "rt_arr_obj_len", {base}); // BUG-097: Check module cache too
         else
@@ -445,7 +450,8 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
             (memberElemAstType == ::il::frontends::basic::Type::Str) || isMemberObjectArray;
     else if (info)
         isRefCountedArray = (info->type == AstType::Str) || info->isObject;
-    else if (!moduleObjectClass.empty())
+    // BUG-OOP-011 fix: module-level string arrays are also reference-counted
+    else if (!moduleObjectClass.empty() || isModuleStrArrayVar)
         isRefCountedArray = true;
 
     if (isRefCountedArray)

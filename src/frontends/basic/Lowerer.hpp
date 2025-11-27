@@ -926,6 +926,8 @@ class Lowerer
     std::unordered_map<std::string, std::string> moduleObjArrayElemClass_;
     /// @brief BUG-107 fix: Cache for module-level scalar object types.
     std::unordered_map<std::string, std::string> moduleObjectClass_;
+    /// @brief BUG-OOP-011 fix: Set of module-level string array names.
+    std::unordered_set<std::string> moduleStrArrayNames_;
 
   public:
     /// @brief Clear cached module-level object array and scalar object typing.
@@ -933,6 +935,7 @@ class Lowerer
     {
         moduleObjArrayElemClass_.clear();
         moduleObjectClass_.clear();
+        moduleStrArrayNames_.clear();
     }
 
     /// @brief Scan AST for module-level DIM object arrays and cache their types.
@@ -950,6 +953,10 @@ class Lowerer
     /// @brief Lookup element class for a module-level array by name.
     /// @return Qualified class name when known, empty otherwise.
     [[nodiscard]] std::string lookupModuleArrayElemClass(std::string_view name) const;
+
+    /// @brief BUG-OOP-011 fix: Check if name is a module-level string array.
+    /// @return True if the name is a cached module-level string array.
+    [[nodiscard]] bool isModuleStrArray(std::string_view name) const;
 
   public:
     /// @brief Lookup a cached procedure signature by BASIC name.

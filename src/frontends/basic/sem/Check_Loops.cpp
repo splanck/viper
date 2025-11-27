@@ -213,6 +213,12 @@ void analyzeNext(SemanticAnalyzer &analyzer, const NextStmt &stmt)
 void analyzeExit(SemanticAnalyzer &analyzer, const ExitStmt &stmt)
 {
     ControlCheckContext context(analyzer);
+    // Permit EXIT SUB/FUNCTION anywhere within a procedure body. These exits
+    // are not tied to loop constructs and should not be validated against the
+    // loop stack. Lowering already routes them to the procedure's exit block.
+    if (stmt.kind == ExitStmt::LoopKind::Sub || stmt.kind == ExitStmt::LoopKind::Function)
+        return;
+
     const auto targetLoop = context.toLoopKind(stmt.kind);
     const char *targetName = context.loopKindName(targetLoop);
 

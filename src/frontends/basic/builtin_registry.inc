@@ -295,7 +295,7 @@ BUILTIN(
                                               Lowerer::ExprType::I64}}}))
 BUILTIN(
     Int,
-    (BuiltinDescriptor{"INT", B::Int, {1, 1}, TypeMask::F64, nullptr}),
+    (BuiltinDescriptor{"INT", B::Int, {1, 1}, TypeMask::I64, nullptr}),
     (LowerRule{}),
     (BuiltinScanRule{}))
 

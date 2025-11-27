@@ -476,8 +476,8 @@ struct InputChStmt : Stmt
     /// Numeric file channel identifier following '#'.
     int channel{0};
 
-    /// Variable receiving the parsed field.
-    NameRef target;
+    /// One or more destination variables receiving parsed fields.
+    std::vector<NameRef> targets;
 
     void accept(StmtVisitor &visitor) const override;
     void accept(MutStmtVisitor &visitor) override;

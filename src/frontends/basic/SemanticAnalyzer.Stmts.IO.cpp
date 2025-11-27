@@ -260,13 +260,15 @@ void SemanticAnalyzer::analyzeInput(InputStmt &inp)
 void SemanticAnalyzer::analyzeInputCh(InputChStmt &inp)
 {
     IOStmtContext ctx(*this);
-    auto &name = inp.target.name;
-    if (name.empty())
-        return;
-
-    resolveAndTrackSymbol(name, SymbolKind::InputTarget);
-    if (ctx.isLoopVariable(name))
-        ctx.reportLoopVariableMutation(name, inp.loc, static_cast<uint32_t>(name.size()));
+    for (auto &ref : inp.targets)
+    {
+        auto &name = ref.name;
+        if (name.empty())
+            continue;
+        resolveAndTrackSymbol(name, SymbolKind::InputTarget);
+        if (ctx.isLoopVariable(name))
+            ctx.reportLoopVariableMutation(name, inp.loc, static_cast<uint32_t>(name.size()));
+    }
 }
 
 /// @brief Analyze a LINE INPUT# statement.

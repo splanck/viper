@@ -246,13 +246,26 @@ void ControlStatementLowerer::lowerGosubReturn(const ReturnStmt &stmt)
 }
 
 /// @brief Lower the END statement, terminating program execution.
-/// @details Emits an unconditional `ret` of zero from the active function,
-///          matching the runtime convention for successful program completion.
+/// @details For main (returns i64), emits `ret 0` for normal termination.
+///          For SUB/FUNCTION (returns void or other), emits trap since we
+///          cannot return from a void procedure with a value.
 /// @param stmt END statement providing the source location.
 void ControlStatementLowerer::lowerEnd(const EndStmt &stmt)
 {
     LocationScope loc(lowerer_, stmt.loc);
-    lowerer_.emitRet(Lowerer::Value::constInt(0));
+    // BUG-OOP-014 fix: Check if current function returns void (SUB) or i64 (main)
+    // END in main should return 0; END in SUB/FUNCTION should trap to terminate.
+    auto *func = lowerer_.context().function();
+    if (func && func->retType.kind == il::core::Type::Kind::I64)
+    {
+        // In main() or FUNCTION returning INTEGER - return 0 for normal termination
+        lowerer_.emitRet(Lowerer::Value::constInt(0));
+    }
+    else
+    {
+        // In SUB (void) or other context - trap to terminate program
+        lowerer_.emitTrap();
+    }
 }
 
 } // namespace il::frontends::basic

@@ -521,14 +521,12 @@ void Lowerer::lowerCallStmt(const CallStmt &stmt)
     if (auto *me = as<const MethodCallExpr>(*stmt.call))
     {
         // Identify class and check return type
+        // BUG-OOP-015 fix: Allow method FUNCTION calls as statements by discarding result
         std::string cls = me->base ? resolveObjectClass(*me->base) : std::string{};
         if (auto ret = findMethodReturnType(cls, me->method))
         {
-            if (auto *em = diagnosticEmitter())
-            {
-                std::string msg = "FUNCTION call used as a statement; assign or use its value";
-                em->emit(il::support::Severity::Error, "B2030", stmt.loc, 1, std::move(msg));
-            }
+            // Lower the method call as an expression but discard the result
+            lowerExpr(*me);
             return;
         }
         // SUB: just lower, which emits a void call under the hood
@@ -548,13 +546,12 @@ void Lowerer::lowerCallStmt(const CallStmt &stmt)
         const std::string &calleeKey = calleeResolved.empty() ? ce->callee : calleeResolved;
         if (const ProcedureSignature *sig = findProcSignature(calleeKey))
         {
+            // BUG-OOP-015 fix: Allow FUNCTION calls as statements by discarding result
+            // This matches common BASIC behavior where return values can be ignored
             if (sig->retType.kind != Type::Kind::Void)
             {
-                if (auto *em = diagnosticEmitter())
-                {
-                    std::string msg = "FUNCTION call used as a statement; assign or use its value";
-                    em->emit(il::support::Severity::Error, "B2030", stmt.loc, 1, std::move(msg));
-                }
+                // Lower the call as an expression but discard the result
+                lowerExpr(*ce);
                 return;
             }
         }

@@ -76,9 +76,8 @@ int main()
                                 "40 VALUE()\n"
                                 "50 END\n";
         auto result = analyzeSnippet(src);
-        assert(result.errors == 1);
-        assert(result.output.find("error[B2015]") != std::string::npos);
-        assert(result.output.find("cannot be called as a statement") != std::string::npos);
+        // Functions called as statements are allowed (result discarded)
+        assert(result.errors == 0);
     }
 
     return 0;

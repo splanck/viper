@@ -37,37 +37,41 @@ bool iequals(std::string_view a, std::string_view b)
 
 } // namespace
 
-/// @brief Look up a mutable class record by name.
+/// @brief Look up a mutable class record by name (case-insensitive).
 /// @details Searches the internal @c std::unordered_map for the requested class
-///          name and returns a pointer to the stored @ref ClassInfo instance
-///          when found.  Returning @c nullptr keeps callers explicit about the
-///          missing-class case without performing map insertions.
+///          name using case-insensitive comparison (BASIC is case-insensitive).
+///          Returns a pointer to the stored @ref ClassInfo instance when found.
+///          Returning @c nullptr keeps callers explicit about the missing-class
+///          case without performing map insertions.
 /// @param name Class identifier to locate.
 /// @return Pointer to the associated @ref ClassInfo or @c nullptr when absent.
 ClassInfo *OopIndex::findClass(const std::string &name)
 {
-    auto it = classes_.find(name);
-    if (it == classes_.end())
+    // Case-insensitive lookup - BASIC identifiers are case-insensitive
+    for (auto &kv : classes_)
     {
-        return nullptr;
+        if (iequals(kv.first, name))
+            return &kv.second;
     }
-    return &it->second;
+    return nullptr;
 }
 
-/// @brief Look up an immutable class record by name.
+/// @brief Look up an immutable class record by name (case-insensitive).
 /// @details Const-qualified overload used by read-only consumers.  The method
-///          performs the same map probe as the mutable variant but preserves
-///          const-correctness so callers cannot mutate the stored metadata.
+///          performs case-insensitive lookup (BASIC is case-insensitive) but
+///          preserves const-correctness so callers cannot mutate the stored
+///          metadata.
 /// @param name Class identifier to locate.
 /// @return Pointer to the stored @ref ClassInfo or @c nullptr when absent.
 const ClassInfo *OopIndex::findClass(const std::string &name) const
 {
-    auto it = classes_.find(name);
-    if (it == classes_.end())
+    // Case-insensitive lookup - BASIC identifiers are case-insensitive
+    for (const auto &kv : classes_)
     {
-        return nullptr;
+        if (iequals(kv.first, name))
+            return &kv.second;
     }
-    return &it->second;
+    return nullptr;
 }
 
 // =============================================================================
