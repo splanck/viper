@@ -1,11 +1,24 @@
 il 0.1.2
-extern @rt_print_str(str) -> void
-extern @rt_print_i64(i64) -> void
-extern @rt_print_f64(f64) -> void
-extern @rt_len(str) -> i64
-extern @rt_substr(str, i64, i64) -> str
-extern @rt_str_i32_alloc(i32) -> str
-extern @rt_str_d_alloc(f64) -> str
+extern @Viper.Console.PrintStr(str) -> void
+extern @Viper.Console.PrintI64(i64) -> void
+extern @Viper.Console.PrintF64(f64) -> void
+extern @Viper.Strings.Len(str) -> i64
+extern @Viper.Strings.Mid(str, i64, i64) -> str
+extern @Viper.String.Left(str, i64) -> str
+extern @Viper.String.Right(str, i64) -> str
+extern @Viper.String.Mid(str, i64) -> str
+extern @Viper.String.MidLen(str, i64, i64) -> str
+extern @Viper.String.Trim(str) -> str
+extern @Viper.String.TrimStart(str) -> str
+extern @Viper.String.TrimEnd(str) -> str
+extern @Viper.String.ToUpper(str) -> str
+extern @Viper.String.ToLower(str) -> str
+extern @Viper.String.IndexOf(str, str) -> i64
+extern @Viper.String.IndexOfFrom(i64, str, str) -> i64
+extern @Viper.String.Chr(i64) -> str
+extern @Viper.String.Asc(str) -> i64
+extern @Viper.Strings.FromI32(i32) -> str
+extern @Viper.Strings.FromDoublePrecise(f64) -> str
 extern @rt_int_floor(f64) -> f64
 extern @rt_val(str) -> f64
 extern @rt_val_to_double(ptr, ptr) -> f64
@@ -47,23 +60,23 @@ L30:
   .loc 1 3 15
   %t7:i32 = cast.si_narrow.chk %t6
   .loc 1 3 10
-  %t8 = call @rt_str_i32_alloc(%t7)
+  %t8 = call @Viper.Strings.FromI32(%t7)
   .loc 1 3 10
-  call @rt_print_str(%t8)
+  call @Viper.Console.PrintStr(%t8)
   .loc 1 3 10
   %t9 = const_str @.L0
   .loc 1 3 10
-  call @rt_print_str(%t9)
+  call @Viper.Console.PrintStr(%t9)
   .loc 1 3 24
   %t10 = load f64, %t4
   .loc 1 3 19
-  %t11 = call @rt_str_d_alloc(%t10)
+  %t11 = call @Viper.Strings.FromDoublePrecise(%t10)
   .loc 1 3 19
-  call @rt_print_str(%t11)
+  call @Viper.Console.PrintStr(%t11)
   .loc 1 3 19
   %t12 = const_str @.L1
   .loc 1 3 19
-  call @rt_print_str(%t12)
+  call @Viper.Console.PrintStr(%t12)
   .loc 1 3 4
   br L40
 L40:
@@ -108,21 +121,21 @@ L80:
   .loc 1 8 10
   %t25 = call @rt_int_floor(%t24)
   .loc 1 8 10
-  call @rt_print_f64(%t25)
+  call @Viper.Console.PrintF64(%t25)
   .loc 1 8 10
   %t26 = const_str @.L0
   .loc 1 8 10
-  call @rt_print_str(%t26)
+  call @Viper.Console.PrintStr(%t26)
   .loc 1 8 23
   %t27 = load f64, %t0
   .loc 1 8 19
   %t28 = call @rt_int_floor(%t27)
   .loc 1 8 19
-  call @rt_print_f64(%t28)
+  call @Viper.Console.PrintF64(%t28)
   .loc 1 8 19
   %t29 = const_str @.L1
   .loc 1 8 19
-  call @rt_print_str(%t29)
+  call @Viper.Console.PrintStr(%t29)
   .loc 1 8 4
   br L90
 L90:
@@ -132,11 +145,11 @@ exit:
   ret 0
 val_ok:
   .loc 1 5 14
-  call @rt_print_f64(%t18)
+  call @Viper.Console.PrintF64(%t18)
   .loc 1 5 14
   %t23 = const_str @.L1
   .loc 1 5 14
-  call @rt_print_str(%t23)
+  call @Viper.Console.PrintStr(%t23)
   .loc 1 5 4
   br L60
 val_fail:

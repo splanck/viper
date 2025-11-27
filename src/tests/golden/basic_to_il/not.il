@@ -1,9 +1,22 @@
 il 0.1.2
-extern @rt_print_str(str) -> void
-extern @rt_print_i64(i64) -> void
-extern @rt_print_f64(f64) -> void
-extern @rt_len(str) -> i64
-extern @rt_substr(str, i64, i64) -> str
+extern @Viper.Console.PrintStr(str) -> void
+extern @Viper.Console.PrintI64(i64) -> void
+extern @Viper.Console.PrintF64(f64) -> void
+extern @Viper.Strings.Len(str) -> i64
+extern @Viper.Strings.Mid(str, i64, i64) -> str
+extern @Viper.String.Left(str, i64) -> str
+extern @Viper.String.Right(str, i64) -> str
+extern @Viper.String.Mid(str, i64) -> str
+extern @Viper.String.MidLen(str, i64, i64) -> str
+extern @Viper.String.Trim(str) -> str
+extern @Viper.String.TrimStart(str) -> str
+extern @Viper.String.TrimEnd(str) -> str
+extern @Viper.String.ToUpper(str) -> str
+extern @Viper.String.ToLower(str) -> str
+extern @Viper.String.IndexOf(str, str) -> i64
+extern @Viper.String.IndexOfFrom(i64, str, str) -> i64
+extern @Viper.String.Chr(i64) -> str
+extern @Viper.String.Asc(str) -> i64
 extern @rt_str_empty() -> str
 global const str @.L0 = "\n"
 func @__mod_init$oop() -> void {
@@ -58,11 +71,11 @@ if_test_0:
   cbr %t6, if_then_0, if_else
 if_then_0:
   .loc 1 2 24
-  call @rt_print_i64(1)
+  call @Viper.Console.PrintI64(1)
   .loc 1 2 24
   %t7 = const_str @.L0
   .loc 1 2 24
-  call @rt_print_str(%t7)
+  call @Viper.Console.PrintStr(%t7)
   .loc 1 2 4
   br if_exit
 if_else:
@@ -86,11 +99,11 @@ if_test_01:
   cbr %t17, if_then_01, if_else1
 if_then_01:
   .loc 1 4 24
-  call @rt_print_i64(0)
+  call @Viper.Console.PrintI64(0)
   .loc 1 4 24
   %t18 = const_str @.L0
   .loc 1 4 24
-  call @rt_print_str(%t18)
+  call @Viper.Console.PrintStr(%t18)
   .loc 1 4 4
   br if_exit1
 if_else1:

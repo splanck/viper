@@ -79,9 +79,8 @@ if (NOT WIN32)
     target_compile_definitions(viper_runtime PRIVATE _POSIX_C_SOURCE=200809L)
 endif ()
 
-target_compile_definitions(viper_runtime
-        PRIVATE $<$<CONFIG:Debug>:VIPER_RC_DEBUG=1>
-)
+# VIPER_RC_DEBUG can be manually enabled for refcount debugging:
+# cmake -DCMAKE_CXX_FLAGS="-DVIPER_RC_DEBUG=1" ...
 
 install(FILES ${RT_PUBLIC_HEADERS}
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/viper_runtime

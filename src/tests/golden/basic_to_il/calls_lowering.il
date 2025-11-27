@@ -1,9 +1,22 @@
 il 0.1.2
-extern @rt_print_str(str) -> void
-extern @rt_print_i64(i64) -> void
-extern @rt_print_f64(f64) -> void
-extern @rt_len(str) -> i64
-extern @rt_substr(str, i64, i64) -> str
+extern @Viper.Console.PrintStr(str) -> void
+extern @Viper.Console.PrintI64(i64) -> void
+extern @Viper.Console.PrintF64(f64) -> void
+extern @Viper.Strings.Len(str) -> i64
+extern @Viper.Strings.Mid(str, i64, i64) -> str
+extern @Viper.String.Left(str, i64) -> str
+extern @Viper.String.Right(str, i64) -> str
+extern @Viper.String.Mid(str, i64) -> str
+extern @Viper.String.MidLen(str, i64, i64) -> str
+extern @Viper.String.Trim(str) -> str
+extern @Viper.String.TrimStart(str) -> str
+extern @Viper.String.TrimEnd(str) -> str
+extern @Viper.String.ToUpper(str) -> str
+extern @Viper.String.ToLower(str) -> str
+extern @Viper.String.IndexOf(str, str) -> i64
+extern @Viper.String.IndexOfFrom(i64, str, str) -> i64
+extern @Viper.String.Chr(i64) -> str
+extern @Viper.String.Asc(str) -> i64
 extern @rt_str_empty() -> str
 extern @rt_trap(str) -> void
 global const str @.L0 = ""
@@ -140,11 +153,11 @@ L10:
   .loc 1 15 10
   %t1 = call @F#(%t0)
   .loc 1 15 10
-  call @rt_print_f64(%t1)
+  call @Viper.Console.PrintF64(%t1)
   .loc 1 15 10
   %t2 = const_str @.L1
   .loc 1 15 10
-  call @rt_print_str(%t2)
+  call @Viper.Console.PrintStr(%t2)
   .loc 1 15 4
   br L20
 L20:
@@ -153,22 +166,22 @@ L20:
   .loc 1 16 10
   %t4 = call @ID$(%t3)
   .loc 1 16 10
-  call @rt_print_str(%t4)
+  call @Viper.Console.PrintStr(%t4)
   .loc 1 16 10
   %t5 = const_str @.L1
   .loc 1 16 10
-  call @rt_print_str(%t5)
+  call @Viper.Console.PrintStr(%t5)
   .loc 1 16 4
   br L30
 L30:
   .loc 1 17 10
   %t6 = call @FIRST#(2)
   .loc 1 17 10
-  call @rt_print_f64(%t6)
+  call @Viper.Console.PrintF64(%t6)
   .loc 1 17 10
   %t7 = const_str @.L1
   .loc 1 17 10
-  call @rt_print_str(%t7)
+  call @Viper.Console.PrintStr(%t7)
   .loc 1 17 4
   br L40
 L40:

@@ -1,9 +1,22 @@
 il 0.1.2
-extern @rt_print_str(str) -> void
-extern @rt_print_i64(i64) -> void
-extern @rt_print_f64(f64) -> void
-extern @rt_len(str) -> i64
-extern @rt_substr(str, i64, i64) -> str
+extern @Viper.Console.PrintStr(str) -> void
+extern @Viper.Console.PrintI64(i64) -> void
+extern @Viper.Console.PrintF64(f64) -> void
+extern @Viper.Strings.Len(str) -> i64
+extern @Viper.Strings.Mid(str, i64, i64) -> str
+extern @Viper.String.Left(str, i64) -> str
+extern @Viper.String.Right(str, i64) -> str
+extern @Viper.String.Mid(str, i64) -> str
+extern @Viper.String.MidLen(str, i64, i64) -> str
+extern @Viper.String.Trim(str) -> str
+extern @Viper.String.TrimStart(str) -> str
+extern @Viper.String.TrimEnd(str) -> str
+extern @Viper.String.ToUpper(str) -> str
+extern @Viper.String.ToLower(str) -> str
+extern @Viper.String.IndexOf(str, str) -> i64
+extern @Viper.String.IndexOfFrom(i64, str, str) -> i64
+extern @Viper.String.Chr(i64) -> str
+extern @Viper.String.Asc(str) -> i64
 extern @rt_str_empty() -> str
 global const str @.L0 = "HELLO"
 global const str @.L1 = "\n"
@@ -36,33 +49,33 @@ L30:
   .loc 1 3 10
   %t4 = const_str @.L0
   .loc 1 3 10
-  call @rt_print_str(%t4)
+  call @Viper.Console.PrintStr(%t4)
   .loc 1 3 10
   %t5 = const_str @.L1
   .loc 1 3 10
-  call @rt_print_str(%t5)
+  call @Viper.Console.PrintStr(%t5)
   .loc 1 3 4
   br L40
 L40:
   .loc 1 4 10
   %t6 = const_str @.L2
   .loc 1 4 10
-  call @rt_print_str(%t6)
+  call @Viper.Console.PrintStr(%t6)
   .loc 1 4 10
   %t7 = const_str @.L1
   .loc 1 4 10
-  call @rt_print_str(%t7)
+  call @Viper.Console.PrintStr(%t7)
   .loc 1 4 4
   br L50
 L50:
   .loc 1 5 10
   %t8 = load i64, %t0
   .loc 1 5 10
-  call @rt_print_i64(%t8)
+  call @Viper.Console.PrintI64(%t8)
   .loc 1 5 10
   %t9 = const_str @.L1
   .loc 1 5 10
-  call @rt_print_str(%t9)
+  call @Viper.Console.PrintStr(%t9)
   .loc 1 5 4
   br L60
 L60:
@@ -90,20 +103,20 @@ if_then_0:
   .loc 1 6 24
   %t15 = load i64, %t0
   .loc 1 6 24
-  call @rt_print_i64(%t15)
+  call @Viper.Console.PrintI64(%t15)
   .loc 1 6 24
   %t16 = const_str @.L1
   .loc 1 6 24
-  call @rt_print_str(%t16)
+  call @Viper.Console.PrintStr(%t16)
   .loc 1 6 4
   br if_exit
 if_else:
   .loc 1 6 37
-  call @rt_print_i64(4)
+  call @Viper.Console.PrintI64(4)
   .loc 1 6 37
   %t17 = const_str @.L1
   .loc 1 6 37
-  call @rt_print_str(%t17)
+  call @Viper.Console.PrintStr(%t17)
   .loc 1 6 4
   br if_exit
 if_exit:

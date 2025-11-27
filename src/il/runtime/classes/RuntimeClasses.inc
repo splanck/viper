@@ -22,7 +22,20 @@ RUNTIME_CLASS("Viper.String",
               RUNTIME_PROPS(RUNTIME_PROP("Length", "i64", "Viper.String.get_Length", nullptr),
                             RUNTIME_PROP("IsEmpty", "i1", "Viper.String.get_IsEmpty", nullptr)),
               RUNTIME_METHODS(RUNTIME_METHOD("Substring", "str(i64,i64)", "Viper.String.Substring"),
-                              RUNTIME_METHOD("Concat", "str(str)", "Viper.String.Concat")))
+                              RUNTIME_METHOD("Concat", "str(str)", "Viper.String.Concat"),
+                              RUNTIME_METHOD("Left", "str(i64)", "Viper.String.Left"),
+                              RUNTIME_METHOD("Right", "str(i64)", "Viper.String.Right"),
+                              RUNTIME_METHOD("Mid", "str(i64)", "Viper.String.Mid"),
+                              RUNTIME_METHOD("MidLen", "str(i64,i64)", "Viper.String.MidLen"),
+                              RUNTIME_METHOD("Trim", "str()", "Viper.String.Trim"),
+                              RUNTIME_METHOD("TrimStart", "str()", "Viper.String.TrimStart"),
+                              RUNTIME_METHOD("TrimEnd", "str()", "Viper.String.TrimEnd"),
+                              RUNTIME_METHOD("ToUpper", "str()", "Viper.String.ToUpper"),
+                              RUNTIME_METHOD("ToLower", "str()", "Viper.String.ToLower"),
+                              RUNTIME_METHOD("IndexOf", "i64(str)", "Viper.String.IndexOf"),
+                              RUNTIME_METHOD("IndexOfFrom", "i64(i64,str)", "Viper.String.IndexOfFrom"),
+                              RUNTIME_METHOD("Chr", "str(i64)", "Viper.String.Chr"),
+                              RUNTIME_METHOD("Asc", "i64()", "Viper.String.Asc")))
 
 // Viper.Text.StringBuilder — catalog + runtime shims
 // Notes:
@@ -101,15 +114,23 @@ RUNTIME_CLASS(
     RUNTIME_PROPS(),
     RUNTIME_METHODS(
         RUNTIME_METHOD("Abs", "f64(f64)", "Viper.Math.Abs"),
+        RUNTIME_METHOD("AbsInt", "i64(i64)", "Viper.Math.AbsInt"),
         RUNTIME_METHOD("Sqrt", "f64(f64)", "Viper.Math.Sqrt"),
         RUNTIME_METHOD("Sin", "f64(f64)", "Viper.Math.Sin"),
         RUNTIME_METHOD("Cos", "f64(f64)", "Viper.Math.Cos"),
         RUNTIME_METHOD("Tan", "f64(f64)", "Viper.Math.Tan"),
+        RUNTIME_METHOD("Atan", "f64(f64)", "Viper.Math.Atan"),
         RUNTIME_METHOD("Floor", "f64(f64)", "Viper.Math.Floor"),
         RUNTIME_METHOD("Ceil", "f64(f64)", "Viper.Math.Ceil"),
         RUNTIME_METHOD("Pow", "f64(f64,f64)", "Viper.Math.Pow"),
         RUNTIME_METHOD("Log", "f64(f64)", "Viper.Math.Log"),
-        RUNTIME_METHOD("Exp", "f64(f64)", "Viper.Math.Exp")))
+        RUNTIME_METHOD("Exp", "f64(f64)", "Viper.Math.Exp"),
+        RUNTIME_METHOD("Sgn", "f64(f64)", "Viper.Math.Sgn"),
+        RUNTIME_METHOD("SgnInt", "i64(i64)", "Viper.Math.SgnInt"),
+        RUNTIME_METHOD("Min", "f64(f64,f64)", "Viper.Math.Min"),
+        RUNTIME_METHOD("Max", "f64(f64,f64)", "Viper.Math.Max"),
+        RUNTIME_METHOD("MinInt", "i64(i64,i64)", "Viper.Math.MinInt"),
+        RUNTIME_METHOD("MaxInt", "i64(i64,i64)", "Viper.Math.MaxInt")))
 
 // Canonical console I/O utility class
 RUNTIME_CLASS(
@@ -134,3 +155,26 @@ RUNTIME_CLASS(
         RUNTIME_METHOD("ToDouble", "f64(str)", "Viper.Convert.ToDouble"),
         RUNTIME_METHOD("ToString_Int", "str(i64)", "Viper.Strings.FromInt"),
         RUNTIME_METHOD("ToString_Double", "str(f64)", "Viper.Strings.FromDouble")))
+
+// Random number generation
+RUNTIME_CLASS(
+    "Viper.Random",
+    RTCLS_Random,
+    "obj",
+    "", /* static utility class; no instance ctor */
+    RUNTIME_PROPS(),
+    RUNTIME_METHODS(
+        RUNTIME_METHOD("Seed", "void(i64)", "Viper.Random.Seed"),
+        RUNTIME_METHOD("Next", "f64()", "Viper.Random.Next")))
+
+// Environment and command-line arguments
+RUNTIME_CLASS(
+    "Viper.Environment",
+    RTCLS_Environment,
+    "obj",
+    "", /* static utility class; no instance ctor */
+    RUNTIME_PROPS(),
+    RUNTIME_METHODS(
+        RUNTIME_METHOD("GetArgumentCount", "i64()", "Viper.Environment.GetArgumentCount"),
+        RUNTIME_METHOD("GetArgument", "str(i64)", "Viper.Environment.GetArgument"),
+        RUNTIME_METHOD("GetCommandLine", "str()", "Viper.Environment.GetCommandLine")))

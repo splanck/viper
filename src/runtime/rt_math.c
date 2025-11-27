@@ -185,6 +185,46 @@ extern "C"
         return fabs(v);
     }
 
+    /// @brief Return the smaller of two double-precision floating-point values.
+    /// @details Implements BASIC MIN for floating-point arguments.
+    /// @param a First input value.
+    /// @param b Second input value.
+    /// @return The smaller of @p a and @p b.
+    double rt_min_f64(double a, double b)
+    {
+        return a < b ? a : b;
+    }
+
+    /// @brief Return the larger of two double-precision floating-point values.
+    /// @details Implements BASIC MAX for floating-point arguments.
+    /// @param a First input value.
+    /// @param b Second input value.
+    /// @return The larger of @p a and @p b.
+    double rt_max_f64(double a, double b)
+    {
+        return a > b ? a : b;
+    }
+
+    /// @brief Return the smaller of two 64-bit signed integers.
+    /// @details Implements BASIC MIN for integer arguments.
+    /// @param a First input value.
+    /// @param b Second input value.
+    /// @return The smaller of @p a and @p b.
+    long long rt_min_i64(long long a, long long b)
+    {
+        return a < b ? a : b;
+    }
+
+    /// @brief Return the larger of two 64-bit signed integers.
+    /// @details Implements BASIC MAX for integer arguments.
+    /// @param a First input value.
+    /// @param b Second input value.
+    /// @return The larger of @p a and @p b.
+    long long rt_max_i64(long long a, long long b)
+    {
+        return a > b ? a : b;
+    }
+
 #ifdef __cplusplus
 }
 #endif

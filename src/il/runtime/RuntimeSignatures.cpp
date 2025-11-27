@@ -31,6 +31,7 @@
 #include "il/runtime/RuntimeSignaturesData.hpp"
 
 #include "rt.hpp"
+#include "rt_args.h"
 #include "rt_array_obj.h"
 #include "rt_fp.h"
 #include "rt_internal.h"

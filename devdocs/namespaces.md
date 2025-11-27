@@ -758,7 +758,22 @@ Canonical runtime classes are exposed under the `Viper.*` root and are used dire
     - `ReferenceEquals(OBJECT a, OBJECT b) -> BOOL` — static; reference equality
 - `Viper.String` — Managed string type (BASIC `STRING` is an alias)
   - Properties: `Length -> I64`, `IsEmpty -> BOOL`
-  - Methods: `Substring(I64 start, I64 length) -> STRING`, `Concat(STRING other) -> STRING`
+  - Methods:
+    - `Substring(I64 start, I64 length) -> STRING` — Extract substring
+    - `Concat(STRING other) -> STRING` — Concatenate strings
+    - `Left(I64 count) -> STRING` — First N characters
+    - `Right(I64 count) -> STRING` — Last N characters
+    - `Mid(I64 start) -> STRING` — Substring from position to end
+    - `MidLen(I64 start, I64 length) -> STRING` — Substring with length
+    - `Trim() -> STRING` — Remove leading/trailing whitespace
+    - `TrimStart() -> STRING` — Remove leading whitespace
+    - `TrimEnd() -> STRING` — Remove trailing whitespace
+    - `ToUpper() -> STRING` — Convert to uppercase
+    - `ToLower() -> STRING` — Convert to lowercase
+    - `IndexOf(STRING needle) -> I64` — Find first occurrence (1-based, 0 if not found)
+    - `IndexOfFrom(I64 start, STRING needle) -> I64` — Find from position
+    - `Chr(I64 code) -> STRING` — Character from ASCII code (static)
+    - `Asc() -> I64` — ASCII code of first character
 
 #### Viper.Text
 - `Viper.Text.StringBuilder` — Mutable string builder
@@ -777,11 +792,61 @@ Canonical runtime classes are exposed under the `Viper.*` root and are used dire
 
 #### Viper.Math
 - `Viper.Math` — Mathematical functions (static utility)
-  - Methods (static): `Abs(F64)->F64`, `Sqrt(F64)->F64`, `Sin(F64)->F64`, `Cos(F64)->F64`, `Tan(F64)->F64`, `Floor(F64)->F64`, `Ceil(F64)->F64`, `Pow(F64,F64)->F64`, `Log(F64)->F64`, `Exp(F64)->F64`
+  - Methods (static):
+    - `Abs(F64) -> F64` — Absolute value (float)
+    - `AbsInt(I64) -> I64` — Absolute value (integer)
+    - `Sqrt(F64) -> F64` — Square root
+    - `Sin(F64) -> F64` — Sine (radians)
+    - `Cos(F64) -> F64` — Cosine (radians)
+    - `Tan(F64) -> F64` — Tangent (radians)
+    - `Atan(F64) -> F64` — Arctangent (radians)
+    - `Floor(F64) -> F64` — Round down
+    - `Ceil(F64) -> F64` — Round up
+    - `Pow(F64, F64) -> F64` — Power function
+    - `Log(F64) -> F64` — Natural logarithm
+    - `Exp(F64) -> F64` — Exponential (e^x)
+    - `Sgn(F64) -> F64` — Sign (-1, 0, +1) for float
+    - `SgnInt(I64) -> I64` — Sign (-1, 0, +1) for integer
+    - `Min(F64, F64) -> F64` — Minimum of two floats
+    - `Max(F64, F64) -> F64` — Maximum of two floats
+    - `MinInt(I64, I64) -> I64` — Minimum of two integers
+    - `MaxInt(I64, I64) -> I64` — Maximum of two integers
 
 #### Viper.Console
 - `Viper.Console` — Console I/O (static utility)
   - Methods (static): `WriteLine(STRING)->VOID`, `ReadLine()->STRING`
+
+#### Viper.Random
+- `Viper.Random` — Random number generation (static utility)
+  - Methods (static):
+    - `Seed(I64) -> VOID` — Seed the random number generator
+    - `Next() -> F64` — Return next random number in [0, 1)
+
+#### Viper.Environment
+- `Viper.Environment` — Command-line and environment (static utility)
+  - Methods (static):
+    - `GetArgumentCount() -> I64` — Number of command-line arguments
+    - `GetArgument(I64 index) -> STRING` — Get argument by index (0-based)
+    - `GetCommandLine() -> STRING` — Full command line as single string
+
+#### Viper.Time
+- `Viper.Time` — Time and timing utilities (static utility)
+  - Methods (static):
+    - `GetTickCount() -> I64` — Milliseconds since program start
+    - `Sleep(I32 ms) -> VOID` — Pause execution for milliseconds
+
+#### Viper.Terminal
+- `Viper.Terminal` — Terminal/console control (static utility)
+  - Methods (static):
+    - `Clear() -> VOID` — Clear the screen
+    - `SetColor(I32 fg, I32 bg) -> VOID` — Set foreground/background colors
+    - `SetPosition(I32 row, I32 col) -> VOID` — Move cursor position
+    - `SetCursorVisible(I32 visible) -> VOID` — Show/hide cursor (0=hide, 1=show)
+    - `SetAltScreen(I32 enable) -> VOID` — Switch to/from alternate screen buffer
+    - `Bell() -> VOID` — Sound terminal bell
+    - `GetKey() -> STRING` — Wait for and return keypress
+    - `GetKeyTimeout(I32 ms) -> STRING` — Wait with timeout (empty if timeout)
+    - `InKey() -> STRING` — Non-blocking key check (empty if no key)
 
 **Note:** Legacy `Viper.System.*` aliases have been removed. Use the canonical `Viper.*` names.
 
@@ -818,10 +883,15 @@ Working with strings via Viper.String:
 
 ```basic
 DIM s AS Viper.String
-s = "hello"
-PRINT s.Length       ' 5
-PRINT s.IsEmpty      ' 0
-PRINT s.Substring(1, 2)
+s = "  Hello World  "
+PRINT s.Length            ' 15
+PRINT s.IsEmpty           ' 0
+PRINT s.Trim()            ' "Hello World"
+PRINT s.ToUpper()         ' "  HELLO WORLD  "
+PRINT s.Left(7)           ' "  Hello"
+PRINT s.Right(7)          ' "World  "
+PRINT s.IndexOf("World")  ' 9
+PRINT s.Substring(3, 5)   ' "Hello"
 ```
 
 StringBuilder for efficient text composition:
@@ -855,6 +925,66 @@ PRINT list.get_Item(0).ToString()
 list.set_Item(0, list)
 list.RemoveAt(0)
 list.Clear()
+```
+
+Mathematical functions with Viper.Math:
+
+```basic
+USING Viper
+PRINT Math.Sqrt(16)          ' 4
+PRINT Math.Abs(-3.14)        ' 3.14
+PRINT Math.Sin(0)            ' 0
+PRINT Math.Pow(2, 10)        ' 1024
+PRINT Math.Min(5.0, 3.0)     ' 3
+PRINT Math.MaxInt(10, 20)    ' 20
+```
+
+Random numbers with Viper.Random:
+
+```basic
+USING Viper
+Random.Seed(12345)           ' Seed for reproducibility
+DIM r AS DOUBLE
+r = Random.Next()            ' Returns value in [0, 1)
+PRINT r
+```
+
+Command-line arguments with Viper.Environment:
+
+```basic
+USING Viper
+DIM argc AS INTEGER
+argc = Environment.GetArgumentCount()
+PRINT "Arguments: "; argc
+FOR i = 0 TO argc - 1
+  PRINT "  "; i; ": "; Environment.GetArgument(i)
+NEXT i
+```
+
+Timing with Viper.Time:
+
+```basic
+USING Viper
+DIM start AS LONG
+start = Time.GetTickCount()
+' ... do work ...
+Time.Sleep(100)              ' Pause 100ms
+PRINT "Elapsed: "; Time.GetTickCount() - start; "ms"
+```
+
+Terminal control with Viper.Terminal:
+
+```basic
+USING Viper
+Terminal.Clear()                    ' Clear screen
+Terminal.SetColor(14, 1)            ' Yellow on blue
+Terminal.SetPosition(10, 20)        ' Move cursor
+PRINT "Hello!"
+Terminal.SetCursorVisible(0)        ' Hide cursor
+DIM key AS STRING
+key = Terminal.GetKeyTimeout(5000)  ' Wait 5 seconds for key
+IF key <> "" THEN PRINT "You pressed: "; key
+Terminal.SetCursorVisible(1)        ' Show cursor
 ```
 
 ---

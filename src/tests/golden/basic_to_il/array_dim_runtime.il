@@ -1,9 +1,22 @@
 il 0.1.2
-extern @rt_print_str(str) -> void
-extern @rt_print_i64(i64) -> void
-extern @rt_print_f64(f64) -> void
-extern @rt_len(str) -> i64
-extern @rt_substr(str, i64, i64) -> str
+extern @Viper.Console.PrintStr(str) -> void
+extern @Viper.Console.PrintI64(i64) -> void
+extern @Viper.Console.PrintF64(f64) -> void
+extern @Viper.Strings.Len(str) -> i64
+extern @Viper.Strings.Mid(str, i64, i64) -> str
+extern @Viper.String.Left(str, i64) -> str
+extern @Viper.String.Right(str, i64) -> str
+extern @Viper.String.Mid(str, i64) -> str
+extern @Viper.String.MidLen(str, i64, i64) -> str
+extern @Viper.String.Trim(str) -> str
+extern @Viper.String.TrimStart(str) -> str
+extern @Viper.String.TrimEnd(str) -> str
+extern @Viper.String.ToUpper(str) -> str
+extern @Viper.String.ToLower(str) -> str
+extern @Viper.String.IndexOf(str, str) -> i64
+extern @Viper.String.IndexOfFrom(i64, str, str) -> i64
+extern @Viper.String.Chr(i64) -> str
+extern @Viper.String.Asc(str) -> i64
 extern @rt_str_empty() -> str
 extern @rt_arr_i32_new(i64) -> ptr
 extern @rt_arr_i32_resize(ptr, i64) -> ptr
@@ -101,22 +114,22 @@ L60:
   .loc 1 6 10
   %t36 = load i64, %t1
   .loc 1 6 10
-  call @rt_print_i64(%t36)
+  call @Viper.Console.PrintI64(%t36)
   .loc 1 6 10
   %t37 = const_str @.L0
   .loc 1 6 10
-  call @rt_print_str(%t37)
+  call @Viper.Console.PrintStr(%t37)
   .loc 1 6 4
   br L70
 L70:
   .loc 1 7 10
   %t38 = load i64, %t0
   .loc 1 7 10
-  call @rt_print_i64(%t38)
+  call @Viper.Console.PrintI64(%t38)
   .loc 1 7 10
   %t39 = const_str @.L0
   .loc 1 7 10
-  call @rt_print_str(%t39)
+  call @Viper.Console.PrintStr(%t39)
   .loc 1 7 4
   br L80
 L80:

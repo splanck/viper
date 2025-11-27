@@ -173,6 +173,26 @@ extern "C"
     /// @return |x|.
     double rt_abs_f64(double x);
 
+    /// What: Minimum of two doubles.
+    /// Why:  Implement BASIC MIN for floating-point numbers.
+    /// @return The smaller of @p a and @p b.
+    double rt_min_f64(double a, double b);
+
+    /// What: Maximum of two doubles.
+    /// Why:  Implement BASIC MAX for floating-point numbers.
+    /// @return The larger of @p a and @p b.
+    double rt_max_f64(double a, double b);
+
+    /// What: Minimum of two integers.
+    /// Why:  Implement BASIC MIN for integers.
+    /// @return The smaller of @p a and @p b.
+    long long rt_min_i64(long long a, long long b);
+
+    /// What: Maximum of two integers.
+    /// Why:  Implement BASIC MAX for integers.
+    /// @return The larger of @p a and @p b.
+    long long rt_max_i64(long long a, long long b);
+
 #ifdef __cplusplus
 }
 #endif

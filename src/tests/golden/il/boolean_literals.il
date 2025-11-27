@@ -1,11 +1,24 @@
 il 0.1.2
-extern @rt_print_str(str) -> void
-extern @rt_print_i64(i64) -> void
-extern @rt_print_f64(f64) -> void
-extern @rt_len(str) -> i64
-extern @rt_substr(str, i64, i64) -> str
-extern @rt_input_line() -> str
-extern @rt_to_int(str) -> i64
+extern @Viper.Console.PrintStr(str) -> void
+extern @Viper.Console.PrintI64(i64) -> void
+extern @Viper.Console.PrintF64(f64) -> void
+extern @Viper.Strings.Len(str) -> i64
+extern @Viper.Strings.Mid(str, i64, i64) -> str
+extern @Viper.String.Left(str, i64) -> str
+extern @Viper.String.Right(str, i64) -> str
+extern @Viper.String.Mid(str, i64) -> str
+extern @Viper.String.MidLen(str, i64, i64) -> str
+extern @Viper.String.Trim(str) -> str
+extern @Viper.String.TrimStart(str) -> str
+extern @Viper.String.TrimEnd(str) -> str
+extern @Viper.String.ToUpper(str) -> str
+extern @Viper.String.ToLower(str) -> str
+extern @Viper.String.IndexOf(str, str) -> i64
+extern @Viper.String.IndexOfFrom(i64, str, str) -> i64
+extern @Viper.String.Chr(i64) -> str
+extern @Viper.String.Asc(str) -> i64
+extern @Viper.Console.ReadLine() -> str
+extern @Viper.Convert.ToInt(str) -> i64
 extern @rt_str_empty() -> str
 extern @rt_str_release_maybe(str) -> void
 global const str @.L0 = "\n"
@@ -23,9 +36,9 @@ entry:
   br L10
 L10:
   .loc 1 1 4
-  %t3 = call @rt_input_line()
+  %t3 = call @Viper.Console.ReadLine()
   .loc 1 1 4
-  %t4 = call @rt_to_int(%t3)
+  %t4 = call @Viper.Convert.ToInt(%t3)
   .loc 1 1 4
   store i64, %t2, %t4
   .loc 1 1 4
@@ -60,11 +73,11 @@ L40:
   .loc 1 4 12
   %t13 = or %t12, -1
   .loc 1 4 12
-  call @rt_print_i64(%t13)
+  call @Viper.Console.PrintI64(%t13)
   .loc 1 4 12
   %t14 = const_str @.L0
   .loc 1 4 12
-  call @rt_print_str(%t14)
+  call @Viper.Console.PrintStr(%t14)
   .loc 1 4 4
   br L50
 L50:
@@ -77,11 +90,11 @@ L50:
   .loc 1 5 16
   %t18 = and 0, %t17
   .loc 1 5 16
-  call @rt_print_i64(%t18)
+  call @Viper.Console.PrintI64(%t18)
   .loc 1 5 16
   %t19 = const_str @.L0
   .loc 1 5 16
-  call @rt_print_str(%t19)
+  call @Viper.Console.PrintStr(%t19)
   .loc 1 5 4
   br exit
 exit:

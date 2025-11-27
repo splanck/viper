@@ -1,0 +1,64 @@
+=== Viper.String ===
+Original: '  Hello World  '
+Length: 15
+Trim: 'Hello World'
+TrimStart: 'Hello World  '
+TrimEnd: '  Hello World'
+ToUpper: HELLO WORLD
+ToLower: hello world
+Left(5): Hello
+Right(5): World
+Mid(7): World
+Mid(7,3): Wor
+IndexOf 'World': 7
+Substring(1,5): Hello
+Empty string length is 0: PASS
+
+=== Viper.Text.StringBuilder ===
+Initial Length: 0
+After 'Hello' Length: 5
+After ' World' Length: 11
+ToString: Hello World
+After Clear Length: 0
+
+=== Viper.Collections.List ===
+Initial Count: 0
+After 3 Add: 3
+After RemoveAt(1): 2
+After Clear: 0
+
+=== Viper.Math ===
+Sqrt(16): 4
+Abs(-5): 5
+Abs(-3.14): 3.14
+Floor(3.7): 3
+Floor(-3.7): -4
+Sin(0): 0
+Cos(0): 1
+Tan(0): 0
+Atan(0): 0
+Exp(0): 1
+Exp(1): 2.71828182845905
+Log(1): 0
+Pow(2,10): 1024
+Sgn(-5): -1
+Sgn(0): 0
+Sgn(5): 1
+
+=== Viper.Random ===
+Seeded random (12345):
+  r1 in [0,1): -1
+  r2 in [0,1): -1
+  r3 in [0,1): -1
+Reproducible with same seed: PASS
+
+=== Viper.Console ===
+WriteLine test: PASS
+
+=== Viper.Convert ===
+ToInt64('42'): 42
+ToDouble('3.14159'): 3.14159
+ToString_Int(123): '123'
+ToString_Double(2.5): '2.5'
+
+=== All Tests Complete ===
