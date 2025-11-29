@@ -38,8 +38,8 @@ namespace il::frontends::basic::sem
 /// @param arrayLoc Source location of the array access.
 /// @return Type of the index expression.
 static SemanticAnalyzer::Type validateArrayIndex(ExprCheckContext &context,
-                                                  Expr &indexExpr,
-                                                  il::support::SourceLoc arrayLoc)
+                                                 Expr &indexExpr,
+                                                 il::support::SourceLoc arrayLoc)
 {
     using Type = SemanticAnalyzer::Type;
 

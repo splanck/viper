@@ -175,6 +175,7 @@ int main(void)
     printf("=== All Tests Passed ===\n");
     return 0;
 }
+
 //===----------------------------------------------------------------------===//
 //
 // Part of the Viper project, under the GNU GPL v3.

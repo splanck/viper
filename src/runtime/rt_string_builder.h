@@ -80,7 +80,8 @@ extern "C"
     /// @param sb       Builder instance.
     /// @param required Total capacity in bytes needed (>= current length).
     /// @return RT_SB_OK on success; RT_SB_ERROR_ALLOC on allocation failure; RT_SB_ERROR_OVERFLOW
-    ///         if size computations would overflow platform limits; RT_SB_ERROR_INVALID for bad args.
+    ///         if size computations would overflow platform limits; RT_SB_ERROR_INVALID for bad
+    ///         args.
     /// @pre required >= sb->len.
     /// @post On success, sb->cap >= required and sb->data remains valid; sb->len unchanged.
     /// @complexity Amortized O(1) per growth; O(n) for individual reallocation.
@@ -91,7 +92,8 @@ extern "C"
     /// How:  Reserves space, copies strlen(text) bytes, updates length.
     ///
     /// @param sb   Builder instance.
-    /// @param text C string pointer (must not alias builder's buffer unless no reallocation occurs).
+    /// @param text C string pointer (must not alias builder's buffer unless no reallocation
+    /// occurs).
     /// @return RT_SB_OK on success or an error code as per rt_sb_reserve.
     /// @post sb->len increased by strlen(text); contents appended verbatim (without extra NULs).
     /// @errors RT_SB_ERROR_INVALID if @p text is NULL.
@@ -122,7 +124,8 @@ extern "C"
     /// @param sb  Builder instance.
     /// @param fmt printf-style format string (C locale assumed).
     /// @param ... Variadic arguments per @p fmt.
-    /// @return RT_SB_OK on success; RT_SB_ERROR_FORMAT on formatting failure; other errors from reserve.
+    /// @return RT_SB_OK on success; RT_SB_ERROR_FORMAT on formatting failure; other errors from
+    /// reserve.
     rt_sb_status rt_sb_printf(rt_string_builder *sb, const char *fmt, ...);
 
     // --- Viper.Text.StringBuilder runtime bridge ---
@@ -157,10 +160,12 @@ extern "C"
 
     /// What: Materialize the builder as a runtime string.
     /// Why:  Produce an immutable snapshot of the current content.
-    /// How:  Allocates an rt_string and copies the builder's bytes (zero-length yields empty string).
+    /// How:  Allocates an rt_string and copies the builder's bytes (zero-length yields empty
+    /// string).
     ///
     /// @param sb Opaque StringBuilder object pointer.
-    /// @return New runtime string with a copy of the content; never NULL (returns empty string on error).
+    /// @return New runtime string with a copy of the content; never NULL (returns empty string on
+    /// error).
     rt_string rt_text_sb_to_string(void *sb);
 
     /// What: Clear the builder contents.

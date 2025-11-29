@@ -481,7 +481,8 @@ void VM::inline_handle_CastFpToSiRteChk(ExecState &st)
     {
         trapUnimplemented(Opcode::CastFpToSiRteChk);
     }
-    ExecResult exec = il::vm::detail::handleCastFpToSiRteChk(*this, st.fr, *instr, st.blocks, st.bb, st.ip);
+    ExecResult exec =
+        il::vm::detail::handleCastFpToSiRteChk(*this, st.fr, *instr, st.blocks, st.bb, st.ip);
     handleInlineResult(st, exec);
 }
 
@@ -492,7 +493,8 @@ void VM::inline_handle_CastFpToUiRteChk(ExecState &st)
     {
         trapUnimplemented(Opcode::CastFpToUiRteChk);
     }
-    ExecResult exec = il::vm::detail::handleCastFpToUiRteChk(*this, st.fr, *instr, st.blocks, st.bb, st.ip);
+    ExecResult exec =
+        il::vm::detail::handleCastFpToUiRteChk(*this, st.fr, *instr, st.blocks, st.bb, st.ip);
     handleInlineResult(st, exec);
 }
 
@@ -503,7 +505,8 @@ void VM::inline_handle_CastSiNarrowChk(ExecState &st)
     {
         trapUnimplemented(Opcode::CastSiNarrowChk);
     }
-    ExecResult exec = il::vm::detail::handleCastSiNarrowChk(*this, st.fr, *instr, st.blocks, st.bb, st.ip);
+    ExecResult exec =
+        il::vm::detail::handleCastSiNarrowChk(*this, st.fr, *instr, st.blocks, st.bb, st.ip);
     handleInlineResult(st, exec);
 }
 
@@ -514,7 +517,8 @@ void VM::inline_handle_CastUiNarrowChk(ExecState &st)
     {
         trapUnimplemented(Opcode::CastUiNarrowChk);
     }
-    ExecResult exec = il::vm::detail::handleCastUiNarrowChk(*this, st.fr, *instr, st.blocks, st.bb, st.ip);
+    ExecResult exec =
+        il::vm::detail::handleCastUiNarrowChk(*this, st.fr, *instr, st.blocks, st.bb, st.ip);
     handleInlineResult(st, exec);
 }
 
@@ -525,7 +529,8 @@ void VM::inline_handle_CastSiToFp(ExecState &st)
     {
         trapUnimplemented(Opcode::CastSiToFp);
     }
-    ExecResult exec = il::vm::detail::handleCastSiToFp(*this, st.fr, *instr, st.blocks, st.bb, st.ip);
+    ExecResult exec =
+        il::vm::detail::handleCastSiToFp(*this, st.fr, *instr, st.blocks, st.bb, st.ip);
     handleInlineResult(st, exec);
 }
 
@@ -536,7 +541,8 @@ void VM::inline_handle_CastUiToFp(ExecState &st)
     {
         trapUnimplemented(Opcode::CastUiToFp);
     }
-    ExecResult exec = il::vm::detail::handleCastUiToFp(*this, st.fr, *instr, st.blocks, st.bb, st.ip);
+    ExecResult exec =
+        il::vm::detail::handleCastUiToFp(*this, st.fr, *instr, st.blocks, st.bb, st.ip);
     handleInlineResult(st, exec);
 }
 
@@ -547,7 +553,8 @@ void VM::inline_handle_Zext1(ExecState &st)
     {
         trapUnimplemented(Opcode::Zext1);
     }
-    ExecResult exec = il::vm::detail::handleTruncOrZext1(*this, st.fr, *instr, st.blocks, st.bb, st.ip);
+    ExecResult exec =
+        il::vm::detail::handleTruncOrZext1(*this, st.fr, *instr, st.blocks, st.bb, st.ip);
     handleInlineResult(st, exec);
 }
 
@@ -558,7 +565,8 @@ void VM::inline_handle_Trunc1(ExecState &st)
     {
         trapUnimplemented(Opcode::Trunc1);
     }
-    ExecResult exec = il::vm::detail::handleTruncOrZext1(*this, st.fr, *instr, st.blocks, st.bb, st.ip);
+    ExecResult exec =
+        il::vm::detail::handleTruncOrZext1(*this, st.fr, *instr, st.blocks, st.bb, st.ip);
     handleInlineResult(st, exec);
 }
 
@@ -635,7 +643,8 @@ void VM::inline_handle_ConstNull(ExecState &st)
     {
         trapUnimplemented(Opcode::ConstNull);
     }
-    ExecResult exec = il::vm::detail::handleConstNull(*this, st.fr, *instr, st.blocks, st.bb, st.ip);
+    ExecResult exec =
+        il::vm::detail::handleConstNull(*this, st.fr, *instr, st.blocks, st.bb, st.ip);
     handleInlineResult(st, exec);
 }
 
@@ -657,7 +666,8 @@ void VM::inline_handle_CallIndirect(ExecState &st)
     {
         trapUnimplemented(Opcode::CallIndirect);
     }
-    ExecResult exec = il::vm::detail::handleCallIndirect(*this, st.fr, *instr, st.blocks, st.bb, st.ip);
+    ExecResult exec =
+        il::vm::detail::handleCallIndirect(*this, st.fr, *instr, st.blocks, st.bb, st.ip);
     handleInlineResult(st, exec);
 }
 
@@ -668,7 +678,8 @@ void VM::inline_handle_SwitchI32(ExecState &st)
     {
         trapUnimplemented(Opcode::SwitchI32);
     }
-    ExecResult exec = il::vm::detail::handleSwitchI32(*this, st.fr, *instr, st.blocks, st.bb, st.ip);
+    ExecResult exec =
+        il::vm::detail::handleSwitchI32(*this, st.fr, *instr, st.blocks, st.bb, st.ip);
     handleInlineResult(st, exec);
 }
 
@@ -811,7 +822,8 @@ void VM::inline_handle_ResumeSame(ExecState &st)
     {
         trapUnimplemented(Opcode::ResumeSame);
     }
-    ExecResult exec = il::vm::detail::handleResumeSame(*this, st.fr, *instr, st.blocks, st.bb, st.ip);
+    ExecResult exec =
+        il::vm::detail::handleResumeSame(*this, st.fr, *instr, st.blocks, st.bb, st.ip);
     handleInlineResult(st, exec);
 }
 
@@ -822,7 +834,8 @@ void VM::inline_handle_ResumeNext(ExecState &st)
     {
         trapUnimplemented(Opcode::ResumeNext);
     }
-    ExecResult exec = il::vm::detail::handleResumeNext(*this, st.fr, *instr, st.blocks, st.bb, st.ip);
+    ExecResult exec =
+        il::vm::detail::handleResumeNext(*this, st.fr, *instr, st.blocks, st.bb, st.ip);
     handleInlineResult(st, exec);
 }
 
@@ -833,7 +846,8 @@ void VM::inline_handle_ResumeLabel(ExecState &st)
     {
         trapUnimplemented(Opcode::ResumeLabel);
     }
-    ExecResult exec = il::vm::detail::handleResumeLabel(*this, st.fr, *instr, st.blocks, st.bb, st.ip);
+    ExecResult exec =
+        il::vm::detail::handleResumeLabel(*this, st.fr, *instr, st.blocks, st.bb, st.ip);
     handleInlineResult(st, exec);
 }
 

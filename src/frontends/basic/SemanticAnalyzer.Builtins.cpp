@@ -191,19 +191,34 @@ static constexpr std::array<BuiltinSignature, 41> kBuiltinSignatures{{
     BuiltinSignature{
         1, 0, kSingleNumericArg.data(), kSingleNumericArg.size(), SemanticType::String},
     BuiltinSignature{1, 0, kSingleStringArg.data(), kSingleStringArg.size(), SemanticType::Float},
-    BuiltinSignature{1, 0, kSingleNumericArg.data(), kSingleNumericArg.size(), SemanticType::Int},   // Cint
-    BuiltinSignature{1, 0, kSingleNumericArg.data(), kSingleNumericArg.size(), SemanticType::Int},   // Clng
-    BuiltinSignature{1, 0, kSingleNumericArg.data(), kSingleNumericArg.size(), SemanticType::Float}, // Csng
-    BuiltinSignature{1, 0, kSingleNumericArg.data(), kSingleNumericArg.size(), SemanticType::Float}, // Cdbl
-    BuiltinSignature{1, 0, kSingleNumericArg.data(), kSingleNumericArg.size(), SemanticType::Int},   // Int - BUG-OOP-016 fix
-    BuiltinSignature{1, 0, kSingleNumericArg.data(), kSingleNumericArg.size(), SemanticType::Int},   // Fix
-    BuiltinSignature{1, 1, kRoundArgs.data(), kRoundArgs.size(), SemanticType::Float},               // Round
-    BuiltinSignature{1, 0, kSingleNumericArg.data(), kSingleNumericArg.size(), SemanticType::Float}, // Sqr
-    BuiltinSignature{1, 0, kSingleNumericArg.data(), kSingleNumericArg.size(), SemanticType::Int},   // Abs
-    BuiltinSignature{1, 0, kSingleNumericArg.data(), kSingleNumericArg.size(), SemanticType::Int},   // Floor
-    BuiltinSignature{1, 0, kSingleNumericArg.data(), kSingleNumericArg.size(), SemanticType::Int},   // Ceil
-    BuiltinSignature{1, 0, kSingleNumericArg.data(), kSingleNumericArg.size(), SemanticType::Float}, // Sin
-    BuiltinSignature{1, 0, kSingleNumericArg.data(), kSingleNumericArg.size(), SemanticType::Float}, // Cos
+    BuiltinSignature{
+        1, 0, kSingleNumericArg.data(), kSingleNumericArg.size(), SemanticType::Int}, // Cint
+    BuiltinSignature{
+        1, 0, kSingleNumericArg.data(), kSingleNumericArg.size(), SemanticType::Int}, // Clng
+    BuiltinSignature{
+        1, 0, kSingleNumericArg.data(), kSingleNumericArg.size(), SemanticType::Float}, // Csng
+    BuiltinSignature{
+        1, 0, kSingleNumericArg.data(), kSingleNumericArg.size(), SemanticType::Float}, // Cdbl
+    BuiltinSignature{1,
+                     0,
+                     kSingleNumericArg.data(),
+                     kSingleNumericArg.size(),
+                     SemanticType::Int}, // Int - BUG-OOP-016 fix
+    BuiltinSignature{
+        1, 0, kSingleNumericArg.data(), kSingleNumericArg.size(), SemanticType::Int},  // Fix
+    BuiltinSignature{1, 1, kRoundArgs.data(), kRoundArgs.size(), SemanticType::Float}, // Round
+    BuiltinSignature{
+        1, 0, kSingleNumericArg.data(), kSingleNumericArg.size(), SemanticType::Float}, // Sqr
+    BuiltinSignature{
+        1, 0, kSingleNumericArg.data(), kSingleNumericArg.size(), SemanticType::Int}, // Abs
+    BuiltinSignature{
+        1, 0, kSingleNumericArg.data(), kSingleNumericArg.size(), SemanticType::Int}, // Floor
+    BuiltinSignature{
+        1, 0, kSingleNumericArg.data(), kSingleNumericArg.size(), SemanticType::Int}, // Ceil
+    BuiltinSignature{
+        1, 0, kSingleNumericArg.data(), kSingleNumericArg.size(), SemanticType::Float}, // Sin
+    BuiltinSignature{
+        1, 0, kSingleNumericArg.data(), kSingleNumericArg.size(), SemanticType::Float}, // Cos
     // Tan, Atn, Exp, Log - all take 1 numeric arg and return Float
     BuiltinSignature{1, 0, kSingleNumericArg.data(), kSingleNumericArg.size(), SemanticType::Float},
     BuiltinSignature{1, 0, kSingleNumericArg.data(), kSingleNumericArg.size(), SemanticType::Float},

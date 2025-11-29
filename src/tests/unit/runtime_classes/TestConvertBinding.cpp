@@ -21,8 +21,7 @@ TEST(RuntimeClassConvertBinding, CatalogContainsConvert)
     const auto &cat = il::runtime::runtimeClassCatalog();
     auto it = std::find_if(cat.begin(),
                            cat.end(),
-                           [](const auto &c)
-                           { return std::string(c.qname) == "Viper.Convert"; });
+                           [](const auto &c) { return std::string(c.qname) == "Viper.Convert"; });
     ASSERT_NE(it, cat.end());
     // Should have conversion methods
     bool hasToInt64 = false;

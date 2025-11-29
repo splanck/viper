@@ -29,10 +29,9 @@ using il::runtime::runtimeClassCatalog;
 TEST(RuntimeClassCatalogBasic, ContainsStringMembers)
 {
     const auto &cat = runtimeClassCatalog();
-    auto it =
-        std::find_if(cat.begin(),
-                     cat.end(),
-                     [](const auto &c) { return std::string(c.qname) == "Viper.String"; });
+    auto it = std::find_if(cat.begin(),
+                           cat.end(),
+                           [](const auto &c) { return std::string(c.qname) == "Viper.String"; });
     ASSERT_NE(it, cat.end());
     // Properties include Length and IsEmpty
     bool hasLenProp = false;

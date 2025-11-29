@@ -53,10 +53,10 @@
 #pragma once
 
 #include "frontends/basic/DiagnosticEmitter.hpp"
+#include "frontends/basic/IdentifierUtil.hpp"
 #include "frontends/basic/Lexer.hpp"
 #include "frontends/basic/StatementSequencer.hpp"
 #include "frontends/basic/ast/DeclNodes.hpp"
-#include "frontends/basic/IdentifierUtil.hpp"
 #include "support/diag_expected.hpp"
 #include "support/source_manager.hpp"
 #include <array>

@@ -237,7 +237,8 @@ PreservedAnalyses Inliner::run(Module &module, AnalysisManager &)
                 if (ok)
                 {
                     changed = true;
-                    // Do not advance idx; we removed the call. Next instruction is after cloned body
+                    // Do not advance idx; we removed the call. Next instruction is after cloned
+                    // body
                     continue;
                 }
                 ++idx;
@@ -252,14 +253,12 @@ PreservedAnalyses Inliner::run(Module &module, AnalysisManager &)
 
 void registerInlinePass(PassRegistry &registry)
 {
-    registry.registerModulePass(
-        "inline",
-        [](core::Module &module, AnalysisManager &analysis)
-        {
-            Inliner inliner;
-            return inliner.run(module, analysis);
-        });
+    registry.registerModulePass("inline",
+                                [](core::Module &module, AnalysisManager &analysis)
+                                {
+                                    Inliner inliner;
+                                    return inliner.run(module, analysis);
+                                });
 }
 
 } // namespace il::transform
-

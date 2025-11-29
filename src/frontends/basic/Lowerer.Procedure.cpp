@@ -18,10 +18,10 @@
 #include "frontends/basic/ASTUtils.hpp"
 
 #include "frontends/basic/AstWalker.hpp"
-#include "frontends/basic/ProcedureSymbolTracker.hpp"
 #include "frontends/basic/EmitCommon.hpp"
 #include "frontends/basic/LineUtils.hpp"
 #include "frontends/basic/LoweringPipeline.hpp"
+#include "frontends/basic/ProcedureSymbolTracker.hpp"
 #include "frontends/basic/SemanticAnalyzer.hpp"
 #include "frontends/basic/TypeSuffix.hpp"
 #include "frontends/basic/lower/Emitter.hpp"
@@ -1494,8 +1494,8 @@ void Lowerer::resetLoweringState()
 void Lowerer::cacheModuleObjectArraysFromAST(const std::vector<StmtPtr> &main)
 {
     moduleObjArrayElemClass_.clear();
-    moduleObjectClass_.clear();    // BUG-107 fix: Also clear scalar object cache
-    moduleStrArrayNames_.clear();  // BUG-OOP-011 fix: Also clear string array cache
+    moduleObjectClass_.clear();   // BUG-107 fix: Also clear scalar object cache
+    moduleStrArrayNames_.clear(); // BUG-OOP-011 fix: Also clear string array cache
 
     // Walk main body statements looking for DIM declarations of objects (arrays and scalars)
     for (const auto &stmtPtr : main)
@@ -1594,8 +1594,8 @@ void Lowerer::materializeParams(const std::vector<Param> &params)
         bool isObjectParam = !p.objectClass.empty();
         // BYREF params: incoming pointer is the slot.
         const size_t ilIndex = (ilParamOffset + i);
-        Value incoming = (ilIndex < func->params.size()) ? Value::temp(func->params[ilIndex].id)
-                                                         : Value::null();
+        Value incoming =
+            (ilIndex < func->params.size()) ? Value::temp(func->params[ilIndex].id) : Value::null();
         bool byRef = p.isByRef;
         Value slot = byRef ? incoming : emitAlloca(isBoolParam ? 1 : 8);
         if (p.is_array)

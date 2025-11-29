@@ -482,10 +482,10 @@ Slot VM::eval(Frame &fr, const il::core::Value &value)
         case il::core::Value::Kind::Temp:
             return evalTemp(value);
         case il::core::Value::Kind::ConstInt:
-            slot.i64 = value.i64;  // Direct access avoids toI64() function call
+            slot.i64 = value.i64; // Direct access avoids toI64() function call
             return slot;
         case il::core::Value::Kind::ConstFloat:
-            slot.f64 = value.f64;  // Direct access avoids toF64() function call
+            slot.f64 = value.f64; // Direct access avoids toF64() function call
             return slot;
         case il::core::Value::Kind::ConstStr:
             return evalConstStr(value);

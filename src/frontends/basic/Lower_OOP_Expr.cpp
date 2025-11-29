@@ -993,8 +993,8 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
                 curLoc = expr.loc;
                 RVal base = lowerExpr(*expr.base);
                 runtimeTracker.trackCalleeName("Viper.Object.ToString");
-                Value result = emitCallRet(
-                    Type(Type::Kind::Str), "Viper.Object.ToString", {base.value});
+                Value result =
+                    emitCallRet(Type(Type::Kind::Str), "Viper.Object.ToString", {base.value});
                 deferReleaseStr(result);
                 return {result, Type(Type::Kind::Str)};
             }

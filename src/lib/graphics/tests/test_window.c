@@ -103,6 +103,7 @@ int main(void)
     TEST_SUMMARY();
     return TEST_RETURN_CODE();
 }
+
 //===----------------------------------------------------------------------===//
 //
 // Part of the Viper project, under the GNU GPL v3.

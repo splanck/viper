@@ -131,7 +131,8 @@ static void test_cse_cross_block()
     assert(!Only.operands.empty());
     assert(Only.operands.front().kind == Value::Kind::Temp);
     // The operand should be either the block param or the entry result; both are okay, but
-    // if GVN eliminated the second add, ret's operand should reference entry's add result id (id==2)
+    // if GVN eliminated the second add, ret's operand should reference entry's add result id
+    // (id==2)
 }
 
 static void test_redundant_load_elim()

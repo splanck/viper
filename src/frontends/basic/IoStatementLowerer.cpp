@@ -655,8 +655,9 @@ void IoStatementLowerer::lowerInputCh(const InputChStmt &stmt)
         static_cast<long long>(stmt.targets.empty() ? 1 : stmt.targets.size());
     Value fieldsMem = lowerer_.emitAlloca(static_cast<int>(fieldCount * 8));
     lowerer_.emitStore(IlType(IlType::Kind::Ptr), fieldsMem, Value::null());
-    lowerer_.emitCallRet(
-        IlType(IlType::Kind::I64), "Viper.Strings.SplitFields", {line, fieldsMem, Value::constInt(fieldCount)});
+    lowerer_.emitCallRet(IlType(IlType::Kind::I64),
+                         "Viper.Strings.SplitFields",
+                         {line, fieldsMem, Value::constInt(fieldCount)});
     lowerer_.requireStrReleaseMaybe();
     lowerer_.emitCall("rt_str_release_maybe", {line});
 
@@ -673,14 +674,17 @@ void IoStatementLowerer::lowerInputCh(const InputChStmt &stmt)
             return;
         }
 
-        Value fieldCstr = lowerer_.emitCallRet(IlType(IlType::Kind::Ptr), "rt_string_cstr", {field});
+        Value fieldCstr =
+            lowerer_.emitCallRet(IlType(IlType::Kind::Ptr), "rt_string_cstr", {field});
         Value parsedSlot = lowerer_.emitAlloca(8);
         if (slotInfo.type.kind == IlType::Kind::F64)
         {
             Value err = lowerer_.emitCallRet(
                 IlType(IlType::Kind::I32), "Viper.Parse.Double", {fieldCstr, parsedSlot});
-            lowerer_.emitRuntimeErrCheck(
-                err, stmt.loc, "inputch_parse", [&](Value code) { lowerer_.emitTrapFromErr(code); });
+            lowerer_.emitRuntimeErrCheck(err,
+                                         stmt.loc,
+                                         "inputch_parse",
+                                         [&](Value code) { lowerer_.emitTrapFromErr(code); });
             Value parsed = lowerer_.emitLoad(IlType(IlType::Kind::F64), parsedSlot);
             lowerer_.emitStore(IlType(IlType::Kind::F64), slot, parsed);
         }
@@ -688,12 +692,15 @@ void IoStatementLowerer::lowerInputCh(const InputChStmt &stmt)
         {
             Value err = lowerer_.emitCallRet(
                 IlType(IlType::Kind::I32), "Viper.Parse.Int64", {fieldCstr, parsedSlot});
-            lowerer_.emitRuntimeErrCheck(
-                err, stmt.loc, "inputch_parse", [&](Value code) { lowerer_.emitTrapFromErr(code); });
+            lowerer_.emitRuntimeErrCheck(err,
+                                         stmt.loc,
+                                         "inputch_parse",
+                                         [&](Value code) { lowerer_.emitTrapFromErr(code); });
             Value parsed = lowerer_.emitLoad(IlType(IlType::Kind::I64), parsedSlot);
             if (slotInfo.isBoolean)
             {
-                Value b = lowerer_.coerceToBool({parsed, IlType(IlType::Kind::I64)}, stmt.loc).value;
+                Value b =
+                    lowerer_.coerceToBool({parsed, IlType(IlType::Kind::I64)}, stmt.loc).value;
                 lowerer_.emitStore(lowerer_.ilBoolTy(), slot, b);
             }
             else

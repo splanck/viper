@@ -37,4 +37,3 @@ class IndVarSimplify : public FunctionPass
 void registerIndVarSimplifyPass(PassRegistry &registry);
 
 } // namespace il::transform
-

@@ -21,8 +21,7 @@ TEST(RuntimeClassConsoleBinding, CatalogContainsConsole)
     const auto &cat = il::runtime::runtimeClassCatalog();
     auto it = std::find_if(cat.begin(),
                            cat.end(),
-                           [](const auto &c)
-                           { return std::string(c.qname) == "Viper.Console"; });
+                           [](const auto &c) { return std::string(c.qname) == "Viper.Console"; });
     ASSERT_NE(it, cat.end());
     // Should have WriteLine and ReadLine methods
     bool hasWriteLine = false;

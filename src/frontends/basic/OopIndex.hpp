@@ -174,8 +174,8 @@ class OopIndex
     /// @param className Qualified class name to start search from.
     /// @param fieldName Field identifier to find.
     /// @return Pointer to field info or nullptr if not found in hierarchy.
-    [[nodiscard]] const ClassInfo::FieldInfo *findFieldInHierarchy(const std::string &className,
-                                                                   std::string_view fieldName) const;
+    [[nodiscard]] const ClassInfo::FieldInfo *findFieldInHierarchy(
+        const std::string &className, std::string_view fieldName) const;
 
     // =========================================================================
     // Method Query API

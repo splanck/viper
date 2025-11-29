@@ -154,6 +154,7 @@ VM::ExecResult handleCall(VM &vm,
             Slot *reg = nullptr;
             uint8_t *stackPtr = nullptr;
         };
+
         std::vector<ArgBinding> bindings;
         bindings.reserve(in.operands.size());
         std::vector<Slot> originalArgs;
@@ -178,9 +179,12 @@ VM::ExecResult handleCall(VM &vm,
             originalArgs.push_back(args[i]);
         }
 
-        out = RuntimeBridge::call(
-            VMAccess::runtimeContext(vm), std::string_view(in.callee), std::span<const Slot>{args},
-            in.loc, functionName, blockLabel);
+        out = RuntimeBridge::call(VMAccess::runtimeContext(vm),
+                                  std::string_view(in.callee),
+                                  std::span<const Slot>{args},
+                                  in.loc,
+                                  functionName,
+                                  blockLabel);
 
         const auto *signature = il::runtime::findRuntimeSignature(in.callee);
         if (signature)
@@ -246,7 +250,8 @@ VM::ExecResult handleCall(VM &vm,
                     const size_t width = copyWidthForKind(kind);
                     if (width != 0 && binding.stackPtr >= stackBegin && binding.stackPtr < stackEnd)
                     {
-                        const auto stackPtrAddr = reinterpret_cast<std::uintptr_t>(binding.stackPtr);
+                        const auto stackPtrAddr =
+                            reinterpret_cast<std::uintptr_t>(binding.stackPtr);
                         const auto stackEndAddr = reinterpret_cast<std::uintptr_t>(stackEnd);
                         if (stackEndAddr - stackPtrAddr >= width)
                         {
@@ -327,9 +332,12 @@ VM::ExecResult handleCallIndirect(VM &vm,
         {
             const std::string functionName = fr.func ? fr.func->name : std::string{};
             const std::string blockLabel = bb ? bb->label : std::string{};
-            out = RuntimeBridge::call(
-                VMAccess::runtimeContext(vm), std::string_view(calleeName),
-                std::span<const Slot>{args}, in.loc, functionName, blockLabel);
+            out = RuntimeBridge::call(VMAccess::runtimeContext(vm),
+                                      std::string_view(calleeName),
+                                      std::span<const Slot>{args},
+                                      in.loc,
+                                      functionName,
+                                      blockLabel);
         }
     }
     else

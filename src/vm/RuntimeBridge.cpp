@@ -559,7 +559,8 @@ Slot RuntimeBridge::call(RuntimeCallContext &ctx,
                          const std::string &fn,
                          const std::string &block)
 {
-    return RuntimeBridge::call(ctx, name, std::span<const Slot>{args.data(), args.size()}, loc, fn, block);
+    return RuntimeBridge::call(
+        ctx, name, std::span<const Slot>{args.data(), args.size()}, loc, fn, block);
 }
 
 Slot RuntimeBridge::call(RuntimeCallContext &ctx,
@@ -569,7 +570,8 @@ Slot RuntimeBridge::call(RuntimeCallContext &ctx,
                          const std::string &fn,
                          const std::string &block)
 {
-    return RuntimeBridge::call(ctx, name, std::span<const Slot>{args.begin(), args.size()}, loc, fn, block);
+    return RuntimeBridge::call(
+        ctx, name, std::span<const Slot>{args.begin(), args.size()}, loc, fn, block);
 }
 
 void RuntimeBridge::registerExtern(const ExternDesc &ext)

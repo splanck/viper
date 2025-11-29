@@ -568,7 +568,8 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
                             continue;
                         }
                     }
-                    // Fallback: if cannot take address, coerce as normal (diagnostics may surface elsewhere)
+                    // Fallback: if cannot take address, coerce as normal (diagnostics may surface
+                    // elsewhere)
                 }
 
                 Lowerer::RVal arg = lowerer_.lowerExpr(*expr.args[i]);

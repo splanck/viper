@@ -204,9 +204,7 @@ BasicBlock *findPreheader(Function &function, const Loop &loop, BasicBlock &head
 }
 
 /// @brief Seed invariant temporaries with values defined outside the loop.
-void seedInvariants(const Loop &loop,
-                    Function &function,
-                    std::unordered_set<unsigned> &invariants)
+void seedInvariants(const Loop &loop, Function &function, std::unordered_set<unsigned> &invariants)
 {
     // Function parameters are always invariant
     for (const auto &param : function.params)
@@ -301,8 +299,8 @@ PreservedAnalyses CheckOpt::run(Function &function, AnalysisManager &analysis)
                 if (instr.result && it->second.resultId)
                 {
                     // Replace uses of this check's result with the dominating check's result
-                    viper::il::replaceAllUses(function, *instr.result,
-                                              Value::temp(*it->second.resultId));
+                    viper::il::replaceAllUses(
+                        function, *instr.result, Value::temp(*it->second.resultId));
                 }
                 toErase.push_back({block, idx});
                 changed = true;
@@ -320,8 +318,7 @@ PreservedAnalyses CheckOpt::run(Function &function, AnalysisManager &analysis)
     {
         BasicBlock *block = it->first;
         size_t idx = it->second;
-        block->instructions.erase(block->instructions.begin() +
-                                  static_cast<std::ptrdiff_t>(idx));
+        block->instructions.erase(block->instructions.begin() + static_cast<std::ptrdiff_t>(idx));
     }
 
     // =========================================================================

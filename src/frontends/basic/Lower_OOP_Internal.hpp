@@ -47,8 +47,9 @@ std::string resolveFieldObjectClass(const ClassLayout *layout,
 /// @param fieldName Name of the array field to look up.
 /// @param qualify Optional function to qualify the class name.
 /// @return Qualified class name if field is an object array, empty otherwise.
-std::string resolveFieldArrayElementClass(const ClassLayout *layout,
-                                          std::string_view fieldName,
-                                          const std::function<std::string(const std::string &)> &qualify);
+std::string resolveFieldArrayElementClass(
+    const ClassLayout *layout,
+    std::string_view fieldName,
+    const std::function<std::string(const std::string &)> &qualify);
 
 } // namespace il::frontends::basic

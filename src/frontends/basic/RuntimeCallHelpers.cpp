@@ -47,7 +47,8 @@ RuntimeCallBuilder &RuntimeCallBuilder::argChannel(Value v, Type ty)
 {
     applyLoc();
     Lowerer::RVal channel{v, ty};
-    channel = lowerer_.normalizeChannelToI32(std::move(channel), loc_.value_or(il::support::SourceLoc{}));
+    channel =
+        lowerer_.normalizeChannelToI32(std::move(channel), loc_.value_or(il::support::SourceLoc{}));
     args_.push_back(channel.value);
     return *this;
 }
@@ -101,8 +102,8 @@ RuntimeCallBuilder::Value RuntimeCallBuilder::callRet(Type retTy, const std::str
 }
 
 RuntimeCallBuilder::Value RuntimeCallBuilder::callHelper(RuntimeFeature feature,
-                                                          const std::string &callee,
-                                                          Type retTy)
+                                                         const std::string &callee,
+                                                         Type retTy)
 {
     applyLoc();
     return lowerer_.emitRuntimeHelper(feature, callee, retTy, args_);
@@ -115,26 +116,26 @@ void RuntimeCallBuilder::callHelperVoid(RuntimeFeature feature, const std::strin
 }
 
 void RuntimeCallBuilder::callWithErrCheck(Type retTy,
-                                           const std::string &callee,
-                                           std::string_view labelStem)
+                                          const std::string &callee,
+                                          std::string_view labelStem)
+{
+    applyLoc();
+    Value err = lowerer_.emitCallRet(retTy, callee, args_);
+    lowerer_.emitRuntimeErrCheck(err,
+                                 loc_.value_or(il::support::SourceLoc{}),
+                                 labelStem,
+                                 [this](Value code) { lowerer_.emitTrapFromErr(code); });
+}
+
+void RuntimeCallBuilder::callWithErrHandler(Type retTy,
+                                            const std::string &callee,
+                                            std::string_view labelStem,
+                                            const std::function<void(Value)> &onFailure)
 {
     applyLoc();
     Value err = lowerer_.emitCallRet(retTy, callee, args_);
     lowerer_.emitRuntimeErrCheck(
-        err,
-        loc_.value_or(il::support::SourceLoc{}),
-        labelStem,
-        [this](Value code) { lowerer_.emitTrapFromErr(code); });
-}
-
-void RuntimeCallBuilder::callWithErrHandler(Type retTy,
-                                             const std::string &callee,
-                                             std::string_view labelStem,
-                                             const std::function<void(Value)> &onFailure)
-{
-    applyLoc();
-    Value err = lowerer_.emitCallRet(retTy, callee, args_);
-    lowerer_.emitRuntimeErrCheck(err, loc_.value_or(il::support::SourceLoc{}), labelStem, onFailure);
+        err, loc_.value_or(il::support::SourceLoc{}), labelStem, onFailure);
 }
 
 const std::vector<RuntimeCallBuilder::Value> &RuntimeCallBuilder::args() const noexcept

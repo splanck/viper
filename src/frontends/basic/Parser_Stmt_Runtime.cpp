@@ -158,7 +158,8 @@ StmtPtr Parser::parseDimStatement()
     // Parse a single DIM item: <name> [ ( <size> ) ] [ AS <type> ] [ = <expr> ]
     auto parseOne = [&](Token firstNameTok = Token{}) -> StmtPtr
     {
-        auto isSoftIdent = [&](TokenKind k) {
+        auto isSoftIdent = [&](TokenKind k)
+        {
             if (k == TokenKind::Identifier)
                 return true;
             switch (k)

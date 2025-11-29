@@ -30,7 +30,10 @@ class Inliner : public ModulePass
     std::string_view id() const override;
     PreservedAnalyses run(core::Module &module, AnalysisManager &analysis) override;
 
-    void setInstructionThreshold(unsigned n) { instrThreshold_ = n; }
+    void setInstructionThreshold(unsigned n)
+    {
+        instrThreshold_ = n;
+    }
 
   private:
     unsigned instrThreshold_ = 32; // default heuristic
@@ -39,4 +42,3 @@ class Inliner : public ModulePass
 void registerInlinePass(PassRegistry &registry);
 
 } // namespace il::transform
-

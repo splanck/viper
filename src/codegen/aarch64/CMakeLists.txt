@@ -15,17 +15,17 @@ set_target_properties(il_codegen_aarch64 PROPERTIES LINKER_LANGUAGE CXX)
 # --- Generate OpcodeDispatch from JSON (no Python dependency) ---
 set(VIPER_A64_SPEC "${PROJECT_SOURCE_DIR}/tools/spec/aarch64_encodings.json")
 set(VIPER_A64_OUTDIR "${PROJECT_SOURCE_DIR}/src/codegen/aarch64/generated")
-set(VIPER_A64_DISP   "${VIPER_A64_OUTDIR}/OpcodeDispatch.inc")
+set(VIPER_A64_DISP "${VIPER_A64_OUTDIR}/OpcodeDispatch.inc")
 
 add_custom_command(
-  OUTPUT  ${VIPER_A64_DISP}
-  COMMAND ${CMAKE_COMMAND}
-          -DSPEC_FILE=${VIPER_A64_SPEC}
-          -DOUTPUT_FILE=${VIPER_A64_DISP}
-          -P ${PROJECT_SOURCE_DIR}/cmake/GenAArch64Dispatch.cmake
-  DEPENDS ${VIPER_A64_SPEC} ${PROJECT_SOURCE_DIR}/cmake/GenAArch64Dispatch.cmake
-  COMMENT "Generating AArch64 OpcodeDispatch.inc from JSON"
-  VERBATIM)
+        OUTPUT ${VIPER_A64_DISP}
+        COMMAND ${CMAKE_COMMAND}
+        -DSPEC_FILE=${VIPER_A64_SPEC}
+        -DOUTPUT_FILE=${VIPER_A64_DISP}
+        -P ${PROJECT_SOURCE_DIR}/cmake/GenAArch64Dispatch.cmake
+        DEPENDS ${VIPER_A64_SPEC} ${PROJECT_SOURCE_DIR}/cmake/GenAArch64Dispatch.cmake
+        COMMENT "Generating AArch64 OpcodeDispatch.inc from JSON"
+        VERBATIM)
 
 add_custom_target(gen_aarch64_dispatch DEPENDS ${VIPER_A64_DISP})
 add_dependencies(il_codegen_aarch64 gen_aarch64_dispatch)

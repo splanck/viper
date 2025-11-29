@@ -16,13 +16,13 @@
 #include "rt.hpp"
 
 #include <cassert>
+#include <fcntl.h>
+#include <poll.h>
 #include <string>
 #include <sys/types.h>
 #include <sys/wait.h>
-#include <unistd.h>
-#include <poll.h>
 #include <termios.h>
-#include <fcntl.h>
+#include <unistd.h>
 
 #if defined(__linux__)
 #include <pty.h>

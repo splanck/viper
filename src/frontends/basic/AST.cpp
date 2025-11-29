@@ -47,14 +47,26 @@ namespace il::frontends::basic
 /// @brief Define accept methods for expression nodes.
 /// @param NodeType The concrete expression class name.
 #define DEFINE_EXPR_ACCEPT(NodeType)                                                               \
-    void NodeType::accept(ExprVisitor &visitor) const { visitor.visit(*this); }                    \
-    void NodeType::accept(MutExprVisitor &visitor) { visitor.visit(*this); }
+    void NodeType::accept(ExprVisitor &visitor) const                                              \
+    {                                                                                              \
+        visitor.visit(*this);                                                                      \
+    }                                                                                              \
+    void NodeType::accept(MutExprVisitor &visitor)                                                 \
+    {                                                                                              \
+        visitor.visit(*this);                                                                      \
+    }
 
 /// @brief Define accept methods for statement nodes.
 /// @param NodeType The concrete statement class name.
 #define DEFINE_STMT_ACCEPT(NodeType)                                                               \
-    void NodeType::accept(StmtVisitor &visitor) const { visitor.visit(*this); }                    \
-    void NodeType::accept(MutStmtVisitor &visitor) { visitor.visit(*this); }
+    void NodeType::accept(StmtVisitor &visitor) const                                              \
+    {                                                                                              \
+        visitor.visit(*this);                                                                      \
+    }                                                                                              \
+    void NodeType::accept(MutStmtVisitor &visitor)                                                 \
+    {                                                                                              \
+        visitor.visit(*this);                                                                      \
+    }
 
 // ============================================================================
 // Free-standing visit() dispatch helpers

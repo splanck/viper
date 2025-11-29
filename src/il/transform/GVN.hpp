@@ -38,4 +38,3 @@ class GVN : public FunctionPass
 void registerGVNPass(PassRegistry &registry);
 
 } // namespace il::transform
-

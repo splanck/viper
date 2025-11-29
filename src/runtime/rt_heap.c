@@ -73,6 +73,7 @@ static void rt_heap_validate_header(const rt_heap_hdr_t *hdr)
             assert(!"rt_heap_validate_header: unknown heap kind");
     }
 }
+
 #define RT_HEAP_VALIDATE(hdr) rt_heap_validate_header(hdr)
 #else
 // In release builds, skip validation for performance

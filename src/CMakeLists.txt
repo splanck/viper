@@ -52,10 +52,10 @@ target_include_directories(il_runtime PUBLIC
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/viper>
 )
 # Increase constexpr step limit for large descriptor table in RuntimeSignatures.cpp
-if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|AppleClang")
+if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|AppleClang")
     set_source_files_properties(il/runtime/RuntimeSignatures.cpp
-        PROPERTIES COMPILE_FLAGS "-fconstexpr-steps=10000000")
-endif()
+            PROPERTIES COMPILE_FLAGS "-fconstexpr-steps=10000000")
+endif ()
 
 add_library(il_build STATIC il/build/IRBuilder.cpp)
 target_link_libraries(il_build

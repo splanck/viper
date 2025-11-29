@@ -504,6 +504,9 @@ bool Parser::handleTopLevelAddFile(Program &prog)
     // Propagate known namespaces so qualified-name parsing inside includes
     // recognizes the same namespace heads as the parent parser.
     child.knownNamespaces_ = knownNamespaces_;
+    // BUG-OOP-019 fix: Propagate CONST values so SELECT CASE labels work across ADDFILE
+    child.knownConstInts_ = knownConstInts_;
+    child.knownConstStrs_ = knownConstStrs_;
     auto subprog = child.parseProgram();
     if (!subprog)
     {
@@ -519,6 +522,11 @@ bool Parser::handleTopLevelAddFile(Program &prog)
 
     for (const auto &arrName : child.arrays_)
         arrays_.insert(arrName);
+    // BUG-OOP-019 fix: Merge child's CONSTs back to parent
+    for (const auto &kv : child.knownConstInts_)
+        knownConstInts_.insert(kv);
+    for (const auto &kv : child.knownConstStrs_)
+        knownConstStrs_.insert(kv);
 
     if (includeStack_ && !includeStack_->empty())
         includeStack_->pop_back();
@@ -609,8 +617,11 @@ bool Parser::handleAddFileInto(std::vector<StmtPtr> &dst)
     // propagating selected state to the child parser.
     // - Arrays: disambiguate name(args) as array vs call consistently.
     // - Namespaces: preserve the set of known namespace heads for qualified calls.
+    // - CONSTs: allow SELECT CASE labels to use CONSTs from parent (BUG-OOP-019)
     child.arrays_ = arrays_;
     child.knownNamespaces_ = knownNamespaces_;
+    child.knownConstInts_ = knownConstInts_;
+    child.knownConstStrs_ = knownConstStrs_;
     auto subprog = child.parseProgram();
     if (!subprog)
     {
@@ -623,6 +634,12 @@ bool Parser::handleAddFileInto(std::vector<StmtPtr> &dst)
         dst.push_back(std::move(p));
     for (auto &s : subprog->main)
         dst.push_back(std::move(s));
+
+    // BUG-OOP-019 fix: Merge child's CONSTs back to parent
+    for (const auto &kv : child.knownConstInts_)
+        knownConstInts_.insert(kv);
+    for (const auto &kv : child.knownConstStrs_)
+        knownConstStrs_.insert(kv);
 
     if (includeStack_ && !includeStack_->empty())
         includeStack_->pop_back();

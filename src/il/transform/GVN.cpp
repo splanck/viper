@@ -68,6 +68,7 @@ struct ValueHash
                     double d;
                     unsigned long long u;
                 } u{};
+
                 u.d = v.f64;
                 h ^= static_cast<size_t>(u.u);
                 break;

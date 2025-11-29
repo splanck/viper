@@ -14,9 +14,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "il/transform/LateCleanup.hpp"
 #include "il/transform/AnalysisManager.hpp"
 #include "il/transform/DCE.hpp"
+#include "il/transform/LateCleanup.hpp"
 #include "il/transform/SimplifyCFG.hpp"
 
 #include "il/core/BasicBlock.hpp"
@@ -68,8 +68,7 @@ il::transform::AnalysisRegistry createRegistry()
 {
     il::transform::AnalysisRegistry registry;
     registry.registerFunctionAnalysis<il::transform::CFGInfo>(
-        "cfg",
-        [](Module &mod, Function &fnRef) { return il::transform::buildCFG(mod, fnRef); });
+        "cfg", [](Module &mod, Function &fnRef) { return il::transform::buildCFG(mod, fnRef); });
     return registry;
 }
 

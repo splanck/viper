@@ -871,7 +871,8 @@ DescriptorRow{"Viper.Console.PrintStr",
                   0,
                   RuntimeTrapClass::None},
 
-    // Viper.System.Collections.List.* aliases removed - use canonical Viper.Collections.List.* names
+    // Viper.System.Collections.List.* aliases removed - use canonical Viper.Collections.List.*
+    // names
 
     // Canonical Viper.Collections.List (preferred namespace)
     DescriptorRow{"Viper.Collections.List.New",

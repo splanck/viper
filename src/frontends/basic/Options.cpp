@@ -14,8 +14,8 @@
 namespace il::frontends::basic
 {
 
-static bool g_enableRuntimeNamespaces = true;   // default ON
-static bool g_enableRuntimeTypeBridging = true; // default ON for iteration
+static bool g_enableRuntimeNamespaces = true;     // default ON
+static bool g_enableRuntimeTypeBridging = true;   // default ON for iteration
 static bool g_enableSelectCaseConstLabels = true; // default ON for CONST labels in SELECT CASE
 
 bool FrontendOptions::enableRuntimeNamespaces()

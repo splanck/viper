@@ -744,7 +744,8 @@ LBL_ConstStr:
 LBL_GAddr:
 {
     vm.traceInstruction(*currentInstr, state.fr);
-    auto exec = il::vm::detail::handleGAddr(vm, state.fr, *currentInstr, state.blocks, state.bb, state.ip);
+    auto exec =
+        il::vm::detail::handleGAddr(vm, state.fr, *currentInstr, state.blocks, state.bb, state.ip);
     vm.handleInlineResult(state, exec);
     if (state.exitRequested)
         return true;

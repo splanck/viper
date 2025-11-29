@@ -11,10 +11,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "il/transform/Inline.hpp"
 #include "il/transform/AnalysisManager.hpp"
-#include "il/transform/SCCP.hpp"
 #include "il/transform/DCE.hpp"
+#include "il/transform/Inline.hpp"
+#include "il/transform/SCCP.hpp"
 
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"

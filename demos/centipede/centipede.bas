@@ -1,786 +1,667 @@
-REM ============================================================================
-REM CENTIPEDE - Arcade Clone
-REM ============================================================================
-REM Controls: WASD/Arrows=Move, Space=Fire, P=Pause, Q=Quit
-REM ============================================================================
+'==============================================================================
+' CENTIPEDE
+' A recreation of the classic Atari arcade game
+' Written in Viper BASIC using OOP classes
+'==============================================================================
 
-REM Screen dimensions
-DIM SCREEN_WIDTH AS INTEGER
-DIM SCREEN_HEIGHT AS INTEGER
-DIM PLAY_TOP AS INTEGER
-DIM PLAYER_TOP AS INTEGER
-SCREEN_WIDTH = 80
-SCREEN_HEIGHT = 24
-PLAY_TOP = 2
-PLAYER_TOP = 19
+' Screen constants
+CONST SCREEN_WIDTH AS INTEGER = 80
+CONST SCREEN_HEIGHT AS INTEGER = 25
+CONST PLAY_LEFT AS INTEGER = 1
+CONST PLAY_RIGHT AS INTEGER = 78
+CONST PLAY_TOP AS INTEGER = 2
+CONST PLAY_BOTTOM AS INTEGER = 24
+CONST PLAYER_ZONE_TOP AS INTEGER = 20
+CONST FRAME_TIME AS INTEGER = 50
 
-REM Colors
-DIM C_BLACK AS INTEGER
-DIM C_RED AS INTEGER
-DIM C_GREEN AS INTEGER
-DIM C_YELLOW AS INTEGER
-DIM C_CYAN AS INTEGER
-DIM C_WHITE AS INTEGER
-DIM C_BRED AS INTEGER
-DIM C_BGREEN AS INTEGER
-DIM C_BYELLOW AS INTEGER
-DIM C_BCYAN AS INTEGER
-C_BLACK = 0
-C_RED = 1
-C_GREEN = 2
-C_YELLOW = 3
-C_CYAN = 6
-C_WHITE = 7
-C_BRED = 9
-C_BGREEN = 10
-C_BYELLOW = 11
-C_BCYAN = 14
+' Entity limits
+CONST MAX_SEG AS INTEGER = 12
+CONST MAX_MUSH AS INTEGER = 30
 
-REM Game constants
-DIM MAX_MUSH AS INTEGER
-DIM MAX_SEG AS INTEGER
-DIM MAX_BULL AS INTEGER
-DIM INIT_MUSH AS INTEGER
-DIM INIT_SEG AS INTEGER
-DIM MUSH_HP AS INTEGER
-MAX_MUSH = 50
-MAX_SEG = 16
-MAX_BULL = 2
-INIT_MUSH = 25
-INIT_SEG = 10
-MUSH_HP = 4
+' Game constants
+CONST CENTIPEDE_LEN AS INTEGER = 10
+CONST MUSH_COUNT AS INTEGER = 20
+CONST MUSH_HP AS INTEGER = 4
+CONST CENT_SPEED AS INTEGER = 8
+CONST BULLET_SPEED AS INTEGER = 25
+CONST LIVES_START AS INTEGER = 3
 
-REM Direction
-DIM D_LEFT AS INTEGER
-DIM D_RIGHT AS INTEGER
-D_LEFT = 0
-D_RIGHT = 1
+' Colors
+CONST CLR_BLACK AS INTEGER = 0
+CONST CLR_RED AS INTEGER = 1
+CONST CLR_GREEN AS INTEGER = 2
+CONST CLR_YELLOW AS INTEGER = 3
+CONST CLR_CYAN AS INTEGER = 6
+CONST CLR_WHITE AS INTEGER = 7
+CONST CLR_BRED AS INTEGER = 9
+CONST CLR_BGREEN AS INTEGER = 10
+CONST CLR_BYELLOW AS INTEGER = 11
+CONST CLR_BWHITE AS INTEGER = 15
 
-REM Mushroom data
-DIM mX(50) AS INTEGER
-DIM mY(50) AS INTEGER
-DIM mHP(50) AS INTEGER
-DIM mPoison(50) AS INTEGER
-DIM mCount AS INTEGER
+' Game states
+CONST ST_TITLE AS INTEGER = 0
+CONST ST_PLAY AS INTEGER = 1
+CONST ST_PAUSE AS INTEGER = 2
+CONST ST_OVER AS INTEGER = 3
+CONST ST_WIN AS INTEGER = 4
 
-REM Centipede data
-DIM sX(16) AS SINGLE
-DIM sY(16) AS SINGLE
-DIM sDir(16) AS INTEGER
-DIM sHead(16) AS INTEGER
-DIM sOn(16) AS INTEGER
-DIM sCount AS INTEGER
-
-REM Bullet data
-DIM bX(2) AS INTEGER
-DIM bY(2) AS SINGLE
-DIM bOn(2) AS INTEGER
-
-REM Player data
-DIM pX AS INTEGER
-DIM pY AS INTEGER
-DIM pLives AS INTEGER
-DIM pInvuln AS INTEGER
-
-REM Game state
-DIM gScore AS INTEGER
-DIM gLevel AS INTEGER
-DIM gOver AS INTEGER
-DIM gPaused AS INTEGER
-DIM gRunning AS INTEGER
-DIM gFrame AS INTEGER
-DIM gLastTime AS INTEGER
-
-REM ============================================================================
-REM TERMINAL HELPERS
-REM ============================================================================
-
-SUB TSetPos(row AS INTEGER, col AS INTEGER)
-    Viper.Terminal.SetPosition(row, col)
-END SUB
-
-SUB TSetClr(fg AS INTEGER)
-    Viper.Terminal.SetColor(fg, C_BLACK)
-END SUB
-
-SUB TClear()
-    Viper.Terminal.Clear()
-END SUB
-
-SUB THideCursor()
-    Viper.Terminal.SetCursorVisible(0)
-END SUB
-
-SUB TShowCursor()
-    Viper.Terminal.SetCursorVisible(1)
-END SUB
-
-FUNCTION TGetKey() AS STRING
-    TGetKey = Viper.Terminal.InKey()
-END FUNCTION
-
-SUB TBeep()
-    Viper.Terminal.Bell()
-END SUB
-
-SUB TWait(ms AS INTEGER)
-    Viper.Time.SleepMs(ms)
-END SUB
-
-FUNCTION TGetTicks() AS INTEGER
-    TGetTicks = Viper.Time.GetTickCount()
-END FUNCTION
-
-REM ============================================================================
-REM RANDOM HELPERS - using RND() builtin
-REM ============================================================================
-
-FUNCTION RndInt(maxVal AS INTEGER) AS INTEGER
-    RndInt = INT(RND() * maxVal)
-END FUNCTION
-
-REM ============================================================================
-REM GAME INIT
-REM ============================================================================
-
-SUB InitGame()
-    gScore = 0
-    gLevel = 1
-    gOver = 0
-    gPaused = 0
-    gRunning = 1
-    gFrame = 0
-    
-    pX = SCREEN_WIDTH / 2
-    pY = SCREEN_HEIGHT - 2
-    pLives = 3
-    pInvuln = 0
-    
-    mCount = 0
-    sCount = 0
-    
-    DIM i AS INTEGER
-    FOR i = 0 TO MAX_BULL - 1
-        bOn(i) = 0
-    NEXT i
-    
-    PlaceMushrooms()
-    SpawnCentipede()
-END SUB
-
-SUB PlaceMushrooms()
-    DIM i AS INTEGER
+'==============================================================================
+' Segment class - represents one segment of the centipede
+'==============================================================================
+CLASS Segment
     DIM x AS INTEGER
     DIM y AS INTEGER
-    DIM ok AS INTEGER
-    DIM j AS INTEGER
-    
-    mCount = 0
-    FOR i = 0 TO INIT_MUSH - 1
-        ok = 0
-        WHILE ok = 0
-            x = RndInt(SCREEN_WIDTH - 4) + 2
-            y = RndInt(PLAYER_TOP - PLAY_TOP - 2) + PLAY_TOP + 1
-            ok = 1
-            FOR j = 0 TO mCount - 1
-                IF mX(j) = x THEN
-                    IF mY(j) = y THEN
-                        ok = 0
-                    END IF
-                END IF
-            NEXT j
-        WEND
-        mX(mCount) = x
-        mY(mCount) = y
-        mHP(mCount) = MUSH_HP
-        mPoison(mCount) = 0
-        mCount = mCount + 1
-    NEXT i
-END SUB
+    DIM dx AS INTEGER
+    DIM isHead AS INTEGER
+    DIM active AS INTEGER
+    DIM dropCount AS INTEGER
+    DIM moveTimer AS INTEGER
 
-SUB SpawnCentipede()
-    DIM i AS INTEGER
-    DIM len AS INTEGER
-    DIM startX AS INTEGER
-    
-    len = INIT_SEG + (gLevel - 1) * 2
-    IF len > MAX_SEG THEN
-        len = MAX_SEG
-    END IF
-    startX = SCREEN_WIDTH - 2
-    
-    FOR i = 0 TO len - 1
-        sX(i) = startX - i
-        sY(i) = PLAY_TOP
-        sDir(i) = D_LEFT
-        IF i = 0 THEN
-            sHead(i) = 1
-        ELSE
-            sHead(i) = 0
+    SUB Init(startX AS INTEGER, startY AS INTEGER, dir AS INTEGER, head AS INTEGER)
+        x = startX
+        y = startY
+        dx = dir
+        isHead = head
+        active = 1
+        dropCount = 0
+        moveTimer = 0
+    END SUB
+
+    FUNCTION IsActive() AS INTEGER
+        IsActive = active
+    END FUNCTION
+
+    SUB Deactivate()
+        active = 0
+    END SUB
+
+    SUB SetHead(h AS INTEGER)
+        isHead = h
+    END SUB
+
+    SUB Move(speed AS INTEGER)
+        IF active = 0 THEN EXIT SUB
+        moveTimer = moveTimer + speed
+        IF moveTimer >= 10 THEN
+            moveTimer = moveTimer - 10
+            IF dropCount > 0 THEN
+                y = y + 1
+                dropCount = dropCount - 1
+                IF dropCount = 0 THEN dx = -dx
+            ELSE
+                x = x + dx
+            END IF
+            ' Boundary checks
+            IF x < PLAY_LEFT THEN
+                x = PLAY_LEFT
+                dropCount = 1
+            END IF
+            IF x > PLAY_RIGHT THEN
+                x = PLAY_RIGHT
+                dropCount = 1
+            END IF
+            IF y > PLAY_BOTTOM THEN
+                y = PLAY_TOP
+                dx = -dx
+            END IF
         END IF
-        sOn(i) = 1
-    NEXT i
-    sCount = len
+    END SUB
+
+    SUB StartDrop()
+        IF dropCount = 0 THEN dropCount = 1
+    END SUB
+END CLASS
+
+'==============================================================================
+' Mushroom class
+'==============================================================================
+CLASS Mushroom
+    DIM x AS INTEGER
+    DIM y AS INTEGER
+    DIM hp AS INTEGER
+    DIM active AS INTEGER
+
+    SUB Init(startX AS INTEGER, startY AS INTEGER)
+        x = startX
+        y = startY
+        hp = MUSH_HP
+        active = 1
+    END SUB
+
+    FUNCTION IsActive() AS INTEGER
+        IsActive = active
+    END FUNCTION
+
+    FUNCTION Hit() AS INTEGER
+        hp = hp - 1
+        IF hp <= 0 THEN
+            active = 0
+            Hit = 1
+        ELSE
+            Hit = 0
+        END IF
+    END FUNCTION
+END CLASS
+
+'==============================================================================
+' Player class
+'==============================================================================
+CLASS Player
+    DIM x AS INTEGER
+    DIM y AS INTEGER
+    DIM lives AS INTEGER
+    DIM invulnTimer AS INTEGER
+
+    SUB Init()
+        x = SCREEN_WIDTH \ 2
+        y = PLAY_BOTTOM - 1
+        lives = LIVES_START
+        invulnTimer = 0
+    END SUB
+
+    SUB Respawn()
+        x = SCREEN_WIDTH \ 2
+        y = PLAY_BOTTOM - 1
+        invulnTimer = 60
+    END SUB
+
+    SUB UpdateInvuln()
+        IF invulnTimer > 0 THEN invulnTimer = invulnTimer - 1
+    END SUB
+
+    FUNCTION IsInvulnerable() AS INTEGER
+        IF invulnTimer > 0 THEN
+            IsInvulnerable = 1
+        ELSE
+            IsInvulnerable = 0
+        END IF
+    END FUNCTION
+
+    SUB LoseLife()
+        lives = lives - 1
+    END SUB
+END CLASS
+
+'==============================================================================
+' Bullet class
+'==============================================================================
+CLASS Bullet
+    DIM x AS INTEGER
+    DIM y AS INTEGER
+    DIM active AS INTEGER
+    DIM moveTimer AS INTEGER
+
+    SUB Fire(startX AS INTEGER, startY AS INTEGER)
+        x = startX
+        y = startY - 1
+        active = 1
+        moveTimer = 0
+    END SUB
+
+    FUNCTION IsActive() AS INTEGER
+        IsActive = active
+    END FUNCTION
+
+    SUB Deactivate()
+        active = 0
+    END SUB
+
+    SUB Move(speed AS INTEGER)
+        IF active = 0 THEN EXIT SUB
+        moveTimer = moveTimer + speed
+        IF moveTimer >= 10 THEN
+            moveTimer = moveTimer - 10
+            y = y - 1
+            IF y < PLAY_TOP THEN active = 0
+        END IF
+    END SUB
+END CLASS
+
+'==============================================================================
+' Game state
+'==============================================================================
+DIM gSegments(11) AS Segment
+DIM gMushrooms(29) AS Mushroom
+DIM gPlayer AS Player
+DIM gBullet AS Bullet
+DIM gSegCount AS INTEGER
+DIM gMushCount AS INTEGER
+DIM gGameState AS INTEGER
+DIM gScore AS INTEGER
+DIM gLevel AS INTEGER
+DIM gLastColor AS INTEGER
+
+'==============================================================================
+' Drawing functions
+'==============================================================================
+SUB DrawAt(row AS INTEGER, col AS INTEGER, ch AS STRING, clr AS INTEGER)
+    IF row >= 1 THEN
+        IF row <= SCREEN_HEIGHT THEN
+            IF col >= 1 THEN
+                IF col <= SCREEN_WIDTH THEN
+                    Viper.Terminal.SetPosition(row, col)
+                    IF clr <> gLastColor THEN
+                        Viper.Terminal.SetColor(clr, CLR_BLACK)
+                        gLastColor = clr
+                    END IF
+                    PRINT ch;
+                END IF
+            END IF
+        END IF
+    END IF
 END SUB
 
-REM ============================================================================
-REM COLLISION
-REM ============================================================================
-
-FUNCTION FindMush(x AS INTEGER, y AS INTEGER) AS INTEGER
+SUB DrawStr(row AS INTEGER, col AS INTEGER, txt AS STRING, clr AS INTEGER)
     DIM i AS INTEGER
-    FindMush = -1
-    FOR i = 0 TO mCount - 1
-        IF mX(i) = x THEN
-            IF mY(i) = y THEN
-                IF mHP(i) > 0 THEN
-                    FindMush = i
+    DIM tlen AS INTEGER
+    tlen = LEN(txt)
+    Viper.Terminal.SetPosition(row, col)
+    IF clr <> gLastColor THEN
+        Viper.Terminal.SetColor(clr, CLR_BLACK)
+        gLastColor = clr
+    END IF
+    FOR i = 1 TO tlen
+        PRINT MID$(txt, i, 1);
+    NEXT i
+END SUB
+
+SUB DrawCenter(row AS INTEGER, txt AS STRING, clr AS INTEGER)
+    DIM col AS INTEGER
+    col = (SCREEN_WIDTH - LEN(txt)) \ 2 + 1
+    DrawStr(row, col, txt, clr)
+END SUB
+
+'==============================================================================
+' Mushroom collision check
+'==============================================================================
+FUNCTION MushAt(mx AS INTEGER, my AS INTEGER) AS INTEGER
+    DIM i AS INTEGER
+    FOR i = 0 TO gMushCount - 1
+        IF gMushrooms(i).active = 1 THEN
+            IF gMushrooms(i).x = mx THEN
+                IF gMushrooms(i).y = my THEN
+                    MushAt = 1
                     EXIT FUNCTION
                 END IF
             END IF
         END IF
     NEXT i
+    MushAt = 0
 END FUNCTION
 
-FUNCTION HitPlayer(x AS INTEGER, y AS INTEGER) AS INTEGER
-    HitPlayer = 0
-    IF pInvuln > 0 THEN
-        EXIT FUNCTION
-    END IF
-    IF x = pX THEN
-        IF y = pY THEN
-            HitPlayer = 1
-        END IF
-    END IF
-END FUNCTION
-
-REM ============================================================================
-REM UPDATES
-REM ============================================================================
-
-SUB UpdateCentipede()
+'==============================================================================
+' Add a new mushroom
+'==============================================================================
+SUB AddMush(x AS INTEGER, y AS INTEGER)
     DIM i AS INTEGER
-    DIM newX AS SINGLE
-    DIM blocked AS INTEGER
-    DIM mi AS INTEGER
-    DIM spd AS SINGLE
-    
-    spd = 0.4 + gLevel * 0.05
-    
-    FOR i = 0 TO sCount - 1
-        IF sOn(i) = 0 THEN
-            GOTO NextSeg
-        END IF
-        
-        IF sDir(i) = D_LEFT THEN
-            newX = sX(i) - spd
-        ELSE
-            newX = sX(i) + spd
-        END IF
-        
-        blocked = 0
-        IF INT(newX) < 1 THEN
-            blocked = 1
-        ELSEIF INT(newX) >= SCREEN_WIDTH - 1 THEN
-            blocked = 1
-        END IF
-        
-        IF blocked = 0 THEN
-            mi = FindMush(INT(newX), INT(sY(i)))
-            IF mi >= 0 THEN
-                IF mPoison(mi) = 1 THEN
-                    sY(i) = sY(i) + 1
-                    IF INT(sY(i)) >= SCREEN_HEIGHT - 1 THEN
-                        sY(i) = PLAY_TOP
-                    END IF
-                    GOTO NextSeg
-                END IF
-                blocked = 1
-            END IF
-        END IF
-        
-        IF blocked = 1 THEN
-            sY(i) = sY(i) + 1
-            IF INT(sY(i)) >= SCREEN_HEIGHT - 1 THEN
-                sY(i) = SCREEN_HEIGHT - 2
-            END IF
-            IF sDir(i) = D_LEFT THEN
-                sDir(i) = D_RIGHT
-            ELSE
-                sDir(i) = D_LEFT
-            END IF
-        ELSE
-            sX(i) = newX
-        END IF
-        
-        IF HitPlayer(INT(sX(i)), INT(sY(i))) = 1 THEN
-            PlayerDeath()
-        END IF
-NextSeg:
-    NEXT i
-END SUB
-
-SUB UpdateBullets()
-    DIM i AS INTEGER
-    DIM j AS INTEGER
-    DIM hX AS INTEGER
-    DIM hY AS INTEGER
-    DIM mi AS INTEGER
-    
-    FOR i = 0 TO MAX_BULL - 1
-        IF bOn(i) = 0 THEN
-            GOTO NextBull
-        END IF
-        
-        bY(i) = bY(i) - 2
-        hX = bX(i)
-        hY = INT(bY(i))
-        
-        IF hY < PLAY_TOP THEN
-            bOn(i) = 0
-            GOTO NextBull
-        END IF
-        
-        mi = FindMush(hX, hY)
-        IF mi >= 0 THEN
-            mHP(mi) = mHP(mi) - 1
-            IF mHP(mi) <= 0 THEN
-                gScore = gScore + 1
-            END IF
-            bOn(i) = 0
-            TBeep()
-            GOTO NextBull
-        END IF
-        
-        FOR j = 0 TO sCount - 1
-            IF sOn(j) = 1 THEN
-                IF INT(sX(j)) = hX THEN
-                    IF INT(sY(j)) = hY THEN
-                        HitSeg(j)
-                        bOn(i) = 0
-                        GOTO NextBull
-                    END IF
-                END IF
-            END IF
-        NEXT j
-NextBull:
-    NEXT i
-END SUB
-
-SUB HitSeg(idx AS INTEGER)
-    DIM pts AS INTEGER
-    
-    IF sHead(idx) = 1 THEN
-        pts = 100
-    ELSE
-        pts = 10
-    END IF
-    gScore = gScore + pts
-    
-    IF mCount < MAX_MUSH THEN
-        mX(mCount) = INT(sX(idx))
-        mY(mCount) = INT(sY(idx))
-        mHP(mCount) = MUSH_HP
-        mPoison(mCount) = 0
-        mCount = mCount + 1
-    END IF
-    
-    TBeep()
-    
-    IF idx < sCount - 1 THEN
-        IF sOn(idx + 1) = 1 THEN
-            sHead(idx + 1) = 1
-        END IF
-    END IF
-    
-    sOn(idx) = 0
-    CheckWin()
-END SUB
-
-SUB CheckWin()
-    DIM i AS INTEGER
-    DIM any AS INTEGER
-    
-    any = 0
-    FOR i = 0 TO sCount - 1
-        IF sOn(i) = 1 THEN
-            any = 1
-            EXIT FOR
-        END IF
-    NEXT i
-    
-    IF any = 0 THEN
-        gLevel = gLevel + 1
-        SpawnCentipede()
-        TBeep()
-        TBeep()
-    END IF
-END SUB
-
-REM ============================================================================
-REM PLAYER
-REM ============================================================================
-
-SUB MovePlayer(dx AS INTEGER, dy AS INTEGER)
-    DIM nx AS INTEGER
-    DIM ny AS INTEGER
-    
-    nx = pX + dx
-    ny = pY + dy
-    
-    IF nx < 1 THEN
-        nx = 1
-    END IF
-    IF nx >= SCREEN_WIDTH - 1 THEN
-        nx = SCREEN_WIDTH - 2
-    END IF
-    IF ny < PLAYER_TOP THEN
-        ny = PLAYER_TOP
-    END IF
-    IF ny >= SCREEN_HEIGHT - 1 THEN
-        ny = SCREEN_HEIGHT - 2
-    END IF
-    
-    IF FindMush(nx, ny) < 0 THEN
-        pX = nx
-        pY = ny
-    END IF
-END SUB
-
-SUB Fire()
-    DIM i AS INTEGER
-    FOR i = 0 TO MAX_BULL - 1
-        IF bOn(i) = 0 THEN
-            bX(i) = pX
-            bY(i) = pY - 1
-            bOn(i) = 1
-            TBeep()
+    ' Find inactive slot
+    FOR i = 0 TO gMushCount - 1
+        IF gMushrooms(i).active = 0 THEN
+            gMushrooms(i).Init(x, y)
             EXIT SUB
         END IF
     NEXT i
-END SUB
-
-SUB PlayerDeath()
-    IF pInvuln > 0 THEN
-        EXIT SUB
-    END IF
-    
-    pLives = pLives - 1
-    TBeep()
-    TBeep()
-    
-    IF pLives <= 0 THEN
-        gOver = 1
-    ELSE
-        pX = SCREEN_WIDTH / 2
-        pY = SCREEN_HEIGHT - 2
-        pInvuln = 60
+    ' Expand if room
+    IF gMushCount < MAX_MUSH THEN
+        gMushrooms(gMushCount) = NEW Mushroom()
+        gMushrooms(gMushCount).Init(x, y)
+        gMushCount = gMushCount + 1
     END IF
 END SUB
 
-REM ============================================================================
-REM RENDERING
-REM ============================================================================
-
-SUB Render()
+'==============================================================================
+' Count active segments
+'==============================================================================
+FUNCTION ActiveSegs() AS INTEGER
     DIM i AS INTEGER
-    DIM x AS INTEGER
-    DIM y AS INTEGER
-    DIM sp AS STRING
-    
-    REM Clear play area
-    FOR y = PLAY_TOP TO SCREEN_HEIGHT - 1
-        TSetPos(y, 1)
-        TSetClr(C_BLACK)
-        PRINT STRING$(SCREEN_WIDTH, " ");
-    NEXT y
-    
-    REM Draw mushrooms
-    FOR i = 0 TO mCount - 1
-        IF mHP(i) > 0 THEN
-            TSetPos(mY(i), mX(i))
-            IF mPoison(i) = 1 THEN
-                TSetClr(C_BGREEN)
-                PRINT "%";
-            ELSEIF mHP(i) >= 3 THEN
-                TSetClr(C_RED)
-                PRINT "#";
-            ELSE
-                TSetClr(C_YELLOW)
-                PRINT "*";
-            END IF
-        END IF
+    DIM cnt AS INTEGER
+    cnt = 0
+    FOR i = 0 TO gSegCount - 1
+        IF gSegments(i).active = 1 THEN cnt = cnt + 1
     NEXT i
-    
-    REM Draw centipede
-    FOR i = 0 TO sCount - 1
-        IF sOn(i) = 1 THEN
-            x = INT(sX(i))
-            y = INT(sY(i))
-            TSetPos(y, x)
-            IF sHead(i) = 1 THEN
-                TSetClr(C_BGREEN)
-                IF sDir(i) = D_LEFT THEN
-                    PRINT "<";
-                ELSE
-                    PRINT ">";
-                END IF
-            ELSE
-                TSetClr(C_GREEN)
-                IF gFrame MOD 2 = 0 THEN
-                    PRINT "O";
-                ELSE
-                    PRINT "o";
-                END IF
-            END IF
-        END IF
-    NEXT i
-    
-    REM Draw bullets
-    FOR i = 0 TO MAX_BULL - 1
-        IF bOn(i) = 1 THEN
-            TSetPos(INT(bY(i)), bX(i))
-            TSetClr(C_BCYAN)
-            PRINT "!";
-        END IF
-    NEXT i
-    
-    REM Draw player
-    IF pInvuln > 0 THEN
-        IF gFrame MOD 4 < 2 THEN
-            TSetPos(pY, pX)
-            TSetClr(C_BCYAN)
-            PRINT "A";
-        END IF
+    ActiveSegs = cnt
+END FUNCTION
+
+'==============================================================================
+' Kill a segment
+'==============================================================================
+SUB KillSeg(idx AS INTEGER)
+    DIM nextIdx AS INTEGER
+    IF gSegments(idx).isHead = 1 THEN
+        gScore = gScore + 100
     ELSE
-        TSetPos(pY, pX)
-        TSetClr(C_BCYAN)
-        PRINT "A";
+        gScore = gScore + 10
     END IF
-    
-    REM Draw HUD
-    TSetPos(1, 1)
-    TSetClr(C_BYELLOW)
-    PRINT "SCORE: "; gScore; "  LIVES: "; pLives; "  LEVEL: "; gLevel; "     ";
-END SUB
-
-REM ============================================================================
-REM INPUT
-REM ============================================================================
-
-SUB HandleInput()
-    DIM k AS STRING
-    k = TGetKey()
-    
-    IF k = "" THEN
-        EXIT SUB
+    ' Leave mushroom
+    IF MushAt(gSegments(idx).x, gSegments(idx).y) = 0 THEN
+        AddMush(gSegments(idx).x, gSegments(idx).y)
     END IF
-    
-    IF k = CHR$(27) + "[A" THEN
-        MovePlayer(0, -1)
-    ELSEIF k = CHR$(27) + "[B" THEN
-        MovePlayer(0, 1)
-    ELSEIF k = CHR$(27) + "[C" THEN
-        MovePlayer(1, 0)
-    ELSEIF k = CHR$(27) + "[D" THEN
-        MovePlayer(-1, 0)
-    ELSEIF k = "w" THEN
-        MovePlayer(0, -1)
-    ELSEIF k = "W" THEN
-        MovePlayer(0, -1)
-    ELSEIF k = "s" THEN
-        MovePlayer(0, 1)
-    ELSEIF k = "S" THEN
-        MovePlayer(0, 1)
-    ELSEIF k = "a" THEN
-        MovePlayer(-1, 0)
-    ELSEIF k = "A" THEN
-        MovePlayer(-1, 0)
-    ELSEIF k = "d" THEN
-        MovePlayer(1, 0)
-    ELSEIF k = "D" THEN
-        MovePlayer(1, 0)
-    ELSEIF k = " " THEN
-        Fire()
-    ELSEIF k = "p" THEN
-        gPaused = 1 - gPaused
-    ELSEIF k = "P" THEN
-        gPaused = 1 - gPaused
-    ELSEIF k = "q" THEN
-        gRunning = 0
-    ELSEIF k = "Q" THEN
-        gRunning = 0
-    ELSEIF k = CHR$(27) THEN
-        gRunning = 0
+    gSegments(idx).Deactivate()
+    ' Promote next segment to head
+    nextIdx = idx + 1
+    IF nextIdx < gSegCount THEN
+        IF gSegments(nextIdx).active = 1 THEN
+            gSegments(nextIdx).SetHead(1)
+        END IF
+    END IF
+    IF ActiveSegs() = 0 THEN
+        gGameState = ST_WIN
     END IF
 END SUB
 
-REM ============================================================================
-REM GAME LOOP
-REM ============================================================================
+'==============================================================================
+' Initialize level
+'==============================================================================
+SUB InitLevel()
+    DIM i AS INTEGER
+    DIM sx AS INTEGER
+    DIM mx AS INTEGER
+    DIM my AS INTEGER
+    DIM placed AS INTEGER
+    DIM randVal AS INTEGER
 
-SUB GameLoop()
-    DIM curTime AS INTEGER
-    DIM elapsed AS INTEGER
-    
-    gLastTime = TGetTicks()
-    
-    WHILE gRunning = 1
-        curTime = TGetTicks()
-        elapsed = curTime - gLastTime
-        
-        IF elapsed >= 33 THEN
-            gLastTime = curTime
-            gFrame = gFrame + 1
-            
-            HandleInput()
-            
-            IF gPaused = 0 THEN
-                IF gOver = 0 THEN
-                    UpdateCentipede()
-                    UpdateBullets()
-                    IF pInvuln > 0 THEN
-                        pInvuln = pInvuln - 1
-                    END IF
-                END IF
-            END IF
-            
-            Render()
-            
-            IF gPaused = 1 THEN
-                TSetPos(12, 30)
-                TSetClr(C_WHITE)
-                PRINT " PAUSED - P to Resume ";
-            END IF
-            
-            IF gOver = 1 THEN
-                TSetPos(10, 30)
-                TSetClr(C_BRED)
-                PRINT " GAME OVER ";
-                TSetPos(12, 25)
-                TSetClr(C_BYELLOW)
-                PRINT " Final Score: "; gScore; " ";
-                TSetPos(14, 28)
-                TSetClr(C_WHITE)
-                PRINT " Press Q to Quit ";
-            END IF
+    ' Init segments
+    gSegCount = CENTIPEDE_LEN
+    IF gSegCount > MAX_SEG THEN gSegCount = MAX_SEG
+    sx = PLAY_RIGHT - 3
+    FOR i = 0 TO gSegCount - 1
+        gSegments(i) = NEW Segment()
+        IF i = 0 THEN
+            gSegments(i).Init(sx - i, PLAY_TOP, -1, 1)
         ELSE
-            TWait(1)
+            gSegments(i).Init(sx - i, PLAY_TOP, -1, 0)
         END IF
-    WEND
+    NEXT i
+
+    ' Init mushrooms (only on level 1)
+    IF gLevel = 1 THEN
+        gMushCount = MUSH_COUNT
+        IF gMushCount > MAX_MUSH THEN gMushCount = MAX_MUSH
+        FOR i = 0 TO gMushCount - 1
+            placed = 0
+            DO WHILE placed = 0
+                randVal = INT(RND() * (PLAY_RIGHT - PLAY_LEFT))
+                mx = PLAY_LEFT + randVal
+                randVal = INT(RND() * 12)
+                my = PLAY_TOP + 2 + randVal
+                IF MushAt(mx, my) = 0 THEN
+                    gMushrooms(i) = NEW Mushroom()
+                    gMushrooms(i).Init(mx, my)
+                    placed = 1
+                END IF
+            LOOP
+        NEXT i
+    END IF
+
+    ' Init player
+    gPlayer = NEW Player()
+    gPlayer.Init()
+
+    ' Init bullet
+    gBullet = NEW Bullet()
+    gBullet.active = 0
 END SUB
 
-REM ============================================================================
-REM TITLE SCREEN
-REM ============================================================================
-
-SUB ShowTitle()
-    DIM k AS STRING
-    DIM f AS INTEGER
+'==============================================================================
+' Update segments
+'==============================================================================
+SUB UpdateSegs()
     DIM i AS INTEGER
-    DIM x AS INTEGER
-    
-    TClear()
-    THideCursor()
-    f = 0
-    
-    WHILE 1 = 1
-        REM Title
-        TSetPos(5, 25)
-        TSetClr((f / 8) MOD 8 + 9)
-        PRINT "*** CENTIPEDE ***"
-        
-        REM Animated centipede
-        x = (f MOD 90) - 10
-        FOR i = 0 TO 9
-            IF x - i >= 1 THEN
-                IF x - i < 80 THEN
-                    TSetPos(10, x - i)
-                    IF i = 0 THEN
-                        TSetClr(C_BGREEN)
-                        PRINT ">";
-                    ELSE
-                        TSetClr(C_GREEN)
-                        IF f MOD 2 = 0 THEN
-                            PRINT "O";
-                        ELSE
-                            PRINT "o";
-                        END IF
-                    END IF
+    DIM speed AS INTEGER
+    speed = CENT_SPEED + gLevel * 2
+    FOR i = 0 TO gSegCount - 1
+        IF gSegments(i).active = 1 THEN
+            gSegments(i).Move(speed)
+            ' Check mushroom collision
+            IF MushAt(gSegments(i).x, gSegments(i).y) = 1 THEN
+                gSegments(i).StartDrop()
+            END IF
+        END IF
+    NEXT i
+END SUB
+
+'==============================================================================
+' Update bullet
+'==============================================================================
+SUB UpdateBullet()
+    DIM i AS INTEGER
+    IF gBullet.active = 0 THEN EXIT SUB
+    gBullet.Move(BULLET_SPEED)
+    IF gBullet.active = 0 THEN EXIT SUB
+
+    ' Check segment hits
+    FOR i = 0 TO gSegCount - 1
+        IF gSegments(i).active = 1 THEN
+            IF gBullet.x = gSegments(i).x THEN
+                IF gBullet.y = gSegments(i).y THEN
+                    KillSeg(i)
+                    gBullet.Deactivate()
+                    EXIT SUB
                 END IF
             END IF
-        NEXT i
-        
-        REM Clear trail
-        IF x - 10 >= 1 THEN
-            TSetPos(10, x - 10)
-            PRINT " ";
         END IF
-        
-        TSetPos(14, 22)
-        TSetClr(C_WHITE)
-        PRINT "WASD or Arrow Keys = Move"
-        TSetPos(15, 30)
-        PRINT "SPACE = Fire"
-        TSetPos(16, 30)
-        PRINT "P = Pause"
-        
-        TSetPos(19, 26)
-        TSetClr(C_BYELLOW)
-        PRINT "Press SPACE to Start"
-        
-        TSetPos(21, 28)
-        TSetClr(C_CYAN)
-        PRINT "Q or ESC to Quit"
-        
-        k = TGetKey()
-        IF k = " " THEN
-            EXIT WHILE
+    NEXT i
+
+    ' Check mushroom hits
+    FOR i = 0 TO gMushCount - 1
+        IF gMushrooms(i).active = 1 THEN
+            IF gBullet.x = gMushrooms(i).x THEN
+                IF gBullet.y = gMushrooms(i).y THEN
+                    IF gMushrooms(i).Hit() = 1 THEN
+                        gScore = gScore + 1
+                    END IF
+                    gBullet.Deactivate()
+                    EXIT SUB
+                END IF
+            END IF
         END IF
-        IF k = "q" THEN
-            gRunning = 0
-            EXIT WHILE
-        END IF
-        IF k = "Q" THEN
-            gRunning = 0
-            EXIT WHILE
-        END IF
-        IF k = CHR$(27) THEN
-            gRunning = 0
-            EXIT WHILE
-        END IF
-        
-        f = f + 1
-        TWait(50)
-    WEND
+    NEXT i
 END SUB
 
-REM ============================================================================
-REM MAIN
-REM ============================================================================
+'==============================================================================
+' Check player collisions
+'==============================================================================
+SUB CheckCollisions()
+    DIM i AS INTEGER
+    gPlayer.UpdateInvuln()
+    IF gPlayer.IsInvulnerable() = 1 THEN EXIT SUB
+
+    FOR i = 0 TO gSegCount - 1
+        IF gSegments(i).active = 1 THEN
+            IF gPlayer.x = gSegments(i).x THEN
+                IF gPlayer.y = gSegments(i).y THEN
+                    gPlayer.LoseLife()
+                    Viper.Terminal.Bell()
+                    IF gPlayer.lives <= 0 THEN
+                        gGameState = ST_OVER
+                    ELSE
+                        gPlayer.Respawn()
+                        gBullet.Deactivate()
+                    END IF
+                    EXIT SUB
+                END IF
+            END IF
+        END IF
+    NEXT i
+END SUB
+
+'==============================================================================
+' Draw game
+'==============================================================================
+SUB DrawGame()
+    DIM i AS INTEGER
+    DIM sp AS STRING
+    DIM clr AS INTEGER
+    DIM sb AS Viper.Text.StringBuilder
+
+    ' HUD
+    sb = NEW Viper.Text.StringBuilder()
+    sb.Append("Score:")
+    sb.Append(STR$(gScore))
+    DrawStr(1, 2, sb.ToString(), CLR_BYELLOW)
+
+    sb = NEW Viper.Text.StringBuilder()
+    sb.Append("Lives:")
+    sb.Append(STR$(gPlayer.lives))
+    DrawStr(1, 25, sb.ToString(), CLR_BWHITE)
+
+    sb = NEW Viper.Text.StringBuilder()
+    sb.Append("Level:")
+    sb.Append(STR$(gLevel))
+    DrawStr(1, 45, sb.ToString(), CLR_WHITE)
+
+    ' Mushrooms
+    FOR i = 0 TO gMushCount - 1
+        IF gMushrooms(i).active = 1 THEN
+            IF gMushrooms(i).hp >= 3 THEN
+                sp = "#"
+                clr = CLR_GREEN
+            ELSEIF gMushrooms(i).hp = 2 THEN
+                sp = "@"
+                clr = CLR_YELLOW
+            ELSE
+                sp = "+"
+                clr = CLR_RED
+            END IF
+            DrawAt(gMushrooms(i).y, gMushrooms(i).x, sp, clr)
+        END IF
+    NEXT i
+
+    ' Segments
+    FOR i = 0 TO gSegCount - 1
+        IF gSegments(i).active = 1 THEN
+            IF gSegments(i).isHead = 1 THEN
+                DrawAt(gSegments(i).y, gSegments(i).x, "O", CLR_BRED)
+            ELSE
+                DrawAt(gSegments(i).y, gSegments(i).x, "o", CLR_BGREEN)
+            END IF
+        END IF
+    NEXT i
+
+    ' Bullet
+    IF gBullet.active = 1 THEN
+        DrawAt(gBullet.y, gBullet.x, "|", CLR_BWHITE)
+    END IF
+
+    ' Player
+    IF gPlayer.invulnTimer > 0 THEN
+        IF (gPlayer.invulnTimer MOD 4) < 2 THEN
+            DrawAt(gPlayer.y, gPlayer.x, "A", CLR_BYELLOW)
+        END IF
+    ELSE
+        DrawAt(gPlayer.y, gPlayer.x, "A", CLR_BYELLOW)
+    END IF
+END SUB
+
+'==============================================================================
+' Handle input
+'==============================================================================
+SUB HandleInput(key AS STRING)
+    DIM nx AS INTEGER
+    DIM ny AS INTEGER
+
+    IF key = "a" THEN
+        nx = gPlayer.x - 1
+        IF nx >= PLAY_LEFT THEN
+            IF MushAt(nx, gPlayer.y) = 0 THEN gPlayer.x = nx
+        END IF
+    ELSEIF key = "d" THEN
+        nx = gPlayer.x + 1
+        IF nx <= PLAY_RIGHT THEN
+            IF MushAt(nx, gPlayer.y) = 0 THEN gPlayer.x = nx
+        END IF
+    ELSEIF key = "w" THEN
+        ny = gPlayer.y - 1
+        IF ny >= PLAYER_ZONE_TOP THEN
+            IF MushAt(gPlayer.x, ny) = 0 THEN gPlayer.y = ny
+        END IF
+    ELSEIF key = "s" THEN
+        ny = gPlayer.y + 1
+        IF ny <= PLAY_BOTTOM THEN
+            IF MushAt(gPlayer.x, ny) = 0 THEN gPlayer.y = ny
+        END IF
+    ELSEIF key = " " THEN
+        IF gBullet.active = 0 THEN
+            gBullet.Fire(gPlayer.x, gPlayer.y)
+        END IF
+    ELSEIF key = "p" THEN
+        gGameState = ST_PAUSE
+    END IF
+END SUB
+
+'==============================================================================
+' Main game
+'==============================================================================
+Main()
 
 SUB Main()
-    gRunning = 1
-    ShowTitle()
-    
-    IF gRunning = 0 THEN
-        TClear()
-        TShowCursor()
-        TSetPos(1, 1)
-        PRINT "Thanks for playing!"
-        EXIT SUB
-    END IF
-    
-    TClear()
-    InitGame()
-    GameLoop()
-    
-    TClear()
-    TShowCursor()
-    TSetPos(1, 1)
-    PRINT "Thanks for playing Centipede!"
-    PRINT "Final Score: "; gScore
-    PRINT "Level Reached: "; gLevel
-END SUB
+    DIM running AS INTEGER
+    DIM key AS STRING
 
-Main()
+    ' Init terminal
+    Viper.Terminal.SetCursorVisible(0)
+    Viper.Terminal.SetAltScreen(1)
+    RANDOMIZE
+    gLastColor = -1
+
+    gGameState = ST_TITLE
+    gScore = 0
+    gLevel = 1
+    running = 1
+
+    DO WHILE running = 1
+        Viper.Terminal.Clear()
+        gLastColor = -1
+        key = Viper.Terminal.InKey()
+
+        IF key = "q" THEN running = 0
+
+        IF gGameState = ST_TITLE THEN
+            DrawCenter(5, "=== CENTIPEDE ===", CLR_BGREEN)
+            DrawCenter(10, "W/A/S/D - Move", CLR_YELLOW)
+            DrawCenter(11, "SPACE - Shoot", CLR_YELLOW)
+            DrawCenter(12, "P - Pause  Q - Quit", CLR_YELLOW)
+            DrawCenter(16, "Press SPACE to start", CLR_BWHITE)
+            IF key = " " THEN
+                gScore = 0
+                gLevel = 1
+                InitLevel()
+                gGameState = ST_PLAY
+            END IF
+
+        ELSEIF gGameState = ST_PLAY THEN
+            HandleInput(key)
+            UpdateSegs()
+            UpdateBullet()
+            CheckCollisions()
+            DrawGame()
+
+        ELSEIF gGameState = ST_PAUSE THEN
+            DrawGame()
+            DrawCenter(12, "PAUSED - Press P", CLR_CYAN)
+            IF key = "p" THEN gGameState = ST_PLAY
+
+        ELSEIF gGameState = ST_OVER THEN
+            DrawGame()
+            DrawCenter(10, "GAME OVER", CLR_BRED)
+            DrawCenter(12, "Press SPACE", CLR_WHITE)
+            IF key = " " THEN gGameState = ST_TITLE
+
+        ELSEIF gGameState = ST_WIN THEN
+            DrawGame()
+            DrawCenter(10, "LEVEL COMPLETE!", CLR_BGREEN)
+            DrawCenter(12, "Press SPACE", CLR_WHITE)
+            IF key = " " THEN
+                gLevel = gLevel + 1
+                InitLevel()
+                gGameState = ST_PLAY
+            END IF
+        END IF
+
+        Viper.Time.SleepMs(FRAME_TIME)
+    LOOP
+
+    Viper.Terminal.SetCursorVisible(1)
+    Viper.Terminal.SetAltScreen(0)
+    Viper.Terminal.Clear()
+END SUB

@@ -69,7 +69,8 @@ StmtPtr Parser::parsePrintStatement()
                 if (at(TokenKind::EndOfLine) || at(TokenKind::EndOfFile) || at(TokenKind::Colon))
                     break;
                 // BUG-OOP-021: Allow soft keywords as expressions in PRINT#.
-                bool isSoftKw = isSoftIdentToken(peek().kind) && peek().kind != TokenKind::Identifier;
+                bool isSoftKw =
+                    isSoftIdentToken(peek().kind) && peek().kind != TokenKind::Identifier;
                 if (isStatementStart(peek().kind) && !isSoftKw)
                     break;
                 if (at(TokenKind::Semicolon))

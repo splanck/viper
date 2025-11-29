@@ -15,13 +15,13 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "frontends/basic/BasicDiagnosticMessages.hpp"
 #include "frontends/basic/ASTUtils.hpp"
+#include "frontends/basic/BasicDiagnosticMessages.hpp"
+#include "frontends/basic/IdentifierUtil.hpp"
+#include "frontends/basic/Options.hpp"
 #include "frontends/basic/Parser.hpp"
 #include "frontends/basic/Parser_Stmt_ControlHelpers.hpp"
 #include "frontends/basic/SelectModel.hpp"
-#include "frontends/basic/IdentifierUtil.hpp"
-#include "frontends/basic/Options.hpp"
 #include "frontends/basic/constfold/Dispatch.hpp"
 #include "viper/il/IO.hpp"
 
@@ -495,9 +495,9 @@ il::support::Expected<Parser::CaseArmSyntax> Parser::parseCaseArmSyntax(Cursor &
             std::string ident = peek().lexeme;
             // Remove type suffix for canonicalization (e.g., CHR$ -> CHR)
             std::string identBase = ident;
-            if (!identBase.empty() && (identBase.back() == '$' || identBase.back() == '%' ||
-                                        identBase.back() == '#' || identBase.back() == '!' ||
-                                        identBase.back() == '&'))
+            if (!identBase.empty() &&
+                (identBase.back() == '$' || identBase.back() == '%' || identBase.back() == '#' ||
+                 identBase.back() == '!' || identBase.back() == '&'))
             {
                 identBase.pop_back();
             }
@@ -523,7 +523,8 @@ il::support::Expected<Parser::CaseArmSyntax> Parser::parseCaseArmSyntax(Cursor &
                                     Token t;
                                     t.kind = TokenKind::String;
                                     t.loc = cursor.caseTok.loc;
-                                    // Store raw string value without quotes (matching lexer behavior)
+                                    // Store raw string value without quotes (matching lexer
+                                    // behavior)
                                     t.lexeme = se->value;
                                     cursor.stringLabels.push_back(std::move(t));
                                     continue;
@@ -531,7 +532,9 @@ il::support::Expected<Parser::CaseArmSyntax> Parser::parseCaseArmSyntax(Cursor &
                             }
                         }
                     }
-                    emitError("B0001", cursor.caseTok, "SELECT CASE string label must be a literal or CHR$ constant");
+                    emitError("B0001",
+                              cursor.caseTok,
+                              "SELECT CASE string label must be a literal or CHR$ constant");
                 }
                 continue;
             }
@@ -579,14 +582,18 @@ il::support::Expected<Parser::CaseArmSyntax> Parser::parseCaseArmSyntax(Cursor &
                         }
                         else
                         {
-                            emitError("B0001", peek(), "SELECT CASE range end must be an integer literal or CONST");
+                            emitError("B0001",
+                                      peek(),
+                                      "SELECT CASE range end must be an integer literal or CONST");
                             bail = true;
                             break;
                         }
                     }
                     else
                     {
-                        emitError("B0001", peek(), "SELECT CASE range end must be an integer literal or CONST");
+                        emitError("B0001",
+                                  peek(),
+                                  "SELECT CASE range end must be an integer literal or CONST");
                         bail = true;
                         break;
                     }

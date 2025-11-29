@@ -300,8 +300,8 @@ void Lowerer::emitClassConstructor(const ClassDecl &klass, const ConstructorDecl
                 }
                 else
                 {
-                    const std::string implQ =
-                        OopEmitHelper::findImplementorClass(oopIndex_, ciInit->qualifiedName, mname);
+                    const std::string implQ = OopEmitHelper::findImplementorClass(
+                        oopIndex_, ciInit->qualifiedName, mname);
                     const std::string target = mangleMethod(implQ, mname);
                     emitStore(Type(Type::Kind::Ptr), slotPtr, Value::global(target));
                 }

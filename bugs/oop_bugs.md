@@ -303,38 +303,44 @@ END IF
   appear inside the IF’s `then_branch` for `"IF FLAG THEN PRINT 1: PRINT 2"`. Test build
   passes.
 
-### BUG-OOP-019: SELECT CASE cannot use variable/constant labels
-- **Status**: Fixed (2025-11-29) ✅ Verified
-- **Discovered**: 2025-11-28
-- **Game**: Roguelike
+### BUG-OOP-019: SELECT CASE cannot use CONST labels across ADDFILE boundaries
+- **Status**: Open (regression)
+- **Discovered**: 2025-11-28 (initial), 2025-11-29 (regression discovered)
+- **Game**: Chess
 - **Severity**: High
-- **Component**: BASIC Frontend / Parser
-- **Description**: SELECT CASE statements require integer literals for CASE labels; constants defined with DIM/CONST cannot be used
+- **Component**: BASIC Frontend / Parser / ADDFILE
+- **Description**: SELECT CASE statements with CONST labels work in single-file programs but fail when CONSTs are defined in an ADDFILE'd file
 - **Steps to Reproduce**:
 ```basic
-CONST AI_IDLE AS INTEGER = 0
-CONST AI_HUNT AS INTEGER = 1
+' constants.bas
+CONST QUEEN AS INTEGER = 5
+CONST ROOK AS INTEGER = 4
 
-DIM state AS INTEGER
-state = AI_IDLE
-
-SELECT CASE state
-    CASE AI_IDLE      ' Error: SELECT CASE labels must be integer literals
-        PRINT "Idle"
-    CASE AI_HUNT
-        PRINT "Hunting"
+' movegen.bas (included via ADDFILE after constants.bas)
+SELECT CASE promo
+    CASE QUEEN      ' Error: SELECT CASE labels must be literals or CONSTs
+        sb.Append("q")
+    CASE ROOK
+        sb.Append("r")
 END SELECT
 ```
-- **Expected**: CASE labels accept constant values
-- **Actual**: Error "SELECT CASE labels must be integer literals"
-- **Root Cause**: The parser in `src/frontends/basic/Parser_Stmt_Select.cpp` (`parseCaseArmSyntax`) only accepted:
-  - `TokenKind::String` for string labels
-  - `TokenKind::Number` with optional sign for numeric labels
-  - `CASE IS` with relational operator and numeric literal
+- **Expected**: CASE labels accept CONST values from ADDFILE'd files
+- **Actual**: Error "SELECT CASE labels must be literals or CONSTs" even though CONSTs are defined
+- **Root Cause**: In `src/frontends/basic/Parser.cpp:501-506`, when ADDFILE creates a child parser:
+  ```cpp
+  Parser child(contents, newFileId, emitter_, sm_, includeStack_, /*suppress*/ true);
+  child.arrays_ = arrays_;
+  child.knownNamespaces_ = knownNamespaces_;
+  ```
+  The `knownConstInts_` and `knownConstStrs_` maps are **NOT** copied to child parsers.
 
-  When an identifier (CONST) was encountered, it did NOT match any of these cases and fell through to emit "SELECT CASE labels must be integer literals".
-- **Fix Applied**: Modified `parseCaseArmSyntax` in `Parser_Stmt_Select.cpp` to recognize identifiers that are defined as CONST values. When a CASE label identifier is encountered, the parser looks it up in `constValues_` and substitutes the constant's integer value. This allows CONST identifiers to be used as CASE labels while maintaining the static nature of CASE dispatch.
-- **Verification (2025-11-29)**: Test with `CONST AI_IDLE AS INTEGER = 0` and `CASE AI_IDLE` compiles and runs correctly.
+  When `constants.bas` is parsed first, it populates the parent's `knownConstInts_` with `QUEEN=5`, etc. But when `movegen.bas` is parsed as a child, it gets a fresh empty `knownConstInts_` map, so `CASE QUEEN` lookup fails.
+
+  Additionally, CONSTs defined in child parsers are not copied back to the parent, so CONSTs don't propagate in either direction.
+- **Fix Required**: In `handleTopLevelAddFile()` and `handleAddFileInto()`:
+  1. Copy `knownConstInts_` and `knownConstStrs_` to child parser before parsing
+  2. Merge child's `knownConstInts_` and `knownConstStrs_` back to parent after parsing
+- **Workaround**: Use numeric literals directly: `CASE 5` instead of `CASE QUEEN`, or use IF-ELSEIF chains
 
 ### BUG-OOP-020: SUB calls require parentheses even with no arguments
 - **Status**: Fixed (2025-11-29) ✅ Verified (Design Limitation Documented)
@@ -910,7 +916,7 @@ PRINT "After call: "; m.GetValue()   ' Prints 42
 | **BUG-OOP-016** | ✅ Fixed | INTEGER variable type mismatch when passed to functions | 2025-11-27 |
 | **BUG-OOP-017** | ✅ Fixed | Single-line IF colon only applies condition to first statement | 2025-11-27 |
 | **BUG-OOP-018** | ✅ Fixed | Viper.* runtime classes not callable from BASIC | 2025-11-27 |
-| **BUG-OOP-019** | ✅ Fixed | SELECT CASE with CONST labels | 2025-11-29 |
+| **BUG-OOP-019** | Open | SELECT CASE with CONST labels across ADDFILE | - |
 | **BUG-OOP-020** | ✅ Fixed | SUB calls without parens (when defined before call) | 2025-11-29 |
 | **BUG-OOP-021** | ✅ Fixed | Soft keywords as identifiers (COLOR, FLOOR, etc.) | 2025-11-29 |
 | **BUG-OOP-022** | ✅ Fixed | SELECT CASE with CHR()/CHR$() labels | 2025-11-29 |
@@ -924,13 +930,12 @@ PRINT "After call: "; m.GetValue()   ' Prints 42
 ## Priority Recommendations
 
 ### Open Bugs (2025-11-29)
-None! All reported bugs are now fixed or documented as design limitations.
+- **BUG-OOP-019** - SELECT CASE with CONST labels fails across ADDFILE boundaries (knownConstInts_ not propagated to child parsers)
 
 ### Design Limitations (Won't Fix)
 - **BUG-OOP-025** - Viper.Collections.List only stores objects (use BASIC arrays for primitives)
 
 ### Recently Fixed (2025-11-29)
-- **BUG-OOP-019** - SELECT CASE now accepts CONST identifiers as labels
 - **BUG-OOP-020** - SUB calls work without parentheses when SUB is defined before call site
 - **BUG-OOP-021** - Soft keywords (COLOR, FLOOR, RANDOM, etc.) can be used as identifiers
 - **BUG-OOP-022** - SELECT CASE now accepts CHR()/CHR$() expressions as string labels
@@ -959,3 +964,149 @@ None! All reported bugs are now fixed or documented as design limitations.
 
 ### Remaining Feature Requests
 1. Viper.* runtime classes (Viper.Collections.List, Viper.StringBuilder, etc.) are not yet implemented as usable BASIC classes - these are enhancement requests, not bugs
+
+---
+
+## Missing Language Features
+
+### FEAT-001: Bitwise OR operator for integers
+- **Status**: Missing
+- **Discovered**: 2025-11-29
+- **Game**: Chess
+- **Description**: The `OR` operator only works as logical OR (requires BOOLEAN operands). There is no bitwise OR for integers.
+- **Steps to Reproduce**:
+```basic
+DIM flags AS INTEGER
+flags = 1 OR 2 OR 4   ' Error: Logical operator OR requires BOOLEAN operands
+```
+- **Expected**: Bitwise OR produces `flags = 7`
+- **Actual**: Error "Logical operator OR requires BOOLEAN operands, got INT and INT"
+- **Workaround**: Use addition when bits don't overlap: `flags = 1 + 2 + 4`
+- **Analysis**: The semantic analyzer in `Check_Expr_Binary.cpp` routes `OR` to `validateLogicalOperands` which requires boolean operands. The lowerer in `LowerExprLogical.cpp:152` has code for "Classic BASIC OR: bitwise OR on integers" but the semantic check rejects it first.
+- **Fix Required**: Either:
+  1. Change OR to accept integers (classic BASIC behavior), or
+  2. Add a separate BITOR operator/function
+
+### FEAT-002: Bitwise AND operator for integers
+- **Status**: Missing
+- **Discovered**: 2025-11-29
+- **Game**: Chess
+- **Description**: The `AND` operator only works as logical AND. There is no bitwise AND for integers.
+- **Steps to Reproduce**:
+```basic
+DIM result AS INTEGER
+result = 7 AND 3   ' Error: Logical operator AND requires BOOLEAN operands
+```
+- **Expected**: Bitwise AND produces `result = 3`
+- **Actual**: Error "Logical operator AND requires BOOLEAN operands"
+- **Workaround**: None for general case. For testing single bits, use MOD: `IF (flags MOD 2) = 1 THEN` tests bit 0
+- **Fix Required**: Same as FEAT-001
+
+### FEAT-003: XOR operator
+- **Status**: Missing
+- **Discovered**: 2025-11-29
+- **Game**: Chess
+- **Description**: There is no XOR operator at all (neither bitwise nor logical)
+- **Steps to Reproduce**:
+```basic
+DIM h AS INTEGER
+h = 5 XOR 3   ' Error: unknown procedure 'xor'
+```
+- **Expected**: XOR operator available
+- **Actual**: XOR is parsed as a procedure call and fails
+- **Workaround**: None for general case. For hash functions, use polynomial hashing with multiplication and addition instead.
+- **Analysis**: XOR is not defined in TokenKinds.def as a keyword. The lowerer has `EmitCommon.cpp:177` with `emitXor()` but there's no syntax to reach it.
+- **Fix Required**: Add XOR as a keyword and operator
+
+### FEAT-004: NOT operator for bitwise complement
+- **Status**: Partial
+- **Discovered**: 2025-11-29
+- **Game**: Chess
+- **Description**: NOT works for logical negation but bitwise complement behavior is unclear
+- **Analysis**: `LowerExpr.cpp:210` mentions "Classic BASIC NOT: bitwise complement (XOR with all bits set)" but the semantic layer may restrict usage.
+
+### FEAT-005: INPUT is a reserved keyword, cannot be used as variable name
+- **Status**: Design Limitation
+- **Discovered**: 2025-11-29
+- **Game**: Chess
+- **Description**: The word `input` cannot be used as a variable or parameter name because INPUT is a statement keyword
+- **Steps to Reproduce**:
+```basic
+FUNCTION ParseMove(input AS STRING) AS INTEGER   ' Error: expected ident, got INPUT
+```
+- **Expected**: Context-sensitive parsing allows `input` as identifier in non-statement positions
+- **Actual**: Error "expected ident, got INPUT"
+- **Workaround**: Use alternative names like `userInput`, `inStr`, `cmdStr`, etc.
+- **Analysis**: Unlike the "soft keywords" fix (BUG-OOP-021) which allows COLOR, FLOOR, etc. as identifiers, INPUT is a "hard keyword" that cannot be used as an identifier in any context.
+
+### BUG-OOP-027: Object array declarations cause stack overflow
+- **Status**: Fixed (2025-11-29) ✅ Verified
+- **Discovered**: 2025-11-29
+- **Game**: Centipede
+- **Severity**: Critical
+- **Component**: BASIC Runtime / Memory Allocation
+- **Description**: Declaring arrays of objects (CLASS types) was reported to cause stack overflow at runtime. This prevented using OOP patterns with arrays of game entities.
+- **Original Reproduction Case**:
+```basic
+CLASS Segment
+    DIM x AS INTEGER
+    DIM y AS INTEGER
+    DIM dx AS INTEGER
+    DIM active AS INTEGER
+    SUB Init(px AS INTEGER, py AS INTEGER)
+        x = px
+        y = py
+    END SUB
+END CLASS
+
+CLASS Mushroom
+    DIM x AS INTEGER
+    DIM y AS INTEGER
+    DIM hp AS INTEGER
+END CLASS
+
+DIM gSegments(15) AS Segment
+DIM gMushrooms(29) AS Mushroom
+
+Main()
+
+SUB Main()
+    PRINT "Test"
+END SUB
+```
+- **Resolution**: Object arrays now work correctly with heap allocation via `rt_arr_obj_new`. Verified working with:
+  - 32 Entity objects with 8 fields each
+  - 50 Entity objects
+  - 10 Bullet objects
+  - Multiple concurrent object array allocations
+  - Object method calls on array elements
+- **Verification Test**:
+```basic
+' Tested successfully with large arrays
+DIM gSegments(31) AS Entity    ' 32 objects
+DIM gMushrooms(49) AS Entity   ' 50 objects
+DIM gSpiders(7) AS Entity      ' 8 objects
+DIM gBullets(9) AS Bullet      ' 10 objects
+
+FOR i = 0 TO 31
+    gSegments(i) = NEW Entity()
+    gSegments(i).Init(i * 2, 2)
+NEXT i
+' All objects created and methods called successfully
+```
+- **Root Cause**: The issue may have been related to a specific configuration or build state at the time of discovery. The runtime's `rt_arr_obj_new` (in `src/runtime/rt_array_obj.c`) correctly uses heap allocation via `rt_heap_alloc` which calls `malloc`.
+
+### FEAT-006: EMPTY conflicts with CONST EMPTY
+- **Status**: Design Limitation
+- **Discovered**: 2025-11-29
+- **Game**: Chess
+- **Description**: User-defined CONST names can conflict with each other in unexpected ways when used as variable names
+- **Steps to Reproduce**:
+```basic
+CONST EMPTY AS INTEGER = 0
+DIM empty AS INTEGER   ' Error: cannot assign to constant 'EMPTY'
+empty = 5
+```
+- **Expected**: Variable `empty` is distinct from CONST `EMPTY` (case sensitivity) or clear error
+- **Actual**: Error "cannot assign to constant 'EMPTY'" because BASIC is case-insensitive
+- **Workaround**: Choose CONST names that won't be used as variables (e.g., `PIECE_EMPTY` instead of `EMPTY`)

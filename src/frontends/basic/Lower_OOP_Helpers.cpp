@@ -46,9 +46,10 @@ std::string resolveFieldObjectClass(const ClassLayout *layout,
     return qualify ? qualify(field->objectClassName) : field->objectClassName;
 }
 
-std::string resolveFieldArrayElementClass(const ClassLayout *layout,
-                                          std::string_view fieldName,
-                                          const std::function<std::string(const std::string &)> &qualify)
+std::string resolveFieldArrayElementClass(
+    const ClassLayout *layout,
+    std::string_view fieldName,
+    const std::function<std::string(const std::string &)> &qualify)
 {
     if (!layout)
         return {};

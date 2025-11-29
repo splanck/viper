@@ -503,7 +503,8 @@ ExprPtr Parser::parsePrimary()
 
     // BUG-OOP-021: Treat soft keywords (COLOR, FLOOR, etc.) as identifiers when
     // they appear in expression context. This allows using them as variable names.
-    if (at(TokenKind::Identifier) || (isSoftIdentToken(peek().kind) && peek().kind != TokenKind::Identifier))
+    if (at(TokenKind::Identifier) ||
+        (isSoftIdentToken(peek().kind) && peek().kind != TokenKind::Identifier))
     {
         // Attempt to parse a namespace-qualified call within an expression context.
         // This handles forms like A.B.F(...) and accepts single-dot A.F(...) only
@@ -528,8 +529,7 @@ ExprPtr Parser::parsePrimary()
                 }
                 // Accept final segment as identifier or soft keyword (e.g.,
                 // Viper.Text.StringBuilder.Append, Viper.Terminal.Color) (BUG-OOP-021)
-                if (!(isSoftIdentToken(peek(i).kind) &&
-                      peek(i + 1).kind == TokenKind::LParen))
+                if (!(isSoftIdentToken(peek(i).kind) && peek(i + 1).kind == TokenKind::LParen))
                     ok = false;
                 // BUG-082 fix: Only treat as qualified procedure call if the first identifier
                 // is a known namespace. This applies to both single-dot (obj.Method) and

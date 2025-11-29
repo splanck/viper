@@ -37,17 +37,15 @@ static il::core::Module lowerSnippet(const std::string &src)
 
 int main()
 {
-    const std::string src =
-        "10 SUB ShowTitle\n"
-        "20 PRINT \"q to quit\"\n"
-        "30 END\n"
-        "40 END SUB\n"
-        "50 ShowTitle\n"
-        "60 END\n";
+    const std::string src = "10 SUB ShowTitle\n"
+                            "20 PRINT \"q to quit\"\n"
+                            "30 END\n"
+                            "40 END SUB\n"
+                            "50 ShowTitle\n"
+                            "60 END\n";
 
     il::core::Module m = lowerSnippet(src);
     auto ve = il::verify::Verifier::verify(m);
     assert(ve && "Lowering END inside SUB should verify (trap-based)");
     return 0;
 }
-

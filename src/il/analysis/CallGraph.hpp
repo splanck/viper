@@ -31,4 +31,3 @@ struct CallGraph
 CallGraph buildCallGraph(core::Module &module);
 
 } // namespace il::analysis
-

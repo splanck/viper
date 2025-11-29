@@ -21,9 +21,9 @@
 #include "vm/Trap.hpp"
 
 #include <cstddef>
+#include <span>
 #include <string>
 #include <string_view>
-#include <span>
 
 namespace il::runtime
 {

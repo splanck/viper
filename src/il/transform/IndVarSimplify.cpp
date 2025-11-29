@@ -24,8 +24,8 @@
 #include "il/analysis/CFG.hpp"
 #include "il/analysis/Dominators.hpp"
 
-#include "il/core/Function.hpp"
 #include "il/core/BasicBlock.hpp"
+#include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
 #include "il/core/Opcode.hpp"
 #include "il/core/Type.hpp"
@@ -164,7 +164,8 @@ std::optional<IndVar> detectIndVar(Function &F, BasicBlock &H, BasicBlock &L)
             var = &A;
             cst = &B;
         }
-        else if (upd->op == Opcode::Add && B.kind == Value::Kind::Temp && A.kind == Value::Kind::ConstInt)
+        else if (upd->op == Opcode::Add && B.kind == Value::Kind::Temp &&
+                 A.kind == Value::Kind::ConstInt)
         {
             var = &B;
             cst = &A;
@@ -260,12 +261,14 @@ std::optional<AddrExpr> findAddrExpr(Function &F, BasicBlock &H, unsigned indVar
                 const Value &M1 = mulI->operands[1];
                 const Value *var = nullptr;
                 const Value *cst = nullptr;
-                if (M0.kind == Value::Kind::Temp && M0.id == indVarId && M1.kind == Value::Kind::ConstInt)
+                if (M0.kind == Value::Kind::Temp && M0.id == indVarId &&
+                    M1.kind == Value::Kind::ConstInt)
                 {
                     var = &M0;
                     cst = &M1;
                 }
-                else if (M1.kind == Value::Kind::Temp && M1.id == indVarId && M0.kind == Value::Kind::ConstInt)
+                else if (M1.kind == Value::Kind::Temp && M1.id == indVarId &&
+                         M0.kind == Value::Kind::ConstInt)
                 {
                     var = &M1;
                     cst = &M0;
@@ -290,12 +293,14 @@ std::optional<AddrExpr> findAddrExpr(Function &F, BasicBlock &H, unsigned indVar
                 const Value &M1 = mulI->operands[1];
                 const Value *var = nullptr;
                 const Value *cst = nullptr;
-                if (M0.kind == Value::Kind::Temp && M0.id == indVarId && M1.kind == Value::Kind::ConstInt)
+                if (M0.kind == Value::Kind::Temp && M0.id == indVarId &&
+                    M1.kind == Value::Kind::ConstInt)
                 {
                     var = &M0;
                     cst = &M1;
                 }
-                else if (M1.kind == Value::Kind::Temp && M1.id == indVarId && M0.kind == Value::Kind::ConstInt)
+                else if (M1.kind == Value::Kind::Temp && M1.id == indVarId &&
+                         M0.kind == Value::Kind::ConstInt)
                 {
                     var = &M1;
                     cst = &M0;
@@ -397,8 +402,10 @@ PreservedAnalyses IndVarSimplify::run(Function &function, AnalysisManager &analy
         size_t insertIdx = preheader->instructions.size();
         if (preheader->terminated && insertIdx > 0)
             --insertIdx;
-        preheader->instructions.insert(preheader->instructions.begin() + insertIdx, std::move(mul0));
-        preheader->instructions.insert(preheader->instructions.begin() + insertIdx + 1, std::move(add0));
+        preheader->instructions.insert(preheader->instructions.begin() + insertIdx,
+                                       std::move(mul0));
+        preheader->instructions.insert(preheader->instructions.begin() + insertIdx + 1,
+                                       std::move(add0));
 
         // Extend branch args from preheader to header by appended addr0
         Value addr0 = Value::temp(nextId - 1);

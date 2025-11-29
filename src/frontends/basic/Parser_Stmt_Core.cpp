@@ -393,7 +393,8 @@ ExprPtr Parser::parseLetTarget()
 {
     ExprPtr base;
     // BUG-OOP-021: Allow soft keywords (COLOR, FLOOR, etc.) as assignment targets.
-    if (at(TokenKind::Identifier) || (isSoftIdentToken(peek().kind) && peek().kind != TokenKind::Identifier))
+    if (at(TokenKind::Identifier) ||
+        (isSoftIdentToken(peek().kind) && peek().kind != TokenKind::Identifier))
     {
         base = parseArrayOrVar();
     }
@@ -414,7 +415,8 @@ StmtPtr Parser::parseConstStatement()
     auto loc = peek().loc;
     consume(); // CONST keyword
 
-    auto isSoftIdent = [&](TokenKind k) {
+    auto isSoftIdent = [&](TokenKind k)
+    {
         if (k == TokenKind::Identifier)
             return true;
         switch (k)
@@ -595,7 +597,8 @@ std::vector<Param> Parser::parseParamList()
             // BYVAL is the default, just consume and continue
         }
 
-        auto isSoftIdent = [&](TokenKind k) {
+        auto isSoftIdent = [&](TokenKind k)
+        {
             if (k == TokenKind::Identifier)
                 return true;
             switch (k)
@@ -648,10 +651,10 @@ std::vector<Param> Parser::parseParamList()
                 };
                 std::string first = peek().lexeme;
                 std::string upper = toUpper(first);
-                const bool isPrimitive = (upper == "INTEGER" || upper == "INT" || upper == "LONG" ||
-                                          upper == "DOUBLE" || upper == "FLOAT" ||
-                                          upper == "SINGLE" || upper == "STRING" ||
-                                          upper == "BOOLEAN");
+                const bool isPrimitive =
+                    (upper == "INTEGER" || upper == "INT" || upper == "LONG" || upper == "DOUBLE" ||
+                     upper == "FLOAT" || upper == "SINGLE" || upper == "STRING" ||
+                     upper == "BOOLEAN");
                 if (isPrimitive)
                 {
                     p.type = parseTypeKeyword();
@@ -664,7 +667,8 @@ std::vector<Param> Parser::parseParamList()
                     // Canonicalize segments; semantic analyzer validates existence
                     for (auto &seg : segs)
                         seg = CanonicalizeIdent(seg);
-                    // Join dotted form into objectClass string (lower casing preserved by Canonicalize)
+                    // Join dotted form into objectClass string (lower casing preserved by
+                    // Canonicalize)
                     if (!segs.empty())
                     {
                         std::string cls;

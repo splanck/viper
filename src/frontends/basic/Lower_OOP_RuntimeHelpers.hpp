@@ -90,7 +90,8 @@ class OopEmitHelper
     /// @details Releases deferred temporaries, object locals, and array locals.
     ///          Handles BUG-105: borrowed parameters are not released.
     /// @param paramNames Set of parameter names to exclude from local release.
-    /// @param excludeFromObjRelease Additional names to exclude (e.g., method name for object returns).
+    /// @param excludeFromObjRelease Additional names to exclude (e.g., method name for object
+    /// returns).
     void emitMethodEpilogue(const std::unordered_set<std::string> &paramNames,
                             const std::unordered_set<std::string> &excludeFromObjRelease);
 

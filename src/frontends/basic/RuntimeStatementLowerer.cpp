@@ -45,9 +45,7 @@ RuntimeStatementLowerer::RuntimeStatementLowerer(Lowerer &lowerer) : lowerer_(lo
 /// @param s AST node representing the @c BEEP statement.
 void RuntimeStatementLowerer::visit(const BeepStmt &s)
 {
-    RuntimeCallBuilder(lowerer_)
-        .at(s.loc)
-        .callHelperVoid(RuntimeFeature::TermBell, "rt_bell");
+    RuntimeCallBuilder(lowerer_).at(s.loc).callHelperVoid(RuntimeFeature::TermBell, "rt_bell");
 }
 
 /// @brief Lower the BASIC @c CLS statement to a runtime helper call.
@@ -59,9 +57,7 @@ void RuntimeStatementLowerer::visit(const BeepStmt &s)
 /// @param s AST node representing the @c CLS statement.
 void RuntimeStatementLowerer::visit(const ClsStmt &s)
 {
-    RuntimeCallBuilder(lowerer_)
-        .at(s.loc)
-        .callHelperVoid(RuntimeFeature::TermCls, "rt_term_cls");
+    RuntimeCallBuilder(lowerer_).at(s.loc).callHelperVoid(RuntimeFeature::TermCls, "rt_term_cls");
 }
 
 /// @brief Lower the BASIC @c COLOR statement to the runtime helper.
@@ -82,11 +78,8 @@ void RuntimeStatementLowerer::visit(const ColorStmt &s)
         bgv = bg.value;
     }
 
-    RuntimeCallBuilder(lowerer_)
-        .at(s.loc)
-        .argNarrow32(fg.value)
-        .argNarrow32(bgv)
-        .callHelperVoid(RuntimeFeature::TermColor, "rt_term_color_i32");
+    RuntimeCallBuilder(lowerer_).at(s.loc).argNarrow32(fg.value).argNarrow32(bgv).callHelperVoid(
+        RuntimeFeature::TermColor, "rt_term_color_i32");
 }
 
 /// @brief Lower the BASIC @c LOCATE statement that positions the cursor.
@@ -107,11 +100,8 @@ void RuntimeStatementLowerer::visit(const LocateStmt &s)
         colv = col.value;
     }
 
-    RuntimeCallBuilder(lowerer_)
-        .at(s.loc)
-        .argNarrow32(row.value)
-        .argNarrow32(colv)
-        .callHelperVoid(RuntimeFeature::TermLocate, "rt_term_locate_i32");
+    RuntimeCallBuilder(lowerer_).at(s.loc).argNarrow32(row.value).argNarrow32(colv).callHelperVoid(
+        RuntimeFeature::TermLocate, "rt_term_locate_i32");
 }
 
 /// @brief Lower the BASIC @c CURSOR statement to control cursor visibility.

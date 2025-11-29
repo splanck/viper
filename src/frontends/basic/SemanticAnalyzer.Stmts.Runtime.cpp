@@ -68,11 +68,12 @@ void SemanticAnalyzer::analyzeCallStmt(CallStmt &stmt)
     if (auto *me = as<MethodCallExpr>(*stmt.call))
     {
         // Best-effort analysis: visit receiver and args to trigger diagnostics.
-        // BUG-037 fix: Detect undefined variables in method calls and suggest qualified call syntax.
-        // BUG-120 fix: Only emit error for unknown base if the base variable looks like a namespace
-        // (not a class-qualified class name). If the parser produced a MethodCallExpr, it has already
-        // determined this is NOT a namespace-qualified call. Procedure-local object variables may
-        // not be in symbols_ yet during semantic analysis but will be handled correctly by the lowerer.
+        // BUG-037 fix: Detect undefined variables in method calls and suggest qualified call
+        // syntax. BUG-120 fix: Only emit error for unknown base if the base variable looks like a
+        // namespace (not a class-qualified class name). If the parser produced a MethodCallExpr, it
+        // has already determined this is NOT a namespace-qualified call. Procedure-local object
+        // variables may not be in symbols_ yet during semantic analysis but will be handled
+        // correctly by the lowerer.
         if (me->base)
         {
             if (auto *varExpr = as<VarExpr>(*me->base))
