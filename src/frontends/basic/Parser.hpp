@@ -56,6 +56,7 @@
 #include "frontends/basic/Lexer.hpp"
 #include "frontends/basic/StatementSequencer.hpp"
 #include "frontends/basic/ast/DeclNodes.hpp"
+#include "frontends/basic/IdentifierUtil.hpp"
 #include "support/diag_expected.hpp"
 #include "support/source_manager.hpp"
 #include <array>
@@ -145,6 +146,11 @@ class Parser
     std::unordered_set<std::string> knownNamespaces_{};
     std::unordered_set<std::string> knownProcedures_; ///< Procedure identifiers seen so far.
     std::unordered_set<int> usedLabelNumbers_;        ///< Numeric labels already assigned.
+
+    // Tracked constants discovered during parsing (for SELECT CASE label resolution).
+    // Keys are canonicalised via CanonicalizeIdent for case-insensitive lookup.
+    std::unordered_map<std::string, long long> knownConstInts_{};
+    std::unordered_map<std::string, std::string> knownConstStrs_{};
 
     struct NamedLabelEntry
     {
@@ -560,6 +566,15 @@ class Parser
     /// @param name Identifier to test.
     /// @return True when @p name is a known procedure.
     bool isKnownProcedureName(const std::string &name) const;
+
+    /// @brief Pre-scan source for SUB/FUNCTION names to enable parenthesis-free calls.
+    /// @details Performs a quick lexer scan to find all SUB/FUNCTION declarations
+    ///          and registers their names before the main parse begins. This allows
+    ///          calls without parentheses to work even when procedures are defined
+    ///          after their call sites. (BUG-OOP-020)
+    /// @param src Source text to scan.
+    /// @param file_id File identifier for the lexer.
+    void prescanProcedureNames(std::string_view src, uint32_t file_id);
 
     /// @brief Parse a SUB definition including body.
     /// @return SUB statement node.

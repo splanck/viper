@@ -430,6 +430,25 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
                             break;
                         }
                     }
+                    // Additional USING fallbacks for common runtime namespaces
+                    if (!rtSig)
+                    {
+                        std::string t1 = std::string("Viper.Terminal.") + expr.callee;
+                        if (const auto *sig2 = il::runtime::findRuntimeSignature(t1))
+                        {
+                            rtSig = sig2;
+                            calleeResolved = std::move(t1);
+                        }
+                    }
+                    if (!rtSig)
+                    {
+                        std::string t2 = std::string("Viper.Time.") + expr.callee;
+                        if (const auto *sig3 = il::runtime::findRuntimeSignature(t2))
+                        {
+                            rtSig = sig3;
+                            calleeResolved = std::move(t2);
+                        }
+                    }
                 }
             }
         }
@@ -482,6 +501,11 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
                         arg = lowerer_.coerceToI64(std::move(arg), expr.loc);
                     else if (paramTy.kind == IlType::Kind::I1)
                         arg = lowerer_.coerceToBool(std::move(arg), expr.loc);
+                    else if (paramTy.kind == IlType::Kind::I32)
+                    {
+                        arg = lowerer_.ensureI64(std::move(arg), expr.loc);
+                        arg.value = lowerer_.emitCommon(expr.loc).narrow_to(arg.value, 64, 32);
+                    }
                 }
                 args.push_back(arg.value);
             }

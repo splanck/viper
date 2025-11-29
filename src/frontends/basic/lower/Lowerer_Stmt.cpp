@@ -590,6 +590,12 @@ void Lowerer::lowerCallStmt(const CallStmt &stmt)
                         rv = coerceToI64(std::move(rv), ce->loc);
                     else if (pt.kind == il::core::Type::Kind::I1)
                         rv = coerceToBool(std::move(rv), ce->loc);
+                    else if (pt.kind == il::core::Type::Kind::I32)
+                    {
+                        // Narrow to i32 for runtime helpers that use 32-bit ABI
+                        rv = ensureI64(std::move(rv), ce->loc);
+                        rv.value = emitCommon(ce->loc).narrow_to(rv.value, 64, 32);
+                    }
                 }
                 args.push_back(rv.value);
             }

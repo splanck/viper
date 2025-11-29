@@ -329,14 +329,12 @@ int main()
         auto prog = p.parseProgram();
         assert(prog);
         assert(prog->main.size() == 2);
-        auto *ifStmt = dynamic_cast<IfStmt *>(prog->main[0].get());
+        auto *list = dynamic_cast<StmtList *>(prog->main[0].get());
+        assert(list);
+        assert(list->stmts.size() == 2);
+        auto *ifStmt = dynamic_cast<IfStmt *>(list->stmts[0].get());
         assert(ifStmt);
-        assert(ifStmt->then_branch);
-        auto *thenList = dynamic_cast<StmtList *>(ifStmt->then_branch.get());
-        assert(thenList);
-        assert(thenList->stmts.size() == 2);
-        assert(dynamic_cast<PrintStmt *>(thenList->stmts[0].get()));
-        assert(dynamic_cast<PrintStmt *>(thenList->stmts[1].get()));
+        assert(dynamic_cast<PrintStmt *>(list->stmts[1].get()));
     }
 
     {

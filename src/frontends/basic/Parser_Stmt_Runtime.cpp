@@ -158,8 +158,36 @@ StmtPtr Parser::parseDimStatement()
     // Parse a single DIM item: <name> [ ( <size> ) ] [ AS <type> ] [ = <expr> ]
     auto parseOne = [&](Token firstNameTok = Token{}) -> StmtPtr
     {
-        Token nameTok = firstNameTok.kind == TokenKind::Identifier ? firstNameTok
-                                                                   : expect(TokenKind::Identifier);
+        auto isSoftIdent = [&](TokenKind k) {
+            if (k == TokenKind::Identifier)
+                return true;
+            switch (k)
+            {
+                case TokenKind::KeywordColor:
+                case TokenKind::KeywordFloor:
+                case TokenKind::KeywordRandom:
+                case TokenKind::KeywordCos:
+                case TokenKind::KeywordSin:
+                case TokenKind::KeywordPow:
+                    return true;
+                default:
+                    return false;
+            }
+        };
+
+        Token nameTok;
+        if (firstNameTok.kind == TokenKind::Identifier)
+        {
+            nameTok = firstNameTok;
+        }
+        else if (isSoftIdent(peek().kind))
+        {
+            nameTok = consume();
+        }
+        else
+        {
+            nameTok = expect(TokenKind::Identifier);
+        }
 
         auto node = std::make_unique<DimStmt>();
         node->loc = loc;

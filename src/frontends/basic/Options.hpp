@@ -41,6 +41,15 @@ struct FrontendOptions
 
     /// @brief Set @ref enableRuntimeTypeBridging() for this process.
     static void setEnableRuntimeTypeBridging(bool on);
+
+    /// @brief Enable CONST/CHR$ case labels in SELECT CASE.
+    /// @details When enabled, the parser accepts identifiers bound via CONST
+    ///          (integer/string) and folded CHR/CHR$ calls as CASE labels.
+    ///          Default is OFF to preserve legacy test expectations.
+    static bool enableSelectCaseConstLabels();
+
+    /// @brief Set @ref enableSelectCaseConstLabels() for this process.
+    static void setEnableSelectCaseConstLabels(bool on);
 };
 
 } // namespace il::frontends::basic

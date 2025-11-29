@@ -68,7 +68,9 @@ StmtPtr Parser::parsePrintStatement()
             {
                 if (at(TokenKind::EndOfLine) || at(TokenKind::EndOfFile) || at(TokenKind::Colon))
                     break;
-                if (isStatementStart(peek().kind))
+                // BUG-OOP-021: Allow soft keywords as expressions in PRINT#.
+                bool isSoftKw = isSoftIdentToken(peek().kind) && peek().kind != TokenKind::Identifier;
+                if (isStatementStart(peek().kind) && !isSoftKw)
                     break;
                 if (at(TokenKind::Semicolon))
                 {
@@ -98,7 +100,10 @@ StmtPtr Parser::parsePrintStatement()
     while (!at(TokenKind::EndOfLine) && !at(TokenKind::EndOfFile) && !at(TokenKind::Colon))
     {
         TokenKind k = peek().kind;
-        if (isStatementStart(k))
+        // BUG-OOP-021: Allow soft keywords (COLOR, FLOOR, etc.) as expressions in PRINT.
+        // This enables: PRINT color   (where 'color' is a variable)
+        bool isSoftKw = isSoftIdentToken(k) && k != TokenKind::Identifier;
+        if (isStatementStart(k) && !isSoftKw)
             break;
         if (at(TokenKind::Comma))
         {

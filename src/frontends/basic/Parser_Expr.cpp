@@ -501,7 +501,9 @@ ExprPtr Parser::parsePrimary()
         }
     }
 
-    if (at(TokenKind::Identifier))
+    // BUG-OOP-021: Treat soft keywords (COLOR, FLOOR, etc.) as identifiers when
+    // they appear in expression context. This allows using them as variable names.
+    if (at(TokenKind::Identifier) || (isSoftIdentToken(peek().kind) && peek().kind != TokenKind::Identifier))
     {
         // Attempt to parse a namespace-qualified call within an expression context.
         // This handles forms like A.B.F(...) and accepts single-dot A.F(...) only
@@ -524,10 +526,9 @@ ExprPtr Parser::parsePrimary()
                     sawAdditionalDot = true;
                     i += 2;
                 }
-                // Accept final segment as identifier or keyword APPEND (e.g.,
-                // Viper.Text.StringBuilder.Append)
-                if (!((peek(i).kind == TokenKind::Identifier ||
-                       peek(i).kind == TokenKind::KeywordAppend) &&
+                // Accept final segment as identifier or soft keyword (e.g.,
+                // Viper.Text.StringBuilder.Append, Viper.Terminal.Color) (BUG-OOP-021)
+                if (!(isSoftIdentToken(peek(i).kind) &&
                       peek(i + 1).kind == TokenKind::LParen))
                     ok = false;
                 // BUG-082 fix: Only treat as qualified procedure call if the first identifier
@@ -649,8 +650,9 @@ std::pair<std::vector<std::string>, il::support::SourceLoc> Parser::parseQualifi
     while (at(TokenKind::Dot))
     {
         consume();
-        // Allow identifier or selected keywords (e.g., APPEND) inside qualified names
-        if (at(TokenKind::Identifier) || at(TokenKind::KeywordAppend))
+        // Allow identifier or soft keywords (e.g., APPEND, COLOR, FLOOR) inside qualified names.
+        // This supports forms like Viper.Terminal.Color or Viper.Math.Floor. (BUG-OOP-021)
+        if (isSoftIdentToken(peek().kind))
         {
             Token ident = peek();
             consume();

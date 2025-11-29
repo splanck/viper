@@ -57,6 +57,35 @@ Parser::Parser(std::string_view src,
     {
         knownNamespaces_.insert("Viper");
     }
+
+    // Pre-scan source for SUB/FUNCTION names to enable parenthesis-free calls.
+    // This allows calls like "MySub" without parentheses to work even when
+    // the SUB is defined AFTER the call site. (BUG-OOP-020)
+    prescanProcedureNames(src, file_id);
+}
+
+void Parser::prescanProcedureNames(std::string_view src, uint32_t file_id)
+{
+    Lexer scanner(src, file_id);
+    Token tok = scanner.next();
+    while (tok.kind != TokenKind::EndOfFile)
+    {
+        // Look for SUB <ident> or FUNCTION <ident>
+        if (tok.kind == TokenKind::KeywordSub || tok.kind == TokenKind::KeywordFunction)
+        {
+            Token next = scanner.next();
+            if (next.kind == TokenKind::Identifier)
+            {
+                // Register the procedure name for parenthesis-free call detection.
+                knownProcedures_.insert(next.lexeme);
+            }
+            tok = next;
+        }
+        else
+        {
+            tok = scanner.next();
+        }
+    }
 }
 
 /// @brief Create a statement sequencer bound to this parser instance.

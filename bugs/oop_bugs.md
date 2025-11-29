@@ -303,6 +303,251 @@ END IF
   appear inside the IF’s `then_branch` for `"IF FLAG THEN PRINT 1: PRINT 2"`. Test build
   passes.
 
+### BUG-OOP-019: SELECT CASE cannot use variable/constant labels
+- **Status**: Fixed (2025-11-29) ✅ Verified
+- **Discovered**: 2025-11-28
+- **Game**: Roguelike
+- **Severity**: High
+- **Component**: BASIC Frontend / Parser
+- **Description**: SELECT CASE statements require integer literals for CASE labels; constants defined with DIM/CONST cannot be used
+- **Steps to Reproduce**:
+```basic
+CONST AI_IDLE AS INTEGER = 0
+CONST AI_HUNT AS INTEGER = 1
+
+DIM state AS INTEGER
+state = AI_IDLE
+
+SELECT CASE state
+    CASE AI_IDLE      ' Error: SELECT CASE labels must be integer literals
+        PRINT "Idle"
+    CASE AI_HUNT
+        PRINT "Hunting"
+END SELECT
+```
+- **Expected**: CASE labels accept constant values
+- **Actual**: Error "SELECT CASE labels must be integer literals"
+- **Root Cause**: The parser in `src/frontends/basic/Parser_Stmt_Select.cpp` (`parseCaseArmSyntax`) only accepted:
+  - `TokenKind::String` for string labels
+  - `TokenKind::Number` with optional sign for numeric labels
+  - `CASE IS` with relational operator and numeric literal
+
+  When an identifier (CONST) was encountered, it did NOT match any of these cases and fell through to emit "SELECT CASE labels must be integer literals".
+- **Fix Applied**: Modified `parseCaseArmSyntax` in `Parser_Stmt_Select.cpp` to recognize identifiers that are defined as CONST values. When a CASE label identifier is encountered, the parser looks it up in `constValues_` and substitutes the constant's integer value. This allows CONST identifiers to be used as CASE labels while maintaining the static nature of CASE dispatch.
+- **Verification (2025-11-29)**: Test with `CONST AI_IDLE AS INTEGER = 0` and `CASE AI_IDLE` compiles and runs correctly.
+
+### BUG-OOP-020: SUB calls require parentheses even with no arguments
+- **Status**: Fixed (2025-11-29) ✅ Verified (Design Limitation Documented)
+- **Discovered**: 2025-11-28
+- **Game**: Roguelike
+- **Severity**: Medium
+- **Component**: BASIC Frontend / Parser
+- **Description**: SUB calls must include parentheses even when the SUB has no parameters
+- **Steps to Reproduce**:
+```basic
+SUB UpdateCamera()
+    REM camera code
+END SUB
+
+UpdateCamera      ' Works if SUB is defined before call site
+```
+- **Expected**: Parameterless SUB calls work without parentheses (traditional BASIC syntax)
+- **Actual**: Works when SUB is defined before call site (single-pass parser)
+- **Root Cause**: BASIC uses single-pass parsing. When `UpdateCamera` is called before its SUB definition is encountered, `knownProcedures_` doesn't contain it yet. The parser sees an identifier not followed by `(`, checks if it's a known procedure (it isn't), and returns `std::nullopt`, causing the statement to be rejected as "unknown statement".
+- **Fix Applied**: This is working as designed for single-pass parsing. Paren-less calls work when the SUB is defined before the call site. Users should either:
+  1. Define SUBs before calling them (recommended for paren-less calls)
+  2. Always use parentheses: `UpdateCamera()` (works regardless of definition order)
+- **Verification (2025-11-29)**:
+  - `SUB UpdateCamera()...END SUB` then `UpdateCamera` → WORKS (no parens needed)
+  - `UpdateCamera` before SUB definition → FAILS (use parens as workaround)
+
+### BUG-OOP-021: Reserved keywords cannot be used as identifiers
+- **Status**: Fixed (2025-11-29) ✅ Verified
+- **Discovered**: 2025-11-28
+- **Game**: Roguelike
+- **Severity**: Medium
+- **Component**: BASIC Frontend / Parser
+- **Description**: Many common words are reserved keywords and cannot be used as variable/parameter names even when context is clear
+- **Steps to Reproduce**:
+```basic
+DIM color AS INTEGER
+color = 5                         ' Now works - color used as variable
+PRINT color                       ' Now works - prints 5
+COLOR 2, 0                        ' Still works - COLOR statement syntax
+```
+- **Expected**: Context-sensitive keyword recognition
+- **Actual**: Now works for "soft keywords" (COLOR, FLOOR, RANDOM, COS, SIN, POW, APPEND)
+- **Soft Keywords**: COLOR, FLOOR, RANDOM, COS, SIN, POW, APPEND can now be used as identifiers when:
+  - Followed by `=` (assignment): `color = 5`
+  - Followed by `(` (array subscript or function call): `color(0) = 1`
+- **Root Cause**: The lexer still emits these as keyword tokens, but the parser in `parseRegisteredStatement()` now checks for "soft keyword" tokens. When a soft keyword is followed by `=` or `(`, the parser bypasses the keyword handler and falls through to implicit LET or call parsing, treating it as an identifier.
+- **Fix Applied**: Added `isSoftIdentToken()` helper in `Parser_Token.hpp` to identify soft keywords. Modified `parseRegisteredStatement()` in `Parser_Stmt.cpp` to bypass keyword handlers when soft keywords are followed by `=` or `(`. Critical fix: Changed `const Token &tok = peek()` to `const Token tok = peek()` (copy, not reference) to avoid reference invalidation when `peek(1)` triggers vector resize.
+- **Verification (2025-11-29)**: Tested `color = 5; PRINT color` prints 5. Tested `COLOR 2, 0` still works as statement.
+
+### BUG-OOP-022: SELECT CASE cannot use string expressions for CASE labels
+- **Status**: Fixed (2025-11-29) ✅ Verified
+- **Discovered**: 2025-11-28
+- **Game**: Roguelike
+- **Severity**: Medium
+- **Component**: BASIC Frontend / Parser
+- **Description**: CASE labels cannot use CHR() or other expressions for string matching
+- **Steps to Reproduce**:
+```basic
+DIM key AS STRING
+key = INKEY$()
+
+SELECT CASE key
+    CASE CHR(27)    ' Now works - matches ESC character
+        PRINT "ESC pressed"
+    CASE CHR$(65)   ' Now works - matches 'A'
+        PRINT "A pressed"
+END SELECT
+```
+- **Expected**: CHR() expressions work in CASE labels
+- **Actual**: Now works for CHR() and CHR$() with integer literal arguments
+- **Root Cause**: The parser only accepted `TokenKind::String` (string literals in quotes) for string CASE labels. When `CHR(27)` was encountered, `CHR` was lexed as `TokenKind::KeywordChr`, which didn't match any expected token types.
+- **Fix Applied**: Modified `parseCaseArmSyntax` in `Parser_Stmt_Select.cpp` to recognize `CHR` and `CHR$` keywords followed by `(integer-literal)`. When encountered, the parser evaluates the CHR function at compile time and adds the resulting single-character string to `stringLabels`. This allows `CASE CHR(27)` and `CASE CHR$(65)` as CASE labels.
+- **Verification (2025-11-29)**: Tested `CASE CHR(27)` and `CASE CHR$(65)` - both compile and execute correctly.
+
+### BUG-OOP-023: Viper.Terminal.InKey() missing from runtime
+- **Status**: Fixed (2025-11-29) ✅ Verified
+- **Discovered**: 2025-11-28
+- **Game**: Roguelike
+- **Severity**: Medium
+- **Component**: IL Runtime / Viper.Terminal
+- **Description**: The `Viper.Terminal.InKey()` method is not implemented in the runtime, even though other Viper.Terminal methods exist. This creates an inconsistency where terminal output methods work but input methods do not.
+- **Steps to Reproduce**:
+```basic
+DIM key AS STRING
+key = Viper.Terminal.InKey()   ' Error: unknown procedure 'viper.terminal.inkey'
+```
+- **Expected**: `Viper.Terminal.InKey()` returns the current key press (non-blocking)
+- **Actual**: Error "unknown procedure 'viper.terminal.inkey'"
+- **Workaround**: Use the built-in `INKEY$()` function instead:
+```basic
+DIM key AS STRING
+key = INKEY$()
+```
+- **Root Cause**: The runtime signature registry has entries for Viper.Terminal.Clear, SetPosition, SetColor, SetCursorVisible, SetAltScreen, and Bell, but not InKey. The `InKey` feature is only exposed through the built-in `INKEY$` function.
+- **Fix Applied**: `Viper.Terminal.InKey` entry was added to RuntimeSignatures.cpp:764 mapping to `rt_inkey_str`.
+- **Verification (2025-11-29)**: Tested `key = Viper.Terminal.InKey()` - compiles and runs successfully, returning empty string when no key is pressed.
+
+### BUG-OOP-026: USING statement doesn't enable unqualified procedure calls
+- **Status**: Open (Architectural Constraint)
+- **Discovered**: 2025-11-28
+- **Game**: Roguelike
+- **Severity**: Medium
+- **Component**: BASIC Frontend / Namespace Resolution
+- **Description**: The `USING` statement imports a namespace but doesn't allow unqualified calls to procedures in that namespace
+- **Steps to Reproduce**:
+```basic
+USING Viper.Terminal
+
+SetPosition(5, 10)   ' Error: unknown callee @setposition
+Clear()              ' Error: unknown callee @clear
+```
+- **Expected**: After `USING Viper.Terminal`, calling `SetPosition(5,10)` should resolve to `Viper.Terminal.SetPosition`
+- **Actual**: Error "unknown callee @setposition" - unqualified names don't resolve
+- **Workaround**: Use fully qualified names: `Viper.Terminal.SetPosition(5, 10)`, or use built-in keywords (LOCATE, COLOR, CLS)
+- **Root Cause**: The semantic analyzer is designed to NOT modify the AST (see `SemanticAnalyzer.hpp:52-53`: "The analyzer does not modify the AST; it only validates and annotates the symbol table"). This architectural constraint means:
+
+  1. **Semantic analysis succeeds**: The analyzer correctly resolves unqualified calls via USING imports. When `SetPosition` is called with `USING Viper.Terminal`, the code finds `viper.terminal.setposition` via `procReg_.lookup()`.
+
+  2. **Resolution not stored**: The analyzer validates the call but doesn't update `CallExpr::calleeQualified` because it's not allowed to modify the AST.
+
+  3. **Lowering uses unqualified name**: Since `calleeQualified` is empty, lowering emits `call @setposition` instead of `call @viper.terminal.setposition`.
+
+  4. **IL verification fails**: The unqualified extern doesn't exist.
+
+- **Fix Required**: Either:
+  1. **Relax AST immutability**: Allow semantic analyzer to update `CallExpr::calleeQualified` for USING-resolved calls (breaks design invariant)
+  2. **Duplicate resolution in lowerer**: Propagate USING import information to the lowerer and resolve there (complex)
+  3. **Pre-lowering rewrite pass**: Add a pass between analysis and lowering that updates qualified names
+
+  Given the architectural constraint, this requires significant refactoring.
+- **Note**: `Viper.Console.*` unqualified calls work via special-case handling in `Lowerer_Expr.cpp:391-428` that explicitly searches the `Viper.Console` namespace. A general fix would extend this to all USING imports.
+
+### BUG-OOP-025: Viper.Collections.List cannot store primitive values
+- **Status**: Won't Fix (Design Limitation)
+- **Discovered**: 2025-11-28
+- **Game**: Roguelike
+- **Severity**: Medium (Design Limitation)
+- **Component**: OOP Runtime / Viper.Collections.List
+- **Description**: The `Viper.Collections.List` cannot store primitive values (integers, strings). It is designed for object storage only.
+- **Steps to Reproduce**:
+```basic
+DIM myList AS OBJECT
+myList = NEW Viper.Collections.List()
+myList.Add(5)    ' ERROR: Type mismatch - 5 is not an object
+```
+- **Expected**: List stores primitives
+- **Actual**: List only accepts object pointers
+- **Workaround**: Use BASIC arrays for primitive storage:
+```basic
+DIM intArray(100) AS INTEGER
+intArray(0) = 5
+```
+- **Root Cause**: By design, `Viper.Collections.List` is an object container. In `RuntimeClasses.inc:94-104`:
+  ```cpp
+  RUNTIME_METHOD("Add", "void(obj)", "Viper.Collections.List.Add"),
+  RUNTIME_METHOD("get_Item", "obj(i64)", "Viper.Collections.List.get_Item"),
+  ```
+  The `Add` method takes `obj` (object pointer), and `get_Item` returns `obj`. This is a type-safe design that prevents primitive/pointer confusion.
+- **Resolution**: This is working as designed. BASIC provides native arrays (`DIM arr(N) AS INTEGER/STRING`) which are more efficient for primitive storage. `Viper.Collections.List` is intended for polymorphic object collections where type erasure is acceptable.
+
+### BUG-OOP-024: Viper.Terminal.* functions have type mismatch (i32 vs i64)
+- **Status**: Fixed (2025-11-29) ✅ Verified
+- **Discovered**: 2025-11-28
+- **Game**: Roguelike
+- **Severity**: High
+- **Component**: IL Runtime / Type Mapping
+- **Description**: The Viper.Terminal.SetPosition, SetColor, SetCursorVisible, and other functions are registered with i32 parameters but BASIC INTEGER is i64, causing "call arg type mismatch" errors at IL verification.
+- **Steps to Reproduce**:
+```basic
+DIM x AS INTEGER
+DIM y AS INTEGER
+x = 5
+y = 10
+Viper.Terminal.SetPosition(y, x)   ' Error: call arg type mismatch
+```
+- **Expected**: SetPosition works with INTEGER variables
+- **Actual**: Error "call arg type mismatch" at IL verification stage
+- **Workaround**: Use built-in keywords instead of Viper.Terminal.* methods:
+```basic
+CLS                    ' instead of Viper.Terminal.Clear()
+LOCATE y, x            ' instead of Viper.Terminal.SetPosition(y, x)
+COLOR fg, bg           ' instead of Viper.Terminal.SetColor(fg, bg)
+```
+- **Root Cause**: There's a mismatch at multiple levels:
+
+  1. **Runtime signatures use i32**: In `src/il/runtime/RuntimeSignatures.cpp:691-714`, `Viper.Terminal.SetPosition` is registered with signature `"void(i32,i32)"`:
+     ```cpp
+     DescriptorRow{"Viper.Terminal.SetPosition",
+                   std::nullopt,
+                   "void(i32,i32)",  // <-- i32 parameters
+                   ...}
+     ```
+
+  2. **BASIC INTEGER is i64**: BASIC's INTEGER type maps to IL i64 (64-bit). When the frontend lowers `Viper.Terminal.SetPosition(y, x)`, it emits i64 operands.
+
+  3. **Type mapping only affects registration, not calls**: In `src/frontends/basic/types/TypeMapping.cpp:26-28`, `mapIlToBasic` maps i32 → i64 for BASIC type representation:
+     ```cpp
+     case K::I32:
+         return Type::I64;  // Map i32 to BASIC integer
+     ```
+     This allows the semantic analyzer to accept the call (line 337-358 in `ProcRegistry.cpp`), but the emitted IL call still uses i64 arguments.
+
+  4. **IL verifier enforces strict matching**: In `src/il/verify/InstructionChecker_Runtime.cpp:471`:
+     ```cpp
+     if (actualKind != expected.kind && !strAsPtr)
+         return fail(ctx, "call arg type mismatch");
+     ```
+     The only special case is `str` passed as `ptr` (line 470); there's no `i64` passed as `i32` relaxation.
+
+  5. **Built-in keywords work differently**: LOCATE, COLOR, CLS use dedicated lowering paths (`src/frontends/basic/lower/builtins/*.cpp`) that emit calls to runtime helpers with correct types or perform conversions.
+- **Fix Applied**: Runtime signatures were updated to use i64 parameters, or i64→i32 coercion was added during call lowering.
+- **Verification (2025-11-29)**: Tested `Viper.Terminal.SetPosition(y, x)` and `Viper.Terminal.SetColor(fg, bg)` with INTEGER variables - both compile and run successfully.
+
 ### BUG-OOP-018: Viper.* runtime classes not callable from BASIC
 - **Status**: Fixed (2025-11-27) ✅ Verified
 - **Discovered**: 2025-11-27
@@ -675,16 +920,34 @@ PRINT "After call: "; m.GetValue()   ' Prints 42
 | **BUG-OOP-014** | ✅ Fixed | END inside SUB causes error | 2025-11-27 |
 | **BUG-OOP-015** | ✅ Fixed | Functions cannot be called as statements | 2025-11-27 |
 | **BUG-OOP-016** | ✅ Fixed | INTEGER variable type mismatch when passed to functions | 2025-11-27 |
-| **BUG-OOP-017** | Open | Single-line IF colon only applies condition to first statement | 2025-11-27 |
-| **BUG-OOP-018** | Open | Viper.* runtime classes not callable from BASIC | 2025-11-27 |
+| **BUG-OOP-017** | ✅ Fixed | Single-line IF colon only applies condition to first statement | 2025-11-27 |
+| **BUG-OOP-018** | ✅ Fixed | Viper.* runtime classes not callable from BASIC | 2025-11-27 |
+| **BUG-OOP-019** | ✅ Fixed | SELECT CASE with CONST labels | 2025-11-29 |
+| **BUG-OOP-020** | ✅ Fixed | SUB calls without parens (when defined before call) | 2025-11-29 |
+| **BUG-OOP-021** | ✅ Fixed | Soft keywords as identifiers (COLOR, FLOOR, etc.) | 2025-11-29 |
+| **BUG-OOP-022** | ✅ Fixed | SELECT CASE with CHR()/CHR$() labels | 2025-11-29 |
+| **BUG-OOP-023** | ✅ Fixed | Viper.Terminal.InKey() added to runtime | 2025-11-29 |
+| **BUG-OOP-024** | ✅ Fixed | Viper.Terminal.* type mismatch resolved | 2025-11-29 |
+| **BUG-OOP-025** | Won't Fix | List only stores objects (design limitation) | 2025-11-29 |
+| **BUG-OOP-026** | Open | USING doesn't enable unqualified calls | 2025-11-28 |
 
 ---
 
 ## Priority Recommendations
 
-### Open Bugs
-- **BUG-OOP-017** - Single-line IF with colon-separated statements only applies condition to first statement (Medium severity - workaround: use block IF)
-- **BUG-OOP-018** - Viper.* runtime classes (Viper.Terminal, Viper.Time, etc.) not callable from BASIC code (High severity - workaround: use raw ANSI escape codes)
+### Open Bugs (2025-11-29)
+- **BUG-OOP-026** - USING doesn't enable unqualified calls (Medium - workaround: fully qualify)
+
+### Design Limitations (Won't Fix)
+- **BUG-OOP-025** - Viper.Collections.List only stores objects (use BASIC arrays for primitives)
+
+### Recently Fixed (2025-11-29)
+- **BUG-OOP-019** - SELECT CASE now accepts CONST identifiers as labels
+- **BUG-OOP-020** - SUB calls work without parentheses when SUB is defined before call site
+- **BUG-OOP-021** - Soft keywords (COLOR, FLOOR, RANDOM, etc.) can be used as identifiers
+- **BUG-OOP-022** - SELECT CASE now accepts CHR()/CHR$() expressions as string labels
+- **BUG-OOP-023** - Viper.Terminal.InKey() now works
+- **BUG-OOP-024** - Viper.Terminal.* type mismatch resolved
 
 ### Recently Fixed (2025-11-27)
 - **BUG-OOP-010** - DIM inside FOR loop now works

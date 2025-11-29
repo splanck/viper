@@ -41,3 +41,27 @@ Token expect(TokenKind k);
 /// @brief Skip tokens until reaching a statement boundary.
 /// @note Consumes tokens until a boundary token (e.g., newline or EOF) is encountered.
 void syncToStmtBoundary();
+
+/// @brief Check if a token kind is a "soft identifier" (identifier or contextual keyword).
+/// @details Keywords like COLOR, FLOOR, RANDOM, COS, SIN, POW, and APPEND can be
+///          used as identifiers in contexts like qualified names (Viper.Terminal.Color).
+///          This allows them to be treated as identifiers when not in keyword context.
+/// @param k Token kind to test.
+/// @return True if the token can be treated as an identifier in appropriate contexts.
+static bool isSoftIdentToken(TokenKind k)
+{
+    switch (k)
+    {
+        case TokenKind::Identifier:
+        case TokenKind::KeywordColor:
+        case TokenKind::KeywordFloor:
+        case TokenKind::KeywordRandom:
+        case TokenKind::KeywordCos:
+        case TokenKind::KeywordSin:
+        case TokenKind::KeywordPow:
+        case TokenKind::KeywordAppend:
+            return true;
+        default:
+            return false;
+    }
+}

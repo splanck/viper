@@ -20,6 +20,7 @@
 #include "frontends/basic/Options.hpp"
 #include "frontends/basic/Parser.hpp"
 #include "frontends/basic/ast/ExprNodes.hpp"
+#include "frontends/basic/constfold/Dispatch.hpp"
 
 #include <cctype>
 #include <string>
@@ -80,7 +81,8 @@ Parser::StmtResult Parser::parseImplicitLet()
 
 bool Parser::isImplicitAssignmentStart() const
 {
-    if (!at(TokenKind::Identifier) && !at(TokenKind::KeywordMe))
+    // BUG-OOP-021: Allow soft keywords (COLOR, FLOOR, etc.) as variable names.
+    if (!isSoftIdentToken(peek().kind) && !at(TokenKind::KeywordMe))
         return false;
 
     int depth = 0;
@@ -292,35 +294,34 @@ Parser::StmtResult Parser::parseCall(int)
     }
     if (nextTok.kind != TokenKind::LParen)
     {
+        // Traditional BASIC allows procedure calls without parentheses
+        // for zero-argument procedures. Only allow this when followed by
+        // end-of-statement markers (EOL, EOF, :, or line number) and the
+        // name is known as a procedure.
+        bool isEndOfStmt = nextTok.kind == TokenKind::EndOfLine ||
+                           nextTok.kind == TokenKind::EndOfFile ||
+                           nextTok.kind == TokenKind::Colon || nextTok.kind == TokenKind::Number;
+
         if (isKnownProcedureName(identTok.lexeme))
         {
-            // Traditional BASIC allows procedure calls without parentheses
-            // for zero-argument procedures. Only allow this when followed by
-            // end-of-statement markers (EOL, EOF, :, or line number).
-            bool isEndOfStmt =
-                nextTok.kind == TokenKind::EndOfLine || nextTok.kind == TokenKind::EndOfFile ||
-                nextTok.kind == TokenKind::Colon || nextTok.kind == TokenKind::Number;
-
-            if (isEndOfStmt)
+            if (!isEndOfStmt)
             {
-                consume(); // consume the identifier token
-                auto call = std::make_unique<CallExpr>();
-                call->loc = identTok.loc;
-                call->Expr::loc = identTok.loc;
-                call->callee = identTok.lexeme;
-                // call->args is already an empty vector by default
-
-                auto stmt = std::make_unique<CallStmt>();
-                stmt->loc = identTok.loc;
-                stmt->call = std::move(call);
-                return StmtResult(std::move(stmt));
+                // Not end-of-statement: this is likely an attempt to call with arguments
+                // without parentheses - report error.
+                reportMissingCallParenthesis(identTok, nextTok);
+                resyncAfterError();
+                return StmtResult(StmtPtr{});
             }
 
-            // Not end-of-statement, so this is likely an attempt to call
-            // a procedure with arguments without parentheses - report error.
-            reportMissingCallParenthesis(identTok, nextTok);
-            resyncAfterError();
-            return StmtResult(StmtPtr{});
+            consume(); // consume the identifier token
+            auto call = std::make_unique<CallExpr>();
+            call->loc = identTok.loc;
+            call->Expr::loc = identTok.loc;
+            call->callee = identTok.lexeme;
+            auto stmt = std::make_unique<CallStmt>();
+            stmt->loc = identTok.loc;
+            stmt->call = std::move(call);
+            return StmtResult(std::move(stmt));
         }
         return std::nullopt;
     }
@@ -391,7 +392,8 @@ StmtPtr Parser::parseLetStatement()
 ExprPtr Parser::parseLetTarget()
 {
     ExprPtr base;
-    if (at(TokenKind::Identifier))
+    // BUG-OOP-021: Allow soft keywords (COLOR, FLOOR, etc.) as assignment targets.
+    if (at(TokenKind::Identifier) || (isSoftIdentToken(peek().kind) && peek().kind != TokenKind::Identifier))
     {
         base = parseArrayOrVar();
     }
@@ -412,16 +414,32 @@ StmtPtr Parser::parseConstStatement()
     auto loc = peek().loc;
     consume(); // CONST keyword
 
-    if (!at(TokenKind::Identifier))
+    auto isSoftIdent = [&](TokenKind k) {
+        if (k == TokenKind::Identifier)
+            return true;
+        switch (k)
+        {
+            case TokenKind::KeywordColor:
+            case TokenKind::KeywordFloor:
+            case TokenKind::KeywordRandom:
+            case TokenKind::KeywordCos:
+            case TokenKind::KeywordSin:
+            case TokenKind::KeywordPow:
+                return true;
+            default:
+                return false;
+        }
+    };
+
+    if (!isSoftIdent(peek().kind))
     {
         emitError("B0001", peek(), "expected identifier after CONST");
         resyncAfterError();
         return std::make_unique<LetStmt>(); // Return dummy statement
     }
 
-    auto identTok = peek();
+    auto identTok = consume();
     std::string name = identTok.lexeme;
-    consume();
 
     Type type = typeFromSuffix(name);
 
@@ -441,6 +459,36 @@ StmtPtr Parser::parseConstStatement()
     stmt->name = std::move(name);
     stmt->type = type;
     stmt->initializer = std::move(initializer);
+
+    // Track simple CONST values to enable constant labels in SELECT CASE.
+    // Canonicalize identifier for case-insensitive lookup.
+    {
+        const std::string canon = CanonicalizeIdent(stmt->name);
+        if (stmt->initializer)
+        {
+            // First check if the initializer is already a simple literal.
+            if (auto *ie = as<IntExpr>(*stmt->initializer))
+            {
+                knownConstInts_[canon] = ie->value;
+            }
+            else if (auto *se = as<StringExpr>(*stmt->initializer))
+            {
+                knownConstStrs_[canon] = se->value;
+            }
+            // Try constant folding for binary expressions.
+            else if (auto folded = constfold::fold_expr(*stmt->initializer))
+            {
+                if (auto *ie2 = as<IntExpr>(**folded))
+                {
+                    knownConstInts_[canon] = ie2->value;
+                }
+                else if (auto *se2 = as<StringExpr>(**folded))
+                {
+                    knownConstStrs_[canon] = se2->value;
+                }
+            }
+        }
+    }
     return stmt;
 }
 
@@ -547,7 +595,28 @@ std::vector<Param> Parser::parseParamList()
             // BYVAL is the default, just consume and continue
         }
 
-        Token id = expect(TokenKind::Identifier);
+        auto isSoftIdent = [&](TokenKind k) {
+            if (k == TokenKind::Identifier)
+                return true;
+            switch (k)
+            {
+                case TokenKind::KeywordColor:
+                case TokenKind::KeywordFloor:
+                case TokenKind::KeywordRandom:
+                case TokenKind::KeywordCos:
+                case TokenKind::KeywordSin:
+                case TokenKind::KeywordPow:
+                    return true;
+                default:
+                    return false;
+            }
+        };
+
+        Token id;
+        if (isSoftIdent(peek().kind))
+            id = consume();
+        else
+            id = expect(TokenKind::Identifier);
         Param p;
         p.loc = id.loc;
         p.name = id.lexeme;

@@ -72,46 +72,11 @@ inline void Parser::skipOptionalLineLabelAfterBreak(StatementSequencer &ctx,
 
 inline StmtPtr Parser::parseIfBranchBody(int line, StatementSequencer &ctx)
 {
-    // Parse a branch body for single-line IF/ELSEIF/ELSE.
-    // Collect colon-separated statements on the same logical line and stop
-    // when encountering a line break or an ELSE/ELSEIF keyword so the outer
-    // IF parser can consume it. This ensures all statements after THEN on a
-    // single line are conditional, matching expected BASIC semantics.
-
-    auto predicate = [&](int, il::support::SourceLoc)
-    {
-        // Terminate the branch body when we hit a line break, or when the
-        // next token begins an ELSE/ELSEIF clause. Do not consume the tokens
-        // here; the caller (parseElseChain) is responsible for that.
-        if (ctx.lastSeparator() == StatementSequencer::SeparatorKind::LineBreak)
-            return true;
-        if (at(TokenKind::KeywordElse) || at(TokenKind::KeywordElseIf))
-            return true;
-        return false;
-    };
-    auto consumer = [&](int, il::support::SourceLoc, StatementSequencer::TerminatorInfo &)
-    {
-        // Intentionally do nothing: leave ELSE/ELSEIF (or EOL) for the caller.
-    };
-
-    std::vector<StmtPtr> stmts;
-    ctx.collectStatements(predicate, consumer, stmts);
-    if (stmts.empty())
-        return nullptr;
-    auto list = std::make_unique<StmtList>();
-    list->line = line;
-    il::support::SourceLoc listLoc = peek().loc;
-    for (const auto &s : stmts)
-    {
-        if (s)
-        {
-            listLoc = s->loc;
-            break;
-        }
-    }
-    list->loc = listLoc;
-    list->stmts = std::move(stmts);
-    return list;
+    skipOptionalLineLabelAfterBreak(ctx);
+    auto stmt = parseStatement(line);
+    if (stmt)
+        stmt->line = line;
+    return stmt;
 }
 
 namespace parser_helpers

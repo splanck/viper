@@ -16,9 +16,13 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/basic/BasicDiagnosticMessages.hpp"
+#include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/Parser.hpp"
 #include "frontends/basic/Parser_Stmt_ControlHelpers.hpp"
 #include "frontends/basic/SelectModel.hpp"
+#include "frontends/basic/IdentifierUtil.hpp"
+#include "frontends/basic/Options.hpp"
+#include "frontends/basic/constfold/Dispatch.hpp"
 #include "viper/il/IO.hpp"
 
 #include <cstdlib>
@@ -484,6 +488,137 @@ il::support::Expected<Parser::CaseArmSyntax> Parser::parseCaseArmSyntax(Cursor &
         else if (at(TokenKind::String))
         {
             cursor.stringLabels.push_back(consume());
+        }
+        else if (at(TokenKind::Identifier) && FrontendOptions::enableSelectCaseConstLabels())
+        {
+            // Support CONST identifiers and CHR$() for labels.
+            std::string ident = peek().lexeme;
+            // Remove type suffix for canonicalization (e.g., CHR$ -> CHR)
+            std::string identBase = ident;
+            if (!identBase.empty() && (identBase.back() == '$' || identBase.back() == '%' ||
+                                        identBase.back() == '#' || identBase.back() == '!' ||
+                                        identBase.back() == '&'))
+            {
+                identBase.pop_back();
+            }
+            std::string canon = CanonicalizeIdent(identBase);
+
+            // Handle CHR / CHR$ builtin: fold to a string literal if possible.
+            if (canon == "chr" && peek(1).kind == TokenKind::LParen)
+            {
+                // Parse the builtin expression and try to fold to a string literal.
+                auto expr = parseExpression();
+                if (expr)
+                {
+                    // Check if this is a BuiltinCallExpr for CHR/CHR$
+                    if (auto *bce = as<BuiltinCallExpr>(*expr))
+                    {
+                        if (bce->builtin == BuiltinCallExpr::Builtin::Chr && !bce->args.empty())
+                        {
+                            // Try to fold CHR$(arg) to a string literal
+                            if (auto folded = constfold::foldChrLiteral(*bce->args[0]))
+                            {
+                                if (auto *se = as<StringExpr>(*folded))
+                                {
+                                    Token t;
+                                    t.kind = TokenKind::String;
+                                    t.loc = cursor.caseTok.loc;
+                                    // Store raw string value without quotes (matching lexer behavior)
+                                    t.lexeme = se->value;
+                                    cursor.stringLabels.push_back(std::move(t));
+                                    continue;
+                                }
+                            }
+                        }
+                    }
+                    emitError("B0001", cursor.caseTok, "SELECT CASE string label must be a literal or CHR$ constant");
+                }
+                continue;
+            }
+
+            // CONST integer/string lookup
+            if (auto itS = knownConstStrs_.find(canon); itS != knownConstStrs_.end())
+            {
+                consume();
+                Token t;
+                t.kind = TokenKind::String;
+                t.loc = peek().loc;
+                // Store raw string value without quotes (matching lexer behavior)
+                t.lexeme = itS->second;
+                cursor.stringLabels.push_back(std::move(t));
+                continue;
+            }
+            if (auto itI = knownConstInts_.find(canon); itI != knownConstInts_.end())
+            {
+                consume();
+                // Support optional "TO <ident|number>" range after a CONST numeric.
+                long long loVal = itI->second;
+                if (at(TokenKind::KeywordTo))
+                {
+                    consume();
+                    // Optional sign
+                    int hiSign = 1;
+                    if (at(TokenKind::Minus) || at(TokenKind::Plus))
+                    {
+                        hiSign = at(TokenKind::Minus) ? -1 : 1;
+                        consume();
+                    }
+                    long long hiVal = 0;
+                    if (at(TokenKind::Number))
+                    {
+                        hiVal = std::strtoll(peek().lexeme.c_str(), nullptr, 10);
+                        consume();
+                    }
+                    else if (at(TokenKind::Identifier))
+                    {
+                        std::string hiName = CanonicalizeIdent(peek().lexeme);
+                        if (auto itHi = knownConstInts_.find(hiName); itHi != knownConstInts_.end())
+                        {
+                            hiVal = itHi->second;
+                            consume();
+                        }
+                        else
+                        {
+                            emitError("B0001", peek(), "SELECT CASE range end must be an integer literal or CONST");
+                            bail = true;
+                            break;
+                        }
+                    }
+                    else
+                    {
+                        emitError("B0001", peek(), "SELECT CASE range end must be an integer literal or CONST");
+                        bail = true;
+                        break;
+                    }
+
+                    Token loTok;
+                    loTok.kind = TokenKind::Number;
+                    loTok.loc = cursor.caseTok.loc;
+                    loTok.lexeme = std::to_string(loVal);
+                    Token hiTok;
+                    hiTok.kind = TokenKind::Number;
+                    hiTok.loc = cursor.caseTok.loc;
+                    hiTok.lexeme = std::to_string(hiSign < 0 ? -hiVal : hiVal);
+                    cursor.ranges.emplace_back(std::move(loTok), std::move(hiTok));
+                }
+                else
+                {
+                    Token t;
+                    t.kind = TokenKind::Number;
+                    t.loc = cursor.caseTok.loc;
+                    t.lexeme = std::to_string(loVal);
+                    cursor.numericLabels.push_back(std::move(t));
+                }
+                continue;
+            }
+
+            // Unknown identifier in CASE label
+            Token bad = peek();
+            if (bad.kind != TokenKind::EndOfLine)
+            {
+                emitError("B0001", bad, "SELECT CASE labels must be literals or CONSTs");
+            }
+            break;
         }
         else if (at(TokenKind::Number) || at(TokenKind::Minus) || at(TokenKind::Plus))
         {

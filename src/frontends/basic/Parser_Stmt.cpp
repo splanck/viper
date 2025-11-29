@@ -140,7 +140,21 @@ StmtPtr Parser::parseStatement(int line)
 
 Parser::StmtResult Parser::parseRegisteredStatement(int line)
 {
-    const Token &tok = peek();
+    const Token tok = peek(); // Copy to avoid reference invalidation
+
+    // BUG-OOP-021: Soft keywords (COLOR, FLOOR, RANDOM, etc.) should be treated as
+    // identifiers when followed by '=' (assignment) or '(' (array subscript/call).
+    // This allows using these keywords as variable names: color = 5
+    if (isSoftIdentToken(tok.kind) && tok.kind != TokenKind::Identifier)
+    {
+        TokenKind next = peek(1).kind;
+        if (next == TokenKind::Equal || next == TokenKind::LParen)
+        {
+            // Treat as identifier, fall through to implicit LET or call parsing.
+            return std::nullopt;
+        }
+    }
+
     const auto [noArg, withLine] = statementRegistry().lookup(tok.kind);
     if (noArg)
     {

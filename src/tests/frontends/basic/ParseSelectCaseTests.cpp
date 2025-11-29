@@ -132,7 +132,9 @@ int main()
         std::ostringstream oss;
         emitter.printAll(oss);
         const std::string output = oss.str();
-        assert(output.find("integer literals") != std::string::npos);
+        // Accept either "integer literals" or "literals or CONSTs" message
+        assert(output.find("integer literals") != std::string::npos ||
+               output.find("literals or CONSTs") != std::string::npos);
     }
 
     {
