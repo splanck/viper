@@ -18,6 +18,7 @@
 #include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/Lowerer.hpp"
+#include "frontends/basic/SemanticAnalyzer.hpp"
 #include "frontends/basic/lower/AstVisitor.hpp"
 
 #include "viper/il/Module.hpp"
@@ -557,18 +558,68 @@ void Lowerer::lowerCallStmt(const CallStmt &stmt)
         }
 
         // Attempt direct lowering for runtime builtin externs by descriptor name.
-        // Handle unqualified calls with USING Viper.Console by probing the canonical
-        // runtime namespace prefix.
+        // Handle unqualified calls via USING imports by probing imported namespaces.
         const il::runtime::RuntimeSignature *rtSig = il::runtime::findRuntimeSignature(calleeKey);
-        if (!rtSig && calleeKey.find('.') == std::string::npos)
+        if (!rtSig && calleeKey.find('.') == std::string::npos && !ce->callee.empty())
         {
-            if (!ce->callee.empty())
+            // Helper to convert canonical namespace to title-case for runtime lookup
+            auto titleCaseNs = [](const std::string &ns) -> std::string
             {
-                std::string candidate = std::string("Viper.Console.") + ce->callee;
-                if (const auto *sig = il::runtime::findRuntimeSignature(candidate))
+                std::string out;
+                out.reserve(ns.size());
+                bool start = true;
+                for (char ch : ns)
                 {
-                    rtSig = sig;
-                    calleeResolved = std::move(candidate);
+                    if (ch == '.')
+                    {
+                        out.push_back('.');
+                        start = true;
+                    }
+                    else if (start)
+                    {
+                        out.push_back(
+                            static_cast<char>(std::toupper(static_cast<unsigned char>(ch))));
+                        start = false;
+                    }
+                    else
+                    {
+                        out.push_back(ch);
+                    }
+                }
+                return out;
+            };
+
+            // Try USING imports from semantic analyzer
+            const SemanticAnalyzer *sema = semanticAnalyzer();
+            if (sema)
+            {
+                std::vector<std::string> imports = sema->getUsingImports();
+                for (const auto &ns : imports)
+                {
+                    std::string qualifiedNs = titleCaseNs(ns);
+                    std::string candidate = qualifiedNs + "." + ce->callee;
+                    if (const auto *sig = il::runtime::findRuntimeSignature(candidate))
+                    {
+                        rtSig = sig;
+                        calleeResolved = std::move(candidate);
+                        break;
+                    }
+                }
+            }
+            // Fallback: try common Viper.* namespaces even without explicit USING
+            if (!rtSig)
+            {
+                static const char *defaultNamespaces[] = {
+                    "Viper.Console", "Viper.Terminal", "Viper.Time"};
+                for (const char *ns : defaultNamespaces)
+                {
+                    std::string candidate = std::string(ns) + "." + ce->callee;
+                    if (const auto *sig = il::runtime::findRuntimeSignature(candidate))
+                    {
+                        rtSig = sig;
+                        calleeResolved = std::move(candidate);
+                        break;
+                    }
                 }
             }
         }

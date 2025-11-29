@@ -165,6 +165,10 @@ class SemanticAnalyzer
     /// @brief Registered procedures and their signatures.
     const ProcTable &procs() const;
 
+    /// @brief Get canonical lowercase USING import namespaces from file scope.
+    /// @return Set of imported namespace paths (e.g., "viper.terminal").
+    std::vector<std::string> getUsingImports() const;
+
     /// @brief Lookup array metadata for a given array name.
     /// @param name Array identifier to look up.
     /// @return Pointer to ArrayMetadata if found, nullptr otherwise.

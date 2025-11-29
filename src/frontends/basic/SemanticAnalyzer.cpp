@@ -73,6 +73,24 @@ const ProcTable &SemanticAnalyzer::procs() const
     return procReg_.procs();
 }
 
+/// @brief Get canonical lowercase USING import namespaces from file scope.
+///
+/// @return Vector of imported namespace paths (e.g., "viper.terminal").
+std::vector<std::string> SemanticAnalyzer::getUsingImports() const
+{
+    std::vector<std::string> result;
+    if (!usingStack_.empty())
+    {
+        const UsingScope &scope = usingStack_.back();
+        result.reserve(scope.imports.size());
+        for (const auto &ns : scope.imports)
+        {
+            result.push_back(ns);
+        }
+    }
+    return result;
+}
+
 /// @brief Lookup array metadata for a given array name.
 ///
 /// @param name Array identifier to look up.

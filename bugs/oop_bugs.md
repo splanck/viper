@@ -433,7 +433,7 @@ key = INKEY$()
 - **Verification (2025-11-29)**: Tested `key = Viper.Terminal.InKey()` - compiles and runs successfully, returning empty string when no key is pressed.
 
 ### BUG-OOP-026: USING statement doesn't enable unqualified procedure calls
-- **Status**: Open (Architectural Constraint)
+- **Status**: Fixed (2025-11-29) ✅ Verified
 - **Discovered**: 2025-11-28
 - **Game**: Roguelike
 - **Severity**: Medium
@@ -443,29 +443,17 @@ key = INKEY$()
 ```basic
 USING Viper.Terminal
 
-SetPosition(5, 10)   ' Error: unknown callee @setposition
-Clear()              ' Error: unknown callee @clear
+SetPosition(5, 10)   ' Now works!
+Clear()              ' Now works!
 ```
 - **Expected**: After `USING Viper.Terminal`, calling `SetPosition(5,10)` should resolve to `Viper.Terminal.SetPosition`
-- **Actual**: Error "unknown callee @setposition" - unqualified names don't resolve
-- **Workaround**: Use fully qualified names: `Viper.Terminal.SetPosition(5, 10)`, or use built-in keywords (LOCATE, COLOR, CLS)
-- **Root Cause**: The semantic analyzer is designed to NOT modify the AST (see `SemanticAnalyzer.hpp:52-53`: "The analyzer does not modify the AST; it only validates and annotates the symbol table"). This architectural constraint means:
-
-  1. **Semantic analysis succeeds**: The analyzer correctly resolves unqualified calls via USING imports. When `SetPosition` is called with `USING Viper.Terminal`, the code finds `viper.terminal.setposition` via `procReg_.lookup()`.
-
-  2. **Resolution not stored**: The analyzer validates the call but doesn't update `CallExpr::calleeQualified` because it's not allowed to modify the AST.
-
-  3. **Lowering uses unqualified name**: Since `calleeQualified` is empty, lowering emits `call @setposition` instead of `call @viper.terminal.setposition`.
-
-  4. **IL verification fails**: The unqualified extern doesn't exist.
-
-- **Fix Required**: Either:
-  1. **Relax AST immutability**: Allow semantic analyzer to update `CallExpr::calleeQualified` for USING-resolved calls (breaks design invariant)
-  2. **Duplicate resolution in lowerer**: Propagate USING import information to the lowerer and resolve there (complex)
-  3. **Pre-lowering rewrite pass**: Add a pass between analysis and lowering that updates qualified names
-
-  Given the architectural constraint, this requires significant refactoring.
-- **Note**: `Viper.Console.*` unqualified calls work via special-case handling in `Lowerer_Expr.cpp:391-428` that explicitly searches the `Viper.Console` namespace. A general fix would extend this to all USING imports.
+- **Actual**: Now works correctly - unqualified names resolve via USING imports
+- **Root Cause**: The semantic analyzer validates calls via USING imports but doesn't modify the AST. The lowerer was using hardcoded namespace fallbacks instead of reading actual USING imports.
+- **Fix Applied**:
+  1. Added `getUsingImports()` method to `SemanticAnalyzer` to expose USING import namespaces
+  2. Modified `Lowerer_Expr.cpp` and `Lowerer_Stmt.cpp` to query USING imports from the semantic analyzer when resolving unqualified procedure calls
+  3. The lowerer now iterates through all USING imports and tries to resolve unqualified names against each imported namespace
+- **Verification (2025-11-29)**: Tested with `USING Viper.Terminal` and `USING Viper.Time` - unqualified calls to `Clear()`, `SetPosition()`, `SetColor()`, `GetTickCount()`, `SleepMs()`, and `InKey()` all work correctly.
 
 ### BUG-OOP-025: Viper.Collections.List cannot store primitive values
 - **Status**: Won't Fix (Design Limitation)
@@ -929,14 +917,14 @@ PRINT "After call: "; m.GetValue()   ' Prints 42
 | **BUG-OOP-023** | ✅ Fixed | Viper.Terminal.InKey() added to runtime | 2025-11-29 |
 | **BUG-OOP-024** | ✅ Fixed | Viper.Terminal.* type mismatch resolved | 2025-11-29 |
 | **BUG-OOP-025** | Won't Fix | List only stores objects (design limitation) | 2025-11-29 |
-| **BUG-OOP-026** | Open | USING doesn't enable unqualified calls | 2025-11-28 |
+| **BUG-OOP-026** | ✅ Fixed | USING enables unqualified procedure calls | 2025-11-29 |
 
 ---
 
 ## Priority Recommendations
 
 ### Open Bugs (2025-11-29)
-- **BUG-OOP-026** - USING doesn't enable unqualified calls (Medium - workaround: fully qualify)
+None! All reported bugs are now fixed or documented as design limitations.
 
 ### Design Limitations (Won't Fix)
 - **BUG-OOP-025** - Viper.Collections.List only stores objects (use BASIC arrays for primitives)
@@ -948,6 +936,7 @@ PRINT "After call: "; m.GetValue()   ' Prints 42
 - **BUG-OOP-022** - SELECT CASE now accepts CHR()/CHR$() expressions as string labels
 - **BUG-OOP-023** - Viper.Terminal.InKey() now works
 - **BUG-OOP-024** - Viper.Terminal.* type mismatch resolved
+- **BUG-OOP-026** - USING statement now enables unqualified procedure calls
 
 ### Recently Fixed (2025-11-27)
 - **BUG-OOP-010** - DIM inside FOR loop now works

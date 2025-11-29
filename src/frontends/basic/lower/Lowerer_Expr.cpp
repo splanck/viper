@@ -384,39 +384,67 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
         // runtime descriptor (e.g., "Viper.Console.PrintI64"). Otherwise, fall
         // back to user-defined procedure signatures collected from the AST.
         const il::runtime::RuntimeSignature *rtSig = il::runtime::findRuntimeSignature(calleeKey);
-        // If not found and the call is unqualified, try resolving against the
-        // canonical runtime Console namespace (USING Viper.Console case).
+        // If not found and the call is unqualified, try resolving against USING imports.
         // This mirrors semantic resolution where USING imports allow unqualified
-        // calls like PrintI64 to bind to Viper.Console.PrintI64.
-        if (!rtSig && calleeKey.find('.') == std::string::npos)
+        // calls like SetPosition to bind to Viper.Terminal.SetPosition.
+        if (!rtSig && calleeKey.find('.') == std::string::npos && !expr.callee.empty())
         {
-            // Prefer original callee casing when present to match registry keys.
-            if (!expr.callee.empty())
+            // Helper to convert canonical namespace to title-case for runtime lookup
+            auto titleCaseNs = [](const std::string &ns) -> std::string
             {
-                std::string candidate = std::string("Viper.Console.") + expr.callee;
-                if (const auto *sig = il::runtime::findRuntimeSignature(candidate))
+                std::string out;
+                out.reserve(ns.size());
+                bool start = true;
+                for (char ch : ns)
                 {
-                    rtSig = sig;
-                    calleeResolved = std::move(candidate);
+                    if (ch == '.')
+                    {
+                        out.push_back('.');
+                        start = true;
+                    }
+                    else if (start)
+                    {
+                        out.push_back(
+                            static_cast<char>(std::toupper(static_cast<unsigned char>(ch))));
+                        start = false;
+                    }
+                    else
+                    {
+                        out.push_back(ch);
+                    }
                 }
-                else
+                return out;
+            };
+
+            // Try USING imports from semantic analyzer first
+            const SemanticAnalyzer *sema = lowerer_.semanticAnalyzer();
+            if (sema)
+            {
+                std::vector<std::string> imports = sema->getUsingImports();
+                for (const auto &ns : imports)
                 {
-                    // Case-insensitive fallback against Viper.Console.* when USING is implied.
+                    // Build qualified name: namespace.callee (title-cased for runtime lookup)
+                    std::string qualifiedNs = titleCaseNs(ns);
+                    std::string candidate = qualifiedNs + "." + expr.callee;
+                    if (const auto *sig = il::runtime::findRuntimeSignature(candidate))
+                    {
+                        rtSig = sig;
+                        calleeResolved = std::move(candidate);
+                        break;
+                    }
+                    // Also try case-insensitive lookup in runtime signatures
                     const auto &rts = il::runtime::runtimeSignatures();
+                    std::string candidateLower = ns + "." + calleeKey;
                     for (const auto &kv : rts)
                     {
                         const std::string_view name = kv.first;
-                        constexpr std::string_view prefix = "Viper.Console.";
-                        if (name.size() <= prefix.size() || name.substr(0, prefix.size()) != prefix)
-                            continue;
-                        const std::string_view leaf = name.substr(prefix.size());
-                        if (leaf.size() != calleeKey.size())
+                        if (name.size() != candidateLower.size())
                             continue;
                         bool eq = true;
-                        for (size_t i = 0; i < leaf.size(); ++i)
+                        for (size_t i = 0; i < name.size(); ++i)
                         {
-                            unsigned char a = static_cast<unsigned char>(leaf[i]);
-                            unsigned char b = static_cast<unsigned char>(calleeKey[i]);
+                            unsigned char a = static_cast<unsigned char>(name[i]);
+                            unsigned char b = static_cast<unsigned char>(candidateLower[i]);
                             if (std::tolower(a) != std::tolower(b))
                             {
                                 eq = false;
@@ -430,24 +458,23 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
                             break;
                         }
                     }
-                    // Additional USING fallbacks for common runtime namespaces
-                    if (!rtSig)
+                    if (rtSig)
+                        break;
+                }
+            }
+            // Fallback: try common Viper.* namespaces even without explicit USING
+            if (!rtSig)
+            {
+                static const char *defaultNamespaces[] = {
+                    "Viper.Console", "Viper.Terminal", "Viper.Time"};
+                for (const char *ns : defaultNamespaces)
+                {
+                    std::string candidate = std::string(ns) + "." + expr.callee;
+                    if (const auto *sig = il::runtime::findRuntimeSignature(candidate))
                     {
-                        std::string t1 = std::string("Viper.Terminal.") + expr.callee;
-                        if (const auto *sig2 = il::runtime::findRuntimeSignature(t1))
-                        {
-                            rtSig = sig2;
-                            calleeResolved = std::move(t1);
-                        }
-                    }
-                    if (!rtSig)
-                    {
-                        std::string t2 = std::string("Viper.Time.") + expr.callee;
-                        if (const auto *sig3 = il::runtime::findRuntimeSignature(t2))
-                        {
-                            rtSig = sig3;
-                            calleeResolved = std::move(t2);
-                        }
+                        rtSig = sig;
+                        calleeResolved = std::move(candidate);
+                        break;
                     }
                 }
             }
