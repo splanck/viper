@@ -6,9 +6,22 @@
 //===----------------------------------------------------------------------===//
 //
 // File: codegen/aarch64/MachineIR.hpp
-// Purpose: Minimal AArch64 Machine IR scaffolding (Phase A) used by tests and
-// Key invariants: To be documented.
-// Ownership/Lifetime: To be documented.
+// Purpose: AArch64 Machine IR (MIR) data structures for code generation.
+//
+// This file defines the machine-level intermediate representation used between
+// IL lowering and assembly emission. MIR instructions are target-specific and
+// map closely to AArch64 instructions but still use virtual registers that
+// must be allocated to physical registers before emission.
+//
+// Key invariants:
+// - MInstr operands follow a consistent pattern: destination first, then sources.
+// - Virtual registers (isPhys=false) must be resolved by register allocation.
+// - Physical registers (isPhys=true) are final and correspond to AArch64 regs.
+//
+// Ownership/Lifetime:
+// - MFunction owns all blocks, blocks own instructions.
+// - Frame layout is computed during lowering and finalized after allocation.
+//
 // Links: docs/architecture.md
 //
 //===----------------------------------------------------------------------===//
@@ -27,6 +40,10 @@
 namespace viper::codegen::aarch64
 {
 
+/// @brief Machine IR opcodes for AArch64 code generation.
+///
+/// Each opcode represents a target-specific operation that will be emitted
+/// as one or more AArch64 assembly instructions.
 enum class MOpcode
 {
     MovRR,
@@ -81,27 +98,38 @@ enum class MOpcode
     AddPageOff, // dst, base, label => add dst, base, label@PAGEOFF
 };
 
+/// @brief Represents a machine register (physical or virtual).
+///
+/// Before register allocation, isPhys=false and idOrPhys contains a virtual
+/// register ID. After allocation, isPhys=true and idOrPhys contains the
+/// PhysReg enum value cast to uint16_t.
 struct MReg
 {
-    bool isPhys{false};
-    RegClass cls{RegClass::GPR};
-    uint16_t idOrPhys{0U};
+    bool isPhys{false};       ///< True if this is a physical register.
+    RegClass cls{RegClass::GPR}; ///< Register class (GPR or FPR).
+    uint16_t idOrPhys{0U};    ///< Virtual reg ID or PhysReg enum value.
 };
 
+/// @brief Operand for a machine IR instruction.
+///
+/// Operands can be registers, immediates, condition codes, or labels.
+/// The interpretation depends on the MOpcode of the containing MInstr.
 struct MOperand
 {
     enum class Kind
     {
-        Reg,
-        Imm,
-        Cond,
-        Label
+        Reg,   ///< Physical or virtual register.
+        Imm,   ///< Immediate constant.
+        Cond,  ///< Condition code (eq, ne, lt, etc.).
+        Label  ///< Symbol or basic block label.
     } kind{Kind::Imm};
-    MReg reg{};
-    long long imm{0};
-    const char *cond{nullptr};
-    std::string label;
 
+    MReg reg{};               ///< Register operand (when kind==Reg).
+    long long imm{0};         ///< Immediate value (when kind==Imm).
+    const char *cond{nullptr}; ///< Condition code string (when kind==Cond).
+    std::string label;        ///< Label name (when kind==Label).
+
+    /// @brief Create a physical register operand.
     static MOperand regOp(PhysReg r)
     {
         MOperand o{};
@@ -112,6 +140,9 @@ struct MOperand
         return o;
     }
 
+    /// @brief Create a virtual register operand.
+    /// @param cls Register class (GPR or FPR).
+    /// @param id Virtual register identifier.
     static MOperand vregOp(RegClass cls, uint16_t id)
     {
         MOperand o{};
@@ -122,6 +153,7 @@ struct MOperand
         return o;
     }
 
+    /// @brief Create an immediate operand.
     static MOperand immOp(long long v)
     {
         MOperand o{};
@@ -130,6 +162,7 @@ struct MOperand
         return o;
     }
 
+    /// @brief Create a condition code operand (e.g., "eq", "ne", "lt").
     static MOperand condOp(const char *c)
     {
         MOperand o{};
@@ -138,6 +171,7 @@ struct MOperand
         return o;
     }
 
+    /// @brief Create a label operand (function name or block label).
     static MOperand labelOp(std::string name)
     {
         MOperand o{};
@@ -147,53 +181,74 @@ struct MOperand
     }
 };
 
+/// @brief A single machine IR instruction.
+///
+/// Contains an opcode and a vector of operands. Operand interpretation
+/// depends on the opcode - typically destination register first, then
+/// source registers/immediates.
 struct MInstr
 {
-    MOpcode opc{};
-    std::vector<MOperand> ops{}; // compact, small-vec later if needed
+    MOpcode opc{};               ///< The operation to perform.
+    std::vector<MOperand> ops{}; ///< Instruction operands.
 };
 
+/// @brief A basic block containing machine IR instructions.
+///
+/// Basic blocks are named units of sequential code with a single entry
+/// and (typically) ending in a branch or return instruction.
 struct MBasicBlock
 {
-    std::string name;
-    std::vector<MInstr> instrs;
+    std::string name;            ///< Block label (used for branches).
+    std::vector<MInstr> instrs;  ///< Instructions in program order.
 };
 
+/// @brief A function in machine IR form.
+///
+/// Contains all basic blocks, callee-saved register information, and
+/// stack frame layout computed during lowering and register allocation.
 struct MFunction
 {
-    std::string name;
-    std::vector<MBasicBlock> blocks;
-    // Optional: list of callee-saved GPRs to be saved/restored in prologue/epilogue.
+    std::string name;               ///< Function symbol name.
+    std::vector<MBasicBlock> blocks; ///< Basic blocks in layout order.
+
+    /// Callee-saved GPRs that must be preserved across calls.
     std::vector<PhysReg> savedGPRs;
-    // Optional: list of callee-saved FPRs (D-registers) to save/restore.
+
+    /// Callee-saved FPRs (D-registers) that must be preserved across calls.
     std::vector<PhysReg> savedFPRs;
-    // Size of local frame (stack-allocated locals), in bytes, 16-byte aligned
+
+    /// Total size of the local stack frame in bytes (16-byte aligned).
     int localFrameSize{0};
 
+    /// @brief Describes a stack-allocated local variable.
     struct StackLocal
     {
-        unsigned tempId{0};
-        int size{0};
-        int align{8};
-        int offset{0};
+        unsigned tempId{0}; ///< IL temporary ID this slot is for.
+        int size{0};        ///< Size in bytes.
+        int align{8};       ///< Alignment requirement.
+        int offset{0};      ///< FP-relative offset (negative).
     };
 
+    /// @brief Describes a spill slot for a virtual register.
     struct SpillSlot
     {
-        uint16_t vreg{0};
-        int size{8};
-        int align{8};
-        int offset{0};
+        uint16_t vreg{0}; ///< Virtual register ID.
+        int size{8};      ///< Size in bytes.
+        int align{8};     ///< Alignment requirement.
+        int offset{0};    ///< FP-relative offset (negative).
     };
 
+    /// @brief Stack frame layout information.
     struct FrameLayout
     {
-        std::vector<StackLocal> locals; // locals keyed by IL temp id
-        std::vector<SpillSlot> spills;  // spills keyed by vreg id
-        int totalBytes{0};              // total frame size (locals + spills + outgoing), aligned
-        int maxOutgoingBytes{0};        // optional max outgoing arg area (bytes)
+        std::vector<StackLocal> locals; ///< Local variable slots.
+        std::vector<SpillSlot> spills;  ///< Spill slots for virtual registers.
+        int totalBytes{0};              ///< Total frame size (aligned to 16 bytes).
+        int maxOutgoingBytes{0};        ///< Space reserved for outgoing call arguments.
 
-        // Helpers
+        /// @brief Look up the FP-relative offset for a local variable.
+        /// @param tempId The IL temporary identifier.
+        /// @return FP-relative offset, or 0 if not found.
         int getLocalOffset(unsigned tempId) const
         {
             for (const auto &L : locals)
@@ -202,6 +257,9 @@ struct MFunction
             return 0;
         }
 
+        /// @brief Look up the FP-relative offset for a spill slot.
+        /// @param vreg Virtual register identifier.
+        /// @return FP-relative offset, or 0 if not found.
         int getSpillOffset(uint16_t vreg) const
         {
             for (const auto &S : spills)
@@ -209,7 +267,7 @@ struct MFunction
                     return S.offset;
             return 0;
         }
-    } frame;
+    } frame; ///< Stack frame layout.
 };
 
 } // namespace viper::codegen::aarch64

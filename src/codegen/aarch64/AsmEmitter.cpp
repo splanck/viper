@@ -148,7 +148,15 @@ void AsmEmitter::emitMovRR(std::ostream &os, PhysReg dst, PhysReg src) const
 
 void AsmEmitter::emitMovRI(std::ostream &os, PhysReg dst, long long imm) const
 {
-    os << "  mov " << rn(dst) << ", #" << imm << "\n";
+    // Use movz/movk sequence for wide immediates that can't be encoded directly
+    if (needsWideImmSequence(imm))
+    {
+        emitMovImm64(os, dst, static_cast<unsigned long long>(imm));
+    }
+    else
+    {
+        os << "  mov " << rn(dst) << ", #" << imm << "\n";
+    }
 }
 
 void AsmEmitter::emitAddRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const

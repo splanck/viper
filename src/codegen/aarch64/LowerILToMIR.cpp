@@ -67,8 +67,14 @@ struct LoweredCall
     std::vector<MInstr> postfix; // any clean-up (currently empty)
 };
 
-// Maps IL temp id to its register class
-static std::unordered_map<unsigned, RegClass> tempRegClass;
+/// @brief Maps IL temp id to its register class (GPR or FPR).
+/// @details This thread-local state is used during lowering to track which
+///          temporaries hold floating-point values vs integer values.
+///          It is cleared at the start of each lowerFunction() call to ensure
+///          no state leaks between function lowerings.
+/// @warning This is function-local state that must be cleared before use.
+///          Multiple concurrent lowerings would require synchronization.
+static thread_local std::unordered_map<unsigned, RegClass> tempRegClass;
 
 // Materialize an IL value into a vreg and append MIR into out. Returns the vreg id.
 static bool materializeValueToVReg(const il::core::Value &v,
@@ -495,9 +501,9 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
             if (instr.op == il::core::Opcode::Alloca && instr.result && !instr.operands.empty())
             {
                 if (instr.operands[0].kind == il::core::Value::Kind::ConstInt &&
-                    instr.operands[0].i64 == 8)
+                    instr.operands[0].i64 == kSlotSizeBytes)
                 {
-                    fb.addLocal(*instr.result, 8, 8);
+                    fb.addLocal(*instr.result, kSlotSizeBytes, kSlotSizeBytes);
                 }
             }
         }
@@ -540,7 +546,7 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
         {
             // Check if it's a parameter
             int pIdx = indexOfParam(bb, val.id);
-            if (pIdx >= 0 && pIdx < 8)
+            if (pIdx >= 0 && static_cast<std::size_t>(pIdx) < kMaxGPRArgs)
             {
                 return argOrder[static_cast<size_t>(pIdx)];
             }
@@ -638,7 +644,6 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                         }
                         bbMir.instrs.push_back(MInstr{MOpcode::Ret, {}});
                         fb.finalize();
-                        fb.finalize();
                         return mf;
                     }
                 }
@@ -709,18 +714,20 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                 {
                     const int idx0 = indexOfParam(bb, opI.operands[0].id);
                     const int idx1 = indexOfParam(bb, opI.operands[1].id);
-                    if (idx0 >= 0 && idx1 >= 0 && idx0 < 8 && idx1 < 8)
+                    if (idx0 >= 0 && idx1 >= 0 &&
+                        static_cast<std::size_t>(idx0) < kMaxGPRArgs &&
+                        static_cast<std::size_t>(idx1) < kMaxGPRArgs)
                     {
                         const PhysReg src0 = argOrder[static_cast<size_t>(idx0)];
                         const PhysReg src1 = argOrder[static_cast<size_t>(idx1)];
-                        // Normalize to x0,x1 using x9 scratch
+                        // Normalize to x0,x1 using scratch register
                         bbMir.instrs.push_back(MInstr{
-                            MOpcode::MovRR, {MOperand::regOp(PhysReg::X9), MOperand::regOp(src1)}});
+                            MOpcode::MovRR, {MOperand::regOp(kScratchGPR), MOperand::regOp(src1)}});
                         bbMir.instrs.push_back(MInstr{
                             MOpcode::MovRR, {MOperand::regOp(PhysReg::X0), MOperand::regOp(src0)}});
                         bbMir.instrs.push_back(
                             MInstr{MOpcode::MovRR,
-                                   {MOperand::regOp(PhysReg::X1), MOperand::regOp(PhysReg::X9)}});
+                                   {MOperand::regOp(PhysReg::X1), MOperand::regOp(kScratchGPR)}});
                         switch (opI.op)
                         {
                             case Opcode::Add:
@@ -810,20 +817,22 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                 {
                     const int idx0 = indexOfParam(bb, opI.operands[0].id);
                     const int idx1 = indexOfParam(bb, opI.operands[1].id);
-                    if (idx0 >= 0 && idx1 >= 0 && idx0 < 8 && idx1 < 8)
+                    if (idx0 >= 0 && idx1 >= 0 &&
+                        static_cast<std::size_t>(idx0) < kMaxFPRArgs &&
+                        static_cast<std::size_t>(idx1) < kMaxFPRArgs)
                     {
                         const PhysReg src0 = ti_->f64ArgOrder[static_cast<std::size_t>(idx0)];
                         const PhysReg src1 = ti_->f64ArgOrder[static_cast<std::size_t>(idx1)];
-                        // Normalize to d0,d1 using v16 as scratch
+                        // Normalize to d0,d1 using FPR scratch register
                         bbMir.instrs.push_back(
                             MInstr{MOpcode::FMovRR,
-                                   {MOperand::regOp(PhysReg::V16), MOperand::regOp(src1)}});
+                                   {MOperand::regOp(kScratchFPR), MOperand::regOp(src1)}});
                         bbMir.instrs.push_back(
                             MInstr{MOpcode::FMovRR,
                                    {MOperand::regOp(PhysReg::V0), MOperand::regOp(src0)}});
                         bbMir.instrs.push_back(
                             MInstr{MOpcode::FMovRR,
-                                   {MOperand::regOp(PhysReg::V1), MOperand::regOp(PhysReg::V16)}});
+                                   {MOperand::regOp(PhysReg::V1), MOperand::regOp(kScratchFPR)}});
                         if (isFAdd)
                             bbMir.instrs.push_back(MInstr{MOpcode::FAddRRR,
                                                           {MOperand::regOp(PhysReg::V0),
@@ -878,14 +887,14 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                                 bbMir.instrs.push_back(
                                     MInstr{MOpcode::MovRR,
                                            {MOperand::regOp(PhysReg::X0), MOperand::regOp(src)}});
-                            // and x0, x0, #1 via tmp reg
+                            // and x0, x0, #1 via scratch register
                             bbMir.instrs.push_back(
                                 MInstr{MOpcode::MovRI,
-                                       {MOperand::regOp(PhysReg::X9), MOperand::immOp(1)}});
+                                       {MOperand::regOp(kScratchGPR), MOperand::immOp(1)}});
                             bbMir.instrs.push_back(MInstr{MOpcode::AndRRR,
                                                           {MOperand::regOp(PhysReg::X0),
                                                            MOperand::regOp(PhysReg::X0),
-                                                           MOperand::regOp(PhysReg::X9)}});
+                                                           MOperand::regOp(kScratchGPR)}});
                             bbMir.instrs.push_back(MInstr{MOpcode::Ret, {}});
                             fb.finalize();
                             return mf;
@@ -928,12 +937,12 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                                                        MOperand::regOp(PhysReg::X0),
                                                        MOperand::immOp(sh)}});
                     }
-                    // Compare restored value to source in X9
+                    // Compare restored value to source in scratch register
                     bbMir.instrs.push_back(MInstr{
-                        MOpcode::MovRR, {MOperand::regOp(PhysReg::X9), MOperand::regOp(src)}});
+                        MOpcode::MovRR, {MOperand::regOp(kScratchGPR), MOperand::regOp(src)}});
                     bbMir.instrs.push_back(
                         MInstr{MOpcode::CmpRR,
-                               {MOperand::regOp(PhysReg::X0), MOperand::regOp(PhysReg::X9)}});
+                               {MOperand::regOp(PhysReg::X0), MOperand::regOp(kScratchGPR)}});
                     // If not equal, branch to a trap block
                     // Use a stable local label without function prefix for tests
                     const std::string trapLabel = ".Ltrap_cast";
@@ -1054,7 +1063,10 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                         std::vector<std::pair<PhysReg, long long>> immLoads;
                         std::vector<std::pair<std::size_t, PhysReg>>
                             tempRegs; // (arg index, reg holding computed temp)
-                        const PhysReg scratchPool[] = {PhysReg::X9, PhysReg::X10};
+                        // Scratch registers for temporary computations during call lowering.
+                        // We track which registers are available and bail out if exhausted.
+                        constexpr std::size_t kScratchPoolSize = 2;
+                        const PhysReg scratchPool[kScratchPoolSize] = {kScratchGPR, PhysReg::X10};
                         std::size_t scratchUsed = 0;
                         auto isParamTemp = [&](const il::core::Value &v, unsigned &outIdx) -> bool
                         {
@@ -1106,7 +1118,9 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                                 {
                                     int i0 = indexOfParam(bb, prod.operands[0].id);
                                     int i1 = indexOfParam(bb, prod.operands[1].id);
-                                    if (i0 >= 0 && i1 >= 0 && i0 < 8 && i1 < 8)
+                                    if (i0 >= 0 && i1 >= 0 &&
+                                        static_cast<std::size_t>(i0) < kMaxGPRArgs &&
+                                        static_cast<std::size_t>(i1) < kMaxGPRArgs)
                                     {
                                         MOpcode opc = MOpcode::AddRRR;
                                         if (prod.op == il::core::Opcode::Add ||
@@ -1148,7 +1162,7 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                                     o1.kind == il::core::Value::Kind::ConstInt)
                                 {
                                     int ip = indexOfParam(bb, o0.id);
-                                    if (ip >= 0 && ip < 8)
+                                    if (ip >= 0 && static_cast<std::size_t>(ip) < kMaxGPRArgs)
                                     {
                                         if (prod.op == il::core::Opcode::Shl)
                                             ri_emit(
@@ -1174,7 +1188,7 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                                          o0.kind == il::core::Value::Kind::ConstInt)
                                 {
                                     int ip = indexOfParam(bb, o1.id);
-                                    if (ip >= 0 && ip < 8)
+                                    if (ip >= 0 && static_cast<std::size_t>(ip) < kMaxGPRArgs)
                                     {
                                         if (prod.op == il::core::Opcode::Shl)
                                             ri_emit(
@@ -1218,7 +1232,9 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                                 {
                                     int i0 = indexOfParam(bb, o0.id);
                                     int i1 = indexOfParam(bb, o1.id);
-                                    if (i0 >= 0 && i1 >= 0 && i0 < 8 && i1 < 8)
+                                    if (i0 >= 0 && i1 >= 0 &&
+                                        static_cast<std::size_t>(i0) < kMaxGPRArgs &&
+                                        static_cast<std::size_t>(i1) < kMaxGPRArgs)
                                     {
                                         const PhysReg r0 = argOrder[i0];
                                         const PhysReg r1 = argOrder[i1];
@@ -1235,7 +1251,7 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                                     o1.kind == il::core::Value::Kind::ConstInt)
                                 {
                                     int i0 = indexOfParam(bb, o0.id);
-                                    if (i0 >= 0 && i0 < 8)
+                                    if (i0 >= 0 && static_cast<std::size_t>(i0) < kMaxGPRArgs)
                                     {
                                         const PhysReg r0 = argOrder[i0];
                                         // cmp r0, #imm; cset dst, cc
@@ -1278,8 +1294,7 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                                 {
                                     // Attempt to compute temp into a scratch then marshal it.
                                     if (arg.kind == il::core::Value::Kind::Temp &&
-                                        scratchUsed <
-                                            (sizeof(scratchPool) / sizeof(scratchPool[0])))
+                                        scratchUsed < kScratchPoolSize)
                                     {
                                         auto it = std::find_if(
                                             bb.instructions.begin(),
@@ -1343,13 +1358,14 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                                 }
                                 if (!progressed)
                                 {
+                                    // Break cycle using scratch register
                                     const PhysReg cycleSrc = moves.front().src;
                                     bbMir.instrs.push_back(MInstr{
                                         MOpcode::MovRR,
-                                        {MOperand::regOp(PhysReg::X9), MOperand::regOp(cycleSrc)}});
+                                        {MOperand::regOp(kScratchGPR), MOperand::regOp(cycleSrc)}});
                                     for (auto &m : moves)
                                         if (m.src == cycleSrc)
-                                            m.src = PhysReg::X9;
+                                            m.src = kScratchGPR;
                                 }
                             }
                             // Apply immediates
@@ -1361,22 +1377,26 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                             // Stack args: allocate area, materialize values, store at [sp, #offset]
                             if (nStackArgs > 0)
                             {
-                                long long frameBytes = static_cast<long long>(nStackArgs) * 8LL;
-                                if (frameBytes % 16LL != 0LL)
-                                    frameBytes += 8LL; // 16-byte alignment
+                                long long frameBytes =
+                                    static_cast<long long>(nStackArgs) * kSlotSizeBytes;
+                                if (frameBytes % kStackAlignment != 0LL)
+                                    frameBytes += kSlotSizeBytes; // Align to 16 bytes
                                 // Reserve in frame builder, do not emit dynamic SP adjust
                                 fb.setMaxOutgoingBytes(static_cast<int>(frameBytes));
                                 for (std::size_t i = nReg; i < nargs; ++i)
                                 {
                                     const auto &arg = binI.operands[i];
-                                    PhysReg valReg = PhysReg::X9;
+                                    PhysReg valReg = kScratchGPR;
                                     if (arg.kind == il::core::Value::Kind::ConstInt)
                                     {
-                                        // Use a scratch reg to hold the constant
-                                        const PhysReg tmp = (scratchUsed < (sizeof(scratchPool) /
-                                                                            sizeof(scratchPool[0])))
-                                                                ? scratchPool[scratchUsed++]
-                                                                : PhysReg::X9;
+                                        // Use a scratch reg to hold the constant.
+                                        // If pool exhausted, bail out rather than risk conflicts.
+                                        if (scratchUsed >= kScratchPoolSize)
+                                        {
+                                            supported = false;
+                                            break;
+                                        }
+                                        const PhysReg tmp = scratchPool[scratchUsed++];
                                         bbMir.instrs.push_back(MInstr{
                                             MOpcode::MovRI,
                                             {MOperand::regOp(tmp), MOperand::immOp(arg.i64)}});
@@ -1391,9 +1411,9 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                                         }
                                         else
                                         {
-                                            // Compute limited temps into scratch
-                                            if (scratchUsed >=
-                                                (sizeof(scratchPool) / sizeof(scratchPool[0])))
+                                            // Compute limited temps into scratch.
+                                            // Bail out if scratch pool exhausted.
+                                            if (scratchUsed >= kScratchPoolSize)
                                             {
                                                 supported = false;
                                                 break;
@@ -1498,7 +1518,7 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                         o1.kind == il::core::Value::Kind::ConstInt)
                     {
                         for (size_t i = 0; i < bb.params.size(); ++i)
-                            if (bb.params[i].id == o0.id && i < 8)
+                            if (bb.params[i].id == o0.id && i < kMaxGPRArgs)
                             {
                                 emitImm(static_cast<unsigned>(i), o1.i64);
                                 return mf;
@@ -1510,7 +1530,7 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                         if (isAdd || isShl || isLShr || isAShr)
                         {
                             for (size_t i = 0; i < bb.params.size(); ++i)
-                                if (bb.params[i].id == o1.id && i < 8)
+                                if (bb.params[i].id == o1.id && i < kMaxGPRArgs)
                                 {
                                     emitImm(static_cast<unsigned>(i), o0.i64);
                                     return mf;
@@ -1545,7 +1565,7 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                         o1.kind == il::core::Value::Kind::ConstInt)
                     {
                         for (size_t i = 0; i < bb.params.size(); ++i)
-                            if (bb.params[i].id == o0.id && i < 8)
+                            if (bb.params[i].id == o0.id && i < kMaxGPRArgs)
                             {
                                 emitCmpImm(static_cast<unsigned>(i), o1.i64);
                                 return mf;
@@ -1683,7 +1703,7 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                         else if (code.kind == il::core::Value::Kind::Temp)
                         {
                             int pIdx = indexOfParam(inBB, code.id);
-                            if (pIdx >= 0 && pIdx < 8)
+                            if (pIdx >= 0 && static_cast<std::size_t>(pIdx) < kMaxGPRArgs)
                             {
                                 const PhysReg src = argOrder[static_cast<std::size_t>(pIdx)];
                                 if (src != PhysReg::X0)
@@ -1786,7 +1806,9 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                                     {
                                         int idx0 = indexOfParam(inBB, o0.id);
                                         int idx1 = indexOfParam(inBB, o1.id);
-                                        if (idx0 >= 0 && idx1 >= 0 && idx0 < 8 && idx1 < 8)
+                                        if (idx0 >= 0 && idx1 >= 0 &&
+                                            static_cast<std::size_t>(idx0) < kMaxGPRArgs &&
+                                            static_cast<std::size_t>(idx1) < kMaxGPRArgs)
                                         {
                                             const PhysReg src0 =
                                                 argOrder[static_cast<size_t>(idx0)];
@@ -1809,7 +1831,8 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                                              o1.kind == il::core::Value::Kind::ConstInt)
                                     {
                                         int idx0 = indexOfParam(inBB, o0.id);
-                                        if (idx0 >= 0 && idx0 < 8)
+                                        if (idx0 >= 0 &&
+                                            static_cast<std::size_t>(idx0) < kMaxGPRArgs)
                                         {
                                             const PhysReg src0 =
                                                 argOrder[static_cast<size_t>(idx0)];

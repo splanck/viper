@@ -6,9 +6,21 @@
 //===----------------------------------------------------------------------===//
 //
 // File: codegen/aarch64/AsmEmitter.hpp
-// Purpose: Minimal AArch64 assembly emitter for early backend scaffolding.
-// Key invariants: To be documented.
-// Ownership/Lifetime: To be documented.
+// Purpose: AArch64 assembly text emitter for machine IR functions.
+//
+// This class converts Machine IR instructions to AArch64 assembly text output.
+// It handles prologue/epilogue generation, instruction encoding to text form,
+// and symbol/label emission following Mach-O conventions.
+//
+// Key invariants:
+// - All physical registers must be valid AArch64 registers.
+// - Immediate values must fit within AArch64 instruction encoding constraints.
+// - Frame plan must be consistent with the MFunction's callee-saved registers.
+//
+// Ownership/Lifetime:
+// - Emitter is stateless between function emissions (except during a single call).
+// - TargetInfo reference must remain valid for the emitter's lifetime.
+//
 // Links: docs/architecture.md
 //
 //===----------------------------------------------------------------------===//
@@ -25,6 +37,10 @@
 namespace viper::codegen::aarch64
 {
 
+/// @brief Emits AArch64 assembly text from Machine IR.
+///
+/// Converts MIR instructions to assembly text, handling function headers,
+/// prologue/epilogue generation, and instruction-level emission.
 class AsmEmitter
 {
   public:

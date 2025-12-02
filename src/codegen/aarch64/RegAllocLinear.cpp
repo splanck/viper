@@ -133,12 +133,18 @@ static bool isMemSt(MOpcode opc)
 // Virtual register state tracking
 //-----------------------------------------------------------------------------
 
+/// @brief Tracks the allocation state of a virtual register.
+///
+/// Maintains whether the vreg is currently in a physical register,
+/// has been spilled to the stack, and when it was last used (for
+/// victim selection heuristics).
 struct VState
 {
-    bool hasPhys{false};
-    PhysReg phys{PhysReg::X0};
-    bool spilled{false};
-    int fpOffset{0};
+    bool hasPhys{false};         ///< True if currently in a physical register.
+    PhysReg phys{PhysReg::X0};   ///< Physical register (valid when hasPhys).
+    bool spilled{false};         ///< True if value is on the stack.
+    int fpOffset{0};             ///< FP-relative offset of spill slot.
+    unsigned lastUse{0};         ///< Instruction index of last use (for LRU).
 };
 
 //-----------------------------------------------------------------------------
@@ -184,7 +190,7 @@ struct RegPools
     PhysReg takeGPR()
     {
         if (gprFree.empty())
-            return PhysReg::X9;
+            return kScratchGPR; // Fallback to scratch register when pool exhausted
         auto r = gprFree.front();
         gprFree.erase(gprFree.begin());
         return r;
@@ -198,7 +204,7 @@ struct RegPools
     PhysReg takeFPR()
     {
         if (fprFree.empty())
-            return PhysReg::V16;
+            return kScratchFPR; // Fallback to scratch register when pool exhausted
         auto r = fprFree.front();
         fprFree.erase(fprFree.begin());
         return r;
@@ -262,6 +268,7 @@ class LinearAllocator
     RegPools pools_;
     std::unordered_map<uint16_t, VState> gprStates_;
     std::unordered_map<uint16_t, VState> fprStates_;
+    unsigned currentInstrIdx_{0}; ///< Current instruction index for LRU tracking.
 
     //-------------------------------------------------------------------------
     // Spilling
@@ -289,33 +296,50 @@ class LinearAllocator
         st.spilled = true;
     }
 
+    /// @brief Selects a victim to spill using least-recently-used (LRU) heuristic.
+    ///
+    /// When register pressure requires spilling, we choose the virtual register
+    /// that was used longest ago, as it's less likely to be needed soon.
+    ///
+    /// @param cls Register class to spill from.
+    /// @param states State map for the register class.
+    /// @return The vreg ID of the victim, or UINT16_MAX if none found.
+    template <typename StateMap>
+    uint16_t selectLRUVictim(StateMap &states)
+    {
+        uint16_t victim = UINT16_MAX;
+        unsigned oldestUse = UINT_MAX;
+
+        for (auto &kv : states)
+        {
+            if (kv.second.hasPhys && kv.second.lastUse < oldestUse)
+            {
+                oldestUse = kv.second.lastUse;
+                victim = kv.first;
+            }
+        }
+        return victim;
+    }
+
     void maybeSpillForPressure(RegClass cls, std::vector<MInstr> &prefix)
     {
         if (cls == RegClass::GPR)
         {
             if (!pools_.gprFree.empty())
                 return;
-            for (auto &kv : gprStates_)
-            {
-                if (kv.second.hasPhys)
-                {
-                    spillVictim(RegClass::GPR, kv.first, prefix);
-                    break;
-                }
-            }
+            // Use LRU heuristic to select victim
+            uint16_t victim = selectLRUVictim(gprStates_);
+            if (victim != UINT16_MAX)
+                spillVictim(RegClass::GPR, victim, prefix);
         }
         else
         {
             if (!pools_.fprFree.empty())
                 return;
-            for (auto &kv : fprStates_)
-            {
-                if (kv.second.hasPhys)
-                {
-                    spillVictim(RegClass::FPR, kv.first, prefix);
-                    break;
-                }
-            }
+            // Use LRU heuristic to select victim
+            uint16_t victim = selectLRUVictim(fprStates_);
+            if (victim != UINT16_MAX)
+                spillVictim(RegClass::FPR, victim, prefix);
         }
     }
 
@@ -338,6 +362,10 @@ class LinearAllocator
 
         const bool isFPR = (r.cls == RegClass::FPR);
         auto &st = isFPR ? fprStates_[r.idOrPhys] : gprStates_[r.idOrPhys];
+
+        // Update last use for LRU tracking (use or def counts as access)
+        if (isUse || isDef)
+            st.lastUse = currentInstrIdx_;
 
         if (st.spilled)
         {
@@ -575,6 +603,9 @@ class LinearAllocator
 
         // Release scratch registers
         releaseScratch(scratch);
+
+        // Advance instruction counter for LRU tracking
+        ++currentInstrIdx_;
     }
 
     void releaseScratch(std::vector<PhysReg> &scratch)
