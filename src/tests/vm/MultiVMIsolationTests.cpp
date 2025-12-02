@@ -7,10 +7,10 @@
 
 #include "tests/unit/GTestStub.hpp"
 
-#include "runtime/rt_context.h"
-#include "runtime/rt_file.h"
-#include "runtime/rt_modvar.h"
-#include "runtime/rt_random.h"
+#include "rt_context.h"
+#include "rt_file.h"
+#include "rt_modvar.h"
+#include "rt_random.h"
 #include "viper/runtime/rt.h"
 
 #include <cmath>

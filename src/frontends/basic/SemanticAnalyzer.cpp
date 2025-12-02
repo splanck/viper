@@ -22,7 +22,7 @@
 ///          reusable utilities to other translation units within the BASIC frontend.
 
 #include "frontends/basic/ASTUtils.hpp"
-#include "frontends/basic/SemanticAnalyzer.Internal.hpp"
+#include "frontends/basic/SemanticAnalyzer_Internal.hpp"
 
 #include "frontends/basic/BasicTypes.hpp"
 

@@ -18,8 +18,8 @@ extern "C"
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_string.h"
-#include "runtime/rt_context.h"
-#include "runtime/rt_oop.h"
+#include "rt_context.h"
+#include "rt_oop.h"
 }
 
 TEST(RuntimeClasses, ToString_UsesRegisteredQName)

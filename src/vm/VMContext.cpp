@@ -24,7 +24,7 @@
 #include "vm/RuntimeBridge.hpp"
 #include "vm/Trap.hpp"
 
-#include "runtime/rt_context.h"
+#include "rt_context.h"
 
 #include <exception>
 #include <sstream>

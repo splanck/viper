@@ -13,7 +13,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "runtime/rt_context.h"
+#include "rt_context.h"
 #include "viper/runtime/rt.h"
 #include <cassert>
 

@@ -40,9 +40,9 @@ target_sources(fe_basic PRIVATE
         RuntimeStatementLowerer.cpp
         LoweringContext.cpp
         LocationScope.cpp
-        Lowerer.Program.cpp
-        Lowerer.Procedure.cpp
-        Lowerer.Statement.cpp
+        Lowerer_Program.cpp
+        Lowerer_Procedure.cpp
+        Lowerer_Statement.cpp
         ProcedureSymbolTracker.cpp
         BasicSymbolQuery.cpp
         BuiltinRegistry.cpp
@@ -75,7 +75,7 @@ target_sources(fe_basic PRIVATE
         lower/Lowerer_Stmt.cpp
         lower/Scan_ExprTypes.cpp
         lower/Scan_RuntimeNeeds.cpp
-        Lower_OOP_Scan.cpp
+        lower/oop/Lower_OOP_Scan.cpp
         LowerEmit.cpp
         lower/Emit_Control.cpp
         lower/Lower_If.cpp
@@ -86,13 +86,13 @@ target_sources(fe_basic PRIVATE
         lower/Emit_Expr.cpp
         lower/Emit_Builtin.cpp
         lower/Emit_OOP.cpp
-        Lower_OOP_Emit.cpp
+        lower/oop/Lower_OOP_Emit.cpp
         SemanticAnalyzer.cpp
-        SemanticAnalyzer.Procs.cpp
-        SemanticAnalyzer.Stmts.cpp
-        SemanticAnalyzer.Stmts.Shared.cpp
-        SemanticAnalyzer.Stmts.Control.cpp
-        SemanticAnalyzer.Namespace.cpp
+        SemanticAnalyzer_Procs.cpp
+        SemanticAnalyzer_Stmts.cpp
+        SemanticAnalyzer_Stmts_Shared.cpp
+        SemanticAnalyzer_Stmts_Control.cpp
+        SemanticAnalyzer_Namespace.cpp
         sem/Check_If.cpp
         sem/Check_Loops.cpp
         sem/Check_Jumps.cpp
@@ -110,13 +110,13 @@ target_sources(fe_basic PRIVATE
         sem/TypeResolver.cpp
         sem/RegistryBuilder.cpp
         sem/OverloadResolution.cpp
-        SemanticAnalyzer.Stmts.IO.cpp
-        SemanticAnalyzer.Stmts.Runtime.cpp
+        SemanticAnalyzer_Stmts_IO.cpp
+        SemanticAnalyzer_Stmts_Runtime.cpp
         OopIndex.cpp
         OopLoweringContext.cpp
         Semantic_OOP.cpp
-        SemanticAnalyzer.Exprs.cpp
-        SemanticAnalyzer.Builtins.cpp
+        SemanticAnalyzer_Exprs.cpp
+        SemanticAnalyzer_Builtins.cpp
         ScopeTracker.cpp
         types/TypeMapping.cpp
         passes/CollectProcs.cpp
@@ -132,13 +132,13 @@ target_sources(fe_basic PRIVATE
         Diag.cpp
         DiagnosticEmitter.cpp
         BasicCompiler.cpp
-        Lower_OOP_Expr.cpp
-        Lower_OOP_Stmt.cpp
-        Lower_OOP_Alloc.cpp
-        Lower_OOP_MemberAccess.cpp
-        Lower_OOP_MethodCall.cpp
-        Lower_OOP_Helpers.cpp
-        Lower_OOP_RuntimeHelpers.cpp
+        lower/oop/Lower_OOP_Expr.cpp
+        lower/oop/Lower_OOP_Stmt.cpp
+        lower/oop/Lower_OOP_Alloc.cpp
+        lower/oop/Lower_OOP_MemberAccess.cpp
+        lower/oop/Lower_OOP_MethodCall.cpp
+        lower/oop/Lower_OOP_Helpers.cpp
+        lower/oop/Lower_OOP_RuntimeHelpers.cpp
         ProcRegistry.cpp
         SemanticDiagnostics.cpp
 )

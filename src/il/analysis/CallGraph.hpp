@@ -19,7 +19,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace il::analysis
+namespace viper::analysis
 {
 
 struct CallGraph
@@ -28,6 +28,6 @@ struct CallGraph
     std::unordered_map<std::string, std::vector<std::string>> edges;
 };
 
-CallGraph buildCallGraph(core::Module &module);
+CallGraph buildCallGraph(il::core::Module &module);
 
-} // namespace il::analysis
+} // namespace viper::analysis

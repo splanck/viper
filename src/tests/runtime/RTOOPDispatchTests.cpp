@@ -13,7 +13,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "runtime/rt_oop.h"
+#include "rt_oop.h"
 #include <assert.h>
 #include <stddef.h>
 #include <stdint.h>

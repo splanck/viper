@@ -21,7 +21,7 @@
 #include "vm/VM.hpp"
 #include "vm/control_flow.hpp"
 
-#include "runtime/rt_context.h"
+#include "rt_context.h"
 
 #include <algorithm>
 #include <cassert>

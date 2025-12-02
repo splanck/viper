@@ -129,12 +129,6 @@ PassManager::PassManager()
                       "peephole",
                       "dce",
                       "late-cleanup"});
-    registerConstFoldPass(passRegistry_);
-    registerPeepholePass(passRegistry_);
-    registerDCEPass(passRegistry_);
-    registerMem2RegPass(passRegistry_);
-    registerDSEPass(passRegistry_);
-    registerEarlyCSEPass(passRegistry_);
 }
 
 /// @brief Register the SimplifyCFG transform in the function pass registry.

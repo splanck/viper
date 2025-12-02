@@ -22,7 +22,7 @@
 #include "il/core/Param.hpp"
 #include "il/core/Type.hpp"
 #include "rt_internal.h"
-#include "runtime/rt_context.h"
+#include "rt_context.h"
 #include "viper/runtime/rt.h"
 #include "vm/Marshal.hpp"
 #include "vm/OpHandlers_Control.hpp"

@@ -16,10 +16,10 @@
 #include "il/core/Module.hpp"
 #include "il/core/Opcode.hpp"
 
-namespace il::analysis
+namespace viper::analysis
 {
 
-CallGraph buildCallGraph(core::Module &module)
+CallGraph buildCallGraph(il::core::Module &module)
 {
     CallGraph cg;
     for (auto &fn : module.functions)
@@ -28,7 +28,7 @@ CallGraph buildCallGraph(core::Module &module)
         {
             for (auto &I : B.instructions)
             {
-                if (I.op == core::Opcode::Call && !I.callee.empty())
+                if (I.op == il::core::Opcode::Call && !I.callee.empty())
                 {
                     ++cg.callCounts[I.callee];
                     cg.edges[fn.name].push_back(I.callee);
@@ -39,4 +39,4 @@ CallGraph buildCallGraph(core::Module &module)
     return cg;
 }
 
-} // namespace il::analysis
+} // namespace viper::analysis

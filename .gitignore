@@ -4,6 +4,7 @@
 .vscode/
 *.code-workspace
 .clangd/
+.claude/
 .cache/
 .clang-tidy
 .clang-tidy-cache/
@@ -85,6 +86,7 @@ lcov.info
 *.log
 *.tmp
 *.temp
+*.backup
 *.swp
 *.swo
 *.bak

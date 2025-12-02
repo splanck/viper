@@ -61,7 +61,7 @@ The BASIC frontend (`src/frontends/basic/`) compiles Viper BASIC source to IL.
 | File | Purpose |
 |------|---------|
 | `SemanticAnalyzer.hpp/cpp` | Main semantic analyzer |
-| `SemanticAnalyzer.Internal.hpp` | Internal analyzer helpers |
+| `SemanticAnalyzer_Internal.hpp` | Internal analyzer helpers |
 | `SemanticAnalyzer.Exprs.cpp` | Expression analysis |
 | `SemanticAnalyzer.Stmts.cpp` | Statement analysis dispatch |
 | `SemanticAnalyzer.Stmts.Control.hpp/cpp` | Control flow analysis |

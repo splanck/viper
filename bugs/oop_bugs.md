@@ -22,6 +22,47 @@ This file tracks bugs discovered while developing full-featured games using the 
 
 ## Open Bugs
 
+### BUG-OOP-037: Local variable names matching class member names return wrong values
+- **Status**: Open (2025-12-02)
+- **Discovered**: 2025-12-02
+- **Game**: Chess
+- **Severity**: High
+- **Component**: BASIC Frontend / OOP / Name Resolution
+- **Description**: When a local variable in a SUB/FUNCTION has the same name as a class member (field or method result), assigning from a class method getter to that local variable returns the wrong value.
+- **Steps to Reproduce**:
+  ```basic
+  CLASS ChessAI
+      DIM BestFromRow AS INTEGER
+      ' ... other members ...
+      SUB FindBestMove(...)
+          Me.BestFromRow = 1   ' Set to 1
+      END SUB
+      FUNCTION GetBestFromRow() AS INTEGER
+          GetBestFromRow = Me.BestFromRow
+      END FUNCTION
+  END CLASS
+
+  SUB DoComputerMove()
+      DIM fromRow AS INTEGER   ' Name matches class member!
+      Computer.FindBestMove(...)
+      fromRow = Computer.GetBestFromRow()   ' Returns 8, not 1!
+      PRINT fromRow   ' Prints 8
+  END SUB
+  ```
+- **Expected**: `fromRow = Computer.GetBestFromRow()` should assign 1 to `fromRow`
+- **Actual**: `fromRow` gets value 8 (array bounds? default value?), despite GetBestFromRow returning 1
+- **Workaround**: Use different variable names that don't match any class member names:
+  ```basic
+  SUB DoComputerMove()
+      DIM fr AS INTEGER   ' Different name - works!
+      Computer.FindBestMove(...)
+      fr = Computer.GetBestFromRow()   ' Returns correct value
+      PRINT fr   ' Prints 1
+  END SUB
+  ```
+- **Root Cause**: Unknown. Appears to be name resolution conflict between local variables and class member names. The lowerer or semantic analyzer may be confusing the local variable `fromRow` with the class member `BestFromRow` during assignment expression lowering.
+- **Note**: This is different from BUG-OOP-036 which involves same-named locals across functions in a class. This bug is about local variables in a calling procedure matching member names in a called class.
+
 ### BUG-OOP-036: Same-named local variables corrupt across consecutive function calls in a class
 - **Status**: Open (2025-12-01)
 - **Discovered**: 2025-12-01
@@ -1186,13 +1227,22 @@ PRINT "After call: "; m.GetValue()   ' Prints 42
 | **BUG-OOP-024** | ✅ Fixed | Viper.Terminal.* type mismatch resolved | 2025-11-29 |
 | **BUG-OOP-025** | Won't Fix | List only stores objects (design limitation) | 2025-11-29 |
 | **BUG-OOP-026** | ✅ Fixed | USING enables unqualified procedure calls | 2025-11-29 |
+| **BUG-OOP-036** | Open | Same-named locals corrupt across class function calls | 2025-12-01 |
+| **BUG-OOP-037** | Open | Local var names matching class members return wrong values | 2025-12-02 |
+| **BUG-OOP-038** | ✅ Fixed | Object array params use wrong runtime (storeArray missing isObjectArray flag) | 2025-12-01 |
+| **BUG-OOP-039** | ✅ Fixed | Qualified type names in CLASS DIM (parseTypeKeyword doesn't handle dots) | 2025-12-01 |
 
 ---
 
 ## Priority Recommendations
 
 ### Open Bugs (2025-12-01)
-- No critical bugs currently open
+- **BUG-OOP-036** (High) - Same-named local variables in CLASS methods corrupt each other
+- **BUG-OOP-037** (High) - Local variable names matching class member names return wrong values
+
+### Recently Fixed (2025-12-01)
+- **BUG-OOP-038** (High) - Object array parameters now use correct runtime functions
+- **BUG-OOP-039** (Medium) - Qualified type names now supported in CLASS field DIM statements
 
 ### Design Limitations (Won't Fix)
 - **BUG-OOP-025** - Viper.Collections.List only stores objects (use BASIC arrays for primitives)
@@ -1383,3 +1433,120 @@ empty = 5
 - **Expected**: Variable `empty` is distinct from CONST `EMPTY` (case sensitivity) or clear error
 - **Actual**: Error "cannot assign to constant 'EMPTY'" because BASIC is case-insensitive
 - **Workaround**: Choose CONST names that won't be used as variables (e.g., `PIECE_EMPTY` instead of `EMPTY`)
+
+### BUG-OOP-038: Runtime assertion on array element type for object array parameters
+- **Status**: Fixed (2025-12-01) ✅ Verified
+- **Discovered**: 2025-12-01
+- **Game**: Monopoly
+- **Severity**: High
+- **Component**: BASIC Frontend / OOP / Array Parameter Lowering
+- **Description**: When an object array is passed as a parameter to a SUB/FUNCTION (e.g., `players() AS Player`), accessing elements of that array causes a runtime assertion failure because the lowerer incorrectly treats it as an integer array.
+- **Steps to Reproduce**:
+  ```basic
+  CLASS Item
+      DIM value AS INTEGER
+      SUB Init(v AS INTEGER)
+          value = v
+      END SUB
+      FUNCTION GetValue() AS INTEGER
+          GetValue = value
+      END FUNCTION
+  END CLASS
+
+  CLASS Display
+      SUB ShowItems(items() AS Item, count AS INTEGER)
+          DIM i AS INTEGER
+          FOR i = 0 TO count - 1
+              PRINT items(i).GetValue()   ' Assertion failure here!
+          NEXT i
+      END SUB
+  END CLASS
+
+  DIM items(5) AS Item
+  DIM d AS Display
+  DIM i AS INTEGER
+
+  FOR i = 0 TO 5
+      items(i) = NEW Item()
+      items(i).Init(i * 10)
+  NEXT i
+
+  d = NEW Display()
+  d.ShowItems(items, 6)   ' Crashes with assertion
+  ```
+- **Expected**: Object array parameter elements can be accessed normally
+- **Actual**: Assertion failure:
+  ```
+  Assertion failed: (hdr->elem_kind == RT_ELEM_I32), function rt_arr_i32_assert_header, file rt_array.c, line 64.
+  ```
+- **Workaround**: Do not pass object arrays as parameters to methods; use module-level arrays instead
+- **Root Cause**: In `Lower_OOP_RuntimeHelpers.cpp:72`, when storing an object array parameter, the code calls:
+  ```cpp
+  lowerer_.storeArray(slot, incoming);  // Only 2 arguments!
+  ```
+  This uses the 3-argument overload which defaults to `isObjectArray = false` (see `Emit_Builtin.cpp:46`):
+  ```cpp
+  void Lowerer::storeArray(Value slot, Value value, AstType elementType)
+  {
+      emitter().storeArray(slot, value, elementType, /*isObjectArray=*/false);
+  }
+  ```
+  In contrast, regular procedure parameter handling in `Lowerer_Procedure.cpp:1642-1643` correctly passes the object array flag:
+  ```cpp
+  bool isObjectArray = !p.objectClass.empty();
+  storeArray(slot, incoming, p.type, isObjectArray);  // 4 arguments with flag
+  ```
+  Because `isObjectArray` is false, the array is treated as an integer array. When `rt_arr_i32_get` is later called on an array allocated with `rt_arr_obj_new` (which has `elem_kind = RT_ELEM_NONE`), the assertion `hdr->elem_kind == RT_ELEM_I32` fails.
+- **Fix Required**: In `Lower_OOP_RuntimeHelpers.cpp:72`, change the call to use the 4-argument version:
+  ```cpp
+  if (param.is_array)
+  {
+      bool isObjectArray = !param.objectClass.empty();
+      lowerer_.storeArray(slot, incoming, param.type, isObjectArray);
+  }
+  ```
+
+### BUG-OOP-039: Fully qualified type names (Viper.Text.StringBuilder) not supported in DIM inside CLASS
+- **Status**: Fixed (2025-12-01) ✅ Verified
+- **Discovered**: 2025-12-01
+- **Game**: Monopoly
+- **Severity**: Medium
+- **Component**: BASIC Frontend / Parser / OOP
+- **Description**: Cannot use fully qualified type names with dots in DIM statements inside CLASS definitions. Module-level DIM statements work correctly but CLASS field declarations fail.
+- **Steps to Reproduce**:
+  ```basic
+  ' This works:
+  DIM sb AS Viper.Text.StringBuilder   ' OK at module level
+
+  ' This fails:
+  CLASS Test
+      DIM sb AS Viper.Text.StringBuilder   ' Error: expected END, got .
+  END CLASS
+  ```
+- **Expected**: Accept qualified type names in CLASS field declarations
+- **Actual**: Parse error at the dot:
+  ```
+  /tmp/test.bas:2:20: error[B0001]: expected END, got .
+      DIM sb AS Viper.Text.StringBuilder
+                     ^
+  /tmp/test.bas:2:39: error[B0001]: expected CLASS, got eol
+  ```
+- **Workaround**: Use BASIC string concatenation instead of StringBuilder, or move the field to module level
+- **Root Cause**: The `parseTypeKeyword()` function in `Parser_Stmt_Core.cpp:532-566` only consumes a single identifier token after `AS`. For a qualified name like `Viper.Text.StringBuilder`:
+  1. The parser calls `parseTypeKeyword()` at the `AS` clause
+  2. `parseTypeKeyword()` recognizes `Viper` as an identifier and consumes it
+  3. `parseTypeKeyword()` returns (with default type I64 since "Viper" is not a known primitive)
+  4. The caller (CLASS field parser) then expects `EndOfLine` but finds `.Text.StringBuilder`
+  5. This causes "expected END, got ." because the parser expected the field declaration to be complete
+
+  This is different from method return types which correctly handle qualified names using a loop (see `Parser_Stmt_OOP.cpp:655-671`):
+  ```cpp
+  while (at(TokenKind::Dot) && peek(1).kind == TokenKind::Identifier) {
+      consume(); // dot
+      segs.push_back(peek().lexeme);
+      consume();
+  }
+  ```
+- **Fix Required**:
+  1. Extend `parseTypeKeyword()` to handle qualified names with dots, OR
+  2. Add similar qualified-name parsing logic to the CLASS field declaration parser in `Parser_Stmt_OOP.cpp:217-218` where it calls `parseTypeKeyword()`

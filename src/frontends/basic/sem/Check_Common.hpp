@@ -18,7 +18,7 @@
 
 #pragma once
 
-#include "frontends/basic/SemanticAnalyzer.Internal.hpp"
+#include "frontends/basic/SemanticAnalyzer_Internal.hpp"
 
 #include <cassert>
 #include <optional>

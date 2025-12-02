@@ -214,8 +214,38 @@ StmtPtr Parser::parseClassDecl()
         if (at(TokenKind::KeywordBoolean) || at(TokenKind::Identifier))
         {
             if (at(TokenKind::Identifier))
-                typeName = peek().lexeme; // BUG-082: save before parseTypeKeyword consumes it
-            fieldType = parseTypeKeyword();
+            {
+                // BUG-OOP-039 fix: Parse qualified type names (e.g., Viper.Text.StringBuilder)
+                typeName = peek().lexeme;
+                // Check if it's a primitive type first
+                std::string upper = typeName;
+                for (auto &ch : upper)
+                    ch = static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
+                if (upper == "INTEGER" || upper == "INT" || upper == "LONG" || upper == "DOUBLE" ||
+                    upper == "FLOAT" || upper == "SINGLE" || upper == "STRING" || upper == "BOOLEAN")
+                {
+                    // It's a primitive - use parseTypeKeyword
+                    fieldType = parseTypeKeyword();
+                    typeName.clear(); // Not an object type
+                }
+                else
+                {
+                    // It's a class name - consume it and parse dotted path if present
+                    consume();
+                    while (at(TokenKind::Dot) && peek(1).kind == TokenKind::Identifier)
+                    {
+                        typeName += ".";
+                        consume(); // dot
+                        typeName += peek().lexeme;
+                        consume();
+                    }
+                    fieldType = Type::I64; // Objects stored as pointers, default type
+                }
+            }
+            else
+            {
+                fieldType = parseTypeKeyword();
+            }
         }
         else
         {
@@ -229,19 +259,10 @@ StmtPtr Parser::parseClassDecl()
         field.isStatic = pendingStaticField;
         field.isArray = isArray;
         field.arrayExtents = std::move(extents);
-        // BUG-082 fix: Check if this is an object type (not a recognized primitive)
+        // BUG-082/BUG-OOP-039 fix: Set object class name if not a primitive
         if (!typeName.empty())
         {
-            // Convert to uppercase for comparison
-            std::string upper = typeName;
-            for (auto &ch : upper)
-                ch = static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
-            // If it's not a known primitive keyword, treat it as a class name
-            if (upper != "INTEGER" && upper != "INT" && upper != "LONG" && upper != "DOUBLE" &&
-                upper != "FLOAT" && upper != "SINGLE" && upper != "STRING" && upper != "BOOLEAN")
-            {
-                field.objectClassName = typeName;
-            }
+            field.objectClassName = typeName;
         }
         curAccess.reset();
         pendingStaticField = false;

@@ -33,7 +33,7 @@
 #include "vm/RuntimeBridge.hpp"
 #include "vm/VMContext.hpp"
 
-#include "runtime/rt_context.h"
+#include "rt_context.h"
 
 #include <algorithm>
 #include <iostream>

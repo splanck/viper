@@ -36,7 +36,7 @@
 #include "rt_fp.h"
 #include "rt_internal.h"
 #include "rt_math.h"
-#include "runtime/rt_oop.h"
+#include "rt_oop.h"
 #include "viper/runtime/rt.h"
 
 #include <algorithm>

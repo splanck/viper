@@ -155,7 +155,7 @@ std::string_view Inliner::id() const
 
 PreservedAnalyses Inliner::run(Module &module, AnalysisManager &)
 {
-    il::analysis::CallGraph cg = il::analysis::buildCallGraph(module);
+    viper::analysis::CallGraph cg = viper::analysis::buildCallGraph(module);
 
     // Build a set of inlineable callees based on heuristics
     std::unordered_map<std::string, const Function *> candidates;
