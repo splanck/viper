@@ -157,14 +157,16 @@ StmtPtr Parser::parseClassDecl()
             }
         }
 
+        // BUG-OOP-042 fix: Use isSoftIdentToken() to accept soft keywords (BASE, FLOOR, etc.)
+        // as field names in the lookahead checks.
         const bool looksLikeFieldDecl =
             // Shorthand: name AS TYPE
-            (at(TokenKind::Identifier) && peek(1).kind == TokenKind::KeywordAs) ||
+            (isSoftIdentToken(peek().kind) && peek(1).kind == TokenKind::KeywordAs) ||
             // DIM name [(...)] AS TYPE
-            (at(TokenKind::KeywordDim) && peek(1).kind == TokenKind::Identifier &&
+            (at(TokenKind::KeywordDim) && isSoftIdentToken(peek(1).kind) &&
              (peek(2).kind == TokenKind::KeywordAs || peek(2).kind == TokenKind::LParen)) ||
             // Shorthand with array dims: name '(' ... ')' AS TYPE
-            (at(TokenKind::Identifier) && peek(1).kind == TokenKind::LParen);
+            (isSoftIdentToken(peek().kind) && peek(1).kind == TokenKind::LParen);
 
         if (!looksLikeFieldDecl)
             break;
@@ -172,9 +174,18 @@ StmtPtr Parser::parseClassDecl()
         if (at(TokenKind::KeywordDim))
             consume();
 
-        Token fieldNameTok = expect(TokenKind::Identifier);
-        if (fieldNameTok.kind != TokenKind::Identifier)
-            break;
+        // BUG-OOP-042 fix: Accept soft keywords (like BASE, FLOOR) as field names.
+        Token fieldNameTok;
+        if (isSoftIdentToken(peek().kind))
+        {
+            fieldNameTok = consume();
+        }
+        else
+        {
+            fieldNameTok = expect(TokenKind::Identifier);
+            if (fieldNameTok.kind != TokenKind::Identifier)
+                break;
+        }
 
         // Parse array dimensions if present (BUG-056 fix)
         std::vector<long long> extents;

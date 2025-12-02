@@ -43,8 +43,9 @@ Token expect(TokenKind k);
 void syncToStmtBoundary();
 
 /// @brief Check if a token kind is a "soft identifier" (identifier or contextual keyword).
-/// @details Keywords like COLOR, FLOOR, RANDOM, COS, SIN, POW, and APPEND can be
-///          used as identifiers in contexts like qualified names (Viper.Terminal.Color).
+/// @details Keywords like COLOR, FLOOR, RANDOM, NEXT, BASE, COS, SIN, POW, and APPEND can be
+///          used as identifiers in contexts like qualified names (Viper.Terminal.Color,
+///          Viper.Random.Next) or as variable/field names (DIM base AS INTEGER).
 ///          This allows them to be treated as identifiers when not in keyword context.
 /// @param k Token kind to test.
 /// @return True if the token can be treated as an identifier in appropriate contexts.
@@ -56,6 +57,8 @@ static bool isSoftIdentToken(TokenKind k)
         case TokenKind::KeywordColor:
         case TokenKind::KeywordFloor:
         case TokenKind::KeywordRandom:
+        case TokenKind::KeywordNext: // BUG-OOP-040: For Viper.Random.Next()
+        case TokenKind::KeywordBase: // BUG-OOP-042: Allow "base" as variable/field name
         case TokenKind::KeywordCos:
         case TokenKind::KeywordSin:
         case TokenKind::KeywordPow:

@@ -624,21 +624,34 @@ std::optional<Lowerer::VariableStorage> Lowerer::resolveVariableStorage(std::str
     // BUG-103 fix: Check for local/parameter symbols FIRST before falling back
     // to module-level globals. This ensures function parameters and local variables
     // properly shadow module-level variables with the same name.
+    //
+    // BUG-OOP-036 fix: When inside a SUB/FUNCTION (not @main), if findSymbol returns
+    // a symbol with a slotId, this is definitely a procedure-local variable that was
+    // declared with DIM inside this procedure. It should ALWAYS use the local slot,
+    // even if a CONST with the same name (case-insensitive) exists at module level.
+    // The isModuleLevelSymbol check incorrectly returns true for CONSTs like "QUEEN"
+    // when checking local variable "queen", causing the local to be redirected to
+    // rt_modvar_addr which returns the CONST value instead of the local slot.
     if (const auto *info = findSymbol(name))
     {
         if (info->slotId)
         {
             bool isMain = (context().function() && context().function()->name == "main");
+
+            // BUG-OOP-036 fix: In SUB/FUNCTION, local variables ALWAYS shadow
+            // module-level symbols. The findSymbol() result is authoritative for
+            // procedure-local scope - if it found a slotId, use it.
+            if (!isMain)
+                return VariableStorage{slotInfo, Value::temp(*info->slotId), false};
+
+            // In @main, we need to check if this is a cross-procedure global
+            // that should use runtime storage for sharing with SUB/FUNCTION.
             bool isModLevel =
                 semanticAnalyzer_ && semanticAnalyzer_->isModuleLevelSymbol(std::string(name));
             bool isCrossProc = isModLevel && isCrossProcGlobal(std::string(name));
 
-            // Use the local slot if it's a true local/parameter (not module-level)
-            if (!isModLevel)
-                return VariableStorage{slotInfo, Value::temp(*info->slotId), false};
-
             // For module-level symbols in @main, use local slot only if NOT cross-procedure
-            if (isMain && !isCrossProc)
+            if (!isCrossProc)
                 return VariableStorage{slotInfo, Value::temp(*info->slotId), false};
 
             // Otherwise fall through to rt_modvar handling below
@@ -1283,9 +1296,14 @@ void Lowerer::allocateLocalSlots(const std::unordered_set<std::string> &paramNam
         if (isParam && !includeParams)
             continue;
         // Skip allocating a local for module-level globals; they resolve via runtime storage.
+        // BUG-OOP-036 fix: Do NOT skip allocation for CONSTs. CONSTs are immutable, so local
+        // variables with the same name (case-insensitive) should shadow them by getting their
+        // own stack slot. Without this fix, local variables named same as a CONST don't get
+        // slots allocated and incorrectly resolve to rt_modvar_addr (the CONST storage).
         bool isMain = (context().function() && context().function()->name == "main");
         if (!isParam && !isMain && semanticAnalyzer_ &&
-            semanticAnalyzer_->isModuleLevelSymbol(name))
+            semanticAnalyzer_->isModuleLevelSymbol(name) &&
+            !semanticAnalyzer_->isConstSymbol(name))
             continue;
         if (info.slotId)
             continue;
@@ -1309,9 +1327,11 @@ void Lowerer::allocateLocalSlots(const std::unordered_set<std::string> &paramNam
         if (isParam && !includeParams)
             continue;
         // Skip allocating a local for module-level globals; they resolve via runtime storage.
+        // BUG-OOP-036 fix: Same logic as Pass 1 - allow allocation for CONST-shadowing locals.
         bool isMain = (context().function() && context().function()->name == "main");
         if (!isParam && !isMain && semanticAnalyzer_ &&
-            semanticAnalyzer_->isModuleLevelSymbol(name))
+            semanticAnalyzer_->isModuleLevelSymbol(name) &&
+            !semanticAnalyzer_->isConstSymbol(name))
             continue;
         if (info.slotId)
             continue;

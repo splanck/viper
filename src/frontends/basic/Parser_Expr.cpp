@@ -491,13 +491,23 @@ ExprPtr Parser::parsePrimary()
     if (at(TokenKind::KeywordLof) || at(TokenKind::KeywordEof) || at(TokenKind::KeywordLoc))
         return parseChannelIntrinsic(peek().kind);
 
+    // BUG-OOP-041 fix: For soft keywords (FLOOR, COLOR, etc.), only treat as a
+    // builtin call if followed by '('. Otherwise treat as a variable reference.
+    // This allows using soft keywords as variable names: "IF floor <= 5 THEN"
     if (!at(TokenKind::Identifier))
     {
-        if (auto builtin = lookupBuiltin(peek().lexeme))
+        // Only parse as builtin if this is NOT a soft keyword used as a variable,
+        // or if it IS followed by '(' (i.e., actually being called as a function).
+        bool isSoftKw = isSoftIdentToken(peek().kind) && peek().kind != TokenKind::Identifier;
+        bool hasParenCall = (peek(1).kind == TokenKind::LParen);
+        if (!isSoftKw || hasParenCall)
         {
-            auto loc = peek().loc;
-            consume();
-            return parseBuiltinCall(*builtin, loc);
+            if (auto builtin = lookupBuiltin(peek().lexeme))
+            {
+                auto loc = peek().loc;
+                consume();
+                return parseBuiltinCall(*builtin, loc);
+            }
         }
     }
 
@@ -522,7 +532,10 @@ ExprPtr Parser::parsePrimary()
             if (ok)
             {
                 i += 2;
-                while (peek(i).kind == TokenKind::Identifier && peek(i + 1).kind == TokenKind::Dot)
+                // BUG-OOP-040 fix: Use isSoftIdentToken() instead of just TokenKind::Identifier
+                // to allow soft keywords like RANDOM, FLOOR, COLOR in intermediate dotted segments.
+                // This enables forms like Viper.Random.Next() and Viper.Math.Floor().
+                while (isSoftIdentToken(peek(i).kind) && peek(i + 1).kind == TokenKind::Dot)
                 {
                     sawAdditionalDot = true;
                     i += 2;
@@ -731,9 +744,10 @@ ExprPtr Parser::parsePostfix(ExprPtr expr)
     while (expr && at(TokenKind::Dot))
     {
         consume();
-        // Permit certain keyword tokens (e.g., APPEND) as method names in dotted member access
-        // to support runtime namespaces like Viper.Text.StringBuilder.Append(...).
-        if (!(at(TokenKind::Identifier) || at(TokenKind::KeywordAppend)))
+        // BUG-OOP-040 fix: Permit soft keyword tokens (RANDOM, FLOOR, COLOR, APPEND, etc.)
+        // as method/namespace names in dotted member access to support runtime namespaces
+        // like Viper.Random.Next() and Viper.Text.StringBuilder.Append(...).
+        if (!isSoftIdentToken(peek().kind))
         {
             // Preserve original expectation for diagnostics when not matching.
             Token ident = expect(TokenKind::Identifier);
@@ -742,7 +756,7 @@ ExprPtr Parser::parsePostfix(ExprPtr expr)
         Token ident = peek();
         consume();
         std::string member;
-        if (ident.kind == TokenKind::Identifier || ident.kind == TokenKind::KeywordAppend)
+        if (isSoftIdentToken(ident.kind))
             member = ident.lexeme;
 
         if (at(TokenKind::LParen))

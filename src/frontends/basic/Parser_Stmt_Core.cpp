@@ -170,15 +170,17 @@ Parser::StmtResult Parser::parseCall(int)
                 i += 2; // consumed first ident and dot conceptually
                 bool ok = true;
                 bool sawAdditionalDot = false;
-                while (peek(i).kind == TokenKind::Identifier && peek(i + 1).kind == TokenKind::Dot)
+                // BUG-OOP-040 fix: Use isSoftIdentToken() instead of just TokenKind::Identifier
+                // to allow soft keywords like RANDOM, FLOOR, COLOR in intermediate dotted segments.
+                // This enables forms like Viper.Random.Seed() and Viper.Math.Floor().
+                while (isSoftIdentToken(peek(i).kind) && peek(i + 1).kind == TokenKind::Dot)
                 {
                     sawAdditionalDot = true;
                     i += 2;
                 }
-                // Require final name segment (identifier or keyword APPEND) followed by '('
-                if (!((peek(i).kind == TokenKind::Identifier ||
-                       peek(i).kind == TokenKind::KeywordAppend) &&
-                      peek(i + 1).kind == TokenKind::LParen))
+                // Require final name segment (identifier or soft keyword) followed by '('
+                // BUG-OOP-040: Use isSoftIdentToken() to allow soft keywords in final position too.
+                if (!(isSoftIdentToken(peek(i).kind) && peek(i + 1).kind == TokenKind::LParen))
                     ok = false;
 
                 if (ok)

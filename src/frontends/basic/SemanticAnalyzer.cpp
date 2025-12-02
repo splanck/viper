@@ -127,6 +127,20 @@ bool SemanticAnalyzer::isModuleLevelSymbol(const std::string &name) const
     return symbols_.count(name) > 0;
 }
 
+/// @brief Check if a symbol is a module-level CONST.
+///
+/// @details Returns true if the symbol was declared with CONST at module level.
+///          This is used by the lowerer to distinguish between CONST references
+///          (which should always read from rt_modvar) and local variables
+///          (which may shadow CONSTs but use local storage for writes).
+///
+/// @param name Symbol identifier to check.
+/// @return True when the symbol is a module-level CONST.
+bool SemanticAnalyzer::isConstSymbol(const std::string &name) const
+{
+    return constants_.count(name) > 0;
+}
+
 /// @brief Resolve a symbol through the scope stack and update default type tracking.
 ///
 /// @details First searches local scopes via the scope tracker. If not found locally

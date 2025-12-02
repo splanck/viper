@@ -23,7 +23,7 @@ This file tracks bugs discovered while developing full-featured games using the 
 ## Open Bugs
 
 ### BUG-OOP-037: Local variable names matching class member names return wrong values
-- **Status**: Open (2025-12-02)
+- **Status**: Cannot Reproduce (2025-12-02)
 - **Discovered**: 2025-12-02
 - **Game**: Chess
 - **Severity**: High
@@ -60,11 +60,21 @@ This file tracks bugs discovered while developing full-featured games using the 
       PRINT fr   ' Prints 1
   END SUB
   ```
-- **Root Cause**: Unknown. Appears to be name resolution conflict between local variables and class member names. The lowerer or semantic analyzer may be confusing the local variable `fromRow` with the class member `BestFromRow` during assignment expression lowering.
+- **Resolution (2025-12-02)**: Cannot reproduce with isolated test cases. Multiple test scenarios were tried:
+  1. Local variable `fromRow` with class member `BestFromRow` (partial match) - works correctly
+  2. Local variable `bestFromRow` with class member `bestFromRow` (exact match) - works correctly
+  3. Complex scenario with arrays and multiple getter calls - works correctly
+
+  The original issue was observed during Chess game development. If this bug reoccurs, it may be related to:
+  - A specific sequence of method calls in the Chess game
+  - Interaction with other bugs (possibly BUG-OOP-036 CONST collision)
+  - Edge case in specific control flow paths
+
+  Recommend closing as "Cannot Reproduce" unless new evidence is found.
 - **Note**: This is different from BUG-OOP-036 which involves same-named locals across functions in a class. This bug is about local variables in a calling procedure matching member names in a called class.
 
 ### BUG-OOP-036: Same-named local variables corrupt across consecutive function calls in a class
-- **Status**: Open (2025-12-01)
+- **Status**: Fixed (2025-12-02)
 - **Discovered**: 2025-12-01
 - **Game**: Chess
 - **Severity**: High
@@ -116,8 +126,33 @@ This file tracks bugs discovered while developing full-featured games using the 
       END IF
   END FUNCTION
   ```
-- **Root Cause**: Unknown - likely related to how local variable slots are allocated/reused when calling between functions in the same class
-- **Fix Required**: Investigate the BASIC frontend lowering or IL code generation for local variable scoping in class methods
+- **Root Cause**: Case-insensitive CONST name collision with local variable in `resolveVariableStorage()`.
+
+  **Technical Details**:
+  1. The local variable `queen` is declared in the function and properly added to the `symbols` map in the Lowerer
+  2. In `Lowerer_Procedure.cpp:627-646`, when looking up `queen`, `findSymbol("queen")` correctly finds the local with a `slotId`
+  3. However, at line 633, `isModuleLevelSymbol("queen")` is called on the SemanticAnalyzer
+  4. In `SemanticAnalyzer.cpp:127`, `isModuleLevelSymbol()` returns `symbols_.count(name) > 0`
+  5. The CONST `QUEEN` was registered in `symbols_` as "queen" (lowercase, per `IdentifierUtil.hpp` canonicalization)
+  6. This causes `isModuleLevelSymbol("queen")` to return `true` even though the local variable should shadow it
+  7. Line 637 checks `!isModLevel` which is now FALSE, so it doesn't return the local slot
+  8. Instead, it falls through to line 653-697 which calls `rt_modvar_addr_i64("queen")`
+  9. The runtime returns the CONST's value (5), not the local variable's value (-5)
+
+  **Evidence from IL output** (`/tmp/bug036.il`):
+  ```
+  ; Local "queen" incorrectly resolved to module CONST "QUEEN"
+  %t12 = const_str @.L0       ; @.L0 = "QUEEN"
+  %t13 = call @rt_modvar_addr_i64(%t12)
+  store i64, %t13, -5         ; Stores to runtime variable, not local slot
+  ```
+
+- **Fix Required**: Modify `isModuleLevelSymbol()` to exclude CONSTs from the check, OR add a check in `resolveVariableStorage()` to verify the local symbol is not a procedure-local before treating it as module-level. The key insight is that local variables should ALWAYS shadow module-level symbols when both have slotIds.
+- **Fix Applied (2025-12-02)**:
+  1. Added `isConstSymbol()` method to `SemanticAnalyzer` to check if a name is a module-level CONST
+  2. Modified `Lowerer_Procedure.cpp` lines 1304-1307 and 1332-1335 in `allocateLocalSlots()` to NOT skip slot allocation when the module-level symbol is a CONST
+  3. This allows local variables to have their own stack slots even when their canonicalized name matches a CONST
+  4. Result: Each CLASS method now has properly isolated local variables; standard VB shadowing semantics apply (local shadows module-level, including CONSTs)
 
 ---
 
@@ -1550,3 +1585,196 @@ empty = 5
 - **Fix Required**:
   1. Extend `parseTypeKeyword()` to handle qualified names with dots, OR
   2. Add similar qualified-name parsing logic to the CLASS field declaration parser in `Parser_Stmt_OOP.cpp:217-218` where it calls `parseTypeKeyword()`
+
+### BUG-OOP-040: Viper.Random namespace not accessible - RANDOM is reserved keyword
+- **Status**: Fixed (2025-12-02)
+- **Discovered**: 2025-12-01
+- **Game**: Roguelike
+- **Severity**: High
+- **Component**: BASIC Frontend / Lexer / Parser
+- **Description**: Cannot use the `Viper.Random` runtime class because `RANDOM` is lexed as a reserved keyword (for the `RANDOM` statement variant of RANDOMIZE). This prevents access to `Viper.Random.Seed()` and `Viper.Random.Next()` methods.
+- **Steps to Reproduce**:
+  ```basic
+  DIM x AS DOUBLE
+  x = Viper.Random.Next()
+  PRINT x
+  ```
+- **Expected**: Call succeeds and returns a random value
+- **Actual**: Parse error:
+  ```
+  error[B0001]: expected ident, got RANDOM
+  x = Viper.Random.Next()
+            ^
+  error[B1001]: unknown variable 'VIPER'
+  ```
+- **Workaround**: Use the intrinsic functions `RND()` and `RANDOMIZE seed` instead
+- **Root Cause**: The lexer tokenizes `RANDOM` as `TokenKind::KeywordRandom` (defined in `Lexer.cpp:112` and `TokenKinds.def:143`). The keyword exists to support `OPEN ... FOR RANDOM` file access mode.
+
+  **Technical Details**:
+  1. In `Lexer.cpp:112`, the keyword table maps `"RANDOM"` to `TokenKind::KeywordRandom`
+  2. When parsing `Viper.Random.Next()`, the parser consumes `Viper` as an identifier
+  3. After consuming `.`, the parser expects `TokenKind::Identifier` for the next namespace segment
+  4. Instead, it sees `TokenKind::KeywordRandom`, which fails the identifier check
+  5. Error: "expected ident, got RANDOM" at `Viper.Random.Next()`
+
+  **Code Locations**:
+  - `Lexer.cpp:112`: `{"RANDOM", TokenKind::KeywordRandom}`
+  - `TokenKinds.def:143`: `TOKEN(KeywordRandom, "RANDOM")`
+  - `Parser_Stmt_IO.cpp:187`: Uses `KeywordRandom` for file OPEN statement
+
+- **Fix Applied (2025-12-02)**:
+  Modified the parser to use `isSoftIdentToken()` consistently in all dotted-name parsing locations:
+  1. `Parser_Expr.cpp:528`: Changed intermediate segment probe from `TokenKind::Identifier` to `isSoftIdentToken()`
+  2. `Parser_Stmt_Core.cpp:176`: Same fix for statement context qualified name parsing
+  3. `Parser_Stmt_Core.cpp:183`: Updated final segment check to use `isSoftIdentToken()`
+  4. `Parser_Expr.cpp:740`: Fixed `parsePostfix()` to use `isSoftIdentToken()` for member names
+  5. `Parser_Token.hpp:60`: Added `KeywordNext` to soft keyword list (for `Viper.Random.Next()`)
+
+  Now `Viper.Random.Seed()` and `Viper.Random.Next()` work correctly, while `RANDOM` still works
+  as a keyword in `OPEN ... FOR RANDOM` file access mode, and `NEXT` still works in `FOR...NEXT` loops.
+
+### BUG-OOP-041: Parameter name 'floor' conflicts with FLOOR keyword
+- **Status**: Fixed (2025-12-02)
+- **Discovered**: 2025-12-01
+- **Game**: Roguelike
+- **Severity**: Medium
+- **Component**: BASIC Frontend / Lexer
+- **Description**: Cannot use `floor` as a parameter or variable name because `FLOOR` is lexed as a reserved keyword (for the FLOOR() math function). Using it causes parse errors.
+- **Steps to Reproduce**:
+  ```basic
+  CLASS Test
+      FUNCTION GetValue(floor AS INTEGER) AS INTEGER
+          IF floor <= 5 THEN
+              GetValue = 1
+          ELSE
+              GetValue = 2
+          END IF
+      END FUNCTION
+  END CLASS
+  ```
+- **Expected**: `floor` accepted as parameter name
+- **Actual**: Parse error at `floor`:
+  ```
+  error[B0001]: expected (, got <=
+          IF floor <= 5 THEN
+                   ^
+  ```
+  The parser interprets `floor` as the FLOOR() function and expects it to be followed by parentheses.
+- **Workaround**: Use different names like `floorNum`, `floorLevel`, `dungeonFloor`, etc.
+- **Root Cause**: `FLOOR` is tokenized as `TokenKind::KeywordFloor` (defined in `Lexer.cpp:76` and `TokenKinds.def:59`). Although FLOOR is listed as a "soft keyword" in `Parser_Token.hpp:57`, the soft keyword handling doesn't work in all contexts.
+
+  **Technical Details**:
+  1. In `Lexer.cpp:76`, the keyword table maps `"FLOOR"` to `TokenKind::KeywordFloor`
+  2. `FLOOR` is marked as a soft keyword in `Parser_Token.hpp:57` via `isSoftIdentToken()`
+  3. Soft keywords are handled in `Parser_Stmt.cpp:parseRegisteredStatement()` lines 107-116
+  4. However, soft keyword handling only works when:
+     - The token is followed by `=` (assignment): `floor = 5` works
+     - The token is followed by `(` (array subscript/call): `floor(0)` works
+  5. In `IF floor <= 5`, the token is followed by `<=`, not `=` or `(`
+  6. The parser interprets `FLOOR` as the FLOOR() builtin function and expects `(`
+  7. Error: "expected (, got <="
+
+  **Code Locations**:
+  - `Lexer.cpp:76`: `{"FLOOR", TokenKind::KeywordFloor}`
+  - `Parser_Token.hpp:57`: `case TokenKind::KeywordFloor:` in `isSoftIdentToken()`
+  - `Parser_Stmt.cpp:107-116`: Soft keyword bypass logic
+
+- **Fix Applied (2025-12-02)**:
+  Modified `Parser_Expr.cpp:parsePrimary()` lines 494-512 to only treat soft keywords (FLOOR, COLOR,
+  etc.) as builtin calls when followed by `(`. Otherwise, they fall through to be parsed as variables.
+
+  The key insight is that `FLOOR(x)` should call the builtin, but `IF floor <= 5` should treat `floor`
+  as a variable reference. The fix checks `peek(1).kind == TokenKind::LParen` before calling
+  `lookupBuiltin()` for soft keyword tokens.
+
+  Now `floor` can be used as a parameter/variable name while `FLOOR(x)` still works as the math function.
+
+### BUG-OOP-042: Field/variable name 'base' conflicts with BASE keyword
+- **Status**: Fixed (2025-12-02)
+- **Discovered**: 2025-12-01
+- **Game**: Roguelike
+- **Severity**: Medium
+- **Component**: BASIC Frontend / Lexer
+- **Description**: Cannot use `base` as a field, parameter, or variable name because `BASE` is lexed as a reserved keyword. This is particularly problematic for OOP patterns where `base` is a natural name for a base class reference or base entity.
+- **Steps to Reproduce**:
+  ```basic
+  CLASS Monster
+      DIM base AS Entity   ' Error here
+
+      SUB Init()
+          base = NEW Entity()   ' Error here too
+      END SUB
+  END CLASS
+  ```
+- **Expected**: `base` accepted as field name
+- **Actual**: Parse errors:
+  ```
+  error[B0001]: expected END, got DIM
+      DIM base AS Entity
+      ^
+  error[B0001]: unknown statement 'BASE'
+          base = NEW Entity()
+          ^^^^
+  ```
+- **Workaround**: Use alternative names like `baseEntity`, `baseObj`, `parent`, etc.
+- **Root Cause**: `BASE` is tokenized as `TokenKind::KeywordBase` (defined in `Lexer.cpp:48` and `TokenKinds.def:95`). Unlike FLOOR and RANDOM, BASE is a **hard keyword** used for base class access in OOP (e.g., `Me.BASE.MethodName()`).
+
+  **Technical Details**:
+  1. In `Lexer.cpp:48`, the keyword table maps `"BASE"` to `TokenKind::KeywordBase`
+  2. `BASE` is NOT in the soft keyword list - it's intentionally reserved for OOP semantics
+  3. In `Parser_Expr.cpp:479`, `BASE` is parsed as a special primary expression for base class access
+  4. When the CLASS field parser sees `DIM base`, it tokenizes as `DIM KeywordBase`
+  5. The field parser expects an identifier after DIM, not a keyword
+  6. Error: "expected END, got DIM" because the parser thinks the CLASS body is malformed
+
+  **Code Locations**:
+  - `Lexer.cpp:48`: `{"BASE", TokenKind::KeywordBase}`
+  - `TokenKinds.def:95`: `TOKEN(KeywordBase, "BASE")`
+  - `Parser_Expr.cpp:479`: `if (at(TokenKind::KeywordBase))` - base class access parsing
+  - `Parser_Stmt_Core.cpp:152`: Identifier check excludes `KeywordBase` for special handling
+
+- **Fix Applied (2025-12-02)**:
+  Added `KeywordBase` to the soft keyword list and updated parsers to accept it as a variable/field name:
+  1. `Parser_Token.hpp:61`: Added `KeywordBase` to `isSoftIdentToken()` switch
+  2. `Parser_Stmt_OOP.cpp:160-169`: Updated CLASS field lookahead to use `isSoftIdentToken()`
+  3. `Parser_Stmt_OOP.cpp:175-186`: Updated CLASS field name parsing to accept soft keywords
+  4. `Parser_Stmt_Runtime.cpp:161-176`: Removed local `isSoftIdent` lambda, use global `isSoftIdentToken()`
+
+  The fix allows `base` to be used as a variable/field name while preserving the existing behavior of
+  `BASE` as a primary expression in `Parser_Expr.cpp:479-486` (creates `VarExpr{"BASE"}`).
+  This means `Me.BASE.Method()` for base class access will continue to work if/when inheritance is added.
+
+---
+
+## Summary Statistics (as of 2025-12-02)
+
+| Status | Count |
+|--------|-------|
+| Open | 1 |
+| Fixed | 36 |
+| Cannot Reproduce | 2 |
+| Won't Fix | 0 |
+| **Total** | **39** |
+
+**Open bugs by severity:**
+- Critical: 0
+- High: 0
+- Medium: 1 (BUG-OOP-039)
+- Low: 0
+
+**Recently fixed (2025-12-02):**
+- **BUG-OOP-036**: Fixed CONST name collision with local variables - added `isConstSymbol()` check
+- **BUG-OOP-040**: Fixed RANDOM keyword conflict - use `isSoftIdentToken()` in dotted name parsing
+- **BUG-OOP-041**: Fixed FLOOR soft keyword - only treat as builtin when followed by `(`
+- **BUG-OOP-042**: Fixed BASE hard keyword - added to soft keyword list for variable/field names
+
+**Root causes addressed (2025-12-02):**
+1. **BUG-OOP-036**: Case-insensitive CONST name collision - added `isConstSymbol()` method to allow local variables to shadow CONSTs
+2. **BUG-OOP-040**: `RANDOM` keyword conflict - extended `isSoftIdentToken()` usage to all dotted name parsing locations
+3. **BUG-OOP-041**: `FLOOR` soft keyword - added lookahead check for `(` before treating soft keywords as builtin calls
+4. **BUG-OOP-042**: `BASE` hard keyword - added to soft keyword list, allowing use as variable/field name
+
+**Most common components:**
+1. BASIC Frontend / Lexer (reserved keywords: 040, 041, 042)
+2. BASIC Frontend / Name Resolution (036)
+3. BASIC Frontend / OOP (037 - cannot reproduce)

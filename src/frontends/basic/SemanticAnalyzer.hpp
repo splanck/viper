@@ -324,6 +324,17 @@ class SemanticAnalyzer
     /// @return True if the symbol exists in the module-level symbol table.
     [[nodiscard]] bool isModuleLevelSymbol(const std::string &name) const;
 
+    /// @brief Check if a symbol is a module-level CONST.
+    ///
+    /// @details Returns true if the symbol was declared with CONST at module level.
+    ///          This is used by the lowerer to distinguish between CONST references
+    ///          (which should always read from rt_modvar) and local variables
+    ///          (which may shadow CONSTs but use local storage for writes).
+    ///
+    /// @param name Symbol identifier to check.
+    /// @return True when the symbol is a module-level CONST.
+    [[nodiscard]] bool isConstSymbol(const std::string &name) const;
+
   private:
     class ProcedureScope
     {

@@ -158,30 +158,15 @@ StmtPtr Parser::parseDimStatement()
     // Parse a single DIM item: <name> [ ( <size> ) ] [ AS <type> ] [ = <expr> ]
     auto parseOne = [&](Token firstNameTok = Token{}) -> StmtPtr
     {
-        auto isSoftIdent = [&](TokenKind k)
-        {
-            if (k == TokenKind::Identifier)
-                return true;
-            switch (k)
-            {
-                case TokenKind::KeywordColor:
-                case TokenKind::KeywordFloor:
-                case TokenKind::KeywordRandom:
-                case TokenKind::KeywordCos:
-                case TokenKind::KeywordSin:
-                case TokenKind::KeywordPow:
-                    return true;
-                default:
-                    return false;
-            }
-        };
-
+        // BUG-OOP-042 fix: Use the global isSoftIdentToken() function which includes
+        // all soft keywords (BASE, FLOOR, RANDOM, NEXT, etc.) for variable names.
         Token nameTok;
-        if (firstNameTok.kind == TokenKind::Identifier)
+        if (firstNameTok.kind == TokenKind::Identifier ||
+            (firstNameTok.kind != TokenKind::EndOfFile && isSoftIdentToken(firstNameTok.kind)))
         {
             nameTok = firstNameTok;
         }
-        else if (isSoftIdent(peek().kind))
+        else if (isSoftIdentToken(peek().kind))
         {
             nameTok = consume();
         }
