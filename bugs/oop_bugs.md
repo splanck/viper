@@ -22,6 +22,64 @@ This file tracks bugs discovered while developing full-featured games using the 
 
 ## Open Bugs
 
+### BUG-OOP-036: Same-named local variables corrupt across consecutive function calls in a class
+- **Status**: Open (2025-12-01)
+- **Discovered**: 2025-12-01
+- **Game**: Chess
+- **Severity**: High
+- **Component**: BASIC Frontend / Register Allocation
+- **Description**: When two functions in the same CLASS both declare local variables with the same name (e.g., `DIM queen AS INTEGER`), and one function calls the other, the second function's local variable gets corrupted with a value from a previous scope.
+- **Steps to Reproduce**:
+  ```basic
+  CONST QUEEN AS INTEGER = 5
+
+  CLASS AttackChecker
+      FUNCTION CheckDiagonalAttack(sq AS INTEGER, byColor AS INTEGER) AS INTEGER
+          DIM bishop AS INTEGER
+          DIM queen AS INTEGER
+          IF byColor = 1 THEN
+              bishop = 0 - 3   ' -3
+              queen = 0 - 5    ' -5
+          END IF
+          PRINT "Diagonal: queen="; queen   ' Prints -5 (correct)
+          CheckDiagonalAttack = 0
+      END FUNCTION
+
+      FUNCTION CheckStraightAttack(sq AS INTEGER, byColor AS INTEGER) AS INTEGER
+          DIM rook AS INTEGER
+          DIM queen AS INTEGER   ' Same name as in CheckDiagonalAttack
+          IF byColor = 1 THEN
+              rook = 0 - 4       ' -4
+              queen = 0 - QUEEN  ' Should be -5
+          END IF
+          PRINT "Straight: queen="; queen   ' Prints 5 (WRONG!)
+          CheckStraightAttack = 0
+      END FUNCTION
+
+      FUNCTION IsSquareAttacked(sq AS INTEGER, byColor AS INTEGER) AS INTEGER
+          IF CheckDiagonalAttack(sq, byColor) = 1 THEN ...
+          IF CheckStraightAttack(sq, byColor) = 1 THEN ...  ' queen corrupted here
+      END FUNCTION
+  END CLASS
+  ```
+- **Expected**: `CheckStraightAttack` should print `queen=-5`
+- **Actual**: `CheckStraightAttack` prints `queen=5` (positive instead of negative)
+- **Workaround**: Use unique variable names in each function, or use literal values instead of `0 - CONSTANT` expressions:
+  ```basic
+  FUNCTION CheckStraightAttack(...)
+      DIM rookPc AS INTEGER    ' Renamed
+      DIM queenPc AS INTEGER   ' Renamed
+      IF byColor = 1 THEN
+          rookPc = -4          ' Literal instead of 0 - ROOK
+          queenPc = -5         ' Literal instead of 0 - QUEEN
+      END IF
+  END FUNCTION
+  ```
+- **Root Cause**: Unknown - likely related to how local variable slots are allocated/reused when calling between functions in the same class
+- **Fix Required**: Investigate the BASIC frontend lowering or IL code generation for local variable scoping in class methods
+
+---
+
 ### BUG-OOP-034: FOR loop counter typed as i64 when bounds are INTEGER parameters
 - **Status**: Cannot Reproduce (2025-12-01)
 - **Discovered**: 2025-12-01

@@ -296,6 +296,7 @@ if(VIPER_BUILD_TESTING)
     COMMAND ${CMAKE_SOURCE_DIR}/src/tests/integration/basic/select_case_string.sh
             ${CMAKE_BINARY_DIR}
   )
+  set_tests_properties(basic_select_case_string PROPERTIES LABELS golden)
 endif()
 
 add_subdirectory(${CMAKE_SOURCE_DIR}/src/runtime)
