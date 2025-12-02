@@ -123,9 +123,11 @@ struct Frame
 
     /// @brief Default operand stack size in bytes.
     /// @details Sized to accommodate typical alloca usage patterns.
-    ///          1KB is sufficient for most BASIC programs which use stack
-    ///          for temporary string operations and small local arrays.
-    static constexpr size_t kDefaultStackSize = 1024;
+    ///          64KB is sufficient for most BASIC programs including games
+    ///          with moderate-sized screen buffers and local arrays.
+    ///          BUG-OOP-033: Increased from 1KB to 64KB to support reasonable
+    ///          array sizes (e.g., 80x25 screen buffer = 16KB as i64).
+    static constexpr size_t kDefaultStackSize = 65536;
 
     /// @brief Operand stack storage.
     /// @ownership Owned by the frame; fixed capacity.

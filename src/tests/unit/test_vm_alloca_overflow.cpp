@@ -29,7 +29,8 @@ int main()
     il::core::Instr in;
     in.op = il::core::Opcode::Alloca;
     in.type = il::core::Type(il::core::Type::Kind::Ptr);
-    in.operands.push_back(il::core::Value::constInt(2048));
+    // Request allocation larger than kDefaultStackSize (64KB) to trigger overflow
+    in.operands.push_back(il::core::Value::constInt(70000));
     in.loc = {1, 1, 1};
     bb.instructions.push_back(in);
 

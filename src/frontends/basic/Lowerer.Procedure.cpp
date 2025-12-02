@@ -1096,7 +1096,15 @@ void ProcedureLowering::emitProcedureIL(LoweringContext &ctx)
     procCtx.setCurrent(&ctx.function->blocks[procCtx.exitIndex()]);
     lowerer.curLoc = {};
     lowerer.releaseDeferredTemps();
-    lowerer.releaseObjectLocals(ctx.paramNames);
+    // BUG-OOP-035 fix: For object-returning functions, exclude the function name
+    // from the release set. The function name is used as the return value slot
+    // (VB-style implicit return) and must NOT be released before returning.
+    std::unordered_set<std::string> excludeFromRelease = ctx.paramNames;
+    if (config.retType.kind == il::core::Type::Kind::Ptr)
+    {
+        excludeFromRelease.insert(ctx.name);
+    }
+    lowerer.releaseObjectLocals(excludeFromRelease);
     lowerer.releaseObjectParams(ctx.paramNames);
     lowerer.releaseArrayLocals(ctx.paramNames);
     lowerer.releaseArrayParams(ctx.paramNames);
@@ -1323,6 +1331,14 @@ void Lowerer::allocateLocalSlots(const std::unordered_set<std::string> &paramNam
             {
                 Value empty = emitCallRet(slotInfo.type, "rt_str_empty", {});
                 emitStore(slotInfo.type, slot, empty);
+            }
+            // BUG-OOP-035 fix: Initialize object slots to null.
+            // Object-returning FUNCTIONs use the function name as the return slot.
+            // Without initialization, the slot contains garbage, causing
+            // rt_obj_release_check0() to crash when assigning to the slot.
+            else if (slotInfo.isObject)
+            {
+                emitStore(Type(Type::Kind::Ptr), slot, Value::null());
             }
         }
     }

@@ -23,8 +23,9 @@ namespace il::vm
 
 /// @brief Default operand stack size per frame in bytes.
 /// @details Sized for typical alloca usage in BASIC programs.
-///          1KB accommodates temporary strings and small arrays.
-constexpr size_t kDefaultFrameStackSize = 1024;
+///          64KB accommodates screen buffers, game state arrays, etc.
+///          BUG-OOP-033: Increased from 1KB to 64KB.
+constexpr size_t kDefaultFrameStackSize = 65536;
 
 /// @brief Maximum recursion depth for interpreter.
 /// @details Prevents stack overflow from unbounded recursion.

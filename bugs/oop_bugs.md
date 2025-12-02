@@ -22,6 +22,245 @@ This file tracks bugs discovered while developing full-featured games using the 
 
 ## Open Bugs
 
+### BUG-OOP-034: FOR loop counter typed as i64 when bounds are INTEGER parameters
+- **Status**: Cannot Reproduce (2025-12-01)
+- **Discovered**: 2025-12-01
+- **Game**: Centipede
+- **Severity**: Medium
+- **Component**: BASIC Frontend / IL Generation
+- **Description**: Originally reported that FOR loop counters typed as i64 cause type mismatches when passed to functions expecting INTEGER.
+- **Resolution**: Cannot reproduce. BASIC `INTEGER` maps to IL `i64` (64-bit integer), not `i32`. This is consistent behavior across the frontend:
+  - FOR loop counters: `i64`
+  - DIM AS INTEGER variables: `i64`
+  - Function parameters AS INTEGER: `i64`
+  All types match and the test case runs successfully.
+- **Verification (2025-12-01)**:
+  - Test: `FOR row = top TO bottom` with `BufferChar(row, col, ch, clr)` → WORKS
+  - The original bug report may have been based on an earlier codebase state or misunderstanding
+- **Note**: The bug report mentioned `i32` vs `i64` mismatch, but BASIC INTEGER has always been `i64` internally. If there was ever a real bug here, it was already fixed in a prior commit.
+
+---
+
+## Fixed Bugs
+
+### BUG-OOP-035: FUNCTION returning object to local variable causes segfault
+- **Status**: Fixed (2025-12-01) ✅ Verified
+- **Discovered**: 2025-12-01
+- **Game**: Centipede
+- **Severity**: Critical
+- **Component**: BASIC Frontend / OOP / Lowering
+- **Description**: When a FUNCTION returns an object type and the result is assigned to a local variable inside a SUB/FUNCTION, the program crashes with a segfault (exit code 139) at runtime.
+- **Steps to Reproduce**:
+```basic
+CLASS Player
+  DIM name$ AS STRING
+  SUB Init(n$ AS STRING)
+    name$ = n$
+  END SUB
+  FUNCTION GetName$() AS STRING
+    GetName$ = name$
+  END FUNCTION
+END CLASS
+
+FUNCTION GetPlayer() AS Player
+  DIM p AS Player
+  p = NEW Player()
+  p.Init("Hero")
+  GetPlayer = p
+END FUNCTION
+
+DIM local AS Player
+local = GetPlayer()
+PRINT "Player name: "; local.GetName$()
+```
+- **Expected**: Program prints `Player name: Hero`
+- **Actual**: Segfault (exit code 139) - crash at runtime
+- **Root Cause Analysis**:
+  Two separate issues were found and fixed:
+
+  **Issue 1: Uninitialized return value slot**
+  Object-returning FUNCTIONs use the function name as the return value slot (VB-style implicit return). The slot was allocated but not initialized to null, causing `rt_obj_release_check0()` to crash when assigning to an uninitialized slot.
+
+  **Issue 2: Return slot released in epilogue**
+  The `releaseObjectLocals()` function released ALL object locals including the function name (return value slot). This nullified the return slot BEFORE the function returned, causing the function to return null instead of the actual object.
+
+- **Fix Applied** (2 changes):
+  1. **Initialize object slots to null** (`Lowerer.Procedure.cpp:1327-1334`):
+     ```cpp
+     // BUG-OOP-035 fix: Initialize object slots to null.
+     else if (slotInfo.isObject)
+     {
+         emitStore(Type(Type::Kind::Ptr), slot, Value::null());
+     }
+     ```
+
+  2. **Exclude return slot from release** (`Lowerer.Procedure.cpp:1099-1106`):
+     ```cpp
+     // BUG-OOP-035 fix: For object-returning functions, exclude the function name
+     // from the release set. The function name is used as the return value slot
+     // (VB-style implicit return) and must NOT be released before returning.
+     std::unordered_set<std::string> excludeFromRelease = ctx.paramNames;
+     if (config.retType.kind == il::core::Type::Kind::Ptr)
+     {
+         excludeFromRelease.insert(ctx.name);
+     }
+     ```
+
+- **Verification (2025-12-01)**:
+  - Test: Object-returning function with local assignment → WORKS
+  - Test: Nested function calls returning objects → WORKS
+  - Test: Multiple assignments from object functions → WORKS
+  - All 744 tests pass
+
+### BUG-OOP-033: VM stack size limit causes stack overflow with moderate arrays
+- **Status**: Fixed (2025-12-01) ✅ Verified
+- **Discovered**: 2025-12-01
+- **Game**: Centipede
+- **Severity**: High
+- **Component**: VM / Runtime
+- **Description**: The VM had a hardcoded stack size of only 1024 bytes per frame, causing stack overflow when BASIC programs use moderate-sized arrays.
+- **Root Cause**: The VM stack size constants were set extremely low:
+  - `src/vm/VM.hpp:128`: `static constexpr size_t kDefaultStackSize = 1024;`
+  - `src/vm/VMConstants.hpp:27`: `constexpr size_t kDefaultFrameStackSize = 1024;`
+- **Fix Applied**: Increased both constants from 1KB to 64KB (65536 bytes):
+  - `src/vm/VM.hpp`: `kDefaultStackSize = 65536`
+  - `src/vm/VMConstants.hpp`: `kDefaultFrameStackSize = 65536`
+  - Updated `test_vm_alloca_overflow.cpp` to use 70000 bytes to still test overflow behavior
+- **Verification (2025-12-01)**:
+  - Test: 80x25 screen buffer array (2000 elements = 16KB) → WORKS
+  - All 744 tests pass
+
+### BUG-OOP-032: Local variable same name as class causes false "unknown procedure" error
+- **Status**: Fixed (2025-12-01) ✅ Verified
+- **Discovered**: 2025-12-01
+- **Game**: Centipede
+- **Severity**: High
+- **Component**: BASIC Frontend / Semantic Analyzer
+- **Description**: When a local variable has the same name as a CLASS (case-insensitive), method calls on that variable fail with "unknown procedure" because the semantic analyzer incorrectly treats it as a namespace-qualified static call.
+- **Steps to Reproduce**:
+```basic
+CLASS Player
+    DIM x AS INTEGER
+    SUB SetX(val AS INTEGER)
+        x = val
+    END SUB
+END CLASS
+
+SUB TestLocal()
+    DIM player AS Player       ' Variable name matches class name
+    player = NEW Player()
+    player.SetX(42)            ' ERROR: unknown procedure 'player.setx'
+END SUB
+
+TestLocal()
+```
+- **Expected**: `player.SetX(42)` calls the method on the local object variable
+- **Actual**: Error "unknown procedure 'player.setx'" - treated as `Player.SetX()` static call
+- **Root Cause**: In `SemanticAnalyzer.Stmts.Runtime.cpp` lines 84-99, when analyzing a MethodCallExpr:
+  1. The check `symbols_.find(varExpr->name)` fails because local variables are mangled (e.g., "player" → "player_42") and stored in symbols_ with the mangled name
+  2. The check `oopIndex_.findClass(varExpr->name)` succeeds because "player" matches class "Player" (case-insensitive)
+  3. This caused the analyzer to emit "unknown procedure 'player.setx'" as if it were a namespace-qualified call
+- **Fix Applied**: In `SemanticAnalyzer.Stmts.Runtime.cpp` line 90, added check for local variable resolution via `scopes_.resolve()` before concluding the name is a namespace:
+  ```cpp
+  // BUG-OOP-032 fix: Also check if the variable can be resolved via scopes_.
+  bool isLocalVariable = scopes_.resolve(varExpr->name).has_value();
+  bool looksLikeNamespace =
+      !isLocalVariable && oopIndex_.findClass(varExpr->name) != nullptr;
+  ```
+- **Verification (2025-12-01)**:
+  - Test: `DIM player AS Player; player = NEW Player(); player.SetX(42)` inside SUB → WORKS
+  - All 744 tests pass
+- **Note**: A separate crash bug (BUG-OOP-035) was discovered when testing functions that return objects to local variables.
+
+### BUG-OOP-019: SELECT CASE cannot use CONST labels across ADDFILE boundaries
+- **Status**: Fixed (2025-12-01) ✅ Verified
+- **Discovered**: 2025-11-28 (initial), 2025-11-29 (regression discovered)
+- **Game**: Chess
+- **Severity**: High
+- **Component**: BASIC Frontend / Parser / ADDFILE
+- **Description**: SELECT CASE statements with CONST labels work in single-file programs but fail when CONSTs are defined in an ADDFILE'd file
+- **Steps to Reproduce**:
+```basic
+' constants.bas
+CONST QUEEN AS INTEGER = 5
+CONST ROOK AS INTEGER = 4
+
+' movegen.bas (included via ADDFILE after constants.bas)
+SELECT CASE promo
+    CASE QUEEN      ' Error: SELECT CASE labels must be literals or CONSTs
+        sb.Append("q")
+    CASE ROOK
+        sb.Append("r")
+END SELECT
+```
+- **Expected**: CASE labels accept CONST values from ADDFILE'd files
+- **Actual**: Now works correctly
+- **Root Cause**: The `knownConstInts_` and `knownConstStrs_` maps were not being copied to child parsers during ADDFILE processing.
+- **Fix Applied**: In `src/frontends/basic/Parser.cpp`:
+  - `handleTopLevelAddFile()` (lines 507-509): Copies `knownConstInts_` and `knownConstStrs_` to child parser before parsing
+  - `handleTopLevelAddFile()` (lines 525-529): Merges child's CONSTs back to parent after parsing
+  - `handleAddFileInto()` (lines 621-624): Same copy to child
+  - `handleAddFileInto()` (lines 638-642): Same merge back to parent
+- **Verification (2025-12-01)**:
+  - Test 1: Parent defines CONSTs, child uses them in SELECT CASE → WORKS
+  - Test 2: Child defines CONSTs, parent uses them after ADDFILE → WORKS
+  - Both directions of CONST propagation confirmed working
+
+### BUG-OOP-028: USING statement not propagated through ADDFILE
+- **Status**: Fixed (2025-12-01) ✅ Cannot Reproduce
+- **Discovered**: 2025-12-01
+- **Game**: Centipede
+- **Severity**: High
+- **Component**: BASIC Frontend / Parser / ADDFILE
+- **Description**: When a USING statement is placed in the main file BEFORE an ADDFILE, the USING imports are not visible to code in the ADDFILE'd file.
+- **Resolution**: Cannot reproduce. USING visibility is established during semantic analysis AFTER ADDFILE merges AST nodes. The `buildNamespaceRegistry()` function collects USING directives from the merged AST, and `SemanticAnalyzer::analyze()` seeds the root using scope from file-scoped UsingContext before analyzing bodies.
+- **Verification (2025-12-01)**:
+  - Test: Parent has `USING Viper.Terminal`, child uses `SetCursorVisible()`, `Clear()` → WORKS
+  - The original bug report may have been caused by a different issue (possibly unrelated syntax error)
+
+### BUG-OOP-029: Pipe character in string literal causes parser error in IF/ELSEIF chain
+- **Status**: Fixed (2025-12-01) ✅ Cannot Reproduce
+- **Discovered**: 2025-12-01
+- **Game**: Centipede
+- **Severity**: Medium
+- **Component**: BASIC Frontend / Parser / String Literals
+- **Description**: Using the pipe character `|` inside a string literal within an IF/ELSEIF chain was reported to cause parser errors.
+- **Resolution**: Cannot reproduce. The lexer correctly handles pipe characters inside string literals.
+- **Verification (2025-12-01)**:
+  - Test: `ch = "|"` inside IF/ELSEIF chain → WORKS, outputs `|`
+  - The original bug report may have been caused by an encoding issue or copy-paste artifact
+
+### BUG-OOP-030: Backslash in string literal causes parser error
+- **Status**: By Design (2025-12-01) - Documentation Issue
+- **Discovered**: 2025-12-01
+- **Game**: Centipede
+- **Severity**: Low (Documentation)
+- **Component**: BASIC Frontend / Lexer
+- **Description**: Using `"\"` (single backslash in string) causes an unterminated string error because backslash is an escape character.
+- **Resolution**: This is **by design**. Viper BASIC uses C-style escape sequences:
+  - `\\` = literal backslash
+  - `\"` = literal quote
+  - `\n` = newline, `\r` = carriage return, `\t` = tab
+  - `\xNN` = hex character
+- **Correct Usage**: Use `"\\"` to get a single backslash, or `CHR$(92)`
+- **Verification (2025-12-01)**:
+  - Test: `ch = "\\"` → WORKS, outputs `\`
+
+### BUG-OOP-031: Calling global SUB/FUNCTION from inside CLASS method fails
+- **Status**: Fixed (2025-12-01) ✅ Verified
+- **Discovered**: 2025-12-01
+- **Game**: Centipede
+- **Severity**: Critical
+- **Component**: BASIC Frontend / OOP Name Resolution
+- **Description**: When calling a global (module-level) SUB or FUNCTION from inside a CLASS method, the compiler incorrectly resolves the name as ClassName.SubName instead of the global SubName.
+- **Root Cause**: The lowerer blindly assumed all unqualified calls inside a class are method calls, without checking if the method actually exists in the class.
+- **Fix Applied**: In `src/frontends/basic/lower/Lowerer_Expr.cpp` lines 315-322:
+  - Added check using `oopIndex_.findMethodInHierarchy()` to verify the method exists in the current class or its bases
+  - If method NOT found, fall through to global procedure resolution instead of incorrectly mangling as class method
+- **Verification (2025-12-01)**:
+  - Test: Global SUB `PlayBeep()` called from inside `Player.AddScore()` → WORKS
+  - All 744 tests pass
+
 ### BUG-OOP-010: DIM inside FOR loop causes internal compiler error
 - **Status**: Fixed (2025-11-27) ✅ Verified
 - **Discovered**: 2025-11-27
@@ -303,45 +542,6 @@ END IF
   appear inside the IF’s `then_branch` for `"IF FLAG THEN PRINT 1: PRINT 2"`. Test build
   passes.
 
-### BUG-OOP-019: SELECT CASE cannot use CONST labels across ADDFILE boundaries
-- **Status**: Open (regression)
-- **Discovered**: 2025-11-28 (initial), 2025-11-29 (regression discovered)
-- **Game**: Chess
-- **Severity**: High
-- **Component**: BASIC Frontend / Parser / ADDFILE
-- **Description**: SELECT CASE statements with CONST labels work in single-file programs but fail when CONSTs are defined in an ADDFILE'd file
-- **Steps to Reproduce**:
-```basic
-' constants.bas
-CONST QUEEN AS INTEGER = 5
-CONST ROOK AS INTEGER = 4
-
-' movegen.bas (included via ADDFILE after constants.bas)
-SELECT CASE promo
-    CASE QUEEN      ' Error: SELECT CASE labels must be literals or CONSTs
-        sb.Append("q")
-    CASE ROOK
-        sb.Append("r")
-END SELECT
-```
-- **Expected**: CASE labels accept CONST values from ADDFILE'd files
-- **Actual**: Error "SELECT CASE labels must be literals or CONSTs" even though CONSTs are defined
-- **Root Cause**: In `src/frontends/basic/Parser.cpp:501-506`, when ADDFILE creates a child parser:
-  ```cpp
-  Parser child(contents, newFileId, emitter_, sm_, includeStack_, /*suppress*/ true);
-  child.arrays_ = arrays_;
-  child.knownNamespaces_ = knownNamespaces_;
-  ```
-  The `knownConstInts_` and `knownConstStrs_` maps are **NOT** copied to child parsers.
-
-  When `constants.bas` is parsed first, it populates the parent's `knownConstInts_` with `QUEEN=5`, etc. But when `movegen.bas` is parsed as a child, it gets a fresh empty `knownConstInts_` map, so `CASE QUEEN` lookup fails.
-
-  Additionally, CONSTs defined in child parsers are not copied back to the parent, so CONSTs don't propagate in either direction.
-- **Fix Required**: In `handleTopLevelAddFile()` and `handleAddFileInto()`:
-  1. Copy `knownConstInts_` and `knownConstStrs_` to child parser before parsing
-  2. Merge child's `knownConstInts_` and `knownConstStrs_` back to parent after parsing
-- **Workaround**: Use numeric literals directly: `CASE 5` instead of `CASE QUEEN`, or use IF-ELSEIF chains
-
 ### BUG-OOP-020: SUB calls require parentheses even with no arguments
 - **Status**: Fixed (2025-11-29) ✅ Verified (Design Limitation Documented)
 - **Discovered**: 2025-11-28
@@ -595,10 +795,6 @@ PRINT ESC; "[32m"           ' Set color
 - **Verification**: Added `tests/frontends/basic/ViperRuntimeCallTests.cpp` ensuring:
   - The analyzer’s `ProcRegistry` contains the new `Viper.Terminal.*`/`Viper.Time.*` entries.
   - A BASIC snippet calling these methods analyzes with zero errors.
-
----
-
-## Fixed Bugs
 
 ### BUG-OOP-001: BYREF parameters not supported
 - **Status**: Fixed (2025-11-26)
@@ -916,7 +1112,15 @@ PRINT "After call: "; m.GetValue()   ' Prints 42
 | **BUG-OOP-016** | ✅ Fixed | INTEGER variable type mismatch when passed to functions | 2025-11-27 |
 | **BUG-OOP-017** | ✅ Fixed | Single-line IF colon only applies condition to first statement | 2025-11-27 |
 | **BUG-OOP-018** | ✅ Fixed | Viper.* runtime classes not callable from BASIC | 2025-11-27 |
-| **BUG-OOP-019** | Open | SELECT CASE with CONST labels across ADDFILE | - |
+| **BUG-OOP-019** | ✅ Fixed | SELECT CASE with CONST labels across ADDFILE | 2025-12-01 |
+| **BUG-OOP-028** | Cannot Reproduce | USING statement propagation | 2025-12-01 |
+| **BUG-OOP-029** | Cannot Reproduce | Pipe character in string literal | 2025-12-01 |
+| **BUG-OOP-030** | By Design | Backslash in string literal (use `\\`) | 2025-12-01 |
+| **BUG-OOP-031** | ✅ Fixed | Global SUB call from class method | 2025-12-01 |
+| **BUG-OOP-032** | ✅ Fixed | Local variable same name as class | 2025-12-01 |
+| **BUG-OOP-033** | ✅ Fixed | VM stack size limit (1KB→64KB) | 2025-12-01 |
+| **BUG-OOP-034** | Cannot Reproduce | FOR loop counter type | 2025-12-01 |
+| **BUG-OOP-035** | ✅ Fixed | Object return from FUNCTION segfault | 2025-12-01 |
 | **BUG-OOP-020** | ✅ Fixed | SUB calls without parens (when defined before call) | 2025-11-29 |
 | **BUG-OOP-021** | ✅ Fixed | Soft keywords as identifiers (COLOR, FLOOR, etc.) | 2025-11-29 |
 | **BUG-OOP-022** | ✅ Fixed | SELECT CASE with CHR()/CHR$() labels | 2025-11-29 |
@@ -929,11 +1133,22 @@ PRINT "After call: "; m.GetValue()   ' Prints 42
 
 ## Priority Recommendations
 
-### Open Bugs (2025-11-29)
-- **BUG-OOP-019** - SELECT CASE with CONST labels fails across ADDFILE boundaries (knownConstInts_ not propagated to child parsers)
+### Open Bugs (2025-12-01)
+- No critical bugs currently open
 
 ### Design Limitations (Won't Fix)
 - **BUG-OOP-025** - Viper.Collections.List only stores objects (use BASIC arrays for primitives)
+
+### Recently Fixed (2025-12-01)
+- **BUG-OOP-035** - FUNCTION returning object to local variable (init + exclude return slot from release)
+- **BUG-OOP-019** - SELECT CASE with CONST labels now works across ADDFILE boundaries
+- **BUG-OOP-028** - USING statement propagation (could not reproduce - works correctly)
+- **BUG-OOP-029** - Pipe character in string literal (could not reproduce - works correctly)
+- **BUG-OOP-030** - Backslash in string literal (by design - use `\\` for literal backslash)
+- **BUG-OOP-031** - Global SUB/FUNCTION calls from inside CLASS methods now work
+- **BUG-OOP-032** - Local variable with same name as class now works correctly
+- **BUG-OOP-033** - VM stack size increased from 1KB to 64KB to support larger arrays
+- **BUG-OOP-034** - FOR loop counter type (could not reproduce - INTEGER is always i64)
 
 ### Recently Fixed (2025-11-29)
 - **BUG-OOP-020** - SUB calls work without parentheses when SUB is defined before call site

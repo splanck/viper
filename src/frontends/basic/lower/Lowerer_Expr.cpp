@@ -307,8 +307,20 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
         // Implicit receiver in class methods: treat bare calls as ME.Method.
         // If we're inside a class method and the call is unqualified, try
         // lowering it as a method call on ME first (BUG-102).
+        // BUG-OOP-031 fix: Only treat as method call if the method actually
+        // exists in the current class or its base classes. Otherwise fall
+        // through to global procedure resolution.
         if (lowerer_.currentClass().size() > 0 && expr.calleeQualified.empty())
         {
+            // Check if this is actually a method of the current class
+            const auto *methodInfo = lowerer_.oopIndex_.findMethodInHierarchy(
+                lowerer_.currentClass(), expr.callee);
+            if (!methodInfo)
+            {
+                // Not a method of this class - fall through to global resolution
+                goto global_resolution;
+            }
+
             // Load ME pointer as implicit receiver
             const auto *meSym = lowerer_.findSymbol("ME");
             if (meSym && meSym->slotId)
@@ -368,6 +380,7 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
             }
         }
 
+    global_resolution:
         // Resolve callee (supports qualified call syntax). Canonicalize to
         // maintain case-insensitive semantics for lookups.
         std::string calleeResolved;

@@ -83,10 +83,17 @@ void SemanticAnalyzer::analyzeCallStmt(CallStmt &stmt)
                 // it's likely a local object variable that will be resolved during lowering.
                 if (symbols_.find(std::string{varExpr->name}) == symbols_.end())
                 {
+                    // BUG-OOP-032 fix: Also check if the variable can be resolved via scopes_.
+                    // Local variables inside SUB/FUNCTION are mangled (e.g., "player" becomes
+                    // "player_42") and stored in symbols_ with the mangled name. The scope
+                    // tracker maintains the original→mangled mapping, so we must check both.
+                    bool isLocalVariable = scopes_.resolve(varExpr->name).has_value();
+
                     // Only error if this looks like a namespace-qualified call.
                     // If it's a simple local variable name (not registered as a namespace),
                     // let the lowerer handle it - it might be an object instance.
-                    bool looksLikeNamespace = oopIndex_.findClass(varExpr->name) != nullptr;
+                    bool looksLikeNamespace =
+                        !isLocalVariable && oopIndex_.findClass(varExpr->name) != nullptr;
                     if (looksLikeNamespace)
                     {
                         std::vector<std::string> segments;
