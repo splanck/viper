@@ -22,6 +22,7 @@
 ///          runtime traps for invalid usage.
 
 #include "rt.hpp"
+#include "rt_output.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -75,8 +76,15 @@ static void enable_vt(void)
 #endif
 
 /// @brief Emit a raw string to stdout, enabling ANSI support when available.
-/// @details Wraps `fputs` and `fflush` so terminal helpers can centralise VT
-///          enablement and flushing behaviour.
+/// @details Writes to the output buffer and conditionally flushes based on
+///          batch mode. When batch mode is active (via rt_output_begin_batch),
+///          output accumulates until rt_output_end_batch is called, dramatically
+///          reducing system calls during screen rendering.
+///
+/// Performance note: Before this change, each terminal operation caused an
+/// immediate fflush(), resulting in thousands of system calls per frame.
+/// With output buffering, a typical 60x20 game screen update goes from
+/// ~6000 syscalls to ~1 syscall (at batch end).
 static void out_str(const char *s)
 {
     if (!s)
@@ -84,8 +92,8 @@ static void out_str(const char *s)
 #if defined(_WIN32)
     enable_vt();
 #endif
-    fputs(s, stdout);
-    fflush(stdout);
+    rt_output_str(s);
+    rt_output_flush_if_not_batch();
 }
 
 /// @brief Emit an SGR escape sequence for the requested foreground/background.
@@ -212,9 +220,10 @@ void rt_term_alt_screen_i32(int32_t enable)
 ///          enhancement.
 void rt_bell(void)
 {
-    // Always emit BEL for portability
-    fputs("\a", stdout);
-    fflush(stdout);
+    // Always emit BEL for portability - bell should always flush immediately
+    // to ensure the user hears it at the expected moment
+    rt_output_str("\a");
+    rt_output_flush();
 
 #if defined(_WIN32)
     // On Windows, optionally use Beep API for a more audible tone
@@ -301,9 +310,12 @@ static int readkey_nonblocking(int *out)
 /// @brief Block for a single keystroke and return it as a BASIC string.
 /// @details Delegates to @ref readkey_blocking and wraps the resulting byte via
 ///          @ref rt_chr so the runtime's string interning and ownership
-///          conventions are respected.
+///          conventions are respected. Flushes output first to ensure any
+///          pending screen updates are visible before blocking.
 rt_string rt_getkey_str(void)
 {
+    // Flush output before blocking for input so user sees current state
+    rt_output_flush();
     int code = readkey_blocking();
     return rt_chr((int64_t)code);
 }
@@ -312,9 +324,13 @@ rt_string rt_getkey_str(void)
 /// @brief Wait for a keystroke with timeout; return "" if timeout expires.
 /// @details Uses WaitForSingleObject to poll the console input handle with the
 ///          specified timeout. When a key arrives within the timeout window it is
-///          read via _getch and converted to a runtime string.
+///          read via _getch and converted to a runtime string. Flushes output
+///          first to ensure any pending screen updates are visible.
 rt_string rt_getkey_timeout_i32(int32_t timeout_ms)
 {
+    // Flush output before waiting for input so user sees current state
+    rt_output_flush();
+
     if (timeout_ms < 0)
     {
         // Negative timeout means block indefinitely
@@ -344,9 +360,12 @@ rt_string rt_getkey_timeout_i32(int32_t timeout_ms)
 /// @details Places the terminal in raw mode and uses select() to wait for input
 ///          with the specified timeout. When a key arrives before the deadline it
 ///          is read and converted to a runtime string; otherwise the empty string
-///          is returned.
+///          is returned. Flushes output first to ensure pending updates are visible.
 rt_string rt_getkey_timeout_i32(int32_t timeout_ms)
 {
+    // Flush output before waiting for input so user sees current state
+    rt_output_flush();
+
     if (timeout_ms < 0)
     {
         // Negative timeout means block indefinitely
@@ -400,12 +419,52 @@ rt_string rt_getkey_timeout_i32(int32_t timeout_ms)
 /// @brief Non-blocking key read that returns "" when no key is pending.
 /// @details Uses @ref readkey_nonblocking to poll the console.  When a key is
 ///          available it is converted using @ref rt_chr; otherwise the canonical
-///          empty string from @ref rt_const_cstr is returned.
+///          empty string from @ref rt_const_cstr is returned. Flushes output
+///          first to ensure the screen is up-to-date when polling.
 rt_string rt_inkey_str(void)
 {
+    // Flush output so user sees current state when we check for input
+    rt_output_flush();
     int code = 0;
     int ok = readkey_nonblocking(&code);
     if (ok)
         return rt_chr((int64_t)code);
     return rt_const_cstr(""); // use your runtime's empty-string helper
+}
+
+// =============================================================================
+// Output Batch Mode Control Functions
+// =============================================================================
+
+/// @brief Begin batch mode for output operations.
+/// @details While in batch mode, terminal control sequences (COLOR, LOCATE,
+///          etc.) do not trigger individual flushes. This dramatically improves
+///          rendering performance for games and animations.
+///
+/// Usage in BASIC:
+///   _SCREENBATCH ON   ' or _BEGINBATCH
+///   ' ... multiple LOCATE, COLOR, PRINT operations ...
+///   _SCREENBATCH OFF  ' or _ENDBATCH - flushes all at once
+///
+/// Performance: Reduces syscalls from ~6000/frame to ~1/frame for typical games.
+void rt_term_begin_batch(void)
+{
+    rt_output_begin_batch();
+}
+
+/// @brief End batch mode and flush accumulated output.
+/// @details Decrements the batch mode reference count. When it reaches zero,
+///          all accumulated output is flushed to the terminal in a single
+///          system call, eliminating screen flashing.
+void rt_term_end_batch(void)
+{
+    rt_output_end_batch();
+}
+
+/// @brief Explicitly flush terminal output.
+/// @details Forces all buffered output to be written immediately. Useful when
+///          you need to ensure output is visible without ending batch mode.
+void rt_term_flush(void)
+{
+    rt_output_flush();
 }

@@ -249,19 +249,7 @@ ProcedureLowering::LoweringContext::LoweringContext(
 /// @return Reference to the mutable symbol record.
 Lowerer::SymbolInfo &Lowerer::ensureSymbol(std::string_view name)
 {
-    std::string key(name);
-    auto [it, inserted] = symbols.emplace(std::move(key), SymbolInfo{});
-    if (inserted)
-    {
-        it->second.type = AstType::I64;
-        it->second.hasType = false;
-        it->second.isArray = false;
-        it->second.isBoolean = false;
-        it->second.referenced = false;
-        it->second.isObject = false;
-        it->second.objectClass.clear();
-    }
-    return it->second;
+    return symbolTable_.define(name);
 }
 
 /// @brief Look up a symbol record, creating no new entries.
@@ -271,17 +259,7 @@ Lowerer::SymbolInfo &Lowerer::ensureSymbol(std::string_view name)
 /// @return Mutable symbol metadata or @c nullptr when absent.
 Lowerer::SymbolInfo *Lowerer::findSymbol(std::string_view name)
 {
-    std::string key(name);
-    if (auto it = symbols.find(key); it != symbols.end())
-        return &it->second;
-    for (auto scopeIt = fieldScopeStack_.rbegin(); scopeIt != fieldScopeStack_.rend(); ++scopeIt)
-    {
-        auto symIt = scopeIt->symbols.find(key);
-        if (symIt != scopeIt->symbols.end())
-            return &symIt->second;
-        (void)key;
-    }
-    return nullptr;
+    return symbolTable_.lookup(name);
 }
 
 /// @brief Const-qualified symbol lookup helper.
@@ -291,17 +269,7 @@ Lowerer::SymbolInfo *Lowerer::findSymbol(std::string_view name)
 /// @return Const symbol metadata or @c nullptr when absent.
 const Lowerer::SymbolInfo *Lowerer::findSymbol(std::string_view name) const
 {
-    std::string key(name);
-    if (auto it = symbols.find(key); it != symbols.end())
-        return &it->second;
-    for (auto scopeIt = fieldScopeStack_.rbegin(); scopeIt != fieldScopeStack_.rend(); ++scopeIt)
-    {
-        auto symIt = scopeIt->symbols.find(key);
-        if (symIt != scopeIt->symbols.end())
-            return &symIt->second;
-        (void)key;
-    }
-    return nullptr;
+    return symbolTable_.lookup(name);
 }
 
 /// @brief Record the declared type for a symbol and mark it as referenced.
@@ -413,53 +381,25 @@ void Lowerer::markStatic(std::string_view name)
 
 void Lowerer::pushFieldScope(const std::string &className)
 {
-    FieldScope scope;
+    const ClassLayout *layout = nullptr;
     if (auto it = classLayouts_.find(className); it != classLayouts_.end())
-    {
-        scope.layout = &it->second;
-        for (const auto &field : it->second.fields)
-        {
-            SymbolInfo info;
-            info.type = field.type;
-            info.hasType = true;
-            // Preserve array-ness from class layout so implicit field-array
-            // accesses inside methods are handled correctly.
-            info.isArray = field.isArray;
-            info.isBoolean = (field.type == AstType::Bool);
-            info.referenced = false;
-            // BUG-099 fix: Preserve object field information
-            info.isObject = !field.objectClassName.empty();
-            info.objectClass = field.objectClassName;
-            scope.symbols.emplace(field.name, std::move(info));
-        }
-    }
-    fieldScopeStack_.push_back(std::move(scope));
+        layout = &it->second;
+    symbolTable_.pushFieldScope(layout);
 }
 
 void Lowerer::popFieldScope()
 {
-    if (!fieldScopeStack_.empty())
-        fieldScopeStack_.pop_back();
+    symbolTable_.popFieldScope();
 }
 
 const Lowerer::FieldScope *Lowerer::activeFieldScope() const
 {
-    if (fieldScopeStack_.empty())
-        return nullptr;
-    return &fieldScopeStack_.back();
+    return symbolTable_.activeFieldScope();
 }
 
 bool Lowerer::isFieldInScope(std::string_view name) const
 {
-    if (name.empty())
-        return false;
-    std::string key(name);
-    for (auto it = fieldScopeStack_.rbegin(); it != fieldScopeStack_.rend(); ++it)
-    {
-        if (it->symbols.find(key) != it->symbols.end())
-            return true;
-    }
-    return false;
+    return symbolTable_.isFieldInScope(name);
 }
 
 /// @brief Reset symbol metadata between procedure lowering runs.
@@ -470,25 +410,7 @@ bool Lowerer::isFieldInScope(std::string_view name) const
 ///          of literal strings.
 void Lowerer::resetSymbolState()
 {
-    for (auto it = symbols.begin(); it != symbols.end();)
-    {
-        SymbolInfo &info = it->second;
-        if (!info.stringLabel.empty())
-        {
-            info.type = AstType::I64;
-            info.hasType = false;
-            info.isArray = false;
-            info.isBoolean = false;
-            info.referenced = false;
-            info.isObject = false;
-            info.objectClass.clear();
-            info.slotId.reset();
-            info.arrayLengthSlot.reset();
-            ++it;
-            continue;
-        }
-        it = symbols.erase(it);
-    }
+    symbolTable_.resetForNewProcedure();
 }
 
 /// @brief Compute the lowering slot characteristics for a symbol.

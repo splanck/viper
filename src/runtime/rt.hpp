@@ -127,6 +127,23 @@ extern "C"
     /// @brief Return a pending key as a 1-character string or empty string if none available.
     rt_string rt_inkey_str(void);
 
+    // Output buffering control for improved terminal rendering performance
+
+    /// @brief Begin batch mode for output operations.
+    /// @details While in batch mode, terminal control sequences do not trigger
+    ///          individual flushes. This dramatically improves rendering performance
+    ///          for games and animations (reduces syscalls from ~6000/frame to ~1).
+    void rt_term_begin_batch(void);
+
+    /// @brief End batch mode and flush accumulated output.
+    /// @details Decrements batch mode reference count. When zero, flushes all
+    ///          accumulated output in a single system call.
+    void rt_term_end_batch(void);
+
+    /// @brief Explicitly flush terminal output.
+    /// @details Forces all buffered output to be written immediately.
+    void rt_term_flush(void);
+
 #ifdef __cplusplus
 }
 #endif

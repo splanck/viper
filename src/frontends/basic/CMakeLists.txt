@@ -118,6 +118,9 @@ target_sources(fe_basic PRIVATE
         SemanticAnalyzer_Exprs.cpp
         SemanticAnalyzer_Builtins.cpp
         ScopeTracker.cpp
+        SymbolTable.cpp
+        TypeCoercionEngine.cpp
+        StringTable.cpp
         types/TypeMapping.cpp
         passes/CollectProcs.cpp
         constfold/Dispatch.cpp

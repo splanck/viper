@@ -328,34 +328,7 @@ Lowerer::RVal Lowerer::lowerBinaryExpr(const BinaryExpr &b)
 /// @return Updated value guaranteed to have `i64` type when conversion occurs.
 Lowerer::RVal Lowerer::coerceToI64(RVal v, il::support::SourceLoc loc)
 {
-    LocationScope location(*this, loc);
-    switch (v.type.kind)
-    {
-        case Type::Kind::I64:
-            return v;
-
-        case Type::Kind::I1:
-            v.value = emitBasicLogicalI64(v.value);
-            v.type = Type(Type::Kind::I64);
-            return v;
-
-        case Type::Kind::F64:
-            v.value = emitUnary(Opcode::CastFpToSiRteChk, Type(Type::Kind::I64), v.value);
-            v.type = Type(Type::Kind::I64);
-            return v;
-
-        case Type::Kind::I16:
-        case Type::Kind::I32:
-        {
-            const int fromBits = (v.type.kind == Type::Kind::I32) ? 32 : 16;
-            v.value = emitCommon(loc).widen_to(v.value, fromBits, 64);
-            v.type = Type(Type::Kind::I64);
-            return v;
-        }
-
-        default:
-            return v;
-    }
+    return coercion().toI64(std::move(v), loc);
 }
 
 /// @brief Coerce a value into a 64-bit floating-point representation.
@@ -364,16 +337,7 @@ Lowerer::RVal Lowerer::coerceToI64(RVal v, il::support::SourceLoc loc)
 /// @return Updated value guaranteed to have `f64` type when conversion occurs.
 Lowerer::RVal Lowerer::coerceToF64(RVal v, il::support::SourceLoc loc)
 {
-    LocationScope location(*this, loc);
-    if (v.type.kind == Type::Kind::F64)
-        return v;
-    v = coerceToI64(std::move(v), loc);
-    if (v.type.kind == Type::Kind::I64)
-    {
-        v.value = emitUnary(Opcode::Sitofp, Type(Type::Kind::F64), v.value);
-        v.type = Type(Type::Kind::F64);
-    }
-    return v;
+    return coercion().toF64(std::move(v), loc);
 }
 
 /// @brief Coerce a value into a boolean representation.
@@ -382,18 +346,7 @@ Lowerer::RVal Lowerer::coerceToF64(RVal v, il::support::SourceLoc loc)
 /// @return Updated value guaranteed to have `i1` type when conversion occurs.
 Lowerer::RVal Lowerer::coerceToBool(RVal v, il::support::SourceLoc loc)
 {
-    LocationScope location(*this, loc);
-    if (v.type.kind == Type::Kind::I1)
-        return v;
-    if (v.type.kind == Type::Kind::F64 || v.type.kind == Type::Kind::I16 ||
-        v.type.kind == Type::Kind::I32 || v.type.kind == Type::Kind::I64)
-        v = coerceToI64(std::move(v), loc);
-    if (v.type.kind != Type::Kind::I1)
-    {
-        v.value = emitUnary(Opcode::Trunc1, ilBoolTy(), v.value);
-        v.type = ilBoolTy();
-    }
-    return v;
+    return coercion().toBool(std::move(v), loc);
 }
 
 /// @brief Ensure a value is represented as a 64-bit integer.

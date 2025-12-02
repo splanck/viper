@@ -29,6 +29,7 @@
 #include "rt_format.h"
 #include "rt_int_format.h"
 #include "rt_internal.h"
+#include "rt_output.h"
 #include "rt_string_builder.h"
 
 #include <assert.h>
@@ -81,36 +82,72 @@ void rt_trap(const char *msg)
     vm_trap(msg);
 }
 
+// =============================================================================
+// Helper Functions
+// =============================================================================
+
+/// @brief Get the length of a runtime string safely.
+/// @param s Runtime string handle; may be null.
+/// @return Length in bytes, or 0 if s is null or has null data.
+static inline size_t rt_string_safe_len(rt_string s)
+{
+    if (!s || !s->data)
+        return 0;
+    return s->heap ? rt_heap_len(s->data) : s->literal_len;
+}
+
+/// @brief Handle string builder errors with consistent trap messages.
+/// @param sb String builder to free on error.
+/// @param op_name Name of the operation for error message.
+/// @param status Error status from string builder operation.
+static void rt_sb_check_status(rt_string_builder *sb, const char *op_name, rt_sb_status status)
+{
+    if (status == RT_SB_OK)
+        return;
+
+    const char *msg = op_name;
+    if (status == RT_SB_ERROR_ALLOC)
+    {
+        // Use a static buffer to avoid allocation in error path
+        static char alloc_msg[64];
+        snprintf(alloc_msg, sizeof(alloc_msg), "%s: alloc", op_name);
+        msg = alloc_msg;
+    }
+    else if (status == RT_SB_ERROR_OVERFLOW)
+    {
+        static char overflow_msg[64];
+        snprintf(overflow_msg, sizeof(overflow_msg), "%s: overflow", op_name);
+        msg = overflow_msg;
+    }
+    else if (status == RT_SB_ERROR_INVALID)
+    {
+        static char invalid_msg[64];
+        snprintf(invalid_msg, sizeof(invalid_msg), "%s: invalid", op_name);
+        msg = invalid_msg;
+    }
+
+    rt_sb_free(sb);
+    rt_trap(msg);
+}
+
 /// @brief Write a runtime string to stdout without appending a newline.
-/// @details Gracefully ignores null handles and strings with zero length.  Heap
-///          backed strings compute their length via @ref rt_heap_len while
-///          literal strings use the cached literal length.  The routine performs
-///          no buffering beyond the direct @c fwrite call.
+/// @details Gracefully ignores null handles and strings with zero length.  Uses
+///          the centralized output buffering system for improved performance.
+///          When batch mode is active, output accumulates until the batch ends.
 /// @param s Runtime string handle to print; may be null.
 void rt_print_str(rt_string s)
 {
-    if (!s || !s->data)
-        return;
-
-    size_t len = 0;
-    if (s->heap)
-    {
-        len = rt_heap_len(s->data);
-    }
-    else
-    {
-        len = s->literal_len;
-    }
-
+    size_t len = rt_string_safe_len(s);
     if (len == 0)
         return;
 
-    (void)fwrite(s->data, 1, len, stdout);
+    rt_output_strn(s->data, len);
 }
 
 /// @brief Print a signed 64-bit integer to stdout in decimal form.
 /// @details Formats the value using the runtime string builder to avoid
-///          temporary heap allocations.  Formatting failures trap with a
+///          temporary heap allocations.  Uses centralized output buffering
+///          for improved performance. Formatting failures trap with a
 ///          descriptive message so misconfigurations become visible during
 ///          testing.
 /// @param v Value to print.
@@ -119,34 +156,23 @@ void rt_print_i64(int64_t v)
     rt_string_builder sb;
     rt_sb_init(&sb);
     rt_sb_status status = rt_sb_append_int(&sb, v);
-    if (status != RT_SB_OK)
-    {
-        const char *msg = "rt_print_i64: format";
-        if (status == RT_SB_ERROR_ALLOC)
-            msg = "rt_print_i64: alloc";
-        else if (status == RT_SB_ERROR_OVERFLOW)
-            msg = "rt_print_i64: overflow";
-        else if (status == RT_SB_ERROR_INVALID)
-            msg = "rt_print_i64: invalid";
-        rt_sb_free(&sb);
-        rt_trap(msg);
-    }
+    rt_sb_check_status(&sb, "rt_print_i64", status);
 
     if (sb.len > 0)
-        (void)fwrite(sb.data, 1, sb.len, stdout);
+        rt_output_strn(sb.data, sb.len);
     rt_sb_free(&sb);
 }
 
 /// @brief Print a floating-point number to stdout.
 /// @details Uses @ref rt_format_f64 to normalise decimal separators and handle
-///          special values consistently before writing the formatted bytes to
-///          stdout.
+///          special values consistently. Uses centralized output buffering for
+///          improved performance.
 /// @param v Double precision value to print.
 void rt_print_f64(double v)
 {
     char buf[64];
     rt_format_f64(v, buf, sizeof(buf));
-    fputs(buf, stdout);
+    rt_output_str(buf);
 }
 
 /// @brief Grow an input buffer used by @ref rt_input_line.
@@ -180,11 +206,14 @@ rt_input_grow_result rt_input_try_grow(char **buf, size_t *cap)
 ///          trailing newline and optional carriage return, and returns a newly
 ///          allocated @ref rt_string that owns the resulting characters.  On
 ///          EOF before any bytes are read the function returns @c NULL to signal
-///          end-of-input.
+///          end-of-input. Flushes output first to ensure prompts are visible.
 /// @return Newly allocated runtime string without the trailing newline, or
 ///         @c NULL on EOF before reading data.
 rt_string rt_input_line(void)
 {
+    // Flush output before reading input so prompts are visible
+    rt_output_flush();
+
     size_t cap = 1024;
     size_t len = 0;
     char *buf = (char *)rt_alloc(cap);

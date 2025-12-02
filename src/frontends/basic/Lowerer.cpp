@@ -192,13 +192,20 @@ bool Lowerer::isFieldArray(std::string_view className, std::string_view fieldNam
 Lowerer::Lowerer(bool boundsChecks)
     : programLowering(std::make_unique<ProgramLowering>(*this)),
       procedureLowering(std::make_unique<ProcedureLowering>(*this)),
-      statementLowering(std::make_unique<StatementLowering>(*this)), boundsChecks(boundsChecks),
-      /// @brief Emits ter_.
+      statementLowering(std::make_unique<StatementLowering>(*this)),
+      symbols(symbolTable_.raw()), // Legacy alias for backward compatibility
+      boundsChecks(boundsChecks),
       emitter_(std::make_unique<lower::Emitter>(*this)),
+      coercionEngine_(std::make_unique<TypeCoercionEngine>(*this)),
       ioStmtLowerer_(std::make_unique<IoStatementLowerer>(*this)),
       ctrlStmtLowerer_(std::make_unique<ControlStatementLowerer>(*this)),
       runtimeStmtLowerer_(std::make_unique<RuntimeStatementLowerer>(*this))
 {
+}
+
+TypeCoercionEngine &Lowerer::coercion() noexcept
+{
+    return *coercionEngine_;
 }
 
 /// @brief Default destructor to anchor unique_ptr members in the translation unit.

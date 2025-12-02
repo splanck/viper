@@ -77,10 +77,14 @@
 #include "frontends/basic/IdentifierUtil.hpp"
 #include "frontends/basic/LowerRuntime.hpp"
 #include "frontends/basic/LowererContext.hpp"
+#include "frontends/basic/LowererFwd.hpp"
 #include "frontends/basic/LowererRuntimeHelpers.hpp"
 #include "frontends/basic/LowererTypes.hpp"
 #include "frontends/basic/NameMangler.hpp"
 #include "frontends/basic/OopIndex.hpp"
+#include "frontends/basic/StringTable.hpp"
+#include "frontends/basic/SymbolTable.hpp"
+#include "frontends/basic/TypeCoercionEngine.hpp"
 #include "frontends/basic/TypeRules.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
 #include "viper/il/IRBuilder.hpp"
@@ -99,49 +103,7 @@
 namespace il::frontends::basic
 {
 
-class LowererExprVisitor;
-class LowererStmtVisitor;
-struct ProgramLowering;
-struct ProcedureLowering;
-struct StatementLowering;
-class DiagnosticEmitter;
-class SelectCaseLowering;
-class SemanticAnalyzer;
-class StatementLowerer;
-class IoStatementLowerer;
-class ControlStatementLowerer;
-class RuntimeStatementLowerer;
-struct OopLoweringContext;
-
-struct LogicalExprLowering;
-struct NumericExprLowering;
-struct BuiltinExprLowering;
-
-namespace builtins
-{
-class LowerCtx;
-} // namespace builtins
-
-namespace lower
-{
-class Emitter;
-class BuiltinLowerContext;
-
-namespace common
-{
-class CommonLowering;
-} // namespace common
-
-namespace detail
-{
-class ExprTypeScanner;
-class RuntimeNeedsScanner;
-} // namespace detail
-} // namespace lower
-
-class Emit;
-enum class OverflowPolicy;
-enum class Signedness;
+// Forward declarations are now in LowererFwd.hpp
 
 /// @brief Lowers BASIC AST into IL Module.
 /// @invariant Generates deterministic block names per procedure using BlockNamer.
@@ -231,6 +193,7 @@ class Lowerer
     friend class RuntimeStatementLowerer;
     friend class OopEmitHelper;
     friend class RuntimeCallBuilder;
+    friend class TypeCoercionEngine;
 
     using Module = il::core::Module;
     using Function = il::core::Function;
@@ -610,6 +573,10 @@ class Lowerer
     Emit emitCommon() noexcept;
     Emit emitCommon(il::support::SourceLoc loc) noexcept;
 
+    /// @brief Get the type coercion engine for this lowerer.
+    /// @return Reference to the coercion engine.
+    TypeCoercionEngine &coercion() noexcept;
+
     /// @brief Narrow a 64-bit value to 32 bits for runtime calls.
     /// @details Convenience wrapper around emitCommon().to_iN(value, 32) that reduces
     ///          boilerplate when preparing arguments for 32-bit runtime functions.
@@ -697,11 +664,13 @@ class Lowerer
     build::IRBuilder *builder{nullptr};
     Module *mod{nullptr};
     NameMangler mangler;
-    std::unordered_map<std::string, SymbolInfo> symbols;
+    SymbolTable symbolTable_;                               ///< Unified symbol table.
+    std::unordered_map<std::string, SymbolInfo> &symbols;   ///< Legacy alias (references symbolTable_.raw()).
+    StringTable stringTable_;                               ///< String literal interning.
     il::support::SourceLoc curLoc{}; ///< current source location for emitted IR
     bool boundsChecks{false};
     static constexpr int kGosubStackDepth = 128;
-    size_t nextStringId{0};
+    size_t nextStringId{0}; ///< @deprecated Use stringTable_ instead.
     size_t nextFallbackBlockId{0};
     std::unordered_map<std::string, ProcedureSignature> procSignatures;
     std::unordered_map<std::string, std::string> procNameAliases;
@@ -713,6 +682,7 @@ class Lowerer
     ProcedureContext context_;
 
     std::unique_ptr<lower::Emitter> emitter_;
+    std::unique_ptr<TypeCoercionEngine> coercionEngine_;
 
     DiagnosticEmitter *diagnosticEmitter_{nullptr};
     const SemanticAnalyzer *semanticAnalyzer_{nullptr};
@@ -853,8 +823,7 @@ class Lowerer
     /// @brief OOP lowering context for passing through the pipeline.
     std::unique_ptr<OopLoweringContext> oopContext_;
 
-    /// @brief Stack of active field scopes while lowering class members.
-    std::vector<FieldScope> fieldScopeStack_;
+    // Field scopes are now managed internally by symbolTable_.
 
     /// @brief Active namespace path segments used for qualification during lowering.
     std::vector<std::string> nsStack_;

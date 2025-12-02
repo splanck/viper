@@ -70,6 +70,10 @@ void register_fileio_signatures()
     register_signature(make_signature("rt_getkey_str", {}, {Kind::Ptr}));
     register_signature(make_signature("rt_getkey_timeout_i32", {Kind::I32}, {Kind::Ptr}));
     register_signature(make_signature("rt_inkey_str", {}, {Kind::Ptr}));
+    // Output buffering control for improved terminal rendering performance
+    register_signature(make_signature("rt_term_begin_batch", {}));
+    register_signature(make_signature("rt_term_end_batch", {}));
+    register_signature(make_signature("rt_term_flush", {}));
     register_signature(
         make_signature("rt_open_err_vstr", {Kind::Ptr, Kind::I32, Kind::I32}, {Kind::I32}));
     register_signature(make_signature("rt_close_err", {Kind::I32}, {Kind::I32}));

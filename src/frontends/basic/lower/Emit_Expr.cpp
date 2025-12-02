@@ -646,13 +646,21 @@ Value Lowerer::emitConstStr(const std::string &globalName)
 
 std::string Lowerer::getStringLabel(const std::string &s)
 {
-    auto &info = ensureSymbol(s);
-    if (!info.stringLabel.empty())
-        return info.stringLabel;
-    std::string name = ".L" + std::to_string(nextStringId++);
-    builder->addGlobalStr(name, s);
-    info.stringLabel = name;
-    return info.stringLabel;
+    // Check if already interned in the StringTable
+    std::string existing = stringTable_.lookup(s);
+    if (!existing.empty())
+        return existing;
+
+    // Set up the emitter callback if not already configured
+    if (!stringTable_.size())
+    {
+        stringTable_.setEmitter([this](const std::string &label, const std::string &content) {
+            builder->addGlobalStr(label, content);
+        });
+    }
+
+    // Intern the string (this will call the emitter callback)
+    return stringTable_.intern(s);
 }
 
 } // namespace il::frontends::basic

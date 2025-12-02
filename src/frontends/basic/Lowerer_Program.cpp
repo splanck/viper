@@ -92,8 +92,8 @@ void ProgramLowering::run(const Program &prog, il::core::Module &module)
     lowerer.mangler = NameMangler();
     auto &ctx = lowerer.context();
     ctx.reset();
-    lowerer.symbols.clear();
-    lowerer.nextStringId = 0;
+    lowerer.symbolTable_.clear();
+    lowerer.stringTable_.clear();
     lowerer.procSignatures.clear();
 
     lowerer.runtimeTracker.reset();

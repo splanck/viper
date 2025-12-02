@@ -4,6 +4,7 @@ set(RT_SOURCES
         rt_trap.c
         rt_fp.c
         rt_memory.c
+        rt_output.c
         rt_string_ops.c
         rt_string_builder.c
         rt_string_format.c
@@ -58,6 +59,7 @@ set(RT_PUBLIC_HEADERS
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_int_format.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_printf_compat.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_string_builder.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/rt_output.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_modvar.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_args.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_ns_bridge.h
