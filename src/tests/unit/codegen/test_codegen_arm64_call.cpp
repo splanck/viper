@@ -47,6 +47,16 @@ static std::string readFile(const std::string &path)
     return ss.str();
 }
 
+/// @brief Returns the expected mangled symbol name for a call target.
+static std::string blSym(const std::string &name)
+{
+#if defined(__APPLE__)
+    return "bl _" + name;
+#else
+    return "bl " + name;
+#endif
+}
+
 TEST(Arm64CLI, CallRR_FwdRet)
 {
     const std::string in = outPath("arm64_call_rr.il");
@@ -63,7 +73,7 @@ TEST(Arm64CLI, CallRR_FwdRet)
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
     // Expect call emitted
-    EXPECT_NE(asmText.find("bl h"), std::string::npos);
+    EXPECT_NE(asmText.find(blSym("h")), std::string::npos);
 }
 
 int main(int argc, char **argv)

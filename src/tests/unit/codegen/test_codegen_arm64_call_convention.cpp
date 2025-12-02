@@ -44,6 +44,17 @@ static std::string readFile(const std::string &path)
     return ss.str();
 }
 
+/// @brief Returns the expected mangled symbol name for a call target.
+/// On Darwin (macOS), symbols are prefixed with underscore.
+static std::string blSym(const std::string &name)
+{
+#if defined(__APPLE__)
+    return "bl _" + name;
+#else
+    return "bl " + name;
+#endif
+}
+
 // Test 1: Simple add3(a, b, c) helper
 TEST(Arm64CallConv, Add3Helper)
 {
@@ -87,7 +98,7 @@ TEST(Arm64CallConv, CallerWithComputedArgs)
     EXPECT_NE(asmText.find("mul x"), std::string::npos);
     EXPECT_NE(asmText.find("add x"), std::string::npos);
     EXPECT_NE(asmText.find("sub x"), std::string::npos);
-    EXPECT_NE(asmText.find("bl add3"), std::string::npos);
+    EXPECT_NE(asmText.find(blSym("add3")), std::string::npos);
 }
 
 // Test 3: Call result stored to local and reused
@@ -110,7 +121,7 @@ TEST(Arm64CallConv, CallResultStoredAndReused)
     const char *argv[] = {in.c_str(), "-S", out.c_str()};
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
-    EXPECT_NE(asmText.find("bl twice"), std::string::npos);
+    EXPECT_NE(asmText.find(blSym("twice")), std::string::npos);
     EXPECT_NE(asmText.find("str x"), std::string::npos);
     EXPECT_NE(asmText.find("ldr x"), std::string::npos);
 }
@@ -134,11 +145,12 @@ TEST(Arm64CallConv, MultipleCalls)
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
     // Expect three calls
-    std::size_t pos1 = asmText.find("bl inc");
+    const std::string blInc = blSym("inc");
+    std::size_t pos1 = asmText.find(blInc);
     EXPECT_NE(pos1, std::string::npos);
-    std::size_t pos2 = asmText.find("bl inc", pos1 + 1);
+    std::size_t pos2 = asmText.find(blInc, pos1 + 1);
     EXPECT_NE(pos2, std::string::npos);
-    std::size_t pos3 = asmText.find("bl inc", pos2 + 1);
+    std::size_t pos3 = asmText.find(blInc, pos2 + 1);
     EXPECT_NE(pos3, std::string::npos);
 }
 
@@ -165,7 +177,7 @@ TEST(Arm64CallConv, ManyArgsComputed)
     EXPECT_NE(asmText.find("str x"), std::string::npos);
     EXPECT_NE(asmText.find("[sp, #0]"), std::string::npos);
     EXPECT_NE(asmText.find("[sp, #8]"), std::string::npos);
-    EXPECT_NE(asmText.find("bl sum10"), std::string::npos);
+    EXPECT_NE(asmText.find(blSym("sum10")), std::string::npos);
     EXPECT_NE(asmText.find("add sp, sp, #16"), std::string::npos);
 }
 
@@ -190,7 +202,7 @@ TEST(Arm64CallConv, CallResultInCondition)
     const char *argv[] = {in.c_str(), "-S", out.c_str()};
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
-    EXPECT_NE(asmText.find("bl check"), std::string::npos);
+    EXPECT_NE(asmText.find(blSym("check")), std::string::npos);
     // After the call, the result is compared
     EXPECT_NE(asmText.find("cmp x"), std::string::npos);
 }

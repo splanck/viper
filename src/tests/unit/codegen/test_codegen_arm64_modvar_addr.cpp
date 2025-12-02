@@ -39,6 +39,16 @@ static std::string readFile(const std::string &path)
     return ss.str();
 }
 
+/// @brief Returns the expected mangled symbol name for a call target.
+static std::string blSym(const std::string &name)
+{
+#if defined(__APPLE__)
+    return "bl _" + name;
+#else
+    return "bl " + name;
+#endif
+}
+
 TEST(Arm64CLI, ModvarAddr_LoadStore)
 {
     const std::string in = outPath("arm64_modvar_addr.il");
@@ -60,7 +70,7 @@ TEST(Arm64CLI, ModvarAddr_LoadStore)
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
     // Expect a call and base-relative load/store
-    EXPECT_NE(asmText.find("bl rt_modvar_addr_i64"), std::string::npos);
+    EXPECT_NE(asmText.find(blSym("rt_modvar_addr_i64")), std::string::npos);
     EXPECT_NE(asmText.find("ldr x"), std::string::npos);
     EXPECT_NE(asmText.find("str x"), std::string::npos);
     EXPECT_NE(asmText.find("[x"), std::string::npos);

@@ -44,6 +44,16 @@ static std::string readFile(const std::string &path)
     return ss.str();
 }
 
+/// @brief Returns the expected mangled symbol name for a call target.
+static std::string blSym(const std::string &name)
+{
+#if defined(__APPLE__)
+    return "bl _" + name;
+#else
+    return "bl " + name;
+#endif
+}
+
 // Test 1: FP addition - f(x: f64) -> f64 returns x + 1.0
 TEST(Arm64FP, FAddSimple)
 {
@@ -201,7 +211,7 @@ TEST(Arm64FP, CallFPExtern)
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
     // Expect bl rt_add_double
-    EXPECT_NE(asmText.find("bl rt_add_double"), std::string::npos);
+    EXPECT_NE(asmText.find(blSym("rt_add_double")), std::string::npos);
     // Args should be marshalled to v0, v1 for FP
     // Result comes back in v0
 }
@@ -222,7 +232,7 @@ TEST(Arm64FP, MixedCall)
     const char *argv[] = {in.c_str(), "-S", out.c_str()};
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
-    EXPECT_NE(asmText.find("bl mixed"), std::string::npos);
+    EXPECT_NE(asmText.find(blSym("mixed")), std::string::npos);
 }
 
 int main(int argc, char **argv)

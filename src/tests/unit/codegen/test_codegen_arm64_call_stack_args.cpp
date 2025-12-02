@@ -47,6 +47,16 @@ static std::string readFile(const std::string &path)
     return ss.str();
 }
 
+/// @brief Returns the expected mangled symbol name for a call target.
+static std::string blSym(const std::string &name)
+{
+#if defined(__APPLE__)
+    return "bl _" + name;
+#else
+    return "bl " + name;
+#endif
+}
+
 TEST(Arm64CLI, CallWithStackArgs)
 {
     const std::string in = outPath("arm64_call_stack.il");
@@ -69,7 +79,7 @@ TEST(Arm64CLI, CallWithStackArgs)
     EXPECT_NE(asmText.find("[sp, #0]"), std::string::npos);
     EXPECT_NE(asmText.find("[sp, #8]"), std::string::npos);
     // Call and stack deallocation
-    EXPECT_NE(asmText.find("bl h"), std::string::npos);
+    EXPECT_NE(asmText.find(blSym("h")), std::string::npos);
     EXPECT_NE(asmText.find("add sp, sp, #16"), std::string::npos);
 }
 

@@ -47,6 +47,16 @@ static std::string readFile(const std::string &path)
     return ss.str();
 }
 
+/// @brief Returns the expected mangled symbol name for a call target.
+static std::string blSym(const std::string &name)
+{
+#if defined(__APPLE__)
+    return "bl _" + name;
+#else
+    return "bl " + name;
+#endif
+}
+
 TEST(Arm64CLI, TrapSimple)
 {
     const std::string in = outPath("arm64_trap.il");
@@ -60,7 +70,7 @@ TEST(Arm64CLI, TrapSimple)
     const char *argv[] = {in.c_str(), "-S", out.c_str()};
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
-    EXPECT_NE(asmText.find("bl rt_trap"), std::string::npos);
+    EXPECT_NE(asmText.find(blSym("rt_trap")), std::string::npos);
 }
 
 TEST(Arm64CLI, TrapFromErr)
@@ -76,7 +86,7 @@ TEST(Arm64CLI, TrapFromErr)
     const char *argv[] = {in.c_str(), "-S", out.c_str()};
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
-    EXPECT_NE(asmText.find("bl rt_trap"), std::string::npos);
+    EXPECT_NE(asmText.find(blSym("rt_trap")), std::string::npos);
 }
 
 TEST(Arm64CLI, EhMarkersNoop)
@@ -97,7 +107,7 @@ TEST(Arm64CLI, EhMarkersNoop)
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
     // We should see the trap helper call; EH markers produce no extra code.
-    EXPECT_NE(asmText.find("bl rt_trap"), std::string::npos);
+    EXPECT_NE(asmText.find(blSym("rt_trap")), std::string::npos);
 }
 
 int main(int argc, char **argv)

@@ -18,17 +18,181 @@
 namespace viper::codegen::aarch64
 {
 
+/// @brief Map IL extern names to C runtime symbol names.
+/// The IL uses namespaced names like "Viper.Console.PrintI64" but the runtime
+/// exports C-style names like "rt_print_i64".
+static std::string mapRuntimeSymbol(const std::string &name)
+{
+    // Common runtime symbol mappings
+    if (name == "Viper.Console.PrintI64")
+        return "rt_print_i64";
+    if (name == "Viper.Console.PrintF64")
+        return "rt_print_f64";
+    if (name == "Viper.Console.PrintStr")
+        return "rt_print_str";
+    if (name == "Viper.Console.ReadLine")
+        return "rt_input_line";
+    if (name == "Viper.Strings.Len")
+        return "rt_len";
+    if (name == "Viper.String.get_Length")
+        return "rt_len";
+    if (name == "Viper.Strings.Concat")
+        return "rt_concat";
+    if (name == "Viper.String.Concat")
+        return "rt_concat";
+    if (name == "Viper.Strings.Mid")
+        return "rt_substr";
+    if (name == "Viper.String.Substring")
+        return "rt_substr";
+    if (name == "Viper.Convert.ToInt")
+        return "rt_to_int";
+    if (name == "Viper.Convert.ToDouble")
+        return "rt_to_double";
+    if (name == "Viper.Strings.FromInt")
+        return "rt_int_to_str";
+    if (name == "Viper.Strings.FromDouble")
+        return "rt_f64_to_str";
+    if (name == "Viper.Diagnostics.Trap")
+        return "rt_trap";
+    if (name == "Viper.Math.Abs")
+        return "rt_abs_f64";
+    if (name == "Viper.Math.Sqrt")
+        return "rt_sqrt";
+    if (name == "Viper.Math.Sin")
+        return "rt_sin";
+    if (name == "Viper.Math.Cos")
+        return "rt_cos";
+    if (name == "Viper.Math.Tan")
+        return "rt_tan";
+    if (name == "Viper.Math.Floor")
+        return "rt_floor";
+    if (name == "Viper.Math.Ceil")
+        return "rt_ceil";
+    if (name == "Viper.Math.Pow")
+        return "rt_pow_f64_chkdom";
+    if (name == "Viper.Math.Log")
+        return "rt_log";
+    if (name == "Viper.Math.Exp")
+        return "rt_exp";
+    if (name == "Viper.Math.Atan")
+        return "rt_atan";
+    if (name == "Viper.Math.Sgn")
+        return "rt_sgn_f64";
+    if (name == "Viper.Math.SgnInt")
+        return "rt_sgn_i64";
+    if (name == "Viper.Math.AbsInt")
+        return "rt_abs_i64";
+    if (name == "Viper.Math.Min")
+        return "rt_min_f64";
+    if (name == "Viper.Math.Max")
+        return "rt_max_f64";
+    if (name == "Viper.Math.MinInt")
+        return "rt_min_i64";
+    if (name == "Viper.Math.MaxInt")
+        return "rt_max_i64";
+    if (name == "Viper.Random.Seed")
+        return "rt_randomize_i64";
+    if (name == "Viper.Random.Next")
+        return "rt_rnd";
+    if (name == "Viper.Environment.GetArgumentCount")
+        return "rt_args_count";
+    if (name == "Viper.Environment.GetArgument")
+        return "rt_args_get";
+    if (name == "Viper.Environment.GetCommandLine")
+        return "rt_cmdline";
+    if (name == "Viper.String.Left")
+        return "rt_left";
+    if (name == "Viper.String.Right")
+        return "rt_right";
+    if (name == "Viper.String.Mid")
+        return "rt_mid2";
+    if (name == "Viper.String.MidLen")
+        return "rt_mid3";
+    if (name == "Viper.String.Trim")
+        return "rt_trim";
+    if (name == "Viper.String.TrimStart")
+        return "rt_ltrim";
+    if (name == "Viper.String.TrimEnd")
+        return "rt_rtrim";
+    if (name == "Viper.String.ToUpper")
+        return "rt_ucase";
+    if (name == "Viper.String.ToLower")
+        return "rt_lcase";
+    if (name == "Viper.String.IndexOf")
+        return "rt_instr2";
+    if (name == "Viper.String.IndexOfFrom")
+        return "rt_instr3";
+    if (name == "Viper.String.Chr")
+        return "rt_chr";
+    if (name == "Viper.String.Asc")
+        return "rt_asc";
+    if (name == "Viper.Collections.List.New")
+        return "rt_ns_list_new";
+    if (name == "Viper.Collections.List.get_Count")
+        return "rt_list_get_count";
+    if (name == "Viper.Collections.List.Add")
+        return "rt_list_add";
+    if (name == "Viper.Collections.List.Clear")
+        return "rt_list_clear";
+    if (name == "Viper.Collections.List.RemoveAt")
+        return "rt_list_remove_at";
+    if (name == "Viper.Collections.List.get_Item")
+        return "rt_list_get_item";
+    if (name == "Viper.Collections.List.set_Item")
+        return "rt_list_set_item";
+    if (name == "Viper.Text.StringBuilder.New")
+        return "rt_ns_stringbuilder_new";
+    if (name == "Viper.Text.StringBuilder.Append")
+        return "rt_text_sb_append";
+    if (name == "Viper.Text.StringBuilder.ToString")
+        return "rt_text_sb_to_string";
+    if (name == "Viper.Text.StringBuilder.Clear")
+        return "rt_text_sb_clear";
+    if (name == "Viper.IO.File.Exists")
+        return "rt_io_file_exists";
+    if (name == "Viper.IO.File.ReadAllText")
+        return "rt_io_file_read_all_text";
+    if (name == "Viper.IO.File.WriteAllText")
+        return "rt_io_file_write_all_text";
+    if (name == "Viper.IO.File.Delete")
+        return "rt_io_file_delete";
+    // Not a known runtime symbol, return as-is
+    return name;
+}
+
+/// @brief Mangle a symbol name for the target platform.
+/// On Darwin (macOS), C symbols require an underscore prefix.
+/// Local labels (starting with L or .) are not mangled.
+static std::string mangleSymbol(const std::string &name)
+{
+#if defined(__APPLE__)
+    // Don't mangle local labels (L* or .L*)
+    if (!name.empty() && (name[0] == 'L' || name[0] == '.'))
+        return name;
+    // Add underscore prefix for Darwin
+    return "_" + name;
+#else
+    return name;
+#endif
+}
+
+/// @brief Mangle a call target symbol for emission.
+/// This first maps IL runtime names to C runtime names, then applies platform mangling.
+static std::string mangleCallTarget(const std::string &name)
+{
+    return mangleSymbol(mapRuntimeSymbol(name));
+}
+
 void AsmEmitter::emitFunctionHeader(std::ostream &os, const std::string &name) const
 {
     // Keep directives minimal and assembler-agnostic for testing.
     os << ".text\n";
     os << ".align 2\n";
-    // Do not mangle or prefix symbols (e.g., with '_' on Darwin) in the emitter;
-    // CLI may rewrite for host toolchain requirements. On Darwin, avoid emitting
-    // .globl for L*-prefixed names (reserved for local/temporary symbols).
-    const std::string sym = name;
+    // Mangle symbol names for the target platform (e.g., add '_' prefix on Darwin).
+    // On Darwin, avoid emitting .globl for L*-prefixed names (reserved for local/temporary).
+    const std::string sym = mangleSymbol(name);
 #if defined(__APPLE__)
-    if (!(sym.size() >= 1 && sym[0] == 'L'))
+    if (!(sym.size() >= 1 && (sym[0] == 'L' || (sym.size() >= 2 && sym[0] == '_' && sym[1] == 'L'))))
     {
         os << ".globl " << sym << "\n";
     }

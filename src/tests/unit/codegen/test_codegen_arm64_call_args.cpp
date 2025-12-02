@@ -47,6 +47,16 @@ static std::string readFile(const std::string &path)
     return ss.str();
 }
 
+/// @brief Returns the expected mangled symbol name for a call target.
+static std::string blSym(const std::string &name)
+{
+#if defined(__APPLE__)
+    return "bl _" + name;
+#else
+    return "bl " + name;
+#endif
+}
+
 TEST(Arm64CLI, CallRI_MarshalImm)
 {
     const std::string in = outPath("arm64_call_ri.il");
@@ -63,7 +73,7 @@ TEST(Arm64CLI, CallRI_MarshalImm)
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
     EXPECT_NE(asmText.find("mov x1, #5"), std::string::npos);
-    EXPECT_NE(asmText.find("bl h"), std::string::npos);
+    EXPECT_NE(asmText.find(blSym("h")), std::string::npos);
 }
 
 TEST(Arm64CLI, CallRR_Swap)
@@ -82,7 +92,7 @@ TEST(Arm64CLI, CallRR_Swap)
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
     // Expect use of scratch (x9) or direct swap; accept either form.
-    EXPECT_NE(asmText.find("bl h"), std::string::npos);
+    EXPECT_NE(asmText.find(blSym("h")), std::string::npos);
     const bool direct = (asmText.find("mov x0, x1") != std::string::npos) &&
                         (asmText.find("mov x1, x0") != std::string::npos);
     const bool scratch = (asmText.find("mov x9, x1") != std::string::npos) &&
@@ -109,7 +119,7 @@ TEST(Arm64CLI, CallRRI_ThreeArgs)
     EXPECT_NE(asmText.find("mov x0, x1"), std::string::npos);
     EXPECT_NE(asmText.find("mov x1, #7"), std::string::npos);
     EXPECT_NE(asmText.find("mov x2, x0"), std::string::npos);
-    EXPECT_NE(asmText.find("bl h"), std::string::npos);
+    EXPECT_NE(asmText.find(blSym("h")), std::string::npos);
 }
 
 int main(int argc, char **argv)

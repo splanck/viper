@@ -23,6 +23,16 @@
 
 using namespace viper::codegen::aarch64;
 
+/// @brief Returns the expected mangled symbol name on Darwin.
+static std::string mangledSym(const std::string &name)
+{
+#if defined(__APPLE__)
+    return "_" + name;
+#else
+    return name;
+#endif
+}
+
 TEST(AArch64MIR, FramePlanEmitFunction)
 {
     auto &ti = darwinTarget();
@@ -40,8 +50,8 @@ TEST(AArch64MIR, FramePlanEmitFunction)
     emitter.emitFunction(os, mf);
     const std::string s = os.str();
     // Prologue header
-    EXPECT_NE(s.find(".globl fpfn"), std::string::npos);
-    EXPECT_NE(s.find("fpfn:"), std::string::npos);
+    EXPECT_NE(s.find(".globl " + mangledSym("fpfn")), std::string::npos);
+    EXPECT_NE(s.find(mangledSym("fpfn") + ":"), std::string::npos);
     // Frame saves after FP/LR
     EXPECT_NE(s.find("stp x29, x30"), std::string::npos);
     EXPECT_NE(s.find("stp x19, x20"), std::string::npos);

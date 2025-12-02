@@ -44,6 +44,16 @@ static std::string readFile(const std::string &path)
     return ss.str();
 }
 
+/// @brief Returns the expected mangled symbol name for a call target.
+static std::string blSym(const std::string &name)
+{
+#if defined(__APPLE__)
+    return "bl _" + name;
+#else
+    return "bl " + name;
+#endif
+}
+
 TEST(Arm64CLI, CallMidFunction_ResultReused)
 {
     const std::string in = outPath("arm64_call_mid.il");
@@ -64,7 +74,7 @@ TEST(Arm64CLI, CallMidFunction_ResultReused)
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
     // Expect call, store to FP-rel local, later load and add
-    EXPECT_NE(asmText.find("bl twice"), std::string::npos);
+    EXPECT_NE(asmText.find(blSym("twice")), std::string::npos);
     // Store to FP-relative local (may be from x0 directly or via a vreg)
     EXPECT_NE(asmText.find("str x"), std::string::npos);
     EXPECT_NE(asmText.find("[x29, #"), std::string::npos);

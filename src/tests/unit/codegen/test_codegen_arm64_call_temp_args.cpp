@@ -47,6 +47,16 @@ static std::string readFile(const std::string &path)
     return ss.str();
 }
 
+/// @brief Returns the expected mangled symbol name for a call target.
+static std::string blSym(const std::string &name)
+{
+#if defined(__APPLE__)
+    return "bl _" + name;
+#else
+    return "bl " + name;
+#endif
+}
+
 TEST(Arm64CLI, CallWithTempRR)
 {
     const std::string in = outPath("arm64_call_temp_rr.il");
@@ -66,7 +76,7 @@ TEST(Arm64CLI, CallWithTempRR)
     // Expect add into x9 and then move to x0
     EXPECT_NE(asmText.find("add x9, x0, x1"), std::string::npos);
     EXPECT_NE(asmText.find("mov x0, x9"), std::string::npos);
-    EXPECT_NE(asmText.find("bl h"), std::string::npos);
+    EXPECT_NE(asmText.find(blSym("h")), std::string::npos);
 }
 
 TEST(Arm64CLI, CallWithTempRI)
@@ -87,7 +97,7 @@ TEST(Arm64CLI, CallWithTempRI)
     const std::string asmText = readFile(out);
     EXPECT_NE(asmText.find("add x9, x1, #5"), std::string::npos);
     EXPECT_NE(asmText.find("mov x1, x9"), std::string::npos);
-    EXPECT_NE(asmText.find("bl h"), std::string::npos);
+    EXPECT_NE(asmText.find(blSym("h")), std::string::npos);
 }
 
 TEST(Arm64CLI, CallWithTempShift)
@@ -108,7 +118,7 @@ TEST(Arm64CLI, CallWithTempShift)
     const std::string asmText = readFile(out);
     EXPECT_NE(asmText.find("lsl x9, x0, #3"), std::string::npos);
     EXPECT_NE(asmText.find("mov x0, x9"), std::string::npos);
-    EXPECT_NE(asmText.find("bl h"), std::string::npos);
+    EXPECT_NE(asmText.find(blSym("h")), std::string::npos);
 }
 
 TEST(Arm64CLI, CallWithCompareTemp)
@@ -130,7 +140,7 @@ TEST(Arm64CLI, CallWithCompareTemp)
     EXPECT_NE(asmText.find("cmp x0, x1"), std::string::npos);
     EXPECT_NE(asmText.find("cset x9, eq"), std::string::npos);
     EXPECT_NE(asmText.find("mov x0, x9"), std::string::npos);
-    EXPECT_NE(asmText.find("bl h"), std::string::npos);
+    EXPECT_NE(asmText.find(blSym("h")), std::string::npos);
 }
 
 TEST(Arm64CLI, CallWithTwoTemps)
@@ -155,7 +165,7 @@ TEST(Arm64CLI, CallWithTwoTemps)
     EXPECT_NE(asmText.find("lsl x10, x1, #1"), std::string::npos);
     EXPECT_NE(asmText.find("mov x0, x9"), std::string::npos);
     EXPECT_NE(asmText.find("mov x1, x10"), std::string::npos);
-    EXPECT_NE(asmText.find("bl h"), std::string::npos);
+    EXPECT_NE(asmText.find(blSym("h")), std::string::npos);
 }
 
 int main(int argc, char **argv)

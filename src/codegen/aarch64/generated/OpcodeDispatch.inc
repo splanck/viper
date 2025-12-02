@@ -144,14 +144,14 @@ switch (mi.opc)
         os << "  b." << mi.ops[0].cond << " " << mi.ops[1].label << "\n";
         break;
     case K::Bl:
-        os << "  bl " << mi.ops[0].label << "\n";
+        os << "  bl " << mangleCallTarget(mi.ops[0].label) << "\n";
         break;
     case K::AdrPage:
-        os << "  adrp " << rn(reg(mi.ops[0])) << ", " << mi.ops[1].label << "@PAGE\n";
+        os << "  adrp " << rn(reg(mi.ops[0])) << ", " << mangleSymbol(mi.ops[1].label) << "@PAGE\n";
         break;
     case K::AddPageOff:
         os << "  add " << rn(reg(mi.ops[0])) << ", " << rn(reg(mi.ops[1])) << ", "
-           << mi.ops[2].label << "@PAGEOFF\n";
+           << mangleSymbol(mi.ops[2].label) << "@PAGEOFF\n";
         break;
     default:
         os << "  # <unknown opcode>\n";
