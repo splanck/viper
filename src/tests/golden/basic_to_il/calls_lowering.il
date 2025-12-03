@@ -29,7 +29,7 @@ entry:
 func @F#(f64 %X#) -> f64 {
 entry_F#(%X#:f64):
   %t1 = alloca 8
-  store f64, %t1, %t0
+  store f64, %t1, %X#
   br L-1000000000_F#
 L-1000000000_F#:
   .loc 1 2 8
@@ -42,7 +42,7 @@ ret_F#:
 func @ID$(str %S$) -> str {
 entry_ID$(%S$:str):
   %t1 = alloca 8
-  store str, %t1, %t0
+  store str, %t1, %S$
   br L-1000000000_ID$
 L-1000000000_ID$:
   .loc 1 5 8
@@ -56,7 +56,7 @@ ret_ID$:
 func @FIRST#(i64 %N) -> f64 {
 entry_FIRST#(%N:i64):
   %t1 = alloca 8
-  store i64, %t1, %t0
+  store i64, %t1, %N
   br L-1000000000_FIRST#
 L-1000000000_FIRST#:
   .loc 1 8 1
@@ -98,7 +98,7 @@ if_end_0_FIRST#:
 func @SECOND#(f64 %N#) -> f64 {
 entry_SECOND#(%N#:f64):
   %t1 = alloca 8
-  store f64, %t1, %t0
+  store f64, %t1, %N#
   br L-1000000000_SECOND#
 L-1000000000_SECOND#:
   .loc 1 12 1

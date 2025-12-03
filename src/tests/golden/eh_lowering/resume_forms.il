@@ -97,5 +97,5 @@ handler ^handler_L200(%err:Error, %tok:ResumeTok):
 handler ^handler_L300(%err:Error, %tok:ResumeTok):
   eh.entry
   .loc 1 5 5
-  resume.same %t5
+  resume.same %tok
 }

@@ -460,3 +460,38 @@ if (NOT TARGET test_namespace_e2e)
     target_link_libraries(test_namespace_e2e PRIVATE fe_basic viper_support)
     viper_add_ctest(test_namespace_e2e test_namespace_e2e)
 endif ()
+
+# ARM64 native linking tests - only on macOS ARM64
+if (CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64" AND APPLE)
+    set(_VIPER_E2E_DIR ${CMAKE_CURRENT_LIST_DIR})
+
+    # Chess demo - compile, assemble, link
+    viper_add_ctest(arm64_native_chess
+            ${CMAKE_COMMAND}
+            -DILC=$<TARGET_FILE:ilc>
+            -DRUNTIME_LIB=${CMAKE_BINARY_DIR}/src/runtime/libviper_runtime.a
+            -DBAS_FILE=${CMAKE_SOURCE_DIR}/demos/chess/chess.bas
+            -DDEMO_NAME=chess
+            -P ${_VIPER_E2E_DIR}/test_arm64_native_link.cmake)
+    set_tests_properties(arm64_native_chess PROPERTIES LABELS "ARM64;NativeLink")
+
+    # Vtris demo - compile, assemble, link
+    viper_add_ctest(arm64_native_vtris
+            ${CMAKE_COMMAND}
+            -DILC=$<TARGET_FILE:ilc>
+            -DRUNTIME_LIB=${CMAKE_BINARY_DIR}/src/runtime/libviper_runtime.a
+            -DBAS_FILE=${CMAKE_SOURCE_DIR}/demos/vtris/vtris.bas
+            -DDEMO_NAME=vtris
+            -P ${_VIPER_E2E_DIR}/test_arm64_native_link.cmake)
+    set_tests_properties(arm64_native_vtris PROPERTIES LABELS "ARM64;NativeLink")
+
+    # Frogger demo - compile, assemble, link
+    viper_add_ctest(arm64_native_frogger
+            ${CMAKE_COMMAND}
+            -DILC=$<TARGET_FILE:ilc>
+            -DRUNTIME_LIB=${CMAKE_BINARY_DIR}/src/runtime/libviper_runtime.a
+            -DBAS_FILE=${CMAKE_SOURCE_DIR}/demos/frogger/frogger.bas
+            -DDEMO_NAME=frogger
+            -P ${_VIPER_E2E_DIR}/test_arm64_native_link.cmake)
+    set_tests_properties(arm64_native_frogger PROPERTIES LABELS "ARM64;NativeLink")
+endif ()

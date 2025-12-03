@@ -72,13 +72,14 @@ bool isIdentStart(char c)
 
 /// @brief Check whether a character can continue an identifier body.
 /// @details Accepts the same characters as @ref isIdentStart plus digits and
-///          dollar signs, the latter preserving the classic BASIC type suffix
-///          syntax.
+///          BASIC type suffix characters ($ for string, # for double, % for
+///          integer), preserving the classic BASIC type suffix syntax.
 /// @param c Character to test.
 /// @return @c true when the character is valid within an identifier body.
 bool isIdentBody(char c)
 {
-    return std::isalnum(static_cast<unsigned char>(c)) || c == '_' || c == '.' || c == '$';
+    return std::isalnum(static_cast<unsigned char>(c)) || c == '_' || c == '.' || c == '$' || c == '#' ||
+           c == '%';
 }
 
 /// @brief Consume an identifier from the front of a string view.

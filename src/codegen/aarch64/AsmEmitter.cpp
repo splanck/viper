@@ -156,6 +156,83 @@ static std::string mapRuntimeSymbol(const std::string &name)
         return "rt_io_file_write_all_text";
     if (name == "Viper.IO.File.Delete")
         return "rt_io_file_delete";
+
+    // Terminal operations
+    if (name == "Viper.Terminal.Clear")
+        return "rt_term_cls";
+    if (name == "Viper.Terminal.InKey")
+        return "rt_inkey_str";
+    if (name == "Viper.Terminal.SetColor")
+        return "rt_term_color_i32";
+    if (name == "Viper.Terminal.SetPosition")
+        return "rt_term_locate_i32";
+    if (name == "Viper.Terminal.SetCursorVisible")
+        return "rt_term_cursor_visible_i32";
+    if (name == "Viper.Terminal.SetAltScreen")
+        return "rt_term_alt_screen_i32";
+    if (name == "Viper.Terminal.Bell")
+        return "rt_bell";
+    if (name == "Viper.Terminal.GetKey")
+        return "rt_getkey_str";
+    if (name == "Viper.Terminal.GetKeyTimeout")
+        return "rt_getkey_timeout_i32";
+    if (name == "Viper.Terminal.BeginBatch")
+        return "rt_term_begin_batch";
+    if (name == "Viper.Terminal.EndBatch")
+        return "rt_term_end_batch";
+    if (name == "Viper.Terminal.Flush")
+        return "rt_term_flush";
+
+    // String formatting (number to string conversions)
+    if (name == "Viper.Strings.FromI32")
+        return "rt_str_i32_alloc";
+    if (name == "Viper.Strings.FromI16")
+        return "rt_str_i16_alloc";
+    if (name == "Viper.Strings.FromSingle")
+        return "rt_str_f_alloc";
+    if (name == "Viper.Strings.FromDoublePrecise")
+        return "rt_str_d_alloc";
+    if (name == "Viper.Strings.SplitFields")
+        return "rt_split_fields";
+    if (name == "Viper.Strings.Equals")
+        return "rt_str_eq";
+    if (name == "Viper.Strings.FromStr")
+        return "rt_str"; // identity string copy
+
+    // Parsing (string to number conversions)
+    if (name == "Viper.Parse.Int64")
+        return "rt_parse_int64";
+    if (name == "Viper.Parse.Double")
+        return "rt_parse_double";
+
+    // Additional string properties/methods
+    if (name == "Viper.String.ConcatSelf")
+        return "rt_concat";
+    if (name == "Viper.String.get_IsEmpty")
+        return "rt_str_is_empty";
+
+    // Object methods
+    if (name == "Viper.Object.Equals")
+        return "rt_obj_equals";
+    if (name == "Viper.Object.GetHashCode")
+        return "rt_obj_get_hash_code";
+    if (name == "Viper.Object.ReferenceEquals")
+        return "rt_obj_reference_equals";
+    if (name == "Viper.Object.ToString")
+        return "rt_obj_to_string";
+
+    // StringBuilder properties
+    if (name == "Viper.Text.StringBuilder.get_Length")
+        return "rt_text_sb_get_length";
+    if (name == "Viper.Text.StringBuilder.get_Capacity")
+        return "rt_text_sb_get_capacity";
+
+    // Timer
+    if (name == "Viper.Environment.GetTickCount")
+        return "rt_timer_ms";
+    if (name == "Viper.Threading.Sleep")
+        return "rt_sleep_ms";
+
     // Not a known runtime symbol, return as-is
     return name;
 }
@@ -416,28 +493,85 @@ void AsmEmitter::emitStrFprToSp(std::ostream &os, PhysReg src, long long offset)
     os << ", [sp, #" << offset << "]\n";
 }
 
+/// @brief Check if offset is in ARM64 signed immediate range for str/ldr instructions.
+/// The signed unscaled immediate for str/ldr is [-256, 255].
+static bool isInSignedImmRange(long long offset)
+{
+    return offset >= -256 && offset <= 255;
+}
+
 void AsmEmitter::emitLdrFromFp(std::ostream &os, PhysReg dst, long long offset) const
 {
-    os << "  ldr " << rn(dst) << ", [x29, #" << offset << "]\n";
+    if (isInSignedImmRange(offset))
+    {
+        os << "  ldr " << rn(dst) << ", [x29, #" << offset << "]\n";
+    }
+    else
+    {
+        // Large offset: use scratch register x9 to compute address
+        // mov x9, #offset
+        // add x9, x29, x9
+        // ldr dst, [x9]
+        emitMovRI(os, kScratchGPR, offset);
+        os << "  add " << rn(kScratchGPR) << ", x29, " << rn(kScratchGPR) << "\n";
+        os << "  ldr " << rn(dst) << ", [" << rn(kScratchGPR) << "]\n";
+    }
 }
 
 void AsmEmitter::emitStrToFp(std::ostream &os, PhysReg src, long long offset) const
 {
-    os << "  str " << rn(src) << ", [x29, #" << offset << "]\n";
+    if (isInSignedImmRange(offset))
+    {
+        os << "  str " << rn(src) << ", [x29, #" << offset << "]\n";
+    }
+    else
+    {
+        // Large offset: use scratch register x9 to compute address
+        // mov x9, #offset
+        // add x9, x29, x9
+        // str src, [x9]
+        emitMovRI(os, kScratchGPR, offset);
+        os << "  add " << rn(kScratchGPR) << ", x29, " << rn(kScratchGPR) << "\n";
+        os << "  str " << rn(src) << ", [" << rn(kScratchGPR) << "]\n";
+    }
 }
 
 void AsmEmitter::emitLdrFprFromFp(std::ostream &os, PhysReg dst, long long offset) const
 {
-    os << "  ldr ";
-    printD(os, dst);
-    os << ", [x29, #" << offset << "]\n";
+    if (isInSignedImmRange(offset))
+    {
+        os << "  ldr ";
+        printD(os, dst);
+        os << ", [x29, #" << offset << "]\n";
+    }
+    else
+    {
+        // Large offset: use scratch register x9 to compute address
+        emitMovRI(os, kScratchGPR, offset);
+        os << "  add " << rn(kScratchGPR) << ", x29, " << rn(kScratchGPR) << "\n";
+        os << "  ldr ";
+        printD(os, dst);
+        os << ", [" << rn(kScratchGPR) << "]\n";
+    }
 }
 
 void AsmEmitter::emitStrFprToFp(std::ostream &os, PhysReg src, long long offset) const
 {
-    os << "  str ";
-    printD(os, src);
-    os << ", [x29, #" << offset << "]\n";
+    if (isInSignedImmRange(offset))
+    {
+        os << "  str ";
+        printD(os, src);
+        os << ", [x29, #" << offset << "]\n";
+    }
+    else
+    {
+        // Large offset: use scratch register x9 to compute address
+        emitMovRI(os, kScratchGPR, offset);
+        os << "  add " << rn(kScratchGPR) << ", x29, " << rn(kScratchGPR) << "\n";
+        os << "  str ";
+        printD(os, src);
+        os << ", [" << rn(kScratchGPR) << "]\n";
+    }
 }
 
 void AsmEmitter::emitLdrFromBase(std::ostream &os,
@@ -445,12 +579,32 @@ void AsmEmitter::emitLdrFromBase(std::ostream &os,
                                  PhysReg base,
                                  long long offset) const
 {
-    os << "  ldr " << rn(dst) << ", [" << rn(base) << ", #" << offset << "]\n";
+    if (isInSignedImmRange(offset))
+    {
+        os << "  ldr " << rn(dst) << ", [" << rn(base) << ", #" << offset << "]\n";
+    }
+    else
+    {
+        // Large offset: use scratch register x9 to compute address
+        emitMovRI(os, kScratchGPR, offset);
+        os << "  add " << rn(kScratchGPR) << ", " << rn(base) << ", " << rn(kScratchGPR) << "\n";
+        os << "  ldr " << rn(dst) << ", [" << rn(kScratchGPR) << "]\n";
+    }
 }
 
 void AsmEmitter::emitStrToBase(std::ostream &os, PhysReg src, PhysReg base, long long offset) const
 {
-    os << "  str " << rn(src) << ", [" << rn(base) << ", #" << offset << "]\n";
+    if (isInSignedImmRange(offset))
+    {
+        os << "  str " << rn(src) << ", [" << rn(base) << ", #" << offset << "]\n";
+    }
+    else
+    {
+        // Large offset: use scratch register x9 to compute address
+        emitMovRI(os, kScratchGPR, offset);
+        os << "  add " << rn(kScratchGPR) << ", " << rn(base) << ", " << rn(kScratchGPR) << "\n";
+        os << "  str " << rn(src) << ", [" << rn(kScratchGPR) << "]\n";
+    }
 }
 
 void AsmEmitter::emitMovZ(std::ostream &os, PhysReg dst, unsigned imm16, unsigned lsl) const

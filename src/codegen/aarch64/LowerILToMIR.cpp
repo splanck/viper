@@ -76,6 +76,11 @@ struct LoweredCall
 ///          Multiple concurrent lowerings would require synchronization.
 static thread_local std::unordered_map<unsigned, RegClass> tempRegClass;
 
+/// @brief Counter for generating unique trap labels within a function.
+/// @details Reset at the start of each lowerFunction() call to ensure unique
+///          labels per function (combined with the function name prefix).
+static thread_local unsigned trapLabelCounter;
+
 // Materialize an IL value into a vreg and append MIR into out. Returns the vreg id.
 static bool materializeValueToVReg(const il::core::Value &v,
                                    const il::core::BasicBlock &bb,
@@ -472,6 +477,8 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
     mf.name = fn.name;
     // Clear any cross-function temp->class hints
     tempRegClass.clear();
+    // Reset trap label counter for unique labels within this function
+    trapLabelCounter = 0;
     // Debug: function has N instructions in first block
     if (!fn.blocks.empty())
     {
@@ -944,8 +951,9 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                         MInstr{MOpcode::CmpRR,
                                {MOperand::regOp(PhysReg::X0), MOperand::regOp(kScratchGPR)}});
                     // If not equal, branch to a trap block
-                    // Use a stable local label without function prefix for tests
-                    const std::string trapLabel = ".Ltrap_cast";
+                    // Use a unique local label with counter suffix
+                    const std::string trapLabel =
+                        ".Ltrap_cast_" + std::to_string(trapLabelCounter++);
                     bbMir.instrs.push_back(MInstr{
                         MOpcode::BCond, {MOperand::condOp("ne"), MOperand::labelOp(trapLabel)}});
                     // Fall-through: range is OK, return
@@ -986,7 +994,8 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                     bbMir.instrs.push_back(
                         MInstr{MOpcode::FCmpRR,
                                {MOperand::regOp(PhysReg::V0), MOperand::regOp(PhysReg::V1)}});
-                    const std::string trapLabel2 = ".Ltrap_fpcast";
+                    const std::string trapLabel2 =
+                        ".Ltrap_fpcast_" + std::to_string(trapLabelCounter++);
                     bbMir.instrs.push_back(MInstr{
                         MOpcode::BCond, {MOperand::condOp("ne"), MOperand::labelOp(trapLabel2)}});
                     // Fall-through: value is exact, return
@@ -1729,9 +1738,9 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                     bbOutRef.instrs.push_back(MInstr{MOpcode::CmpRR,
                                                      {MOperand::vregOp(RegClass::GPR, vt),
                                                       MOperand::vregOp(RegClass::GPR, sv)}});
-                    // Emit a stable local trap label to match tests: use a fixed name without
-                    // function/block prefixes so text lookup remains simple.
-                    const std::string trapLabel = std::string(".Ltrap_cast");
+                    // Use a unique local trap label with counter suffix
+                    const std::string trapLabel =
+                        ".Ltrap_cast_" + std::to_string(trapLabelCounter++);
                     bbOutRef.instrs.push_back(MInstr{
                         MOpcode::BCond, {MOperand::condOp("ne"), MOperand::labelOp(trapLabel)}});
                     mf.blocks.emplace_back();
@@ -1796,8 +1805,9 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                                                      {MOperand::vregOp(RegClass::FPR, fv),
                                                       MOperand::vregOp(RegClass::FPR, rr)}});
                     {
-                        // Use a stable label for FP cast traps.
-                        const std::string trapLabel2 = std::string(".Ltrap_fpcast");
+                        // Use a unique label for FP cast traps
+                        const std::string trapLabel2 =
+                            ".Ltrap_fpcast_" + std::to_string(trapLabelCounter++);
                         bbOutRef.instrs.push_back(
                             MInstr{MOpcode::BCond,
                                    {MOperand::condOp("ne"), MOperand::labelOp(trapLabel2)}});
