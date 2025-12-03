@@ -19,6 +19,7 @@
 
 #include <optional>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace viper::codegen::aarch64
 {
@@ -601,6 +602,91 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
             phiRegClass.emplace(bb.label, std::move(classes));
             phiSpillOffset.emplace(bb.label, std::move(spillOffsets));
         }
+    }
+
+    // ===========================================================================
+    // Global Liveness Analysis for Cross-Block Temps
+    // ===========================================================================
+    // Detect temps that are defined in one block and used in a different block.
+    // Such temps must be spilled at definition and reloaded at use, since the
+    // register allocator processes blocks independently and may reuse registers.
+    //
+    // Step 1: Build map of tempId -> defining block index
+    std::unordered_map<unsigned, std::size_t> tempDefBlock;
+    for (std::size_t bi = 0; bi < fn.blocks.size(); ++bi)
+    {
+        const auto &bb = fn.blocks[bi];
+        // Block parameters are "defined" by their block
+        for (const auto &param : bb.params)
+        {
+            tempDefBlock[param.id] = bi;
+        }
+        // Instructions that produce a result
+        for (const auto &instr : bb.instructions)
+        {
+            if (instr.result)
+            {
+                tempDefBlock[*instr.result] = bi;
+            }
+        }
+    }
+
+    // Step 2: Find temps used in different blocks than their definition
+    std::unordered_set<unsigned> crossBlockTemps;
+    for (std::size_t bi = 0; bi < fn.blocks.size(); ++bi)
+    {
+        const auto &bb = fn.blocks[bi];
+        auto checkValue = [&](const il::core::Value &v)
+        {
+            if (v.kind == il::core::Value::Kind::Temp)
+            {
+                auto it = tempDefBlock.find(v.id);
+                if (it != tempDefBlock.end() && it->second != bi)
+                {
+                    // This temp is used in block bi but defined in a different block
+                    crossBlockTemps.insert(v.id);
+                }
+            }
+        };
+        for (const auto &instr : bb.instructions)
+        {
+            for (const auto &op : instr.operands)
+            {
+                checkValue(op);
+            }
+        }
+        // Check terminator operands (branch conditions and arguments)
+        // The terminator is the last instruction in the block
+        if (!bb.instructions.empty())
+        {
+            const auto &term = bb.instructions.back();
+            // Check condition operand for CBr
+            if (term.op == il::core::Opcode::CBr && !term.operands.empty())
+            {
+                checkValue(term.operands[0]); // condition
+            }
+            // Check return value for Ret
+            if (term.op == il::core::Opcode::Ret && !term.operands.empty())
+            {
+                checkValue(term.operands[0]);
+            }
+            // Check branch arguments (phi values)
+            for (const auto &argList : term.brArgs)
+            {
+                for (const auto &arg : argList)
+                {
+                    checkValue(arg);
+                }
+            }
+        }
+    }
+
+    // Step 3: Allocate spill slots for cross-block temps
+    std::unordered_map<unsigned, int> crossBlockSpillOffset;
+    for (unsigned tempId : crossBlockTemps)
+    {
+        int offset = fb.ensureSpill(50000 + tempId); // Use high ID range to avoid conflicts
+        crossBlockSpillOffset[tempId] = offset;
     }
 
     // Helper to get the register holding a value
@@ -1713,6 +1799,67 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
             }
         }
 
+        // Reload cross-block temps that are used in this block but defined elsewhere.
+        // We need to reload them at block entry because the register allocator may have
+        // reused their physical registers in intervening blocks.
+        for (const auto &ins : bbIn.instructions)
+        {
+            for (const auto &op : ins.operands)
+            {
+                if (op.kind == il::core::Value::Kind::Temp)
+                {
+                    auto spillIt = crossBlockSpillOffset.find(op.id);
+                    auto defIt = tempDefBlock.find(op.id);
+                    if (spillIt != crossBlockSpillOffset.end() && defIt != tempDefBlock.end() &&
+                        defIt->second != bi)
+                    {
+                        // This temp is defined in another block and used here - reload it
+                        // Only reload if we haven't already in this block
+                        if (tempVReg.find(op.id) == tempVReg.end() ||
+                            tempVReg[op.id] < 60000) // Use high range for reloaded values
+                        {
+                            const uint16_t vid = nextVRegId++;
+                            tempVReg[op.id] = vid;
+                            const int offset = spillIt->second;
+                            // Assume GPR for now (most cross-block temps are comparisons/indices)
+                            bbOutRef.instrs.push_back(
+                                MInstr{MOpcode::LdrRegFpImm,
+                                       {MOperand::vregOp(RegClass::GPR, vid),
+                                        MOperand::immOp(offset)}});
+                        }
+                    }
+                }
+            }
+        }
+        // Also check terminator for cross-block temp uses (CBr condition)
+        if (!bbIn.instructions.empty())
+        {
+            const auto &term = bbIn.instructions.back();
+            if (term.op == il::core::Opcode::CBr && !term.operands.empty())
+            {
+                const auto &cond = term.operands[0];
+                if (cond.kind == il::core::Value::Kind::Temp)
+                {
+                    auto spillIt = crossBlockSpillOffset.find(cond.id);
+                    auto defIt = tempDefBlock.find(cond.id);
+                    if (spillIt != crossBlockSpillOffset.end() && defIt != tempDefBlock.end() &&
+                        defIt->second != bi)
+                    {
+                        if (tempVReg.find(cond.id) == tempVReg.end())
+                        {
+                            const uint16_t vid = nextVRegId++;
+                            tempVReg[cond.id] = vid;
+                            const int offset = spillIt->second;
+                            bbOutRef.instrs.push_back(
+                                MInstr{MOpcode::LdrRegFpImm,
+                                       {MOperand::vregOp(RegClass::GPR, vid),
+                                        MOperand::immOp(offset)}});
+                        }
+                    }
+                }
+            }
+        }
+
         // Debug: Processing all instructions generically
         // std::cerr << "[DEBUG] Generic loop for block " << bbIn.label << " with " <<
         // bbIn.instructions.size() << " instructions\n";
@@ -2123,6 +2270,18 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                                     MInstr{MOpcode::MovRR,
                                            {MOperand::vregOp(RegClass::GPR, dst),
                                             MOperand::regOp(PhysReg::X0)}});
+                            }
+                            if (ins.callee == "rt_arr_obj_get")
+                            {
+                                const int off = fb.ensureSpill(dst);
+                                bbOutRef.instrs.push_back(MInstr{MOpcode::StrRegFpImm,
+                                                                 {MOperand::vregOp(RegClass::GPR, dst),
+                                                                  MOperand::immOp(off)}});
+                                const uint16_t dst2 = nextVRegId++;
+                                bbOutRef.instrs.push_back(MInstr{MOpcode::LdrRegFpImm,
+                                                                 {MOperand::vregOp(RegClass::GPR, dst2),
+                                                                  MOperand::immOp(off)}});
+                                tempVReg[*ins.result] = dst2;
                             }
                         }
                         break;
@@ -2562,6 +2721,29 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                         }
                     }
                     break;
+            }
+
+            // Spill cross-block temps immediately after they are defined.
+            // This ensures the value is preserved in memory for use in other blocks,
+            // since the register allocator may reuse the physical register.
+            if (ins.result)
+            {
+                auto spillIt = crossBlockSpillOffset.find(*ins.result);
+                if (spillIt != crossBlockSpillOffset.end())
+                {
+                    // This temp is used in another block - spill it now
+                    auto vregIt = tempVReg.find(*ins.result);
+                    if (vregIt != tempVReg.end())
+                    {
+                        const uint16_t srcVreg = vregIt->second;
+                        const int offset = spillIt->second;
+                        // Assume GPR for now (most cross-block temps are comparisons/indices)
+                        bbOutRef.instrs.push_back(
+                            MInstr{MOpcode::StrRegFpImm,
+                                   {MOperand::vregOp(RegClass::GPR, srcVreg),
+                                    MOperand::immOp(offset)}});
+                    }
+                }
             }
         }
     }

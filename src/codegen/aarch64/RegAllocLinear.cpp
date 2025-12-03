@@ -264,6 +264,8 @@ class LinearAllocator
     LinearAllocator(MFunction &fn, const TargetInfo &ti) : fn_(fn), ti_(ti), fb_(fn)
     {
         pools_.build(ti);
+        buildCFG();
+        computeLiveOutSets();
     }
 
     AllocationResult run()
@@ -288,6 +290,71 @@ class LinearAllocator
     std::unordered_map<uint16_t, VState> gprStates_;
     std::unordered_map<uint16_t, VState> fprStates_;
     unsigned currentInstrIdx_{0}; ///< Current instruction index for LRU tracking.
+    // CFG + liveness (conservative cross-block)
+    std::unordered_map<std::string, std::size_t> blockIndex_;
+    std::vector<std::vector<std::size_t>> succs_;
+    std::vector<std::unordered_set<uint16_t>> liveOutGPR_;
+    std::vector<std::unordered_set<uint16_t>> liveOutFPR_;
+
+    void buildCFG()
+    {
+        blockIndex_.clear();
+        succs_.clear();
+        succs_.resize(fn_.blocks.size());
+        for (std::size_t i = 0; i < fn_.blocks.size(); ++i)
+            blockIndex_[fn_.blocks[i].name] = i;
+        for (std::size_t i = 0; i < fn_.blocks.size(); ++i)
+        {
+            const auto &bb = fn_.blocks[i];
+            for (const auto &mi : bb.instrs)
+            {
+                if (mi.opc == MOpcode::Br)
+                {
+                    if (!mi.ops.empty() && mi.ops[0].kind == MOperand::Kind::Label)
+                    {
+                        auto it = blockIndex_.find(mi.ops[0].label);
+                        if (it != blockIndex_.end())
+                            succs_[i].push_back(it->second);
+                    }
+                }
+                else if (mi.opc == MOpcode::BCond)
+                {
+                    if (mi.ops.size() >= 2 && mi.ops[1].kind == MOperand::Kind::Label)
+                    {
+                        auto it = blockIndex_.find(mi.ops[1].label);
+                        if (it != blockIndex_.end())
+                            succs_[i].push_back(it->second);
+                    }
+                }
+            }
+        }
+    }
+
+    void computeLiveOutSets()
+    {
+        liveOutGPR_.assign(fn_.blocks.size(), {});
+        liveOutFPR_.assign(fn_.blocks.size(), {});
+        for (std::size_t i = 0; i < fn_.blocks.size(); ++i)
+        {
+            for (auto sidx : succs_[i])
+            {
+                const auto &succ = fn_.blocks[sidx];
+                for (const auto &mi : succ.instrs)
+                {
+                    for (const auto &op : mi.ops)
+                    {
+                        if (op.kind == MOperand::Kind::Reg && !op.reg.isPhys)
+                        {
+                            if (op.reg.cls == RegClass::GPR)
+                                liveOutGPR_[i].insert(op.reg.idOrPhys);
+                            else
+                                liveOutFPR_[i].insert(op.reg.idOrPhys);
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     //-------------------------------------------------------------------------
     // Spilling
@@ -587,11 +654,52 @@ class LinearAllocator
             allocateInstruction(ins, rewritten);
         }
 
+        if (!rewritten.empty()) {
+            std::vector<MInstr> endSpills;
+            auto itB = blockIndex_.find(bb.name);
+            if (itB != blockIndex_.end()) {
+                const std::size_t bi = itB->second;
+                for (auto vid : liveOutGPR_[bi]) {
+                    auto it = gprStates_.find(vid);
+                    if (it != gprStates_.end() && it->second.hasPhys) {
+                        const int off = fb_.ensureSpill(vid);
+                        endSpills.push_back(makeStrFp(it->second.phys, off));
+                        pools_.releaseGPR(it->second.phys);
+                        it->second.hasPhys = false;
+                        it->second.spilled = true;
+                    }
+                }
+                for (auto vid : liveOutFPR_[bi]) {
+                    auto it = fprStates_.find(vid);
+                    if (it != fprStates_.end() && it->second.hasPhys) {
+                        const int off = fb_.ensureSpill(vid);
+                        endSpills.push_back(MInstr{MOpcode::StrFprFpImm, {MOperand::regOp(it->second.phys), MOperand::immOp(off)}});
+                        pools_.releaseFPR(it->second.phys);
+                        it->second.hasPhys = false;
+                        it->second.spilled = true;
+                    }
+                }
+            }
+            if (!endSpills.empty()) {
+                std::size_t insertPos = rewritten.size();
+                for (std::size_t i = rewritten.size(); i-- > 0;) {
+                    if (isTerminator(rewritten[i].opc)) {
+                        insertPos = i;
+                        break;
+                    }
+                }
+                rewritten.insert(rewritten.begin() + static_cast<long>(insertPos), endSpills.begin(), endSpills.end());
+            }
+        }
         bb.instrs = std::move(rewritten);
     }
 
     void handleCall(MInstr &ins, std::vector<MInstr> &rewritten)
     {
+        bool isArrayObjGet=false;
+        if (!ins.ops.empty() && ins.ops[0].kind==MOperand::Kind::Label) {
+            if (ins.ops[0].label=="rt_arr_obj_get") isArrayObjGet=true;
+        }
         std::vector<MInstr> preCall;
         for (auto &kv : gprStates_)
         {
@@ -606,11 +714,19 @@ class LinearAllocator
         for (auto &mi : preCall)
             rewritten.push_back(std::move(mi));
         rewritten.push_back(ins);
+        if (isArrayObjGet) pendingGetBarrier_=true;
     }
 
     void allocateInstruction(MInstr &ins, std::vector<MInstr> &rewritten)
     {
         std::vector<MInstr> prefix;
+        bool applyGetBarrier=false; uint16_t getBarrierDstVreg=0;
+        if (pendingGetBarrier_ && ins.opc==MOpcode::MovRR && ins.ops.size()>=2) {
+            const auto &dst=ins.ops[0]; const auto &src=ins.ops[1];
+            if (dst.kind==MOperand::Kind::Reg && !dst.reg.isPhys && src.kind==MOperand::Kind::Reg && src.reg.isPhys && static_cast<PhysReg>(src.reg.idOrPhys)==PhysReg::X0) {
+                applyGetBarrier=true; getBarrierDstVreg=dst.reg.idOrPhys; pendingGetBarrier_=false;
+            } else { pendingGetBarrier_=false; }
+        }
         std::vector<MInstr> suffix;
         std::vector<PhysReg> scratch;
 
@@ -623,6 +739,18 @@ class LinearAllocator
             {
                 maybeSpillForPressure(op.reg.cls, prefix);
                 materialize(op.reg, isUse, isDef, prefix, suffix, scratch);
+            }
+        }
+
+        // Apply post-call barrier for rt_arr_obj_get
+        if (applyGetBarrier) {
+            auto it=gprStates_.find(getBarrierDstVreg);
+            if (it!=gprStates_.end() && it->second.hasPhys) {
+                const int off=fb_.ensureSpill(getBarrierDstVreg);
+                suffix.push_back(makeStrFp(it->second.phys, off));
+                pools_.releaseGPR(it->second.phys);
+                it->second.hasPhys=false;
+                it->second.spilled=true;
             }
         }
 
@@ -700,6 +828,9 @@ class LinearAllocator
             }
         }
     }
+
+    // Set when the previous instruction was a call to rt_arr_obj_get
+    bool pendingGetBarrier_{false};
 };
 
 } // namespace
