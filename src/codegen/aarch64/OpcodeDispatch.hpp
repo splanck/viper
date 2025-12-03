@@ -23,10 +23,13 @@ namespace viper::codegen::aarch64
 /// @details This function handles a subset of opcodes that have been extracted
 ///          to reduce the size of lowerFunction(). Opcodes not handled here
 ///          will return false to indicate the caller should handle them.
+/// @param bbOutIdx Index of the output block in ctx.mf.blocks. We use an index
+///                 instead of a reference because instruction lowering can add
+///                 trap blocks via emplace_back(), which invalidates references.
 /// @returns true if the instruction was handled, false otherwise.
 bool lowerInstruction(const il::core::Instr &ins,
                       const il::core::BasicBlock &bbIn,
                       LoweringContext &ctx,
-                      MBasicBlock &bbOutRef);
+                      std::size_t bbOutIdx);
 
 } // namespace viper::codegen::aarch64

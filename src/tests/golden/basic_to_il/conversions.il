@@ -159,7 +159,7 @@ val_fail:
   cbr %t20, val_nan, val_over
 val_nan:
   .loc 1 5 14
-  %t21 = cast.fp_to_si.rte.chk nan
+  %t21 = cast.fp_to_si.rte.chk NaN
   .loc 1 5 14
   trap
 val_over:

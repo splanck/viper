@@ -72,6 +72,7 @@ enum class MOpcode
     StrRegFpImm, // src, offset - str xN, [x29, #offset]
     LdrFprFpImm, // dst(FPR), offset - ldr dN, [x29, #offset]
     StrFprFpImm, // src(FPR), offset - str dN, [x29, #offset]
+    AddFpImm,    // dst, offset - add xN, x29, #offset (for alloca address computation)
     // Load/store from arbitrary base register (heap/global)
     LdrRegBaseImm, // dst, base, offset - ldr xN, [xM, #offset]
     StrRegBaseImm, // src, base, offset - str xN, [xM, #offset]

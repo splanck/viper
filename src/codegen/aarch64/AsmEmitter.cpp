@@ -622,6 +622,27 @@ void AsmEmitter::emitStrFprToFp(std::ostream &os, PhysReg src, long long offset)
     }
 }
 
+void AsmEmitter::emitAddFpImm(std::ostream &os, PhysReg dst, long long offset) const
+{
+    // Compute dst = x29 + offset (where offset is typically negative for locals)
+    // ARM64 add/sub immediate can only handle 12-bit unsigned values,
+    // so we use sub for negative offsets
+    if (offset >= 0 && offset <= 4095)
+    {
+        os << "  add " << rn(dst) << ", x29, #" << offset << "\n";
+    }
+    else if (offset < 0 && -offset <= 4095)
+    {
+        os << "  sub " << rn(dst) << ", x29, #" << -offset << "\n";
+    }
+    else
+    {
+        // Large offset: use scratch register to load offset, then add
+        emitMovRI(os, kScratchGPR, offset);
+        os << "  add " << rn(dst) << ", x29, " << rn(kScratchGPR) << "\n";
+    }
+}
+
 void AsmEmitter::emitLdrFromBase(std::ostream &os,
                                  PhysReg dst,
                                  PhysReg base,
@@ -851,6 +872,37 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &mi) const
         else
             emitEpilogue(os);
         return;
+    }
+
+    // Fallback handling for opcodes that may be missing from the generated
+    // dispatch table due to generator drift. Keep these early and return to
+    // avoid duplicate emission when present in the generated switch.
+    auto getReg = [](const MOperand &op) -> PhysReg {
+        assert(op.kind == MOperand::Kind::Reg && "expected reg operand");
+        assert(op.reg.isPhys && "unallocated vreg reached emitter");
+        return static_cast<PhysReg>(op.reg.idOrPhys);
+    };
+    auto getImm = [](const MOperand &op) -> long long {
+        assert(op.kind == MOperand::Kind::Imm && "expected imm operand");
+        return op.imm;
+    };
+    switch (mi.opc)
+    {
+        case MOpcode::SDivRRR:
+            emitSDivRRR(os, getReg(mi.ops[0]), getReg(mi.ops[1]), getReg(mi.ops[2]));
+            return;
+        case MOpcode::UDivRRR:
+            emitUDivRRR(os, getReg(mi.ops[0]), getReg(mi.ops[1]), getReg(mi.ops[2]));
+            return;
+        case MOpcode::MSubRRRR:
+            emitMSubRRRR(os, getReg(mi.ops[0]), getReg(mi.ops[1]), getReg(mi.ops[2]),
+                         getReg(mi.ops[3]));
+            return;
+        case MOpcode::AddFpImm:
+            emitAddFpImm(os, getReg(mi.ops[0]), getImm(mi.ops[1]));
+            return;
+        default:
+            break;
     }
 
 #include "generated/OpcodeDispatch.inc"

@@ -479,6 +479,17 @@ void Emitter::releaseDeferredTemps()
     if (deferredTemps_.empty())
         return;
 
+    // BUG-OOP-FIX: If the current block is already terminated (e.g., by a RETURN
+    // statement that emitted `ret`), we cannot emit cleanup instructions here.
+    // Clear the deferred temps to prevent them from accumulating, but don't emit.
+    auto &ctx = lowerer_.context();
+    BasicBlock *current = ctx.current();
+    if (current && current->terminated)
+    {
+        deferredTemps_.clear();
+        return;
+    }
+
     // Deduplicate by temporary id so repeated uses do not double release.
     std::unordered_set<unsigned> seen;
     for (const auto &t : deferredTemps_)

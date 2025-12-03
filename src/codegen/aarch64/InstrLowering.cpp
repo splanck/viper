@@ -125,6 +125,22 @@ bool materializeValueToVReg(const il::core::Value &v,
             outCls = (clsIt != g_tempRegClass.end()) ? clsIt->second : RegClass::GPR;
             return true;
         }
+        // Check if this is an alloca temp - if so, compute its stack address
+        // This must be checked before the instruction search since allocas are
+        // defined in the entry block but used in other blocks.
+        // Note: We don't cache the result in tempVReg because the vreg->phys mapping
+        // changes across blocks, and we need to recompute the address each time.
+        const int allocaOff = fb.localOffset(v.id);
+        if (allocaOff != 0)
+        {
+            outVReg = nextVRegId++;
+            outCls = RegClass::GPR;
+            out.instrs.push_back(MInstr{
+                MOpcode::AddFpImm,
+                {MOperand::vregOp(RegClass::GPR, outVReg), MOperand::immOp(allocaOff)}});
+            // Don't cache: tempVReg[v.id] = outVReg;
+            return true;
+        }
         // If it's a function entry param (in entry block), move from ABI phys -> vreg.
         // This only applies to entry block parameters, not block parameters in other blocks.
         int pIdx = indexOfParam(bb, v.id);
@@ -391,32 +407,100 @@ bool lowerCallWithArgs(const il::core::Instr &callI,
                        std::unordered_map<unsigned, uint16_t> &tempVReg,
                        uint16_t &nextVRegId)
 {
-    // Callee must be first operand as GlobalAddr
-    if (callI.operands.empty() || callI.operands[0].kind != il::core::Value::Kind::GlobalAddr)
-        return false;
+    // Callee can be in either callI.callee field or operands[0] as GlobalAddr
+    std::string callee;
+    std::size_t argStart = 0;
 
-    const std::string &callee = callI.operands[0].str;
+    if (!callI.callee.empty())
+    {
+        // Modern IL convention: callee in dedicated field, all operands are arguments
+        callee = callI.callee;
+        argStart = 0;
+    }
+    else if (!callI.operands.empty() && callI.operands[0].kind == il::core::Value::Kind::GlobalAddr)
+    {
+        // Legacy convention: callee as GlobalAddr in operands[0]
+        callee = callI.operands[0].str;
+        argStart = 1;
+    }
+    else
+    {
+        return false;
+    }
+
     seq.call = MInstr{MOpcode::Bl, {MOperand::labelOp(callee)}};
 
-    // Marshal arguments into ABI registers
-    std::size_t gprIdx = 0;
-    std::size_t fprIdx = 0;
-    for (std::size_t i = 1; i < callI.operands.size(); ++i)
+    // First pass: materialize all arguments and collect them
+    struct ArgInfo
+    {
+        uint16_t vreg;
+        RegClass cls;
+    };
+    std::vector<ArgInfo> args;
+    for (std::size_t i = argStart; i < callI.operands.size(); ++i)
     {
         const auto &arg = callI.operands[i];
         uint16_t vr = 0;
         RegClass cls = RegClass::GPR;
         if (!materializeValueToVReg(arg, bb, ti, fb, out, tempVReg, nextVRegId, vr, cls))
             return false;
+        args.push_back({vr, cls});
+    }
 
-        if (cls == RegClass::FPR)
+    // Count how many stack slots we need (args beyond register capacity)
+    std::size_t gprIdx = 0;
+    std::size_t fprIdx = 0;
+    std::size_t stackSlots = 0;
+    for (const auto &a : args)
+    {
+        if (a.cls == RegClass::FPR)
+        {
+            if (fprIdx < ti.f64ArgOrder.size())
+                fprIdx++;
+            else
+                stackSlots++;
+        }
+        else
+        {
+            if (gprIdx < ti.intArgOrder.size())
+                gprIdx++;
+            else
+                stackSlots++;
+        }
+    }
+
+    // If we have stack args, allocate space on stack (16-byte aligned)
+    const std::size_t stackBytes = ((stackSlots * 8 + 15) / 16) * 16;
+    if (stackBytes > 0)
+    {
+        seq.prefix.push_back(
+            MInstr{MOpcode::SubSpImm,
+                   {MOperand::immOp(static_cast<long long>(stackBytes))}});
+    }
+
+    // Second pass: marshal arguments into registers or stack slots
+    gprIdx = 0;
+    fprIdx = 0;
+    std::size_t stackOffset = 0;
+    for (const auto &a : args)
+    {
+        if (a.cls == RegClass::FPR)
         {
             if (fprIdx < ti.f64ArgOrder.size())
             {
                 PhysReg dst = ti.f64ArgOrder[fprIdx++];
                 seq.prefix.push_back(MInstr{MOpcode::FMovRR,
                                             {MOperand::regOp(dst),
-                                             MOperand::vregOp(RegClass::FPR, vr)}});
+                                             MOperand::vregOp(RegClass::FPR, a.vreg)}});
+            }
+            else
+            {
+                // Spill to stack - use str for FPR to [sp, #offset]
+                seq.prefix.push_back(
+                    MInstr{MOpcode::StrFprSpImm,
+                           {MOperand::vregOp(RegClass::FPR, a.vreg),
+                            MOperand::immOp(static_cast<long long>(stackOffset))}});
+                stackOffset += 8;
             }
         }
         else
@@ -426,10 +510,28 @@ bool lowerCallWithArgs(const il::core::Instr &callI,
                 PhysReg dst = ti.intArgOrder[gprIdx++];
                 seq.prefix.push_back(MInstr{MOpcode::MovRR,
                                             {MOperand::regOp(dst),
-                                             MOperand::vregOp(RegClass::GPR, vr)}});
+                                             MOperand::vregOp(RegClass::GPR, a.vreg)}});
+            }
+            else
+            {
+                // Spill to stack - use str for GPR to [sp, #offset]
+                seq.prefix.push_back(
+                    MInstr{MOpcode::StrRegSpImm,
+                           {MOperand::vregOp(RegClass::GPR, a.vreg),
+                            MOperand::immOp(static_cast<long long>(stackOffset))}});
+                stackOffset += 8;
             }
         }
     }
+
+    // After the call, deallocate stack space
+    if (stackBytes > 0)
+    {
+        seq.postfix.push_back(
+            MInstr{MOpcode::AddSpImm,
+                   {MOperand::immOp(static_cast<long long>(stackBytes))}});
+    }
+
     return true;
 }
 
@@ -456,10 +558,13 @@ bool lowerSRemChk0(const il::core::Instr &ins,
                                 ctx.nextVRegId, rhs, rhsCls))
         return false;
 
-    // Generate divide-by-zero check: cbz rhs, trap_label
+    // Generate divide-by-zero check: cmp rhs, #0; b.eq trap_label
+    // Note: cbz has limited range and requires local labels, so we use cmp+b.eq
     const std::string trapLabel = ".Ltrap_div0_" + std::to_string(ctx.trapLabelCounter++);
     out.instrs.push_back(
-        MInstr{MOpcode::Cbz, {MOperand::vregOp(RegClass::GPR, rhs), MOperand::labelOp(trapLabel)}});
+        MInstr{MOpcode::CmpRI, {MOperand::vregOp(RegClass::GPR, rhs), MOperand::immOp(0)}});
+    out.instrs.push_back(
+        MInstr{MOpcode::BCond, {MOperand::condOp("eq"), MOperand::labelOp(trapLabel)}});
 
     // Create trap block
     ctx.mf.blocks.emplace_back();
@@ -507,10 +612,12 @@ bool lowerSDivChk0(const il::core::Instr &ins,
                                 ctx.nextVRegId, rhs, rhsCls))
         return false;
 
-    // Generate divide-by-zero check
+    // Generate divide-by-zero check: cmp rhs, #0; b.eq trap_label
     const std::string trapLabel = ".Ltrap_div0_" + std::to_string(ctx.trapLabelCounter++);
     out.instrs.push_back(
-        MInstr{MOpcode::Cbz, {MOperand::vregOp(RegClass::GPR, rhs), MOperand::labelOp(trapLabel)}});
+        MInstr{MOpcode::CmpRI, {MOperand::vregOp(RegClass::GPR, rhs), MOperand::immOp(0)}});
+    out.instrs.push_back(
+        MInstr{MOpcode::BCond, {MOperand::condOp("eq"), MOperand::labelOp(trapLabel)}});
 
     // Create trap block
     ctx.mf.blocks.emplace_back();
@@ -550,10 +657,12 @@ bool lowerUDivChk0(const il::core::Instr &ins,
                                 ctx.nextVRegId, rhs, rhsCls))
         return false;
 
-    // Generate divide-by-zero check
+    // Generate divide-by-zero check: cmp rhs, #0; b.eq trap_label
     const std::string trapLabel = ".Ltrap_div0_" + std::to_string(ctx.trapLabelCounter++);
     out.instrs.push_back(
-        MInstr{MOpcode::Cbz, {MOperand::vregOp(RegClass::GPR, rhs), MOperand::labelOp(trapLabel)}});
+        MInstr{MOpcode::CmpRI, {MOperand::vregOp(RegClass::GPR, rhs), MOperand::immOp(0)}});
+    out.instrs.push_back(
+        MInstr{MOpcode::BCond, {MOperand::condOp("eq"), MOperand::labelOp(trapLabel)}});
 
     // Create trap block
     ctx.mf.blocks.emplace_back();
@@ -593,10 +702,12 @@ bool lowerURemChk0(const il::core::Instr &ins,
                                 ctx.nextVRegId, rhs, rhsCls))
         return false;
 
-    // Generate divide-by-zero check
+    // Generate divide-by-zero check: cmp rhs, #0; b.eq trap_label
     const std::string trapLabel = ".Ltrap_div0_" + std::to_string(ctx.trapLabelCounter++);
     out.instrs.push_back(
-        MInstr{MOpcode::Cbz, {MOperand::vregOp(RegClass::GPR, rhs), MOperand::labelOp(trapLabel)}});
+        MInstr{MOpcode::CmpRI, {MOperand::vregOp(RegClass::GPR, rhs), MOperand::immOp(0)}});
+    out.instrs.push_back(
+        MInstr{MOpcode::BCond, {MOperand::condOp("eq"), MOperand::labelOp(trapLabel)}});
 
     // Create trap block
     ctx.mf.blocks.emplace_back();

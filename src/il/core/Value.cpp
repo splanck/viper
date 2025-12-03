@@ -129,6 +129,13 @@ std::string toString(const Value &v)
             return std::to_string(v.i64);
         case Value::Kind::ConstFloat:
         {
+            // Canonicalise special values explicitly to ensure stable spelling
+            // and avoid appending a fractional part to tokens like "nan".
+            if (std::isnan(v.f64))
+                return "NaN";
+            if (std::isinf(v.f64))
+                return std::signbit(v.f64) ? std::string("-Inf") : std::string("Inf");
+
             if (std::signbit(v.f64) && v.f64 == 0.0)
                 return "-0.0";
             std::ostringstream oss;
@@ -144,6 +151,8 @@ std::string toString(const Value &v)
                 if (!s.empty() && s.back() == '.')
                     s.pop_back();
             }
+            // Do not force a fractional part for integral-valued floats.
+            // The IL grammar and opcode typing disambiguate numeric kinds.
             return s;
         }
         case Value::Kind::ConstStr:

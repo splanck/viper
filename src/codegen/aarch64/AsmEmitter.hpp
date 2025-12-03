@@ -116,6 +116,8 @@ class AsmEmitter
     void emitStrToFp(std::ostream &os, PhysReg src, long long offset) const;
     void emitLdrFprFromFp(std::ostream &os, PhysReg dst, long long offset) const;
     void emitStrFprToFp(std::ostream &os, PhysReg src, long long offset) const;
+    // Compute address relative to frame pointer (for alloca)
+    void emitAddFpImm(std::ostream &os, PhysReg dst, long long offset) const;
 
     // Load/store from arbitrary base register
     void emitLdrFromBase(std::ostream &os, PhysReg dst, PhysReg base, long long offset) const;

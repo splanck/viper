@@ -74,18 +74,6 @@ switch (mi.opc)
     case K::MulRRR:
         emitMulRRR(os, reg(mi.ops[0]), reg(mi.ops[1]), reg(mi.ops[2]));
         break;
-    case K::SDivRRR:
-        emitSDivRRR(os, reg(mi.ops[0]), reg(mi.ops[1]), reg(mi.ops[2]));
-        break;
-    case K::UDivRRR:
-        emitUDivRRR(os, reg(mi.ops[0]), reg(mi.ops[1]), reg(mi.ops[2]));
-        break;
-    case K::MSubRRRR:
-        emitMSubRRRR(os, reg(mi.ops[0]), reg(mi.ops[1]), reg(mi.ops[2]), reg(mi.ops[3]));
-        break;
-    case K::Cbz:
-        emitCbz(os, reg(mi.ops[0]), mi.ops[1].label);
-        break;
     case K::AndRRR:
         emitAndRRR(os, reg(mi.ops[0]), reg(mi.ops[1]), reg(mi.ops[2]));
         break;

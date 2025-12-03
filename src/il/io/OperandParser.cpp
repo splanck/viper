@@ -26,6 +26,7 @@
 #include "il/internal/io/OperandParser.hpp"
 
 #include "il/core/Instr.hpp"
+#include "il/core/Module.hpp"
 #include "il/core/OpcodeInfo.hpp"
 #include "il/core/Value.hpp"
 #include "il/internal/io/ParserUtil.hpp"
@@ -311,15 +312,76 @@ Expected<void> OperandParser::parseCallOperands(const std::string &text)
     auto tokens = splitCommaSeparated(args, "call");
     if (!tokens)
         return Expected<void>{tokens.error()};
+    // Lookup expected parameter types from externs/functions for type-aware coercion.
+    std::vector<il::core::Type> expectedParams;
+    for (const auto &ext : state_.m.externs)
+    {
+        if (ext.name == instr_.callee)
+        {
+            expectedParams = ext.params;
+            break;
+        }
+    }
+    if (expectedParams.empty())
+    {
+        for (const auto &fn : state_.m.functions)
+        {
+            if (fn.name == instr_.callee)
+            {
+                expectedParams.clear();
+                for (const auto &p : fn.params)
+                    expectedParams.push_back(p.type);
+                break;
+            }
+        }
+    }
     for (const auto &token : tokens.value())
     {
         auto argVal = parseValueToken(token);
         if (!argVal)
             return Expected<void>{argVal.error()};
-        instr_.operands.push_back(std::move(argVal.value()));
+        il::core::Value val = std::move(argVal.value());
+        const std::size_t idx = instr_.operands.size();
+        if (idx < expectedParams.size())
+        {
+            const auto &expTy = expectedParams[idx];
+            // Coerce integer literals to floating when callee expects f64.
+            if (expTy.kind == il::core::Type::Kind::F64 &&
+                val.kind == il::core::Value::Kind::ConstInt)
+            {
+                val = il::core::Value::constFloat(static_cast<double>(val.i64));
+            }
+        }
+        instr_.operands.push_back(std::move(val));
     }
-    if (!instr_.result)
-        instr_.type = il::core::Type(il::core::Type::Kind::Void);
+    // Calls carry a dynamic result type. Canonically keep type void for textual IL,
+    // but record f64 when the callee returns a floating result so backends can
+    // select the correct return register (v0 vs x0) without a module lookup.
+    instr_.type = il::core::Type(il::core::Type::Kind::Void);
+    if (instr_.result)
+    {
+        // Look up externs first
+        for (const auto &ext : state_.m.externs)
+        {
+            if (ext.name == instr_.callee && ext.retType.kind == il::core::Type::Kind::F64)
+            {
+                instr_.type = ext.retType;
+                break;
+            }
+        }
+        // Also check internal functions
+        if (instr_.type.kind == il::core::Type::Kind::Void)
+        {
+            for (const auto &fn : state_.m.functions)
+            {
+                if (fn.name == instr_.callee && fn.retType.kind == il::core::Type::Kind::F64)
+                {
+                    instr_.type = fn.retType;
+                    break;
+                }
+            }
+        }
+    }
     return {};
 }
 

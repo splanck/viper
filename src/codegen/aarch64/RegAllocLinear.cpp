@@ -99,7 +99,8 @@ static bool isSpAdj(MOpcode opc)
 
 static bool isBranch(MOpcode opc)
 {
-    return opc == MOpcode::Br || opc == MOpcode::BCond || opc == MOpcode::Cbz;
+    // Note: Cbz has a register operand that needs allocation, so it's NOT included here
+    return opc == MOpcode::Br || opc == MOpcode::BCond;
 }
 
 static bool isCall(MOpcode opc)

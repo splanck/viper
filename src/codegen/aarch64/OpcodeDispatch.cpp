@@ -30,8 +30,12 @@ static const char *condForOpcode(Opcode op)
 bool lowerInstruction(const il::core::Instr &ins,
                       const il::core::BasicBlock &bbIn,
                       LoweringContext &ctx,
-                      MBasicBlock &bbOutRef)
+                      std::size_t bbOutIdx)
 {
+    // Helper lambda to access the output block by index.
+    // This ensures we always get a valid reference even after emplace_back().
+    auto bbOut = [&]() -> MBasicBlock & { return ctx.mf.blocks[bbOutIdx]; };
+
     switch (ins.op)
     {
         case Opcode::Zext1:
@@ -41,16 +45,16 @@ bool lowerInstruction(const il::core::Instr &ins,
                 return true; // Handled (as no-op for invalid input)
             uint16_t sv = 0;
             RegClass scls = RegClass::GPR;
-            if (!materializeValueToVReg(ins.operands[0], bbIn, ctx.ti, ctx.fb, bbOutRef,
+            if (!materializeValueToVReg(ins.operands[0], bbIn, ctx.ti, ctx.fb, bbOut(),
                                         ctx.tempVReg, ctx.nextVRegId, sv, scls))
                 return true;
             const uint16_t dst = ctx.nextVRegId++;
             ctx.tempVReg[*ins.result] = dst;
             const uint16_t one = ctx.nextVRegId++;
-            bbOutRef.instrs.push_back(
+            bbOut().instrs.push_back(
                 MInstr{MOpcode::MovRI,
                        {MOperand::vregOp(RegClass::GPR, one), MOperand::immOp(1)}});
-            bbOutRef.instrs.push_back(MInstr{MOpcode::AndRRR,
+            bbOut().instrs.push_back(MInstr{MOpcode::AndRRR,
                                              {MOperand::vregOp(RegClass::GPR, dst),
                                               MOperand::vregOp(RegClass::GPR, sv),
                                               MOperand::vregOp(RegClass::GPR, one)}});
@@ -69,33 +73,33 @@ bool lowerInstruction(const il::core::Instr &ins,
             const int sh = 64 - bits;
             uint16_t sv = 0;
             RegClass scls = RegClass::GPR;
-            if (!materializeValueToVReg(ins.operands[0], bbIn, ctx.ti, ctx.fb, bbOutRef,
+            if (!materializeValueToVReg(ins.operands[0], bbIn, ctx.ti, ctx.fb, bbOut(),
                                         ctx.tempVReg, ctx.nextVRegId, sv, scls))
                 return true;
             const uint16_t vt = ctx.nextVRegId++;
             if (sh > 0)
             {
-                bbOutRef.instrs.push_back(MInstr{MOpcode::MovRR,
+                bbOut().instrs.push_back(MInstr{MOpcode::MovRR,
                                                  {MOperand::vregOp(RegClass::GPR, vt),
                                                   MOperand::vregOp(RegClass::GPR, sv)}});
                 if (ins.op == Opcode::CastSiNarrowChk)
                 {
-                    bbOutRef.instrs.push_back(MInstr{MOpcode::LslRI,
+                    bbOut().instrs.push_back(MInstr{MOpcode::LslRI,
                                                      {MOperand::vregOp(RegClass::GPR, vt),
                                                       MOperand::vregOp(RegClass::GPR, vt),
                                                       MOperand::immOp(sh)}});
-                    bbOutRef.instrs.push_back(MInstr{MOpcode::AsrRI,
+                    bbOut().instrs.push_back(MInstr{MOpcode::AsrRI,
                                                      {MOperand::vregOp(RegClass::GPR, vt),
                                                       MOperand::vregOp(RegClass::GPR, vt),
                                                       MOperand::immOp(sh)}});
                 }
                 else
                 {
-                    bbOutRef.instrs.push_back(MInstr{MOpcode::LslRI,
+                    bbOut().instrs.push_back(MInstr{MOpcode::LslRI,
                                                      {MOperand::vregOp(RegClass::GPR, vt),
                                                       MOperand::vregOp(RegClass::GPR, vt),
                                                       MOperand::immOp(sh)}});
-                    bbOutRef.instrs.push_back(MInstr{MOpcode::LsrRI,
+                    bbOut().instrs.push_back(MInstr{MOpcode::LsrRI,
                                                      {MOperand::vregOp(RegClass::GPR, vt),
                                                       MOperand::vregOp(RegClass::GPR, vt),
                                                       MOperand::immOp(sh)}});
@@ -103,15 +107,15 @@ bool lowerInstruction(const il::core::Instr &ins,
             }
             else
             {
-                bbOutRef.instrs.push_back(MInstr{MOpcode::MovRR,
+                bbOut().instrs.push_back(MInstr{MOpcode::MovRR,
                                                  {MOperand::vregOp(RegClass::GPR, vt),
                                                   MOperand::vregOp(RegClass::GPR, sv)}});
             }
-            bbOutRef.instrs.push_back(MInstr{MOpcode::CmpRR,
+            bbOut().instrs.push_back(MInstr{MOpcode::CmpRR,
                                              {MOperand::vregOp(RegClass::GPR, vt),
                                               MOperand::vregOp(RegClass::GPR, sv)}});
             const std::string trapLabel = ".Ltrap_cast_" + std::to_string(ctx.trapLabelCounter++);
-            bbOutRef.instrs.push_back(
+            bbOut().instrs.push_back(
                 MInstr{MOpcode::BCond, {MOperand::condOp("ne"), MOperand::labelOp(trapLabel)}});
             ctx.mf.blocks.emplace_back();
             ctx.mf.blocks.back().name = trapLabel;
@@ -119,7 +123,7 @@ bool lowerInstruction(const il::core::Instr &ins,
                 MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap")}});
             const uint16_t dst = ctx.nextVRegId++;
             ctx.tempVReg[*ins.result] = dst;
-            bbOutRef.instrs.push_back(MInstr{MOpcode::MovRR,
+            bbOut().instrs.push_back(MInstr{MOpcode::MovRR,
                                              {MOperand::vregOp(RegClass::GPR, dst),
                                               MOperand::vregOp(RegClass::GPR, vt)}});
             return true;
@@ -131,43 +135,43 @@ bool lowerInstruction(const il::core::Instr &ins,
                 return true;
             uint16_t fv = 0;
             RegClass fcls = RegClass::FPR;
-            if (!materializeValueToVReg(ins.operands[0], bbIn, ctx.ti, ctx.fb, bbOutRef,
+            if (!materializeValueToVReg(ins.operands[0], bbIn, ctx.ti, ctx.fb, bbOut(),
                                         ctx.tempVReg, ctx.nextVRegId, fv, fcls))
                 return true;
             const uint16_t dst = ctx.nextVRegId++;
             ctx.tempVReg[*ins.result] = dst;
             if (ins.op == Opcode::CastFpToSiRteChk)
             {
-                bbOutRef.instrs.push_back(MInstr{MOpcode::FCvtZS,
+                bbOut().instrs.push_back(MInstr{MOpcode::FCvtZS,
                                                  {MOperand::vregOp(RegClass::GPR, dst),
                                                   MOperand::vregOp(RegClass::FPR, fv)}});
             }
             else
             {
-                bbOutRef.instrs.push_back(MInstr{MOpcode::FCvtZU,
+                bbOut().instrs.push_back(MInstr{MOpcode::FCvtZU,
                                                  {MOperand::vregOp(RegClass::GPR, dst),
                                                   MOperand::vregOp(RegClass::FPR, fv)}});
             }
             const uint16_t rr = ctx.nextVRegId++;
             if (ins.op == Opcode::CastFpToSiRteChk)
             {
-                bbOutRef.instrs.push_back(MInstr{MOpcode::SCvtF,
+                bbOut().instrs.push_back(MInstr{MOpcode::SCvtF,
                                                  {MOperand::vregOp(RegClass::FPR, rr),
                                                   MOperand::vregOp(RegClass::GPR, dst)}});
             }
             else
             {
-                bbOutRef.instrs.push_back(MInstr{MOpcode::UCvtF,
+                bbOut().instrs.push_back(MInstr{MOpcode::UCvtF,
                                                  {MOperand::vregOp(RegClass::FPR, rr),
                                                   MOperand::vregOp(RegClass::GPR, dst)}});
             }
-            bbOutRef.instrs.push_back(MInstr{MOpcode::FCmpRR,
+            bbOut().instrs.push_back(MInstr{MOpcode::FCmpRR,
                                              {MOperand::vregOp(RegClass::FPR, fv),
                                               MOperand::vregOp(RegClass::FPR, rr)}});
             {
                 const std::string trapLabel2 =
                     ".Ltrap_fpcast_" + std::to_string(ctx.trapLabelCounter++);
-                bbOutRef.instrs.push_back(
+                bbOut().instrs.push_back(
                     MInstr{MOpcode::BCond, {MOperand::condOp("ne"), MOperand::labelOp(trapLabel2)}});
                 ctx.mf.blocks.emplace_back();
                 ctx.mf.blocks.back().name = trapLabel2;
@@ -183,38 +187,39 @@ bool lowerInstruction(const il::core::Instr &ins,
                 return true;
             uint16_t sv = 0;
             RegClass scls = RegClass::GPR;
-            if (!materializeValueToVReg(ins.operands[0], bbIn, ctx.ti, ctx.fb, bbOutRef,
+            if (!materializeValueToVReg(ins.operands[0], bbIn, ctx.ti, ctx.fb, bbOut(),
                                         ctx.tempVReg, ctx.nextVRegId, sv, scls))
                 return true;
             const uint16_t dst = ctx.nextVRegId++;
             ctx.tempVReg[*ins.result] = dst;
+            g_tempRegClass[*ins.result] = RegClass::FPR;
             if (ins.op == Opcode::CastSiToFp)
-                bbOutRef.instrs.push_back(MInstr{MOpcode::SCvtF,
+                bbOut().instrs.push_back(MInstr{MOpcode::SCvtF,
                                                  {MOperand::vregOp(RegClass::FPR, dst),
                                                   MOperand::vregOp(RegClass::GPR, sv)}});
             else
-                bbOutRef.instrs.push_back(MInstr{MOpcode::UCvtF,
+                bbOut().instrs.push_back(MInstr{MOpcode::UCvtF,
                                                  {MOperand::vregOp(RegClass::FPR, dst),
                                                   MOperand::vregOp(RegClass::GPR, sv)}});
             return true;
         }
         case Opcode::SRemChk0:
-            lowerSRemChk0(ins, bbIn, ctx, bbOutRef);
+            lowerSRemChk0(ins, bbIn, ctx, bbOut());
             return true;
         case Opcode::SDivChk0:
-            lowerSDivChk0(ins, bbIn, ctx, bbOutRef);
+            lowerSDivChk0(ins, bbIn, ctx, bbOut());
             return true;
         case Opcode::UDivChk0:
-            lowerUDivChk0(ins, bbIn, ctx, bbOutRef);
+            lowerUDivChk0(ins, bbIn, ctx, bbOut());
             return true;
         case Opcode::URemChk0:
-            lowerURemChk0(ins, bbIn, ctx, bbOutRef);
+            lowerURemChk0(ins, bbIn, ctx, bbOut());
             return true;
         case Opcode::FAdd:
         case Opcode::FSub:
         case Opcode::FMul:
         case Opcode::FDiv:
-            lowerFpArithmetic(ins, bbIn, ctx, bbOutRef);
+            lowerFpArithmetic(ins, bbIn, ctx, bbOut());
             return true;
         case Opcode::FCmpEQ:
         case Opcode::FCmpNE:
@@ -222,13 +227,13 @@ bool lowerInstruction(const il::core::Instr &ins,
         case Opcode::FCmpLE:
         case Opcode::FCmpGT:
         case Opcode::FCmpGE:
-            lowerFpCompare(ins, bbIn, ctx, bbOutRef);
+            lowerFpCompare(ins, bbIn, ctx, bbOut());
             return true;
         case Opcode::Sitofp:
-            lowerSitofp(ins, bbIn, ctx, bbOutRef);
+            lowerSitofp(ins, bbIn, ctx, bbOut());
             return true;
         case Opcode::Fptosi:
-            lowerFptosi(ins, bbIn, ctx, bbOutRef);
+            lowerFptosi(ins, bbIn, ctx, bbOut());
             return true;
         default:
             // Opcode not handled - caller should process

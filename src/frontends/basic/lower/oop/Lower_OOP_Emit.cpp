@@ -967,10 +967,11 @@ void Lowerer::emitOopDeclsAndBodies(const Program &prog)
         const long long typeId = (long long)itLayout->second.classId;
         // Allocate a minimal vtable (8 bytes) for the class
         Value vtablePtr = emitCallRet(Type(Type::Kind::Ptr), "rt_alloc", {Value::constInt(8LL)});
-        // Register the class with rt_register_class_direct(typeId, vtable, qname, 0)
+        // Register the class with rt_register_class_direct_rs(typeId, vtable, qname, 0)
+        // Note: Use _rs variant which accepts rt_string, not const char*
         std::string qnameLabel = getStringLabel(ci.qualifiedName);
         emitCall(
-            "rt_register_class_direct",
+            "rt_register_class_direct_rs",
             {Value::constInt(typeId), vtablePtr, emitConstStr(qnameLabel), Value::constInt(0LL)});
     }
 
