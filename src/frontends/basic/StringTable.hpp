@@ -112,8 +112,7 @@ class StringTable
 
     /// @brief Iterate over all interned strings.
     /// @param fn Callback receiving (label, content) pairs.
-    template <typename Func>
-    void forEach(Func &&fn) const
+    template <typename Func> void forEach(Func &&fn) const
     {
         for (const auto &[content, label] : stringToLabel_)
             fn(label, content);

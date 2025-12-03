@@ -636,6 +636,13 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
             foldStmt(bodyStmt);
     }
 
+    /// @brief Fold body expressions for FOR EACH loops.
+    void visit(ForEachStmt &stmt) override
+    {
+        for (auto &bodyStmt : stmt.body)
+            foldStmt(bodyStmt);
+    }
+
     /// @brief NEXT statements have no expressions to fold.
     void visit(NextStmt &) override {}
 

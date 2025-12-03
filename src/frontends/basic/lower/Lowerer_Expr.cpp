@@ -313,8 +313,8 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
         if (lowerer_.currentClass().size() > 0 && expr.calleeQualified.empty())
         {
             // Check if this is actually a method of the current class
-            const auto *methodInfo = lowerer_.oopIndex_.findMethodInHierarchy(
-                lowerer_.currentClass(), expr.callee);
+            const auto *methodInfo =
+                lowerer_.oopIndex_.findMethodInHierarchy(lowerer_.currentClass(), expr.callee);
             if (!methodInfo)
             {
                 // Not a method of this class - fall through to global resolution

@@ -220,6 +220,7 @@ struct SelectCaseStmt;
 struct WhileStmt;
 struct DoStmt;
 struct ForStmt;
+struct ForEachStmt;
 struct NextStmt;
 struct ExitStmt;
 struct GotoStmt;
@@ -267,6 +268,7 @@ STMT_KIND_TRAIT(SelectCaseStmt, SelectCase)
 STMT_KIND_TRAIT(WhileStmt, While)
 STMT_KIND_TRAIT(DoStmt, Do)
 STMT_KIND_TRAIT(ForStmt, For)
+STMT_KIND_TRAIT(ForEachStmt, ForEach)
 STMT_KIND_TRAIT(NextStmt, Next)
 STMT_KIND_TRAIT(ExitStmt, Exit)
 STMT_KIND_TRAIT(GotoStmt, Goto)

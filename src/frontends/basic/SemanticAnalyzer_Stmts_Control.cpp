@@ -221,6 +221,14 @@ void SemanticAnalyzer::analyzeFor(ForStmt &stmt)
     sem::analyzeFor(*this, stmt);
 }
 
+/// @brief Analyse FOR EACH array iteration semantics.
+///
+/// @param stmt FOR EACH statement being analysed.
+void SemanticAnalyzer::analyzeForEach(ForEachStmt &stmt)
+{
+    sem::analyzeForEach(*this, stmt);
+}
+
 /// @brief Resolve the target of a GOTO statement and validate reachability.
 ///
 /// @param stmt GOTO statement node.

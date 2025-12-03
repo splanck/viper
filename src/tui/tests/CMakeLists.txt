@@ -116,8 +116,8 @@ add_test(NAME tui_test_splitter_keyboard COMMAND tui_test_splitter_keyboard)
 
 # Set labels for all TUI tests
 get_property(_tui_tests DIRECTORY PROPERTY TESTS)
-foreach(_t IN LISTS _tui_tests)
-    if(_t MATCHES "^tui_")
+foreach (_t IN LISTS _tui_tests)
+    if (_t MATCHES "^tui_")
         set_tests_properties(${_t} PROPERTIES LABELS tui)
-    endif()
-endforeach()
+    endif ()
+endforeach ()

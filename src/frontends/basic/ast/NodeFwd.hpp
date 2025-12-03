@@ -71,6 +71,7 @@ struct TryCatchStmt;
 struct WhileStmt;
 struct DoStmt;
 struct ForStmt;
+struct ForEachStmt;
 struct NextStmt;
 struct ExitStmt;
 struct GotoStmt;

@@ -1080,8 +1080,12 @@ Value RuntimeStatementLowerer::emitArrayLengthCheck(Value bound,
 
         size_t failIdx = func->blocks.size();
         lowerer_.builder->addBlock(*func, failLbl);
+        // Create contBlk with a block parameter for length to ensure proper SSA form
+        // across the conditional branch. This is required for native codegen which
+        // cannot reference values defined in predecessor blocks.
+        std::vector<il::core::Param> contParams = {{"len", il::core::Type(il::core::Type::Kind::I64)}};
         size_t contIdx = func->blocks.size();
-        lowerer_.builder->addBlock(*func, contLbl);
+        lowerer_.builder->createBlock(*func, contLbl, contParams);
 
         BasicBlock *failBlk = &func->blocks[failIdx];
         BasicBlock *contBlk = &func->blocks[contIdx];
@@ -1089,12 +1093,28 @@ Value RuntimeStatementLowerer::emitArrayLengthCheck(Value bound,
         ctx.setCurrent(&func->blocks[curIdx]);
         Value isNeg =
             lowerer_.emitBinary(Opcode::SCmpLT, lowerer_.ilBoolTy(), length, Value::constInt(0));
-        lowerer_.emitCBr(isNeg, failBlk, contBlk);
+
+        // Emit CBr with branch arguments: pass length to contBlk via block parameter
+        Instr cbr;
+        cbr.op = Opcode::CBr;
+        cbr.type = il::core::Type(il::core::Type::Kind::Void);
+        cbr.operands.push_back(isNeg);
+        cbr.labels.push_back(failLbl);
+        cbr.labels.push_back(contLbl);
+        cbr.brArgs.push_back({});          // failBlk has no parameters
+        cbr.brArgs.push_back({length});    // contBlk receives length
+        cbr.loc = lowerer_.curLoc;
+        BasicBlock *curBlock = ctx.current();
+        curBlock->instructions.push_back(cbr);
+        curBlock->terminated = true;
 
         ctx.setCurrent(failBlk);
         lowerer_.emitTrap();
 
         ctx.setCurrent(contBlk);
+        // Return the block parameter value instead of the original length.
+        // This ensures the value is properly defined in contBlk for SSA.
+        return lowerer_.builder->blockParam(*contBlk, 0);
     }
 
     return length;

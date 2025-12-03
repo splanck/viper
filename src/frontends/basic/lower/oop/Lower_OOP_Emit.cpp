@@ -16,9 +16,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/basic/ILTypeUtils.hpp"
-#include "frontends/basic/lower/oop/Lower_OOP_RuntimeHelpers.hpp"
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/NameMangler_OOP.hpp"
+#include "frontends/basic/lower/oop/Lower_OOP_RuntimeHelpers.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
 
 #include <string>

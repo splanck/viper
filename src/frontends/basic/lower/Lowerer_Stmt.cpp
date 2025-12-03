@@ -270,6 +270,15 @@ class LowererStmtVisitor final : public lower::AstVisitor, public StmtVisitor
         lowerer_.lowerFor(stmt);
     }
 
+    /// @brief Lower a FOR EACH array iteration loop.
+    /// @details Delegates to @ref Lowerer::lowerForEach which emits array bounds
+    ///          computation and element access.
+    /// @param stmt FOR EACH statement node.
+    void visit(const ForEachStmt &stmt) override
+    {
+        lowerer_.lowerForEach(stmt);
+    }
+
     /// @brief Lower a NEXT statement.
     /// @details Uses @ref Lowerer::lowerNext to advance the active FOR loop's
     ///          induction variable and evaluate continuation conditions.

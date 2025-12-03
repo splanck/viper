@@ -105,9 +105,9 @@ enum class MOpcode
 /// PhysReg enum value cast to uint16_t.
 struct MReg
 {
-    bool isPhys{false};       ///< True if this is a physical register.
+    bool isPhys{false};          ///< True if this is a physical register.
     RegClass cls{RegClass::GPR}; ///< Register class (GPR or FPR).
-    uint16_t idOrPhys{0U};    ///< Virtual reg ID or PhysReg enum value.
+    uint16_t idOrPhys{0U};       ///< Virtual reg ID or PhysReg enum value.
 };
 
 /// @brief Operand for a machine IR instruction.
@@ -118,16 +118,16 @@ struct MOperand
 {
     enum class Kind
     {
-        Reg,   ///< Physical or virtual register.
-        Imm,   ///< Immediate constant.
-        Cond,  ///< Condition code (eq, ne, lt, etc.).
-        Label  ///< Symbol or basic block label.
+        Reg,  ///< Physical or virtual register.
+        Imm,  ///< Immediate constant.
+        Cond, ///< Condition code (eq, ne, lt, etc.).
+        Label ///< Symbol or basic block label.
     } kind{Kind::Imm};
 
-    MReg reg{};               ///< Register operand (when kind==Reg).
-    long long imm{0};         ///< Immediate value (when kind==Imm).
+    MReg reg{};                ///< Register operand (when kind==Reg).
+    long long imm{0};          ///< Immediate value (when kind==Imm).
     const char *cond{nullptr}; ///< Condition code string (when kind==Cond).
-    std::string label;        ///< Label name (when kind==Label).
+    std::string label;         ///< Label name (when kind==Label).
 
     /// @brief Create a physical register operand.
     static MOperand regOp(PhysReg r)
@@ -198,8 +198,8 @@ struct MInstr
 /// and (typically) ending in a branch or return instruction.
 struct MBasicBlock
 {
-    std::string name;            ///< Block label (used for branches).
-    std::vector<MInstr> instrs;  ///< Instructions in program order.
+    std::string name;           ///< Block label (used for branches).
+    std::vector<MInstr> instrs; ///< Instructions in program order.
 };
 
 /// @brief A function in machine IR form.
@@ -208,7 +208,7 @@ struct MBasicBlock
 /// stack frame layout computed during lowering and register allocation.
 struct MFunction
 {
-    std::string name;               ///< Function symbol name.
+    std::string name;                ///< Function symbol name.
     std::vector<MBasicBlock> blocks; ///< Basic blocks in layout order.
 
     /// Callee-saved GPRs that must be preserved across calls.

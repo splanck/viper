@@ -194,8 +194,7 @@ Lowerer::Lowerer(bool boundsChecks)
       procedureLowering(std::make_unique<ProcedureLowering>(*this)),
       statementLowering(std::make_unique<StatementLowering>(*this)),
       symbols(symbolTable_.raw()), // Legacy alias for backward compatibility
-      boundsChecks(boundsChecks),
-      emitter_(std::make_unique<lower::Emitter>(*this)),
+      boundsChecks(boundsChecks), emitter_(std::make_unique<lower::Emitter>(*this)),
       coercionEngine_(std::make_unique<TypeCoercionEngine>(*this)),
       ioStmtLowerer_(std::make_unique<IoStatementLowerer>(*this)),
       ctrlStmtLowerer_(std::make_unique<ControlStatementLowerer>(*this)),

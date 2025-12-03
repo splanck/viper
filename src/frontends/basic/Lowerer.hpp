@@ -528,6 +528,7 @@ class Lowerer
     void lowerForVarStep(const ForStmt &stmt, Value slot, RVal end, RVal step);
     CtrlState emitFor(const ForStmt &stmt, Value slot, RVal end, RVal step);
     void lowerFor(const ForStmt &stmt);
+    void lowerForEach(const ForEachStmt &stmt);
     void emitForStep(Value slot, Value step);
     CtrlState emitSelect(const SelectCaseStmt &stmt);
     void lowerNext(const NextStmt &stmt);
@@ -664,9 +665,10 @@ class Lowerer
     build::IRBuilder *builder{nullptr};
     Module *mod{nullptr};
     NameMangler mangler;
-    SymbolTable symbolTable_;                               ///< Unified symbol table.
-    std::unordered_map<std::string, SymbolInfo> &symbols;   ///< Legacy alias (references symbolTable_.raw()).
-    StringTable stringTable_;                               ///< String literal interning.
+    SymbolTable symbolTable_; ///< Unified symbol table.
+    std::unordered_map<std::string, SymbolInfo>
+        &symbols;                    ///< Legacy alias (references symbolTable_.raw()).
+    StringTable stringTable_;        ///< String literal interning.
     il::support::SourceLoc curLoc{}; ///< current source location for emitted IR
     bool boundsChecks{false};
     static constexpr int kGosubStackDepth = 128;

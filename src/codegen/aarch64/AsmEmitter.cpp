@@ -269,7 +269,8 @@ void AsmEmitter::emitFunctionHeader(std::ostream &os, const std::string &name) c
     // On Darwin, avoid emitting .globl for L*-prefixed names (reserved for local/temporary).
     const std::string sym = mangleSymbol(name);
 #if defined(__APPLE__)
-    if (!(sym.size() >= 1 && (sym[0] == 'L' || (sym.size() >= 2 && sym[0] == '_' && sym[1] == 'L'))))
+    if (!(sym.size() >= 1 &&
+          (sym[0] == 'L' || (sym.size() >= 2 && sym[0] == '_' && sym[1] == 'L'))))
     {
         os << ".globl " << sym << "\n";
     }
@@ -473,12 +474,34 @@ void AsmEmitter::emitCset(std::ostream &os, PhysReg dst, const char *cond) const
 
 void AsmEmitter::emitSubSp(std::ostream &os, long long bytes) const
 {
-    os << "  sub sp, sp, #" << bytes << "\n";
+    // ARM64 add/sub immediate supports 12-bit unsigned values (0-4095).
+    // For larger frames, we need to break it into multiple instructions.
+    constexpr long long kMaxImm = 4095;
+    while (bytes > kMaxImm)
+    {
+        os << "  sub sp, sp, #" << kMaxImm << "\n";
+        bytes -= kMaxImm;
+    }
+    if (bytes > 0)
+    {
+        os << "  sub sp, sp, #" << bytes << "\n";
+    }
 }
 
 void AsmEmitter::emitAddSp(std::ostream &os, long long bytes) const
 {
-    os << "  add sp, sp, #" << bytes << "\n";
+    // ARM64 add/sub immediate supports 12-bit unsigned values (0-4095).
+    // For larger frames, we need to break it into multiple instructions.
+    constexpr long long kMaxImm = 4095;
+    while (bytes > kMaxImm)
+    {
+        os << "  add sp, sp, #" << kMaxImm << "\n";
+        bytes -= kMaxImm;
+    }
+    if (bytes > 0)
+    {
+        os << "  add sp, sp, #" << bytes << "\n";
+    }
 }
 
 void AsmEmitter::emitStrToSp(std::ostream &os, PhysReg src, long long offset) const
@@ -761,6 +784,15 @@ void AsmEmitter::emitFunction(std::ostream &os, const MFunction &fn) const
         emitPrologue(os, plan);
     else
         emitPrologue(os);
+
+    // For the main function, initialize the runtime context before executing user code.
+    // This is required because runtime functions expect an active RtContext.
+    if (fn.name == "main")
+    {
+        os << "  ; Initialize runtime context for native execution\n";
+        os << "  bl _rt_legacy_context\n";
+        os << "  bl _rt_set_current_context\n";
+    }
 
     // Store the plan for use by Ret instructions
     currentPlan_ = &plan;

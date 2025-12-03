@@ -32,7 +32,19 @@ namespace viper::codegen::aarch64
 class FrameBuilder
 {
   public:
-    explicit FrameBuilder(MFunction &fn) noexcept : fn_(&fn) {}
+    explicit FrameBuilder(MFunction &fn) noexcept : fn_(&fn)
+    {
+        // Initialize nextOffset_ based on existing frame state to avoid
+        // collisions when the register allocator creates a new FrameBuilder
+        // after locals have already been allocated during MIR lowering.
+        int minExisting = -kSlotSizeBytes;
+        for (const auto &L : fn.frame.locals)
+            minExisting = std::min(minExisting, L.offset - kSlotSizeBytes);
+        for (const auto &S : fn.frame.spills)
+            minExisting = std::min(minExisting, S.offset - kSlotSizeBytes);
+        nextOffset_ = minExisting;
+        minOffset_ = minExisting + kSlotSizeBytes;
+    }
 
     /// @brief Declare a local stack slot by IL temp id.
     /// @param tempId The IL temporary identifier.

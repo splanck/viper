@@ -140,11 +140,11 @@ static bool isMemSt(MOpcode opc)
 /// victim selection heuristics).
 struct VState
 {
-    bool hasPhys{false};         ///< True if currently in a physical register.
-    PhysReg phys{PhysReg::X0};   ///< Physical register (valid when hasPhys).
-    bool spilled{false};         ///< True if value is on the stack.
-    int fpOffset{0};             ///< FP-relative offset of spill slot.
-    unsigned lastUse{0};         ///< Instruction index of last use (for LRU).
+    bool hasPhys{false};       ///< True if currently in a physical register.
+    PhysReg phys{PhysReg::X0}; ///< Physical register (valid when hasPhys).
+    bool spilled{false};       ///< True if value is on the stack.
+    int fpOffset{0};           ///< FP-relative offset of spill slot.
+    unsigned lastUse{0};       ///< Instruction index of last use (for LRU).
 };
 
 //-----------------------------------------------------------------------------
@@ -304,8 +304,7 @@ class LinearAllocator
     /// @param cls Register class to spill from.
     /// @param states State map for the register class.
     /// @return The vreg ID of the victim, or UINT16_MAX if none found.
-    template <typename StateMap>
-    uint16_t selectLRUVictim(StateMap &states)
+    template <typename StateMap> uint16_t selectLRUVictim(StateMap &states)
     {
         uint16_t victim = UINT16_MAX;
         unsigned oldestUse = UINT_MAX;
@@ -525,6 +524,20 @@ class LinearAllocator
 
         if ((ins.opc == MOpcode::StrFprFpImm || ins.opc == MOpcode::StrFprSpImm) && idx == 0)
             return {true, false};
+
+        // AdrPage: dst is def-only, label operand is not a register
+        if (ins.opc == MOpcode::AdrPage)
+            return {false, idx == 0};
+
+        // AddPageOff: dst is def+use (same reg for src and dst), label operand is not a register
+        if (ins.opc == MOpcode::AddPageOff)
+        {
+            if (idx == 0)
+                return {false, true}; // dst is def-only
+            if (idx == 1)
+                return {true, false}; // src is use
+            return {false, false}; // label is neither
+        }
 
         return {true, false};
     }

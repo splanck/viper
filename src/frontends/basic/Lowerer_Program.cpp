@@ -26,8 +26,8 @@
 /// @details These utilities reset shared lowering state, construct IR builders,
 ///          and drive the staged emission sequence used by the BASIC front end.
 
-#include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/ILTypeUtils.hpp"
+#include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/LoweringPipeline.hpp"
 
 #include "viper/il/IRBuilder.hpp"

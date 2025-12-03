@@ -13,9 +13,9 @@
 
 #pragma once
 
-#include "frontends/basic/lower/oop/Lower_OOP_RuntimeHelpers.hpp"
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/OopLoweringContext.hpp"
+#include "frontends/basic/lower/oop/Lower_OOP_RuntimeHelpers.hpp"
 
 #include <functional>
 #include <string>

@@ -307,6 +307,14 @@ struct AstPrinter::StmtPrinter final : StmtVisitor
         print_stmt::printFor(stmt, ctx);
     }
 
+    /// @brief Render a FOR EACH array iteration loop.
+    ///
+    /// @param stmt FOR EACH statement with element var and array name.
+    void visit(const ForEachStmt &stmt) override
+    {
+        ctx.stream() << "(FOR-EACH " << stmt.elementVar << " IN " << stmt.arrayName << ")";
+    }
+
     /// @brief Render the NEXT statement referencing loop variables.
     ///
     /// @param stmt NEXT statement containing iterators.

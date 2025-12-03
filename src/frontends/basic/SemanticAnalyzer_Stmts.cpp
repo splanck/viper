@@ -172,6 +172,12 @@ class SemanticAnalyzerStmtVisitor final : public MutStmtVisitor
         analyzer_.analyzeFor(stmt);
     }
 
+    /// @brief Analyze FOR EACH loops for array iteration.
+    void visit(ForEachStmt &stmt) override
+    {
+        analyzer_.analyzeForEach(stmt);
+    }
+
     /// @brief Route NEXT statements to the matching FOR-loop checker.
     void visit(NextStmt &stmt) override
     {

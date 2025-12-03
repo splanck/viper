@@ -14,8 +14,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/ASTUtils.hpp"
+#include "frontends/basic/Lowerer.hpp"
 
 #include "frontends/basic/AstWalker.hpp"
 #include "frontends/basic/EmitCommon.hpp"
@@ -1224,8 +1224,7 @@ void Lowerer::allocateLocalSlots(const std::unordered_set<std::string> &paramNam
         // slots allocated and incorrectly resolve to rt_modvar_addr (the CONST storage).
         bool isMain = (context().function() && context().function()->name == "main");
         if (!isParam && !isMain && semanticAnalyzer_ &&
-            semanticAnalyzer_->isModuleLevelSymbol(name) &&
-            !semanticAnalyzer_->isConstSymbol(name))
+            semanticAnalyzer_->isModuleLevelSymbol(name) && !semanticAnalyzer_->isConstSymbol(name))
             continue;
         if (info.slotId)
             continue;
@@ -1252,8 +1251,7 @@ void Lowerer::allocateLocalSlots(const std::unordered_set<std::string> &paramNam
         // BUG-OOP-036 fix: Same logic as Pass 1 - allow allocation for CONST-shadowing locals.
         bool isMain = (context().function() && context().function()->name == "main");
         if (!isParam && !isMain && semanticAnalyzer_ &&
-            semanticAnalyzer_->isModuleLevelSymbol(name) &&
-            !semanticAnalyzer_->isConstSymbol(name))
+            semanticAnalyzer_->isModuleLevelSymbol(name) && !semanticAnalyzer_->isConstSymbol(name))
             continue;
         if (info.slotId)
             continue;

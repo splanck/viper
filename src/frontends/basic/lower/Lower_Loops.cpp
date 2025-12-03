@@ -535,6 +535,142 @@ void Lowerer::lowerFor(const ForStmt &stmt)
         context().setCurrent(state.cur);
 }
 
+/// @brief Lower a FOR EACH array iteration loop.
+/// @details Generates the equivalent of:
+///          index = 0
+///          length = array_length(arr)
+///          while index < length:
+///              element = arr(index)
+///              ... body ...
+///              index = index + 1
+/// @param stmt FOR EACH statement to lower.
+void Lowerer::lowerForEach(const ForEachStmt &stmt)
+{
+    LocationScope loc(*this, stmt.loc);
+    auto &ctx = context();
+    auto *func = ctx.function();
+    if (!func || !ctx.current())
+        return;
+
+    // Resolve the array symbol
+    const auto *arrSym = findSymbol(stmt.arrayName);
+    if (!arrSym || !arrSym->slotId)
+    {
+        emitTrap();
+        return;
+    }
+
+    // Resolve the element variable (should have been created by semantic analysis)
+    const auto *elemSym = findSymbol(stmt.elementVar);
+    if (!elemSym || !elemSym->slotId)
+    {
+        emitTrap();
+        return;
+    }
+
+    // Load the array base pointer
+    Value arrSlot = Value::temp(*arrSym->slotId);
+    Value arrBase = emitLoad(Type(Type::Kind::Ptr), arrSlot);
+
+    // Get array length using appropriate runtime function
+    Value length;
+    if (arrSym->type == AstType::Str)
+        length = emitCallRet(Type(Type::Kind::I64), "rt_arr_str_len", {arrBase});
+    else if (arrSym->isObject)
+        length = emitCallRet(Type(Type::Kind::I64), "rt_arr_obj_len", {arrBase});
+    else
+        length = emitCallRet(Type(Type::Kind::I64), "rt_arr_i32_len", {arrBase});
+
+    // Create a temporary index slot using alloca for 8-byte i64
+    Value indexSlot = emitAlloca(8);
+    emitStore(Type(Type::Kind::I64), indexSlot, Value::constInt(0));
+
+    // Get element slot
+    Value elemSlot = Value::temp(*elemSym->slotId);
+
+    // Setup loop blocks
+    BlockNamer *blockNamer = ctx.blockNames().namer();
+    size_t curIdx = ctx.currentIndex();
+    size_t start = func->blocks.size();
+    unsigned id = blockNamer ? blockNamer->nextFor() : 0;
+
+    std::string headLbl = blockNamer ? blockNamer->forHead(id) : mangler.block("foreach_head");
+    std::string bodyLbl = blockNamer ? blockNamer->forBody(id) : mangler.block("foreach_body");
+    std::string incLbl = blockNamer ? blockNamer->forInc(id) : mangler.block("foreach_inc");
+    std::string doneLbl = blockNamer ? blockNamer->forEnd(id) : mangler.block("foreach_done");
+
+    builder->addBlock(*func, headLbl);
+    builder->addBlock(*func, bodyLbl);
+    builder->addBlock(*func, incLbl);
+    builder->addBlock(*func, doneLbl);
+
+    func = ctx.function();
+    size_t headIdx = start;
+    size_t bodyIdx = start + 1;
+    size_t incIdx = start + 2;
+    size_t doneIdx = start + 3;
+
+    BasicBlock *done = &func->blocks[doneIdx];
+    ctx.setCurrentByIndex(curIdx);
+    ctx.loopState().push(done);
+
+    // Branch to loop head
+    emitBr(&func->blocks[headIdx]);
+
+    // Head block: check if index < length
+    ctx.setCurrent(&func->blocks[headIdx]);
+    Value curIndex = emitLoad(Type(Type::Kind::I64), indexSlot);
+    Value cond = emitBinary(Opcode::SCmpLT, Type(Type::Kind::I1), curIndex, length);
+    emitCBr(cond, &func->blocks[bodyIdx], &func->blocks[doneIdx]);
+
+    // Body block: load element from array into element variable
+    ctx.setCurrent(&func->blocks[bodyIdx]);
+    curIndex = emitLoad(Type(Type::Kind::I64), indexSlot);
+
+    // Access array element and store to element variable
+    // Use appropriate runtime function based on element type
+    if (arrSym->type == AstType::Str)
+    {
+        Value elem = emitCallRet(Type(Type::Kind::Str), "rt_arr_str_get", {arrBase, curIndex});
+        emitStore(Type(Type::Kind::Str), elemSlot, elem);
+    }
+    else if (arrSym->isObject)
+    {
+        Value elem = emitCallRet(Type(Type::Kind::Ptr), "rt_arr_obj_get", {arrBase, curIndex});
+        emitStore(Type(Type::Kind::Ptr), elemSlot, elem);
+    }
+    else
+    {
+        // Integer arrays - use rt_arr_i32_get runtime function
+        Value elem = emitCallRet(Type(Type::Kind::I64), "rt_arr_i32_get", {arrBase, curIndex});
+        emitStore(Type(Type::Kind::I64), elemSlot, elem);
+    }
+
+    // Lower the loop body
+    lowerLoopBody(stmt.body);
+
+    BasicBlock *current = ctx.current();
+    bool term = current && current->terminated;
+
+    // Increment block
+    if (!term)
+    {
+        emitBr(&func->blocks[incIdx]);
+        ctx.setCurrent(&func->blocks[incIdx]);
+        Value idx = emitLoad(Type(Type::Kind::I64), indexSlot);
+        Value nextIdx = emitBinary(Opcode::IAddOvf, Type(Type::Kind::I64), idx, Value::constInt(1));
+        emitStore(Type(Type::Kind::I64), indexSlot, nextIdx);
+        emitBr(&func->blocks[headIdx]);
+    }
+
+    // Done block
+    func = ctx.function();
+    done = &func->blocks[doneIdx];
+    ctx.loopState().refresh(done);
+    ctx.setCurrent(done);
+    ctx.loopState().pop();
+}
+
 /// @brief Lower the BASIC NEXT statement.
 /// @details NEXT is a parsing artefact in the current lowering pipeline and is
 ///          therefore ignored. The stub remains so future loop finalisation

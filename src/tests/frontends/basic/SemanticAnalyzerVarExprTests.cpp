@@ -15,8 +15,8 @@
 
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/Parser.hpp"
-#include "frontends/basic/SemanticAnalyzer_Internal.hpp"
 #include "frontends/basic/SemanticAnalyzer.hpp"
+#include "frontends/basic/SemanticAnalyzer_Internal.hpp"
 #include "support/source_manager.hpp"
 
 #include <cassert>

@@ -654,9 +654,8 @@ std::string Lowerer::getStringLabel(const std::string &s)
     // Set up the emitter callback if not already configured
     if (!stringTable_.size())
     {
-        stringTable_.setEmitter([this](const std::string &label, const std::string &content) {
-            builder->addGlobalStr(label, content);
-        });
+        stringTable_.setEmitter([this](const std::string &label, const std::string &content)
+                                { builder->addGlobalStr(label, content); });
     }
 
     // Intern the string (this will call the emitter callback)

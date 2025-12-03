@@ -233,7 +233,8 @@ StmtPtr Parser::parseClassDecl()
                 for (auto &ch : upper)
                     ch = static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
                 if (upper == "INTEGER" || upper == "INT" || upper == "LONG" || upper == "DOUBLE" ||
-                    upper == "FLOAT" || upper == "SINGLE" || upper == "STRING" || upper == "BOOLEAN")
+                    upper == "FLOAT" || upper == "SINGLE" || upper == "STRING" ||
+                    upper == "BOOLEAN")
                 {
                     // It's a primitive - use parseTypeKeyword
                     fieldType = parseTypeKeyword();

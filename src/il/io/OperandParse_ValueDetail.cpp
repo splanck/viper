@@ -78,8 +78,8 @@ bool isIdentStart(char c)
 /// @return @c true when the character is valid within an identifier body.
 bool isIdentBody(char c)
 {
-    return std::isalnum(static_cast<unsigned char>(c)) || c == '_' || c == '.' || c == '$' || c == '#' ||
-           c == '%';
+    return std::isalnum(static_cast<unsigned char>(c)) || c == '_' || c == '.' || c == '$' ||
+           c == '#' || c == '%';
 }
 
 /// @brief Consume an identifier from the front of a string view.

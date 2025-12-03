@@ -33,8 +33,8 @@
 //===----------------------------------------------------------------------===//
 #pragma once
 
-#include "frontends/basic/ast/NodeFwd.hpp"
 #include "frontends/basic/LowererTypes.hpp"
+#include "frontends/basic/ast/NodeFwd.hpp"
 #include "support/source_location.hpp"
 #include "viper/il/IRBuilder.hpp"
 #include "viper/il/Module.hpp"

@@ -16,6 +16,7 @@
 #pragma once
 
 #include "frontends/basic/BasicTypes.hpp"
+#include "frontends/basic/ast/NodeFwd.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
 #include "viper/il/Module.hpp"
 #include <optional>
@@ -144,7 +145,7 @@ struct MemberFieldAccess
     il::core::Value ptr; ///< Pointer to the field storage.
     il::core::Type ilType{
         il::core::Type(il::core::Type::Kind::I64)}; ///< IL type used for loads/stores.
-    ::il::frontends::basic::Type astType{::il::frontends::basic::Type::I64}; ///< Original AST type.
+    Type astType{Type::I64}; ///< Original AST type.
     std::string objectClassName; ///< BUG-082: Class name for object-typed fields.
 };
 

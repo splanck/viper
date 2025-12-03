@@ -163,6 +163,45 @@ void analyzeFor(SemanticAnalyzer &analyzer, ForStmt &stmt)
     }
 }
 
+/// @brief Validate a FOR EACH loop for array iteration.
+///
+/// The helper verifies that the array exists and is indeed an array, declares
+/// the element variable implicitly if needed, and analyzes the loop body.
+///
+/// @param analyzer Semantic analyzer coordinating validation.
+/// @param stmt AST node representing the FOR EACH statement.
+void analyzeForEach(SemanticAnalyzer &analyzer, ForEachStmt &stmt)
+{
+    ControlCheckContext context(analyzer);
+
+    // Verify the array exists
+    if (!context.analyzer().lookupArrayMetadata(stmt.arrayName))
+    {
+        context.diagnostics().emit(il::support::Severity::Error,
+                                   "B1020",
+                                   stmt.loc,
+                                   static_cast<unsigned>(stmt.arrayName.size()),
+                                   "array '" + stmt.arrayName + "' not found");
+        return;
+    }
+
+    // Resolve the element variable - this will create it if it doesn't exist
+    std::string elemVar = stmt.elementVar;
+    context.resolveLoopVariable(elemVar);
+    stmt.elementVar = elemVar; // Update with scoped name if changed
+
+    // Track as a FOR loop for EXIT FOR support
+    [[maybe_unused]] auto forGuard = context.trackForVariable(stmt.elementVar);
+    [[maybe_unused]] auto loopGuard = context.forLoopGuard();
+    [[maybe_unused]] auto scope = context.pushScope();
+    for (const auto &bodyStmt : stmt.body)
+    {
+        if (!bodyStmt)
+            continue;
+        context.visitStmt(*bodyStmt);
+    }
+}
+
 /// @brief Validate a NEXT statement, ensuring it matches an active FOR loop.
 ///
 /// NEXT can optionally name the loop variable.  The helper verifies that a FOR

@@ -17,8 +17,8 @@
 ///          lines and the IL block graph, wiring up branches, gosub continuations,
 ///          and fallthrough logic while reusing the owning @ref Lowerer state.
 
-#include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/ASTUtils.hpp"
+#include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/LoweringPipeline.hpp"
 
 #include <cassert>

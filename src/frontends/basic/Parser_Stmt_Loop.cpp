@@ -99,19 +99,50 @@ StmtPtr Parser::parseDoStatement()
     return stmt;
 }
 
-/// @brief Parse a `FOR` counting loop.
+/// @brief Parse a `FOR` counting loop or `FOR EACH` iteration loop.
 ///
-/// @details Captures the iteration variable, start/end expressions, and
-///          optional `STEP` expression.  Statements are collected until the
-///          matching `NEXT`, which may optionally repeat the loop variable for
-///          clarity.  The resulting AST node records the source location for
-///          diagnostics.
+/// @details Recognizes two forms:
+///          1. FOR var = start TO end [STEP step] ... NEXT
+///          2. FOR EACH element IN array ... NEXT
+///          Statements are collected until the matching `NEXT`.
 ///
-/// @return Newly allocated @ref ForStmt describing the loop.
+/// @return Newly allocated @ref ForStmt or @ref ForEachStmt describing the loop.
 StmtPtr Parser::parseForStatement()
 {
     auto loc = peek().loc;
     consume(); // FOR
+
+    // Check for FOR EACH syntax
+    if (at(TokenKind::KeywordEach))
+    {
+        consume(); // EACH
+        auto stmt = std::make_unique<ForEachStmt>();
+        stmt->loc = loc;
+
+        // Parse element variable name
+        Token elemTok = expect(TokenKind::Identifier);
+        stmt->elementVar = elemTok.lexeme;
+
+        // Expect IN keyword
+        expect(TokenKind::KeywordIn);
+
+        // Parse array name
+        Token arrayTok = expect(TokenKind::Identifier);
+        stmt->arrayName = arrayTok.lexeme;
+
+        // Collect body until NEXT
+        auto ctxFor = statementSequencer();
+        ctxFor.collectStatements(TokenKind::KeywordNext, stmt->body);
+
+        // Optionally consume variable name after NEXT
+        if (at(TokenKind::Identifier))
+        {
+            consume();
+        }
+        return stmt;
+    }
+
+    // Standard FOR var = start TO end [STEP step] form
     auto stmt = std::make_unique<ForStmt>();
     stmt->loc = loc;
 

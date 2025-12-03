@@ -36,56 +36,56 @@ L10:
   .loc 1 1 4
   %t1 = iadd.ovf 3, 1
   .loc 1 1 4
-  %t2 = scmp_lt %t1, 0
+  %t3 = scmp_lt %t1, 0
   .loc 1 1 4
-  cbr %t2, dim_len_fail, dim_len_cont
+  cbr %t3, dim_len_fail, dim_len_cont(%t1)
 L20:
   .loc 1 2 4
-  %t5 = iadd.ovf 5, 1
+  %t6 = iadd.ovf 5, 1
   .loc 1 2 4
-  %t6 = scmp_lt %t5, 0
+  %t8 = scmp_lt %t6, 0
   .loc 1 2 4
-  cbr %t6, redim_len_fail, redim_len_cont
+  cbr %t8, redim_len_fail, redim_len_cont(%t6)
 L30:
   .loc 1 3 4
   ret 0
 exit:
-  %t10 = load ptr, %t0
-  call @rt_arr_i32_release(%t10)
+  %t12 = load ptr, %t0
+  call @rt_arr_i32_release(%t12)
   store ptr, %t0, null
   ret 0
 dim_len_fail:
   .loc 1 1 4
   trap
-dim_len_cont:
+dim_len_cont(%len:i64):
   .loc 1 1 10
-  %t3 = call @rt_arr_i32_new(%t1)
+  %t4 = call @rt_arr_i32_new(%len)
   .loc 1 1 10
-  call @rt_arr_i32_retain(%t3)
+  call @rt_arr_i32_retain(%t4)
   .loc 1 1 10
-  %t4 = load ptr, %t0
+  %t5 = load ptr, %t0
   .loc 1 1 10
-  call @rt_arr_i32_release(%t4)
+  call @rt_arr_i32_release(%t5)
   .loc 1 1 10
-  store ptr, %t0, %t3
+  store ptr, %t0, %t4
   .loc 1 1 4
   br L20
 redim_len_fail:
   .loc 1 2 4
   trap
-redim_len_cont:
-  .loc 1 2 12
-  %t7 = load ptr, %t0
-  .loc 1 2 12
-  %t8 = call @rt_arr_i32_resize(%t7, %t5)
-  .loc 1 2 12
-  call @rt_arr_i32_retain(%t8)
+redim_len_cont(%len:i64):
   .loc 1 2 12
   %t9 = load ptr, %t0
   .loc 1 2 12
-  call @rt_arr_i32_release(%t9)
+  %t10 = call @rt_arr_i32_resize(%t9, %len)
   .loc 1 2 12
-  store ptr, %t0, %t8
+  call @rt_arr_i32_retain(%t10)
+  .loc 1 2 12
+  %t11 = load ptr, %t0
+  .loc 1 2 12
+  call @rt_arr_i32_release(%t11)
+  .loc 1 2 12
+  store ptr, %t0, %t10
   .loc 1 2 4
   br L30
 }

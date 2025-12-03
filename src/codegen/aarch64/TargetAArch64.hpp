@@ -289,8 +289,7 @@ class CallingConvention
     // Values that fit in 16 bits with possible shift
     if (imm >= 0 && imm <= 0xFFFF)
         return true;
-    if (imm >= 0 && (imm & 0xFFFF) == 0 && ((imm >> 16) & 0xFFFF) <= 0xFFFF &&
-        ((imm >> 32) == 0))
+    if (imm >= 0 && (imm & 0xFFFF) == 0 && ((imm >> 16) & 0xFFFF) <= 0xFFFF && ((imm >> 32) == 0))
         return true;
     // Negative values that can use movn
     if (imm < 0 && imm >= -0x10000)

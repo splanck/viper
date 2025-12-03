@@ -56,6 +56,7 @@ struct StmtVisitor
     virtual void visit(const WhileStmt &) = 0;
     virtual void visit(const DoStmt &) = 0;
     virtual void visit(const ForStmt &) = 0;
+    virtual void visit(const ForEachStmt &) = 0;
     virtual void visit(const NextStmt &) = 0;
     virtual void visit(const ExitStmt &) = 0;
     virtual void visit(const GotoStmt &) = 0;
@@ -120,6 +121,7 @@ struct MutStmtVisitor
     virtual void visit(WhileStmt &) = 0;
     virtual void visit(DoStmt &) = 0;
     virtual void visit(ForStmt &) = 0;
+    virtual void visit(ForEachStmt &) = 0;
     virtual void visit(NextStmt &) = 0;
     virtual void visit(ExitStmt &) = 0;
     virtual void visit(GotoStmt &) = 0;
@@ -184,6 +186,7 @@ struct Stmt
         While,
         Do,
         For,
+        ForEach,
         Next,
         Exit,
         Goto,

@@ -391,6 +391,7 @@ void analyzeSelectCaseBody(SemanticAnalyzer &analyzer, const std::vector<StmtPtr
 void analyzeWhile(SemanticAnalyzer &analyzer, const WhileStmt &stmt);
 void analyzeDo(SemanticAnalyzer &analyzer, const DoStmt &stmt);
 void analyzeFor(SemanticAnalyzer &analyzer, ForStmt &stmt);
+void analyzeForEach(SemanticAnalyzer &analyzer, ForEachStmt &stmt);
 void analyzeExit(SemanticAnalyzer &analyzer, const ExitStmt &stmt);
 void analyzeGoto(SemanticAnalyzer &analyzer, const GotoStmt &stmt);
 void analyzeGosub(SemanticAnalyzer &analyzer, const GosubStmt &stmt);

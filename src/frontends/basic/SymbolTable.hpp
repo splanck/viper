@@ -31,8 +31,8 @@
 //===----------------------------------------------------------------------===//
 #pragma once
 
-#include "frontends/basic/ast/NodeFwd.hpp"
 #include "frontends/basic/LowererTypes.hpp"
+#include "frontends/basic/ast/NodeFwd.hpp"
 #include <optional>
 #include <string>
 #include <string_view>
@@ -200,16 +200,14 @@ class SymbolTable
     // =========================================================================
 
     /// @brief Iterate over all symbols (non-const).
-    template <typename Func>
-    void forEach(Func &&fn)
+    template <typename Func> void forEach(Func &&fn)
     {
         for (auto &[name, info] : symbols_)
             fn(name, info);
     }
 
     /// @brief Iterate over all symbols (const).
-    template <typename Func>
-    void forEach(Func &&fn) const
+    template <typename Func> void forEach(Func &&fn) const
     {
         for (const auto &[name, info] : symbols_)
             fn(name, info);

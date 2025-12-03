@@ -232,6 +232,8 @@ class SemanticAnalyzer
     void analyzeDo(const DoStmt &s);
     /// @brief Analyze FOR statement @p s.
     void analyzeFor(ForStmt &s);
+    /// @brief Analyze FOR EACH statement @p s.
+    void analyzeForEach(ForEachStmt &s);
     /// @brief Analyze GOTO statement @p s.
     void analyzeGoto(const GotoStmt &s);
     /// @brief Analyze GOSUB statement @p s.

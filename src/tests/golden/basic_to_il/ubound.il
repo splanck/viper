@@ -37,43 +37,43 @@ L10:
   .loc 1 1 4
   %t1 = iadd.ovf 0, 1
   .loc 1 1 4
-  %t2 = scmp_lt %t1, 0
+  %t3 = scmp_lt %t1, 0
   .loc 1 1 4
-  cbr %t2, dim_len_fail, dim_len_cont
+  cbr %t3, dim_len_fail, dim_len_cont(%t1)
 L20:
   .loc 1 2 10
-  %t5 = load ptr, %t0
+  %t6 = load ptr, %t0
   .loc 1 2 10
-  %t6 = call @rt_arr_i32_len(%t5)
+  %t7 = call @rt_arr_i32_len(%t6)
   .loc 1 2 10
-  %t7 = isub.ovf %t6, 1
+  %t8 = isub.ovf %t7, 1
   .loc 1 2 10
-  call @Viper.Console.PrintI64(%t7)
+  call @Viper.Console.PrintI64(%t8)
   .loc 1 2 10
-  %t8 = const_str @.L0
+  %t9 = const_str @.L0
   .loc 1 2 10
-  call @Viper.Console.PrintStr(%t8)
+  call @Viper.Console.PrintStr(%t9)
   .loc 1 2 4
   br exit
 exit:
-  %t9 = load ptr, %t0
-  call @rt_arr_i32_release(%t9)
+  %t10 = load ptr, %t0
+  call @rt_arr_i32_release(%t10)
   store ptr, %t0, null
   ret 0
 dim_len_fail:
   .loc 1 1 4
   trap
-dim_len_cont:
+dim_len_cont(%len:i64):
   .loc 1 1 10
-  %t3 = call @rt_arr_i32_new(%t1)
+  %t4 = call @rt_arr_i32_new(%len)
   .loc 1 1 10
-  call @rt_arr_i32_retain(%t3)
+  call @rt_arr_i32_retain(%t4)
   .loc 1 1 10
-  %t4 = load ptr, %t0
+  %t5 = load ptr, %t0
   .loc 1 1 10
-  call @rt_arr_i32_release(%t4)
+  call @rt_arr_i32_release(%t5)
   .loc 1 1 10
-  store ptr, %t0, %t3
+  store ptr, %t0, %t4
   .loc 1 1 4
   br L20
 }

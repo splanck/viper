@@ -224,7 +224,10 @@ void printStoreOperands(const Instr &instr, std::ostream &os, const SerializeCon
 /// @param index Successor index to print.
 /// @param os Stream receiving serialized output.
 /// @param ctx Serialization context with value name mappings.
-void printBranchTarget(const Instr &instr, size_t index, std::ostream &os, const SerializeContext &ctx)
+void printBranchTarget(const Instr &instr,
+                       size_t index,
+                       std::ostream &os,
+                       const SerializeContext &ctx)
 {
     if (index >= instr.labels.size())
         return;
@@ -242,7 +245,10 @@ void printBranchTarget(const Instr &instr, size_t index, std::ostream &os, const
 /// @param index Successor index to print.
 /// @param os Stream receiving serialized output.
 /// @param ctx Serialization context with value name mappings.
-void printCaretBranchTarget(const Instr &instr, size_t index, std::ostream &os, const SerializeContext &ctx)
+void printCaretBranchTarget(const Instr &instr,
+                            size_t index,
+                            std::ostream &os,
+                            const SerializeContext &ctx)
 {
     if (index >= instr.labels.size())
         return;
@@ -339,25 +345,35 @@ const Formatter &formatterFor(Opcode op)
             fmt = [](const Instr &instr, std::ostream &os, const SerializeContext &ctx)
             { printDefaultOperands(instr, os, ctx); };
         }
-        table[toIndex(Opcode::Call)] = [](const Instr &instr, std::ostream &os, const SerializeContext &ctx)
+        table[toIndex(Opcode::Call)] =
+            [](const Instr &instr, std::ostream &os, const SerializeContext &ctx)
         { printCallOperands(instr, os, ctx); };
-        table[toIndex(Opcode::Ret)] = [](const Instr &instr, std::ostream &os, const SerializeContext &ctx)
+        table[toIndex(Opcode::Ret)] =
+            [](const Instr &instr, std::ostream &os, const SerializeContext &ctx)
         { printRetOperand(instr, os, ctx); };
-        table[toIndex(Opcode::Br)] = [](const Instr &instr, std::ostream &os, const SerializeContext &ctx)
+        table[toIndex(Opcode::Br)] =
+            [](const Instr &instr, std::ostream &os, const SerializeContext &ctx)
         { printBrOperands(instr, os, ctx); };
-        table[toIndex(Opcode::CBr)] = [](const Instr &instr, std::ostream &os, const SerializeContext &ctx)
+        table[toIndex(Opcode::CBr)] =
+            [](const Instr &instr, std::ostream &os, const SerializeContext &ctx)
         { printCBrOperands(instr, os, ctx); };
-        table[toIndex(Opcode::SwitchI32)] = [](const Instr &instr, std::ostream &os, const SerializeContext &ctx)
+        table[toIndex(Opcode::SwitchI32)] =
+            [](const Instr &instr, std::ostream &os, const SerializeContext &ctx)
         { printSwitchI32Operands(instr, os, ctx); };
-        table[toIndex(Opcode::Load)] = [](const Instr &instr, std::ostream &os, const SerializeContext &ctx)
+        table[toIndex(Opcode::Load)] =
+            [](const Instr &instr, std::ostream &os, const SerializeContext &ctx)
         { printLoadOperands(instr, os, ctx); };
-        table[toIndex(Opcode::Store)] = [](const Instr &instr, std::ostream &os, const SerializeContext &ctx)
+        table[toIndex(Opcode::Store)] =
+            [](const Instr &instr, std::ostream &os, const SerializeContext &ctx)
         { printStoreOperands(instr, os, ctx); };
-        table[toIndex(Opcode::TrapKind)] = [](const Instr &instr, std::ostream &os, const SerializeContext &ctx)
+        table[toIndex(Opcode::TrapKind)] =
+            [](const Instr &instr, std::ostream &os, const SerializeContext &ctx)
         { printTrapKindOperand(instr, os, ctx); };
-        table[toIndex(Opcode::TrapFromErr)] = [](const Instr &instr, std::ostream &os, const SerializeContext &ctx)
+        table[toIndex(Opcode::TrapFromErr)] =
+            [](const Instr &instr, std::ostream &os, const SerializeContext &ctx)
         { printTrapFromErrOperands(instr, os, ctx); };
-        table[toIndex(Opcode::EhPush)] = [](const Instr &instr, std::ostream &os, const SerializeContext &ctx)
+        table[toIndex(Opcode::EhPush)] =
+            [](const Instr &instr, std::ostream &os, const SerializeContext &ctx)
         {
             if (!instr.labels.empty())
             {
@@ -365,7 +381,8 @@ const Formatter &formatterFor(Opcode op)
                 printCaretBranchTarget(instr, 0, os, ctx);
             }
         };
-        table[toIndex(Opcode::ResumeLabel)] = [](const Instr &instr, std::ostream &os, const SerializeContext &ctx)
+        table[toIndex(Opcode::ResumeLabel)] =
+            [](const Instr &instr, std::ostream &os, const SerializeContext &ctx)
         {
             if (!instr.operands.empty())
             {

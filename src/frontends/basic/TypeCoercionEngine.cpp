@@ -246,7 +246,9 @@ TypeCoercionEngine::IlType TypeCoercionEngine::astToIl(AstType type) noexcept
 // Widening Helpers
 // =============================================================================
 
-TypeCoercionEngine::Value TypeCoercionEngine::widenToI64(Value v, int fromBits, il::support::SourceLoc loc)
+TypeCoercionEngine::Value TypeCoercionEngine::widenToI64(Value v,
+                                                         int fromBits,
+                                                         il::support::SourceLoc loc)
 {
     Emit emit(lowerer_);
     return emit.at(loc).widen_to(v, fromBits, 64);
@@ -256,7 +258,8 @@ TypeCoercionEngine::Value TypeCoercionEngine::widenToI64(Value v, int fromBits, 
 // Promotion Rules
 // =============================================================================
 
-TypeCoercionEngine::Type::Kind TypeCoercionEngine::promoteNumeric(Type::Kind lhs, Type::Kind rhs) noexcept
+TypeCoercionEngine::Type::Kind TypeCoercionEngine::promoteNumeric(Type::Kind lhs,
+                                                                  Type::Kind rhs) noexcept
 {
     // If either operand is float, result is float
     if (lhs == Type::Kind::F64 || rhs == Type::Kind::F64)

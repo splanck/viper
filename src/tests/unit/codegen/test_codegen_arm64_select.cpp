@@ -65,12 +65,14 @@ TEST(Arm64CLI, Select_ConstArms)
     const char *argv[] = {in.c_str(), "-S", out.c_str()};
     ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
     const std::string asmText = readFile(out);
-    // Expect compare, conditional branch, and movs for phi edge copies; no stack traffic
+    // Expect compare, conditional branch, and movs for phi edge copies.
+    // Block parameters now use spill slots for correctness across block boundaries.
     EXPECT_NE(asmText.find("cmp"), std::string::npos);
     EXPECT_NE(asmText.find("b."), std::string::npos);
     EXPECT_NE(asmText.find(" mov x"), std::string::npos);
-    EXPECT_EQ(asmText.find(" str x"), std::string::npos);
-    EXPECT_EQ(asmText.find(" ldr x"), std::string::npos);
+    // Phi values passed via spill slots - stores and loads expected
+    EXPECT_NE(asmText.find(" str x"), std::string::npos);
+    EXPECT_NE(asmText.find(" ldr x"), std::string::npos);
 }
 
 TEST(Arm64CLI, Select_LoadArms)

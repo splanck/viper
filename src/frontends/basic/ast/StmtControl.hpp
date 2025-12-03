@@ -247,6 +247,30 @@ struct ForStmt : Stmt
     void accept(MutStmtVisitor &visitor) override;
 };
 
+/// @brief FOR EACH ... IN ... NEXT loop statement for array iteration.
+/// @details Iterates over all elements of an array, assigning each element
+///          to the loop variable in sequence. The loop runs from the first
+///          to the last element of the array.
+struct ForEachStmt : Stmt
+{
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
+    {
+        return Kind::ForEach;
+    }
+
+    /// Name of the element variable receiving each array element.
+    std::string elementVar;
+
+    /// Name of the array being iterated.
+    std::string arrayName;
+
+    /// Body statements executed for each element.
+    std::vector<StmtPtr> body;
+
+    void accept(StmtVisitor &visitor) const override;
+    void accept(MutStmtVisitor &visitor) override;
+};
+
 /// @brief NEXT statement closing a FOR.
 struct NextStmt : Stmt
 {
