@@ -6,7 +6,7 @@ This document tracks known bugs in the ARM64 native code generation pipeline.
 
 ## BUG-ARM-001: Scratch Register Conflict with Register Allocator
 
-**Status**: Open
+**Status**: FIXED (verified 2024-12-03)
 **Severity**: Critical
 **Symptom**: Wrong values, RT_MAGIC assertion failures, garbage output
 
@@ -58,7 +58,7 @@ PRINT arr(0) + arr(1) + arr(2)  ' Returns garbage like 6168128600 instead of 60
 
 ## BUG-ARM-002: Floating Point Register Class Confusion
 
-**Status**: Open
+**Status**: FIXED (verified 2024-12-03)
 **Severity**: Critical
 **Symptom**: Assembly errors, garbage FP values
 
@@ -105,7 +105,7 @@ PRINT x  ' Returns garbage: 5.47077039858234e-315
 
 ## BUG-ARM-003: Cross-Block Value Liveness (Nested Loops Fail)
 
-**Status**: Open
+**Status**: FIXED (verified 2024-12-03)
 **Severity**: Critical
 **Symptom**: Outer loop only runs once; values from earlier blocks become garbage
 
@@ -166,14 +166,45 @@ The value `%t2` was in register `x11` in block `UL1000000000`, but by the time `
 
 ---
 
-## BUG-ARM-004: Array of Objects Segfaults
+## BUG-ARM-004: Sequential Loops with Arrays - Values Not Stored
 
-**Status**: Open (likely same root cause as BUG-ARM-003)
+**Status**: Open
+**Severity**: High
+**Symptom**: Array values written in first loop read as 0 in second loop
+
+### Description
+When two sequential FOR loops access the same array (first writes, second reads), the values are not persisted correctly. The first loop appears to not actually store values.
+
+### Reproduction
+```basic
+DIM arr(3) AS INTEGER
+DIM i AS INTEGER
+FOR i = 0 TO 2
+    arr(i) = i * 10
+NEXT i
+FOR i = 0 TO 2
+    PRINT arr(i)
+NEXT i
+```
+**Expected**: 0, 10, 20
+**Actual**: 0, 0, 0
+
+### Root Cause Investigation
+- Single loop with array works correctly
+- Two sequential loops without arrays work correctly
+- The array pointer or store operation is failing when crossing from first loop to second
+- Possibly the array pointer itself is lost/corrupted between loops
+
+---
+
+## BUG-ARM-004b: Array of Objects Segfaults
+
+**Status**: Open (likely related to BUG-ARM-004)
 **Severity**: High
 **Symptom**: Segmentation fault (exit code 139)
 
 ### Description
-Programs using arrays of objects crash during execution.
+Programs using arrays of objects with two loops crash during execution.
 
 ### Reproduction
 ```basic
@@ -193,10 +224,7 @@ NEXT i
 ```
 
 ### Root Cause
-Most likely a manifestation of BUG-ARM-003 (cross-block value liveness). The FOR loops use values across block boundaries that become garbage, causing:
-- Loop counter `i` to have wrong value → out-of-bounds array access
-- Array pointer itself to be garbage → null/invalid pointer dereference
-- Object pointers to be corrupted → accessing invalid memory
+Likely the same issue as BUG-ARM-004 - the array pointer is lost between the two loops. When the second loop tries to access `items(i)`, it's reading garbage/null pointer and segfaults.
 
 ---
 
@@ -274,7 +302,7 @@ if (v.kind == il::core::Value::Kind::Temp) {
 
 ---
 
-## Testing Summary
+## Testing Summary (Updated 2024-12-03)
 
 | Test | Description | Result |
 |------|-------------|--------|
@@ -284,25 +312,25 @@ if (v.kind == il::core::Value::Kind::Temp) {
 | IF/ELSE | Conditionals | PASS |
 | FOR loop | Single loop | PASS |
 | SUB | Subroutine calls | PASS |
-| FUNCTION | Functions with args | PASS (after fix) |
+| FUNCTION | Functions with args | PASS |
 | Nested calls | `Double(AddOne(5))` | PASS |
 | Recursion | Factorial | PASS |
 | Simple arrays | Single element access | PASS |
-| Array expressions | `arr(0) + arr(1)` | PASS (simple case) |
-| Array + PRINTs | PRINT before sum | FAIL (BUG-ARM-001) |
+| Array expressions | `arr(0) + arr(1)` | PASS |
+| Array + PRINTs | PRINT before sum | PASS (BUG-001 fixed) |
 | Objects | Class instances | PASS |
 | SELECT CASE | Switch statement | PASS |
 | WHILE loop | While loop | PASS |
-| Float literals | `x = 3.14` | FAIL (BUG-ARM-002) |
-| Float simple | `x = 2.0` | FAIL (BUG-ARM-002) |
-| Nested loops | FOR inside FOR | FAIL (BUG-ARM-003) |
-| Array of objects | Objects in array | FAIL (BUG-ARM-004) |
+| Float literals | `x = 3.14` | PASS (BUG-002 fixed) |
+| Float simple | `x = 2.0` | PASS (BUG-002 fixed) |
+| Nested loops | FOR inside FOR | PASS (BUG-003 fixed) |
+| Sequential loops | Two FOR loops | PASS |
+| Two loops + array | Write then read | FAIL (BUG-ARM-004) |
+| Array of objects | Objects in array | FAIL (BUG-ARM-004b) |
 
 ---
 
 ## Priority Order for Fixes
 
-1. **BUG-ARM-003** (Cross-block liveness) - Most fundamental issue, affects any non-trivial control flow
-2. **BUG-ARM-001** (Scratch register conflict) - Affects programs with large stack frames
-3. **BUG-ARM-002** (FP register class) - Breaks all floating point
-4. **BUG-ARM-004** (Array of objects) - Likely consequence of BUG-ARM-003
+1. **BUG-ARM-004** (Sequential loops + arrays) - Values not persisted between loops
+2. **BUG-ARM-004b** (Array of objects) - Related to BUG-ARM-004

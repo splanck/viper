@@ -117,13 +117,20 @@ static bool materializeValueToVReg(const il::core::Value &v,
     }
     if (v.kind == il::core::Value::Kind::ConstFloat)
     {
-        outVReg = nextVRegId++;
-        outCls = RegClass::FPR;
+        // Materialize FP constant by moving its bit-pattern via a GPR into an FPR.
         long long bits;
         static_assert(sizeof(double) == sizeof(long long), "size");
         std::memcpy(&bits, &v.f64, sizeof(double));
+        const uint16_t tmpG = nextVRegId++;
+        // Load 64-bit pattern into a GPR vreg
         out.instrs.push_back(
-            MInstr{MOpcode::FMovRI, {MOperand::vregOp(outCls, outVReg), MOperand::immOp(bits)}});
+            MInstr{MOpcode::MovRI, {MOperand::vregOp(RegClass::GPR, tmpG), MOperand::immOp(bits)}});
+        outVReg = nextVRegId++;
+        outCls = RegClass::FPR;
+        // fmov dV, xTmp  (bit-cast)
+        out.instrs.push_back(MInstr{MOpcode::FMovRR,
+                                    {MOperand::vregOp(RegClass::FPR, outVReg),
+                                     MOperand::vregOp(RegClass::GPR, tmpG)}});
         return true;
     }
     if (v.kind == il::core::Value::Kind::NullPtr)
@@ -2151,10 +2158,33 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                                                        v,
                                                        cls))
                             {
-                                // Only i64 locals for now
-                                bbOutRef.instrs.push_back(MInstr{
-                                    MOpcode::StrRegFpImm,
-                                    {MOperand::vregOp(RegClass::GPR, v), MOperand::immOp(off)}});
+                                const bool dstIsFP = (ins.type.kind == il::core::Type::Kind::F64);
+                                if (dstIsFP)
+                                {
+                                    // Ensure value is in an FPR; convert if currently GPR
+                                    uint16_t srcF = v;
+                                    if (cls != RegClass::FPR)
+                                    {
+                                        srcF = nextVRegId++;
+                                        bbOutRef.instrs.push_back(MInstr{MOpcode::SCvtF,
+                                                                         {MOperand::vregOp(
+                                                                              RegClass::FPR, srcF),
+                                                                          MOperand::vregOp(
+                                                                              RegClass::GPR, v)}});
+                                        cls = RegClass::FPR;
+                                    }
+                                    bbOutRef.instrs.push_back(MInstr{MOpcode::StrFprFpImm,
+                                                                     {MOperand::vregOp(
+                                                                          RegClass::FPR, srcF),
+                                                                      MOperand::immOp(off)}});
+                                }
+                                else
+                                {
+                                    bbOutRef.instrs.push_back(MInstr{
+                                        MOpcode::StrRegFpImm,
+                                        {MOperand::vregOp(RegClass::GPR, v),
+                                         MOperand::immOp(off)}});
+                                }
                             }
                         }
                         else
@@ -2198,11 +2228,22 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                         const int off = fb.localOffset(ptrId);
                         if (off != 0)
                         {
+                            const bool isFP = (ins.type.kind == il::core::Type::Kind::F64);
                             const uint16_t dst = nextVRegId++;
                             tempVReg[*ins.result] = dst;
-                            bbOutRef.instrs.push_back(MInstr{
-                                MOpcode::LdrRegFpImm,
-                                {MOperand::vregOp(RegClass::GPR, dst), MOperand::immOp(off)}});
+                            if (isFP)
+                            {
+                                tempRegClass[*ins.result] = RegClass::FPR;
+                                bbOutRef.instrs.push_back(MInstr{
+                                    MOpcode::LdrFprFpImm,
+                                    {MOperand::vregOp(RegClass::FPR, dst), MOperand::immOp(off)}});
+                            }
+                            else
+                            {
+                                bbOutRef.instrs.push_back(MInstr{
+                                    MOpcode::LdrRegFpImm,
+                                    {MOperand::vregOp(RegClass::GPR, dst), MOperand::immOp(off)}});
+                            }
                         }
                         else
                         {

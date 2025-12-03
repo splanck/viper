@@ -36,6 +36,8 @@ static bool isAllocatableGPR(PhysReg r)
         case PhysReg::X30:
         case PhysReg::SP:
         case PhysReg::X18:
+        // Reserve the global scratch register so the allocator never hands it out
+        case PhysReg::X9:
             return false;
         default:
             return isGPR(r);
@@ -118,6 +120,16 @@ static bool isCset(MOpcode opc)
     return opc == MOpcode::Cset;
 }
 
+static bool isRet(MOpcode opc)
+{
+    return opc == MOpcode::Ret;
+}
+
+static bool isTerminator(MOpcode opc)
+{
+    return isBranch(opc) || isRet(opc);
+}
+
 static bool isMemLd(MOpcode opc)
 {
     return opc == MOpcode::LdrRegFpImm || opc == MOpcode::LdrRegBaseImm;
@@ -189,8 +201,15 @@ struct RegPools
 
     PhysReg takeGPR()
     {
+        // Allocator is responsible for ensuring pressure is handled before requesting.
+        // Do not ever return the global scratch register here.
         if (gprFree.empty())
-            return kScratchGPR; // Fallback to scratch register when pool exhausted
+        {
+            // As a last resort, prefer a callee-saved slot that is not the scratch.
+            // This path should be unreachable when maybeSpillForPressure is used correctly.
+            // Choose X19 which is callee-saved and never used as global scratch.
+            return PhysReg::X19;
+        }
         auto r = gprFree.front();
         gprFree.erase(gprFree.begin());
         return r;
