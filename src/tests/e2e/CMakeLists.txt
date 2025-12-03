@@ -494,4 +494,57 @@ if (CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64" AND APPLE)
             -DDEMO_NAME=frogger
             -P ${_VIPER_E2E_DIR}/test_arm64_native_link.cmake)
     set_tests_properties(arm64_native_frogger PROPERTIES LABELS "ARM64;NativeLink")
+
+    # Comprehensive tests - ARM64 native execution
+    viper_add_ctest(arm64_comprehensive_data_structures
+            ${CMAKE_COMMAND}
+            -DILC=$<TARGET_FILE:ilc>
+            -DRUNTIME_LIB=${CMAKE_BINARY_DIR}/src/runtime/libviper_runtime.a
+            -DBAS_FILE=${CMAKE_SOURCE_DIR}/src/tests/e2e/comprehensive/data_structures.bas
+            -DGOLDEN=${CMAKE_SOURCE_DIR}/src/tests/e2e/comprehensive/data_structures.bas.out
+            -P ${_VIPER_E2E_DIR}/test_arm64_comprehensive.cmake)
+    set_tests_properties(arm64_comprehensive_data_structures PROPERTIES LABELS "ARM64;NativeLink;Comprehensive")
+
+    viper_add_ctest(arm64_comprehensive_oop_features
+            ${CMAKE_COMMAND}
+            -DILC=$<TARGET_FILE:ilc>
+            -DRUNTIME_LIB=${CMAKE_BINARY_DIR}/src/runtime/libviper_runtime.a
+            -DBAS_FILE=${CMAKE_SOURCE_DIR}/src/tests/e2e/comprehensive/oop_features.bas
+            -DGOLDEN=${CMAKE_SOURCE_DIR}/src/tests/e2e/comprehensive/oop_features.bas.out
+            -P ${_VIPER_E2E_DIR}/test_arm64_comprehensive.cmake)
+    set_tests_properties(arm64_comprehensive_oop_features PROPERTIES LABELS "ARM64;NativeLink;Comprehensive")
+
+    viper_add_ctest(arm64_comprehensive_control_flow_strings
+            ${CMAKE_COMMAND}
+            -DILC=$<TARGET_FILE:ilc>
+            -DRUNTIME_LIB=${CMAKE_BINARY_DIR}/src/runtime/libviper_runtime.a
+            -DBAS_FILE=${CMAKE_SOURCE_DIR}/src/tests/e2e/comprehensive/control_flow_strings.bas
+            -DGOLDEN=${CMAKE_SOURCE_DIR}/src/tests/e2e/comprehensive/control_flow_strings.bas.out
+            -P ${_VIPER_E2E_DIR}/test_arm64_comprehensive.cmake)
+    set_tests_properties(arm64_comprehensive_control_flow_strings PROPERTIES LABELS "ARM64;NativeLink;Comprehensive")
 endif ()
+
+# Comprehensive tests - VM execution (cross-platform)
+viper_add_ctest(vm_comprehensive_data_structures
+        ${CMAKE_COMMAND}
+        -DILC=$<TARGET_FILE:ilc>
+        -DBAS_FILE=${CMAKE_SOURCE_DIR}/src/tests/e2e/comprehensive/data_structures.bas
+        -DGOLDEN=${CMAKE_SOURCE_DIR}/src/tests/e2e/comprehensive/data_structures.bas.out
+        -P ${CMAKE_SOURCE_DIR}/src/tests/e2e/test_basic_math_phase1.cmake)
+set_tests_properties(vm_comprehensive_data_structures PROPERTIES LABELS "VM;Comprehensive")
+
+viper_add_ctest(vm_comprehensive_oop_features
+        ${CMAKE_COMMAND}
+        -DILC=$<TARGET_FILE:ilc>
+        -DBAS_FILE=${CMAKE_SOURCE_DIR}/src/tests/e2e/comprehensive/oop_features.bas
+        -DGOLDEN=${CMAKE_SOURCE_DIR}/src/tests/e2e/comprehensive/oop_features.bas.out
+        -P ${CMAKE_SOURCE_DIR}/src/tests/e2e/test_basic_math_phase1.cmake)
+set_tests_properties(vm_comprehensive_oop_features PROPERTIES LABELS "VM;Comprehensive")
+
+viper_add_ctest(vm_comprehensive_control_flow_strings
+        ${CMAKE_COMMAND}
+        -DILC=$<TARGET_FILE:ilc>
+        -DBAS_FILE=${CMAKE_SOURCE_DIR}/src/tests/e2e/comprehensive/control_flow_strings.bas
+        -DGOLDEN=${CMAKE_SOURCE_DIR}/src/tests/e2e/comprehensive/control_flow_strings.bas.out
+        -P ${CMAKE_SOURCE_DIR}/src/tests/e2e/test_basic_math_phase1.cmake)
+set_tests_properties(vm_comprehensive_control_flow_strings PROPERTIES LABELS "VM;Comprehensive")

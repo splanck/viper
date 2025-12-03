@@ -1,16 +1,71 @@
 # VIPER BASIC Known Bugs and Issues
 
-*Last Updated: 2025-11-25*
+*Last Updated: 2025-12-03*
 
-**Bug Statistics**: 113 resolved, 0 outstanding bugs, 6 design decisions/clarifications (119 total documented)
+**Bug Statistics**: 121 resolved, 2 outstanding bugs, 6 design decisions/clarifications (129 total documented)
 
-**Test Suite Status**: 735/735 tests passing (100%) - All tests passing!
+**Test Suite Status**: 747/747 tests passing (100%)
 
-**STATUS**: ✅ **ALL OUTSTANDING BUGS FIXED** - Fixed BUG-119, BUG-120, BUG-097 (2025-11-25)
+**STATUS**: ⚠️ **2 OUTSTANDING BUGS** - BUG-122, BUG-123 discovered during comprehensive test development
 
 ---
 
 ## OUTSTANDING BUGS
+
+### BUG-122: LEN("") returns garbage value instead of 0
+**Status**: 🔴 **OPEN**
+**Discovered**: 2025-12-03 (comprehensive test development)
+**Category**: String Functions
+**Severity**: MEDIUM
+
+**Symptom**: Calling `LEN("")` on an empty string returns a very large garbage value (9223372036854775807) instead of 0.
+
+**Minimal Reproduction**:
+```basic
+DIM s AS STRING
+s = ""
+PRINT LEN(s)  ' Prints 9223372036854775807 instead of 0
+```
+
+**Expected**: `0`
+**Actual**: `9223372036854775807` (looks like uninitialized memory or max int64)
+
+**Workaround**: Avoid calling LEN on empty strings; check for empty string differently.
+
+---
+
+### BUG-123: Point.ToString() returns class name instead of formatted string
+**Status**: 🔴 **OPEN**
+**Discovered**: 2025-12-03 (comprehensive test development)
+**Category**: OOP / String Methods
+**Severity**: LOW
+
+**Symptom**: A FUNCTION method that returns a concatenated string returns the class name instead.
+
+**Minimal Reproduction**:
+```basic
+CLASS Point
+    PUBLIC x AS INTEGER
+    PUBLIC y AS INTEGER
+
+    FUNCTION ToString() AS STRING
+        RETURN "(" + STR$(x) + "," + STR$(y) + ")"
+    END FUNCTION
+END CLASS
+
+DIM p AS Point
+p = NEW Point()
+p.x = 3
+p.y = 4
+PRINT p.ToString()  ' Prints "POINT" instead of "(3,4)"
+```
+
+**Expected**: `(3,4)`
+**Actual**: `POINT`
+
+**Workaround**: Build string outside the method or use a different approach.
+
+---
 
 ### BUG-107: RETURN statement in FUNCTION causes type mismatch error
 **Status**: ✅ **RESOLVED** - Fixed 2025-11-19

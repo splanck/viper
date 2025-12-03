@@ -378,9 +378,56 @@ if (v.kind == il::core::Value::Kind::Temp) {
 | Sequential loops | Two FOR loops | PASS |
 | Two loops + array | Write then read | PASS (BUG-004 fixed) |
 | Array of objects | Objects in array | PASS (BUG-004b fixed) |
+| Comprehensive: data_structures | Arrays, sorting, recursion | FAIL (BUG-ARM-008) |
+| Comprehensive: oop_features | Classes, methods, object arrays | FAIL (BUG-ARM-009) |
+| Comprehensive: control_flow_strings | Control flow, strings | FAIL (BUG-ARM-010) |
 
 ---
 
-## All Known Bugs Fixed!
+## BUG-ARM-008: Comprehensive data_structures test fails with array bounds error
 
-All ARM64 native codegen bugs have been resolved. The test suite passes 747/747 tests.
+**Status**: Open
+**Severity**: High
+**Symptom**: "rt_arr_i32: index 0 out of bounds (len=0)" - array appears unallocated
+
+### Description
+The comprehensive data_structures test passes in VM but fails in ARM64 native with an array bounds error suggesting the array was never properly allocated.
+
+### Reproduction
+Run `/Users/stephen/git/viper/src/tests/e2e/comprehensive/data_structures.bas` via ARM64 native codegen.
+
+---
+
+## BUG-ARM-009: Comprehensive oop_features test segfaults
+
+**Status**: Open
+**Severity**: High
+**Symptom**: Segmentation fault during execution
+
+### Description
+The comprehensive oop_features test passes in VM but segfaults when run as ARM64 native binary. Likely related to object allocation, method dispatch, or object array handling.
+
+### Reproduction
+Run `/Users/stephen/git/viper/src/tests/e2e/comprehensive/oop_features.bas` via ARM64 native codegen.
+
+---
+
+## BUG-ARM-010: Comprehensive control_flow_strings test bus error
+
+**Status**: Open
+**Severity**: High
+**Symptom**: Bus error during execution
+
+### Description
+The comprehensive control_flow_strings test passes in VM but crashes with bus error in ARM64 native. Likely related to string operations or complex control flow lowering.
+
+### Reproduction
+Run `/Users/stephen/git/viper/src/tests/e2e/comprehensive/control_flow_strings.bas` via ARM64 native codegen.
+
+---
+
+## Priority Order for Fixes
+
+1. **BUG-ARM-008** - Array allocation issue
+2. **BUG-ARM-009** - OOP segfault
+3. **BUG-ARM-010** - String/control flow bus error
