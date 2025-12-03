@@ -4,8 +4,15 @@
 
 cmake_minimum_required(VERSION 3.16)
 
+# Detect architecture using uname since CMAKE_SYSTEM_PROCESSOR may not be set in script mode
+execute_process(
+    COMMAND uname -m
+    OUTPUT_VARIABLE HOST_ARCH
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+
 # Skip if not on ARM64 macOS and env var not set
-if (NOT CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64" AND NOT DEFINED ENV{ARM64_E2E_TESTS})
+if (NOT HOST_ARCH STREQUAL "arm64" AND NOT DEFINED ENV{ARM64_E2E_TESTS})
     message(STATUS "Skipping ARM64 native link test (not on ARM64 and ARM64_E2E_TESTS not set)")
     return()
 endif()
