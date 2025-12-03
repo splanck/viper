@@ -66,6 +66,8 @@ static bool isUseDefDefLike(MOpcode opc)
         case MOpcode::AddRRR:
         case MOpcode::SubRRR:
         case MOpcode::MulRRR:
+        case MOpcode::SDivRRR:
+        case MOpcode::UDivRRR:
         case MOpcode::AndRRR:
         case MOpcode::OrrRRR:
         case MOpcode::EorRRR:
@@ -97,7 +99,7 @@ static bool isSpAdj(MOpcode opc)
 
 static bool isBranch(MOpcode opc)
 {
-    return opc == MOpcode::Br || opc == MOpcode::BCond;
+    return opc == MOpcode::Br || opc == MOpcode::BCond || opc == MOpcode::Cbz;
 }
 
 static bool isCall(MOpcode opc)
@@ -319,6 +321,16 @@ class LinearAllocator
                 }
                 else if (mi.opc == MOpcode::BCond)
                 {
+                    if (mi.ops.size() >= 2 && mi.ops[1].kind == MOperand::Kind::Label)
+                    {
+                        auto it = blockIndex_.find(mi.ops[1].label);
+                        if (it != blockIndex_.end())
+                            succs_[i].push_back(it->second);
+                    }
+                }
+                else if (mi.opc == MOpcode::Cbz)
+                {
+                    // cbz reg, label - label is ops[1]
                     if (mi.ops.size() >= 2 && mi.ops[1].kind == MOperand::Kind::Label)
                     {
                         auto it = blockIndex_.find(mi.ops[1].label);
@@ -622,6 +634,24 @@ class LinearAllocator
                 return {false, true}; // dst is def-only
             if (idx == 1)
                 return {true, false}; // src is use
+            return {false, false}; // label is neither
+        }
+
+        // MSubRRRR: msub dst, mul1, mul2, sub => dst = sub - mul1*mul2
+        // Operands: [0]=dst (def), [1]=mul1 (use), [2]=mul2 (use), [3]=sub (use)
+        if (ins.opc == MOpcode::MSubRRRR)
+        {
+            if (idx == 0)
+                return {false, true}; // dst is def-only
+            return {true, false}; // all others are use-only
+        }
+
+        // Cbz: cbz reg, label => branch if reg is zero
+        // Operands: [0]=reg (use), [1]=label
+        if (ins.opc == MOpcode::Cbz)
+        {
+            if (idx == 0)
+                return {true, false}; // reg is use
             return {false, false}; // label is neither
         }
 

@@ -384,45 +384,138 @@ if (v.kind == il::core::Value::Kind::Temp) {
 
 ---
 
-## BUG-ARM-008: Comprehensive data_structures test fails with array bounds error
+## BUG-ARM-008: Array parameters to functions not passed correctly
 
 **Status**: Open
-**Severity**: High
-**Symptom**: "rt_arr_i32: index 0 out of bounds (len=0)" - array appears unallocated
+**Severity**: Critical
+**Symptom**: "rt_arr_i32: index 0 out of bounds (len=0)" - array appears unallocated in function
 
 ### Description
-The comprehensive data_structures test passes in VM but fails in ARM64 native with an array bounds error suggesting the array was never properly allocated.
+When passing an array to a function, the array pointer is corrupted. The function receives a null/invalid pointer instead of the actual array.
 
-### Reproduction
-Run `/Users/stephen/git/viper/src/tests/e2e/comprehensive/data_structures.bas` via ARM64 native codegen.
+### Root Cause (CONFIRMED)
+In the function entry code, after calling `rt_arr_i32_retain` and `rt_arr_i32_release`, the codegen:
+1. Uses the return value of `rt_arr_i32_release` (garbage) instead of the saved array pointer
+2. The x1, x2 registers (other parameters) are clobbered by the function calls and not restored
+
+**Generated assembly shows**:
+```asm
+  mov x10, x0           ; Save x0 (SEARCHARR ptr) to x10
+  bl _rt_arr_i32_retain ; Call retain - clobbers x1, x2!
+  bl _rt_arr_i32_release
+  mov x12, x0           ; BUG: x0 = return value (garbage), not saved array!
+  str x12, [x29, #-8]   ; Store garbage into array slot
+  mov x13, x1           ; BUG: x1 was clobbered, not the SIZE parameter!
+  mov x14, x2           ; BUG: x2 was clobbered, not the TARGET parameter!
+```
+
+**The IL requires**:
+```
+  store ptr, %t3, %SEARCHARR   ; Should store the ORIGINAL parameter, not return value
+```
+
+### Minimal Reproduction
+```basic
+DIM arr(10) AS INTEGER
+FOR i = 0 TO 9: arr(i) = i * 10: NEXT i
+PRINT LinearSearch(arr, 10, 50)  ' Crashes with array bounds error
+
+FUNCTION LinearSearch(searchArr() AS INTEGER, size AS INTEGER, target AS INTEGER) AS INTEGER
+    ' searchArr is NULL/invalid, size and target are garbage
+END FUNCTION
+```
+
+### Fix Required
+1. Save ALL function parameters to stack BEFORE any runtime calls
+2. After runtime calls, restore the saved parameter values, not return values
+3. Specifically: the `store ptr, %t3, %SEARCHARR` must use the saved `%SEARCHARR`, not `x0`
 
 ---
 
-## BUG-ARM-009: Comprehensive oop_features test segfaults
+## BUG-ARM-009: Nested object field access causes bus error
 
 **Status**: Open
-**Severity**: High
-**Symptom**: Segmentation fault during execution
+**Severity**: Critical
+**Symptom**: Bus error (signal 10) when accessing fields of nested objects
 
 ### Description
-The comprehensive oop_features test passes in VM but segfaults when run as ARM64 native binary. Likely related to object allocation, method dispatch, or object array handling.
+When a class has a field that is itself an object (nested objects), accessing the nested object's fields crashes with a bus error.
 
-### Reproduction
-Run `/Users/stephen/git/viper/src/tests/e2e/comprehensive/oop_features.bas` via ARM64 native codegen.
+### Root Cause (CONFIRMED)
+The issue occurs with chained field access like `rect.topLeft.x` where `topLeft` is an object field inside `rect`.
+
+### Minimal Reproduction
+```basic
+CLASS Point
+    PUBLIC x AS INTEGER
+END CLASS
+
+CLASS Rectangle
+    PUBLIC topLeft AS Point  ' Object field
+END CLASS
+
+DIM rect AS Rectangle
+rect = NEW Rectangle()
+rect.topLeft = NEW Point()
+rect.topLeft.x = 10        ' BUS ERROR here
+PRINT rect.topLeft.x
+```
+
+**Works**: Simple object fields, methods, object arrays
+**Fails**: Object fields containing other objects (nested object access)
+
+### Fix Required
+Investigation needed in GEP (GetElementPointer) lowering for chained object field access.
 
 ---
 
-## BUG-ARM-010: Comprehensive control_flow_strings test bus error
+## BUG-ARM-010: srem.chk0 (MOD) opcode not lowered - produces wrong results
 
 **Status**: Open
-**Severity**: High
-**Symptom**: Bus error during execution
+**Severity**: Critical
+**Symptom**: MOD operation always returns 1 instead of correct remainder
 
 ### Description
-The comprehensive control_flow_strings test passes in VM but crashes with bus error in ARM64 native. Likely related to string operations or complex control flow lowering.
+The `srem.chk0` IL opcode (signed remainder with divide-by-zero check) is not being lowered to ARM64 assembly. The result register is never set, so garbage values are used.
 
-### Reproduction
-Run `/Users/stephen/git/viper/src/tests/e2e/comprehensive/control_flow_strings.bas` via ARM64 native codegen.
+### Root Cause (CONFIRMED)
+The `srem.chk0` opcode is missing from the switch statement in `LowerILToMIR.cpp`. The codegen silently skips the instruction, leaving the result vreg uninitialized.
+
+**IL**:
+```
+%t9 = srem.chk0 %t8, 2    ; This should compute i MOD 2
+call @Viper.Console.PrintI64(%t9)
+```
+
+**Generated assembly** (BUG - no division!):
+```asm
+  ldr x12, [x29, #-8]      ; Load i into x12
+  str x12, [x29, #-72]     ; Save x12
+  bl _rt_print_i64         ; Print x0, but x0 was never set to MOD result!
+```
+
+The MOD computation is completely missing - no `sdiv`/`msub` sequence is generated.
+
+### Minimal Reproduction
+```basic
+DIM i AS INTEGER
+FOR i = 1 TO 5
+    PRINT i MOD 2   ' Always prints 1 instead of 1,0,1,0,1
+NEXT i
+```
+
+**Expected**: 1, 0, 1, 0, 1
+**Actual**: 1, 1, 1, 1, 1
+
+### Fix Required
+Add case for `Opcode::SRemChk0` in `LowerILToMIR.cpp` switch statement:
+```cpp
+case il::core::Opcode::SRemChk0: {
+    // dst = lhs - (lhs / rhs) * rhs
+    // ARM64: sdiv tmp, lhs, rhs; msub dst, tmp, rhs, lhs
+    // Also need divide-by-zero check
+}
+```
 
 ---
 

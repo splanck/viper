@@ -417,6 +417,31 @@ void AsmEmitter::emitMulRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg 
     os << "  mul " << rn(dst) << ", " << rn(lhs) << ", " << rn(rhs) << "\n";
 }
 
+void AsmEmitter::emitSDivRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const
+{
+    // AArch64 signed division: sdiv xd, xn, xm
+    os << "  sdiv " << rn(dst) << ", " << rn(lhs) << ", " << rn(rhs) << "\n";
+}
+
+void AsmEmitter::emitUDivRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const
+{
+    // AArch64 unsigned division: udiv xd, xn, xm
+    os << "  udiv " << rn(dst) << ", " << rn(lhs) << ", " << rn(rhs) << "\n";
+}
+
+void AsmEmitter::emitMSubRRRR(std::ostream &os, PhysReg dst, PhysReg mul1, PhysReg mul2, PhysReg sub) const
+{
+    // AArch64 multiply-subtract: msub xd, xn, xm, xa => xd = xa - xn*xm
+    // Used for remainder: rem = dividend - (dividend/divisor)*divisor
+    os << "  msub " << rn(dst) << ", " << rn(mul1) << ", " << rn(mul2) << ", " << rn(sub) << "\n";
+}
+
+void AsmEmitter::emitCbz(std::ostream &os, PhysReg reg, const std::string &label) const
+{
+    // AArch64 compare and branch if zero: cbz xn, label
+    os << "  cbz " << rn(reg) << ", " << label << "\n";
+}
+
 void AsmEmitter::emitAddRI(std::ostream &os, PhysReg dst, PhysReg lhs, long long imm) const
 {
     os << "  add " << rn(dst) << ", " << rn(lhs) << ", #" << imm << "\n";

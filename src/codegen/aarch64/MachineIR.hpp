@@ -78,6 +78,10 @@ enum class MOpcode
     AddRRR,
     SubRRR,
     MulRRR,
+    SDivRRR,  // sdiv dst, lhs, rhs (signed division)
+    UDivRRR,  // udiv dst, lhs, rhs (unsigned division)
+    MSubRRRR, // msub dst, mul1, mul2, sub (dst = sub - mul1*mul2)
+    Cbz,      // cbz reg, label (compare and branch if zero)
     AndRRR,
     OrrRRR,
     EorRRR,

@@ -76,6 +76,12 @@ class AsmEmitter
     void emitAddRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const;
     void emitSubRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const;
     void emitMulRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const;
+    void emitSDivRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const;
+    void emitUDivRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const;
+    // msub dst, mul1, mul2, sub => dst = sub - mul1*mul2
+    void emitMSubRRRR(std::ostream &os, PhysReg dst, PhysReg mul1, PhysReg mul2, PhysReg sub) const;
+    // cbz reg, label => branch if reg is zero
+    void emitCbz(std::ostream &os, PhysReg reg, const std::string &label) const;
     // add/sub with small immediate
     void emitAddRI(std::ostream &os, PhysReg dst, PhysReg lhs, long long imm) const;
     void emitSubRI(std::ostream &os, PhysReg dst, PhysReg lhs, long long imm) const;

@@ -5,6 +5,9 @@ add_library(il_codegen_aarch64 STATIC
         FrameBuilder.cpp
         MachineIR.cpp
         LowerILToMIR.cpp
+        InstrLowering.cpp
+        OpcodeDispatch.cpp
+        FastPaths.cpp
         RegAllocLinear.cpp)
 target_include_directories(il_codegen_aarch64 PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>
