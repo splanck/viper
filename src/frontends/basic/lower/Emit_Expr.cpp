@@ -614,18 +614,25 @@ Value Lowerer::emitCallRet(Type ty, const std::string &callee, const std::vector
 /// @brief Request a runtime helper and emit a call in one operation.
 /// @details Combines requestHelper() and emitCallRet() to reduce boilerplate when
 ///          calling runtime functions. This is especially useful in lowering visitor
-///          methods where both operations are always performed together.
+///          methods where both operations are always performed together. For void
+///          return types, emits a call without a result to maintain IL validity.
 /// @param feature Runtime feature to request (ensures the helper is linked).
 /// @param callee Name of the runtime function to call.
 /// @param returnType Return type of the runtime function.
 /// @param args Arguments to pass to the runtime function.
-/// @return Value representing the result of the call.
+/// @return Value representing the result of the call, or a null value for void calls.
 Value Lowerer::emitRuntimeHelper(il::runtime::RuntimeFeature feature,
                                  const std::string &callee,
                                  Type returnType,
                                  const std::vector<Value> &args)
 {
     requestHelper(feature);
+    // Void-returning helpers must use emitCall (no result) to maintain IL validity.
+    if (returnType.kind == Type::Kind::Void)
+    {
+        emitCall(callee, args);
+        return Value::null();
+    }
     return emitCallRet(returnType, callee, args);
 }
 

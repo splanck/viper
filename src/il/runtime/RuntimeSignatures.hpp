@@ -186,6 +186,7 @@ struct RuntimeSignature
     bool nothrow{false};                                ///< Helper is guaranteed not to throw.
     bool readonly{false}; ///< Helper may read from memory without writes.
     bool pure{false};     ///< Helper has no observable side effects.
+    bool isVarArg{false}; ///< Helper uses C-style variadic arguments.
 };
 
 /// @brief Aggregated descriptor covering signature, handler, and lowering metadata.
@@ -228,5 +229,13 @@ std::optional<RtSig> findRuntimeSignatureId(std::string_view name);
 /// @param sig Enumerated runtime signature identifier.
 /// @return Pointer to the signature metadata when defined; nullptr otherwise.
 const RuntimeSignature *findRuntimeSignature(RtSig sig);
+
+/// @brief Check whether a callee uses C-style variadic arguments.
+/// @details Consults the runtime registry first; falls back to a hardcoded list
+///          of known C library functions (e.g., rt_snprintf, rt_sb_printf) that
+///          are not registered but require vararg calling convention.
+/// @param name Symbol name of the callee to query.
+/// @return True when the callee is known to be variadic.
+[[nodiscard]] bool isVarArgCallee(std::string_view name);
 
 } // namespace il::runtime

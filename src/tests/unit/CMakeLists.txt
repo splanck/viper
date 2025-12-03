@@ -530,6 +530,10 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_oop_dispatch PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_oop_dispatch test_rt_oop_dispatch)
 
+    viper_add_test(test_rt_type_registry ${VIPER_TESTS_DIR}/runtime/RTTypeRegistryTests.cpp)
+    target_link_libraries(test_rt_type_registry PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
+    viper_add_ctest(test_rt_type_registry test_rt_type_registry)
+
     viper_add_test(test_rt_array_i32 ${VIPER_TESTS_DIR}/runtime/RTArrayI32Tests.cpp)
     target_link_libraries(test_rt_array_i32 PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_array_i32 test_rt_array_i32)

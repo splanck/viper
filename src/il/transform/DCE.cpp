@@ -8,9 +8,11 @@
 // Implements the trivial dead-code elimination pass used by the IL optimizer.
 // The pass performs syntactic use counting, removes instructions whose results
 // are never consumed, and prunes unused block parameters together with their
-// corresponding branch arguments.  All mutations happen in place so callers can
-// run DCE over a fully materialised module without rebuilding auxiliary data
-// structures.
+// corresponding branch arguments.  Additionally, it eliminates pure runtime
+// helper calls whose results are unused, consulting the runtime signatures
+// registry for side-effect metadata.  All mutations happen in place so callers
+// can run DCE over a fully materialised module without rebuilding auxiliary
+// data structures.
 //
 //===----------------------------------------------------------------------===//
 
@@ -29,6 +31,7 @@
 #include "il/core/Instr.hpp"
 #include "il/core/Module.hpp"
 #include "il/core/Value.hpp"
+#include "il/transform/CallEffects.hpp"
 #include <unordered_map>
 #include <unordered_set>
 
@@ -104,10 +107,12 @@ static std::vector<size_t> countUses(Function &F)
 ///   4. Walks block parameters in reverse order, removing unused entries and
 ///      erasing the corresponding operands from predecessor branch argument
 ///      lists so SSA form remains consistent.
-/// Instructions that may observe side effects (for example calls) are
-/// intentionally untouched; the pass focuses solely on obvious dead temporaries
-/// to keep compilation fast and predictable.  The in-place updates mean callers
-/// can reuse existing module objects without re-running expensive analyses.
+/// Instructions that may observe side effects are generally preserved, but
+/// calls to pure runtime helpers (as determined by the runtime signature
+/// registry) can be safely eliminated when their results are unused.  This
+/// enables more aggressive dead code removal while maintaining correctness.
+/// The in-place updates mean callers can reuse existing module objects
+/// without re-running expensive analyses.
 ///
 /// @param M Module simplified in place.
 void dce(Module &M)
@@ -176,6 +181,19 @@ void dce(Module &M)
                 {
                     B.instructions.erase(B.instructions.begin() + i);
                     continue;
+                }
+                // Eliminate pure calls whose results are unused.
+                // A call is safe to remove if:
+                // 1. It produces a result that is never used
+                // 2. The callee is marked pure (no observable side effects)
+                if (I.op == Opcode::Call && I.result && uses[*I.result] == 0)
+                {
+                    const CallEffects effects = classifyCallEffects(I);
+                    if (effects.canEliminateIfUnused())
+                    {
+                        B.instructions.erase(B.instructions.begin() + i);
+                        continue;
+                    }
                 }
                 ++i;
             }

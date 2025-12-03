@@ -56,7 +56,8 @@ enum class BasicType
     Float,
     String,
     Bool,
-    Void
+    Void,
+    Object ///< Runtime object reference (lowered to ptr in IL)
 };
 
 /// @brief Converts a BasicType to its lowercase BASIC surface spelling.
@@ -78,6 +79,8 @@ inline const char *toString(BasicType t)
             return "boolean";
         case BasicType::Void:
             return "void";
+        case BasicType::Object:
+            return "object";
     }
     return "?";
 }

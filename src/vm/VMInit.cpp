@@ -213,8 +213,10 @@ VM::VM(const Module &m, TraceConfig tc, uint64_t ms, DebugCtrl dbg, DebugScript 
         fnMap[f.name] = &f;
     for (const auto &g : m.globals)
     {
-        // Const string globals go into strMap for backward compatibility
-        if (g.type.kind == il::core::Type::Kind::Str && !g.init.empty())
+        // String globals (including empty strings) go into strMap.
+        // The parser requires all `global [const] str` declarations to have an
+        // initializer, so this branch handles both "foo" and "" literals.
+        if (g.type.kind == il::core::Type::Kind::Str)
         {
             strMap[g.name] = toViperString(g.init, AssumeNullTerminated::Yes);
         }

@@ -262,7 +262,20 @@ int rt_type_is_a(int type_id, int test_type_id)
 
 int rt_type_implements(int type_id, int iface_id)
 {
-    return find_binding(type_id, iface_id) != NULL;
+    // Check the exact type first.
+    if (find_binding(type_id, iface_id) != NULL)
+        return 1;
+
+    // Walk the base class chain to see if any ancestor implements the interface.
+    // This ensures that derived classes inherit interface bindings.
+    const class_entry *ce = find_class_by_type(type_id);
+    while (ce && ce->base_type_id >= 0)
+    {
+        if (find_binding(ce->base_type_id, iface_id) != NULL)
+            return 1;
+        ce = find_class_by_type(ce->base_type_id);
+    }
+    return 0;
 }
 
 void *rt_cast_as_iface(void *obj, int iface_id)
@@ -292,7 +305,22 @@ void **rt_itable_lookup(void *obj, int iface_id)
     int tid = rt_typeid_of(obj);
     if (tid < 0)
         return NULL;
-    return find_binding(tid, iface_id);
+
+    // Check the exact type first.
+    void **itable = find_binding(tid, iface_id);
+    if (itable)
+        return itable;
+
+    // Walk the base class chain to find the interface binding.
+    const class_entry *ce = find_class_by_type(tid);
+    while (ce && ce->base_type_id >= 0)
+    {
+        itable = find_binding(ce->base_type_id, iface_id);
+        if (itable)
+            return itable;
+        ce = find_class_by_type(ce->base_type_id);
+    }
+    return NULL;
 }
 
 void rt_register_interface_direct(int iface_id, const char *qname, int slot_count)
@@ -311,9 +339,12 @@ const rt_class_info *rt_get_class_info_from_vptr(void **vptr)
     return ce ? ce->ci : NULL;
 }
 
-void rt_register_class_direct(int type_id, void **vtable, const char *qname, int vslot_count)
+void rt_register_class_with_base(int type_id,
+                                  void **vtable,
+                                  const char *qname,
+                                  int vslot_count,
+                                  int base_type_id)
 {
-    (void)vslot_count; // stored in ci; currently used for diagnostics only
     if (!vtable)
         return;
     rt_class_info *ci = (rt_class_info *)malloc(sizeof(rt_class_info));
@@ -324,10 +355,26 @@ void rt_register_class_direct(int type_id, void **vtable, const char *qname, int
     }
     ci->type_id = type_id;
     ci->qname = qname;
-    ci->base = NULL; // TODO: wire base when available
     ci->vtable = vtable;
     ci->vtable_len = (uint32_t)(vslot_count < 0 ? 0 : vslot_count);
+
+    // Wire base class pointer by looking up base_type_id in the registry.
+    // The base class must be registered before derived classes for this to work.
+    ci->base = NULL;
+    if (base_type_id >= 0)
+    {
+        const class_entry *base_entry = find_class_by_type(base_type_id);
+        if (base_entry && base_entry->ci)
+            ci->base = base_entry->ci;
+    }
+
     rt_register_class(ci);
+}
+
+void rt_register_class_direct(int type_id, void **vtable, const char *qname, int vslot_count)
+{
+    // Delegate to the base-aware version with no base class.
+    rt_register_class_with_base(type_id, vtable, qname, vslot_count, -1);
 }
 
 void **rt_get_class_vtable(int type_id)
@@ -343,4 +390,15 @@ void rt_register_class_direct_rs(int type_id, void **vtable, rt_string qname, in
 {
     const char *name = qname ? rt_string_cstr(qname) : NULL;
     rt_register_class_direct(type_id, vtable, name, (int)vslot_count);
+}
+
+// Runtime bridge wrapper: accept runtime string for qname with base class
+void rt_register_class_with_base_rs(int type_id,
+                                    void **vtable,
+                                    rt_string qname,
+                                    int64_t vslot_count,
+                                    int64_t base_type_id)
+{
+    const char *name = qname ? rt_string_cstr(qname) : NULL;
+    rt_register_class_with_base(type_id, vtable, name, (int)vslot_count, (int)base_type_id);
 }

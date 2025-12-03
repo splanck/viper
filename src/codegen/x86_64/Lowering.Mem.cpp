@@ -24,6 +24,8 @@
 #include "LowerILToMIR.hpp"
 #include "Lowering.EmitCommon.hpp"
 
+#include "il/runtime/RuntimeSignatures.hpp"
+
 #include <utility>
 #include <vector>
 
@@ -48,15 +50,12 @@ void emitCall(const ILInstr &instr, MIRBuilder &builder)
 
     CallLoweringPlan plan{};
     plan.calleeLabel = instr.ops.front().label;
-    // TODO: Replace with proper function type metadata once IL function types
-    //       are plumbed through lowering. For now, conservatively mark known
-    //       vararg-like runtime helpers.
+    // Query the runtime signature registry to determine if the callee uses
+    // C-style variadic arguments. The utility consults registered signatures
+    // first, then falls back to a curated list of known vararg C functions.
     if (!plan.calleeLabel.empty())
     {
-        if (plan.calleeLabel == "rt_snprintf" || plan.calleeLabel == "rt_sb_printf")
-        {
-            plan.isVarArg = true;
-        }
+        plan.isVarArg = il::runtime::isVarArgCallee(plan.calleeLabel);
     }
 
     for (std::size_t idx = 1; idx < instr.ops.size(); ++idx)

@@ -2135,4 +2135,38 @@ const RuntimeSignature *findRuntimeSignature(std::string_view name)
     return nullptr;
 }
 
+/// @brief Check whether a callee uses C-style variadic arguments.
+///
+/// @details Consults the runtime registry first; falls back to a hardcoded list
+///          of known C library functions that are not registered but require
+///          vararg calling convention (e.g., rt_snprintf, rt_sb_printf).
+///
+/// @param name Symbol name of the callee to query.
+/// @return True when the callee is known to be variadic.
+bool isVarArgCallee(std::string_view name)
+{
+    // First check the runtime registry for registered signatures with isVarArg set.
+    if (const auto *sig = findRuntimeSignature(name))
+    {
+        if (sig->isVarArg)
+            return true;
+    }
+
+    // Fallback: known C library vararg functions used by the runtime but not
+    // registered in the signature registry. This list is maintained here to
+    // centralise vararg metadata rather than scattering it across backends.
+    static constexpr std::string_view kKnownVarArgCallees[] = {
+        "rt_snprintf",
+        "rt_sb_printf",
+    };
+
+    for (const auto &known : kKnownVarArgCallees)
+    {
+        if (name == known)
+            return true;
+    }
+
+    return false;
+}
+
 } // namespace il::runtime

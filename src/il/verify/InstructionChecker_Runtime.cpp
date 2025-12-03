@@ -24,6 +24,7 @@
 #include "il/core/Extern.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
+#include "il/runtime/RuntimeSignatures.hpp"
 #include "il/verify/TypeInference.hpp"
 
 #include <limits>
@@ -402,8 +403,11 @@ Expected<void> checkRuntimeArrayCall(const VerifyCtx &ctx)
 /// @brief Verify indirect calls to functions and externs.
 /// @details Resolves the callee against known functions and externs, checks
 ///          argument counts and operand types against the resolved signature,
-///          and records the result type when present.  If the callee is unknown
-///          or operands disagree with the signature, a diagnostic is produced.
+///          validates return type compatibility, and records the result type
+///          when present.  For runtime helpers, cross-checks against the
+///          runtime signature registry to catch mismatches early.  If the
+///          callee is unknown or operands disagree with the signature, a
+///          diagnostic is produced.
 /// @param ctx Verification context containing call operands and signature maps.
 /// @return Success when the call matches the signature; otherwise an error.
 Expected<void> checkCall(const VerifyCtx &ctx)
@@ -453,29 +457,116 @@ Expected<void> checkCall(const VerifyCtx &ctx)
     else if (auto itFn = ctx.functions.find(calleeName); itFn != ctx.functions.end())
         fnSig = itFn->second;
 
+    // If no extern or function declaration, check if it's a known runtime helper.
+    // This catches calls to runtime helpers that weren't declared as externs.
+    const il::runtime::RuntimeSignature *runtimeSig = nullptr;
     if (!externSig && !fnSig)
-        return fail(ctx, std::string("unknown callee @") + calleeName);
+    {
+        runtimeSig = il::runtime::findRuntimeSignature(calleeName);
+        if (!runtimeSig)
+        {
+            // For vararg helpers that may not be in the main registry, allow them
+            // if they follow the rt_ naming convention (they're handled specially).
+            if (!il::runtime::isVarArgCallee(calleeName))
+                return fail(ctx, std::string("unknown callee @") + calleeName);
+            // Vararg helpers bypass static signature validation.
+            return {};
+        }
+    }
 
-    const size_t paramCount = externSig ? externSig->params.size() : fnSig->params.size();
+    // Determine parameter count and validate argument count.
+    size_t paramCount = 0;
+    if (externSig)
+        paramCount = externSig->params.size();
+    else if (fnSig)
+        paramCount = fnSig->params.size();
+    else if (runtimeSig)
+        paramCount = runtimeSig->paramTypes.size();
+
     const size_t providedArgs =
         (ctx.instr.operands.size() >= argStart) ? (ctx.instr.operands.size() - argStart) : 0;
     if (providedArgs != paramCount)
-        return fail(ctx, "call arg count mismatch");
+    {
+        std::ostringstream ss;
+        ss << "call arg count mismatch: @" << calleeName << " expects " << paramCount
+           << " argument" << (paramCount == 1 ? "" : "s") << " but got " << providedArgs;
+        return fail(ctx, ss.str());
+    }
 
+    // Validate argument types.
     for (size_t i = 0; i < paramCount; ++i)
     {
-        const Type expected = externSig ? externSig->params[i] : fnSig->params[i].type;
+        Type expected;
+        if (externSig)
+            expected = externSig->params[i];
+        else if (fnSig)
+            expected = fnSig->params[i].type;
+        else if (runtimeSig)
+            expected = runtimeSig->paramTypes[i];
+
         const auto actualKind = ctx.types.valueType(ctx.instr.operands[argStart + i]).kind;
         // Accept IL 'str' where runtime ABI expects 'ptr' (string handle compatibility).
         const bool strAsPtr = (expected.kind == Type::Kind::Ptr && actualKind == Type::Kind::Str);
-        if (actualKind != expected.kind && !strAsPtr)
-            return fail(ctx, "call arg type mismatch");
+        // Accept IL 'ptr' where runtime ABI expects 'str' (for some legacy patterns).
+        const bool ptrAsStr = (expected.kind == Type::Kind::Str && actualKind == Type::Kind::Ptr);
+        if (actualKind != expected.kind && !strAsPtr && !ptrAsStr)
+        {
+            std::ostringstream ss;
+            ss << "call arg type mismatch: @" << calleeName << " parameter " << i << " expects "
+               << kindToString(expected.kind) << " but got " << kindToString(actualKind);
+            return fail(ctx, ss.str());
+        }
     }
 
-    if (ctx.instr.result)
+    // Determine expected return type.
+    Type retType;
+    if (externSig)
+        retType = externSig->retType;
+    else if (fnSig)
+        retType = fnSig->retType;
+    else if (runtimeSig)
+        retType = runtimeSig->retType;
+
+    // Validate return type consistency.
+    if (retType.kind == Type::Kind::Void)
     {
-        const Type ret = externSig ? externSig->retType : fnSig->retType;
-        ctx.types.recordResult(ctx.instr, ret);
+        // Void-returning call should not have a result.
+        if (ctx.instr.result)
+        {
+            std::ostringstream ss;
+            ss << "call to void @" << calleeName << " must not have a result";
+            return fail(ctx, ss.str());
+        }
+    }
+    else
+    {
+        // Non-void call should have a result.
+        if (!ctx.instr.result)
+        {
+            // Allow discarding results silently - this is common for side-effecting calls.
+            // The return value is simply not used.
+        }
+        else
+        {
+            // Validate that the declared instruction type matches the return type.
+            if (ctx.instr.type.kind != Type::Kind::Void && ctx.instr.type.kind != retType.kind)
+            {
+                // Allow str/ptr interchangeability for return types too.
+                const bool strPtrCompat =
+                    (ctx.instr.type.kind == Type::Kind::Str && retType.kind == Type::Kind::Ptr) ||
+                    (ctx.instr.type.kind == Type::Kind::Ptr && retType.kind == Type::Kind::Str);
+                if (!strPtrCompat)
+                {
+                    std::ostringstream ss;
+                    ss << "call return type mismatch: @" << calleeName << " returns "
+                       << kindToString(retType.kind) << " but instruction declares "
+                       << kindToString(ctx.instr.type.kind);
+                    return fail(ctx, ss.str());
+                }
+            }
+            // Record the result type for type inference.
+            ctx.types.recordResult(ctx.instr, retType);
+        }
     }
 
     return {};

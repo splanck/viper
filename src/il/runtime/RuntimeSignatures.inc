@@ -848,6 +848,40 @@ DescriptorRow{"Viper.Console.PrintStr",
                   0,
                   RuntimeTrapClass::None},
 
+    // OOP class registration with base class (compiler-emitted module init)
+    DescriptorRow{
+        "rt_register_class_with_base",
+        std::nullopt,
+        "void(i64,ptr,string,i64,i64)",
+        &DirectHandler<&rt_register_class_with_base_rs,
+                       void,
+                       int64_t,
+                       void **,
+                       rt_string,
+                       int64_t,
+                       int64_t>::invoke,
+        kManualLowering,
+        nullptr,
+        0,
+        RuntimeTrapClass::None},
+
+    // Alias for direct use by native codegen
+    DescriptorRow{
+        "rt_register_class_with_base_rs",
+        std::nullopt,
+        "void(i64,ptr,string,i64,i64)",
+        &DirectHandler<&rt_register_class_with_base_rs,
+                       void,
+                       int64_t,
+                       void **,
+                       rt_string,
+                       int64_t,
+                       int64_t>::invoke,
+        kManualLowering,
+        nullptr,
+        0,
+        RuntimeTrapClass::None},
+
     //===----------------------------------------------------------------------===//
     // System.IO.File helpers (static methods)
     DescriptorRow{"Viper.IO.File.Exists",

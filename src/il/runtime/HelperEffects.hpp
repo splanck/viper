@@ -34,6 +34,12 @@ struct HelperEffects
 /// @brief Lookup helper side-effect metadata by symbol name.
 /// @param name Runtime helper symbol (e.g., "rt_len").
 /// @return Effect classification; default-initialised when unknown.
+/// @details This table provides fast constexpr lookup for common runtime helpers.
+///          For comprehensive metadata, also consult the runtime signature registry.
+///          Effects are: {nothrow, readonly, pure}.
+///          - pure: No observable side effects; can eliminate if result unused
+///          - readonly: May read memory but no writes; can reorder with stores
+///          - nothrow: Cannot throw or trap; can hoist across exception boundaries
 inline HelperEffects classifyHelperEffects(std::string_view name)
 {
     struct Entry
@@ -42,17 +48,30 @@ inline HelperEffects classifyHelperEffects(std::string_view name)
         HelperEffects effects;
     };
 
-    constexpr std::array<Entry, 18> kEntries{{
+    // Pure math helpers: nothrow=true, readonly=false, pure=true
+    // These perform pure computation with no memory access.
+    constexpr std::array<Entry, 32> kEntries{{
+        // Math: pure computation, no memory access
         Entry{"rt_cdbl_from_any", HelperEffects{true, false, true}},
         Entry{"rt_int_floor", HelperEffects{true, false, true}},
         Entry{"rt_fix_trunc", HelperEffects{true, false, true}},
         Entry{"rt_round_even", HelperEffects{true, false, true}},
         Entry{"rt_sqrt", HelperEffects{true, false, true}},
         Entry{"rt_abs_f64", HelperEffects{true, false, true}},
+        Entry{"rt_abs_i64", HelperEffects{true, false, true}},
         Entry{"rt_floor", HelperEffects{true, false, true}},
         Entry{"rt_ceil", HelperEffects{true, false, true}},
         Entry{"rt_sin", HelperEffects{true, false, true}},
         Entry{"rt_cos", HelperEffects{true, false, true}},
+        Entry{"rt_tan", HelperEffects{true, false, true}},
+        Entry{"rt_atan", HelperEffects{true, false, true}},
+        Entry{"rt_exp", HelperEffects{true, false, true}},
+        Entry{"rt_log", HelperEffects{true, false, true}},
+        Entry{"rt_sgn_i64", HelperEffects{true, false, true}},
+        Entry{"rt_sgn_f64", HelperEffects{true, false, true}},
+
+        // String inspection: readonly (reads string memory), not pure
+        // These read string contents but don't modify anything.
         Entry{"rt_len", HelperEffects{true, true, false}},
         Entry{"rt_instr2", HelperEffects{true, true, false}},
         Entry{"rt_instr3", HelperEffects{true, true, false}},
@@ -61,6 +80,17 @@ inline HelperEffects classifyHelperEffects(std::string_view name)
         Entry{"rt_str_le", HelperEffects{true, true, false}},
         Entry{"rt_str_gt", HelperEffects{true, true, false}},
         Entry{"rt_str_ge", HelperEffects{true, true, false}},
+        Entry{"rt_asc", HelperEffects{true, true, false}},
+
+        // Array length queries: readonly (reads array header)
+        Entry{"rt_arr_i32_len", HelperEffects{true, true, false}},
+        Entry{"rt_arr_str_len", HelperEffects{true, true, false}},
+
+        // Conversion helpers: nothrow only (may allocate, not pure)
+        Entry{"rt_chr", HelperEffects{true, false, false}},
+        Entry{"rt_to_int", HelperEffects{true, false, false}},
+        Entry{"rt_to_double", HelperEffects{true, false, false}},
+        Entry{"rt_val", HelperEffects{true, false, false}},
     }};
 
     for (const auto &entry : kEntries)

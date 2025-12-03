@@ -150,4 +150,11 @@ function(viper_add_tools_tests)
     target_include_directories(test_cli_il_opt_passes PRIVATE ${CMAKE_SOURCE_DIR}/src)
     target_link_libraries(test_cli_il_opt_passes PRIVATE ${VIPER_TOOLS_LIBS} il_transform)
     viper_add_ctest(test_cli_il_opt_passes test_cli_il_opt_passes)
+
+    # DCE pure call elimination test
+    viper_add_test(test_il_dce_pure_call
+            ${VIPER_TESTS_DIR}/unit/test_il_dce_pure_call.cpp)
+    target_include_directories(test_il_dce_pure_call PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    target_link_libraries(test_il_dce_pure_call PRIVATE il_transform viper_il_core)
+    viper_add_ctest(test_il_dce_pure_call test_il_dce_pure_call)
 endfunction()

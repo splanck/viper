@@ -47,7 +47,8 @@ BasicType RuntimeMethodIndex::mapIlToken(std::string_view tok)
         return BasicType::String;
     if (tok == "void")
         return BasicType::Void;
-    // obj or unknown tokens map to Unknown at the BASIC level.
+    if (tok == "obj" || tok == "ptr")
+        return BasicType::Object;
     return BasicType::Unknown;
 }
 

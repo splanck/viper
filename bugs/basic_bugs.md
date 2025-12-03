@@ -2,18 +2,18 @@
 
 *Last Updated: 2025-12-03*
 
-**Bug Statistics**: 121 resolved, 2 outstanding bugs, 6 design decisions/clarifications (129 total documented)
+**Bug Statistics**: 123 resolved, 0 outstanding bugs, 6 design decisions/clarifications (129 total documented)
 
-**Test Suite Status**: 747/747 tests passing (100%)
+**Test Suite Status**: 756/756 tests passing (100%)
 
-**STATUS**: ⚠️ **2 OUTSTANDING BUGS** - BUG-122, BUG-123 discovered during comprehensive test development
+**STATUS**: ✅ **ALL BUGS RESOLVED**
 
 ---
 
-## OUTSTANDING BUGS
+## RECENTLY RESOLVED BUGS
 
 ### BUG-122: LEN("") returns garbage value instead of 0
-**Status**: 🔴 **OPEN**
+**Status**: ✅ **RESOLVED** - Fixed 2025-12-03
 **Discovered**: 2025-12-03 (comprehensive test development)
 **Category**: String Functions
 **Severity**: MEDIUM
@@ -30,12 +30,23 @@ PRINT LEN(s)  ' Prints 9223372036854775807 instead of 0
 **Expected**: `0`
 **Actual**: `9223372036854775807` (looks like uninitialized memory or max int64)
 
-**Workaround**: Avoid calling LEN on empty strings; check for empty string differently.
+**Root Cause**: In `VMInit.cpp`, the condition for adding string globals to `strMap` was
+`g.type.kind == Type::Kind::Str && !g.init.empty()`. For empty string literals `""`, the
+`init` field is an empty std::string, so `!g.init.empty()` was false, causing empty string
+globals to be incorrectly added to `mutableGlobalMap` instead of `strMap`. When loaded,
+the garbage bytes from `mutableGlobalMap` were interpreted as an `rt_string`, resulting
+in garbage values.
+
+**Fix**: Changed the condition to just check the type kind (`g.type.kind == Type::Kind::Str`)
+since all string globals are const (the IL parser requires an initializer for str globals).
+
+**Files Changed**:
+- `src/vm/VMInit.cpp:217-221` - Removed `!g.init.empty()` check
 
 ---
 
 ### BUG-123: Point.ToString() returns class name instead of formatted string
-**Status**: 🔴 **OPEN**
+**Status**: ✅ **RESOLVED** - Fixed 2025-12-03
 **Discovered**: 2025-12-03 (comprehensive test development)
 **Category**: OOP / String Methods
 **Severity**: LOW
@@ -63,7 +74,16 @@ PRINT p.ToString()  ' Prints "POINT" instead of "(3,4)"
 **Expected**: `(3,4)`
 **Actual**: `POINT`
 
-**Workaround**: Build string outside the method or use a different approach.
+**Root Cause**: In `Lower_OOP_Expr.cpp`, the code had a fallback that called `Viper.Object.ToString`
+(the base Object method that returns the class name) BEFORE checking if the user-defined class
+had its own override of the method. This caused user-defined `ToString()` methods to be ignored.
+
+**Fix**: Added a check using `oopIndex_.findMethodInHierarchy()` to see if the user-defined
+class has the method before falling back to `Viper.Object.ToString` or `Viper.Object.Equals`.
+
+**Files Changed**:
+- `src/frontends/basic/lower/oop/Lower_OOP_Expr.cpp:946-1023` - Added `userClassHasMethod` check
+- `src/tests/e2e/comprehensive/oop_features.bas.out:5` - Updated golden file expectation
 
 ---
 

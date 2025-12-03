@@ -89,5 +89,20 @@ int main()
 
     const auto &signatureMap = il::runtime::runtimeSignatures();
     assert(signatureMap.size() == registry.size());
+
+    // Test isVarArgCallee utility for known vararg callees
+    assert(il::runtime::isVarArgCallee("rt_snprintf") &&
+           "rt_snprintf should be identified as vararg");
+    assert(il::runtime::isVarArgCallee("rt_sb_printf") &&
+           "rt_sb_printf should be identified as vararg");
+
+    // Test isVarArgCallee returns false for non-vararg callees
+    assert(!il::runtime::isVarArgCallee("rt_print_str") &&
+           "rt_print_str should not be identified as vararg");
+    assert(!il::runtime::isVarArgCallee("rt_concat") &&
+           "rt_concat should not be identified as vararg");
+    assert(!il::runtime::isVarArgCallee("unknown_function") &&
+           "unknown function should not be identified as vararg");
+
     return 0;
 }

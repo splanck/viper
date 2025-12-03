@@ -808,6 +808,8 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
                                 return Type::Kind::I1;
                             case BasicType::Void:
                                 return Type::Kind::Void;
+                            case BasicType::Object:
+                                return Type::Kind::Ptr;
                             case BasicType::Int:
                             case BasicType::Unknown:
                             default:
@@ -898,6 +900,8 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
                         return Type::Kind::I1;
                     case BasicType::Void:
                         return Type::Kind::Void;
+                    case BasicType::Object:
+                        return Type::Kind::Ptr;
                     case BasicType::Int:
                     case BasicType::Unknown:
                     default:
@@ -941,12 +945,22 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
         }
 
         // Fallback: Object methods on any instance (Viper.Object.*, System alias supported)
+        // BUT only if the user-defined class doesn't override the method.
         {
+            // First check if the user-defined class has this method - if so, skip the
+            // Viper.Object fallback and let the user-defined method handling below take over.
+            bool userClassHasMethod = false;
+            if (!qClass.empty())
+            {
+                if (oopIndex_.findMethodInHierarchy(qClass, expr.method))
+                    userClassHasMethod = true;
+            }
+
             auto &midx = runtimeMethodIndex();
             auto info = midx.find("Viper.Object", expr.method, expr.args.size());
             if (!info)
                 info = midx.find("Viper.System.Object", expr.method, expr.args.size());
-            if (info)
+            if (info && !userClassHasMethod)
             {
                 // Lower base and build (receiver, args...)
                 RVal base = lowerExpr(*expr.base);
@@ -971,6 +985,8 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
                             return Type::Kind::I1;
                         case BasicType::Void:
                             return Type::Kind::Void;
+                        case BasicType::Object:
+                            return Type::Kind::Ptr;
                         case BasicType::Int:
                         case BasicType::Unknown:
                         default:
@@ -988,7 +1004,9 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
                 return {result, retTy.kind == Type::Kind::Void ? Type(Type::Kind::I64) : retTy};
             }
             // As a last resort, special-case common Object methods to canonical targets
-            if (string_utils::iequals(expr.method, "ToString") && expr.args.size() == 0)
+            // (only if user class doesn't override)
+            if (!userClassHasMethod && string_utils::iequals(expr.method, "ToString") &&
+                expr.args.size() == 0)
             {
                 curLoc = expr.loc;
                 RVal base = lowerExpr(*expr.base);
@@ -998,7 +1016,8 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
                 deferReleaseStr(result);
                 return {result, Type(Type::Kind::Str)};
             }
-            if (string_utils::iequals(expr.method, "Equals") && expr.args.size() == 1)
+            if (!userClassHasMethod && string_utils::iequals(expr.method, "Equals") &&
+                expr.args.size() == 1)
             {
                 curLoc = expr.loc;
                 RVal base = lowerExpr(*expr.base);
