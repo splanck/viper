@@ -57,6 +57,19 @@ namespace il::frontends::basic
 /// @param stmt AST node describing the @c DELETE statement to lower.
 void Lowerer::lowerDelete(const DeleteStmt &stmt)
 {
+    // Create a temporary OopLoweringContext for backward compatibility.
+    // Callers that already have a context should use the overload below.
+    OopLoweringContext oopCtx(*this, oopIndex_);
+    lowerDelete(stmt, oopCtx);
+}
+
+/// @brief Lower a BASIC @c DELETE statement using an existing OopLoweringContext.
+/// @details This overload uses the provided context for class lookups and destructor
+///          name resolution, enabling caching across multiple OOP operations.
+/// @param stmt AST node describing the @c DELETE statement to lower.
+/// @param oopCtx OOP lowering context for metadata lookups and caching.
+void Lowerer::lowerDelete(const DeleteStmt &stmt, OopLoweringContext &oopCtx)
+{
     if (!stmt.target)
         return;
 
@@ -96,23 +109,19 @@ void Lowerer::lowerDelete(const DeleteStmt &stmt)
 
     ctx.setCurrent(destroyBlk);
     curLoc = stmt.loc;
-    std::string className = resolveObjectClass(*stmt.target);
+
+    // Use OopLoweringContext for class resolution and destructor name mangling
+    std::string className = oopCtx.resolveObjectClass(*stmt.target);
     if (!className.empty())
-        emitCall(mangleClassDtor(className), {target.value});
+    {
+        std::string dtorName = oopCtx.getDestructorName(className);
+        emitCall(dtorName, {target.value});
+    }
     emitCall("rt_obj_free", {target.value});
     emitBr(contBlk);
 
     ctx.setCurrent(contBlk);
     curLoc = stmt.loc;
-}
-
-// New implementation with OopLoweringContext parameter
-void Lowerer::lowerDelete(const DeleteStmt &stmt, OopLoweringContext &oopCtx)
-{
-    // For now, delegate to the existing implementation.
-    // TODO: Refactor to use OopLoweringContext for class layout + destructor lookups
-    //       (consistency across OOP lowering entry points; behavior is already correct).
-    lowerDelete(stmt);
 }
 
 } // namespace il::frontends::basic

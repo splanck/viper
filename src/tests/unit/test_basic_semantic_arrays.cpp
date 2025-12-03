@@ -213,5 +213,91 @@ int main()
         assert(em.errorCount() == 1);
     }
 
+    // Multi-dimensional array: wrong number of indices reports error.
+    {
+        const std::string src = "DIM A(3, 4)\nLET X = A(1)\nEND\n";
+        SourceManager sm;
+        uint32_t fid = sm.addFile("multidim_wrong_indices.bas");
+        Parser parser(src, fid);
+        auto prog = parser.parseProgram();
+        assert(prog);
+
+        DiagnosticEngine de;
+        DiagnosticEmitter em(de, sm);
+        em.addSource(fid, src);
+        SemanticAnalyzer sema(em);
+        sema.analyze(*prog);
+
+        assert(em.errorCount() == 1);
+        std::ostringstream diag;
+        em.printAll(diag);
+        assert(diag.str().find("error[B3002]") != std::string::npos);
+        assert(diag.str().find("expected 2") != std::string::npos);
+    }
+
+    // Multi-dimensional array: too many indices reports error.
+    {
+        const std::string src = "DIM A(3, 4)\nLET X = A(1, 2, 3)\nEND\n";
+        SourceManager sm;
+        uint32_t fid = sm.addFile("multidim_too_many.bas");
+        Parser parser(src, fid);
+        auto prog = parser.parseProgram();
+        assert(prog);
+
+        DiagnosticEngine de;
+        DiagnosticEmitter em(de, sm);
+        em.addSource(fid, src);
+        SemanticAnalyzer sema(em);
+        sema.analyze(*prog);
+
+        assert(em.errorCount() == 1);
+        std::ostringstream diag;
+        em.printAll(diag);
+        assert(diag.str().find("error[B3002]") != std::string::npos);
+        assert(diag.str().find("got 3") != std::string::npos);
+    }
+
+    // Multi-dimensional array: out of bounds constant index emits warning.
+    {
+        const std::string src = "DIM A(3, 4)\nLET X = A(5, 0)\nEND\n";
+        SourceManager sm;
+        uint32_t fid = sm.addFile("multidim_oob.bas");
+        Parser parser(src, fid);
+        auto prog = parser.parseProgram();
+        assert(prog);
+
+        DiagnosticEngine de;
+        DiagnosticEmitter em(de, sm);
+        em.addSource(fid, src);
+        SemanticAnalyzer sema(em);
+        sema.analyze(*prog);
+
+        assert(em.errorCount() == 0);
+        assert(em.warningCount() == 1);
+        std::ostringstream diag;
+        em.printAll(diag);
+        assert(diag.str().find("warning[B3001]") != std::string::npos);
+        assert(diag.str().find("dimension 1") != std::string::npos);
+    }
+
+    // Multi-dimensional array: valid access produces no errors or warnings.
+    {
+        const std::string src = "DIM A(3, 4)\nLET X = A(2, 3)\nEND\n";
+        SourceManager sm;
+        uint32_t fid = sm.addFile("multidim_ok.bas");
+        Parser parser(src, fid);
+        auto prog = parser.parseProgram();
+        assert(prog);
+
+        DiagnosticEngine de;
+        DiagnosticEmitter em(de, sm);
+        em.addSource(fid, src);
+        SemanticAnalyzer sema(em);
+        sema.analyze(*prog);
+
+        assert(em.errorCount() == 0);
+        assert(em.warningCount() == 0);
+    }
+
     return 0;
 }

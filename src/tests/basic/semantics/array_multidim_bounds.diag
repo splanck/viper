@@ -1,0 +1,9 @@
+src/tests/basic/semantics/array_multidim_bounds.bas:11:9: error[B3002]: wrong number of indices for array 'A': expected 2, got 3
+LET Y = A(1, 2, 3)
+        ^
+src/tests/basic/semantics/array_multidim_bounds.bas:14:9: warning[B3001]: index out of bounds for dimension 1: 5 not in [0, 2]
+LET Z = A(5, 0)
+        ^
+src/tests/basic/semantics/array_multidim_bounds.bas:17:9: warning[B3001]: index out of bounds for dimension 2: 10 not in [0, 3]
+LET W = A(0, 10)
+        ^

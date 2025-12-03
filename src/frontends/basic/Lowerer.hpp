@@ -192,6 +192,7 @@ class Lowerer
     friend class ControlStatementLowerer;
     friend class RuntimeStatementLowerer;
     friend class OopEmitHelper;
+    friend struct OopLoweringContext;
     friend class RuntimeCallBuilder;
     friend class TypeCoercionEngine;
 

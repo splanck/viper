@@ -36,9 +36,25 @@ class SemanticAnalyzer;
 /// - Enforcing module-level symbol sharing rules
 ///
 /// NOTE: Currently all referenced variables get local slots.
-/// TODO: Skip allocation for module-level globals once IL supports mutable
-///       module-scope globals (beyond string constants). This is about IL
-///       representation, not OOP runtime capability.
+///
+/// OPTIMIZATION OPPORTUNITY (IL mutable globals):
+/// Currently, module-level variables shared across procedures use runtime-backed
+/// storage via rt_modvar_addr_* calls. The IL already supports mutable globals
+/// (see il::core::Global and VM's mutableGlobalMap), which would eliminate:
+///   1. Runtime hash table lookups on each global access
+///   2. The need to track crossProcGlobals_ separately
+///   3. String allocation overhead for variable names at call sites
+///
+/// Implementation path:
+///   1. In Lowerer::lowerModule(), emit `global <type> @varname` for each
+///      module-level symbol from SemanticAnalyzer::symbols_
+///   2. In resolveVariableStorage(), use Value::global(name) instead of
+///      generating rt_modvar_addr_* calls
+///   3. Remove crossProcGlobals_ tracking (all globals become IL globals)
+///   4. Update tests to expect IL global declarations in output
+///
+/// Benefits: Eliminates runtime overhead, simplifies lowering, enables
+/// future optimizations like constant propagation for module-level constants.
 class ProcedureSymbolTracker
 {
   public:

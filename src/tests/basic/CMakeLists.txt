@@ -968,6 +968,25 @@ function(viper_add_basic_semantics_golden_tests)
             -DSOURCE_ROOT=${CMAKE_SOURCE_DIR}
             -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_diag.cmake)
 
+    # Multi-dimensional array bounds checking tests
+    viper_add_ctest(basic_semantics_array_multidim_bounds
+            ${CMAKE_COMMAND}
+            -DILC=${_VIPER_BASIC_ILC}
+            -DBAS_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/array_multidim_bounds.bas
+            -DDIAG_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/array_multidim_bounds.diag
+            -DEXPECT_STATUS=1
+            -DSOURCE_ROOT=${CMAKE_SOURCE_DIR}
+            -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_diag.cmake)
+
+    viper_add_ctest(basic_semantics_array_multidim_ok
+            ${CMAKE_COMMAND}
+            -DILC=${_VIPER_BASIC_ILC}
+            -DBAS_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/array_multidim_ok.bas
+            -DDIAG_FILE=${_VIPER_BASIC_SEMANTICS_DIR}/array_multidim_ok.diag
+            -DEXPECT_STATUS=0
+            -DSOURCE_ROOT=${CMAKE_SOURCE_DIR}
+            -P ${_VIPER_BASIC_SEMANTICS_DIR}/check_diag.cmake)
+
     set(_VIPER_UNKNOWN_STMT_REGEX "unknown statement 'FROB'")
     viper_add_ctest(basic_semantics_unknown_statement
             ${CMAKE_COMMAND}

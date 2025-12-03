@@ -126,23 +126,38 @@ SemanticAnalyzer::Type analyzeArrayExpr(SemanticAnalyzer &analyzer, ArrayExpr &e
     // Validate indices
     if (expr.index)
     {
-        // Single-dimensional array (backward compatible path)
+        // Single index provided (backward compatible path from parser)
         validateArrayIndex(context, *expr.index, expr.loc);
 
-        // Bounds check for single-dimensional arrays
+        // Bounds check: verify dimension count and index range
         const auto *meta = context.arrayMetadata(expr.name);
-        if (meta && !meta->extents.empty() && meta->extents.size() == 1)
+        if (meta && !meta->extents.empty())
         {
-            long long arraySize = meta->extents[0];
-            if (arraySize >= 0)
+            const std::size_t numDims = meta->extents.size();
+
+            // Check dimension count: if array has more than 1 dimension, this is an error
+            if (numDims != 1)
             {
-                if (auto *ci = as<const IntExpr>(*expr.index))
+                std::string msg = "wrong number of indices for array '" + expr.name +
+                                  "': expected " + std::to_string(numDims) + ", got 1";
+                context.diagnostics().emit(
+                    il::support::Severity::Error, "B3002", expr.loc, 1, std::move(msg));
+            }
+            else
+            {
+                // Single-dimensional array: check bounds
+                long long arraySize = meta->extents[0];
+                if (arraySize >= 0)
                 {
-                    if (ci->value < 0 || ci->value >= arraySize)
+                    if (auto *ci = as<const IntExpr>(*expr.index))
                     {
-                        std::string msg = "index out of bounds";
-                        context.diagnostics().emit(
-                            il::support::Severity::Warning, "B3001", expr.loc, 1, std::move(msg));
+                        if (ci->value < 0 || ci->value >= arraySize)
+                        {
+                            std::string msg = "index out of bounds";
+                            context.diagnostics().emit(
+                                il::support::Severity::Warning, "B3001", expr.loc, 1,
+                                std::move(msg));
+                        }
                     }
                 }
             }
@@ -156,7 +171,51 @@ SemanticAnalyzer::Type analyzeArrayExpr(SemanticAnalyzer &analyzer, ArrayExpr &e
             if (indexPtr)
                 validateArrayIndex(context, *indexPtr, expr.loc);
         }
-        // TODO: Bounds check for multi-dimensional arrays
+
+        // Bounds check for multi-dimensional arrays
+        const auto *meta = context.arrayMetadata(expr.name);
+        if (meta && !meta->extents.empty())
+        {
+            const std::size_t numDims = meta->extents.size();
+            const std::size_t numIndices = expr.indices.size();
+
+            // Check dimension count mismatch
+            if (numIndices != numDims)
+            {
+                std::string msg = "wrong number of indices for array '" + expr.name +
+                                  "': expected " + std::to_string(numDims) + ", got " +
+                                  std::to_string(numIndices);
+                context.diagnostics().emit(
+                    il::support::Severity::Error, "B3002", expr.loc, 1, std::move(msg));
+            }
+            else
+            {
+                // Check each dimension's bounds for constant indices
+                for (std::size_t i = 0; i < numIndices; ++i)
+                {
+                    if (!expr.indices[i])
+                        continue;
+
+                    const long long dimSize = meta->extents[i];
+                    if (dimSize < 0)
+                        continue; // Dynamic/unknown extent, skip static check
+
+                    if (auto *ci = as<const IntExpr>(*expr.indices[i]))
+                    {
+                        if (ci->value < 0 || ci->value >= dimSize)
+                        {
+                            std::string msg = "index out of bounds for dimension " +
+                                              std::to_string(i + 1) + ": " +
+                                              std::to_string(ci->value) + " not in [0, " +
+                                              std::to_string(dimSize - 1) + "]";
+                            context.diagnostics().emit(
+                                il::support::Severity::Warning, "B3001", expr.loc, 1,
+                                std::move(msg));
+                        }
+                    }
+                }
+            }
+        }
     }
 
     // Return element type based on array type

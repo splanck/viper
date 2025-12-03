@@ -76,8 +76,13 @@ void ProcedureSymbolTracker::trackCrossProcGlobalIfNeeded(std::string_view name)
     // 2. fn->name != "main" (inside a procedure other than @main)
     // This ensures module-level symbols used in procedures get runtime-backed storage.
     const auto *fn = lowerer_.context().function();
-    if ((fn == nullptr || fn->name != "main") && sema->isModuleLevelSymbol(std::string(name)))
-        lowerer_.markCrossProcGlobal(std::string(name));
+    if (fn == nullptr || fn->name != "main")
+    {
+        // Construct the string once and reuse for both checks
+        std::string nameStr(name);
+        if (sema->isModuleLevelSymbol(nameStr))
+            lowerer_.markCrossProcGlobal(std::move(nameStr));
+    }
 }
 
 bool ProcedureSymbolTracker::isInMain() const
