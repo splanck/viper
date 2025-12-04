@@ -137,8 +137,10 @@ struct Frame
     static constexpr size_t kDefaultStackSize = 65536;
 
     /// @brief Operand stack storage.
-    /// @ownership Owned by the frame; fixed capacity.
-    std::array<uint8_t, kDefaultStackSize> stack;
+    /// @ownership Owned by the frame; dynamically sized based on configuration.
+    /// @invariant Once initialized, the vector capacity should not change during
+    ///            execution to avoid pointer invalidation from prior @c alloca calls.
+    std::vector<uint8_t> stack;
 
     /// @brief Stack pointer in bytes.
     /// @invariant Never exceeds @c stack.size().
@@ -353,6 +355,7 @@ class VM
      * @param maxSteps Maximum instruction count before forced termination (0 = unlimited).
      * @param dbg Debug control for breakpoints and single-stepping.
      * @param script Optional debug script for automated debugging sessions.
+     * @param stackBytes Per-frame operand stack size in bytes (default 64KB).
      *
      * @invariant The module reference must remain valid throughout VM lifetime.
      */
@@ -360,7 +363,8 @@ class VM
        TraceConfig tc = {},
        uint64_t maxSteps = 0,
        DebugCtrl dbg = {},
-       DebugScript *script = nullptr);
+       DebugScript *script = nullptr,
+       std::size_t stackBytes = Frame::kDefaultStackSize);
 
     /// @brief Release runtime string handles retained by the VM.
     ~VM();
@@ -412,6 +416,26 @@ class VM
     /// @brief Apply standard bookkeeping after executing an opcode.
     /// @return True when the caller should stop dispatching.
     bool finalizeDispatch(ExecState &state, const ExecResult &exec);
+
+    // =========================================================================
+    // Fast-path accessors for debug hooks (inlined for hot paths)
+    // =========================================================================
+
+    /// @brief Check if tracing is active (cheap boolean test).
+    /// @return True when tracer.onStep() should be called.
+    [[nodiscard]] bool isTracingActive() const noexcept { return tracingActive_; }
+
+    /// @brief Check if memory watches are active (cheap boolean test).
+    /// @return True when memory write callbacks should be invoked.
+    [[nodiscard]] bool hasMemWatchesActive() const noexcept { return memWatchActive_; }
+
+    /// @brief Check if variable watches are active (cheap boolean test).
+    /// @return True when variable store callbacks should be invoked.
+    [[nodiscard]] bool hasVarWatchesActive() const noexcept { return varWatchActive_; }
+
+    /// @brief Refresh all debug fast-path flags from current state.
+    /// @details Call this after changing trace config, adding/removing watches.
+    void refreshDebugFlags();
 
     /// @brief Execute an opcode via function table dispatch.
     ExecResult executeOpcode(Frame &fr,
@@ -488,8 +512,32 @@ class VM
     /// @ownership Non-owning pointer; may be @c nullptr.
     DebugScript *script;
 
+    // =========================================================================
+    // Fast-path flags for debug hooks in hot paths
+    // =========================================================================
+    // These flags enable cheap checks in frequently executed code paths.
+    // When false, the corresponding debug functionality is skipped entirely
+    // without any function calls or complex checks.
+
+    /// @brief True when tracing is enabled and onStep should be called.
+    /// @details Cached from tracer.cfg.enabled() to avoid repeated virtual calls.
+    ///          Updated when trace configuration changes.
+    bool tracingActive_ = false;
+
+    /// @brief True when memory watches are installed.
+    /// @details Cached from debug.hasMemWatches() to enable fast-path bypass
+    ///          in store handlers. Updated when watches are added/removed.
+    bool memWatchActive_ = false;
+
+    /// @brief True when any variable watches are installed.
+    /// @details Cached to enable fast-path bypass for onStore callbacks.
+    bool varWatchActive_ = false;
+
     /// @brief Step limit; @c 0 means unlimited.
     uint64_t maxSteps;
+
+    /// @brief Configured stack size in bytes for each Frame.
+    std::size_t stackBytes_;
 
     /// @brief Interpreter dispatch strategy selected at construction.
     DispatchKind dispatchKind = FnTable;
@@ -681,6 +729,12 @@ class VM
     /// @brief Retrieve the formatted diagnostic for the most recent unhandled trap.
     /// @return Trap message when a trap terminated execution, or `std::nullopt` otherwise.
     std::optional<std::string> lastTrapMessage() const;
+
+    /// @brief Clear stale trap state before a new execution.
+    /// @details Resets lastTrap and trapToken so subsequent executions start
+    ///          with a clean slate. Call this before run() if you need to
+    ///          distinguish between "no trap occurred" and "previous trap exists."
+    void clearTrapState();
 
     /// @brief Emit a tail-call debug/trace event.
     void onTailCall(const il::core::Function *from, const il::core::Function *to);

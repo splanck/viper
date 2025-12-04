@@ -14,6 +14,13 @@ viper_add_test(
         TEST_NAME perf_vm_dispatch_bench)
 target_link_libraries(test_perf_vm_dispatch PRIVATE il_build il_vm viper_support)
 
+# Scalability stress tests
+viper_add_test(
+        test_stress_scalability
+        ${CMAKE_CURRENT_LIST_DIR}/stress_scalability.cpp
+        TEST_NAME stress_scalability)
+target_link_libraries(test_stress_scalability PRIVATE il_build il_vm viper_il_verify viper_support)
+
 # Runtime classes microbench (not registered with CTest by default)
 viper_add_test(
         bench_runtime_classes_string_length

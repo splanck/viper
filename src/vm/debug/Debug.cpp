@@ -344,6 +344,11 @@ bool DebugCtrl::hasMemWatches() const noexcept
     return !memWatches_.empty();
 }
 
+bool DebugCtrl::hasVarWatches() const noexcept
+{
+    return !watches_.empty();
+}
+
 /// @brief Check memory write against installed ranges and enqueue hits.
 void DebugCtrl::onMemWrite(const void *addr, std::size_t size)
 {

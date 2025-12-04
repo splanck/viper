@@ -41,6 +41,7 @@
 
 #pragma once
 
+#include "il/verify/BlockMap.hpp"
 #include "il/verify/DiagSink.hpp"
 #include "il/verify/ExceptionHandlerAnalysis.hpp"
 
@@ -99,7 +100,7 @@ class FunctionVerifier
      * @param sink Collector for non-fatal warnings during verification.
      * @return Success if all functions pass, error with diagnostic on first failure.
      */
-    il::support::Expected<void> run(const il::core::Module &module, DiagSink &sink);
+    [[nodiscard]] il::support::Expected<void> run(const il::core::Module &module, DiagSink &sink);
 
     class InstructionStrategy
     {
@@ -107,11 +108,11 @@ class FunctionVerifier
         virtual ~InstructionStrategy() = default;
 
         virtual bool matches(const il::core::Instr &instr) const = 0;
-        virtual il::support::Expected<void> verify(
+        [[nodiscard]] virtual il::support::Expected<void> verify(
             const il::core::Function &fn,
             const il::core::BasicBlock &bb,
             const il::core::Instr &instr,
-            const std::unordered_map<std::string, const il::core::BasicBlock *> &blockMap,
+            const BlockMap &blockMap,
             const std::unordered_map<std::string, const il::core::Extern *> &externs,
             const std::unordered_map<std::string, const il::core::Function *> &funcs,
             TypeInference &types,
@@ -120,19 +121,17 @@ class FunctionVerifier
 
   private:
     il::support::Expected<void> verifyFunction(const il::core::Function &fn, DiagSink &sink);
-    il::support::Expected<void> verifyBlock(
-        const il::core::Function &fn,
-        const il::core::BasicBlock &bb,
-        const std::unordered_map<std::string, const il::core::BasicBlock *> &blockMap,
-        std::unordered_map<unsigned, il::core::Type> &temps,
-        DiagSink &sink);
-    il::support::Expected<void> verifyInstruction(
-        const il::core::Function &fn,
-        const il::core::BasicBlock &bb,
-        const il::core::Instr &instr,
-        const std::unordered_map<std::string, const il::core::BasicBlock *> &blockMap,
-        TypeInference &types,
-        DiagSink &sink);
+    il::support::Expected<void> verifyBlock(const il::core::Function &fn,
+                                            const il::core::BasicBlock &bb,
+                                            const BlockMap &blockMap,
+                                            std::unordered_map<unsigned, il::core::Type> &temps,
+                                            DiagSink &sink);
+    il::support::Expected<void> verifyInstruction(const il::core::Function &fn,
+                                                  const il::core::BasicBlock &bb,
+                                                  const il::core::Instr &instr,
+                                                  const BlockMap &blockMap,
+                                                  TypeInference &types,
+                                                  DiagSink &sink);
     [[nodiscard]] std::string formatFunctionDiag(const il::core::Function &fn,
                                                  std::string_view message) const;
 

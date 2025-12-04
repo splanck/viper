@@ -60,7 +60,7 @@ class GlobalVerifier
     /// @param module Module to inspect.
     /// @param sink Diagnostic sink receiving advisory output (currently unused).
     /// @return Empty Expected on success; diagnostic payload when verification fails.
-    il::support::Expected<void> run(const il::core::Module &module, DiagSink &sink);
+    [[nodiscard]] il::support::Expected<void> run(const il::core::Module &module, DiagSink &sink);
 
   private:
     GlobalMap globals_;

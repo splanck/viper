@@ -36,7 +36,9 @@
 
 #include "il/core/Opcode.hpp"
 #include "il/core/fwd.hpp"
+#include "il/verify/BlockMap.hpp"
 #include "il/verify/TypeInference.hpp"
+
 #include <ostream>
 #include <unordered_map>
 #include <vector>
@@ -50,15 +52,14 @@ namespace il::verify
 {
 
 /// @brief Function pointer signature used by instruction iterators.
-using VerifyInstrFn =
-    bool (*)(const il::core::Function &fn,
-             const il::core::BasicBlock &bb,
-             const il::core::Instr &instr,
-             const std::unordered_map<std::string, const il::core::BasicBlock *> &blockMap,
-             const std::unordered_map<std::string, const il::core::Extern *> &externs,
-             const std::unordered_map<std::string, const il::core::Function *> &funcs,
-             TypeInference &types,
-             std::ostream &err);
+using VerifyInstrFn = bool (*)(const il::core::Function &fn,
+                               const il::core::BasicBlock &bb,
+                               const il::core::Instr &instr,
+                               const BlockMap &blockMap,
+                               const std::unordered_map<std::string, const il::core::Extern *> &externs,
+                               const std::unordered_map<std::string, const il::core::Function *> &funcs,
+                               TypeInference &types,
+                               std::ostream &err);
 
 /// @brief Determine whether an opcode terminates a basic block.
 bool isTerminator(il::core::Opcode op);
@@ -71,15 +72,14 @@ bool validateBlockParams(const il::core::Function &fn,
                          std::ostream &err);
 
 /// @brief Iterate instructions in a block and dispatch verification callbacks.
-bool iterateBlockInstructions(
-    VerifyInstrFn verifyInstrFn,
-    const il::core::Function &fn,
-    const il::core::BasicBlock &bb,
-    const std::unordered_map<std::string, const il::core::BasicBlock *> &blockMap,
-    const std::unordered_map<std::string, const il::core::Extern *> &externs,
-    const std::unordered_map<std::string, const il::core::Function *> &funcs,
-    TypeInference &types,
-    std::ostream &err);
+bool iterateBlockInstructions(VerifyInstrFn verifyInstrFn,
+                              const il::core::Function &fn,
+                              const il::core::BasicBlock &bb,
+                              const BlockMap &blockMap,
+                              const std::unordered_map<std::string, const il::core::Extern *> &externs,
+                              const std::unordered_map<std::string, const il::core::Function *> &funcs,
+                              TypeInference &types,
+                              std::ostream &err);
 
 /// @brief Validate that terminator placement within the block is well-formed.
 bool checkBlockTerminators(const il::core::Function &fn,
@@ -90,7 +90,7 @@ bool checkBlockTerminators(const il::core::Function &fn,
 bool verifyBr(const il::core::Function &fn,
               const il::core::BasicBlock &bb,
               const il::core::Instr &instr,
-              const std::unordered_map<std::string, const il::core::BasicBlock *> &blockMap,
+              const BlockMap &blockMap,
               TypeInference &types,
               std::ostream &err);
 
@@ -98,7 +98,7 @@ bool verifyBr(const il::core::Function &fn,
 bool verifyCBr(const il::core::Function &fn,
                const il::core::BasicBlock &bb,
                const il::core::Instr &instr,
-               const std::unordered_map<std::string, const il::core::BasicBlock *> &blockMap,
+               const BlockMap &blockMap,
                TypeInference &types,
                std::ostream &err);
 

@@ -47,6 +47,13 @@ struct RunConfig
     DebugCtrl debug;                  ///< Debug controller copied into the VM.
     DebugScript *debugScript = nullptr; ///< Optional script pointer; not owned.
     std::vector<ExternDesc> externs;  ///< Pre-registered extern helpers.
+    /// @brief Per-frame operand stack size in bytes.
+    /// @details Controls the amount of stack storage available for @c alloca
+    ///          operations within each function call. Defaults to 64KB which
+    ///          suffices for typical BASIC programs. Larger values support
+    ///          workloads with bigger local arrays; smaller values can be used
+    ///          for memory-constrained environments or testing.
+    std::size_t stackBytes = 65536;
     /// @brief Command-line arguments to seed into the runtime before run().
     /// @details When non-empty, the Runner seeds the runtime argument store
     ///          after VM construction so BASIC's ARGC/ARG$/COMMAND$ can read

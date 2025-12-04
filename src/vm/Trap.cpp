@@ -22,6 +22,7 @@
 #include "vm/Trap.hpp"
 
 #include "rt.hpp"
+#include "vm/TrapInvariants.hpp"
 #include "vm/VM.hpp"
 
 #include <sstream>
@@ -58,17 +59,23 @@ thread_local bool tlsTrapValid = false;
 ///          falls back to thread-local storage so callers outside the VM can
 ///          still materialise traps (for example, during unit tests).
 ///
+/// INVARIANT: The returned pointer remains valid until the next call to
+///            vm_acquire_trap_token() or until the VM is destroyed.
+/// GUARANTEE: Previous trap token data is cleared before returning.
+///
 /// @return Pointer to a writable trap token associated with the current thread.
 VmError *vm_acquire_trap_token()
 {
     if (auto *vm = VM::activeInstance())
     {
+        // Clear any previous trap data to prevent stale state
         vm->trapToken.error = {};
         vm->trapToken.message.clear();
         vm->trapToken.valid = true;
         return &vm->trapToken.error;
     }
 
+    // Fallback to thread-local storage when no VM is active
     tlsTrapError = {};
     tlsTrapMessage.clear();
     tlsTrapValid = true;

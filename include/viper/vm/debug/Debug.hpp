@@ -109,6 +109,10 @@ class TraceSink
     /// @brief Emit a tail-call event trace when enabled.
     void onTailCall(const il::core::Function *from, const il::core::Function *to);
 
+    /// @brief Check if tracing is enabled.
+    /// @return True when trace output should be emitted.
+    [[nodiscard]] bool isEnabled() const noexcept { return cfg.enabled(); }
+
   private:
     struct InstrLocation
     {
@@ -193,6 +197,9 @@ class DebugCtrl
 
     /// @brief Check whether any memory watches are installed.
     [[nodiscard]] bool hasMemWatches() const noexcept;
+
+    /// @brief Check whether any variable watches are installed.
+    [[nodiscard]] bool hasVarWatches() const noexcept;
 
     /// @brief Record a memory write and enqueue hit events for intersecting ranges.
     void onMemWrite(const void *addr, std::size_t size);

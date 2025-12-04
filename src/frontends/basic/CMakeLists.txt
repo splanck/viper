@@ -147,6 +147,7 @@ target_sources(fe_basic PRIVATE
         lower/oop/Lower_OOP_MethodCall.cpp
         lower/oop/Lower_OOP_Helpers.cpp
         lower/oop/Lower_OOP_RuntimeHelpers.cpp
+        lower/oop/MethodDispatchHelpers.cpp
         ProcRegistry.cpp
         SemanticDiagnostics.cpp
 )

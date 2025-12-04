@@ -41,6 +41,20 @@ struct VMAccess
         return vm.debug;
     }
 
+    /// @brief Fast-path check for active memory watches.
+    /// @return True when memory watches are installed.
+    static inline bool hasMemWatchesActive(const VM &vm) noexcept
+    {
+        return vm.memWatchActive_;
+    }
+
+    /// @brief Fast-path check for active variable watches.
+    /// @return True when variable watches are installed.
+    static inline bool hasVarWatchesActive(const VM &vm) noexcept
+    {
+        return vm.varWatchActive_;
+    }
+
     static inline const VM::FnMap &functionMap(const VM &vm)
     {
         return vm.fnMap;
@@ -86,6 +100,12 @@ struct VMAccess
     static inline const VM::TrapState &lastTrapState(const VM &vm)
     {
         return vm.lastTrap;
+    }
+
+    /// @brief Refresh debug fast-path flags after configuration changes.
+    static inline void refreshDebugFlags(VM &vm)
+    {
+        vm.refreshDebugFlags();
     }
 };
 } // namespace il::vm::detail

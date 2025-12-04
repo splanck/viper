@@ -29,7 +29,6 @@
 #include <limits>
 #include <string>
 #include <string_view>
-#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -102,7 +101,7 @@ Expected<void> verifyBranchArgs(const Function &fn,
 Expected<void> verifyBr_E(const Function &fn,
                           const BasicBlock &bb,
                           const Instr &instr,
-                          const std::unordered_map<std::string, const BasicBlock *> &blockMap,
+                          const BlockMap &blockMap,
                           TypeInference &types)
 {
     bool argsOk = instr.operands.empty() && instr.labels.size() == 1;
@@ -138,7 +137,7 @@ Expected<void> verifyBr_E(const Function &fn,
 Expected<void> verifyCBr_E(const Function &fn,
                            const BasicBlock &bb,
                            const Instr &instr,
-                           const std::unordered_map<std::string, const BasicBlock *> &blockMap,
+                           const BlockMap &blockMap,
                            TypeInference &types)
 {
     bool condOk = instr.operands.size() == 1 && instr.labels.size() == 2 &&
@@ -178,12 +177,11 @@ Expected<void> verifyCBr_E(const Function &fn,
 /// @param instr switch.i32 instruction whose structure is examined.
 /// @param blockMap Lookup for resolving target blocks referenced by labels.
 /// @param types Type inference context providing operand type data.
-Expected<void> verifySwitchI32_E(
-    const Function &fn,
-    const BasicBlock &bb,
-    const Instr &instr,
-    const std::unordered_map<std::string, const BasicBlock *> &blockMap,
-    TypeInference &types)
+Expected<void> verifySwitchI32_E(const Function &fn,
+                                  const BasicBlock &bb,
+                                  const Instr &instr,
+                                  const BlockMap &blockMap,
+                                  TypeInference &types)
 {
     if (instr.operands.empty())
     {

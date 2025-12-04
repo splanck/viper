@@ -226,6 +226,8 @@ class Lowerer
     // OOP Helpers - class/method/field emission
     friend class OopEmitHelper;
     friend struct OopLoweringContext;
+    friend class MethodDispatchResolver;
+    friend class BoundsCheckEmitter;
 
     // Scanning Infrastructure - pre-lowering analysis
     friend class lower::detail::ExprTypeScanner;

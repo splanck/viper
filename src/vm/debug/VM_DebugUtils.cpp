@@ -68,6 +68,20 @@ std::optional<std::string> VM::lastTrapMessage() const
     return lastTrap.message;
 }
 
+/// @brief Clear stale trap state before a new execution.
+/// @details Resets lastTrap, trapToken, and runtimeContext message so
+///          subsequent executions start with a clean slate.
+void VM::clearTrapState()
+{
+    lastTrap.error = {};
+    lastTrap.frame = {};
+    lastTrap.message.clear();
+    trapToken.error = {};
+    trapToken.message.clear();
+    trapToken.valid = false;
+    runtimeContext.message.clear();
+}
+
 /// @brief Construct a diagnostic frame snapshot for a VM error.
 /// @details Aggregates function name, block label, instruction index, and source
 ///          location by consulting current execution context, runtime context,

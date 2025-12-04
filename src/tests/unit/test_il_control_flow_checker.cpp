@@ -17,6 +17,7 @@
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
 #include "il/core/Opcode.hpp"
+#include "il/verify/BlockMap.hpp"
 #include "il/verify/ControlFlowChecker.hpp"
 #include "il/verify/TypeInference.hpp"
 #include <cassert>
@@ -70,8 +71,8 @@ int main()
     destParam.id = 10u;
     dest.params.push_back(destParam);
 
-    std::unordered_map<std::string, const BasicBlock *> blockMap;
-    blockMap[dest.label] = &dest;
+    il::verify::BlockMap blockMap;
+    blockMap.emplace(std::string_view{dest.label}, &dest);
 
     std::unordered_map<unsigned, Type> tempsBr;
     tempsBr[5] = Type(Type::Kind::I1);

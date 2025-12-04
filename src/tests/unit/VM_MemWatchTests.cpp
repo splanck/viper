@@ -79,6 +79,7 @@ int main()
 
     il::vm::DebugCtrl &dbg = il::vm::detail::VMAccess::debug(vm);
     dbg.addMemWatch(p, 8, "stack");
+    il::vm::detail::VMAccess::refreshDebugFlags(vm); // Update fast-path flag
 
     // Execute the store; expect a watch-hit event.
     auto step2 = il::vm::VMTestHook::step(vm, st);

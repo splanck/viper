@@ -48,7 +48,9 @@ EhModel::EhModel(const Function &function) : fn(&function)
     blocks.reserve(function.blocks.size());
     for (const auto &block : function.blocks)
     {
-        blocks[block.label] = &block;
+        // Use emplace with string_view key referencing block.label.
+        // The Function must outlive this EhModel for the view to remain valid.
+        blocks.emplace(std::string_view{block.label}, &block);
         if (hasEh)
             continue;
 
@@ -82,7 +84,7 @@ EhModel::EhModel(const Function &function) : fn(&function)
 ///          pointers.
 /// @param label Name of the basic block to retrieve.
 /// @return Pointer to the block when present, otherwise nullptr.
-const BasicBlock *EhModel::findBlock(const std::string &label) const
+const BasicBlock *EhModel::findBlock(std::string_view label) const
 {
     auto it = blocks.find(label);
     if (it == blocks.end())

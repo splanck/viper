@@ -49,7 +49,7 @@ class OperandCountChecker
 
     /// @brief Validates the operand count described by the instruction and metadata.
     /// @return Empty on success or a populated diagnostic on failure.
-    il::support::Expected<void> run() const;
+    [[nodiscard]] il::support::Expected<void> run() const;
 
   private:
     il::support::Expected<void> report(std::string_view message) const;

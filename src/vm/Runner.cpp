@@ -45,7 +45,12 @@ class Runner::Impl
     /// @param config Run configuration describing trace/debug behaviour.
     Impl(const il::core::Module &module, RunConfig config)
         : script(config.debugScript),
-          vm(module, config.trace, config.maxSteps, std::move(config.debug), script)
+          vm(module,
+             config.trace,
+             config.maxSteps,
+             std::move(config.debug),
+             script,
+             config.stackBytes)
     {
         // Forward polling configuration to the underlying VM; allow env override.
         uint32_t everyN = config.interruptEveryN;
@@ -192,11 +197,14 @@ class Runner::Impl
     void addMemWatch(const void *addr, std::size_t size, std::string tag)
     {
         detail::VMAccess::debug(vm).addMemWatch(addr, size, std::move(tag));
+        detail::VMAccess::refreshDebugFlags(vm); // Update fast-path flag
     }
 
     bool removeMemWatch(const void *addr, std::size_t size, std::string_view tag)
     {
-        return detail::VMAccess::debug(vm).removeMemWatch(addr, size, tag);
+        bool removed = detail::VMAccess::debug(vm).removeMemWatch(addr, size, tag);
+        detail::VMAccess::refreshDebugFlags(vm); // Update fast-path flag
+        return removed;
     }
 
     std::vector<MemWatchHit> drainMemWatchHits()

@@ -111,8 +111,18 @@ constexpr const char *dispatchKindName(VM::DispatchKind kind) noexcept
 /// @param ms  Optional step limit; @c 0 disables the limit.
 /// @param dbg Initial debugger control block describing active breakpoints.
 /// @param script Optional scripted debugger interaction controller.
-VM::VM(const Module &m, TraceConfig tc, uint64_t ms, DebugCtrl dbg, DebugScript *script)
-    : mod(m), tracer(tc), debug(std::move(dbg)), script(script), maxSteps(ms)
+VM::VM(const Module &m,
+       TraceConfig tc,
+       uint64_t ms,
+       DebugCtrl dbg,
+       DebugScript *script,
+       std::size_t stackBytes)
+    : mod(m),
+      tracer(tc),
+      debug(std::move(dbg)),
+      script(script),
+      maxSteps(ms),
+      stackBytes_(stackBytes ? stackBytes : Frame::kDefaultStackSize)
 {
     // Runtime overrides via environment -------------------------------------
     if (const char *envCounts = std::getenv("VIPER_ENABLE_OPCOUNTS"))
@@ -315,6 +325,22 @@ VM::VM(const Module &m, TraceConfig tc, uint64_t ms, DebugCtrl dbg, DebugScript 
             for (const auto &block : f.blocks)
                 blockToFunction[&block] = &f;
     }
+
+    // Initialize fast-path debug flags from current configuration.
+    // These flags enable cheap boolean tests in hot paths to avoid
+    // function calls and complex checks when debugging is disabled.
+    refreshDebugFlags();
+}
+
+/// @brief Refresh all debug fast-path flags from current state.
+/// @details Updates tracingActive_, memWatchActive_, and varWatchActive_
+///          based on the current tracer and debug controller state.
+///          Call this after changing trace config or adding/removing watches.
+void VM::refreshDebugFlags()
+{
+    tracingActive_ = tracer.isEnabled();
+    memWatchActive_ = debug.hasMemWatches();
+    varWatchActive_ = debug.hasVarWatches();
 }
 
 /// @brief Initialise a fresh frame for executing @p fn.
@@ -386,6 +412,11 @@ Frame VM::setupFrame(const Function &fn,
         std::fflush(stderr);
     }
     fr.params.assign(fr.regs.size(), std::nullopt);
+    // Initialize operand stack to the configured size. The vector is sized once
+    // here and should not be resized during execution to avoid invalidating
+    // pointers returned by prior alloca operations.
+    fr.stack.resize(stackBytes_);
+    fr.sp = 0;
     fr.ehStack.clear();
     fr.activeError = {};
     fr.resumeState = {};

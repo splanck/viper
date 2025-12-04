@@ -233,6 +233,10 @@ function(viper_add_vm_unit_tests)
     target_link_libraries(test_vm_alloca_overflow PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
     viper_add_ctest(test_vm_alloca_overflow test_vm_alloca_overflow)
 
+    viper_add_test(test_vm_stack_size_config ${VIPER_TESTS_DIR}/unit/test_vm_stack_size_config.cpp)
+    target_link_libraries(test_vm_stack_size_config PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
+    viper_add_ctest(test_vm_stack_size_config test_vm_stack_size_config)
+
     viper_add_test(test_vm_unknown_global ${VIPER_TESTS_DIR}/unit/test_vm_unknown_global.cpp)
     target_link_libraries(test_vm_unknown_global PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
     viper_add_ctest(test_vm_unknown_global test_vm_unknown_global)
@@ -282,6 +286,10 @@ function(viper_add_vm_unit_tests)
     target_link_libraries(test_vm_opcode_coverage PRIVATE ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
     viper_add_ctest(test_vm_opcode_coverage test_vm_opcode_coverage)
 
+    viper_add_test(test_vm_dispatch_coverage ${VIPER_TESTS_DIR}/unit/test_vm_dispatch_coverage.cpp)
+    target_link_libraries(test_vm_dispatch_coverage PRIVATE ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
+    viper_add_ctest(test_vm_dispatch_coverage test_vm_dispatch_coverage)
+
     viper_add_test(test_vm_opcode_dispatch ${VIPER_TESTS_DIR}/unit/test_vm_opcode_dispatch.cpp)
     target_link_libraries(test_vm_opcode_dispatch PRIVATE viper_il_full ${VIPER_VM_LIB} il_api)
     viper_add_ctest(test_vm_opcode_dispatch test_vm_opcode_dispatch)
@@ -303,6 +311,10 @@ function(viper_add_vm_unit_tests)
     viper_add_test(test_vm_run_loop_helpers ${VIPER_TESTS_DIR}/unit/test_vm_run_loop_helpers.cpp)
     target_link_libraries(test_vm_run_loop_helpers PRIVATE ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
     viper_add_ctest(test_vm_run_loop_helpers test_vm_run_loop_helpers)
+
+    viper_add_test(test_vm_trap_invariants ${VIPER_TESTS_DIR}/unit/test_vm_trap_invariants.cpp)
+    target_link_libraries(test_vm_trap_invariants PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
+    viper_add_ctest(test_vm_trap_invariants test_vm_trap_invariants)
 endfunction()
 
 function(viper_add_vm_path_tests)

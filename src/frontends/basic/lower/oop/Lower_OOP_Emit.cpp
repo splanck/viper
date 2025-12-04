@@ -7,6 +7,27 @@
 //
 // File: src/frontends/basic/lower/oop/Lower_OOP_Emit.cpp
 // Purpose: Emit constructor, destructor, and method bodies for BASIC CLASS nodes.
+//
+// What BASIC syntax it handles:
+//   - CLASS ... END CLASS declarations with members
+//   - Constructor (SUB NEW) bodies with parameter initialization
+//   - Destructor (SUB DESTROY) bodies with field cleanup
+//   - Method (FUNCTION/SUB) bodies with ME binding
+//   - Property (GET/SET) accessor synthesis
+//   - Static constructor ($static) initialization thunks
+//   - Interface registration and binding thunks
+//
+// Invariants expected from Lowerer/LoweringContext:
+//   - OopIndex must be fully populated with class/interface metadata
+//   - ClassLayout cache must have computed field offsets and sizes
+//   - IRBuilder must be available for function/block creation
+//
+// IL Builder interaction:
+//   - Creates IL functions for ctor/dtor/method bodies
+//   - Emits alloca for ME slot and parameter storage
+//   - Generates vtable/itable population and registration calls
+//   - Uses OopEmitHelper for consolidated emission patterns
+//
 // Key invariants: Functions bind the implicit ME parameter and share lowering
 //                 scaffolding with procedure emission.
 // Ownership/Lifetime: Operates on Lowerer state borrowed from the lowering

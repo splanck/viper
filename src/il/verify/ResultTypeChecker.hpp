@@ -50,7 +50,7 @@ class ResultTypeChecker
 
     /// @brief Validates the presence and type of the instruction result.
     /// @return Empty on success or a populated diagnostic on failure.
-    il::support::Expected<void> run() const;
+    [[nodiscard]] il::support::Expected<void> run() const;
 
   private:
     il::support::Expected<void> report(std::string_view message) const;

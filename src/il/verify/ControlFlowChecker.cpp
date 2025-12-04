@@ -42,15 +42,14 @@ using il::support::Expected;
 using il::support::makeError;
 using il::support::Severity;
 
-using VerifyInstrFnExpected = std::function<Expected<void>(
-    const Function &fn,
-    const BasicBlock &bb,
-    const Instr &instr,
-    const std::unordered_map<std::string, const BasicBlock *> &blockMap,
-    const std::unordered_map<std::string, const Extern *> &externs,
-    const std::unordered_map<std::string, const Function *> &funcs,
-    TypeInference &types,
-    DiagSink &sink)>;
+using VerifyInstrFnExpected = std::function<Expected<void>(const Function &fn,
+                                                           const BasicBlock &bb,
+                                                           const Instr &instr,
+                                                           const BlockMap &blockMap,
+                                                           const std::unordered_map<std::string, const Extern *> &externs,
+                                                           const std::unordered_map<std::string, const Function *> &funcs,
+                                                           TypeInference &types,
+                                                           DiagSink &sink)>;
 
 namespace
 {
@@ -102,7 +101,7 @@ Expected<void> validateBlockParams_impl(const Function &fn,
 Expected<void> iterateBlockInstructions_impl(
     const Function &fn,
     const BasicBlock &bb,
-    const std::unordered_map<std::string, const BasicBlock *> &blockMap,
+    const BlockMap &blockMap,
     const std::unordered_map<std::string, const Extern *> &externs,
     const std::unordered_map<std::string, const Function *> &funcs,
     TypeInference &types,
@@ -251,18 +250,16 @@ Expected<void> validateBlockParams_E(const Function &fn,
 /// @param verifyInstrFn Callback producing instruction-specific diagnostics.
 /// @param sink Diagnostic sink capturing warnings.
 /// @return Success or the first diagnostic raised by operand or callback checks.
-Expected<void> iterateBlockInstructions_E(
-    const Function &fn,
-    const BasicBlock &bb,
-    const std::unordered_map<std::string, const BasicBlock *> &blockMap,
-    const std::unordered_map<std::string, const Extern *> &externs,
-    const std::unordered_map<std::string, const Function *> &funcs,
-    TypeInference &types,
-    const VerifyInstrFnExpected &verifyInstrFn,
-    DiagSink &sink)
+Expected<void> iterateBlockInstructions_E(const Function &fn,
+                                          const BasicBlock &bb,
+                                          const BlockMap &blockMap,
+                                          const std::unordered_map<std::string, const Extern *> &externs,
+                                          const std::unordered_map<std::string, const Function *> &funcs,
+                                          TypeInference &types,
+                                          const VerifyInstrFnExpected &verifyInstrFn,
+                                          DiagSink &sink)
 {
-    return iterateBlockInstructions_impl(
-        fn, bb, blockMap, externs, funcs, types, verifyInstrFn, sink);
+    return iterateBlockInstructions_impl(fn, bb, blockMap, externs, funcs, types, verifyInstrFn, sink);
 }
 
 /// @brief Validate terminator placement for a block using the Expected API.
@@ -345,7 +342,7 @@ bool validateBlockParams(const Function &fn,
 bool iterateBlockInstructions(VerifyInstrFn verifyInstrFn,
                               const Function &fn,
                               const BasicBlock &bb,
-                              const std::unordered_map<std::string, const BasicBlock *> &blockMap,
+                              const BlockMap &blockMap,
                               const std::unordered_map<std::string, const Extern *> &externs,
                               const std::unordered_map<std::string, const Function *> &funcs,
                               TypeInference &types,
@@ -356,7 +353,7 @@ bool iterateBlockInstructions(VerifyInstrFn verifyInstrFn,
         [&](const Function &fnRef,
             const BasicBlock &bbRef,
             const Instr &instrRef,
-            const std::unordered_map<std::string, const BasicBlock *> &blockMapRef,
+            const BlockMap &blockMapRef,
             const std::unordered_map<std::string, const Extern *> &externsRef,
             const std::unordered_map<std::string, const Function *> &funcsRef,
             TypeInference &typesRef,
@@ -421,7 +418,7 @@ bool checkBlockTerminators(const Function &fn, const BasicBlock &bb, std::ostrea
 bool verifyBr(const Function &fn,
               const BasicBlock &bb,
               const Instr &instr,
-              const std::unordered_map<std::string, const BasicBlock *> &blockMap,
+              const BlockMap &blockMap,
               TypeInference &types,
               std::ostream &err)
 {
@@ -445,7 +442,7 @@ bool verifyBr(const Function &fn,
 bool verifyCBr(const Function &fn,
                const BasicBlock &bb,
                const Instr &instr,
-               const std::unordered_map<std::string, const BasicBlock *> &blockMap,
+               const BlockMap &blockMap,
                TypeInference &types,
                std::ostream &err)
 {

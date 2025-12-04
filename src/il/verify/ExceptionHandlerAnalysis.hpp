@@ -56,7 +56,7 @@ struct HandlerSignature
 /// @param fn Function providing diagnostic context.
 /// @param bb Basic block to analyse.
 /// @return Empty optional when @p bb is not a handler, signature when valid, diagnostic otherwise.
-il::support::Expected<std::optional<HandlerSignature>> analyzeHandlerBlock(
+[[nodiscard]] il::support::Expected<std::optional<HandlerSignature>> analyzeHandlerBlock(
     const il::core::Function &fn, const il::core::BasicBlock &bb);
 
 } // namespace il::verify

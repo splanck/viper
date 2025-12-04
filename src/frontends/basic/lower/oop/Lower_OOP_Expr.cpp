@@ -7,6 +7,30 @@
 //
 // File: src/frontends/basic/lower/oop/Lower_OOP_Expr.cpp
 // Purpose: Lower BASIC OOP expressions into IL object runtime operations.
+//
+// What BASIC syntax it handles:
+//   - NEW ClassName(args) - object allocation and constructor calls
+//   - ME - implicit self reference in class methods
+//   - obj.field - member field access (scalar and array)
+//   - obj.Method(args) - instance method calls (direct and virtual)
+//   - Class.Method(args) - static method calls
+//   - (obj AS IFace).Method(args) - interface dispatch
+//   - BASE.Method(args) - explicit base class calls
+//   - Runtime class methods (Viper.String.Substring, etc.)
+//   - Property getter sugar (obj.Property -> obj.get_Property())
+//
+// Invariants expected from Lowerer/LoweringContext:
+//   - OopIndex populated with class/interface/method metadata
+//   - ClassLayout cache with field offsets for member access
+//   - RuntimeMethodIndex/RuntimePropertyIndex for catalog lookups
+//   - Symbol table with current class context for access control
+//
+// IL Builder interaction:
+//   - Emits call/call.indirect instructions for method dispatch
+//   - Generates GEP for field offset calculations
+//   - Uses rt_obj_new_i64 and rt_get_class_vtable for allocation
+//   - Coordinates with OopLoweringContext for class caching
+//
 // Key invariants: Object allocations route through runtime helpers and class
 //                 layouts computed during scanning; method/field access obeys
 //                 recorded offsets.

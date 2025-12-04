@@ -19,6 +19,7 @@
 #include "il/core/Instr.hpp"
 #include "il/core/Module.hpp"
 #include "il/core/Type.hpp"
+#include "il/verify/BlockMap.hpp"
 #include "il/verify/BranchVerifier.hpp"
 #include "il/verify/TypeInference.hpp"
 
@@ -50,8 +51,8 @@ int main()
     destParam.id = 10u;
     target.params.push_back(destParam);
 
-    std::unordered_map<std::string, const BasicBlock *> blockMap;
-    blockMap[target.label] = &target;
+    il::verify::BlockMap blockMap;
+    blockMap.emplace(std::string_view{target.label}, &target);
 
     std::unordered_map<unsigned, Type> temps;
     temps[5] = Type(Type::Kind::I1);
@@ -113,9 +114,9 @@ int main()
     BasicBlock caseBlock;
     caseBlock.label = "case0";
 
-    std::unordered_map<std::string, const BasicBlock *> manualSwitchMap;
-    manualSwitchMap[defaultBlock.label] = &defaultBlock;
-    manualSwitchMap[caseBlock.label] = &caseBlock;
+    il::verify::BlockMap manualSwitchMap;
+    manualSwitchMap.emplace(std::string_view{defaultBlock.label}, &defaultBlock);
+    manualSwitchMap.emplace(std::string_view{caseBlock.label}, &caseBlock);
 
     std::unordered_map<unsigned, Type> switchTemps;
     switchTemps[7] = Type(Type::Kind::I32);
@@ -157,9 +158,9 @@ int main()
     const il::core::Instr &fixtureSwitch = fixtureEntry.instructions.back();
     assert(fixtureSwitch.op == il::core::Opcode::SwitchI32);
 
-    std::unordered_map<std::string, const il::core::BasicBlock *> fixtureMap;
+    il::verify::BlockMap fixtureMap;
     for (const auto &block : fixtureFn.blocks)
-        fixtureMap.emplace(block.label, &block);
+        fixtureMap.emplace(std::string_view{block.label}, &block);
 
     std::unordered_map<unsigned, Type> fixtureTemps;
     std::unordered_set<unsigned> fixtureDefined;

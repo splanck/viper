@@ -91,29 +91,29 @@ std::optional<Type::Kind> kindFromClass(TypeClass typeClass);
 std::optional<Type> typeFromClass(TypeClass typeClass);
 
 // Arithmetic helpers.
-Expected<void> expectAllOperandType(const VerifyCtx &ctx, Type::Kind kind);
-Expected<void> checkBinary(const VerifyCtx &ctx, Type::Kind operandKind, Type resultType);
-Expected<void> checkUnary(const VerifyCtx &ctx, Type::Kind operandKind, Type resultType);
-Expected<void> checkIdxChk(const VerifyCtx &ctx);
+[[nodiscard]] Expected<void> expectAllOperandType(const VerifyCtx &ctx, Type::Kind kind);
+[[nodiscard]] Expected<void> checkBinary(const VerifyCtx &ctx, Type::Kind operandKind, Type resultType);
+[[nodiscard]] Expected<void> checkUnary(const VerifyCtx &ctx, Type::Kind operandKind, Type resultType);
+[[nodiscard]] Expected<void> checkIdxChk(const VerifyCtx &ctx);
 
 // Memory helpers.
-Expected<void> checkAlloca(const VerifyCtx &ctx);
-Expected<void> checkGEP(const VerifyCtx &ctx);
-Expected<void> checkLoad(const VerifyCtx &ctx);
-Expected<void> checkStore(const VerifyCtx &ctx);
-Expected<void> checkAddrOf(const VerifyCtx &ctx);
-Expected<void> checkConstStr(const VerifyCtx &ctx);
-Expected<void> checkConstNull(const VerifyCtx &ctx);
+[[nodiscard]] Expected<void> checkAlloca(const VerifyCtx &ctx);
+[[nodiscard]] Expected<void> checkGEP(const VerifyCtx &ctx);
+[[nodiscard]] Expected<void> checkLoad(const VerifyCtx &ctx);
+[[nodiscard]] Expected<void> checkStore(const VerifyCtx &ctx);
+[[nodiscard]] Expected<void> checkAddrOf(const VerifyCtx &ctx);
+[[nodiscard]] Expected<void> checkConstStr(const VerifyCtx &ctx);
+[[nodiscard]] Expected<void> checkConstNull(const VerifyCtx &ctx);
 
 // Runtime helpers.
-Expected<void> checkCall(const VerifyCtx &ctx);
-Expected<void> checkTrapKind(const VerifyCtx &ctx);
-Expected<void> checkTrapErr(const VerifyCtx &ctx);
-Expected<void> checkTrapFromErr(const VerifyCtx &ctx);
+[[nodiscard]] Expected<void> checkCall(const VerifyCtx &ctx);
+[[nodiscard]] Expected<void> checkTrapKind(const VerifyCtx &ctx);
+[[nodiscard]] Expected<void> checkTrapErr(const VerifyCtx &ctx);
+[[nodiscard]] Expected<void> checkTrapFromErr(const VerifyCtx &ctx);
 
 /// @brief Default validator that records the declared instruction result type.
 /// @param ctx Verification context that owns the instruction.
 /// @return Always empty because structural checks handle failures.
-Expected<void> checkDefault(const VerifyCtx &ctx);
+[[nodiscard]] Expected<void> checkDefault(const VerifyCtx &ctx);
 
 } // namespace il::verify::checker

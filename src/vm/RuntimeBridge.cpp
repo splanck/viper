@@ -26,6 +26,7 @@
 #include "il/runtime/RuntimeSignatures.hpp"
 #include "vm/Marshal.hpp"
 #include "vm/OpcodeHandlerHelpers.hpp"
+#include "vm/TrapInvariants.hpp"
 #include "vm/VM.hpp"
 
 #include <array>
@@ -220,11 +221,20 @@ struct TrapCtx
 /// @details When a VM is executing the trap escalates through @ref vm_raise.
 ///          Otherwise the trap information is recorded directly on the context
 ///          so higher layers can surface it to the user.
+///
+/// INVARIANT: If ctx.vm is non-null, VM::activeInstance() must also be non-null.
+/// GUARANTEE: This function does not return to its caller when no handler catches.
 static void finalizeTrap(TrapCtx &ctx)
 {
     if (ctx.vm)
     {
+        // Assert that activeInstance is consistent with ctx.vm
+        VIPER_TRAP_ASSERT(RuntimeBridge::hasActiveVm(),
+                          "ActiveVMGuard inconsistency: ctx.vm set but no active VM");
         vm_raise(ctx.kind);
+        // vm_raise either throws TrapDispatchSignal or calls rt_abort; it does not return
+        // If we reach here, something is wrong
+        VIPER_TRAP_ASSERT(false, "vm_raise returned unexpectedly");
         return;
     }
 
@@ -235,6 +245,7 @@ static void finalizeTrap(TrapCtx &ctx)
         diagnostic += ctx.message;
     }
     rt_abort(diagnostic.c_str());
+    // rt_abort does not return
 }
 
 /// @brief Populate overflow-specific diagnostics prior to finalising a trap.

@@ -61,7 +61,7 @@ class ExternVerifier
     /// @param module Module whose extern table should be validated.
     /// @param sink Diagnostic sink receiving advisory messages (currently unused).
     /// @return Empty on success; diagnostic describing the first failure otherwise.
-    il::support::Expected<void> run(const il::core::Module &module, DiagSink &sink);
+    [[nodiscard]] il::support::Expected<void> run(const il::core::Module &module, DiagSink &sink);
 
   private:
     ExternMap externs_;

@@ -192,14 +192,16 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
     }
 
     std::unordered_set<std::string> labels;
-    std::unordered_map<std::string, const BasicBlock *> blockMap;
+    BlockMap blockMap;
+    blockMap.reserve(fn.blocks.size());
     for (const auto &bb : fn.blocks)
     {
         if (!labels.insert(bb.label).second)
             return Expected<void>{
                 /// @brief Handles error condition.
                 makeError({}, formatFunctionDiag(fn, "duplicate label " + bb.label))};
-        blockMap[bb.label] = &bb;
+        // Use string_view key referencing bb.label; the Function outlives this map.
+        blockMap.emplace(std::string_view{bb.label}, &bb);
     }
 
     handlerInfo_.clear();
@@ -258,12 +260,11 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
 /// @param temps Table of SSA temporaries and their known types.
 /// @param sink Diagnostic sink receiving instruction-level messages.
 /// @return Success or a diagnostic describing the failure.
-Expected<void> FunctionVerifier::verifyBlock(
-    const Function &fn,
-    const BasicBlock &bb,
-    const std::unordered_map<std::string, const BasicBlock *> &blockMap,
-    std::unordered_map<unsigned, Type> &temps,
-    DiagSink &sink)
+Expected<void> FunctionVerifier::verifyBlock(const Function &fn,
+                                              const BasicBlock &bb,
+                                              const BlockMap &blockMap,
+                                              std::unordered_map<unsigned, Type> &temps,
+                                              DiagSink &sink)
 {
     std::unordered_set<unsigned> defined;
     for (const auto &entry : temps)
@@ -398,12 +399,11 @@ Expected<void> FunctionVerifier::verifyBlock(
 /// @param types Type inference state for SSA values.
 /// @param sink Diagnostic sink receiving verification messages.
 /// @return Success or a diagnostic describing the error.
-Expected<void> FunctionVerifier::verifyInstruction(
-    const Function &fn,
-    const BasicBlock &bb,
-    const Instr &instr,
-    const std::unordered_map<std::string, const BasicBlock *> &blockMap,
-    TypeInference &types,
+Expected<void> FunctionVerifier::verifyInstruction(const Function &fn,
+                                                    const BasicBlock &bb,
+                                                    const Instr &instr,
+                                                    const BlockMap &blockMap,
+                                                    TypeInference &types,
     DiagSink &sink)
 {
     VerifyCtx ctx{sink, types, externs_, functionMap_, fn, bb, instr};

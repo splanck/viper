@@ -34,21 +34,21 @@ namespace il::verify
 /// @brief Validate that eh.push/eh.pop instructions remain balanced.
 /// @param model Canonical EH model describing the function.
 /// @return Success when balanced; diagnostic otherwise.
-il::support::Expected<void> checkEhStackBalance(const EhModel &model);
+[[nodiscard]] il::support::Expected<void> checkEhStackBalance(const EhModel &model);
 
 /// @brief Placeholder for handler dominance validation (not yet implemented).
 /// @param model Canonical EH model describing the function.
 /// @return Always success; reserved for future diagnostics.
-il::support::Expected<void> checkDominanceOfHandlers(const EhModel &model);
+[[nodiscard]] il::support::Expected<void> checkDominanceOfHandlers(const EhModel &model);
 
 /// @brief Placeholder ensuring all handlers are reachable.
 /// @param model Canonical EH model describing the function.
 /// @return Always success; reserved for future diagnostics.
-il::support::Expected<void> checkUnreachableHandlers(const EhModel &model);
+[[nodiscard]] il::support::Expected<void> checkUnreachableHandlers(const EhModel &model);
 
 /// @brief Validate resume.label edges against handler coverage information.
 /// @param model Canonical EH model describing the function.
 /// @return Success when all resume targets are valid; diagnostic otherwise.
-il::support::Expected<void> checkResumeEdges(const EhModel &model);
+[[nodiscard]] il::support::Expected<void> checkResumeEdges(const EhModel &model);
 
 } // namespace il::verify

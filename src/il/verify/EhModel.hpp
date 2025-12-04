@@ -30,9 +30,9 @@
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
+#include "il/verify/BlockMap.hpp"
 
-#include <string>
-#include <unordered_map>
+#include <string_view>
 #include <vector>
 
 namespace il::verify
@@ -70,7 +70,7 @@ class EhModel
     /// @brief Resolve a block label to its definition.
     /// @param label Basic-block label to resolve.
     /// @return Pointer to the block or nullptr when missing.
-    [[nodiscard]] const il::core::BasicBlock *findBlock(const std::string &label) const;
+    [[nodiscard]] const il::core::BasicBlock *findBlock(std::string_view label) const;
 
     /// @brief Enumerate successors for a terminator instruction.
     /// @param terminator Terminator whose successors are requested.
@@ -85,8 +85,9 @@ class EhModel
 
     /// @brief Access the internal label-to-block table.
     /// @return Reference to the label map.
-    [[nodiscard]] const std::unordered_map<std::string, const il::core::BasicBlock *> &blockMap()
-        const noexcept
+    /// @note The returned map uses string_view keys referencing BasicBlock::label
+    ///       strings. The map must not outlive the source Function.
+    [[nodiscard]] const BlockMap &blockMap() const noexcept
     {
         return blocks;
     }
@@ -94,7 +95,10 @@ class EhModel
   private:
     const il::core::Function *fn = nullptr;
     const il::core::BasicBlock *entryBlock = nullptr;
-    std::unordered_map<std::string, const il::core::BasicBlock *> blocks;
+    /// @brief Label-to-block lookup table using string_view keys.
+    /// @note Keys reference BasicBlock::label strings owned by the Function.
+    ///       This map must not outlive the Function passed to the constructor.
+    BlockMap blocks;
     bool hasEh = false;
 };
 

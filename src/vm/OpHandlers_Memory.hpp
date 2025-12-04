@@ -317,31 +317,36 @@ inline VM::ExecResult handleStoreImpl(VM &vm,
 
     Slot value = VMAccess::eval(vm, fr, in.operands[1]);
 
-    // Memory watch hook: emit event on intersecting ranges with minimal overhead.
-    auto &dbg = VMAccess::debug(vm);
-    if (dbg.hasMemWatches())
+    // Memory watch hook: use fast-path flag to skip entirely when no watches are active.
+    // This eliminates the VMAccess::debug() call and vector empty check in the common case.
+    if (VMAccess::hasMemWatchesActive(vm)) [[unlikely]]
     {
         const size_t writeSize = inline_impl::sizeOfKind(in.type.kind);
         if (writeSize)
-            dbg.onMemWrite(ptr, writeSize);
+            VMAccess::debug(vm).onMemWrite(ptr, writeSize);
     }
 
     inline_impl::storeSlotToPtr(in.type.kind, ptr, value);
 
-    if (in.operands[0].kind == il::core::Value::Kind::Temp)
+    // Variable watch hook: use fast-path flag to skip entirely when no watches are active.
+    // This avoids operand kind check, id lookup, and string comparisons in the common case.
+    if (VMAccess::hasVarWatchesActive(vm)) [[unlikely]]
     {
-        const unsigned id = in.operands[0].id;
-        if (id < fr.func->valueNames.size())
+        if (in.operands[0].kind == il::core::Value::Kind::Temp)
         {
-            const std::string &name = fr.func->valueNames[id];
-            if (!name.empty())
+            const unsigned id = in.operands[0].id;
+            if (id < fr.func->valueNames.size())
             {
-                const std::string_view fnView =
-                    fr.func ? std::string_view(fr.func->name) : std::string_view{};
-                const std::string_view blockView =
-                    bb ? std::string_view(bb->label) : std::string_view{};
-                VMAccess::debug(vm).onStore(
-                    name, in.type.kind, value.i64, value.f64, fnView, blockView, ip);
+                const std::string &name = fr.func->valueNames[id];
+                if (!name.empty())
+                {
+                    const std::string_view fnView =
+                        fr.func ? std::string_view(fr.func->name) : std::string_view{};
+                    const std::string_view blockView =
+                        bb ? std::string_view(bb->label) : std::string_view{};
+                    VMAccess::debug(vm).onStore(
+                        name, in.type.kind, value.i64, value.f64, fnView, blockView, ip);
+                }
             }
         }
     }

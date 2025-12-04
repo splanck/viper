@@ -6,23 +6,36 @@
 //===----------------------------------------------------------------------===//
 //
 // File: vm/ops/generated/HandlerTable.hpp
-// Purpose: Implements functionality for this subsystem.
-// Key invariants: To be documented.
-// Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Purpose: Function table mapping opcodes to their VM handler functions.
+// Key invariants: Table size MUST equal il::core::kNumOpcodes. Each entry
+//                 corresponds to an Opcode enum value in declaration order.
+// Ownership/Lifetime: Static table shared across all VM instances.
+// Links: docs/architecture.md, vm/DispatchMacros.hpp
+//
+// IMPORTANT: When adding a new opcode, add its handler at the correct position
+// matching the opcode's enum value. See vm/DispatchMacros.hpp for full guide.
 //
 //===----------------------------------------------------------------------===//
 
 #pragma once
 
+#include "vm/DispatchMacros.hpp"
 #include "vm/OpHandlers.hpp"
 #include "vm/VM.hpp"
 
 namespace il::vm::generated
 {
+
+/// @brief Static handler table indexed by opcode enum value.
+/// @details Each entry is a function pointer to the handler for the
+///          corresponding opcode. The table order MUST match the opcode
+///          declaration order in Opcode.def.
 inline const VM::OpcodeHandlerTable &opcodeHandlers()
 {
     static const VM::OpcodeHandlerTable table = {
+        // =================================================================
+        // Arithmetic Operations (Opcode::Add through Opcode::IdxChk)
+        // =================================================================
         &il::vm::detail::handleAdd,
         &il::vm::detail::handleSub,
         &il::vm::detail::handleMul,
@@ -103,6 +116,12 @@ inline const VM::OpcodeHandlerTable &opcodeHandlers()
         &il::vm::detail::handleEhEntry,
         &il::vm::detail::handleTrap,
     };
+
+    // Compile-time verification that handler table covers all opcodes.
+    // If this fails, an opcode was added to Opcode.def without updating this table.
+    VIPER_ASSERT_HANDLER_TABLE_SIZE(table);
+
     return table;
 }
+
 } // namespace il::vm::generated

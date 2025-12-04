@@ -9,7 +9,23 @@
 // Purpose: Declares RuntimeStatementLowerer class that handles lowering of
 //          BASIC runtime statements (terminal control, assignments, variable
 //          declarations, etc.) to IL.
-//          Extracted from Lowerer to demonstrate modular extraction pattern.
+//
+// What BASIC syntax it handles:
+//   - Terminal control: BEEP, CLS, COLOR, LOCATE, CURSOR, ALTSCREEN, SLEEP
+//   - Variable assignment: LET var = expr, arr(i) = expr, obj.field = expr
+//   - Variable declarations: DIM, REDIM, CONST, STATIC
+//   - Miscellaneous: RANDOMIZE, SWAP
+//
+// Invariants expected from Lowerer/LoweringContext:
+//   - Active procedure context must have a valid function and current block
+//   - Symbol table must be populated with variable/parameter metadata
+//   - Runtime feature tracker must be available for helper requests
+//
+// IL Builder interaction:
+//   - Emits runtime helper calls (rt_bell, rt_term_*, rt_arr_*, etc.)
+//   - Uses Lowerer's emit* methods for instructions and control flow
+//   - Creates auxiliary basic blocks for bounds checking
+//
 // Key invariants: Operates on Lowerer context; manages runtime feature requests
 // Ownership/Lifetime: Borrows Lowerer reference; does not own AST or IR
 // Links: docs/codemap.md
@@ -30,8 +46,20 @@ namespace il::frontends::basic
 {
 
 /// @brief Handles lowering of BASIC runtime statements to IL runtime calls.
-/// @invariant All methods operate on the Lowerer's active context
-/// @ownership Borrows Lowerer reference for state access and delegation
+///
+/// @details This class encapsulates the lowering logic for BASIC statements that
+///          require runtime library support rather than pure IL instruction generation.
+///          It handles terminal control statements (BEEP, CLS, COLOR, etc.), variable
+///          assignment (including array element and object field assignment), and
+///          variable declaration statements (DIM, REDIM, CONST, STATIC).
+///
+/// The class demonstrates the modular extraction pattern used in the BASIC frontend:
+/// complex lowering concerns are factored into dedicated helper classes that
+/// coordinate with the main Lowerer through its public/friend interface.
+///
+/// @invariant All methods operate on the Lowerer's active procedure context
+/// @invariant The lowerer's current block is valid and not terminated before calls
+/// @ownership Borrows Lowerer reference; does not own AST, IR, or runtime state
 class RuntimeStatementLowerer
 {
   public:

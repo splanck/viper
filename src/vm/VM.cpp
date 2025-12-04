@@ -170,6 +170,11 @@ class ThreadedDispatchDriver final : public VM::DispatchDriver
 
         static constexpr size_t kOpLabelCount = sizeof(kOpLabels) / sizeof(kOpLabels[0]);
 
+        // Compile-time verification: label table must have kNumOpcodes + 1 entries
+        // (one per opcode plus LBL_UNIMPL fallback for bounds checking)
+        static_assert(kOpLabelCount == il::core::kNumOpcodes + 1,
+                      "Threaded label table size mismatch: expected kNumOpcodes + 1 labels");
+
 #define DISPATCH_TO(OPCODE_VALUE)                                                                  \
     do                                                                                             \
     {                                                                                              \
@@ -351,11 +356,18 @@ bool VM::selectInstruction(ExecState &state, const Instr *&instr)
 /// @brief Update tracing counters and emit optional trace callbacks.
 /// @param instr Instruction that was just executed.
 /// @param frame Frame providing operand storage for tracing.
+/// @details Uses the cached tracingActive_ flag for fast-path bypass when tracing
+///          is disabled. This reduces per-instruction overhead from a function call
+///          plus internal enabled() check to a single boolean test.
 void VM::traceInstruction(const Instr &instr, Frame &frame)
 {
     ++instrCount;
 #if !defined(VIPER_VM_TRACE) || VIPER_VM_TRACE
-    tracer.onStep(instr, frame);
+    // Fast-path: skip tracer call entirely when tracing is disabled.
+    // The tracingActive_ flag is cached from tracer.isEnabled() to avoid
+    // repeated function calls on every instruction.
+    if (tracingActive_) [[unlikely]]
+        tracer.onStep(instr, frame);
 #else
     (void)frame;
 #endif

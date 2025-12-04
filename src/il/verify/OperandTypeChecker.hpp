@@ -52,7 +52,7 @@ class OperandTypeChecker
 
     /// @brief Validates operand types described by opcode metadata.
     /// @return Empty on success or a populated diagnostic on failure.
-    il::support::Expected<void> run() const;
+    [[nodiscard]] il::support::Expected<void> run() const;
 
   private:
     il::support::Expected<void> report(std::string_view message) const;
