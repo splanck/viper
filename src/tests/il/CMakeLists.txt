@@ -508,6 +508,13 @@ function(viper_add_il_utils_test)
     viper_add_ctest(test_il_loop_simplify_preheader test_il_loop_simplify_preheader)
 
     viper_add_test(
+            test_il_loop_simplify_ptr_stability
+            ${VIPER_TESTS_DIR}/unit/il/transform/test_LoopSimplify_PtrStability.cpp)
+    target_link_libraries(
+            test_il_loop_simplify_ptr_stability PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
+    viper_add_ctest(test_il_loop_simplify_ptr_stability test_il_loop_simplify_ptr_stability)
+
+    viper_add_test(
             test_il_licm_basic
             ${VIPER_TESTS_DIR}/unit/il/transform/test_LICM.cpp)
     target_link_libraries(

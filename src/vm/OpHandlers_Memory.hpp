@@ -28,6 +28,7 @@
 
 #include <cassert>
 #include <cstdint>
+#include <cstring>
 #include <string>
 #include <string_view>
 
@@ -97,30 +98,62 @@ inline Slot loadSlotFromPtr(il::core::Type::Kind kind, void *ptr)
     switch (kind)
     {
         case il::core::Type::Kind::I16:
-            out.i64 = static_cast<int64_t>(*reinterpret_cast<int16_t *>(ptr));
+        {
+            int16_t tmp;
+            std::memcpy(&tmp, ptr, sizeof(tmp));
+            out.i64 = static_cast<int64_t>(tmp);
             break;
+        }
         case il::core::Type::Kind::I32:
-            out.i64 = static_cast<int64_t>(*reinterpret_cast<int32_t *>(ptr));
+        {
+            int32_t tmp;
+            std::memcpy(&tmp, ptr, sizeof(tmp));
+            out.i64 = static_cast<int64_t>(tmp);
             break;
+        }
         case il::core::Type::Kind::I64:
-            out.i64 = *reinterpret_cast<int64_t *>(ptr);
+        {
+            int64_t tmp;
+            std::memcpy(&tmp, ptr, sizeof(tmp));
+            out.i64 = tmp;
             break;
+        }
         case il::core::Type::Kind::I1:
-            out.i64 = static_cast<int64_t>(*reinterpret_cast<uint8_t *>(ptr) & 1);
+        {
+            uint8_t tmp;
+            std::memcpy(&tmp, ptr, sizeof(tmp));
+            out.i64 = static_cast<int64_t>(tmp & 1U);
             break;
+        }
         case il::core::Type::Kind::F64:
-            out.f64 = *reinterpret_cast<double *>(ptr);
+        {
+            double tmp;
+            std::memcpy(&tmp, ptr, sizeof(tmp));
+            out.f64 = tmp;
             break;
+        }
         case il::core::Type::Kind::Str:
-            out.str = *reinterpret_cast<rt_string *>(ptr);
+        {
+            rt_string tmp;
+            std::memcpy(&tmp, ptr, sizeof(tmp));
+            out.str = tmp;
             break;
+        }
         case il::core::Type::Kind::Ptr:
-            out.ptr = *reinterpret_cast<void **>(ptr);
+        {
+            void *tmp;
+            std::memcpy(&tmp, ptr, sizeof(tmp));
+            out.ptr = tmp;
             break;
+        }
         case il::core::Type::Kind::Error:
         case il::core::Type::Kind::ResumeTok:
-            out.ptr = *reinterpret_cast<void **>(ptr);
+        {
+            void *tmp;
+            std::memcpy(&tmp, ptr, sizeof(tmp));
+            out.ptr = tmp;
             break;
+        }
         case il::core::Type::Kind::Void:
             out.i64 = 0;
             break;
@@ -133,37 +166,59 @@ inline void storeSlotToPtr(il::core::Type::Kind kind, void *ptr, const Slot &val
     switch (kind)
     {
         case il::core::Type::Kind::I16:
-            *reinterpret_cast<int16_t *>(ptr) = static_cast<int16_t>(value.i64);
+        {
+            int16_t tmp = static_cast<int16_t>(value.i64);
+            std::memcpy(ptr, &tmp, sizeof(tmp));
             break;
+        }
         case il::core::Type::Kind::I32:
-            *reinterpret_cast<int32_t *>(ptr) = static_cast<int32_t>(value.i64);
+        {
+            int32_t tmp = static_cast<int32_t>(value.i64);
+            std::memcpy(ptr, &tmp, sizeof(tmp));
             break;
+        }
         case il::core::Type::Kind::I64:
-            *reinterpret_cast<int64_t *>(ptr) = value.i64;
+        {
+            int64_t tmp = value.i64;
+            std::memcpy(ptr, &tmp, sizeof(tmp));
             break;
+        }
         case il::core::Type::Kind::I1:
-            *reinterpret_cast<uint8_t *>(ptr) = static_cast<uint8_t>(value.i64 & 1);
+        {
+            uint8_t tmp = static_cast<uint8_t>(value.i64 & 1U);
+            std::memcpy(ptr, &tmp, sizeof(tmp));
             break;
+        }
         case il::core::Type::Kind::F64:
-            *reinterpret_cast<double *>(ptr) = value.f64;
+        {
+            double tmp = value.f64;
+            std::memcpy(ptr, &tmp, sizeof(tmp));
             break;
+        }
         case il::core::Type::Kind::Str:
         {
-            auto *slot = reinterpret_cast<rt_string *>(ptr);
-            rt_string current = *slot;
+            // Release currently stored string (if any), retain incoming, then store
+            rt_string current{};
+            std::memcpy(&current, ptr, sizeof(current));
             rt_str_release_maybe(current);
             rt_string incoming = value.str;
             rt_str_retain_maybe(incoming);
-            *slot = incoming;
+            std::memcpy(ptr, &incoming, sizeof(incoming));
             break;
         }
         case il::core::Type::Kind::Ptr:
-            *reinterpret_cast<void **>(ptr) = value.ptr;
+        {
+            void *tmp = value.ptr;
+            std::memcpy(ptr, &tmp, sizeof(tmp));
             break;
+        }
         case il::core::Type::Kind::Error:
         case il::core::Type::Kind::ResumeTok:
-            *reinterpret_cast<void **>(ptr) = value.ptr;
+        {
+            void *tmp = value.ptr;
+            std::memcpy(ptr, &tmp, sizeof(tmp));
             break;
+        }
         case il::core::Type::Kind::Void:
             break;
     }

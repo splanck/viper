@@ -40,11 +40,28 @@ namespace il::transform
 {
 namespace
 {
+
+/// @brief Represents an incoming CFG edge using stable indices instead of pointers.
+/// @details Using indices into function.blocks avoids pointer invalidation when
+///          blocks are added to the function. The blockIdx field indexes into
+///          function.blocks, and edgeIdx indexes into the terminator's labels.
 struct IncomingEdge
 {
-    BasicBlock *pred;
+    size_t blockIdx;
     size_t edgeIdx;
 };
+
+/// @brief Finds the index of a block with the given label in function.blocks.
+/// @return The index if found, or SIZE_MAX if not found.
+size_t findBlockIndex(const Function &function, const std::string &label)
+{
+    for (size_t i = 0; i < function.blocks.size(); ++i)
+    {
+        if (function.blocks[i].label == label)
+            return i;
+    }
+    return SIZE_MAX;
+}
 
 Instr *getTerminator(BasicBlock &block)
 {
@@ -100,50 +117,60 @@ static inline bool valueVectorsEqual(const std::vector<Value> &lhs, const std::v
 
 bool ensurePreheader(Function &function, const Loop &loop)
 {
-    BasicBlock *header = findBlock(function, loop.headerLabel);
-    if (!header)
+    size_t headerIdx = findBlockIndex(function, loop.headerLabel);
+    if (headerIdx == SIZE_MAX)
         return false;
 
+    // Capture header properties before any modifications.
+    // We store the label and params separately to avoid pointer invalidation.
+    const std::string headerLabel = function.blocks[headerIdx].label;
+    const std::vector<Param> headerParams = function.blocks[headerIdx].params;
+
+    // Collect edges from outside the loop that target the header.
+    // Store block indices instead of pointers to survive vector reallocation.
     std::vector<IncomingEdge> outsideEdges;
-    for (auto &block : function.blocks)
+    for (size_t blockIdx = 0; blockIdx < function.blocks.size(); ++blockIdx)
     {
+        BasicBlock &block = function.blocks[blockIdx];
         Instr *term = getTerminator(block);
         if (!term)
             continue;
-        for (size_t idx = 0; idx < term->labels.size(); ++idx)
+        for (size_t edgeIdx = 0; edgeIdx < term->labels.size(); ++edgeIdx)
         {
-            if (term->labels[idx] != header->label)
+            if (term->labels[edgeIdx] != headerLabel)
                 continue;
             if (loop.contains(block.label))
                 continue;
-            outsideEdges.push_back({&block, idx});
+            outsideEdges.push_back({blockIdx, edgeIdx});
         }
     }
 
     if (outsideEdges.empty())
         return false;
 
+    // Check if there's already a dedicated preheader (single predecessor with
+    // unconditional branch to header).
     bool hasDedicatedPreheader = false;
     if (outsideEdges.size() == 1)
     {
         const auto &edge = outsideEdges.front();
-        const Instr *term = getTerminator(*edge.pred);
-        hasDedicatedPreheader =
-            term && term->labels.size() == 1 && term->labels.front() == header->label;
+        const Instr *term = getTerminator(function.blocks[edge.blockIdx]);
+        hasDedicatedPreheader = term && term->labels.size() == 1 && term->labels.front() == headerLabel;
     }
 
     if (hasDedicatedPreheader)
         return false;
 
-    std::string base = header->label + ".preheader";
-    std::string label = makeUniqueLabel(function, base);
+    std::string base = headerLabel + ".preheader";
+    std::string preheaderLabel = makeUniqueLabel(function, base);
 
+    // Build the preheader block with cloned parameters.
     BasicBlock preheader;
-    preheader.label = label;
+    preheader.label = preheaderLabel;
 
     unsigned id = nextTempId(function);
-    preheader.params.reserve(header->params.size());
-    for (const auto &param : header->params)
+    preheader.params.reserve(headerParams.size());
+    for (const auto &param : headerParams)
     {
         Param clone = param;
         clone.id = id++;
@@ -153,10 +180,11 @@ bool ensurePreheader(Function &function, const Loop &loop)
         function.valueNames[clone.id] = clone.name;
     }
 
+    // Create unconditional branch to the original header.
     Instr branch;
     branch.op = Opcode::Br;
     branch.type = Type(Type::Kind::Void);
-    branch.labels.push_back(header->label);
+    branch.labels.push_back(headerLabel);
     branch.brArgs.emplace_back();
     auto &forwardArgs = branch.brArgs.back();
     forwardArgs.reserve(preheader.params.size());
@@ -165,12 +193,14 @@ bool ensurePreheader(Function &function, const Loop &loop)
     preheader.instructions.push_back(std::move(branch));
     preheader.terminated = true;
 
+    // Redirect outside edges to the new preheader.
+    // Use indices to access blocks safely even after potential reallocation.
     for (const auto &edge : outsideEdges)
     {
-        Instr *term = getTerminator(*edge.pred);
+        Instr *term = getTerminator(function.blocks[edge.blockIdx]);
         if (!term)
             continue;
-        term->labels[edge.edgeIdx] = label;
+        term->labels[edge.edgeIdx] = preheaderLabel;
     }
 
     function.blocks.push_back(std::move(preheader));
@@ -182,33 +212,41 @@ bool mergeTrivialLatches(Function &function, const Loop &loop)
     if (loop.latchLabels.size() <= 1)
         return false;
 
-    BasicBlock *header = findBlock(function, loop.headerLabel);
-    if (!header)
+    size_t headerIdx = findBlockIndex(function, loop.headerLabel);
+    if (headerIdx == SIZE_MAX)
         return false;
 
-    std::vector<BasicBlock *> latches;
-    latches.reserve(loop.latchLabels.size());
+    // Capture header properties before any modifications.
+    const std::string headerLabel = function.blocks[headerIdx].label;
+    const std::vector<Param> headerParams = function.blocks[headerIdx].params;
+
+    // Collect latch block indices instead of pointers to survive vector reallocation.
+    std::vector<size_t> latchIndices;
+    latchIndices.reserve(loop.latchLabels.size());
     for (const auto &label : loop.latchLabels)
     {
-        if (auto *block = findBlock(function, label))
-            latches.push_back(block);
+        size_t idx = findBlockIndex(function, label);
+        if (idx != SIZE_MAX)
+            latchIndices.push_back(idx);
     }
 
-    if (latches.size() <= 1)
+    if (latchIndices.size() <= 1)
         return false;
 
+    // Validate that all latches are trivial (single unconditional branch to header)
+    // and collect canonical arguments.
     std::vector<Value> canonicalArgs;
-    canonicalArgs.reserve(header->params.size());
+    canonicalArgs.reserve(headerParams.size());
 
-    for (size_t i = 0; i < latches.size(); ++i)
+    for (size_t i = 0; i < latchIndices.size(); ++i)
     {
-        const BasicBlock *latch = latches[i];
-        const Instr *term = getTerminator(*latch);
+        const BasicBlock &latch = function.blocks[latchIndices[i]];
+        const Instr *term = getTerminator(latch);
         if (!term || term->op != Opcode::Br)
             return false;
-        if (latch->instructions.size() != 1)
+        if (latch.instructions.size() != 1)
             return false;
-        if (term->labels.size() != 1 || term->labels.front() != header->label)
+        if (term->labels.size() != 1 || term->labels.front() != headerLabel)
             return false;
         std::vector<Value> args;
         if (!term->brArgs.empty())
@@ -223,15 +261,16 @@ bool mergeTrivialLatches(Function &function, const Loop &loop)
         }
     }
 
-    std::string base = header->label + ".latch";
-    std::string label = makeUniqueLabel(function, base);
+    std::string base = headerLabel + ".latch";
+    std::string newLatchLabel = makeUniqueLabel(function, base);
 
+    // Build the merged latch block with cloned parameters.
     BasicBlock newLatch;
-    newLatch.label = label;
+    newLatch.label = newLatchLabel;
 
     unsigned id = nextTempId(function);
-    newLatch.params.reserve(header->params.size());
-    for (const auto &param : header->params)
+    newLatch.params.reserve(headerParams.size());
+    for (const auto &param : headerParams)
     {
         Param clone = param;
         clone.id = id++;
@@ -241,10 +280,11 @@ bool mergeTrivialLatches(Function &function, const Loop &loop)
         function.valueNames[clone.id] = clone.name;
     }
 
+    // Create unconditional branch to the original header.
     Instr branch;
     branch.op = Opcode::Br;
     branch.type = Type(Type::Kind::Void);
-    branch.labels.push_back(header->label);
+    branch.labels.push_back(headerLabel);
     branch.brArgs.emplace_back();
     auto &forwardArgs = branch.brArgs.back();
     forwardArgs.reserve(newLatch.params.size());
@@ -253,12 +293,14 @@ bool mergeTrivialLatches(Function &function, const Loop &loop)
     newLatch.instructions.push_back(std::move(branch));
     newLatch.terminated = true;
 
-    for (auto *latch : latches)
+    // Redirect all latch branches to the new merged latch.
+    // Use indices to access blocks safely even after potential reallocation.
+    for (size_t latchIdx : latchIndices)
     {
-        Instr *term = getTerminator(*latch);
+        Instr *term = getTerminator(function.blocks[latchIdx]);
         if (!term)
             continue;
-        term->labels.front() = label;
+        term->labels.front() = newLatchLabel;
         if (!canonicalArgs.empty())
             term->brArgs.front() = canonicalArgs;
         else if (!term->brArgs.empty())

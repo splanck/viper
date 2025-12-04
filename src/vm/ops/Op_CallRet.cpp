@@ -258,11 +258,13 @@ VM::ExecResult handleCall(VM &vm,
                             Slot &mutated = args[index];
                             if (kind == il::core::Type::Kind::Str)
                             {
-                                auto *slot = reinterpret_cast<rt_string *>(binding.stackPtr);
-                                rt_str_release_maybe(*slot);
+                                // Avoid strict-aliasing UB: copy via memcpy
+                                rt_string current{};
+                                std::memcpy(&current, binding.stackPtr, sizeof(current));
+                                rt_str_release_maybe(current);
                                 rt_string incoming = mutated.str;
                                 rt_str_retain_maybe(incoming);
-                                *slot = incoming;
+                                std::memcpy(binding.stackPtr, &incoming, sizeof(incoming));
                             }
                             else if (void *src = il::vm::slotToArgPointer(mutated, kind))
                             {
