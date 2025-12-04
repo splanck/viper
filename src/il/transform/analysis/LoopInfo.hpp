@@ -45,8 +45,7 @@ struct LoopStringHash
 {
     using is_transparent = void;
 
-    template <typename T>
-    [[nodiscard]] std::size_t operator()(const T &key) const noexcept
+    template <typename T> [[nodiscard]] std::size_t operator()(const T &key) const noexcept
     {
         return std::hash<std::string_view>{}(std::string_view(key));
     }

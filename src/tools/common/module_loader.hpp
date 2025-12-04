@@ -29,10 +29,10 @@ namespace il::tools::common
 /// @brief Result classifications for attempting to load a module from disk.
 enum class LoadStatus
 {
-    Success,     ///< Module loaded successfully.
-    FileError,   ///< Input file could not be opened.
-    ParseError,  ///< Parser reported diagnostics.
-    VerifyError  ///< Verifier reported diagnostics.
+    Success,    ///< Module loaded successfully.
+    FileError,  ///< Input file could not be opened.
+    ParseError, ///< Parser reported diagnostics.
+    VerifyError ///< Verifier reported diagnostics.
 };
 
 /// @brief Outcome produced by ::loadModuleFromFile describing the failure mode.

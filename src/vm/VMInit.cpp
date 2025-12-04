@@ -117,11 +117,7 @@ VM::VM(const Module &m,
        DebugCtrl dbg,
        DebugScript *script,
        std::size_t stackBytes)
-    : mod(m),
-      tracer(tc),
-      debug(std::move(dbg)),
-      script(script),
-      maxSteps(ms),
+    : mod(m), tracer(tc), debug(std::move(dbg)), script(script), maxSteps(ms),
       stackBytes_(stackBytes ? stackBytes : Frame::kDefaultStackSize)
 {
     // Runtime overrides via environment -------------------------------------

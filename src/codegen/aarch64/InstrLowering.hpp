@@ -65,8 +65,8 @@ inline bool materializeValueToVReg(const il::core::Value &v,
                                    uint16_t &outVReg,
                                    RegClass &outCls)
 {
-    return materializeValueToVReg(v, bb, ctx.ti, ctx.fb, out, ctx.tempVReg, ctx.nextVRegId, outVReg,
-                                  outCls);
+    return materializeValueToVReg(
+        v, bb, ctx.ti, ctx.fb, out, ctx.tempVReg, ctx.nextVRegId, outVReg, outCls);
 }
 
 //===----------------------------------------------------------------------===//

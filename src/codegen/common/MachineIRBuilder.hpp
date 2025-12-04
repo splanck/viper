@@ -119,8 +119,7 @@ template <typename InstrT, typename OpcodeT, typename OperandT>
 /// @param instr Instruction to modify.
 /// @param op Operand to append.
 /// @return Reference to the modified instruction.
-template <typename InstrT, typename OperandT>
-InstrT &addOperand(InstrT &instr, OperandT op)
+template <typename InstrT, typename OperandT> InstrT &addOperand(InstrT &instr, OperandT op)
 {
     instr.operands.push_back(std::move(op));
     return instr;

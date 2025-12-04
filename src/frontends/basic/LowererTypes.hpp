@@ -36,8 +36,7 @@ struct StringHash
 {
     using is_transparent = void;
 
-    template <typename T>
-    [[nodiscard]] std::size_t operator()(const T &key) const noexcept
+    template <typename T> [[nodiscard]] std::size_t operator()(const T &key) const noexcept
     {
         return std::hash<std::string_view>{}(std::string_view(key));
     }
@@ -162,7 +161,7 @@ struct MemberFieldAccess
     il::core::Value ptr; ///< Pointer to the field storage.
     il::core::Type ilType{
         il::core::Type(il::core::Type::Kind::I64)}; ///< IL type used for loads/stores.
-    Type astType{Type::I64}; ///< Original AST type.
+    Type astType{Type::I64};                        ///< Original AST type.
     std::string objectClassName; ///< BUG-082: Class name for object-typed fields.
 };
 

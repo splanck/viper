@@ -28,6 +28,7 @@ static void *vtable_unrelated[1] = {nullptr};
 
 // Mock interface table
 static void mock_iface_method(void) {}
+
 static void *itable_base[1] = {(void *)mock_iface_method};
 
 int main()

@@ -423,15 +423,24 @@ class VM
 
     /// @brief Check if tracing is active (cheap boolean test).
     /// @return True when tracer.onStep() should be called.
-    [[nodiscard]] bool isTracingActive() const noexcept { return tracingActive_; }
+    [[nodiscard]] bool isTracingActive() const noexcept
+    {
+        return tracingActive_;
+    }
 
     /// @brief Check if memory watches are active (cheap boolean test).
     /// @return True when memory write callbacks should be invoked.
-    [[nodiscard]] bool hasMemWatchesActive() const noexcept { return memWatchActive_; }
+    [[nodiscard]] bool hasMemWatchesActive() const noexcept
+    {
+        return memWatchActive_;
+    }
 
     /// @brief Check if variable watches are active (cheap boolean test).
     /// @return True when variable store callbacks should be invoked.
-    [[nodiscard]] bool hasVarWatchesActive() const noexcept { return varWatchActive_; }
+    [[nodiscard]] bool hasVarWatchesActive() const noexcept
+    {
+        return varWatchActive_;
+    }
 
     /// @brief Refresh all debug fast-path flags from current state.
     /// @details Call this after changing trace config, adding/removing watches.

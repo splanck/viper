@@ -58,7 +58,8 @@ static void testDispatchMetadataConsistency()
     {
         const auto &info = il::core::kOpcodeTable[i];
         // Verify dispatch kind is valid
-        assert(static_cast<size_t>(info.vmDispatch) <= static_cast<size_t>(il::core::VMDispatch::EhEntry) &&
+        assert(static_cast<size_t>(info.vmDispatch) <=
+                   static_cast<size_t>(il::core::VMDispatch::EhEntry) &&
                "Invalid VMDispatch value in opcode table");
     }
 }
@@ -95,8 +96,10 @@ static void testDispatchMacroHelpers()
     const auto &handlers = il::vm::generated::opcodeHandlers();
 
     // Test hasHandler
-    assert(il::vm::dispatch::hasHandler(il::core::Opcode::Add, handlers) && "Add should have handler");
-    assert(il::vm::dispatch::hasHandler(il::core::Opcode::Ret, handlers) && "Ret should have handler");
+    assert(il::vm::dispatch::hasHandler(il::core::Opcode::Add, handlers) &&
+           "Add should have handler");
+    assert(il::vm::dispatch::hasHandler(il::core::Opcode::Ret, handlers) &&
+           "Ret should have handler");
 
     // Test verifyAllHandlers
     assert(il::vm::dispatch::verifyAllHandlers(handlers) && "All handlers should be present");

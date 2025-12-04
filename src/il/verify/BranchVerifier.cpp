@@ -178,10 +178,10 @@ Expected<void> verifyCBr_E(const Function &fn,
 /// @param blockMap Lookup for resolving target blocks referenced by labels.
 /// @param types Type inference context providing operand type data.
 Expected<void> verifySwitchI32_E(const Function &fn,
-                                  const BasicBlock &bb,
-                                  const Instr &instr,
-                                  const BlockMap &blockMap,
-                                  TypeInference &types)
+                                 const BasicBlock &bb,
+                                 const Instr &instr,
+                                 const BlockMap &blockMap,
+                                 TypeInference &types)
 {
     if (instr.operands.empty())
     {

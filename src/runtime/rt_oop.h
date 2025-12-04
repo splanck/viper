@@ -186,11 +186,8 @@ extern "C"
     /// @param qname        Fully-qualified class name.
     /// @param vslot_count  Number of vtable slots bound for this class.
     /// @param base_type_id Type id of the base class, or -1 if none.
-    void rt_register_class_with_base(int type_id,
-                                     void **vtable,
-                                     const char *qname,
-                                     int vslot_count,
-                                     int base_type_id);
+    void rt_register_class_with_base(
+        int type_id, void **vtable, const char *qname, int vslot_count, int base_type_id);
 
     /// What: Register a class with base class using a runtime string for @p qname.
     /// Why:  Variant of rt_register_class_with_base that accepts rt_string.
@@ -201,11 +198,8 @@ extern "C"
     /// @param qname        Runtime string containing fully-qualified class name.
     /// @param vslot_count  Number of vtable slots bound for this class.
     /// @param base_type_id Type id of the base class, or -1 if none.
-    void rt_register_class_with_base_rs(int type_id,
-                                        void **vtable,
-                                        rt_string qname,
-                                        int64_t vslot_count,
-                                        int64_t base_type_id);
+    void rt_register_class_with_base_rs(
+        int type_id, void **vtable, rt_string qname, int64_t vslot_count, int64_t base_type_id);
 
     /// What: Lookup the canonical vtable pointer for @p type_id.
     /// Why:  Allow VM/runtime to resolve method tables by type id.

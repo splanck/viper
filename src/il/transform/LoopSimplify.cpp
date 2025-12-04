@@ -155,7 +155,8 @@ bool ensurePreheader(Function &function, const Loop &loop)
     {
         const auto &edge = outsideEdges.front();
         const Instr *term = getTerminator(function.blocks[edge.blockIdx]);
-        hasDedicatedPreheader = term && term->labels.size() == 1 && term->labels.front() == headerLabel;
+        hasDedicatedPreheader =
+            term && term->labels.size() == 1 && term->labels.front() == headerLabel;
     }
 
     if (hasDedicatedPreheader)

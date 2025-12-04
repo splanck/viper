@@ -75,7 +75,10 @@ struct LoweringContext
     unsigned &trapLabelCounter;
 
     /// @brief Get MIR block by index
-    MBasicBlock &bbOut(std::size_t idx) { return mf.blocks[idx]; }
+    MBasicBlock &bbOut(std::size_t idx)
+    {
+        return mf.blocks[idx];
+    }
 };
 
 /// @brief Find the index of a parameter in a basic block by temp ID.

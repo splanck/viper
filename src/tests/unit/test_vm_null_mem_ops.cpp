@@ -238,13 +238,15 @@ std::string runModuleAndCapture(il::core::Module module)
 int main()
 {
     std::string loadTrap = runModuleAndCapture(makeLoadModule());
-    bool loadOk = loadTrap.find("Trap @main:entry#0 line 1: InvalidOperation (code=0): null load") !=
-                  std::string::npos;
+    bool loadOk =
+        loadTrap.find("Trap @main:entry#0 line 1: InvalidOperation (code=0): null load") !=
+        std::string::npos;
     assert(loadOk);
 
     std::string storeTrap = runModuleAndCapture(makeStoreModule());
-    bool storeOk = storeTrap.find("Trap @main:entry#0 line 2: InvalidOperation (code=0): null store") !=
-                   std::string::npos;
+    bool storeOk =
+        storeTrap.find("Trap @main:entry#0 line 2: InvalidOperation (code=0): null store") !=
+        std::string::npos;
     assert(storeOk);
 
     const il::core::Type::Kind misalignedKinds[] = {il::core::Type::Kind::I16,

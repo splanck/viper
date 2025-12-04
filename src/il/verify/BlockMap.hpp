@@ -75,9 +75,7 @@ struct BlockMapEqual
 ///       BasicBlock::label fields. The source Function must remain valid
 ///       for the entire lifetime of the map. Do not store these maps beyond
 ///       the scope of the verification pass operating on a single function.
-using BlockMap = std::unordered_map<std::string_view,
-                                    const il::core::BasicBlock *,
-                                    BlockMapHash,
-                                    BlockMapEqual>;
+using BlockMap =
+    std::unordered_map<std::string_view, const il::core::BasicBlock *, BlockMapHash, BlockMapEqual>;
 
 } // namespace il::verify

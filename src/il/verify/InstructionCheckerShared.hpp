@@ -92,8 +92,12 @@ std::optional<Type> typeFromClass(TypeClass typeClass);
 
 // Arithmetic helpers.
 [[nodiscard]] Expected<void> expectAllOperandType(const VerifyCtx &ctx, Type::Kind kind);
-[[nodiscard]] Expected<void> checkBinary(const VerifyCtx &ctx, Type::Kind operandKind, Type resultType);
-[[nodiscard]] Expected<void> checkUnary(const VerifyCtx &ctx, Type::Kind operandKind, Type resultType);
+[[nodiscard]] Expected<void> checkBinary(const VerifyCtx &ctx,
+                                         Type::Kind operandKind,
+                                         Type resultType);
+[[nodiscard]] Expected<void> checkUnary(const VerifyCtx &ctx,
+                                        Type::Kind operandKind,
+                                        Type resultType);
 [[nodiscard]] Expected<void> checkIdxChk(const VerifyCtx &ctx);
 
 // Memory helpers.

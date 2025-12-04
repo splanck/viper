@@ -98,9 +98,10 @@ class TypeInference
     /// @param bb Owning basic block used for diagnostics.
     /// @param instr Instruction whose operands are checked.
     /// @return Empty Expected on success; diagnostic payload when verification fails.
-    [[nodiscard]] il::support::Expected<void> ensureOperandsDefined_E(const il::core::Function &fn,
-                                                                       const il::core::BasicBlock &bb,
-                                                                       const il::core::Instr &instr) const;
+    [[nodiscard]] il::support::Expected<void> ensureOperandsDefined_E(
+        const il::core::Function &fn,
+        const il::core::BasicBlock &bb,
+        const il::core::Instr &instr) const;
 
     /// @brief Mark a temporary as pre-defined with a given type.
     /// @param id Temporary identifier.

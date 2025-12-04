@@ -78,7 +78,8 @@ int main()
     const std::string withoutLoc = captureRuntimeTrap(false);
     // When line is unknown, it should be omitted entirely (not "line -1")
     const bool omittedLine = withoutLoc.find("line") == std::string::npos;
-    const bool hasTrap = withoutLoc.find("Trap @main:entry#1: DomainError (code=0)") != std::string::npos;
+    const bool hasTrap =
+        withoutLoc.find("Trap @main:entry#1: DomainError (code=0)") != std::string::npos;
     assert(omittedLine && hasTrap);
     return 0;
 }

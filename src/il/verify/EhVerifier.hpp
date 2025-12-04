@@ -55,7 +55,8 @@ class EhVerifier
     /// @param module Module whose functions are analysed.
     /// @param sink Diagnostic sink receiving auxiliary diagnostics.
     /// @return Success or the first diagnostic describing an imbalance.
-    [[nodiscard]] il::support::Expected<void> run(const il::core::Module &module, DiagSink &sink) const;
+    [[nodiscard]] il::support::Expected<void> run(const il::core::Module &module,
+                                                  DiagSink &sink) const;
 };
 
 } // namespace il::verify

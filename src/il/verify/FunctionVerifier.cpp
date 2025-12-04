@@ -261,10 +261,10 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
 /// @param sink Diagnostic sink receiving instruction-level messages.
 /// @return Success or a diagnostic describing the failure.
 Expected<void> FunctionVerifier::verifyBlock(const Function &fn,
-                                              const BasicBlock &bb,
-                                              const BlockMap &blockMap,
-                                              std::unordered_map<unsigned, Type> &temps,
-                                              DiagSink &sink)
+                                             const BasicBlock &bb,
+                                             const BlockMap &blockMap,
+                                             std::unordered_map<unsigned, Type> &temps,
+                                             DiagSink &sink)
 {
     std::unordered_set<unsigned> defined;
     for (const auto &entry : temps)
@@ -400,11 +400,11 @@ Expected<void> FunctionVerifier::verifyBlock(const Function &fn,
 /// @param sink Diagnostic sink receiving verification messages.
 /// @return Success or a diagnostic describing the error.
 Expected<void> FunctionVerifier::verifyInstruction(const Function &fn,
-                                                    const BasicBlock &bb,
-                                                    const Instr &instr,
-                                                    const BlockMap &blockMap,
-                                                    TypeInference &types,
-    DiagSink &sink)
+                                                   const BasicBlock &bb,
+                                                   const Instr &instr,
+                                                   const BlockMap &blockMap,
+                                                   TypeInference &types,
+                                                   DiagSink &sink)
 {
     VerifyCtx ctx{sink, types, externs_, functionMap_, fn, bb, instr};
     if (auto result = verifyOpcodeSignature_E(ctx); !result)

@@ -153,8 +153,8 @@ int main()
     {
         il::core::Module goodModule{};
         std::ostringstream discardErr;
-        auto goodLoad =
-            il::tools::common::loadModuleFromFile((root / "tests/data/loop.il").string(), goodModule, discardErr);
+        auto goodLoad = il::tools::common::loadModuleFromFile(
+            (root / "tests/data/loop.il").string(), goodModule, discardErr);
         if (!goodLoad.succeeded())
         {
             return 1;
@@ -235,7 +235,10 @@ int main()
         il::core::Module combinedModule{};
         std::ostringstream combinedErr;
         auto result = il::tools::common::loadAndVerifyModule(
-            (root / "tests/il/parse/mismatched_paren.il").string(), combinedModule, nullptr, combinedErr);
+            (root / "tests/il/parse/mismatched_paren.il").string(),
+            combinedModule,
+            nullptr,
+            combinedErr);
         if (result.succeeded())
         {
             return 1; // Should have failed
@@ -250,7 +253,8 @@ int main()
     {
         il::core::Module combinedModule{};
         std::ostringstream combinedErr;
-        auto result = il::tools::common::loadAndVerifyModule(negativePath, combinedModule, nullptr, combinedErr);
+        auto result = il::tools::common::loadAndVerifyModule(
+            negativePath, combinedModule, nullptr, combinedErr);
         if (result.succeeded())
         {
             return 1; // Should have failed verification
@@ -267,7 +271,8 @@ int main()
 
     // Test printLoadResult - no output on success
     {
-        il::tools::common::LoadResult successResult{il::tools::common::LoadStatus::Success, std::nullopt, ""};
+        il::tools::common::LoadResult successResult{
+            il::tools::common::LoadStatus::Success, std::nullopt, ""};
         std::ostringstream printOut;
         il::tools::common::printLoadResult(successResult, printOut);
         if (!printOut.str().empty())

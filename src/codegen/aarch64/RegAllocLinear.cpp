@@ -635,7 +635,7 @@ class LinearAllocator
                 return {false, true}; // dst is def-only
             if (idx == 1)
                 return {true, false}; // src is use
-            return {false, false}; // label is neither
+            return {false, false};    // label is neither
         }
 
         // MSubRRRR: msub dst, mul1, mul2, sub => dst = sub - mul1*mul2
@@ -644,7 +644,7 @@ class LinearAllocator
         {
             if (idx == 0)
                 return {false, true}; // dst is def-only
-            return {true, false}; // all others are use-only
+            return {true, false};     // all others are use-only
         }
 
         // Cbz: cbz reg, label => branch if reg is zero
@@ -653,7 +653,7 @@ class LinearAllocator
         {
             if (idx == 0)
                 return {true, false}; // reg is use
-            return {false, false}; // label is neither
+            return {false, false};    // label is neither
         }
 
         return {true, false};
@@ -685,14 +685,18 @@ class LinearAllocator
             allocateInstruction(ins, rewritten);
         }
 
-        if (!rewritten.empty()) {
+        if (!rewritten.empty())
+        {
             std::vector<MInstr> endSpills;
             auto itB = blockIndex_.find(bb.name);
-            if (itB != blockIndex_.end()) {
+            if (itB != blockIndex_.end())
+            {
                 const std::size_t bi = itB->second;
-                for (auto vid : liveOutGPR_[bi]) {
+                for (auto vid : liveOutGPR_[bi])
+                {
                     auto it = gprStates_.find(vid);
-                    if (it != gprStates_.end() && it->second.hasPhys) {
+                    if (it != gprStates_.end() && it->second.hasPhys)
+                    {
                         const int off = fb_.ensureSpill(vid);
                         endSpills.push_back(makeStrFp(it->second.phys, off));
                         pools_.releaseGPR(it->second.phys);
@@ -700,26 +704,35 @@ class LinearAllocator
                         it->second.spilled = true;
                     }
                 }
-                for (auto vid : liveOutFPR_[bi]) {
+                for (auto vid : liveOutFPR_[bi])
+                {
                     auto it = fprStates_.find(vid);
-                    if (it != fprStates_.end() && it->second.hasPhys) {
+                    if (it != fprStates_.end() && it->second.hasPhys)
+                    {
                         const int off = fb_.ensureSpill(vid);
-                        endSpills.push_back(MInstr{MOpcode::StrFprFpImm, {MOperand::regOp(it->second.phys), MOperand::immOp(off)}});
+                        endSpills.push_back(
+                            MInstr{MOpcode::StrFprFpImm,
+                                   {MOperand::regOp(it->second.phys), MOperand::immOp(off)}});
                         pools_.releaseFPR(it->second.phys);
                         it->second.hasPhys = false;
                         it->second.spilled = true;
                     }
                 }
             }
-            if (!endSpills.empty()) {
+            if (!endSpills.empty())
+            {
                 std::size_t insertPos = rewritten.size();
-                for (std::size_t i = rewritten.size(); i-- > 0;) {
-                    if (isTerminator(rewritten[i].opc)) {
+                for (std::size_t i = rewritten.size(); i-- > 0;)
+                {
+                    if (isTerminator(rewritten[i].opc))
+                    {
                         insertPos = i;
                         break;
                     }
                 }
-                rewritten.insert(rewritten.begin() + static_cast<long>(insertPos), endSpills.begin(), endSpills.end());
+                rewritten.insert(rewritten.begin() + static_cast<long>(insertPos),
+                                 endSpills.begin(),
+                                 endSpills.end());
             }
         }
         bb.instrs = std::move(rewritten);
@@ -727,9 +740,11 @@ class LinearAllocator
 
     void handleCall(MInstr &ins, std::vector<MInstr> &rewritten)
     {
-        bool isArrayObjGet=false;
-        if (!ins.ops.empty() && ins.ops[0].kind==MOperand::Kind::Label) {
-            if (ins.ops[0].label=="rt_arr_obj_get") isArrayObjGet=true;
+        bool isArrayObjGet = false;
+        if (!ins.ops.empty() && ins.ops[0].kind == MOperand::Kind::Label)
+        {
+            if (ins.ops[0].label == "rt_arr_obj_get")
+                isArrayObjGet = true;
         }
         std::vector<MInstr> preCall;
         for (auto &kv : gprStates_)
@@ -745,18 +760,31 @@ class LinearAllocator
         for (auto &mi : preCall)
             rewritten.push_back(std::move(mi));
         rewritten.push_back(ins);
-        if (isArrayObjGet) pendingGetBarrier_=true;
+        if (isArrayObjGet)
+            pendingGetBarrier_ = true;
     }
 
     void allocateInstruction(MInstr &ins, std::vector<MInstr> &rewritten)
     {
         std::vector<MInstr> prefix;
-        bool applyGetBarrier=false; uint16_t getBarrierDstVreg=0;
-        if (pendingGetBarrier_ && ins.opc==MOpcode::MovRR && ins.ops.size()>=2) {
-            const auto &dst=ins.ops[0]; const auto &src=ins.ops[1];
-            if (dst.kind==MOperand::Kind::Reg && !dst.reg.isPhys && src.kind==MOperand::Kind::Reg && src.reg.isPhys && static_cast<PhysReg>(src.reg.idOrPhys)==PhysReg::X0) {
-                applyGetBarrier=true; getBarrierDstVreg=dst.reg.idOrPhys; pendingGetBarrier_=false;
-            } else { pendingGetBarrier_=false; }
+        bool applyGetBarrier = false;
+        uint16_t getBarrierDstVreg = 0;
+        if (pendingGetBarrier_ && ins.opc == MOpcode::MovRR && ins.ops.size() >= 2)
+        {
+            const auto &dst = ins.ops[0];
+            const auto &src = ins.ops[1];
+            if (dst.kind == MOperand::Kind::Reg && !dst.reg.isPhys &&
+                src.kind == MOperand::Kind::Reg && src.reg.isPhys &&
+                static_cast<PhysReg>(src.reg.idOrPhys) == PhysReg::X0)
+            {
+                applyGetBarrier = true;
+                getBarrierDstVreg = dst.reg.idOrPhys;
+                pendingGetBarrier_ = false;
+            }
+            else
+            {
+                pendingGetBarrier_ = false;
+            }
         }
         std::vector<MInstr> suffix;
         std::vector<PhysReg> scratch;
@@ -774,14 +802,16 @@ class LinearAllocator
         }
 
         // Apply post-call barrier for rt_arr_obj_get
-        if (applyGetBarrier) {
-            auto it=gprStates_.find(getBarrierDstVreg);
-            if (it!=gprStates_.end() && it->second.hasPhys) {
-                const int off=fb_.ensureSpill(getBarrierDstVreg);
+        if (applyGetBarrier)
+        {
+            auto it = gprStates_.find(getBarrierDstVreg);
+            if (it != gprStates_.end() && it->second.hasPhys)
+            {
+                const int off = fb_.ensureSpill(getBarrierDstVreg);
                 suffix.push_back(makeStrFp(it->second.phys, off));
                 pools_.releaseGPR(it->second.phys);
-                it->second.hasPhys=false;
-                it->second.spilled=true;
+                it->second.hasPhys = false;
+                it->second.spilled = true;
             }
         }
 

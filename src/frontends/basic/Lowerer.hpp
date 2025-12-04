@@ -314,7 +314,8 @@ class Lowerer
     void allocateLocalSlots(const std::unordered_set<std::string> &paramNames, bool includeParams);
 
     /// @brief Allocate stack slots for boolean scalars (Pass 1 of slot allocation).
-    void allocateBooleanSlots(const std::unordered_set<std::string> &paramNames, bool includeParams);
+    void allocateBooleanSlots(const std::unordered_set<std::string> &paramNames,
+                              bool includeParams);
 
     /// @brief Allocate stack slots for arrays and non-boolean scalars (Pass 2).
     void allocateNonBooleanSlots(const std::unordered_set<std::string> &paramNames,
@@ -341,8 +342,8 @@ class Lowerer
         std::string_view name, const SlotType &slotInfo);
 
     /// @brief Resolve storage for a module-level global variable.
-    [[nodiscard]] std::optional<VariableStorage> resolveModuleLevelStorage(std::string_view name,
-                                                                           const SlotType &slotInfo);
+    [[nodiscard]] std::optional<VariableStorage> resolveModuleLevelStorage(
+        std::string_view name, const SlotType &slotInfo);
 
     /// @brief Select the appropriate rt_modvar_addr_* helper based on type kind.
     [[nodiscard]] std::string selectModvarAddrHelper(il::core::Type::Kind kind);
@@ -745,9 +746,8 @@ class Lowerer
     build::IRBuilder *builder{nullptr};
     Module *mod{nullptr};
     NameMangler mangler;
-    SymbolTable symbolTable_; ///< Unified symbol table.
-    SymbolTable::SymbolMap
-        &symbols;                    ///< Legacy alias (references symbolTable_.raw()).
+    SymbolTable symbolTable_;        ///< Unified symbol table.
+    SymbolTable::SymbolMap &symbols; ///< Legacy alias (references symbolTable_.raw()).
     StringTable stringTable_;        ///< String literal interning.
     il::support::SourceLoc curLoc{}; ///< current source location for emitted IR
     bool boundsChecks{false};
@@ -974,7 +974,8 @@ class Lowerer
     /// @details Populated from the main-body variable discovery so procedure
     ///          scopes can recover object element types for global arrays even
     ///          after per-procedure symbol resets.
-    std::unordered_map<std::string, std::string, StringHash, std::equal_to<>> moduleObjArrayElemClass_;
+    std::unordered_map<std::string, std::string, StringHash, std::equal_to<>>
+        moduleObjArrayElemClass_;
     /// @brief BUG-107 fix: Cache for module-level scalar object types.
     std::unordered_map<std::string, std::string, StringHash, std::equal_to<>> moduleObjectClass_;
     /// @brief BUG-OOP-011 fix: Set of module-level string array names.

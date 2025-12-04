@@ -385,11 +385,8 @@ const rt_class_info *rt_get_class_info_from_vptr(void **vptr)
 /// @param qname        Qualified class name (borrowed).
 /// @param vslot_count  Number of entries in the vtable.
 /// @param base_type_id Base class id or -1 when none.
-void rt_register_class_with_base(int type_id,
-                                  void **vtable,
-                                  const char *qname,
-                                  int vslot_count,
-                                  int base_type_id)
+void rt_register_class_with_base(
+    int type_id, void **vtable, const char *qname, int vslot_count, int base_type_id)
 {
     if (!vtable)
         return;
@@ -444,11 +441,8 @@ void rt_register_class_direct_rs(int type_id, void **vtable, rt_string qname, in
 
 // Runtime bridge wrapper: accept runtime string for qname with base class
 /// @brief Runtime-string bridge for @ref rt_register_class_with_base.
-void rt_register_class_with_base_rs(int type_id,
-                                    void **vtable,
-                                    rt_string qname,
-                                    int64_t vslot_count,
-                                    int64_t base_type_id)
+void rt_register_class_with_base_rs(
+    int type_id, void **vtable, rt_string qname, int64_t vslot_count, int64_t base_type_id)
 {
     const char *name = qname ? rt_string_cstr(qname) : NULL;
     rt_register_class_with_base(type_id, vtable, name, (int)vslot_count, (int)base_type_id);

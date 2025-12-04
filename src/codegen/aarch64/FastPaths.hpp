@@ -25,8 +25,8 @@ namespace viper::codegen::aarch64
 /// @brief Try fast-path lowering for simple function patterns.
 /// @returns The lowered MFunction if a fast-path matched, nullopt otherwise.
 std::optional<MFunction> tryFastPaths(const il::core::Function &fn,
-                                       const TargetInfo &ti,
-                                       FrameBuilder &fb,
-                                       MFunction &mf);
+                                      const TargetInfo &ti,
+                                      FrameBuilder &fb,
+                                      MFunction &mf);
 
 } // namespace viper::codegen::aarch64

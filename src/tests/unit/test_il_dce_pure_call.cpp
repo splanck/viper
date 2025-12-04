@@ -141,8 +141,7 @@ void testUnknownCalleePreserved()
 
     il::transform::dce(m);
 
-    assert(hasCallTo(m, "unknown_function") &&
-           "Unknown callee should be preserved (conservative)");
+    assert(hasCallTo(m, "unknown_function") && "Unknown callee should be preserved (conservative)");
 }
 
 /// @brief Test: Readonly call (reads memory) should be preserved.
@@ -169,7 +168,8 @@ void testMultiplePureMathEliminated()
     {
         Module m = buildTestModule(helper, false);
         il::transform::dce(m);
-        assert(!hasCallTo(m, helper) && ("Pure helper " + helper + " should be eliminated").c_str());
+        assert(!hasCallTo(m, helper) &&
+               ("Pure helper " + helper + " should be eliminated").c_str());
     }
 }
 

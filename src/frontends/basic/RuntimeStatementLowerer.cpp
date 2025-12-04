@@ -1080,7 +1080,8 @@ Value RuntimeStatementLowerer::emitArrayLengthCheck(Value bound,
         // Create contBlk with a block parameter for length to ensure proper SSA form
         // across the conditional branch. This is required for native codegen which
         // cannot reference values defined in predecessor blocks.
-        std::vector<il::core::Param> contParams = {{"len", il::core::Type(il::core::Type::Kind::I64)}};
+        std::vector<il::core::Param> contParams = {
+            {"len", il::core::Type(il::core::Type::Kind::I64)}};
         size_t contIdx = func->blocks.size();
         lowerer_.builder->createBlock(*func, contLbl, contParams);
 
@@ -1098,8 +1099,8 @@ Value RuntimeStatementLowerer::emitArrayLengthCheck(Value bound,
         cbr.operands.push_back(isNeg);
         cbr.labels.push_back(failLbl);
         cbr.labels.push_back(contLbl);
-        cbr.brArgs.push_back({});          // failBlk has no parameters
-        cbr.brArgs.push_back({length});    // contBlk receives length
+        cbr.brArgs.push_back({});       // failBlk has no parameters
+        cbr.brArgs.push_back({length}); // contBlk receives length
         cbr.loc = lowerer_.curLoc;
         BasicBlock *curBlock = ctx.current();
         curBlock->instructions.push_back(cbr);

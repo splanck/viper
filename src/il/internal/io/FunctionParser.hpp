@@ -26,15 +26,15 @@ namespace il::io::detail
 
 /// @brief Parse a function header introducing parameters and return type.
 [[nodiscard]] il::support::Expected<void> parseFunctionHeader(const std::string &header,
-                                                               ParserState &st);
+                                                              ParserState &st);
 
 /// @brief Parse a basic block label and its optional parameter list.
 [[nodiscard]] il::support::Expected<void> parseBlockHeader(const std::string &header,
-                                                            ParserState &st);
+                                                           ParserState &st);
 
 /// @brief Parse an entire function body following its header line.
 [[nodiscard]] il::support::Expected<void> parseFunction(std::istream &is,
-                                                         std::string &header,
-                                                         ParserState &st);
+                                                        std::string &header,
+                                                        ParserState &st);
 
 } // namespace il::io::detail

@@ -118,16 +118,31 @@ static void *mv_addr(rt_string name, mv_kind_t kind, size_t size)
 }
 
 /// @brief Address of a 64-bit integer module variable.
-void *rt_modvar_addr_i64(rt_string name) { return mv_addr(name, MV_I64, 8); }
+void *rt_modvar_addr_i64(rt_string name)
+{
+    return mv_addr(name, MV_I64, 8);
+}
 
 /// @brief Address of a 64-bit floating module variable.
-void *rt_modvar_addr_f64(rt_string name) { return mv_addr(name, MV_F64, 8); }
+void *rt_modvar_addr_f64(rt_string name)
+{
+    return mv_addr(name, MV_F64, 8);
+}
 
 /// @brief Address of a boolean (i1) module variable.
-void *rt_modvar_addr_i1(rt_string name) { return mv_addr(name, MV_I1, 1); }
+void *rt_modvar_addr_i1(rt_string name)
+{
+    return mv_addr(name, MV_I1, 1);
+}
 
 /// @brief Address of a pointer module variable.
-void *rt_modvar_addr_ptr(rt_string name) { return mv_addr(name, MV_PTR, 8); }
+void *rt_modvar_addr_ptr(rt_string name)
+{
+    return mv_addr(name, MV_PTR, 8);
+}
 
 /// @brief Address of a string module variable (stores rt_string handle).
-void *rt_modvar_addr_str(rt_string name) { return mv_addr(name, MV_STR, sizeof(void *)); }
+void *rt_modvar_addr_str(rt_string name)
+{
+    return mv_addr(name, MV_STR, sizeof(void *));
+}

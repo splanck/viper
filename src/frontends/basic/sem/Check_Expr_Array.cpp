@@ -154,9 +154,11 @@ SemanticAnalyzer::Type analyzeArrayExpr(SemanticAnalyzer &analyzer, ArrayExpr &e
                         if (ci->value < 0 || ci->value >= arraySize)
                         {
                             std::string msg = "index out of bounds";
-                            context.diagnostics().emit(
-                                il::support::Severity::Warning, "B3001", expr.loc, 1,
-                                std::move(msg));
+                            context.diagnostics().emit(il::support::Severity::Warning,
+                                                       "B3001",
+                                                       expr.loc,
+                                                       1,
+                                                       std::move(msg));
                         }
                     }
                 }
@@ -208,9 +210,11 @@ SemanticAnalyzer::Type analyzeArrayExpr(SemanticAnalyzer &analyzer, ArrayExpr &e
                                               std::to_string(i + 1) + ": " +
                                               std::to_string(ci->value) + " not in [0, " +
                                               std::to_string(dimSize - 1) + "]";
-                            context.diagnostics().emit(
-                                il::support::Severity::Warning, "B3001", expr.loc, 1,
-                                std::move(msg));
+                            context.diagnostics().emit(il::support::Severity::Warning,
+                                                       "B3001",
+                                                       expr.loc,
+                                                       1,
+                                                       std::move(msg));
                         }
                     }
                 }

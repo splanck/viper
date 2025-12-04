@@ -44,13 +44,12 @@ class Runner::Impl
     /// @param module Module to execute.
     /// @param config Run configuration describing trace/debug behaviour.
     Impl(const il::core::Module &module, RunConfig config)
-        : script(config.debugScript),
-          vm(module,
-             config.trace,
-             config.maxSteps,
-             std::move(config.debug),
-             script,
-             config.stackBytes)
+        : script(config.debugScript), vm(module,
+                                         config.trace,
+                                         config.maxSteps,
+                                         std::move(config.debug),
+                                         script,
+                                         config.stackBytes)
     {
         // Forward polling configuration to the underlying VM; allow env override.
         uint32_t everyN = config.interruptEveryN;

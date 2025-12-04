@@ -28,6 +28,7 @@ TEST_WITH_IL(il, {
 
     const std::string out = il.captureTrap();
     // Format: "Trap @function:block#ip line N: Kind (code=C)"
-    const bool ok = out.find("Trap @main:entry#0 line 1: DivideByZero (code=0)") != std::string::npos;
+    const bool ok =
+        out.find("Trap @main:entry#0 line 1: DivideByZero (code=0)") != std::string::npos;
     assert(ok && "expected DivideByZero trap diagnostic with instruction index");
 });

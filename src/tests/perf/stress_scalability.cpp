@@ -200,7 +200,7 @@ Module buildLargeCfgModule()
         cbr.labels.push_back("block_0");
         cbr.labels.push_back("done");
         cbr.brArgs.push_back({Value::temp(outerIdx.id), Value::temp(outerSum.id)}); // to block_0
-        cbr.brArgs.push_back({Value::temp(outerSum.id)}); // to done
+        cbr.brArgs.push_back({Value::temp(outerSum.id)});                           // to done
         outerLoop.instructions.push_back(cbr);
         outerLoop.terminated = true;
     }
@@ -427,9 +427,8 @@ Module buildDeepNestingModule()
         nestBlock.instructions.push_back(add);
 
         // Branch to next level or merge
-        std::string nextLabel = (depth + 1 < kDeepNestingDepth)
-                                    ? ("nest_" + std::to_string(depth + 1))
-                                    : "merge";
+        std::string nextLabel =
+            (depth + 1 < kDeepNestingDepth) ? ("nest_" + std::to_string(depth + 1)) : "merge";
 
         Instr br;
         br.op = Opcode::Br;
@@ -526,8 +525,9 @@ bool testDeepNestingStress()
     int64_t expected = perIterSum * static_cast<int64_t>(kDeepNestingIterations);
     if (result != expected)
     {
-        reportFailure("Deep Nesting Stress", "Result mismatch: got " + std::to_string(result) +
-            ", expected " + std::to_string(expected));
+        reportFailure("Deep Nesting Stress",
+                      "Result mismatch: got " + std::to_string(result) + ", expected " +
+                          std::to_string(expected));
         return false;
     }
 
@@ -862,7 +862,8 @@ bool testRuntimeHelperStress()
     timer.report("VM execution");
 
     // Compute expected: sum of 1..kRuntimeHelperCallsPerIter per iteration
-    int64_t perIterSum = static_cast<int64_t>(kRuntimeHelperCallsPerIter * (kRuntimeHelperCallsPerIter + 1) / 2);
+    int64_t perIterSum =
+        static_cast<int64_t>(kRuntimeHelperCallsPerIter * (kRuntimeHelperCallsPerIter + 1) / 2);
     int64_t expected = perIterSum * static_cast<int64_t>(kRuntimeHelperIterations);
 
     if (result != expected)

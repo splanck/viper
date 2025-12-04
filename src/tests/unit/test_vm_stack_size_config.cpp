@@ -56,7 +56,7 @@ static il::core::Module buildAllocaModule(int64_t bytes)
 static void testLargeStackAllocation()
 {
     // Allocate 1MB - exceeds default 64KB but should work with 2MB stack.
-    constexpr int64_t allocSize = 1024 * 1024; // 1MB
+    constexpr int64_t allocSize = 1024 * 1024;         // 1MB
     constexpr std::size_t stackSize = 2 * 1024 * 1024; // 2MB
 
     auto m = buildAllocaModule(allocSize);
@@ -72,7 +72,7 @@ static void testLargeStackAllocation()
 static void testSmallStackOverflow()
 {
     // Allocate 32KB - would fit in default 64KB but not in 16KB stack.
-    constexpr int64_t allocSize = 32 * 1024; // 32KB
+    constexpr int64_t allocSize = 32 * 1024;     // 32KB
     constexpr std::size_t stackSize = 16 * 1024; // 16KB
 
     auto m = buildAllocaModule(allocSize);
@@ -129,7 +129,7 @@ static void testDefaultStackSize()
 /// Test 4: Very small stack (256 bytes) traps on any significant allocation.
 static void testVerySmallStack()
 {
-    constexpr int64_t allocSize = 512; // 512 bytes
+    constexpr int64_t allocSize = 512;     // 512 bytes
     constexpr std::size_t stackSize = 256; // 256 bytes
 
     auto m = buildAllocaModule(allocSize);

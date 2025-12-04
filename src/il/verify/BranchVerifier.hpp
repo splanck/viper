@@ -49,26 +49,26 @@ namespace il::verify
 class TypeInference;
 
 [[nodiscard]] il::support::Expected<void> verifyBr_E(const il::core::Function &fn,
+                                                     const il::core::BasicBlock &bb,
+                                                     const il::core::Instr &instr,
+                                                     const BlockMap &blockMap,
+                                                     TypeInference &types);
+
+[[nodiscard]] il::support::Expected<void> verifyCBr_E(const il::core::Function &fn,
                                                       const il::core::BasicBlock &bb,
                                                       const il::core::Instr &instr,
                                                       const BlockMap &blockMap,
                                                       TypeInference &types);
 
-[[nodiscard]] il::support::Expected<void> verifyCBr_E(const il::core::Function &fn,
-                                                       const il::core::BasicBlock &bb,
-                                                       const il::core::Instr &instr,
-                                                       const BlockMap &blockMap,
-                                                       TypeInference &types);
-
 [[nodiscard]] il::support::Expected<void> verifySwitchI32_E(const il::core::Function &fn,
-                                                             const il::core::BasicBlock &bb,
-                                                             const il::core::Instr &instr,
-                                                             const BlockMap &blockMap,
-                                                             TypeInference &types);
+                                                            const il::core::BasicBlock &bb,
+                                                            const il::core::Instr &instr,
+                                                            const BlockMap &blockMap,
+                                                            TypeInference &types);
 
 [[nodiscard]] il::support::Expected<void> verifyRet_E(const il::core::Function &fn,
-                                                       const il::core::BasicBlock &bb,
-                                                       const il::core::Instr &instr,
-                                                       TypeInference &types);
+                                                      const il::core::BasicBlock &bb,
+                                                      const il::core::Instr &instr,
+                                                      TypeInference &types);
 
 } // namespace il::verify

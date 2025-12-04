@@ -97,9 +97,9 @@ template <typename BlockT, typename Traits>
 /// @param physRegName Physical register name (only used if isPhys).
 /// @return Human-readable register string.
 [[nodiscard]] inline std::string formatRegister(bool isPhys,
-                                                 uint16_t idOrPhys,
-                                                 std::string_view regClassSuffix,
-                                                 std::string_view physRegName = {})
+                                                uint16_t idOrPhys,
+                                                std::string_view regClassSuffix,
+                                                std::string_view physRegName = {})
 {
     std::ostringstream os;
     if (isPhys)

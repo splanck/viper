@@ -33,8 +33,7 @@ struct OopStringHash
 {
     using is_transparent = void;
 
-    template <typename T>
-    [[nodiscard]] std::size_t operator()(const T &key) const noexcept
+    template <typename T> [[nodiscard]] std::size_t operator()(const T &key) const noexcept
     {
         return std::hash<std::string_view>{}(std::string_view(key));
     }
@@ -128,7 +127,8 @@ struct ClassInfo
     std::vector<std::string> vtable;
 
     /// Method declaration source locations (for diagnostics).
-    std::unordered_map<std::string, il::support::SourceLoc, OopStringHash, std::equal_to<>> methodLocs;
+    std::unordered_map<std::string, il::support::SourceLoc, OopStringHash, std::equal_to<>>
+        methodLocs;
 
     /// Interfaces implemented by this class (by stable ID).
     std::vector<int> implementedInterfaces;

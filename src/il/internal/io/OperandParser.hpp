@@ -50,7 +50,7 @@ class OperandParser
     /// @param expectedTargets Number of targets dictated by the opcode metadata.
     /// @return Empty on success; otherwise, a diagnostic describing the malformed targets.
     [[nodiscard]] il::support::Expected<void> parseBranchTargets(const std::string &text,
-                                                                  size_t expectedTargets);
+                                                                 size_t expectedTargets);
 
     /// @brief Parse switch operand payloads consisting of a default target followed by cases.
     /// @param text Textual segment beginning with the default target.

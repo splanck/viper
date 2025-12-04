@@ -29,10 +29,10 @@ static void test_valid_function_and_block_creation()
     IRBuilder b(m);
 
     // Create a function with valid parameters
-    auto &fn = b.startFunction("test_func", Type(Type::Kind::I64), {
-        Param{"x", Type(Type::Kind::I64), 0},
-        Param{"y", Type(Type::Kind::I32), 1}
-    });
+    auto &fn = b.startFunction(
+        "test_func",
+        Type(Type::Kind::I64),
+        {Param{"x", Type(Type::Kind::I64), 0}, Param{"y", Type(Type::Kind::I32), 1}});
     assert(fn.name == "test_func");
     assert(fn.params.size() == 2);
 
@@ -193,10 +193,10 @@ static void test_block_param_access()
     IRBuilder b(m);
 
     auto &fn = b.startFunction("test", Type(Type::Kind::Void), {});
-    b.createBlock(fn, "loop", {
-        Param{"counter", Type(Type::Kind::I64), 0},
-        Param{"sum", Type(Type::Kind::I64), 1}
-    });
+    b.createBlock(
+        fn,
+        "loop",
+        {Param{"counter", Type(Type::Kind::I64), 0}, Param{"sum", Type(Type::Kind::I64), 1}});
 
     auto &bb = fn.blocks[0];
     Value p0 = b.blockParam(bb, 0);
@@ -204,7 +204,7 @@ static void test_block_param_access()
 
     assert(p0.kind == Value::Kind::Temp);
     assert(p1.kind == Value::Kind::Temp);
-    assert(p0.id != p1.id);  // Different temporaries
+    assert(p0.id != p1.id); // Different temporaries
 
     std::cout << "  test_block_param_access: PASSED\n";
 }
@@ -236,9 +236,8 @@ static void test_reserve_temp_increments()
     Module m;
     IRBuilder b(m);
 
-    auto &fn = b.startFunction("test", Type(Type::Kind::Void), {
-        Param{"x", Type(Type::Kind::I64), 0}
-    });
+    auto &fn =
+        b.startFunction("test", Type(Type::Kind::Void), {Param{"x", Type(Type::Kind::I64), 0}});
     (void)fn;
 
     // After function with 1 param, nextTemp should be 1
@@ -246,7 +245,7 @@ static void test_reserve_temp_increments()
     unsigned t2 = b.reserveTempId();
     unsigned t3 = b.reserveTempId();
 
-    assert(t1 == 1);  // Param uses 0
+    assert(t1 == 1); // Param uses 0
     assert(t2 == 2);
     assert(t3 == 3);
 

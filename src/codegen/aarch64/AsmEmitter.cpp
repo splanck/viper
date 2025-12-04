@@ -429,7 +429,8 @@ void AsmEmitter::emitUDivRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg
     os << "  udiv " << rn(dst) << ", " << rn(lhs) << ", " << rn(rhs) << "\n";
 }
 
-void AsmEmitter::emitMSubRRRR(std::ostream &os, PhysReg dst, PhysReg mul1, PhysReg mul2, PhysReg sub) const
+void AsmEmitter::emitMSubRRRR(
+    std::ostream &os, PhysReg dst, PhysReg mul1, PhysReg mul2, PhysReg sub) const
 {
     // AArch64 multiply-subtract: msub xd, xn, xm, xa => xd = xa - xn*xm
     // Used for remainder: rem = dividend - (dividend/divisor)*divisor
@@ -877,12 +878,14 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &mi) const
     // Fallback handling for opcodes that may be missing from the generated
     // dispatch table due to generator drift. Keep these early and return to
     // avoid duplicate emission when present in the generated switch.
-    auto getReg = [](const MOperand &op) -> PhysReg {
+    auto getReg = [](const MOperand &op) -> PhysReg
+    {
         assert(op.kind == MOperand::Kind::Reg && "expected reg operand");
         assert(op.reg.isPhys && "unallocated vreg reached emitter");
         return static_cast<PhysReg>(op.reg.idOrPhys);
     };
-    auto getImm = [](const MOperand &op) -> long long {
+    auto getImm = [](const MOperand &op) -> long long
+    {
         assert(op.kind == MOperand::Kind::Imm && "expected imm operand");
         return op.imm;
     };
@@ -895,8 +898,8 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &mi) const
             emitUDivRRR(os, getReg(mi.ops[0]), getReg(mi.ops[1]), getReg(mi.ops[2]));
             return;
         case MOpcode::MSubRRRR:
-            emitMSubRRRR(os, getReg(mi.ops[0]), getReg(mi.ops[1]), getReg(mi.ops[2]),
-                         getReg(mi.ops[3]));
+            emitMSubRRRR(
+                os, getReg(mi.ops[0]), getReg(mi.ops[1]), getReg(mi.ops[2]), getReg(mi.ops[3]));
             return;
         case MOpcode::AddFpImm:
             emitAddFpImm(os, getReg(mi.ops[0]), getImm(mi.ops[1]));

@@ -104,11 +104,11 @@ class MethodDispatchResolver
     {
         enum class Kind
         {
-            Direct,          ///< Direct call to a known function
-            Virtual,         ///< Virtual dispatch via vtable slot
-            Interface,       ///< Interface dispatch via itable slot
-            RuntimeCatalog,  ///< Call to runtime catalog method
-            Unresolved       ///< Could not resolve
+            Direct,         ///< Direct call to a known function
+            Virtual,        ///< Virtual dispatch via vtable slot
+            Interface,      ///< Interface dispatch via itable slot
+            RuntimeCatalog, ///< Call to runtime catalog method
+            Unresolved      ///< Could not resolve
         };
 
         Kind kind = Kind::Unresolved;

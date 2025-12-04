@@ -33,7 +33,10 @@ using namespace il::core;
 
 namespace
 {
-constexpr il::support::SourceLoc L(unsigned line) { return {1, static_cast<uint32_t>(line), 0}; }
+constexpr il::support::SourceLoc L(unsigned line)
+{
+    return {1, static_cast<uint32_t>(line), 0};
+}
 
 size_t sizeOfKind(Type::Kind k)
 {

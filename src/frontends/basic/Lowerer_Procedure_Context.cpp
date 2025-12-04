@@ -43,15 +43,14 @@ namespace il::frontends::basic
 ///          IR builder used to materialise code.  Copies of lightweight data
 ///          (such as the procedure name) are taken so subsequent passes can
 ///          reference them even if the caller's buffers are reclaimed.
-ProcedureLowering::LoweringContext::LoweringContext(
-    Lowerer &lowerer,
-    SymbolTable::SymbolMap &symbols,
-    il::build::IRBuilder &builder,
-    lower::Emitter &emitter,
-    std::string name,
-    const std::vector<Param> &params,
-    const std::vector<StmtPtr> &body,
-    const Lowerer::ProcedureConfig &config)
+ProcedureLowering::LoweringContext::LoweringContext(Lowerer &lowerer,
+                                                    SymbolTable::SymbolMap &symbols,
+                                                    il::build::IRBuilder &builder,
+                                                    lower::Emitter &emitter,
+                                                    std::string name,
+                                                    const std::vector<Param> &params,
+                                                    const std::vector<StmtPtr> &body,
+                                                    const Lowerer::ProcedureConfig &config)
     : lowerer(lowerer), symbols(symbols), builder(builder), emitter(emitter), name(std::move(name)),
       params(params), body(body), config(config)
 {

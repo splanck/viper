@@ -198,9 +198,7 @@ MethodDispatchResolver::Resolution MethodDispatchResolver::resolveInstanceCall(
 }
 
 MethodDispatchResolver::Resolution MethodDispatchResolver::resolveInterfaceCall(
-    const std::string &interfaceQName,
-    const std::string &methodName,
-    std::size_t argCount)
+    const std::string &interfaceQName, const std::string &methodName, std::size_t argCount)
 {
     Resolution result;
     result.hasReceiver = true;
@@ -254,9 +252,9 @@ MethodDispatchResolver::Resolution MethodDispatchResolver::resolveInterfaceCall(
     {
         if (iface->slots[static_cast<std::size_t>(slotIndex)].returnType)
         {
-            result.returnKind =
-                type_conv::astToIlType(*iface->slots[static_cast<std::size_t>(slotIndex)].returnType)
-                    .kind;
+            result.returnKind = type_conv::astToIlType(
+                                    *iface->slots[static_cast<std::size_t>(slotIndex)].returnType)
+                                    .kind;
         }
     }
 
@@ -264,9 +262,7 @@ MethodDispatchResolver::Resolution MethodDispatchResolver::resolveInterfaceCall(
 }
 
 std::optional<MethodDispatchResolver::Resolution> MethodDispatchResolver::tryRuntimeCatalog(
-    const std::string &classQName,
-    const std::string &methodName,
-    std::size_t argCount)
+    const std::string &classQName, const std::string &methodName, std::size_t argCount)
 {
     // Check if this is a runtime class
     auto isRuntimeClass = [](const std::string &qn)
@@ -362,8 +358,9 @@ void BoundsCheckEmitter::emitBoundsCheck(il::core::Value arrHandle,
     lowerer_.builder->addBlock(*func, okLbl);
 
     std::size_t oobIdx = func->blocks.size();
-    std::string oobLbl = blockNamer ? blockNamer->tag(prefix + "_oob" + std::to_string(bcId))
-                                    : lowerer_.mangler.block(prefix + "_oob" + std::to_string(bcId));
+    std::string oobLbl = blockNamer
+                             ? blockNamer->tag(prefix + "_oob" + std::to_string(bcId))
+                             : lowerer_.mangler.block(prefix + "_oob" + std::to_string(bcId));
     lowerer_.builder->addBlock(*func, oobLbl);
 
     il::core::BasicBlock *ok = &func->blocks[okIdx];

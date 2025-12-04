@@ -135,8 +135,8 @@ il::support::Expected<FrontBasicConfig> parseFrontBasicArgs(int argc, char **arg
                     return il::support::Expected<FrontBasicConfig>(il::support::Diagnostic{
                         il::support::Severity::Error, "failed to parse shared option", {}, {}});
                 case ilc::SharedOptionParseResult::NotMatched:
-                    return il::support::Expected<FrontBasicConfig>(
-                        il::support::Diagnostic{il::support::Severity::Error, "unknown flag", {}, {}});
+                    return il::support::Expected<FrontBasicConfig>(il::support::Diagnostic{
+                        il::support::Severity::Error, "unknown flag", {}, {}});
             }
         }
     }
@@ -167,8 +167,8 @@ il::support::Expected<LoadedSource> loadSourceBuffer(const std::string &path,
     std::ifstream in(path);
     if (!in)
     {
-        return il::support::Expected<LoadedSource>(
-            il::support::Diagnostic{il::support::Severity::Error, "unable to open " + path, {}, {}});
+        return il::support::Expected<LoadedSource>(il::support::Diagnostic{
+            il::support::Severity::Error, "unable to open " + path, {}, {}});
     }
 
     std::ostringstream ss;

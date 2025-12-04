@@ -30,12 +30,12 @@ using il::core::Opcode;
 static thread_local unsigned trapLabelCounter = 0;
 
 std::optional<MFunction> tryFastPaths(const il::core::Function &fn,
-                                       const TargetInfo &ti,
-                                       FrameBuilder &fb,
-                                       MFunction &mf)
+                                      const TargetInfo &ti,
+                                      FrameBuilder &fb,
+                                      MFunction &mf)
 {
     const auto &argOrder = ti.intArgOrder;
-    
+
     auto bbOut = [&](std::size_t idx) -> MBasicBlock & { return mf.blocks[idx]; };
 
     // Helper to get the register holding a value
@@ -1056,9 +1056,10 @@ std::optional<MFunction> tryFastPaths(const il::core::Function &fn,
                                        {MOperand::regOp(PhysReg::X0), MOperand::regOp(src)}});
                         bbMir.instrs.push_back(MInstr{
                             MOpcode::CmpRI, {MOperand::regOp(PhysReg::X0), MOperand::immOp(imm)}});
-                        bbMir.instrs.push_back(MInstr{MOpcode::Cset,
-                                                      {MOperand::regOp(PhysReg::X0),
-                                                       MOperand::condOp(lookupCondition(binI.op))}});
+                        bbMir.instrs.push_back(
+                            MInstr{MOpcode::Cset,
+                                   {MOperand::regOp(PhysReg::X0),
+                                    MOperand::condOp(lookupCondition(binI.op))}});
                         bbMir.instrs.push_back(MInstr{MOpcode::Ret, {}});
                     };
                     if (o0.kind == il::core::Value::Kind::Temp &&

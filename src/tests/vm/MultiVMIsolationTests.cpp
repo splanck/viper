@@ -156,7 +156,9 @@ static void *vtable_class_c_ctx2[1] = {nullptr};
 
 // Mock interface tables
 static void mock_iface_method_ctx1(void) {}
+
 static void mock_iface_method_ctx2(void) {}
+
 static void *itable_ctx1[1] = {(void *)mock_iface_method_ctx1};
 static void *itable_ctx2[1] = {(void *)mock_iface_method_ctx2};
 

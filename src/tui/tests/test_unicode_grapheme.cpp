@@ -41,10 +41,10 @@ using viper::tui::views::TextView;
 // combining grave = CC 80 (U+0300)
 
 // Helper constants to avoid hex escape issues with following characters.
-static const char kCjkZhong[] = "\xE4\xB8\xAD";         // 中
-static const char kCjkWen[] = "\xE6\x96\x87";          // 文
-static const char kCombiningAcute[] = "\xCC\x81";      // U+0301
-static const char kCombiningGrave[] = "\xCC\x80";      // U+0300
+static const char kCjkZhong[] = "\xE4\xB8\xAD";   // 中
+static const char kCjkWen[] = "\xE6\x96\x87";     // 文
+static const char kCombiningAcute[] = "\xCC\x81"; // U+0301
+static const char kCombiningGrave[] = "\xCC\x80"; // U+0300
 
 //===----------------------------------------------------------------------===//
 // char_width tests for combining marks and full-width characters

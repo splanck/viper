@@ -98,9 +98,9 @@ bool materializeValueToVReg(const il::core::Value &v,
         outVReg = nextVRegId++;
         outCls = RegClass::FPR;
         // fmov dV, xTmp  (bit-cast)
-        out.instrs.push_back(MInstr{MOpcode::FMovRR,
-                                    {MOperand::vregOp(RegClass::FPR, outVReg),
-                                     MOperand::vregOp(RegClass::GPR, tmpG)}});
+        out.instrs.push_back(MInstr{
+            MOpcode::FMovRR,
+            {MOperand::vregOp(RegClass::FPR, outVReg), MOperand::vregOp(RegClass::GPR, tmpG)}});
         return true;
     }
     if (v.kind == il::core::Value::Kind::NullPtr)
@@ -135,9 +135,9 @@ bool materializeValueToVReg(const il::core::Value &v,
         {
             outVReg = nextVRegId++;
             outCls = RegClass::GPR;
-            out.instrs.push_back(MInstr{
-                MOpcode::AddFpImm,
-                {MOperand::vregOp(RegClass::GPR, outVReg), MOperand::immOp(allocaOff)}});
+            out.instrs.push_back(
+                MInstr{MOpcode::AddFpImm,
+                       {MOperand::vregOp(RegClass::GPR, outVReg), MOperand::immOp(allocaOff)}});
             // Don't cache: tempVReg[v.id] = outVReg;
             return true;
         }
@@ -436,6 +436,7 @@ bool lowerCallWithArgs(const il::core::Instr &callI,
         uint16_t vreg;
         RegClass cls;
     };
+
     std::vector<ArgInfo> args;
     args.reserve(callI.operands.size() - argStart);
     for (std::size_t i = argStart; i < callI.operands.size(); ++i)
@@ -475,8 +476,7 @@ bool lowerCallWithArgs(const il::core::Instr &callI,
     if (stackBytes > 0)
     {
         seq.prefix.push_back(
-            MInstr{MOpcode::SubSpImm,
-                   {MOperand::immOp(static_cast<long long>(stackBytes))}});
+            MInstr{MOpcode::SubSpImm, {MOperand::immOp(static_cast<long long>(stackBytes))}});
     }
 
     // Second pass: marshal arguments into registers or stack slots
@@ -490,9 +490,9 @@ bool lowerCallWithArgs(const il::core::Instr &callI,
             if (fprIdx < ti.f64ArgOrder.size())
             {
                 PhysReg dst = ti.f64ArgOrder[fprIdx++];
-                seq.prefix.push_back(MInstr{MOpcode::FMovRR,
-                                            {MOperand::regOp(dst),
-                                             MOperand::vregOp(RegClass::FPR, a.vreg)}});
+                seq.prefix.push_back(
+                    MInstr{MOpcode::FMovRR,
+                           {MOperand::regOp(dst), MOperand::vregOp(RegClass::FPR, a.vreg)}});
             }
             else
             {
@@ -509,9 +509,9 @@ bool lowerCallWithArgs(const il::core::Instr &callI,
             if (gprIdx < ti.intArgOrder.size())
             {
                 PhysReg dst = ti.intArgOrder[gprIdx++];
-                seq.prefix.push_back(MInstr{MOpcode::MovRR,
-                                            {MOperand::regOp(dst),
-                                             MOperand::vregOp(RegClass::GPR, a.vreg)}});
+                seq.prefix.push_back(
+                    MInstr{MOpcode::MovRR,
+                           {MOperand::regOp(dst), MOperand::vregOp(RegClass::GPR, a.vreg)}});
             }
             else
             {
@@ -529,8 +529,7 @@ bool lowerCallWithArgs(const il::core::Instr &callI,
     if (stackBytes > 0)
     {
         seq.postfix.push_back(
-            MInstr{MOpcode::AddSpImm,
-                   {MOperand::immOp(static_cast<long long>(stackBytes))}});
+            MInstr{MOpcode::AddSpImm, {MOperand::immOp(static_cast<long long>(stackBytes))}});
     }
 
     return true;
@@ -552,11 +551,11 @@ bool lowerSRemChk0(const il::core::Instr &ins,
     uint16_t lhs = 0, rhs = 0;
     RegClass lhsCls = RegClass::GPR, rhsCls = RegClass::GPR;
 
-    if (!materializeValueToVReg(ins.operands[0], bb, ctx.ti, ctx.fb, out, ctx.tempVReg,
-                                ctx.nextVRegId, lhs, lhsCls))
+    if (!materializeValueToVReg(
+            ins.operands[0], bb, ctx.ti, ctx.fb, out, ctx.tempVReg, ctx.nextVRegId, lhs, lhsCls))
         return false;
-    if (!materializeValueToVReg(ins.operands[1], bb, ctx.ti, ctx.fb, out, ctx.tempVReg,
-                                ctx.nextVRegId, rhs, rhsCls))
+    if (!materializeValueToVReg(
+            ins.operands[1], bb, ctx.ti, ctx.fb, out, ctx.tempVReg, ctx.nextVRegId, rhs, rhsCls))
         return false;
 
     // Generate divide-by-zero check: cmp rhs, #0; b.eq trap_label
@@ -606,11 +605,11 @@ bool lowerSDivChk0(const il::core::Instr &ins,
     uint16_t lhs = 0, rhs = 0;
     RegClass lhsCls = RegClass::GPR, rhsCls = RegClass::GPR;
 
-    if (!materializeValueToVReg(ins.operands[0], bb, ctx.ti, ctx.fb, out, ctx.tempVReg,
-                                ctx.nextVRegId, lhs, lhsCls))
+    if (!materializeValueToVReg(
+            ins.operands[0], bb, ctx.ti, ctx.fb, out, ctx.tempVReg, ctx.nextVRegId, lhs, lhsCls))
         return false;
-    if (!materializeValueToVReg(ins.operands[1], bb, ctx.ti, ctx.fb, out, ctx.tempVReg,
-                                ctx.nextVRegId, rhs, rhsCls))
+    if (!materializeValueToVReg(
+            ins.operands[1], bb, ctx.ti, ctx.fb, out, ctx.tempVReg, ctx.nextVRegId, rhs, rhsCls))
         return false;
 
     // Generate divide-by-zero check: cmp rhs, #0; b.eq trap_label
@@ -651,11 +650,11 @@ bool lowerUDivChk0(const il::core::Instr &ins,
     uint16_t lhs = 0, rhs = 0;
     RegClass lhsCls = RegClass::GPR, rhsCls = RegClass::GPR;
 
-    if (!materializeValueToVReg(ins.operands[0], bb, ctx.ti, ctx.fb, out, ctx.tempVReg,
-                                ctx.nextVRegId, lhs, lhsCls))
+    if (!materializeValueToVReg(
+            ins.operands[0], bb, ctx.ti, ctx.fb, out, ctx.tempVReg, ctx.nextVRegId, lhs, lhsCls))
         return false;
-    if (!materializeValueToVReg(ins.operands[1], bb, ctx.ti, ctx.fb, out, ctx.tempVReg,
-                                ctx.nextVRegId, rhs, rhsCls))
+    if (!materializeValueToVReg(
+            ins.operands[1], bb, ctx.ti, ctx.fb, out, ctx.tempVReg, ctx.nextVRegId, rhs, rhsCls))
         return false;
 
     // Generate divide-by-zero check: cmp rhs, #0; b.eq trap_label
@@ -696,11 +695,11 @@ bool lowerURemChk0(const il::core::Instr &ins,
     uint16_t lhs = 0, rhs = 0;
     RegClass lhsCls = RegClass::GPR, rhsCls = RegClass::GPR;
 
-    if (!materializeValueToVReg(ins.operands[0], bb, ctx.ti, ctx.fb, out, ctx.tempVReg,
-                                ctx.nextVRegId, lhs, lhsCls))
+    if (!materializeValueToVReg(
+            ins.operands[0], bb, ctx.ti, ctx.fb, out, ctx.tempVReg, ctx.nextVRegId, lhs, lhsCls))
         return false;
-    if (!materializeValueToVReg(ins.operands[1], bb, ctx.ti, ctx.fb, out, ctx.tempVReg,
-                                ctx.nextVRegId, rhs, rhsCls))
+    if (!materializeValueToVReg(
+            ins.operands[1], bb, ctx.ti, ctx.fb, out, ctx.tempVReg, ctx.nextVRegId, rhs, rhsCls))
         return false;
 
     // Generate divide-by-zero check: cmp rhs, #0; b.eq trap_label
@@ -749,11 +748,11 @@ bool lowerFpArithmetic(const il::core::Instr &ins,
     uint16_t lhs = 0, rhs = 0;
     RegClass lhsCls = RegClass::FPR, rhsCls = RegClass::FPR;
 
-    if (!materializeValueToVReg(ins.operands[0], bb, ctx.ti, ctx.fb, out, ctx.tempVReg,
-                                ctx.nextVRegId, lhs, lhsCls))
+    if (!materializeValueToVReg(
+            ins.operands[0], bb, ctx.ti, ctx.fb, out, ctx.tempVReg, ctx.nextVRegId, lhs, lhsCls))
         return false;
-    if (!materializeValueToVReg(ins.operands[1], bb, ctx.ti, ctx.fb, out, ctx.tempVReg,
-                                ctx.nextVRegId, rhs, rhsCls))
+    if (!materializeValueToVReg(
+            ins.operands[1], bb, ctx.ti, ctx.fb, out, ctx.tempVReg, ctx.nextVRegId, rhs, rhsCls))
         return false;
 
     const uint16_t dst = ctx.nextVRegId++;
@@ -801,17 +800,17 @@ bool lowerFpCompare(const il::core::Instr &ins,
     uint16_t lhs = 0, rhs = 0;
     RegClass lhsCls = RegClass::FPR, rhsCls = RegClass::FPR;
 
-    if (!materializeValueToVReg(ins.operands[0], bb, ctx.ti, ctx.fb, out, ctx.tempVReg,
-                                ctx.nextVRegId, lhs, lhsCls))
+    if (!materializeValueToVReg(
+            ins.operands[0], bb, ctx.ti, ctx.fb, out, ctx.tempVReg, ctx.nextVRegId, lhs, lhsCls))
         return false;
-    if (!materializeValueToVReg(ins.operands[1], bb, ctx.ti, ctx.fb, out, ctx.tempVReg,
-                                ctx.nextVRegId, rhs, rhsCls))
+    if (!materializeValueToVReg(
+            ins.operands[1], bb, ctx.ti, ctx.fb, out, ctx.tempVReg, ctx.nextVRegId, rhs, rhsCls))
         return false;
 
     // Emit fcmp
-    out.instrs.push_back(MInstr{MOpcode::FCmpRR,
-                                {MOperand::vregOp(RegClass::FPR, lhs),
-                                 MOperand::vregOp(RegClass::FPR, rhs)}});
+    out.instrs.push_back(
+        MInstr{MOpcode::FCmpRR,
+               {MOperand::vregOp(RegClass::FPR, lhs), MOperand::vregOp(RegClass::FPR, rhs)}});
 
     // Emit cset with appropriate condition
     const uint16_t dst = ctx.nextVRegId++;
@@ -837,17 +836,17 @@ bool lowerSitofp(const il::core::Instr &ins,
 
     uint16_t sv = 0;
     RegClass scls = RegClass::GPR;
-    if (!materializeValueToVReg(ins.operands[0], bb, ctx.ti, ctx.fb, out, ctx.tempVReg,
-                                ctx.nextVRegId, sv, scls))
+    if (!materializeValueToVReg(
+            ins.operands[0], bb, ctx.ti, ctx.fb, out, ctx.tempVReg, ctx.nextVRegId, sv, scls))
         return false;
 
     const uint16_t dst = ctx.nextVRegId++;
     ctx.tempVReg[*ins.result] = dst;
     g_tempRegClass[*ins.result] = RegClass::FPR;
 
-    out.instrs.push_back(MInstr{MOpcode::SCvtF,
-                                {MOperand::vregOp(RegClass::FPR, dst),
-                                 MOperand::vregOp(RegClass::GPR, sv)}});
+    out.instrs.push_back(
+        MInstr{MOpcode::SCvtF,
+               {MOperand::vregOp(RegClass::FPR, dst), MOperand::vregOp(RegClass::GPR, sv)}});
     return true;
 }
 
@@ -865,16 +864,16 @@ bool lowerFptosi(const il::core::Instr &ins,
 
     uint16_t fv = 0;
     RegClass fcls = RegClass::FPR;
-    if (!materializeValueToVReg(ins.operands[0], bb, ctx.ti, ctx.fb, out, ctx.tempVReg,
-                                ctx.nextVRegId, fv, fcls))
+    if (!materializeValueToVReg(
+            ins.operands[0], bb, ctx.ti, ctx.fb, out, ctx.tempVReg, ctx.nextVRegId, fv, fcls))
         return false;
 
     const uint16_t dst = ctx.nextVRegId++;
     ctx.tempVReg[*ins.result] = dst;
 
-    out.instrs.push_back(MInstr{MOpcode::FCvtZS,
-                                {MOperand::vregOp(RegClass::GPR, dst),
-                                 MOperand::vregOp(RegClass::FPR, fv)}});
+    out.instrs.push_back(
+        MInstr{MOpcode::FCvtZS,
+               {MOperand::vregOp(RegClass::GPR, dst), MOperand::vregOp(RegClass::FPR, fv)}});
     return true;
 }
 
@@ -892,8 +891,8 @@ bool lowerZext1Trunc1(const il::core::Instr &ins,
 
     uint16_t sv = 0;
     RegClass scls = RegClass::GPR;
-    if (!materializeValueToVReg(ins.operands[0], bb, ctx.ti, ctx.fb, out, ctx.tempVReg,
-                                ctx.nextVRegId, sv, scls))
+    if (!materializeValueToVReg(
+            ins.operands[0], bb, ctx.ti, ctx.fb, out, ctx.tempVReg, ctx.nextVRegId, sv, scls))
         return false;
 
     const uint16_t dst = ctx.nextVRegId++;
@@ -931,8 +930,8 @@ bool lowerNarrowingCast(const il::core::Instr &ins,
 
     uint16_t sv = 0;
     RegClass scls = RegClass::GPR;
-    if (!materializeValueToVReg(ins.operands[0], bb, ctx.ti, ctx.fb, out, ctx.tempVReg,
-                                ctx.nextVRegId, sv, scls))
+    if (!materializeValueToVReg(
+            ins.operands[0], bb, ctx.ti, ctx.fb, out, ctx.tempVReg, ctx.nextVRegId, sv, scls))
         return false;
 
     const uint16_t vt = ctx.nextVRegId++;
@@ -942,9 +941,9 @@ bool lowerNarrowingCast(const il::core::Instr &ins,
     if (sh > 0)
     {
         // Copy sv into vt first
-        out.instrs.push_back(MInstr{MOpcode::MovRR,
-                                    {MOperand::vregOp(RegClass::GPR, vt),
-                                     MOperand::vregOp(RegClass::GPR, sv)}});
+        out.instrs.push_back(
+            MInstr{MOpcode::MovRR,
+                   {MOperand::vregOp(RegClass::GPR, vt), MOperand::vregOp(RegClass::GPR, sv)}});
         if (ins.op == il::core::Opcode::CastSiNarrowChk)
         {
             out.instrs.push_back(MInstr{MOpcode::LslRI,
@@ -971,9 +970,9 @@ bool lowerNarrowingCast(const il::core::Instr &ins,
     else
     {
         // No change in width - just copy
-        out.instrs.push_back(MInstr{MOpcode::MovRR,
-                                    {MOperand::vregOp(RegClass::GPR, vt),
-                                     MOperand::vregOp(RegClass::GPR, sv)}});
+        out.instrs.push_back(
+            MInstr{MOpcode::MovRR,
+                   {MOperand::vregOp(RegClass::GPR, vt), MOperand::vregOp(RegClass::GPR, sv)}});
     }
     return true;
 }

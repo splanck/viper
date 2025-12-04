@@ -488,8 +488,8 @@ Expected<void> checkCall(const VerifyCtx &ctx)
     if (providedArgs != paramCount)
     {
         std::ostringstream ss;
-        ss << "call arg count mismatch: @" << calleeName << " expects " << paramCount
-           << " argument" << (paramCount == 1 ? "" : "s") << " but got " << providedArgs;
+        ss << "call arg count mismatch: @" << calleeName << " expects " << paramCount << " argument"
+           << (paramCount == 1 ? "" : "s") << " but got " << providedArgs;
         return fail(ctx, ss.str());
     }
 
