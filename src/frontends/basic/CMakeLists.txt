@@ -42,6 +42,11 @@ target_sources(fe_basic PRIVATE
         LocationScope.cpp
         Lowerer_Program.cpp
         Lowerer_Procedure.cpp
+        Lowerer_Procedure_Context.cpp
+        Lowerer_Procedure_Signatures.cpp
+        Lowerer_Procedure_Variables.cpp
+        Lowerer_Procedure_Skeleton.cpp
+        Lowerer_Procedure_Emit.cpp
         Lowerer_Statement.cpp
         ProcedureSymbolTracker.cpp
         BasicSymbolQuery.cpp

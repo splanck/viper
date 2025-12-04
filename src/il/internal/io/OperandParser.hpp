@@ -37,23 +37,25 @@ class OperandParser
     /// @brief Parse a single value token (temporary, global, literal, etc.).
     /// @param token Token extracted from the instruction text.
     /// @return Parsed IL value or a diagnostic on failure.
-    il::support::Expected<il::core::Value> parseValueToken(const std::string &token) const;
+    [[nodiscard]] il::support::Expected<il::core::Value> parseValueToken(
+        const std::string &token) const;
 
     /// @brief Parse the call operand syntax and append results to the instruction.
     /// @param text Remainder of the instruction line starting at the callee token.
     /// @return Empty on success; otherwise, a diagnostic describing the malformed call.
-    il::support::Expected<void> parseCallOperands(const std::string &text);
+    [[nodiscard]] il::support::Expected<void> parseCallOperands(const std::string &text);
 
     /// @brief Parse branch target lists of the form `label(args), label(args)`.
     /// @param text Textual segment containing the branch targets.
     /// @param expectedTargets Number of targets dictated by the opcode metadata.
     /// @return Empty on success; otherwise, a diagnostic describing the malformed targets.
-    il::support::Expected<void> parseBranchTargets(const std::string &text, size_t expectedTargets);
+    [[nodiscard]] il::support::Expected<void> parseBranchTargets(const std::string &text,
+                                                                  size_t expectedTargets);
 
     /// @brief Parse switch operand payloads consisting of a default target followed by cases.
     /// @param text Textual segment beginning with the default target.
     /// @return Empty on success; otherwise, a diagnostic describing the malformed switch payload.
-    il::support::Expected<void> parseSwitchTargets(const std::string &text);
+    [[nodiscard]] il::support::Expected<void> parseSwitchTargets(const std::string &text);
 
   private:
     il::support::Expected<std::vector<std::string>> splitCommaSeparated(const std::string &text,

@@ -170,31 +170,74 @@ class Lowerer
     /// @return Fully-qualified name like "A.B.Klass" or the original when no namespace active.
     [[nodiscard]] std::string qualify(const std::string &klass) const;
 
+    // =========================================================================
+    // Source Location API
+    // =========================================================================
+    // These methods provide controlled access to the current source location
+    // for RAII helpers and emission utilities without requiring friendship.
+
+    /// @brief Get the current source location for IR emission.
+    /// @return Reference to the mutable source location.
+    [[nodiscard]] il::support::SourceLoc &sourceLocation() noexcept;
+
+    /// @brief Get the current source location (const).
+    /// @return Reference to the immutable source location.
+    [[nodiscard]] const il::support::SourceLoc &sourceLocation() const noexcept;
+
+    /// @brief Set the current source location for IR emission.
+    /// @param loc New source location to use for subsequent emissions.
+    void setSourceLocation(il::support::SourceLoc loc) noexcept;
+
   private:
-    friend class LocationScope;
-    friend class LowererExprVisitor;
-    friend class LowererStmtVisitor;
-    friend class lower::detail::ExprTypeScanner;
-    friend class lower::detail::RuntimeNeedsScanner;
+    // =========================================================================
+    // Friend Declarations
+    // =========================================================================
+    // Friends are grouped by functional category. Each friend requires access
+    // to private Lowerer internals that cannot be reasonably exposed via public
+    // accessors without breaking encapsulation or creating overly complex APIs.
+    //
+    // Categories:
+    // - Pipeline Helpers: Core lowering orchestration (Program/Procedure/Statement)
+    // - Expression Lowering: Numeric, logical, builtin expression handlers
+    // - Statement Lowering: I/O, control flow, runtime statements
+    // - OOP Helpers: Class method and field emission
+    // - Scanning Infrastructure: Runtime needs and type analysis
+    // - Emission Utilities: IL instruction generation helpers
+
+    // Pipeline Helpers - orchestrate multi-phase lowering
     friend struct ProgramLowering;
     friend struct ProcedureLowering;
     friend struct StatementLowering;
+
+    // Expression Lowering - handle specific expression categories
+    friend class LowererExprVisitor;
     friend struct LogicalExprLowering;
     friend struct NumericExprLowering;
     friend struct BuiltinExprLowering;
     friend class builtins::LowerCtx;
+
+    // Statement Lowering - handle specific statement categories
+    friend class LowererStmtVisitor;
     friend class SelectCaseLowering;
-    friend class lower::Emitter;
-    friend class lower::BuiltinLowerContext;
-    friend class lower::common::CommonLowering;
-    friend class Emit;
     friend class IoStatementLowerer;
     friend class ControlStatementLowerer;
     friend class RuntimeStatementLowerer;
+
+    // OOP Helpers - class/method/field emission
     friend class OopEmitHelper;
     friend struct OopLoweringContext;
+
+    // Scanning Infrastructure - pre-lowering analysis
+    friend class lower::detail::ExprTypeScanner;
+    friend class lower::detail::RuntimeNeedsScanner;
+
+    // Emission Utilities - IL generation helpers that need private emit* methods
+    friend class Emit;               // Wraps emitUnary/emitBinary with location tracking
+    friend class TypeCoercionEngine; // Type coercion needs emitUnary/emitBasicLogicalI64
+    friend class lower::Emitter;
+    friend class lower::BuiltinLowerContext;
+    friend class lower::common::CommonLowering;
     friend class RuntimeCallBuilder;
-    friend class TypeCoercionEngine;
 
     using Module = il::core::Module;
     using Function = il::core::Function;
@@ -267,6 +310,40 @@ class Lowerer
                                 const ProcedureMetadata &metadata);
 
     void allocateLocalSlots(const std::unordered_set<std::string> &paramNames, bool includeParams);
+
+    /// @brief Allocate stack slots for boolean scalars (Pass 1 of slot allocation).
+    void allocateBooleanSlots(const std::unordered_set<std::string> &paramNames, bool includeParams);
+
+    /// @brief Allocate stack slots for arrays and non-boolean scalars (Pass 2).
+    void allocateNonBooleanSlots(const std::unordered_set<std::string> &paramNames,
+                                 bool includeParams);
+
+    /// @brief Allocate auxiliary slots for array length tracking (Pass 3).
+    void allocateArrayLengthSlots(const std::unordered_set<std::string> &paramNames,
+                                  bool includeParams);
+
+    /// @brief Check if a symbol should have a slot allocated.
+    [[nodiscard]] bool shouldAllocateSlot(const std::string &name,
+                                          const SymbolInfo &info,
+                                          const std::unordered_set<std::string> &paramNames,
+                                          bool includeParams) const;
+
+    /// @brief Compute the IL type for a procedure parameter.
+    [[nodiscard]] static il::core::Type computeParamILType(const Param &p);
+
+    /// @brief Materialize a single parameter into a stack slot.
+    void materializeSingleParam(const Param &p, size_t index, size_t ilParamOffset);
+
+    /// @brief Resolve storage for a STATIC variable.
+    [[nodiscard]] std::optional<VariableStorage> resolveStaticVariableStorage(
+        std::string_view name, const SlotType &slotInfo);
+
+    /// @brief Resolve storage for a module-level global variable.
+    [[nodiscard]] std::optional<VariableStorage> resolveModuleLevelStorage(std::string_view name,
+                                                                           const SlotType &slotInfo);
+
+    /// @brief Select the appropriate rt_modvar_addr_* helper based on type kind.
+    [[nodiscard]] std::string selectModvarAddrHelper(il::core::Type::Kind kind);
 
     void lowerStatementSequence(const std::vector<const Stmt *> &stmts,
                                 bool stopOnTerminated,

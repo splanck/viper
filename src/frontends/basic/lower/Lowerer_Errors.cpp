@@ -94,6 +94,35 @@ const SemanticAnalyzer *Lowerer::semanticAnalyzer() const noexcept
     return semanticAnalyzer_;
 }
 
+// =============================================================================
+// Source Location Accessors
+// =============================================================================
+
+/// @brief Access the mutable source location for IR emission.
+/// @details Provides controlled access to the current location so RAII helpers
+///          and emission utilities can manage location state without friendship.
+/// @return Reference to the mutable source location field.
+il::support::SourceLoc &Lowerer::sourceLocation() noexcept
+{
+    return curLoc;
+}
+
+/// @brief Access the immutable source location for IR emission.
+/// @details Const overload for read-only location queries.
+/// @return Reference to the immutable source location field.
+const il::support::SourceLoc &Lowerer::sourceLocation() const noexcept
+{
+    return curLoc;
+}
+
+/// @brief Set the current source location for IR emission.
+/// @details Convenience method for setting the location in a single call.
+/// @param loc New source location to use for subsequent emissions.
+void Lowerer::setSourceLocation(il::support::SourceLoc loc) noexcept
+{
+    curLoc = loc;
+}
+
 /// @brief Coerce a BASIC I/O channel value to the 32-bit integer domain.
 /// @details Accepts either 32-bit or 64-bit integer expressions.  When a
 ///          64-bit value is supplied, it inserts a narrowing conversion into the

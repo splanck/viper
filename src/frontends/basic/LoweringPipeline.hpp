@@ -85,6 +85,14 @@ il::core::Type coreTypeForAstType(::il::frontends::basic::Type ty);
 
 } // namespace pipeline_detail
 
+/// @brief Infer variable type from semantic analyzer, then suffix, then fallback.
+/// @details BUG-001 FIX: Queries semantic analyzer for value-based type inference
+///          before falling back to suffix-based naming convention.
+/// @param lowerer Lowerer instance providing access to semantic analyzer.
+/// @param name Variable name to query.
+/// @return Best-effort type derived from semantic analysis or naming convention.
+Type inferVariableTypeForLowering(const Lowerer &lowerer, std::string_view name);
+
 /// @brief Coordinates program-level lowering by seeding module state and driving emission.
 struct ProgramLowering
 {
@@ -157,6 +165,12 @@ struct ProcedureLowering
     void emitProcedureIL(LoweringContext &ctx);
 
   private:
+    /// @brief Patch empty line blocks with explicit branch to exit.
+    void patchEmptyLineBlocks(LoweringContext &ctx);
+
+    /// @brief Emit cleanup code in the procedure's exit block.
+    void emitProcedureCleanup(LoweringContext &ctx);
+
     Lowerer &lowerer;
 };
 

@@ -212,14 +212,15 @@ Emit::Type Emit::intType(int bits) const
 }
 
 /// @brief Apply the cached source location to the underlying Lowerer.
-/// @details Updates @ref Lowerer::curLoc when a location has been staged via
-///          @ref at.  Called automatically by emission helpers to keep
+/// @details Uses the public setSourceLocation() accessor when a location has
+///          been staged via @ref at. This eliminates the need for Emit to be a
+///          friend of Lowerer. Called automatically by emission helpers to keep
 ///          diagnostics in sync with the original AST nodes.
 void Emit::applyLoc() const
 {
     if (loc_)
     {
-        lowerer_->curLoc = *loc_;
+        lowerer_->setSourceLocation(*loc_);
     }
 }
 

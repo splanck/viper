@@ -174,15 +174,6 @@ struct ParserState
 } // namespace
 
 using LegacyParserState = ::il::io::detail::ParserState;
-
-#define TRY(expr)                                                                                  \
-    do                                                                                             \
-    {                                                                                              \
-        auto _result = (expr);                                                                     \
-        if (!_result)                                                                              \
-            return _result;                                                                        \
-    } while (false)
-
 using Error = Diag;
 
 SourcePos cursorPos(const Cursor &cur)
@@ -840,6 +831,126 @@ Expected<void> parseFunctionHeader(const std::string &header, ParserState &st)
     return {};
 }
 
+/// @brief Parse a single block parameter from "%name: type" syntax.
+/// @details Validates the parameter name prefix, parses the type, and checks
+///          for duplicates against @p localNames.  On success, creates the
+///          parameter and registers the temporary in @p st.
+/// @param paramText Trimmed parameter text, e.g. "%x: i32".
+/// @param st Parser state receiving temporary mappings.
+/// @param localNames Set of names already seen in this block for duplicate detection.
+/// @return Parsed parameter on success; otherwise, a diagnostic.
+Expected<Param> parseBlockParam(const std::string &paramText,
+                                ParserState &st,
+                                std::unordered_set<std::string> &localNames)
+{
+    std::string q = trim(paramText);
+    if (q.empty())
+    {
+        std::ostringstream oss;
+        oss << "line " << st.lineNo << ": bad param";
+        if (!paramText.empty())
+            oss << " '" << paramText << "'";
+        else
+            oss << " ''";
+        oss << " (empty entry)";
+        return Expected<Param>{makeError({}, oss.str())};
+    }
+
+    size_t col = q.find(':');
+    if (col == std::string::npos)
+        return lineError<Param>(st.lineNo, "bad param");
+
+    std::string rawName = trim(q.substr(0, col));
+    if (!rawName.empty() && rawName[0] != '%')
+        return lineError<Param>(st.lineNo, "parameter name must start with '%'");
+
+    std::string nm = rawName;
+    if (!nm.empty() && nm[0] == '%')
+        nm = nm.substr(1);
+    if (nm.empty())
+        return lineError<Param>(st.lineNo, "missing parameter name");
+
+    std::string tyStr = trim(q.substr(col + 1));
+    bool ok = true;
+    Type ty = parseType(tyStr, &ok);
+    if (!ok || ty.kind == Type::Kind::Void)
+        return lineError<Param>(st.lineNo, "unknown param type");
+
+    if (!localNames.insert(nm).second)
+    {
+        std::ostringstream oss;
+        oss << "duplicate parameter name '%" << nm << "'";
+        return lineError<Param>(st.lineNo, oss.str());
+    }
+
+    Param param{nm, ty, st.nextTemp};
+    st.tempIds[nm] = st.nextTemp;
+    if (st.curFn->valueNames.size() <= st.nextTemp)
+        st.curFn->valueNames.resize(st.nextTemp + 1);
+    st.curFn->valueNames[st.nextTemp] = nm;
+    ++st.nextTemp;
+
+    return param;
+}
+
+/// @brief Parse the parameter list from a block header.
+/// @details Extracts parameters between parentheses and delegates to
+///          @ref parseBlockParam for each comma-separated entry.
+/// @param work Block header text starting at the opening parenthesis.
+/// @param lp Index of the opening parenthesis in @p work.
+/// @param st Parser state receiving temporary mappings.
+/// @param bparams Output vector receiving parsed parameters.
+/// @return Empty on success; otherwise, a diagnostic.
+Expected<void> parseBlockParamList(const std::string &work,
+                                   size_t lp,
+                                   ParserState &st,
+                                   std::vector<Param> &bparams)
+{
+    size_t rp = work.find(')', lp);
+    if (rp == std::string::npos)
+        return lineError<void>(st.lineNo, "mismatched ')'");
+
+    std::string paramsStr = work.substr(lp + 1, rp - lp - 1);
+    std::stringstream pss(paramsStr);
+    std::string piece;
+    std::unordered_set<std::string> localNames;
+
+    while (std::getline(pss, piece, ','))
+    {
+        auto param = parseBlockParam(piece, st, localNames);
+        if (!param)
+            return Expected<void>{param.error()};
+        bparams.push_back(std::move(param.value()));
+    }
+
+    return {};
+}
+
+/// @brief Resolve pending branch references that target a newly-opened block.
+/// @details Checks each pending branch against the block label; matching entries
+///          are validated for argument count and removed from the pending list.
+/// @param label Name of the block being opened.
+/// @param paramCount Number of parameters the block declares.
+/// @param st Parser state containing the pending branch list.
+/// @return Empty on success; otherwise, a diagnostic for argument mismatches.
+Expected<void> resolvePendingBranches(const std::string &label, size_t paramCount, ParserState &st)
+{
+    for (auto it = st.pendingBrs.begin(); it != st.pendingBrs.end();)
+    {
+        if (it->label == label)
+        {
+            if (it->args != paramCount)
+                return lineError<void>(it->line, "bad arg count");
+            it = st.pendingBrs.erase(it);
+        }
+        else
+        {
+            ++it;
+        }
+    }
+    return {};
+}
+
 /// @brief Parses a basic-block header and opens a new block in the current
 /// function.
 ///
@@ -862,116 +973,35 @@ Expected<void> parseBlockHeader(const std::string &header, ParserState &st)
     std::string work = trim(header);
     if (work.rfind("handler ", 0) == 0)
         work = trim(work.substr(8));
+
     size_t lp = work.find('(');
-    std::vector<Param> bparams;
     std::string label = lp != std::string::npos ? trim(work.substr(0, lp)) : trim(work);
     if (!label.empty() && label[0] == '^')
         label = label.substr(1);
+
     if (label.empty())
-    {
-        std::ostringstream oss;
-        oss << "line " << st.lineNo << ": missing block label";
-        return Expected<void>{makeError({}, oss.str())};
-    }
+        return lineError<void>(st.lineNo, "missing block label");
+
     if (st.blockParamCount.find(label) != st.blockParamCount.end())
     {
         std::ostringstream oss;
-        oss << "line " << st.lineNo << ": duplicate block '" << label << "'";
-        return Expected<void>{makeError({}, oss.str())};
+        oss << "duplicate block '" << label << "'";
+        return lineError<void>(st.lineNo, oss.str());
     }
-    std::unordered_set<std::string> localNames;
+
+    std::vector<Param> bparams;
     if (lp != std::string::npos)
     {
-        size_t rp = work.find(')', lp);
-        if (rp == std::string::npos)
-        {
-            std::ostringstream oss;
-            oss << "line " << st.lineNo << ": mismatched ')'";
-            return Expected<void>{makeError({}, oss.str())};
-        }
-        std::string paramsStr = work.substr(lp + 1, rp - lp - 1);
-        std::stringstream pss(paramsStr);
-        std::string q;
-        while (std::getline(pss, q, ','))
-        {
-            std::string rawParam = q;
-            q = trim(q);
-            if (q.empty())
-            {
-                std::ostringstream oss;
-                oss << "line " << st.lineNo << ": bad param";
-                if (!rawParam.empty())
-                    oss << " '" << rawParam << "'";
-                else
-                    oss << " ''";
-                oss << " (empty entry)";
-                return Expected<void>{makeError({}, oss.str())};
-            }
-            size_t col = q.find(':');
-            if (col == std::string::npos)
-            {
-                std::ostringstream oss;
-                oss << "line " << st.lineNo << ": bad param";
-                return Expected<void>{makeError({}, oss.str())};
-            }
-            std::string rawName = trim(q.substr(0, col));
-            if (!rawName.empty() && rawName[0] != '%')
-            {
-                std::ostringstream oss;
-                oss << "line " << st.lineNo << ": parameter name must start with '%'";
-                return Expected<void>{makeError({}, oss.str())};
-            }
-            std::string nm = rawName;
-            if (!nm.empty() && nm[0] == '%')
-                nm = nm.substr(1);
-            if (nm.empty())
-            {
-                std::ostringstream oss;
-                oss << "line " << st.lineNo << ": missing parameter name";
-                return Expected<void>{makeError({}, oss.str())};
-            }
-            std::string tyStr = trim(q.substr(col + 1));
-            bool ok = true;
-            Type ty = parseType(tyStr, &ok);
-            if (!ok || ty.kind == Type::Kind::Void)
-            {
-                std::ostringstream oss;
-                oss << "line " << st.lineNo << ": unknown param type";
-                return Expected<void>{makeError({}, oss.str())};
-            }
-            if (!localNames.insert(nm).second)
-            {
-                std::ostringstream oss;
-                oss << "line " << st.lineNo << ": duplicate parameter name '%" << nm << "'";
-                return Expected<void>{makeError({}, oss.str())};
-            }
-            bparams.push_back({nm, ty, st.nextTemp});
-            st.tempIds[nm] = st.nextTemp;
-            if (st.curFn->valueNames.size() <= st.nextTemp)
-                st.curFn->valueNames.resize(st.nextTemp + 1);
-            st.curFn->valueNames[st.nextTemp] = nm;
-            ++st.nextTemp;
-        }
+        auto paramsResult = parseBlockParamList(work, lp, st, bparams);
+        if (!paramsResult)
+            return paramsResult;
     }
+
     st.curFn->blocks.push_back({label, bparams, {}, false});
     st.curBB = &st.curFn->blocks.back();
     st.blockParamCount[label] = bparams.size();
-    for (auto it = st.pendingBrs.begin(); it != st.pendingBrs.end();)
-    {
-        if (it->label == label)
-        {
-            if (it->args != bparams.size())
-            {
-                std::ostringstream oss;
-                oss << "line " << it->line << ": bad arg count";
-                return Expected<void>{makeError({}, oss.str())};
-            }
-            it = st.pendingBrs.erase(it);
-        }
-        else
-            ++it;
-    }
-    return {};
+
+    return resolvePendingBranches(label, bparams.size(), st);
 }
 
 /// @brief Parses an entire function body following an already-read header.
@@ -989,7 +1019,9 @@ Expected<void> parseBlockHeader(const std::string &header, ParserState &st)
 /// @return Empty on success; otherwise, a diagnostic describing the parsing issue.
 Expected<void> parseFunction(std::istream &is, std::string &header, ParserState &st)
 {
-    TRY(parseFunctionHeader(header, st));
+    auto headerResult = parseFunctionHeader(header, st);
+    if (!headerResult)
+        return headerResult;
 
     TokenStream tokens(is, st);
     parser_impl::ParserState local{};
@@ -997,10 +1029,11 @@ Expected<void> parseFunction(std::istream &is, std::string &header, ParserState 
     local.ts = &tokens;
     local.refresh();
 
-    TRY(parseBody(tokens, local));
+    auto bodyResult = parseBody(tokens, local);
+    if (!bodyResult)
+        return bodyResult;
+
     return {};
 }
-
-#undef TRY
 
 } // namespace il::io::detail

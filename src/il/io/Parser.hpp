@@ -74,7 +74,7 @@ class Parser
     /// @param is Input stream containing IL text.
     /// @param m Module to populate with parsed contents.
     /// @return Expected success or diagnostic on failure.
-    static il::support::Expected<void> parse(std::istream &is, il::core::Module &m);
+    [[nodiscard]] static il::support::Expected<void> parse(std::istream &is, il::core::Module &m);
 };
 
 } // namespace il::io
