@@ -1,3 +1,10 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/runtime/FileChannelIoTests.c
 // Purpose: Exercise runtime channel I/O helpers with success paths.
 // Key invariants: Wrappers return Err_None on success and allocate readable strings.
@@ -12,6 +19,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+/// @brief End-to-end checks for channel open/read/write/close workflows.
 int main(void)
 {
     char template_path[128];

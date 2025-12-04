@@ -230,7 +230,7 @@ bool operandsInvariant(const Instr &instr, const std::unordered_set<unsigned> &i
     {
         if (value.kind != Value::Kind::Temp)
             return true; // Constants are always invariant
-        return invariants.count(value.id) > 0;
+        return invariants.contains(value.id);
     };
 
     for (const auto &operand : instr.operands)

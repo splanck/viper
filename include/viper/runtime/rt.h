@@ -1,3 +1,10 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: include/viper/runtime/rt.h
 // Purpose: Provide a single stable umbrella include for the C runtime APIs.
 // Key invariants: Aggregates only public rt_*.h headers in a deterministic order.

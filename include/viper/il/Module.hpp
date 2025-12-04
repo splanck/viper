@@ -1,3 +1,10 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: include/viper/il/Module.hpp
 // Purpose: Stable public entry point for IL core aggregates used by frontends.
 // Key invariants: Re-exports only supported IL core structures; avoid leaking internals.
@@ -31,4 +38,3 @@ namespace core
 // information without depending on src/ paths.
 } // namespace core
 } // namespace il
-

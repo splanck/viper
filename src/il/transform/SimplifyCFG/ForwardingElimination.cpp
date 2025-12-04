@@ -100,7 +100,7 @@ bool isEmptyForwardingBlock(SimplifyCFG::SimplifyCFGPassContext &ctx,
 
         for (const auto &value : terminator->brArgs.front())
         {
-            if (value.kind == il::core::Value::Kind::Temp && definedTemps.count(value.id))
+            if (value.kind == il::core::Value::Kind::Temp && definedTemps.contains(value.id))
                 return false;
         }
     }

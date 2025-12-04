@@ -1,3 +1,10 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: src/runtime/rt_type_registry.c
 // Purpose: Lightweight class metadata registry used by the OOP runtime.
 // Key roles: Supports Object.ToString (via qname lookup), runtime type queries
@@ -183,6 +190,12 @@ static void **find_binding(int type_id, int iface_id)
     return NULL;
 }
 
+/// @brief Register a class metadata descriptor with the active VM registry.
+///
+/// @details Appends @p ci to the per-VM class table, growing the table as
+///          needed. The descriptor's @c base pointer is not modified here; use
+///          @ref rt_register_class_with_base to wire base classes by id.
+/// @param ci Pointer to a constant @ref rt_class_info describing the class.
 void rt_register_class(const rt_class_info *ci)
 {
     if (!ci)
@@ -202,6 +215,8 @@ void rt_register_class(const rt_class_info *ci)
     arr[(*plen)++] = (class_entry){ci->type_id, ci, base_type_id};
 }
 
+/// @brief Register an interface descriptor with the active VM registry.
+/// @param iface Interface registration record (id, name, slot count).
 void rt_register_interface(const rt_iface_reg *iface)
 {
     if (!iface)
@@ -218,6 +233,13 @@ void rt_register_interface(const rt_iface_reg *iface)
     arr[(*plen)++] = (iface_entry){iface->iface_id, *iface};
 }
 
+/// @brief Bind an interface method table to a class type id.
+///
+/// @details Records the association so virtual dispatch via iface calls can
+///          locate the correct itable for instances of @p type_id.
+/// @param type_id     Concrete class type id.
+/// @param iface_id    Interface id to bind.
+/// @param itable_slots Pointer to array of function pointers (length = slot_count).
 void rt_bind_interface(int type_id, int iface_id, void **itable_slots)
 {
     if (!itable_slots)
@@ -235,6 +257,9 @@ void rt_bind_interface(int type_id, int iface_id, void **itable_slots)
     arr[(*plen)++] = (binding_entry){type_id, iface_id, itable_slots};
 }
 
+/// @brief Return the runtime type id for an object instance.
+/// @param obj Object pointer (may be NULL).
+/// @return Type id when known, -1 otherwise.
 int rt_typeid_of(void *obj)
 {
     if (!obj)
@@ -246,6 +271,8 @@ int rt_typeid_of(void *obj)
     return ce ? ce->type_id : -1;
 }
 
+/// @brief Check class inheritance (is-a) by type id.
+/// @return 1 when @p type_id equals or derives from @p test_type_id; 0 otherwise.
 int rt_type_is_a(int type_id, int test_type_id)
 {
     if (type_id == test_type_id)
@@ -260,6 +287,8 @@ int rt_type_is_a(int type_id, int test_type_id)
     return 0;
 }
 
+/// @brief Check whether a class implements an interface by id.
+/// @return 1 if implemented by the class or any ancestor; 0 otherwise.
 int rt_type_implements(int type_id, int iface_id)
 {
     // Check the exact type first.
@@ -278,6 +307,8 @@ int rt_type_implements(int type_id, int iface_id)
     return 0;
 }
 
+/// @brief Safe-cast an object to an interface by id.
+/// @return @p obj when compatible; NULL otherwise.
 void *rt_cast_as_iface(void *obj, int iface_id)
 {
     if (!obj)
@@ -288,6 +319,8 @@ void *rt_cast_as_iface(void *obj, int iface_id)
     return rt_type_implements(tid, iface_id) ? obj : NULL;
 }
 
+/// @brief Safe-cast an object to a target class by id.
+/// @return @p obj when compatible; NULL otherwise.
 void *rt_cast_as(void *obj, int target_type_id)
 {
     if (!obj)
@@ -298,6 +331,10 @@ void *rt_cast_as(void *obj, int target_type_id)
     return rt_type_is_a(tid, target_type_id) ? obj : NULL;
 }
 
+/// @brief Lookup the active interface method table for an object instance.
+/// @param obj      Object to query.
+/// @param iface_id Interface id to search.
+/// @return Pointer to the itable when found; NULL otherwise.
 void **rt_itable_lookup(void *obj, int iface_id)
 {
     if (!obj)
@@ -323,6 +360,7 @@ void **rt_itable_lookup(void *obj, int iface_id)
     return NULL;
 }
 
+/// @brief Convenience wrapper to register an interface using C strings.
 void rt_register_interface_direct(int iface_id, const char *qname, int slot_count)
 {
     (void)qname;
@@ -331,6 +369,8 @@ void rt_register_interface_direct(int iface_id, const char *qname, int slot_coun
     rt_register_interface(&r);
 }
 
+/// @brief Resolve a class descriptor from a vtable pointer.
+/// @return Class info when registered; NULL otherwise.
 const rt_class_info *rt_get_class_info_from_vptr(void **vptr)
 {
     if (!vptr)
@@ -339,6 +379,12 @@ const rt_class_info *rt_get_class_info_from_vptr(void **vptr)
     return ce ? ce->ci : NULL;
 }
 
+/// @brief Register a class descriptor built from parts, with base by id.
+/// @param type_id      Assigned class id.
+/// @param vtable       Vtable pointer array.
+/// @param qname        Qualified class name (borrowed).
+/// @param vslot_count  Number of entries in the vtable.
+/// @param base_type_id Base class id or -1 when none.
 void rt_register_class_with_base(int type_id,
                                   void **vtable,
                                   const char *qname,
@@ -371,12 +417,15 @@ void rt_register_class_with_base(int type_id,
     rt_register_class(ci);
 }
 
+/// @brief Convenience wrapper to register a root class (no base).
 void rt_register_class_direct(int type_id, void **vtable, const char *qname, int vslot_count)
 {
     // Delegate to the base-aware version with no base class.
     rt_register_class_with_base(type_id, vtable, qname, vslot_count, -1);
 }
 
+/// @brief Fetch the vtable pointer array for a registered class id.
+/// @return Vtable pointer array or NULL when unknown.
 void **rt_get_class_vtable(int type_id)
 {
     const class_entry *ce = find_class_by_type(type_id);
@@ -386,6 +435,7 @@ void **rt_get_class_vtable(int type_id)
 }
 
 // Runtime bridge wrapper: accept runtime string for qname
+/// @brief Runtime-string bridge for @ref rt_register_class_direct.
 void rt_register_class_direct_rs(int type_id, void **vtable, rt_string qname, int64_t vslot_count)
 {
     const char *name = qname ? rt_string_cstr(qname) : NULL;
@@ -393,6 +443,7 @@ void rt_register_class_direct_rs(int type_id, void **vtable, rt_string qname, in
 }
 
 // Runtime bridge wrapper: accept runtime string for qname with base class
+/// @brief Runtime-string bridge for @ref rt_register_class_with_base.
 void rt_register_class_with_base_rs(int type_id,
                                     void **vtable,
                                     rt_string qname,

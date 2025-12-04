@@ -447,6 +447,7 @@ MFunction LowerILToMIR::lower(const ILFunction &func)
         MBasicBlock block{};
         block.label = ilBlock.name;
 
+        info.paramVRegs.reserve(ilBlock.paramIds.size());
         for (std::size_t p = 0; p < ilBlock.paramIds.size() && p < ilBlock.paramKinds.size(); ++p)
         {
             const int paramId = ilBlock.paramIds[p];

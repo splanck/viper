@@ -53,7 +53,7 @@ std::string TypeResolver::joinPath(const std::vector<std::string> &segments)
     return result;
 }
 
-std::vector<std::string> TypeResolver::splitPath(const std::string &path)
+std::vector<std::string> TypeResolver::splitPath(std::string_view path)
 {
     std::vector<std::string> segments;
     std::string current;
@@ -81,9 +81,9 @@ std::vector<std::string> TypeResolver::splitPath(const std::string &path)
 }
 
 std::string TypeResolver::tryResolveInNamespace(const std::string &ns,
-                                                const std::string &typeName) const
+                                                std::string_view typeName) const
 {
-    std::string candidate = ns.empty() ? typeName : (ns + "." + typeName);
+    std::string candidate = ns.empty() ? std::string(typeName) : (ns + "." + std::string(typeName));
 
     if (registry_.typeExists(candidate))
     {
@@ -112,13 +112,13 @@ TypeResolver::Kind TypeResolver::convertKind(NamespaceRegistry::TypeKind nsk)
     return Kind::Unknown;
 }
 
-TypeResolver::Result TypeResolver::resolve(std::string name,
+TypeResolver::Result TypeResolver::resolve(std::string_view name,
                                            const std::vector<std::string> &currentNsChain) const
 {
     Result result;
 
     // Check if name contains '.'.
-    bool isQualified = name.find('.') != std::string::npos;
+    bool isQualified = name.find('.') != std::string_view::npos;
 
     if (isQualified)
     {
@@ -159,11 +159,12 @@ TypeResolver::Result TypeResolver::resolve(std::string name,
         }
 
         // Treat as fully-qualified name.
-        if (registry_.typeExists(name))
+        std::string nameStr(name);
+        if (registry_.typeExists(nameStr))
         {
             result.found = true;
-            result.qname = name;
-            result.kind = convertKind(registry_.getTypeKind(name));
+            result.qname = nameStr;
+            result.kind = convertKind(registry_.getTypeKind(nameStr));
             return result;
         }
 

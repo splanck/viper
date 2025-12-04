@@ -33,12 +33,12 @@ std::string UsingContext::toLower(std::string_view str)
     return result;
 }
 
-void UsingContext::add(std::string ns, std::string alias, il::support::SourceLoc loc)
+void UsingContext::add(std::string_view ns, std::string_view alias, il::support::SourceLoc loc)
 {
     // Append to declaration-order vector.
     Import import;
-    import.ns = std::move(ns);
-    import.alias = alias; // Copy for storage in Import struct
+    import.ns = std::string(ns);
+    import.alias = std::string(alias);
     import.loc = loc;
     imports_.push_back(std::move(import));
 

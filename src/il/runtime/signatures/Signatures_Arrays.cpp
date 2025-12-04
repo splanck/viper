@@ -75,9 +75,8 @@ void register_array_signatures()
     // String array operations
     register_signature(make_signature("rt_arr_str_alloc", {Kind::I64}, {Kind::Ptr}));
     register_signature(make_signature("rt_arr_str_release", {Kind::Ptr, Kind::I64}));
-    // String array element access: descriptor returns IL 'string', but the
-    // debug registry normalises runtime ABI shapes; map to Ptr here to match
-    // validation (mapToSigParamKind(Str) -> Ptr).
+    // String array element access: string parameters map to Ptr at the ABI level
+    // (mapToSigParamKind(Str) -> Ptr), so use Ptr here for validation.
     register_signature(make_signature("rt_arr_str_get", {Kind::Ptr, Kind::I64}, {Kind::Ptr}));
     register_signature(make_signature("rt_arr_str_put", {Kind::Ptr, Kind::I64, Kind::Ptr}));
     register_signature(make_signature("rt_arr_str_len", {Kind::Ptr}, {Kind::I64}));

@@ -106,7 +106,7 @@ StatementSequencer Parser::statementSequencer()
 /// @return Newly allocated label number guaranteed not to conflict with any used labels.
 int Parser::allocateSyntheticLabelNumber()
 {
-    while (usedLabelNumbers_.count(nextSyntheticLabel_) != 0)
+    while (usedLabelNumbers_.contains(nextSyntheticLabel_))
         ++nextSyntheticLabel_;
     return nextSyntheticLabel_++;
 }

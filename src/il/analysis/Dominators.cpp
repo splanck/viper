@@ -105,7 +105,7 @@ DomTree computeDominatorTree(const CFGContext &ctx, il::core::Function &F)
             il::core::Block *newIdom = nullptr;
             for (auto *p : preds)
             {
-                if (DT.idom.count(p))
+                if (DT.idom.contains(p))
                 {
                     newIdom = p;
                     break;
@@ -131,12 +131,12 @@ DomTree computeDominatorTree(const CFGContext &ctx, il::core::Function &F)
 
             for (auto *p : preds)
             {
-                if (p == newIdom || !DT.idom.count(p))
+                if (p == newIdom || !DT.idom.contains(p))
                     continue;
                 newIdom = intersect(p, newIdom);
             }
 
-            if (!DT.idom.count(b) || DT.idom[b] != newIdom)
+            if (!DT.idom.contains(b) || DT.idom[b] != newIdom)
             {
                 DT.idom[b] = newIdom;
                 changed = true;

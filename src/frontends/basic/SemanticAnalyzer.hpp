@@ -536,7 +536,7 @@ class SemanticAnalyzer
     /// @brief Pop the most recent loop kind from the loop stack.
     void popLoop();
     /// @brief Track @p name as the active FOR loop variable.
-    void pushForVariable(std::string name);
+    void pushForVariable(std::string_view name);
     /// @brief Remove the most recently tracked FOR loop variable.
     void popForVariable();
     /// @brief Determine if @p name is currently an active FOR loop variable.

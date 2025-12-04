@@ -1,3 +1,10 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/runtime/RTStringBuilderTests.c
 // Purpose: Exercise the runtime string builder helper across edge sizes.
 // Key invariants: Builder maintains null termination, grows without overflow, and
@@ -133,6 +140,7 @@ static void test_append_double_overflow_preserves_state(void)
     rt_sb_free(&sb);
 }
 
+/// @brief Aggregate all rt_string_builder test cases.
 int main(void)
 {
     test_init_empty();

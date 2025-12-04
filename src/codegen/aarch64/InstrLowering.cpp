@@ -437,6 +437,7 @@ bool lowerCallWithArgs(const il::core::Instr &callI,
         RegClass cls;
     };
     std::vector<ArgInfo> args;
+    args.reserve(callI.operands.size() - argStart);
     for (std::size_t i = argStart; i < callI.operands.size(); ++i)
     {
         const auto &arg = callI.operands[i];

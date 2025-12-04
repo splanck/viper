@@ -65,11 +65,11 @@ std::string_view numericTypeName(NumericType type) noexcept
 /// @brief Emit a diagnostic for a type error if a sink is configured.
 /// @param code Diagnostic identifier describing the error.
 /// @param message Human-readable explanation of the violation.
-void emitTypeError(std::string code, std::string message)
+void emitTypeError(std::string_view code, std::string_view message)
 {
     if (auto &sink = typeErrorSink())
     {
-        sink(TypeRules::TypeError{std::move(code), std::move(message)});
+        sink(TypeRules::TypeError{std::string(code), std::string(message)});
     }
 }
 
@@ -86,7 +86,7 @@ void reportUnsupportedBinary(std::string_view op, NumericType lhs, NumericType r
     message += " and ";
     message += numericTypeName(rhs);
     message += '.';
-    emitTypeError("B2101", std::move(message));
+    emitTypeError("B2101", message);
 }
 
 /// @brief Report an unsupported unary operator.
@@ -99,7 +99,7 @@ void reportUnsupportedUnaryOperator(char op, NumericType operand)
     message += "' for operand ";
     message += numericTypeName(operand);
     message += '.';
-    emitTypeError("B2102", std::move(message));
+    emitTypeError("B2102", message);
 }
 
 /// @brief Report an unsupported unary operand for a valid operator.
@@ -112,7 +112,7 @@ void reportUnsupportedUnaryOperand(char op, NumericType operand)
     message += " for unary operator '";
     message.push_back(op);
     message += "'.";
-    emitTypeError("B2103", std::move(message));
+    emitTypeError("B2103", message);
 }
 
 /// @brief Check whether the numeric type is an integer category.

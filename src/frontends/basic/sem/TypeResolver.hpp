@@ -77,7 +77,7 @@ class TypeResolver
     /// @param name Type name to resolve (simple or qualified).
     /// @param currentNsChain Current namespace path segments (e.g., {"A", "B", "C"}).
     /// @return Result with found flag, qualified name, kind, and contenders if ambiguous.
-    [[nodiscard]] Result resolve(std::string name,
+    [[nodiscard]] Result resolve(std::string_view name,
                                  const std::vector<std::string> &currentNsChain) const;
 
   private:
@@ -88,12 +88,12 @@ class TypeResolver
     [[nodiscard]] static std::string joinPath(const std::vector<std::string> &segments);
 
     /// @brief Split a dotted name into segments.
-    [[nodiscard]] static std::vector<std::string> splitPath(const std::string &path);
+    [[nodiscard]] static std::vector<std::string> splitPath(std::string_view path);
 
     /// @brief Try to resolve name in a specific namespace.
     /// @return Fully-qualified name if found; empty otherwise.
     [[nodiscard]] std::string tryResolveInNamespace(const std::string &ns,
-                                                    const std::string &typeName) const;
+                                                    std::string_view typeName) const;
 
     /// @brief Convert NamespaceRegistry::TypeKind to TypeResolver::Kind.
     [[nodiscard]] static Kind convertKind(NamespaceRegistry::TypeKind nsk);

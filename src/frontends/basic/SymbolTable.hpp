@@ -229,21 +229,24 @@ class SymbolTable
     // Direct Access (for migration compatibility)
     // =========================================================================
 
+    /// @brief Map type with heterogeneous lookup support.
+    using SymbolMap = std::unordered_map<std::string, SymbolInfo, StringHash, std::equal_to<>>;
+
     /// @brief Get direct access to the underlying map.
     /// @note Prefer using define/lookup methods for new code.
-    [[nodiscard]] std::unordered_map<std::string, SymbolInfo> &raw() noexcept
+    [[nodiscard]] SymbolMap &raw() noexcept
     {
         return symbols_;
     }
 
-    [[nodiscard]] const std::unordered_map<std::string, SymbolInfo> &raw() const noexcept
+    [[nodiscard]] const SymbolMap &raw() const noexcept
     {
         return symbols_;
     }
 
   private:
     /// @brief Main symbol storage indexed by canonicalized name.
-    std::unordered_map<std::string, SymbolInfo> symbols_;
+    SymbolMap symbols_;
 
     /// @brief Stack of field scopes for class method lowering.
     std::vector<FieldScope> fieldScopes_;

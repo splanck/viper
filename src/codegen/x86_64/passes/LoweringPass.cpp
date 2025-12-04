@@ -296,6 +296,7 @@ class ModuleAdapter
         }
 
         // Adapt each block
+        adapted.blocks.reserve(func.blocks.size());
         for (const auto &block : func.blocks)
         {
             adapted.blocks.push_back(adaptBlock(block));
@@ -311,6 +312,8 @@ class ModuleAdapter
         adapted.name = block.label;
 
         // Register block parameter kinds
+        adapted.paramIds.reserve(block.params.size());
+        adapted.paramKinds.reserve(block.params.size());
         for (const auto &param : block.params)
         {
             const ILValue::Kind kind = typeToKind(param.type);

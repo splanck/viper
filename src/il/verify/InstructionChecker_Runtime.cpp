@@ -317,8 +317,8 @@ Expected<void> checkRuntimeArrayCall(const VerifyCtx &ctx)
                 return result;
             if (auto result = requireOperandType(1, Type::Kind::I64, "index"); !result)
                 return result;
-            // ABI: third param is a pointer to a string slot (ptr), not `str`.
-            if (auto result = requireOperandType(2, Type::Kind::Ptr, "value.ptr"); !result)
+            // ABI: third param is the string value (str) passed by value.
+            if (auto result = requireOperandType(2, Type::Kind::Str, "value"); !result)
                 return result;
             return requireNoResult();
         }

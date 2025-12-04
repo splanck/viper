@@ -1,3 +1,10 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/runtime/FileWrappersTests.c
 // Purpose: Validate runtime file wrappers using Viper string inputs.
 // Key invariants: Missing files return Err_FileNotFound; closing unopened channel is invalid.
@@ -9,6 +16,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+/// @brief Entry point for validating basic file wrapper behaviours.
 int main(void)
 {
     rt_string missing = rt_const_cstr("tests/runtime/does-not-exist.txt");

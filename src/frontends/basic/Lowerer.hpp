@@ -667,7 +667,7 @@ class Lowerer
     Module *mod{nullptr};
     NameMangler mangler;
     SymbolTable symbolTable_; ///< Unified symbol table.
-    std::unordered_map<std::string, SymbolInfo>
+    SymbolTable::SymbolMap
         &symbols;                    ///< Legacy alias (references symbolTable_.raw()).
     StringTable stringTable_;        ///< String literal interning.
     il::support::SourceLoc curLoc{}; ///< current source location for emitted IR
@@ -818,7 +818,7 @@ class Lowerer
     std::unique_ptr<RuntimeStatementLowerer> runtimeStmtLowerer_;
 
     /// @brief Cached layout table indexed by class or TYPE name.
-    std::unordered_map<std::string, ClassLayout> classLayouts_;
+    std::unordered_map<std::string, ClassLayout, StringHash, std::equal_to<>> classLayouts_;
 
     /// @brief Indexed CLASS metadata collected during scanning.
     OopIndex oopIndex_;
@@ -895,11 +895,11 @@ class Lowerer
     /// @details Populated from the main-body variable discovery so procedure
     ///          scopes can recover object element types for global arrays even
     ///          after per-procedure symbol resets.
-    std::unordered_map<std::string, std::string> moduleObjArrayElemClass_;
+    std::unordered_map<std::string, std::string, StringHash, std::equal_to<>> moduleObjArrayElemClass_;
     /// @brief BUG-107 fix: Cache for module-level scalar object types.
-    std::unordered_map<std::string, std::string> moduleObjectClass_;
+    std::unordered_map<std::string, std::string, StringHash, std::equal_to<>> moduleObjectClass_;
     /// @brief BUG-OOP-011 fix: Set of module-level string array names.
-    std::unordered_set<std::string> moduleStrArrayNames_;
+    std::unordered_set<std::string, StringHash, std::equal_to<>> moduleStrArrayNames_;
 
   public:
     /// @brief Clear cached module-level object array and scalar object typing.

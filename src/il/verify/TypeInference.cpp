@@ -249,7 +249,7 @@ void TypeInference::removeTemp(unsigned id)
 ///       that defined ids also have a type mapping.
 bool TypeInference::isDefined(unsigned id) const
 {
-    return defined_.count(id) != 0;
+    return defined_.contains(id);
 }
 
 } // namespace il::verify

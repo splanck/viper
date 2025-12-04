@@ -1,3 +1,10 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/runtime/RTFileModeTests.c
 // Purpose: Verify runtime file mode parsing maps binary modifiers to platform flags.
 // Key invariants: Binary modifier must set the platform-specific binary bit on Windows builds.
@@ -10,6 +17,7 @@
 #include <fcntl.h>
 #include <stdbool.h>
 
+/// @brief Validate flag bits produced by parsing representative mode strings.
 int main(void)
 {
 #ifdef _WIN32

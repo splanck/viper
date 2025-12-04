@@ -44,9 +44,9 @@ namespace il::frontends::basic
 ///          helper inserts the identifier into that set, guaranteeing idempotent
 ///          behaviour across multiple declarations.
 /// @param name Canonical procedure name encountered in the source program.
-void Parser::noteProcedureName(std::string name)
+void Parser::noteProcedureName(std::string_view name)
 {
-    knownProcedures_.insert(std::move(name));
+    knownProcedures_.emplace(name);
 }
 
 /// @brief Query whether @p name is tracked as a known procedure.

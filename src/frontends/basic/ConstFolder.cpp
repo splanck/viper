@@ -103,11 +103,11 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
     }
 
     /// @brief Replace the active expression with a string literal node.
-    /// @param s String payload moved into the replacement literal.
+    /// @param s String payload for the replacement literal.
     /// @param loc Source location propagated to the new node.
-    void replaceWithStr(std::string s, il::support::SourceLoc loc)
+    void replaceWithStr(std::string_view s, il::support::SourceLoc loc)
     {
-        exprSlot() = makeStrExpr(std::move(s), loc);
+        exprSlot() = makeStrExpr(s, loc);
     }
 
     /// @brief Replace the active expression with a floating-point literal node.

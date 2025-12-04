@@ -1,3 +1,10 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: include/viper/runtime/rt_oop.h
 // Purpose: Public OOP runtime ABI for interface registration, binding, and RTTI.
 // Key invariants: type_id and iface_id are process-local, assigned at module load;

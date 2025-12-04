@@ -235,7 +235,7 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
     for (const auto &bb : fn.blocks)
         for (const auto &instr : bb.instructions)
             for (const auto &label : instr.labels)
-                if (!labels.count(label))
+                if (!labels.contains(label))
                     return Expected<void>{
                         /// @brief Handles error condition.
                         makeError({}, formatFunctionDiag(fn, "unknown label " + label))};
@@ -326,7 +326,7 @@ Expected<void> FunctionVerifier::verifyBlock(
             if (!instr.operands.empty() && instr.operands[0].kind == Value::Kind::Temp)
             {
                 const unsigned id = instr.operands[0].id;
-                if (released.count(id) != 0)
+                if (released.contains(id))
                 {
                     std::ostringstream message;
                     message << "double release of %" << id;
@@ -343,7 +343,7 @@ Expected<void> FunctionVerifier::verifyBlock(
                 if (value.kind != Value::Kind::Temp)
                     return Expected<void>{};
                 const unsigned id = value.id;
-                if (released.count(id) == 0)
+                if (!released.contains(id))
                     return Expected<void>{};
                 std::ostringstream message;
                 message << "use after release of %" << id;

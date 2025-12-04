@@ -51,9 +51,8 @@ SymbolInfo &SymbolTable::define(std::string_view name)
 
 SymbolInfo *SymbolTable::lookup(std::string_view name)
 {
-    // Check main symbol table first
-    std::string key(name);
-    if (auto it = symbols_.find(key); it != symbols_.end())
+    // Check main symbol table first (heterogeneous lookup, no allocation)
+    if (auto it = symbols_.find(name); it != symbols_.end())
         return &it->second;
 
     // Fall back to field scopes
@@ -62,8 +61,8 @@ SymbolInfo *SymbolTable::lookup(std::string_view name)
 
 const SymbolInfo *SymbolTable::lookup(std::string_view name) const
 {
-    std::string key(name);
-    if (auto it = symbols_.find(key); it != symbols_.end())
+    // Heterogeneous lookup, no allocation
+    if (auto it = symbols_.find(name); it != symbols_.end())
         return &it->second;
 
     return lookupInFieldScopes(name);
@@ -76,8 +75,14 @@ bool SymbolTable::contains(std::string_view name) const
 
 bool SymbolTable::remove(std::string_view name)
 {
-    std::string key(name);
-    return symbols_.erase(key) > 0;
+    // Heterogeneous lookup for erase
+    auto it = symbols_.find(name);
+    if (it != symbols_.end())
+    {
+        symbols_.erase(it);
+        return true;
+    }
+    return false;
 }
 
 void SymbolTable::resetForNewProcedure()
@@ -353,10 +358,10 @@ bool SymbolTable::isFieldInScope(std::string_view name) const
     if (name.empty())
         return false;
 
-    std::string key(name);
+    // Heterogeneous lookup, no allocation
     for (auto it = fieldScopes_.rbegin(); it != fieldScopes_.rend(); ++it)
     {
-        if (it->symbols.find(key) != it->symbols.end())
+        if (it->symbols.find(name) != it->symbols.end())
             return true;
     }
     return false;
@@ -375,10 +380,10 @@ const FieldScope *SymbolTable::activeFieldScope() const
 
 SymbolInfo *SymbolTable::lookupInFieldScopes(std::string_view name)
 {
-    std::string key(name);
+    // Heterogeneous lookup, no allocation
     for (auto scopeIt = fieldScopes_.rbegin(); scopeIt != fieldScopes_.rend(); ++scopeIt)
     {
-        auto symIt = scopeIt->symbols.find(key);
+        auto symIt = scopeIt->symbols.find(name);
         if (symIt != scopeIt->symbols.end())
             return &symIt->second;
     }
@@ -387,10 +392,10 @@ SymbolInfo *SymbolTable::lookupInFieldScopes(std::string_view name)
 
 const SymbolInfo *SymbolTable::lookupInFieldScopes(std::string_view name) const
 {
-    std::string key(name);
+    // Heterogeneous lookup, no allocation
     for (auto scopeIt = fieldScopes_.rbegin(); scopeIt != fieldScopes_.rend(); ++scopeIt)
     {
-        auto symIt = scopeIt->symbols.find(key);
+        auto symIt = scopeIt->symbols.find(name);
         if (symIt != scopeIt->symbols.end())
             return &symIt->second;
     }

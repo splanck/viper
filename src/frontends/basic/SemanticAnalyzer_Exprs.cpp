@@ -182,7 +182,7 @@ class SemanticAnalyzerExprVisitor final : public MutExprVisitor
         // Resolve right-hand dotted type to class or interface.
         auto existsQ = [&](const std::string &q) -> bool
         {
-            if (analyzer_.oopIndex_.interfacesByQname().count(q))
+            if (analyzer_.oopIndex_.interfacesByQname().contains(q))
                 return true;
             return analyzer_.oopIndex_.findClass(q) != nullptr;
         };
@@ -290,7 +290,7 @@ class SemanticAnalyzerExprVisitor final : public MutExprVisitor
                 std::vector<std::string> hits;
                 auto existsQ = [&](const std::string &q) -> bool
                 {
-                    if (analyzer_.oopIndex_.interfacesByQname().count(q))
+                    if (analyzer_.oopIndex_.interfacesByQname().contains(q))
                         return true;
                     return analyzer_.oopIndex_.findClass(q) != nullptr;
                 };
@@ -350,7 +350,7 @@ class SemanticAnalyzerExprVisitor final : public MutExprVisitor
             }
         }
         bool resolved = false;
-        if (analyzer_.oopIndex_.interfacesByQname().count(dotted))
+        if (analyzer_.oopIndex_.interfacesByQname().contains(dotted))
             resolved = true;
         if (!resolved)
         {
@@ -491,7 +491,7 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeNew(NewExpr &expr)
         auto existsQ = [&](const std::string &q) -> bool
         {
             std::string decl = mapCanonicalToDeclared(q);
-            if (oopIndex_.interfacesByQname().count(decl))
+            if (oopIndex_.interfacesByQname().contains(decl))
                 return true;
             return oopIndex_.findClass(decl) != nullptr;
         };
@@ -686,7 +686,7 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeNew(NewExpr &expr)
         if (param.isArray)
         {
             const auto *var = as<const VarExpr>(*argExpr);
-            if (!var || !arrays_.count(var->name))
+            if (!var || !arrays_.contains(var->name))
             {
                 il::support::SourceLoc loc = argExpr ? argExpr->loc : expr.loc;
                 std::string msg = "constructor argument " + std::to_string(i + 1) + " for '" +

@@ -560,7 +560,7 @@ class Parser
 
     /// @brief Remember a procedure name for later diagnostics.
     /// @param name BASIC identifier of the procedure.
-    void noteProcedureName(std::string name);
+    void noteProcedureName(std::string_view name);
 
     /// @brief Check whether @p name has been seen as a procedure declaration.
     /// @param name Identifier to test.
@@ -669,13 +669,13 @@ class Parser
     /// @param name Variable identifier.
     /// @param loc Source location of the identifier.
     /// @return Variable reference expression node.
-    ExprPtr parseVariableRef(std::string name, il::support::SourceLoc loc);
+    ExprPtr parseVariableRef(std::string_view name, il::support::SourceLoc loc);
 
     /// @brief Parse a reference to an array element.
     /// @param name Array identifier.
     /// @param loc Source location of the identifier.
     /// @return Array reference expression node.
-    ExprPtr parseArrayRef(std::string name, il::support::SourceLoc loc);
+    ExprPtr parseArrayRef(std::string_view name, il::support::SourceLoc loc);
 
     /// @brief Parse either an array or variable reference based on lookahead.
     /// @return Parsed reference expression node.

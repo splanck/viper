@@ -200,14 +200,14 @@ void assignSpillSlots(MFunction &func, const TargetInfo &target, FrameInfo &fram
         {
             continue; // %rbp handled separately by the standard prologue/epilogue.
         }
-        if (usedCalleeSaved.count(reg) != 0)
+        if (usedCalleeSaved.contains(reg))
         {
             frame.usedCalleeSaved.push_back(reg);
         }
     }
     for (auto reg : target.calleeSavedXMM)
     {
-        if (usedCalleeSaved.count(reg) != 0)
+        if (usedCalleeSaved.contains(reg))
         {
             frame.usedCalleeSaved.push_back(reg);
         }

@@ -362,11 +362,8 @@ void RuntimeStatementLowerer::assignArrayElement(const ArrayExpr &target,
         (isImplicitFieldArray && memberElemAstType == ::il::frontends::basic::Type::Str))
     {
         // String array: use rt_arr_str_put (handles retain/release)
-        // ABI expects a pointer to the string handle for the value operand.
-        // Materialize a temporary slot, store the string handle, and pass its address.
-        Value tmp = lowerer_.emitAlloca(8);
-        lowerer_.emitStore(il::core::Type(il::core::Type::Kind::Str), tmp, value.value);
-        lowerer_.emitCall("rt_arr_str_put", {access.base, access.index, tmp});
+        // Pass the string handle directly - the C runtime expects rt_string by value.
+        lowerer_.emitCall("rt_arr_str_put", {access.base, access.index, value.value});
     }
     else if (value.type.kind == il::core::Type::Kind::Ptr ||
              (!isMemberArray && info && info->isObject) || isMemberObjectArray)

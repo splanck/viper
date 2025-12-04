@@ -141,7 +141,8 @@ const ClassInfo::MethodInfo *OopIndex::findMethod(const std::string &className,
     if (!info)
         return nullptr;
 
-    auto it = info->methods.find(std::string(methodName));
+    // Heterogeneous lookup - no temporary std::string allocation
+    auto it = info->methods.find(methodName);
     if (it != info->methods.end())
         return &it->second;
 
@@ -154,7 +155,8 @@ const ClassInfo::MethodInfo *OopIndex::findMethodInHierarchy(const std::string &
     const ClassInfo *cur = findClass(className);
     while (cur)
     {
-        auto it = cur->methods.find(std::string(methodName));
+        // Heterogeneous lookup - no temporary std::string allocation
+        auto it = cur->methods.find(methodName);
         if (it != cur->methods.end())
             return &it->second;
 

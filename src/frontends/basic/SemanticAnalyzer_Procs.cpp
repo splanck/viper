@@ -878,7 +878,7 @@ std::vector<SemanticAnalyzer::Type> SemanticAnalyzer::checkCallArgs(const CallEx
         {
             auto *argExpr = c.args[i].get();
             auto *v = as<VarExpr>(*argExpr);
-            if (!v || !arrays_.count(v->name))
+            if (!v || !arrays_.contains(v->name))
             {
                 il::support::SourceLoc loc = argExpr ? argExpr->loc : c.loc;
                 std::string msg = "argument " + std::to_string(i + 1) + " to " + c.callee +

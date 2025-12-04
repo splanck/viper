@@ -677,6 +677,7 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
                     // BUG-094 fix: Lower all indices and compute flattened index for
                     // multi-dimensional arrays
                     std::vector<Lowerer::Value> indices;
+                    indices.reserve(expr.args.size());
                     for (const auto &arg : expr.args)
                     {
                         if (arg)

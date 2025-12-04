@@ -54,6 +54,7 @@
 
 #include "il/runtime/RuntimeSignatures.hpp"
 #include <cstddef>
+#include <functional>
 #include <optional>
 #include <span>
 #include <string>
@@ -66,6 +67,18 @@
 
 namespace il::frontends::basic
 {
+
+/// @brief Hash functor for heterogeneous string lookup (C++20).
+struct ProcStringHash
+{
+    using is_transparent = void;
+
+    template <typename T>
+    [[nodiscard]] std::size_t operator()(const T &key) const noexcept
+    {
+        return std::hash<std::string_view>{}(std::string_view(key));
+    }
+};
 
 struct ProcSignature
 {
@@ -85,7 +98,7 @@ struct ProcSignature
     std::vector<Param> params;
 };
 
-using ProcTable = std::unordered_map<std::string, ProcSignature>;
+using ProcTable = std::unordered_map<std::string, ProcSignature, ProcStringHash, std::equal_to<>>;
 
 class ProcRegistry
 {
@@ -115,7 +128,7 @@ class ProcRegistry
 
     const ProcTable &procs() const;
 
-    const ProcSignature *lookup(const std::string &name) const;
+    const ProcSignature *lookup(std::string_view name) const;
 
     // P1.3 API additions
     void AddProc(const FunctionDecl *fn, il::support::SourceLoc loc);
@@ -141,7 +154,7 @@ class ProcRegistry
 
     SemanticDiagnostics &de;
     ProcTable procs_;
-    std::unordered_map<std::string, ProcEntry> byQualified_;
+    std::unordered_map<std::string, ProcEntry, ProcStringHash, std::equal_to<>> byQualified_;
 };
 
 } // namespace il::frontends::basic

@@ -124,7 +124,7 @@ std::optional<SemanticAnalyzer::Type> SemanticAnalyzer::lookupVarType(const std:
 /// @return True when the symbol is registered at module scope.
 bool SemanticAnalyzer::isModuleLevelSymbol(const std::string &name) const
 {
-    return symbols_.count(name) > 0;
+    return symbols_.contains(name);
 }
 
 /// @brief Check if a symbol is a module-level CONST.
@@ -138,7 +138,7 @@ bool SemanticAnalyzer::isModuleLevelSymbol(const std::string &name) const
 /// @return True when the symbol is a module-level CONST.
 bool SemanticAnalyzer::isConstSymbol(const std::string &name) const
 {
-    return constants_.count(name) > 0;
+    return constants_.contains(name);
 }
 
 /// @brief Resolve a symbol through the scope stack and update default type tracking.
@@ -158,7 +158,7 @@ void SemanticAnalyzer::resolveAndTrackSymbol(std::string &name, SymbolKind kind)
     }
     else if (scopes_.hasScope())
     {
-        if (symbols_.count(name) > 0)
+        if (symbols_.contains(name))
         {
             // Name exists at module level and is not shadowed by a local.
             // Keep the original name - it will resolve to the module-level variable.

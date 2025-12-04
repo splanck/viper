@@ -846,7 +846,7 @@ class LinearAllocator
         {
             for (auto r : ti_.calleeSavedGPR)
             {
-                if (pools_.calleeUsed.count(r))
+                if (pools_.calleeUsed.contains(r))
                     fn_.savedGPRs.push_back(r);
             }
         }
@@ -854,7 +854,7 @@ class LinearAllocator
         {
             for (auto r : ti_.calleeSavedFPR)
             {
-                if (pools_.calleeUsedFPR.count(r))
+                if (pools_.calleeUsedFPR.contains(r))
                     fn_.savedFPRs.push_back(r);
             }
         }

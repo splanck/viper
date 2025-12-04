@@ -31,6 +31,7 @@
 
 #include "il/core/fwd.hpp"
 
+#include <functional>
 #include <string>
 #include <string_view>
 #include <unordered_set>
@@ -38,6 +39,18 @@
 
 namespace il::transform
 {
+
+/// @brief Hash functor for heterogeneous string lookup (C++20).
+struct LoopStringHash
+{
+    using is_transparent = void;
+
+    template <typename T>
+    [[nodiscard]] std::size_t operator()(const T &key) const noexcept
+    {
+        return std::hash<std::string_view>{}(std::string_view(key));
+    }
+};
 
 /// \brief Summary of a single natural loop discovered in a function.
 struct Loop
@@ -53,7 +66,7 @@ struct Loop
     [[nodiscard]] bool contains(std::string_view label) const;
 
   private:
-    std::unordered_set<std::string> members_;
+    std::unordered_set<std::string, LoopStringHash, std::equal_to<>> members_;
 
     friend class LoopInfo;
     void finalize();

@@ -1,3 +1,10 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/runtime/RTFileModeStringTests.c
 // Purpose: Validate that BASIC OPEN mode enumerations map to the expected mode strings.
 // Key invariants: Returned mode strings are stable literals that include required modifiers.
@@ -17,6 +24,7 @@ static void assert_mode_literal(int32_t mode, const char *expected)
     assert(strcmp(mode_literal, expected) == 0);
 }
 
+/// @brief Entry point for verifying mode-to-string mapping invariants.
 int main(void)
 {
     assert_mode_literal(RT_F_INPUT, "r");

@@ -18,13 +18,27 @@
 #include "frontends/basic/ast/NodeFwd.hpp"
 #include "support/source_location.hpp"
 
+#include <functional>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
 namespace il::frontends::basic
 {
+
+/// @brief Hash functor for heterogeneous string lookup (C++20).
+struct OopStringHash
+{
+    using is_transparent = void;
+
+    template <typename T>
+    [[nodiscard]] std::size_t operator()(const T &key) const noexcept
+    {
+        return std::hash<std::string_view>{}(std::string_view(key));
+    }
+};
 
 /// @brief Signature used for interface slots (parameters + return type).
 struct IfaceMethodSig
@@ -107,14 +121,14 @@ struct ClassInfo
         bool isGetter = false;           ///< True for getter; false for setter when accessor.
     };
 
-    /// Declared methods indexed by name.
-    std::unordered_map<std::string, MethodInfo> methods;
+    /// Declared methods indexed by name (heterogeneous lookup enabled).
+    std::unordered_map<std::string, MethodInfo, OopStringHash, std::equal_to<>> methods;
 
     /// Ordered virtual method names by slot for deterministic ABI layout.
     std::vector<std::string> vtable;
 
     /// Method declaration source locations (for diagnostics).
-    std::unordered_map<std::string, il::support::SourceLoc> methodLocs;
+    std::unordered_map<std::string, il::support::SourceLoc, OopStringHash, std::equal_to<>> methodLocs;
 
     /// Interfaces implemented by this class (by stable ID).
     std::vector<int> implementedInterfaces;

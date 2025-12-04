@@ -103,7 +103,7 @@ struct ProcedureLowering
     struct LoweringContext
     {
         LoweringContext(Lowerer &lowerer,
-                        std::unordered_map<std::string, Lowerer::SymbolInfo> &symbols,
+                        SymbolTable::SymbolMap &symbols,
                         il::build::IRBuilder &builder,
                         lower::Emitter &emitter,
                         std::string name,
@@ -112,7 +112,7 @@ struct ProcedureLowering
                         const Lowerer::ProcedureConfig &config);
 
         Lowerer &lowerer;
-        std::unordered_map<std::string, Lowerer::SymbolInfo> &symbols;
+        SymbolTable::SymbolMap &symbols;
         il::build::IRBuilder &builder;
         lower::Emitter &emitter;
         std::string name;

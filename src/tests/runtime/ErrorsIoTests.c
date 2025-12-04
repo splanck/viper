@@ -1,3 +1,10 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: tests/runtime/ErrorsIoTests.c
 // Purpose: Validate runtime file helpers return structured errors on failure paths.
 // Key invariants: Missing files map to Err_FileNotFound, EOF detection yields Err_EOF, and OS
@@ -171,6 +178,7 @@ static void ensure_seek_out_of_range_reports_invalid_operation(void)
 #endif
 }
 
+/// @brief Execute all IO error-path unit checks.
 int main(void)
 {
     ensure_missing_open_sets_file_not_found();

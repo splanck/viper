@@ -150,7 +150,7 @@ void SemanticAnalyzer::analyzeOpen(OpenStmt &stmt)
         else if (auto *intExpr = as<IntExpr>(*stmt.channelExpr))
         {
             long long channel = intExpr->value;
-            bool wasOpen = openChannels_.count(channel) > 0;
+            bool wasOpen = openChannels_.contains(channel);
             if (wasOpen)
             {
                 std::string msg = "channel #";
@@ -194,7 +194,7 @@ void SemanticAnalyzer::analyzeClose(CloseStmt &stmt)
     if (auto *intExpr = as<IntExpr>(*stmt.channelExpr))
     {
         long long channel = intExpr->value;
-        if (openChannels_.count(channel))
+        if (openChannels_.contains(channel))
         {
             if (activeProcScope_)
                 activeProcScope_->noteChannelMutation(channel, true);

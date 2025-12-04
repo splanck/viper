@@ -199,7 +199,7 @@ void RuntimeHelperTracker::declareRequiredRuntime(build::IRBuilder &b, bool boun
                 auto otherId = il::runtime::findRuntimeSignatureId(other.name);
                 if (!otherId || *otherId != *sigId)
                     continue;
-                if (usedNames_.count(std::string(other.name)) > 0)
+                if (usedNames_.contains(std::string(other.name)))
                 {
                     usedSpelling = other.name;
                     break;
@@ -212,7 +212,7 @@ void RuntimeHelperTracker::declareRequiredRuntime(build::IRBuilder &b, bool boun
             // This allows declaring multiple aliases in the same signature
             // group when both were referenced (e.g., Viper.Strings.Mid and
             // Viper.String.Substring).
-            if (usedNames_.count(std::string(d.name)) == 0)
+            if (!usedNames_.contains(std::string(d.name)))
                 return;
         }
         else
@@ -745,7 +745,7 @@ void Lowerer::declareRequiredRuntime(build::IRBuilder &b)
                     auto otherId = il::runtime::findRuntimeSignatureId(other.name);
                     if (!otherId || *otherId != *sigId)
                         continue;
-                    if (runtimeTracker.usedNames().count(std::string(other.name)))
+                    if (runtimeTracker.usedNames().contains(std::string(other.name)))
                     {
                         spelling = std::string(other.name);
                         break;

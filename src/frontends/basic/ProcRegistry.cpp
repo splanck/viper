@@ -274,16 +274,16 @@ const ProcTable &ProcRegistry::procs() const
 ///
 /// @param name Identifier to search for.
 /// @return Pointer to the stored signature when found; otherwise nullptr.
-const ProcSignature *ProcRegistry::lookup(const std::string &name) const
+const ProcSignature *ProcRegistry::lookup(std::string_view name) const
 {
-    // First try exact lookup for performance
+    // First try exact lookup for performance (heterogeneous lookup, no allocation)
     auto it = procs_.find(name);
     if (it != procs_.end())
         return &it->second;
 
     // Canonicalize qualified names (case-insensitive, strip suffix from final segment)
     std::string key;
-    if (name.find('.') != std::string::npos)
+    if (name.find('.') != std::string_view::npos)
         key = canonicalizeQualifiedFlat(name);
     else
         key = CanonicalizeIdent(stripSuffix(name));
@@ -308,7 +308,8 @@ void ProcRegistry::AddProc(const FunctionDecl *fn, il::support::SourceLoc loc)
 
 const ProcRegistry::ProcEntry *ProcRegistry::LookupExact(std::string_view qualified) const
 {
-    auto it = byQualified_.find(std::string{qualified});
+    // Heterogeneous lookup, no allocation
+    auto it = byQualified_.find(qualified);
     return it == byQualified_.end() ? nullptr : &it->second;
 }
 

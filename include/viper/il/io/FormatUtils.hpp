@@ -1,3 +1,10 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: include/viper/il/io/FormatUtils.hpp
 // Purpose: Declare formatting helpers used by IL-level utilities and frontends.
 // Key invariants: Formatting remains locale-independent and matches runtime
@@ -25,4 +32,3 @@ namespace viper::il::io
 [[nodiscard]] std::string format_float(double value);
 
 } // namespace viper::il::io
-

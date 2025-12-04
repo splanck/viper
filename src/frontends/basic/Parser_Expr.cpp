@@ -241,7 +241,7 @@ ExprPtr Parser::parseString()
         decoded = peek().lexeme;
     }
     consume();
-    return makeStrExpr(std::move(decoded), loc);
+    return makeStrExpr(decoded, loc);
 }
 
 /// @brief Parse a call to a BASIC builtin function.
@@ -298,11 +298,11 @@ ExprPtr Parser::parseBuiltinCall(BuiltinCallExpr::Builtin builtin, il::support::
 /// @param name Identifier captured from the token stream.
 /// @param loc Source location of the identifier.
 /// @return Variable reference expression.
-ExprPtr Parser::parseVariableRef(std::string name, il::support::SourceLoc loc)
+ExprPtr Parser::parseVariableRef(std::string_view name, il::support::SourceLoc loc)
 {
     auto v = std::make_unique<VarExpr>();
     v->loc = loc;
-    v->name = std::move(name);
+    v->name = name;
     return v;
 }
 
@@ -314,7 +314,7 @@ ExprPtr Parser::parseVariableRef(std::string name, il::support::SourceLoc loc)
 /// @param name Array identifier.
 /// @param loc Source location of the identifier.
 /// @return Array reference expression with the parsed indices.
-ExprPtr Parser::parseArrayRef(std::string name, il::support::SourceLoc loc)
+ExprPtr Parser::parseArrayRef(std::string_view name, il::support::SourceLoc loc)
 {
     expect(TokenKind::LParen);
 
@@ -331,7 +331,7 @@ ExprPtr Parser::parseArrayRef(std::string name, il::support::SourceLoc loc)
 
     auto arr = std::make_unique<ArrayExpr>();
     arr->loc = loc;
-    arr->name = std::move(name);
+    arr->name = name;
 
     // For backward compatibility with single-dimensional arrays:
     // - Populate only the deprecated 'index' field when exactly one index is present.
@@ -368,7 +368,7 @@ ExprPtr Parser::parseArrayOrVar()
         if (auto b = lookupBuiltin(name))
             return parseBuiltinCall(*b, loc);
 
-        if (arrays_.count(name))
+        if (arrays_.contains(name))
             return parseArrayRef(name, loc);
 
         expect(TokenKind::LParen);

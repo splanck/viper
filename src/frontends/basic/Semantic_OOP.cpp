@@ -64,7 +64,7 @@ class MemberShadowCheckWalker final : public BasicAstWalker<MemberShadowCheckWal
     {
         if (!emitter_ || stmt.name.empty())
             return;
-        if (!fields_.count(stmt.name))
+        if (!fields_.contains(stmt.name))
             return;
 
         std::string qualifiedField = className_;
@@ -692,7 +692,7 @@ void OopIndexBuilder::scanInterfaces(const std::vector<StmtPtr> &stmts)
                                        "interfaces cannot declare STATIC methods");
                     }
 
-                    if (seen.count(md->name))
+                    if (seen.contains(md->name))
                     {
                         if (emitter_)
                         {
@@ -769,7 +769,7 @@ std::string OopIndexBuilder::resolveBase(const std::string &classQ, const std::s
     // Already qualified?
     if (raw.find('.') != std::string::npos)
     {
-        if (index_.classes().count(raw))
+        if (index_.classes().contains(raw))
             return raw;
     }
 
@@ -777,11 +777,11 @@ std::string OopIndexBuilder::resolveBase(const std::string &classQ, const std::s
     auto lastDot = classQ.rfind('.');
     std::string prefix = (lastDot == std::string::npos) ? std::string{} : classQ.substr(0, lastDot);
     std::string candidate = prefix.empty() ? raw : (prefix + "." + raw);
-    if (index_.classes().count(candidate))
+    if (index_.classes().contains(candidate))
         return candidate;
 
     // Fallback to raw as top-level
-    if (index_.classes().count(raw))
+    if (index_.classes().contains(raw))
         return raw;
 
     return {};
@@ -792,17 +792,17 @@ std::string OopIndexBuilder::resolveInterface(const std::string &classQ,
 {
     if (raw.find('.') != std::string::npos)
     {
-        if (index_.interfacesByQname().count(raw))
+        if (index_.interfacesByQname().contains(raw))
             return raw;
     }
 
     auto lastDot = classQ.rfind('.');
     std::string prefix = (lastDot == std::string::npos) ? std::string{} : classQ.substr(0, lastDot);
     std::string candidate = prefix.empty() ? raw : (prefix + "." + raw);
-    if (index_.interfacesByQname().count(candidate))
+    if (index_.interfacesByQname().contains(candidate))
         return candidate;
 
-    if (index_.interfacesByQname().count(raw))
+    if (index_.interfacesByQname().contains(raw))
         return raw;
 
     return {};
@@ -830,7 +830,7 @@ void OopIndexBuilder::resolveBasesAndImplements()
                     for (const auto &imp : usingCtx_.imports)
                     {
                         std::string cand = imp + "." + rawMaybeAliased;
-                        if (index_.classes().count(cand))
+                        if (index_.classes().contains(cand))
                             hits.push_back(std::move(cand));
                     }
 

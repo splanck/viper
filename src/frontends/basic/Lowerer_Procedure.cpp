@@ -228,7 +228,7 @@ class VarCollectWalker final : public BasicAstWalker<VarCollectWalker>
 ///          reference them even if the caller's buffers are reclaimed.
 ProcedureLowering::LoweringContext::LoweringContext(
     Lowerer &lowerer,
-    std::unordered_map<std::string, Lowerer::SymbolInfo> &symbols,
+    SymbolTable::SymbolMap &symbols,
     il::build::IRBuilder &builder,
     lower::Emitter &emitter,
     std::string name,
@@ -426,7 +426,8 @@ Lowerer::SlotType Lowerer::getSlotType(std::string_view name) const
     AstType astTy = inferVariableTypeForLowering(*this, name);
 
     // BUG-107 fix: Check module-level scalar object cache first
-    auto modObjIt = moduleObjectClass_.find(std::string(name));
+    // Heterogeneous lookup - no temporary std::string allocation
+    auto modObjIt = moduleObjectClass_.find(name);
     if (modObjIt != moduleObjectClass_.end())
     {
         info.type = Type(Type::Kind::Ptr);
@@ -688,8 +689,8 @@ std::string Lowerer::canonicalLayoutKey(std::string_view className) const
 
 const Lowerer::ClassLayout *Lowerer::findClassLayout(std::string_view className) const
 {
-    // Try direct key
-    auto it = classLayouts_.find(std::string(className));
+    // Try direct key (heterogeneous lookup - no temporary std::string allocation)
+    auto it = classLayouts_.find(className);
     if (it != classLayouts_.end())
         return &it->second;
     // Try canonicalized key (qualified → unqualified; corrected casing)
@@ -895,6 +896,7 @@ void ProcedureLowering::collectVars(const std::vector<const Stmt *> &stmts)
 void ProcedureLowering::collectVars(const Program &prog)
 {
     std::vector<const Stmt *> ptrs;
+    ptrs.reserve(prog.procs.size() + prog.main.size());
     for (const auto &s : prog.procs)
         ptrs.push_back(s.get());
     for (const auto &s : prog.main)
@@ -1523,7 +1525,7 @@ std::string Lowerer::lookupModuleArrayElemClass(std::string_view name) const
 
 bool Lowerer::isModuleStrArray(std::string_view name) const
 {
-    return moduleStrArrayNames_.count(std::string{name}) > 0;
+    return moduleStrArrayNames_.contains(std::string{name});
 }
 
 /// @brief Allocate stack slots and store incoming arguments for parameters.

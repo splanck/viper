@@ -180,7 +180,7 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
             {
                 // Skip alloca temps - they don't need cross-block spilling
                 // Their address is computed from the frame pointer when needed
-                if (allocaTemps.count(v.id) > 0)
+                if (allocaTemps.contains(v.id))
                     return;
                 auto it = tempDefBlock.find(v.id);
                 if (it != tempDefBlock.end() && it->second != bi)

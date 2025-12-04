@@ -251,7 +251,7 @@ void SemanticAnalyzer::analyzeArrayAssignment(ArrayExpr &a, const LetStmt &l)
     if (!isArrayField)
     {
         resolveAndTrackSymbol(a.name, SymbolKind::Reference);
-        if (!arrays_.count(a.name))
+        if (!arrays_.contains(a.name))
         {
             de.emit(diag::BasicDiag::UnknownArray,
                     a.loc,

@@ -67,7 +67,8 @@ std::string Lowerer::resolveObjectClass(const Expr &expr) const
         }
 
         // BUG-107 fix: Check module-level scalar object cache (already resolved)
-        auto it = moduleObjectClass_.find(std::string(var->name));
+        // Heterogeneous lookup - no temporary std::string allocation
+        auto it = moduleObjectClass_.find(var->name);
         if (it != moduleObjectClass_.end())
             return it->second;
 

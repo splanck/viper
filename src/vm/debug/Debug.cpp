@@ -115,7 +115,7 @@ void DebugCtrl::addBreak(il::support::Symbol sym)
 bool DebugCtrl::shouldBreak(const il::core::BasicBlock &blk) const
 {
     il::support::Symbol sym = interner_.intern(blk.label);
-    return breaks_.count(sym) != 0;
+    return breaks_.contains(sym);
 }
 
 /// @brief Register a source-location breakpoint.

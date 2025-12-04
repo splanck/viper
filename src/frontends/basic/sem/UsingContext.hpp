@@ -54,7 +54,7 @@ class UsingContext
     /// @param ns Fully-qualified namespace path (e.g., "Foo.Bar").
     /// @param alias Optional alias string; empty if no AS clause.
     /// @param loc Source location of the USING statement.
-    void add(std::string ns, std::string alias, il::support::SourceLoc loc);
+    void add(std::string_view ns, std::string_view alias, il::support::SourceLoc loc);
 
     /// @brief Retrieve all imports in declaration order.
     /// @return Read-only reference to the import vector.

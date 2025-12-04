@@ -28,7 +28,8 @@ namespace il::transform
 
 bool Loop::contains(std::string_view label) const
 {
-    return members_.find(std::string(label)) != members_.end();
+    // Heterogeneous lookup - no temporary std::string allocation
+    return members_.find(label) != members_.end();
 }
 
 void Loop::finalize()

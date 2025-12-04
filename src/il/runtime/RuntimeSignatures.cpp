@@ -470,11 +470,8 @@ void invokeRtArrStrPut(void **args, void * /*result*/)
     // Param 0 (ptr): args[0] -> storage holding the array payload pointer
     rt_string *arr = args ? *reinterpret_cast<rt_string **>(args[0]) : nullptr;
     const auto idxPtr = args ? reinterpret_cast<const int64_t *>(args[1]) : nullptr;
-    // Param 2 (ptr to rt_string in caller memory): args[2] -> storage holding a pointer value
-    // First read the pointer value (address of the temporary slot), then read the rt_string from
-    // it.
-    void *tmpAddr = args ? *reinterpret_cast<void **>(args[2]) : nullptr;
-    rt_string value = tmpAddr ? *reinterpret_cast<rt_string *>(tmpAddr) : nullptr;
+    // Param 2 (string): args[2] -> storage holding the string handle directly
+    rt_string value = args ? *reinterpret_cast<rt_string *>(args[2]) : nullptr;
     const size_t idx = idxPtr ? static_cast<size_t>(*idxPtr) : 0;
     rt_arr_str_put(arr, idx, value);
 }
@@ -1054,7 +1051,7 @@ constexpr auto kDescriptorRows = std::to_array<DescriptorRow>({
                   RuntimeTrapClass::None},
     DescriptorRow{"rt_arr_str_put",
                   std::nullopt,
-                  "void(ptr,i64,ptr)",
+                  "void(ptr,i64,str)",
                   &invokeRtArrStrPut,
                   kManualLowering,
                   nullptr,

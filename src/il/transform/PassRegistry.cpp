@@ -129,7 +129,7 @@ bool PreservedAnalyses::preservesAllFunctionAnalyses() const
 ///         preserves all module analyses.
 bool PreservedAnalyses::isModulePreserved(const std::string &id) const
 {
-    return preserveAllModules_ || moduleAnalyses_.count(id) > 0;
+    return preserveAllModules_ || moduleAnalyses_.contains(id);
 }
 
 /// @brief Determine whether a specific function analysis is preserved.
@@ -140,7 +140,7 @@ bool PreservedAnalyses::isModulePreserved(const std::string &id) const
 ///         preserves all function analyses.
 bool PreservedAnalyses::isFunctionPreserved(const std::string &id) const
 {
-    return preserveAllFunctions_ || functionAnalyses_.count(id) > 0;
+    return preserveAllFunctions_ || functionAnalyses_.contains(id);
 }
 
 /// @brief Check whether any module analyses were explicitly preserved.

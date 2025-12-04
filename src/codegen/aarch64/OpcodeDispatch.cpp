@@ -235,6 +235,39 @@ bool lowerInstruction(const il::core::Instr &ins,
         case Opcode::Fptosi:
             lowerFptosi(ins, bbIn, ctx, bbOut());
             return true;
+        case Opcode::ConstStr:
+        {
+            // Lower const_str to produce a string handle via rt_const_cstr.
+            // This must be lowered proactively (not demand-lowered) when the result
+            // is a cross-block temp that will be spilled.
+            if (!ins.result || ins.operands.empty())
+                return true;
+            if (ins.operands[0].kind != il::core::Value::Kind::GlobalAddr)
+                return true;
+            const std::string &sym = ins.operands[0].str;
+            // Materialize address of pooled literal label
+            const uint16_t litPtrV = ctx.nextVRegId++;
+            bbOut().instrs.push_back(
+                MInstr{MOpcode::AdrPage,
+                       {MOperand::vregOp(RegClass::GPR, litPtrV), MOperand::labelOp(sym)}});
+            bbOut().instrs.push_back(
+                MInstr{MOpcode::AddPageOff,
+                       {MOperand::vregOp(RegClass::GPR, litPtrV),
+                        MOperand::vregOp(RegClass::GPR, litPtrV),
+                        MOperand::labelOp(sym)}});
+            // Call rt_const_cstr(litPtr) to obtain an rt_string handle in x0
+            bbOut().instrs.push_back(
+                MInstr{MOpcode::MovRR,
+                       {MOperand::regOp(PhysReg::X0), MOperand::vregOp(RegClass::GPR, litPtrV)}});
+            bbOut().instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_const_cstr")}});
+            // Move x0 (rt_string) into a fresh vreg as the const_str result
+            const uint16_t dst = ctx.nextVRegId++;
+            ctx.tempVReg[*ins.result] = dst;
+            bbOut().instrs.push_back(
+                MInstr{MOpcode::MovRR,
+                       {MOperand::vregOp(RegClass::GPR, dst), MOperand::regOp(PhysReg::X0)}});
+            return true;
+        }
         default:
             // Opcode not handled - caller should process
             return false;

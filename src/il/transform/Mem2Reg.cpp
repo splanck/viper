@@ -315,7 +315,7 @@ static void sealBlocks(Function &F,
     for (unsigned varId : BS.incomplete)
     {
         Value v = readFromPreds(F, B, varId, vars, blocks, nextId, ctx, idxCache);
-        if (!vars[varId].defs.count(B))
+        if (!vars[varId].defs.contains(B))
             vars[varId].defs[B] = v;
     }
     BS.incomplete.clear();
@@ -387,13 +387,13 @@ static void promoteVariables(Function &F,
         for (std::size_t i = 0; i < B->instructions.size();)
         {
             Instr &I = B->instructions[i];
-            if (I.op == Opcode::Alloca && I.result && vars.count(*I.result))
+            if (I.op == Opcode::Alloca && I.result && vars.contains(*I.result))
             {
                 B->instructions.erase(B->instructions.begin() + i);
                 continue;
             }
             if (I.op == Opcode::Load && I.operands.size() &&
-                I.operands[0].kind == Value::Kind::Temp && vars.count(I.operands[0].id))
+                I.operands[0].kind == Value::Kind::Temp && vars.contains(I.operands[0].id))
             {
                 unsigned varId = I.operands[0].id;
                 Value v = renameUses(F, B, varId, vars, blocks, nextId, ctx);
@@ -405,7 +405,7 @@ static void promoteVariables(Function &F,
                 continue;
             }
             if (I.op == Opcode::Store && I.operands.size() > 1 &&
-                I.operands[0].kind == Value::Kind::Temp && vars.count(I.operands[0].id))
+                I.operands[0].kind == Value::Kind::Temp && vars.contains(I.operands[0].id))
             {
                 unsigned varId = I.operands[0].id;
                 vars[varId].defs[B] = I.operands[1];
@@ -422,7 +422,7 @@ static void promoteVariables(Function &F,
         {
             BlockState &SS = blocks[S];
             SS.seenPreds++;
-            if (!queued.count(S))
+            if (!queued.contains(S))
             {
                 work.push(S);
                 queued.insert(S);

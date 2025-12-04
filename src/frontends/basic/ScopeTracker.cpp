@@ -82,7 +82,7 @@ void ScopeTracker::bind(const std::string &name, const std::string &mapped)
 /// @return True when the name is bound in the current scope.
 bool ScopeTracker::isDeclaredInCurrentScope(const std::string &name) const
 {
-    return !stack_.empty() && stack_.back().count(name);
+    return !stack_.empty() && stack_.back().contains(name);
 }
 
 /// @brief Declare a new local symbol and generate a unique mangled identifier.

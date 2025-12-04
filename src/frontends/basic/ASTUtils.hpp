@@ -404,15 +404,14 @@ template <typename T> [[nodiscard]] constexpr const T &cast(const Stmt &stmt) no
 
 /// @brief Create a string literal expression node.
 /// @details Allocates and initializes a StringExpr with the given value and location.
-///          The string value is moved into the expression to avoid unnecessary copies.
-/// @param value String value for the literal (moved).
+/// @param value String value for the literal.
 /// @param loc Source location for diagnostics.
 /// @return Unique pointer to the newly created StringExpr.
-[[nodiscard]] inline ExprPtr makeStrExpr(std::string value, il::support::SourceLoc loc)
+[[nodiscard]] inline ExprPtr makeStrExpr(std::string_view value, il::support::SourceLoc loc)
 {
     auto expr = std::make_unique<StringExpr>();
     expr->loc = loc;
-    expr->value = std::move(value);
+    expr->value = value;
     return expr;
 }
 

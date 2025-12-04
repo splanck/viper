@@ -19,12 +19,29 @@
 #include "frontends/basic/ast/NodeFwd.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
 #include "viper/il/Module.hpp"
+#include <functional>
 #include <optional>
 #include <string>
+#include <string_view>
+#include <unordered_map>
 #include <vector>
 
 namespace il::frontends::basic
 {
+
+/// @brief Hash functor for heterogeneous string lookup (C++20).
+/// @details Enables lookup with std::string_view keys in unordered_map
+///          without allocating temporary std::string objects.
+struct StringHash
+{
+    using is_transparent = void;
+
+    template <typename T>
+    [[nodiscard]] std::size_t operator()(const T &key) const noexcept
+    {
+        return std::hash<std::string_view>{}(std::string_view(key));
+    }
+};
 
 /// @brief Result of lowering an expression to a value and type pair.
 struct RVal
@@ -153,7 +170,7 @@ struct MemberFieldAccess
 struct FieldScope
 {
     const ClassLayout *layout{nullptr};
-    std::unordered_map<std::string, SymbolInfo> symbols;
+    std::unordered_map<std::string, SymbolInfo, StringHash, std::equal_to<>> symbols;
 };
 
 /// @brief Layout of blocks emitted for an IF/ELSEIF chain.

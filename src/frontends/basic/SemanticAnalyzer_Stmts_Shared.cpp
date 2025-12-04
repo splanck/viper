@@ -66,9 +66,9 @@ void SemanticAnalyzer::popLoop()
 /// @details Stores the variable so assignments can be flagged while the loop is
 ///          active.
 /// @param name Name of the FOR-loop variable.
-void SemanticAnalyzer::pushForVariable(std::string name)
+void SemanticAnalyzer::pushForVariable(std::string_view name)
 {
-    forStack_.push_back(std::move(name));
+    forStack_.emplace_back(name);
 }
 
 /// @brief Remove the most recently tracked FOR-loop variable.

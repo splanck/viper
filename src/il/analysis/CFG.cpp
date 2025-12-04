@@ -111,7 +111,7 @@ CFGContext::CFGContext(il::core::Module &module) : module(&module)
             recorded.reserve(succ.size());
             for (auto *target : succ)
             {
-                if (!target || recorded.count(target))
+                if (!target || recorded.contains(target))
                     continue;
                 recorded.insert(target);
                 blockPredecessors[target].push_back(&blk);
@@ -198,7 +198,7 @@ std::vector<il::core::Block *> postOrder(const CFGContext &ctx, il::core::Functi
         if (f.idx < f.succ.size())
         {
             il::core::Block *next = f.succ[f.idx++];
-            if (!visited.count(next))
+            if (!visited.contains(next))
             {
                 visited.insert(next);
                 stack.push_back({next, 0, successors(ctx, *next)});
