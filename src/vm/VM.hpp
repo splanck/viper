@@ -12,6 +12,52 @@
 // Links: docs/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
+//
+// CONCURRENCY MODEL
+// =================
+//
+// Each VM instance is single-threaded: only one thread may execute within a
+// given VM instance at a time. This design avoids internal synchronization
+// overhead in the interpreter hot path and simplifies resource management.
+//
+// To achieve parallelism, create multiple VM instances, one per thread. Each
+// VM instance maintains its own:
+//   - Runtime context (RNG state, module variables, file channels, type registry)
+//   - Register file and operand stack
+//   - String literal cache
+//   - Trap/error state
+//
+// Thread-Local State:
+// The VM relies on thread-local storage to track the "active" VM instance for
+// the current thread. This is managed via `ActiveVMGuard` (see VMContext.hpp):
+//
+//   - `ActiveVMGuard guard(&vm)` installs `vm` as the active VM for the scope
+//   - The guard also binds the VM's runtime context via `rt_set_current_context`
+//   - `VM::activeInstance()` returns the active VM for the calling thread
+//   - When the guard destructs, it restores the previous VM (supporting nesting)
+//
+// Usage Patterns:
+//
+//   // Single-threaded usage (most common)
+//   il::vm::VM vm(module);
+//   vm.run();  // ActiveVMGuard created internally
+//
+//   // Multi-threaded usage (one VM per thread)
+//   std::thread t1([&module1]() {
+//       il::vm::VM vm(module1);
+//       vm.run();
+//   });
+//   std::thread t2([&module2]() {
+//       il::vm::VM vm(module2);
+//       vm.run();
+//   });
+//
+// Debug Assertions:
+// In debug builds, the VM asserts if:
+//   - ActiveVMGuard is used to re-enter a VM already active on the same thread
+//   - activeInstance() is called when no VM is active (returns nullptr in release)
+//
+//===----------------------------------------------------------------------===//
 
 #pragma once
 
@@ -167,8 +213,39 @@ struct Frame
  * The VM interprets IL bytecode using one of three dispatch strategies:
  * function table, switch statement, or threaded code (when supported).
  *
+ * ## Concurrency Model
+ *
+ * Each VM instance is **single-threaded**: it may only be executed by one
+ * thread at a time. The VM does not use internal locks or atomic operations
+ * in its hot paths to maximize interpreter performance.
+ *
+ * **Parallelism** is achieved by creating multiple VM instances, one per
+ * thread. Each VM instance owns its own runtime context (`RtContext`),
+ * providing isolated state for:
+ * - Random number generator (RNG seed and state)
+ * - Module-level variables (modvar storage)
+ * - File I/O channels
+ * - Type registry (class/interface registrations)
+ *
+ * **Thread-local active VM**: The static `VM::activeInstance()` method
+ * returns the VM currently executing on the calling thread. This relies
+ * on `thread_local` state managed by `ActiveVMGuard`:
+ *
+ * @code
+ *   // Internal usage pattern (ActiveVMGuard is RAII):
+ *   {
+ *       ActiveVMGuard guard(&vm);  // Sets tlsActiveVM and binds rtContext
+ *       // ... VM execution ...
+ *   }  // Guard destructor restores previous state
+ * @endcode
+ *
  * @invariant The module passed to the constructor must outlive the VM instance.
  * @invariant Only one thread may execute within a VM instance at a time.
+ * @invariant A thread may have at most one VM actively executing at any time
+ *            (debug builds assert on re-entry attempts).
+ *
+ * @see ActiveVMGuard for the RAII helper managing thread-local state.
+ * @see VMContext for the execution context API used by dispatch strategies.
  */
 class VM
 {

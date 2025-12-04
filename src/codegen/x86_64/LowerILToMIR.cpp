@@ -30,11 +30,13 @@
 
 #include "LoweringRules.hpp"
 #include "OperandUtils.hpp"
+#include "Unsupported.hpp"
 
 #include <cassert>
 #include <cstdint>
 #include <limits>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <utility>
 
@@ -44,17 +46,16 @@ namespace viper::codegen::x64
 namespace
 {
 
-/// @brief Emit a debug assertion when no lowering rule matches an instruction.
-/// @details In release builds the function is a no-op so the adapter can
-///          continue, but debug builds assert to highlight missing rule
-///          coverage.
+/// @brief Report an error when no lowering rule matches an instruction.
+/// @details Throws an exception to signal the unsupported instruction in both
+///          debug and release builds. This ensures invalid IL is never silently
+///          ignored.
 /// @param instr Instruction that failed to match any rule.
-void reportNoRule(const ILInstr &instr)
+[[noreturn]] void reportNoRule(const ILInstr &instr)
 {
-    (void)instr;
-#ifndef NDEBUG
-    assert(false && "No lowering rule matched instruction");
-#endif
+    std::string msg = "No lowering rule matched instruction: ";
+    msg += instr.opcode;
+    phaseAUnsupported(msg.c_str());
 }
 
 } // namespace

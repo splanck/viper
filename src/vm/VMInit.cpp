@@ -16,6 +16,7 @@
 #include "il/core/Function.hpp"
 #include "il/core/Global.hpp"
 #include "il/core/Module.hpp"
+#include "il/runtime/RuntimeSignatures.hpp"
 #include "vm/Marshal.hpp"
 #include "vm/RuntimeBridge.hpp"
 #include "vm/VM.hpp"
@@ -55,6 +56,25 @@ struct NumericLocaleInitializer
 };
 
 [[maybe_unused]] const NumericLocaleInitializer kNumericLocaleInitializer{};
+
+/// @brief Static initializer that runs runtime descriptor sanity checks.
+/// @details Validates that runtime descriptors are consistent before any VM
+///          execution occurs. In release builds this catches configuration
+///          errors early; in debug builds it complements the existing assert-
+///          based validation.
+struct RuntimeDescriptorChecker
+{
+    RuntimeDescriptorChecker()
+    {
+        if (!il::runtime::selfCheckRuntimeDescriptors())
+        {
+            std::fprintf(stderr, "[FATAL] Runtime descriptor self-check failed\n");
+            std::abort();
+        }
+    }
+};
+
+[[maybe_unused]] const RuntimeDescriptorChecker kRuntimeDescriptorChecker{};
 
 /// @brief Check the environment to determine whether verbose VM logging is enabled.
 ///

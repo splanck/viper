@@ -26,6 +26,7 @@
 
 #include "rt_context.h"
 
+#include <cassert>
 #include <exception>
 #include <sstream>
 #include <string>
@@ -62,9 +63,21 @@ std::string opcodeMnemonic(il::core::Opcode op)
 ///          previously active VM so trap reporting can access the current
 ///          interpreter without explicit plumbing at each call site. Also binds
 ///          the VM's runtime context so C runtime calls access this VM's state.
+///
+///          In debug builds, asserts if a *different* VM is already active on this
+///          thread. Activating the same VM again (nested guard) is permitted since
+///          this occurs legitimately in recursive function calls within the VM.
+///
 /// @param vm VM instance that will be considered active for the guard scope.
-ActiveVMGuard::ActiveVMGuard(VM *vm) : previous(tlsActiveVM)
+ActiveVMGuard::ActiveVMGuard(VM *vm) : previous(tlsActiveVM), current(vm)
 {
+    // Debug assertion: Catch accidental re-entry with a *different* VM.
+    // Re-activating the same VM is allowed (nested calls within the interpreter).
+    // Activating nullptr is allowed (clearing active state).
+    assert((tlsActiveVM == nullptr || tlsActiveVM == vm || vm == nullptr) &&
+           "ActiveVMGuard: attempting to activate a different VM while one is already active "
+           "on this thread. Each VM instance must be used by only one thread at a time.");
+
     tlsActiveVM = vm;
     // Bind the VM's runtime context to this thread
     if (vm && vm->rtContext)
@@ -77,8 +90,17 @@ ActiveVMGuard::ActiveVMGuard(VM *vm) : previous(tlsActiveVM)
 /// @details Resets the thread-local pointer to the saved predecessor so nested
 ///          guards correctly restore whichever VM was running before the most
 ///          recent activation. Also restores the previous runtime context.
+///
+///          In debug builds, asserts that the thread-local pointer was not unexpectedly
+///          modified during the guard's lifetime (e.g., by another guard on a different VM).
 ActiveVMGuard::~ActiveVMGuard()
 {
+    // Debug assertion: Verify the thread-local pointer wasn't tampered with.
+    // It should still point to the VM we installed, unless nested guards ran.
+    assert((tlsActiveVM == current || tlsActiveVM == nullptr) &&
+           "ActiveVMGuard: tlsActiveVM was modified unexpectedly during guard lifetime. "
+           "This may indicate a concurrency bug or mismatched guard lifetimes.");
+
     // Restore the previous VM's runtime context (or NULL if no previous VM)
     if (previous && previous->rtContext)
     {
@@ -384,7 +406,14 @@ VM *VMContext::vm() const noexcept
 /// @details Returns the thread-local pointer established by
 ///          @ref ActiveVMGuard so trap bridges and other facilities can discover
 ///          the active interpreter.
-/// @return Pointer to the VM previously installed via @ref ActiveVMGuard.
+///
+///          This function may return nullptr if no VM is currently active on the
+///          calling thread. Callers that require a valid VM should either:
+///          - Check the return value before use, or
+///          - Use the debug assertion variant that traps on nullptr (internal use)
+///
+/// @return Pointer to the VM previously installed via @ref ActiveVMGuard,
+///         or nullptr if no VM is active.
 VM *activeVMInstance()
 {
     return tlsActiveVM;

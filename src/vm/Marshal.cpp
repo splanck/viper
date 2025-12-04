@@ -27,6 +27,7 @@
 #include <array>
 #include <cassert>
 #include <cmath>
+#include <cstdlib>
 #include <limits>
 #include <sstream>
 #include <string>
@@ -206,7 +207,7 @@ int64_t toI64(const il::core::Value &value)
             return 0;
         default:
             assert(false && "value kind is not convertible to i64");
-            return 0;
+            std::abort(); // Unreachable in correct implementation
     }
 }
 
@@ -229,7 +230,7 @@ double toF64(const il::core::Value &value)
             return 0.0;
         default:
             assert(false && "value kind is not convertible to f64");
-            return 0.0;
+            std::abort(); // Unreachable in correct implementation
     }
 }
 
@@ -367,6 +368,86 @@ Slot assignCallResult(const il::runtime::RuntimeSignature &signature, const Resu
     Slot destination{};
     assignResult(destination, signature.retType.kind, buffers);
     return destination;
+}
+
+//===----------------------------------------------------------------------===//
+// Marshalling Validation Helpers
+//===----------------------------------------------------------------------===//
+
+MarshalValidation validateMarshalArity(const il::runtime::RuntimeDescriptor &desc,
+                                       std::size_t argCount)
+{
+    return validateMarshalArity(desc.signature, argCount, desc.name);
+}
+
+MarshalValidation validateMarshalArity(const il::runtime::RuntimeSignature &sig,
+                                       std::size_t argCount,
+                                       std::string_view calleeName)
+{
+    MarshalValidation result;
+    const auto expected = sig.paramTypes.size();
+    if (argCount != expected)
+    {
+        result.ok = false;
+        result.errorMessage.reserve(calleeName.size() + 64);
+        result.errorMessage.append(calleeName);
+        result.errorMessage.append(": expected ");
+        result.errorMessage.append(std::to_string(expected));
+        result.errorMessage.append(" argument(s), got ");
+        result.errorMessage.append(std::to_string(argCount));
+        if (argCount > expected)
+            result.errorMessage.append(" (excess runtime operands)");
+    }
+    return result;
+}
+
+MarshalValidation validateMarshalArgs(const il::runtime::RuntimeDescriptor &desc,
+                                      std::span<const Slot> args,
+                                      bool checkNullPointers)
+{
+    // First check arity
+    MarshalValidation result = validateMarshalArity(desc, args.size());
+    if (!result.ok)
+        return result;
+
+    // Optionally validate pointer arguments
+    if (checkNullPointers)
+    {
+        const auto &sig = desc.signature;
+        for (std::size_t i = 0; i < sig.paramTypes.size() && i < args.size(); ++i)
+        {
+            if (sig.paramTypes[i].kind == il::core::Type::Kind::Ptr)
+            {
+                if (args[i].ptr == nullptr)
+                {
+                    result.ok = false;
+                    result.errorMessage.reserve(desc.name.size() + 48);
+                    result.errorMessage.append(desc.name);
+                    result.errorMessage.append(": null pointer argument at index ");
+                    result.errorMessage.append(std::to_string(i));
+                    return result;
+                }
+            }
+        }
+    }
+
+    return result;
+}
+
+std::vector<void *> marshalArgumentsValidated(const il::runtime::RuntimeDescriptor &desc,
+                                              std::span<Slot> args,
+                                              PowStatus &powStatus,
+                                              MarshalValidation &validation,
+                                              bool checkNullPointers)
+{
+    // Validate before marshalling to avoid out-of-bounds access
+    validation = validateMarshalArgs(desc, std::span<const Slot>{args.data(), args.size()},
+                                     checkNullPointers);
+    if (!validation.ok)
+        return {};
+
+    // Delegate to existing marshalling logic
+    return marshalArguments(desc.signature, args, powStatus);
 }
 
 } // namespace il::vm

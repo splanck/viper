@@ -423,6 +423,123 @@ int main()
     for (bool covered : coveredKinds)
         assert(covered);
 
+    //===------------------------------------------------------------------===//
+    // Test centralized marshalling validation helpers
+    //===------------------------------------------------------------------===//
+
+    // Test validateMarshalArity with correct arity
+    {
+        const auto *strEqDesc =
+            il::runtime::findRuntimeDescriptor(il::runtime::RuntimeFeature::StrEq);
+        assert(strEqDesc != nullptr);
+        auto validResult = il::vm::validateMarshalArity(*strEqDesc, 2);
+        assert(validResult.ok);
+        assert(validResult.errorMessage.empty());
+    }
+
+    // Test validateMarshalArity with incorrect arity (too few)
+    {
+        const auto *strEqDesc =
+            il::runtime::findRuntimeDescriptor(il::runtime::RuntimeFeature::StrEq);
+        assert(strEqDesc != nullptr);
+        auto invalidResult = il::vm::validateMarshalArity(*strEqDesc, 1);
+        assert(!invalidResult.ok);
+        assert(!invalidResult.errorMessage.empty());
+        assert(invalidResult.errorMessage.find("expected 2") != std::string::npos);
+        assert(invalidResult.errorMessage.find("got 1") != std::string::npos);
+    }
+
+    // Test validateMarshalArity with incorrect arity (too many)
+    {
+        const auto *strEqDesc =
+            il::runtime::findRuntimeDescriptor(il::runtime::RuntimeFeature::StrEq);
+        assert(strEqDesc != nullptr);
+        auto invalidResult = il::vm::validateMarshalArity(*strEqDesc, 5);
+        assert(!invalidResult.ok);
+        assert(invalidResult.errorMessage.find("excess runtime operands") != std::string::npos);
+    }
+
+    // Test validateMarshalArity overload with signature and name
+    {
+        il::runtime::RuntimeSignature sig;
+        sig.paramTypes.push_back(il::core::Type(Type::Kind::I64));
+        sig.paramTypes.push_back(il::core::Type(Type::Kind::I64));
+        sig.retType = il::core::Type(Type::Kind::I64);
+
+        auto validResult = il::vm::validateMarshalArity(sig, 2, "test_func");
+        assert(validResult.ok);
+
+        auto invalidResult = il::vm::validateMarshalArity(sig, 0, "test_func");
+        assert(!invalidResult.ok);
+        assert(invalidResult.errorMessage.find("test_func") != std::string::npos);
+    }
+
+    // Test validateMarshalArgs with correct arguments (no null check)
+    {
+        const auto *absDesc = il::runtime::findRuntimeDescriptor("rt_abs_i64");
+        assert(absDesc != nullptr);
+        Slot args[1];
+        args[0].i64 = 42;
+        auto validResult =
+            il::vm::validateMarshalArgs(*absDesc, std::span<const Slot>{args, 1}, false);
+        assert(validResult.ok);
+    }
+
+    // Test validateMarshalArgs with null pointer check enabled
+    {
+        const auto *allocDesc = il::runtime::findRuntimeDescriptor("rt_arr_i32_len");
+        assert(allocDesc != nullptr);
+        Slot args[1];
+        args[0].ptr = nullptr;
+        auto invalidResult =
+            il::vm::validateMarshalArgs(*allocDesc, std::span<const Slot>{args, 1}, true);
+        assert(!invalidResult.ok);
+        assert(invalidResult.errorMessage.find("null pointer") != std::string::npos);
+        assert(invalidResult.errorMessage.find("index 0") != std::string::npos);
+    }
+
+    // Test validateMarshalArgs with null check disabled (should pass)
+    {
+        const auto *allocDesc = il::runtime::findRuntimeDescriptor("rt_arr_i32_len");
+        assert(allocDesc != nullptr);
+        Slot args[1];
+        args[0].ptr = nullptr;
+        auto validResult =
+            il::vm::validateMarshalArgs(*allocDesc, std::span<const Slot>{args, 1}, false);
+        assert(validResult.ok);
+    }
+
+    // Test marshalArgumentsValidated with correct arguments
+    {
+        const auto *absDesc = il::runtime::findRuntimeDescriptor("rt_abs_i64");
+        assert(absDesc != nullptr);
+        Slot args[1];
+        args[0].i64 = -100;
+        il::vm::PowStatus powStatus{};
+        il::vm::MarshalValidation validation;
+        auto rawArgs = il::vm::marshalArgumentsValidated(
+            *absDesc, std::span<Slot>{args, 1}, powStatus, validation, false);
+        assert(validation.ok);
+        assert(rawArgs.size() == 1);
+        assert(rawArgs[0] != nullptr);
+    }
+
+    // Test marshalArgumentsValidated with arity mismatch
+    {
+        const auto *absDesc = il::runtime::findRuntimeDescriptor("rt_abs_i64");
+        assert(absDesc != nullptr);
+        Slot args[3];
+        args[0].i64 = 1;
+        args[1].i64 = 2;
+        args[2].i64 = 3;
+        il::vm::PowStatus powStatus{};
+        il::vm::MarshalValidation validation;
+        auto rawArgs = il::vm::marshalArgumentsValidated(
+            *absDesc, std::span<Slot>{args, 3}, powStatus, validation, false);
+        assert(!validation.ok);
+        assert(rawArgs.empty());
+    }
+
     // Cleanup runtime context
     rt_set_current_context(nullptr);
     rt_context_cleanup(&rtContext);

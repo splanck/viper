@@ -102,4 +102,60 @@ PowTrapOutcome classifyPowTrap(const il::runtime::RuntimeDescriptor &desc,
                                const ResultBuffers &buffers);
 Slot assignCallResult(const il::runtime::RuntimeSignature &signature, const ResultBuffers &buffers);
 
+//===----------------------------------------------------------------------===//
+// Marshalling Validation Helpers
+//===----------------------------------------------------------------------===//
+
+/// @brief Result of marshalling validation checks.
+struct MarshalValidation
+{
+    bool ok{true};           ///< True when all checks pass.
+    std::string errorMessage; ///< Diagnostic message when validation fails.
+};
+
+/// @brief Validate that argument count matches the expected parameter count.
+/// @param desc Runtime descriptor describing the expected signature.
+/// @param argCount Number of arguments actually supplied.
+/// @return Validation result with error message on mismatch.
+[[nodiscard]] MarshalValidation validateMarshalArity(
+    const il::runtime::RuntimeDescriptor &desc,
+    std::size_t argCount);
+
+/// @brief Validate that argument count matches the expected parameter count.
+/// @param sig Runtime signature describing expected parameters.
+/// @param argCount Number of arguments actually supplied.
+/// @param calleeName Name used in error messages.
+/// @return Validation result with error message on mismatch.
+[[nodiscard]] MarshalValidation validateMarshalArity(
+    const il::runtime::RuntimeSignature &sig,
+    std::size_t argCount,
+    std::string_view calleeName);
+
+/// @brief Validate argument count and optionally check for null pointer args.
+/// @param desc Runtime descriptor describing the expected signature.
+/// @param args Span of argument slots to validate.
+/// @param checkNullPointers When true, validates that pointer-typed args are non-null.
+/// @return Validation result with error message on failure.
+[[nodiscard]] MarshalValidation validateMarshalArgs(
+    const il::runtime::RuntimeDescriptor &desc,
+    std::span<const Slot> args,
+    bool checkNullPointers = false);
+
+/// @brief Combined marshal and validate: checks arity then builds void** array.
+/// @details This is the recommended entry point for marshalling runtime calls.
+///          It validates argument count before marshalling to avoid out-of-bounds
+///          access, and can optionally validate pointer arguments.
+/// @param desc Runtime descriptor for the callee.
+/// @param args Argument slots supplied by the caller.
+/// @param powStatus [out] Power function trap status tracker.
+/// @param validation [out] Validation result; check before using returned vector.
+/// @param checkNullPointers When true, validates pointer args are non-null.
+/// @return Vector of marshalled argument pointers; empty on validation failure.
+[[nodiscard]] std::vector<void *> marshalArgumentsValidated(
+    const il::runtime::RuntimeDescriptor &desc,
+    std::span<Slot> args,
+    PowStatus &powStatus,
+    MarshalValidation &validation,
+    bool checkNullPointers = false);
+
 } // namespace il::vm

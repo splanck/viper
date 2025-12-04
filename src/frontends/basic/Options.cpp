@@ -11,41 +11,45 @@
 
 #include "frontends/basic/Options.hpp"
 
+#include <atomic>
+
 namespace il::frontends::basic
 {
 
-static bool g_enableRuntimeNamespaces = true;     // default ON
-static bool g_enableRuntimeTypeBridging = true;   // default ON for iteration
-static bool g_enableSelectCaseConstLabels = true; // default ON for CONST labels in SELECT CASE
+// All flags use std::atomic<bool> for thread-safe access. See Options.hpp
+// for threading model documentation.
+static std::atomic<bool> g_enableRuntimeNamespaces{true};
+static std::atomic<bool> g_enableRuntimeTypeBridging{true};
+static std::atomic<bool> g_enableSelectCaseConstLabels{true};
 
 bool FrontendOptions::enableRuntimeNamespaces()
 {
-    return g_enableRuntimeNamespaces;
+    return g_enableRuntimeNamespaces.load(std::memory_order_relaxed);
 }
 
 void FrontendOptions::setEnableRuntimeNamespaces(bool on)
 {
-    g_enableRuntimeNamespaces = on;
+    g_enableRuntimeNamespaces.store(on, std::memory_order_relaxed);
 }
 
 bool FrontendOptions::enableRuntimeTypeBridging()
 {
-    return g_enableRuntimeTypeBridging;
+    return g_enableRuntimeTypeBridging.load(std::memory_order_relaxed);
 }
 
 void FrontendOptions::setEnableRuntimeTypeBridging(bool on)
 {
-    g_enableRuntimeTypeBridging = on;
+    g_enableRuntimeTypeBridging.store(on, std::memory_order_relaxed);
 }
 
 bool FrontendOptions::enableSelectCaseConstLabels()
 {
-    return g_enableSelectCaseConstLabels;
+    return g_enableSelectCaseConstLabels.load(std::memory_order_relaxed);
 }
 
 void FrontendOptions::setEnableSelectCaseConstLabels(bool on)
 {
-    g_enableSelectCaseConstLabels = on;
+    g_enableSelectCaseConstLabels.store(on, std::memory_order_relaxed);
 }
 
 } // namespace il::frontends::basic

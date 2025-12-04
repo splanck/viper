@@ -18,6 +18,7 @@
 #include "il/transform/analysis/Liveness.hpp"
 
 #include <cassert>
+#include <cstdlib>
 #include <iostream>
 #include <sstream>
 #include <string>
@@ -54,7 +55,7 @@ unsigned findValueId(const core::Function &fn, std::string_view name)
             return static_cast<unsigned>(idx);
     }
     assert(false && "value not found");
-    return 0;
+    std::abort(); // Unreachable in correct test
 }
 
 const core::BasicBlock *findBlock(const core::Function &fn, std::string_view label)
@@ -65,7 +66,7 @@ const core::BasicBlock *findBlock(const core::Function &fn, std::string_view lab
             return &block;
     }
     assert(false && "block not found");
-    return nullptr;
+    std::abort(); // Unreachable in correct test
 }
 } // namespace
 

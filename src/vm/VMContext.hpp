@@ -20,16 +20,66 @@
 namespace il::vm
 {
 
-/// @brief RAII helper installing the active VM for thread-local trap reporting.
-/// @invariant Restores the previous active VM value on destruction.
-/// @ownership Does not own the VM pointer; lifetime is managed by the caller.
+/**
+ * @brief RAII guard that installs a VM as the thread-local active instance.
+ *
+ * ActiveVMGuard manages the thread-local `tlsActiveVM` pointer that enables
+ * `VM::activeInstance()` to retrieve the currently executing VM. It also
+ * binds the VM's runtime context via `rt_set_current_context()` so that
+ * C runtime functions access the correct per-VM state.
+ *
+ * ## Thread-Local Semantics
+ *
+ * - On construction: saves the current `tlsActiveVM` and sets it to the new VM
+ * - On destruction: restores the saved value (supports nesting)
+ * - Each thread has its own `tlsActiveVM`, so concurrent threads can each
+ *   have their own active VM without interference
+ *
+ * ## Debug Assertions
+ *
+ * In debug builds (`NDEBUG` not defined), the guard asserts that:
+ * - **No re-entry**: If `tlsActiveVM` is already non-null and points to a
+ *   *different* VM, an assertion fires. This catches accidental concurrent
+ *   use of a VM from the same thread.
+ * - **Consistent restore**: The destructor asserts that `tlsActiveVM` still
+ *   points to the expected VM before restoring.
+ *
+ * ## Usage
+ *
+ * @code
+ *   {
+ *       ActiveVMGuard guard(&myVM);
+ *       // VM::activeInstance() now returns &myVM
+ *       // rt_get_current_context() returns myVM.rtContext
+ *       myVM.run();
+ *   }  // guard destructor restores previous active VM
+ * @endcode
+ *
+ * @invariant Restores the previous active VM value on destruction.
+ * @invariant In debug builds, asserts on invalid re-entry patterns.
+ * @ownership Does not own the VM pointer; lifetime is managed by the caller.
+ */
 struct ActiveVMGuard
 {
+    /**
+     * @brief Install @p vm as the active VM for this thread.
+     * @param vm VM to activate; may be nullptr to clear active state.
+     * @pre In debug builds, asserts if a different VM is already active.
+     */
     explicit ActiveVMGuard(VM *vm);
+
+    /**
+     * @brief Restore the previously active VM.
+     * @pre In debug builds, asserts if tlsActiveVM was unexpectedly modified.
+     */
     ~ActiveVMGuard();
+
+    ActiveVMGuard(const ActiveVMGuard &) = delete;
+    ActiveVMGuard &operator=(const ActiveVMGuard &) = delete;
 
   private:
     VM *previous = nullptr; ///< Previously active VM instance.
+    VM *current = nullptr;  ///< VM installed by this guard (for debug checks).
 };
 
 /**

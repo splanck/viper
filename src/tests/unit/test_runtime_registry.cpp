@@ -104,5 +104,14 @@ int main()
     assert(!il::runtime::isVarArgCallee("unknown_function") &&
            "unknown function should not be identified as vararg");
 
+    // Test the public self-check API that embedders can use to verify runtime integrity.
+    // This function is idempotent and should always return true in a correctly built binary.
+    assert(il::runtime::selfCheckRuntimeDescriptors() &&
+           "runtime descriptor self-check should pass");
+
+    // Call again to verify idempotency - second call should return cached result
+    assert(il::runtime::selfCheckRuntimeDescriptors() &&
+           "runtime descriptor self-check should be idempotent");
+
     return 0;
 }

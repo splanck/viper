@@ -72,29 +72,25 @@ using Thunk = VmResult (*)(VM &, FrameInfo &, const RuntimeCallContext &);
 ///
 /// @details Compares the descriptor's signature against the arguments assembled
 ///          by the VM.  Mismatches trigger a domain-error trap describing the
-///          offending call site. Uses shared error formatting helper for consistency.
+///          offending call site. Uses centralized marshalling validation helper.
 ///
 /// @param desc Runtime descriptor describing the callee signature.
-/// @param name Human-readable name for diagnostics (e.g., "runtime call").
 /// @param args Slots supplied by the VM as call arguments.
 /// @param loc Source location associated with the call.
 /// @param fn Name of the function executing the call.
 /// @param block Name of the basic block executing the call.
 /// @return True when counts match; false when a trap was raised.
 static bool validateArgumentCount(const RuntimeDescriptor &desc,
-                                  std::string_view name,
                                   std::span<const Slot> args,
                                   const SourceLoc &loc,
                                   const std::string &fn,
                                   const std::string &block)
 {
-    const auto expected = desc.signature.paramTypes.size();
-    if (args.size() == expected)
+    auto validation = il::vm::validateMarshalArity(desc, args.size());
+    if (validation.ok)
         return true;
 
-    const std::string message =
-        il::vm::detail::formatArgumentCountError(name, expected, args.size());
-    RuntimeBridge::trap(TrapKind::DomainError, message, loc, fn, block);
+    RuntimeBridge::trap(TrapKind::DomainError, validation.errorMessage, loc, fn, block);
     return false;
 }
 
@@ -309,25 +305,81 @@ extern "C" void vm_trap(const char *msg)
 
 namespace il::vm
 {
+
+//===----------------------------------------------------------------------===//
+// ExternRegistry Implementation
+//===----------------------------------------------------------------------===//
+//
+// DESIGN NOTE: Process-Global Extern Registry
+// ============================================
+//
+// The extern registry is currently implemented as a process-global singleton
+// protected by a mutex. This design has the following implications:
+//
+// 1. SHARED STATE: All VM instances in the process see the same set of
+//    registered external functions. A function registered by one VM is
+//    visible to all VMs.
+//
+// 2. THREAD SAFETY: The mutex ensures safe concurrent access from multiple
+//    threads. Registration, lookup, and unregistration are all serialized.
+//
+// 3. LIFETIME: The registry persists for the lifetime of the process. There
+//    is no cleanup mechanism; registered functions remain until explicitly
+//    unregistered or the process exits.
+//
+// 4. MULTI-TENANT LIMITATION: This design is unsuitable for scenarios where
+//    different VM instances should have isolated sets of external functions
+//    (e.g., multi-tenant embedding where tenants should not see each other's
+//    host functions).
+//
+// FUTURE: Per-VM Extern Registry
+// ==============================
+//
+// To support per-VM scoping, the following changes would be needed:
+//
+// 1. Add an `ExternRegistry*` member to the VM class.
+// 2. Modify `currentExternRegistry()` to check for an active VM and return
+//    its registry if present, falling back to the process-global registry.
+// 3. Provide factory functions to create per-VM registries.
+// 4. Update RuntimeBridge::call() to resolve against the current registry.
+//
+// The `ExternRegistry` abstraction below is designed to facilitate this
+// future refactoring without breaking the existing API.
+//
+//===----------------------------------------------------------------------===//
+
 namespace
 {
+
+/// @brief Internal record for a registered external function.
 struct ExtRecord
 {
-    ExternDesc pub;
-    il::runtime::RuntimeSignature runtimeSig;
-    il::runtime::RuntimeHandler handler = nullptr;
+    ExternDesc pub;                          ///< Public descriptor exposed to callers.
+    il::runtime::RuntimeSignature runtimeSig; ///< Converted runtime signature.
+    il::runtime::RuntimeHandler handler = nullptr; ///< Native handler function.
 };
 
-std::mutex &externMutex()
-{
-    static std::mutex mtx;
-    return mtx;
-}
+} // namespace
 
-std::unordered_map<std::string, ExtRecord> &externRegistry()
+/// @brief Concrete implementation of the ExternRegistry abstraction.
+/// @details This struct holds the actual storage (map + mutex) for external
+///          function registrations. It is intentionally defined in the .cpp
+///          file to keep the header opaque.
+struct ExternRegistry
 {
-    static std::unordered_map<std::string, ExtRecord> reg;
-    return reg;
+    std::mutex mutex;                                 ///< Protects concurrent access.
+    std::unordered_map<std::string, ExtRecord> entries; ///< Name -> record mapping.
+};
+
+namespace
+{
+
+/// @brief Access the process-global extern registry singleton.
+/// @return Reference to the lazily-initialized global registry.
+ExternRegistry &globalRegistry()
+{
+    static ExternRegistry instance;
+    return instance;
 }
 
 static il::core::Type mapKind(il::runtime::signatures::SigParam::Kind k)
@@ -408,18 +460,18 @@ Slot RuntimeBridge::call(RuntimeCallContext &ctx,
     Slot result{};
 
     // Resolve against runtime extern registry first, then built-ins.
+    // Use the current context's registry (currently always process-global).
     il::runtime::RuntimeDescriptor localDesc;
     const il::runtime::RuntimeDescriptor *desc = nullptr;
     {
-        // Canonicalize name before acquiring lock to reduce critical section duration
-        const std::string key = canonicalizeExternName(name);
-        std::unique_lock<std::mutex> lock(externMutex());
-        auto it = externRegistry().find(key);
-        if (it != externRegistry().end())
+        il::runtime::RuntimeSignature sig;
+        il::runtime::RuntimeHandler handler = nullptr;
+        const ExternDesc *extDesc = resolveExternIn(currentExternRegistry(), name, &sig, &handler);
+        if (extDesc)
         {
-            localDesc.name = it->second.pub.name;
-            localDesc.signature = it->second.runtimeSig;
-            localDesc.handler = it->second.handler;
+            localDesc.name = extDesc->name;
+            localDesc.signature = sig;
+            localDesc.handler = handler;
             localDesc.lowering = {};
             desc = &localDesc;
         }
@@ -433,7 +485,7 @@ Slot RuntimeBridge::call(RuntimeCallContext &ctx,
         RuntimeBridge::trap(TrapKind::DomainError, os.str(), loc, fn, block);
         return result;
     }
-    if (!validateArgumentCount(*desc, name, args, loc, fn, block))
+    if (!validateArgumentCount(*desc, args, loc, fn, block))
         return result;
 
     ctx.descriptor = desc;
@@ -585,35 +637,89 @@ Slot RuntimeBridge::call(RuntimeCallContext &ctx,
         ctx, name, std::span<const Slot>{args.begin(), args.size()}, loc, fn, block);
 }
 
-void RuntimeBridge::registerExtern(const ExternDesc &ext)
+//===----------------------------------------------------------------------===//
+// ExternRegistry Free Functions
+//===----------------------------------------------------------------------===//
+
+ExternRegistry &processGlobalExternRegistry()
+{
+    return globalRegistry();
+}
+
+ExternRegistry &currentExternRegistry()
+{
+    // FUTURE: Check for active VM and return its registry if present.
+    // For now, always return the process-global registry.
+    //
+    // To implement per-VM scoping:
+    //   if (VM *vm = VM::activeInstance())
+    //       if (vm->externRegistry)
+    //           return *vm->externRegistry;
+    return globalRegistry();
+}
+
+void registerExternIn(ExternRegistry &registry, const ExternDesc &ext)
 {
     ExtRecord rec;
     rec.pub = ext;
     rec.runtimeSig = toRuntimeSig(ext.signature);
     rec.handler = reinterpret_cast<il::runtime::RuntimeHandler>(ext.fn);
     const std::string key = canonicalizeExternName(ext.name);
-    std::lock_guard<std::mutex> lock(externMutex());
-    // Use insert_or_assign to avoid default-constructing the value
-    externRegistry().insert_or_assign(key, std::move(rec));
+    std::lock_guard<std::mutex> lock(registry.mutex);
+    registry.entries.insert_or_assign(key, std::move(rec));
+}
+
+bool unregisterExternIn(ExternRegistry &registry, std::string_view name)
+{
+    const std::string key = canonicalizeExternName(name);
+    std::lock_guard<std::mutex> lock(registry.mutex);
+    return registry.entries.erase(key) > 0;
+}
+
+const ExternDesc *findExternIn(ExternRegistry &registry, std::string_view name)
+{
+    const std::string key = canonicalizeExternName(name);
+    std::lock_guard<std::mutex> lock(registry.mutex);
+    auto it = registry.entries.find(key);
+    if (it == registry.entries.end())
+        return nullptr;
+    return &it->second.pub;
+}
+
+const ExternDesc *resolveExternIn(ExternRegistry &registry,
+                                  std::string_view name,
+                                  il::runtime::RuntimeSignature *outSig,
+                                  il::runtime::RuntimeHandler *outHandler)
+{
+    const std::string key = canonicalizeExternName(name);
+    std::lock_guard<std::mutex> lock(registry.mutex);
+    auto it = registry.entries.find(key);
+    if (it == registry.entries.end())
+        return nullptr;
+    if (outSig)
+        *outSig = it->second.runtimeSig;
+    if (outHandler)
+        *outHandler = it->second.handler;
+    return &it->second.pub;
+}
+
+//===----------------------------------------------------------------------===//
+// RuntimeBridge Static Methods (Delegate to Process-Global Registry)
+//===----------------------------------------------------------------------===//
+
+void RuntimeBridge::registerExtern(const ExternDesc &ext)
+{
+    registerExternIn(processGlobalExternRegistry(), ext);
 }
 
 bool RuntimeBridge::unregisterExtern(std::string_view name)
 {
-    // Canonicalize before acquiring lock to minimize locked critical section
-    const std::string key = canonicalizeExternName(name);
-    std::lock_guard<std::mutex> lock(externMutex());
-    return externRegistry().erase(key) > 0;
+    return unregisterExternIn(processGlobalExternRegistry(), name);
 }
 
 const ExternDesc *RuntimeBridge::findExtern(std::string_view name)
 {
-    // Canonicalize before acquiring lock to minimize locked critical section
-    const std::string key = canonicalizeExternName(name);
-    std::lock_guard<std::mutex> lock(externMutex());
-    auto it = externRegistry().find(key);
-    if (it == externRegistry().end())
-        return nullptr;
-    return &it->second.pub;
+    return findExternIn(processGlobalExternRegistry(), name);
 }
 
 } // namespace il::vm

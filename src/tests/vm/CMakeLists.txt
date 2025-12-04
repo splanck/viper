@@ -205,6 +205,10 @@ function(viper_add_vm_unit_tests)
     target_link_libraries(test_vm_runtime_concurrency PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} Threads::Threads)
     viper_add_ctest(test_vm_runtime_concurrency test_vm_runtime_concurrency)
 
+    viper_add_test(test_vm_threading_model ${VIPER_TESTS_DIR}/unit/test_vm_threading_model.cpp)
+    target_link_libraries(test_vm_threading_model PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} Threads::Threads)
+    viper_add_ctest(test_vm_threading_model test_vm_threading_model)
+
     viper_add_test(test_vm_runtime_trap_metadata ${VIPER_TESTS_DIR}/unit/test_vm_runtime_trap_metadata.cpp)
     target_link_libraries(test_vm_runtime_trap_metadata PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
     viper_add_ctest(test_vm_runtime_trap_metadata test_vm_runtime_trap_metadata)

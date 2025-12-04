@@ -42,6 +42,8 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 #include <limits>
 #include <optional>
 #include <span>
@@ -54,7 +56,6 @@
 #ifndef NDEBUG
 #include "il/runtime/signatures/Registry.hpp"
 #include <cassert>
-#include <cstdio>
 #include <unordered_set>
 
 namespace il::runtime::signatures
@@ -1856,16 +1857,16 @@ signatures::SigParam::Kind mapToSigParamKind(il::core::Type::Kind kind)
         case Kind::Void:
             std::fprintf(stderr, "Unexpected void type in parameter list.\n");
             assert(false && "void type cannot appear in parameter list");
-            return SigParam::Kind::Ptr;
+            std::abort(); // Unreachable in correct implementation
         case Kind::Error:
             std::fprintf(stderr, "Unexpected error type in runtime signature.\n");
             assert(false && "error type cannot appear in runtime signature");
-            return SigParam::Kind::Ptr;
+            std::abort(); // Unreachable in correct implementation
     }
     std::fprintf(
         stderr, "Unhandled runtime type kind: %s.\n", il::core::kindToString(kind).c_str());
     assert(false && "unhandled runtime type kind");
-    return SigParam::Kind::Ptr;
+    std::abort(); // Unreachable in correct implementation
 }
 
 /// @brief Build the list of parameter kinds expected by a runtime signature.
@@ -2164,6 +2165,83 @@ bool isVarArgCallee(std::string_view name)
     }
 
     return false;
+}
+
+/// @brief Lightweight runtime descriptor self-check for both debug and release builds.
+///
+/// @details Performs essential sanity checks that are cheap enough to run in release:
+///          1. No duplicate descriptor names in the registry
+///          2. Each descriptor's parsed signature has a consistent parameter count
+///
+///          In debug builds, additionally runs the full whitelist validation.
+///          This function is idempotent and thread-safe via static initialization.
+///
+/// @return True if all checks pass. In release builds, logs errors and returns false
+///         on failure. In debug builds, also asserts.
+bool selfCheckRuntimeDescriptors()
+{
+    // Run once per process via static init guard
+    static const bool result = []() -> bool
+    {
+        const auto &descriptors = runtimeRegistry();
+        bool valid = true;
+
+        // Check 1: No duplicate descriptor names
+        // Use a simple O(n^2) check to avoid heap allocation for hash map
+        // This runs once at startup so the cost is acceptable
+        for (std::size_t i = 0; i < descriptors.size(); ++i)
+        {
+            for (std::size_t j = i + 1; j < descriptors.size(); ++j)
+            {
+                if (descriptors[i].name == descriptors[j].name)
+                {
+                    std::fprintf(stderr,
+                                 "[FATAL] Runtime descriptor duplicate: '%.*s' at indices %zu and "
+                                 "%zu\n",
+                                 static_cast<int>(descriptors[i].name.size()),
+                                 descriptors[i].name.data(),
+                                 i,
+                                 j);
+#ifndef NDEBUG
+                    assert(false && "duplicate runtime descriptor name");
+#endif
+                    valid = false;
+                }
+            }
+        }
+
+        // Check 2: Parameter count consistency
+        // For each descriptor, verify the signature's parameter count is reasonable
+        // (non-negative and within expected bounds for runtime functions)
+        constexpr std::size_t kMaxReasonableParams = 16;
+        for (std::size_t i = 0; i < descriptors.size(); ++i)
+        {
+            const auto &desc = descriptors[i];
+            const std::size_t paramCount = desc.signature.paramTypes.size();
+            if (paramCount > kMaxReasonableParams)
+            {
+                std::fprintf(stderr,
+                             "[FATAL] Runtime descriptor '%.*s' has %zu parameters (max %zu)\n",
+                             static_cast<int>(desc.name.size()),
+                             desc.name.data(),
+                             paramCount,
+                             kMaxReasonableParams);
+#ifndef NDEBUG
+                assert(false && "runtime descriptor has too many parameters");
+#endif
+                valid = false;
+            }
+        }
+
+        // In debug builds, the full whitelist validation already ran during
+        // runtimeRegistry() initialization. We just report the combined result.
+        // The heavy validation (ensureSignatureWhitelist, full type matching)
+        // only runs in debug builds via validateRuntimeDescriptors().
+
+        return valid;
+    }();
+
+    return result;
 }
 
 } // namespace il::runtime

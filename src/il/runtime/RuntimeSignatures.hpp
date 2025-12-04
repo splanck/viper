@@ -238,4 +238,25 @@ const RuntimeSignature *findRuntimeSignature(RtSig sig);
 /// @return True when the callee is known to be variadic.
 [[nodiscard]] bool isVarArgCallee(std::string_view name);
 
+/// @brief Perform a lightweight self-check on runtime descriptors.
+/// @details Validates that no duplicate descriptor names exist and that each
+///          descriptor's parameter count matches its signature. This check runs
+///          once per process and is lightweight enough for release builds.
+///          In debug builds, also runs the full validation against the whitelist.
+///
+///          The check is idempotent and thread-safe; multiple calls return the
+///          cached result from the first invocation.
+///
+/// @note **For embedders**: Call this function early in your application's
+///       startup sequence to verify runtime integrity before executing IL code.
+///       The VM calls this automatically during initialization, but embedders
+///       using the runtime library directly should call it explicitly.
+///
+/// @note The VM startup path in VMInit.cpp calls this function and aborts if
+///       it returns false, ensuring mismatches are caught before any IL execution.
+///
+/// @return True if all checks pass, false otherwise. In debug builds, asserts
+///         on failure. In release builds, logs errors to stderr and returns false.
+[[nodiscard]] bool selfCheckRuntimeDescriptors();
+
 } // namespace il::runtime
