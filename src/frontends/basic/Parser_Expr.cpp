@@ -485,6 +485,17 @@ ExprPtr Parser::parsePrimary()
         return v;
     }
 
+    // BUG-CARDS-011 fix: Support NOTHING keyword as a null object reference.
+    // Lowering detects VarExpr{"NOTHING"} and emits a null pointer.
+    if (at(TokenKind::KeywordNothing))
+    {
+        auto v = std::make_unique<VarExpr>();
+        v->loc = peek().loc;
+        v->name = "NOTHING";
+        consume();
+        return v;
+    }
+
     if (at(TokenKind::KeywordLbound) || at(TokenKind::KeywordUbound))
         return parseBoundIntrinsic(peek().kind);
 
@@ -628,19 +639,24 @@ ExprPtr Parser::parseNewExpression()
         }
     }
 
-    expect(TokenKind::LParen);
+    // BUG-CARDS-002 fix: Make parentheses optional for NEW expressions.
+    // Allow both "NEW ClassName" and "NEW ClassName(args)" syntax.
     std::vector<ExprPtr> args;
-    if (!at(TokenKind::RParen))
+    if (at(TokenKind::LParen))
     {
-        while (true)
+        consume(); // '('
+        if (!at(TokenKind::RParen))
         {
-            args.push_back(parseExpression());
-            if (!at(TokenKind::Comma))
-                break;
-            consume();
+            while (true)
+            {
+                args.push_back(parseExpression());
+                if (!at(TokenKind::Comma))
+                    break;
+                consume();
+            }
         }
+        expect(TokenKind::RParen);
     }
-    expect(TokenKind::RParen);
 
     auto expr = std::make_unique<NewExpr>();
     expr->loc = loc;

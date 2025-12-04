@@ -17,6 +17,7 @@
 #include "il/runtime/RuntimeSignatures.hpp"
 #include "vm/Marshal.hpp"
 #include "vm/RuntimeBridge.hpp"
+#include "vm/ViperStringHandle.hpp"
 #include "vm/tco.hpp"
 
 /// @file
@@ -112,6 +113,10 @@ VM::ExecResult handleCall(VM &vm,
         args.push_back(VMAccess::eval(vm, fr, op));
 
     Slot out{};
+    // Guard to release any string result if not consumed (e.g., on exception or unused result)
+    const bool isStringResult = (in.type.kind == il::core::Type::Kind::Str);
+    ScopedSlotStringGuard outGuard(out.str, isStringResult);
+
     const auto &fnMap = VMAccess::functionMap(vm);
     auto it = fnMap.find(in.callee);
     if (it != fnMap.end())
@@ -282,8 +287,10 @@ VM::ExecResult handleCall(VM &vm,
             }
         }
     }
-    if (!in.result && in.type.kind == il::core::Type::Kind::Str && out.str)
-        rt_str_release_maybe(out.str);
+    // If there's a result destination, storeResult will take ownership; dismiss the guard.
+    // If no result destination, the guard will release the string on scope exit.
+    if (in.result)
+        outGuard.dismiss();
     ops::storeResult(fr, in, out);
     return {};
 }
@@ -313,6 +320,10 @@ VM::ExecResult handleCallIndirect(VM &vm,
     // Operand 0 may be a GlobalAddr or a function pointer value.
     const il::core::Value &calleeVal = in.operands[0];
     Slot out{};
+    // Guard to release any string result if not consumed (e.g., on exception or unused result)
+    const bool isStringResult = (in.type.kind == il::core::Type::Kind::Str);
+    ScopedSlotStringGuard outGuard(out.str, isStringResult);
+
     if (calleeVal.kind == il::core::Value::Kind::GlobalAddr)
     {
         std::string calleeName = calleeVal.str;
@@ -369,8 +380,10 @@ VM::ExecResult handleCallIndirect(VM &vm,
         out = VMAccess::callFunction(vm, *fn, args);
     }
 
-    if (!in.result && in.type.kind == il::core::Type::Kind::Str && out.str)
-        rt_str_release_maybe(out.str);
+    // If there's a result destination, storeResult will take ownership; dismiss the guard.
+    // If no result destination, the guard will release the string on scope exit.
+    if (in.result)
+        outGuard.dismiss();
     ops::storeResult(fr, in, out);
     return {};
 }

@@ -549,7 +549,13 @@ il::support::Expected<Parser::CaseArmSyntax> Parser::parseCaseArmSyntax(Cursor &
                 // Store raw string value without quotes (matching lexer behavior)
                 t.lexeme = itS->second;
                 cursor.stringLabels.push_back(std::move(t));
-                continue;
+                // BUG-CARDS-003 fix: Check for comma before continuing to allow multiple CONSTs
+                if (at(TokenKind::Comma))
+                {
+                    consume();
+                    continue;
+                }
+                break;
             }
             if (auto itI = knownConstInts_.find(canon); itI != knownConstInts_.end())
             {
@@ -616,7 +622,13 @@ il::support::Expected<Parser::CaseArmSyntax> Parser::parseCaseArmSyntax(Cursor &
                     t.lexeme = std::to_string(loVal);
                     cursor.numericLabels.push_back(std::move(t));
                 }
-                continue;
+                // BUG-CARDS-003 fix: Check for comma before continuing to allow multiple CONSTs
+                if (at(TokenKind::Comma))
+                {
+                    consume();
+                    continue;
+                }
+                break;
             }
 
             // Unknown identifier in CASE label

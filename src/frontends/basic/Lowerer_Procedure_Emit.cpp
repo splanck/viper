@@ -209,9 +209,10 @@ void ProcedureLowering::emitProcedureCleanup(LoweringContext &ctx)
     }
 
     lowerer.releaseObjectLocals(excludeFromRelease);
-    lowerer.releaseObjectParams(ctx.paramNames);
+    // BUG-105 fix: Don't release object/array parameters - they are borrowed references from caller
+    // lowerer.releaseObjectParams(ctx.paramNames);  // REMOVED - params not owned by callee
     lowerer.releaseArrayLocals(ctx.paramNames);
-    lowerer.releaseArrayParams(ctx.paramNames);
+    // lowerer.releaseArrayParams(ctx.paramNames);  // REMOVED - params not owned by callee
 
     lowerer.curLoc = {};
     config.emitFinalReturn();

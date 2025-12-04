@@ -23,6 +23,7 @@
 #include "vm/RuntimeBridge.hpp"
 #include "vm/Trap.hpp"
 #include "vm/VMConfig.hpp"
+#include "vm/ViperStringHandle.hpp"
 #include "vm/control_flow.hpp"
 
 // Forward declare C runtime context struct
@@ -345,7 +346,7 @@ class VM
                                      TransparentHashSV,
                                      TransparentEqualSV>;
     using StrMap =
-        std::unordered_map<std::string_view, rt_string, TransparentHashSV, TransparentEqualSV>;
+        std::unordered_map<std::string_view, ViperStringHandle, TransparentHashSV, TransparentEqualSV>;
 
     /**
      * @brief Construct a VM for executing an IL module.
@@ -580,8 +581,8 @@ class VM
         fnMap;
 
     /// @brief Interned runtime strings.
-    /// @ownership Owned by the VM; manages @c rt_string handles for globals.
-    std::unordered_map<std::string_view, rt_string, TransparentHashSV, TransparentEqualSV> strMap;
+    /// @ownership Owned by the VM via ViperStringHandle RAII; manages string handles for globals.
+    std::unordered_map<std::string_view, ViperStringHandle, TransparentHashSV, TransparentEqualSV> strMap;
 
     /// @brief Storage for mutable module-level globals.
     /// @ownership Owned by the VM; each global maps to allocated storage.
@@ -590,10 +591,10 @@ class VM
         mutableGlobalMap;
 
     /// @brief Cached runtime handles for inline string literals containing embedded NULs.
-    /// @ownership Owned by the VM; stores @c rt_string handles created via @c rt_string_from_bytes.
-    /// @invariant Each literal string maps to at most one active handle, released exactly once
-    ///            when the cache is cleared.
-    std::unordered_map<std::string_view, rt_string, TransparentHashSV, TransparentEqualSV>
+    /// @ownership Owned by the VM via ViperStringHandle RAII; handles created via @c rt_string_from_bytes.
+    /// @invariant Each literal string maps to at most one active handle, released automatically
+    ///            when the cache is cleared or the VM is destroyed.
+    std::unordered_map<std::string_view, ViperStringHandle, TransparentHashSV, TransparentEqualSV>
         inlineLiteralCache;
 
     /// @brief Reverse map from basic block pointer to owning function.

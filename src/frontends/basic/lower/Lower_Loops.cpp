@@ -26,8 +26,10 @@
 ///          control-flow graphs.
 
 #include "frontends/basic/ASTUtils.hpp"
+#include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/LocationScope.hpp"
 #include "frontends/basic/Lowerer.hpp"
+#include "support/diagnostics.hpp"
 
 #include <cassert>
 
@@ -479,8 +481,17 @@ void Lowerer::lowerFor(const ForStmt &stmt)
     Value ctrlSlot;
     if (!stmt.varExpr)
     {
-        // Should never happen, but handle gracefully
-        ctrlSlot = Value::temp(0);
+        // Missing loop variable expression - this is a parser bug.
+        // Emit error and skip lowering to avoid generating invalid IL.
+        if (auto *em = diagnosticEmitter())
+        {
+            em->emit(il::support::Severity::Error,
+                     "E_FOR_NO_VAR",
+                     stmt.loc,
+                     1,
+                     "FOR loop missing control variable");
+        }
+        return;
     }
     else if (auto *varExpr = as<VarExpr>(*stmt.varExpr))
     {
@@ -507,23 +518,51 @@ void Lowerer::lowerFor(const ForStmt &stmt)
         }
         else
         {
-            // Fallback if resolution fails
-            ctrlSlot = Value::temp(0);
+            // Member field resolution failed - likely undefined object/field.
+            // Emit error and skip lowering.
+            if (auto *em = diagnosticEmitter())
+            {
+                std::string msg = "cannot resolve member field '" + memberAccess->member +
+                                  "' for FOR loop control variable";
+                em->emit(il::support::Severity::Error,
+                         "E_FOR_MEMBER_RESOLVE",
+                         stmt.loc,
+                         static_cast<uint32_t>(memberAccess->member.size()),
+                         std::move(msg));
+            }
+            return;
         }
     }
     else if (auto *arrayExpr = as<ArrayExpr>(*stmt.varExpr))
     {
-        // Array element: FOR arr(i) = 1 TO 10
-        // Lower the array subscript to get element pointer
-        // This is complex - for now, create a temporary and emit a warning
-        // Full implementation would require computing element address
-        ctrlSlot = Value::temp(0);
-        // TODO: Implement array element loop variables
+        // Array element loop variables (e.g., FOR arr(i) = 1 TO 10) are not yet supported.
+        // Emit a compile-time error and skip lowering to avoid generating bogus IL.
+        if (auto *em = diagnosticEmitter())
+        {
+            std::string msg = "FOR control variable cannot be an array element (" +
+                              arrayExpr->name + "(...)); not yet supported";
+            em->emit(il::support::Severity::Error,
+                     "E_FOR_ARRAY_CTRL",
+                     stmt.loc,
+                     static_cast<uint32_t>(arrayExpr->name.size()),
+                     std::move(msg));
+        }
+        return; // Skip lowering - do not generate bogus IL
     }
     else
     {
-        // Other expression types not supported
-        ctrlSlot = Value::temp(0);
+        // Unsupported expression type for FOR control variable.
+        // Emit a compile-time error and skip lowering.
+        if (auto *em = diagnosticEmitter())
+        {
+            std::string msg = "FOR control variable must be a simple variable or object field";
+            em->emit(il::support::Severity::Error,
+                     "E_FOR_UNSUPPORTED_CTRL",
+                     stmt.loc,
+                     1,
+                     std::move(msg));
+        }
+        return; // Skip lowering - do not generate bogus IL
     }
 
     // Store initial value to loop variable

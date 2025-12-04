@@ -484,12 +484,8 @@ Slot VM::runFunctionLoop(ExecState &st)
 /// context.
 VM::~VM()
 {
-    for (auto &entry : strMap)
-        rt_str_release_maybe(entry.second);
+    // String maps use ViperStringHandle RAII - just clear to trigger automatic release
     strMap.clear();
-
-    for (auto &entry : inlineLiteralCache)
-        rt_str_release_maybe(entry.second);
     inlineLiteralCache.clear();
 
     for (auto &entry : mutableGlobalMap)

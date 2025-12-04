@@ -761,6 +761,16 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
                 }
 
                 std::string callee = mangleMethod(ci->qualifiedName, selected);
+                // BUG-CARDS-010 fix: Check for object-returning methods first
+                std::string retClassName = findMethodReturnClassName(qname, selected);
+                if (!retClassName.empty())
+                {
+                    // Method returns a custom class type - use ptr
+                    Type ilRetTy(Type::Kind::Ptr);
+                    Value result = emitCallRet(ilRetTy, callee, args);
+                    deferReleaseObj(result, retClassName);
+                    return {result, ilRetTy};
+                }
                 if (auto retType = findMethodReturnType(qname, selected))
                 {
                     Type ilRetTy = type_conv::astToIlType(*retType);
@@ -1342,6 +1352,15 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
             emitBinary(Opcode::GEP, Type(Type::Kind::Ptr), tablePtr, Value::constInt(offset));
         Value fnPtr = emitLoad(Type(Type::Kind::Ptr), entryPtr);
 
+        // BUG-CARDS-010 fix: Check for object-returning methods first
+        std::string retClassName = findMethodReturnClassName(className, expr.method);
+        if (!retClassName.empty())
+        {
+            Type ilRetTy(Type::Kind::Ptr);
+            Value result = emitCallIndirectRet(ilRetTy, fnPtr, args);
+            deferReleaseObj(result, retClassName);
+            return {result, ilRetTy};
+        }
         if (auto retType = findMethodReturnType(className, expr.method))
         {
             Type ilRetTy = type_conv::astToIlType(*retType);
@@ -1359,6 +1378,15 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
     // Direct call path.
     // For BASE-qualified direct calls, consult the resolved base class for return type.
     const std::string retClassLookup = baseQualified ? directQClass : qc;
+    // BUG-CARDS-010 fix: Check for object-returning methods first
+    std::string retClassName = findMethodReturnClassName(retClassLookup, selectedName);
+    if (!retClassName.empty())
+    {
+        Type ilRetTy(Type::Kind::Ptr);
+        Value result = emitCallRet(ilRetTy, directCallee, args);
+        deferReleaseObj(result, retClassName);
+        return {result, ilRetTy};
+    }
     if (auto retType = findMethodReturnType(retClassLookup, selectedName))
     {
         Type ilRetTy = type_conv::astToIlType(*retType);

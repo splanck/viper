@@ -118,6 +118,10 @@ function(viper_add_basic_main_tests)
     target_link_libraries(test_basic_parse_loops PRIVATE ${VIPER_BASIC_LIBS})
     viper_add_ctest(test_basic_parse_loops test_basic_parse_loops)
 
+    viper_add_test(test_basic_for_loop_ctrl_diagnostics ${_VIPER_BASIC_UNIT_DIR}/test_basic_for_loop_ctrl_diagnostics.cpp)
+    target_link_libraries(test_basic_for_loop_ctrl_diagnostics PRIVATE ${VIPER_BASIC_LIBS})
+    viper_add_ctest(test_basic_for_loop_ctrl_diagnostics test_basic_for_loop_ctrl_diagnostics)
+
     viper_add_test(test_basic_parse_do ${_VIPER_BASIC_UNIT_DIR}/test_basic_parse_do.cpp)
     target_link_libraries(test_basic_parse_do PRIVATE ${VIPER_BASIC_LIBS})
     viper_add_ctest(test_basic_parse_do test_basic_parse_do)

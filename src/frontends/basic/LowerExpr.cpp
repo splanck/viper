@@ -48,6 +48,14 @@ namespace il::frontends::basic
 Lowerer::RVal Lowerer::lowerVarExpr(const VarExpr &v)
 {
     LocationScope loc(*this, v.loc);
+
+    // BUG-CARDS-011 fix: Handle NOTHING keyword as a null pointer.
+    // NOTHING is parsed as VarExpr{"NOTHING"} and should emit a null ptr.
+    if (v.name == "NOTHING")
+    {
+        return {Value::null(), Type(Type::Kind::Ptr)};
+    }
+
     auto storage = resolveVariableStorage(v.name, v.loc);
     assert(storage && "variable should have resolved storage");
     Type ty = storage->slotInfo.type;

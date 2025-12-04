@@ -13,6 +13,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/BasicDiagnosticMessages.hpp"
 #include "frontends/basic/IdentifierUtil.hpp"
 #include "frontends/basic/Parser.hpp"
@@ -254,7 +255,42 @@ StmtPtr Parser::parseDimStatement()
             if (at(TokenKind::KeywordAs))
             {
                 consume();
-                if (at(TokenKind::Identifier))
+                // BUG-CARDS-001 fix: Support DIM x AS NEW ClassName() syntax
+                if (at(TokenKind::KeywordNew))
+                {
+                    // Parse the NEW expression
+                    auto newExpr = parseNewExpression();
+                    // Extract class name from NewExpr
+                    if (auto *ne = as<NewExpr>(*newExpr))
+                    {
+                        // Set the explicit class name from the NEW expression
+                        if (!ne->qualifiedType.empty())
+                        {
+                            node->explicitClassQname = ne->qualifiedType;
+                        }
+                        else
+                        {
+                            node->explicitClassQname = {ne->className};
+                        }
+                    }
+                    // Create assignment: node->name = NEW ClassName()
+                    auto varExpr = std::make_unique<VarExpr>();
+                    varExpr->loc = nameTok.loc;
+                    varExpr->name = nameTok.lexeme;
+
+                    auto assignStmt = std::make_unique<LetStmt>();
+                    assignStmt->loc = nameTok.loc;
+                    assignStmt->target = std::move(varExpr);
+                    assignStmt->expr = std::move(newExpr);
+
+                    // Return both DIM and assignment wrapped in a StmtList
+                    auto list = std::make_unique<StmtList>();
+                    list->loc = loc;
+                    list->stmts.push_back(std::move(node));
+                    list->stmts.push_back(std::move(assignStmt));
+                    return list;
+                }
+                else if (at(TokenKind::Identifier))
                 {
                     auto toUpper = [](std::string_view text)
                     {

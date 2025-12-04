@@ -224,7 +224,7 @@ VM::VM(const Module &m,
         // initializer, so this branch handles both "foo" and "" literals.
         if (g.type.kind == il::core::Type::Kind::Str)
         {
-            strMap[g.name] = toViperString(g.init, AssumeNullTerminated::Yes);
+            strMap[g.name] = ViperStringHandle(toViperString(g.init, AssumeNullTerminated::Yes));
         }
         else
         {
@@ -277,10 +277,10 @@ VM::VM(const Module &m,
                             // Use same logic as evalConstStr in VMContext.cpp
                             if (operand.str.find('\0') == std::string::npos)
                                 inlineLiteralCache[operand.str] =
-                                    rt_const_cstr(operand.str.c_str());
+                                    ViperStringHandle(rt_const_cstr(operand.str.c_str()));
                             else
                                 inlineLiteralCache[operand.str] =
-                                    rt_string_from_bytes(operand.str.data(), operand.str.size());
+                                    ViperStringHandle(rt_string_from_bytes(operand.str.data(), operand.str.size()));
                         }
                     }
                 }
@@ -296,10 +296,10 @@ VM::VM(const Module &m,
                             {
                                 if (brArg.str.find('\0') == std::string::npos)
                                     inlineLiteralCache[brArg.str] =
-                                        rt_const_cstr(brArg.str.c_str());
+                                        ViperStringHandle(rt_const_cstr(brArg.str.c_str()));
                                 else
                                     inlineLiteralCache[brArg.str] =
-                                        rt_string_from_bytes(brArg.str.data(), brArg.str.size());
+                                        ViperStringHandle(rt_string_from_bytes(brArg.str.data(), brArg.str.size()));
                             }
                         }
                     }

@@ -174,11 +174,11 @@ Slot VMContext::eval(Frame &fr, const il::core::Value &value) const
             if (inserted)
             {
                 if (value.str.find('\0') == std::string::npos)
-                    it->second = rt_const_cstr(value.str.c_str());
+                    it->second = ViperStringHandle(rt_const_cstr(value.str.c_str()));
                 else
-                    it->second = rt_string_from_bytes(value.str.data(), value.str.size());
+                    it->second = ViperStringHandle(rt_string_from_bytes(value.str.data(), value.str.size()));
             }
-            s.str = it->second;
+            s.str = it->second.get();
             return s;
         }
         case il::core::Value::Kind::GlobalAddr:
@@ -208,7 +208,7 @@ Slot VMContext::eval(Frame &fr, const il::core::Value &value) const
             }
             else
             {
-                s.str = it->second;
+                s.str = it->second.get();
             }
             return s;
         }
@@ -460,11 +460,11 @@ Slot VM::eval(Frame &fr, const il::core::Value &value)
             if (inserted)
             {
                 if (value.str.find('\0') == std::string::npos)
-                    it->second = rt_const_cstr(value.str.c_str());
+                    it->second = ViperStringHandle(rt_const_cstr(value.str.c_str()));
                 else
-                    it->second = rt_string_from_bytes(value.str.data(), value.str.size());
+                    it->second = ViperStringHandle(rt_string_from_bytes(value.str.data(), value.str.size()));
             }
-            s.str = it->second;
+            s.str = it->second.get();
             return s;
         }
         case il::core::Value::Kind::GlobalAddr:
@@ -494,7 +494,7 @@ Slot VM::eval(Frame &fr, const il::core::Value &value)
             }
             else
             {
-                s.str = it->second;
+                s.str = it->second.get();
             }
             return s;
         }
