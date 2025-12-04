@@ -1,1 +1,1 @@
-error: verify.eh.resume_label_target: resume_label_non_postdom:handler: resume.label %t5 label left: target ^left must postdominate block right
+error[verify.eh.resume_label_target]: resume_label_non_postdom:handler: resume.label %t5 label left: target ^left must postdominate block right

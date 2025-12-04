@@ -76,7 +76,7 @@ int main()
     il::support::SourceManager sm;
     il::support::SourceLoc loc{sm.addFile("test"), 1, 1};
     il::support::DiagnosticEngine de;
-    de.report({il::support::Severity::Error, "oops", loc});
+    de.report({il::support::Severity::Error, "oops", loc, {}});
     std::ostringstream oss;
     de.printAll(oss, &sm);
     assert(oss.str().find("error: oops") != std::string::npos);
@@ -105,7 +105,7 @@ int main()
     il::support::SourceLoc missingLineEnd{loc.file_id, 0, 0};
     il::support::SourceRange missingLineRange{sameLineBegin, missingLineEnd};
     assert(missingLineRange.isValid());
-    il::support::Diag partialDiag{il::support::Severity::Error, "partial coordinates", partial};
+    il::support::Diag partialDiag{il::support::Severity::Error, "partial coordinates", partial, {}};
     std::ostringstream partialStream;
     il::support::printDiag(partialDiag, partialStream, &sm);
     const std::string partialText = partialStream.str();
@@ -157,6 +157,7 @@ int main()
         il::support::Severity::Error,
         "missing path context",
         il::support::SourceLoc{42, 2, 7},
+        {},
     };
     std::ostringstream missingDiag;
     il::support::printDiag(missingPath, missingDiag, &sm);

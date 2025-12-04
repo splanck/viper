@@ -47,12 +47,18 @@ std::string getFirstDiagnostic(const std::string &source)
     std::string output = oss.str();
 
     // Extract just the error message part (after the location).
-    size_t errorPos = output.find("error:");
+    // Handle both "error: msg" and "error[code]: msg" formats.
+    size_t errorPos = output.find("error");
     if (errorPos != std::string::npos)
     {
-        size_t msgStart = errorPos + 7; // Skip "error: "
-        size_t msgEnd = output.find('\n', msgStart);
-        return output.substr(msgStart, msgEnd - msgStart);
+        // Find the colon-space that precedes the message
+        size_t colonSpace = output.find(": ", errorPos);
+        if (colonSpace != std::string::npos)
+        {
+            size_t msgStart = colonSpace + 2; // Skip ": "
+            size_t msgEnd = output.find('\n', msgStart);
+            return output.substr(msgStart, msgEnd - msgStart);
+        }
     }
     return "";
 }
@@ -198,7 +204,7 @@ void test_diagnostic_locations()
 
     // Verify output contains file:line:col format
     assert(output.find("test.bas:") != std::string::npos);
-    assert(output.find("error:") != std::string::npos);
+    assert(output.find("error") != std::string::npos);
 }
 
 int main()

@@ -42,24 +42,27 @@ namespace
 ///          @ref LoadResult::succeeded without worrying about stale diagnostic
 ///          payloads lingering from earlier attempts.
 ///
+/// @param path Path that was successfully loaded.
 /// @return A result with @ref LoadStatus::Success and an empty diagnostic.
-LoadResult makeSuccess()
+LoadResult makeSuccess(const std::string &path)
 {
-    return {LoadStatus::Success, std::nullopt};
+    return {LoadStatus::Success, std::nullopt, path};
 }
 
 /// @brief Create a load result describing an I/O failure.
 ///
-/// @details File system failures (missing file, permission error, etc.) cannot
-///          be expressed as IL diagnostics, so the helper records the failure
-///          kind while leaving the diagnostic slot empty.  Callers can emit
-///          human-readable I/O messages and still propagate the structured
-///          status to higher layers.
+/// @details File system failures (missing file, permission error, etc.) are
+///          recorded with the path that could not be opened.  The diagnostic
+///          slot is populated with a basic error message so callers can use
+///          printLoadResult uniformly.
 ///
-/// @return Result tagged with @ref LoadStatus::FileError and no diagnostic.
-LoadResult makeFileError()
+/// @param path Path that could not be opened.
+/// @param message Human-readable description of the I/O failure.
+/// @return Result tagged with @ref LoadStatus::FileError.
+LoadResult makeFileError(const std::string &path, std::string message)
 {
-    return {LoadStatus::FileError, std::nullopt};
+    il::support::Diag diag{il::support::Severity::Error, std::move(message), {}, {}};
+    return {LoadStatus::FileError, diag, path};
 }
 
 /// @brief Create a load result populated with a parser diagnostic.
@@ -69,11 +72,23 @@ LoadResult makeFileError()
 ///          destroyed.  The copy is inexpensive because diagnostics contain
 ///          small, reference-counted payloads.
 ///
+/// @param path Path that was being parsed.
 /// @param diag Diagnostic emitted by the parser that explains the failure.
 /// @return A result tagged with @ref LoadStatus::ParseError holding @p diag.
-LoadResult makeParseError(const il::support::Diag &diag)
+LoadResult makeParseError(const std::string &path, const il::support::Diag &diag)
 {
-    return {LoadStatus::ParseError, diag};
+    return {LoadStatus::ParseError, diag, path};
+}
+
+/// @brief Create a load result populated with a verifier diagnostic.
+///
+/// @details Similar to makeParseError but tagged for verification failures.
+///
+/// @param diag Diagnostic emitted by the verifier that explains the failure.
+/// @return A result tagged with @ref LoadStatus::VerifyError holding @p diag.
+LoadResult makeVerifyError(const il::support::Diag &diag)
+{
+    return {LoadStatus::VerifyError, diag, {}};
 }
 } // namespace
 
@@ -108,8 +123,9 @@ LoadResult loadModuleFromFile(const std::string &path,
     std::ifstream input(path);
     if (!input)
     {
-        err << ioErrorPrefix << path << '\n';
-        return makeFileError();
+        std::string message = std::string(ioErrorPrefix) + path;
+        err << message << '\n';
+        return makeFileError(path, std::move(message));
     }
 
     auto parsed = il::api::v2::parse_text_expected(input, module);
@@ -117,10 +133,10 @@ LoadResult loadModuleFromFile(const std::string &path,
     {
         const auto diag = parsed.error();
         il::support::printDiag(diag, err);
-        return makeParseError(diag);
+        return makeParseError(path, diag);
     }
 
-    return makeSuccess();
+    return makeSuccess(path);
 }
 
 /// @brief Run the IL verifier and forward diagnostics to the caller.
@@ -148,6 +164,92 @@ bool verifyModule(const il::core::Module &module,
         return false;
     }
     return true;
+}
+
+/// @brief Verify a module and return the result without printing.
+///
+/// @details Wraps the verifier's Expected result into a LoadResult so callers
+///          can handle verification failures using the same pattern as parse
+///          and file errors.  The diagnostic is copied into the result for
+///          later inspection or printing.
+///
+/// @param module Module that should satisfy verifier invariants.
+/// @return LoadResult with Success or VerifyError status.
+LoadResult verifyModuleResult(const il::core::Module &module)
+{
+    auto verified = il::api::v2::verify_module_expected(module);
+    if (!verified)
+    {
+        return makeVerifyError(verified.error());
+    }
+    return {LoadStatus::Success, std::nullopt, {}};
+}
+
+/// @brief Load and verify an IL module in one step.
+///
+/// @details Combines loadModuleFromFile and verifyModuleResult into a single
+///          operation for tools that want comprehensive loading with uniform
+///          error handling.  File I/O and parse errors are returned immediately;
+///          verification errors are returned after successful parsing.
+///
+/// @param path Filesystem path to the IL file.
+/// @param module Module instance receiving parsed content on success.
+/// @param sm Source manager providing path lookups for diagnostics.
+/// @param err Output stream receiving human-readable diagnostics.
+/// @param ioErrorPrefix Prefix emitted before file-system error messages.
+/// @return Load status describing success or the first failure encountered.
+LoadResult loadAndVerifyModule(const std::string &path,
+                               il::core::Module &module,
+                               const il::support::SourceManager *sm,
+                               std::ostream &err,
+                               std::string_view ioErrorPrefix)
+{
+    auto loadResult = loadModuleFromFile(path, module, err, ioErrorPrefix);
+    if (!loadResult.succeeded())
+    {
+        return loadResult;
+    }
+
+    auto verifyResult = verifyModuleResult(module);
+    if (!verifyResult.succeeded())
+    {
+        verifyResult.path = path;
+        if (verifyResult.diag)
+        {
+            il::support::printDiag(*verifyResult.diag, err, sm);
+        }
+        return verifyResult;
+    }
+
+    return loadResult;
+}
+
+/// @brief Print a LoadResult diagnostic to a stream.
+///
+/// @details Formats the diagnostic stored in @p result using the standard
+///          printDiag format.  For file errors that lack a structured
+///          diagnostic, emits a simple error message with the path.
+///
+/// @param result Result containing the diagnostic to print.
+/// @param err Stream receiving the formatted diagnostic.
+/// @param sm Optional source manager used to resolve diagnostic file paths.
+void printLoadResult(const LoadResult &result,
+                     std::ostream &err,
+                     const il::support::SourceManager *sm)
+{
+    if (result.succeeded())
+    {
+        return;
+    }
+
+    if (result.diag)
+    {
+        il::support::printDiag(*result.diag, err, sm);
+    }
+    else if (result.isFileError())
+    {
+        err << "error: unable to open " << result.path << '\n';
+    }
 }
 
 } // namespace il::tools::common

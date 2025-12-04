@@ -42,6 +42,7 @@ struct Diagnostic
     Severity severity;   ///< Message severity
     std::string message; ///< Human-readable text
     SourceLoc loc;       ///< Optional source location
+    std::string code;    ///< Optional diagnostic code (e.g., "B1001", "IL001")
 };
 
 /// @brief Collects diagnostics and prints them in order.

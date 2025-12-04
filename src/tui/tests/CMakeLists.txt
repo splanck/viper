@@ -38,6 +38,10 @@ add_executable(tui_test_unicode_width test_unicode_width.cpp)
 target_link_libraries(tui_test_unicode_width PRIVATE tui)
 add_test(NAME tui_test_unicode_width COMMAND tui_test_unicode_width)
 
+add_executable(tui_test_unicode_grapheme test_unicode_grapheme.cpp)
+target_link_libraries(tui_test_unicode_grapheme PRIVATE tui)
+add_test(NAME tui_test_unicode_grapheme COMMAND tui_test_unicode_grapheme)
+
 add_executable(tui_test_app_layout test_app_layout.cpp)
 target_link_libraries(tui_test_app_layout PRIVATE tui)
 add_test(NAME tui_test_app_layout COMMAND tui_test_app_layout)

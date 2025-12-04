@@ -57,12 +57,8 @@ int runCLI(
         return 1;
     }
 
-    auto load = il::tools::common::loadModuleFromFile(argv[1], m, err, "cannot open ");
-    if (!load.succeeded())
-    {
-        return 1;
-    }
-    if (!il::tools::common::verifyModule(m, err, &sm))
+    auto result = il::tools::common::loadAndVerifyModule(argv[1], m, &sm, err, "cannot open ");
+    if (!result.succeeded())
     {
         return 1;
     }

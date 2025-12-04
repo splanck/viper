@@ -59,7 +59,7 @@ void DiagnosticEmitter::emit(il::support::Severity sev,
                              uint32_t length,
                              std::string message)
 {
-    de_.report({sev, message, loc});
+    de_.report({sev, message, loc, code});
     entries_.push_back({sev, std::move(code), std::move(message), loc, length});
 }
 

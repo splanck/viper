@@ -63,29 +63,16 @@ std::string_view toString(VerifyDiagCode code)
 }
 
 /// @brief Construct a diagnostic value tagged with the verifier namespace.
-/// @details Prepends the derived prefix (when available) to the supplied message
-///          and packages the result into an @ref il::support::Diag at the given
-///          severity and source location.  The helper ensures consistent
-///          formatting across all verifier emission sites.
+/// @details Uses the Diagnostic struct's code field to store the verifier code
+///          prefix, ensuring consistent formatting through the shared printDiag()
+///          function.  The code appears as `[verify.eh.underflow]` in the output.
 il::support::Diag makeVerifierDiag(VerifyDiagCode code,
                                    il::support::Severity severity,
                                    il::support::SourceLoc loc,
                                    std::string message)
 {
     const std::string_view prefix = diagCodeToPrefix(code);
-    if (!prefix.empty())
-    {
-        if (!message.empty())
-        {
-            message.insert(0, ": ");
-            message.insert(0, prefix);
-        }
-        else
-        {
-            message.assign(prefix);
-        }
-    }
-    return {severity, std::move(message), loc};
+    return {severity, std::move(message), loc, std::string(prefix)};
 }
 
 /// @brief Convenience wrapper that always reports an error severity.

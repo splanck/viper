@@ -29,21 +29,58 @@ namespace il::tools::common
 /// @brief Result classifications for attempting to load a module from disk.
 enum class LoadStatus
 {
-    Success,   ///< Module loaded successfully.
-    FileError, ///< Input file could not be opened.
-    ParseError ///< Parser reported diagnostics.
+    Success,     ///< Module loaded successfully.
+    FileError,   ///< Input file could not be opened.
+    ParseError,  ///< Parser reported diagnostics.
+    VerifyError  ///< Verifier reported diagnostics.
 };
 
 /// @brief Outcome produced by ::loadModuleFromFile describing the failure mode.
 struct LoadResult
 {
     LoadStatus status = LoadStatus::Success; ///< High-level status of the load.
-    std::optional<il::support::Diag> diag{}; ///< Populated when parsing fails.
+    std::optional<il::support::Diag> diag{}; ///< Populated when parsing or verification fails.
+    std::string path{};                      ///< Path that was loaded (useful for file errors).
 
     /// @brief Convenience for checking success.
     [[nodiscard]] bool succeeded() const
     {
         return status == LoadStatus::Success;
+    }
+
+    /// @brief Check if the failure was due to file I/O.
+    [[nodiscard]] bool isFileError() const
+    {
+        return status == LoadStatus::FileError;
+    }
+
+    /// @brief Check if the failure was due to parsing.
+    [[nodiscard]] bool isParseError() const
+    {
+        return status == LoadStatus::ParseError;
+    }
+
+    /// @brief Check if the failure was due to verification.
+    [[nodiscard]] bool isVerifyError() const
+    {
+        return status == LoadStatus::VerifyError;
+    }
+
+    /// @brief Human-readable description of the status category.
+    [[nodiscard]] const char *statusName() const
+    {
+        switch (status)
+        {
+            case LoadStatus::Success:
+                return "success";
+            case LoadStatus::FileError:
+                return "file error";
+            case LoadStatus::ParseError:
+                return "parse error";
+            case LoadStatus::VerifyError:
+                return "verify error";
+        }
+        return "unknown";
     }
 };
 
@@ -73,5 +110,35 @@ LoadResult loadModuleFromFile(const std::string &path,
 bool verifyModule(const il::core::Module &module,
                   std::ostream &err,
                   const il::support::SourceManager *sm = nullptr);
+
+/// @brief Verify @p module and return the result without printing.
+/// @param module Module to verify.
+/// @return LoadResult with VerifyError status on failure, Success otherwise.
+LoadResult verifyModuleResult(const il::core::Module &module);
+
+/// @brief Load and verify an IL module from @p path in one step.
+///
+/// Combines loadModuleFromFile and verifyModuleResult for tools that want both
+/// parsing and verification with a single result type.
+///
+/// @param path Path to the IL text file to parse.
+/// @param module Module receiving the parsed contents when successful.
+/// @param sm Source manager used to resolve diagnostic file paths.
+/// @param err Stream receiving human-readable diagnostics.
+/// @param ioErrorPrefix Prefix used when reporting file opening failures.
+/// @return Structured result describing success or the failure category.
+LoadResult loadAndVerifyModule(const std::string &path,
+                               il::core::Module &module,
+                               const il::support::SourceManager *sm,
+                               std::ostream &err,
+                               std::string_view ioErrorPrefix = "unable to open ");
+
+/// @brief Print a LoadResult diagnostic to a stream.
+/// @param result Result containing the diagnostic to print.
+/// @param err Stream receiving the formatted diagnostic.
+/// @param sm Optional source manager used to resolve diagnostic file paths.
+void printLoadResult(const LoadResult &result,
+                     std::ostream &err,
+                     const il::support::SourceManager *sm = nullptr);
 
 } // namespace il::tools::common

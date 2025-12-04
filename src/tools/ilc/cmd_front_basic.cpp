@@ -99,7 +99,7 @@ il::support::Expected<FrontBasicConfig> parseFrontBasicArgs(int argc, char **arg
             if (i + 1 >= argc)
             {
                 return il::support::Expected<FrontBasicConfig>(il::support::Diagnostic{
-                    il::support::Severity::Error, "missing BASIC source path", {}});
+                    il::support::Severity::Error, "missing BASIC source path", {}, {}});
             }
             config.emitIl = true;
             config.sourcePath = argv[++i];
@@ -109,7 +109,7 @@ il::support::Expected<FrontBasicConfig> parseFrontBasicArgs(int argc, char **arg
             if (i + 1 >= argc)
             {
                 return il::support::Expected<FrontBasicConfig>(il::support::Diagnostic{
-                    il::support::Severity::Error, "missing BASIC source path", {}});
+                    il::support::Severity::Error, "missing BASIC source path", {}, {}});
             }
             config.run = true;
             config.sourcePath = argv[++i];
@@ -133,10 +133,10 @@ il::support::Expected<FrontBasicConfig> parseFrontBasicArgs(int argc, char **arg
                     continue;
                 case ilc::SharedOptionParseResult::Error:
                     return il::support::Expected<FrontBasicConfig>(il::support::Diagnostic{
-                        il::support::Severity::Error, "failed to parse shared option", {}});
+                        il::support::Severity::Error, "failed to parse shared option", {}, {}});
                 case ilc::SharedOptionParseResult::NotMatched:
                     return il::support::Expected<FrontBasicConfig>(
-                        il::support::Diagnostic{il::support::Severity::Error, "unknown flag", {}});
+                        il::support::Diagnostic{il::support::Severity::Error, "unknown flag", {}, {}});
             }
         }
     }
@@ -144,7 +144,7 @@ il::support::Expected<FrontBasicConfig> parseFrontBasicArgs(int argc, char **arg
     if ((config.emitIl == config.run) || config.sourcePath.empty())
     {
         return il::support::Expected<FrontBasicConfig>(il::support::Diagnostic{
-            il::support::Severity::Error, "specify exactly one of -emit-il or -run", {}});
+            il::support::Severity::Error, "specify exactly one of -emit-il or -run", {}, {}});
     }
 
     return il::support::Expected<FrontBasicConfig>(std::move(config));
@@ -168,7 +168,7 @@ il::support::Expected<LoadedSource> loadSourceBuffer(const std::string &path,
     if (!in)
     {
         return il::support::Expected<LoadedSource>(
-            il::support::Diagnostic{il::support::Severity::Error, "unable to open " + path, {}});
+            il::support::Diagnostic{il::support::Severity::Error, "unable to open " + path, {}, {}});
     }
 
     std::ostringstream ss;

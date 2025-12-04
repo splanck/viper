@@ -1,1 +1,1 @@
-error: verify.eh.resume_token_missing: resume_label_without_token:handler: resume.label %t3 label after: [checkUnreachableAfterThrow] resume.* requires active resume token; path: entry -> handler
+error[verify.eh.resume_token_missing]: resume_label_without_token:handler: resume.label %t3 label after: [checkUnreachableAfterThrow] resume.* requires active resume token; path: entry -> handler

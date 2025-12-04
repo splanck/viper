@@ -122,7 +122,23 @@ const char *diagSeverityToString(Severity severity)
 /// @return Diagnostic populated with error severity and provided context.
 Diag makeError(SourceLoc loc, std::string msg)
 {
-    return Diag{Severity::Error, std::move(msg), loc};
+    return Diag{Severity::Error, std::move(msg), loc, {}};
+}
+
+/// @brief Build an error diagnostic with the provided location, code, and message.
+///
+/// @details This convenience function creates a diagnostic with both a code and
+///          message.  The code appears in the formatted output as `[CODE]` after
+///          the severity level, enabling programmatic filtering while preserving
+///          human readability.
+///
+/// @param loc Source location that triggered the diagnostic, or unknown.
+/// @param code Diagnostic code for programmatic identification.
+/// @param msg Human-readable description of the problem.
+/// @return Diagnostic populated with error severity, code, and provided context.
+Diag makeErrorWithCode(SourceLoc loc, std::string code, std::string msg)
+{
+    return Diag{Severity::Error, std::move(msg), loc, std::move(code)};
 }
 
 /// @brief Print a diagnostic to the provided output stream.
@@ -132,8 +148,14 @@ Diag makeError(SourceLoc loc, std::string msg)
 ///          available the message is prefixed with
 ///          "<path>:<line>:<column>:" following the common compiler diagnostic
 ///          style.  The formatted severity string comes from
-///          `detail::diagSeverityToString()` to keep wording consistent.  The
-///          function always emits a trailing newline so multiple diagnostics
+///          `detail::diagSeverityToString()` to keep wording consistent.
+///
+///          Canonical output format:
+///            <path>:<line>:<column>: <severity>[<code>]: <message>
+///          When no code is present:
+///            <path>:<line>:<column>: <severity>: <message>
+///
+///          The function always emits a trailing newline so multiple diagnostics
 ///          appear as a contiguous block.
 ///
 /// @param diag Diagnostic to render.
@@ -158,6 +180,11 @@ void printDiag(const Diag &diag, std::ostream &os, const SourceManager *sm)
             os << ": ";
         }
     }
-    os << detail::diagSeverityToString(diag.severity) << ": " << diag.message << '\n';
+    os << detail::diagSeverityToString(diag.severity);
+    if (!diag.code.empty())
+    {
+        os << '[' << diag.code << ']';
+    }
+    os << ": " << diag.message << '\n';
 }
 } // namespace il::support

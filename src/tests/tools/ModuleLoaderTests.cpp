@@ -149,5 +149,169 @@ int main()
         return 1;
     }
 
+    // Test verifyModuleResult - returns LoadResult instead of bool
+    {
+        il::core::Module goodModule{};
+        std::ostringstream discardErr;
+        auto goodLoad =
+            il::tools::common::loadModuleFromFile((root / "tests/data/loop.il").string(), goodModule, discardErr);
+        if (!goodLoad.succeeded())
+        {
+            return 1;
+        }
+        auto verifyResult = il::tools::common::verifyModuleResult(goodModule);
+        if (!verifyResult.succeeded())
+        {
+            return 1;
+        }
+        if (verifyResult.diag.has_value())
+        {
+            return 1;
+        }
+    }
+
+    // Test verifyModuleResult with invalid module
+    {
+        il::core::Module badModule{};
+        std::ostringstream discardErr;
+        auto badLoad = il::tools::common::loadModuleFromFile(negativePath, badModule, discardErr);
+        if (!badLoad.succeeded())
+        {
+            return 1;
+        }
+        auto verifyResult = il::tools::common::verifyModuleResult(badModule);
+        if (verifyResult.succeeded())
+        {
+            return 1; // Should have failed verification
+        }
+        if (!verifyResult.isVerifyError())
+        {
+            return 1;
+        }
+        if (!verifyResult.diag.has_value())
+        {
+            return 1;
+        }
+    }
+
+    // Test loadAndVerifyModule - success case
+    {
+        il::core::Module combinedModule{};
+        std::ostringstream combinedErr;
+        auto result = il::tools::common::loadAndVerifyModule(
+            (root / "tests/data/loop.il").string(), combinedModule, nullptr, combinedErr);
+        if (!result.succeeded())
+        {
+            return 1;
+        }
+        if (combinedErr.str().empty() == false)
+        {
+            return 1; // Should not have errors
+        }
+    }
+
+    // Test loadAndVerifyModule - file error case
+    {
+        il::core::Module combinedModule{};
+        std::ostringstream combinedErr;
+        auto result = il::tools::common::loadAndVerifyModule(
+            "/definitely/not/present.il", combinedModule, nullptr, combinedErr, "cannot open ");
+        if (result.succeeded())
+        {
+            return 1; // Should have failed
+        }
+        if (!result.isFileError())
+        {
+            return 1;
+        }
+        if (result.path != "/definitely/not/present.il")
+        {
+            return 1;
+        }
+    }
+
+    // Test loadAndVerifyModule - parse error case
+    {
+        il::core::Module combinedModule{};
+        std::ostringstream combinedErr;
+        auto result = il::tools::common::loadAndVerifyModule(
+            (root / "tests/il/parse/mismatched_paren.il").string(), combinedModule, nullptr, combinedErr);
+        if (result.succeeded())
+        {
+            return 1; // Should have failed
+        }
+        if (!result.isParseError())
+        {
+            return 1;
+        }
+    }
+
+    // Test loadAndVerifyModule - verify error case
+    {
+        il::core::Module combinedModule{};
+        std::ostringstream combinedErr;
+        auto result = il::tools::common::loadAndVerifyModule(negativePath, combinedModule, nullptr, combinedErr);
+        if (result.succeeded())
+        {
+            return 1; // Should have failed verification
+        }
+        if (!result.isVerifyError())
+        {
+            return 1;
+        }
+        if (!result.diag.has_value())
+        {
+            return 1;
+        }
+    }
+
+    // Test printLoadResult - no output on success
+    {
+        il::tools::common::LoadResult successResult{il::tools::common::LoadStatus::Success, std::nullopt, ""};
+        std::ostringstream printOut;
+        il::tools::common::printLoadResult(successResult, printOut);
+        if (!printOut.str().empty())
+        {
+            return 1; // Should not print anything for success
+        }
+    }
+
+    // Test printLoadResult - file error without diagnostic
+    {
+        il::tools::common::LoadResult fileErrResult{
+            il::tools::common::LoadStatus::FileError, std::nullopt, "/some/path.il"};
+        std::ostringstream printOut;
+        il::tools::common::printLoadResult(fileErrResult, printOut);
+        if (printOut.str().find("/some/path.il") == std::string::npos)
+        {
+            return 1; // Should include path in output
+        }
+    }
+
+    // Test statusName helper
+    {
+        il::tools::common::LoadResult r;
+        r.status = il::tools::common::LoadStatus::Success;
+        if (std::string(r.statusName()) != "success")
+        {
+            return 1;
+        }
+        r.status = il::tools::common::LoadStatus::FileError;
+        if (std::string(r.statusName()) != "file error")
+        {
+            return 1;
+        }
+        r.status = il::tools::common::LoadStatus::ParseError;
+        if (std::string(r.statusName()) != "parse error")
+        {
+            return 1;
+        }
+        r.status = il::tools::common::LoadStatus::VerifyError;
+        if (std::string(r.statusName()) != "verify error")
+        {
+            return 1;
+        }
+    }
+
     return 0;
 }

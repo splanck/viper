@@ -1,1 +1,1 @@
-error: verify.eh.unreleased: main:leak: ret: [checkAllPathsCloseTry] unmatched eh.push depth 1; path: entry -> leak
+error[verify.eh.unreleased]: main:leak: ret: [checkAllPathsCloseTry] unmatched eh.push depth 1; path: entry -> leak

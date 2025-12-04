@@ -146,6 +146,13 @@ const char *diagSeverityToString(Severity severity);
 /// @return Diagnostic marked as an error severity.
 Diag makeError(SourceLoc loc, std::string msg);
 
+/// @brief Create an error diagnostic with location, code, and message.
+/// @param loc Optional source location associated with the diagnostic.
+/// @param code Diagnostic code (e.g., "B1001", "IL001").
+/// @param msg Human-readable diagnostic message.
+/// @return Diagnostic marked as an error severity with the given code.
+Diag makeErrorWithCode(SourceLoc loc, std::string code, std::string msg);
+
 /// @brief Print a single diagnostic to the provided stream.
 /// @param diag Diagnostic to format.
 /// @param os Output stream receiving the text.
