@@ -207,8 +207,9 @@ int main()
     for (const auto &[input, expectedKind] : fpCastTrapInputs)
     {
         const std::string diag = captureCastFpToUiTrap(input);
+        // Format: "Trap @function:block#ip line N: Kind (code=C)"
         const std::string expected =
-            std::string("Trap @main#0 line 1: ") + expectedKind + " (code=0)";
+            std::string("Trap @main:entry#0 line 1: ") + expectedKind + " (code=0)";
         const bool matches = diag.find(expected) != std::string::npos;
         assert(matches && "unexpected trap kind for cast.fp_to_ui.rte.chk operand");
     }

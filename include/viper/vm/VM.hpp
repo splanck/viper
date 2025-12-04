@@ -161,14 +161,30 @@ class Runner
     void setMaxSteps(uint64_t);
 
     /// @brief Light-weight snapshot of the last trap for diagnostics.
+    ///
+    /// @details Populated when a trap occurs during execution. Use lastTrap()
+    ///          to retrieve this information after RunStatus::Trapped is returned.
+    ///
+    /// Trap kinds (matching TrapKind enum values):
+    /// - 0: DivideByZero - Integer division or remainder by zero
+    /// - 1: Overflow - Arithmetic or conversion overflow
+    /// - 2: InvalidCast - Invalid cast or conversion semantics
+    /// - 3: DomainError - Semantic domain violation or user trap
+    /// - 4: Bounds - Array bounds check failure
+    /// - 5: FileNotFound - File system open on non-existent path
+    /// - 6: EOF - End-of-file reached while input still expected
+    /// - 7: IOError - Generic I/O failure
+    /// - 8: InvalidOperation - Operation outside allowed state machine
+    /// - 9: RuntimeError - Catch-all for unexpected runtime failures
     struct TrapInfo
     {
-        int32_t kind = 0;           ///< Trap kind as integer code.
-        int32_t code = 0;           ///< Secondary error code.
-        uint64_t ip = 0;            ///< Instruction index at trap.
-        int32_t line = -1;          ///< Source line or -1 if unknown.
-        std::string function;       ///< Function name when available.
-        std::string message;        ///< Formatted trap message.
+        int32_t kind = 0;           ///< Trap kind (see enum values above).
+        int32_t code = 0;           ///< Secondary error code (0 = none).
+        uint64_t ip = 0;            ///< Instruction index within block at trap.
+        int32_t line = -1;          ///< Source line (-1 = unknown).
+        std::string function;       ///< Function name (empty if unknown).
+        std::string block;          ///< Block label (empty if unknown).
+        std::string message;        ///< Formatted human-readable trap message.
     };
 
     /// @brief Retrieve a pointer to the last trap snapshot, if any; nullptr otherwise.

@@ -275,4 +275,29 @@ struct MFunction
     } frame; ///< Stack frame layout.
 };
 
+// -----------------------------------------------------------------------------
+// Pretty printing helpers (for debugging only)
+// -----------------------------------------------------------------------------
+
+/// @brief Map an opcode to its human-readable name.
+[[nodiscard]] const char *opcodeName(MOpcode opc) noexcept;
+
+/// @brief Map a register class to a short suffix for debug output.
+[[nodiscard]] const char *regClassSuffix(RegClass cls) noexcept;
+
+/// @brief Render a register operand to string form.
+[[nodiscard]] std::string toString(const MReg &reg);
+
+/// @brief Render any operand to string form.
+[[nodiscard]] std::string toString(const MOperand &op);
+
+/// @brief Render an instruction to string form.
+[[nodiscard]] std::string toString(const MInstr &instr);
+
+/// @brief Render a basic block to string form.
+[[nodiscard]] std::string toString(const MBasicBlock &block);
+
+/// @brief Render a function to string form.
+[[nodiscard]] std::string toString(const MFunction &func);
+
 } // namespace viper::codegen::aarch64

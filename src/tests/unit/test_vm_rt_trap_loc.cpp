@@ -68,14 +68,17 @@ std::string captureRuntimeTrap(bool attachLoc)
 
 int main()
 {
+    // Format: "Trap @function:block#ip line N: Kind (code=C)"
+    // Line is omitted when unknown (instead of showing "line -1")
     const std::string withLoc = captureRuntimeTrap(true);
     const bool precise =
-        withLoc.find("Trap @main#1 line 1: DomainError (code=0)") != std::string::npos;
+        withLoc.find("Trap @main:entry#1 line 1: DomainError (code=0)") != std::string::npos;
     assert(precise);
 
     const std::string withoutLoc = captureRuntimeTrap(false);
-    const bool cleared = withoutLoc.find("line -1") != std::string::npos;
-    const bool reusedOldLine = withoutLoc.find("line 1") != std::string::npos;
-    assert(cleared && !reusedOldLine);
+    // When line is unknown, it should be omitted entirely (not "line -1")
+    const bool omittedLine = withoutLoc.find("line") == std::string::npos;
+    const bool hasTrap = withoutLoc.find("Trap @main:entry#1: DomainError (code=0)") != std::string::npos;
+    assert(omittedLine && hasTrap);
     return 0;
 }

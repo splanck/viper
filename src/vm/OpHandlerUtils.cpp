@@ -46,29 +46,46 @@ namespace ops
 ///          instruction lacks a result operand the function simply returns,
 ///          allowing opcode implementations to call it unconditionally.
 ///
+/// @note Optimized for the common case: result is present, register file is
+///       pre-sized, and type is non-string. The hot path is a single bounds
+///       check and assignment.
+///
 /// @param fr Frame whose register file receives the result.
 /// @param in Instruction describing the destination register and result type.
 /// @param val Evaluated result slot to copy into the register file.
 void storeResult(Frame &fr, const il::core::Instr &in, const Slot &val)
 {
-    if (!in.result)
+    // Early exit for instructions that don't produce a result
+    if (!in.result) [[unlikely]]
         return;
+
     const size_t destIndex = *in.result;
-    const bool hadRegister = destIndex < fr.regs.size();
-    if (!hadRegister)
-        fr.regs.resize(destIndex + 1);
 
-    if (in.type.kind == il::core::Type::Kind::Str) [[unlikely]]
+    // Hot path: register file already sized, non-string type
+    // This is the common case for arithmetic/comparison operations
+    if (destIndex < fr.regs.size()) [[likely]]
     {
-        if (hadRegister)
-            rt_str_release_maybe(fr.regs[destIndex].str);
+        if (in.type.kind != il::core::Type::Kind::Str) [[likely]]
+        {
+            fr.regs[destIndex] = val;
+            return;
+        }
 
-        Slot stored = val;
-        rt_str_retain_maybe(stored.str);
-        fr.regs[destIndex] = stored;
+        // String type: need to release old value before storing new
+        rt_str_release_maybe(fr.regs[destIndex].str);
+        rt_str_retain_maybe(val.str);
+        fr.regs[destIndex] = val;
         return;
     }
 
+    // Cold path: need to resize register file
+    fr.regs.resize(destIndex + 1);
+
+    if (in.type.kind == il::core::Type::Kind::Str) [[unlikely]]
+    {
+        // New register, no old value to release, just retain
+        rt_str_retain_maybe(val.str);
+    }
     fr.regs[destIndex] = val;
 }
 } // namespace ops

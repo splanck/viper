@@ -17,13 +17,16 @@ if (res EQUAL 0)
 endif ()
 
 string(STRIP "${stderr}" stderr_stripped)
+# Format: "Trap @function:block#ip line N: Kind (code=C): detail"
+# The function:block portion is captured as one group
 string(REGEX MATCH "^Trap @([^#]+)#([0-9]+) line (-1|[0-9]+): Overflow \\(code=0\\): (.+)$" _match "${stderr_stripped}")
 if (NOT _match)
     message(FATAL_ERROR "unexpected trap diagnostic: ${stderr_stripped}")
 endif ()
 
-if (NOT CMAKE_MATCH_1 STREQUAL "main")
-    message(FATAL_ERROR "unexpected function name: ${CMAKE_MATCH_1}")
+# Function:block is now "main:entry"
+if (NOT CMAKE_MATCH_1 STREQUAL "main:entry")
+    message(FATAL_ERROR "unexpected function:block: ${CMAKE_MATCH_1}")
 endif ()
 if (NOT CMAKE_MATCH_2 STREQUAL "0")
     message(FATAL_ERROR "unexpected instruction index: ${CMAKE_MATCH_2}")

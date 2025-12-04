@@ -55,8 +55,9 @@ struct VmError
 struct FrameInfo
 {
     std::string function;          ///< Function in which the trap occurred.
+    std::string block;             ///< Block label where the trap occurred.
     uint64_t ip = 0;               ///< Instruction pointer of the trap.
-    int32_t line = -1;             ///< Source line for diagnostics.
+    int32_t line = -1;             ///< Source line for diagnostics (-1 = unknown).
     bool handlerInstalled = false; ///< Whether an error handler is active.
 };
 

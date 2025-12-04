@@ -206,12 +206,20 @@ class Runner::Impl
 
     const TrapInfo *lastTrap() const
     {
-        // Populate on demand from public trap message.
+        // Populate on demand from VM's trap state.
         auto msg = vm.lastTrapMessage();
         if (!msg)
             return nullptr;
+
+        // Copy all fields from the internal trap state for comprehensive diagnostics.
+        const auto &trap = detail::VMAccess::lastTrapState(vm);
+        cachedTrap.kind = static_cast<int32_t>(trap.error.kind);
+        cachedTrap.code = trap.error.code;
+        cachedTrap.ip = trap.error.ip != 0 ? trap.error.ip : trap.frame.ip;
+        cachedTrap.line = trap.error.line >= 0 ? trap.error.line : trap.frame.line;
+        cachedTrap.function = trap.frame.function;
+        cachedTrap.block = trap.frame.block;
         cachedTrap.message = *msg;
-        // Other fields remain defaults when not introspecting VM internals.
         return &cachedTrap;
     }
 

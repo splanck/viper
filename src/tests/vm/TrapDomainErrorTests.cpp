@@ -45,7 +45,8 @@ int main()
 
     VmFixture fixture;
     const std::string out = fixture.captureTrap(module);
-    const bool ok = out.find("Trap @main#0 line 1: DomainError (code=0)") != std::string::npos;
+    // Format: "Trap @function:block#ip line N: Kind (code=C)"
+    const bool ok = out.find("Trap @main:entry#0 line 1: DomainError (code=0)") != std::string::npos;
     assert(ok && "expected DomainError trap diagnostic with instruction index");
     return 0;
 }

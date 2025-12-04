@@ -69,16 +69,18 @@ std::optional<std::string> VM::lastTrapMessage() const
 }
 
 /// @brief Construct a diagnostic frame snapshot for a VM error.
-/// @details Aggregates function name, instruction index, and source location by
-///          consulting current execution context, runtime context, and cached
-///          trap state.  The helper prefers freshly available data but falls back
-///          to previously recorded information when necessary, ensuring that
-///          debugger output always contains best-effort metadata.
+/// @details Aggregates function name, block label, instruction index, and source
+///          location by consulting current execution context, runtime context,
+///          and cached trap state.  The helper prefers freshly available data but
+///          falls back to previously recorded information when necessary, ensuring
+///          that debugger output always contains best-effort metadata.
 /// @param error Error descriptor reported by the VM core.
 /// @return Populated frame summary describing the failing execution point.
 FrameInfo VM::buildFrameInfo(const VmError &error) const
 {
     FrameInfo frame{};
+
+    // Function name: prefer current context, then runtime context, then cached
     if (currentContext.function)
         frame.function = currentContext.function->name;
     else if (!runtimeContext.function.empty())
@@ -86,12 +88,22 @@ FrameInfo VM::buildFrameInfo(const VmError &error) const
     else if (!lastTrap.frame.function.empty())
         frame.function = lastTrap.frame.function;
 
+    // Block label: prefer current execution state, then runtime context, then cached
+    if (!execStack.empty() && execStack.back() && execStack.back()->bb)
+        frame.block = execStack.back()->bb->label;
+    else if (!runtimeContext.block.empty())
+        frame.block = runtimeContext.block;
+    else if (!lastTrap.frame.block.empty())
+        frame.block = lastTrap.frame.block;
+
+    // Instruction pointer
     frame.ip = error.ip;
     if (frame.ip == 0 && currentContext.hasInstruction)
         frame.ip = static_cast<uint64_t>(currentContext.instructionIndex);
     else if (frame.ip == 0 && lastTrap.frame.ip != 0)
         frame.ip = lastTrap.frame.ip;
 
+    // Source line
     frame.line = error.line;
     if (frame.line < 0 && currentContext.loc.hasLine())
         frame.line = static_cast<int32_t>(currentContext.loc.line);
@@ -100,6 +112,7 @@ FrameInfo VM::buildFrameInfo(const VmError &error) const
     else if (frame.line < 0 && lastTrap.frame.line >= 0)
         frame.line = lastTrap.frame.line;
 
+    // Check if any handler is installed
     frame.handlerInstalled =
         std::any_of(execStack.begin(),
                     execStack.end(),

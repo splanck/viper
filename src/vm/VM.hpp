@@ -36,6 +36,7 @@ struct RtContext;
 #include <optional>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <unordered_map>
 #include <vector>
 
@@ -68,6 +69,8 @@ class DebugScript;
 
 /// @brief Runtime slot capable of holding IL values.
 /// @invariant Only one member is valid based on value type.
+/// @note Slot is designed to be trivially copyable (8 bytes) for efficient
+///       value semantics in the interpreter dispatch loop.
 union Slot
 {
     /// @brief Signed integer value.
@@ -90,6 +93,10 @@ union Slot
         return i64 == other.i64;
     }
 };
+
+// Ensure Slot remains efficient for interpreter dispatch
+static_assert(sizeof(Slot) == 8, "Slot must be 8 bytes for optimal copy performance");
+static_assert(std::is_trivially_copyable_v<Slot>, "Slot must be trivially copyable");
 
 /// @brief Call frame storing registers and operand stack.
 /// @invariant Stack pointer @c sp never exceeds @c stack size.

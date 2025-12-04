@@ -391,28 +391,31 @@ VM *activeVMInstance()
 }
 
 /// @brief Evaluate an IL value using a temporary context helper.
-/// @details Constructs a short-lived @ref VMContext and forwards to
-///          @ref VMContext::eval so the public VM API stays minimal while still
-///          sharing the implementation with other helpers.
+/// @details Optimized for the hot path: Temp values with valid register indices.
+///          Other value kinds delegate to helper functions to keep the fast path
+///          compact and cache-friendly.
 /// @param fr Frame providing registers and runtime state.
 /// @param value IL value to evaluate.
 /// @return Slot populated with the evaluated payload.
 Slot VM::eval(Frame &fr, const il::core::Value &value)
 {
-    // Direct, allocation-free evaluation to avoid constructing a temporary VMContext.
-    auto evalTemp = [&](const il::core::Value &v) -> Slot
+    // Hot path: Temp values are the most common operand type in typical IL.
+    // Inline the fast path (valid register index) directly to avoid any
+    // lambda or function call overhead. The error path is cold and can
+    // afford the extra work.
+    if (value.kind == il::core::Value::Kind::Temp) [[likely]]
     {
-        Slot s{};
-        if (v.id < fr.regs.size())
-            return fr.regs[v.id];
+        if (value.id < fr.regs.size()) [[likely]]
+            return fr.regs[value.id];
 
+        // Cold path: out-of-range register access - report detailed error
         const std::string fnName = fr.func ? fr.func->name : std::string("<unknown>");
         const il::core::BasicBlock *block = currentContext.block;
         const std::string blockLabel = block ? block->label : std::string();
         const auto loc = currentContext.loc;
 
         std::string message =
-            detail::formatRegisterRangeError(v.id, fr.regs.size(), fnName, blockLabel);
+            detail::formatRegisterRangeError(value.id, fr.regs.size(), fnName, blockLabel);
         if (loc.hasLine())
         {
             std::ostringstream os;
@@ -426,75 +429,86 @@ Slot VM::eval(Frame &fr, const il::core::Value &value)
             message += ", at unknown location";
         }
         RuntimeBridge::trap(TrapKind::InvalidOperation, message, loc, fnName, blockLabel);
-        return s;
-    };
-
-    auto evalConstStr = [&](const il::core::Value &v) -> Slot
-    {
         Slot s{};
-        auto [it, inserted] = inlineLiteralCache.try_emplace(v.str);
-        if (inserted)
-        {
-            if (v.str.find('\0') == std::string::npos)
-                it->second = rt_const_cstr(v.str.c_str());
-            else
-                it->second = rt_string_from_bytes(v.str.data(), v.str.size());
-        }
-        s.str = it->second;
         return s;
-    };
+    }
 
-    auto evalGlobalAddr = [&](const il::core::Value &v) -> Slot
+    // Second hot path: integer constants are very common
+    if (value.kind == il::core::Value::Kind::ConstInt)
     {
-        Slot s{};
-        // Map to function pointer when name matches a function
-        auto fIt = fnMap.find(v.str);
-        if (fIt != fnMap.end())
-        {
-            s.ptr = const_cast<il::core::Function *>(fIt->second);
-            return s;
-        }
+        Slot slot;
+        slot.i64 = value.i64;
+        return slot;
+    }
 
-        // Check mutable globals
-        auto mIt = mutableGlobalMap.find(v.str);
-        if (mIt != mutableGlobalMap.end())
-        {
-            s.ptr = mIt->second;
-            return s;
-        }
+    // Third hot path: floating-point constants
+    if (value.kind == il::core::Value::Kind::ConstFloat)
+    {
+        Slot slot;
+        slot.f64 = value.f64;
+        return slot;
+    }
 
-        // Fall back to const string globals
-        auto it = strMap.find(v.str);
-        if (it == strMap.end())
-        {
-            RuntimeBridge::trap(TrapKind::DomainError, "unknown global", {}, fr.func->name, "");
-        }
-        else
-        {
-            s.str = it->second;
-        }
-        return s;
-    };
-
-    Slot slot{};
+    // Cold paths: string constants, global addresses, null pointers
+    // These are less frequent and can afford the switch overhead
     switch (value.kind)
     {
-        case il::core::Value::Kind::Temp:
-            return evalTemp(value);
-        case il::core::Value::Kind::ConstInt:
-            slot.i64 = value.i64; // Direct access avoids toI64() function call
-            return slot;
-        case il::core::Value::Kind::ConstFloat:
-            slot.f64 = value.f64; // Direct access avoids toF64() function call
-            return slot;
         case il::core::Value::Kind::ConstStr:
-            return evalConstStr(value);
+        {
+            Slot s{};
+            auto [it, inserted] = inlineLiteralCache.try_emplace(value.str);
+            if (inserted)
+            {
+                if (value.str.find('\0') == std::string::npos)
+                    it->second = rt_const_cstr(value.str.c_str());
+                else
+                    it->second = rt_string_from_bytes(value.str.data(), value.str.size());
+            }
+            s.str = it->second;
+            return s;
+        }
         case il::core::Value::Kind::GlobalAddr:
-            return evalGlobalAddr(value);
+        {
+            Slot s{};
+            // Map to function pointer when name matches a function
+            auto fIt = fnMap.find(value.str);
+            if (fIt != fnMap.end())
+            {
+                s.ptr = const_cast<il::core::Function *>(fIt->second);
+                return s;
+            }
+
+            // Check mutable globals
+            auto mIt = mutableGlobalMap.find(value.str);
+            if (mIt != mutableGlobalMap.end())
+            {
+                s.ptr = mIt->second;
+                return s;
+            }
+
+            // Fall back to const string globals
+            auto it = strMap.find(value.str);
+            if (it == strMap.end())
+            {
+                RuntimeBridge::trap(TrapKind::DomainError, "unknown global", {}, fr.func->name, "");
+            }
+            else
+            {
+                s.str = it->second;
+            }
+            return s;
+        }
         case il::core::Value::Kind::NullPtr:
+        {
+            Slot slot;
             slot.ptr = nullptr;
             return slot;
+        }
+        default:
+            // Already handled Temp, ConstInt, ConstFloat above
+            break;
     }
+    Slot slot{};
     return slot;
 }
 

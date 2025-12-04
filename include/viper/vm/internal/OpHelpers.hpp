@@ -108,9 +108,11 @@ template <typename T>
 /// @param fr Active frame receiving the result.
 /// @param instr Instruction whose destination slot is updated.
 /// @param value Typed value to persist.
+/// @note Uses uninitialized Slot to avoid redundant zero-initialization
+///       since SlotTraits::store immediately overwrites the relevant field.
 template <typename T> inline void writeResult(Frame &fr, const il::core::Instr &instr, T value)
 {
-    Slot slot{};
+    Slot slot;
     detail::SlotTraits<T>::store(slot, value);
     il::vm::detail::ops::storeResult(fr, instr, slot);
 }

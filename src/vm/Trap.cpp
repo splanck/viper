@@ -149,9 +149,12 @@ std::string vm_current_trap_message()
 
 /// @brief Format a trap error and frame information into a printable string.
 ///
-/// @details Consolidates function name, instruction pointer, and line
-///          information into a concise diagnostic.  Missing data defaults to
-///          placeholder values so the resulting string is still informative.
+/// @details Consolidates function name, block label, instruction pointer, and
+///          line information into a concise diagnostic.  Missing data defaults
+///          to placeholder values so the resulting string is still informative.
+///
+/// Format: "Trap @function:block#ip line N: Kind (code=C)"
+/// When line is unknown: "Trap @function:block#ip: Kind (code=C)"
 ///
 /// @param error Trap token describing the failure.
 /// @param frame Frame metadata captured when the trap surfaced.
@@ -164,8 +167,13 @@ std::string vm_format_error(const VmError &error, const FrameInfo &frame)
     const int32_t line = error.line >= 0 ? error.line : (frame.line >= 0 ? frame.line : -1);
 
     std::ostringstream os;
-    os << "Trap @" << function << '#' << ip << " line " << line << ": " << toString(error.kind)
-       << " (code=" << error.code << ')';
+    os << "Trap @" << function;
+    if (!frame.block.empty())
+        os << ':' << frame.block;
+    os << '#' << ip;
+    if (line >= 0)
+        os << " line " << line;
+    os << ": " << toString(error.kind) << " (code=" << error.code << ')';
     return os.str();
 }
 

@@ -164,14 +164,16 @@ template <typename T, typename Trap> inline bool trap_mul(T lhs, T rhs, T *resul
 void storeResult(Frame &fr, const il::core::Instr &in, const Slot &val);
 
 /// @brief Internal dispatcher that evaluates operands via the VM.
+/// @note Optimized for the dispatch hot path: uses uninitialized Slot for output
+///       since the compute/compare functor immediately overwrites it.
 struct OperandDispatcher
 {
     template <typename Compute>
     static VM::ExecResult runBinary(VM &vm, Frame &fr, const il::core::Instr &in, Compute &&compute)
     {
-        Slot lhs = vm.eval(fr, in.operands[0]);
-        Slot rhs = vm.eval(fr, in.operands[1]);
-        Slot out{};
+        const Slot lhs = vm.eval(fr, in.operands[0]);
+        const Slot rhs = vm.eval(fr, in.operands[1]);
+        Slot out;
         std::forward<Compute>(compute)(out, lhs, rhs);
         storeResult(fr, in, out);
         return {};
@@ -183,9 +185,9 @@ struct OperandDispatcher
                                      const il::core::Instr &in,
                                      Compare &&compare)
     {
-        Slot lhs = vm.eval(fr, in.operands[0]);
-        Slot rhs = vm.eval(fr, in.operands[1]);
-        Slot out{};
+        const Slot lhs = vm.eval(fr, in.operands[0]);
+        const Slot rhs = vm.eval(fr, in.operands[1]);
+        Slot out;
         out.i64 = std::forward<Compare>(compare)(lhs, rhs) ? 1 : 0;
         storeResult(fr, in, out);
         return {};

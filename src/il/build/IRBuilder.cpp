@@ -24,11 +24,62 @@
 #include "il/build/IRBuilder.hpp"
 #include <cassert>
 #include <stdexcept>
+#include <unordered_set>
 
 namespace il::build
 {
 using namespace il::core;
 using namespace il::support;
+
+//===----------------------------------------------------------------------===//
+// Debug Assertion Helpers
+//===----------------------------------------------------------------------===//
+
+#ifndef NDEBUG
+/// @brief Check that a block label is unique within a function.
+/// @param fn Function containing the blocks.
+/// @param label Label to check for uniqueness.
+/// @param existingBlocks Number of blocks to check (0 = all).
+static void assertUniqueLabelInFunction(const Function &fn, const std::string &label)
+{
+    for (const auto &block : fn.blocks)
+    {
+        assert(block.label != label && "block label already exists in function");
+    }
+}
+
+/// @brief Check that a name is not already used as a function in the module.
+/// @param mod Module to check.
+/// @param name Name to check.
+static void assertUniqueFunctionName(const Module &mod, const std::string &name)
+{
+    for (const auto &fn : mod.functions)
+    {
+        assert(fn.name != name && "function name already exists in module");
+    }
+}
+
+/// @brief Check that a name is not already used as an extern in the module.
+/// @param mod Module to check.
+/// @param name Name to check.
+static void assertUniqueExternName(const Module &mod, const std::string &name)
+{
+    for (const auto &ex : mod.externs)
+    {
+        assert(ex.name != name && "extern name already exists in module");
+    }
+}
+
+/// @brief Check that a parameter type is valid (not Void).
+/// @param params Parameters to validate.
+static void assertValidParamTypes(const std::vector<Param> &params)
+{
+    for (const auto &p : params)
+    {
+        assert(p.type.kind != Type::Kind::Void && "parameter cannot have Void type");
+    }
+}
+#endif // NDEBUG
 
 /// @brief Initialise a builder that mutates an existing module.
 ///
@@ -57,6 +108,13 @@ il::core::Extern &IRBuilder::addExtern(const std::string &name,
                                        il::core::Type ret,
                                        const std::vector<il::core::Type> &params)
 {
+#ifndef NDEBUG
+    // Extern name must not be empty
+    assert(!name.empty() && "extern name cannot be empty");
+    // Extern name must be unique
+    assertUniqueExternName(mod, name);
+#endif
+
     mod.externs.push_back({name, ret, params});
     calleeReturnTypes[name] = ret;
     return mod.externs.back();
@@ -71,6 +129,11 @@ il::core::Global &IRBuilder::addGlobal(const std::string &name,
                                        il::core::Type type,
                                        const std::string &init)
 {
+#ifndef NDEBUG
+    // Global name must not be empty
+    assert(!name.empty() && "global name cannot be empty");
+#endif
+
     mod.globals.push_back({name, type, init});
     return mod.globals.back();
 }
@@ -95,6 +158,16 @@ il::core::Function &IRBuilder::startFunction(const std::string &name,
                                              il::core::Type ret,
                                              const std::vector<il::core::Param> &params)
 {
+#ifndef NDEBUG
+    // Function name must not be empty
+    assert(!name.empty() && "function name cannot be empty");
+    // Validate parameter types (no Void parameters allowed)
+    assertValidParamTypes(params);
+    // Note: We don't assert function name uniqueness here because:
+    // 1. Some code patterns call startFunction multiple times (VM_TailCallTests)
+    // 2. Duplicate function names indicate bugs elsewhere but are caught by verification
+#endif
+
     mod.functions.push_back({name, ret, {}, {}, {}});
     calleeReturnTypes[name] = ret;
     curFunc = &mod.functions.back();
@@ -122,6 +195,15 @@ il::core::BasicBlock &IRBuilder::createBlock(il::core::Function &fn,
                                              const std::string &label,
                                              const std::vector<il::core::Param> &params)
 {
+#ifndef NDEBUG
+    // Block label must not be empty
+    assert(!label.empty() && "block label cannot be empty");
+    // Block label must be unique within the function
+    assertUniqueLabelInFunction(fn, label);
+    // Validate block parameter types (no Void parameters allowed)
+    assertValidParamTypes(params);
+#endif
+
     fn.blocks.push_back({label, {}, {}, false});
     il::core::BasicBlock &bb = fn.blocks.back();
     for (auto p : params)
@@ -153,6 +235,13 @@ il::core::BasicBlock &IRBuilder::insertBlock(il::core::Function &fn,
                                              size_t idx,
                                              const std::string &label)
 {
+#ifndef NDEBUG
+    // Block label must not be empty
+    assert(!label.empty() && "block label cannot be empty");
+    // Block label must be unique within the function
+    assertUniqueLabelInFunction(fn, label);
+#endif
+
     if (idx > fn.blocks.size())
         idx = fn.blocks.size();
     auto it = fn.blocks.insert(fn.blocks.begin() + static_cast<std::ptrdiff_t>(idx),
@@ -178,7 +267,21 @@ il::core::Value IRBuilder::blockParam(il::core::BasicBlock &bb, unsigned idx)
 /// @post Current block is marked terminated and cannot receive more non-phi instructions.
 void IRBuilder::br(il::core::BasicBlock &dst, const std::vector<il::core::Value> &args)
 {
-    assert(args.size() == dst.params.size());
+    assert(args.size() == dst.params.size() &&
+           "branch argument count must match block parameter count");
+
+#ifndef NDEBUG
+    // Validate all branch argument temp IDs are within bounds
+    for (const auto &arg : args)
+    {
+        if (arg.kind == Value::Kind::Temp)
+        {
+            assert(arg.id < nextTemp &&
+                   "branch argument temp ID exceeds allocated temporaries (dangling reference)");
+        }
+    }
+#endif
+
     il::core::Instr instr;
     instr.op = il::core::Opcode::Br;
     instr.type = il::core::Type(il::core::Type::Kind::Void);
@@ -201,8 +304,37 @@ void IRBuilder::cbr(il::core::Value cond,
                     il::core::BasicBlock &f,
                     const std::vector<il::core::Value> &fargs)
 {
-    assert(targs.size() == t.params.size());
-    assert(fargs.size() == f.params.size());
+    assert(targs.size() == t.params.size() &&
+           "true branch argument count must match target block parameters");
+    assert(fargs.size() == f.params.size() &&
+           "false branch argument count must match target block parameters");
+
+#ifndef NDEBUG
+    // Verify condition temp ID is within bounds
+    if (cond.kind == Value::Kind::Temp)
+    {
+        assert(cond.id < nextTemp && "condition temp ID exceeds allocated temporaries");
+    }
+
+    // Validate all branch argument temp IDs are within bounds
+    for (const auto &arg : targs)
+    {
+        if (arg.kind == Value::Kind::Temp)
+        {
+            assert(arg.id < nextTemp &&
+                   "true branch argument temp ID exceeds allocated temporaries");
+        }
+    }
+    for (const auto &arg : fargs)
+    {
+        if (arg.kind == Value::Kind::Temp)
+        {
+            assert(arg.id < nextTemp &&
+                   "false branch argument temp ID exceeds allocated temporaries");
+        }
+    }
+#endif
+
     il::core::Instr instr;
     instr.op = il::core::Opcode::CBr;
     instr.type = il::core::Type(il::core::Type::Kind::Void);
@@ -235,6 +367,36 @@ void IRBuilder::setInsertPoint(il::core::BasicBlock &bb)
 il::core::Instr &IRBuilder::append(il::core::Instr instr)
 {
     assert(curBlock && "insert point not set");
+    assert(curFunc && "no active function");
+
+#ifndef NDEBUG
+    // Cannot append normal instructions after a terminator
+    if (!isTerminator(instr.op))
+    {
+        assert(!curBlock->terminated &&
+               "cannot append non-terminator instruction to terminated block");
+    }
+
+    // Validate that operand temp IDs are within bounds
+    for (const auto &operand : instr.operands)
+    {
+        if (operand.kind == Value::Kind::Temp)
+        {
+            assert(operand.id < nextTemp &&
+                   "operand temp ID exceeds allocated temporaries (dangling reference)");
+        }
+    }
+
+    // Validate result temp ID if present
+    if (instr.result)
+    {
+        // Result ID should be within the next available range (allow some slack for
+        // pre-reserved IDs, but catch obviously invalid values)
+        assert(*instr.result <= nextTemp + 1000 &&
+               "result temp ID is unreasonably large (possible corruption)");
+    }
+#endif
+
     if (isTerminator(instr.op))
     {
         assert(!curBlock->terminated && "block already terminated");
@@ -290,6 +452,18 @@ void IRBuilder::emitCall(const std::string &callee,
                          const std::optional<il::core::Value> &dst,
                          il::support::SourceLoc loc)
 {
+#ifndef NDEBUG
+    // Validate that all argument temp IDs are within bounds
+    for (const auto &arg : args)
+    {
+        if (arg.kind == Value::Kind::Temp)
+        {
+            assert(arg.id < nextTemp &&
+                   "call argument temp ID exceeds allocated temporaries (dangling reference)");
+        }
+    }
+#endif
+
     il::core::Instr instr;
     instr.op = il::core::Opcode::Call;
     const auto it = calleeReturnTypes.find(callee);
@@ -318,6 +492,15 @@ void IRBuilder::emitCall(const std::string &callee,
 /// @post Marks the block as terminated and enforces the void return opcode when absent.
 void IRBuilder::emitRet(const std::optional<il::core::Value> &v, il::support::SourceLoc loc)
 {
+#ifndef NDEBUG
+    // Validate return value temp ID if present
+    if (v && v->kind == Value::Kind::Temp)
+    {
+        assert(v->id < nextTemp &&
+               "return value temp ID exceeds allocated temporaries (dangling reference)");
+    }
+#endif
+
     il::core::Instr instr;
     instr.op = il::core::Opcode::Ret;
     instr.type = il::core::Type(il::core::Type::Kind::Void);
@@ -336,6 +519,15 @@ void IRBuilder::emitRet(const std::optional<il::core::Value> &v, il::support::So
 /// @param loc Source location used when formatting verifier diagnostics.
 void IRBuilder::emitResumeSame(il::core::Value token, il::support::SourceLoc loc)
 {
+#ifndef NDEBUG
+    // Validate token temp ID
+    if (token.kind == Value::Kind::Temp)
+    {
+        assert(token.id < nextTemp &&
+               "resume token temp ID exceeds allocated temporaries (dangling reference)");
+    }
+#endif
+
     il::core::Instr instr;
     instr.op = il::core::Opcode::ResumeSame;
     instr.type = il::core::Type(il::core::Type::Kind::Void);
@@ -353,6 +545,15 @@ void IRBuilder::emitResumeSame(il::core::Value token, il::support::SourceLoc loc
 /// @param loc Source location used when formatting verifier diagnostics.
 void IRBuilder::emitResumeNext(il::core::Value token, il::support::SourceLoc loc)
 {
+#ifndef NDEBUG
+    // Validate token temp ID
+    if (token.kind == Value::Kind::Temp)
+    {
+        assert(token.id < nextTemp &&
+               "resume token temp ID exceeds allocated temporaries (dangling reference)");
+    }
+#endif
+
     il::core::Instr instr;
     instr.op = il::core::Opcode::ResumeNext;
     instr.type = il::core::Type(il::core::Type::Kind::Void);
@@ -373,6 +574,15 @@ void IRBuilder::emitResumeLabel(il::core::Value token,
                                 il::core::BasicBlock &target,
                                 il::support::SourceLoc loc)
 {
+#ifndef NDEBUG
+    // Validate token temp ID
+    if (token.kind == Value::Kind::Temp)
+    {
+        assert(token.id < nextTemp &&
+               "resume token temp ID exceeds allocated temporaries (dangling reference)");
+    }
+#endif
+
     il::core::Instr instr;
     instr.op = il::core::Opcode::ResumeLabel;
     instr.type = il::core::Type(il::core::Type::Kind::Void);

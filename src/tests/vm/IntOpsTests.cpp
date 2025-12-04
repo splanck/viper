@@ -140,7 +140,7 @@ int main()
         buildUnaryFunction(
             module, Opcode::CastSiNarrowChk, Type::Kind::I16, std::numeric_limits<int32_t>::max());
         const std::string out = fixture.captureTrap(module);
-        assert(out.find("Trap @main#0 line 1: InvalidCast (code=0)") != std::string::npos);
+        assert(out.find("Trap @main:entry#0 line 1: InvalidCast (code=0)") != std::string::npos);
     }
 
     return 0;

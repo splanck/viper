@@ -81,5 +81,11 @@ struct VMAccess
         vm.pollEveryN_ = everyN;
         vm.pollCallback_ = std::move(cb);
     }
+
+    /// @brief Access the last trap state for diagnostic reporting.
+    static inline const VM::TrapState &lastTrapState(const VM &vm)
+    {
+        return vm.lastTrap;
+    }
 };
 } // namespace il::vm::detail

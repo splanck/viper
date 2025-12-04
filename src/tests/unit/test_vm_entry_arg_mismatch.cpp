@@ -63,25 +63,36 @@ bool trapHeaderMatches(const std::string &diag, std::string_view function, std::
     if (const auto newline = view.find('\n'); newline != std::string_view::npos)
         view = view.substr(0, newline);
 
+    // Format: "Trap @function:block#ip line N: Kind (code=C)"
     constexpr std::string_view kPrefix = "Trap @";
     if (!view.starts_with(kPrefix))
         return false;
     view.remove_prefix(kPrefix.size());
 
+    // Match function name (now followed by :block)
     if (view.substr(0, function.size()) != function)
         return false;
     view.remove_prefix(function.size());
 
+    // Expect colon followed by block name, then #ip
+    if (view.empty() || view.front() != ':')
+        return false;
+    view.remove_prefix(1); // skip ':'
+
+    // Skip block name until we hit '#'
+    const auto hashPos = view.find('#');
+    if (hashPos == std::string_view::npos)
+        return false;
+    view.remove_prefix(hashPos); // now at "#ip line..."
+
     if (view.empty() || view.front() != '#')
         return false;
 
+    // Find the colon before Kind
     const auto colonPos = view.find(':');
     if (colonPos == std::string_view::npos || colonPos + 2 > view.size())
         return false;
 
-    const auto headerSuffix = view.substr(0, colonPos);
-    if (headerSuffix.find(" line ") == std::string_view::npos)
-        return false;
     if (view[colonPos + 1] != ' ')
         return false;
 
