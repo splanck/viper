@@ -107,6 +107,7 @@ TOKEN(KeywordPrivate,   "PRIVATE")
 TOKEN(KeywordUsing,     "USING")
 TOKEN(KeywordTry,       "TRY")
 TOKEN(KeywordCatch,     "CATCH")
+TOKEN(KeywordFinally,   "FINALLY")
 
 // Operators ----------------------------------------------------------------
 TOKEN(Plus, "+")

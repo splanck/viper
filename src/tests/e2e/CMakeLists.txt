@@ -404,6 +404,15 @@ function(viper_add_e2e_vm_suite)
             -DILC=$<TARGET_FILE:ilc>
             -DIL_FILE=${CMAKE_SOURCE_DIR}/src/tests/golden/il_opt/mem2reg_multi.in.il
             -P ${_VIPER_E2E_DIR}/test_mem2reg_stats_multi.cmake)
+
+    # TRY/FINALLY support tests
+    viper_add_ctest(e2e_try_finally
+            ${CMAKE_COMMAND}
+            -DILC=$<TARGET_FILE:ilc>
+            -DBAS_FILE=${CMAKE_SOURCE_DIR}/src/tests/e2e/test_try_finally.bas
+            -DGOLDEN=${CMAKE_SOURCE_DIR}/src/tests/e2e/test_try_finally.bas.out
+            -P ${_VIPER_E2E_DIR}/test_basic_math_phase1.cmake)
+    set_tests_properties(e2e_try_finally PROPERTIES LABELS VM)
 endfunction()
 
 # OOP runtime e2e: List + String + Object (avoids reserved keyword collisions)

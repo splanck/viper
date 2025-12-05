@@ -138,7 +138,7 @@ void Lowerer::lowerResume(const Resume &stmt)
     handlerBlock.terminated = true;
 }
 
-/// @brief Lower a TRY/CATCH statement using the runtime EH model.
+/// @brief Lower a TRY/CATCH/FINALLY statement using the runtime EH model.
 ///
 /// Interaction model with legacy ON ERROR/RESUME:
 /// - TRY installs a fresh handler using only `eh.push`/`eh.pop`, without mutating
@@ -148,13 +148,26 @@ void Lowerer::lowerResume(const Resume &stmt)
 /// - CATCH may include a RESUME statement. It is permitted but typically unnecessary,
 ///   because the canonical endpoint of the handler uses `resume.label %tok, ^after_try`.
 ///
-/// Emission sequence:
+/// Emission sequence (without FINALLY):
 /// - Emit `eh.push ^handler` before the try-body.
 /// - Lower try-body; on normal fallthrough emit `eh.pop` and branch to `^after_try`.
 /// - In the handler block (with `eh.entry` and params `%err`, `%tok`):
 ///     * Optionally initialise the catch variable with ERR() (i64) if resolvable.
 ///     * Lower the catch-body.
 ///     * Terminate with `resume.label %tok, ^after_try`.
+///
+/// Emission sequence (with FINALLY):
+/// - Emit `eh.push ^handler` before the try-body.
+/// - Lower try-body; on normal fallthrough emit `eh.pop` and branch to `^finally_normal`.
+/// - In `^finally_normal`: lower finally-body, then branch to `^after_try`.
+/// - In the handler block:
+///     * Lower catch-body (if present).
+///     * Lower finally-body (duplicated for handler path).
+///     * Terminate with `resume.label %tok, ^after_try`.
+///
+/// Note: The finally code is duplicated between the normal path and exception path
+/// because `resume.label` must be the terminator of the handler block, and we cannot
+/// branch to a shared finally block and then return to emit the resume.
 void Lowerer::lowerTryCatch(const TryCatchStmt &stmt)
 {
     ProcedureContext &ctx = context();
@@ -164,6 +177,9 @@ void Lowerer::lowerTryCatch(const TryCatchStmt &stmt)
         return;
 
     curLoc = stmt.loc;
+
+    const bool hasFinally = !stmt.finallyBody.empty();
+    const bool hasCatch = !stmt.catchBody.empty() || stmt.catchVar.has_value();
 
     // Capture the index of the current block before creating any new blocks,
     // since appending to the function's block list may reallocate and
@@ -180,6 +196,19 @@ void Lowerer::lowerTryCatch(const TryCatchStmt &stmt)
     // Restore pointers that might be invalidated by block creation.
     func = ctx.function();
     BasicBlock *afterTry = &func->blocks[afterIdx];
+
+    // Create the finally_normal block if we have finally code.
+    // This is where the normal (non-exception) path runs the finally code.
+    size_t finallyNormalIdx = 0;
+    if (hasFinally)
+    {
+        func = ctx.function();
+        finallyNormalIdx = func->blocks.size();
+        std::string finallyLbl =
+            blockNamer ? blockNamer->generic("finally") : mangler.block("finally");
+        builder->addBlock(*func, finallyLbl);
+        func = ctx.function();
+    }
 
     // Determine a stable handler key. Prefer the first statement inside TRY so
     // the handler is associated with that line; fall back to the TRY node.
@@ -237,15 +266,49 @@ void Lowerer::lowerTryCatch(const TryCatchStmt &stmt)
             break;
     }
 
-    // On the normal path, pop the handler and branch to the continuation.
+    // On the normal path, pop the handler and branch to continuation.
+    // If we have finally, branch to finally_normal; otherwise branch to after_try.
     if (ctx.current() && !ctx.current()->terminated)
     {
-        // Lowering the try-body may have appended new blocks and reallocated
-        // the function's block vector. Refresh the after_try pointer before use.
         func = ctx.function();
         afterTry = &func->blocks[afterIdx];
         emitEhPop();
-        emitBr(afterTry);
+
+        if (hasFinally)
+        {
+            BasicBlock *finallyNormal = &func->blocks[finallyNormalIdx];
+            emitBr(finallyNormal);
+        }
+        else
+        {
+            emitBr(afterTry);
+        }
+    }
+
+    // Lower finally_normal block: finally statements then branch to after_try.
+    if (hasFinally)
+    {
+        func = ctx.function();
+        BasicBlock *finallyNormal = &func->blocks[finallyNormalIdx];
+        ctx.setCurrent(finallyNormal);
+
+        for (const auto &st : stmt.finallyBody)
+        {
+            if (!st)
+                continue;
+            lowerStmt(*st);
+            BasicBlock *cur = ctx.current();
+            if (!cur || cur->terminated)
+                break;
+        }
+
+        // Branch to after_try if not already terminated.
+        if (ctx.current() && !ctx.current()->terminated)
+        {
+            func = ctx.function();
+            afterTry = &func->blocks[afterIdx];
+            emitBr(afterTry);
+        }
     }
 
     // Switch insertion to the handler to lower the catch body.
@@ -253,7 +316,7 @@ void Lowerer::lowerTryCatch(const TryCatchStmt &stmt)
     BasicBlock *handlerBlock = ensureErrorHandlerBlock(handlerKey);
     ctx.setCurrent(handlerBlock);
 
-    // Lower the catch body statements.
+    // Lower the catch body statements (if any).
     for (const auto &st : stmt.catchBody)
     {
         if (!st)
@@ -264,19 +327,34 @@ void Lowerer::lowerTryCatch(const TryCatchStmt &stmt)
             break;
     }
 
+    // Lower the finally body in the handler path (duplicated from normal path).
+    // This ensures finally runs even when an exception was caught.
+    if (hasFinally && ctx.current() && !ctx.current()->terminated)
+    {
+        for (const auto &st : stmt.finallyBody)
+        {
+            if (!st)
+                continue;
+            lowerStmt(*st);
+            BasicBlock *cur = ctx.current();
+            if (!cur || cur->terminated)
+                break;
+        }
+    }
+
     // Terminate handler with resume.label to after_try if not already terminated.
     handlerBlock = ctx.current();
     if (handlerBlock && !handlerBlock->terminated)
     {
-        if (handlerBlock->params.size() >= 2)
+        // Find the original handler block to get the %tok parameter.
+        func = ctx.function();
+        BasicBlock *origHandler = ensureErrorHandlerBlock(handlerKey);
+        if (origHandler && origHandler->params.size() >= 2)
         {
-            // Refresh both handler and after_try pointers before emitting the terminator,
-            // in case catch-body lowering appended blocks and caused reallocation.
-            func = ctx.function();
-            handlerBlock = ensureErrorHandlerBlock(handlerKey);
+            // Refresh after_try pointer before emitting the terminator.
             afterTry = &func->blocks[afterIdx];
             builder->setInsertPoint(*handlerBlock);
-            Value resumeTok2 = Value::temp(handlerBlock->params[1].id);
+            Value resumeTok2 = Value::temp(origHandler->params[1].id);
             builder->emitResumeLabel(resumeTok2, *afterTry, stmt.loc);
             handlerBlock->terminated = true;
         }

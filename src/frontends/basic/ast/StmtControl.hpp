@@ -146,7 +146,20 @@ struct SelectCaseStmt : Stmt
     void accept(MutStmtVisitor &visitor) override;
 };
 
-/// @brief TRY/CATCH statement with optional catch variable.
+/// @brief TRY/CATCH/FINALLY statement with optional catch variable and finally block.
+///
+/// Syntax:
+///   TRY
+///       <try-body>
+///   [CATCH [errVar]
+///       <catch-body>]
+///   [FINALLY
+///       <finally-body>]
+///   END TRY
+///
+/// At least one of CATCH or FINALLY must be present.
+/// The finally block always executes after try/catch regardless of whether
+/// an exception occurred, providing guaranteed cleanup semantics.
 struct TryCatchStmt : Stmt
 {
     [[nodiscard]] constexpr Kind stmtKind() const noexcept override
@@ -160,8 +173,11 @@ struct TryCatchStmt : Stmt
     /// @brief Optional catch variable name (binds error code as i64 when present).
     std::optional<std::string> catchVar;
 
-    /// @brief Statements executed when an error is caught.
+    /// @brief Statements executed when an error is caught. Empty if no CATCH clause.
     std::vector<StmtPtr> catchBody;
+
+    /// @brief Statements executed unconditionally after try/catch. Empty if no FINALLY clause.
+    std::vector<StmtPtr> finallyBody;
 
     /// @brief Source range covering the TRY…CATCH header for diagnostics.
     il::support::SourceRange header{};
