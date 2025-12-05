@@ -41,6 +41,9 @@ enum class RuntimeTypeId : std::size_t
     RTCLS_Convert,
     RTCLS_Random,
     RTCLS_Environment,
+    RTCLS_GfxWindow,
+    RTCLS_GfxColor,
+    RTCLS_DateTime,
 };
 
 /// @brief Describes a property on a runtime class.

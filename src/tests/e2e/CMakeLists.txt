@@ -413,6 +413,42 @@ function(viper_add_e2e_vm_suite)
             -DGOLDEN=${CMAKE_SOURCE_DIR}/src/tests/e2e/test_try_finally.bas.out
             -P ${_VIPER_E2E_DIR}/test_basic_math_phase1.cmake)
     set_tests_properties(e2e_try_finally PROPERTIES LABELS VM)
+
+    # Constructor arguments tests (multiple types: INTEGER, DOUBLE, STRING)
+    viper_add_ctest(e2e_ctor_args
+            ${CMAKE_COMMAND}
+            -DILC=$<TARGET_FILE:ilc>
+            -DBAS_FILE=${CMAKE_SOURCE_DIR}/src/tests/e2e/test_ctor_args.bas
+            -DGOLDEN=${CMAKE_SOURCE_DIR}/src/tests/e2e/test_ctor_args.bas.out
+            -P ${_VIPER_E2E_DIR}/test_basic_math_phase1.cmake)
+    set_tests_properties(e2e_ctor_args PROPERTIES LABELS VM)
+
+    # Graphics API basic tests (no window required)
+    viper_add_ctest(e2e_graphics_basic
+            ${CMAKE_COMMAND}
+            -DILC=$<TARGET_FILE:ilc>
+            -DBAS_FILE=${CMAKE_SOURCE_DIR}/src/tests/e2e/test_graphics_basic.bas
+            -DGOLDEN=${CMAKE_SOURCE_DIR}/src/tests/e2e/test_graphics_basic.bas.out
+            -P ${_VIPER_E2E_DIR}/test_basic_math_phase1.cmake)
+    set_tests_properties(e2e_graphics_basic PROPERTIES LABELS VM)
+
+    # Graphics window tests (requires display - skip in headless CI)
+    viper_add_ctest(e2e_graphics_window
+            ${CMAKE_COMMAND}
+            -DILC=$<TARGET_FILE:ilc>
+            -DBAS_FILE=${CMAKE_SOURCE_DIR}/src/tests/e2e/test_graphics_window.bas
+            -DGOLDEN=${CMAKE_SOURCE_DIR}/src/tests/e2e/test_graphics_window.bas.out
+            -P ${_VIPER_E2E_DIR}/test_basic_math_phase1.cmake)
+    set_tests_properties(e2e_graphics_window PROPERTIES LABELS "VM;display_required")
+
+    # DateTime API tests
+    viper_add_ctest(e2e_datetime
+            ${CMAKE_COMMAND}
+            -DILC=$<TARGET_FILE:ilc>
+            -DBAS_FILE=${CMAKE_SOURCE_DIR}/src/tests/e2e/test_datetime.bas
+            -DGOLDEN=${CMAKE_SOURCE_DIR}/src/tests/e2e/test_datetime.bas.out
+            -P ${_VIPER_E2E_DIR}/test_basic_math_phase1.cmake)
+    set_tests_properties(e2e_datetime PROPERTIES LABELS "e2e")
 endfunction()
 
 # OOP runtime e2e: List + String + Object (avoids reserved keyword collisions)

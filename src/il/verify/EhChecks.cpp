@@ -1139,6 +1139,9 @@ il::support::Expected<void> checkUnreachableHandlers(const EhModel &model)
     std::unordered_map<const BasicBlock *, std::vector<const BasicBlock *>> blockHandlerStack;
     blockHandlerStack[model.entry()] = {};
 
+    // Track handlers that SHOULD be reachable (have faulting instructions in protected region)
+    std::unordered_set<const BasicBlock *> shouldBeReachable;
+
     while (!worklist.empty())
     {
         const BasicBlock *bb = worklist.front();
@@ -1146,7 +1149,7 @@ il::support::Expected<void> checkUnreachableHandlers(const EhModel &model)
 
         std::vector<const BasicBlock *> currentStack = blockHandlerStack[bb];
 
-        // Process instructions to track EH stack
+        // Process instructions to track EH stack and detect potential faults
         for (const auto &instr : bb->instructions)
         {
             if (instr.op == Opcode::EhPush && !instr.labels.empty())
@@ -1158,6 +1161,21 @@ il::support::Expected<void> checkUnreachableHandlers(const EhModel &model)
             {
                 if (!currentStack.empty())
                     currentStack.pop_back();
+            }
+            // Any potentially faulting instruction marks the current handler as
+            // "should be reachable" since it could trap at runtime
+            else if (!currentStack.empty() && isPotentialFaultingOpcode(instr.op))
+            {
+                const BasicBlock *handlerBlock = currentStack.back();
+                if (handlerBlock)
+                {
+                    shouldBeReachable.insert(handlerBlock);
+                    if (reachable.insert(handlerBlock).second)
+                    {
+                        worklist.push_back(handlerBlock);
+                        blockHandlerStack[handlerBlock] = currentStack;
+                    }
+                }
             }
         }
 
@@ -1180,21 +1198,28 @@ il::support::Expected<void> checkUnreachableHandlers(const EhModel &model)
                 if (!currentStack.empty())
                 {
                     const BasicBlock *handlerBlock = currentStack.back();
-                    if (handlerBlock && reachable.insert(handlerBlock).second)
+                    if (handlerBlock)
                     {
-                        worklist.push_back(handlerBlock);
-                        blockHandlerStack[handlerBlock] = currentStack;
+                        shouldBeReachable.insert(handlerBlock);
+                        if (reachable.insert(handlerBlock).second)
+                        {
+                            worklist.push_back(handlerBlock);
+                            blockHandlerStack[handlerBlock] = currentStack;
+                        }
                     }
                 }
             }
         }
     }
 
-    // Check if any handler blocks are unreachable
+    // Check if any handler blocks that SHOULD be reachable are unreachable.
+    // Handlers with no faulting instructions in their protected region are allowed
+    // to be unreachable (they're just unused, not invalid).
     std::vector<std::string> unreachableLabels;
     for (const BasicBlock *handler : handlerBlocks)
     {
-        if (reachable.find(handler) == reachable.end())
+        // Only report if the handler should be reachable but isn't
+        if (shouldBeReachable.count(handler) && reachable.find(handler) == reachable.end())
             unreachableLabels.push_back(handler->label);
     }
 

@@ -299,15 +299,16 @@ if(VIPER_BUILD_TESTING)
   set_tests_properties(basic_select_case_string PROPERTIES LABELS golden)
 endif()
 
+# ---- ViperGFX library ----
+# (Must be added before runtime so rt_graphics can link to it)
+add_subdirectory(src/lib/graphics)
+viper_assert_no_directory_link_libraries("src/lib/graphics" "src/lib/graphics")
+
 add_subdirectory(${CMAKE_SOURCE_DIR}/src/runtime)
 viper_assert_no_directory_link_libraries("src/runtime" "src/runtime")
 
 add_subdirectory(src)
 viper_assert_no_directory_link_libraries("src" "src")
-
-# ---- ViperGFX library ----
-add_subdirectory(src/lib/graphics)
-viper_assert_no_directory_link_libraries("src/lib/graphics" "src/lib/graphics")
 
 # ---- ViperTUI subproject ----
 option(BUILD_TUI "Build ViperTUI subproject" ON)

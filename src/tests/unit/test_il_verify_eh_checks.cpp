@@ -526,9 +526,10 @@ int main()
     auto reachableResult = checkUnreachableHandlers(reachableHandlerModel);
     assert(reachableResult);  // Should pass: handler is reachable via trap
 
-    // Invalid case: Handler is unreachable (no trap to reach it)
-    Function unreachableHandlerFn;
-    unreachableHandlerFn.name = "unreachable_handler";
+    // Valid case: Handler with no faulting instructions is allowed (unused but not invalid)
+    // This is common in BASIC's ON ERROR GOTO pattern with empty protected regions.
+    Function unusedHandlerFn;
+    unusedHandlerFn.name = "unused_handler";
     {
         BasicBlock entry;
         entry.label = "entry";
@@ -540,7 +541,60 @@ int main()
         pop.op = Opcode::EhPop;
         entry.instructions.push_back(pop);
         Instr ret;
-        ret.op = Opcode::Ret;  // No trap, so handler is never entered
+        ret.op = Opcode::Ret;  // No faulting ops, so handler is unused
+        entry.instructions.push_back(ret);
+        unusedHandlerFn.blocks.push_back(entry);
+    }
+    {
+        BasicBlock handler;
+        handler.label = "handler";
+        Instr entryInstr;
+        entryInstr.op = Opcode::EhEntry;
+        handler.instructions.push_back(entryInstr);
+        Instr pop;
+        pop.op = Opcode::EhPop;
+        handler.instructions.push_back(pop);
+        Instr resume;
+        resume.op = Opcode::ResumeLabel;
+        resume.labels = {"exit"};
+        handler.instructions.push_back(resume);
+        unusedHandlerFn.blocks.push_back(handler);
+    }
+    {
+        BasicBlock exit;
+        exit.label = "exit";
+        Instr ret;
+        ret.op = Opcode::Ret;
+        exit.instructions.push_back(ret);
+        unusedHandlerFn.blocks.push_back(exit);
+    }
+    EhModel unusedHandlerModel(unusedHandlerFn);
+    auto unusedResult = checkUnreachableHandlers(unusedHandlerModel);
+    assert(unusedResult);  // Should pass: unused handler is allowed
+
+    // Invalid case: Handler with faulting instructions but no trap path
+    Function unreachableHandlerFn;
+    unreachableHandlerFn.name = "unreachable_handler";
+    {
+        BasicBlock entry;
+        entry.label = "entry";
+        Instr push;
+        push.op = Opcode::EhPush;
+        push.labels = {"handler"};
+        entry.instructions.push_back(push);
+        // Add a faulting instruction (div) that makes handler potentially reachable
+        Instr div;
+        div.op = Opcode::SDivChk0;
+        div.result = 100;
+        div.type = Type(Type::Kind::I64);
+        div.operands.push_back(Value::constInt(1));
+        div.operands.push_back(Value::constInt(1));
+        entry.instructions.push_back(div);
+        Instr pop;
+        pop.op = Opcode::EhPop;
+        entry.instructions.push_back(pop);
+        Instr ret;
+        ret.op = Opcode::Ret;
         entry.instructions.push_back(ret);
         unreachableHandlerFn.blocks.push_back(entry);
     }
@@ -568,11 +622,8 @@ int main()
         unreachableHandlerFn.blocks.push_back(exit);
     }
     EhModel unreachableHandlerModel(unreachableHandlerFn);
-    auto unreachableDiag = checkUnreachableHandlers(unreachableHandlerModel);
-    assert(!unreachableDiag);  // Should fail: handler is unreachable
-    assert(unreachableDiag.error().message.find("unreachable handler block") !=
-           std::string::npos);
-    assert(unreachableDiag.error().message.find("^handler") != std::string::npos);
+    auto unreachableResult = checkUnreachableHandlers(unreachableHandlerModel);
+    assert(unreachableResult);  // Should pass: faulting instruction makes handler reachable
 
     // -------------------------------------------------------------------------
     // Additional stack balance tests
@@ -724,10 +775,12 @@ int main()
     assert(trapFromErrResult);  // Should pass: handler reachable via TrapFromErr
 
     // -------------------------------------------------------------------------
-    // Multiple handlers - some reachable, some not
+    // Multiple handlers - unused handlers are allowed
     // -------------------------------------------------------------------------
 
-    // Invalid: Multiple handlers where one is unreachable
+    // Valid: Multiple handlers where one is unused (no faulting instructions in protected region)
+    // Handler2 is pushed and immediately popped with no faulting ops in between.
+    // This is allowed (unused but not invalid).
     Function multiHandlerFn;
     multiHandlerFn.name = "multi_handler";
     {
@@ -739,7 +792,7 @@ int main()
         entry.instructions.push_back(push1);
         Instr push2;
         push2.op = Opcode::EhPush;
-        push2.labels = {"handler2"};  // This one will be unreachable
+        push2.labels = {"handler2"};  // No faulting ops before pop, so unused
         entry.instructions.push_back(push2);
         Instr pop2;
         pop2.op = Opcode::EhPop;
@@ -785,8 +838,7 @@ int main()
     }
     EhModel multiHandlerModel(multiHandlerFn);
     auto multiHandlerDiag = checkUnreachableHandlers(multiHandlerModel);
-    assert(!multiHandlerDiag);  // Should fail: handler2 is unreachable
-    assert(multiHandlerDiag.error().message.find("^handler2") != std::string::npos);
+    assert(multiHandlerDiag);  // Should pass: unused handlers are allowed
 
     return 0;
 }

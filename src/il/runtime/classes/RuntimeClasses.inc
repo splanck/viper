@@ -178,3 +178,68 @@ RUNTIME_CLASS(
         RUNTIME_METHOD("GetArgumentCount", "i64()", "Viper.Environment.GetArgumentCount"),
         RUNTIME_METHOD("GetArgument", "str(i64)", "Viper.Environment.GetArgument"),
         RUNTIME_METHOD("GetCommandLine", "str()", "Viper.Environment.GetCommandLine")))
+
+// Graphics window for 2D rendering
+// Notes:
+// - Constructor takes width, height, and title.
+// - Properties provide window dimensions and close state.
+// - Drawing methods take coordinates and color (0x00RRGGBB format).
+RUNTIME_CLASS(
+    "Viper.Graphics.Window",
+    RTCLS_GfxWindow,
+    "obj",
+    "rt_gfx_window_new",
+    RUNTIME_PROPS(
+        RUNTIME_PROP("Width", "i64", "rt_gfx_window_width", nullptr),
+        RUNTIME_PROP("Height", "i64", "rt_gfx_window_height", nullptr),
+        RUNTIME_PROP("ShouldClose", "i64", "rt_gfx_window_should_close", nullptr)),
+    RUNTIME_METHODS(
+        RUNTIME_METHOD("Update", "void()", "rt_gfx_window_update"),
+        RUNTIME_METHOD("Clear", "void(i64)", "rt_gfx_window_clear"),
+        RUNTIME_METHOD("DrawLine", "void(i64,i64,i64,i64,i64)", "rt_gfx_draw_line"),
+        RUNTIME_METHOD("DrawRect", "void(i64,i64,i64,i64,i64)", "rt_gfx_draw_rect"),
+        RUNTIME_METHOD("DrawRectOutline", "void(i64,i64,i64,i64,i64)", "rt_gfx_draw_rect_outline"),
+        RUNTIME_METHOD("DrawCircle", "void(i64,i64,i64,i64)", "rt_gfx_draw_circle"),
+        RUNTIME_METHOD("DrawCircleOutline", "void(i64,i64,i64,i64)", "rt_gfx_draw_circle_outline"),
+        RUNTIME_METHOD("SetPixel", "void(i64,i64,i64)", "rt_gfx_set_pixel"),
+        RUNTIME_METHOD("PollEvent", "i64()", "rt_gfx_poll_event"),
+        RUNTIME_METHOD("KeyDown", "i64(i64)", "rt_gfx_key_down")))
+
+// Static color utility class for graphics
+RUNTIME_CLASS(
+    "Viper.Graphics.Color",
+    RTCLS_GfxColor,
+    "obj",
+    "", /* static utility class; no instance ctor */
+    RUNTIME_PROPS(),
+    RUNTIME_METHODS(
+        RUNTIME_METHOD("RGB", "i64(i64,i64,i64)", "rt_gfx_rgb")))
+
+// Date/time utilities
+// Notes:
+// - Timestamps are Unix timestamps in seconds since epoch (UTC).
+// - Now() and NowMs() return current time.
+// - Component extraction (Year, Month, etc.) uses local time.
+// - Create() builds a timestamp from local time components.
+RUNTIME_CLASS(
+    "Viper.DateTime",
+    RTCLS_DateTime,
+    "obj",
+    "", /* static utility class; no instance ctor */
+    RUNTIME_PROPS(),
+    RUNTIME_METHODS(
+        RUNTIME_METHOD("Now", "i64()", "Viper.DateTime.Now"),
+        RUNTIME_METHOD("NowMs", "i64()", "Viper.DateTime.NowMs"),
+        RUNTIME_METHOD("Year", "i64(i64)", "Viper.DateTime.Year"),
+        RUNTIME_METHOD("Month", "i64(i64)", "Viper.DateTime.Month"),
+        RUNTIME_METHOD("Day", "i64(i64)", "Viper.DateTime.Day"),
+        RUNTIME_METHOD("Hour", "i64(i64)", "Viper.DateTime.Hour"),
+        RUNTIME_METHOD("Minute", "i64(i64)", "Viper.DateTime.Minute"),
+        RUNTIME_METHOD("Second", "i64(i64)", "Viper.DateTime.Second"),
+        RUNTIME_METHOD("DayOfWeek", "i64(i64)", "Viper.DateTime.DayOfWeek"),
+        RUNTIME_METHOD("Format", "str(i64,str)", "Viper.DateTime.Format"),
+        RUNTIME_METHOD("ToISO", "str(i64)", "Viper.DateTime.ToISO"),
+        RUNTIME_METHOD("Create", "i64(i64,i64,i64,i64,i64,i64)", "Viper.DateTime.Create"),
+        RUNTIME_METHOD("AddSeconds", "i64(i64,i64)", "Viper.DateTime.AddSeconds"),
+        RUNTIME_METHOD("AddDays", "i64(i64,i64)", "Viper.DateTime.AddDays"),
+        RUNTIME_METHOD("Diff", "i64(i64,i64)", "Viper.DateTime.Diff")))

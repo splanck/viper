@@ -35,6 +35,8 @@ set(RT_SOURCES
         rt_ns_bridge.c
         rt_file_ext.c
         rt_list.c
+        rt_graphics.c
+        rt_datetime.c
 )
 
 set(RT_PUBLIC_HEADERS
@@ -63,6 +65,8 @@ set(RT_PUBLIC_HEADERS
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_modvar.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_args.h
         ${CMAKE_CURRENT_SOURCE_DIR}/rt_ns_bridge.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/rt_graphics.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/rt_datetime.h
 )
 
 add_library(viper_runtime STATIC ${RT_SOURCES})
@@ -91,3 +95,17 @@ install(FILES ${RT_PUBLIC_HEADERS}
 install(FILES ${PROJECT_SOURCE_DIR}/include/viper/runtime/rt.h
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/viper/runtime
 )
+
+# Graphics support (optional, enabled by default)
+option(VIPER_ENABLE_GRAPHICS "Enable ViperGFX graphics support" ON)
+
+if (VIPER_ENABLE_GRAPHICS AND TARGET vipergfx)
+    message(STATUS "viper_runtime: Graphics support enabled")
+    target_compile_definitions(viper_runtime PRIVATE VIPER_ENABLE_GRAPHICS)
+    target_include_directories(viper_runtime PRIVATE
+            ${PROJECT_SOURCE_DIR}/src/lib/graphics/include
+    )
+    target_link_libraries(viper_runtime PUBLIC vipergfx)
+else ()
+    message(STATUS "viper_runtime: Graphics support disabled (vipergfx not available)")
+endif ()

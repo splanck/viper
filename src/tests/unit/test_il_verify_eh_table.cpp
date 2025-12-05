@@ -49,6 +49,14 @@ Module buildEhFixture()
     push.op = Opcode::EhPush;
     push.labels.push_back("handler");
 
+    // Add a potentially faulting instruction to make the handler reachable
+    Instr div;
+    div.op = Opcode::SDivChk0;
+    div.result = 100;
+    div.type = Type(Type::Kind::I64);
+    div.operands.push_back(Value::constInt(1));
+    div.operands.push_back(Value::constInt(1));
+
     Instr pop;
     pop.op = Opcode::EhPop;
 
@@ -57,6 +65,7 @@ Module buildEhFixture()
     ret.type = Type(Type::Kind::Void);
 
     entry.instructions.push_back(push);
+    entry.instructions.push_back(div);
     entry.instructions.push_back(pop);
     entry.instructions.push_back(ret);
     entry.terminated = true;

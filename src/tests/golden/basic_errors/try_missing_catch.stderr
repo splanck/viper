@@ -1,1 +1,1 @@
-missing CATCH for TRY
+TRY requires CATCH or FINALLY block
