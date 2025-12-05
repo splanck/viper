@@ -19,6 +19,7 @@
 #include "frontends/basic/ast/NodeFwd.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
 #include "viper/il/Module.hpp"
+#include <cctype>
 #include <functional>
 #include <optional>
 #include <string>
@@ -148,10 +149,30 @@ struct ClassLayout
 
     [[nodiscard]] const Field *findField(std::string_view name) const
     {
+        // Try exact match first
         auto it = fieldIndex.find(std::string(name));
-        if (it == fieldIndex.end())
-            return nullptr;
-        return &fields[it->second];
+        if (it != fieldIndex.end())
+            return &fields[it->second];
+        // Case-insensitive fallback (BASIC is case-insensitive)
+        for (const auto &kv : fieldIndex)
+        {
+            if (kv.first.size() == name.size())
+            {
+                bool match = true;
+                for (std::size_t i = 0; i < name.size(); ++i)
+                {
+                    if (std::tolower(static_cast<unsigned char>(kv.first[i])) !=
+                        std::tolower(static_cast<unsigned char>(name[i])))
+                    {
+                        match = false;
+                        break;
+                    }
+                }
+                if (match)
+                    return &fields[kv.second];
+            }
+        }
+        return nullptr;
     }
 };
 

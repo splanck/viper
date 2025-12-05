@@ -563,6 +563,8 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
     std::string qc = qname.empty() ? directQClass : qname;
     std::string curClass = currentClass();
     std::string selectedName = expr.method;
+    // BUG-OOP-002/003 fix: Track declaring class for inherited methods
+    std::string declaringClass = qc;
     if (!qc.empty())
     {
         if (auto resolved = sem::resolveMethodOverload(oopIndex_,
@@ -575,16 +577,18 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
                                                        expr.loc))
         {
             selectedName = resolved->methodName;
+            declaringClass = resolved->qualifiedClass; // Use declaring class for dispatch
         }
         else if (diagnosticEmitter())
         {
             return {Value::constInt(0), Type(Type::Kind::I64)};
         }
     }
-    std::string emitClassName = qc;
-    if (!qc.empty())
+    // BUG-OOP-002/003 fix: Use declaring class for mangling, not receiver class
+    std::string emitClassName = declaringClass;
+    if (!declaringClass.empty())
     {
-        if (const ClassInfo *ci = oopIndex_.findClass(qc))
+        if (const ClassInfo *ci = oopIndex_.findClass(declaringClass))
             emitClassName = ci->qualifiedName;
     }
     std::string directCallee =
@@ -725,7 +729,8 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
 
     // Direct call path.
     // For BASE-qualified direct calls, consult the resolved base class for return type.
-    const std::string retClassLookup = baseQualified ? directQClass : qc;
+    // BUG-OOP-002/003 fix: Use declaring class for return type lookup
+    const std::string retClassLookup = baseQualified ? directQClass : declaringClass;
     // BUG-CARDS-010 fix: Check for object-returning methods first
     std::string retClassName = findMethodReturnClassName(retClassLookup, selectedName);
     if (!retClassName.empty())

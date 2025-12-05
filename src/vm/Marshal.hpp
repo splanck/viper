@@ -109,7 +109,7 @@ Slot assignCallResult(const il::runtime::RuntimeSignature &signature, const Resu
 /// @brief Result of marshalling validation checks.
 struct MarshalValidation
 {
-    bool ok{true};           ///< True when all checks pass.
+    bool ok{true};            ///< True when all checks pass.
     std::string errorMessage; ///< Diagnostic message when validation fails.
 };
 
@@ -117,29 +117,26 @@ struct MarshalValidation
 /// @param desc Runtime descriptor describing the expected signature.
 /// @param argCount Number of arguments actually supplied.
 /// @return Validation result with error message on mismatch.
-[[nodiscard]] MarshalValidation validateMarshalArity(
-    const il::runtime::RuntimeDescriptor &desc,
-    std::size_t argCount);
+[[nodiscard]] MarshalValidation validateMarshalArity(const il::runtime::RuntimeDescriptor &desc,
+                                                     std::size_t argCount);
 
 /// @brief Validate that argument count matches the expected parameter count.
 /// @param sig Runtime signature describing expected parameters.
 /// @param argCount Number of arguments actually supplied.
 /// @param calleeName Name used in error messages.
 /// @return Validation result with error message on mismatch.
-[[nodiscard]] MarshalValidation validateMarshalArity(
-    const il::runtime::RuntimeSignature &sig,
-    std::size_t argCount,
-    std::string_view calleeName);
+[[nodiscard]] MarshalValidation validateMarshalArity(const il::runtime::RuntimeSignature &sig,
+                                                     std::size_t argCount,
+                                                     std::string_view calleeName);
 
 /// @brief Validate argument count and optionally check for null pointer args.
 /// @param desc Runtime descriptor describing the expected signature.
 /// @param args Span of argument slots to validate.
 /// @param checkNullPointers When true, validates that pointer-typed args are non-null.
 /// @return Validation result with error message on failure.
-[[nodiscard]] MarshalValidation validateMarshalArgs(
-    const il::runtime::RuntimeDescriptor &desc,
-    std::span<const Slot> args,
-    bool checkNullPointers = false);
+[[nodiscard]] MarshalValidation validateMarshalArgs(const il::runtime::RuntimeDescriptor &desc,
+                                                    std::span<const Slot> args,
+                                                    bool checkNullPointers = false);
 
 /// @brief Combined marshal and validate: checks arity then builds void** array.
 /// @details This is the recommended entry point for marshalling runtime calls.

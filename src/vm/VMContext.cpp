@@ -198,7 +198,8 @@ Slot VMContext::eval(Frame &fr, const il::core::Value &value) const
                 if (value.str.find('\0') == std::string::npos)
                     it->second = ViperStringHandle(rt_const_cstr(value.str.c_str()));
                 else
-                    it->second = ViperStringHandle(rt_string_from_bytes(value.str.data(), value.str.size()));
+                    it->second =
+                        ViperStringHandle(rt_string_from_bytes(value.str.data(), value.str.size()));
             }
             s.str = it->second.get();
             return s;
@@ -491,7 +492,8 @@ Slot VM::eval(Frame &fr, const il::core::Value &value)
                 if (value.str.find('\0') == std::string::npos)
                     it->second = ViperStringHandle(rt_const_cstr(value.str.c_str()));
                 else
-                    it->second = ViperStringHandle(rt_string_from_bytes(value.str.data(), value.str.size()));
+                    it->second =
+                        ViperStringHandle(rt_string_from_bytes(value.str.data(), value.str.size()));
             }
             s.str = it->second.get();
             return s;

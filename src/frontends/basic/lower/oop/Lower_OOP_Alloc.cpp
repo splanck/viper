@@ -147,11 +147,33 @@ Lowerer::RVal Lowerer::lowerNewExpr(const NewExpr &expr)
     std::vector<Value> ctorArgs;
     ctorArgs.reserve(expr.args.size() + 1);
     ctorArgs.push_back(obj);
-    for (const auto &arg : expr.args)
+
+    // BUG-OOP-007 fix: Look up constructor signature for argument coercion
+    std::vector<::il::frontends::basic::Type> ctorParamTypes;
+    std::string qname = qualify(expr.className);
+    if (const ClassInfo *ci = oopIndex_.findClass(qname))
     {
+        for (const auto &p : ci->ctorParams)
+            ctorParamTypes.push_back(p.type);
+    }
+
+    for (std::size_t i = 0; i < expr.args.size(); ++i)
+    {
+        const auto &arg = expr.args[i];
         if (!arg)
             continue;
         RVal lowered = lowerExpr(*arg);
+        // BUG-OOP-007 fix: Coerce argument to match constructor parameter type
+        if (i < ctorParamTypes.size())
+        {
+            auto astTy = ctorParamTypes[i];
+            if (astTy == ::il::frontends::basic::Type::Bool)
+                lowered = coerceToBool(std::move(lowered), expr.loc);
+            else if (astTy == ::il::frontends::basic::Type::F64)
+                lowered = coerceToF64(std::move(lowered), expr.loc);
+            else if (astTy == ::il::frontends::basic::Type::I64)
+                lowered = coerceToI64(std::move(lowered), expr.loc);
+        }
         ctorArgs.push_back(lowered.value);
     }
 

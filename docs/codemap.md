@@ -1,31 +1,39 @@
 # Code Map
 
-Source code organization for the Viper compiler toolchain.
+Source layout for the Viper compiler toolchain (current tree, kept in sync).
 
-> **Full documentation**: See [/devdocs/codemap.md](/devdocs/codemap.md) for detailed file-by-file breakdowns.
+> For subsystem deep-dives, see [/devdocs/codemap.md](/devdocs/codemap.md).
 
 ## Quick Reference
 
 | Directory | Purpose |
 |-----------|---------|
-| `src/il/` | Intermediate Language core, builder, I/O, verifier, transforms |
-| `src/vm/` | Virtual machine interpreter |
-| `src/codegen/` | Native code generation (x86-64, ARM64) |
-| `src/frontends/basic/` | BASIC frontend (lexer, parser, semantic analysis, lowering) |
-| `src/runtime/` | C runtime library (strings, arrays, I/O, OOP) |
-| `src/support/` | Shared utilities (arena, diagnostics, source manager) |
-| `src/tools/` | CLI tools (vbasic, ilrun, ilc, il-verify, il-dis) |
-| `src/lib/graphics/` | ViperGFX 2D graphics library |
-| `src/tui/` | Terminal UI library |
+| `src/il/` | IL core types, builder, I/O, verifier, analysis, transforms, API |
+| `src/vm/` | Virtual Machine interpreter, opcode handlers, debug, runtime bridge |
+| `src/codegen/` | Native code generation backends (`x86_64/`, `aarch64/`, `common/`) |
+| `src/frontends/basic/` | BASIC frontend (lexer, parser, semantics, lowering to IL) |
+| `src/runtime/` | C runtime library (strings, arrays, I/O, numeric, OOP) |
+| `src/support/` | Shared support: diagnostics, arena, source manager, symbols, result |
+| `src/common/` | Cross-cutting utils (mangling, integer helpers, process runner) |
+| `src/parse/` | Cursor utilities used by frontends (`include/viper/parse/Cursor.h`) |
+| `src/pass/` | Generic pass manager façade (`include/viper/pass/PassManager.hpp`) |
+| `src/tools/` | CLI tools (`ilc`, `vbasic`, `ilrun`, `il-verify`, `il-dis`, BASIC utils) |
+| `src/lib/graphics/` | ViperGFX 2D graphics library (C API, examples, tests) |
+| `src/tui/` | Minimal TUI utility + tests (`apps/tui_demo.cpp`) |
+| `src/tests/` | Unit, golden, e2e, and perf tests by area |
+| `include/` | Public headers (`viper/il`, `viper/vm`, `viper/runtime`, `viper/...`) |
+| `src/buildmeta/` | Version files (`IL_VERSION`, `VERSION`) used at build time |
 
-## Detailed Codemaps
+## Subsystems
 
-See `/devdocs/codemap/` for detailed breakdowns:
+- IL: `src/il/{core,build,io,verify,analysis,transform,api,utils,runtime,internal}`
+- VM: `src/vm` (+ `ops/{generated,common}` and `debug/`)
+- Codegen: `src/codegen/{x86_64,aarch64,common}`
+- Frontends: `src/frontends/basic`
+- Runtime: `src/runtime` (C sources and headers)
+- Tools: `src/tools/{ilc,vbasic,ilrun,il-verify,il-dis,basic-ast-dump,basic-lex-dump}`
+- Support & Infra: `src/{support,common,parse,pass}`
+- Libraries: `src/lib/graphics`, `src/tui`
+- Tests: `src/tests/{unit,golden,e2e,smoke,perf,...}`
 
-- **IL Layer**: il-core, il-build, il-i-o, il-verification, il-analysis, il-transform
-- **Frontends**: front-end-basic
-- **Backends**: codegen (x86-64, ARM64), vm-runtime
-- **Runtime**: runtime-library-c
-- **Tools**: tools, support, graphics, tui
-
-For architecture overview, see [architecture.md](architecture.md).
+For architecture and layering, see [architecture.md](architecture.md).

@@ -14,9 +14,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "RuntimeStatementLowerer.hpp"
 #include "Lowerer.hpp"
 #include "RuntimeCallHelpers.hpp"
+#include "RuntimeStatementLowerer.hpp"
 
 using namespace il::core;
 using il::runtime::RuntimeFeature;

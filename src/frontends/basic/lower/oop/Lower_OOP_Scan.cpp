@@ -90,7 +90,11 @@ class OopScanWalker final : public BasicAstWalker<OopScanWalker>
   public:
     /// @brief Create a walker bound to the lowering state being populated.
     /// @param lowerer Lowerer state that accumulates layout and runtime data.
-    explicit OopScanWalker(Lowerer &lowerer) noexcept : lowerer_(lowerer) {}
+    /// @param oopIndex OOP index containing class hierarchy metadata.
+    explicit OopScanWalker(Lowerer &lowerer, const OopIndex &oopIndex) noexcept
+        : lowerer_(lowerer), oopIndex_(oopIndex)
+    {
+    }
 
     /// @brief Traverse a BASIC program to collect OOP metadata.
     /// @details Visits both procedure declarations and main statements so class
@@ -116,7 +120,8 @@ class OopScanWalker final : public BasicAstWalker<OopScanWalker>
     /// @brief Capture metadata after visiting a class declaration.
     /// @details Builds a @ref Lowerer::ClassLayout from the declaration fields,
     ///          assigns a stable class identifier, and records the result for
-    ///          later transfer to the lowering state.
+    ///          later transfer to the lowering state. If the class has a base
+    ///          class, inherited fields are included before the derived fields.
     /// @param decl Class declaration encountered during traversal.
     void after(const ClassDecl &decl)
     {
@@ -127,6 +132,53 @@ class OopScanWalker final : public BasicAstWalker<OopScanWalker>
         Lowerer::ClassLayout layout;
         // Reserve header for vptr at offset 0; fields start after pointer-sized header.
         std::size_t offset = kPointerSize;
+
+        // BUG-OOP-001 fix: Include inherited fields from base class hierarchy.
+        // Walk the inheritance chain and collect all base fields first.
+        std::vector<const ClassInfo::FieldInfo *> inheritedFields;
+        // Note: decl.qualifiedName is often empty; use decl.name directly to look up in OopIndex
+        // The OopIndex key is built the same way: just the class name when there's no namespace.
+        if (const ClassInfo *cinfo = oopIndex_.findClass(decl.name))
+        {
+            // Walk base class chain and collect fields in reverse order (so we add them correctly)
+            std::vector<const ClassInfo *> bases;
+            const ClassInfo *cur = cinfo;
+            while (!cur->baseQualified.empty())
+            {
+                const ClassInfo *baseInfo = oopIndex_.findClass(cur->baseQualified);
+                if (!baseInfo)
+                    break;
+                bases.push_back(baseInfo);
+                cur = baseInfo;
+            }
+            // Process bases from most ancestral to most derived (so offsets are correct)
+            for (auto it = bases.rbegin(); it != bases.rend(); ++it)
+            {
+                for (const auto &field : (*it)->fields)
+                {
+                    inheritedFields.push_back(&field);
+                }
+            }
+        }
+
+        // Add inherited fields first
+        for (const auto *field : inheritedFields)
+        {
+            offset = alignTo(offset, kFieldAlignment);
+            Lowerer::ClassLayout::Field info{};
+            info.name = field->name;
+            info.type = field->type;
+            info.offset = offset;
+            info.size = field->isArray ? kPointerSize : type_conv::getFieldSize(field->type);
+            info.isArray = field->isArray;
+            info.arrayExtents = field->arrayExtents;
+            info.objectClassName = field->objectClassName;
+            layout.fields.push_back(std::move(info));
+            layout.fieldIndex.emplace(layout.fields.back().name, layout.fields.size() - 1);
+            offset += layout.fields.back().size;
+        }
+
+        // Add this class's own fields
         for (const auto &field : decl.fields)
         {
             offset = alignTo(offset, kFieldAlignment);
@@ -207,6 +259,7 @@ class OopScanWalker final : public BasicAstWalker<OopScanWalker>
 
   private:
     Lowerer &lowerer_;
+    const OopIndex &oopIndex_;
     std::int64_t nextClassId_{1};
 };
 } // namespace
@@ -224,7 +277,7 @@ void Lowerer::scanOOP(const Program &prog)
 
     buildOopIndex(prog, oopIndex_, nullptr);
 
-    OopScanWalker walker(*this);
+    OopScanWalker walker(*this, oopIndex_);
     walker.evaluateProgram(prog);
 
     for (auto &entry : walker.layouts)

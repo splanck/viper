@@ -17,12 +17,12 @@
 
 #pragma once
 
-#include "il/internal/io/ParserState.hpp"
-#include "il/internal/io/ParserUtil.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Module.hpp"
 #include "il/core/Param.hpp"
+#include "il/internal/io/ParserState.hpp"
+#include "il/internal/io/ParserUtil.hpp"
 #include "support/diag_expected.hpp"
 #include "viper/parse/Cursor.h"
 
@@ -79,9 +79,20 @@ class TokenStream
     {
     }
 
-    [[nodiscard]] TokenKind kind() const noexcept { return token_; }
-    [[nodiscard]] const std::string &line() const noexcept { return line_; }
-    [[nodiscard]] LegacyParserState &legacy() noexcept { return *legacy_; }
+    [[nodiscard]] TokenKind kind() const noexcept
+    {
+        return token_;
+    }
+
+    [[nodiscard]] const std::string &line() const noexcept
+    {
+        return line_;
+    }
+
+    [[nodiscard]] LegacyParserState &legacy() noexcept
+    {
+        return *legacy_;
+    }
 
     bool advance()
     {
@@ -239,7 +250,10 @@ struct ParserSnapshot
             state.m.functions.resize(functionCount);
     }
 
-    void discard() { active = false; }
+    void discard()
+    {
+        active = false;
+    }
 
     ~ParserSnapshot()
     {
@@ -265,8 +279,7 @@ inline std::string_view trimView(std::string_view text)
 }
 
 /// @brief Create a line-prefixed error diagnostic.
-template <class T>
-Expected<T> lineError(unsigned lineNo, const std::string &message)
+template <class T> Expected<T> lineError(unsigned lineNo, const std::string &message)
 {
     std::ostringstream oss;
     oss << "line " << lineNo << ": " << message;
@@ -274,7 +287,10 @@ Expected<T> lineError(unsigned lineNo, const std::string &message)
 }
 
 /// @brief Get source position from cursor.
-inline SourcePos cursorPos(const Cursor &cur) { return cur.pos(); }
+inline SourcePos cursorPos(const Cursor &cur)
+{
+    return cur.pos();
+}
 
 /// @brief Create a syntax error with optional context.
 inline Error makeSyntaxError(SourcePos pos, std::string_view msg, std::string_view near)

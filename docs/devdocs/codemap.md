@@ -2,7 +2,7 @@
 
 Source code organization for the Viper compiler toolchain.
 
-## Core Components
+## IL
 
 | Component | Description |
 |-----------|-------------|
@@ -11,8 +11,8 @@ Source code organization for the Viper compiler toolchain.
 | [IL I/O](codemap/il-i-o.md) | Text parser/serializer for `.il` files |
 | [IL Verification](codemap/il-verification.md) | Verifier (types, control flow, EH) |
 | [IL Analysis](codemap/il-analysis.md) | CFG, dominators, alias analysis |
-| [IL Transform](codemap/il-transform.md) | Optimization passes |
-| [IL Runtime](codemap/il-runtime.md) | Runtime signature metadata |
+| [IL Transform](codemap/il-transform.md) | Optimization passes and pass infra |
+| [IL Runtime](codemap/il-runtime.md) | Runtime signatures, helper effects |
 | [IL Utilities](codemap/il-utilities.md) | Shared IL utilities |
 | [IL API](codemap/il-api.md) | Public API facades |
 
@@ -22,30 +22,30 @@ Source code organization for the Viper compiler toolchain.
 |-----------|-------------|
 | [BASIC Frontend](codemap/front-end-basic.md) | Lexer, parser, semantic analysis, lowering |
 
-## Backends
+## Execution & Codegen
 
 | Component | Description |
 |-----------|-------------|
-| [Codegen](codemap/codegen.md) | x86-64 and ARM64 native code generation |
-| [VM Runtime](codemap/vm-runtime.md) | Virtual machine interpreter |
+| [Virtual Machine](codemap/vm-runtime.md) | IL interpreter, handlers, debug, bridge |
+| [Codegen](codemap/codegen.md) | x86_64 and AArch64 native code generation |
 
 ## Runtime & Support
 
 | Component | Description |
 |-----------|-------------|
 | [Runtime Library (C)](codemap/runtime-library-c.md) | C runtime: strings, arrays, I/O, OOP |
-| [Support](codemap/support.md) | Shared utilities (arena, diagnostics, source manager) |
+| [Support](codemap/support.md) | Diagnostics, arena, source manager, symbols, parsing, passes |
 
 ## Tools & Libraries
 
 | Component | Description |
 |-----------|-------------|
-| [Tools](codemap/tools.md) | CLI tools (vbasic, ilrun, ilc, il-verify) |
+| [Tools](codemap/tools.md) | CLI tools (ilc, vbasic, ilrun, il-verify, il-dis) |
 | [Graphics](codemap/graphics.md) | ViperGFX 2D graphics library |
-| [TUI](codemap/tui.md) | Terminal UI library |
+| [TUI](codemap/tui.md) | Minimal TUI utility + tests |
 
-## Documentation
+## Additional
 
-| Component | Description |
-|-----------|-------------|
-| [Docs](codemap/docs.md) | User-facing documentation |
+- Public headers: `include/viper/{il,vm,runtime,parse,pass}`
+- Tests: `src/tests/{unit,golden,e2e,smoke,perf,...}`
+- Build metadata: `src/buildmeta/{IL_VERSION,VERSION}`

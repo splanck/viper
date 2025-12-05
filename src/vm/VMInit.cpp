@@ -302,8 +302,8 @@ VM::VM(const Module &m,
                                 inlineLiteralCache[operand.str] =
                                     ViperStringHandle(rt_const_cstr(operand.str.c_str()));
                             else
-                                inlineLiteralCache[operand.str] =
-                                    ViperStringHandle(rt_string_from_bytes(operand.str.data(), operand.str.size()));
+                                inlineLiteralCache[operand.str] = ViperStringHandle(
+                                    rt_string_from_bytes(operand.str.data(), operand.str.size()));
                         }
                     }
                 }
@@ -321,8 +321,8 @@ VM::VM(const Module &m,
                                     inlineLiteralCache[brArg.str] =
                                         ViperStringHandle(rt_const_cstr(brArg.str.c_str()));
                                 else
-                                    inlineLiteralCache[brArg.str] =
-                                        ViperStringHandle(rt_string_from_bytes(brArg.str.data(), brArg.str.size()));
+                                    inlineLiteralCache[brArg.str] = ViperStringHandle(
+                                        rt_string_from_bytes(brArg.str.data(), brArg.str.size()));
                             }
                         }
                     }
@@ -449,11 +449,12 @@ Frame VM::setupFrame(const Function &fn,
         const auto &params = bb->params;
         if (args.size() != params.size())
         {
-            RuntimeBridge::trap(TrapKind::InvalidOperation,
-                                diag::formatArgumentCountMismatch(fn.name, params.size(), args.size()),
-                                {},
-                                fn.name,
-                                bb->label);
+            RuntimeBridge::trap(
+                TrapKind::InvalidOperation,
+                diag::formatArgumentCountMismatch(fn.name, params.size(), args.size()),
+                {},
+                fn.name,
+                bb->label);
         }
         for (size_t i = 0; i < params.size() && i < args.size(); ++i)
         {

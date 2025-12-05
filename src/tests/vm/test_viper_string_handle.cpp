@@ -5,7 +5,8 @@
 #include <atomic>
 #include <cstdio>
 
-extern "C" {
+extern "C"
+{
 #include "viper/runtime/rt.h"
 }
 

@@ -85,25 +85,55 @@ std::optional<ResolvedMethod> resolveMethodOverload(const OopIndex &index,
         return std::nullopt;
 
     // Build candidate list: methodName plus property accessors matching arity.
+    // BUG-OOP-002/003 fix: Walk the inheritance hierarchy to find methods.
     struct Cand
     {
         const ClassInfo::MethodInfo *mi;
         std::string name;
+        std::string declaringClass; // Class where method is defined (for mangling)
     };
 
     std::vector<Cand> cands;
-    auto addIf = [&](const std::string &name)
+
+    // Helper to add candidates from a class
+    auto addFromClass = [&](const ClassInfo *classInfo)
     {
-        auto it = ci->methods.find(name);
-        if (it != ci->methods.end())
-            cands.push_back(Cand{&it->second, name});
+        auto addIf = [&](const std::string &name)
+        {
+            auto it = classInfo->methods.find(name);
+            if (it != classInfo->methods.end())
+            {
+                // Check if we already have a candidate with this name (shadowing)
+                bool alreadyHave = false;
+                for (const auto &c : cands)
+                {
+                    if (c.name == name)
+                    {
+                        alreadyHave = true;
+                        break;
+                    }
+                }
+                if (!alreadyHave)
+                    cands.push_back(Cand{&it->second, name, classInfo->qualifiedName});
+            }
+        };
+        addIf(std::string(methodName));
+        // Properties: get_Name has 0 user params; set_Name has 1 user param.
+        if (argTypes.size() == 0)
+            addIf("get_" + std::string(methodName));
+        if (argTypes.size() == 1)
+            addIf("set_" + std::string(methodName));
     };
-    addIf(std::string(methodName));
-    // Properties: get_Name has 0 user params; set_Name has 1 user param.
-    if (argTypes.size() == 0)
-        addIf("get_" + std::string(methodName));
-    if (argTypes.size() == 1)
-        addIf("set_" + std::string(methodName));
+
+    // Walk inheritance hierarchy from most derived to base
+    const ClassInfo *cur = ci;
+    while (cur)
+    {
+        addFromClass(cur);
+        if (cur->baseQualified.empty())
+            break;
+        cur = index.findClass(cur->baseQualified);
+    }
 
     // Filter: static/instance and access control
     std::vector<Cand> filtered;
@@ -112,7 +142,8 @@ std::optional<ResolvedMethod> resolveMethodOverload(const OopIndex &index,
     {
         if (c.mi->isStatic != isStatic)
             continue;
-        if (c.mi->sig.access == Access::Private && ci->qualifiedName != currentClass)
+        // Private methods can only be accessed from the declaring class
+        if (c.mi->sig.access == Access::Private && c.declaringClass != currentClass)
             continue;
         filtered.push_back(c);
     }
@@ -227,7 +258,8 @@ std::optional<ResolvedMethod> resolveMethodOverload(const OopIndex &index,
     }
 
     const auto &win = filtered[bestIdx.front()];
-    return ResolvedMethod{ci, win.mi, ci->qualifiedName, win.name};
+    // BUG-OOP-002/003 fix: Return the declaring class for proper method dispatch
+    return ResolvedMethod{ci, win.mi, win.declaringClass, win.name};
 }
 
 } // namespace il::frontends::basic::sem

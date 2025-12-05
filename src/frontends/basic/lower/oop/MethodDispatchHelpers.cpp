@@ -134,6 +134,8 @@ MethodDispatchResolver::Resolution MethodDispatchResolver::resolveInstanceCall(
 
     // Resolve overload
     std::string selected = methodName;
+    // BUG-OOP-002/003 fix: Track the declaring class for inherited method dispatch
+    std::string declaringClass = receiverClassQName;
     if (auto resolved = sem::resolveMethodOverload(lowerer_.oopIndex_,
                                                    receiverClassQName,
                                                    methodName,
@@ -144,6 +146,7 @@ MethodDispatchResolver::Resolution MethodDispatchResolver::resolveInstanceCall(
                                                    loc))
     {
         selected = resolved->methodName;
+        declaringClass = resolved->qualifiedClass; // Use declaring class for dispatch
     }
     else if (lowerer_.diagnosticEmitter())
     {
@@ -151,11 +154,11 @@ MethodDispatchResolver::Resolution MethodDispatchResolver::resolveInstanceCall(
         return result;
     }
 
-    // Determine virtual slot
-    int slot = getVirtualSlot(lowerer_.oopIndex_, receiverClassQName, selected);
+    // Determine virtual slot - use declaring class for inherited methods
+    int slot = getVirtualSlot(lowerer_.oopIndex_, declaringClass, selected);
 
-    // Determine target class for direct dispatch
-    std::string directQClass = receiverClassQName;
+    // Determine target class for direct dispatch - use declaring class for inherited methods
+    std::string directQClass = declaringClass;
     if (isBaseQualified)
     {
         const std::string cur = lowerer_.currentClass();
@@ -174,7 +177,8 @@ MethodDispatchResolver::Resolution MethodDispatchResolver::resolveInstanceCall(
     {
         result.kind = Resolution::Kind::Virtual;
         result.slot = slot;
-        if (auto retType = lowerer_.findMethodReturnType(receiverClassQName, methodName))
+        // BUG-OOP-002/003 fix: Use declaring class for return type lookup
+        if (auto retType = lowerer_.findMethodReturnType(declaringClass, selected))
         {
             result.returnKind = type_conv::astToIlType(*retType).kind;
         }

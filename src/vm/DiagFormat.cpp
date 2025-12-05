@@ -36,8 +36,8 @@ std::string formatUnknownRuntimeHelper(std::string_view name)
 }
 
 std::string formatArgumentCountMismatch(std::string_view functionName,
-                                         std::size_t expected,
-                                         std::size_t received)
+                                        std::size_t expected,
+                                        std::size_t received)
 {
     std::ostringstream os;
     os << "argument count mismatch for function " << functionName << ": expected " << expected
@@ -46,9 +46,9 @@ std::string formatArgumentCountMismatch(std::string_view functionName,
 }
 
 std::string formatBranchArgMismatch(std::string_view targetLabel,
-                                     std::string_view sourceLabel,
-                                     std::size_t expected,
-                                     std::size_t provided)
+                                    std::string_view sourceLabel,
+                                    std::size_t expected,
+                                    std::size_t provided)
 {
     std::ostringstream os;
     os << "branch argument count mismatch targeting '" << targetLabel << '\'';

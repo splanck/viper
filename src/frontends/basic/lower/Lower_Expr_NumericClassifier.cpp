@@ -69,7 +69,8 @@ class NumericTypeClassifier final : public ExprVisitor
 
     void visit(const FloatExpr &f) override
     {
-        result_ = (f.suffix == FloatExpr::Suffix::Single) ? NumericType::Single : NumericType::Double;
+        result_ =
+            (f.suffix == FloatExpr::Suffix::Single) ? NumericType::Single : NumericType::Double;
     }
 
     void visit(const StringExpr &) override

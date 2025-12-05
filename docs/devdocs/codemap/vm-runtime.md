@@ -75,6 +75,6 @@ The Virtual Machine (`src/vm/`) interprets Viper IL with configurable dispatch s
 
 | File | Purpose |
 |------|---------|
-| `VM.hpp` | Public Runner facade for embedding |
-| `debug/Debug.hpp` | Debugger configuration types |
-| `internal/OpHelpers.hpp` | Typed operand load/store helpers |
+| `VM.hpp` | Public VM surface and runner for embedding |
+| `OpcodeNames.hpp` | Human-readable opcode names for diagnostics/tools |
+| `RuntimeBridge.hpp` | Public bridge types used to invoke C runtime |

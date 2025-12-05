@@ -354,8 +354,8 @@ namespace
 /// @brief Internal record for a registered external function.
 struct ExtRecord
 {
-    ExternDesc pub;                          ///< Public descriptor exposed to callers.
-    il::runtime::RuntimeSignature runtimeSig; ///< Converted runtime signature.
+    ExternDesc pub;                                ///< Public descriptor exposed to callers.
+    il::runtime::RuntimeSignature runtimeSig;      ///< Converted runtime signature.
     il::runtime::RuntimeHandler handler = nullptr; ///< Native handler function.
 };
 
@@ -367,7 +367,7 @@ struct ExtRecord
 ///          file to keep the header opaque.
 struct ExternRegistry
 {
-    std::mutex mutex;                                 ///< Protects concurrent access.
+    std::mutex mutex;                                   ///< Protects concurrent access.
     std::unordered_map<std::string, ExtRecord> entries; ///< Name -> record mapping.
 };
 

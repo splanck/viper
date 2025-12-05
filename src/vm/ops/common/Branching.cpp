@@ -55,11 +55,12 @@ namespace
     const std::string sourceLabel = source ? source->label : std::string{};
     const std::string functionName = frame.func ? frame.func->name : std::string{};
 
-    RuntimeBridge::trap(TrapKind::InvalidOperation,
-                        diag::formatBranchArgMismatch(target.label, sourceLabel, expected, provided),
-                        instr.loc,
-                        functionName,
-                        sourceLabel);
+    RuntimeBridge::trap(
+        TrapKind::InvalidOperation,
+        diag::formatBranchArgMismatch(target.label, sourceLabel, expected, provided),
+        instr.loc,
+        functionName,
+        sourceLabel);
     std::_Exit(1);
 }
 } // namespace

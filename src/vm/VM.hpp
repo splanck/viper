@@ -422,8 +422,8 @@ class VM
                                      const il::core::Function *,
                                      TransparentHashSV,
                                      TransparentEqualSV>;
-    using StrMap =
-        std::unordered_map<std::string_view, ViperStringHandle, TransparentHashSV, TransparentEqualSV>;
+    using StrMap = std::
+        unordered_map<std::string_view, ViperStringHandle, TransparentHashSV, TransparentEqualSV>;
 
     /**
      * @brief Construct a VM for executing an IL module.
@@ -594,7 +594,8 @@ class VM
     };
 
     /// @brief Per-VM runtime context for isolated state.
-    /// @ownership Owned by the VM via unique_ptr; initialized on construction, cleaned up on destruction.
+    /// @ownership Owned by the VM via unique_ptr; initialized on construction, cleaned up on
+    /// destruction.
     /// @details Provides isolated RNG, modvar, and other runtime state per VM instance.
     std::unique_ptr<RtContext, RtContextDeleter> rtContext;
 
@@ -670,7 +671,8 @@ class VM
 
     /// @brief Interned runtime strings.
     /// @ownership Owned by the VM via ViperStringHandle RAII; manages string handles for globals.
-    std::unordered_map<std::string_view, ViperStringHandle, TransparentHashSV, TransparentEqualSV> strMap;
+    std::unordered_map<std::string_view, ViperStringHandle, TransparentHashSV, TransparentEqualSV>
+        strMap;
 
     /// @brief Storage for mutable module-level globals.
     /// @ownership Owned by the VM; each global maps to allocated storage.
@@ -679,7 +681,8 @@ class VM
         mutableGlobalMap;
 
     /// @brief Cached runtime handles for inline string literals containing embedded NULs.
-    /// @ownership Owned by the VM via ViperStringHandle RAII; handles created via @c rt_string_from_bytes.
+    /// @ownership Owned by the VM via ViperStringHandle RAII; handles created via @c
+    /// rt_string_from_bytes.
     /// @invariant Each literal string maps to at most one active handle, released automatically
     ///            when the cache is cleared or the VM is destroyed.
     std::unordered_map<std::string_view, ViperStringHandle, TransparentHashSV, TransparentEqualSV>

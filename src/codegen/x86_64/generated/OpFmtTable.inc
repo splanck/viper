@@ -1,13 +1,5 @@
-//===----------------------------------------------------------------------===//
-// IMPORTANT: This file is auto-generated. Do not edit manually.
-// Generator: cmake/GenX86Encodings.cmake from tools/spec/x86_64_encodings.json
-// Regenerate: Run CMake configure step to regenerate.
-//
-// Purpose: x86_64 opcode formatting table. Maps MOpcode to AT&T mnemonic,
-//          operand count, and formatting flags (kFmtLea, kFmtJump, etc.).
-//          Used by MIR printer for human-readable instruction output.
-// Key invariants: Entry count MUST match MOpcode enum. Order is not significant.
-//===----------------------------------------------------------------------===//
+// Generated from tools/spec/x86_64_encodings.json
+// DO NOT EDIT - regenerate with CMake (cmake/GenX86Encodings.cmake)
 
 static constexpr std::array<OpFmt, 44> kOpFmt = {{
     {MOpcode::MOVrr, "movq", 2U, 0U},
@@ -55,4 +47,3 @@ static constexpr std::array<OpFmt, 44> kOpFmt = {{
     {MOpcode::MOVSDrm, "movsd", 2U, 0U},
     {MOpcode::MOVSDmr, "movsd", 2U, 0U},
 }};
-

@@ -127,7 +127,8 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt)
                             Value arrHandle = lowerer_.emitLoad(
                                 il::core::Type(il::core::Type::Kind::Ptr), fieldPtr);
 
-                            // Multi-dimensional arrays require flattened index computation. (BUG-094)
+                            // Multi-dimensional arrays require flattened index computation.
+                            // (BUG-094)
                             std::vector<Value> indices;
                             indices.reserve(mc->args.size());
                             for (const auto &arg : mc->args)
@@ -441,7 +442,8 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt)
             slotInfo.type = access->ilType;
             slotInfo.isArray = false;
             slotInfo.isBoolean = (access->astType == ::il::frontends::basic::Type::Bool);
-            slotInfo.isObject = !access->objectClassName.empty(); // Object fields use pointer semantics (BUG-082)
+            slotInfo.isObject =
+                !access->objectClassName.empty(); // Object fields use pointer semantics (BUG-082)
             if (slotInfo.isObject)
             {
                 slotInfo.objectClass = access->objectClassName;

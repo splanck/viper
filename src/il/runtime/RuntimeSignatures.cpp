@@ -32,8 +32,8 @@
 
 #include "il/runtime/HelperEffects.hpp"
 #include "il/runtime/RuntimeSignatureParser.hpp"
-#include "il/runtime/RuntimeSignatures_Handlers.hpp"
 #include "il/runtime/RuntimeSignaturesData.hpp"
+#include "il/runtime/RuntimeSignatures_Handlers.hpp"
 
 #include "rt.hpp"
 #include "rt_args.h"

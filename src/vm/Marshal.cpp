@@ -439,8 +439,8 @@ std::vector<void *> marshalArgumentsValidated(const il::runtime::RuntimeDescript
                                               bool checkNullPointers)
 {
     // Validate before marshalling to avoid out-of-bounds access
-    validation = validateMarshalArgs(desc, std::span<const Slot>{args.data(), args.size()},
-                                     checkNullPointers);
+    validation = validateMarshalArgs(
+        desc, std::span<const Slot>{args.data(), args.size()}, checkNullPointers);
     if (!validation.ok)
         return {};
 

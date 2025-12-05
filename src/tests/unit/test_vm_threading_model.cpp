@@ -68,17 +68,19 @@ void testMultiThreadedVMExecution()
     auto module1 = buildSimpleModule(42);
     auto module2 = buildSimpleModule(99);
 
-    std::thread t1([&]()
-                   {
-        vm::VM vm(module1);
-        result1 = vm.run();
-    });
+    std::thread t1(
+        [&]()
+        {
+            vm::VM vm(module1);
+            result1 = vm.run();
+        });
 
-    std::thread t2([&]()
-                   {
-        vm::VM vm(module2);
-        result2 = vm.run();
-    });
+    std::thread t2(
+        [&]()
+        {
+            vm::VM vm(module2);
+            result2 = vm.run();
+        });
 
     t1.join();
     t2.join();
@@ -100,34 +102,36 @@ void testActiveInstanceIsolation()
     auto module1 = buildSimpleModule(1);
     auto module2 = buildSimpleModule(2);
 
-    std::thread t1([&]()
-                   {
-        // Before VM activation, activeVMInstance should be null
-        t1SawNull = (vm::activeVMInstance() == nullptr);
-
-        vm::VM vm(module1);
-        // Run creates an ActiveVMGuard internally
-        // We can test by creating our own guard
+    std::thread t1(
+        [&]()
         {
-            vm::ActiveVMGuard guard(&vm);
-            t1SawCorrectVM = (vm::activeVMInstance() == &vm);
-        }
-        // After guard, activeVMInstance should be null again
-        assert(vm::activeVMInstance() == nullptr);
-    });
+            // Before VM activation, activeVMInstance should be null
+            t1SawNull = (vm::activeVMInstance() == nullptr);
 
-    std::thread t2([&]()
-                   {
-        // Before VM activation, activeVMInstance should be null
-        t2SawNull = (vm::activeVMInstance() == nullptr);
+            vm::VM vm(module1);
+            // Run creates an ActiveVMGuard internally
+            // We can test by creating our own guard
+            {
+                vm::ActiveVMGuard guard(&vm);
+                t1SawCorrectVM = (vm::activeVMInstance() == &vm);
+            }
+            // After guard, activeVMInstance should be null again
+            assert(vm::activeVMInstance() == nullptr);
+        });
 
-        vm::VM vm(module2);
+    std::thread t2(
+        [&]()
         {
-            vm::ActiveVMGuard guard(&vm);
-            t2SawCorrectVM = (vm::activeVMInstance() == &vm);
-        }
-        assert(vm::activeVMInstance() == nullptr);
-    });
+            // Before VM activation, activeVMInstance should be null
+            t2SawNull = (vm::activeVMInstance() == nullptr);
+
+            vm::VM vm(module2);
+            {
+                vm::ActiveVMGuard guard(&vm);
+                t2SawCorrectVM = (vm::activeVMInstance() == &vm);
+            }
+            assert(vm::activeVMInstance() == nullptr);
+        });
 
     t1.join();
     t2.join();

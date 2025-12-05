@@ -447,6 +447,11 @@ add_executable(test_oop_overloads ${CMAKE_CURRENT_SOURCE_DIR}/unit/oop/TestOverl
 target_link_libraries(test_oop_overloads PRIVATE fe_basic viper_testing)
 viper_add_ctest(test_oop_overloads test_oop_overloads)
 
+# Inheritance tests (BUG-OOP-001, BUG-OOP-002, BUG-OOP-007)
+add_executable(test_oop_inheritance ${CMAKE_CURRENT_SOURCE_DIR}/unit/oop/TestInheritance.cpp)
+target_link_libraries(test_oop_inheritance PRIVATE fe_basic viper_testing viper_test_common)
+viper_add_ctest(test_oop_inheritance $<TARGET_FILE:test_oop_inheritance>)
+
 # Destructor + dispose tests
 add_executable(test_oop_destructor_dispose ${CMAKE_CURRENT_SOURCE_DIR}/unit/oop/TestDestructorDispose.cpp)
 target_link_libraries(test_oop_destructor_dispose PRIVATE fe_basic viper_testing)

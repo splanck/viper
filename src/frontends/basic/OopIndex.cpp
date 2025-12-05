@@ -176,7 +176,8 @@ int getVirtualSlot(const OopIndex &index,
                    const std::string &qualifiedClass,
                    const std::string &methodName)
 {
-    const ClassInfo::MethodInfo *mi = index.findMethod(qualifiedClass, methodName);
+    // BUG-OOP-002/003 fix: Walk the inheritance hierarchy to find virtual methods
+    const ClassInfo::MethodInfo *mi = index.findMethodInHierarchy(qualifiedClass, methodName);
     if (!mi)
         return -1;
     return mi->slot;

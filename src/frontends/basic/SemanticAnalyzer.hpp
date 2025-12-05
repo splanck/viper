@@ -592,7 +592,8 @@ class SemanticAnalyzer
     std::optional<int> errorHandlerTarget_;
     const FunctionDecl *activeFunction_{nullptr};
     BasicType activeFunctionExplicitRet_{BasicType::Unknown};
-    bool activeFunctionNameAssigned_{false}; ///< Track if function name was assigned (VB-style implicit return). (BUG-003)
+    bool activeFunctionNameAssigned_{
+        false}; ///< Track if function name was assigned (VB-style implicit return). (BUG-003)
 };
 
 } // namespace il::frontends::basic

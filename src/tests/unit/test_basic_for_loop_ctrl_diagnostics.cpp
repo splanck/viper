@@ -137,7 +137,8 @@ static void test_for_member_field_works()
     {
         std::ostringstream oss;
         result.emitter->printAll(oss);
-        fprintf(stderr, "test_for_member_field_works - Unexpected errors:\n%s\n", oss.str().c_str());
+        fprintf(
+            stderr, "test_for_member_field_works - Unexpected errors:\n%s\n", oss.str().c_str());
     }
 
     // Should succeed with no errors

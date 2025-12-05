@@ -30,7 +30,7 @@ namespace il::vm::diag
 /// @return Formatted error message.
 /// @note Cold path only - constructs string on each call.
 [[nodiscard]] std::string formatUnsupportedKind(std::string_view operation,
-                                                 il::core::Type::Kind kind);
+                                                il::core::Type::Kind kind);
 
 /// @brief Format an error for unknown runtime helper.
 /// @param name The unrecognized helper name.
@@ -45,8 +45,8 @@ namespace il::vm::diag
 /// @return Formatted error message.
 /// @note Cold path only - constructs string on each call.
 [[nodiscard]] std::string formatArgumentCountMismatch(std::string_view functionName,
-                                                       std::size_t expected,
-                                                       std::size_t received);
+                                                      std::size_t expected,
+                                                      std::size_t received);
 
 /// @brief Format a branch argument count mismatch error.
 /// @param targetLabel Label of the target block.
@@ -56,8 +56,8 @@ namespace il::vm::diag
 /// @return Formatted error message.
 /// @note Cold path only - constructs string on each call.
 [[nodiscard]] std::string formatBranchArgMismatch(std::string_view targetLabel,
-                                                   std::string_view sourceLabel,
-                                                   std::size_t expected,
-                                                   std::size_t provided);
+                                                  std::string_view sourceLabel,
+                                                  std::size_t expected,
+                                                  std::size_t provided);
 
 } // namespace il::vm::diag

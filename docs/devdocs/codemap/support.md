@@ -1,6 +1,8 @@
-# CODEMAP: Support
+# CODEMAP: Support & Common
 
-Shared support libraries (`src/support/`) used across the toolchain.
+Shared support and infrastructure used across the toolchain.
+
+Directories: `src/support/`, `src/common/`, `src/parse/`, `src/pass/`.
 
 ## Source Management
 
@@ -36,3 +38,23 @@ Shared support libraries (`src/support/`) used across the toolchain.
 |------|---------|
 | `options.hpp` | Global compile-time options and toggles |
 | `result.hpp` | Minimal Result<T> helper |
+
+## Common Utilities (`src/common/`)
+
+| File | Purpose |
+|------|---------|
+| `Mangle.hpp/cpp` | Name mangling helpers used by frontends/codegen |
+| `IntegerHelpers.hpp` | Integer helpers (width/signedness, overflow policies) |
+| `RunProcess.hpp/cpp` | Test helper to spawn subprocesses with env/dir control |
+
+## Parsing Helpers (`src/parse/`)
+
+| File | Purpose |
+|------|---------|
+| `Cursor.cpp` | Source cursor utilities; C header at `include/viper/parse/Cursor.h` |
+
+## Pass Framework (`src/pass/`)
+
+| File | Purpose |
+|------|---------|
+| `PassManager.cpp` | Generic pass manager façade; public API at `include/viper/pass/PassManager.hpp` |
