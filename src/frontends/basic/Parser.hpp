@@ -569,9 +569,8 @@ class Parser
 
     /// @brief Pre-scan source for SUB/FUNCTION names to enable parenthesis-free calls.
     /// @details Performs a quick lexer scan to find all SUB/FUNCTION declarations
-    ///          and registers their names before the main parse begins. This allows
-    ///          calls without parentheses to work even when procedures are defined
-    ///          after their call sites. (BUG-OOP-020)
+    ///          and registers their names before the main parse begins. Forward
+    ///          references (calls before definition) require this pre-scan. (BUG-OOP-020)
     /// @param src Source text to scan.
     /// @param file_id File identifier for the lexer.
     void prescanProcedureNames(std::string_view src, uint32_t file_id);

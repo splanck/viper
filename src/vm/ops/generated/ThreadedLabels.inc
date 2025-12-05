@@ -1,5 +1,13 @@
-// This file is auto-generated. Do not edit manually.
-// Maintained as a committed generated include.
+//===----------------------------------------------------------------------===//
+// IMPORTANT: This file is auto-generated. Do not edit manually.
+// Generator: Manually maintained (synchronized with Opcode enum).
+// Regenerate: Update when adding/removing opcodes in il/core/Opcode.hpp.
+//
+// Purpose: GCC computed-goto label address table for threaded VM dispatch.
+//          Each entry is &&LBL_<OpName> for the corresponding opcode handler.
+//          Included directly in VM.cpp within a label address array initializer.
+// Key invariants: Entry count and order MUST match il::core::kNumOpcodes.
+//===----------------------------------------------------------------------===//
 &&LBL_Add, &&LBL_Sub, &&LBL_Mul, &&LBL_IAddOvf, &&LBL_ISubOvf, &&LBL_IMulOvf, &&LBL_SDiv,
     &&LBL_UDiv, &&LBL_SRem, &&LBL_URem, &&LBL_SDivChk0, &&LBL_UDivChk0, &&LBL_SRemChk0,
     &&LBL_URemChk0, &&LBL_IdxChk, &&LBL_And, &&LBL_Or, &&LBL_Xor, &&LBL_Shl, &&LBL_LShr, &&LBL_AShr,

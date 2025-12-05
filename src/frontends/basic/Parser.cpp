@@ -59,8 +59,7 @@ Parser::Parser(std::string_view src,
     }
 
     // Pre-scan source for SUB/FUNCTION names to enable parenthesis-free calls.
-    // This allows calls like "MySub" without parentheses to work even when
-    // the SUB is defined AFTER the call site. (BUG-OOP-020)
+    // Forward references (calls before definition) require this pre-scan. (BUG-OOP-020)
     prescanProcedureNames(src, file_id);
 }
 
@@ -499,12 +498,12 @@ bool Parser::handleTopLevelAddFile(Program &prog)
 
     // Parse included file with suppressed undefined-label check.
     Parser child(contents, newFileId, emitter_, sm_, includeStack_, /*suppress*/ true);
-    // BUG-100 fix: Copy parent's array registry to child so it knows about existing arrays
+    // Copy parent's array registry to child so it knows about existing arrays. (BUG-100)
     child.arrays_ = arrays_;
     // Propagate known namespaces so qualified-name parsing inside includes
     // recognizes the same namespace heads as the parent parser.
     child.knownNamespaces_ = knownNamespaces_;
-    // BUG-OOP-019 fix: Propagate CONST values so SELECT CASE labels work across ADDFILE
+    // Propagate CONST values so SELECT CASE labels work across ADDFILE. (BUG-OOP-019)
     child.knownConstInts_ = knownConstInts_;
     child.knownConstStrs_ = knownConstStrs_;
     auto subprog = child.parseProgram();
@@ -522,7 +521,7 @@ bool Parser::handleTopLevelAddFile(Program &prog)
 
     for (const auto &arrName : child.arrays_)
         arrays_.insert(arrName);
-    // BUG-OOP-019 fix: Merge child's CONSTs back to parent
+    // Merge child's CONSTs back to parent for cross-file visibility. (BUG-OOP-019)
     for (const auto &kv : child.knownConstInts_)
         knownConstInts_.insert(kv);
     for (const auto &kv : child.knownConstStrs_)
@@ -617,7 +616,7 @@ bool Parser::handleAddFileInto(std::vector<StmtPtr> &dst)
     // propagating selected state to the child parser.
     // - Arrays: disambiguate name(args) as array vs call consistently.
     // - Namespaces: preserve the set of known namespace heads for qualified calls.
-    // - CONSTs: allow SELECT CASE labels to use CONSTs from parent (BUG-OOP-019)
+    // - CONSTs: SELECT CASE labels must see CONSTs from parent (BUG-OOP-019)
     child.arrays_ = arrays_;
     child.knownNamespaces_ = knownNamespaces_;
     child.knownConstInts_ = knownConstInts_;
@@ -635,7 +634,7 @@ bool Parser::handleAddFileInto(std::vector<StmtPtr> &dst)
     for (auto &s : subprog->main)
         dst.push_back(std::move(s));
 
-    // BUG-OOP-019 fix: Merge child's CONSTs back to parent
+    // Merge child's CONSTs back to parent for cross-file visibility. (BUG-OOP-019)
     for (const auto &kv : child.knownConstInts_)
         knownConstInts_.insert(kv);
     for (const auto &kv : child.knownConstStrs_)

@@ -64,8 +64,8 @@ struct MethodSig
     /// Optional return type for methods producing a value.
     std::optional<Type> returnType;
 
-    /// BUG-099 fix: Qualified class name when method returns an object.
-    /// Empty string indicates primitive or void return type.
+    /// Qualified class name when method returns an object.
+    /// Empty string indicates primitive or void return type. (BUG-099)
     std::string returnClassName;
 
     /// Access specifier for the method (default Public).
@@ -81,9 +81,9 @@ struct ClassInfo
         std::string name;                    ///< Declared field name.
         Type type = Type::I64;               ///< Declared field type.
         Access access{Access::Public};       ///< Field access control.
-        bool isArray{false};                 ///< Whether field is an array (BUG-059 fix).
-        std::vector<long long> arrayExtents; ///< Array dimensions if isArray (BUG-059 fix).
-        std::string objectClassName;         ///< BUG-082 fix: Class name for object fields.
+        bool isArray{false};                 ///< Whether field is an array. (BUG-059)
+        std::vector<long long> arrayExtents; ///< Array dimensions if isArray. (BUG-059)
+        std::string objectClassName;         ///< Class name for object-typed fields. (BUG-082)
     };
 
     /// @brief Signature metadata for constructor parameters.

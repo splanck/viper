@@ -30,8 +30,8 @@ namespace il::frontends::basic
 // -------------------------------------------------------------------------
 // Centralized OOP Resolution Helpers
 // -------------------------------------------------------------------------
-// These helpers consolidate patterns that were duplicated across OOP lowering
-// code (BUG-061, BUG-082, BUG-089, etc.).
+// These helpers consolidate patterns for resolving object class names from
+// fields, arrays, and method return types. (BUG-061, BUG-082, BUG-089, etc.)
 
 /// @brief Resolve the object class of a non-array field.
 /// @param layout Class layout to search.

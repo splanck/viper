@@ -7,8 +7,8 @@
 //
 // File: src/frontends/basic/lower/oop/Lower_OOP_RuntimeHelpers.hpp
 // Purpose: Consolidated OOP runtime emission helpers for BASIC lowering.
-// Key invariants: Centralizes patterns that were duplicated across OOP lowering
-//                 code (BUG-056, BUG-073, BUG-089, BUG-099, BUG-105, etc.).
+// Key invariants: Centralizes patterns for parameter initialization, array field
+//                 allocation, and method epilogue. (BUG-056, BUG-073, BUG-089, etc.)
 // Ownership/Lifetime: Non-owning references to Lowerer and OOP metadata.
 // Links: docs/codemap.md
 //
@@ -44,11 +44,11 @@ class OopEmitHelper
     explicit OopEmitHelper(Lowerer &lowerer) noexcept;
 
     // -------------------------------------------------------------------------
-    // Parameter Initialization (BUG-073 fix consolidated)
+    // Parameter Initialization
     // -------------------------------------------------------------------------
 
     /// @brief Initialize a single object or array parameter.
-    /// @details Allocates a slot, sets object type if applicable (BUG-073),
+    /// @details Allocates a slot, sets object type if applicable,
     ///          marks the symbol as referenced, and stores the incoming value.
     /// @param param Parameter AST node describing name, type, and flags.
     /// @param fn Function being lowered.
@@ -71,7 +71,7 @@ class OopEmitHelper
                            std::unordered_set<std::string> &paramNames);
 
     // -------------------------------------------------------------------------
-    // Array Field Initialization (BUG-056, BUG-089 fixes consolidated)
+    // Array Field Initialization
     // -------------------------------------------------------------------------
 
     /// @brief Initialize array fields declared with extents in a constructor.
@@ -83,12 +83,12 @@ class OopEmitHelper
     void emitArrayFieldInits(const ClassDecl &klass, unsigned selfSlotId);
 
     // -------------------------------------------------------------------------
-    // Method Epilogue (BUG-099, BUG-105 fixes consolidated)
+    // Method Epilogue
     // -------------------------------------------------------------------------
 
     /// @brief Emit the standard method/constructor epilogue.
     /// @details Releases deferred temporaries, object locals, and array locals.
-    ///          Handles BUG-105: borrowed parameters are not released.
+    ///          Borrowed parameters are not released (passed by reference). (BUG-105)
     /// @param paramNames Set of parameter names to exclude from local release.
     /// @param excludeFromObjRelease Additional names to exclude (e.g., method name for object
     /// returns).

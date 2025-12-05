@@ -5,11 +5,19 @@
 //
 //===----------------------------------------------------------------------===//
 //
+// IMPORTANT: This file is auto-generated. Do not edit manually.
+// Generator: Manually maintained generated table (synchronized with Opcode enum).
+// Regenerate: Update when adding/removing opcodes in il/core/Opcode.hpp.
+//
 // File: vm/ops/generated/OpSchema.hpp
-// Purpose: Implements functionality for this subsystem.
-// Key invariants: To be documented.
-// Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Purpose: Compile-time opcode schema table for VM dispatch. Contains metadata
+//          for each IL opcode including mnemonic string, result arity, operand
+//          types, side effect flags, successor count, terminator status, and
+//          handler availability. Used by VM dispatch and introspection APIs.
+// Key invariants: Table size MUST equal il::core::kNumOpcodes. Entry order
+//                 MUST match Opcode enum declaration order exactly.
+// Ownership/Lifetime: Static constexpr data; no dynamic allocation.
+// Links: docs/architecture.md, il/core/Opcode.hpp
 //
 //===----------------------------------------------------------------------===//
 

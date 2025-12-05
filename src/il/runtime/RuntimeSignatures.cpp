@@ -7,27 +7,32 @@
 //
 // File: src/il/runtime/RuntimeSignatures.cpp
 // Purpose: Build and expose the runtime descriptor registry used by IL
-//          consumers to marshal calls into the C runtime.
+//          consumers to marshal calls into the C runtime. Contains the
+//          descriptor table definitions, lookup APIs, and validation logic.
 // Key invariants: The descriptor table is immutable, matches runtime helpers
 //                 one-to-one, and is initialised lazily in a thread-safe manner.
 // Ownership/Lifetime: All descriptors have static storage duration and remain
 //                     valid for the lifetime of the process.
 // Links: docs/il-guide.md#reference, docs/architecture.md#cpp-overview
 //
+// Related files:
+//   - RuntimeSignatures_Handlers.hpp: Handler templates (DirectHandler, etc.)
+//   - RuntimeSignatures_Handlers.cpp: Adapter function implementations
+//
 //===----------------------------------------------------------------------===//
 
 /// @file
-/// @brief Runtime descriptor registry and helper adapters.
-/// @details Describes the machinery that maps IL runtime calls onto concrete C
-///          functions.  The file documents every helper involved in building the
-///          descriptor tables, the small bridging thunks that mediate between VM
-///          calling conventions and the C ABI, and the lookup utilities used by
-///          the verifier and code generator.
+/// @brief Runtime descriptor registry and public lookup APIs.
+/// @details Contains the descriptor table definitions mapping runtime symbol
+///          names to their signatures, handlers, and lowering metadata. Handler
+///          templates and adapter functions are defined in the companion
+///          RuntimeSignatures_Handlers files.
 
 #include "il/runtime/RuntimeSignatures.hpp"
 
 #include "il/runtime/HelperEffects.hpp"
 #include "il/runtime/RuntimeSignatureParser.hpp"
+#include "il/runtime/RuntimeSignatures_Handlers.hpp"
 #include "il/runtime/RuntimeSignaturesData.hpp"
 
 #include "rt.hpp"
@@ -44,11 +49,9 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
-#include <limits>
 #include <optional>
 #include <span>
 #include <string_view>
-#include <type_traits>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -75,61 +78,6 @@ namespace
 using Kind = il::core::Type::Kind;
 
 constexpr std::size_t kRtSigCount = data::kRtSigCount;
-
-/// @brief Clamp a 64-bit runtime file position/length to a 32-bit IL value.
-///
-/// @details Runtime helpers such as @ref rt_lof_ch and @ref rt_loc_ch expose
-///          64-bit offsets so large files can be supported.  BASIC however
-///          models these builtins as returning 32-bit signed integers.  The
-///          bridge narrows the runtime result using saturation so overflow
-///          produces INT32_MAX/INT32_MIN instead of wrapping.
-int32_t clampRuntimeOffset(int64_t value)
-{
-    if (value > std::numeric_limits<int32_t>::max())
-        return std::numeric_limits<int32_t>::max();
-    if (value < std::numeric_limits<int32_t>::min())
-        return std::numeric_limits<int32_t>::min();
-    return static_cast<int32_t>(value);
-}
-
-/// @brief Adapter that narrows @ref rt_lof_ch results to 32 bits.
-/// @details Calls the underlying runtime helper and then passes the 64-bit
-///          offset through @ref clampRuntimeOffset so BASIC observers receive a
-///          saturated 32-bit result that mirrors the language's numeric limits.
-int32_t rt_lof_ch_i32(int32_t channel)
-{
-    return clampRuntimeOffset(rt_lof_ch(channel));
-}
-
-/// @brief Adapter that narrows @ref rt_loc_ch results to 32 bits.
-/// @details Matches the behaviour of @ref rt_lof_ch_i32 but for the `LOC` file
-///          position builtin, providing a saturating conversion that avoids
-///          wrapping when the runtime exposes offsets beyond 32 bits.
-int32_t rt_loc_ch_i32(int32_t channel)
-{
-    return clampRuntimeOffset(rt_loc_ch(channel));
-}
-
-constexpr const char kTestBridgeMutatedText[] = "bridge-mutated";
-
-/// @brief Mutate a string handle in place for debugger bridge tests.
-/// @details Used only in debug builds to ensure the runtime bridge forwards
-///          pointer arguments correctly.  The helper reads the string handle
-///          from @p args, constructs a temporary runtime string, and overwrites
-///          the caller-provided slot without touching the VM stack.
-/// @param args VM-supplied argument array containing an @c rt_string pointer.
-/// @param result Unused placeholder to match the runtime handler signature.
-void testMutateStringNoStack(void **args, void * /*result*/)
-{
-    if (!args)
-        return;
-    auto *slot = reinterpret_cast<rt_string *>(args[0]);
-    if (!slot)
-        return;
-    rt_string updated =
-        rt_string_from_bytes(kTestBridgeMutatedText, sizeof(kTestBridgeMutatedText) - 1);
-    *slot = updated;
-}
 
 /// @brief Retrieve the parsed runtime signature for a generated enumerator.
 ///
@@ -166,112 +114,8 @@ bool isValid(RtSig sig)
     return static_cast<std::size_t>(sig) < kRtSigCount;
 }
 
-/// @brief Adapter that invokes a concrete runtime function from VM call stubs.
-///
-/// @details Each instantiation binds a runtime C function pointer and translates
-///          the generic `void **` argument array provided by the VM into typed
-///          parameters.  The @ref invoke entry point matches the signature
-///          expected by @ref RuntimeDescriptor.
-template <auto Fn, typename Ret, typename... Args> struct DirectHandler
-{
-    /// @brief Dispatch the runtime call using the supplied argument array.
-    ///
-    /// @details Expands the argument pack through @ref call using an index
-    ///          sequence so each operand is reinterpreted to the function's
-    ///          declared type.  Results are written into the provided buffer when
-    ///          applicable.
-    ///
-    /// @param args Pointer to the marshalled argument array.
-    /// @param result Optional pointer to storage for the return value.
-    static void invoke(void **args, void *result)
-    {
-        call(args, result, std::index_sequence_for<Args...>{});
-    }
-
-  private:
-    /// @brief Helper that expands the argument pack and forwards to the target.
-    ///
-    /// @details Uses `reinterpret_cast` to view each `void *` slot as the
-    ///          appropriate type.  When the function returns a value the helper
-    ///          stores it through @p result.
-    template <std::size_t... I>
-    static void call(void **args, void *result, std::index_sequence<I...>)
-    {
-        if constexpr (std::is_void_v<Ret>)
-        {
-            Fn(*reinterpret_cast<Args *>(args[I])...);
-        }
-        else
-        {
-            Ret value = Fn(*reinterpret_cast<Args *>(args[I])...);
-            *reinterpret_cast<Ret *>(result) = value;
-        }
-    }
-};
-
-template <auto Fn, typename Ret, typename... Args> struct ConsumingStringHandler
-{
-    /// @brief Invoke a runtime helper after retaining string arguments.
-    /// @details Some runtime entry points consume string handles without
-    ///          retaining them, so the VM must increment reference counts before
-    ///          the call to keep values alive.  The wrapper first retains any
-    ///          string arguments and then delegates to @ref DirectHandler to
-    ///          perform the actual call/return marshalling.
-    /// @param args VM-supplied argument array.
-    /// @param result Optional pointer to storage for the return value.
-    static void invoke(void **args, void *result)
-    {
-        retainStrings(args, std::index_sequence_for<Args...>{});
-        DirectHandler<Fn, Ret, Args...>::invoke(args, result);
-    }
-
-  private:
-    /// @brief Retain every string argument present in the parameter pack.
-    /// @details Expands an index sequence over @p Args, calling @ref retainArg
-    ///          for each slot.  Non-string parameters become no-ops while
-    ///          string arguments acquire an additional reference to satisfy the
-    ///          runtime ownership contract.
-    template <std::size_t... I> static void retainStrings(void **args, std::index_sequence<I...>)
-    {
-        (retainArg<Args>(args, I), ...);
-    }
-
-    /// @brief Retain a single argument when it is of type @c rt_string.
-    /// @details Reads the argument slot, performs null checks, and invokes
-    ///          @ref rt_string_ref to increment the reference count.  Template
-    ///          substitution means non-string arguments skip the retention path
-    ///          entirely.
-    /// @param args VM argument array (may be null when the VM omitted operands).
-    /// @param index Index of the argument being inspected.
-    template <typename T> static void retainArg(void **args, std::size_t index)
-    {
-        if constexpr (std::is_same_v<std::remove_cv_t<T>, rt_string>)
-        {
-            if (!args)
-                return;
-            void *slot = args[index];
-            if (!slot)
-                return;
-            rt_string value = *reinterpret_cast<rt_string *>(slot);
-            if (value)
-                rt_string_ref(value);
-        }
-    }
-};
-
-/// @brief Bridge runtime string trap requests into the VM trap mechanism.
-///
-/// @details Extracts the string argument from the generic argument array and
-///          forwards its contents to @ref rt_trap, defaulting to the literal
-///          "trap" when no message is provided.
-///
-/// @param args Argument array provided by the VM call bridge.
-void trapFromRuntimeString(void **args, void * /*result*/)
-{
-    rt_string str = args ? *reinterpret_cast<rt_string *>(args[0]) : nullptr;
-    const char *msg = (str && str->data) ? str->data : "trap";
-    rt_trap(msg);
-}
+// Handler templates (DirectHandler, ConsumingStringHandler) and adapter functions
+// (invokeRtArr*, trapFromRuntimeString, etc.) are defined in RuntimeSignatures_Handlers.hpp/cpp.
 
 /// @brief Construct a runtime lowering descriptor with optional feature gating.
 ///
@@ -285,317 +129,8 @@ constexpr RuntimeLowering makeLowering(RuntimeLoweringKind kind,
     return RuntimeLowering{kind, feature, ordered};
 }
 
-/// @brief Wrapper for @ref rt_arr_i32_new that converts VM arguments.
-///
-/// @details Reads the desired array length from the argument array, invokes the
-///          runtime allocator, and stores the resulting handle back into the
-///          VM-provided result buffer.
-void invokeRtArrI32New(void **args, void *result)
-{
-    const auto lenPtr = args ? reinterpret_cast<const int64_t *>(args[0]) : nullptr;
-    const size_t len = lenPtr ? static_cast<size_t>(*lenPtr) : 0;
-    int32_t *arr = rt_arr_i32_new(len);
-    if (result)
-        *reinterpret_cast<void **>(result) = arr;
-}
-
-/// @brief Wrapper for @ref rt_arr_i32_len that returns the array length.
-///
-/// @details Unpacks the handle from the argument array, queries the runtime for
-///          its length, and writes the value as a 64-bit integer for the VM.
-void invokeRtArrI32Len(void **args, void *result)
-{
-    const auto arrPtr = args ? reinterpret_cast<void *const *>(args[0]) : nullptr;
-    int32_t *arr = arrPtr ? *reinterpret_cast<int32_t *const *>(arrPtr) : nullptr;
-    const size_t len = rt_arr_i32_len(arr);
-    if (result)
-        *reinterpret_cast<int64_t *>(result) = static_cast<int64_t>(len);
-}
-
-/// @brief Wrapper for @ref rt_arr_i32_get that exposes 32-bit elements.
-///
-/// @details Reads the array handle and index from the VM argument array, invokes
-///          the runtime accessor, and widens the result to 64 bits before
-///          storing it for the VM.
-void invokeRtArrI32Get(void **args, void *result)
-{
-    const auto arrPtr = args ? reinterpret_cast<void *const *>(args[0]) : nullptr;
-    const auto idxPtr = args ? reinterpret_cast<const int64_t *>(args[1]) : nullptr;
-    int32_t *arr = arrPtr ? *reinterpret_cast<int32_t *const *>(arrPtr) : nullptr;
-    const size_t idx = idxPtr ? static_cast<size_t>(*idxPtr) : 0;
-    const int32_t value = rt_arr_i32_get(arr, idx);
-    if (result)
-        *reinterpret_cast<int64_t *>(result) = static_cast<int64_t>(value);
-}
-
-/// @brief Wrapper for @ref rt_arr_i32_set that writes an element.
-///
-/// @details Unpacks the array handle, index, and value from the argument array
-///          before delegating to the runtime setter.  No result is produced.
-void invokeRtArrI32Set(void **args, void * /*result*/)
-{
-    const auto arrPtr = args ? reinterpret_cast<void **>(args[0]) : nullptr;
-    const auto idxPtr = args ? reinterpret_cast<const int64_t *>(args[1]) : nullptr;
-    const auto valPtr = args ? reinterpret_cast<const int64_t *>(args[2]) : nullptr;
-    int32_t *arr = arrPtr ? *reinterpret_cast<int32_t **>(arrPtr) : nullptr;
-    const size_t idx = idxPtr ? static_cast<size_t>(*idxPtr) : 0;
-    const int32_t value = valPtr ? static_cast<int32_t>(*valPtr) : 0;
-    rt_arr_i32_set(arr, idx, value);
-}
-
-/// @brief Wrapper for @ref rt_arr_obj_new that converts VM arguments.
-/// @details Accepts an i64 length from the VM, converts to size_t and returns
-///          the newly allocated object array handle.
-void invokeRtArrObjNew(void **args, void *result)
-{
-    const auto lenPtr = args ? reinterpret_cast<const int64_t *>(args[0]) : nullptr;
-    const size_t len = lenPtr ? static_cast<size_t>(*lenPtr) : 0;
-    void **arr = rt_arr_obj_new(len);
-    if (result)
-        *reinterpret_cast<void **>(result) = arr;
-}
-
-/// @brief Wrapper for @ref rt_arr_obj_len that returns the array length.
-/// @details Reads the handle from VM args and returns the length as i64.
-void invokeRtArrObjLen(void **args, void *result)
-{
-    const auto arrPtr = args ? reinterpret_cast<void ***>(args[0]) : nullptr;
-    void **arr = arrPtr ? *arrPtr : nullptr;
-    const size_t len = rt_arr_obj_len(arr);
-    if (result)
-        *reinterpret_cast<int64_t *>(result) = static_cast<int64_t>(len);
-}
-
-/// @brief Wrapper for @ref rt_arr_obj_get that loads an element pointer.
-/// @details Unpacks handle and index from VM args and returns the element ptr.
-void invokeRtArrObjGet(void **args, void *result)
-{
-    const auto arrPtr = args ? reinterpret_cast<void ***>(args[0]) : nullptr;
-    const auto idxPtr = args ? reinterpret_cast<const int64_t *>(args[1]) : nullptr;
-    void **arr = arrPtr ? *arrPtr : nullptr;
-    const size_t idx = idxPtr ? static_cast<size_t>(*idxPtr) : 0;
-    void *ptr = rt_arr_obj_get(arr, idx);
-    if (result)
-        *reinterpret_cast<void **>(result) = ptr;
-}
-
-/// @brief Wrapper for @ref rt_arr_obj_put that stores an element pointer.
-/// @details Writes the element and does not return a result.
-void invokeRtArrObjPut(void **args, void * /*result*/)
-{
-    const auto arrPtr = args ? reinterpret_cast<void ***>(args[0]) : nullptr;
-    const auto idxPtr = args ? reinterpret_cast<const int64_t *>(args[1]) : nullptr;
-    const auto valPtr = args ? reinterpret_cast<void **>(args[2]) : nullptr;
-    void **arr = arrPtr ? *arrPtr : nullptr;
-    const size_t idx = idxPtr ? static_cast<size_t>(*idxPtr) : 0;
-    void *val = valPtr ? *valPtr : nullptr;
-    rt_arr_obj_put(arr, idx, val);
-}
-
-/// @brief Wrapper for @ref rt_arr_obj_resize that resizes the object array.
-void invokeRtArrObjResize(void **args, void *result)
-{
-    const auto arrPtr = args ? reinterpret_cast<void ***>(args[0]) : nullptr;
-    const auto lenPtr = args ? reinterpret_cast<const int64_t *>(args[1]) : nullptr;
-    void **arr = arrPtr ? *arrPtr : nullptr;
-    const size_t len = lenPtr ? static_cast<size_t>(*lenPtr) : 0;
-    void **res = rt_arr_obj_resize(arr, len);
-    if (result)
-        *reinterpret_cast<void **>(result) = res;
-}
-
-/// @brief Wrapper for @ref rt_arr_i32_resize that resizes an array in place.
-///
-/// @details Extracts the handle and desired length, requests the runtime to
-///          resize the array, updates the caller-visible handle when successful,
-///          and returns the resized pointer when a result buffer is provided.
-void invokeRtArrI32Resize(void **args, void *result)
-{
-    const auto arrPtr = args ? reinterpret_cast<void **>(args[0]) : nullptr;
-    const auto newLenPtr = args ? reinterpret_cast<const int64_t *>(args[1]) : nullptr;
-    int32_t *arr = arrPtr ? *reinterpret_cast<int32_t **>(arrPtr) : nullptr;
-    const size_t newLen = newLenPtr ? static_cast<size_t>(*newLenPtr) : 0;
-    int32_t *local = arr;
-    int32_t **handle = arrPtr ? reinterpret_cast<int32_t **>(arrPtr) : &local;
-    int rc = rt_arr_i32_resize(handle, newLen);
-    int32_t *resized = (rc == 0) ? *handle : nullptr;
-    if (arrPtr && rc == 0)
-        *reinterpret_cast<int32_t **>(arrPtr) = resized;
-    if (result)
-        *reinterpret_cast<void **>(result) = resized;
-}
-
-/// @brief Wrapper for @ref rt_arr_str_alloc that allocates string arrays.
-///
-/// @details Converts VM argument to @c size_t and returns the allocated array handle.
-void invokeRtArrStrAlloc(void **args, void *result)
-{
-    const auto lenPtr = args ? reinterpret_cast<const int64_t *>(args[0]) : nullptr;
-    const size_t len = lenPtr ? static_cast<size_t>(*lenPtr) : 0;
-    rt_string *arr = rt_arr_str_alloc(len);
-    if (result)
-        *reinterpret_cast<void **>(result) = arr;
-}
-
-/// @brief Wrapper for @ref rt_arr_str_release that releases string arrays.
-///
-/// @details Converts VM arguments and releases each non-null element, then releases the array.
-void invokeRtArrStrRelease(void **args, void * /*result*/)
-{
-    // Param 0 is a pointer-typed IL value; args[0] points to storage containing the pointer.
-    rt_string *arr = args ? *reinterpret_cast<rt_string **>(args[0]) : nullptr;
-    const auto sizePtr = args ? reinterpret_cast<const int64_t *>(args[1]) : nullptr;
-    const size_t size = sizePtr ? static_cast<size_t>(*sizePtr) : 0;
-    rt_arr_str_release(arr, size);
-}
-
-/// @brief Wrapper for @ref rt_arr_str_get that reads string array elements.
-///
-/// @details Returns a retained string handle from the specified array index.
-void invokeRtArrStrGet(void **args, void *result)
-{
-    // Param 0 (ptr): args[0] -> storage holding the array payload pointer
-    rt_string *arr = args ? *reinterpret_cast<rt_string **>(args[0]) : nullptr;
-    const auto idxPtr = args ? reinterpret_cast<const int64_t *>(args[1]) : nullptr;
-    const size_t idx = idxPtr ? static_cast<size_t>(*idxPtr) : 0;
-    rt_string value = rt_arr_str_get(arr, idx);
-    if (result)
-        *reinterpret_cast<rt_string *>(result) = value;
-}
-
-/// @brief Wrapper for @ref rt_arr_str_put that writes string array elements.
-///
-/// @details Retains the new value, releases the old value, then stores.
-void invokeRtArrStrPut(void **args, void * /*result*/)
-{
-    // Param 0 (ptr): args[0] -> storage holding the array payload pointer
-    rt_string *arr = args ? *reinterpret_cast<rt_string **>(args[0]) : nullptr;
-    const auto idxPtr = args ? reinterpret_cast<const int64_t *>(args[1]) : nullptr;
-    // Param 2 (string): args[2] -> storage holding the string handle directly
-    rt_string value = args ? *reinterpret_cast<rt_string *>(args[2]) : nullptr;
-    const size_t idx = idxPtr ? static_cast<size_t>(*idxPtr) : 0;
-    rt_arr_str_put(arr, idx, value);
-}
-
-/// @brief Wrapper for @ref rt_arr_str_len that returns string array length.
-///
-/// @details Queries the logical length from the heap header.
-void invokeRtArrStrLen(void **args, void *result)
-{
-    // Param 0 (ptr): args[0] -> storage holding the array payload pointer
-    rt_string *arr = args ? *reinterpret_cast<rt_string **>(args[0]) : nullptr;
-    const size_t len = rt_arr_str_len(arr);
-    if (result)
-        *reinterpret_cast<int64_t *>(result) = static_cast<int64_t>(len);
-}
-
-/// @brief Wrapper that forwards out-of-bounds diagnostics to the runtime.
-///
-/// @details Converts VM-provided index and length operands to @c size_t before
-///          calling @ref rt_arr_oob_panic, which triggers a fatal runtime trap.
-void invokeRtArrOobPanic(void **args, void * /*result*/)
-{
-    const auto idxPtr = args ? reinterpret_cast<const int64_t *>(args[0]) : nullptr;
-    const auto lenPtr = args ? reinterpret_cast<const int64_t *>(args[1]) : nullptr;
-    const size_t idx = idxPtr ? static_cast<size_t>(*idxPtr) : 0;
-    const size_t len = lenPtr ? static_cast<size_t>(*lenPtr) : 0;
-    rt_arr_oob_panic(idx, len);
-}
-
-/// @brief Wrapper for `rt_cint_from_double` with VM argument handling.
-///
-/// @details Extracts the input value and optional success flag pointer, invokes
-///          the runtime conversion, and widens the result to 64 bits for the VM
-///          register file.
-void invokeRtCintFromDouble(void **args, void *result)
-{
-    const auto xPtr = args ? reinterpret_cast<const double *>(args[0]) : nullptr;
-    const auto okPtr = args ? reinterpret_cast<bool *const *>(args[1]) : nullptr;
-    const double x = xPtr ? *xPtr : 0.0;
-    bool *ok = okPtr ? *okPtr : nullptr;
-    const int16_t value = rt_cint_from_double(x, ok);
-    if (result)
-        *reinterpret_cast<int64_t *>(result) = static_cast<int64_t>(value);
-}
-
-/// @brief Wrapper for `rt_clng_from_double` following VM calling conventions.
-///
-/// @details Mirrors @ref invokeRtCintFromDouble but calls the runtime to
-///          produce a 32-bit integer, returning it widened to 64 bits for VM
-///          storage.
-void invokeRtClngFromDouble(void **args, void *result)
-{
-    const auto xPtr = args ? reinterpret_cast<const double *>(args[0]) : nullptr;
-    const auto okPtr = args ? reinterpret_cast<bool *const *>(args[1]) : nullptr;
-    const double x = xPtr ? *xPtr : 0.0;
-    bool *ok = okPtr ? *okPtr : nullptr;
-    const int32_t value = rt_clng_from_double(x, ok);
-    if (result)
-        *reinterpret_cast<int64_t *>(result) = static_cast<int64_t>(value);
-}
-
-/// @brief Wrapper for `rt_csng_from_double` that returns a float as double.
-///
-/// @details Reads the double argument, forwards it to the runtime conversion,
-///          and stores the result in the VM buffer after promoting to double so
-///          the interpreter can treat it uniformly.
-void invokeRtCsngFromDouble(void **args, void *result)
-{
-    const auto xPtr = args ? reinterpret_cast<const double *>(args[0]) : nullptr;
-    const auto okPtr = args ? reinterpret_cast<bool *const *>(args[1]) : nullptr;
-    const double x = xPtr ? *xPtr : 0.0;
-    bool *ok = okPtr ? *okPtr : nullptr;
-    const float value = rt_csng_from_double(x, ok);
-    if (result)
-        *reinterpret_cast<double *>(result) = static_cast<double>(value);
-}
-
-/// @brief Wrapper for `rt_str_f_alloc` that returns a runtime string handle.
-///
-/// @details Converts the incoming double operand to @c float, invokes the
-///          runtime allocator, and stores the resulting `rt_string` handle into
-///          the VM result buffer.
-void invokeRtStrFAlloc(void **args, void *result)
-{
-    const auto xPtr = args ? reinterpret_cast<const double *>(args[0]) : nullptr;
-    const float value = xPtr ? static_cast<float>(*xPtr) : 0.0f;
-    rt_string str = rt_str_f_alloc(value);
-    if (result)
-        *reinterpret_cast<rt_string *>(result) = str;
-}
-
-/// @brief Wrapper for `rt_round_even` that computes banker’s rounding.
-///
-/// @details Extracts the operand and digit count, calls the runtime helper, and
-///          stores the rounded double back into the VM buffer.
-void invokeRtRoundEven(void **args, void *result)
-{
-    const auto xPtr = args ? reinterpret_cast<const double *>(args[0]) : nullptr;
-    const auto digitsPtr = args ? reinterpret_cast<const int64_t *>(args[1]) : nullptr;
-    const double x = xPtr ? *xPtr : 0.0;
-    const int ndigits = digitsPtr ? static_cast<int>(*digitsPtr) : 0;
-    const double rounded = rt_round_even(x, ndigits);
-    if (result)
-        *reinterpret_cast<double *>(result) = rounded;
-}
-
-/// @brief Wrapper for `rt_pow_f64_chkdom` that reports domain errors.
-///
-/// @details Reads the base, exponent, and optional status pointer, delegates to
-///          the runtime implementation, and stores the computed power while
-///          allowing the runtime to set the status flag via the provided pointer.
-void invokeRtPowF64Chkdom(void **args, void *result)
-{
-    const auto basePtr = args ? reinterpret_cast<const double *>(args[0]) : nullptr;
-    const auto expPtr = args ? reinterpret_cast<const double *>(args[1]) : nullptr;
-    const auto okPtrPtr = args ? reinterpret_cast<bool *const *>(args[2]) : nullptr;
-    const double base = basePtr ? *basePtr : 0.0;
-    const double exponent = expPtr ? *expPtr : 0.0;
-    bool *ok = okPtrPtr ? *okPtrPtr : nullptr;
-    const double value = rt_pow_f64_chkdom(base, exponent, ok);
-    if (result)
-        *reinterpret_cast<double *>(result) = value;
-}
+// Adapter functions (invokeRtArr*, invokeRtCint*, etc.) are defined in
+// RuntimeSignatures_Handlers.cpp and declared in RuntimeSignatures_Handlers.hpp.
 
 constexpr RuntimeLowering kAlwaysLowering = makeLowering(RuntimeLoweringKind::Always);
 constexpr RuntimeLowering kBoundsCheckedLowering = makeLowering(RuntimeLoweringKind::BoundsChecked);

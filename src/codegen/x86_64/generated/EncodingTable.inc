@@ -1,5 +1,14 @@
-// Generated from tools/spec/x86_64_encodings.json
-// DO NOT EDIT - regenerate with CMake (cmake/GenX86Encodings.cmake)
+//===----------------------------------------------------------------------===//
+// IMPORTANT: This file is auto-generated. Do not edit manually.
+// Generator: cmake/GenX86Encodings.cmake from tools/spec/x86_64_encodings.json
+// Regenerate: Run CMake configure step to regenerate.
+//
+// Purpose: x86_64 instruction encoding table. Maps MOpcode to AT&T mnemonic,
+//          encoding form (RegReg, RegImm, etc.), operand ordering, operand
+//          pattern, and encoding flags (REX.W, ModRM, imm size, etc.).
+//          Used by AsmEmitter to emit text-format assembly instructions.
+// Key invariants: Entry count MUST match MOpcode enum. Order is not significant.
+//===----------------------------------------------------------------------===//
 
 static constexpr std::array<EncodingRow, 44> kEncodingTable = {{
     {MOpcode::MOVrr,

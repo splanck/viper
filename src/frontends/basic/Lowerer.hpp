@@ -240,6 +240,7 @@ class Lowerer
     friend class lower::BuiltinLowerContext;
     friend class lower::common::CommonLowering;
     friend class RuntimeCallBuilder;
+    friend class NumericTypeClassifier; // Needs access to classifyNumericType
 
     using Module = il::core::Module;
     using Function = il::core::Function;

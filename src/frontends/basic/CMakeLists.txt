@@ -38,6 +38,9 @@ target_sources(fe_basic PRIVATE
         IoStatementLowerer.cpp
         ControlStatementLowerer.cpp
         RuntimeStatementLowerer.cpp
+        RuntimeStatementLowerer_Assign.cpp
+        RuntimeStatementLowerer_Decl.cpp
+        RuntimeStatementLowerer_Terminal.cpp
         LoweringContext.cpp
         LocationScope.cpp
         Lowerer_Program.cpp
@@ -77,6 +80,7 @@ target_sources(fe_basic PRIVATE
         lower/common/BuiltinUtils.cpp
         lower/Lowerer_Errors.cpp
         lower/Lowerer_Expr.cpp
+        lower/Lower_Expr_NumericClassifier.cpp
         lower/Lowerer_Stmt.cpp
         lower/Scan_ExprTypes.cpp
         lower/Scan_RuntimeNeeds.cpp

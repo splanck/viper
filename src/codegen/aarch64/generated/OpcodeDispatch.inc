@@ -1,7 +1,13 @@
-// Generated from tools/spec/aarch64_encodings.json
-// DO NOT EDIT - regenerate with CMake (cmake/GenAArch64Dispatch.cmake)
-
-// This file contains the opcode dispatch logic for emitInstruction
+//===----------------------------------------------------------------------===//
+// IMPORTANT: This file is auto-generated. Do not edit manually.
+// Generator: cmake/GenAArch64Dispatch.cmake from tools/spec/aarch64_encodings.json
+// Regenerate: Run CMake configure step to regenerate.
+//
+// Purpose: AArch64 MIR opcode dispatch switch statement. Maps each MOpcode to
+//          its corresponding emitter function call (emitMovRR, emitAddRRR, etc).
+//          Included directly within AsmEmitter::emitInstruction().
+// Key invariants: All MOpcode cases MUST be handled or fall through to default.
+//===----------------------------------------------------------------------===//
 
 using K = MOpcode;
 auto reg = [](const MOperand &op)

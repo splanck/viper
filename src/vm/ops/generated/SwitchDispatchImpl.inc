@@ -1,5 +1,13 @@
-// This file is auto-generated. Do not edit manually.
-// Maintained as a committed generated include.
+//===----------------------------------------------------------------------===//
+// IMPORTANT: This file is auto-generated. Do not edit manually.
+// Generator: Manually maintained (synchronized with Opcode enum).
+// Regenerate: Update when adding/removing opcodes in il/core/Opcode.hpp.
+//
+// Purpose: Switch-based VM dispatch function implementation. Provides a
+//          portable fallback dispatcher when GCC computed-goto (threaded
+//          dispatch) is unavailable. Each case invokes inline_handle_<Op>.
+// Key invariants: Case labels MUST cover all il::core::Opcode values.
+//===----------------------------------------------------------------------===//
 
 void VM::dispatchOpcodeSwitch(ExecState &state, const il::core::Instr &instr)
 {

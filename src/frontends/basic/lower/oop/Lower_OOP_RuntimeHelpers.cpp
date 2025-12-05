@@ -7,8 +7,8 @@
 //
 // File: src/frontends/basic/lower/oop/Lower_OOP_RuntimeHelpers.cpp
 // Purpose: Implementation of consolidated OOP runtime emission helpers.
-// Key invariants: Centralizes patterns that were duplicated across OOP lowering
-//                 code (BUG-056, BUG-073, BUG-089, BUG-099, BUG-105, etc.).
+// Key invariants: Centralizes patterns for parameter initialization, array field
+//                 allocation, and method epilogue. (BUG-056, BUG-073, etc.)
 // Ownership/Lifetime: Operates on Lowerer state without owning AST or module.
 // Links: docs/codemap.md
 //
@@ -32,7 +32,7 @@ using Opcode = il::core::Opcode;
 OopEmitHelper::OopEmitHelper(Lowerer &lowerer) noexcept : lowerer_(lowerer) {}
 
 // -------------------------------------------------------------------------
-// Parameter Initialization (BUG-073 fix consolidated)
+// Parameter Initialization
 // -------------------------------------------------------------------------
 
 void OopEmitHelper::emitParamInit(const Param &param,
@@ -52,7 +52,7 @@ void OopEmitHelper::emitParamInit(const Param &param,
         lowerer_.emitStore(IlType(IlType::Kind::Ptr), slot, Value::null());
     }
 
-    // BUG-073 fix: Preserve object-class typing for parameters so member calls resolve
+    // Preserve object-class typing for parameters so member calls resolve. (BUG-073)
     if (!param.objectClass.empty())
         lowerer_.setSymbolObjectType(param.name, lowerer_.qualify(param.objectClass));
     else
@@ -70,7 +70,7 @@ void OopEmitHelper::emitParamInit(const Param &param,
     Value incoming = Value::temp(fn.params[paramIdx].id);
     if (param.is_array)
     {
-        // BUG-OOP-038 fix: Pass isObjectArray flag so object arrays use correct runtime
+        // Object arrays require distinct runtime calls. (BUG-OOP-038)
         bool isObjectArray = !param.objectClass.empty();
         lowerer_.storeArray(slot, incoming, param.type, isObjectArray);
     }
@@ -90,7 +90,7 @@ void OopEmitHelper::emitAllParamInits(const std::vector<Param> &params,
 }
 
 // -------------------------------------------------------------------------
-// Array Field Initialization (BUG-056, BUG-089 fixes consolidated)
+// Array Field Initialization
 // -------------------------------------------------------------------------
 
 void OopEmitHelper::emitArrayFieldInits(const ClassDecl &klass, unsigned selfSlotId)
@@ -127,7 +127,7 @@ void OopEmitHelper::emitArrayFieldInits(const ClassDecl &klass, unsigned selfSlo
         }
         else if (!field.objectClassName.empty())
         {
-            // BUG-089 fix: Allocate object array for object-typed fields
+            // Object-typed fields use object array allocation. (BUG-089)
             lowerer_.requireArrayObjNew();
             handle = lowerer_.emitCallRet(IlType(IlType::Kind::Ptr), "rt_arr_obj_new", {length});
         }
@@ -147,7 +147,7 @@ void OopEmitHelper::emitArrayFieldInits(const ClassDecl &klass, unsigned selfSlo
 }
 
 // -------------------------------------------------------------------------
-// Method Epilogue (BUG-099, BUG-105 fixes consolidated)
+// Method Epilogue
 // -------------------------------------------------------------------------
 
 void OopEmitHelper::emitMethodEpilogue(const std::unordered_set<std::string> &paramNames,
@@ -156,10 +156,8 @@ void OopEmitHelper::emitMethodEpilogue(const std::unordered_set<std::string> &pa
     lowerer_.curLoc = {};
     lowerer_.releaseDeferredTemps();
     lowerer_.releaseObjectLocals(excludeFromObjRelease);
-    // BUG-105 fix: Don't release object/array parameters - they are borrowed references from caller
-    // releaseObjectParams(paramNames);  // REMOVED
+    // Borrowed parameters are not released; caller owns their lifetime. (BUG-105)
     lowerer_.releaseArrayLocals(paramNames);
-    // releaseArrayParams(paramNames);  // REMOVED
 }
 
 // -------------------------------------------------------------------------

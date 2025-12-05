@@ -268,8 +268,7 @@ Lowerer::SlotType Lowerer::getSlotType(std::string_view name) const
     SlotType info;
     AstType astTy = inferVariableTypeForLowering(*this, name);
 
-    // BUG-107 fix: Check module-level scalar object cache first
-    // Heterogeneous lookup - no temporary std::string allocation
+    // Check module-level scalar object cache first. (BUG-107)
     auto modObjIt = moduleObjectClass_.find(name);
     if (modObjIt != moduleObjectClass_.end())
     {
@@ -292,7 +291,7 @@ Lowerer::SlotType Lowerer::getSlotType(std::string_view name) const
             info.objectClass = sym->objectClass;
             return info;
         }
-        // BUG-019 fix: Only override with sym->type when semantic analysis has no type.
+        // Only override with sym->type when semantic analysis has no type. (BUG-019)
         bool hasSemaType = false;
         if (semanticAnalyzer_)
         {
@@ -339,7 +338,7 @@ std::optional<Lowerer::VariableStorage> Lowerer::resolveVariableStorage(std::str
 
     SlotType slotInfo = getSlotType(name);
 
-    // BUG-010 fix: STATIC variables use procedure-qualified runtime storage
+    // STATIC variables use procedure-qualified runtime storage. (BUG-010)
     if (const auto *info = findSymbol(name))
     {
         if (info->isStatic)
@@ -348,7 +347,7 @@ std::optional<Lowerer::VariableStorage> Lowerer::resolveVariableStorage(std::str
         }
     }
 
-    // BUG-103/BUG-OOP-036 fix: Check for local/parameter symbols before module globals
+    // Local/parameter symbols shadow module globals. (BUG-103/BUG-OOP-036)
     if (const auto *info = findSymbol(name))
     {
         if (info->slotId)

@@ -5,20 +5,27 @@
 //
 //===----------------------------------------------------------------------===//
 //
+// IMPORTANT: This file is auto-generated. Do not edit manually.
+// Generator: Manually maintained generated table (synchronized with Opcode enum).
+// Regenerate: Update when adding/removing opcodes in il/core/Opcode.hpp.
+//
 // File: il/verify/generated/SpecTables.cpp
-// Purpose: Implements functionality for this subsystem.
-// Key invariants: To be documented.
-// Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Purpose: IL verifier specification tables. Contains InstructionSpec entries
+//          for each opcode describing operand arity, result types, verifier
+//          strategies (Default, Reject, custom), and rejection error messages.
+//          Used by the table-driven verifier to validate IL programs.
+// Key invariants: Table size MUST equal il::core::kNumOpcodes. Entry order
+//                 MUST match Opcode enum declaration order exactly.
+// Ownership/Lifetime: Static constexpr data; no dynamic allocation.
+// Links: docs/architecture.md, il/core/Opcode.hpp, il/verify/SpecTables.hpp
 //
 //===----------------------------------------------------------------------===//
 
 /// @file
 /// @brief Generated verifier tables that describe opcode semantics.
-/// @details Provides the constexpr @ref kSpecs array consumed by
-///          `SpecTables.cpp` to validate operand counts, result arity, type
-///          categories, and bespoke verifier strategies for each opcode defined
-///          in the IL specification.
+/// @details Provides the constexpr @ref kSpecs array consumed by the verifier
+///          to validate operand counts, result arity, type categories, and
+///          bespoke verifier strategies for each opcode defined in the IL spec.
 
 #include "il/verify/SpecTables.hpp"
 

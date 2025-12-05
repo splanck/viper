@@ -38,6 +38,7 @@ target_link_libraries(viper_il_core PRIVATE viper_support)
 
 add_library(il_runtime STATIC
         il/runtime/RuntimeSignatures.cpp
+        il/runtime/RuntimeSignatures_Handlers.cpp
         il/runtime/RuntimeSignatureParser.cpp
         il/runtime/signatures/Registry.cpp
         il/runtime/signatures/Signatures_FileIO.cpp

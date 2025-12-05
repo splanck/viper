@@ -45,16 +45,14 @@ std::string Lowerer::resolveObjectClass(const Expr &expr) const
         if (slotInfo.isObject)
             return slotInfo.objectClass;
 
-        // BUG-107 fix: Module-level object variables don't have slots,
-        // check SymbolInfo directly for object class
+        // Module-level object variables may lack slots; check SymbolInfo directly. (BUG-107)
         if (const auto *info = findSymbol(var->name))
         {
             if (info->isObject && !info->objectClass.empty())
                 return info->objectClass;
         }
 
-        // BUG-107 fix: Check module-level scalar object cache (already resolved)
-        // Heterogeneous lookup - no temporary std::string allocation
+        // Check module-level scalar object cache (already resolved). (BUG-107)
         auto it = moduleObjectClass_.find(var->name);
         if (it != moduleObjectClass_.end())
             return it->second;
@@ -74,8 +72,8 @@ std::string Lowerer::resolveObjectClass(const Expr &expr) const
     }
     if (const auto *call = as<const CallExpr>(expr))
     {
-        // BUG-089 fix: CallExpr might be a field array access (BASIC uses () for both)
-        // Check if this is an implicit field array in a class method
+        // CallExpr may be a field array access (BASIC uses () for both calls and indexing).
+        // Check if this is an implicit field array in a class method. (BUG-089)
         const FieldScope *scope = activeFieldScope();
         if (scope && scope->layout)
         {
@@ -90,7 +88,7 @@ std::string Lowerer::resolveObjectClass(const Expr &expr) const
     }
     if (const auto *arr = as<const ArrayExpr>(expr))
     {
-        // BUG-089 fix: Handle module-level, dotted member, and implicit field arrays
+        // Handle module-level, dotted member, and implicit field arrays. (BUG-089)
         const auto *info = findSymbol(arr->name);
         if (info && info->isObject && !info->objectClass.empty())
             return info->objectClass;
@@ -114,7 +112,7 @@ std::string Lowerer::resolveObjectClass(const Expr &expr) const
             }
         }
 
-        // BUG-089 fix: Check if this is an implicit field access (e.g., items in a method)
+        // Check if this is an implicit field access (e.g., items in a method). (BUG-089)
         const FieldScope *scope = activeFieldScope();
         if (scope && scope->layout)
         {
@@ -124,9 +122,8 @@ std::string Lowerer::resolveObjectClass(const Expr &expr) const
                 return qualify(field->objectClassName);
             }
         }
-        // BUG-097 fix: If this is a module-level array referenced inside a procedure,
-        // recover the element class from the cached module-level object array map.
-        // Try the lookup directly - if the name isn't in the cache, it returns empty.
+        // Module-level arrays referenced inside procedures need their element class
+        // recovered from the cached module-level object array map. (BUG-097)
         std::string cls = lookupModuleArrayElemClass(arr->name);
         if (!cls.empty())
         {
@@ -138,13 +135,13 @@ std::string Lowerer::resolveObjectClass(const Expr &expr) const
     }
     if (const auto *access = as<const MemberAccessExpr>(expr))
     {
-        // BUG-061 fix: Check if the FIELD itself is an object type, not the base
+        // Check if the FIELD itself is an object type, not the base. (BUG-061)
         if (access->base)
         {
             std::string baseClass = resolveObjectClass(*access->base);
             if (!baseClass.empty())
             {
-                // BUG-082 fix: Look up the field class name in the class layout
+                // Look up the field class name in the class layout. (BUG-082)
                 if (const ClassLayout *layout = findClassLayout(baseClass))
                 {
                     const auto *field = layout->findField(access->member);
@@ -162,9 +159,8 @@ std::string Lowerer::resolveObjectClass(const Expr &expr) const
     }
     if (const auto *call = as<const MethodCallExpr>(expr))
     {
-        // BUG-096/BUG-098 fix: MethodCallExpr might be a field array access
-        // (e.g., container.items(0) where items is an array field)
-        // Check this BEFORE checking for method return types
+        // MethodCallExpr may be a field array access (e.g., container.items(0)).
+        // Check this BEFORE checking for method return types. (BUG-096/BUG-098)
         if (call->base)
         {
             std::string baseClass = resolveObjectClass(*call->base);
@@ -182,8 +178,8 @@ std::string Lowerer::resolveObjectClass(const Expr &expr) const
                     }
                 }
 
-                // Not a field array, check the method's return type
-                // BUG-099 fix: Use findMethodReturnClassName to get the actual return class
+                // Not a field array; check the method's return type.
+                // Use findMethodReturnClassName to get the actual return class. (BUG-099)
                 std::string returnClassName = findMethodReturnClassName(baseClass, call->method);
                 if (!returnClassName.empty())
                 {
@@ -199,8 +195,8 @@ std::string Lowerer::resolveObjectClass(const Expr &expr) const
 // -------------------------------------------------------------------------
 // Centralized OOP Resolution Helpers
 // -------------------------------------------------------------------------
-// These helpers consolidate patterns that were duplicated across OOP lowering
-// code (BUG-061, BUG-082, BUG-089, etc.).
+// These helpers consolidate patterns for resolving object class names from
+// fields, arrays, and method return types. (BUG-061, BUG-082, BUG-089, etc.)
 
 std::string resolveFieldObjectClass(const ClassLayout *layout,
                                     std::string_view fieldName,
