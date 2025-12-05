@@ -40,6 +40,7 @@ Welcome to the Viper compiler toolchain documentation. This directory contains l
 ### Virtual Machine
 
 - **[VM Architecture](vm.md)** — VM design, dispatch strategies, and internals
+- **[Threading and Globals](threading-and-globals.md)** — VM threading model and process-global state
 
 ### Native Code Generation
 

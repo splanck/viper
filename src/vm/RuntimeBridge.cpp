@@ -24,6 +24,7 @@
 #include "vm/RuntimeBridge.hpp"
 #include "il/core/Opcode.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
+#include "vm/DiagFormat.hpp"
 #include "vm/Marshal.hpp"
 #include "vm/OpcodeHandlerHelpers.hpp"
 #include "vm/TrapInvariants.hpp"
@@ -33,7 +34,6 @@
 #include <mutex>
 #include <optional>
 #include <span>
-#include <sstream>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -480,9 +480,8 @@ Slot RuntimeBridge::call(RuntimeCallContext &ctx,
         desc = il::runtime::findRuntimeDescriptor(name);
     if (!desc)
     {
-        std::ostringstream os;
-        os << "attempted to call unknown runtime helper '" << name << '\'';
-        RuntimeBridge::trap(TrapKind::DomainError, os.str(), loc, fn, block);
+        RuntimeBridge::trap(
+            TrapKind::DomainError, diag::formatUnknownRuntimeHelper(name), loc, fn, block);
         return result;
     }
     if (!validateArgumentCount(*desc, args, loc, fn, block))

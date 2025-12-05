@@ -319,6 +319,11 @@ function(viper_add_vm_unit_tests)
     viper_add_test(test_vm_trap_invariants ${VIPER_TESTS_DIR}/unit/test_vm_trap_invariants.cpp)
     target_link_libraries(test_vm_trap_invariants PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
     viper_add_ctest(test_vm_trap_invariants test_vm_trap_invariants)
+
+    # ViperStringHandle RAII tests
+    viper_add_test(test_viper_string_handle ${_VIPER_VM_DIR}/test_viper_string_handle.cpp)
+    target_link_libraries(test_viper_string_handle PRIVATE ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
+    viper_add_ctest(test_viper_string_handle test_viper_string_handle)
 endfunction()
 
 function(viper_add_vm_path_tests)

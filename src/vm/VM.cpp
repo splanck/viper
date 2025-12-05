@@ -480,6 +480,16 @@ Slot VM::runFunctionLoop(ExecState &st)
     }
 }
 
+/// @brief Custom deleter implementation for RtContext.
+void VM::RtContextDeleter::operator()(RtContext *ctx) const noexcept
+{
+    if (ctx)
+    {
+        rt_context_cleanup(ctx);
+        delete ctx;
+    }
+}
+
 /// @brief Release resources owned by the VM, including cached strings, mutable globals, and runtime
 /// context.
 VM::~VM()
@@ -492,13 +502,7 @@ VM::~VM()
         std::free(entry.second);
     mutableGlobalMap.clear();
 
-    // Cleanup and delete per-VM runtime context
-    if (rtContext)
-    {
-        rt_context_cleanup(rtContext);
-        delete rtContext;
-        rtContext = nullptr;
-    }
+    // rtContext cleanup handled automatically by unique_ptr with RtContextDeleter
 }
 
 #include "vm/ops/generated/InlineHandlersImpl.inc"

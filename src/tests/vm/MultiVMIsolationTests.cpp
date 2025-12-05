@@ -21,9 +21,7 @@
 #include <fstream>
 #include <string>
 
-using namespace std;
-
-static string makeTempPath(const char *tag)
+static std::string makeTempPath(const char *tag)
 {
     namespace fs = std::filesystem;
     auto dir = fs::temp_directory_path();

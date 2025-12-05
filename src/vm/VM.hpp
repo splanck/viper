@@ -436,6 +436,11 @@ class VM
      * @param stackBytes Per-frame operand stack size in bytes (default 64KB).
      *
      * @invariant The module reference must remain valid throughout VM lifetime.
+     *
+     * @note This constructor performs memory allocation for module globals and
+     *       runtime state. On allocation failure, the program terminates via
+     *       `std::abort()` after printing a diagnostic. This is consistent with
+     *       the project's non-throwing convention for library entry points.
      */
     VM(const il::core::Module &m,
        TraceConfig tc = {},
@@ -582,10 +587,16 @@ class VM
     /// @ownership Non-owning reference; module must outlive the VM.
     const il::core::Module &mod;
 
+    /// @brief Custom deleter for RtContext that calls rt_context_cleanup before deletion.
+    struct RtContextDeleter
+    {
+        void operator()(RtContext *ctx) const noexcept;
+    };
+
     /// @brief Per-VM runtime context for isolated state.
-    /// @ownership Owned by the VM; initialized on construction, cleaned up on destruction.
+    /// @ownership Owned by the VM via unique_ptr; initialized on construction, cleaned up on destruction.
     /// @details Provides isolated RNG, modvar, and other runtime state per VM instance.
-    struct RtContext *rtContext = nullptr;
+    std::unique_ptr<RtContext, RtContextDeleter> rtContext;
 
     /// @brief Trace output sink.
     /// @ownership Owned by the VM.

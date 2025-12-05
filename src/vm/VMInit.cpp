@@ -17,6 +17,7 @@
 #include "il/core/Global.hpp"
 #include "il/core/Module.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
+#include "vm/DiagFormat.hpp"
 #include "vm/Marshal.hpp"
 #include "vm/RuntimeBridge.hpp"
 #include "vm/VM.hpp"
@@ -30,7 +31,6 @@
 #include <clocale>
 #include <cstdio>
 #include <cstdlib>
-#include <sstream>
 #include <string>
 #include <utility>
 
@@ -226,8 +226,8 @@ VM::VM(const Module &m,
     handlerTable_ = &VM::getOpcodeHandlers();
 
     // Initialize per-VM runtime context for isolated state
-    rtContext = new RtContext();
-    rt_context_init(rtContext);
+    rtContext = std::unique_ptr<RtContext, RtContextDeleter>(new RtContext());
+    rt_context_init(rtContext.get());
 
     // Reserve map capacities based on module sizes to reduce rehashing.
     fnMap.reserve(m.functions.size());
@@ -254,7 +254,10 @@ VM::VM(const Module &m,
                 size = 1;
             void *storage = std::calloc(1, size);
             if (!storage)
-                throw std::runtime_error("Failed to allocate mutable global storage");
+            {
+                std::fprintf(stderr, "VM: fatal: failed to allocate mutable global storage\n");
+                std::abort();
+            }
             mutableGlobalMap[g.name] = storage;
         }
     }
@@ -446,11 +449,11 @@ Frame VM::setupFrame(const Function &fn,
         const auto &params = bb->params;
         if (args.size() != params.size())
         {
-            std::ostringstream os;
-            os << "argument count mismatch for function " << fn.name << ": expected "
-               << params.size() << " argument" << (params.size() == 1 ? "" : "s") << ", received "
-               << args.size();
-            RuntimeBridge::trap(TrapKind::InvalidOperation, os.str(), {}, fn.name, bb->label);
+            RuntimeBridge::trap(TrapKind::InvalidOperation,
+                                diag::formatArgumentCountMismatch(fn.name, params.size(), args.size()),
+                                {},
+                                fn.name,
+                                bb->label);
         }
         for (size_t i = 0; i < params.size() && i < args.size(); ++i)
         {

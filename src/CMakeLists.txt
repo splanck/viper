@@ -202,6 +202,7 @@ add_library(il_vm STATIC
         vm/debug/VMDebug.cpp
         vm/RuntimeBridge.cpp
         vm/Marshal.cpp
+        vm/DiagFormat.cpp
         vm/OpHandlers.cpp
         vm/OpHandlerUtils.cpp
         vm/OpHelpers.cpp

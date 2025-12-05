@@ -21,6 +21,7 @@
 #include "vm/Marshal.hpp"
 
 #include "viper/runtime/rt.h"
+#include "vm/DiagFormat.hpp"
 #include "vm/RuntimeBridge.hpp"
 #include "vm/VM.hpp"
 
@@ -29,7 +30,6 @@
 #include <cmath>
 #include <cstdlib>
 #include <limits>
-#include <sstream>
 #include <string>
 
 namespace il::vm
@@ -239,10 +239,8 @@ void *slotToArgPointer(Slot &slot, il::core::Type::Kind kind)
     const auto &entry = dispatchFor(kind);
     if (!entry.slotAccessor)
     {
-        std::ostringstream os;
-        os << "runtime bridge does not support argument kind '" << il::core::kindToString(kind)
-           << "'";
-        RuntimeBridge::trap(TrapKind::InvalidOperation, os.str(), {}, "", "");
+        RuntimeBridge::trap(
+            TrapKind::InvalidOperation, diag::formatUnsupportedKind("argument", kind), {}, "", "");
         return nullptr;
     }
     return entry.slotAccessor(slot);
@@ -253,10 +251,8 @@ void *resultBufferFor(il::core::Type::Kind kind, ResultBuffers &buffers)
     const auto &entry = dispatchFor(kind);
     if (!entry.resultAccessor)
     {
-        std::ostringstream os;
-        os << "runtime bridge does not support return kind '" << il::core::kindToString(kind)
-           << "'";
-        RuntimeBridge::trap(TrapKind::InvalidOperation, os.str(), {}, "", "");
+        RuntimeBridge::trap(
+            TrapKind::InvalidOperation, diag::formatUnsupportedKind("return", kind), {}, "", "");
         return nullptr;
     }
     return entry.resultAccessor(buffers);
@@ -267,9 +263,11 @@ void assignResult(Slot &slot, il::core::Type::Kind kind, const ResultBuffers &bu
     const auto &entry = dispatchFor(kind);
     if (!entry.assignResult)
     {
-        std::ostringstream os;
-        os << "runtime bridge cannot assign return kind '" << il::core::kindToString(kind) << "'";
-        RuntimeBridge::trap(TrapKind::InvalidOperation, os.str(), {}, "", "");
+        RuntimeBridge::trap(TrapKind::InvalidOperation,
+                            diag::formatUnsupportedKind("assign return", kind),
+                            {},
+                            "",
+                            "");
         return;
     }
     entry.assignResult(slot, buffers);

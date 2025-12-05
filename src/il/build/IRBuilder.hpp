@@ -148,6 +148,9 @@ class IRBuilder
     /// @param callee Name of function to call.
     /// @param args Argument values.
     /// @param dst Optional destination value to store result.
+    /// @param loc Source location for diagnostics.
+    /// @pre @p callee must have been previously registered via registerCallee().
+    /// @throws std::logic_error if @p callee is unknown (programming error).
     void emitCall(const std::string &callee,
                   const std::vector<il::core::Value> &args,
                   const std::optional<il::core::Value> &dst,

@@ -19,13 +19,13 @@
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
 #include "rt.hpp"
+#include "vm/DiagFormat.hpp"
 #include "vm/OpHandlerAccess.hpp"
 #include "vm/RuntimeBridge.hpp"
 #include "vm/VMContext.hpp"
 
 #include <cassert>
 #include <cstdlib>
-#include <sstream>
 #include <string>
 #include <utility>
 
@@ -55,12 +55,11 @@ namespace
     const std::string sourceLabel = source ? source->label : std::string{};
     const std::string functionName = frame.func ? frame.func->name : std::string{};
 
-    std::ostringstream os;
-    os << "branch argument count mismatch targeting '" << target.label << '\'';
-    if (!sourceLabel.empty())
-        os << " from '" << sourceLabel << '\'';
-    os << ": expected " << expected << ", got " << provided;
-    RuntimeBridge::trap(TrapKind::InvalidOperation, os.str(), instr.loc, functionName, sourceLabel);
+    RuntimeBridge::trap(TrapKind::InvalidOperation,
+                        diag::formatBranchArgMismatch(target.label, sourceLabel, expected, provided),
+                        instr.loc,
+                        functionName,
+                        sourceLabel);
     std::_Exit(1);
 }
 } // namespace

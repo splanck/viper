@@ -391,6 +391,12 @@ function(viper_add_il_core_tests)
     viper_add_ctest(test_runtime_registry test_runtime_registry)
 
     viper_add_test(
+            test_runtime_signatures_self_check
+            ${_VIPER_IL_UNIT_DIR}/RuntimeSignaturesSelfCheckTests.cpp)
+    target_link_libraries(test_runtime_signatures_self_check PRIVATE il_runtime)
+    viper_add_ctest(test_runtime_signatures_self_check test_runtime_signatures_self_check)
+
+    viper_add_test(
             test_il_runtime_signature_effects
             ${_VIPER_IL_UNIT_DIR}/il/runtime/test_SignaturesPurity.cpp)
     target_link_libraries(test_il_runtime_signature_effects PRIVATE il_runtime)

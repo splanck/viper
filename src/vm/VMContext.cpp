@@ -82,7 +82,7 @@ ActiveVMGuard::ActiveVMGuard(VM *vm) : previous(tlsActiveVM), current(vm)
     // Bind the VM's runtime context to this thread
     if (vm && vm->rtContext)
     {
-        rt_set_current_context(vm->rtContext);
+        rt_set_current_context(vm->rtContext.get());
     }
 }
 
@@ -104,7 +104,7 @@ ActiveVMGuard::~ActiveVMGuard()
     // Restore the previous VM's runtime context (or NULL if no previous VM)
     if (previous && previous->rtContext)
     {
-        rt_set_current_context(previous->rtContext);
+        rt_set_current_context(previous->rtContext.get());
     }
     else
     {
