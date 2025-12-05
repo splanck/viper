@@ -30,6 +30,7 @@
 
 #include <algorithm>
 #include <deque>
+#include <functional>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -682,6 +683,187 @@ HandlerCoverage computeHandlerCoverage(const EhModel &model)
     return coverage;
 }
 
+struct DomInfo
+{
+    std::unordered_map<const BasicBlock *, size_t> indices;
+    std::vector<const BasicBlock *> nodes;
+    std::unordered_map<const BasicBlock *, const BasicBlock *> idom;
+};
+
+/// @brief Compute forward dominators for the reachable CFG.
+/// @details Performs BFS to find reachable blocks, assigns reverse-post-order
+///          indices, and iteratively computes immediate dominators using the
+///          Cooper–Harvey–Kennedy algorithm. The result allows O(depth) dominance
+///          queries by walking the idom chain.
+/// @param model Exception-handling model describing the function under check.
+/// @return Dominator info with immediate dominator map for all reachable blocks.
+DomInfo computeDominators(const EhModel &model)
+{
+    DomInfo info;
+    if (!model.entry())
+        return info;
+
+    const BasicBlock *entry = model.entry();
+
+    // BFS to find reachable blocks
+    std::unordered_set<const BasicBlock *> reachable;
+    std::deque<const BasicBlock *> queue;
+    queue.push_back(entry);
+    reachable.insert(entry);
+
+    while (!queue.empty())
+    {
+        const BasicBlock *bb = queue.front();
+        queue.pop_front();
+
+        if (const Instr *terminator = model.findTerminator(*bb))
+        {
+            for (const BasicBlock *succ : model.gatherSuccessors(*terminator))
+            {
+                if (reachable.insert(succ).second)
+                    queue.push_back(succ);
+            }
+        }
+    }
+
+    // Build reverse-post-order by doing DFS
+    std::vector<const BasicBlock *> rpo;
+    std::unordered_set<const BasicBlock *> visited;
+    std::function<void(const BasicBlock *)> dfs = [&](const BasicBlock *bb)
+    {
+        if (!visited.insert(bb).second)
+            return;
+        if (const Instr *terminator = model.findTerminator(*bb))
+        {
+            for (const BasicBlock *succ : model.gatherSuccessors(*terminator))
+            {
+                if (reachable.count(succ))
+                    dfs(succ);
+            }
+        }
+        rpo.push_back(bb);
+    };
+    dfs(entry);
+    std::reverse(rpo.begin(), rpo.end());
+
+    // Assign indices
+    for (size_t i = 0; i < rpo.size(); ++i)
+    {
+        info.indices[rpo[i]] = i;
+        info.nodes.push_back(rpo[i]);
+    }
+
+    // Build predecessor map
+    std::unordered_map<const BasicBlock *, std::vector<const BasicBlock *>> preds;
+    for (const BasicBlock *bb : rpo)
+    {
+        if (const Instr *terminator = model.findTerminator(*bb))
+        {
+            for (const BasicBlock *succ : model.gatherSuccessors(*terminator))
+            {
+                if (reachable.count(succ))
+                    preds[succ].push_back(bb);
+            }
+        }
+    }
+
+    // Initialize: entry has no dominator
+    info.idom[entry] = nullptr;
+
+    // Intersect helper: find nearest common ancestor in dominator tree
+    auto intersect = [&](const BasicBlock *b1, const BasicBlock *b2) -> const BasicBlock *
+    {
+        while (b1 != b2)
+        {
+            while (info.indices[b1] > info.indices[b2])
+            {
+                auto it = info.idom.find(b1);
+                if (it == info.idom.end() || !it->second)
+                    return nullptr;
+                b1 = it->second;
+            }
+            while (info.indices[b2] > info.indices[b1])
+            {
+                auto it = info.idom.find(b2);
+                if (it == info.idom.end() || !it->second)
+                    return nullptr;
+                b2 = it->second;
+            }
+        }
+        return b1;
+    };
+
+    // Iterative dominator computation
+    bool changed = true;
+    while (changed)
+    {
+        changed = false;
+        for (size_t i = 1; i < rpo.size(); ++i)
+        {
+            const BasicBlock *bb = rpo[i];
+            const auto &predList = preds[bb];
+
+            // Find first predecessor with computed idom
+            const BasicBlock *newIdom = nullptr;
+            for (const BasicBlock *p : predList)
+            {
+                if (info.idom.count(p))
+                {
+                    newIdom = p;
+                    break;
+                }
+            }
+            if (!newIdom)
+                continue;
+
+            // Intersect with other predecessors
+            for (const BasicBlock *p : predList)
+            {
+                if (p == newIdom || !info.idom.count(p))
+                    continue;
+                newIdom = intersect(p, newIdom);
+                if (!newIdom)
+                    break;
+            }
+
+            if (!info.idom.count(bb) || info.idom[bb] != newIdom)
+            {
+                info.idom[bb] = newIdom;
+                changed = true;
+            }
+        }
+    }
+
+    return info;
+}
+
+/// @brief Query whether one block dominates another according to @p info.
+/// @details Walks up the immediate dominator chain from @p target until reaching
+///          @p dominator or the entry block. A block always dominates itself.
+/// @param info Precomputed dominator summary.
+/// @param dominator Block that may dominate @p target.
+/// @param target Block being tested for domination.
+/// @return True if @p dominator dominates @p target, false otherwise.
+bool isDominator(const DomInfo &info, const BasicBlock *dominator, const BasicBlock *target)
+{
+    if (!dominator || !target)
+        return false;
+    if (dominator == target)
+        return true;
+
+    const BasicBlock *current = target;
+    while (current)
+    {
+        auto it = info.idom.find(current);
+        if (it == info.idom.end())
+            return false;
+        current = it->second;
+        if (current == dominator)
+            return true;
+    }
+    return false;
+}
+
 struct PostDomInfo
 {
     std::unordered_map<const BasicBlock *, size_t> indices;
@@ -844,28 +1026,204 @@ il::support::Expected<void> checkEhStackBalance(const EhModel &model)
     return diags.take();
 }
 
-/// @brief Placeholder for dominance checks on exception handlers.
-/// @details The legacy verifier exposes this hook but the modern
-///          implementation has not yet adopted the logic.  Returning success
-///          keeps behaviour consistent with historical builds while leaving a
-///          future seam for more detailed analysis.
-/// @param model Exception-handling model (currently unused).
-/// @return Always returns success until the check is implemented.
+/// @brief Validate that exception handlers dominate the blocks they protect.
+/// @details Computes forward dominators and handler coverage, then verifies that
+///          the block containing the eh.push instruction dominates every block in
+///          the handler's coverage set. This ensures that handlers are installed
+///          before any protected code executes, maintaining structured EH semantics.
+/// @param model Exception-handling model describing the function under check.
+/// @return Empty expected on success, or a diagnostic describing the violation.
 il::support::Expected<void> checkDominanceOfHandlers(const EhModel &model)
 {
-    (void)model;
+    if (!model.entry())
+        return {};
+
+    const HandlerCoverage coverage = computeHandlerCoverage(model);
+    if (coverage.empty())
+        return {};
+
+    const DomInfo domInfo = computeDominators(model);
+
+    // Build a map from handler blocks to their eh.push sites
+    std::unordered_map<const BasicBlock *, std::pair<const BasicBlock *, const Instr *>> handlerToEhPush;
+    for (const auto &bb : model.function().blocks)
+    {
+        for (const auto &instr : bb.instructions)
+        {
+            if (instr.op == Opcode::EhPush && !instr.labels.empty())
+            {
+                const BasicBlock *handlerBlock = model.findBlock(instr.labels[0]);
+                if (handlerBlock)
+                    handlerToEhPush[handlerBlock] = {&bb, &instr};
+            }
+        }
+    }
+
+    // For each handler, verify the eh.push block dominates all protected blocks
+    for (const auto &[handlerBlock, protectedBlocks] : coverage)
+    {
+        if (!handlerBlock)
+            continue;
+
+        auto ehPushIt = handlerToEhPush.find(handlerBlock);
+        if (ehPushIt == handlerToEhPush.end())
+            continue; // No eh.push found, skip (malformed but caught elsewhere)
+
+        const BasicBlock *ehPushBlock = ehPushIt->second.first;
+        const Instr *ehPushInstr = ehPushIt->second.second;
+
+        for (const BasicBlock *protectedBlock : protectedBlocks)
+        {
+            if (!protectedBlock)
+                continue;
+
+            // The block containing eh.push must dominate the protected block.
+            // This ensures the handler is installed before the protected code runs.
+            if (!isDominator(domInfo, ehPushBlock, protectedBlock))
+            {
+                std::string suffix = "eh.push block ";
+                suffix += ehPushBlock->label;
+                suffix += " does not dominate protected block ";
+                suffix += protectedBlock->label;
+                suffix += " (handler ^";
+                suffix += handlerBlock->label;
+                suffix += ")";
+
+                auto message = formatInstrDiag(model.function(), *ehPushBlock, *ehPushInstr, suffix);
+                return il::support::Expected<void>{makeVerifierError(
+                    VerifyDiagCode::EhHandlerNotDominant, ehPushInstr->loc, std::move(message))};
+            }
+        }
+    }
+
     return {};
 }
 
-/// @brief Placeholder for detecting handlers that can never be reached.
-/// @details Mirrors the legacy verifier interface while deferring the actual
-///          implementation.  The stub allows callers to sequence checks without
-///          special casing missing functionality.
-/// @param model Exception-handling model (currently unused).
-/// @return Always returns success until handler reachability analysis lands.
+/// @brief Validate that all exception handler blocks are reachable from entry.
+/// @details Identifies handler blocks by scanning for eh.push instructions, then
+///          performs a CFG traversal from the function entry to determine which
+///          blocks are reachable. Unreachable handlers indicate dead code that
+///          could never execute, which is usually a sign of malformed IL.
+/// @param model Exception-handling model describing the function under check.
+/// @return Empty expected on success, or a diagnostic listing unreachable handlers.
 il::support::Expected<void> checkUnreachableHandlers(const EhModel &model)
 {
-    (void)model;
+    if (!model.entry())
+        return {};
+
+    // Collect all handler blocks referenced by eh.push instructions
+    std::unordered_set<const BasicBlock *> handlerBlocks;
+    for (const auto &bb : model.function().blocks)
+    {
+        for (const auto &instr : bb.instructions)
+        {
+            if (instr.op == Opcode::EhPush && !instr.labels.empty())
+            {
+                if (const BasicBlock *handlerBlock = model.findBlock(instr.labels[0]))
+                    handlerBlocks.insert(handlerBlock);
+            }
+        }
+    }
+
+    if (handlerBlocks.empty())
+        return {};
+
+    // Compute reachable blocks via BFS from entry
+    // Note: We consider both normal CFG edges AND exception edges (trap -> handler)
+    std::unordered_set<const BasicBlock *> reachable;
+    std::deque<const BasicBlock *> worklist;
+    worklist.push_back(model.entry());
+    reachable.insert(model.entry());
+
+    // Track which handlers are on the EH stack at each block for trap edges
+    std::unordered_map<const BasicBlock *, std::vector<const BasicBlock *>> blockHandlerStack;
+    blockHandlerStack[model.entry()] = {};
+
+    while (!worklist.empty())
+    {
+        const BasicBlock *bb = worklist.front();
+        worklist.pop_front();
+
+        std::vector<const BasicBlock *> currentStack = blockHandlerStack[bb];
+
+        // Process instructions to track EH stack
+        for (const auto &instr : bb->instructions)
+        {
+            if (instr.op == Opcode::EhPush && !instr.labels.empty())
+            {
+                if (const BasicBlock *handlerBlock = model.findBlock(instr.labels[0]))
+                    currentStack.push_back(handlerBlock);
+            }
+            else if (instr.op == Opcode::EhPop)
+            {
+                if (!currentStack.empty())
+                    currentStack.pop_back();
+            }
+        }
+
+        // Find terminator and process successors
+        if (const Instr *terminator = model.findTerminator(*bb))
+        {
+            // Normal CFG successors
+            for (const BasicBlock *succ : model.gatherSuccessors(*terminator))
+            {
+                if (reachable.insert(succ).second)
+                {
+                    worklist.push_back(succ);
+                    blockHandlerStack[succ] = currentStack;
+                }
+            }
+
+            // Exception edge: trap/trap_from_err can transfer to handler
+            if (terminator->op == Opcode::Trap || terminator->op == Opcode::TrapFromErr)
+            {
+                if (!currentStack.empty())
+                {
+                    const BasicBlock *handlerBlock = currentStack.back();
+                    if (handlerBlock && reachable.insert(handlerBlock).second)
+                    {
+                        worklist.push_back(handlerBlock);
+                        blockHandlerStack[handlerBlock] = currentStack;
+                    }
+                }
+            }
+        }
+    }
+
+    // Check if any handler blocks are unreachable
+    std::vector<std::string> unreachableLabels;
+    for (const BasicBlock *handler : handlerBlocks)
+    {
+        if (reachable.find(handler) == reachable.end())
+            unreachableLabels.push_back(handler->label);
+    }
+
+    if (!unreachableLabels.empty())
+    {
+        // Sort for deterministic output
+        std::sort(unreachableLabels.begin(), unreachableLabels.end());
+
+        std::string suffix = "unreachable handler block";
+        if (unreachableLabels.size() > 1)
+            suffix += "s";
+        suffix += ": ";
+        for (size_t i = 0; i < unreachableLabels.size(); ++i)
+        {
+            if (i > 0)
+                suffix += ", ";
+            suffix += "^";
+            suffix += unreachableLabels[i];
+        }
+
+        std::string message = "function '";
+        message += model.function().name;
+        message += "': ";
+        message += suffix;
+
+        return il::support::Expected<void>{
+            makeVerifierError(VerifyDiagCode::EhHandlerUnreachable, {}, std::move(message))};
+    }
+
     return {};
 }
 
