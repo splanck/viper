@@ -193,6 +193,15 @@ class ThreadedDispatchDriver final : public VM::DispatchDriver
             return instr->op;
         };
 
+        // =====================================================================
+        // Threaded Dispatch: Label Address Table (Generated)
+        // =====================================================================
+        // This array contains computed-goto label addresses (&&LBL_*) for each
+        // opcode. GCC/Clang extension enables direct jumps via goto *kOpLabels[op].
+        // Each label corresponds to an opcode in il/core/Opcode.def order.
+        //
+        // Generated file - do not edit. See docs/generated-files.md.
+        // =====================================================================
         static void *kOpLabels[] = {
 #include "vm/ops/generated/ThreadedLabels.inc"
         };
@@ -224,6 +233,16 @@ class ThreadedDispatchDriver final : public VM::DispatchDriver
                 VIPER_VM_DISPATCH_BEFORE(context, opcode);
                 DISPATCH_TO(opcode);
 
+                // =============================================================
+                // Threaded Dispatch: Case Labels (Generated)
+                // =============================================================
+                // This include expands to LBL_<OpName>: labels with handler
+                // bodies for each opcode. After handling, each case fetches the
+                // next opcode and jumps via DISPATCH_TO(). This implements the
+                // computed-goto threaded interpreter pattern for fast dispatch.
+                //
+                // Generated file - do not edit. See docs/generated-files.md.
+                // =============================================================
 #include "vm/ops/generated/ThreadedCases.inc"
 
             LBL_UNIMPL:
@@ -546,6 +565,22 @@ VM::~VM()
     // rtContext cleanup handled automatically by unique_ptr with RtContextDeleter
 }
 
+// =============================================================================
+// Dispatch Handler Implementations (Generated)
+// =============================================================================
+// These includes provide the actual implementations for VM dispatch:
+//
+// InlineHandlersImpl.inc:
+//   Defines VM::inline_handle_<OpName>(ExecState&) for each opcode. Each handler
+//   delegates to detail::handle<OpName>() and processes the ExecResult.
+//
+// SwitchDispatchImpl.inc:
+//   Defines VM::dispatchOpcodeSwitch() - a portable fallback dispatcher using a
+//   switch statement when computed-goto (threaded dispatch) is unavailable.
+//
+// Both files are synchronized with il/core/Opcode.def and must be updated when
+// opcodes are added or removed. See docs/generated-files.md for details.
+// =============================================================================
 #include "vm/ops/generated/InlineHandlersImpl.inc"
 #include "vm/ops/generated/SwitchDispatchImpl.inc"
 

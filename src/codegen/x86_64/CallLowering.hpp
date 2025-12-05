@@ -7,8 +7,12 @@
 //
 // File: codegen/x86_64/CallLowering.hpp
 // Purpose: Declare utilities that translate high-level call descriptions into
-// Key invariants: To be documented.
+//          Machine IR sequences following SysV AMD64 ABI conventions.
+// Key invariants: Integer arguments use RDI,RSI,RDX,RCX,R8,R9 in order; FP args
+//                 use XMM0-XMM7; excess arguments spill to the stack; %rax
+//                 holds integer returns, %xmm0 holds FP returns.
 // Ownership/Lifetime: Callers retain ownership of Machine IR structures and frame
+//                     info; lowerCall mutates block in-place.
 // Links: docs/architecture.md
 //
 //===----------------------------------------------------------------------===//

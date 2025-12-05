@@ -6,9 +6,12 @@
 //===----------------------------------------------------------------------===//
 //
 // File: codegen/x86_64/FrameLowering.hpp
-// Purpose: Declare utilities responsible for constructing stack frames for the
-// Key invariants: To be documented.
+// Purpose: Declare utilities responsible for constructing stack frames.
+// Key invariants: Spill slots are addressed off %rbp with negative displacements;
+//                 stack alignment is maintained at 16-byte boundaries per SysV
+//                 ABI; callee-saved registers are preserved across function calls.
 // Ownership/Lifetime: Callers retain ownership of Machine IR objects. Utilities borrow
+//                     references for mutation and do not persist state.
 // Links: docs/architecture.md
 //
 //===----------------------------------------------------------------------===//

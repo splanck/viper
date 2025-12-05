@@ -7,7 +7,9 @@
 //
 // File: codegen/x86_64/LoweringRules.hpp
 // Purpose: Declare the rule registry that drives IL to MIR lowering.
-// Key invariants: To be documented.
+// Key invariants: Rules are initialised lazily on first access and remain
+//                 immutable thereafter; rule selection proceeds in registration
+//                 order until a match predicate succeeds.
 // Ownership/Lifetime: Registry stored as process-wide static vector, returned by ref.
 // Links: docs/architecture.md
 //

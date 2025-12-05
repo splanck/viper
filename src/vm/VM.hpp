@@ -807,6 +807,15 @@ class VM
     /// @return Return value slot.
     Slot runFunctionLoop(ExecState &st);
 
+    // =========================================================================
+    // Dispatch Handler Declarations (Generated)
+    // =========================================================================
+    // These includes expand to one handler declaration per opcode defined in
+    // il/core/Opcode.def. The inline handlers (inline_handle_*) and switch
+    // dispatch (dispatchOpcodeSwitch) are the core dispatch entry points.
+    //
+    // Generated files - do not edit. See docs/generated-files.md.
+    // =========================================================================
 #include "vm/ops/generated/InlineHandlersDecl.inc"
 #include "vm/ops/generated/SwitchDispatchDecl.inc"
 

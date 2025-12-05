@@ -6,9 +6,12 @@
 //===----------------------------------------------------------------------===//
 //
 // File: codegen/x86_64/Unsupported.hpp
-// Purpose: Implements functionality for this subsystem.
-// Key invariants: To be documented.
-// Ownership/Lifetime: To be documented.
+// Purpose: Provides diagnostic helpers for unsupported Phase A features.
+// Key invariants: phaseAUnsupported() never returns; it always throws
+//                 std::runtime_error with a descriptive message identifying
+//                 the unsupported feature.
+// Ownership/Lifetime: Header-only utility with no state; exceptions propagate
+//                     to the caller who must handle or terminate.
 // Links: docs/architecture.md
 //
 //===----------------------------------------------------------------------===//

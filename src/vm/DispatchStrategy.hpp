@@ -4,11 +4,41 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
+//
 // File: vm/DispatchStrategy.hpp
-// Purpose: Define interface for pluggable VM dispatch strategies
+// Purpose: Define interface for pluggable VM dispatch strategies.
+//
+// Overview:
+// The VM supports three dispatch strategies for executing opcodes:
+//
+//   1. FnTable (Function Table)
+//      - Uses vm/ops/generated/HandlerTable.hpp → getOpcodeHandlers()
+//      - Resolves opcode to handler via array index: table[opcode]
+//      - Portable, moderate performance
+//
+//   2. Switch (Switch Statement)
+//      - Uses vm/ops/generated/SwitchDispatchImpl.inc
+//      - switch(instr.op) with case per opcode calling inline_handle_*
+//      - Portable fallback, handles finalization internally
+//
+//   3. Threaded (Computed Goto)
+//      - Uses vm/ops/generated/ThreadedLabels.inc + ThreadedCases.inc
+//      - goto *kOpLabels[opcode] with LBL_* labels
+//      - Fastest dispatch, GCC/Clang only (VIPER_THREADING_SUPPORTED)
+//
+// Strategy Selection:
+// - Environment: VIPER_DISPATCH=threaded|switch|table
+// - API: VM constructor DispatchKind parameter
+// - Default: Threaded if supported, otherwise Switch
+//
+// Generated Files:
+// All strategies rely on tables synchronized with il/core/Opcode.def.
+// See docs/generated-files.md for regeneration instructions.
+//
 // Key invariants: Each strategy only handles opcode-to-handler mapping
 // Ownership/Lifetime: Strategies are owned by the VM instance
-// Links: docs/il-guide.md#reference
+// Links: docs/generated-files.md, docs/il-guide.md#reference
+//
 //===----------------------------------------------------------------------===//
 
 #pragma once

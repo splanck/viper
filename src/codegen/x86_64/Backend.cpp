@@ -129,18 +129,20 @@ void lowerPendingCalls(MFunction &func,
 ///
 /// @details Converts an IL function into Machine IR, lowers complex operations,
 ///          performs register allocation, assigns spill slots, and inserts
-///          prologue/epilogue code before running peephole optimisations.  The
-///          resulting Machine IR is ready for assembly emission and the frame
-///          summary reflects the required stack layout.
+///          prologue/epilogue code before optionally running peephole
+///          optimisations.  The resulting Machine IR is ready for assembly
+///          emission and the frame summary reflects the required stack layout.
 ///
 /// @param ilFunc IL function being translated.
 /// @param lowering Shared lowering context reused across functions.
 /// @param target Target description supplying register orderings and ABI facts.
+/// @param options Backend options controlling optimisation behaviour.
 /// @param frame Output parameter that records frame layout requirements.
 /// @param machineFunc Output parameter receiving the transformed Machine IR.
 void runFunctionPipeline(const ILFunction &ilFunc,
                          LowerILToMIR &lowering,
                          const TargetInfo &target,
+                         const CodegenOptions &options,
                          FrameInfo &frame,
                          MFunction &machineFunc)
 {
@@ -165,7 +167,11 @@ void runFunctionPipeline(const ILFunction &ilFunc,
 
     insertPrologueEpilogue(machineFunc, target, frame);
 
-    runPeepholes(machineFunc);
+    // Peephole optimizations run at optimize level 1 or higher
+    if (options.optimizeLevel >= 1)
+    {
+        runPeepholes(machineFunc);
+    }
 }
 
 /// @brief Emit assembly for a collection of IL functions.
@@ -202,7 +208,7 @@ CodegenResult emitModuleImpl(const std::vector<ILFunction> &functions,
 
         FrameInfo frame{};
         MFunction machineFunc{};
-        runFunctionPipeline(func, lowering, target, frame, machineFunc);
+        runFunctionPipeline(func, lowering, target, options, frame, machineFunc);
 
         emitter.emitFunction(asmStream, machineFunc, target);
         if (index + 1U < functions.size())

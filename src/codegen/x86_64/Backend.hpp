@@ -6,9 +6,12 @@
 //===----------------------------------------------------------------------===//
 //
 // File: codegen/x86_64/Backend.hpp
-// Purpose: Declare the high-level orchestration entry points for the x86-64
-// Key invariants: To be documented.
+// Purpose: Declare the high-level orchestration entry points for x86-64 codegen.
+// Key invariants: emitModuleToAssembly processes all functions in module order;
+//                 errors field is empty on success; Phase A only supports AT&T
+//                 syntax (atandtSyntax must be true).
 // Ownership/Lifetime: Callers retain ownership of IL modules; generated assembly is
+//                     returned by value in CodegenResult.
 // Links: docs/architecture.md
 //
 //===----------------------------------------------------------------------===//
@@ -26,6 +29,7 @@ namespace viper::codegen::x64
 struct CodegenOptions
 {
     bool atandtSyntax{true}; ///< Emit AT&T syntax when true; Phase A only supports this form.
+    int optimizeLevel{1};    ///< Optimization level: 0 = none, 1 = standard (peephole), 2+ reserved.
 };
 
 /// \brief Aggregated result of a backend emission request.

@@ -6,9 +6,12 @@
 //===----------------------------------------------------------------------===//
 //
 // File: codegen/x86_64/ParallelCopyResolver.hpp
-// Purpose: Provide a utility for expanding parallel register copy assignments into
-// Key invariants: To be documented.
+// Purpose: Expand parallel register copy assignments into sequential moves.
+// Key invariants: Acyclic copies are emitted first via topological ordering;
+//                 cycles are broken using a temporary spill via movVRegToTemp;
+//                 output preserves the semantics of the parallel assignment.
 // Ownership/Lifetime: Header-only utility with no global state. All temporaries are scoped
+//                     to the resolution call; caller owns the CopyEmitter implementation.
 // Links: docs/architecture.md
 //
 //===----------------------------------------------------------------------===//

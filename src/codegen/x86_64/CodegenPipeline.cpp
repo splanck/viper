@@ -295,7 +295,10 @@ PipelineResult CodegenPipeline::run()
     manager.addPass(std::make_unique<passes::LoweringPass>());
     manager.addPass(std::make_unique<passes::LegalizePass>());
     manager.addPass(std::make_unique<passes::RegAllocPass>());
-    manager.addPass(std::make_unique<passes::EmitPass>(CodegenOptions{}));
+
+    CodegenOptions codegenOpts{};
+    codegenOpts.optimizeLevel = opts_.optimize;
+    manager.addPass(std::make_unique<passes::EmitPass>(codegenOpts));
 
     if (!manager.run(pipelineModule, diagnostics))
     {

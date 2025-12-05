@@ -6,9 +6,12 @@
 //===----------------------------------------------------------------------===//
 //
 // File: codegen/x86_64/AsmEmitter.hpp
-// Purpose: Declare the x86-64 assembly emitter responsible for translating
-// Key invariants: To be documented.
+// Purpose: Declare the x86-64 assembly emitter for Machine IR to AT&T syntax.
+// Key invariants: Emission preserves operand ordering and branch destinations;
+//                 encoding rows are matched deterministically by opcode and
+//                 operand pattern; rodata labels are unique per literal kind.
 // Ownership/Lifetime: AsmEmitter holds a non-owning reference to a mutable rodata pool;
+//                     emit methods write to ostream and do not retain state.
 // Links: docs/architecture.md
 //
 //===----------------------------------------------------------------------===//

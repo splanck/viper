@@ -7,7 +7,9 @@
 //
 // File: codegen/x86_64/LoweringRuleTable.hpp
 // Purpose: Describe declarative lowering rules for x86-64 emission.
-// Key invariants: To be documented.
+// Key invariants: Rule table entries are immutable and indexed by opcode prefix;
+//                 operand patterns must align with IL operand encodings; emit
+//                 callbacks may only append to the MIRBuilder, never remove.
 // Ownership/Lifetime: Shared across lowering translation units via inline constexpr data.
 // Links: docs/architecture.md
 //

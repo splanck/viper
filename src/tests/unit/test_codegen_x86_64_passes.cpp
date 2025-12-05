@@ -85,6 +85,19 @@ TEST(EmitPass, ProducesAssembly)
     EXPECT_FALSE(diags.hasErrors());
 }
 
+TEST(CodegenOptions, OptimizeLevelDefaultsToOne)
+{
+    viper::codegen::x64::CodegenOptions opts{};
+    EXPECT_EQ(opts.optimizeLevel, 1);
+}
+
+TEST(CodegenOptions, OptimizeLevelZeroIsValid)
+{
+    viper::codegen::x64::CodegenOptions opts{};
+    opts.optimizeLevel = 0;
+    EXPECT_EQ(opts.optimizeLevel, 0);
+}
+
 TEST(PassManager, ShortCircuitsOnFailure)
 {
     Module module{};

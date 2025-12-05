@@ -6,9 +6,13 @@
 //===----------------------------------------------------------------------===//
 //
 // File: codegen/x86_64/CodegenPipeline.hpp
-// Purpose: Declare a reusable pipeline that lowers IL modules to native code via the x86-64
-// Key invariants: To be documented.
+// Purpose: Declare a reusable pipeline that lowers IL modules to native code.
+// Key invariants: Passes execute sequentially with early exit on failure; assembly
+//                 is written before linking when emit_asm is set; run() returns
+//                 a zero exit_code only when all stages succeed; optimize level
+//                 controls which optimisation passes are run (0=none, 1=peephole).
 // Ownership/Lifetime: Callers retain ownership of file paths and do not transfer resource
+//                     management; pipeline state is local to each run() invocation.
 // Links: docs/codemap.md, src/codegen/x86_64/Backend.hpp
 //
 //===----------------------------------------------------------------------===//
@@ -41,7 +45,7 @@ class CodegenPipeline
                                      ///< without @ref run_native the pipeline emits an object file.
         std::string output_asm_path; ///< Optional assembly output path when emit_asm is true.
         bool emit_asm = false;       ///< Emit assembly text to disk for inspection.
-        bool optimize = false;       ///< Placeholder for future optimisation control.
+        int optimize = 1;            ///< Optimization level: 0 = none, 1 = standard (peephole), 2+ reserved.
         bool run_native = false;     ///< Execute the produced binary after linking when true.
     };
 
