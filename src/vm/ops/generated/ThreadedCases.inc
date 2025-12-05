@@ -1,5 +1,27 @@
-// This file is auto-generated. Do not edit manually.
-// Maintained as a committed generated include.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// IMPORTANT: This file is auto-generated. Do not edit manually.
+//
+// File: vm/ops/generated/ThreadedCases.inc
+// Purpose: GCC computed-goto case labels and handler bodies for threaded dispatch.
+//
+// Generator: Manually maintained (synchronized with Opcode enum).
+// Regenerate: Update when adding/removing opcodes in il/core/Opcode.hpp.
+//
+// Key Invariants:
+//   - One LBL_<OpName>: case per opcode in enum order
+//   - Each case invokes traceInstruction, inline_handle_<Op>, and dispatches next
+//   - Requires GCC/Clang computed-goto extension (&&label address syntax)
+//
+// Links: docs/il-guide.md#reference, vm/ops/generated/ThreadedLabels.inc
+//
+//===----------------------------------------------------------------------===//
+
 LBL_Add:
 {
     vm.traceInstruction(*currentInstr, state.fr);

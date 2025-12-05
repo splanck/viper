@@ -199,26 +199,64 @@ void dce(Module &M)
             }
         }
 
-        // Remove unused block params
+        // Remove unused block params using compaction.
+        //
+        // The previous implementation iterated over params in reverse and called
+        // erase() for each dead param, then iterated over all predecessors to
+        // erase the corresponding brArg. This was O(#params * #preds) per block.
+        //
+        // The new algorithm:
+        // 1. Build a vector of indices to keep (live params).
+        // 2. Compact B.params in one pass using the keep list.
+        // 3. For each predecessor edge, compact brArgs[succIdx] in one pass.
+        // This reduces the complexity to O(#params + #preds) per block.
         for (auto &B : F.blocks)
         {
-            for (int idx = static_cast<int>(B.params.size()) - 1; idx >= 0; --idx)
+            const size_t numParams = B.params.size();
+            if (numParams == 0)
+                continue;
+
+            // Identify which param indices to keep (those with non-zero use counts).
+            std::vector<size_t> keepIndices;
+            keepIndices.reserve(numParams);
+            for (size_t i = 0; i < numParams; ++i)
             {
-                unsigned id = B.params[idx].id;
-                if (id >= uses.size() || uses[id] != 0)
-                    continue;
-                B.params.erase(B.params.begin() + idx);
-                auto it = predEdges.find(B.label);
-                if (it != predEdges.end())
+                const unsigned id = B.params[i].id;
+                if (id < uses.size() && uses[id] == 0)
+                    continue; // Dead param, skip
+                keepIndices.push_back(i);
+            }
+
+            // If all params are kept, nothing to do.
+            if (keepIndices.size() == numParams)
+                continue;
+
+            // Compact B.params: rebuild the vector with only kept params.
+            {
+                std::vector<Param> compacted;
+                compacted.reserve(keepIndices.size());
+                for (size_t idx : keepIndices)
+                    compacted.push_back(std::move(B.params[idx]));
+                B.params = std::move(compacted);
+            }
+
+            // Compact predecessor brArgs for each edge targeting this block.
+            auto it = predEdges.find(B.label);
+            if (it != predEdges.end())
+            {
+                for (auto &[term, succIdx] : it->second)
                 {
-                    for (auto &[term, succIdx] : it->second)
-                    {
-                        if (term->brArgs.size() > succIdx &&
-                            term->brArgs[succIdx].size() > static_cast<std::size_t>(idx))
-                        {
-                            term->brArgs[succIdx].erase(term->brArgs[succIdx].begin() + idx);
-                        }
-                    }
+                    if (term->brArgs.size() <= succIdx)
+                        continue;
+                    auto &args = term->brArgs[succIdx];
+                    if (args.size() != numParams)
+                        continue; // Mismatch, skip to avoid corruption
+
+                    std::vector<Value> compacted;
+                    compacted.reserve(keepIndices.size());
+                    for (size_t idx : keepIndices)
+                        compacted.push_back(std::move(args[idx]));
+                    args = std::move(compacted);
                 }
             }
         }

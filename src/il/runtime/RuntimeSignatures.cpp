@@ -9,13 +9,19 @@
 // Purpose: Build and expose the runtime descriptor registry used by IL
 //          consumers to marshal calls into the C runtime. Contains the
 //          descriptor table definitions, lookup APIs, and validation logic.
+//
+// Generated Data: This file includes generated/RuntimeSignatures.inc which
+//                 contains DescriptorRow entries for all runtime functions.
+//                 See docs/generated-files.md for regeneration instructions.
+//
 // Key invariants: The descriptor table is immutable, matches runtime helpers
 //                 one-to-one, and is initialised lazily in a thread-safe manner.
 // Ownership/Lifetime: All descriptors have static storage duration and remain
 //                     valid for the lifetime of the process.
-// Links: docs/il-guide.md#reference, docs/architecture.md#cpp-overview
+// Links: docs/generated-files.md, docs/il-guide.md#reference
 //
 // Related files:
+//   - generated/RuntimeSignatures.inc: Generated descriptor rows
 //   - RuntimeSignatures_Handlers.hpp: Handler templates (DirectHandler, etc.)
 //   - RuntimeSignatures_Handlers.cpp: Adapter function implementations
 //
@@ -171,7 +177,7 @@ constexpr auto kDescriptorRows = std::to_array<DescriptorRow>({
                   nullptr,
                   0,
                   RuntimeTrapClass::None},
-#include "RuntimeSignatures.inc"
+#include "generated/RuntimeSignatures.inc"
     DescriptorRow{"rt_println_i32",
                   std::nullopt,
                   "void(i32)",

@@ -1,5 +1,25 @@
-// Generated from tools/spec/x86_64_encodings.json
-// DO NOT EDIT - regenerate with CMake (cmake/GenX86Encodings.cmake)
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// IMPORTANT: This file is auto-generated. Do not edit manually.
+//
+// File: codegen/x86_64/generated/EncodingTable.inc
+// Purpose: Static instruction encoding table for x86-64 codegen.
+//
+// Generator: cmake/GenX86Encodings.cmake
+// Source: tools/spec/x86_64_encodings.json
+// Regenerate: cmake --build build (automatic on spec change)
+//
+// Description: Contains EncodingRow entries describing instruction encoding
+//              forms, operand patterns, and encoding flags for each MOpcode.
+//
+// Links: docs/il-guide.md#reference, codegen/x86_64/Emit.cpp
+//
+//===----------------------------------------------------------------------===//
 
 static constexpr std::array<EncodingRow, 44> kEncodingTable = {{
     {MOpcode::MOVrr,
@@ -267,3 +287,4 @@ static constexpr std::array<EncodingRow, 44> kEncodingTable = {{
      makePattern(OperandKind::Mem, OperandKind::Reg, OperandKind::None),
      EncodingFlag::RequiresModRM},
 }};
+

@@ -5,10 +5,41 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Implements helper utilities that expose the execution context of the virtual
-// machine.  The routines centralise trap handling, operand evaluation, and debug
-// forwarding so that individual dispatch strategies can share behaviour without
-// duplicating state management.
+// File: vm/VMContext.cpp
+// Purpose: Thread-local VM binding and execution context helpers.
+//
+// This file implements the thread-local VM binding infrastructure and helper
+// utilities that expose the execution context of the virtual machine. The
+// routines centralize trap handling, operand evaluation, and debug forwarding
+// so that individual dispatch strategies can share behavior without duplicating
+// state management.
+//
+// Sections:
+//
+//   1. THREAD-LOCAL VM BINDING
+//      - tlsActiveVM: Thread-local pointer to the active VM
+//      - ActiveVMGuard: RAII guard for installing/restoring thread-local VM
+//      - activeVMInstance(): Query the currently active VM
+//
+//   2. VMCONTEXT HELPERS
+//      - eval(): Evaluate IL values to Slots
+//      - stepOnce(): Execute single interpreter step
+//      - handleTrapDispatch(): Forward trap signals to handlers
+//      - trapUnimplemented(): Report missing opcode implementations
+//
+//   3. VM CONVENIENCE WRAPPERS
+//      - VM::eval(), VM::stepOnce(), etc. that delegate to VMContext
+//
+// Key invariants:
+//   - Only one VM may be active per thread at a time
+//   - ActiveVMGuard must be used for all VM execution entry points
+//   - Thread-local binding enables trap bridges to find the active interpreter
+//
+// Ownership/Lifetime:
+//   - VMContext holds a non-owning pointer to its VM
+//   - ActiveVMGuard saves and restores previous VM on scope exit
+//
+// Links: docs/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
 
@@ -33,6 +64,11 @@
 
 namespace il::vm
 {
+
+//===----------------------------------------------------------------------===//
+// Section 1: THREAD-LOCAL VM BINDING
+//===----------------------------------------------------------------------===//
+
 namespace
 {
 thread_local VM *tlsActiveVM = nullptr; ///< Active VM for trap reporting.
@@ -112,6 +148,10 @@ ActiveVMGuard::~ActiveVMGuard()
     }
     tlsActiveVM = previous;
 }
+
+//===----------------------------------------------------------------------===//
+// Section 2: VMCONTEXT HELPERS
+//===----------------------------------------------------------------------===//
 
 /// @brief Bind the context helper to a specific VM instance.
 /// @details Stores the pointer to the owning VM so future helper calls can
@@ -419,6 +459,10 @@ VM *activeVMInstance()
 {
     return tlsActiveVM;
 }
+
+//===----------------------------------------------------------------------===//
+// Section 3: VM CONVENIENCE WRAPPERS
+//===----------------------------------------------------------------------===//
 
 /// @brief Evaluate an IL value using a temporary context helper.
 /// @details Optimized for the hot path: Temp values with valid register indices.

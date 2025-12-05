@@ -107,8 +107,12 @@ ExternRegistry &currentExternRegistry();
 /// @brief Register an external function in the specified registry.
 /// @param registry Target registry (use `processGlobalExternRegistry()` for global).
 /// @param ext Descriptor of the external function to register.
-/// @note Overwrites any existing registration with the same name (case-insensitive).
-void registerExternIn(ExternRegistry &registry, const ExternDesc &ext);
+/// @return Success on successful registration. SignatureMismatch if strict mode
+///         is enabled and a function with the same name but different signature
+///         is already registered.
+/// @note In non-strict mode (default), this always succeeds and overwrites any
+///       existing registration with the same name (case-insensitive).
+ExternRegisterResult registerExternIn(ExternRegistry &registry, const ExternDesc &ext);
 
 /// @brief Unregister an external function from the specified registry.
 /// @param registry Target registry.
@@ -218,6 +222,11 @@ class RuntimeBridge
 
     /// @brief Indicate whether a VM instance is actively executing on this thread.
     static bool hasActiveVm();
+
+    /// @brief Retrieve the per-VM extern registry for the active VM, if any.
+    /// @return Pointer to the active VM's registry, or nullptr if no VM is active
+    ///         or the active VM has no per-VM registry assigned.
+    static ExternRegistry *activeVmRegistry();
 
     //=========================================================================
     // Extern Registry (Process-Global)

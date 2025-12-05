@@ -5,22 +5,46 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Implements the stack-based virtual machine that executes IL modules.  The VM
-// owns dispatch strategies, inline caches, and runtime bridges while borrowing
-// module data owned by callers.  This translation unit centralises instruction
-// selection, trap handling, and the execution loop so the surrounding
-// components (debugger, tools, and runtime glue) interact with a single,
-// well-documented surface.
+// File: vm/VM.cpp
+// Purpose: Virtual machine execution engine implementation.
+//
+// This file implements the core VM execution engine organized into sections:
+//
+//   1. DISPATCH DRIVER INTERFACE AND IMPLEMENTATIONS
+//      - DispatchDriver abstract interface for pluggable dispatch strategies
+//      - FnTableDispatchDriver: function-table-based dispatch
+//      - SwitchDispatchDriver: switch-statement-based dispatch
+//      - ThreadedDispatchDriver: computed-goto threading (when supported)
+//
+//   2. TRAP DISPATCH SIGNAL
+//      - TrapDispatchSignal exception for transferring control to handlers
+//
+//   3. CORE INTERPRETER LOOP
+//      - run(): Entry point that locates and executes main()
+//      - executeOpcode(): Single instruction dispatch
+//      - runFunctionLoop(): Main interpreter loop
+//      - beginDispatch/selectInstruction/finalizeDispatch: Loop helpers
+//
+//   4. EXECUTION CONTEXT MANAGEMENT
+//      - setCurrentContext/clearCurrentContext: Track current instruction
+//      - Opcode counting infrastructure (when VIPER_VM_OPCOUNTS enabled)
+//
+//   5. TRAP HANDLING
+//      - prepareTrap(): Walk stack to find handlers, wire up resume state
+//      - throwForTrap(): Transfer control via exception
+//
+// Key invariants:
+//   - Dispatch strategies are interchangeable without changing loop logic
+//   - Thread-local VM binding (via ActiveVMGuard) enables trap reporting
+//   - Cross-function execution uses the exec stack for handler lookup
+//
+// Ownership/Lifetime:
+//   - VM owns dispatch drivers, string caches, and runtime context
+//   - Module data is borrowed from callers
+//
+// Links: docs/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
-
-/// @file
-/// @brief Virtual machine execution engine implementation.
-/// @details Defines the interpreter core, dispatch drivers, and helper
-///          utilities that cooperate to execute IL functions.  The
-///          implementation balances modularity (pluggable dispatch) with
-///          performance by caching hot metadata and minimising per-instruction
-///          branching.
 
 #include "vm/VM.hpp"
 #include "il/core/BasicBlock.hpp"
@@ -41,6 +65,11 @@
 
 namespace il::vm
 {
+
+//===----------------------------------------------------------------------===//
+// Section 1: DISPATCH DRIVER INTERFACE AND IMPLEMENTATIONS
+//===----------------------------------------------------------------------===//
+
 /// @brief Retrieve the textual mnemonic associated with an opcode.
 /// @details Defined in the opcode metadata translation unit; declared here so
 ///          diagnostic helpers can render human-readable opcode names when the
@@ -217,6 +246,10 @@ class ThreadedDispatchDriver final : public VM::DispatchDriver
 
 } // namespace detail
 
+//===----------------------------------------------------------------------===//
+// Section 2: TRAP DISPATCH SIGNAL
+//===----------------------------------------------------------------------===//
+
 /// @brief Construct a trap dispatch signal targeting a specific execution state.
 /// @param targetState Execution state that should resume after trap handling.
 VM::TrapDispatchSignal::TrapDispatchSignal(ExecState *targetState) : target(targetState) {}
@@ -226,6 +259,10 @@ const char *VM::TrapDispatchSignal::what() const noexcept
 {
     return "VM trap dispatch";
 }
+
+//===----------------------------------------------------------------------===//
+// Section 3: CORE INTERPRETER LOOP
+//===----------------------------------------------------------------------===//
 
 /// @brief Locate and execute the module's @c main function.
 ///
@@ -490,6 +527,10 @@ void VM::RtContextDeleter::operator()(RtContext *ctx) const noexcept
     }
 }
 
+//===----------------------------------------------------------------------===//
+// Section 4: VM LIFECYCLE AND RESOURCE MANAGEMENT
+//===----------------------------------------------------------------------===//
+
 /// @brief Release resources owned by the VM, including cached strings, mutable globals, and runtime
 /// context.
 VM::~VM()
@@ -599,6 +640,10 @@ std::vector<std::pair<int, uint64_t>> VM::topOpcodes(std::size_t n) const
 }
 #endif
 
+//===----------------------------------------------------------------------===//
+// Section 5: EXECUTION CONTEXT MANAGEMENT
+//===----------------------------------------------------------------------===//
+
 /// @brief Record the currently executing instruction for diagnostics and traps.
 /// @param fr Active frame containing the instruction.
 /// @param bb Basic block housing the instruction.
@@ -625,6 +670,10 @@ void VM::clearCurrentContext()
     currentContext.hasInstruction = false;
     currentContext.loc = {};
 }
+
+//===----------------------------------------------------------------------===//
+// Section 6: TRAP HANDLING
+//===----------------------------------------------------------------------===//
 
 /// @brief Populate trap metadata and redirect control to an active handler.
 /// @details Walks the execution stack to locate the nearest handler, wiring up

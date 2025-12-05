@@ -5,9 +5,16 @@ add_library(il_codegen_aarch64 STATIC
         FrameBuilder.cpp
         MachineIR.cpp
         LowerILToMIR.cpp
+        LivenessAnalysis.cpp
+        TerminatorLowering.cpp
         InstrLowering.cpp
         OpcodeDispatch.cpp
         FastPaths.cpp
+        fastpaths/FastPaths_Arithmetic.cpp
+        fastpaths/FastPaths_Call.cpp
+        fastpaths/FastPaths_Cast.cpp
+        fastpaths/FastPaths_Memory.cpp
+        fastpaths/FastPaths_Return.cpp
         RegAllocLinear.cpp)
 target_include_directories(il_codegen_aarch64 PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>

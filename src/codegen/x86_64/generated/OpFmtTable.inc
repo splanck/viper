@@ -1,5 +1,25 @@
-// Generated from tools/spec/x86_64_encodings.json
-// DO NOT EDIT - regenerate with CMake (cmake/GenX86Encodings.cmake)
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// IMPORTANT: This file is auto-generated. Do not edit manually.
+//
+// File: codegen/x86_64/generated/OpFmtTable.inc
+// Purpose: Instruction mnemonic and operand format table for x86-64.
+//
+// Generator: cmake/GenX86Encodings.cmake
+// Source: tools/spec/x86_64_encodings.json
+// Regenerate: cmake --build build (automatic on spec change)
+//
+// Description: Contains OpFmt entries with mnemonic strings and operand
+//              format information for assembly output.
+//
+// Links: docs/il-guide.md#reference, codegen/x86_64/Emit.cpp
+//
+//===----------------------------------------------------------------------===//
 
 static constexpr std::array<OpFmt, 44> kOpFmt = {{
     {MOpcode::MOVrr, "movq", 2U, 0U},
@@ -47,3 +67,4 @@ static constexpr std::array<OpFmt, 44> kOpFmt = {{
     {MOpcode::MOVSDrm, "movsd", 2U, 0U},
     {MOpcode::MOVSDmr, "movsd", 2U, 0U},
 }};
+

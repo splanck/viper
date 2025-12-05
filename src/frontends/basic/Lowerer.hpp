@@ -233,6 +233,12 @@ class Lowerer
     friend class lower::detail::ExprTypeScanner;
     friend class lower::detail::RuntimeNeedsScanner;
 
+    // Modular Lowering Helpers - coordinated by Lowerer for specific concerns
+    friend class lower::detail::ExprLoweringHelper;
+    friend class lower::detail::ControlLoweringHelper;
+    friend class lower::detail::OopLoweringHelper;
+    friend class lower::detail::RuntimeLoweringHelper;
+
     // Emission Utilities - IL generation helpers that need private emit* methods
     friend class Emit;               // Wraps emitUnary/emitBinary with location tracking
     friend class TypeCoercionEngine; // Type coercion needs emitUnary/emitBasicLogicalI64

@@ -1,12 +1,28 @@
 //===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // IMPORTANT: This file is auto-generated. Do not edit manually.
+//
+// File: vm/ops/generated/ThreadedLabels.inc
+// Purpose: GCC computed-goto label address table for threaded VM dispatch.
+//
 // Generator: Manually maintained (synchronized with Opcode enum).
 // Regenerate: Update when adding/removing opcodes in il/core/Opcode.hpp.
 //
-// Purpose: GCC computed-goto label address table for threaded VM dispatch.
-//          Each entry is &&LBL_<OpName> for the corresponding opcode handler.
-//          Included directly in VM.cpp within a label address array initializer.
-// Key invariants: Entry count and order MUST match il::core::kNumOpcodes.
+// Description: Each entry is &&LBL_<OpName> for the corresponding opcode handler.
+//              Included directly in VM.cpp within a label address array initializer.
+//
+// Key Invariants:
+//   - Entry count MUST equal il::core::kNumOpcodes
+//   - Entry order MUST match Opcode enum declaration order exactly
+//   - Requires GCC/Clang computed-goto extension (&&label address syntax)
+//
+// Links: docs/il-guide.md#reference, vm/ops/generated/ThreadedCases.inc
+//
 //===----------------------------------------------------------------------===//
 &&LBL_Add, &&LBL_Sub, &&LBL_Mul, &&LBL_IAddOvf, &&LBL_ISubOvf, &&LBL_IMulOvf, &&LBL_SDiv,
     &&LBL_UDiv, &&LBL_SRem, &&LBL_URem, &&LBL_SDivChk0, &&LBL_UDivChk0, &&LBL_SRemChk0,

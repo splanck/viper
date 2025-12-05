@@ -9,7 +9,34 @@
 // Purpose: IL→MIR lowering orchestrator for AArch64.
 //
 // This file contains the main lowerFunction() method that coordinates the
-// IL to MIR conversion. Individual opcode handlers are in InstrLowering.cpp.
+// IL to MIR conversion. The lowering logic is organized into several modules:
+//
+// File Structure:
+// ---------------
+// LowerILToMIR.cpp      - Main orchestration: frame setup, phi allocation,
+//                         block iteration, cross-block spill/reload
+// LowerILToMIR.hpp      - Public interface (lowerFunction)
+// LoweringContext.hpp   - Shared lowering state passed to handlers
+//
+// Instruction Handlers:
+// ---------------------
+// OpcodeDispatch.cpp    - Main instruction switch statement
+// OpcodeDispatch.hpp    - lowerInstruction() declaration
+// InstrLowering.cpp     - Individual opcode handlers (arithmetic, casts, etc.)
+// InstrLowering.hpp     - Handler declarations and materializeValueToVReg
+// OpcodeMappings.hpp    - Binary op and comparison tables
+//
+// Analysis & Control Flow:
+// ------------------------
+// LivenessAnalysis.cpp  - Cross-block temp liveness analysis
+// LivenessAnalysis.hpp  - LivenessInfo struct and analyzeCrossBlockLiveness()
+// TerminatorLowering.cpp - Control-flow terminator lowering (br, cbr, trap)
+// TerminatorLowering.hpp - lowerTerminators() declaration
+//
+// Fast Paths:
+// -----------
+// FastPaths.cpp         - Fast-path dispatcher for common patterns
+// fastpaths/*           - Category-specific fast-path handlers
 //
 //===----------------------------------------------------------------------===//
 
@@ -18,9 +45,11 @@
 #include "FastPaths.hpp"
 #include "FrameBuilder.hpp"
 #include "InstrLowering.hpp"
+#include "LivenessAnalysis.hpp"
 #include "LoweringContext.hpp"
 #include "OpcodeDispatch.hpp"
 #include "OpcodeMappings.hpp"
+#include "TerminatorLowering.hpp"
 #include "il/core/Instr.hpp"
 #include "il/core/Type.hpp"
 
@@ -61,12 +90,7 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
     tempRegClass.clear();
     // Reset trap label counter for unique labels within this function
     trapLabelCounter = 0;
-    // Debug: function has N instructions in first block
-    if (!fn.blocks.empty())
-    {
-        // std::cerr << "[DEBUG] Lowering " << fn.name << " with " <<
-        // fn.blocks.front().instructions.size() << " instructions\n";
-    }
+
     // Pre-create MIR blocks with labels to mirror IL CFG shape.
     for (const auto &bb : fn.blocks)
     {
@@ -144,92 +168,7 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
     // ===========================================================================
     // Global Liveness Analysis for Cross-Block Temps
     // ===========================================================================
-    // Detect temps that are defined in one block and used in a different block.
-    // Such temps must be spilled at definition and reloaded at use, since the
-    // register allocator processes blocks independently and may reuse registers.
-    //
-    // Step 1: Build map of tempId -> defining block index
-    std::unordered_map<unsigned, std::size_t> tempDefBlock;
-    for (std::size_t bi = 0; bi < fn.blocks.size(); ++bi)
-    {
-        const auto &bb = fn.blocks[bi];
-        // Block parameters are "defined" by their block
-        for (const auto &param : bb.params)
-        {
-            tempDefBlock[param.id] = bi;
-        }
-        // Instructions that produce a result
-        for (const auto &instr : bb.instructions)
-        {
-            if (instr.result)
-            {
-                tempDefBlock[*instr.result] = bi;
-            }
-        }
-    }
-
-    // Step 2: Find temps used in different blocks than their definition
-    // Exclude alloca temps since they don't hold values - they represent stack addresses
-    std::unordered_set<unsigned> crossBlockTemps;
-    for (std::size_t bi = 0; bi < fn.blocks.size(); ++bi)
-    {
-        const auto &bb = fn.blocks[bi];
-        auto checkValue = [&](const il::core::Value &v)
-        {
-            if (v.kind == il::core::Value::Kind::Temp)
-            {
-                // Skip alloca temps - they don't need cross-block spilling
-                // Their address is computed from the frame pointer when needed
-                if (allocaTemps.contains(v.id))
-                    return;
-                auto it = tempDefBlock.find(v.id);
-                if (it != tempDefBlock.end() && it->second != bi)
-                {
-                    // This temp is used in block bi but defined in a different block
-                    crossBlockTemps.insert(v.id);
-                }
-            }
-        };
-        for (const auto &instr : bb.instructions)
-        {
-            for (const auto &op : instr.operands)
-            {
-                checkValue(op);
-            }
-        }
-        // Check terminator operands (branch conditions and arguments)
-        // The terminator is the last instruction in the block
-        if (!bb.instructions.empty())
-        {
-            const auto &term = bb.instructions.back();
-            // Check condition operand for CBr
-            if (term.op == il::core::Opcode::CBr && !term.operands.empty())
-            {
-                checkValue(term.operands[0]); // condition
-            }
-            // Check return value for Ret
-            if (term.op == il::core::Opcode::Ret && !term.operands.empty())
-            {
-                checkValue(term.operands[0]);
-            }
-            // Check branch arguments (phi values)
-            for (const auto &argList : term.brArgs)
-            {
-                for (const auto &arg : argList)
-                {
-                    checkValue(arg);
-                }
-            }
-        }
-    }
-
-    // Step 3: Allocate spill slots for cross-block temps
-    std::unordered_map<unsigned, int> crossBlockSpillOffset;
-    for (unsigned tempId : crossBlockTemps)
-    {
-        int offset = fb.ensureSpill(50000 + tempId); // Use high ID range to avoid conflicts
-        crossBlockSpillOffset[tempId] = offset;
-    }
+    LivenessInfo liveness = analyzeCrossBlockLiveness(fn, allocaTemps, fb);
 
     // Try fast-paths for simple function patterns
     if (auto result = tryFastPaths(fn, *ti_, fb, mf))
@@ -373,10 +312,10 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
             {
                 if (op.kind == il::core::Value::Kind::Temp)
                 {
-                    auto spillIt = crossBlockSpillOffset.find(op.id);
-                    auto defIt = tempDefBlock.find(op.id);
-                    if (spillIt != crossBlockSpillOffset.end() && defIt != tempDefBlock.end() &&
-                        defIt->second != bi)
+                    auto spillIt = liveness.crossBlockSpillOffset.find(op.id);
+                    auto defIt = liveness.tempDefBlock.find(op.id);
+                    if (spillIt != liveness.crossBlockSpillOffset.end() &&
+                        defIt != liveness.tempDefBlock.end() && defIt->second != bi)
                     {
                         // This temp is defined in another block and used here - reload it
                         // Only reload if we haven't already in this block
@@ -418,10 +357,10 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                 const auto &cond = term.operands[0];
                 if (cond.kind == il::core::Value::Kind::Temp)
                 {
-                    auto spillIt = crossBlockSpillOffset.find(cond.id);
-                    auto defIt = tempDefBlock.find(cond.id);
-                    if (spillIt != crossBlockSpillOffset.end() && defIt != tempDefBlock.end() &&
-                        defIt->second != bi)
+                    auto spillIt = liveness.crossBlockSpillOffset.find(cond.id);
+                    auto defIt = liveness.tempDefBlock.find(cond.id);
+                    if (spillIt != liveness.crossBlockSpillOffset.end() &&
+                        defIt != liveness.tempDefBlock.end() && defIt->second != bi)
                     {
                         if (tempVReg.find(cond.id) == tempVReg.end())
                         {
@@ -437,10 +376,6 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
             }
         }
 
-        // Debug: Processing all instructions generically
-        // std::cerr << "[DEBUG] Generic loop for block " << bbIn.label << " with " <<
-        // bbIn.instructions.size() << " instructions\n";
-
         // Create lowering context for dispatching to extracted handlers
         LoweringContext ctx{*ti_,
                             fb,
@@ -451,15 +386,13 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                             phiVregId,
                             phiRegClass,
                             phiSpillOffset,
-                            crossBlockSpillOffset,
-                            tempDefBlock,
-                            crossBlockTemps,
+                            liveness.crossBlockSpillOffset,
+                            liveness.tempDefBlock,
+                            liveness.crossBlockTemps,
                             trapLabelCounter};
 
         for (const auto &ins : bbIn.instructions)
         {
-            // std::cerr << "[DEBUG] Processing opcode: " << static_cast<int>(ins.op) << "\n";
-
             // Try extracted handlers first; they return true if they handled the opcode
             if (lowerInstruction(ins, bbIn, ctx, bi))
             {
@@ -467,8 +400,8 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                 // This ensures the value is preserved in memory for use in other blocks.
                 if (ins.result)
                 {
-                    auto spillIt = crossBlockSpillOffset.find(*ins.result);
-                    if (spillIt != crossBlockSpillOffset.end())
+                    auto spillIt = liveness.crossBlockSpillOffset.find(*ins.result);
+                    if (spillIt != liveness.crossBlockSpillOffset.end())
                     {
                         auto vregIt = tempVReg.find(*ins.result);
                         if (vregIt != tempVReg.end())
@@ -728,8 +661,8 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
             // since the register allocator may reuse the physical register.
             if (ins.result)
             {
-                auto spillIt = crossBlockSpillOffset.find(*ins.result);
-                if (spillIt != crossBlockSpillOffset.end())
+                auto spillIt = liveness.crossBlockSpillOffset.find(*ins.result);
+                if (spillIt != liveness.crossBlockSpillOffset.end())
                 {
                     // This temp is used in another block - spill it now
                     auto vregIt = tempVReg.find(*ins.result);
@@ -768,312 +701,15 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
 
     // Lower control-flow terminators: br, cbr, trap AFTER all other instructions
     // This ensures branches appear after the values they depend on are computed.
-    for (std::size_t i = 0; i < fn.blocks.size(); ++i)
-    {
-        const auto &inBB = fn.blocks[i];
-        if (inBB.instructions.empty())
-            continue;
-        const auto &term = inBB.instructions.back();
-        auto &outBB = mf.blocks[i];
-        // Use the block's tempVReg snapshot to get correct vreg mappings for temps
-        // defined in this block. This avoids using overwritten values from later blocks.
-        auto &blockTempVReg = blockTempVRegSnapshot[i];
-        switch (term.op)
-        {
-            case il::core::Opcode::Br:
-                if (!term.labels.empty())
-                {
-                    // Emit phi edge copies for target - store to spill slots
-                    if (!term.brArgs.empty() && !term.brArgs[0].empty())
-                    {
-                        const std::string &dst = term.labels[0];
-                        auto itIds = phiVregId.find(dst);
-                        auto itSpill = phiSpillOffset.find(dst);
-                        if (itIds != phiVregId.end() && itSpill != phiSpillOffset.end())
-                        {
-                            const auto &ids = itIds->second;
-                            const auto &classes = phiRegClass[dst];
-                            const auto &spillOffsets = itSpill->second;
-                            std::unordered_map<unsigned, uint16_t> tmp2v;
-                            uint16_t nvr = 1;
-                            for (std::size_t ai = 0; ai < term.brArgs[0].size() && ai < ids.size();
-                                 ++ai)
-                            {
-                                uint16_t sv = 0;
-                                RegClass scls = RegClass::GPR;
-                                if (!materializeValueToVReg(term.brArgs[0][ai],
-                                                            inBB,
-                                                            *ti_,
-                                                            fb,
-                                                            outBB,
-                                                            tmp2v,
-                                                            nvr,
-                                                            sv,
-                                                            scls))
-                                    continue;
-                                const RegClass dstCls = classes[ai];
-                                const int offset = spillOffsets[ai];
-                                if (dstCls == RegClass::FPR)
-                                {
-                                    if (scls != RegClass::FPR)
-                                    {
-                                        const uint16_t cvt = nvr++;
-                                        outBB.instrs.push_back(
-                                            MInstr{MOpcode::SCvtF,
-                                                   {MOperand::vregOp(RegClass::FPR, cvt),
-                                                    MOperand::vregOp(RegClass::GPR, sv)}});
-                                        sv = cvt;
-                                        scls = RegClass::FPR;
-                                    }
-                                    // Store FPR to spill slot
-                                    outBB.instrs.push_back(
-                                        MInstr{MOpcode::StrFprFpImm,
-                                               {MOperand::vregOp(RegClass::FPR, sv),
-                                                MOperand::immOp(offset)}});
-                                }
-                                else
-                                {
-                                    if (scls == RegClass::FPR)
-                                    {
-                                        const uint16_t cvt = nvr++;
-                                        outBB.instrs.push_back(
-                                            MInstr{MOpcode::FCvtZS,
-                                                   {MOperand::vregOp(RegClass::GPR, cvt),
-                                                    MOperand::vregOp(RegClass::FPR, sv)}});
-                                        sv = cvt;
-                                        scls = RegClass::GPR;
-                                    }
-                                    // Store GPR to spill slot
-                                    outBB.instrs.push_back(
-                                        MInstr{MOpcode::StrRegFpImm,
-                                               {MOperand::vregOp(RegClass::GPR, sv),
-                                                MOperand::immOp(offset)}});
-                                }
-                            }
-                        }
-                    }
-                    outBB.instrs.push_back(
-                        MInstr{MOpcode::Br, {MOperand::labelOp(term.labels[0])}});
-                }
-                break;
-            case il::core::Opcode::Trap:
-            {
-                // Phase A: lower trap to a helper call for diagnostics.
-                // Skip emitting rt_trap if the block already has a call to a noreturn function
-                // like rt_arr_oob_panic (which will abort and never return).
-                bool hasNoreturnCall = false;
-                for (const auto &mi : outBB.instrs)
-                {
-                    if (mi.opc == MOpcode::Bl && !mi.ops.empty() &&
-                        mi.ops[0].kind == MOperand::Kind::Label)
-                    {
-                        const std::string &callee = mi.ops[0].label;
-                        if (callee == "rt_arr_oob_panic" || callee == "rt_trap")
-                        {
-                            hasNoreturnCall = true;
-                            break;
-                        }
-                    }
-                }
-                if (!hasNoreturnCall)
-                {
-                    outBB.instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap")}});
-                }
-                break;
-            }
-            case il::core::Opcode::TrapFromErr:
-            {
-                // Phase A: move optional error code into x0 (when available), then call rt_trap.
-                if (!term.operands.empty())
-                {
-                    const auto &code = term.operands[0];
-                    if (code.kind == il::core::Value::Kind::ConstInt)
-                    {
-                        outBB.instrs.push_back(
-                            MInstr{MOpcode::MovRI,
-                                   {MOperand::regOp(PhysReg::X0), MOperand::immOp(code.i64)}});
-                    }
-                    else if (code.kind == il::core::Value::Kind::Temp)
-                    {
-                        int pIdx = indexOfParam(inBB, code.id);
-                        if (pIdx >= 0 && static_cast<std::size_t>(pIdx) < kMaxGPRArgs)
-                        {
-                            const PhysReg src = argOrder[static_cast<std::size_t>(pIdx)];
-                            if (src != PhysReg::X0)
-                                outBB.instrs.push_back(
-                                    MInstr{MOpcode::MovRR,
-                                           {MOperand::regOp(PhysReg::X0), MOperand::regOp(src)}});
-                        }
-                    }
-                }
-                outBB.instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("rt_trap")}});
-                break;
-            }
-            case il::core::Opcode::CBr:
-                if (term.operands.size() >= 1 && term.labels.size() == 2)
-                {
-                    // Emit phi copies for both edges unconditionally
-                    const std::string &trueLbl = term.labels[0];
-                    const std::string &falseLbl = term.labels[1];
-                    auto emitEdgeCopies =
-                        [&](const std::string &dst, const std::vector<il::core::Value> &args)
-                    {
-                        auto itIds = phiVregId.find(dst);
-                        if (itIds == phiVregId.end())
-                            return;
-                        auto itSpill = phiSpillOffset.find(dst);
-                        if (itSpill == phiSpillOffset.end())
-                            return;
-                        const auto &ids = itIds->second;
-                        const auto &classes = phiRegClass[dst];
-                        const auto &spillOffsets = itSpill->second;
-                        // Store phi values to spill slots since register allocator
-                        // releases vreg mappings at block boundaries
-                        for (std::size_t ai = 0; ai < args.size() && ai < ids.size(); ++ai)
-                        {
-                            uint16_t sv = 0;
-                            RegClass scls = RegClass::GPR;
-                            if (!materializeValueToVReg(args[ai],
-                                                        inBB,
-                                                        *ti_,
-                                                        fb,
-                                                        outBB,
-                                                        blockTempVReg,
-                                                        nextVRegId,
-                                                        sv,
-                                                        scls))
-                                continue;
-                            const RegClass dstCls = classes[ai];
-                            const int offset = spillOffsets[ai];
-                            if (dstCls == RegClass::FPR)
-                            {
-                                if (scls != RegClass::FPR)
-                                {
-                                    const uint16_t cvt = nextVRegId++;
-                                    outBB.instrs.push_back(
-                                        MInstr{MOpcode::SCvtF,
-                                               {MOperand::vregOp(RegClass::FPR, cvt),
-                                                MOperand::vregOp(RegClass::GPR, sv)}});
-                                    sv = cvt;
-                                    scls = RegClass::FPR;
-                                }
-                                // Store FPR to spill slot
-                                outBB.instrs.push_back(MInstr{MOpcode::StrFprFpImm,
-                                                              {MOperand::vregOp(RegClass::FPR, sv),
-                                                               MOperand::immOp(offset)}});
-                            }
-                            else
-                            {
-                                if (scls == RegClass::FPR)
-                                {
-                                    const uint16_t cvt = nextVRegId++;
-                                    outBB.instrs.push_back(
-                                        MInstr{MOpcode::FCvtZS,
-                                               {MOperand::vregOp(RegClass::GPR, cvt),
-                                                MOperand::vregOp(RegClass::FPR, sv)}});
-                                    sv = cvt;
-                                    scls = RegClass::GPR;
-                                }
-                                // Store GPR to spill slot
-                                outBB.instrs.push_back(MInstr{MOpcode::StrRegFpImm,
-                                                              {MOperand::vregOp(RegClass::GPR, sv),
-                                                               MOperand::immOp(offset)}});
-                            }
-                        }
-                    };
-                    if (term.brArgs.size() > 0)
-                        emitEdgeCopies(trueLbl, term.brArgs[0]);
-                    if (term.brArgs.size() > 1)
-                        emitEdgeCopies(falseLbl, term.brArgs[1]);
-                    // Try to lower compares to cmp + b.<cond>
-                    const auto &cond = term.operands[0];
-                    bool loweredViaCompare = false;
-                    if (cond.kind == il::core::Value::Kind::Temp)
-                    {
-                        const auto it = std::find_if(inBB.instructions.begin(),
-                                                     inBB.instructions.end(),
-                                                     [&](const il::core::Instr &I)
-                                                     { return I.result && *I.result == cond.id; });
-                        if (it != inBB.instructions.end())
-                        {
-                            const il::core::Instr &cmpI = *it;
-                            const char *cc = condForOpcode(cmpI.op);
-                            if (cc && cmpI.operands.size() == 2)
-                            {
-                                const auto &o0 = cmpI.operands[0];
-                                const auto &o1 = cmpI.operands[1];
-                                if (o0.kind == il::core::Value::Kind::Temp &&
-                                    o1.kind == il::core::Value::Kind::Temp)
-                                {
-                                    int idx0 = indexOfParam(inBB, o0.id);
-                                    int idx1 = indexOfParam(inBB, o1.id);
-                                    if (idx0 >= 0 && idx1 >= 0 &&
-                                        static_cast<std::size_t>(idx0) < kMaxGPRArgs &&
-                                        static_cast<std::size_t>(idx1) < kMaxGPRArgs)
-                                    {
-                                        const PhysReg src0 = argOrder[static_cast<size_t>(idx0)];
-                                        const PhysReg src1 = argOrder[static_cast<size_t>(idx1)];
-                                        // cmp x0, x1
-                                        outBB.instrs.push_back(
-                                            MInstr{MOpcode::CmpRR,
-                                                   {MOperand::regOp(src0), MOperand::regOp(src1)}});
-                                        outBB.instrs.push_back(MInstr{
-                                            MOpcode::BCond,
-                                            {MOperand::condOp(cc), MOperand::labelOp(trueLbl)}});
-                                        outBB.instrs.push_back(
-                                            MInstr{MOpcode::Br, {MOperand::labelOp(falseLbl)}});
-                                        loweredViaCompare = true;
-                                    }
-                                }
-                                else if (o0.kind == il::core::Value::Kind::Temp &&
-                                         o1.kind == il::core::Value::Kind::ConstInt)
-                                {
-                                    int idx0 = indexOfParam(inBB, o0.id);
-                                    if (idx0 >= 0 && static_cast<std::size_t>(idx0) < kMaxGPRArgs)
-                                    {
-                                        const PhysReg src0 = argOrder[static_cast<size_t>(idx0)];
-                                        if (src0 != PhysReg::X0)
-                                        {
-                                            outBB.instrs.push_back(
-                                                MInstr{MOpcode::MovRR,
-                                                       {MOperand::regOp(PhysReg::X0),
-                                                        MOperand::regOp(src0)}});
-                                        }
-                                        outBB.instrs.push_back(MInstr{MOpcode::CmpRI,
-                                                                      {MOperand::regOp(PhysReg::X0),
-                                                                       MOperand::immOp(o1.i64)}});
-                                        outBB.instrs.push_back(MInstr{
-                                            MOpcode::BCond,
-                                            {MOperand::condOp(cc), MOperand::labelOp(trueLbl)}});
-                                        outBB.instrs.push_back(
-                                            MInstr{MOpcode::Br, {MOperand::labelOp(falseLbl)}});
-                                        loweredViaCompare = true;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    if (!loweredViaCompare)
-                    {
-                        // Materialize boolean and branch on non-zero
-                        // Use the block's tempVReg snapshot to get correct vreg mappings
-                        uint16_t cv = 0;
-                        RegClass cc = RegClass::GPR;
-                        materializeValueToVReg(
-                            cond, inBB, *ti_, fb, outBB, blockTempVReg, nextVRegId, cv, cc);
-                        outBB.instrs.push_back(
-                            MInstr{MOpcode::CmpRI,
-                                   {MOperand::vregOp(RegClass::GPR, cv), MOperand::immOp(0)}});
-                        outBB.instrs.push_back(MInstr{
-                            MOpcode::BCond, {MOperand::condOp("ne"), MOperand::labelOp(trueLbl)}});
-                        outBB.instrs.push_back(MInstr{MOpcode::Br, {MOperand::labelOp(falseLbl)}});
-                    }
-                }
-                break;
-            default:
-                break;
-        }
-    }
+    lowerTerminators(fn,
+                     mf,
+                     *ti_,
+                     fb,
+                     phiVregId,
+                     phiRegClass,
+                     phiSpillOffset,
+                     blockTempVRegSnapshot,
+                     nextVRegId);
 
     fb.finalize();
     return mf;

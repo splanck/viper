@@ -310,41 +310,34 @@ namespace il::vm
 // ExternRegistry Implementation
 //===----------------------------------------------------------------------===//
 //
-// DESIGN NOTE: Process-Global Extern Registry
-// ============================================
+// DESIGN NOTE: Extern Registry Scoping
+// =====================================
 //
-// The extern registry is currently implemented as a process-global singleton
-// protected by a mutex. This design has the following implications:
+// The extern registry supports two modes of operation:
 //
-// 1. SHARED STATE: All VM instances in the process see the same set of
-//    registered external functions. A function registered by one VM is
-//    visible to all VMs.
+// 1. PROCESS-GLOBAL REGISTRY (default):
+//    A singleton registry protected by a mutex. All VM instances without a
+//    per-VM registry share this global registry. Functions registered via
+//    RuntimeBridge::registerExtern() go here.
 //
-// 2. THREAD SAFETY: The mutex ensures safe concurrent access from multiple
-//    threads. Registration, lookup, and unregistration are all serialized.
+// 2. PER-VM REGISTRY (opt-in):
+//    Each VM can optionally hold a pointer to its own ExternRegistry. When
+//    resolving extern calls via currentExternRegistry(), the active VM's
+//    registry is checked first; if no match is found (or no per-VM registry
+//    is configured), the process-global registry is consulted.
 //
-// 3. LIFETIME: The registry persists for the lifetime of the process. There
-//    is no cleanup mechanism; registered functions remain until explicitly
-//    unregistered or the process exits.
+// Thread Safety:
+// - The process-global registry is protected by an internal mutex.
+// - Per-VM registries are NOT mutex-protected; they rely on the VM's single-
+//   threaded execution model. Embedders must not modify a per-VM registry
+//   from another thread while the VM is executing.
 //
-// 4. MULTI-TENANT LIMITATION: This design is unsuitable for scenarios where
-//    different VM instances should have isolated sets of external functions
-//    (e.g., multi-tenant embedding where tenants should not see each other's
-//    host functions).
-//
-// FUTURE: Per-VM Extern Registry
-// ==============================
-//
-// To support per-VM scoping, the following changes would be needed:
-//
-// 1. Add an `ExternRegistry*` member to the VM class.
-// 2. Modify `currentExternRegistry()` to check for an active VM and return
-//    its registry if present, falling back to the process-global registry.
-// 3. Provide factory functions to create per-VM registries.
-// 4. Update RuntimeBridge::call() to resolve against the current registry.
-//
-// The `ExternRegistry` abstraction below is designed to facilitate this
-// future refactoring without breaking the existing API.
+// Usage Pattern for Per-VM Registries:
+//   auto reg = createExternRegistry();      // Create isolated registry
+//   vm.setExternRegistry(reg.get());        // Assign to VM (non-owning)
+//   registerExternIn(*reg, myExternDesc);   // Populate
+//   // ... vm.run() ...
+//   // reg must outlive vm
 //
 //===----------------------------------------------------------------------===//
 
@@ -369,6 +362,7 @@ struct ExternRegistry
 {
     std::mutex mutex;                                   ///< Protects concurrent access.
     std::unordered_map<std::string, ExtRecord> entries; ///< Name -> record mapping.
+    bool strictMode = false; ///< When true, reject re-registration with different signature.
 };
 
 namespace
@@ -380,6 +374,32 @@ ExternRegistry &globalRegistry()
 {
     static ExternRegistry instance;
     return instance;
+}
+
+/// @brief Compare two signatures for structural equality.
+/// @details Two signatures are equal if they have the same parameter kinds
+///          and return kinds in the same order. The name and attribute flags
+///          (nothrow, readonly, pure) are ignored for this comparison.
+/// @param a First signature.
+/// @param b Second signature.
+/// @return True if the signatures are structurally equivalent.
+static bool signaturesEqual(const Signature &a, const Signature &b)
+{
+    if (a.params.size() != b.params.size())
+        return false;
+    if (a.rets.size() != b.rets.size())
+        return false;
+    for (size_t i = 0; i < a.params.size(); ++i)
+    {
+        if (a.params[i].kind != b.params[i].kind)
+            return false;
+    }
+    for (size_t i = 0; i < a.rets.size(); ++i)
+    {
+        if (a.rets[i].kind != b.rets[i].kind)
+            return false;
+    }
+    return true;
 }
 
 static il::core::Type mapKind(il::runtime::signatures::SigParam::Kind k)
@@ -614,6 +634,13 @@ bool RuntimeBridge::hasActiveVm()
     return VM::activeInstance() != nullptr;
 }
 
+ExternRegistry *RuntimeBridge::activeVmRegistry()
+{
+    if (VM *vm = VM::activeInstance())
+        return vm->externRegistry();
+    return nullptr;
+}
+
 Slot RuntimeBridge::call(RuntimeCallContext &ctx,
                          std::string_view name,
                          const std::vector<Slot> &args,
@@ -647,17 +674,16 @@ ExternRegistry &processGlobalExternRegistry()
 
 ExternRegistry &currentExternRegistry()
 {
-    // FUTURE: Check for active VM and return its registry if present.
-    // For now, always return the process-global registry.
-    //
-    // To implement per-VM scoping:
-    //   if (VM *vm = VM::activeInstance())
-    //       if (vm->externRegistry)
-    //           return *vm->externRegistry;
+    // Check for active VM with a per-VM registry configured.
+    // Falls back to the process-global registry when:
+    // - No VM is currently active, or
+    // - The active VM has no per-VM registry assigned.
+    if (ExternRegistry *reg = RuntimeBridge::activeVmRegistry())
+        return *reg;
     return globalRegistry();
 }
 
-void registerExternIn(ExternRegistry &registry, const ExternDesc &ext)
+ExternRegisterResult registerExternIn(ExternRegistry &registry, const ExternDesc &ext)
 {
     ExtRecord rec;
     rec.pub = ext;
@@ -665,7 +691,34 @@ void registerExternIn(ExternRegistry &registry, const ExternDesc &ext)
     rec.handler = reinterpret_cast<il::runtime::RuntimeHandler>(ext.fn);
     const std::string key = canonicalizeExternName(ext.name);
     std::lock_guard<std::mutex> lock(registry.mutex);
-    registry.entries.insert_or_assign(key, std::move(rec));
+
+    // Check for existing entry with same name
+    auto it = registry.entries.find(key);
+    if (it != registry.entries.end())
+    {
+        // Already registered - check signature compatibility
+        if (signaturesEqual(it->second.pub.signature, ext.signature))
+        {
+            // Same signature: update silently (no-op if fn is also the same)
+            it->second = std::move(rec);
+            return ExternRegisterResult::Success;
+        }
+        else
+        {
+            // Different signature: error in strict mode, warning otherwise
+            if (registry.strictMode)
+            {
+                return ExternRegisterResult::SignatureMismatch;
+            }
+            // Non-strict mode: overwrite and continue
+            it->second = std::move(rec);
+            return ExternRegisterResult::Success;
+        }
+    }
+
+    // New registration
+    registry.entries.emplace(key, std::move(rec));
+    return ExternRegisterResult::Success;
 }
 
 bool unregisterExternIn(ExternRegistry &registry, std::string_view name)
@@ -700,6 +753,38 @@ const ExternDesc *resolveExternIn(ExternRegistry &registry,
     if (outHandler)
         *outHandler = it->second.handler;
     return &it->second.pub;
+}
+
+//===----------------------------------------------------------------------===//
+// ExternRegistry Strict Mode API
+//===----------------------------------------------------------------------===//
+
+void setExternRegistryStrictMode(ExternRegistry &registry, bool enabled)
+{
+    std::lock_guard<std::mutex> lock(registry.mutex);
+    registry.strictMode = enabled;
+}
+
+bool isExternRegistryStrictMode(const ExternRegistry &registry)
+{
+    // Note: reading a bool is atomic on all supported platforms, but we lock
+    // for consistency with the setter and to be future-proof.
+    std::lock_guard<std::mutex> lock(const_cast<std::mutex &>(registry.mutex));
+    return registry.strictMode;
+}
+
+//===----------------------------------------------------------------------===//
+// ExternRegistry Factory and Deleter
+//===----------------------------------------------------------------------===//
+
+void ExternRegistryDeleter::operator()(ExternRegistry *reg) const noexcept
+{
+    delete reg;
+}
+
+ExternRegistryPtr createExternRegistry()
+{
+    return ExternRegistryPtr(new ExternRegistry());
 }
 
 //===----------------------------------------------------------------------===//

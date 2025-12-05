@@ -839,6 +839,38 @@ class VM
     // Polling configuration stored on VM and propagated to new ExecStates
     uint32_t pollEveryN_ = 0;
     std::function<bool(VM &)> pollCallback_{};
+
+    //===------------------------------------------------------------------===//
+    // Per-VM Extern Registry
+    //===------------------------------------------------------------------===//
+
+    /// @brief Optional per-VM extern registry for isolated function resolution.
+    /// @details When non-null, extern calls are first resolved against this
+    ///          registry before falling back to the process-global registry.
+    ///          This enables multi-tenant scenarios where different VMs can
+    ///          have different sets of host-provided functions.
+    /// @ownership Non-owning pointer; the registry must outlive the VM.
+    ///            Typically the embedder owns the registry via ExternRegistryPtr.
+    /// @invariant May only be modified when the VM is not executing.
+    ExternRegistry *externRegistry_ = nullptr;
+
+  public:
+    /// @brief Assign a per-VM extern registry for isolated function resolution.
+    /// @param registry Pointer to the registry, or nullptr to use only global.
+    /// @details The registry must outlive the VM. Typically created via
+    ///          createExternRegistry() and owned by the embedder.
+    /// @note Thread safety: Call only when the VM is not executing.
+    void setExternRegistry(ExternRegistry *registry) noexcept
+    {
+        externRegistry_ = registry;
+    }
+
+    /// @brief Retrieve the per-VM extern registry, if any.
+    /// @return Pointer to the assigned registry, or nullptr if using global only.
+    [[nodiscard]] ExternRegistry *externRegistry() const noexcept
+    {
+        return externRegistry_;
+    }
 };
 
 } // namespace il::vm

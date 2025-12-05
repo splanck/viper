@@ -87,6 +87,12 @@ namespace detail
 {
 class ExprTypeScanner;
 class RuntimeNeedsScanner;
+
+// Modular lowering helper classes
+class ExprLoweringHelper;
+class ControlLoweringHelper;
+class OopLoweringHelper;
+class RuntimeLoweringHelper;
 } // namespace detail
 
 } // namespace lower

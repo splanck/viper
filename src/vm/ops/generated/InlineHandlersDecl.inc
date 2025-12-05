@@ -1,5 +1,25 @@
-// This file is auto-generated. Do not edit manually.
-// Maintained as a committed generated include.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// IMPORTANT: This file is auto-generated. Do not edit manually.
+//
+// File: vm/ops/generated/InlineHandlersDecl.inc
+// Purpose: Forward declarations of inline handler functions for all opcodes.
+//
+// Generator: Manually maintained (synchronized with Opcode enum).
+// Regenerate: Update when adding/removing opcodes in il/core/Opcode.hpp.
+//
+// Key Invariants:
+//   - One declaration per opcode in enum order
+//   - Handler signature: void inline_handle_<OpName>(ExecState &st)
+//
+// Links: docs/il-guide.md#reference, vm/ops/generated/InlineHandlersImpl.inc
+//
+//===----------------------------------------------------------------------===//
 
 void inline_handle_Add(ExecState &st);
 void inline_handle_Sub(ExecState &st);

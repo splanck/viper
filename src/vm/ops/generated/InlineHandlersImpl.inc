@@ -1,5 +1,26 @@
-// This file is auto-generated. Do not edit manually.
-// Maintained as a committed generated include.
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// IMPORTANT: This file is auto-generated. Do not edit manually.
+//
+// File: vm/ops/generated/InlineHandlersImpl.inc
+// Purpose: Implementation of inline handler functions for all VM opcodes.
+//
+// Generator: Manually maintained (synchronized with Opcode enum).
+// Regenerate: Update when adding/removing opcodes in il/core/Opcode.hpp.
+//
+// Key Invariants:
+//   - One handler per opcode in enum order
+//   - Handler implementation: void VM::inline_handle_<OpName>(ExecState &st)
+//   - Each handler delegates to detail::handle<OpName> and calls handleInlineResult
+//
+// Links: docs/il-guide.md#reference, vm/ops/generated/InlineHandlersDecl.inc
+//
+//===----------------------------------------------------------------------===//
 
 void VM::inline_handle_Add(ExecState &st)
 {

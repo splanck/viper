@@ -1,6 +1,36 @@
 //===----------------------------------------------------------------------===//
-// Generated file -- do not edit manually.
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 //===----------------------------------------------------------------------===//
+//
+// IMPORTANT: This file is auto-generated. Do not edit manually.
+//
+// File: il/runtime/generated/RuntimeSignatures.inc
+// Purpose: Runtime descriptor rows for all runtime functions.
+//
+// This file defines DescriptorRow entries for runtime functions including:
+//   - Viper.Console.* (I/O functions)
+//   - Viper.String.* (string manipulation)
+//   - Viper.Math.* (mathematical functions)
+//   - Viper.Collections.* (collection types)
+//   - rt_* low-level runtime helpers
+//
+// Source of Truth: src/runtime/*.c and include/viper/runtime/*.h
+// Generator: Manually maintained (synchronized with runtime C API).
+// Regenerate: Update when adding/removing runtime functions.
+//             See docs/generated-files.md for full instructions.
+//
+// Key Invariants:
+//   - Each DescriptorRow must have a unique canonical name
+//   - Handler function pointers must match the declared signature
+//   - VIPER_RUNTIME_NS_DUAL controls dual-naming for legacy compatibility
+//
+// Links: docs/generated-files.md, docs/il-guide.md#reference
+//
+//===----------------------------------------------------------------------===//
+
 // New canonical name + alias for string printing
 #if VIPER_RUNTIME_NS_DUAL
 DescriptorRow{"Viper.Console.PrintStr",

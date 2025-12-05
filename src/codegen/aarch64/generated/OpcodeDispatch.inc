@@ -1,7 +1,25 @@
-// Generated from tools/spec/aarch64_encodings.json
-// DO NOT EDIT - regenerate with CMake (cmake/GenAArch64Dispatch.cmake)
-
-// This file contains the opcode dispatch logic for emitInstruction
+//===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// IMPORTANT: This file is auto-generated. Do not edit manually.
+//
+// File: codegen/aarch64/generated/OpcodeDispatch.inc
+// Purpose: Opcode dispatch switch logic for AArch64 instruction emission.
+//
+// Generator: cmake/GenAArch64Dispatch.cmake
+// Source: tools/spec/aarch64_encodings.json
+// Regenerate: cmake --build build (automatic on spec change)
+//
+// Description: Contains the switch statement body that maps MOpcode enum
+//              values to their corresponding emit* function calls.
+//
+// Links: docs/il-guide.md#reference, codegen/aarch64/AsmEmitter.cpp
+//
+//===----------------------------------------------------------------------===//
 
 using K = MOpcode;
 auto reg = [](const MOperand &op)

@@ -507,6 +507,20 @@ function(viper_add_il_utils_test)
             test_il_simplifycfg_pass_manager_cfg_invalidation test_il_simplifycfg_pass_manager_cfg_invalidation)
 
     viper_add_test(
+            test_il_peephole_use_count
+            ${_VIPER_IL_DIR}/transform/peephole_use_count.cpp)
+    target_link_libraries(
+            test_il_peephole_use_count PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
+    viper_add_ctest(test_il_peephole_use_count test_il_peephole_use_count)
+
+    viper_add_test(
+            test_il_dce_param_compaction
+            ${_VIPER_IL_DIR}/transform/dce_param_compaction.cpp)
+    target_link_libraries(
+            test_il_dce_param_compaction PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
+    viper_add_ctest(test_il_dce_param_compaction test_il_dce_param_compaction)
+
+    viper_add_test(
             test_il_loop_simplify_preheader
             ${VIPER_TESTS_DIR}/unit/il/transform/test_LoopSimplify.cpp)
     target_link_libraries(

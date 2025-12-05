@@ -1,12 +1,28 @@
 //===----------------------------------------------------------------------===//
+//
+// Part of the Viper project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // IMPORTANT: This file is auto-generated. Do not edit manually.
+//
+// File: vm/ops/generated/SwitchDispatchImpl.inc
+// Purpose: Switch-based VM dispatch function implementation.
+//
 // Generator: Manually maintained (synchronized with Opcode enum).
 // Regenerate: Update when adding/removing opcodes in il/core/Opcode.hpp.
 //
-// Purpose: Switch-based VM dispatch function implementation. Provides a
-//          portable fallback dispatcher when GCC computed-goto (threaded
-//          dispatch) is unavailable. Each case invokes inline_handle_<Op>.
-// Key invariants: Case labels MUST cover all il::core::Opcode values.
+// Description: Provides a portable fallback dispatcher when GCC computed-goto
+//              (threaded dispatch) is unavailable. Each case invokes the
+//              corresponding inline_handle_<Op> function.
+//
+// Key Invariants:
+//   - Case labels MUST cover all il::core::Opcode values
+//   - Case order MUST match Opcode enum declaration order
+//
+// Links: docs/il-guide.md#reference, vm/ops/generated/SwitchDispatchDecl.inc
+//
 //===----------------------------------------------------------------------===//
 
 void VM::dispatchOpcodeSwitch(ExecState &state, const il::core::Instr &instr)

@@ -124,6 +124,8 @@ target_sources(fe_basic PRIVATE
         OopIndex.cpp
         OopLoweringContext.cpp
         Semantic_OOP.cpp
+        Semantic_OOP_Helpers.cpp
+        Semantic_OOP_Builder.cpp
         SemanticAnalyzer_Exprs.cpp
         SemanticAnalyzer_Builtins.cpp
         ScopeTracker.cpp
@@ -152,6 +154,10 @@ target_sources(fe_basic PRIVATE
         lower/oop/Lower_OOP_Helpers.cpp
         lower/oop/Lower_OOP_RuntimeHelpers.cpp
         lower/oop/MethodDispatchHelpers.cpp
+        lower/detail/ExprLoweringHelper.cpp
+        lower/detail/ControlLoweringHelper.cpp
+        lower/detail/OopLoweringHelper.cpp
+        lower/detail/RuntimeLoweringHelper.cpp
         ProcRegistry.cpp
         SemanticDiagnostics.cpp
 )

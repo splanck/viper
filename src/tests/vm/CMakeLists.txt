@@ -201,6 +201,11 @@ function(viper_add_vm_unit_tests)
     target_link_libraries(test_vm_multi_isolation PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
     viper_add_ctest(test_vm_multi_isolation test_vm_multi_isolation)
 
+    # Per-VM extern registry isolation tests
+    viper_add_test(test_vm_per_vm_extern_registry ${_VIPER_VM_DIR}/PerVMExternRegistryTests.cpp)
+    target_link_libraries(test_vm_per_vm_extern_registry PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common Threads::Threads)
+    viper_add_ctest(test_vm_per_vm_extern_registry test_vm_per_vm_extern_registry)
+
     viper_add_test(test_vm_runtime_concurrency ${VIPER_TESTS_DIR}/unit/test_vm_runtime_concurrency.cpp)
     target_link_libraries(test_vm_runtime_concurrency PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} Threads::Threads)
     viper_add_ctest(test_vm_runtime_concurrency test_vm_runtime_concurrency)
@@ -324,6 +329,11 @@ function(viper_add_vm_unit_tests)
     viper_add_test(test_viper_string_handle ${_VIPER_VM_DIR}/test_viper_string_handle.cpp)
     target_link_libraries(test_viper_string_handle PRIVATE ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
     viper_add_ctest(test_viper_string_handle test_viper_string_handle)
+
+    # ActiveVMGuard re-entrancy tests (callbacks and nested guards)
+    viper_add_test(test_vm_reentrant_callbacks ${_VIPER_VM_DIR}/ReentrantCallbackTests.cpp)
+    target_link_libraries(test_vm_reentrant_callbacks PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB} viper_test_common)
+    viper_add_ctest(test_vm_reentrant_callbacks test_vm_reentrant_callbacks)
 endfunction()
 
 function(viper_add_vm_path_tests)

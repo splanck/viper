@@ -12,6 +12,38 @@
 // clean-up to SimplifyCFG.
 //
 //===----------------------------------------------------------------------===//
+//
+// File Structure:
+// ---------------
+// This file is organized into the following sections:
+//
+// 1. Lattice and Value Utilities
+//    - LatticeValue struct and value comparison helpers
+//    - Constant extraction helpers (getConstInt, getConstFloat, etc.)
+//    - Overflow-checked arithmetic helpers
+//
+// 2. Constant Folding by Opcode Family
+//    - foldIntegerArithmetic: Add, Sub, Mul, And, Or, Xor, Shl, LShr, AShr
+//    - foldOverflowArithmetic: IAddOvf, ISubOvf, IMulOvf
+//    - foldDivisionRemainder: SDivChk0, SRemChk0, UDivChk0, URemChk0
+//    - foldFloatArithmetic: FAdd, FSub, FMul, FDiv
+//    - foldIntegerComparisons: ICmpEq, ICmpNe, SCmpLT, SCmpLE, SCmpGT, SCmpGE
+//    - foldUnsignedComparisons: UCmpLT, UCmpLE, UCmpGT, UCmpGE
+//    - foldFloatComparisons: FCmpEQ, FCmpNE, FCmpLT, FCmpLE, FCmpGT, FCmpGE
+//    - foldTypeConversions: CastSiToFp, CastUiToFp, CastFpToSiRteChk, etc.
+//    - foldBooleanOps: Zext1, Trunc1
+//    - foldConstantMaterialization: ConstNull, ConstStr, AddrOf
+//
+// 3. SCCPSolver Class
+//    - Lattice state management
+//    - Worklist processing
+//    - Terminator handling (CBr, SwitchI32)
+//    - Rewriting phase
+//
+// 4. Public API
+//    - sccp(Module&) entry point
+//
+//===----------------------------------------------------------------------===//
 
 /// @file
 /// @brief Sparse conditional constant propagation for IL functions.
@@ -47,19 +79,27 @@ namespace il::transform
 {
 namespace
 {
+
+//===----------------------------------------------------------------------===//
+// Section 1: Lattice and Value Utilities
+//===----------------------------------------------------------------------===//
+
+/// @brief Three-point lattice for SCCP analysis.
+/// @details Unknown < Constant < Overdefined
 struct LatticeValue
 {
     enum class Kind
     {
-        Unknown,
-        Constant,
-        Overdefined
+        Unknown,    ///< Value not yet determined
+        Constant,   ///< Value is a known constant
+        Overdefined ///< Value varies or cannot be determined
     };
 
     Kind kind = Kind::Unknown;
     Value constant{};
 };
 
+/// @brief Compare two IL values for equality.
 bool valuesEqual(const Value &lhs, const Value &rhs)
 {
     if (lhs.kind != rhs.kind)
@@ -81,6 +121,11 @@ bool valuesEqual(const Value &lhs, const Value &rhs)
     return false;
 }
 
+//===----------------------------------------------------------------------===//
+// Constant Extraction Helpers
+//===----------------------------------------------------------------------===//
+
+/// @brief Extract a signed integer constant from a value.
 bool getConstInt(const Value &value, long long &out)
 {
     if (value.kind != Value::Kind::ConstInt)
@@ -89,6 +134,7 @@ bool getConstInt(const Value &value, long long &out)
     return true;
 }
 
+/// @brief Extract an unsigned integer constant from a value.
 bool getConstUInt(const Value &value, unsigned long long &out)
 {
     if (value.kind != Value::Kind::ConstInt)
@@ -97,6 +143,8 @@ bool getConstUInt(const Value &value, unsigned long long &out)
     return true;
 }
 
+/// @brief Extract a floating-point constant from a value.
+/// @details Also handles ConstInt by converting to double.
 bool getConstFloat(const Value &value, double &out)
 {
     if (value.kind == Value::Kind::ConstFloat)
@@ -112,6 +160,8 @@ bool getConstFloat(const Value &value, double &out)
     return false;
 }
 
+/// @brief Extract a boolean from a constant value.
+/// @details Handles ConstInt, ConstFloat, NullPtr, ConstStr, GlobalAddr.
 bool getConstBool(const Value &value, bool &out)
 {
     switch (value.kind)
@@ -134,6 +184,11 @@ bool getConstBool(const Value &value, bool &out)
     }
 }
 
+//===----------------------------------------------------------------------===//
+// Overflow-Checked Arithmetic Helpers
+//===----------------------------------------------------------------------===//
+
+/// @brief Checked signed addition that returns nullopt on overflow.
 std::optional<long long> checkedAdd(long long lhs, long long rhs)
 {
     long long result{};
@@ -142,6 +197,7 @@ std::optional<long long> checkedAdd(long long lhs, long long rhs)
     return result;
 }
 
+/// @brief Checked signed subtraction that returns nullopt on overflow.
 std::optional<long long> checkedSub(long long lhs, long long rhs)
 {
     long long result{};
@@ -150,6 +206,7 @@ std::optional<long long> checkedSub(long long lhs, long long rhs)
     return result;
 }
 
+/// @brief Checked signed multiplication that returns nullopt on overflow.
 std::optional<long long> checkedMul(long long lhs, long long rhs)
 {
     long long result{};
@@ -157,6 +214,400 @@ std::optional<long long> checkedMul(long long lhs, long long rhs)
         return std::nullopt;
     return result;
 }
+
+//===----------------------------------------------------------------------===//
+// Section 2: Constant Folding by Opcode Family
+//===----------------------------------------------------------------------===//
+//
+// Each fold function takes the instruction and a resolver for operand values,
+// returning an optional constant if the operation can be folded.
+//
+
+/// @brief Context for resolving instruction operands during folding.
+struct FoldContext
+{
+    const Instr &instr;
+    std::function<bool(size_t, Value &)> resolveOperand;
+
+    bool getConstIntOperand(size_t index, long long &out) const
+    {
+        if (index >= instr.operands.size())
+            return false;
+        Value resolved;
+        if (!resolveOperand(index, resolved))
+            return false;
+        return getConstInt(resolved, out);
+    }
+
+    bool getConstUIntOperand(size_t index, unsigned long long &out) const
+    {
+        if (index >= instr.operands.size())
+            return false;
+        Value resolved;
+        if (!resolveOperand(index, resolved))
+            return false;
+        return getConstUInt(resolved, out);
+    }
+
+    bool getConstFloatOperand(size_t index, double &out) const
+    {
+        if (index >= instr.operands.size())
+            return false;
+        Value resolved;
+        if (!resolveOperand(index, resolved))
+            return false;
+        return getConstFloat(resolved, out);
+    }
+};
+
+//===----------------------------------------------------------------------===//
+// Integer Arithmetic: Add, Sub, Mul, And, Or, Xor, Shl, LShr, AShr
+//===----------------------------------------------------------------------===//
+
+/// @brief Fold basic integer arithmetic operations.
+/// @details Handles non-overflow-checked integer operations.
+static std::optional<Value> foldIntegerArithmetic(Opcode op, const FoldContext &ctx)
+{
+    long long lhs{}, rhs{};
+    if (!ctx.getConstIntOperand(0, lhs) || !ctx.getConstIntOperand(1, rhs))
+        return std::nullopt;
+
+    switch (op)
+    {
+        case Opcode::Add:
+            return Value::constInt(lhs + rhs);
+        case Opcode::Sub:
+            return Value::constInt(lhs - rhs);
+        case Opcode::Mul:
+            return Value::constInt(lhs * rhs);
+        case Opcode::And:
+            return Value::constInt(lhs & rhs);
+        case Opcode::Or:
+            return Value::constInt(lhs | rhs);
+        case Opcode::Xor:
+            return Value::constInt(lhs ^ rhs);
+        case Opcode::Shl:
+            return Value::constInt(lhs << (rhs & 63));
+        case Opcode::LShr:
+            return Value::constInt(static_cast<unsigned long long>(lhs) >> (rhs & 63));
+        case Opcode::AShr:
+            return Value::constInt(lhs >> (rhs & 63));
+        default:
+            return std::nullopt;
+    }
+}
+
+//===----------------------------------------------------------------------===//
+// Overflow-Checked Arithmetic: IAddOvf, ISubOvf, IMulOvf
+//===----------------------------------------------------------------------===//
+
+/// @brief Fold overflow-checked arithmetic operations.
+/// @details Returns nullopt if the operation would overflow at runtime.
+static std::optional<Value> foldOverflowArithmetic(Opcode op, const FoldContext &ctx)
+{
+    long long lhs{}, rhs{};
+    if (!ctx.getConstIntOperand(0, lhs) || !ctx.getConstIntOperand(1, rhs))
+        return std::nullopt;
+
+    switch (op)
+    {
+        case Opcode::IAddOvf:
+            if (auto sum = checkedAdd(lhs, rhs))
+                return Value::constInt(*sum);
+            break;
+        case Opcode::ISubOvf:
+            if (auto diff = checkedSub(lhs, rhs))
+                return Value::constInt(*diff);
+            break;
+        case Opcode::IMulOvf:
+            if (auto prod = checkedMul(lhs, rhs))
+                return Value::constInt(*prod);
+            break;
+        default:
+            break;
+    }
+    return std::nullopt;
+}
+
+//===----------------------------------------------------------------------===//
+// Division and Remainder: SDivChk0, SRemChk0, UDivChk0, URemChk0
+//===----------------------------------------------------------------------===//
+
+/// @brief Fold signed division/remainder with zero-check.
+/// @details Returns nullopt for divide-by-zero or MIN/-1 overflow.
+static std::optional<Value> foldSignedDivRem(Opcode op, const FoldContext &ctx)
+{
+    long long lhs{}, rhs{};
+    if (!ctx.getConstIntOperand(0, lhs) || !ctx.getConstIntOperand(1, rhs))
+        return std::nullopt;
+
+    // Check for divide-by-zero and signed overflow (MIN / -1)
+    if (rhs == 0 || (lhs == std::numeric_limits<long long>::min() && rhs == -1))
+        return std::nullopt;
+
+    if (op == Opcode::SDivChk0)
+        return Value::constInt(lhs / rhs);
+    return Value::constInt(lhs % rhs);
+}
+
+/// @brief Fold unsigned division/remainder with zero-check.
+static std::optional<Value> foldUnsignedDivRem(Opcode op, const FoldContext &ctx)
+{
+    unsigned long long lhs{}, rhs{};
+    if (!ctx.getConstUIntOperand(0, lhs) || !ctx.getConstUIntOperand(1, rhs))
+        return std::nullopt;
+
+    if (rhs == 0)
+        return std::nullopt;
+
+    if (op == Opcode::UDivChk0)
+        return Value::constInt(static_cast<long long>(lhs / rhs));
+    return Value::constInt(static_cast<long long>(lhs % rhs));
+}
+
+//===----------------------------------------------------------------------===//
+// Floating-Point Arithmetic: FAdd, FSub, FMul, FDiv
+//===----------------------------------------------------------------------===//
+
+/// @brief Fold floating-point arithmetic operations.
+static std::optional<Value> foldFloatArithmetic(Opcode op, const FoldContext &ctx)
+{
+    double lhs{}, rhs{};
+    if (!ctx.getConstFloatOperand(0, lhs) || !ctx.getConstFloatOperand(1, rhs))
+        return std::nullopt;
+
+    switch (op)
+    {
+        case Opcode::FAdd:
+            return Value::constFloat(lhs + rhs);
+        case Opcode::FSub:
+            return Value::constFloat(lhs - rhs);
+        case Opcode::FMul:
+            return Value::constFloat(lhs * rhs);
+        case Opcode::FDiv:
+            return rhs == 0.0 ? std::nullopt : std::optional<Value>(Value::constFloat(lhs / rhs));
+        default:
+            return std::nullopt;
+    }
+}
+
+//===----------------------------------------------------------------------===//
+// Integer Comparisons: ICmpEq, ICmpNe, SCmpLT, SCmpLE, SCmpGT, SCmpGE
+//===----------------------------------------------------------------------===//
+
+/// @brief Fold signed integer comparison operations.
+static std::optional<Value> foldIntegerComparisons(Opcode op, const FoldContext &ctx)
+{
+    long long lhs{}, rhs{};
+    if (!ctx.getConstIntOperand(0, lhs) || !ctx.getConstIntOperand(1, rhs))
+        return std::nullopt;
+
+    bool result = false;
+    switch (op)
+    {
+        case Opcode::ICmpEq:
+            result = lhs == rhs;
+            break;
+        case Opcode::ICmpNe:
+            result = lhs != rhs;
+            break;
+        case Opcode::SCmpLT:
+            result = lhs < rhs;
+            break;
+        case Opcode::SCmpLE:
+            result = lhs <= rhs;
+            break;
+        case Opcode::SCmpGT:
+            result = lhs > rhs;
+            break;
+        case Opcode::SCmpGE:
+            result = lhs >= rhs;
+            break;
+        default:
+            return std::nullopt;
+    }
+    return Value::constBool(result);
+}
+
+//===----------------------------------------------------------------------===//
+// Unsigned Comparisons: UCmpLT, UCmpLE, UCmpGT, UCmpGE
+//===----------------------------------------------------------------------===//
+
+/// @brief Fold unsigned integer comparison operations.
+static std::optional<Value> foldUnsignedComparisons(Opcode op, const FoldContext &ctx)
+{
+    unsigned long long lhs{}, rhs{};
+    if (!ctx.getConstUIntOperand(0, lhs) || !ctx.getConstUIntOperand(1, rhs))
+        return std::nullopt;
+
+    bool result = false;
+    switch (op)
+    {
+        case Opcode::UCmpLT:
+            result = lhs < rhs;
+            break;
+        case Opcode::UCmpLE:
+            result = lhs <= rhs;
+            break;
+        case Opcode::UCmpGT:
+            result = lhs > rhs;
+            break;
+        case Opcode::UCmpGE:
+            result = lhs >= rhs;
+            break;
+        default:
+            return std::nullopt;
+    }
+    return Value::constBool(result);
+}
+
+//===----------------------------------------------------------------------===//
+// Floating-Point Comparisons: FCmpEQ, FCmpNE, FCmpLT, FCmpLE, FCmpGT, FCmpGE
+//===----------------------------------------------------------------------===//
+
+/// @brief Fold floating-point comparison operations.
+static std::optional<Value> foldFloatComparisons(Opcode op, const FoldContext &ctx)
+{
+    double lhs{}, rhs{};
+    if (!ctx.getConstFloatOperand(0, lhs) || !ctx.getConstFloatOperand(1, rhs))
+        return std::nullopt;
+
+    bool result = false;
+    switch (op)
+    {
+        case Opcode::FCmpEQ:
+            result = lhs == rhs;
+            break;
+        case Opcode::FCmpNE:
+            result = lhs != rhs;
+            break;
+        case Opcode::FCmpLT:
+            result = lhs < rhs;
+            break;
+        case Opcode::FCmpLE:
+            result = lhs <= rhs;
+            break;
+        case Opcode::FCmpGT:
+            result = lhs > rhs;
+            break;
+        case Opcode::FCmpGE:
+            result = lhs >= rhs;
+            break;
+        default:
+            return std::nullopt;
+    }
+    return Value::constBool(result);
+}
+
+//===----------------------------------------------------------------------===//
+// Type Conversions: CastSiToFp, CastUiToFp, CastFpToSiRteChk, CastFpToUiRteChk
+//===----------------------------------------------------------------------===//
+
+/// @brief Fold signed integer to floating-point conversion.
+static std::optional<Value> foldCastSiToFp(const FoldContext &ctx)
+{
+    long long operand{};
+    if (!ctx.getConstIntOperand(0, operand))
+        return std::nullopt;
+    return Value::constFloat(static_cast<double>(operand));
+}
+
+/// @brief Fold unsigned integer to floating-point conversion.
+static std::optional<Value> foldCastUiToFp(const FoldContext &ctx)
+{
+    unsigned long long operand{};
+    if (!ctx.getConstUIntOperand(0, operand))
+        return std::nullopt;
+    return Value::constFloat(static_cast<double>(operand));
+}
+
+/// @brief Fold floating-point to signed integer conversion with range check.
+static std::optional<Value> foldCastFpToSi(const FoldContext &ctx)
+{
+    double operand{};
+    if (!ctx.getConstFloatOperand(0, operand) || !std::isfinite(operand))
+        return std::nullopt;
+
+    double rounded = std::nearbyint(operand);
+    if (!std::isfinite(rounded))
+        return std::nullopt;
+
+    constexpr double kMin = static_cast<double>(std::numeric_limits<long long>::min());
+    constexpr double kMax = static_cast<double>(std::numeric_limits<long long>::max());
+    if (rounded < kMin || rounded > kMax)
+        return std::nullopt;
+
+    return Value::constInt(static_cast<long long>(rounded));
+}
+
+/// @brief Fold floating-point to unsigned integer conversion with range check.
+static std::optional<Value> foldCastFpToUi(const FoldContext &ctx)
+{
+    double operand{};
+    if (!ctx.getConstFloatOperand(0, operand) || !std::isfinite(operand))
+        return std::nullopt;
+
+    double rounded = std::nearbyint(operand);
+    if (!std::isfinite(rounded))
+        return std::nullopt;
+
+    constexpr double kMin = 0.0;
+    constexpr double kMax = static_cast<double>(std::numeric_limits<unsigned long long>::max());
+    if (rounded < kMin || rounded > kMax)
+        return std::nullopt;
+
+    return Value::constInt(static_cast<long long>(static_cast<unsigned long long>(rounded)));
+}
+
+//===----------------------------------------------------------------------===//
+// Boolean Operations: Zext1, Trunc1
+//===----------------------------------------------------------------------===//
+
+/// @brief Fold zero-extend from 1 bit (boolean to integer).
+static std::optional<Value> foldZext1(const FoldContext &ctx)
+{
+    long long operand{};
+    if (!ctx.getConstIntOperand(0, operand))
+        return std::nullopt;
+    return Value::constInt((operand & 1) != 0 ? 1 : 0);
+}
+
+/// @brief Fold truncate to 1 bit (integer to boolean).
+static std::optional<Value> foldTrunc1(const FoldContext &ctx)
+{
+    long long operand{};
+    if (!ctx.getConstIntOperand(0, operand))
+        return std::nullopt;
+    return Value::constBool((operand & 1) != 0);
+}
+
+//===----------------------------------------------------------------------===//
+// Constant Materialization: ConstNull, ConstStr, AddrOf
+//===----------------------------------------------------------------------===//
+
+/// @brief Fold constant materialization instructions.
+static std::optional<Value> foldConstantMaterialization(const Instr &instr)
+{
+    switch (instr.op)
+    {
+        case Opcode::ConstNull:
+            return Value::null();
+        case Opcode::ConstStr:
+            if (!instr.operands.empty())
+                return instr.operands[0];
+            return std::nullopt;
+        case Opcode::AddrOf:
+            if (!instr.operands.empty())
+                return instr.operands[0];
+            return std::nullopt;
+        default:
+            return std::nullopt;
+    }
+}
+
+//===----------------------------------------------------------------------===//
+// Section 3: SCCPSolver Class
+//===----------------------------------------------------------------------===//
 
 class SCCPSolver
 {
@@ -187,6 +638,10 @@ class SCCPSolver
     std::queue<size_t> blockWorklist_;
     std::queue<Instr *> instrWorklist_;
     std::unordered_set<Instr *> inInstrWorklist_;
+
+    //===------------------------------------------------------------------===//
+    // Initialization
+    //===------------------------------------------------------------------===//
 
     void initialiseStates()
     {
@@ -232,6 +687,10 @@ class SCCPSolver
             }
         }
     }
+
+    //===------------------------------------------------------------------===//
+    // Lattice State Management
+    //===------------------------------------------------------------------===//
 
     LatticeValue &valueState(unsigned id)
     {
@@ -307,6 +766,10 @@ class SCCPSolver
         return true;
     }
 
+    //===------------------------------------------------------------------===//
+    // Value Resolution
+    //===------------------------------------------------------------------===//
+
     bool resolveValue(const Value &operand, Value &out) const
     {
         switch (operand.kind)
@@ -345,6 +808,10 @@ class SCCPSolver
         return it->second.kind == LatticeValue::Kind::Overdefined;
     }
 
+    //===------------------------------------------------------------------===//
+    // Worklist Processing
+    //===------------------------------------------------------------------===//
+
     void process()
     {
         while (!blockWorklist_.empty() || !instrWorklist_.empty())
@@ -370,6 +837,10 @@ class SCCPSolver
             visitInstruction(function_.blocks[bit->second], *instr, bit->second);
         }
     }
+
+    //===------------------------------------------------------------------===//
+    // Edge Propagation
+    //===------------------------------------------------------------------===//
 
     void propagateEdge(size_t fromBlockIndex, Instr &terminator, size_t succSlot)
     {
@@ -399,6 +870,10 @@ class SCCPSolver
             }
         }
     }
+
+    //===------------------------------------------------------------------===//
+    // Instruction Visitors
+    //===------------------------------------------------------------------===//
 
     void visitInstruction(BasicBlock &, Instr &instr, size_t blockIndex)
     {
@@ -498,15 +973,25 @@ class SCCPSolver
             markOverdefined(*instr.result);
     }
 
+    //===------------------------------------------------------------------===//
+    // Overdefined Classification
+    //===------------------------------------------------------------------===//
+
+    /// @brief Check if an opcode always produces overdefined results.
+    /// @details Side-effecting operations and operations with external
+    ///          dependencies cannot be constant-folded.
     bool isAlwaysOverdefined(Opcode op) const
     {
         switch (op)
         {
-            case Opcode::Call:
+            // Memory operations
             case Opcode::Load:
             case Opcode::Alloca:
             case Opcode::GEP:
             case Opcode::Store:
+            // Calls
+            case Opcode::Call:
+            // Exception handling
             case Opcode::ResumeSame:
             case Opcode::ResumeNext:
             case Opcode::ResumeLabel:
@@ -519,6 +1004,7 @@ class SCCPSolver
             case Opcode::ErrGetCode:
             case Opcode::ErrGetIp:
             case Opcode::ErrGetLine:
+            // Runtime checks
             case Opcode::IdxChk:
                 return true;
             default:
@@ -526,41 +1012,32 @@ class SCCPSolver
         }
     }
 
+    //===------------------------------------------------------------------===//
+    // Main Folding Dispatch
+    //===------------------------------------------------------------------===//
+
+    /// @brief Attempt to fold an instruction to a constant value.
+    /// @details Dispatches to family-specific fold functions based on opcode.
     std::optional<Value> foldInstruction(const Instr &instr) const
     {
         if (!instr.result)
             return std::nullopt;
 
-        auto getConstIntOperand = [&](size_t index, long long &out)
-        {
-            if (index >= instr.operands.size())
-                return false;
-            Value resolved;
-            if (!resolveValue(instr.operands[index], resolved))
-                return false;
-            return getConstInt(resolved, out);
-        };
-        auto getConstUIntOperand = [&](size_t index, unsigned long long &out)
-        {
-            if (index >= instr.operands.size())
-                return false;
-            Value resolved;
-            if (!resolveValue(instr.operands[index], resolved))
-                return false;
-            return getConstUInt(resolved, out);
-        };
-        auto getConstFloatOperand = [&](size_t index, double &out)
-        {
-            if (index >= instr.operands.size())
-                return false;
-            Value resolved;
-            if (!resolveValue(instr.operands[index], resolved))
-                return false;
-            return getConstFloat(resolved, out);
-        };
+        // Create fold context with operand resolver
+        FoldContext ctx{
+            instr,
+            [this, &instr](size_t index, Value &out) -> bool
+            {
+                if (index >= instr.operands.size())
+                    return false;
+                return resolveValue(instr.operands[index], out);
+            }};
 
         switch (instr.op)
         {
+            //===--------------------------------------------------------------===//
+            // Integer Arithmetic
+            //===--------------------------------------------------------------===//
             case Opcode::Add:
             case Opcode::Sub:
             case Opcode::Mul:
@@ -570,278 +1047,103 @@ class SCCPSolver
             case Opcode::Shl:
             case Opcode::LShr:
             case Opcode::AShr:
-            {
-                long long lhs{}, rhs{};
-                if (!getConstIntOperand(0, lhs) || !getConstIntOperand(1, rhs))
-                    return std::nullopt;
-                switch (instr.op)
-                {
-                    case Opcode::Add:
-                        return Value::constInt(lhs + rhs);
-                    case Opcode::Sub:
-                        return Value::constInt(lhs - rhs);
-                    case Opcode::Mul:
-                        return Value::constInt(lhs * rhs);
-                    case Opcode::And:
-                        return Value::constInt(lhs & rhs);
-                    case Opcode::Or:
-                        return Value::constInt(lhs | rhs);
-                    case Opcode::Xor:
-                        return Value::constInt(lhs ^ rhs);
-                    case Opcode::Shl:
-                        return Value::constInt(lhs << (rhs & 63));
-                    case Opcode::LShr:
-                        return Value::constInt(static_cast<unsigned long long>(lhs) >> (rhs & 63));
-                    case Opcode::AShr:
-                        return Value::constInt(lhs >> (rhs & 63));
-                    default:
-                        break;
-                }
-                return std::nullopt;
-            }
+                return foldIntegerArithmetic(instr.op, ctx);
+
+            //===--------------------------------------------------------------===//
+            // Overflow-Checked Arithmetic
+            //===--------------------------------------------------------------===//
             case Opcode::IAddOvf:
             case Opcode::ISubOvf:
             case Opcode::IMulOvf:
-            {
-                long long lhs{}, rhs{};
-                if (!getConstIntOperand(0, lhs) || !getConstIntOperand(1, rhs))
-                    return std::nullopt;
-                switch (instr.op)
-                {
-                    case Opcode::IAddOvf:
-                        if (auto sum = checkedAdd(lhs, rhs))
-                            return Value::constInt(*sum);
-                        break;
-                    case Opcode::ISubOvf:
-                        if (auto diff = checkedSub(lhs, rhs))
-                            return Value::constInt(*diff);
-                        break;
-                    case Opcode::IMulOvf:
-                        if (auto prod = checkedMul(lhs, rhs))
-                            return Value::constInt(*prod);
-                        break;
-                    default:
-                        break;
-                }
-                return std::nullopt;
-            }
+                return foldOverflowArithmetic(instr.op, ctx);
+
+            //===--------------------------------------------------------------===//
+            // Division and Remainder
+            //===--------------------------------------------------------------===//
             case Opcode::SDivChk0:
             case Opcode::SRemChk0:
-            {
-                long long lhs{}, rhs{};
-                if (!getConstIntOperand(0, lhs) || !getConstIntOperand(1, rhs))
-                    return std::nullopt;
-                if (rhs == 0 || (lhs == std::numeric_limits<long long>::min() && rhs == -1))
-                    return std::nullopt;
-                if (instr.op == Opcode::SDivChk0)
-                    return Value::constInt(lhs / rhs);
-                return Value::constInt(lhs % rhs);
-            }
+                return foldSignedDivRem(instr.op, ctx);
+
             case Opcode::UDivChk0:
             case Opcode::URemChk0:
-            {
-                unsigned long long lhs{}, rhs{};
-                if (!getConstUIntOperand(0, lhs) || !getConstUIntOperand(1, rhs))
-                    return std::nullopt;
-                if (rhs == 0)
-                    return std::nullopt;
-                if (instr.op == Opcode::UDivChk0)
-                    return Value::constInt(static_cast<long long>(lhs / rhs));
-                return Value::constInt(static_cast<long long>(lhs % rhs));
-            }
+                return foldUnsignedDivRem(instr.op, ctx);
+
+            //===--------------------------------------------------------------===//
+            // Floating-Point Arithmetic
+            //===--------------------------------------------------------------===//
             case Opcode::FAdd:
             case Opcode::FSub:
             case Opcode::FMul:
             case Opcode::FDiv:
-            {
-                double lhs{}, rhs{};
-                if (!getConstFloatOperand(0, lhs) || !getConstFloatOperand(1, rhs))
-                    return std::nullopt;
-                switch (instr.op)
-                {
-                    case Opcode::FAdd:
-                        return Value::constFloat(lhs + rhs);
-                    case Opcode::FSub:
-                        return Value::constFloat(lhs - rhs);
-                    case Opcode::FMul:
-                        return Value::constFloat(lhs * rhs);
-                    case Opcode::FDiv:
-                        return rhs == 0.0 ? std::nullopt
-                                          : std::optional<Value>(Value::constFloat(lhs / rhs));
-                    default:
-                        break;
-                }
-                return std::nullopt;
-            }
+                return foldFloatArithmetic(instr.op, ctx);
+
+            //===--------------------------------------------------------------===//
+            // Integer Comparisons
+            //===--------------------------------------------------------------===//
             case Opcode::ICmpEq:
             case Opcode::ICmpNe:
             case Opcode::SCmpLT:
             case Opcode::SCmpLE:
             case Opcode::SCmpGT:
             case Opcode::SCmpGE:
-            {
-                long long lhs{}, rhs{};
-                if (!getConstIntOperand(0, lhs) || !getConstIntOperand(1, rhs))
-                    return std::nullopt;
-                bool result = false;
-                switch (instr.op)
-                {
-                    case Opcode::ICmpEq:
-                        result = lhs == rhs;
-                        break;
-                    case Opcode::ICmpNe:
-                        result = lhs != rhs;
-                        break;
-                    case Opcode::SCmpLT:
-                        result = lhs < rhs;
-                        break;
-                    case Opcode::SCmpLE:
-                        result = lhs <= rhs;
-                        break;
-                    case Opcode::SCmpGT:
-                        result = lhs > rhs;
-                        break;
-                    case Opcode::SCmpGE:
-                        result = lhs >= rhs;
-                        break;
-                    default:
-                        break;
-                }
-                return Value::constBool(result);
-            }
+                return foldIntegerComparisons(instr.op, ctx);
+
+            //===--------------------------------------------------------------===//
+            // Unsigned Comparisons
+            //===--------------------------------------------------------------===//
             case Opcode::UCmpLT:
             case Opcode::UCmpLE:
             case Opcode::UCmpGT:
             case Opcode::UCmpGE:
-            {
-                unsigned long long lhs{}, rhs{};
-                if (!getConstUIntOperand(0, lhs) || !getConstUIntOperand(1, rhs))
-                    return std::nullopt;
-                bool result = false;
-                switch (instr.op)
-                {
-                    case Opcode::UCmpLT:
-                        result = lhs < rhs;
-                        break;
-                    case Opcode::UCmpLE:
-                        result = lhs <= rhs;
-                        break;
-                    case Opcode::UCmpGT:
-                        result = lhs > rhs;
-                        break;
-                    case Opcode::UCmpGE:
-                        result = lhs >= rhs;
-                        break;
-                    default:
-                        break;
-                }
-                return Value::constBool(result);
-            }
+                return foldUnsignedComparisons(instr.op, ctx);
+
+            //===--------------------------------------------------------------===//
+            // Floating-Point Comparisons
+            //===--------------------------------------------------------------===//
             case Opcode::FCmpEQ:
             case Opcode::FCmpNE:
             case Opcode::FCmpLT:
             case Opcode::FCmpLE:
             case Opcode::FCmpGT:
             case Opcode::FCmpGE:
-            {
-                double lhs{}, rhs{};
-                if (!getConstFloatOperand(0, lhs) || !getConstFloatOperand(1, rhs))
-                    return std::nullopt;
-                bool result = false;
-                switch (instr.op)
-                {
-                    case Opcode::FCmpEQ:
-                        result = lhs == rhs;
-                        break;
-                    case Opcode::FCmpNE:
-                        result = lhs != rhs;
-                        break;
-                    case Opcode::FCmpLT:
-                        result = lhs < rhs;
-                        break;
-                    case Opcode::FCmpLE:
-                        result = lhs <= rhs;
-                        break;
-                    case Opcode::FCmpGT:
-                        result = lhs > rhs;
-                        break;
-                    case Opcode::FCmpGE:
-                        result = lhs >= rhs;
-                        break;
-                    default:
-                        break;
-                }
-                return Value::constBool(result);
-            }
+                return foldFloatComparisons(instr.op, ctx);
+
+            //===--------------------------------------------------------------===//
+            // Type Conversions
+            //===--------------------------------------------------------------===//
             case Opcode::CastSiToFp:
-            {
-                long long operand{};
-                if (!getConstIntOperand(0, operand))
-                    return std::nullopt;
-                return Value::constFloat(static_cast<double>(operand));
-            }
+                return foldCastSiToFp(ctx);
             case Opcode::CastUiToFp:
-            {
-                unsigned long long operand{};
-                if (!getConstUIntOperand(0, operand))
-                    return std::nullopt;
-                return Value::constFloat(static_cast<double>(operand));
-            }
+                return foldCastUiToFp(ctx);
             case Opcode::CastFpToSiRteChk:
+                return foldCastFpToSi(ctx);
             case Opcode::CastFpToUiRteChk:
-            {
-                double operand{};
-                if (!getConstFloatOperand(0, operand) || !std::isfinite(operand))
-                    return std::nullopt;
-                double rounded = std::nearbyint(operand);
-                if (!std::isfinite(rounded))
-                    return std::nullopt;
-                if (instr.op == Opcode::CastFpToSiRteChk)
-                {
-                    constexpr double kMin =
-                        static_cast<double>(std::numeric_limits<long long>::min());
-                    constexpr double kMax =
-                        static_cast<double>(std::numeric_limits<long long>::max());
-                    if (rounded < kMin || rounded > kMax)
-                        return std::nullopt;
-                    return Value::constInt(static_cast<long long>(rounded));
-                }
-                constexpr double kMin = 0.0;
-                constexpr double kMax =
-                    static_cast<double>(std::numeric_limits<unsigned long long>::max());
-                if (rounded < kMin || rounded > kMax)
-                    return std::nullopt;
-                return Value::constInt(
-                    static_cast<long long>(static_cast<unsigned long long>(rounded)));
-            }
+                return foldCastFpToUi(ctx);
+
+            //===--------------------------------------------------------------===//
+            // Boolean Operations
+            //===--------------------------------------------------------------===//
             case Opcode::Zext1:
-            {
-                long long operand{};
-                if (!getConstIntOperand(0, operand))
-                    return std::nullopt;
-                return Value::constInt((operand & 1) != 0 ? 1 : 0);
-            }
+                return foldZext1(ctx);
             case Opcode::Trunc1:
-            {
-                long long operand{};
-                if (!getConstIntOperand(0, operand))
-                    return std::nullopt;
-                return Value::constBool((operand & 1) != 0);
-            }
+                return foldTrunc1(ctx);
+
+            //===--------------------------------------------------------------===//
+            // Constant Materialization
+            //===--------------------------------------------------------------===//
             case Opcode::ConstNull:
-                return Value::null();
             case Opcode::ConstStr:
-                if (!instr.operands.empty())
-                    return instr.operands[0];
-                return std::nullopt;
             case Opcode::AddrOf:
-                if (!instr.operands.empty())
-                    return instr.operands[0];
-                return std::nullopt;
+                return foldConstantMaterialization(instr);
+
             default:
                 return std::nullopt;
         }
     }
+
+    //===------------------------------------------------------------------===//
+    // Rewriting Phase
+    //===------------------------------------------------------------------===//
 
     void rewriteConstants()
     {
@@ -869,6 +1171,10 @@ class SCCPSolver
             }
         }
     }
+
+    //===------------------------------------------------------------------===//
+    // Terminator Folding
+    //===------------------------------------------------------------------===//
 
     void foldTerminators()
     {
@@ -948,6 +1254,10 @@ void runSCCP(Function &function)
 }
 
 } // namespace
+
+//===----------------------------------------------------------------------===//
+// Section 4: Public API
+//===----------------------------------------------------------------------===//
 
 void sccp(Module &module)
 {
