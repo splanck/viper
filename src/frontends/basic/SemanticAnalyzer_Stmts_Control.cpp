@@ -286,14 +286,17 @@ void SemanticAnalyzer::analyzeReturn(ReturnStmt &stmt)
 
     if (!stmt.value)
         return;
+
+    // Always visit the return expression to resolve variable names, even for
+    // object-returning functions where we can't check type compatibility.
+    auto valueType = visitExpr(*stmt.value);
+
     if (!activeFunction_ || activeFunctionExplicitRet_ == BasicType::Unknown)
         return;
 
     auto expected = semantic_analyzer_detail::semanticTypeFromBasic(activeFunctionExplicitRet_);
     if (!expected)
         return;
-
-    auto valueType = visitExpr(*stmt.value);
     if (valueType == Type::Unknown)
         return;
 

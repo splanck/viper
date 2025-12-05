@@ -190,15 +190,24 @@ error[B0001]: expected THEN, got IS
 
 ---
 
-### BUG-OOP-006: Multiple Object-Returning Functions Cause IL Type Error
+### BUG-OOP-006: Multiple Object-Returning Functions Cause IL Type Error [FIXED]
 
-**Severity:** MEDIUM
-**Impact:** Can't have multiple functions returning objects in same file
+**Status:** FIXED
 
-**Description:**
-When a file contains multiple functions that return objects, the second function may fail with an IL type mismatch error.
+**Root Cause:** The semantic analyzer's `analyzeReturn` method had an early return when
+`activeFunctionExplicitRet_ == BasicType::Unknown` (which is the case for object-returning
+functions). This skipped the `visitExpr(*stmt.value)` call that resolves variable names
+in the return expression. Without this resolution, local variables like `mid` in `RETURN mid`
+were not renamed to their mangled form (`MID_1`), causing the lowerer to look up the wrong
+symbol and emit incorrect IL types.
 
-**Test Case:**
+**Fix:** Moved `visitExpr(*stmt.value)` before the early return check in
+`SemanticAnalyzer_Stmts_Control.cpp:analyzeReturn()`. Also simplified the `lowerReturn`
+workaround code since proper variable resolution now ensures the correct symbol is found.
+Additionally, allowed implicit float-to-int argument conversions in call expressions
+to support BASIC's traditional type coercion rules.
+
+**Test Case (now works):**
 ```basic
 CLASS Point
     PUBLIC x AS INTEGER
@@ -226,15 +235,10 @@ a = CreatePoint(0, 0)
 DIM b AS Point
 b = CreatePoint(10, 20)
 DIM m AS Point
-m = MidPoint(a, b)  ' ERROR in IL generation
+m = MidPoint(a, b)
+PRINT m.x  ' Outputs: 5
+PRINT m.y  ' Outputs: 10
 ```
-
-**Error:**
-```
-error: MIDPOINT:obj_assign_cont_0_MIDPOINT: ret %t30: ret value type mismatch: expected ptr but got i64
-```
-
-**Workaround:** Unknown. May need to restructure code.
 
 ---
 

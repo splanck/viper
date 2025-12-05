@@ -889,6 +889,9 @@ std::vector<SemanticAnalyzer::Type> SemanticAnalyzer::checkCallArgs(const CallEx
         }
         if (expectTy == ::il::frontends::basic::Type::F64 && argTy == Type::Int)
             continue;
+        // Float arguments can be implicitly converted to integer parameters (truncation)
+        if (expectTy == ::il::frontends::basic::Type::I64 && argTy == Type::Float)
+            continue;
         Type want = Type::Int;
         if (expectTy == ::il::frontends::basic::Type::F64)
             want = Type::Float;
@@ -896,6 +899,9 @@ std::vector<SemanticAnalyzer::Type> SemanticAnalyzer::checkCallArgs(const CallEx
             want = Type::String;
         else if (expectTy == ::il::frontends::basic::Type::Bool)
             want = Type::Bool;
+        // Object-typed arguments can match I64 parameters (objects are pointers)
+        if (argTy == Type::Object && expectTy == ::il::frontends::basic::Type::I64)
+            continue;
         // Relax type checking for selected runtime helpers that operate on opaque pointers.
         // Permit pointer-typed values to match integer-typed parameters for
         // Viper.Text.StringBuilder.* canonical helpers.
