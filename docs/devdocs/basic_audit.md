@@ -1539,7 +1539,7 @@ Combined with the previous 8 fixes, VIPER BASIC now has:
 - ✅ SELECT CASE with negative literals
 - ✅ Complete type suffix system (%, !, #, $)
 
-**VIPER BASIC is production-ready for mathematical and scientific computing!**
+**Status:** Experimental — capable of mathematical and scientific demos within the current test suite, but not suitable for production use.
 
 ---
 

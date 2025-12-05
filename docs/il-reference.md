@@ -36,7 +36,7 @@ Viper IL supports the following primitive types:
 |------------|-------------|
 | **Integers** | `i1`, `i16`, `i32`, `i64` — Frontends typically use `i64` |
 | **Floats** | `f64` — Double-precision floating-point |
-| **Pointers** | `ptr` — Opaque pointers or typed pointers (build-dependent) |
+| **Pointers** | `ptr` — Opaque pointers (no element type) |
 | **Strings** | `str` — Runtime handle for managed strings |
 | **Void** | `void` — No return value (procedures) |
 | **Special** | `error`, `resumetok` — Exception handling types |
@@ -93,6 +93,13 @@ entry:
 
 ```il
 %t41 = addr_of @.Lstr
+
+**`gaddr`** — Address of a mutable module-level global (modvar).
+
+```il
+%p = gaddr @.Counter        # pointer to module variable storage
+store i64, %p, 1            # write 1 into the counter
+```
 ```
 
 **`fadd`** — Floating-point addition.
@@ -536,12 +543,6 @@ Compatibility:
 - When built with `-DVIPER_RUNTIME_NS_DUAL=ON`, legacy `@rt_*` externs are accepted as aliases of `@Viper.*`.
 - New code should emit `@Viper.*`.
 
-**`fptosi`** — Convert floating-point to signed integer (truncates toward zero; may trap on overflow).
-
-```il
-%t0 = fptosi %f
-%t34 = fptosi 5.5
-```
 
 **`func`** — Begin function definition with signature.
 

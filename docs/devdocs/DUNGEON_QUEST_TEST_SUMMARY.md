@@ -16,7 +16,7 @@ This testing session involved building progressively more complex versions of a 
    - Discovered BUG-026 (DO WHILE + GOSUB causes empty block error)
 
 2. **dungeon_quest_v2.bas** (447 lines) - Workaround using FOR loop
-   - **STATUS**: ✅ WORKS - This is the stable version
+   - **STATUS**: ✅ WORKS - This is the current reference version
    - Tests: arrays, loops, IF-THEN-ELSE, SELECT CASE, score tracking
 
 3. **dungeon_quest_v3.bas** (725 lines) - Added math testing, monsters, combat

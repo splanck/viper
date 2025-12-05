@@ -7,7 +7,7 @@ last-verified: 2025-11-10
 
 # VM Runtime Bridge and Externs
 
-The VM invokes C runtime helpers and user externs through a stable bridge.
+The VM invokes C runtime helpers and user externs through a documented bridge.
 Built‑in helpers are listed in `docs/runtime-vm.md#vm-externs`. You can also
 register your own externs at runtime.
 
@@ -36,4 +36,3 @@ When IL code calls `@times2`, the bridge validates arity and marshals
 arguments/results. Unknown names or mismatched arity trap with a clear message.
 
 See: `examples/externs/register_times2.cpp` and unit tests under `tests/unit/VM_ExternRegistryTests.cpp`.
-

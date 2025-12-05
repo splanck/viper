@@ -341,14 +341,15 @@ void SemanticAnalyzer::analyzeArrayAssignment(ArrayExpr &a, const LetStmt &l)
 
         if (expectedElementType == Type::Int)
         {
-            // Integer array: allow Int or Float (with warning for Float)
+            // Integer array: allow Int, Float (with warning), or Object (for object arrays)
+            // Note: Object arrays are tracked as ArrayInt for now, so we allow Object values
             if (valueTy == Type::Float)
             {
                 markImplicitConversion(*l.expr, Type::Int);
                 std::string msg = "narrowing conversion from FLOAT to INT in array assignment";
                 de.emit(il::support::Severity::Warning, "B2002", l.loc, 1, std::move(msg));
             }
-            else if (valueTy != Type::Unknown && valueTy != Type::Int)
+            else if (valueTy != Type::Unknown && valueTy != Type::Int && valueTy != Type::Object)
             {
                 std::string msg = "array element type mismatch: expected INT, got ";
                 msg += semanticTypeName(valueTy);
@@ -682,6 +683,7 @@ void SemanticAnalyzer::analyzeDim(DimStmt &d)
             activeProcScope_->noteVarTypeMutation(d.name, previous);
         }
         // Check for explicit class type Viper.System.String -> treat as String
+        // All other object/class types -> treat as Object
         Type dimType = astToSemanticType(d.type);
         if (!d.explicitClassQname.empty())
         {
@@ -690,6 +692,11 @@ void SemanticAnalyzer::analyzeDim(DimStmt &d)
                 string_utils::iequals(qname, "viper.string"))
             {
                 dimType = Type::String;
+            }
+            else
+            {
+                // Any other class/interface type is an object
+                dimType = Type::Object;
             }
         }
         varTypes_[d.name] = dimType;

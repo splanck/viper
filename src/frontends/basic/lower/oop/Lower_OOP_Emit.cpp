@@ -42,7 +42,9 @@
 #include "frontends/basic/lower/oop/Lower_OOP_RuntimeHelpers.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
 
+#include <functional>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -268,66 +270,19 @@ void Lowerer::emitClassConstructor(const ClassDecl &klass, const ConstructorDecl
     ctx.setCurrent(&fn.blocks.front());
     unsigned selfSlotId = materializeSelfSlot(klass.name, fn);
 
-    // Initialize the object's vptr with a per-instance vtable when virtual slots exist.
-    // This ensures virtual dispatch works even before a global class registry is introduced.
-    // The vtable layout mirrors Semantic_OOP's slot order for the class, pointing each
-    // entry at the most-derived implementation available in the class or its bases.
+    // Initialize the object's vptr with the class's registered vtable.
+    // The vtable is populated during __mod_init$oop, so we just retrieve it here.
+    // This ensures rt_typeid_of can identify the object's type via vptr lookup.
     if (const ClassInfo *ciInit = oopIndex_.findClass(qualify(klass.name)))
     {
-        // Compute vtable size and slot->name mapping robustly from method slots.
-        // Some pipelines may not have ciInit->vtable populated; derive from slots instead.
-        std::size_t maxSlot = 0;
-        bool hasAnyVirtual = false;
+        // Get class type ID from layout
+        auto itLayout = classLayouts_.find(klass.name);
+        if (itLayout != classLayouts_.end())
         {
-            const ClassInfo *cur = ciInit;
-            while (cur)
-            {
-                for (const auto &mp : cur->methods)
-                {
-                    const auto &mi = mp.second;
-                    if (!mi.isVirtual || mi.slot < 0)
-                        continue;
-                    hasAnyVirtual = true;
-                    maxSlot = std::max<std::size_t>(maxSlot, static_cast<std::size_t>(mi.slot));
-                }
-                if (cur->baseQualified.empty())
-                    break;
-                cur = oopIndex_.findClass(cur->baseQualified);
-            }
-        }
-
-        const std::size_t slotCount = hasAnyVirtual ? (maxSlot + 1) : 0;
-        if (slotCount > 0)
-        {
-            // Allocate vtable: slotCount * sizeof(void*) bytes
-            const long long bytes = static_cast<long long>(slotCount * 8ULL);
+            const long long typeId = (long long)itLayout->second.classId;
+            // Retrieve the registered vtable for this class
             Value vtblPtr =
-                emitCallRet(Type(Type::Kind::Ptr), "rt_alloc", {Value::constInt(bytes)});
-
-            // Populate vtable using consolidated helper
-            std::size_t unusedMaxSlot = 0;
-            std::vector<std::string> slotToName =
-                OopEmitHelper::buildVtableSlotMap(oopIndex_, ciInit->qualifiedName, unusedMaxSlot);
-
-            for (std::size_t s = 0; s < slotCount; ++s)
-            {
-                const long long offset = static_cast<long long>(s * 8ULL);
-                Value slotPtr = emitBinary(
-                    Opcode::GEP, Type(Type::Kind::Ptr), vtblPtr, Value::constInt(offset));
-                const std::string &mname = (s < slotToName.size()) ? slotToName[s] : "";
-                if (mname.empty())
-                {
-                    emitStore(Type(Type::Kind::Ptr), slotPtr, Value::null());
-                }
-                else
-                {
-                    const std::string implQ = OopEmitHelper::findImplementorClass(
-                        oopIndex_, ciInit->qualifiedName, mname);
-                    const std::string target = mangleMethod(implQ, mname);
-                    emitStore(Type(Type::Kind::Ptr), slotPtr, Value::global(target));
-                }
-            }
-
+                emitCallRet(Type(Type::Kind::Ptr), "rt_get_class_vtable", {Value::constInt(typeId)});
             // Store vptr into the object's header (offset 0)
             Value selfPtr = loadSelfPointer(selfSlotId);
             emitStore(Type(Type::Kind::Ptr), selfPtr, vtblPtr);
@@ -890,9 +845,10 @@ void Lowerer::emitOopDeclsAndBodies(const Program &prog)
         context().setCurrent(&f.blocks.front());
         f.blocks.front().terminated = false;
         // Call rt_register_interface_direct(ifaceId, "qname", slot_count)
+        std::string qnameLabel = getStringLabel(qname);
         emitCall("rt_register_interface_direct",
                  {Value::constInt(iface.ifaceId),
-                  emitConstStr(qname),
+                  emitConstStr(qnameLabel),
                   Value::constInt((long long)iface.slots.size())});
         emitRetVoid();
     }
@@ -979,21 +935,115 @@ void Lowerer::emitOopDeclsAndBodies(const Program &prog)
     initF.blocks.front().terminated = false;
 
     // Register each class with its qualified name so Object.ToString works
-    for (const auto &entry : oopIndex_.classes())
+    // and is-a relationships are preserved for IS operator.
+    // Also populate vtables here so rt_get_class_vtable can retrieve them.
+    //
+    // IMPORTANT: Classes must be registered in topological order (base before derived)
+    // so that rt_register_class_with_base can look up the base class at registration time.
+    std::vector<std::string> classOrder;
     {
-        const ClassInfo &ci = entry.second;
+        std::unordered_set<std::string> registered;
+        std::function<void(const std::string &)> registerInOrder =
+            [&](const std::string &qname) {
+                if (registered.count(qname))
+                    return;
+                const ClassInfo *ci = oopIndex_.findClass(qname);
+                if (!ci)
+                    return;
+                // Register base class first if it exists
+                if (!ci->baseQualified.empty())
+                    registerInOrder(ci->baseQualified);
+                classOrder.push_back(qname);
+                registered.insert(qname);
+            };
+        for (const auto &entry : oopIndex_.classes())
+            registerInOrder(entry.second.qualifiedName);
+    }
+
+    for (const std::string &qname : classOrder)
+    {
+        const ClassInfo *ciPtr = oopIndex_.findClass(qname);
+        if (!ciPtr)
+            continue;
+        const ClassInfo &ci = *ciPtr;
         auto itLayout = classLayouts_.find(ci.name);
         if (itLayout == classLayouts_.end())
             continue;
         const long long typeId = (long long)itLayout->second.classId;
-        // Allocate a minimal vtable (8 bytes) for the class
-        Value vtablePtr = emitCallRet(Type(Type::Kind::Ptr), "rt_alloc", {Value::constInt(8LL)});
-        // Register the class with rt_register_class_direct_rs(typeId, vtable, qname, 0)
+
+        // Compute vtable size from virtual slot metadata
+        std::size_t maxSlot = 0;
+        bool hasAnyVirtual = false;
+        {
+            const ClassInfo *cur = &ci;
+            while (cur)
+            {
+                for (const auto &mp : cur->methods)
+                {
+                    const auto &mi = mp.second;
+                    if (!mi.isVirtual || mi.slot < 0)
+                        continue;
+                    hasAnyVirtual = true;
+                    maxSlot = std::max<std::size_t>(maxSlot, static_cast<std::size_t>(mi.slot));
+                }
+                if (cur->baseQualified.empty())
+                    break;
+                cur = oopIndex_.findClass(cur->baseQualified);
+            }
+        }
+
+        const std::size_t slotCount = hasAnyVirtual ? (maxSlot + 1) : 0;
+        const long long bytes =
+            slotCount > 0 ? static_cast<long long>(slotCount * 8ULL) : 8LL; // at least 8 bytes
+        Value vtablePtr = emitCallRet(Type(Type::Kind::Ptr), "rt_alloc", {Value::constInt(bytes)});
+
+        // Populate vtable slots with method pointers
+        if (slotCount > 0)
+        {
+            std::size_t unusedMaxSlot = 0;
+            std::vector<std::string> slotToName =
+                OopEmitHelper::buildVtableSlotMap(oopIndex_, ci.qualifiedName, unusedMaxSlot);
+
+            for (std::size_t s = 0; s < slotCount; ++s)
+            {
+                const long long offset = static_cast<long long>(s * 8ULL);
+                Value slotPtr =
+                    emitBinary(Opcode::GEP, Type(Type::Kind::Ptr), vtablePtr, Value::constInt(offset));
+                const std::string &mname = (s < slotToName.size()) ? slotToName[s] : "";
+                if (mname.empty())
+                {
+                    emitStore(Type(Type::Kind::Ptr), slotPtr, Value::null());
+                }
+                else
+                {
+                    const std::string implQ =
+                        OopEmitHelper::findImplementorClass(oopIndex_, ci.qualifiedName, mname);
+                    const std::string target = mangleMethod(implQ, mname);
+                    emitStore(Type(Type::Kind::Ptr), slotPtr, Value::global(target));
+                }
+            }
+        }
+
+        // Determine base class type ID (-1 if no base)
+        long long baseTypeId = -1;
+        if (!ci.baseQualified.empty())
+        {
+            // Look up base class in layout table
+            const ClassInfo *baseCi = oopIndex_.findClass(ci.baseQualified);
+            if (baseCi)
+            {
+                auto itBase = classLayouts_.find(baseCi->name);
+                if (itBase != classLayouts_.end())
+                    baseTypeId = (long long)itBase->second.classId;
+            }
+        }
+
+        // Register the class with rt_register_class_with_base_rs(typeId, vtable, qname, slotCount, baseTypeId)
         // Note: Use _rs variant which accepts rt_string, not const char*
         std::string qnameLabel = getStringLabel(ci.qualifiedName);
-        emitCall(
-            "rt_register_class_direct_rs",
-            {Value::constInt(typeId), vtablePtr, emitConstStr(qnameLabel), Value::constInt(0LL)});
+        emitCall("rt_register_class_with_base_rs",
+                 {Value::constInt(typeId), vtablePtr, emitConstStr(qnameLabel),
+                  Value::constInt(static_cast<long long>(slotCount)), Value::constInt(baseTypeId)});
     }
 
     for (const auto &fn : regThunks)

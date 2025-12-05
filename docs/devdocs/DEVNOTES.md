@@ -20,7 +20,7 @@ that maintainers and integrators need to know.
 
 - Type and interface ids:
   - `type_id` and `iface_id` are process-local identifiers assigned at module
-    load time by the runtime registry. They are stable for the life of the
+    load time by the runtime registry. They are fixed for the life of the
     process but not across processes or runs.
   - Duplicate registration is idempotent; re-registering a known entity is a no-op.
 
@@ -49,4 +49,3 @@ that maintainers and integrators need to know.
 
 See also: `docs/oop.md` for a higher‑level overview and `docs/grammar.md` for
 language syntax covering `INTERFACE …`, `IMPLEMENTS`, and `IS`/`AS`.
-

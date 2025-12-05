@@ -63,6 +63,7 @@ void Parser::registerCoreParsers(StatementParserRegistry &registry)
 void Parser::registerOopParsers(StatementParserRegistry &registry)
 {
     registry.registerHandler(TokenKind::KeywordClass, &Parser::parseClassDecl);
+    registry.registerHandler(TokenKind::KeywordInterface, &Parser::parseInterfaceDecl);
     registry.registerHandler(TokenKind::KeywordType, &Parser::parseTypeDecl);
     registry.registerHandler(TokenKind::KeywordDelete, &Parser::parseDeleteStatement);
 }

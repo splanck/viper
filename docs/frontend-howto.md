@@ -63,13 +63,13 @@ Source Language → Frontend → IL → VM/Codegen → Execution
 ### Prerequisites
 
 **Required Knowledge:**
-- **Modern C++**: C++17 features (`unique_ptr`, `std::optional`, structured bindings)
+- **Modern C++**: C++20 features (`std::optional`, structured bindings; concepts/ranges helpful)
 - **Compiler Basics**: Lexing, parsing, AST construction
 - **SSA Form**: Basic understanding of phi nodes and basic blocks
 
 **Required Tools:**
 - CMake 3.20 or later
-- C++17-capable compiler (Clang or GCC recommended)
+- C++20-capable compiler (Clang or GCC recommended)
 - Git
 
 **Recommended Reading:**
@@ -100,9 +100,9 @@ The minimal frontend below implements steps 1, 2, and 4 in a single file, demons
 ### File: minimal_frontend.cpp
 
 ```cpp
-#include "il/build/IRBuilder.hpp"
-#include "il/core/Module.hpp"
-#include "il/io/Serializer.hpp"
+#include "viper/il/IRBuilder.hpp"
+#include "viper/il/Module.hpp"
+#include "viper/il/IO.hpp"
 #include "support/source_manager.hpp"
 #include <iostream>
 #include <string>
@@ -600,8 +600,8 @@ target_include_directories(fe_yourfrontend PUBLIC
     $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated/include>
 )
 
-# Enable C++17
-# PUBLIC = consumers also require C++17 (since your headers may use C++17 features)
+# Enable C++20
+# PUBLIC = consumers also require C++20 (since your headers may use C++20 features)
 target_compile_features(fe_yourfrontend PUBLIC cxx_std_17)
 ```
 
@@ -2990,7 +2990,7 @@ Key pieces in the BASIC frontend:
     - `assignArrayElement` handles dotted names, selecting helpers by element type
     - LHS `MethodCallExpr` path synthesizes store for `obj.field(index)`
   - Helpers: `rt_arr_i32_set`, `rt_arr_str_put`, `rt_arr_obj_put` (for object-element arrays) with bounds checks via `rt_arr_*_len` + `rt_arr_oob_panic`.
-- Layout: Array fields occupy pointer-sized storage so subsequent field offsets are stable.
+- Layout: Array fields occupy pointer-sized storage so subsequent field offsets are consistent.
   - Files:
     - `src/frontends/basic/Lower_OOP_Scan.cpp` (class layout builder)
     - `src/frontends/basic/Lowerer.hpp` (`ClassLayout` metadata)

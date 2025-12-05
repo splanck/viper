@@ -1,4 +1,4 @@
-# Viper
+# Viper (Pre-Alpha)
 
 **Viper** is an **IL-first compiler toolchain and virtual machine** for exploring intermediate language design, multi-frontend architectures, and interpreter micro-architectures.
 
@@ -8,12 +8,10 @@ High-level frontends—like the included BASIC compiler—lower programs into a 
 
 ## Latest Release
 
-**Current Version:** v0.1.2-snapshot (Early Development Snapshot)
+**Current Version:** v0.1.2-snapshot (research/bring‑up)
 
-- 📦 **[Download Source v0.1.1](https://github.com/splanck/viper/releases/tag/v0.1.1-dev)** - Latest stable release
-- 📄 **[Release Notes](/devdocs/Viper_Release_Notes.md)** - Full changelog, features, and known issues
-- 🚀 **Highlights:** Object-oriented BASIC (classes, inheritance, methods), exception handling (TRY/CATCH), namespace system, ARM64 backend progress, per-VM runtime isolation
-- ⚠️ **Note:** This is an early development snapshot. Build from source using the instructions below.
+- 📄 **[Release Notes](docs/devdocs/Viper_Release_Notes.md)** — Work‑in‑progress notes
+- ⚠️ **Status:** Pre‑alpha, not production‑ready. APIs, IR, and CLIs change frequently; expect breaking changes. Use the VM for experiments; native backends are experimental.
 
 ---
 
@@ -24,7 +22,7 @@ Viper is a complete compiler infrastructure with multiple components:
 - **IL (Intermediate Language)**: Typed, SSA-based IR that serves as the universal compilation target
 - **Frontends**: Language-specific compilers that lower to IL (BASIC included, more planned)
 - **VM**: Bytecode interpreter with pluggable dispatch strategies (switch, table, threaded)
-- **Backend**: Native code generator targeting x86-64 (Phase A complete)
+- **Backend**: Native code generators (AArch64 validated on Apple Silicon; x86_64 implemented but untested on real x86)
 - **Runtime**: Portable C libraries for strings, math, file I/O, and memory management
 - **Tooling**: Compiler driver, verifier, disassembler, and debugger integration
 
@@ -37,6 +35,24 @@ Viper is a complete compiler infrastructure with multiple components:
 - **Composable toolchain**: Parsers, IL builder, verifier, and VM all exist as standalone tools you can script
 - **Performance playground**: Multiple dispatch strategies let you *feel* interpreter trade-offs
 - **Teaching & research friendly**: Clear examples, golden tests, and a small surface area encourage experimentation
+
+---
+
+## Demos
+
+Several non‑trivial demos live under `demos/` and run on the VM today:
+
+- `demos/frogger` — Frogger clone (console); also validated as a native AArch64 binary on Apple Silicon via the experimental ARM64 backend.
+- `demos/chess` — Console chess (basic AI)
+- `demos/vTris` — Tetris‑like game
+
+Run on the VM:
+
+```bash
+./build/src/tools/vbasic/vbasic demos/frogger/frogger.bas
+```
+
+Experimental native AArch64 path (Apple Silicon): see `docs/devdocs/codegen/aarch64.md` for the end‑to‑end steps.
 
 ---
 
@@ -70,7 +86,7 @@ Run an IL program:
 # ./build/src/tools/ilc/ilc -run examples/il/ex1_hello_cond.il
 ```
 
-Compile to native code (x86-64):
+Compile to native code (x86‑64, experimental):
 
 ```bash
 ./build/src/tools/ilc/ilc front basic examples/basic/ex1_hello_cond.bas -o hello
@@ -79,27 +95,27 @@ Compile to native code (x86-64):
 
 ---
 
-## Features
+## Features (Experimental)
 
 ### Implemented
 
 **Languages:**
-- **BASIC Frontend**: Complete parser with full OOP support
-  - **Classes & Inheritance**: Single inheritance, virtual methods, interface implementation
+- **BASIC Frontend**: Large subset implemented, including OOP features
+  - **Classes & Inheritance**: Single inheritance, virtual methods, interfaces (subject to change)
   - **Object Lifecycle**: Constructors (`NEW`), destructors, disposal tracking
-  - **Exception Handling**: `TRY`/`CATCH` blocks with typed exception handling
+  - **Exception Handling**: `TRY`/`CATCH`
   - **Namespace System**: `USING` directives, canonical `Viper.*` runtime names
 
 **Core Infrastructure:**
-- **Viper IL**: Stable, typed, SSA-style IR with comprehensive verifier
-  - **v0.1.2 additions**: `gaddr` instruction for mutable module-level globals, enhanced exception handling support
-- **Virtual Machine**: Configurable dispatch strategies with per-VM state isolation
+- **Viper IL**: Typed, SSA‑style IR with verifier (versioned; evolving)
+  - **v0.1.2 additions**: `gaddr` for globals; enhanced EH support
+- **Virtual Machine**: Configurable dispatch strategies with per‑VM state isolation
   - `switch` — Classic switch-based jump table (portable)
   - `table` — Function-pointer dispatch (portable)
   - `threaded` — Direct-threaded labels-as-values (GCC/Clang only)
   - **Per-VM Context**: Isolated RNG state, module variables, and runtime resources
-- **x86-64 Backend**: Native code generation with linear-scan register allocation (Phase A complete)
-- **ARM64 Backend**: Native code generation with linear-scan register allocation (functional for core operations)
+- **AArch64 Backend**: Native code generation (linear‑scan). Validated end‑to‑end on Apple Silicon by running a full Frogger demo.
+- **x86_64 Backend**: Implemented (linear‑scan) but not yet validated on actual x86 hardware; treat as experimental.
 - **Runtime Libraries**: Portable C implementations for strings, math, file I/O, memory management, and OOP support
 
 **Tooling:**
@@ -111,7 +127,7 @@ Compile to native code (x86-64):
 - **`basic-ast-dump`**: BASIC AST visualizer
 
 **Quality Assurance:**
-- Comprehensive test suite with 735+ tests across all layers
+- Comprehensive test suite across all layers; still evolving
 - Deterministic numeric semantics (overflow checking, banker's rounding)
 - Unified error model across frontends, IL, and VM
 

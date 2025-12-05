@@ -14,7 +14,7 @@ For the authoritative error-handling model (trap kinds, handler ABI, and BASIC l
 <a id="runtime-abi"></a>
 ## Runtime ABI
 
-This document describes the stable C ABI provided by the runtime library.
+This document describes the C ABI provided by the runtime library (documented; evolving).
 
 ### Math
 
@@ -138,7 +138,7 @@ values is reproducible across platforms.
 
 ### Memory model
 
-Strings and arrays ride on the shared heap header defined in [`rt_heap.h`](../src/runtime/rt_heap.h). The runtime keeps a magic tag, refcount, length, and capacity alongside every payload and validates these invariants when `VIPER_RC_DEBUG=1` (enabled for Debug builds). Array handles behave like strings: assignment and parameter passing retain, scope exits release, and `rt_arr_i32_resize` only clones when the refcount shows shared ownership. The architecture overview dives deeper into retain/release rules and copy-on-resize semantics—see [Architecture §Runtime memory model](architecture.md#runtime-memory-model).
+Strings and arrays ride on the shared heap header defined in [`rt_heap.h`](../../src/runtime/rt_heap.h). The runtime keeps a magic tag, refcount, length, and capacity alongside every payload and validates these invariants when `VIPER_RC_DEBUG=1` (enabled for Debug builds). Array handles behave like strings: assignment and parameter passing retain, scope exits release, and `rt_arr_i32_resize` only clones when the refcount shows shared ownership. The architecture overview dives deeper into retain/release rules and copy-on-resize semantics—see [Architecture §Runtime memory model](architecture.md#runtime-memory-model).
 
 <a id="vm-internals"></a>
 ## VM Internals
@@ -176,7 +176,7 @@ Locale-sensitive conversions are pinned to the C locale for every VM process.
 The runtime installs `LC_NUMERIC="C"` during initialization so `strtod` and
 `printf`-family entry points always accept and emit a dot (`.`) decimal
 separator. All floating-point values that reach user-visible text funnel
-through [`rt_format_f64`](../src/runtime/rt_format.c), which canonicalises the
+through [`rt_format_f64`](../../src/runtime/rt_format.c), which canonicalises the
 representation:
 
 - Normal numbers are rendered with `%.15g` and a dot decimal separator, even on
@@ -187,7 +187,7 @@ representation:
   interpreter, ahead-of-time front ends, and the C runtime bridge.
 
 The determinism guarantees in this section are covered by
-[`tests/runtime/FloatFormattingTests.cpp`](../tests/runtime/FloatFormattingTests.cpp).
+[`src/tests/runtime/FloatFormattingTests.cpp`](../../src/tests/runtime/FloatFormattingTests.cpp).
 
 ### Recursion
 

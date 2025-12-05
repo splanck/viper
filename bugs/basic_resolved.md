@@ -71,7 +71,7 @@ Symptom: Passing TRUE/FALSE to BOOLEAN parameters caused IL call-arg type mismat
 
 Resolution: Coerce call arguments to `i1` when callee expects BOOLEAN; keep literals as legacy `i64` (-1/0) to preserve IL goldens.
 
-Validation: Boolean parameter calls compile and run; goldens remain stable.
+Validation: Boolean parameter calls compile and run; golden outputs remain consistent across runs.
 
 ---
 

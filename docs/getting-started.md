@@ -136,7 +136,7 @@ For more examples, see the **[BASIC Tutorial](basic-language.md)** and the `exam
 
 All frontends, IL, and the VM share a consistent error and trap model. Diagnostics remain uniform regardless of entry point.
 
-> **Learn more:** See `/devdocs/specs/errors.md` for trap kinds, handler semantics, and BASIC `ON ERROR` lowering rules.
+> **Learn more:** See `devdocs/specs/errors.md` for trap kinds, handler semantics, and BASIC `ON ERROR` lowering rules.
 
 ### Deterministic Numerics
 
@@ -149,7 +149,7 @@ Viper guarantees consistent numeric behavior across all platforms and execution 
 - **Conversions**: Casts use checked variants that trap when values are out of range
 - **String conversions**: `VAL` and `STR$` guarantee round-trip consistency
 
-> **Learn more:** See `/devdocs/specs/numerics.md` for complete numeric semantics.
+> **Learn more:** See `devdocs/specs/numerics.md` for complete numeric semantics.
 
 ---
 

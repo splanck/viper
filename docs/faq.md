@@ -14,9 +14,9 @@ Viper is an IL-based compiler toolchain that includes a BASIC frontend, intermed
 
 Viper uses a modern compiler architecture with an intermediate representation (IL) that separates language semantics from execution. Programs can run in a VM for development/debugging or be compiled to native code for performance. The IL layer makes it easy to add new language frontends.
 
-### 3. Is Viper production-ready?
+### 3. Is Viper suitable for production use?
 
-No. Viper is an experimental research project. While it implements a substantial subset of BASIC with OOP support, it's intended for education, experimentation, and compiler research rather than production use.
+No. Viper is an experimental research project at an early stage. While it implements a substantial subset of BASIC with OOP support, it's intended for education, experimentation, and compiler research rather than production use.
 
 ---
 

@@ -4,59 +4,46 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-//
-// File: vm/VM.hpp
-// Purpose: Declares stack-based virtual machine executing IL and caching runtime
-// Key invariants: Inline string literal cache owns one handle per literal.
-// Ownership/Lifetime: VM does not own module or runtime bridge.
-// Links: docs/il-guide.md#reference
-//
-//===----------------------------------------------------------------------===//
-//
-// CONCURRENCY MODEL
-// =================
-//
-// Each VM instance is single-threaded: only one thread may execute within a
-// given VM instance at a time. This design avoids internal synchronization
-// overhead in the interpreter hot path and simplifies resource management.
-//
-// To achieve parallelism, create multiple VM instances, one per thread. Each
-// VM instance maintains its own:
-//   - Runtime context (RNG state, module variables, file channels, type registry)
-//   - Register file and operand stack
-//   - String literal cache
-//   - Trap/error state
-//
-// Thread-Local State:
-// The VM relies on thread-local storage to track the "active" VM instance for
-// the current thread. This is managed via `ActiveVMGuard` (see VMContext.hpp):
-//
-//   - `ActiveVMGuard guard(&vm)` installs `vm` as the active VM for the scope
-//   - The guard also binds the VM's runtime context via `rt_set_current_context`
-//   - `VM::activeInstance()` returns the active VM for the calling thread
-//   - When the guard destructs, it restores the previous VM (supporting nesting)
-//
-// Usage Patterns:
-//
-//   // Single-threaded usage (most common)
-//   il::vm::VM vm(module);
-//   vm.run();  // ActiveVMGuard created internally
-//
-//   // Multi-threaded usage (one VM per thread)
-//   std::thread t1([&module1]() {
-//       il::vm::VM vm(module1);
-//       vm.run();
-//   });
-//   std::thread t2([&module2]() {
-//       il::vm::VM vm(module2);
-//       vm.run();
-//   });
-//
-// Debug Assertions:
-// In debug builds, the VM asserts if:
-//   - ActiveVMGuard is used to re-enter a VM already active on the same thread
-//   - activeInstance() is called when no VM is active (returns nullptr in release)
-//
+/**
+ * @file
+ * @brief Stack-based virtual machine that executes Viper IL.
+ *
+ * Declares the interpreter core, associated execution context, and dispatch
+ * strategies. The VM caches runtime data (e.g., string literals) and exposes
+ * a small public API for running modules and integrating debug/trace hooks.
+ *
+ * @section invariants Key invariants
+ * - Inline string-literal cache owns one handle per literal per VM.
+ * - The VM does not own the Module or RuntimeBridge it references.
+ *
+ * @section concurrency Concurrency model
+ * Each VM instance is single-threaded: only one thread may execute within a
+ * given VM instance at a time. This avoids synchronization on the hot path and
+ * simplifies resource management. To parallelize, create multiple VMs (one per
+ * thread). Each VM maintains its own:
+ * - Runtime context (RNG state, module variables, file channels, type registry)
+ * - Register file and operand stack
+ * - String literal cache
+ * - Trap/error state
+ *
+ * @par Thread-local state
+ * The active VM for a thread is tracked via a thread-local guard
+ * (`ActiveVMGuard`, see `VMContext.hpp`).
+ * - `ActiveVMGuard guard(&vm)` installs `vm` as the active VM for the scope
+ * - The guard binds the VM's runtime context via `rt_set_current_context`
+ * - `VM::activeInstance()` returns the active VM for the calling thread
+ * - Guard destruction restores the previous VM (supports nesting)
+ *
+ * @par Usage patterns
+ * - Single-threaded (most common): `VM vm(module); vm.run();`
+ * - Multi-threaded (one VM per thread): spawn threads, construct per-thread
+ *   VMs, and call `run()` independently.
+ *
+ * @par Debug assertions
+ * In debug builds, the VM asserts if:
+ * - `ActiveVMGuard` re-enters an already active VM on the same thread
+ * - `activeInstance()` is called when no VM is active (nullptr in release)
+ */
 //===----------------------------------------------------------------------===//
 
 #pragma once

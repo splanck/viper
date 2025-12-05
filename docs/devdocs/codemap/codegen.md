@@ -1,5 +1,9 @@
 # CODEMAP: Codegen
 
+Status:
+- AArch64: Validated end‑to‑end on Apple Silicon (ran full Frogger demo).
+- x86_64: Implemented but not yet tested on actual x86 hardware; experimental.
+
 Native code generation backends for x86_64 and AArch64.
 
 ## Common Utilities (`src/codegen/common/`)

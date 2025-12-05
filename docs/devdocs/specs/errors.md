@@ -13,7 +13,7 @@ and any future languages that target the IL trap mechanism.
 
 ## Trap Kinds
 
-The VM recognizes the following trap kinds. They are stable and shared between
+The VM recognizes the following trap kinds. They are defined and shared between
 checked IL operations, the runtime C ABI, and BASIC surface semantics.
 
 | Kind | Description |
@@ -247,7 +247,7 @@ message and `RESUME NEXT` to continue without the file.
 
 ## Unhandled Trap Diagnostics
 
-If no `eh.push` is active when a trap occurs, the VM terminates with a stable
+If no `eh.push` is active when a trap occurs, the VM terminates with a deterministic
 multi-field diagnostic:
 
 ```

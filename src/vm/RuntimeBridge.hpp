@@ -4,45 +4,36 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-//
-// File: vm/RuntimeBridge.hpp
-// Purpose: Declares adapter between VM and runtime library.
-// Key invariants: None.
-// Ownership/Lifetime: VM owns the bridge.
-// Links: docs/il-guide.md#reference
-//
-//===----------------------------------------------------------------------===//
-//
-// EXTERN REGISTRY DESIGN
-// ======================
-//
-// The extern registry maps external function names to their descriptors and
-// native implementations. This enables IL code to call host-provided functions.
-//
-// CURRENT IMPLEMENTATION (Process-Global):
-// ----------------------------------------
-// The extern registry is currently **process-global**:
-//
-//   - All VM instances in the process share the same registry.
-//   - Registration and lookup are protected by a single mutex.
-//   - Functions registered via `registerExtern()` are visible to all VMs.
-//
-// This design is acceptable for the current CLI/single-tenant model where:
-//   - One VM executes at a time, or
-//   - Multiple VMs need access to the same set of external functions.
-//
-// FUTURE CONSIDERATION (Per-VM Scoping):
-// --------------------------------------
-// For multi-tenant embedding scenarios, per-VM extern scoping may be desirable:
-//
-//   - Each VM instance could have its own ExternRegistry.
-//   - Host functions could be selectively exposed per tenant.
-//   - Sandboxing and isolation would be improved.
-//
-// The `ExternRegistry` abstraction below is designed to facilitate this future
-// refactoring. Currently, `processGlobalExternRegistry()` returns the singleton;
-// a future version could return a per-VM registry from the active VM.
-//
+/**
+ * @file
+ * @brief Adapter between VM execution and the C runtime library.
+ *
+ * Declares the bridge used to invoke runtime helpers, manage trap diagnostics,
+ * and register external functions callable from IL. The bridge provides both a
+ * process-global extern registry and hooks for a future per-VM registry.
+ *
+ * @section registry Extern Registry Design
+ * The extern registry maps external function names to their descriptors and
+ * native implementations, enabling IL code to call host-provided functions.
+ *
+ * @par Current implementation (process-global)
+ * - All VM instances in the process share the same registry
+ * - Registration and lookup are protected by a single mutex
+ * - Functions registered via `registerExtern()` are visible to all VMs
+ *
+ * This design suits the CLI/single-tenant model in which only one VM executes
+ * at a time or multiple VMs share identical extern sets.
+ *
+ * @par Future consideration (per-VM scoping)
+ * For multi-tenant embedding, per-VM extern scoping may be desirable:
+ * - Each VM instance would have its own ExternRegistry
+ * - Hosts could selectively expose functions per tenant
+ * - Improves sandboxing and isolation
+ *
+ * The `ExternRegistry` abstraction is designed to support such a refactor.
+ * Currently, `processGlobalExternRegistry()` returns the singleton; a future
+ * version could route via the active VM.
+ */
 //===----------------------------------------------------------------------===//
 
 #pragma once

@@ -7,16 +7,15 @@ This document captures the current state of the AArch64 backend, recent bug fixe
 ## Executive Summary
 
 ### Current Status (November 2025)
-- ✅ **Basic compilation pipeline works**: IL → ARM64 assembly → native binary
-- ✅ **Platform bugs fixed**: macOS section directives, runtime function prefixes, label sanitization
-- ✅ **Simple programs execute**: Functions returning constants or simple arithmetic on parameters
-- ❌ **Real programs crash**: Missing critical features for memory, strings, arrays, and OOP
+- ✅ **End‑to‑end path validated on Apple Silicon**: IL → AArch64 assembly → native binary → runs (Frogger demo)
+- ✅ **Platform fixes**: macOS section directives, runtime function prefixes, label sanitization
+- ✅ **Core operations execute**: Arithmetic, control flow, calls, memory, and strings sufficient for demos
+- 🚧 **Remaining work**: Broader opcode coverage, float/FPR ops, more address modes, EH, performance
 
 ### Test Case: Frogger Demo
 The frogger demo (`demos/frogger/frogger.bas`) serves as our benchmark for backend completeness:
-- **Compiles successfully**: 12,771 lines of IL → 56KB assembly → 121KB native binary
-- **Links successfully**: All symbols resolved with runtime library
-- **Crashes at runtime**: Missing instruction support causes immediate segfault
+- **Compiles and links successfully**: 12,771 lines of IL → 56KB assembly → 121KB native binary
+- **Runs successfully**: Verified end‑to‑end on Apple Silicon
 
 ## Overview
 
@@ -243,17 +242,16 @@ echo "Exit code: $?"  # Should print 15
 
 ### Test Frogger Compilation
 ```bash
-# Compiles but crashes at runtime due to missing features
 ./build/src/tools/ilc/ilc front basic -emit-il demos/frogger/frogger.bas > /tmp/frogger.il
 ./build/src/tools/ilc/ilc codegen arm64 /tmp/frogger.il -S /tmp/frogger.s
 as /tmp/frogger.s -o /tmp/frogger.o
 clang++ /tmp/frogger.o build/src/runtime/libviper_runtime.a -o /tmp/frogger_native
-# Binary created but segfaults when run
+./_run_if_arm64 /tmp/frogger_native   # helper or manual run on Apple Silicon host
 ```
 
 ## Critical Bugs Fixed (November 2025)
 
-During attempted native compilation of the frogger demo (`demos/frogger/frogger.bas`), three critical bugs were discovered in the ARM64 backend that prevent successful assembly on macOS:
+During earlier native compilation attempts of the frogger demo (`demos/frogger/frogger.bas`), three critical bugs were identified in the ARM64 backend that prevented successful assembly on macOS. These have since been resolved:
 
 ### BUG 1: Incorrect Section Directive for macOS
 - **Location**: `src/codegen/aarch64/cmd_codegen_arm64.cpp:136`
@@ -291,11 +289,8 @@ During attempted native compilation of the frogger demo (`demos/frogger/frogger.
   - Emits unique labels for each distinct literal
 - **Fix Required**: Implement similar rodata pool mechanism for AArch64 to prevent duplicate symbols
 
-### Impact Analysis
-These bugs completely prevent native ARM64 compilation of any non-trivial BASIC program on macOS. The frogger demo, which successfully compiles to 12,771 lines of IL and runs correctly in the VM, generates a 56KB assembly file that cannot be assembled due to these issues. The bugs affect:
-- Any program with string literals (BUG 1 & 3)
-- Any OOP program with classes (BUG 2)
-- Cross-platform compatibility (BUG 1)
+### Impact Analysis (Historical)
+Before the fixes, these bugs prevented native ARM64 assembly on macOS for non‑trivial programs. With the fixes in place, assembly and linking succeed; see the Frogger test above for end‑to‑end validation.
 
 ### Test Case
 To reproduce these bugs:
@@ -313,9 +308,14 @@ All three bugs have been fixed:
 - **BUG 3**: RodataPoolAArch64 was already implemented
 - **Additional fix**: Added runtime function underscore prefixing for macOS
 
-## Missing Features for Frogger (November 2025 Analysis)
+## Remaining Work
 
-### IL Instruction Coverage Gap
+Note: The analysis below predates several fixes that enabled the Frogger demo to
+run natively on Apple Silicon. Many items have been implemented; treat the lists
+as general areas for continued expansion and robustness rather than current
+blockers.
+
+### IL Instruction Coverage (expansion areas)
 Analysis of frogger.il reveals heavy usage of unsupported instructions:
 
 | Instruction | Count | Status | Required For |

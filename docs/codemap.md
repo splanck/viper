@@ -2,7 +2,7 @@
 
 Source layout for the Viper compiler toolchain (current tree, kept in sync).
 
-> For subsystem deep-dives, see [/devdocs/codemap.md](/devdocs/codemap.md).
+> For subsystem deep-dives, see [devdocs/codemap.md](devdocs/codemap.md).
 
 ## Quick Reference
 

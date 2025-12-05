@@ -309,6 +309,7 @@ class SemanticAnalyzer
         Bool,
         ArrayInt,
         ArrayString,
+        Object,
         Unknown
     };
 

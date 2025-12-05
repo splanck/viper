@@ -85,6 +85,40 @@ StmtPtr Parser::parseClassDecl()
         }
     }
 
+    // Optional IMPLEMENTS clause: CLASS C : B IMPLEMENTS I1, I2, ...
+    if (at(TokenKind::KeywordImplements))
+    {
+        consume();
+        // Parse comma-separated list of qualified interface names
+        do
+        {
+            if (at(TokenKind::Comma))
+                consume();
+
+            std::vector<std::string> ifaceNameParts;
+            if (at(TokenKind::Identifier))
+            {
+                ifaceNameParts.push_back(peek().lexeme);
+                consume();
+                while (at(TokenKind::Dot))
+                {
+                    consume();
+                    Token seg = expect(TokenKind::Identifier);
+                    if (seg.kind == TokenKind::Identifier)
+                        ifaceNameParts.push_back(seg.lexeme);
+                    else
+                        break;
+                }
+                decl->implementsQualifiedNames.push_back(std::move(ifaceNameParts));
+            }
+            else
+            {
+                expect(TokenKind::Identifier);
+                break;
+            }
+        } while (at(TokenKind::Comma));
+    }
+
     auto equalsIgnoreCase = [](const std::string &lhs, std::string_view rhs)
     {
         if (lhs.size() != rhs.size())
@@ -874,6 +908,165 @@ StmtPtr Parser::parseTypeDecl()
 
     expect(TokenKind::KeywordEnd);
     expect(TokenKind::KeywordType);
+
+    return decl;
+}
+
+/// @brief Parse an INTERFACE declaration.
+/// @details Parses `INTERFACE Name ... END INTERFACE` including abstract method
+///          signatures (SUB/FUNCTION declarations without bodies). Interface methods
+///          are implicitly abstract and don't have implementation bodies.
+/// @return Newly allocated @ref InterfaceDecl representing the parsed declaration.
+StmtPtr Parser::parseInterfaceDecl()
+{
+    auto loc = peek().loc;
+    consume(); // INTERFACE
+
+    auto decl = std::make_unique<InterfaceDecl>();
+    decl->loc = loc;
+
+    // Parse qualified interface name: INTERFACE Namespace.SubNs.IName
+    if (at(TokenKind::Identifier))
+    {
+        decl->qualifiedName.push_back(peek().lexeme);
+        consume();
+        while (at(TokenKind::Dot))
+        {
+            consume();
+            Token seg = expect(TokenKind::Identifier);
+            if (seg.kind == TokenKind::Identifier)
+                decl->qualifiedName.push_back(seg.lexeme);
+            else
+                break;
+        }
+    }
+    else
+    {
+        expect(TokenKind::Identifier);
+    }
+
+    // Consume optional statement separator
+    if (at(TokenKind::Colon))
+        consume();
+    if (at(TokenKind::EndOfLine))
+        consume();
+
+    // Parse interface members (abstract method signatures only)
+    while (!at(TokenKind::EndOfFile))
+    {
+        while (at(TokenKind::EndOfLine) || at(TokenKind::Colon))
+            consume();
+
+        // Check for END INTERFACE
+        if (at(TokenKind::KeywordEnd) && peek(1).kind == TokenKind::KeywordInterface)
+            break;
+
+        // Parse SUB or FUNCTION signatures (no body allowed in interface)
+        if (at(TokenKind::KeywordSub) || at(TokenKind::KeywordFunction))
+        {
+            bool isSub = at(TokenKind::KeywordSub);
+            auto methodLoc = peek().loc;
+            consume();
+
+            // Parse method name
+            Token nameTok = expect(TokenKind::Identifier);
+            std::string methodName = (nameTok.kind == TokenKind::Identifier) ? nameTok.lexeme : "";
+
+            // Parse parameter list
+            std::vector<Param> params;
+            if (at(TokenKind::LParen))
+            {
+                consume();
+                while (!at(TokenKind::RParen) && !at(TokenKind::EndOfFile))
+                {
+                    if (at(TokenKind::Comma))
+                        consume();
+
+                    Param param;
+                    param.isByRef = false;
+
+                    // Optional BYVAL/BYREF
+                    if (at(TokenKind::KeywordByVal))
+                    {
+                        consume();
+                        param.isByRef = false;
+                    }
+                    else if (at(TokenKind::KeywordByRef))
+                    {
+                        consume();
+                        param.isByRef = true;
+                    }
+
+                    // Parameter name
+                    Token pnameTok = expect(TokenKind::Identifier);
+                    if (pnameTok.kind == TokenKind::Identifier)
+                        param.name = pnameTok.lexeme;
+
+                    // AS Type
+                    if (at(TokenKind::KeywordAs))
+                    {
+                        consume();
+                        if (at(TokenKind::KeywordBoolean) || at(TokenKind::Identifier))
+                            param.type = parseTypeKeyword();
+                        else
+                            param.type = Type::I64;
+                    }
+                    else
+                    {
+                        param.type = Type::I64;
+                    }
+
+                    params.push_back(std::move(param));
+
+                    if (!at(TokenKind::Comma) && !at(TokenKind::RParen))
+                        break;
+                }
+                if (at(TokenKind::RParen))
+                    consume();
+            }
+
+            // Create abstract method declaration (no body)
+            if (isSub)
+            {
+                auto methodDecl = std::make_unique<SubDecl>();
+                methodDecl->loc = methodLoc;
+                methodDecl->name = methodName;
+                methodDecl->params = std::move(params);
+                // Interface methods are implicitly abstract - no body
+                decl->members.push_back(std::move(methodDecl));
+            }
+            else
+            {
+                auto methodDecl = std::make_unique<FunctionDecl>();
+                methodDecl->loc = methodLoc;
+                methodDecl->name = methodName;
+                methodDecl->params = std::move(params);
+
+                // Return type for FUNCTION
+                if (at(TokenKind::KeywordAs))
+                {
+                    consume();
+                    if (at(TokenKind::KeywordBoolean) || at(TokenKind::Identifier))
+                        methodDecl->ret = parseTypeKeyword();
+                    else
+                        methodDecl->ret = Type::I64;
+                }
+                // Interface methods are implicitly abstract - no body
+                decl->members.push_back(std::move(methodDecl));
+            }
+        }
+        else if (!at(TokenKind::EndOfFile))
+        {
+            // Skip unexpected tokens to recover
+            consume();
+        }
+    }
+
+    // Consume END INTERFACE
+    while (at(TokenKind::EndOfLine))
+        consume();
+    expect(TokenKind::KeywordEnd);
+    expect(TokenKind::KeywordInterface);
 
     return decl;
 }

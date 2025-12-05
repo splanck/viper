@@ -60,7 +60,7 @@ The heuristic chooses among three backends:
 
 Each entry records the default branch index to fall back on when no case
 matches. Duplicate case values are ignored while building metadata so the cache
-remains stable even if the IL contains redundant arms.
+remains consistent even if the IL contains redundant arms.
 
 ## Memoization and reuse
 
@@ -102,4 +102,3 @@ matches the IL semantics for tail positions.
 ```
 
 There are no semantic differences; only performance and stack usage change.
-

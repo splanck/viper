@@ -275,6 +275,8 @@ const char *semanticTypeName(SemanticAnalyzer::Type type)
             return "ARRAY(INT)";
         case Type::ArrayString:
             return "ARRAY(STRING)";
+        case Type::Object:
+            return "OBJECT";
         case Type::Unknown:
             return "UNKNOWN";
     }

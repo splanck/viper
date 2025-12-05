@@ -439,7 +439,12 @@ Expected<void> checkCall(const VerifyCtx &ctx)
         }
         else
         {
-            // Pointer-based indirect call (e.g., interface dispatch). Skip static signature checks.
+            // Pointer-based indirect call (e.g., interface dispatch). Skip static signature checks
+            // but still record the result type if the instruction has a result.
+            if (ctx.instr.result && ctx.instr.type.kind != il::core::Type::Kind::Void)
+            {
+                ctx.types.recordResult(ctx.instr, ctx.instr.type);
+            }
             return {};
         }
     }

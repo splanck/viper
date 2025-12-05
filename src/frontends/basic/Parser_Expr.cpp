@@ -148,6 +148,32 @@ ExprPtr Parser::parseBinary(int min_prec)
     auto lhs = parseUnary();
     while (true)
     {
+        // Handle IS and AS type operators (precedence 3, same as comparisons)
+        if (peek().kind == TokenKind::KeywordIs && min_prec <= 3)
+        {
+            auto opTok = peek();
+            consume(); // IS
+            auto isExpr = std::make_unique<IsExpr>();
+            isExpr->loc = opTok.loc;
+            isExpr->value = std::move(lhs);
+            auto [segs, startLoc] = parseQualifiedIdentSegments();
+            isExpr->typeName = std::move(segs);
+            lhs = std::move(isExpr);
+            continue;
+        }
+        if (peek().kind == TokenKind::KeywordAs && min_prec <= 3)
+        {
+            auto opTok = peek();
+            consume(); // AS
+            auto asExpr = std::make_unique<AsExpr>();
+            asExpr->loc = opTok.loc;
+            asExpr->value = std::move(lhs);
+            auto [segs, startLoc] = parseQualifiedIdentSegments();
+            asExpr->typeName = std::move(segs);
+            lhs = std::move(asExpr);
+            continue;
+        }
+
         const auto *parselet = findInfix(peek().kind);
         if (parselet == nullptr || parselet->lbp < min_prec)
             break;

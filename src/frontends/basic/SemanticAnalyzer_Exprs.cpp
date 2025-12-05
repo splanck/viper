@@ -20,6 +20,7 @@
 #include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/IdentifierUtil.hpp"
 #include "frontends/basic/SemanticAnalyzer_Internal.hpp"
+#include "frontends/basic/StringUtils.hpp"
 #include "frontends/basic/sem/TypeRegistry.hpp"
 #include "il/runtime/classes/RuntimeClasses.hpp"
 
@@ -356,7 +357,8 @@ class SemanticAnalyzerExprVisitor final : public MutExprVisitor
         {
             for (const auto &entry : analyzer_.oopIndex_.classes())
             {
-                if (entry.second.qualifiedName == dotted)
+                // Case-insensitive comparison since BASIC is case-insensitive
+                if (string_utils::iequals(entry.second.qualifiedName, dotted))
                 {
                     resolved = true;
                     break;

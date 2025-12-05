@@ -85,7 +85,7 @@ When a BASIC program uses `CONST` values defined in an AddFile'd module, the IL 
 ### Investigation Summary
 
 - Native runtime implementation exists, is linked by the AArch64 CLI, and works in isolation:
-  - C API: `src/runtime/rt_modvar.c` returns stable addresses per name and uses a per-VM `RtContext`.
+  - C API: `src/runtime/rt_modvar.c` returns consistent addresses per name and uses a per-VM `RtContext`.
   - AArch64 emitter initializes the runtime context in `main` (see `src/codegen/aarch64/AsmEmitter.cpp:829-846`), so native calls have an active context.
   - Minimal IL program that uses `rt_modvar_addr_i64` to increment a counter prints `1` when run via `ilc codegen arm64 -run-native`.
 
@@ -197,7 +197,7 @@ PRINT rect.topLeft.x
   - `src/codegen/aarch64/LowerILToMIR.cpp:816-870` (GEP → add immediate/register)
   - `src/codegen/aarch64/LowerILToMIR.cpp:886-912` (load via base+imm), `:1240+` (store via base+imm)
 
-- Object receiver (`ME`) is materialized at method entry and loaded via a stable stack slot:
+- Object receiver (`ME`) is materialized at method entry and loaded via a fixed stack slot:
   - `src/frontends/basic/lower/oop/Lower_OOP_Emit.cpp:114-140`
 
 ### Suspected Root Cause

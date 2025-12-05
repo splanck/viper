@@ -1899,12 +1899,12 @@ Fixed by implementing block pointer refresh logic in `src/frontends/basic/lower/
 **Changes Made**:
 
 1. **Captured block indices before expression lowering** (`Emit_Control.cpp:147-156`):
-   - Convert block pointers to stable indices before calling `lowerExpr()`
+   - Convert block pointers to consistent indices before calling `lowerExpr()`
    - Indices remain valid even when `func->blocks` vector is reallocated
 
 2. **Refreshed pointers after expression lowering** (`Emit_Control.cpp:161-165`):
    - Reload function pointer (may have changed due to vector reallocation)
-   - Rebuild block pointers from the stable indices
+   - Rebuild block pointers from the refreshed indices
    - Use refreshed pointers in `emitCBr()` call
 
 **Code Changes**:
@@ -3077,7 +3077,7 @@ END CLASS
 
 **Overall Assessment**: ✅ **ALL CRITICAL FEATURES STABLE**
 
-The poker game successfully demonstrates that Viper BASIC OOP is production-ready for complex applications. All issues encountered have simple workarounds that don't impede development.
+The poker game demonstrates that Viper BASIC OOP can support complex applications within the current test environment. All issues encountered have workarounds; the system remains experimental and not suited for production.
 
 **Game Statistics**:
 - 260 lines of game logic
@@ -3491,7 +3491,7 @@ Location: `examples/vTris/`
 
 ### Stress Test Conclusions
 
-**Overall Assessment:** ✅ **Viper BASIC OOP is PRODUCTION-READY** (with documented workarounds)
+**Overall Assessment:** Experimental — OOP is capable enough for complex demos in tests (with documented workarounds), but not suited for production use.
 
 **Findings:**
 1. **One critical bug found** (local array copying) with viable workaround
@@ -3513,4 +3513,3 @@ Location: `examples/vTris/`
 - AddFile is reliable for modular code organization
 
 **Bottom Line:** Viper BASIC OOP features are solid enough for real-world game development. The array copying bug is the only significant limitation, and the workaround is straightforward.
-

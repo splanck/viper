@@ -6,7 +6,7 @@ last-updated: 2025-11-12
 
 # Viper BASIC Namespaces — Reference
 
-This document provides a complete reference for the namespace feature in Viper BASIC (Track A implementation). For tutorial-style examples, see [basic-language.md](basic-language.md). For grammar details, see [grammar.md](grammar.md).
+This document provides a complete reference for the namespace feature in Viper BASIC (Track A implementation). For tutorial-style examples, see [basic-language.md](../basic-language.md). For grammar details, see [grammar.md](grammar.md).
 
 ## Overview
 
@@ -754,7 +754,7 @@ Canonical runtime classes are exposed under the `Viper.*` root and are used dire
   - Methods:
     - `ToString() -> STRING` — default returns the class qualified name
     - `Equals(OBJECT other) -> BOOL` — reference equality by default
-    - `GetHashCode() -> I64` — process‑stable hash derived from the object pointer
+    - `GetHashCode() -> I64` — process‑consistent hash derived from the object pointer
     - `ReferenceEquals(OBJECT a, OBJECT b) -> BOOL` — static; reference equality
 - `Viper.String` — Managed string type (BASIC `STRING` is an alias)
   - Properties: `Length -> I64`, `IsEmpty -> BOOL`

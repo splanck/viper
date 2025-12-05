@@ -704,8 +704,9 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
             emitBinary(Opcode::GEP, Type(Type::Kind::Ptr), tablePtr, Value::constInt(offset));
         Value fnPtr = emitLoad(Type(Type::Kind::Ptr), entryPtr);
 
+        // BUG-OOP-003 fix: Use declaring class for return type lookup in virtual dispatch
         // BUG-CARDS-010 fix: Check for object-returning methods first
-        std::string retClassName = findMethodReturnClassName(className, expr.method);
+        std::string retClassName = findMethodReturnClassName(declaringClass, selectedName);
         if (!retClassName.empty())
         {
             Type ilRetTy(Type::Kind::Ptr);
@@ -713,7 +714,7 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
             deferReleaseObj(result, retClassName);
             return {result, ilRetTy};
         }
-        if (auto retType = findMethodReturnType(className, expr.method))
+        if (auto retType = findMethodReturnType(declaringClass, selectedName))
         {
             Type ilRetTy = type_conv::astToIlType(*retType);
             Value result = emitCallIndirectRet(ilRetTy, fnPtr, args);

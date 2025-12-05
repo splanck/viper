@@ -64,7 +64,7 @@ The CLI is organized around primary entry points:
 - `ilc front basic -emit-il <file.bas>` — Lower BASIC to IL
 - `ilc front basic -run <file.bas>` — Compile and execute BASIC
 - `ilc il-opt <in.il> -o <out.il>` — Run optimization passes
-- `ilc codegen x64 <in.il> -o <out>` — Compile to x86-64 native code
+- `ilc codegen x64 <in.il> -o <out>` — Compile to x86-64 native code (experimental; unvalidated on real x86)
 - `ilc codegen arm64 <in.il> -S <out.s>` — Generate ARM64 assembly
 
 ### ilc -run
@@ -128,7 +128,7 @@ Compile IL to native code.
 ilc codegen x64 <in.il> -o <executable>
 ilc codegen x64 <in.il> -S <out.s>  # Assembly only
 
-# ARM64
+# ARM64 (Apple Silicon validated)
 ilc codegen arm64 <in.il> -S <out.s>
 ```
 

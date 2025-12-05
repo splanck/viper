@@ -364,8 +364,8 @@ A: The test allows up to 200 bytes difference. If you've changed the IL serializ
 
 - [docs/namespaces.md](namespaces.md) - Complete namespace reference
 - [docs/grammar.md](grammar.md) - NAMESPACE and USING grammar
-- [docs/basic-language.md](basic-language.md) - Tutorial section on namespaces
-- [examples/basic/namespace_demo.bas](../examples/basic/namespace_demo.bas) - Runnable example
+- [docs/basic-language.md](../basic-language.md) - Tutorial section on namespaces
+- [examples/basic/namespace_demo.bas](../../examples/basic/namespace_demo.bas) - Runnable example
 
 ## Summary
 

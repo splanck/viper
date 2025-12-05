@@ -841,7 +841,7 @@ END NAMESPACE
    - Simple: `USING Viper.Console` (imports all from namespace)
    - Aliased: `USING VC = Viper.Console` (creates shorthand alias)
 
-For complete namespace documentation, see [Namespace Reference](../devdocs/namespaces.md).
+For complete namespace documentation, see [Namespace Reference](devdocs/namespaces.md).
 
 ## Keyword index
 

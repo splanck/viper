@@ -689,6 +689,36 @@ function(viper_add_golden_suite_tests)
             "-DEXPECT=${EXPECT_OOP_BASE_QUAL}"
             -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
 
+    # BUG-OOP-003: Virtual method inherited without override
+    file(READ ${_VIPER_GOLDEN_DIR}/oop/virtual_no_override.stdout EXPECT_OOP_VNOOVERRIDE)
+    string(STRIP "${EXPECT_OOP_VNOOVERRIDE}" EXPECT_OOP_VNOOVERRIDE)
+    viper_add_ctest(oop_virtual_no_override
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/oop/virtual_no_override.bas
+            "-DEXPECT=${EXPECT_OOP_VNOOVERRIDE}"
+            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
+
+    # BUG-OOP-004: INTERFACE/IMPLEMENTS basic test
+    file(READ ${_VIPER_GOLDEN_DIR}/oop/interface_basic.stdout EXPECT_OOP_IFACE_BASIC)
+    string(STRIP "${EXPECT_OOP_IFACE_BASIC}" EXPECT_OOP_IFACE_BASIC)
+    viper_add_ctest(oop_interface_basic
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/oop/interface_basic.bas
+            "-DEXPECT=${EXPECT_OOP_IFACE_BASIC}"
+            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
+
+    # OOP IS/AS operators for type checking and safe casts
+    file(READ ${_VIPER_GOLDEN_DIR}/basic/oop/is_as_operators.stdout EXPECT_OOP_IS_AS)
+    string(STRIP "${EXPECT_OOP_IS_AS}" EXPECT_OOP_IS_AS)
+    viper_add_ctest(oop_is_as_operators
+            ${CMAKE_COMMAND}
+            -DILC=${BASIC_ILC}
+            -DBAS_FILE=${_VIPER_GOLDEN_DIR}/basic/oop/is_as_operators.bas
+            "-DEXPECT=${EXPECT_OOP_IS_AS}"
+            -P ${_VIPER_GOLDEN_DIR}/arrays/check_basic_run_output.cmake)
+
     # OOP SUB call as statement
     file(READ ${_VIPER_GOLDEN_DIR}/oop/method_sub_call.stdout EXPECT_OOP_SUB_CALL)
     string(STRIP "${EXPECT_OOP_SUB_CALL}" EXPECT_OOP_SUB_CALL)

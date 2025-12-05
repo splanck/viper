@@ -8,14 +8,14 @@ last-verified: 2025-11-25
 
 **Purpose:** This document explains how Viper compiles and runs programs end-to-end: front ends (e.g., BASIC) → intermediate language (IL) → optimization passes → execution on the VM interpreter → native code generation. It merges prior overview notes and archived blueprints so contributors have a single map to the system; deep dives live in linked pages.
 
-If you're new to the IL, start with the [IL Quickstart](il-quickstart.md).
+If you're new to the IL, start with the [IL Quickstart](../il-quickstart.md).
 
 ## Project goals
 
 - Multi-language front ends (begin with BASIC) that all lower to a common IL "thin waist."
 - Interpreter backend that executes IL directly for fast bring-up, tests, and debugging.
 - Native backends that translate IL to assembly (x86-64 SysV and ARM64 AAPCS64), assembled and linked into runnable binaries.
-- Small, solo-friendly codebase with clear module boundaries, strong tests, and a stable runtime ABI.
+- Small, solo-friendly codebase with clear module boundaries, strong tests, and a documented runtime ABI (versioned; evolving).
 
 ## High-level pipeline
 
@@ -26,7 +26,7 @@ The core stages and artifacts:
 - **Optimization passes:** constant folding, dead code elimination, peephole rewriting.
 - **Execution backends:**
   - **VM interpreter** — primary development/debugging target.
-  - **Code generation** — x86-64 SysV (Phase A complete), ARM64 AAPCS64 (functional).
+  - **Code generation** — AArch64 validated (Apple Silicon); x86_64 implemented but experimental/unvalidated on real x86.
 
 ```text
 +-----------------------+        +-----------------------+
@@ -160,7 +160,7 @@ Initial runtime surface (all prefixed `rt_`):
 
 #### Runtime memory model
 
-Strings and arrays share a single heap layout described by [`rt_heap.h`](../src/runtime/rt_heap.h). Every payload pointer is preceded by an `rt_heap_hdr_t` header containing a magic tag, the allocation kind, the element kind, reference count, length, and capacity. The helper accessors in `rt_heap.c` validate this header on every retain/release in debug builds, ensuring both strings and arrays obey the same invariants.
+Strings and arrays share a single heap layout described by [`rt_heap.h`](../../src/runtime/rt_heap.h). Every payload pointer is preceded by an `rt_heap_hdr_t` header containing a magic tag, the allocation kind, the element kind, reference count, length, and capacity. The helper accessors in `rt_heap.c` validate this header on every retain/release in debug builds, ensuring both strings and arrays obey the same invariants.
 
 Arrays are true reference types: assigning to another variable or passing as a parameter forwards the handle and bumps the refcount. No eager copy happens. When `rt_arr_i32_resize` observes a shared array (`refcnt > 1`) it allocates a fresh payload, copies the active prefix, releases the old handle, and returns the new pointer—effectively copy-on-resize. In-place growth only occurs when the array is uniquely owned.
 
@@ -170,7 +170,7 @@ Define `VIPER_RC_DEBUG=1` (set automatically for Debug builds) or export the env
 
 Additional runtime details live in the [Runtime & VM Guide](runtime-vm.md#runtime-memory-model).
 
-Front-end intrinsics lower directly to these routines. Both the VM and native code call the same C ABI, so the runtime must remain stable across releases.
+Front-end intrinsics lower directly to these routines. Both the VM and native code call the same C ABI. The ABI is versioned and may evolve; breaking changes require coordinated updates.
 
 ### VM interpreter
 
@@ -210,8 +210,8 @@ Runtime services manage heap-allocated strings with reference counting. Extern c
 
 `src/codegen/` contains native backends for x86-64 and ARM64:
 
-- **x86-64** (`src/codegen/x86_64/`) — Fully functional Phase A backend targeting System V AMD64 ABI. Features linear-scan register allocation, complete opcode coverage, and AT&T assembly output.
-- **ARM64** (`src/codegen/aarch64/`) — Functional backend targeting AAPCS64 (Apple Silicon, Linux ARM64). Features linear-scan register allocation, core integer/float operations, and function calls.
+- **x86-64** (`src/codegen/x86_64/`) — Implemented Phase A backend targeting System V AMD64 ABI (linear-scan). Not yet validated on actual x86 hardware; experimental.
+- **ARM64** (`src/codegen/aarch64/`) — Functional backend targeting AAPCS64 (Apple Silicon, Linux ARM64). Validated end‑to‑end on Apple Silicon by running a full Frogger demo.
 
 Pipeline expectations:
 
@@ -249,7 +249,7 @@ Diagnostics carry source mapping (file/line/column) through AST → IL → VM/na
 
 ### Deterministic naming
 
-Deterministic label naming ensures recompiling the same source yields identical IL. Stable labels keep golden tests from drifting and make builds reproducible, so the IR builder interns symbols and assigns names deterministically.
+Deterministic label naming ensures recompiling the same source yields identical IL. Deterministic labels keep golden tests from drifting and make builds reproducible, so the IR builder interns symbols and assigns names deterministically.
 
 ### Performance notes
 
@@ -261,7 +261,7 @@ Interpreter hot spots include opcode dispatch and string routines. Constant fold
 
 ### Compatibility & versioning
 
-Modules declare an IL version (`il 0.1.2`) at the top. The runtime ABI aims to remain stable across versions; breaking changes require bumping the IL version and updating consumers.
+Modules declare an IL version (`il 0.1.2`) at the top. The runtime ABI is versioned; breaking changes require bumping the IL version and updating consumers.
 
 ### Glossary
 
@@ -342,7 +342,7 @@ Top-level CMake targets include `il_core`, `il_vm`, `il_codegen_x86_64`, `il_cod
 
 #### IL I/O (text format)
 
-- Deterministic serializer that sorts externs/globals and assigns stable temporary numbers.
+- Deterministic serializer that sorts externs/globals and assigns consistent temporary numbers.
 - Parser implemented with a small tokenizer and recursive-descent grammar tailored to the IL spec.
 - Round-trip tests (`parse → print → parse`) ensure structural equivalence.
 
@@ -353,7 +353,7 @@ Top-level CMake targets include `il_core`, `il_vm`, `il_codegen_x86_64`, `il_cod
 - Alignment rules for memory operations.
 - Deliverable: `il_verify(Module&) -> std::vector<Diagnostic>`.
 
-### Runtime library (/runtime, C, stable ABI)
+### Runtime library (/runtime, C ABI; evolving)
 
 The runtime provides a comprehensive C ABI with the following components:
 
@@ -392,7 +392,7 @@ The runtime provides a comprehensive C ABI with the following components:
 
 #### x86-64 (`viper::codegen::x64`)
 
-Phase A complete. Pipeline:
+Implemented Phase A pipeline (experimental/unvalidated on real x86):
 
 1. Lower IL to MIR (Machine IR with virtual registers).
 2. Instruction selection and legalization.
@@ -402,7 +402,7 @@ Phase A complete. Pipeline:
 
 #### ARM64 (`viper::codegen::aarch64`)
 
-Functional for core operations. Pipeline:
+Functional and validated end‑to‑end on Apple Silicon. Pipeline:
 
 1. Lower IL to AArch64 MIR.
 2. Linear-scan register allocation.
@@ -511,7 +511,7 @@ ret
 - BASIC subset compiles to IL, runs correctly on the VM, and compiles to native with matching outputs.
 - Clear CLI, docs, and tests accompany the implementation.
 - Clean separation between front end ↔ IL ↔ VM/codegen ↔ runtime.
-- Interpreter-first workflow keeps the IL as the stable contract between language and machine layers.
+- Interpreter-first workflow keeps the IL as the versioned contract between language and machine layers.
 
 <a id="tui-architecture"></a>
 ## ViperTUI Architecture
@@ -564,4 +564,3 @@ assert(tio.buffer().find("expected text") != std::string::npos);
 `StringTermIO` records all writes and allows assertions on the exact escape sequences produced by the render layer.
 
 Sources: docs/architecture.md; docs/architecture.md#tui-architecture; archive/docs/architecture.md#cpp-overview; archive/docs/project-overview.md; archive/docs/dev-cli.md; archive/docs/dev/architecture.md.
-

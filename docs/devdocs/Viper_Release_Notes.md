@@ -2,13 +2,13 @@
 
 > **Development Status**: Pre-Alpha  
 > These are early development releases. Viper is under active development and not ready for production use.  
-> Version 1.0 will be the first production-ready release.
+> Future milestones will define supported releases when appropriate.
 
 ## Version 0.1.1 - Pre-Alpha (November 22, 2025)
 
 ### Release Overview
 
-Version 0.1.1 is a pre-alpha development release that introduces native code generation, complete object-oriented programming support, and a modernized runtime architecture. This release represents significant progress toward the eventual 1.0 production release.
+Version 0.1.1 is a pre-alpha development release that introduces native code generation, complete object-oriented programming support, and a modernized runtime architecture. This release represents significant progress toward an eventual 1.0 milestone.
 
 ### New Features
 
@@ -456,9 +456,9 @@ Compile to native:
 | Feature | v0.1.0 | v0.1.1 |
 |---------|--------|--------|
 | BASIC Compiler | Complete | Enhanced with OOP |
-| IL Format | Stable | Extended |
+| IL Format | Baseline | Extended |
 | VM Execution | 3 dispatch modes | Optimized with tail calls |
-| Native Codegen | No | x86-64 complete |
+| Native Codegen | No | x86-64 implemented (experimental) |
 | OOP Support | No | Classes & Interfaces |
 | Namespaces | No | Full hierarchy |
 | Graphics | No | Basic library |
@@ -470,7 +470,7 @@ Compile to native:
 
 ## Future Roadmap
 
-### Path to v1.0 (Production Release)
+### Path to v1.0 (Milestone)
 - Stabilize core APIs and IL format
 - Complete test coverage for all components
 - Comprehensive error recovery
@@ -508,4 +508,4 @@ Compile to native:
 
 *Viper Compiler Platform v0.1.1 (Pre-Alpha)*  
 *Released: November 22, 2025*  
-*Note: This is an early development release. Version 1.0 will be the first production release.*
+*Note: This is an early development release. Future milestones will define supported releases when appropriate.*

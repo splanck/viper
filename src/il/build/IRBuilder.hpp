@@ -4,44 +4,47 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-//
-// This file declares the IRBuilder class, which provides a high-level API for
-// constructing IL modules programmatically. IRBuilder is the primary interface
-// used by frontend compilers to generate IL code from source languages.
-//
-// The IRBuilder class manages the insertion point (current basic block) and
-// provides fluent methods for emitting instructions, managing control flow,
-// and tracking SSA temporaries. It enforces structural invariants like block
-// termination and simplifies common patterns like creating branches, calls,
-// and arithmetic operations.
-//
-// Key Capabilities:
-// - Module construction: Add externs, globals, and functions
-// - Block management: Create blocks, set insertion points, track terminators
-// - Instruction emission: Arithmetic, comparisons, memory ops, control flow
-// - SSA management: Automatic temporary ID assignment and tracking
-// - Type safety: Type-aware instruction constructors
-// - Source locations: Attach line/column info for diagnostics
-//
-// Typical Usage Pattern:
-//   Module m;
-//   IRBuilder builder(m);
-//   auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
-//   auto &entry = builder.createBlock(fn, "entry");
-//   builder.setInsertPoint(entry);
-//   auto result = builder.add(builder.constInt(10), builder.constInt(32));
-//   builder.ret(result);
-//
-// Design Philosophy:
-// - Stateful: Maintains insertion point for sequential code generation
-// - Fluent: Methods return values that can be immediately used as operands
-// - Safe: Validates block termination and SSA invariants
-// - Minimal: Focused on IR construction, not analysis or transformation
-//
-// The IRBuilder does NOT own the Module it operates on. The caller must ensure
-// the Module outlives all builder operations. This allows multiple builders to
-// work on the same module (though not concurrently on the same function).
-//
+/**
+ * @file
+ * @brief High-level API for constructing IL modules programmatically.
+ *
+ * IRBuilder is the primary interface used by frontends to generate IL code from
+ * source languages. It maintains an insertion point (current basic block) and
+ * provides fluent helpers to emit instructions, manage control flow, and track
+ * SSA temporaries. It enforces structural invariants (e.g., one terminator per
+ * block) and simplifies common patterns like creating branches, calls, and
+ * arithmetic operations.
+ *
+ * @section capabilities Key Capabilities
+ * - Module construction: add externs, globals, and functions
+ * - Block management: create blocks, set insertion points, track terminators
+ * - Instruction emission: arithmetic, comparisons, memory ops, control flow
+ * - SSA management: automatic temporary ID assignment and tracking
+ * - Type safety: type-aware instruction constructors
+ * - Source locations: attach line/column info for diagnostics
+ *
+ * @section usage Typical Usage
+ * @code{.cpp}
+ *   Module m;
+ *   IRBuilder builder(m);
+ *   auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
+ *   auto &entry = builder.createBlock(fn, "entry");
+ *   builder.setInsertPoint(entry);
+ *   auto result = builder.add(builder.constInt(10), builder.constInt(32));
+ *   builder.ret(result);
+ * @endcode
+ *
+ * @section design Design Philosophy
+ * - Stateful: maintains insertion point for sequential code generation
+ * - Fluent: methods return values that can be immediately used as operands
+ * - Safe: validates block termination and SSA invariants
+ * - Minimal: focused on IR construction (not analysis or transformation)
+ *
+ * @section lifetime Ownership/Lifetime
+ * IRBuilder does not own the Module it operates on. The caller must ensure the
+ * Module outlives all builder operations. Multiple builders may operate on the
+ * same Module (but not concurrently on the same Function).
+ */
 //===----------------------------------------------------------------------===//
 
 #pragma once

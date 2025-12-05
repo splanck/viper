@@ -485,12 +485,12 @@ Software-rendered with the following characteristics:
 ## License
 
 ViperGFX is part of the Viper project and distributed under the GNU GPL v3.
-See [LICENSE](../../LICENSE) for details.
+See [LICENSE](../../../LICENSE) for details.
 
 ## Contributing
 
 ViperGFX is part of the larger Viper project. For questions or contributions, see the
-main [Viper documentation](../../docs/README.md).
+main [Viper documentation](../../../docs/README.md).
 
 ### Platform Backend Implementation
 

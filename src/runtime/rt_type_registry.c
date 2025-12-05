@@ -369,6 +369,13 @@ void rt_register_interface_direct(int iface_id, const char *qname, int slot_coun
     rt_register_interface(&r);
 }
 
+/// @brief Runtime-string bridge for @ref rt_register_interface_direct.
+void rt_register_interface_direct_rs(int64_t iface_id, rt_string qname, int64_t slot_count)
+{
+    const char *name = qname ? rt_string_cstr(qname) : NULL;
+    rt_register_interface_direct((int)iface_id, name, (int)slot_count);
+}
+
 /// @brief Resolve a class descriptor from a vtable pointer.
 /// @return Class info when registered; NULL otherwise.
 const rt_class_info *rt_get_class_info_from_vptr(void **vptr)

@@ -4,14 +4,20 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-//
-// File: tools/ilc/cmd_codegen_x64.hpp
-// Purpose: Declare the x86-64 code generation subcommand glue for ilc.
-// Key invariants: Interfaces expose configuration and command entry points without owning
-// Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
-//
-//===----------------------------------------------------------------------===//
+/**
+ * @file
+ * @brief x86‑64 code generation subcommand glue for `ilc`.
+ *
+ * Declares the argv-style entry point used by the `ilc codegen x64` command and
+ * a placeholder registration hook for future structured CLI integration.
+ *
+ * @section invariants Key invariants
+ * Interfaces expose configuration and command entry points without owning
+ * heavyweight pipeline objects. Pipeline ownership resides in the codegen
+ * library itself.
+ *
+ * @see docs/architecture.md for high-level structure.
+ */
 
 #pragma once
 

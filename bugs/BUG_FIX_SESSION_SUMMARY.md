@@ -186,7 +186,7 @@ Both tests validate fixes completely.
 - Typed integer constants: `CONST MAX% = 1000`
 - **Resolves major BUG-019 limitation**
 
-### Production Readiness
+### Current Capability (Experimental)
 
 VIPER BASIC now has complete support for:
 - ✅ Mathematical/scientific computing (full math function library)
@@ -198,7 +198,7 @@ VIPER BASIC now has complete support for:
 - ✅ Arrays and dynamic resizing (DIM, REDIM PRESERVE)
 - ✅ Error handling (ON ERROR GOTO, ERR(), RESUME)
 
-**Status**: Production-ready for mathematical and scientific applications ✅
+**Status**: Experimental. Suitable for exploratory mathematical and scientific demos within the current test suite. Not ready for production use.
 
 ---
 
@@ -243,6 +243,6 @@ Each requires design discussions and potentially significant refactoring.
 
 Two significant bugs have been resolved, substantially improving VIPER BASIC's usability for mathematical programming. The SELECT CASE fix enables natural use of signed integers in switch statements, while the CONST type suffix fix enables proper float/double constants—solving a major limitation.
 
-All changes are production-ready, fully tested, and comprehensively documented. The remaining bugs require architectural changes and should be addressed through design discussions and planning phases.
+All changes are fully tested within the current suite and comprehensively documented. The platform remains experimental; the remaining bugs require architectural changes and should be addressed through design discussions and planning phases.
 
 **VIPER BASIC is ready for mathematical and scientific computing applications.**

@@ -235,6 +235,7 @@ class Parser
     ///         false when no ADDFILE directive was present.
     bool handleAddFileInto(std::vector<StmtPtr> &dst);
     StmtPtr parseClassDecl();
+    StmtPtr parseInterfaceDecl();
     StmtPtr parseTypeDecl();
     StmtPtr parseDeleteStatement();
     /// @brief Parse a TRY/CATCH statement.

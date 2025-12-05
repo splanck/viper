@@ -151,6 +151,15 @@ extern "C"
     /// @param slot_count Number of method slots in the interface table.
     void rt_register_interface_direct(int iface_id, const char *qname, int slot_count);
 
+    /// What: Register interface using a runtime string for @p qname.
+    /// Why:  Avoid lifetime issues with transient C strings in IL.
+    /// How:  Extracts C-string from @p qname and delegates.
+    ///
+    /// @param iface_id   Stable interface id assigned by the compiler.
+    /// @param qname      Runtime string containing fully-qualified interface name.
+    /// @param slot_count Number of method slots in the interface table.
+    void rt_register_interface_direct_rs(int64_t iface_id, rt_string qname, int64_t slot_count);
+
     // Convenience: direct class registration used by compiler-emitted module init.
     // Allocates metadata and registers it in the per-VM registry so lookups by
     // vtable pointer succeed and Object.ToString can render the qualified name.

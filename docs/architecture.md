@@ -8,6 +8,10 @@ last-verified: 2025-11-18
 
 This document outlines the current C++ layout of the Viper compiler stack. It reflects the live source tree and should be treated as the source of truth for directory roles and public entry points.
 
+Status notes:
+- VM is the primary execution target used for development and testing.
+- Native backends are experimental: AArch64 has been validated by running a full Frogger demo on Apple Silicon; x86_64 is implemented but has not yet been tested on real x86 hardware.
+
 ---
 
 ## High-Level Layers
@@ -15,7 +19,7 @@ This document outlines the current C++ layout of the Viper compiler stack. It re
 - IL Core/IO/Verify/Analysis/Transform — Intermediate Language data structures, parsers/serializers, verifier, analysis passes, and transforms
 - VM — Stack-based interpreter for IL with tracing, debugging, and runtime bridge
 - Frontends — BASIC front end lowering to IL
-- Codegen — Native code generation backends (x86_64 and AArch64)
+- Codegen — Native code generation backends (AArch64 validated; x86_64 experimental)
 - Tools — CLI entry points (ilc, vbasic, ilrun, il-verify, il-dis, BASIC helpers)
 - Runtime — C runtime library and ABI bridge used by IL and VM
 
@@ -68,4 +72,3 @@ Public headers are under `include/viper/...`:
 - IL version: see `src/buildmeta/IL_VERSION` (current: 0.1.2)
 - Keep layering strict: frontends do not depend on VM/codegen; VM does not include codegen; codegen depends only on IL core/verify/support
 - See also: `/devdocs/architecture.md` for a deeper architectural discussion
-

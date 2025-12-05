@@ -8,7 +8,10 @@ last-updated: 2025-11-13
 
 Comprehensive guide to the Viper native backends (x86-64 and AArch64), which compile Viper IL programs to executable machine code. This document covers the backend's design philosophy, compilation pipeline, code generation strategies, and source code organization.
 
-> **Note:** The x86-64 backend is fully featured. The AArch64 backend is functional with core operations; see the [AArch64 Backend](#aarch64-backend) section for details.
+> Status
+>
+> - AArch64: The native backend has been validated end‑to‑end on Apple Silicon by running a full “Frogger” demo.
+> - x86_64: The backend is implemented (Phase A bring‑up) but has not been tested on actual x86_64 hardware yet. Treat it as experimental/unvalidated.
 
 ---
 

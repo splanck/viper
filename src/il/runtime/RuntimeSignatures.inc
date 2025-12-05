@@ -880,6 +880,80 @@ DescriptorRow{"Viper.Console.PrintStr",
                   0,
                   RuntimeTrapClass::None},
 
+    // OOP interface registration (compiler-emitted module init)
+    DescriptorRow{"rt_register_interface_direct",
+                  std::nullopt,
+                  "void(i64,string,i64)",
+                  &DirectHandler<&rt_register_interface_direct_rs,
+                                 void,
+                                 int64_t,
+                                 rt_string,
+                                 int64_t>::invoke,
+                  kManualLowering,
+                  nullptr,
+                  0,
+                  RuntimeTrapClass::None},
+
+    // OOP interface binding (compiler-emitted module init)
+    DescriptorRow{"rt_bind_interface",
+                  std::nullopt,
+                  "void(i64,i64,ptr)",
+                  &DirectHandler<&rt_bind_interface, void, int, int, void **>::invoke,
+                  kManualLowering,
+                  nullptr,
+                  0,
+                  RuntimeTrapClass::None},
+
+    // OOP RTTI: get type id from object instance
+    DescriptorRow{"rt_typeid_of",
+                  std::nullopt,
+                  "i64(ptr)",
+                  &DirectHandler<&rt_typeid_of, int, void *>::invoke,
+                  kManualLowering,
+                  nullptr,
+                  0,
+                  RuntimeTrapClass::None},
+
+    // OOP RTTI: check if type_id is-a test_type_id
+    DescriptorRow{"rt_type_is_a",
+                  std::nullopt,
+                  "i64(i64,i64)",
+                  &DirectHandler<&rt_type_is_a, int, int, int>::invoke,
+                  kManualLowering,
+                  nullptr,
+                  0,
+                  RuntimeTrapClass::None},
+
+    // OOP RTTI: check if type implements interface
+    DescriptorRow{"rt_type_implements",
+                  std::nullopt,
+                  "i64(i64,i64)",
+                  &DirectHandler<&rt_type_implements, int, int, int>::invoke,
+                  kManualLowering,
+                  nullptr,
+                  0,
+                  RuntimeTrapClass::None},
+
+    // OOP RTTI: safe cast to class type
+    DescriptorRow{"rt_cast_as",
+                  std::nullopt,
+                  "ptr(ptr,i64)",
+                  &DirectHandler<&rt_cast_as, void *, void *, int>::invoke,
+                  kManualLowering,
+                  nullptr,
+                  0,
+                  RuntimeTrapClass::None},
+
+    // OOP RTTI: safe cast to interface
+    DescriptorRow{"rt_cast_as_iface",
+                  std::nullopt,
+                  "ptr(ptr,i64)",
+                  &DirectHandler<&rt_cast_as_iface, void *, void *, int>::invoke,
+                  kManualLowering,
+                  nullptr,
+                  0,
+                  RuntimeTrapClass::None},
+
     //===----------------------------------------------------------------------===//
     // System.IO.File helpers (static methods)
     DescriptorRow{"Viper.IO.File.Exists",

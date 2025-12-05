@@ -44,7 +44,7 @@ The Viper VM is a **stack-based bytecode interpreter** that executes programs wr
 |---------|-------------|
 | **Architecture** | Stack-based interpreter with SSA register file |
 | **Dispatch** | Pluggable (function table, switch, computed goto) |
-| **Memory** | Frame-local stack with explicit allocation via `alloca` |
+| **Memory** | Frame-local operand stack with explicit allocation via `alloca` (64KB default) |
 | **Error Handling** | Structured exception handling with trap metadata |
 | **Debugging** | Built-in breakpoints, stepping, and tracing |
 | **Performance** | Tail-call optimization, opcode counting, inline caching |
@@ -140,7 +140,8 @@ Represents a single function activation record:
 struct Frame {
     const Function* func;                          // Active function
     std::vector<Slot> regs;                       // SSA register file
-    std::array<uint8_t, 1024> stack;              // Operand stack (alloca)
+    // Operand stack (alloca). Default capacity is 64KB (kDefaultStackSize).
+    std::vector<uint8_t> stack;
     size_t sp;                                    // Stack pointer
     std::vector<std::optional<Slot>> params;      // Pending block parameters
     std::vector<HandlerRecord> ehStack;           // Exception handlers
@@ -151,7 +152,7 @@ struct Frame {
 
 **Key responsibilities:**
 - SSA value storage in register file
-- Stack allocation via `alloca` instruction
+- Stack allocation via `alloca` instruction (bump `sp` within `stack`)
 - Block parameter passing
 - Exception handler stack management
 - Resume state for error recovery
@@ -321,10 +322,11 @@ Registers are indexed by SSA value ID. Each register is written once and read ma
 
 ### Operand Stack
 
-Each frame has a 1KB operand stack for `alloca` allocations:
+Each frame has an operand stack for `alloca` allocations. The default capacity
+is 64KB (`Frame::kDefaultStackSize`):
 
 ```cpp
-std::array<uint8_t, 1024> stack;
+std::vector<uint8_t> stack; // capacity ~= 64KB by default
 size_t sp = 0;  // Stack pointer in bytes
 ```
 
@@ -720,7 +722,7 @@ Allows embedding applications to maintain responsiveness.
 2. **Terminators**: Every block must end with a terminator
 3. **Type Safety**: Match operand types to instruction signatures
 4. **Exception Handlers**: Properly nest `eh.push`/`eh.pop` pairs
-5. **Stack Usage**: Keep `alloca` sizes within frame limits (1KB)
+5. **Stack Usage**: Keep `alloca` sizes within frame limits (~64KB by default)
 
 ### For Embedders
 
@@ -747,8 +749,8 @@ Allows embedding applications to maintain responsiveness.
 
 **Source Code:**
 - `src/vm/` — VM implementation
-- `src/rt/` — C runtime library
-- `tests/vm/` — VM unit tests
+- `src/runtime/` — C runtime library
+- `src/tests/vm/` — VM unit tests
 # Viper VM — Performance Tuning and Benchmarking
 
 This guide summarizes runtime tuning knobs for the VM and how to benchmark dispatch performance across modes.
@@ -797,3 +799,10 @@ RUNS_PER_CASE=5 IL_GLOB='src/tests/il/e2e/*.il' scripts/vm_benchmark.sh
 ```
 
 The script sets `VIPER_DEBUG_VM=1` so the VM prints the resolved dispatch kind, and `VIPER_ENABLE_OPCOUNTS=1` to capture counts.
+### Concurrency Model
+
+Each `VM` instance is single‑threaded: only one thread may execute within a given
+instance at a time. To parallelize, create one VM per thread. The active VM is
+tracked via a thread‑local guard (see `ActiveVMGuard` in `src/vm/VMContext.*`), which
+binds the VM and its runtime context for the duration of execution. In debug builds,
+re‑entering an already active VM on the same thread triggers an assertion.

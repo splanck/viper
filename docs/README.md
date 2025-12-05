@@ -44,7 +44,7 @@ Welcome to the Viper compiler toolchain documentation. This directory contains l
 
 ### Native Code Generation
 
-- **[Backend Guide](backend.md)** — x86-64 and ARM64 code generation
+- **[Backend Guide](backend.md)** — x86-64 and ARM64 code generation (experimental)
 
 ---
 
