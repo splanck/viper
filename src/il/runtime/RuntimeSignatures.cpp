@@ -1396,18 +1396,14 @@ signatures::SigParam::Kind mapToSigParamKind(il::core::Type::Kind kind)
         case Kind::ResumeTok:
             return SigParam::Kind::Ptr;
         case Kind::Void:
-            std::fprintf(stderr, "Unexpected void type in parameter list.\n");
             assert(false && "void type cannot appear in parameter list");
-            std::abort(); // Unreachable in correct implementation
+            reportInvariantViolation("void type cannot appear in parameter list");
         case Kind::Error:
-            std::fprintf(stderr, "Unexpected error type in runtime signature.\n");
             assert(false && "error type cannot appear in runtime signature");
-            std::abort(); // Unreachable in correct implementation
+            reportInvariantViolation("error type cannot appear in runtime signature");
     }
-    std::fprintf(
-        stderr, "Unhandled runtime type kind: %s.\n", il::core::kindToString(kind).c_str());
     assert(false && "unhandled runtime type kind");
-    std::abort(); // Unreachable in correct implementation
+    reportInvariantViolation("unhandled runtime type kind");
 }
 
 /// @brief Build the list of parameter kinds expected by a runtime signature.
@@ -1783,6 +1779,62 @@ bool selfCheckRuntimeDescriptors()
     }();
 
     return result;
+}
+
+// =============================================================================
+// Invariant Violation Mode Configuration
+// =============================================================================
+
+namespace
+{
+/// @brief Current mode for handling invariant violations.
+InvariantViolationMode g_violationMode = InvariantViolationMode::Abort;
+
+/// @brief Registered trap handler for invariant violations.
+InvariantTrapHandler g_trapHandler = nullptr;
+} // namespace
+
+void setInvariantViolationMode(InvariantViolationMode mode)
+{
+    g_violationMode = mode;
+}
+
+InvariantViolationMode getInvariantViolationMode()
+{
+    return g_violationMode;
+}
+
+void setInvariantTrapHandler(InvariantTrapHandler handler)
+{
+    g_trapHandler = handler;
+}
+
+InvariantTrapHandler getInvariantTrapHandler()
+{
+    return g_trapHandler;
+}
+
+[[noreturn]] void reportInvariantViolation(const char *message)
+{
+    // In Trap mode with a registered handler, attempt to route through the VM.
+    if (g_violationMode == InvariantViolationMode::Trap && g_trapHandler != nullptr)
+    {
+        // Handler returns true if the trap was processed (e.g., caught by an exception
+        // handler in the VM). In this case, the handler should not return at all.
+        // If it returns false, we fall through to abort.
+        if (g_trapHandler(message))
+        {
+            // Handler claimed success but returned - this is a logic error.
+            // The trap mechanism should not allow normal return.
+            std::fprintf(stderr,
+                         "[FATAL] Invariant trap handler returned after claiming success.\n");
+        }
+        // Fall through to abort if handler returned false or unexpectedly.
+    }
+
+    // Default/fallback behavior: log and abort.
+    std::fprintf(stderr, "[FATAL] Runtime signature invariant violation: %s\n", message);
+    std::abort();
 }
 
 } // namespace il::runtime

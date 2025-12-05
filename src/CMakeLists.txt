@@ -260,7 +260,6 @@ add_library(il_codegen_x86_64 STATIC
         codegen/x86_64/ra/LiveIntervals.cpp
         codegen/x86_64/ra/Spiller.cpp
         codegen/x86_64/TargetX64.cpp
-        codegen/x86_64/placeholder.cpp
         common/Mangle.cpp)
 set_target_properties(il_codegen_x86_64 PROPERTIES LINKER_LANGUAGE CXX)
 target_include_directories(il_codegen_x86_64 PUBLIC

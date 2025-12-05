@@ -210,25 +210,56 @@ bool DebugCtrl::shouldBreakOn(const il::core::Instr &I) const
 
 /// @brief Register a variable to watch for changes.
 ///
-/// @details Watching a value interns the identifier and ensures an entry exists
-///          in the watch table.  Actual value comparisons happen inside
-///          @ref onStore so registering is effectively O(1).
+/// @details Watching a value interns the identifier and allocates an entry in the
+///          watch table with a numeric ID.  The ID enables O(1) lookups in the hot
+///          path via getWatchId() and onStoreById(), avoiding repeated string
+///          interning and map lookups during execution.
 ///
 /// @param name Identifier of the variable to track.
-void DebugCtrl::addWatch(std::string_view name)
+/// @return Watch ID (>= 1) for use with fast-path methods, or 0 on failure.
+uint32_t DebugCtrl::addWatch(std::string_view name)
 {
     il::support::Symbol sym = interner_.intern(name);
-    if (sym)
-        watches_[sym];
+    if (!sym)
+        return 0;
+
+    // Check if already watched
+    auto it = symbolToWatchId_.find(sym);
+    if (it != symbolToWatchId_.end())
+        return it->second;
+
+    // Allocate new watch entry
+    const uint32_t id = static_cast<uint32_t>(watchEntries_.size());
+    if (id == 0)
+    {
+        // Reserve index 0 as "not watched" sentinel
+        watchEntries_.emplace_back();
+    }
+    watchEntries_.emplace_back();
+    watchEntries_.back().sym = sym;
+    symbolToWatchId_[sym] = static_cast<uint32_t>(watchEntries_.size() - 1);
+    return static_cast<uint32_t>(watchEntries_.size() - 1);
 }
 
-/// @brief Handle a store to a watched variable and report changes.
+/// @brief Fast O(1) lookup to check if a symbol is watched.
 ///
-/// @details After interning the identifier, the helper compares the new payload
-///          against the last observed value.  Unsupported types yield a short
-///          diagnostic while numeric and floating-point types trigger an update
-///          message when the value changes.  Watches remember the most recent
-///          value so subsequent stores can detect differences.
+/// @details This method is designed for use in the hot path.  The caller should
+///          pre-intern the variable name once per function/block and reuse the
+///          resulting symbol for all stores within that scope.
+///
+/// @param sym Interned symbol to check.
+/// @return Watch ID if watched, or 0 if not watched.
+uint32_t DebugCtrl::getWatchId(il::support::Symbol sym) const noexcept
+{
+    auto it = symbolToWatchId_.find(sym);
+    return (it != symbolToWatchId_.end()) ? it->second : 0;
+}
+
+/// @brief Handle a store to a watched variable and report changes (slow path).
+///
+/// @details After interning the identifier, the helper delegates to onStoreById().
+///          This method is provided for backward compatibility; prefer the fast-path
+///          onStoreById() when the watch ID is already known.
 ///
 /// @param name Identifier being stored to.
 /// @param ty Type of the stored value.
@@ -246,10 +277,41 @@ void DebugCtrl::onStore(std::string_view name,
                         size_t ip)
 {
     il::support::Symbol sym = interner_.intern(name);
-    auto it = watches_.find(sym);
-    if (it == watches_.end())
+    const uint32_t watchId = getWatchId(sym);
+    if (watchId == 0)
         return;
-    WatchEntry &w = it->second;
+    onStoreById(watchId, name, ty, i64, f64, fn, blk, ip);
+}
+
+/// @brief Handle a store to a watched variable by ID (fast path).
+///
+/// @details Compares the new payload against the last observed value using direct
+///          array indexing.  Unsupported types yield a short diagnostic while
+///          numeric and floating-point types trigger an update message when the
+///          value changes.  Watches remember the most recent value so subsequent
+///          stores can detect differences.
+///
+/// @param watchId Watch ID from getWatchId() or addWatch().
+/// @param name Identifier being stored to (for diagnostics).
+/// @param ty Type of the stored value.
+/// @param i64 Integer payload when @p ty is an integer type.
+/// @param f64 Floating payload when @p ty is F64.
+/// @param fn Function name containing the store.
+/// @param blk Basic block label.
+/// @param ip Instruction index within the block.
+void DebugCtrl::onStoreById(uint32_t watchId,
+                            std::string_view name,
+                            il::core::Type::Kind ty,
+                            int64_t i64,
+                            double f64,
+                            std::string_view fn,
+                            std::string_view blk,
+                            size_t ip)
+{
+    if (watchId == 0 || watchId >= watchEntries_.size())
+        return;
+
+    WatchEntry &w = watchEntries_[watchId];
     if (ty != il::core::Type::Kind::I1 && ty != il::core::Type::Kind::I16 &&
         ty != il::core::Type::Kind::I32 && ty != il::core::Type::Kind::I64 &&
         ty != il::core::Type::Kind::F64)
@@ -318,14 +380,28 @@ void DebugCtrl::resetLastHit()
 }
 
 /// @brief Register a memory watch entry consisting of an address range and tag.
-void DebugCtrl::addMemWatch(const void *addr, std::size_t size, std::string tag)
+///
+/// @details Stores the range with precomputed integer addresses for efficient
+///          intersection testing.  The internal vector is marked unsorted so
+///          subsequent onMemWrite() calls will re-sort before binary search.
+///
+/// @return Internal watch ID for the new entry.
+uint32_t DebugCtrl::addMemWatch(const void *addr, std::size_t size, std::string tag)
 {
     if (!addr || size == 0)
-        return;
-    memWatches_.push_back(MemWatchRange{addr, size, std::move(tag)});
+        return 0;
+    const auto start = reinterpret_cast<std::uintptr_t>(addr);
+    const auto end = start + size;
+    const uint32_t id = nextMemWatchId_++;
+    memWatches_.push_back(MemWatchRange{start, end, addr, size, std::move(tag), id});
+    memWatchesSorted_ = false;
+    return id;
 }
 
 /// @brief Remove a memory watch entry matching the triple (addr,size,tag).
+///
+/// @details Searches for the matching entry and removes it, marking the vector
+///          as potentially unsorted if the removal affects ordering.
 bool DebugCtrl::removeMemWatch(const void *addr, std::size_t size, std::string_view tag)
 {
     for (auto it = memWatches_.begin(); it != memWatches_.end(); ++it)
@@ -333,6 +409,9 @@ bool DebugCtrl::removeMemWatch(const void *addr, std::size_t size, std::string_v
         if (it->addr == addr && it->size == size && it->tag == tag)
         {
             memWatches_.erase(it);
+            // Removal from sorted vector preserves sorting unless we erased from the middle
+            // For simplicity, just mark as potentially unsorted
+            memWatchesSorted_ = memWatches_.empty();
             return true;
         }
     }
@@ -346,23 +425,57 @@ bool DebugCtrl::hasMemWatches() const noexcept
 
 bool DebugCtrl::hasVarWatches() const noexcept
 {
-    return !watches_.empty();
+    return !symbolToWatchId_.empty();
 }
 
 /// @brief Check memory write against installed ranges and enqueue hits.
+///
+/// @details For small watch sets (< 8), uses linear scan.  For larger sets,
+///          sorts ranges by start address and uses binary search to find the
+///          first potentially intersecting range, then scans forward.  This
+///          gives O(log n + k) complexity where k is the number of intersections.
 void DebugCtrl::onMemWrite(const void *addr, std::size_t size)
 {
     if (memWatches_.empty() || !addr || size == 0)
         return;
-    const auto start = reinterpret_cast<std::uintptr_t>(addr);
-    const auto end = start + size; // exclusive
-    for (const auto &w : memWatches_)
+
+    const auto writeStart = reinterpret_cast<std::uintptr_t>(addr);
+    const auto writeEnd = writeStart + size; // exclusive
+
+    // For small watch sets, linear scan is faster than sort + binary search
+    constexpr std::size_t kLinearThreshold = 8;
+    if (memWatches_.size() < kLinearThreshold)
     {
-        const auto wStart = reinterpret_cast<std::uintptr_t>(w.addr);
-        const auto wEnd = wStart + w.size;
-        const bool intersects = !(end <= wStart || wEnd <= start);
+        for (const auto &w : memWatches_)
+        {
+            const bool intersects = !(writeEnd <= w.start || w.end <= writeStart);
+            if (intersects)
+                memEvents_.push_back(MemWatchHit{addr, size, w.tag});
+        }
+        return;
+    }
+
+    // Sort by start address if needed
+    if (!memWatchesSorted_)
+    {
+        std::sort(memWatches_.begin(), memWatches_.end(),
+                  [](const MemWatchRange &a, const MemWatchRange &b)
+                  { return a.start < b.start; });
+        memWatchesSorted_ = true;
+    }
+
+    // Binary search for first range that could intersect: range.end > writeStart
+    // A range intersects if: writeEnd > range.start AND range.end > writeStart
+    auto it = std::lower_bound(memWatches_.begin(), memWatches_.end(), writeStart,
+                               [](const MemWatchRange &r, std::uintptr_t val)
+                               { return r.end <= val; });
+
+    // Scan forward while ranges could still intersect
+    for (; it != memWatches_.end() && it->start < writeEnd; ++it)
+    {
+        const bool intersects = !(writeEnd <= it->start || it->end <= writeStart);
         if (intersects)
-            memEvents_.push_back(MemWatchHit{addr, size, w.tag});
+            memEvents_.push_back(MemWatchHit{addr, size, it->tag});
     }
 }
 

@@ -259,4 +259,55 @@ const RuntimeSignature *findRuntimeSignature(RtSig sig);
 ///         on failure. In release builds, logs errors to stderr and returns false.
 [[nodiscard]] bool selfCheckRuntimeDescriptors();
 
+/// @brief Mode controlling how runtime signature invariant violations are reported.
+enum class InvariantViolationMode
+{
+    Abort, ///< Default: call std::abort() immediately.
+    Trap,  ///< Use registered trap handler when available, otherwise abort.
+};
+
+/// @brief Set the invariant violation mode for runtime signature checks.
+/// @details When set to `Trap`, violations of runtime signature invariants
+///          will be reported through the registered trap handler, allowing
+///          the VM's exception handling to process them. If no handler is
+///          registered or it returns, falls back to abort behavior.
+///          Default mode is `Abort` for maximum strictness.
+/// @param mode The desired violation reporting mode.
+void setInvariantViolationMode(InvariantViolationMode mode);
+
+/// @brief Query the current invariant violation mode.
+/// @return The active mode for reporting signature invariant violations.
+[[nodiscard]] InvariantViolationMode getInvariantViolationMode();
+
+/// @brief Type signature for invariant violation trap handlers.
+/// @details A trap handler receives the error message and should either:
+///          1. Raise a trap through the VM (which may be caught by exception handlers)
+///          2. Return false to indicate the trap was not handled (caller will abort)
+/// @param message Human-readable description of the invariant violation.
+/// @return True if the trap was handled (execution may continue via exception handler),
+///         false if the handler could not process the trap (caller will abort).
+using InvariantTrapHandler = bool (*)(const char *message);
+
+/// @brief Register a trap handler for invariant violations.
+/// @details The VM layer calls this during initialization to register its trap
+///          mechanism. When InvariantViolationMode is Trap and a violation occurs,
+///          the registered handler is invoked. If the handler returns false or
+///          no handler is registered, the violation falls back to abort behavior.
+/// @param handler Function pointer to the trap handler, or nullptr to unregister.
+void setInvariantTrapHandler(InvariantTrapHandler handler);
+
+/// @brief Query the currently registered trap handler.
+/// @return The registered handler, or nullptr if none is registered.
+[[nodiscard]] InvariantTrapHandler getInvariantTrapHandler();
+
+/// @brief Report a runtime signature invariant violation.
+/// @details Behavior depends on the current InvariantViolationMode:
+///          - Abort: Logs the error and calls std::abort().
+///          - Trap: Invokes the registered trap handler. If no handler is
+///            registered or it returns false, falls back to abort.
+/// @param message Human-readable description of the invariant violation.
+/// @note This function does not return when mode is Abort, no handler is
+///       registered, or the handler returns false.
+[[noreturn]] void reportInvariantViolation(const char *message);
+
 } // namespace il::runtime

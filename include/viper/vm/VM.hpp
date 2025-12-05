@@ -15,6 +15,29 @@
 // Links: docs/codemap/vm-runtime.md
 //
 //===----------------------------------------------------------------------===//
+//
+// UNKNOWN/UNIMPLEMENTED OPCODE HANDLING
+// ======================================
+// Under normal circumstances, all opcodes defined in the IL specification have
+// handlers in the VM dispatch table. This is enforced by dispatch coverage tests
+// (test_vm_dispatch_coverage) which verify at compile-time and run-time that
+// every opcode has a corresponding handler.
+//
+// If an unknown or unimplemented opcode is somehow executed (e.g., due to a
+// mismatched code generator and VM version, or a corrupted IL module), the VM
+// treats this as a FATAL ERROR:
+//   1. A trap of kind RuntimeError is raised with a message including the
+//      opcode mnemonic and execution context.
+//   2. The trap propagates to the RuntimeBridge, which terminates the process
+//      via rt_abort() since this condition is not recoverable.
+//
+// This behavior is intentional: an unknown opcode indicates a programmer error
+// or version mismatch, not a runtime condition that can be caught or recovered.
+// Embedders should NOT rely on trapping or continuing after an unknown opcode;
+// instead, ensure that IL modules are generated with a code generator compatible
+// with the VM version in use.
+//
+//===----------------------------------------------------------------------===//
 
 #pragma once
 
@@ -183,6 +206,11 @@ class Runner
     /// - 7: IOError - Generic I/O failure
     /// - 8: InvalidOperation - Operation outside allowed state machine
     /// - 9: RuntimeError - Catch-all for unexpected runtime failures
+    ///
+    /// @note A trap of kind RuntimeError with a message containing "unimplemented
+    ///       opcode" indicates a fatal programmer error (unknown/missing opcode
+    ///       handler). This is not recoverable; see the header documentation for
+    ///       details on unknown opcode handling.
     struct TrapInfo
     {
         int32_t kind = 0;           ///< Trap kind (see enum values above).

@@ -226,6 +226,10 @@ function(viper_add_vm_unit_tests)
     target_link_libraries(test_vm_runtime_bridge_marshalling PRIVATE ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
     viper_add_ctest(test_vm_runtime_bridge_marshalling test_vm_runtime_bridge_marshalling)
 
+    viper_add_test(test_vm_marshal_constants ${VIPER_TESTS_DIR}/unit/test_vm_marshal_constants.cpp)
+    target_link_libraries(test_vm_marshal_constants PRIVATE ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
+    viper_add_ctest(test_vm_marshal_constants test_vm_marshal_constants)
+
     viper_add_test(test_vm_runtime_stack_sync ${VIPER_TESTS_DIR}/unit/test_vm_runtime_stack_sync.cpp)
     target_link_libraries(test_vm_runtime_stack_sync PRIVATE il_build ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
     viper_add_ctest(test_vm_runtime_stack_sync test_vm_runtime_stack_sync)
@@ -357,6 +361,13 @@ function(viper_add_vm_path_tests)
             PRIVATE ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
     viper_add_ctest(test_vm_debug_src_breakpoint_unknown_file
             test_vm_debug_src_breakpoint_unknown_file)
+
+    viper_add_test(
+            test_vm_debug_watches
+            ${VIPER_TESTS_DIR}/unit/test_vm_debug_watches.cpp)
+    target_link_libraries(test_vm_debug_watches
+            PRIVATE ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})
+    viper_add_ctest(test_vm_debug_watches test_vm_debug_watches)
 
     viper_add_test(test_path_normalize ${VIPER_TESTS_DIR}/unit/PathNormalizeTests.cpp)
     target_link_libraries(test_path_normalize PRIVATE ${VIPER_VM_LIB} ${VIPER_VM_SUPPORT_LIB})

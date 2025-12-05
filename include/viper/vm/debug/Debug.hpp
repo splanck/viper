@@ -173,9 +173,16 @@ class DebugCtrl
     static std::string normalizePath(std::string path);
 
     /// @brief Register a watch on variable @p name.
-    void addWatch(std::string_view name);
+    /// @return Internal watch ID for use with fast-path onStoreById().
+    uint32_t addWatch(std::string_view name);
 
-    /// @brief Record store to watched variable.
+    /// @brief Check if @p sym is a watched variable symbol.
+    /// @details Fast O(1) lookup using the interned symbol. Use this in the hot
+    ///          path to avoid re-interning strings on every store.
+    /// @return Watch ID if watched, or 0 if not watched.
+    [[nodiscard]] uint32_t getWatchId(il::support::Symbol sym) const noexcept;
+
+    /// @brief Record store to watched variable by name (slow path).
     void onStore(std::string_view name,
                  il::core::Type::Kind ty,
                  int64_t i64,
@@ -184,12 +191,25 @@ class DebugCtrl
                  std::string_view blk,
                  size_t ip);
 
+    /// @brief Record store to watched variable by ID (fast path).
+    /// @details Use this when the watch ID is already known from getWatchId().
+    ///          Skips string interning and map lookup entirely.
+    void onStoreById(uint32_t watchId,
+                     std::string_view name,
+                     il::core::Type::Kind ty,
+                     int64_t i64,
+                     double f64,
+                     std::string_view fn,
+                     std::string_view blk,
+                     size_t ip);
+
     /// @brief Reset coalesced source line state.
     void resetLastHit();
 
     // Memory watch API -------------------------------------------------------
     /// @brief Register a memory watch range [addr, addr+size) with a tag.
-    void addMemWatch(const void *addr, std::size_t size, std::string tag);
+    /// @return Internal watch ID for use with fast-path lookups.
+    uint32_t addMemWatch(const void *addr, std::size_t size, std::string tag);
 
     /// @brief Remove a previously registered memory watch range.
     /// @return True when a matching entry was removed.
@@ -202,6 +222,8 @@ class DebugCtrl
     [[nodiscard]] bool hasVarWatches() const noexcept;
 
     /// @brief Record a memory write and enqueue hit events for intersecting ranges.
+    /// @details Uses sorted ranges with binary search for O(log n) lookup when
+    ///          many watches are active, falling back to linear scan for small sets.
     void onMemWrite(const void *addr, std::size_t size);
 
     /// @brief Consume and return pending memory watch hit events.
@@ -224,24 +246,44 @@ class DebugCtrl
     std::vector<SrcLineBP> srcLineBPs_;
     mutable std::optional<std::pair<uint32_t, uint32_t>> lastHitSrc_;
 
+    // -------------------------------------------------------------------------
+    // Internal ID-based watch representation
+    // -------------------------------------------------------------------------
+    // Variable watches use a two-level structure:
+    //   1. symbolToWatchId_: O(1) lookup from interned Symbol to watch ID
+    //   2. watchEntries_: indexed by watch ID for direct access
+    // This avoids re-interning strings and map lookups in the hot path.
+    //
+    // Memory watches use sorted ranges for O(log n) intersection queries when
+    // many watches are active. The memWatchesSorted_ flag tracks whether the
+    // vector needs re-sorting after modifications.
+    // -------------------------------------------------------------------------
+
     struct WatchEntry
     {
         il::core::Type::Kind type = il::core::Type::Kind::Void;
         int64_t i64 = 0;
         double f64 = 0.0;
         bool hasValue = false;
+        il::support::Symbol sym{}; ///< Back-reference to symbol for diagnostics.
     };
 
-    std::unordered_map<il::support::Symbol, WatchEntry> watches_;
+    std::unordered_map<il::support::Symbol, uint32_t> symbolToWatchId_;
+    std::vector<WatchEntry> watchEntries_; ///< Index 0 unused; IDs start at 1.
 
     struct MemWatchRange
     {
-        const void *addr = nullptr;
-        std::size_t size = 0;
-        std::string tag;
+        std::uintptr_t start = 0;    ///< Start address as integer for comparison.
+        std::uintptr_t end = 0;      ///< End address (exclusive) for comparison.
+        const void *addr = nullptr;  ///< Original pointer for user reporting.
+        std::size_t size = 0;        ///< Original size for user reporting.
+        std::string tag;             ///< User-provided tag.
+        uint32_t id = 0;             ///< Internal ID for fast reference.
     };
     std::vector<MemWatchRange> memWatches_;
     std::vector<MemWatchHit> memEvents_;
+    uint32_t nextMemWatchId_ = 1;    ///< Next ID to assign.
+    bool memWatchesSorted_ = true;   ///< True when memWatches_ is sorted by start.
 };
 
 /// @brief Action produced by a debugger script.

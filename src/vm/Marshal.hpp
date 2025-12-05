@@ -87,7 +87,63 @@ struct PowTrapOutcome
 ViperString toViperString(StringRef text,
                           AssumeNullTerminated assumeNullTerminated = AssumeNullTerminated::No);
 StringRef fromViperString(const ViperString &str);
+
+//===----------------------------------------------------------------------===//
+// Constant Scalar Conversion Helpers
+//===----------------------------------------------------------------------===//
+//
+// The following functions convert IL constant values to C++ scalar types.
+// They are intentionally restricted to "constant scalar" kinds:
+//   - ConstInt:   integer literal
+//   - ConstFloat: floating-point literal
+//   - NullPtr:    null pointer (treated as zero)
+//
+// These are NOT general-purpose coercions. Using them on Temp, ConstStr, or
+// GlobalAddr values is a programmer error and will abort in debug builds.
+// This restriction exists to catch misuse early and ensure new Value::Kind
+// variants are handled explicitly rather than silently converting.
+//
+//===----------------------------------------------------------------------===//
+
+/// @brief Check if a Value::Kind represents a constant that can be converted
+///        to a scalar numeric type (i64 or f64).
+/// @param kind The value kind to check.
+/// @return True for ConstInt, ConstFloat, and NullPtr; false otherwise.
+/// @note Constexpr for use in static assertions and compile-time checks.
+[[nodiscard]] constexpr bool isConstantScalar(il::core::Value::Kind kind) noexcept
+{
+    using Kind = il::core::Value::Kind;
+    return kind == Kind::ConstInt || kind == Kind::ConstFloat || kind == Kind::NullPtr;
+}
+
+/// @brief Check if a Value represents a constant that can be converted to a scalar.
+/// @param value The value to check.
+/// @return True if the value's kind is a constant scalar.
+[[nodiscard]] inline bool isConstantScalar(const il::core::Value &value) noexcept
+{
+    return isConstantScalar(value.kind);
+}
+
+/// @brief Convert a constant VM value into a 64-bit integer.
+/// @details Handles integer, floating, and null pointer constants. Other value
+///          kinds are programmer errors and trigger an assertion so that new
+///          kinds must update the marshalling layer explicitly.
+/// @pre isConstantScalar(value) must be true.
+/// @param value Constant VM value to convert.
+/// @return 64-bit integer representation of @p value.
+/// @note This is NOT a general-purpose coercion. It is intended only for
+///       marshalling constant operands to runtime helpers.
 int64_t toI64(const il::core::Value &value);
+
+/// @brief Convert a constant VM value into a 64-bit floating point number.
+/// @details Mirrors toI64 but produces a double precision result. Integer
+///          constants are cast, null pointers yield zero, and unsupported kinds
+///          assert during development builds.
+/// @pre isConstantScalar(value) must be true.
+/// @param value Constant VM value to convert.
+/// @return 64-bit floating point representation of @p value.
+/// @note This is NOT a general-purpose coercion. It is intended only for
+///       marshalling constant operands to runtime helpers.
 double toF64(const il::core::Value &value);
 
 void *slotToArgPointer(Slot &slot, il::core::Type::Kind kind);

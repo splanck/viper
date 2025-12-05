@@ -188,15 +188,57 @@ StringRef fromViperString(const ViperString &str)
     return StringRef{data, static_cast<size_t>(length)};
 }
 
-/// @brief Convert a constant VM value into a 64-bit integer.
-/// @details Handles integer, floating, and null pointer constants.  Other value
-///          kinds are programmer errors and trigger an assertion so that new
-///          kinds must update the marshalling layer explicitly.
-/// @param value Constant VM value to convert.
-/// @return 64-bit integer representation of @p value.
+//===----------------------------------------------------------------------===//
+// Constant Scalar Conversion Helpers
+//===----------------------------------------------------------------------===//
+//
+// These functions are intentionally restricted to constant values (ConstInt,
+// ConstFloat, NullPtr). They are NOT general-purpose coercions.
+//
+// The precondition isConstantScalar(value) is checked via assertion. Callers
+// should verify the value kind before calling if the kind is not statically
+// known. This keeps the hot path cheap (no branch on success) while catching
+// programmer errors during development.
+//
+//===----------------------------------------------------------------------===//
+
+namespace
+{
+/// @brief Convert Value::Kind to a diagnostic string.
+/// @param kind The value kind to describe.
+/// @return Human-readable name for error messages.
+constexpr const char *valueKindToString(il::core::Value::Kind kind) noexcept
+{
+    using Kind = il::core::Value::Kind;
+    switch (kind)
+    {
+        case Kind::Temp:
+            return "Temp";
+        case Kind::ConstInt:
+            return "ConstInt";
+        case Kind::ConstFloat:
+            return "ConstFloat";
+        case Kind::ConstStr:
+            return "ConstStr";
+        case Kind::GlobalAddr:
+            return "GlobalAddr";
+        case Kind::NullPtr:
+            return "NullPtr";
+    }
+    return "Unknown";
+}
+} // namespace
+
 int64_t toI64(const il::core::Value &value)
 {
     using Kind = il::core::Value::Kind;
+
+    // Precondition: value must be a constant scalar.
+    // This assertion catches programmer errors where toI64 is called on
+    // non-constant values like Temp, ConstStr, or GlobalAddr.
+    assert(isConstantScalar(value) &&
+           "toI64 requires a constant scalar value (ConstInt, ConstFloat, or NullPtr)");
+
     switch (value.kind)
     {
         case Kind::ConstInt:
@@ -206,20 +248,26 @@ int64_t toI64(const il::core::Value &value)
         case Kind::NullPtr:
             return 0;
         default:
-            assert(false && "value kind is not convertible to i64");
-            std::abort(); // Unreachable in correct implementation
+            // In release builds without assertions, provide a clear diagnostic
+            // before aborting. This should never be reached if assertions are
+            // enabled, but guards against NDEBUG builds hiding bugs.
+            std::fprintf(stderr,
+                         "[FATAL] toI64 called with non-constant value kind: %s\n",
+                         valueKindToString(value.kind));
+            std::abort();
     }
 }
 
-/// @brief Convert a constant VM value into a 64-bit floating point number.
-/// @details Mirrors @ref toI64 but produces a double precision result.  Integer
-///          constants are cast, null pointers yield zero, and unsupported kinds
-///          assert during development builds.
-/// @param value Constant VM value to convert.
-/// @return 64-bit floating point representation of @p value.
 double toF64(const il::core::Value &value)
 {
     using Kind = il::core::Value::Kind;
+
+    // Precondition: value must be a constant scalar.
+    // This assertion catches programmer errors where toF64 is called on
+    // non-constant values like Temp, ConstStr, or GlobalAddr.
+    assert(isConstantScalar(value) &&
+           "toF64 requires a constant scalar value (ConstInt, ConstFloat, or NullPtr)");
+
     switch (value.kind)
     {
         case Kind::ConstFloat:
@@ -229,8 +277,13 @@ double toF64(const il::core::Value &value)
         case Kind::NullPtr:
             return 0.0;
         default:
-            assert(false && "value kind is not convertible to f64");
-            std::abort(); // Unreachable in correct implementation
+            // In release builds without assertions, provide a clear diagnostic
+            // before aborting. This should never be reached if assertions are
+            // enabled, but guards against NDEBUG builds hiding bugs.
+            std::fprintf(stderr,
+                         "[FATAL] toF64 called with non-constant value kind: %s\n",
+                         valueKindToString(value.kind));
+            std::abort();
     }
 }
 

@@ -7,6 +7,8 @@
 
 -IMPORTANY: CLAUDE SHOULD HAVE ALL ALLOW PERMISSIONS. IT SHOULDNT ASK ME FOR PERMISSION TO DO ANYTHING EXCEPT COMMIT OR PUSH!
 
+**COMMIT MESSAGE RULE:** Never mention Claude, AI, or include generated-by footers in commit messages. Plain conventional commits only.
+
 ## Core Principles (Priority Order)
 
 1. **Spec First** — IL spec is normative. Changes require ADR, never silent divergence.

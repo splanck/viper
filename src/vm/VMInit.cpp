@@ -76,6 +76,34 @@ struct RuntimeDescriptorChecker
 
 [[maybe_unused]] const RuntimeDescriptorChecker kRuntimeDescriptorChecker{};
 
+/// @brief Static initializer that registers the VM trap handler for invariant violations.
+/// @details Enables the RuntimeSignatures layer to route invariant violations through
+///          the VM's trap mechanism when a VM is active. When no VM is active, the
+///          handler returns false and the violation falls back to abort behavior.
+struct InvariantTrapHandlerRegistrar
+{
+    InvariantTrapHandlerRegistrar()
+    {
+        il::runtime::setInvariantTrapHandler([](const char *message) -> bool
+        {
+            // Check if there's an active VM that can handle the trap.
+            if (!RuntimeBridge::hasActiveVm())
+                return false;
+
+            // Route through the RuntimeBridge trap mechanism.
+            // This will invoke vm_raise() if a VM is active, which may throw
+            // TrapDispatchSignal for exception handler dispatch.
+            RuntimeBridge::trap(TrapKind::RuntimeError, message, {}, {}, {});
+
+            // If we reach here, the trap was not caught (shouldn't happen with RuntimeError).
+            // Return false to fall back to abort.
+            return false;
+        });
+    }
+};
+
+[[maybe_unused]] const InvariantTrapHandlerRegistrar kInvariantTrapHandlerRegistrar{};
+
 /// @brief Check the environment to determine whether verbose VM logging is enabled.
 ///
 /// @details Reads the VIPER_DEBUG_VM flag once and caches the result so subsequent
