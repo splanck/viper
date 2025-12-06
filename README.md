@@ -10,10 +10,10 @@ High-level frontends—like the included BASIC compiler—lower programs into a 
 
 ## Download
 
-**Latest Release:** [v0.1.1-dev](https://github.com/splanck/viper/releases/tag/v0.1.1-dev)
+**Latest Release:** [v0.1.2-dev](https://github.com/splanck/viper/releases/tag/v0.1.2-dev)
 
-- [Source (tar.gz)](https://github.com/splanck/viper/archive/refs/tags/v0.1.1-dev.tar.gz)
-- [Source (zip)](https://github.com/splanck/viper/archive/refs/tags/v0.1.1-dev.zip)
+- [Source (tar.gz)](https://github.com/splanck/viper/archive/refs/tags/v0.1.2-dev.tar.gz)
+- [Source (zip)](https://github.com/splanck/viper/archive/refs/tags/v0.1.2-dev.zip)
 - [Release Notes](docs/devdocs/Viper_Release_Notes.md)
 
 Or clone the repository:

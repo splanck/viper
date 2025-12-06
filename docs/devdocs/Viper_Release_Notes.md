@@ -4,6 +4,94 @@
 > These are early development releases. Viper is under active development and not ready for production use.  
 > Future milestones will define supported releases when appropriate.
 
+## Version 0.1.2 - Pre-Alpha (December 6, 2025)
+
+### Release Overview
+
+Version 0.1.2 is a pre-alpha development release that delivers a complete OOP runtime system and a production-ready AArch64 native backend. This release nearly doubles the codebase size and significantly expands test coverage.
+
+### New Features
+
+#### OOP Runtime System
+
+Complete object-oriented runtime exposing C functions as clean classes:
+
+- **Three-layer architecture**: RuntimeClasses.inc (declarative catalog), RuntimeSignatures.inc (IL-to-C bridge), and C implementations
+- **Core classes fully operational**:
+  - `Viper.String` — Length, Substring, Concat, Trim, ToUpper, ToLower, IndexOf
+  - `Viper.Collections.List` — Add, Clear, RemoveAt, Count, indexed access
+  - `Viper.Collections.Dictionary` — Set, Get, ContainsKey, Remove, Clear
+  - `Viper.Text.StringBuilder` — Append, ToString, Clear, Length, Capacity
+  - `Viper.Math` — Abs, Sqrt, Sin, Cos, Tan, Floor, Ceil, Pow, Min, Max
+  - `Viper.DateTime` — Now, Year, Month, Day, Hour, Format, Create, AddDays
+  - `Viper.IO.File` — Exists, ReadAllText, WriteAllText, Delete
+  - `Viper.Console` — WriteLine, ReadLine
+  - `Viper.Random` — Seed, Next, NextInt
+  - `Viper.Environment` — GetArgumentCount, GetArgument, GetCommandLine
+  - `Viper.Graphics.Window` — Full 2D graphics with drawing primitives
+
+Example:
+```basic
+DIM sb AS Viper.Text.StringBuilder
+sb = NEW Viper.Text.StringBuilder()
+sb.Append("Hello, ")
+sb.Append("World!")
+PRINT sb.ToString()
+
+DIM list AS Viper.Collections.List
+list = NEW Viper.Collections.List()
+list.Add(obj1)
+list.Add(obj2)
+PRINT list.Count
+```
+
+#### AArch64 Native Backend
+
+The ARM64 backend has matured from early development to functional:
+
+- **All major demos compile to native binaries**: Chess (357KB), vTris (298KB), Frogger (271KB)
+- **35+ runtime symbol mappings** added for terminal, string, parsing, and object operations
+- **Full pipeline working**: BASIC → IL → Assembly → Object → Linked Executable
+- **Automated regression tests** for native compilation
+
+Example:
+```bash
+# Compile Frogger to native ARM64
+./build/src/tools/ilc/ilc front basic -emit-il demos/frogger/frogger.bas > frogger.il
+./build/src/tools/ilc/ilc codegen arm64 frogger.il -S frogger.s
+as frogger.s -o frogger.o
+clang++ frogger.o build/src/runtime/libviper_runtime.a -o frogger_native
+./frogger_native
+```
+
+#### New Demo: Centipede
+
+Classic arcade game implementation showcasing OOP and terminal graphics:
+
+- ANSI color graphics
+- Multiple game modules using `AddFile` directive
+- Scoreboard with level progression
+- Spider and centipede enemy AI
+
+### Project Statistics
+
+| Metric | v0.1.1 | v0.1.2 | Change |
+|--------|--------|--------|--------|
+| Lines of Code | 125,000 | 238,000+ | +90% |
+| Source Files | ~900 | 1,360 | +51% |
+| Test Files | 500+ | 1,039 | +108% |
+| Documentation Files | 55+ | 111 | +102% |
+
+### Bug Fixes
+
+- **BUG-ARM-004**: Stack offset exceeds ARM64 immediate range
+- **BUG-ARM-005**: Duplicate trap labels in generated assembly
+- **BUG-ARM-009**: Frontend wrong parameter name in IL (root cause of ARM-006, ARM-008)
+- Fixed all ARM64 linker symbol resolution issues
+- Resolved runtime class method binding edge cases
+
+---
+
 ## Version 0.1.1 - Pre-Alpha (November 22, 2025)
 
 ### Release Overview
