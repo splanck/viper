@@ -243,3 +243,21 @@ RUNTIME_CLASS(
         RUNTIME_METHOD("AddSeconds", "i64(i64,i64)", "Viper.DateTime.AddSeconds"),
         RUNTIME_METHOD("AddDays", "i64(i64,i64)", "Viper.DateTime.AddDays"),
         RUNTIME_METHOD("Diff", "i64(i64,i64)", "Viper.DateTime.Diff")))
+
+// String-keyed dictionary (hash map)
+// Notes:
+// - Keys are strings, values are objects.
+// - Keys are copied internally (dictionary owns copies).
+// - Values are retained when stored, released when removed.
+RUNTIME_CLASS(
+    "Viper.Collections.Dictionary",
+    RTCLS_Dictionary,
+    "obj",
+    "Viper.Collections.Dictionary.New",
+    RUNTIME_PROPS(RUNTIME_PROP("Count", "i64", "Viper.Collections.Dictionary.get_Count", nullptr)),
+    RUNTIME_METHODS(
+        RUNTIME_METHOD("Set", "void(str,obj)", "Viper.Collections.Dictionary.Set"),
+        RUNTIME_METHOD("Get", "obj(str)", "Viper.Collections.Dictionary.Get"),
+        RUNTIME_METHOD("ContainsKey", "i64(str)", "Viper.Collections.Dictionary.ContainsKey"),
+        RUNTIME_METHOD("Remove", "i64(str)", "Viper.Collections.Dictionary.Remove"),
+        RUNTIME_METHOD("Clear", "void()", "Viper.Collections.Dictionary.Clear")))

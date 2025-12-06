@@ -465,6 +465,13 @@ class LowererStmtVisitor final : public lower::AstVisitor, public StmtVisitor
     /// @details USING is compile-time only and produces no IL.
     void visit(const UsingDecl &) override {}
 
+    /// @brief Lower a USING resource statement with automatic cleanup.
+    /// @details Implements TRY/FINALLY semantics to guarantee destructor invocation.
+    void visit(const UsingStmt &stmt) override
+    {
+        lowerer_.lowerUsingStmt(stmt);
+    }
+
     /// @brief Handle NAMESPACE blocks by adjusting the qualification stack.
     /// @details Pushes the namespace segments, lowers the nested body, then pops
     ///          the same number of segments to restore the previous scope.

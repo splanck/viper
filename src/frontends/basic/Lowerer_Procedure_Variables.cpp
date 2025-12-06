@@ -139,6 +139,28 @@ class VarCollectWalker final : public BasicAstWalker<VarCollectWalker>
         }
     }
 
+    /// @brief Track resource variable introduced by USING.
+    void before(const UsingStmt &stmt)
+    {
+        if (!stmt.varName.empty())
+        {
+            lowerer_.markSymbolReferenced(stmt.varName);
+
+            // Build qualified class name from type parts
+            std::string className;
+            for (size_t i = 0; i < stmt.typeQualified.size(); ++i)
+            {
+                if (i > 0)
+                    className += ".";
+                className += stmt.typeQualified[i];
+            }
+            if (!className.empty())
+            {
+                lowerer_.setSymbolObjectType(stmt.varName, className);
+            }
+        }
+    }
+
     /// @brief Record loop induction variables referenced by FOR statements.
     void before(const ForStmt &stmt)
     {

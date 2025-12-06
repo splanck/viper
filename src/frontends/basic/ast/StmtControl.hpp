@@ -417,4 +417,51 @@ struct ReturnStmt : Stmt
     void accept(MutStmtVisitor &visitor) override;
 };
 
+/// @brief USING statement for automatic resource disposal.
+///
+/// Syntax:
+///   USING varName AS TypeName = NEW TypeName(args)
+///       <body>
+///   END USING
+///
+/// Desugars to:
+///   DIM varName AS TypeName
+///   varName = NEW TypeName(args)
+///   TRY
+///       <body>
+///   FINALLY
+///       DISPOSE varName
+///   END TRY
+///
+/// Guarantees cleanup of the resource when the USING block exits.
+struct UsingStmt : Stmt
+{
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
+    {
+        return Kind::UsingStmt;
+    }
+
+    /// Variable name for the managed resource.
+    std::string varName;
+
+    /// Qualified type name parts, e.g. ["Viper", "IO", "File"].
+    std::vector<std::string> typeQualified;
+
+    /// Initializer expression (typically a NEW expression); may be null for existing var.
+    ExprPtr initExpr;
+
+    /// Body statements executed within the USING block.
+    std::vector<StmtPtr> body;
+
+    void accept(StmtVisitor &visitor) const override
+    {
+        visitor.visit(*this);
+    }
+
+    void accept(MutStmtVisitor &visitor) override
+    {
+        visitor.visit(*this);
+    }
+};
+
 } // namespace il::frontends::basic

@@ -24,6 +24,8 @@
 /// semantics without leaking state between statements.
 
 #include "frontends/basic/Lowerer.hpp"
+#include "frontends/basic/OopIndex.hpp"
+#include "frontends/basic/OopLoweringContext.hpp"
 
 using namespace il::core;
 
@@ -364,6 +366,146 @@ void Lowerer::lowerTryCatch(const TryCatchStmt &stmt)
     func = ctx.function();
     afterTry = &func->blocks[afterIdx];
     ctx.setCurrent(afterTry);
+}
+
+/// @brief Lower a USING resource statement into cleanup with destruction.
+///
+/// Transforms:
+///   USING res AS Resource = NEW Resource()
+///       res.DoWork()
+///   END USING
+///
+/// Into the equivalent of:
+///   DIM res AS Resource = NEW Resource()
+///   res.DoWork()
+///   DELETE res
+///
+/// Note: This is a simplified implementation that handles normal control flow.
+/// Exception handling can be added in a future iteration.
+///
+/// The implementation:
+/// - Initializes the variable with the NEW expression
+/// - Lowers the body statements
+/// - At scope exit, releases the object (calling destructor if present)
+void Lowerer::lowerUsingStmt(const UsingStmt &stmt)
+{
+    ProcedureContext &ctx = context();
+    Function *func = ctx.function();
+    BasicBlock *current = ctx.current();
+    if (!func || !current)
+        return;
+
+    curLoc = stmt.loc;
+
+    // Step 1: Build the class name from qualified type
+    std::string className;
+    for (size_t i = 0; i < stmt.typeQualified.size(); ++i)
+    {
+        if (i > 0)
+            className += ".";
+        className += stmt.typeQualified[i];
+    }
+
+    // Step 2: Lower the initialization expression and store in the variable
+    // The variable storage should already be allocated by semantic analysis
+    auto storage = resolveVariableStorage(stmt.varName, stmt.loc);
+    if (!storage)
+    {
+        // Variable not found - bail out
+        return;
+    }
+
+    Value objPtr;
+    if (stmt.initExpr)
+    {
+        RVal initVal = lowerExpr(*stmt.initExpr);
+        objPtr = initVal.value;
+    }
+    else
+    {
+        // No initializer - use null pointer
+        objPtr = Value::null();
+    }
+
+    // Store the object pointer in the variable's slot
+    emitStore(Type(Type::Kind::Ptr), storage->pointer, objPtr);
+
+    // Step 3: Lower body statements
+    for (const auto &st : stmt.body)
+    {
+        if (!st)
+            continue;
+        lowerStmt(*st);
+        BasicBlock *cur = ctx.current();
+        if (!cur || cur->terminated)
+            break;
+    }
+
+    // Step 4: Cleanup - emit DELETE-like destruction
+    if (ctx.current() && !ctx.current()->terminated)
+    {
+        // Load the object pointer
+        Value loadedObj = emitLoad(Type(Type::Kind::Ptr), storage->pointer);
+
+        requestHelper(RuntimeFeature::ObjReleaseChk0);
+        requestHelper(RuntimeFeature::ObjFree);
+
+        Value shouldDestroy = emitCallRet(ilBoolTy(), "rt_obj_release_check0", {loadedObj});
+
+        // Create destroy and continue blocks
+        func = ctx.function();
+        BlockNamer *blockNamer = ctx.blockNames().namer();
+
+        const size_t destroyIdx = func->blocks.size();
+        std::string destroyLbl =
+            blockNamer ? blockNamer->generic("using_dtor") : mangler.block("using_dtor");
+        builder->addBlock(*func, destroyLbl);
+
+        func = ctx.function();
+        const size_t contIdx = func->blocks.size();
+        std::string contLbl =
+            blockNamer ? blockNamer->generic("using_cont") : mangler.block("using_cont");
+        builder->addBlock(*func, contLbl);
+
+        func = ctx.function();
+        BasicBlock *destroyBlk = &func->blocks[destroyIdx];
+        BasicBlock *contBlk = &func->blocks[contIdx];
+
+        emitCBr(shouldDestroy, destroyBlk, contBlk);
+
+        // Destroy block: call destructor if available, then free
+        ctx.setCurrent(destroyBlk);
+        curLoc = stmt.loc;
+
+        if (!className.empty())
+        {
+            OopLoweringContext oopCtx(*this, oopIndex_);
+            // Qualify the class name for lookup
+            std::string qualifiedName = oopCtx.qualify(className);
+            // Check if class has a SUB DESTROY() method (not same as DESTRUCTOR keyword)
+            // The DESTRUCTOR keyword's code is folded into __dtor, but SUB DESTROY() is separate
+            if (oopIndex_.findMethod(qualifiedName, "DESTROY") != nullptr)
+            {
+                // Call the user's DESTROY method
+                std::string destroyName = oopCtx.getMethodName(qualifiedName, "DESTROY");
+                emitCall(destroyName, {loadedObj});
+            }
+            // Always call __dtor for field cleanup and DESTRUCTOR keyword code
+            std::string dtorName = oopCtx.getDestructorName(qualifiedName);
+            if (!dtorName.empty())
+            {
+                emitCall(dtorName, {loadedObj});
+            }
+        }
+        emitCall("rt_obj_free", {loadedObj});
+        emitBr(contBlk);
+
+        // Continue at contBlk
+        ctx.setCurrent(contBlk);
+
+        // Set variable to null to prevent double-free in function epilogue
+        emitStore(Type(Type::Kind::Ptr), storage->pointer, Value::null());
+    }
 }
 
 } // namespace il::frontends::basic

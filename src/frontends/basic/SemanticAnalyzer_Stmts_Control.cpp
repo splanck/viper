@@ -197,6 +197,68 @@ void SemanticAnalyzer::visit(const TryCatchStmt &stmt)
             visitStmt(*st);
 }
 
+/// @brief Perform semantic checks for USING resource statements.
+///
+/// @details The USING statement declares a scoped resource variable and guarantees
+///          cleanup at scope exit. This method:
+/// - Begins a new local scope for the USING body.
+/// - Declares the resource variable as a local of Object type.
+/// - Analyzes the initializer expression.
+/// - Analyzes the body statements within the new scope.
+/// - Duplicate declaration is forbidden and reported consistently.
+///
+/// @param stmt USING statement to analyze.
+void SemanticAnalyzer::visit(const UsingStmt &stmt)
+{
+    // Begin a new scope for the USING body; the resource variable is local to it.
+    ScopeTracker::ScopedScope usingScope(scopes_);
+
+    if (!stmt.varName.empty())
+    {
+        const std::string &name = stmt.varName;
+
+        // Forbid duplicate declaration in the same scope.
+        if (scopes_.isDeclaredInCurrentScope(name))
+        {
+            std::string msg = "duplicate local '" + name + "'";
+            de.emit(il::support::Severity::Error,
+                    "B1006",
+                    stmt.loc,
+                    static_cast<uint32_t>(name.size()),
+                    std::move(msg));
+        }
+        else
+        {
+            // Declare a local binding for the resource variable in this scope.
+            std::string unique = scopes_.declareLocal(name);
+
+            // Track symbol and set Object type for the resource.
+            auto insertResult = symbols_.insert(unique);
+            if (insertResult.second && activeProcScope_)
+                activeProcScope_->noteSymbolInserted(unique);
+
+            auto itType = varTypes_.find(unique);
+            if (activeProcScope_)
+            {
+                std::optional<Type> previous;
+                if (itType != varTypes_.end())
+                    previous = itType->second;
+                activeProcScope_->noteVarTypeMutation(unique, previous);
+            }
+            varTypes_[unique] = Type::Object; // Object pointer type
+        }
+    }
+
+    // Analyze the initializer expression if present.
+    if (stmt.initExpr)
+        visitExpr(*stmt.initExpr);
+
+    // Analyze the USING body within the new scope.
+    for (const auto &st : stmt.body)
+        if (st)
+            visitStmt(*st);
+}
+
 /// @brief Perform semantic checks for WHILE loops.
 ///
 /// @param stmt WHILE statement to analyse.

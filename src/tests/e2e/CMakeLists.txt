@@ -449,6 +449,24 @@ function(viper_add_e2e_vm_suite)
             -DGOLDEN=${CMAKE_SOURCE_DIR}/src/tests/e2e/test_datetime.bas.out
             -P ${_VIPER_E2E_DIR}/test_basic_math_phase1.cmake)
     set_tests_properties(e2e_datetime PROPERTIES LABELS "e2e")
+
+    # Dictionary API tests
+    viper_add_ctest(e2e_dictionary
+            ${CMAKE_COMMAND}
+            -DILC=$<TARGET_FILE:ilc>
+            -DBAS_FILE=${CMAKE_SOURCE_DIR}/src/tests/e2e/test_dictionary.bas
+            -DGOLDEN=${CMAKE_SOURCE_DIR}/src/tests/e2e/test_dictionary.bas.out
+            -P ${_VIPER_E2E_DIR}/test_basic_math_phase1.cmake)
+    set_tests_properties(e2e_dictionary PROPERTIES LABELS "e2e")
+
+    # USING statement tests (resource cleanup)
+    viper_add_ctest(e2e_using
+            ${CMAKE_COMMAND}
+            -DILC=$<TARGET_FILE:ilc>
+            -DBAS_FILE=${CMAKE_SOURCE_DIR}/src/tests/e2e/test_using.bas
+            -DGOLDEN=${CMAKE_SOURCE_DIR}/src/tests/e2e/test_using.bas.out
+            -P ${_VIPER_E2E_DIR}/test_basic_math_phase1.cmake)
+    set_tests_properties(e2e_using PROPERTIES LABELS "e2e")
 endfunction()
 
 # OOP runtime e2e: List + String + Object (avoids reserved keyword collisions)

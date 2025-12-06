@@ -199,6 +199,8 @@ class SemanticAnalyzer
     void visit(const CursorStmt &s);
     /// @brief Perform semantic checks specific to TRY/CATCH statements.
     void visit(const TryCatchStmt &s);
+    /// @brief Perform semantic checks specific to USING statements.
+    void visit(const UsingStmt &s);
 
     /// @brief Analyze statement list @p s.
     void analyzeStmtList(const StmtList &s);

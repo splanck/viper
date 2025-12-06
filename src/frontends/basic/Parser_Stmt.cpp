@@ -210,19 +210,27 @@ StmtPtr Parser::parseNamespaceDecl()
     return decl;
 }
 
-/// @brief Parse a USING directive with optional alias.
-/// @details Supports two forms:
-///          - "USING Foo.Bar.Baz" (no alias)
-///          - "USING FB = Foo.Bar" (with alias)
+/// @brief Parse a USING directive or resource statement.
+/// @details Supports three forms:
+///          - "USING Foo.Bar.Baz" (namespace import)
+///          - "USING FB = Foo.Bar" (namespace alias)
+///          - "USING x AS Type = expr ... END USING" (resource statement)
 ///          Recovers from malformed syntax by building a UsingDecl with empty
 ///          path so semantic analysis can emit precise diagnostics.
-/// @return Newly allocated UsingDecl node.
+/// @return Newly allocated UsingDecl or UsingStmt node.
 StmtPtr Parser::parseUsingDecl()
 {
     auto loc = peek().loc;
     consume(); // USING
 
-    // Reject inside procedures; Phase 2 allows USING inside namespaces and after decls.
+    // Check for resource statement form: USING identifier AS ...
+    // This is allowed inside procedures (unlike namespace USING).
+    if (at(TokenKind::Identifier) && peek(1).kind == TokenKind::KeywordAs)
+    {
+        return parseUsingStatement(loc);
+    }
+
+    // Reject namespace USING inside procedures.
     if (procDepth_ > 0)
     {
         emitError("B0001", loc, "USING is not allowed inside procedures");
@@ -272,6 +280,77 @@ StmtPtr Parser::parseUsingDecl()
         consume();
 
     return decl;
+}
+
+/// @brief Parse a USING resource statement (USING x AS Type = expr ... END USING).
+/// @param loc Source location of the USING keyword.
+/// @return Newly allocated UsingStmt node.
+StmtPtr Parser::parseUsingStatement(il::support::SourceLoc loc)
+{
+    auto stmt = std::make_unique<UsingStmt>();
+    stmt->loc = loc;
+
+    // Parse variable name
+    if (!at(TokenKind::Identifier))
+    {
+        emitError("B0002", loc, "expected variable name after USING");
+        return nullptr;
+    }
+    Token varTok = consume();
+    stmt->varName = varTok.lexeme;
+
+    // Consume AS
+    if (!at(TokenKind::KeywordAs))
+    {
+        emitError("B0002", loc, "expected AS after variable name in USING");
+        return nullptr;
+    }
+    consume(); // AS
+
+    // Parse qualified type name: Identifier ('.' Identifier)*
+    if (!at(TokenKind::Identifier))
+    {
+        emitError("B0002", loc, "expected type name after AS in USING");
+        return nullptr;
+    }
+    Token typeTok = consume();
+    stmt->typeQualified.push_back(typeTok.lexeme);
+
+    while (at(TokenKind::Dot))
+    {
+        consume(); // .
+        if (at(TokenKind::Identifier))
+        {
+            Token seg = consume();
+            stmt->typeQualified.push_back(seg.lexeme);
+        }
+        else
+        {
+            emitError("B0002", loc, "expected identifier after '.' in type name");
+            break;
+        }
+    }
+
+    // Expect '=' and initializer expression
+    if (!at(TokenKind::Equal))
+    {
+        emitError("B0002", loc, "expected '=' after type in USING statement");
+        return nullptr;
+    }
+    consume(); // =
+
+    // Parse initializer expression (typically NEW ClassName(...))
+    stmt->initExpr = parseExpression();
+    if (!stmt->initExpr)
+    {
+        emitError("B0002", loc, "expected initializer expression in USING statement");
+        return nullptr;
+    }
+
+    // Parse body until END USING using the standard body parser
+    parseProcedureBody(TokenKind::KeywordUsing, stmt->body);
+
+    return stmt;
 }
 
 Parser::StmtResult Parser::parseLeadingLineNumberError()

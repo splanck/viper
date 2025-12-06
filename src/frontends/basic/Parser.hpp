@@ -593,6 +593,11 @@ class Parser
     /// @return UsingDecl node capturing namespace path and alias.
     StmtPtr parseUsingDecl();
 
+    /// @brief Parse a USING resource statement (USING x AS Type = expr ... END USING).
+    /// @param loc Source location of the USING keyword (already consumed).
+    /// @return UsingStmt node for resource management.
+    StmtPtr parseUsingStatement(il::support::SourceLoc loc);
+
     /// @brief Parse a comma-separated parameter list inside parentheses.
     /// @return Vector of parsed parameters.
     std::vector<Param> parseParamList();

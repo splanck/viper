@@ -46,6 +46,7 @@
 #include "rt_array_obj.h"
 #include "rt_fp.h"
 #include "rt_datetime.h"
+#include "rt_dictionary.h"
 #include "rt_graphics.h"
 #include "rt_internal.h"
 #include "rt_math.h"

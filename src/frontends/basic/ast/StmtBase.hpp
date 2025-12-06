@@ -24,6 +24,7 @@ namespace il::frontends::basic
 // Forward declare to allow visitor signatures without including full definition.
 struct NamespaceDecl;
 struct UsingDecl;
+struct UsingStmt;
 
 /// @brief Visitor interface for BASIC statements.
 struct StmtVisitor
@@ -88,6 +89,8 @@ struct StmtVisitor
     virtual void visit(const NamespaceDecl &) {}
 
     virtual void visit(const UsingDecl &) = 0;
+
+    virtual void visit(const UsingStmt &) {}
 };
 
 /// @brief Visitor interface for mutable BASIC statements.
@@ -153,6 +156,8 @@ struct MutStmtVisitor
     virtual void visit(NamespaceDecl &) {}
 
     virtual void visit(UsingDecl &) = 0;
+
+    virtual void visit(UsingStmt &) {}
 };
 
 /// @brief Base class for all BASIC statements.
@@ -214,6 +219,7 @@ struct Stmt
         InterfaceDecl,
         NamespaceDecl,
         UsingDecl,
+        UsingStmt,
     };
 
     /// BASIC line number associated with this statement.
