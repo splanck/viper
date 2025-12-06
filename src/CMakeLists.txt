@@ -274,6 +274,7 @@ add_executable(ilc
         tools/ilc/main.cpp
         tools/ilc/cmd_run_il.cpp
         tools/ilc/cmd_front_basic.cpp
+        tools/ilc/cmd_front_pascal.cpp
         tools/ilc/cmd_il_opt.cpp
         tools/ilc/cmd_codegen_x64.cpp
         tools/ilc/cli.cpp
@@ -286,6 +287,7 @@ target_link_libraries(ilc
         il_vm
         il_transform
         fe_basic
+        fe_pascal
         il_api
         il_tools_common
         viper_codegen_x86_64
@@ -351,6 +353,7 @@ target_link_libraries(il-dis
 install(TARGETS il-dis RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 add_subdirectory(frontends/basic)
+add_subdirectory(frontends/pascal)
 
 add_executable(basic-ast-dump
         tools/basic-ast-dump/main.cpp

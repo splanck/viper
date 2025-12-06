@@ -262,6 +262,8 @@ void usage()
            "[--no-runtime-namespaces]\n"
         << "       ilc front basic -run <file.bas> [--trace=il|src] [--stdin-from <file>] "
            "[--max-steps N] [--bounds-checks] [--dump-trap] [--no-runtime-namespaces]\n"
+        << "       ilc front pascal -emit-il <file.pas>\n"
+        << "       ilc front pascal -run <file.pas> [--trace=il|src] [--stdin-from <file>]\n"
         << "       ilc codegen x64 -S <in.il> [-o <exe>] [--run-native]\n"
         << "       ilc codegen arm64 <in.il> [-S <out.s>] [-o <exe|obj>] [-run-native]\n"
         << "       ilc il-opt <in.il> -o <out.il> [--passes p1,p2] [-print-before] [-print-after]"
@@ -358,6 +360,10 @@ int main(int argc, char **argv)
     if (cmd == "front" && argc >= 3 && std::string(argv[2]) == "basic")
     {
         return cmdFrontBasic(argc - 3, argv + 3);
+    }
+    if (cmd == "front" && argc >= 3 && std::string(argv[2]) == "pascal")
+    {
+        return cmdFrontPascal(argc - 3, argv + 3);
     }
     usage();
     return 1;

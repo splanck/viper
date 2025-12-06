@@ -29,18 +29,50 @@ The Viper Runtime Library provides a set of built-in classes and utilities avail
 
 ## Namespace Overview
 
-| Namespace | Classes | Description |
-|-----------|---------|-------------|
-| `Viper` | String, Object, Math, Console, Convert, Random, Environment, DateTime | Core types and utilities |
-| `Viper.Text` | StringBuilder | Text manipulation |
-| `Viper.Collections` | List, Dictionary | Data structures |
-| `Viper.IO` | File | File system operations |
-| `Viper.Graphics` | Window, Color | 2D graphics and rendering |
+### Viper (Root Namespace)
+
+| Class | Type | Description |
+|-------|------|-------------|
+| `String` | Instance | Immutable string with manipulation methods |
+| `Object` | Base class | Root type for all reference types |
+| `Math` | Static | Mathematical functions (trig, pow, abs, etc.) |
+| `Console` | Static | Console input/output |
+| `Convert` | Static | Type conversion utilities |
+| `Random` | Static | Random number generation |
+| `Environment` | Static | Command-line arguments and environment |
+| `DateTime` | Static | Date and time operations |
+
+### Viper.Text
+
+| Class | Type | Description |
+|-------|------|-------------|
+| `StringBuilder` | Instance | Mutable string builder for efficient concatenation |
+
+### Viper.Collections
+
+| Class | Type | Description |
+|-------|------|-------------|
+| `List` | Instance | Dynamic array of objects |
+| `Dictionary` | Instance | String-keyed hash map |
+
+### Viper.IO
+
+| Class | Type | Description |
+|-------|------|-------------|
+| `File` | Static | File system operations (read, write, delete) |
+
+### Viper.Graphics
+
+| Class | Type | Description |
+|-------|------|-------------|
+| `Window` | Instance | 2D graphics window with drawing primitives |
+| `Color` | Static | Color creation utilities |
 
 ### Class Types
 
-- **Instance classes** require instantiation with `NEW` before use
-- **Static utility classes** provide methods called directly on the class name
+- **Instance** — Requires instantiation with `NEW` before use
+- **Static** — Methods called directly on the class name (no instantiation)
+- **Base class** — Cannot be instantiated directly; inherited by other types
 
 ---
 

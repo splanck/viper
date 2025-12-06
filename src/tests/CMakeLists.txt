@@ -474,6 +474,38 @@ set_tests_properties(basic_repros
         LABELS smoke)
 
 # =============================================================================
+# Pascal Frontend Tests
+# =============================================================================
+
+# Pascal compiler unit tests
+add_executable(test_pascal_compiler ${CMAKE_CURRENT_SOURCE_DIR}/frontends/pascal/PascalCompilerTests.cpp)
+target_link_libraries(test_pascal_compiler PRIVATE viper_testing fe_pascal)
+add_test(NAME test_pascal_compiler COMMAND test_pascal_compiler)
+set_tests_properties(test_pascal_compiler PROPERTIES LABELS pascal)
+
+# Pascal lexer unit tests
+add_executable(test_pascal_lexer ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/LexerTests.cpp)
+target_link_libraries(test_pascal_lexer PRIVATE viper_testing fe_pascal)
+add_test(NAME test_pascal_lexer COMMAND test_pascal_lexer)
+set_tests_properties(test_pascal_lexer PROPERTIES LABELS pascal)
+
+# Pascal AST unit tests
+add_executable(test_pascal_ast ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/ASTTests.cpp)
+target_link_libraries(test_pascal_ast PRIVATE viper_testing fe_pascal)
+add_test(NAME test_pascal_ast COMMAND test_pascal_ast)
+set_tests_properties(test_pascal_ast PROPERTIES LABELS pascal)
+
+# Pascal frontend smoke test (emit IL)
+add_test(NAME pascal_skeleton_emit_il
+        COMMAND $<TARGET_FILE:ilc> front pascal -emit-il ${CMAKE_CURRENT_SOURCE_DIR}/data/pascal/hello.pas)
+set_tests_properties(pascal_skeleton_emit_il PROPERTIES LABELS pascal)
+
+# Pascal frontend smoke test (run)
+add_test(NAME pascal_skeleton_run
+        COMMAND $<TARGET_FILE:ilc> front pascal -run ${CMAKE_CURRENT_SOURCE_DIR}/data/pascal/hello.pas)
+set_tests_properties(pascal_skeleton_run PROPERTIES LABELS pascal)
+
+# =============================================================================
 # Test Labels Configuration
 # =============================================================================
 # Labels are applied by pattern-matching test names. Tests defined in
