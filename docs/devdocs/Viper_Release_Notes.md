@@ -8,7 +8,7 @@
 
 ### Release Overview
 
-Version 0.1.2 is a pre-alpha development release that delivers a complete OOP runtime system and a production-ready AArch64 native backend. This release nearly doubles the codebase size and significantly expands test coverage.
+Version 0.1.2 is a pre-alpha development release that delivers an OOP runtime system and advances the AArch64 native backend.
 
 ### New Features
 
@@ -75,12 +75,12 @@ Classic arcade game implementation showcasing OOP and terminal graphics:
 
 ### Project Statistics
 
-| Metric | v0.1.1 | v0.1.2 | Change |
-|--------|--------|--------|--------|
-| Lines of Code | 125,000 | 238,000+ | +90% |
-| Source Files | ~900 | 1,360 | +51% |
-| Test Files | 500+ | 1,039 | +108% |
-| Documentation Files | 55+ | 111 | +102% |
+| Metric | v0.1.2 |
+|--------|--------|
+| Total Lines (LOC) | 242,000 |
+| Source Lines (SLOC) | 155,000 |
+| C/C++ Source Files | 1,353 |
+| Test SLOC | 42,000 |
 
 ### Bug Fixes
 
