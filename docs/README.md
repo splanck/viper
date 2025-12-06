@@ -12,6 +12,7 @@ Welcome to the Viper compiler toolchain documentation. This directory contains l
 |----------|-------------|
 | [Getting Started](getting-started.md) | Build, install, and run your first program |
 | [BASIC Tutorial](basic-language.md) | Learn Viper BASIC by example |
+| [Runtime Library](viperlib.md) | Viper.* classes and methods reference |
 | [IL Guide](il-guide.md) | Comprehensive IL specification |
 
 ---
@@ -45,6 +46,12 @@ Welcome to the Viper compiler toolchain documentation. This directory contains l
 ### Native Code Generation
 
 - **[Backend Guide](backend.md)** — x86-64 and ARM64 code generation (experimental)
+
+---
+
+## Runtime Library
+
+- **[Runtime Library Reference](viperlib.md)** — Complete reference for all `Viper.*` classes, methods, and properties
 
 ---
 

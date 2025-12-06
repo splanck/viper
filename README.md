@@ -274,6 +274,7 @@ Installs: `vbasic`, `ilrun`, `ilc`, `il-verify`, `il-dis`
 | [Getting Started](docs/getting-started.md) | Build and run your first program |
 | [BASIC Tutorial](docs/basic-language.md) | Learn Viper BASIC by example |
 | [BASIC Reference](docs/basic-reference.md) | Complete language specification |
+| [Runtime Library](docs/viperlib.md) | Viper.* classes, methods, and properties |
 | [IL Guide](docs/il-guide.md) | IL specification and examples |
 | [IL Quickstart](docs/il-quickstart.md) | Fast introduction to Viper IL |
 | [VM Architecture](docs/vm.md) | VM design and internals |
