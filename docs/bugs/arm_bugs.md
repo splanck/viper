@@ -268,3 +268,39 @@ This is consistent with a bus error at `rect.topLeft.x = 10` when `topLeft` is f
 - **BUG-ARM-013**: String array put passes pointer-to-value instead of value (FIXED 2024-12-03)
 - **BUG-ARM-014**: Module-level constants crash - was cross-block const_str issue (FIXED 2024-12-03)
 - **BUG-ARM-009**: Nested object field access bus error - cross-block value issue (FIXED 2024-12-03)
+
+---
+
+## BUG-ARM-015: Viper.Time.SleepMs not linked for native codegen
+
+**Status**: FIXED (2024-12-05)
+**Severity**: High
+**Component**: AArch64 Codegen / AsmEmitter
+
+### Description
+`Viper.Time.SleepMs` is not remapped to the C runtime function `rt_sleep_ms` in the AArch64 AsmEmitter, causing linker errors when building native executables.
+
+### Reproduction
+```basic
+Viper.Time.SleepMs(100)  ' Causes linker error for native
+```
+
+### Error Message
+```
+Undefined symbols for architecture arm64:
+  "_Viper.Time.SleepMs", referenced from:
+      ...
+ld: symbol(s) not found for architecture arm64
+```
+
+### Root Cause
+The AsmEmitter's `mangleName()` function in `src/codegen/aarch64/AsmEmitter.cpp` doesn't include a mapping for `Viper.Time.SleepMs` to `rt_sleep_ms`.
+
+### Fix Required
+Add to AsmEmitter.cpp's mangleName function:
+```cpp
+if (name == "Viper.Time.SleepMs")
+    return "rt_sleep_ms";
+if (name == "Viper.Time.GetTickCount")
+    return "rt_timer_ms";
+```

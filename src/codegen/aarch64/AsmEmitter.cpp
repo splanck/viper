@@ -183,6 +183,12 @@ static std::string mapRuntimeSymbol(const std::string &name)
     if (name == "Viper.Terminal.Flush")
         return "rt_term_flush";
 
+    // Time operations
+    if (name == "Viper.Time.SleepMs")
+        return "rt_sleep_ms";
+    if (name == "Viper.Time.GetTickCount")
+        return "rt_timer_ms";
+
     // String formatting (number to string conversions)
     if (name == "Viper.Strings.FromI32")
         return "rt_str_i32_alloc";

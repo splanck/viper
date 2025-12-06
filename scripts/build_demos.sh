@@ -81,6 +81,7 @@ DEMOS=(
     "chess:demos/chess/chess.bas"
     "vtris:demos/vtris/vtris.bas"
     "frogger:demos/frogger/frogger.bas"
+    "centipede:demos/centipede/centipede.bas"
 )
 
 build_demo() {
