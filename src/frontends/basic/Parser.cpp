@@ -280,7 +280,7 @@ BasicType Parser::parseBasicType()
         consume();
         return BasicType::Int;
     }
-    if (upper == "DOUBLE" || upper == "FLOAT")
+    if (upper == "DOUBLE" || upper == "FLOAT" || upper == "SINGLE")
     {
         consume();
         return BasicType::Float;

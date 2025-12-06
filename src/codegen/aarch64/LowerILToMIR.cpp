@@ -208,6 +208,12 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
         // ABI registers (x0-x7, v0-v7) are caller-saved and will be clobbered by calls.
         if (bi == 0 && !bbIn.params.empty())
         {
+            // ARM64 ABI: GPR and FPR parameters have independent indexing.
+            // Integer/pointer params use x0, x1, x2...
+            // Float params use d0, d1, d2... (independently numbered)
+            std::size_t gprArgIdx = 0;
+            std::size_t fprArgIdx = 0;
+
             for (std::size_t pi = 0; pi < bbIn.params.size(); ++pi)
             {
                 const auto &param = bbIn.params[pi];
@@ -222,19 +228,19 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                 const int spillOffset = fb.ensureSpill(static_cast<uint16_t>(50000 + param.id));
                 funcParamSpillOffset[param.id] = spillOffset;
 
-                // Get the ABI register for this parameter
+                // Get the ABI register for this parameter using independent GPR/FPR indexing
                 PhysReg src;
                 if (cls == RegClass::FPR)
                 {
-                    if (pi < ti_->f64ArgOrder.size())
-                        src = ti_->f64ArgOrder[pi];
+                    if (fprArgIdx < ti_->f64ArgOrder.size())
+                        src = ti_->f64ArgOrder[fprArgIdx++];
                     else
                         continue; // Stack param - not handled yet
                 }
                 else
                 {
-                    if (pi < ti_->intArgOrder.size())
-                        src = ti_->intArgOrder[pi];
+                    if (gprArgIdx < ti_->intArgOrder.size())
+                        src = ti_->intArgOrder[gprArgIdx++];
                     else
                         continue; // Stack param - not handled yet
                 }

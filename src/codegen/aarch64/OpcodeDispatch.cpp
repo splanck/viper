@@ -534,6 +534,7 @@ bool lowerInstruction(const il::core::Instr &ins,
                     ctx.tempVReg[*ins.result] = dst;
                     if (ins.type.kind == il::core::Type::Kind::F64)
                     {
+                        ctx.tempRegClass[*ins.result] = RegClass::FPR;
                         bbOut().instrs.push_back(MInstr{MOpcode::FMovRR,
                                                         {MOperand::vregOp(RegClass::FPR, dst),
                                                          MOperand::regOp(ctx.ti.f64ReturnReg)}});

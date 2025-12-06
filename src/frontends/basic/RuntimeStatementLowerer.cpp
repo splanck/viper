@@ -265,10 +265,8 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt)
                             if (fld->type == ::il::frontends::basic::Type::Str)
                             {
                                 lowerer_.requireArrayStrPut();
-                                Value tmp = lowerer_.emitAlloca(8);
-                                lowerer_.emitStore(
-                                    il::core::Type(il::core::Type::Kind::Str), tmp, value.value);
-                                lowerer_.emitCall("rt_arr_str_put", {arrHandle, index, tmp});
+                                lowerer_.emitCall("rt_arr_str_put",
+                                                  {arrHandle, index, value.value});
                             }
                             else if (isMemberObjectArray)
                             {
@@ -411,10 +409,8 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt)
                             if (fld->type == ::il::frontends::basic::Type::Str)
                             {
                                 lowerer_.requireArrayStrPut();
-                                Value tmp = lowerer_.emitAlloca(8);
-                                lowerer_.emitStore(
-                                    il::core::Type(il::core::Type::Kind::Str), tmp, value.value);
-                                lowerer_.emitCall("rt_arr_str_put", {arrHandle, index, tmp});
+                                lowerer_.emitCall("rt_arr_str_put",
+                                                  {arrHandle, index, value.value});
                             }
                             else if (isMemberObjectArray)
                             {
