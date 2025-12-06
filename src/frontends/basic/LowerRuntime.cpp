@@ -423,6 +423,90 @@ void Lowerer::requireArrayI32Release()
     setManualHelperRequired(ManualRuntimeHelper::ArrayI32Release);
 }
 
+/// @brief Request the manual helper that allocates I64 arrays (LONG).
+void Lowerer::requireArrayI64New()
+{
+    setManualHelperRequired(ManualRuntimeHelper::ArrayI64New);
+}
+
+/// @brief Request the manual helper that resizes I64 arrays (LONG).
+void Lowerer::requireArrayI64Resize()
+{
+    setManualHelperRequired(ManualRuntimeHelper::ArrayI64Resize);
+}
+
+/// @brief Request the manual helper that reads the length of I64 arrays.
+void Lowerer::requireArrayI64Len()
+{
+    setManualHelperRequired(ManualRuntimeHelper::ArrayI64Len);
+}
+
+/// @brief Request the manual helper that loads an element from an I64 array.
+void Lowerer::requireArrayI64Get()
+{
+    setManualHelperRequired(ManualRuntimeHelper::ArrayI64Get);
+}
+
+/// @brief Request the manual helper that stores an element into an I64 array.
+void Lowerer::requireArrayI64Set()
+{
+    setManualHelperRequired(ManualRuntimeHelper::ArrayI64Set);
+}
+
+/// @brief Request the manual helper that increments an I64 array reference.
+void Lowerer::requireArrayI64Retain()
+{
+    setManualHelperRequired(ManualRuntimeHelper::ArrayI64Retain);
+}
+
+/// @brief Request the manual helper that releases an I64 array reference.
+void Lowerer::requireArrayI64Release()
+{
+    setManualHelperRequired(ManualRuntimeHelper::ArrayI64Release);
+}
+
+/// @brief Request the manual helper that allocates F64 arrays (SINGLE/DOUBLE).
+void Lowerer::requireArrayF64New()
+{
+    setManualHelperRequired(ManualRuntimeHelper::ArrayF64New);
+}
+
+/// @brief Request the manual helper that resizes F64 arrays.
+void Lowerer::requireArrayF64Resize()
+{
+    setManualHelperRequired(ManualRuntimeHelper::ArrayF64Resize);
+}
+
+/// @brief Request the manual helper that gets F64 array length.
+void Lowerer::requireArrayF64Len()
+{
+    setManualHelperRequired(ManualRuntimeHelper::ArrayF64Len);
+}
+
+/// @brief Request the manual helper that loads an element from an F64 array.
+void Lowerer::requireArrayF64Get()
+{
+    setManualHelperRequired(ManualRuntimeHelper::ArrayF64Get);
+}
+
+/// @brief Request the manual helper that stores an element into an F64 array.
+void Lowerer::requireArrayF64Set()
+{
+    setManualHelperRequired(ManualRuntimeHelper::ArrayF64Set);
+}
+
+/// @brief Request the manual helper that increments an F64 array reference.
+void Lowerer::requireArrayF64Retain()
+{
+    setManualHelperRequired(ManualRuntimeHelper::ArrayF64Retain);
+}
+
+/// @brief Request the manual helper that releases an F64 array reference.
+void Lowerer::requireArrayF64Release()
+{
+    setManualHelperRequired(ManualRuntimeHelper::ArrayF64Release);
+}
+
 /// @brief Request the manual helper that allocates string arrays.
 /// @details Sets the manual-helper toggle so the allocation routine for new
 ///          string arrays is emitted alongside other runtime externs.
@@ -685,6 +769,24 @@ void Lowerer::declareRequiredRuntime(build::IRBuilder &b)
         {"rt_arr_i32_release",
          ManualRuntimeHelper::ArrayI32Release,
          &Lowerer::requireArrayI32Release},
+        {"rt_arr_i64_new", ManualRuntimeHelper::ArrayI64New, &Lowerer::requireArrayI64New},
+        {"rt_arr_i64_resize", ManualRuntimeHelper::ArrayI64Resize, &Lowerer::requireArrayI64Resize},
+        {"rt_arr_i64_len", ManualRuntimeHelper::ArrayI64Len, &Lowerer::requireArrayI64Len},
+        {"rt_arr_i64_get", ManualRuntimeHelper::ArrayI64Get, &Lowerer::requireArrayI64Get},
+        {"rt_arr_i64_set", ManualRuntimeHelper::ArrayI64Set, &Lowerer::requireArrayI64Set},
+        {"rt_arr_i64_retain", ManualRuntimeHelper::ArrayI64Retain, &Lowerer::requireArrayI64Retain},
+        {"rt_arr_i64_release",
+         ManualRuntimeHelper::ArrayI64Release,
+         &Lowerer::requireArrayI64Release},
+        {"rt_arr_f64_new", ManualRuntimeHelper::ArrayF64New, &Lowerer::requireArrayF64New},
+        {"rt_arr_f64_resize", ManualRuntimeHelper::ArrayF64Resize, &Lowerer::requireArrayF64Resize},
+        {"rt_arr_f64_len", ManualRuntimeHelper::ArrayF64Len, &Lowerer::requireArrayF64Len},
+        {"rt_arr_f64_get", ManualRuntimeHelper::ArrayF64Get, &Lowerer::requireArrayF64Get},
+        {"rt_arr_f64_set", ManualRuntimeHelper::ArrayF64Set, &Lowerer::requireArrayF64Set},
+        {"rt_arr_f64_retain", ManualRuntimeHelper::ArrayF64Retain, &Lowerer::requireArrayF64Retain},
+        {"rt_arr_f64_release",
+         ManualRuntimeHelper::ArrayF64Release,
+         &Lowerer::requireArrayF64Release},
         {"rt_arr_str_alloc", ManualRuntimeHelper::ArrayStrAlloc, &Lowerer::requireArrayStrAlloc},
         {"rt_arr_str_release",
          ManualRuntimeHelper::ArrayStrRelease,

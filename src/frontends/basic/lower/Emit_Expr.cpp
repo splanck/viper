@@ -190,11 +190,11 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
         }
         else
         {
-            requireArrayI32Len();
+            requireArrayI64Len();
             if (kind == ArrayAccessKind::Load)
-                requireArrayI32Get();
+                requireArrayI64Get();
             else
-                requireArrayI32Set();
+                requireArrayI64Set();
         }
     }
     // BUG-OOP-011 fix: Also check module-level string array cache
@@ -220,11 +220,11 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
     }
     else
     {
-        requireArrayI32Len();
+        requireArrayI64Len();
         if (kind == ArrayAccessKind::Load)
-            requireArrayI32Get();
+            requireArrayI64Get();
         else
-            requireArrayI32Set();
+            requireArrayI64Set();
     }
     requireArrayOobPanic();
 
@@ -397,7 +397,7 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
         else if (isMemberObjectArray)
             len = emitCallRet(Type(Type::Kind::I64), "rt_arr_obj_len", {base}); // BUG-089 fix
         else
-            len = emitCallRet(Type(Type::Kind::I64), "rt_arr_i32_len", {base});
+            len = emitCallRet(Type(Type::Kind::I64), "rt_arr_i64_len", {base});
     }
     else
     {
@@ -409,7 +409,7 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
             len = emitCallRet(
                 Type(Type::Kind::I64), "rt_arr_obj_len", {base}); // BUG-097: Check module cache too
         else
-            len = emitCallRet(Type(Type::Kind::I64), "rt_arr_i32_len", {base});
+            len = emitCallRet(Type(Type::Kind::I64), "rt_arr_i64_len", {base});
     }
     Value isNeg = emitBinary(Opcode::SCmpLT, ilBoolTy(), index, Value::constInt(0));
     Value tooHigh = emitBinary(Opcode::SCmpGE, ilBoolTy(), index, len);

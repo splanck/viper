@@ -58,6 +58,24 @@ class RuntimeHelperRequester
     virtual void requireArrayI32Release() = 0;
     virtual void requireArrayOobPanic() = 0;
 
+    // Array I64 operations (for LONG arrays)
+    virtual void requireArrayI64New() = 0;
+    virtual void requireArrayI64Resize() = 0;
+    virtual void requireArrayI64Len() = 0;
+    virtual void requireArrayI64Get() = 0;
+    virtual void requireArrayI64Set() = 0;
+    virtual void requireArrayI64Retain() = 0;
+    virtual void requireArrayI64Release() = 0;
+
+    // Array F64 operations (for SINGLE/DOUBLE arrays)
+    virtual void requireArrayF64New() = 0;
+    virtual void requireArrayF64Resize() = 0;
+    virtual void requireArrayF64Len() = 0;
+    virtual void requireArrayF64Get() = 0;
+    virtual void requireArrayF64Set() = 0;
+    virtual void requireArrayF64Retain() = 0;
+    virtual void requireArrayF64Release() = 0;
+
     // Array String operations
     virtual void requireArrayStrAlloc() = 0;
     virtual void requireArrayStrRelease() = 0;

@@ -18,12 +18,12 @@ extern @Viper.String.IndexOfFrom(i64, str, str) -> i64
 extern @Viper.String.Chr(i64) -> str
 extern @Viper.String.Asc(str) -> i64
 extern @rt_str_empty() -> str
-extern @rt_arr_i32_new(i64) -> ptr
-extern @rt_arr_i32_len(ptr) -> i64
-extern @rt_arr_i32_get(ptr, i64) -> i64
-extern @rt_arr_i32_set(ptr, i64, i64) -> void
-extern @rt_arr_i32_retain(ptr) -> void
-extern @rt_arr_i32_release(ptr) -> void
+extern @rt_arr_i64_new(i64) -> ptr
+extern @rt_arr_i64_len(ptr) -> i64
+extern @rt_arr_i64_get(ptr, i64) -> i64
+extern @rt_arr_i64_set(ptr, i64, i64) -> void
+extern @rt_arr_i64_retain(ptr) -> void
+extern @rt_arr_i64_release(ptr) -> void
 extern @rt_arr_oob_panic(i64, i64) -> void
 extern @rt_str_retain_maybe(str) -> void
 extern @rt_str_release_maybe(str) -> void
@@ -80,7 +80,7 @@ UL999999995:
   .loc 1 6 1
   %t12 = load ptr, %t0
   .loc 1 6 5
-  %t13 = call @rt_arr_i32_len(%t12)
+  %t13 = call @rt_arr_i64_len(%t12)
   .loc 1 6 5
   %t14 = scmp_lt 0, 0
   .loc 1 6 5
@@ -125,7 +125,7 @@ UL999999992:
   .loc 1 9 7
   %t24 = load ptr, %t0
   .loc 1 9 7
-  %t25 = call @rt_arr_i32_len(%t24)
+  %t25 = call @rt_arr_i64_len(%t24)
   .loc 1 9 7
   %t26 = scmp_lt 0, 0
   .loc 1 9 7
@@ -142,7 +142,7 @@ UL999999992:
   cbr %t31, bc_oob1, bc_ok1
 exit:
   %t34 = load ptr, %t0
-  call @rt_arr_i32_release(%t34)
+  call @rt_arr_i64_release(%t34)
   store ptr, %t0, null
   ret 0
 dim_len_fail:
@@ -150,20 +150,20 @@ dim_len_fail:
   trap
 dim_len_cont(%len:i64):
   .loc 1 3 12
-  %t7 = call @rt_arr_i32_new(%len)
+  %t7 = call @rt_arr_i64_new(%len)
   .loc 1 3 12
-  call @rt_arr_i32_retain(%t7)
+  call @rt_arr_i64_retain(%t7)
   .loc 1 3 12
   %t8 = load ptr, %t0
   .loc 1 3 12
-  call @rt_arr_i32_release(%t8)
+  call @rt_arr_i64_release(%t8)
   .loc 1 3 12
   store ptr, %t0, %t7
   .loc 1 3 1
   br UL999999997
 bc_ok0:
   .loc 1 6 5
-  call @rt_arr_i32_set(%t12, 0, %t11)
+  call @rt_arr_i64_set(%t12, 0, %t11)
   .loc 1 6 1
   br UL999999994
 bc_oob0:
@@ -173,7 +173,7 @@ bc_oob0:
   trap
 bc_ok1:
   .loc 1 9 7
-  %t32 = call @rt_arr_i32_get(%t24, 0)
+  %t32 = call @rt_arr_i64_get(%t24, 0)
   .loc 1 9 7
   call @Viper.Console.PrintI64(%t32)
   .loc 1 9 7

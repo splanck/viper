@@ -18,10 +18,10 @@ extern @Viper.String.IndexOfFrom(i64, str, str) -> i64
 extern @Viper.String.Chr(i64) -> str
 extern @Viper.String.Asc(str) -> i64
 extern @rt_str_empty() -> str
-extern @rt_arr_i32_new(i64) -> ptr
-extern @rt_arr_i32_len(ptr) -> i64
-extern @rt_arr_i32_retain(ptr) -> void
-extern @rt_arr_i32_release(ptr) -> void
+extern @rt_arr_i64_new(i64) -> ptr
+extern @rt_arr_i64_len(ptr) -> i64
+extern @rt_arr_i64_retain(ptr) -> void
+extern @rt_arr_i64_release(ptr) -> void
 global const str @.L0 = "\n"
 func @__mod_init$oop() -> void {
 entry:
@@ -44,7 +44,7 @@ L20:
   .loc 1 2 10
   %t6 = load ptr, %t0
   .loc 1 2 10
-  %t7 = call @rt_arr_i32_len(%t6)
+  %t7 = call @rt_arr_i64_len(%t6)
   .loc 1 2 10
   %t8 = isub.ovf %t7, 1
   .loc 1 2 10
@@ -57,7 +57,7 @@ L20:
   br exit
 exit:
   %t10 = load ptr, %t0
-  call @rt_arr_i32_release(%t10)
+  call @rt_arr_i64_release(%t10)
   store ptr, %t0, null
   ret 0
 dim_len_fail:
@@ -65,13 +65,13 @@ dim_len_fail:
   trap
 dim_len_cont(%len:i64):
   .loc 1 1 10
-  %t4 = call @rt_arr_i32_new(%len)
+  %t4 = call @rt_arr_i64_new(%len)
   .loc 1 1 10
-  call @rt_arr_i32_retain(%t4)
+  call @rt_arr_i64_retain(%t4)
   .loc 1 1 10
   %t5 = load ptr, %t0
   .loc 1 1 10
-  call @rt_arr_i32_release(%t5)
+  call @rt_arr_i64_release(%t5)
   .loc 1 1 10
   store ptr, %t0, %t4
   .loc 1 1 4

@@ -123,8 +123,8 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
         else
         {
             // Integer/numeric array
-            lowerer_.requireArrayI32Len();
-            lowerer_.requireArrayI32Get();
+            lowerer_.requireArrayI64Len();
+            lowerer_.requireArrayI64Get();
         }
         lowerer_.requireArrayOobPanic();
     }
@@ -143,7 +143,7 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
     void after(const UBoundExpr &expr)
     {
         tracker_.trackArray(expr.name);
-        lowerer_.requireArrayI32Len();
+        lowerer_.requireArrayI64Len();
     }
 
     /// @brief Delegate binary expression analysis to helper logic.
@@ -408,9 +408,9 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
             else
             {
                 // Integer/numeric array
-                lowerer_.requireArrayI32New();
-                lowerer_.requireArrayI32Retain();
-                lowerer_.requireArrayI32Release();
+                lowerer_.requireArrayI64New();
+                lowerer_.requireArrayI64Retain();
+                lowerer_.requireArrayI64Release();
             }
         }
     }
@@ -423,9 +423,9 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
         if (stmt.name.empty())
             return;
         tracker_.trackArray(stmt.name);
-        lowerer_.requireArrayI32Resize();
-        lowerer_.requireArrayI32Retain();
-        lowerer_.requireArrayI32Release();
+        lowerer_.requireArrayI64Resize();
+        lowerer_.requireArrayI64Retain();
+        lowerer_.requireArrayI64Release();
     }
 
     /// @brief Track helpers needed for CONST string declarations.
@@ -831,8 +831,8 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
         // Use facade for array check
         if (query_.isSymbolArray(var.name))
         {
-            lowerer_.requireArrayI32Retain();
-            lowerer_.requireArrayI32Release();
+            lowerer_.requireArrayI64Retain();
+            lowerer_.requireArrayI64Release();
             return;
         }
         // Use facade for type lookup
@@ -866,8 +866,8 @@ class RuntimeNeedsScanner final : public BasicAstWalker<RuntimeNeedsScanner>
         else
         {
             // Integer/numeric array
-            lowerer_.requireArrayI32Len();
-            lowerer_.requireArrayI32Set();
+            lowerer_.requireArrayI64Len();
+            lowerer_.requireArrayI64Set();
         }
         lowerer_.requireArrayOobPanic();
     }

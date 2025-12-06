@@ -677,6 +677,50 @@ void AsmEmitter::emitStrToBase(std::ostream &os, PhysReg src, PhysReg base, long
     }
 }
 
+void AsmEmitter::emitLdrFprFromBase(std::ostream &os,
+                                    PhysReg dst,
+                                    PhysReg base,
+                                    long long offset) const
+{
+    if (isInSignedImmRange(offset))
+    {
+        os << "  ldr ";
+        printD(os, dst);
+        os << ", [" << rn(base) << ", #" << offset << "]\n";
+    }
+    else
+    {
+        // Large offset: use scratch register x9 to compute address
+        emitMovRI(os, kScratchGPR, offset);
+        os << "  add " << rn(kScratchGPR) << ", " << rn(base) << ", " << rn(kScratchGPR) << "\n";
+        os << "  ldr ";
+        printD(os, dst);
+        os << ", [" << rn(kScratchGPR) << "]\n";
+    }
+}
+
+void AsmEmitter::emitStrFprToBase(std::ostream &os,
+                                  PhysReg src,
+                                  PhysReg base,
+                                  long long offset) const
+{
+    if (isInSignedImmRange(offset))
+    {
+        os << "  str ";
+        printD(os, src);
+        os << ", [" << rn(base) << ", #" << offset << "]\n";
+    }
+    else
+    {
+        // Large offset: use scratch register x9 to compute address
+        emitMovRI(os, kScratchGPR, offset);
+        os << "  add " << rn(kScratchGPR) << ", " << rn(base) << ", " << rn(kScratchGPR) << "\n";
+        os << "  str ";
+        printD(os, src);
+        os << ", [" << rn(kScratchGPR) << "]\n";
+    }
+}
+
 void AsmEmitter::emitMovZ(std::ostream &os, PhysReg dst, unsigned imm16, unsigned lsl) const
 {
     os << "  movz " << rn(dst) << ", #" << imm16;
@@ -903,6 +947,12 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &mi) const
             return;
         case MOpcode::AddFpImm:
             emitAddFpImm(os, getReg(mi.ops[0]), getImm(mi.ops[1]));
+            return;
+        case MOpcode::LdrFprBaseImm:
+            emitLdrFprFromBase(os, getReg(mi.ops[0]), getReg(mi.ops[1]), getImm(mi.ops[2]));
+            return;
+        case MOpcode::StrFprBaseImm:
+            emitStrFprToBase(os, getReg(mi.ops[0]), getReg(mi.ops[1]), getImm(mi.ops[2]));
             return;
         default:
             break;

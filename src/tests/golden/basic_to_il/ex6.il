@@ -7,12 +7,12 @@ extern @rt_substr(str, i64, i64) -> str
 extern @rt_input_line() -> str
 extern @rt_to_int(str) -> i64
 extern @rt_str_empty() -> str
-extern @rt_arr_i32_new(i64) -> ptr
-extern @rt_arr_i32_len(ptr) -> i64
-extern @rt_arr_i32_get(ptr, i64) -> i64
-extern @rt_arr_i32_set(ptr, i64, i64) -> void
-extern @rt_arr_i32_retain(ptr) -> void
-extern @rt_arr_i32_release(ptr) -> void
+extern @rt_arr_i64_new(i64) -> ptr
+extern @rt_arr_i64_len(ptr) -> i64
+extern @rt_arr_i64_get(ptr, i64) -> i64
+extern @rt_arr_i64_set(ptr, i64, i64) -> void
+extern @rt_arr_i64_retain(ptr) -> void
+extern @rt_arr_i64_release(ptr) -> void
 extern @rt_arr_oob_panic(i64, i64) -> void
 extern @rt_str_release_maybe(str) -> void
 global const str @.L0 = "\n"
@@ -78,7 +78,7 @@ L110:
   ret 0
 exit:
   %t45 = load ptr, %t2
-  call @rt_arr_i32_release(%t45)
+  call @rt_arr_i64_release(%t45)
   store ptr, %t2, null
   ret 0
 dim_len_fail:
@@ -86,13 +86,13 @@ dim_len_fail:
   trap
 dim_len_cont:
   .loc 1 2 10
-  %t9 = call @rt_arr_i32_new(%t7)
+  %t9 = call @rt_arr_i64_new(%t7)
   .loc 1 2 10
-  call @rt_arr_i32_retain(%t9)
+  call @rt_arr_i64_retain(%t9)
   .loc 1 2 10
   %t10 = load ptr, %t2
   .loc 1 2 10
-  call @rt_arr_i32_release(%t10)
+  call @rt_arr_i64_release(%t10)
   .loc 1 2 10
   store ptr, %t2, %t9
   .loc 1 2 4
@@ -124,7 +124,7 @@ loop_body:
   .loc 1 6 12
   %t21 = load i64, %t1
   .loc 1 6 10
-  %t22 = call @rt_arr_i32_len(%t20)
+  %t22 = call @rt_arr_i64_len(%t20)
   .loc 1 6 10
   %t23 = scmp_lt %t21, 0
   .loc 1 6 10
@@ -144,7 +144,7 @@ done:
   br L100
 bc_ok0:
   .loc 1 6 10
-  call @rt_arr_i32_set(%t20, %t21, %t19)
+  call @rt_arr_i64_set(%t20, %t21, %t19)
   .loc 1 7 14
   %t29 = load i64, %t0
   .loc 1 7 18
@@ -152,7 +152,7 @@ bc_ok0:
   .loc 1 7 20
   %t31 = load i64, %t1
   .loc 1 7 18
-  %t32 = call @rt_arr_i32_len(%t30)
+  %t32 = call @rt_arr_i64_len(%t30)
   .loc 1 7 18
   %t33 = scmp_lt %t31, 0
   .loc 1 7 18
@@ -174,7 +174,7 @@ bc_oob0:
   trap
 bc_ok1:
   .loc 1 7 18
-  %t39 = call @rt_arr_i32_get(%t30, %t31)
+  %t39 = call @rt_arr_i64_get(%t30, %t31)
   .loc 1 7 16
   %t40 = iadd.ovf %t29, %t39
   .loc 1 7 6

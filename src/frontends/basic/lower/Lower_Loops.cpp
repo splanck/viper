@@ -618,7 +618,7 @@ void Lowerer::lowerForEach(const ForEachStmt &stmt)
     else if (arrSym->isObject)
         length = emitCallRet(Type(Type::Kind::I64), "rt_arr_obj_len", {arrBase});
     else
-        length = emitCallRet(Type(Type::Kind::I64), "rt_arr_i32_len", {arrBase});
+        length = emitCallRet(Type(Type::Kind::I64), "rt_arr_i64_len", {arrBase});
 
     // Create a temporary index slot using alloca for 8-byte i64
     Value indexSlot = emitAlloca(8);
@@ -678,10 +678,17 @@ void Lowerer::lowerForEach(const ForEachStmt &stmt)
         Value elem = emitCallRet(Type(Type::Kind::Ptr), "rt_arr_obj_get", {arrBase, curIndex});
         emitStore(Type(Type::Kind::Ptr), elemSlot, elem);
     }
+    else if (arrSym->type == AstType::F64)
+    {
+        // Float arrays - use rt_arr_f64_get runtime function
+        requireArrayF64Get();
+        Value elem = emitCallRet(Type(Type::Kind::F64), "rt_arr_f64_get", {arrBase, curIndex});
+        emitStore(Type(Type::Kind::F64), elemSlot, elem);
+    }
     else
     {
-        // Integer arrays - use rt_arr_i32_get runtime function
-        Value elem = emitCallRet(Type(Type::Kind::I64), "rt_arr_i32_get", {arrBase, curIndex});
+        // Integer arrays - use rt_arr_i64_get runtime function
+        Value elem = emitCallRet(Type(Type::Kind::I64), "rt_arr_i64_get", {arrBase, curIndex});
         emitStore(Type(Type::Kind::I64), elemSlot, elem);
     }
 

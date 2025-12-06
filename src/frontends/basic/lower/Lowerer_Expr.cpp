@@ -207,11 +207,21 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
             // object lifetime
             result_ = Lowerer::RVal{val, IlType(IlType::Kind::Ptr)};
         }
+        else if ((info && info->type == ::il::frontends::basic::Type::F64) ||
+                 (isMemberArray && memberElemAstType == ::il::frontends::basic::Type::F64))
+        {
+            // Float array (SINGLE/DOUBLE): use rt_arr_f64_get
+            lowerer_.requireArrayF64Get();
+            IlValue val = lowerer_.emitCallRet(
+                IlType(IlType::Kind::F64), "rt_arr_f64_get", {access.base, access.index});
+            result_ = Lowerer::RVal{val, IlType(IlType::Kind::F64)};
+        }
         else
         {
-            // Integer/numeric array: use rt_arr_i32_get
+            // Integer/numeric array: use rt_arr_i64_get (all Viper integers are 64-bit)
+            lowerer_.requireArrayI64Get();
             IlValue val = lowerer_.emitCallRet(
-                IlType(IlType::Kind::I64), "rt_arr_i32_get", {access.base, access.index});
+                IlType(IlType::Kind::I64), "rt_arr_i64_get", {access.base, access.index});
             result_ = Lowerer::RVal{val, IlType(IlType::Kind::I64)};
         }
     }
@@ -766,12 +776,23 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
                         result_ = Lowerer::RVal{val, Lowerer::IlType(Lowerer::IlType::Kind::Ptr)};
                         return;
                     }
+                    else if (fld->type == ::il::frontends::basic::Type::F64)
+                    {
+                        // Float array (SINGLE/DOUBLE): use rt_arr_f64_get
+                        lowerer_.requireArrayF64Get();
+                        Lowerer::IlValue val =
+                            lowerer_.emitCallRet(Lowerer::IlType(Lowerer::IlType::Kind::F64),
+                                                 "rt_arr_f64_get",
+                                                 {arrHandle, indexVal});
+                        result_ = Lowerer::RVal{val, Lowerer::IlType(Lowerer::IlType::Kind::F64)};
+                        return;
+                    }
                     else
                     {
-                        lowerer_.requireArrayI32Get();
+                        lowerer_.requireArrayI64Get();
                         Lowerer::IlValue val =
                             lowerer_.emitCallRet(Lowerer::IlType(Lowerer::IlType::Kind::I64),
-                                                 "rt_arr_i32_get",
+                                                 "rt_arr_i64_get",
                                                  {arrHandle, indexVal});
                         result_ = Lowerer::RVal{val, Lowerer::IlType(Lowerer::IlType::Kind::I64)};
                         return;

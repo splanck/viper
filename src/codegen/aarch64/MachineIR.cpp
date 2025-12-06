@@ -79,6 +79,10 @@ namespace viper::codegen::aarch64
             return "LdrRegBaseImm";
         case MOpcode::StrRegBaseImm:
             return "StrRegBaseImm";
+        case MOpcode::LdrFprBaseImm:
+            return "LdrFprBaseImm";
+        case MOpcode::StrFprBaseImm:
+            return "StrFprBaseImm";
         case MOpcode::AddRRR:
             return "AddRRR";
         case MOpcode::SubRRR:

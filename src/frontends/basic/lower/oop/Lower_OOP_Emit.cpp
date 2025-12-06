@@ -253,8 +253,8 @@ void Lowerer::emitClassConstructor(const ClassDecl &klass, const ConstructorDecl
         metadata.irParams.push_back({param.name, ilParamTy});
         if (param.is_array)
         {
-            requireArrayI32Retain();
-            requireArrayI32Release();
+            requireArrayI64Retain();
+            requireArrayI64Release();
         }
     }
 
@@ -407,8 +407,8 @@ void Lowerer::emitClassMethod(const ClassDecl &klass, const MethodDecl &method)
         metadata.irParams.push_back({param.name, ilParamTy});
         if (param.is_array)
         {
-            requireArrayI32Retain();
-            requireArrayI32Release();
+            requireArrayI64Retain();
+            requireArrayI64Release();
         }
     }
 
@@ -545,8 +545,8 @@ void Lowerer::emitClassMethodWithBody(const ClassDecl &klass,
         metadata.irParams.push_back({param.name, ilParamTy});
         if (param.is_array)
         {
-            requireArrayI32Retain();
-            requireArrayI32Release();
+            requireArrayI64Retain();
+            requireArrayI64Release();
         }
     }
 

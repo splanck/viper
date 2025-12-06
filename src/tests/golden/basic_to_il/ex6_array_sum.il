@@ -20,12 +20,12 @@ extern @Viper.String.Asc(str) -> i64
 extern @Viper.Console.ReadLine() -> str
 extern @Viper.Convert.ToInt(str) -> i64
 extern @rt_str_empty() -> str
-extern @rt_arr_i32_new(i64) -> ptr
-extern @rt_arr_i32_len(ptr) -> i64
-extern @rt_arr_i32_get(ptr, i64) -> i64
-extern @rt_arr_i32_set(ptr, i64, i64) -> void
-extern @rt_arr_i32_retain(ptr) -> void
-extern @rt_arr_i32_release(ptr) -> void
+extern @rt_arr_i64_new(i64) -> ptr
+extern @rt_arr_i64_len(ptr) -> i64
+extern @rt_arr_i64_get(ptr, i64) -> i64
+extern @rt_arr_i64_set(ptr, i64, i64) -> void
+extern @rt_arr_i64_retain(ptr) -> void
+extern @rt_arr_i64_release(ptr) -> void
 extern @rt_arr_oob_panic(i64, i64) -> void
 extern @rt_str_release_maybe(str) -> void
 global const str @.L0 = "\n"
@@ -91,7 +91,7 @@ L110:
   ret 0
 exit:
   %t46 = load ptr, %t2
-  call @rt_arr_i32_release(%t46)
+  call @rt_arr_i64_release(%t46)
   store ptr, %t2, null
   ret 0
 dim_len_fail:
@@ -99,13 +99,13 @@ dim_len_fail:
   trap
 dim_len_cont(%len:i64):
   .loc 1 2 10
-  %t10 = call @rt_arr_i32_new(%len)
+  %t10 = call @rt_arr_i64_new(%len)
   .loc 1 2 10
-  call @rt_arr_i32_retain(%t10)
+  call @rt_arr_i64_retain(%t10)
   .loc 1 2 10
   %t11 = load ptr, %t2
   .loc 1 2 10
-  call @rt_arr_i32_release(%t11)
+  call @rt_arr_i64_release(%t11)
   .loc 1 2 10
   store ptr, %t2, %t10
   .loc 1 2 4
@@ -137,7 +137,7 @@ loop_body:
   .loc 1 6 12
   %t22 = load i64, %t1
   .loc 1 6 10
-  %t23 = call @rt_arr_i32_len(%t21)
+  %t23 = call @rt_arr_i64_len(%t21)
   .loc 1 6 10
   %t24 = scmp_lt %t22, 0
   .loc 1 6 10
@@ -157,7 +157,7 @@ done:
   br L100
 bc_ok0:
   .loc 1 6 10
-  call @rt_arr_i32_set(%t21, %t22, %t20)
+  call @rt_arr_i64_set(%t21, %t22, %t20)
   .loc 1 7 14
   %t30 = load i64, %t0
   .loc 1 7 18
@@ -165,7 +165,7 @@ bc_ok0:
   .loc 1 7 20
   %t32 = load i64, %t1
   .loc 1 7 18
-  %t33 = call @rt_arr_i32_len(%t31)
+  %t33 = call @rt_arr_i64_len(%t31)
   .loc 1 7 18
   %t34 = scmp_lt %t32, 0
   .loc 1 7 18
@@ -187,7 +187,7 @@ bc_oob0:
   trap
 bc_ok1:
   .loc 1 7 18
-  %t40 = call @rt_arr_i32_get(%t31, %t32)
+  %t40 = call @rt_arr_i64_get(%t31, %t32)
   .loc 1 7 16
   %t41 = iadd.ovf %t30, %t40
   .loc 1 7 6

@@ -55,7 +55,7 @@ int main()
     il::core::Module module = lowerer.lowerProgram(*program);
 
     auto names = collectExternNames(module);
-    assert(names.count("rt_arr_i32_set") == 1);
+    assert(names.count("rt_arr_i64_set") == 1);
     // Accept either legacy aliases or canonical runtime names
     assert(names.count("rt_split_fields") == 1 || names.count("Viper.Strings.SplitFields") == 1);
     assert(names.count("rt_to_int") == 1 || names.count("Viper.Convert.ToInt") == 1);

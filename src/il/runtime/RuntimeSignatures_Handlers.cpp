@@ -18,6 +18,8 @@
 #include "RuntimeSignatures_Handlers.hpp"
 
 #include "rt.hpp"
+#include "rt_array_f64.h"
+#include "rt_array_i64.h"
 #include "rt_array_obj.h"
 #include "rt_fp.h"
 #include "rt_internal.h"
@@ -145,6 +147,126 @@ void invokeRtArrI32Resize(void **args, void *result)
     int32_t *resized = (rc == 0) ? *handle : nullptr;
     if (arrPtr && rc == 0)
         *reinterpret_cast<int32_t **>(arrPtr) = resized;
+    if (result)
+        *reinterpret_cast<void **>(result) = resized;
+}
+
+// ============================================================================
+// I64 (LONG) array adapters
+// ============================================================================
+
+void invokeRtArrI64New(void **args, void *result)
+{
+    const auto lenPtr = args ? reinterpret_cast<const int64_t *>(args[0]) : nullptr;
+    const size_t len = lenPtr ? static_cast<size_t>(*lenPtr) : 0;
+    int64_t *arr = rt_arr_i64_new(len);
+    if (result)
+        *reinterpret_cast<void **>(result) = arr;
+}
+
+void invokeRtArrI64Len(void **args, void *result)
+{
+    const auto arrPtr = args ? reinterpret_cast<void *const *>(args[0]) : nullptr;
+    int64_t *arr = arrPtr ? *reinterpret_cast<int64_t *const *>(arrPtr) : nullptr;
+    const size_t len = rt_arr_i64_len(arr);
+    if (result)
+        *reinterpret_cast<int64_t *>(result) = static_cast<int64_t>(len);
+}
+
+void invokeRtArrI64Get(void **args, void *result)
+{
+    const auto arrPtr = args ? reinterpret_cast<void *const *>(args[0]) : nullptr;
+    const auto idxPtr = args ? reinterpret_cast<const int64_t *>(args[1]) : nullptr;
+    int64_t *arr = arrPtr ? *reinterpret_cast<int64_t *const *>(arrPtr) : nullptr;
+    const size_t idx = idxPtr ? static_cast<size_t>(*idxPtr) : 0;
+    const int64_t value = rt_arr_i64_get(arr, idx);
+    if (result)
+        *reinterpret_cast<int64_t *>(result) = value;
+}
+
+void invokeRtArrI64Set(void **args, void * /*result*/)
+{
+    const auto arrPtr = args ? reinterpret_cast<void **>(args[0]) : nullptr;
+    const auto idxPtr = args ? reinterpret_cast<const int64_t *>(args[1]) : nullptr;
+    const auto valPtr = args ? reinterpret_cast<const int64_t *>(args[2]) : nullptr;
+    int64_t *arr = arrPtr ? *reinterpret_cast<int64_t **>(arrPtr) : nullptr;
+    const size_t idx = idxPtr ? static_cast<size_t>(*idxPtr) : 0;
+    const int64_t value = valPtr ? *valPtr : 0;
+    rt_arr_i64_set(arr, idx, value);
+}
+
+void invokeRtArrI64Resize(void **args, void *result)
+{
+    const auto arrPtr = args ? reinterpret_cast<void **>(args[0]) : nullptr;
+    const auto newLenPtr = args ? reinterpret_cast<const int64_t *>(args[1]) : nullptr;
+    int64_t *arr = arrPtr ? *reinterpret_cast<int64_t **>(arrPtr) : nullptr;
+    const size_t newLen = newLenPtr ? static_cast<size_t>(*newLenPtr) : 0;
+    int64_t *local = arr;
+    int64_t **handle = arrPtr ? reinterpret_cast<int64_t **>(arrPtr) : &local;
+    int rc = rt_arr_i64_resize(handle, newLen);
+    int64_t *resized = (rc == 0) ? *handle : nullptr;
+    if (arrPtr && rc == 0)
+        *reinterpret_cast<int64_t **>(arrPtr) = resized;
+    if (result)
+        *reinterpret_cast<void **>(result) = resized;
+}
+
+// ============================================================================
+// F64 (SINGLE/DOUBLE) array adapters
+// ============================================================================
+
+void invokeRtArrF64New(void **args, void *result)
+{
+    const auto lenPtr = args ? reinterpret_cast<const int64_t *>(args[0]) : nullptr;
+    const size_t len = lenPtr ? static_cast<size_t>(*lenPtr) : 0;
+    double *arr = rt_arr_f64_new(len);
+    if (result)
+        *reinterpret_cast<void **>(result) = arr;
+}
+
+void invokeRtArrF64Len(void **args, void *result)
+{
+    const auto arrPtr = args ? reinterpret_cast<void *const *>(args[0]) : nullptr;
+    double *arr = arrPtr ? *reinterpret_cast<double *const *>(arrPtr) : nullptr;
+    const size_t len = rt_arr_f64_len(arr);
+    if (result)
+        *reinterpret_cast<int64_t *>(result) = static_cast<int64_t>(len);
+}
+
+void invokeRtArrF64Get(void **args, void *result)
+{
+    const auto arrPtr = args ? reinterpret_cast<void *const *>(args[0]) : nullptr;
+    const auto idxPtr = args ? reinterpret_cast<const int64_t *>(args[1]) : nullptr;
+    double *arr = arrPtr ? *reinterpret_cast<double *const *>(arrPtr) : nullptr;
+    const size_t idx = idxPtr ? static_cast<size_t>(*idxPtr) : 0;
+    const double value = rt_arr_f64_get(arr, idx);
+    if (result)
+        *reinterpret_cast<double *>(result) = value;
+}
+
+void invokeRtArrF64Set(void **args, void * /*result*/)
+{
+    const auto arrPtr = args ? reinterpret_cast<void **>(args[0]) : nullptr;
+    const auto idxPtr = args ? reinterpret_cast<const int64_t *>(args[1]) : nullptr;
+    const auto valPtr = args ? reinterpret_cast<const double *>(args[2]) : nullptr;
+    double *arr = arrPtr ? *reinterpret_cast<double **>(arrPtr) : nullptr;
+    const size_t idx = idxPtr ? static_cast<size_t>(*idxPtr) : 0;
+    const double value = valPtr ? *valPtr : 0.0;
+    rt_arr_f64_set(arr, idx, value);
+}
+
+void invokeRtArrF64Resize(void **args, void *result)
+{
+    const auto arrPtr = args ? reinterpret_cast<void **>(args[0]) : nullptr;
+    const auto newLenPtr = args ? reinterpret_cast<const int64_t *>(args[1]) : nullptr;
+    double *arr = arrPtr ? *reinterpret_cast<double **>(arrPtr) : nullptr;
+    const size_t newLen = newLenPtr ? static_cast<size_t>(*newLenPtr) : 0;
+    double *local = arr;
+    double **handle = arrPtr ? reinterpret_cast<double **>(arrPtr) : &local;
+    int rc = rt_arr_f64_resize(handle, newLen);
+    double *resized = (rc == 0) ? *handle : nullptr;
+    if (arrPtr && rc == 0)
+        *reinterpret_cast<double **>(arrPtr) = resized;
     if (result)
         *reinterpret_cast<void **>(result) = resized;
 }

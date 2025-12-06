@@ -252,8 +252,8 @@ Lowerer::ProcedureMetadata Lowerer::collectProcedureMetadata(const std::vector<P
         metadata.irParams.push_back({p.name, ty});
         if (p.is_array)
         {
-            requireArrayI32Retain();
-            requireArrayI32Release();
+            requireArrayI64Retain();
+            requireArrayI64Release();
         }
     }
 

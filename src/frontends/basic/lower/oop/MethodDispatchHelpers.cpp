@@ -327,9 +327,9 @@ void BoundsCheckEmitter::emitBoundsCheck(il::core::Value arrHandle,
     }
     else
     {
-        lowerer_.requireArrayI32Len();
+        lowerer_.requireArrayI64Len();
         len = lowerer_.emitCallRet(
-            il::core::Type(il::core::Type::Kind::I64), "rt_arr_i32_len", {arrHandle});
+            il::core::Type(il::core::Type::Kind::I64), "rt_arr_i64_len", {arrHandle});
     }
 
     // Check index < 0 || index >= len

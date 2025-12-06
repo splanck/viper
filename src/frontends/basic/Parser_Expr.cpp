@@ -15,6 +15,7 @@
 #include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/BuiltinRegistry.hpp"
 #include "frontends/basic/Parser.hpp"
+#include "frontends/basic/StringUtils.hpp"
 #include "viper/il/IO.hpp"
 #include <algorithm>
 #include <array>
@@ -585,13 +586,17 @@ ExprPtr Parser::parsePrimary()
                 // is a known namespace. This applies to both single-dot (obj.Method) and
                 // multi-dot (obj.field.Method) cases to prevent misclassifying method calls
                 // on object members as namespace-qualified procedure calls.
-                if (ok && knownNamespaces_.find(head.lexeme) == knownNamespaces_.end())
+                // BUG-004 fix: When head is not a known namespace, always reject as qualified
+                // call and let parsePostfix handle it as member access + method call.
+                // This fixes chained method calls like obj.field.Method().
+                // Note: Use case-insensitive comparison since BASIC is case-insensitive.
+                bool isKnownNamespace = std::any_of(
+                    knownNamespaces_.begin(), knownNamespaces_.end(),
+                    [&head](const std::string &ns)
+                    { return string_utils::iequals(head.lexeme, ns); });
+                if (ok && !isKnownNamespace)
                 {
-                    // Permit multi-segment dotted calls even when the head is not a known
-                    // namespace to support forms like Viper.IO.File.* when runtime namespaces
-                    // are enabled.
-                    if (!sawAdditionalDot)
-                        ok = false;
+                    ok = false;
                 }
             }
             if (ok)

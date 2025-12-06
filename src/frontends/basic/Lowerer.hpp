@@ -821,6 +821,22 @@ class Lowerer
     void requireArrayI32Retain();
     void requireArrayI32Release();
     void requireArrayOobPanic();
+    // I64 array helpers (for LONG arrays)
+    void requireArrayI64New();
+    void requireArrayI64Resize();
+    void requireArrayI64Len();
+    void requireArrayI64Get();
+    void requireArrayI64Set();
+    void requireArrayI64Retain();
+    void requireArrayI64Release();
+    // F64 array helpers (for SINGLE/DOUBLE arrays)
+    void requireArrayF64New();
+    void requireArrayF64Resize();
+    void requireArrayF64Len();
+    void requireArrayF64Get();
+    void requireArrayF64Set();
+    void requireArrayF64Retain();
+    void requireArrayF64Release();
 
     void requireArrayStrAlloc();
     void requireArrayStrRelease();

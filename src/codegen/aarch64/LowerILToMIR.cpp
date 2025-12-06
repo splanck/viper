@@ -215,7 +215,11 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                     (param.type.kind == il::core::Type::Kind::F64) ? RegClass::FPR : RegClass::GPR;
 
                 // Allocate spill slot for this parameter
-                const int spillOffset = fb.ensureSpill(static_cast<uint16_t>(50000 + pi));
+                // IMPORTANT: Use param.id (not pi index) to match LivenessAnalysis.cpp line 113
+                // which uses (50000 + tempId) for cross-block spill slots. Without this,
+                // the entry block and other blocks would use different spill slots for the
+                // same parameter, causing BUG-005 (BYREF parameters not working).
+                const int spillOffset = fb.ensureSpill(static_cast<uint16_t>(50000 + param.id));
                 funcParamSpillOffset[param.id] = spillOffset;
 
                 // Get the ABI register for this parameter

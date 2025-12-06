@@ -76,6 +76,8 @@ enum class MOpcode
     // Load/store from arbitrary base register (heap/global)
     LdrRegBaseImm, // dst, base, offset - ldr xN, [xM, #offset]
     StrRegBaseImm, // src, base, offset - str xN, [xM, #offset]
+    LdrFprBaseImm, // dst(FPR), base, offset - ldr dN, [xM, #offset]
+    StrFprBaseImm, // src(FPR), base, offset - str dN, [xM, #offset]
     AddRRR,
     SubRRR,
     MulRRR,

@@ -87,7 +87,7 @@ Lowerer::RVal Lowerer::lowerUBoundExpr(const UBoundExpr &expr)
     else if (sym->isObject)
         len = emitCallRet(Type(Type::Kind::I64), "rt_arr_obj_len", {base});
     else
-        len = emitCallRet(Type(Type::Kind::I64), "rt_arr_i32_len", {base});
+        len = emitCallRet(Type(Type::Kind::I64), "rt_arr_i64_len", {base});
 
     Value upper = emitBinary(Opcode::ISubOvf, Type(Type::Kind::I64), len, Value::constInt(1));
     return {upper, Type(Type::Kind::I64)};

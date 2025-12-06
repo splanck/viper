@@ -65,6 +65,14 @@ void register_array_signatures()
     register_signature(make_signature("rt_arr_i32_get", {Kind::Ptr, Kind::I64}, {Kind::I64}));
     register_signature(make_signature("rt_arr_i32_set", {Kind::Ptr, Kind::I64, Kind::I64}));
     register_signature(make_signature("rt_arr_i32_resize", {Kind::Ptr, Kind::I64}, {Kind::Ptr}));
+    // I64 array operations (for LONG arrays in BASIC)
+    register_signature(make_signature("rt_arr_i64_new", {Kind::I64}, {Kind::Ptr}));
+    register_signature(make_signature("rt_arr_i64_retain", {Kind::Ptr}));
+    register_signature(make_signature("rt_arr_i64_release", {Kind::Ptr}));
+    register_signature(make_signature("rt_arr_i64_len", {Kind::Ptr}, {Kind::I64}));
+    register_signature(make_signature("rt_arr_i64_get", {Kind::Ptr, Kind::I64}, {Kind::I64}));
+    register_signature(make_signature("rt_arr_i64_set", {Kind::Ptr, Kind::I64, Kind::I64}));
+    register_signature(make_signature("rt_arr_i64_resize", {Kind::Ptr, Kind::I64}, {Kind::Ptr}));
     register_signature(make_signature("rt_arr_oob_panic", {Kind::I64, Kind::I64}));
     register_signature(make_signature("rt_obj_new_i64", {Kind::I64, Kind::I64}, {Kind::Ptr}));
     register_signature(make_signature("rt_obj_retain_maybe", {Kind::Ptr}));

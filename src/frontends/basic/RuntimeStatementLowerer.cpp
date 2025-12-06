@@ -218,10 +218,10 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt)
                             }
                             else
                             {
-                                lowerer_.requireArrayI32Len();
+                                lowerer_.requireArrayI64Len();
                                 len =
                                     lowerer_.emitCallRet(il::core::Type(il::core::Type::Kind::I64),
-                                                         "rt_arr_i32_len",
+                                                         "rt_arr_i64_len",
                                                          {arrHandle});
                             }
                             Value isNeg = lowerer_.emitBinary(
@@ -276,12 +276,20 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt)
                                 lowerer_.emitCall("rt_arr_obj_put",
                                                   {arrHandle, index, value.value});
                             }
+                            else if (fld->type == ::il::frontends::basic::Type::F64)
+                            {
+                                lowerer_.requireArrayF64Set();
+                                Lowerer::RVal coerced =
+                                    lowerer_.ensureF64(std::move(value), stmt.loc);
+                                lowerer_.emitCall("rt_arr_f64_set",
+                                                  {arrHandle, index, coerced.value});
+                            }
                             else
                             {
-                                lowerer_.requireArrayI32Set();
+                                lowerer_.requireArrayI64Set();
                                 Lowerer::RVal coerced =
                                     lowerer_.ensureI64(std::move(value), stmt.loc);
-                                lowerer_.emitCall("rt_arr_i32_set",
+                                lowerer_.emitCall("rt_arr_i64_set",
                                                   {arrHandle, index, coerced.value});
                             }
                             return;
@@ -355,10 +363,10 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt)
                             }
                             else
                             {
-                                lowerer_.requireArrayI32Len();
+                                lowerer_.requireArrayI64Len();
                                 len =
                                     lowerer_.emitCallRet(il::core::Type(il::core::Type::Kind::I64),
-                                                         "rt_arr_i32_len",
+                                                         "rt_arr_i64_len",
                                                          {arrHandle});
                             }
 
@@ -414,12 +422,20 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt)
                                 lowerer_.emitCall("rt_arr_obj_put",
                                                   {arrHandle, index, value.value});
                             }
+                            else if (fld->type == ::il::frontends::basic::Type::F64)
+                            {
+                                lowerer_.requireArrayF64Set();
+                                Lowerer::RVal coerced =
+                                    lowerer_.ensureF64(std::move(value), stmt.loc);
+                                lowerer_.emitCall("rt_arr_f64_set",
+                                                  {arrHandle, index, coerced.value});
+                            }
                             else
                             {
-                                lowerer_.requireArrayI32Set();
+                                lowerer_.requireArrayI64Set();
                                 Lowerer::RVal coerced =
                                     lowerer_.ensureI64(std::move(value), stmt.loc);
-                                lowerer_.emitCall("rt_arr_i32_set",
+                                lowerer_.emitCall("rt_arr_i64_set",
                                                   {arrHandle, index, coerced.value});
                             }
                             return;

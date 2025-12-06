@@ -133,8 +133,8 @@ void OopEmitHelper::emitArrayFieldInits(const ClassDecl &klass, unsigned selfSlo
         }
         else
         {
-            lowerer_.requireArrayI32New();
-            handle = lowerer_.emitCallRet(IlType(IlType::Kind::Ptr), "rt_arr_i32_new", {length});
+            lowerer_.requireArrayI64New();
+            handle = lowerer_.emitCallRet(IlType(IlType::Kind::Ptr), "rt_arr_i64_new", {length});
         }
 
         // Store handle into object field

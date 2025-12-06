@@ -18,13 +18,13 @@ extern @Viper.String.IndexOfFrom(i64, str, str) -> i64
 extern @Viper.String.Chr(i64) -> str
 extern @Viper.String.Asc(str) -> i64
 extern @rt_str_empty() -> str
-extern @rt_arr_i32_new(i64) -> ptr
-extern @rt_arr_i32_resize(ptr, i64) -> ptr
-extern @rt_arr_i32_len(ptr) -> i64
-extern @rt_arr_i32_get(ptr, i64) -> i64
-extern @rt_arr_i32_set(ptr, i64, i64) -> void
-extern @rt_arr_i32_retain(ptr) -> void
-extern @rt_arr_i32_release(ptr) -> void
+extern @rt_arr_i64_new(i64) -> ptr
+extern @rt_arr_i64_resize(ptr, i64) -> ptr
+extern @rt_arr_i64_len(ptr) -> i64
+extern @rt_arr_i64_get(ptr, i64) -> i64
+extern @rt_arr_i64_set(ptr, i64, i64) -> void
+extern @rt_arr_i64_retain(ptr) -> void
+extern @rt_arr_i64_release(ptr) -> void
 extern @rt_arr_oob_panic(i64, i64) -> void
 global const str @.L0 = "\n"
 func @__mod_init$oop() -> void {
@@ -50,7 +50,7 @@ L20:
   .loc 1 2 13
   %t8 = load ptr, %t2
   .loc 1 2 13
-  %t9 = call @rt_arr_i32_len(%t8)
+  %t9 = call @rt_arr_i64_len(%t8)
   .loc 1 2 13
   %t10 = isub.ovf %t9, 1
   .loc 1 2 4
@@ -74,7 +74,7 @@ L40:
   .loc 1 4 10
   %t20 = load i64, %t1
   .loc 1 4 8
-  %t21 = call @rt_arr_i32_len(%t19)
+  %t21 = call @rt_arr_i64_len(%t19)
   .loc 1 4 8
   %t22 = scmp_lt %t20, 0
   .loc 1 4 8
@@ -95,7 +95,7 @@ L50:
   .loc 1 5 14
   %t29 = load i64, %t1
   .loc 1 5 12
-  %t30 = call @rt_arr_i32_len(%t28)
+  %t30 = call @rt_arr_i64_len(%t28)
   .loc 1 5 12
   %t31 = scmp_lt %t29, 0
   .loc 1 5 12
@@ -137,7 +137,7 @@ L80:
   ret 0
 exit:
   %t42 = load ptr, %t2
-  call @rt_arr_i32_release(%t42)
+  call @rt_arr_i64_release(%t42)
   store ptr, %t2, null
   ret 0
 dim_len_fail:
@@ -145,13 +145,13 @@ dim_len_fail:
   trap
 dim_len_cont(%len:i64):
   .loc 1 1 10
-  %t6 = call @rt_arr_i32_new(%len)
+  %t6 = call @rt_arr_i64_new(%len)
   .loc 1 1 10
-  call @rt_arr_i32_retain(%t6)
+  call @rt_arr_i64_retain(%t6)
   .loc 1 1 10
   %t7 = load ptr, %t2
   .loc 1 1 10
-  call @rt_arr_i32_release(%t7)
+  call @rt_arr_i64_release(%t7)
   .loc 1 1 10
   store ptr, %t2, %t6
   .loc 1 1 4
@@ -163,20 +163,20 @@ redim_len_cont(%len:i64):
   .loc 1 3 15
   %t16 = load ptr, %t2
   .loc 1 3 15
-  %t17 = call @rt_arr_i32_resize(%t16, %len)
+  %t17 = call @rt_arr_i64_resize(%t16, %len)
   .loc 1 3 15
-  call @rt_arr_i32_retain(%t17)
+  call @rt_arr_i64_retain(%t17)
   .loc 1 3 15
   %t18 = load ptr, %t2
   .loc 1 3 15
-  call @rt_arr_i32_release(%t18)
+  call @rt_arr_i64_release(%t18)
   .loc 1 3 15
   store ptr, %t2, %t17
   .loc 1 3 4
   br L40
 bc_ok0:
   .loc 1 4 8
-  call @rt_arr_i32_set(%t19, %t20, 7)
+  call @rt_arr_i64_set(%t19, %t20, 7)
   .loc 1 4 4
   br L50
 bc_oob0:
@@ -186,7 +186,7 @@ bc_oob0:
   trap
 bc_ok1:
   .loc 1 5 12
-  %t37 = call @rt_arr_i32_get(%t28, %t29)
+  %t37 = call @rt_arr_i64_get(%t28, %t29)
   .loc 1 5 4
   store i64, %t0, %t37
   .loc 1 5 4

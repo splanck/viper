@@ -122,6 +122,9 @@ class AsmEmitter
     // Load/store from arbitrary base register
     void emitLdrFromBase(std::ostream &os, PhysReg dst, PhysReg base, long long offset) const;
     void emitStrToBase(std::ostream &os, PhysReg src, PhysReg base, long long offset) const;
+    // Load/store FPR from arbitrary base register
+    void emitLdrFprFromBase(std::ostream &os, PhysReg dst, PhysReg base, long long offset) const;
+    void emitStrFprToBase(std::ostream &os, PhysReg src, PhysReg base, long long offset) const;
 
     // Emit from minimal MIR (Phase A)
     void emitFunction(std::ostream &os, const MFunction &fn) const;

@@ -338,14 +338,24 @@ void Emitter::storeArray(Value slot, Value value, AstType elementType, bool isOb
         emitCall("rt_arr_obj_release", {oldValue});
         emitStore(Type(Type::Kind::Ptr), slot, value);
     }
+    else if (elementType == AstType::F64)
+    {
+        // Float array (SINGLE/DOUBLE): use f64 retain/release
+        lowerer_.requireArrayF64Retain();
+        emitCall("rt_arr_f64_retain", {value});
+        Value oldValue = emitLoad(Type(Type::Kind::Ptr), slot);
+        lowerer_.requireArrayF64Release();
+        emitCall("rt_arr_f64_release", {oldValue});
+        emitStore(Type(Type::Kind::Ptr), slot, value);
+    }
     else
     {
-        // Integer/numeric array
-        lowerer_.requireArrayI32Retain();
-        emitCall("rt_arr_i32_retain", {value});
+        // Integer/numeric array (all Viper integers are 64-bit)
+        lowerer_.requireArrayI64Retain();
+        emitCall("rt_arr_i64_retain", {value});
         Value oldValue = emitLoad(Type(Type::Kind::Ptr), slot);
-        lowerer_.requireArrayI32Release();
-        emitCall("rt_arr_i32_release", {oldValue});
+        lowerer_.requireArrayI64Release();
+        emitCall("rt_arr_i64_release", {oldValue});
         emitStore(Type(Type::Kind::Ptr), slot, value);
     }
 }
@@ -360,7 +370,8 @@ void Emitter::storeArray(Value slot, Value value, AstType elementType, bool isOb
 /// @param paramNames Names of parameters that should remain alive.
 void Emitter::releaseArrayLocals(const std::unordered_set<std::string> &paramNames)
 {
-    bool requestedI32 = false;
+    bool requestedI64 = false;
+    bool requestedF64 = false;
     bool requestedStr = false;
     bool requestedObj = false;
     for (auto &[name, info] : lowerer_.symbols)
@@ -390,15 +401,25 @@ void Emitter::releaseArrayLocals(const std::unordered_set<std::string> &paramNam
             }
             emitCall("rt_arr_obj_release", {handle});
         }
+        else if (info.type == AstType::F64)
+        {
+            // Float array (SINGLE/DOUBLE)
+            if (!requestedF64)
+            {
+                lowerer_.requireArrayF64Release();
+                requestedF64 = true;
+            }
+            emitCall("rt_arr_f64_release", {handle});
+        }
         else
         {
-            // Integer/numeric array
-            if (!requestedI32)
+            // Integer/numeric array (all Viper integers are 64-bit)
+            if (!requestedI64)
             {
-                lowerer_.requireArrayI32Release();
-                requestedI32 = true;
+                lowerer_.requireArrayI64Release();
+                requestedI64 = true;
             }
-            emitCall("rt_arr_i32_release", {handle});
+            emitCall("rt_arr_i64_release", {handle});
         }
         emitStore(Type(Type::Kind::Ptr), slot, Value::null());
     }
@@ -416,9 +437,11 @@ void Emitter::releaseArrayParams(const std::unordered_set<std::string> &paramNam
 {
     if (paramNames.empty())
         return;
-    bool requestedI32 = false;
+    bool requestedI64 = false;
+    bool requestedF64 = false;
     bool requestedStr = false;
     bool requestedObj = false;
+    (void)requestedObj; // Currently unused but kept for symmetry
     for (auto &[name, info] : lowerer_.symbols)
     {
         if (!info.referenced || !info.slotId || !info.isArray)
@@ -446,15 +469,25 @@ void Emitter::releaseArrayParams(const std::unordered_set<std::string> &paramNam
             // Skip release for object array parameters.
             continue;
         }
+        else if (info.type == AstType::F64)
+        {
+            // Float array (SINGLE/DOUBLE)
+            if (!requestedF64)
+            {
+                lowerer_.requireArrayF64Release();
+                requestedF64 = true;
+            }
+            emitCall("rt_arr_f64_release", {handle});
+        }
         else
         {
-            // Integer/numeric array
-            if (!requestedI32)
+            // Integer/numeric array (all Viper integers are 64-bit)
+            if (!requestedI64)
             {
-                lowerer_.requireArrayI32Release();
-                requestedI32 = true;
+                lowerer_.requireArrayI64Release();
+                requestedI64 = true;
             }
-            emitCall("rt_arr_i32_release", {handle});
+            emitCall("rt_arr_i64_release", {handle});
         }
         emitStore(Type(Type::Kind::Ptr), slot, Value::null());
     }

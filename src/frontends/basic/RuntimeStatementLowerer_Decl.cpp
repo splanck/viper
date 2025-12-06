@@ -196,23 +196,33 @@ void RuntimeStatementLowerer::lowerDim(const DimStmt &stmt)
     }
     else
     {
-        // For multi-dimensional arrays, compute total size = product of all extents
+        // For multi-dimensional arrays, compute total size = product of all extents.
+        // Use an alloca to store running product because emitArrayLengthCheck creates
+        // new basic blocks, and values from predecessor blocks aren't accessible
+        // without explicit block parameters (BUG-001 fix).
+        Value sizeSlot = lowerer_.emitAlloca(8);
+
         // Start with first dimension
         Lowerer::RVal bound = lowerer_.lowerExpr(**dimExprs[0]);
         bound = lowerer_.ensureI64(std::move(bound), stmt.loc);
         Value firstLen = emitArrayLengthCheck(bound.value, stmt.loc, "dim_len");
+        lowerer_.emitStore(il::core::Type(il::core::Type::Kind::I64), sizeSlot, firstLen);
 
         // Multiply by remaining dimensions
-        Value totalSize = firstLen;
         for (size_t i = 1; i < dimExprs.size(); ++i)
         {
             Lowerer::RVal dimBound = lowerer_.lowerExpr(**dimExprs[i]);
             dimBound = lowerer_.ensureI64(std::move(dimBound), stmt.loc);
             Value dimLen = emitArrayLengthCheck(dimBound.value, stmt.loc, "dim_len");
-            totalSize = lowerer_.emitBinary(
-                Opcode::IMulOvf, il::core::Type(il::core::Type::Kind::I64), totalSize, dimLen);
+            // Reload running product from alloca (accessible from current block)
+            Value currentSize =
+                lowerer_.emitLoad(il::core::Type(il::core::Type::Kind::I64), sizeSlot);
+            Value newSize = lowerer_.emitBinary(
+                Opcode::IMulOvf, il::core::Type(il::core::Type::Kind::I64), currentSize, dimLen);
+            lowerer_.emitStore(il::core::Type(il::core::Type::Kind::I64), sizeSlot, newSize);
         }
-        length = totalSize;
+        // Load final product
+        length = lowerer_.emitLoad(il::core::Type(il::core::Type::Kind::I64), sizeSlot);
     }
 
     const auto *info = lowerer_.findSymbol(stmt.name);
@@ -232,12 +242,19 @@ void RuntimeStatementLowerer::lowerDim(const DimStmt &stmt)
         handle = lowerer_.emitCallRet(
             il::core::Type(il::core::Type::Kind::Ptr), "rt_arr_obj_new", {length});
     }
+    else if (info->type == AstType::F64)
+    {
+        // Float array (SINGLE/DOUBLE): use rt_arr_f64_new
+        lowerer_.requireArrayF64New();
+        handle = lowerer_.emitCallRet(
+            il::core::Type(il::core::Type::Kind::Ptr), "rt_arr_f64_new", {length});
+    }
     else
     {
-        // Integer/numeric array: use rt_arr_i32_new
-        lowerer_.requireArrayI32New();
+        // Integer/numeric array: use rt_arr_i64_new (all Viper integers are 64-bit)
+        lowerer_.requireArrayI64New();
         handle = lowerer_.emitCallRet(
-            il::core::Type(il::core::Type::Kind::Ptr), "rt_arr_i32_new", {length});
+            il::core::Type(il::core::Type::Kind::Ptr), "rt_arr_i64_new", {length});
     }
 
     // Store into the resolved storage (supports module-level globals across procedures)
@@ -279,14 +296,23 @@ void RuntimeStatementLowerer::lowerReDim(const ReDimStmt &stmt)
     auto storage = lowerer_.resolveVariableStorage(stmt.name, stmt.loc);
     assert(storage && "REDIM target should have resolvable storage");
     Value current = lowerer_.emitLoad(il::core::Type(il::core::Type::Kind::Ptr), storage->pointer);
+    const char *resizeFn = "rt_arr_i64_resize";
     if (info && info->isObject)
+    {
         lowerer_.requireArrayObjResize();
+        resizeFn = "rt_arr_obj_resize";
+    }
+    else if (info && info->type == AstType::F64)
+    {
+        lowerer_.requireArrayF64Resize();
+        resizeFn = "rt_arr_f64_resize";
+    }
     else
-        lowerer_.requireArrayI32Resize();
+    {
+        lowerer_.requireArrayI64Resize();
+    }
     Value resized =
-        lowerer_.emitCallRet(il::core::Type(il::core::Type::Kind::Ptr),
-                             (info && info->isObject) ? "rt_arr_obj_resize" : "rt_arr_i32_resize",
-                             {current, length});
+        lowerer_.emitCallRet(il::core::Type(il::core::Type::Kind::Ptr), resizeFn, {current, length});
     lowerer_.storeArray(storage->pointer,
                         resized,
                         /*elementType*/ AstType::I64,

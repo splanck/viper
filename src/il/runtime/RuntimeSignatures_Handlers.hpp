@@ -131,12 +131,26 @@ int32_t rt_lof_ch_i32(int32_t channel);
 /// @brief Adapter that narrows @ref rt_loc_ch results to 32 bits.
 int32_t rt_loc_ch_i32(int32_t channel);
 
-// --- Integer array helpers ---
+// --- Integer (i32) array helpers ---
 void invokeRtArrI32New(void **args, void *result);
 void invokeRtArrI32Len(void **args, void *result);
 void invokeRtArrI32Get(void **args, void *result);
 void invokeRtArrI32Set(void **args, void *result);
 void invokeRtArrI32Resize(void **args, void *result);
+
+// --- LONG (i64) array helpers ---
+void invokeRtArrI64New(void **args, void *result);
+void invokeRtArrI64Len(void **args, void *result);
+void invokeRtArrI64Get(void **args, void *result);
+void invokeRtArrI64Set(void **args, void *result);
+void invokeRtArrI64Resize(void **args, void *result);
+
+// --- SINGLE/DOUBLE (f64) array helpers ---
+void invokeRtArrF64New(void **args, void *result);
+void invokeRtArrF64Len(void **args, void *result);
+void invokeRtArrF64Get(void **args, void *result);
+void invokeRtArrF64Set(void **args, void *result);
+void invokeRtArrF64Resize(void **args, void *result);
 
 // --- Object array helpers ---
 void invokeRtArrObjNew(void **args, void *result);

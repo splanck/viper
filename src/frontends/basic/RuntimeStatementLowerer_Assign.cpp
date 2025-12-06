@@ -248,13 +248,23 @@ void RuntimeStatementLowerer::assignArrayElement(const ArrayExpr &target,
         lowerer_.requireArrayObjPut();
         lowerer_.emitCall("rt_arr_obj_put", {access.base, access.index, value.value});
     }
+    else if ((info && info->type == AstType::F64) ||
+             (isMemberArray && memberElemAstType == ::il::frontends::basic::Type::F64) ||
+             (isImplicitFieldArray && memberElemAstType == ::il::frontends::basic::Type::F64))
+    {
+        // Float array (SINGLE/DOUBLE): use rt_arr_f64_set
+        Lowerer::RVal coerced = lowerer_.ensureF64(std::move(value), loc);
+        lowerer_.requireArrayF64Set();
+        lowerer_.emitCall("rt_arr_f64_set", {access.base, access.index, coerced.value});
+    }
     else
     {
-        // Integer/numeric array: use rt_arr_i32_set
-        // Runtime ABI: rt_arr_i32_set expects its value operand as i64.
+        // Integer/numeric array: use rt_arr_i64_set (all Viper integers are 64-bit)
+        // Runtime ABI: rt_arr_i64_set expects its value operand as i64.
         // Always normalize the RHS to i64 (handles i1/i16/i32/f64).
         Lowerer::RVal coerced = lowerer_.ensureI64(std::move(value), loc);
-        lowerer_.emitCall("rt_arr_i32_set", {access.base, access.index, coerced.value});
+        lowerer_.requireArrayI64Set();
+        lowerer_.emitCall("rt_arr_i64_set", {access.base, access.index, coerced.value});
     }
 }
 

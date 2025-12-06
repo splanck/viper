@@ -364,10 +364,30 @@ bool lowerInstruction(const il::core::Instr &ins,
                                            vval,
                                            cval))
                 {
-                    bbOut().instrs.push_back(MInstr{MOpcode::StrRegBaseImm,
-                                                    {MOperand::vregOp(RegClass::GPR, vval),
-                                                     MOperand::vregOp(RegClass::GPR, vbase),
-                                                     MOperand::immOp(0)}});
+                    const bool dstIsFP = (ins.type.kind == il::core::Type::Kind::F64);
+                    if (dstIsFP)
+                    {
+                        // Float store: ensure value is in FPR, then use StrFprBaseImm
+                        uint16_t srcF = vval;
+                        if (cval != RegClass::FPR)
+                        {
+                            srcF = ctx.nextVRegId++;
+                            bbOut().instrs.push_back(MInstr{MOpcode::SCvtF,
+                                                            {MOperand::vregOp(RegClass::FPR, srcF),
+                                                             MOperand::vregOp(RegClass::GPR, vval)}});
+                        }
+                        bbOut().instrs.push_back(MInstr{MOpcode::StrFprBaseImm,
+                                                        {MOperand::vregOp(RegClass::FPR, srcF),
+                                                         MOperand::vregOp(RegClass::GPR, vbase),
+                                                         MOperand::immOp(0)}});
+                    }
+                    else
+                    {
+                        bbOut().instrs.push_back(MInstr{MOpcode::StrRegBaseImm,
+                                                        {MOperand::vregOp(RegClass::GPR, vval),
+                                                         MOperand::vregOp(RegClass::GPR, vbase),
+                                                         MOperand::immOp(0)}});
+                    }
                 }
             }
             return true;
@@ -474,12 +494,24 @@ bool lowerInstruction(const il::core::Instr &ins,
                                            vbase,
                                            cbase))
                 {
+                    const bool isFP = (ins.type.kind == il::core::Type::Kind::F64);
                     const uint16_t dst = ctx.nextVRegId++;
                     ctx.tempVReg[*ins.result] = dst;
-                    bbOut().instrs.push_back(MInstr{MOpcode::LdrRegBaseImm,
-                                                    {MOperand::vregOp(RegClass::GPR, dst),
-                                                     MOperand::vregOp(RegClass::GPR, vbase),
-                                                     MOperand::immOp(0)}});
+                    if (isFP)
+                    {
+                        ctx.tempRegClass[*ins.result] = RegClass::FPR;
+                        bbOut().instrs.push_back(MInstr{MOpcode::LdrFprBaseImm,
+                                                        {MOperand::vregOp(RegClass::FPR, dst),
+                                                         MOperand::vregOp(RegClass::GPR, vbase),
+                                                         MOperand::immOp(0)}});
+                    }
+                    else
+                    {
+                        bbOut().instrs.push_back(MInstr{MOpcode::LdrRegBaseImm,
+                                                        {MOperand::vregOp(RegClass::GPR, dst),
+                                                         MOperand::vregOp(RegClass::GPR, vbase),
+                                                         MOperand::immOp(0)}});
+                    }
                 }
             }
             return true;

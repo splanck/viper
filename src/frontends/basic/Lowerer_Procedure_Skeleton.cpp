@@ -274,11 +274,10 @@ bool Lowerer::shouldAllocateSlot(const std::string &name,
     if (isParam && !includeParams)
         return false;
 
-    // Skip module-level globals (they resolve via runtime storage)
-    // BUG-OOP-036 fix: Allow allocation for CONST-shadowing locals
+    // Skip module-level globals and constants (they resolve via runtime storage)
+    // Constants use module-level storage and can't be shadowed (semantic analyzer prevents it)
     bool isMain = (context().function() && context().function()->name == "main");
-    if (!isParam && !isMain && semanticAnalyzer_ && semanticAnalyzer_->isModuleLevelSymbol(name) &&
-        !semanticAnalyzer_->isConstSymbol(name))
+    if (!isParam && !isMain && semanticAnalyzer_ && semanticAnalyzer_->isModuleLevelSymbol(name))
         return false;
 
     return true;

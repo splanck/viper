@@ -755,6 +755,27 @@ bool lowerFpArithmetic(const il::core::Instr &ins,
             ins.operands[1], bb, ctx.ti, ctx.fb, out, ctx.tempVReg, ctx.nextVRegId, rhs, rhsCls))
         return false;
 
+    // BUG-007 fix: If operands are GPR (integer constants), convert them to FPR.
+    // This handles cases like `fmul %t4, 2` where the literal 2 is an integer.
+    if (lhsCls == RegClass::GPR)
+    {
+        const uint16_t converted = ctx.nextVRegId++;
+        out.instrs.push_back(MInstr{MOpcode::SCvtF,
+                                    {MOperand::vregOp(RegClass::FPR, converted),
+                                     MOperand::vregOp(RegClass::GPR, lhs)}});
+        lhs = converted;
+        lhsCls = RegClass::FPR;
+    }
+    if (rhsCls == RegClass::GPR)
+    {
+        const uint16_t converted = ctx.nextVRegId++;
+        out.instrs.push_back(MInstr{MOpcode::SCvtF,
+                                    {MOperand::vregOp(RegClass::FPR, converted),
+                                     MOperand::vregOp(RegClass::GPR, rhs)}});
+        rhs = converted;
+        rhsCls = RegClass::FPR;
+    }
+
     const uint16_t dst = ctx.nextVRegId++;
     ctx.tempVReg[*ins.result] = dst;
     g_tempRegClass[*ins.result] = RegClass::FPR;
@@ -806,6 +827,24 @@ bool lowerFpCompare(const il::core::Instr &ins,
     if (!materializeValueToVReg(
             ins.operands[1], bb, ctx.ti, ctx.fb, out, ctx.tempVReg, ctx.nextVRegId, rhs, rhsCls))
         return false;
+
+    // BUG-007 fix: If operands are GPR (integer constants), convert them to FPR.
+    if (lhsCls == RegClass::GPR)
+    {
+        const uint16_t converted = ctx.nextVRegId++;
+        out.instrs.push_back(MInstr{MOpcode::SCvtF,
+                                    {MOperand::vregOp(RegClass::FPR, converted),
+                                     MOperand::vregOp(RegClass::GPR, lhs)}});
+        lhs = converted;
+    }
+    if (rhsCls == RegClass::GPR)
+    {
+        const uint16_t converted = ctx.nextVRegId++;
+        out.instrs.push_back(MInstr{MOpcode::SCvtF,
+                                    {MOperand::vregOp(RegClass::FPR, converted),
+                                     MOperand::vregOp(RegClass::GPR, rhs)}});
+        rhs = converted;
+    }
 
     // Emit fcmp
     out.instrs.push_back(
