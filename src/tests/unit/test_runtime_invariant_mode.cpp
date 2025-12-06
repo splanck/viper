@@ -58,18 +58,15 @@ TEST(InvariantViolationMode, SetAndGetMode)
 
     // Set to Abort
     il::runtime::setInvariantViolationMode(il::runtime::InvariantViolationMode::Abort);
-    ASSERT_EQ(il::runtime::getInvariantViolationMode(),
-              il::runtime::InvariantViolationMode::Abort);
+    ASSERT_EQ(il::runtime::getInvariantViolationMode(), il::runtime::InvariantViolationMode::Abort);
 
     // Set to Trap
     il::runtime::setInvariantViolationMode(il::runtime::InvariantViolationMode::Trap);
-    ASSERT_EQ(il::runtime::getInvariantViolationMode(),
-              il::runtime::InvariantViolationMode::Trap);
+    ASSERT_EQ(il::runtime::getInvariantViolationMode(), il::runtime::InvariantViolationMode::Trap);
 
     // Set back to Abort
     il::runtime::setInvariantViolationMode(il::runtime::InvariantViolationMode::Abort);
-    ASSERT_EQ(il::runtime::getInvariantViolationMode(),
-              il::runtime::InvariantViolationMode::Abort);
+    ASSERT_EQ(il::runtime::getInvariantViolationMode(), il::runtime::InvariantViolationMode::Abort);
 }
 
 /// @brief Test setting and getting the trap handler.

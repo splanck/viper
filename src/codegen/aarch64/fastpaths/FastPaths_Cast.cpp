@@ -46,8 +46,7 @@ std::optional<MFunction> tryCastFastPaths(FastPathContext &ctx)
 
     // Must be a cast instruction feeding ret
     if (retI.op != Opcode::Ret || !binI.result || retI.operands.empty() ||
-        retI.operands[0].kind != il::core::Value::Kind::Temp ||
-        retI.operands[0].id != *binI.result)
+        retI.operands[0].kind != il::core::Value::Kind::Temp || retI.operands[0].id != *binI.result)
         return std::nullopt;
 
     // =========================================================================
@@ -113,21 +112,19 @@ std::optional<MFunction> tryCastFastPaths(FastPathContext &ctx)
         // tmp = (x0 << sh) >> sh  (sign-extended truncation)
         if (sh > 0)
         {
-            bbMir.instrs.push_back(MInstr{MOpcode::LslRI,
-                                          {MOperand::regOp(PhysReg::X0),
-                                           MOperand::regOp(PhysReg::X0),
-                                           MOperand::immOp(sh)}});
-            bbMir.instrs.push_back(MInstr{MOpcode::AsrRI,
-                                          {MOperand::regOp(PhysReg::X0),
-                                           MOperand::regOp(PhysReg::X0),
-                                           MOperand::immOp(sh)}});
+            bbMir.instrs.push_back(MInstr{
+                MOpcode::LslRI,
+                {MOperand::regOp(PhysReg::X0), MOperand::regOp(PhysReg::X0), MOperand::immOp(sh)}});
+            bbMir.instrs.push_back(MInstr{
+                MOpcode::AsrRI,
+                {MOperand::regOp(PhysReg::X0), MOperand::regOp(PhysReg::X0), MOperand::immOp(sh)}});
         }
 
         // Compare restored value to source in scratch register
         bbMir.instrs.push_back(
             MInstr{MOpcode::MovRR, {MOperand::regOp(kScratchGPR), MOperand::regOp(src)}});
-        bbMir.instrs.push_back(MInstr{
-            MOpcode::CmpRR, {MOperand::regOp(PhysReg::X0), MOperand::regOp(kScratchGPR)}});
+        bbMir.instrs.push_back(
+            MInstr{MOpcode::CmpRR, {MOperand::regOp(PhysReg::X0), MOperand::regOp(kScratchGPR)}});
 
         // If not equal, branch to a trap block
         const std::string trapLabel = ".Ltrap_cast_" + std::to_string(trapLabelCounter++);

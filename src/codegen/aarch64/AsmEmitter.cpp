@@ -94,6 +94,8 @@ static std::string mapRuntimeSymbol(const std::string &name)
         return "rt_randomize_i64";
     if (name == "Viper.Random.Next")
         return "rt_rnd";
+    if (name == "Viper.Random.NextInt")
+        return "rt_rand_int";
     if (name == "Viper.Environment.GetArgumentCount")
         return "rt_args_count";
     if (name == "Viper.Environment.GetArgument")

@@ -69,8 +69,9 @@ std::optional<MFunction> tryIntArithmeticFastPaths(FastPathContext &ctx)
                         MOpcode::MovRR, {MOperand::regOp(kScratchGPR), MOperand::regOp(src1)}});
                     bbMir.instrs.push_back(MInstr{
                         MOpcode::MovRR, {MOperand::regOp(PhysReg::X0), MOperand::regOp(src0)}});
-                    bbMir.instrs.push_back(MInstr{
-                        MOpcode::MovRR, {MOperand::regOp(PhysReg::X1), MOperand::regOp(kScratchGPR)}});
+                    bbMir.instrs.push_back(
+                        MInstr{MOpcode::MovRR,
+                               {MOperand::regOp(PhysReg::X1), MOperand::regOp(kScratchGPR)}});
                     switch (opI.op)
                     {
                         case Opcode::Add:
@@ -122,9 +123,9 @@ std::optional<MFunction> tryIntArithmeticFastPaths(FastPathContext &ctx)
                         case Opcode::UCmpLE:
                         case Opcode::UCmpGT:
                         case Opcode::UCmpGE:
-                            bbMir.instrs.push_back(
-                                MInstr{MOpcode::CmpRR,
-                                       {MOperand::regOp(PhysReg::X0), MOperand::regOp(PhysReg::X1)}});
+                            bbMir.instrs.push_back(MInstr{
+                                MOpcode::CmpRR,
+                                {MOperand::regOp(PhysReg::X0), MOperand::regOp(PhysReg::X1)}});
                             bbMir.instrs.push_back(
                                 MInstr{MOpcode::Cset,
                                        {MOperand::regOp(PhysReg::X0),
@@ -238,10 +239,9 @@ std::optional<MFunction> tryIntArithmeticFastPaths(FastPathContext &ctx)
                             MOpcode::MovRR, {MOperand::regOp(PhysReg::X0), MOperand::regOp(src)}});
                     bbMir.instrs.push_back(MInstr{
                         MOpcode::CmpRI, {MOperand::regOp(PhysReg::X0), MOperand::immOp(imm)}});
-                    bbMir.instrs.push_back(
-                        MInstr{MOpcode::Cset,
-                               {MOperand::regOp(PhysReg::X0),
-                                MOperand::condOp(lookupCondition(binI.op))}});
+                    bbMir.instrs.push_back(MInstr{MOpcode::Cset,
+                                                  {MOperand::regOp(PhysReg::X0),
+                                                   MOperand::condOp(lookupCondition(binI.op))}});
                     bbMir.instrs.push_back(MInstr{MOpcode::Ret, {}});
                 };
                 if (o0.kind == il::core::Value::Kind::Temp &&
@@ -303,8 +303,9 @@ std::optional<MFunction> tryFPArithmeticFastPaths(FastPathContext &ctx)
                         MOpcode::FMovRR, {MOperand::regOp(kScratchFPR), MOperand::regOp(src1)}});
                     bbMir.instrs.push_back(MInstr{
                         MOpcode::FMovRR, {MOperand::regOp(PhysReg::V0), MOperand::regOp(src0)}});
-                    bbMir.instrs.push_back(MInstr{
-                        MOpcode::FMovRR, {MOperand::regOp(PhysReg::V1), MOperand::regOp(kScratchFPR)}});
+                    bbMir.instrs.push_back(
+                        MInstr{MOpcode::FMovRR,
+                               {MOperand::regOp(PhysReg::V1), MOperand::regOp(kScratchFPR)}});
                     if (isFAdd)
                         bbMir.instrs.push_back(MInstr{MOpcode::FAddRRR,
                                                       {MOperand::regOp(PhysReg::V0),

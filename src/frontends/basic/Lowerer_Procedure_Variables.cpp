@@ -90,7 +90,8 @@ class VarCollectWalker final : public BasicAstWalker<VarCollectWalker>
             return;
         if (!stmt.explicitClassQname.empty())
         {
-            std::string className = lowerer_.resolveQualifiedClassCasing(JoinDots(stmt.explicitClassQname));
+            std::string className =
+                lowerer_.resolveQualifiedClassCasing(JoinDots(stmt.explicitClassQname));
             lowerer_.setSymbolObjectType(stmt.name, className);
         }
         else

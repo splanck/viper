@@ -372,9 +372,10 @@ bool lowerInstruction(const il::core::Instr &ins,
                         if (cval != RegClass::FPR)
                         {
                             srcF = ctx.nextVRegId++;
-                            bbOut().instrs.push_back(MInstr{MOpcode::SCvtF,
-                                                            {MOperand::vregOp(RegClass::FPR, srcF),
-                                                             MOperand::vregOp(RegClass::GPR, vval)}});
+                            bbOut().instrs.push_back(
+                                MInstr{MOpcode::SCvtF,
+                                       {MOperand::vregOp(RegClass::FPR, srcF),
+                                        MOperand::vregOp(RegClass::GPR, vval)}});
                         }
                         bbOut().instrs.push_back(MInstr{MOpcode::StrFprBaseImm,
                                                         {MOperand::vregOp(RegClass::FPR, srcF),

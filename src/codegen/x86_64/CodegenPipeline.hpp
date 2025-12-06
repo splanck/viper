@@ -45,8 +45,8 @@ class CodegenPipeline
                                      ///< without @ref run_native the pipeline emits an object file.
         std::string output_asm_path; ///< Optional assembly output path when emit_asm is true.
         bool emit_asm = false;       ///< Emit assembly text to disk for inspection.
-        int optimize = 1;            ///< Optimization level: 0 = none, 1 = standard (peephole), 2+ reserved.
-        bool run_native = false;     ///< Execute the produced binary after linking when true.
+        int optimize = 1; ///< Optimization level: 0 = none, 1 = standard (peephole), 2+ reserved.
+        bool run_native = false; ///< Execute the produced binary after linking when true.
     };
 
     /// \brief Construct a pipeline configured with @p opts.

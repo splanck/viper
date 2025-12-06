@@ -13,8 +13,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "viper/vm/debug/Debug.hpp"
 #include "support/string_interner.hpp"
+#include "viper/vm/debug/Debug.hpp"
 #include <cassert>
 #include <cstdint>
 #include <iostream>

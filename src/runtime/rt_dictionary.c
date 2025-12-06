@@ -47,10 +47,10 @@ typedef struct rt_dict_entry
 /// @brief Dictionary implementation structure.
 typedef struct rt_dict_impl
 {
-    void **vptr;           ///< Vtable pointer placeholder.
+    void **vptr;             ///< Vtable pointer placeholder.
     rt_dict_entry **buckets; ///< Array of bucket heads.
-    size_t capacity;       ///< Number of buckets.
-    size_t count;          ///< Number of entries.
+    size_t capacity;         ///< Number of buckets.
+    size_t count;            ///< Number of entries.
 } rt_dict_impl;
 
 /// @brief Compute FNV-1a hash of a byte sequence.

@@ -354,7 +354,7 @@ int main()
         BasicBlock body;
         body.label = "body";
         Instr load;
-        load.op = Opcode::Load;  // Potential faulting instruction
+        load.op = Opcode::Load; // Potential faulting instruction
         body.instructions.push_back(load);
         Instr pop;
         pop.op = Opcode::EhPop;
@@ -390,7 +390,7 @@ int main()
     EhModel validDomModel(validDomFn);
     assert(checkEhStackBalance(validDomModel));
     auto validDomResult = checkDominanceOfHandlers(validDomModel);
-    assert(validDomResult);  // Should pass: entry dominates body
+    assert(validDomResult); // Should pass: entry dominates body
 
     // Invalid case: eh.push block does NOT dominate a protected block
     // CFG: entry -> left, entry -> right; left has eh.push but right has faulting code
@@ -436,7 +436,7 @@ int main()
         BasicBlock common;
         common.label = "common";
         Instr load;
-        load.op = Opcode::Load;  // Faulting instruction in common block
+        load.op = Opcode::Load; // Faulting instruction in common block
         common.instructions.push_back(load);
         Instr pop;
         pop.op = Opcode::EhPop;
@@ -472,7 +472,7 @@ int main()
     EhModel invalidDomModel(invalidDomFn);
     assert(checkEhStackBalance(invalidDomModel));
     auto invalidDomDiag = checkDominanceOfHandlers(invalidDomModel);
-    assert(!invalidDomDiag);  // Should fail: left/right don't dominate common
+    assert(!invalidDomDiag); // Should fail: left/right don't dominate common
     assert(invalidDomDiag.error().message.find("does not dominate protected block") !=
            std::string::npos);
 
@@ -492,7 +492,7 @@ int main()
         push.labels = {"handler"};
         entry.instructions.push_back(push);
         Instr load;
-        load.op = Opcode::Load;  // Potential faulting instruction
+        load.op = Opcode::Load; // Potential faulting instruction
         entry.instructions.push_back(load);
         Instr trap;
         trap.op = Opcode::Trap;
@@ -524,7 +524,7 @@ int main()
     }
     EhModel reachableHandlerModel(reachableHandlerFn);
     auto reachableResult = checkUnreachableHandlers(reachableHandlerModel);
-    assert(reachableResult);  // Should pass: handler is reachable via trap
+    assert(reachableResult); // Should pass: handler is reachable via trap
 
     // Valid case: Handler with no faulting instructions is allowed (unused but not invalid)
     // This is common in BASIC's ON ERROR GOTO pattern with empty protected regions.
@@ -541,7 +541,7 @@ int main()
         pop.op = Opcode::EhPop;
         entry.instructions.push_back(pop);
         Instr ret;
-        ret.op = Opcode::Ret;  // No faulting ops, so handler is unused
+        ret.op = Opcode::Ret; // No faulting ops, so handler is unused
         entry.instructions.push_back(ret);
         unusedHandlerFn.blocks.push_back(entry);
     }
@@ -570,7 +570,7 @@ int main()
     }
     EhModel unusedHandlerModel(unusedHandlerFn);
     auto unusedResult = checkUnreachableHandlers(unusedHandlerModel);
-    assert(unusedResult);  // Should pass: unused handler is allowed
+    assert(unusedResult); // Should pass: unused handler is allowed
 
     // Invalid case: Handler with faulting instructions but no trap path
     Function unreachableHandlerFn;
@@ -623,7 +623,7 @@ int main()
     }
     EhModel unreachableHandlerModel(unreachableHandlerFn);
     auto unreachableResult = checkUnreachableHandlers(unreachableHandlerModel);
-    assert(unreachableResult);  // Should pass: faulting instruction makes handler reachable
+    assert(unreachableResult); // Should pass: faulting instruction makes handler reachable
 
     // -------------------------------------------------------------------------
     // Additional stack balance tests
@@ -636,7 +636,7 @@ int main()
         BasicBlock entry;
         entry.label = "entry";
         Instr pop;
-        pop.op = Opcode::EhPop;  // No matching push!
+        pop.op = Opcode::EhPop; // No matching push!
         entry.instructions.push_back(pop);
         Instr ret;
         ret.op = Opcode::Ret;
@@ -645,7 +645,7 @@ int main()
     }
     EhModel underflowModel(underflowFn);
     auto underflowDiag = checkEhStackBalance(underflowModel);
-    assert(!underflowDiag);  // Should fail: underflow
+    assert(!underflowDiag); // Should fail: underflow
     assert(underflowDiag.error().message.find("eh.pop without matching") != std::string::npos);
 
     // Valid: Simple balanced push/pop
@@ -676,7 +676,7 @@ int main()
     }
     EhModel simpleModel(simpleFn);
     auto simpleResult = checkEhStackBalance(simpleModel);
-    assert(simpleResult);  // Should pass: properly balanced
+    assert(simpleResult); // Should pass: properly balanced
 
     // -------------------------------------------------------------------------
     // Additional resume edge tests
@@ -693,7 +693,7 @@ int main()
         push.labels = {"handler"};
         entry.instructions.push_back(push);
         Instr load;
-        load.op = Opcode::Load;  // Potential fault
+        load.op = Opcode::Load; // Potential fault
         entry.instructions.push_back(load);
         Instr trap;
         trap.op = Opcode::Trap;
@@ -726,7 +726,7 @@ int main()
     EhModel validResumeModel(validResumeFn);
     assert(checkEhStackBalance(validResumeModel));
     auto validResumeResult = checkResumeEdges(validResumeModel);
-    assert(validResumeResult);  // Should pass: cleanup postdominates entry
+    assert(validResumeResult); // Should pass: cleanup postdominates entry
 
     // -------------------------------------------------------------------------
     // Handler reachability via TrapFromErr
@@ -772,7 +772,7 @@ int main()
     }
     EhModel trapFromErrModel(trapFromErrFn);
     auto trapFromErrResult = checkUnreachableHandlers(trapFromErrModel);
-    assert(trapFromErrResult);  // Should pass: handler reachable via TrapFromErr
+    assert(trapFromErrResult); // Should pass: handler reachable via TrapFromErr
 
     // -------------------------------------------------------------------------
     // Multiple handlers - unused handlers are allowed
@@ -792,13 +792,13 @@ int main()
         entry.instructions.push_back(push1);
         Instr push2;
         push2.op = Opcode::EhPush;
-        push2.labels = {"handler2"};  // No faulting ops before pop, so unused
+        push2.labels = {"handler2"}; // No faulting ops before pop, so unused
         entry.instructions.push_back(push2);
         Instr pop2;
         pop2.op = Opcode::EhPop;
         entry.instructions.push_back(pop2);
         Instr trap;
-        trap.op = Opcode::Trap;  // Only handler1 can be reached
+        trap.op = Opcode::Trap; // Only handler1 can be reached
         entry.instructions.push_back(trap);
         multiHandlerFn.blocks.push_back(entry);
     }
@@ -838,7 +838,7 @@ int main()
     }
     EhModel multiHandlerModel(multiHandlerFn);
     auto multiHandlerDiag = checkUnreachableHandlers(multiHandlerModel);
-    assert(multiHandlerDiag);  // Should pass: unused handlers are allowed
+    assert(multiHandlerDiag); // Should pass: unused handlers are allowed
 
     return 0;
 }

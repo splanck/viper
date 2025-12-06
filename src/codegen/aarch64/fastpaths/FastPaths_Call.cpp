@@ -73,16 +73,16 @@ bool computeTempTo(const il::core::Instr &prod,
     {
         const PhysReg r0 = argOrder[p0];
         const PhysReg r1 = argOrder[p1];
-        bbMir.instrs.push_back(MInstr{
-            opc, {MOperand::regOp(dstReg), MOperand::regOp(r0), MOperand::regOp(r1)}});
+        bbMir.instrs.push_back(
+            MInstr{opc, {MOperand::regOp(dstReg), MOperand::regOp(r0), MOperand::regOp(r1)}});
     };
 
     // RI emit helper
     auto ri_emit = [&](MOpcode opc, unsigned p0, long long imm)
     {
         const PhysReg r0 = argOrder[p0];
-        bbMir.instrs.push_back(MInstr{
-            opc, {MOperand::regOp(dstReg), MOperand::regOp(r0), MOperand::immOp(imm)}});
+        bbMir.instrs.push_back(
+            MInstr{opc, {MOperand::regOp(dstReg), MOperand::regOp(r0), MOperand::immOp(imm)}});
     };
 
     // RR patterns: both operands are entry params
@@ -233,8 +233,7 @@ std::optional<MFunction> tryCallFastPaths(FastPathContext &ctx)
     const auto &binI = bb.instructions[bb.instructions.size() - 2];
     const auto &retI = bb.instructions.back();
 
-    if (binI.op != Opcode::Call || retI.op != Opcode::Ret || !binI.result ||
-        retI.operands.empty())
+    if (binI.op != Opcode::Call || retI.op != Opcode::Ret || !binI.result || retI.operands.empty())
         return std::nullopt;
 
     const auto &retV = retI.operands[0];
@@ -368,8 +367,8 @@ std::optional<MFunction> tryCallFastPaths(FastPathContext &ctx)
         {
             if (!hasDst(it->src))
             {
-                bbMir.instrs.push_back(MInstr{
-                    MOpcode::MovRR, {MOperand::regOp(it->dst), MOperand::regOp(it->src)}});
+                bbMir.instrs.push_back(
+                    MInstr{MOpcode::MovRR, {MOperand::regOp(it->dst), MOperand::regOp(it->src)}});
                 it = moves.erase(it);
                 progressed = true;
             }

@@ -590,10 +590,11 @@ ExprPtr Parser::parsePrimary()
                 // call and let parsePostfix handle it as member access + method call.
                 // This fixes chained method calls like obj.field.Method().
                 // Note: Use case-insensitive comparison since BASIC is case-insensitive.
-                bool isKnownNamespace = std::any_of(
-                    knownNamespaces_.begin(), knownNamespaces_.end(),
-                    [&head](const std::string &ns)
-                    { return string_utils::iequals(head.lexeme, ns); });
+                bool isKnownNamespace =
+                    std::any_of(knownNamespaces_.begin(),
+                                knownNamespaces_.end(),
+                                [&head](const std::string &ns)
+                                { return string_utils::iequals(head.lexeme, ns); });
                 if (ok && !isKnownNamespace)
                 {
                     ok = false;

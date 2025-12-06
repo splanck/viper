@@ -71,7 +71,10 @@ struct FastPathContext
     }
 
     /// @brief Get the MIR output block at the given index.
-    MBasicBlock &bbOut(std::size_t idx) { return mf.blocks[idx]; }
+    MBasicBlock &bbOut(std::size_t idx)
+    {
+        return mf.blocks[idx];
+    }
 
     /// @brief Get the register holding a value if it's a parameter.
     [[nodiscard]] std::optional<PhysReg> getValueReg(const il::core::BasicBlock &bb,

@@ -79,7 +79,8 @@ namespace il::verify
 /// handlers can be reached via trap instructions.
 ///
 /// @param model Canonical EH model describing the function.
-/// @return Success when all handlers are reachable; diagnostic listing unreachable handlers otherwise.
+/// @return Success when all handlers are reachable; diagnostic listing unreachable handlers
+/// otherwise.
 [[nodiscard]] il::support::Expected<void> checkUnreachableHandlers(const EhModel &model);
 
 /// @brief Validate resume.label edges against handler coverage information.

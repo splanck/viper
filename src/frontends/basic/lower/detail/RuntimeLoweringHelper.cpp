@@ -12,8 +12,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "frontends/basic/lower/detail/LowererDetail.hpp"
 #include "frontends/basic/Lowerer.hpp"
+#include "frontends/basic/lower/detail/LowererDetail.hpp"
 
 namespace il::frontends::basic::lower::detail
 {

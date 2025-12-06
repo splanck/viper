@@ -107,16 +107,20 @@ void testSelectiveRemoval()
     Function &fn = builder.startFunction("test_selective", Type(Type::Kind::I64), {});
     builder.createBlock(fn, "entry");
     // Four params: keep indices 0 and 2, remove 1 and 3
-    builder.createBlock(fn, "target", {Param{"keep0", Type(Type::Kind::I64), 0},
-                                       Param{"remove1", Type(Type::Kind::I64), 1},
-                                       Param{"keep2", Type(Type::Kind::I64), 2},
-                                       Param{"remove3", Type(Type::Kind::I64), 3}});
+    builder.createBlock(fn,
+                        "target",
+                        {Param{"keep0", Type(Type::Kind::I64), 0},
+                         Param{"remove1", Type(Type::Kind::I64), 1},
+                         Param{"keep2", Type(Type::Kind::I64), 2},
+                         Param{"remove3", Type(Type::Kind::I64), 3}});
 
     BasicBlock &entry = fn.blocks[0];
     BasicBlock &target = fn.blocks[1];
 
     builder.setInsertPoint(entry);
-    builder.br(target, {Value::constInt(10), Value::constInt(20), Value::constInt(30), Value::constInt(40)});
+    builder.br(
+        target,
+        {Value::constInt(10), Value::constInt(20), Value::constInt(30), Value::constInt(40)});
 
     builder.setInsertPoint(target);
     // Use params 0 and 2, not 1 and 3
@@ -153,14 +157,16 @@ void testMultiplePredecessors()
     Module module;
     il::build::IRBuilder builder(module);
 
-    Function &fn = builder.startFunction("test_multi_pred", Type(Type::Kind::I64),
-                                         {Param{"flag", Type(Type::Kind::I1), 0}});
+    Function &fn = builder.startFunction(
+        "test_multi_pred", Type(Type::Kind::I64), {Param{"flag", Type(Type::Kind::I1), 0}});
     builder.createBlock(fn, "entry");
     builder.createBlock(fn, "left");
     builder.createBlock(fn, "right");
     // Two params: first is used, second is not
-    builder.createBlock(fn, "join", {Param{"used", Type(Type::Kind::I64), 1},
-                                     Param{"unused", Type(Type::Kind::I64), 2}});
+    builder.createBlock(
+        fn,
+        "join",
+        {Param{"used", Type(Type::Kind::I64), 1}, Param{"unused", Type(Type::Kind::I64), 2}});
 
     BasicBlock &entry = fn.blocks[0];
     BasicBlock &left = fn.blocks[1];
@@ -207,12 +213,14 @@ void testCBrSameTarget()
     Module module;
     il::build::IRBuilder builder(module);
 
-    Function &fn = builder.startFunction("test_cbr_same", Type(Type::Kind::I64),
-                                         {Param{"flag", Type(Type::Kind::I1), 0}});
+    Function &fn = builder.startFunction(
+        "test_cbr_same", Type(Type::Kind::I64), {Param{"flag", Type(Type::Kind::I1), 0}});
     builder.createBlock(fn, "entry");
     // Two params: first is used, second is not
-    builder.createBlock(fn, "target", {Param{"used", Type(Type::Kind::I64), 1},
-                                       Param{"unused", Type(Type::Kind::I64), 2}});
+    builder.createBlock(
+        fn,
+        "target",
+        {Param{"used", Type(Type::Kind::I64), 1}, Param{"unused", Type(Type::Kind::I64), 2}});
 
     BasicBlock &entry = fn.blocks[0];
     BasicBlock &target = fn.blocks[1];
@@ -258,8 +266,8 @@ void testManyParamsAndPreds()
     // But with many parameters
     constexpr size_t numParams = 100;
 
-    Function &fn = builder.startFunction("test_many", Type(Type::Kind::I64),
-                                         {Param{"flag", Type(Type::Kind::I1), 0}});
+    Function &fn = builder.startFunction(
+        "test_many", Type(Type::Kind::I64), {Param{"flag", Type(Type::Kind::I1), 0}});
 
     builder.createBlock(fn, "entry");
     builder.createBlock(fn, "left");
@@ -269,7 +277,8 @@ void testManyParamsAndPreds()
     std::vector<Param> params;
     for (size_t i = 0; i < numParams; ++i)
     {
-        params.push_back(Param{"p" + std::to_string(i), Type(Type::Kind::I64), static_cast<unsigned>(i + 1)});
+        params.push_back(
+            Param{"p" + std::to_string(i), Type(Type::Kind::I64), static_cast<unsigned>(i + 1)});
     }
     builder.createBlock(fn, "target", params);
 
@@ -361,9 +370,11 @@ void testAllParamsUnused()
 
     Function &fn = builder.startFunction("test_all_unused", Type(Type::Kind::I64), {});
     builder.createBlock(fn, "entry");
-    builder.createBlock(fn, "target", {Param{"a", Type(Type::Kind::I64), 0},
-                                       Param{"b", Type(Type::Kind::I64), 1},
-                                       Param{"c", Type(Type::Kind::I64), 2}});
+    builder.createBlock(fn,
+                        "target",
+                        {Param{"a", Type(Type::Kind::I64), 0},
+                         Param{"b", Type(Type::Kind::I64), 1},
+                         Param{"c", Type(Type::Kind::I64), 2}});
 
     BasicBlock &entry = fn.blocks[0];
     BasicBlock &target = fn.blocks[1];

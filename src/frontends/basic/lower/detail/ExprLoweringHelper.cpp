@@ -13,11 +13,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "frontends/basic/lower/detail/LowererDetail.hpp"
 #include "frontends/basic/LowerExprBuiltin.hpp"
 #include "frontends/basic/LowerExprLogical.hpp"
 #include "frontends/basic/LowerExprNumeric.hpp"
 #include "frontends/basic/Lowerer.hpp"
+#include "frontends/basic/lower/detail/LowererDetail.hpp"
 
 namespace il::frontends::basic::lower::detail
 {
@@ -61,12 +61,14 @@ RVal ExprLoweringHelper::lowerDivOrMod(const BinaryExpr &expr)
 
 RVal ExprLoweringHelper::lowerStringBinary(const BinaryExpr &expr, RVal lhs, RVal rhs)
 {
-    return ::il::frontends::basic::lowerStringBinary(lowerer_, expr, std::move(lhs), std::move(rhs));
+    return ::il::frontends::basic::lowerStringBinary(
+        lowerer_, expr, std::move(lhs), std::move(rhs));
 }
 
 RVal ExprLoweringHelper::lowerNumericBinary(const BinaryExpr &expr, RVal lhs, RVal rhs)
 {
-    return ::il::frontends::basic::lowerNumericBinary(lowerer_, expr, std::move(lhs), std::move(rhs));
+    return ::il::frontends::basic::lowerNumericBinary(
+        lowerer_, expr, std::move(lhs), std::move(rhs));
 }
 
 RVal ExprLoweringHelper::lowerPowBinary(const BinaryExpr &expr, RVal lhs, RVal rhs)

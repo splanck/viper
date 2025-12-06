@@ -86,8 +86,8 @@ extern "C"
     /// @param minute Minute (0-59).
     /// @param second Second (0-59).
     /// @return Unix timestamp in seconds.
-    int64_t rt_datetime_create(int64_t year, int64_t month, int64_t day,
-                               int64_t hour, int64_t minute, int64_t second);
+    int64_t rt_datetime_create(
+        int64_t year, int64_t month, int64_t day, int64_t hour, int64_t minute, int64_t second);
 
     /// @brief Add seconds to timestamp.
     /// @param timestamp Base timestamp in seconds.

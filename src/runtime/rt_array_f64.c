@@ -11,7 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_array_f64.h"
-#include "rt_array.h"  // for rt_arr_oob_panic
+#include "rt_array.h" // for rt_arr_oob_panic
 
 #include <assert.h>
 #include <limits.h>

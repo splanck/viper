@@ -760,18 +760,18 @@ bool lowerFpArithmetic(const il::core::Instr &ins,
     if (lhsCls == RegClass::GPR)
     {
         const uint16_t converted = ctx.nextVRegId++;
-        out.instrs.push_back(MInstr{MOpcode::SCvtF,
-                                    {MOperand::vregOp(RegClass::FPR, converted),
-                                     MOperand::vregOp(RegClass::GPR, lhs)}});
+        out.instrs.push_back(MInstr{
+            MOpcode::SCvtF,
+            {MOperand::vregOp(RegClass::FPR, converted), MOperand::vregOp(RegClass::GPR, lhs)}});
         lhs = converted;
         lhsCls = RegClass::FPR;
     }
     if (rhsCls == RegClass::GPR)
     {
         const uint16_t converted = ctx.nextVRegId++;
-        out.instrs.push_back(MInstr{MOpcode::SCvtF,
-                                    {MOperand::vregOp(RegClass::FPR, converted),
-                                     MOperand::vregOp(RegClass::GPR, rhs)}});
+        out.instrs.push_back(MInstr{
+            MOpcode::SCvtF,
+            {MOperand::vregOp(RegClass::FPR, converted), MOperand::vregOp(RegClass::GPR, rhs)}});
         rhs = converted;
         rhsCls = RegClass::FPR;
     }
@@ -832,17 +832,17 @@ bool lowerFpCompare(const il::core::Instr &ins,
     if (lhsCls == RegClass::GPR)
     {
         const uint16_t converted = ctx.nextVRegId++;
-        out.instrs.push_back(MInstr{MOpcode::SCvtF,
-                                    {MOperand::vregOp(RegClass::FPR, converted),
-                                     MOperand::vregOp(RegClass::GPR, lhs)}});
+        out.instrs.push_back(MInstr{
+            MOpcode::SCvtF,
+            {MOperand::vregOp(RegClass::FPR, converted), MOperand::vregOp(RegClass::GPR, lhs)}});
         lhs = converted;
     }
     if (rhsCls == RegClass::GPR)
     {
         const uint16_t converted = ctx.nextVRegId++;
-        out.instrs.push_back(MInstr{MOpcode::SCvtF,
-                                    {MOperand::vregOp(RegClass::FPR, converted),
-                                     MOperand::vregOp(RegClass::GPR, rhs)}});
+        out.instrs.push_back(MInstr{
+            MOpcode::SCvtF,
+            {MOperand::vregOp(RegClass::FPR, converted), MOperand::vregOp(RegClass::GPR, rhs)}});
         rhs = converted;
     }
 

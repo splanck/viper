@@ -29,7 +29,7 @@ namespace viper::codegen::x64
 struct CodegenOptions
 {
     bool atandtSyntax{true}; ///< Emit AT&T syntax when true; Phase A only supports this form.
-    int optimizeLevel{1};    ///< Optimization level: 0 = none, 1 = standard (peephole), 2+ reserved.
+    int optimizeLevel{1}; ///< Optimization level: 0 = none, 1 = standard (peephole), 2+ reserved.
 };
 
 /// \brief Aggregated result of a backend emission request.

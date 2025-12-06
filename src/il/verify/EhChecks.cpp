@@ -1045,7 +1045,8 @@ il::support::Expected<void> checkDominanceOfHandlers(const EhModel &model)
     const DomInfo domInfo = computeDominators(model);
 
     // Build a map from handler blocks to their eh.push sites
-    std::unordered_map<const BasicBlock *, std::pair<const BasicBlock *, const Instr *>> handlerToEhPush;
+    std::unordered_map<const BasicBlock *, std::pair<const BasicBlock *, const Instr *>>
+        handlerToEhPush;
     for (const auto &bb : model.function().blocks)
     {
         for (const auto &instr : bb.instructions)
@@ -1089,7 +1090,8 @@ il::support::Expected<void> checkDominanceOfHandlers(const EhModel &model)
                 suffix += handlerBlock->label;
                 suffix += ")";
 
-                auto message = formatInstrDiag(model.function(), *ehPushBlock, *ehPushInstr, suffix);
+                auto message =
+                    formatInstrDiag(model.function(), *ehPushBlock, *ehPushInstr, suffix);
                 return il::support::Expected<void>{makeVerifierError(
                     VerifyDiagCode::EhHandlerNotDominant, ehPushInstr->loc, std::move(message))};
             }

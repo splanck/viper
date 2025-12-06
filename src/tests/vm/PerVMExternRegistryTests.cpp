@@ -31,9 +31,9 @@
 #include <thread>
 
 using namespace il::vm;
+using il::runtime::signatures::make_signature;
 using il::runtime::signatures::Signature;
 using il::runtime::signatures::SigParam;
-using il::runtime::signatures::make_signature;
 
 // Helper to create a simple void -> i64 signature for test externs
 static Signature makeVoidToI64Sig(const std::string &name)
@@ -352,20 +352,23 @@ TEST(PerVMExternRegistry, ThreadSafeGlobalRegistry)
 
     for (int t = 0; t < kNumThreads; ++t)
     {
-        threads.emplace_back([t]() {
-            for (int i = 0; i < kNumOpsPerThread; ++i)
+        threads.emplace_back(
+            [t]()
             {
-                std::string name = "thread_" + std::to_string(t) + "_extern_" + std::to_string(i);
-                ExternDesc desc;
-                desc.name = name;
-                desc.signature = makeVoidToI64Sig(name);
-                desc.fn = reinterpret_cast<void *>(extern_global_fn);
+                for (int i = 0; i < kNumOpsPerThread; ++i)
+                {
+                    std::string name =
+                        "thread_" + std::to_string(t) + "_extern_" + std::to_string(i);
+                    ExternDesc desc;
+                    desc.name = name;
+                    desc.signature = makeVoidToI64Sig(name);
+                    desc.fn = reinterpret_cast<void *>(extern_global_fn);
 
-                registerExternIn(processGlobalExternRegistry(), desc);
-                findExternIn(processGlobalExternRegistry(), name);
-                unregisterExternIn(processGlobalExternRegistry(), name);
-            }
-        });
+                    registerExternIn(processGlobalExternRegistry(), desc);
+                    findExternIn(processGlobalExternRegistry(), name);
+                    unregisterExternIn(processGlobalExternRegistry(), name);
+                }
+            });
     }
 
     for (auto &th : threads)

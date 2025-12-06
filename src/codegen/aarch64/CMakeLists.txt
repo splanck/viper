@@ -23,7 +23,7 @@ target_include_directories(il_codegen_aarch64 PUBLIC
 set_target_properties(il_codegen_aarch64 PROPERTIES LINKER_LANGUAGE CXX)
 
 # --- Generate OpcodeDispatch from JSON (no Python dependency) ---
-set(VIPER_A64_SPEC "${PROJECT_SOURCE_DIR}/tools/spec/aarch64_encodings.json")
+set(VIPER_A64_SPEC "${PROJECT_SOURCE_DIR}/docs/spec/aarch64_encodings.json")
 set(VIPER_A64_OUTDIR "${PROJECT_SOURCE_DIR}/src/codegen/aarch64/generated")
 set(VIPER_A64_DISP "${VIPER_A64_OUTDIR}/OpcodeDispatch.inc")
 

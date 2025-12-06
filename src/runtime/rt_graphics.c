@@ -98,8 +98,8 @@ void rt_gfx_draw_line(void *window, int64_t x1, int64_t y1, int64_t x2, int64_t 
 
     rt_gfx_window *win = (rt_gfx_window *)window;
     if (win->gfx_win)
-        vgfx_line(win->gfx_win, (int32_t)x1, (int32_t)y1, (int32_t)x2, (int32_t)y2,
-                  (vgfx_color_t)color);
+        vgfx_line(
+            win->gfx_win, (int32_t)x1, (int32_t)y1, (int32_t)x2, (int32_t)y2, (vgfx_color_t)color);
 }
 
 void rt_gfx_draw_rect(void *window, int64_t x, int64_t y, int64_t w, int64_t h, int64_t color)
@@ -109,8 +109,8 @@ void rt_gfx_draw_rect(void *window, int64_t x, int64_t y, int64_t w, int64_t h, 
 
     rt_gfx_window *win = (rt_gfx_window *)window;
     if (win->gfx_win)
-        vgfx_fill_rect(win->gfx_win, (int32_t)x, (int32_t)y, (int32_t)w, (int32_t)h,
-                       (vgfx_color_t)color);
+        vgfx_fill_rect(
+            win->gfx_win, (int32_t)x, (int32_t)y, (int32_t)w, (int32_t)h, (vgfx_color_t)color);
 }
 
 void rt_gfx_draw_rect_outline(
@@ -121,8 +121,8 @@ void rt_gfx_draw_rect_outline(
 
     rt_gfx_window *win = (rt_gfx_window *)window;
     if (win->gfx_win)
-        vgfx_rect(win->gfx_win, (int32_t)x, (int32_t)y, (int32_t)w, (int32_t)h,
-                  (vgfx_color_t)color);
+        vgfx_rect(
+            win->gfx_win, (int32_t)x, (int32_t)y, (int32_t)w, (int32_t)h, (vgfx_color_t)color);
 }
 
 void rt_gfx_draw_circle(void *window, int64_t cx, int64_t cy, int64_t radius, int64_t color)
@@ -132,8 +132,8 @@ void rt_gfx_draw_circle(void *window, int64_t cx, int64_t cy, int64_t radius, in
 
     rt_gfx_window *win = (rt_gfx_window *)window;
     if (win->gfx_win)
-        vgfx_fill_circle(win->gfx_win, (int32_t)cx, (int32_t)cy, (int32_t)radius,
-                         (vgfx_color_t)color);
+        vgfx_fill_circle(
+            win->gfx_win, (int32_t)cx, (int32_t)cy, (int32_t)radius, (vgfx_color_t)color);
 }
 
 void rt_gfx_draw_circle_outline(void *window, int64_t cx, int64_t cy, int64_t radius, int64_t color)

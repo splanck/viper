@@ -65,3 +65,19 @@ double rt_rnd(void)
     uint64_t x = (ctx->rng_state >> 11) & ((1ULL << 53) - 1);
     return (double)x * (1.0 / 9007199254740992.0);
 }
+
+/// @brief Generate a random integer in the half-open interval [0, max).
+/// @details Advances the linear congruential generator and returns the result
+///          modulo max to produce an integer in the range [0, max).  When max
+///          is non-positive, returns 0.
+long long rt_rand_int(long long max)
+{
+    if (max <= 0)
+        return 0;
+    RtContext *ctx = rt_get_current_context();
+    assert(ctx && "rt_rand_int called without active RtContext");
+    ctx->rng_state = ctx->rng_state * 6364136223846793005ULL + 1ULL;
+    // Use unsigned modulo to avoid bias issues with negative numbers
+    uint64_t umax = (uint64_t)max;
+    return (long long)(ctx->rng_state % umax);
+}

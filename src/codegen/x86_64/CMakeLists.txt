@@ -45,7 +45,7 @@ set_target_properties(viper_codegen_x86_64 PROPERTIES
 )
 
 # --- Generate encoding tables from JSON (no Python dependency) ---
-set(VIPER_X64_SPEC "${PROJECT_SOURCE_DIR}/tools/spec/x86_64_encodings.json")
+set(VIPER_X64_SPEC "${PROJECT_SOURCE_DIR}/docs/spec/x86_64_encodings.json")
 set(VIPER_X64_OUTDIR "${PROJECT_SOURCE_DIR}/src/codegen/x86_64/generated")
 set(VIPER_X64_ENC "${VIPER_X64_OUTDIR}/EncodingTable.inc")
 set(VIPER_X64_OPFMT "${VIPER_X64_OUTDIR}/OpFmtTable.inc")

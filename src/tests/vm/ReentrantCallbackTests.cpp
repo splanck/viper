@@ -31,9 +31,9 @@
 #include <vector>
 
 using namespace il;
+using il::runtime::signatures::make_signature;
 using il::runtime::signatures::Signature;
 using il::runtime::signatures::SigParam;
-using il::runtime::signatures::make_signature;
 
 namespace
 {
@@ -42,7 +42,7 @@ namespace
 struct CallbackTracker
 {
     int callCount = 0;
-    std::vector<bool> sawActiveVM;   ///< Whether VM::activeInstance() was non-null during each call.
+    std::vector<bool> sawActiveVM; ///< Whether VM::activeInstance() was non-null during each call.
     std::vector<vm::VM *> activeVMs; ///< Captured VM pointers during each call.
     vm::VM *expectedVM = nullptr;    ///< The VM we expect to be active.
     int reentryDepth = 0;            ///< Current nesting depth.

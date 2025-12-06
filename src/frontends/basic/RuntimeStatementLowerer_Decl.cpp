@@ -311,8 +311,8 @@ void RuntimeStatementLowerer::lowerReDim(const ReDimStmt &stmt)
     {
         lowerer_.requireArrayI64Resize();
     }
-    Value resized =
-        lowerer_.emitCallRet(il::core::Type(il::core::Type::Kind::Ptr), resizeFn, {current, length});
+    Value resized = lowerer_.emitCallRet(
+        il::core::Type(il::core::Type::Kind::Ptr), resizeFn, {current, length});
     lowerer_.storeArray(storage->pointer,
                         resized,
                         /*elementType*/ AstType::I64,

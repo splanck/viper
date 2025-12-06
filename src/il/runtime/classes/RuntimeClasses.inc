@@ -165,7 +165,8 @@ RUNTIME_CLASS(
     RUNTIME_PROPS(),
     RUNTIME_METHODS(
         RUNTIME_METHOD("Seed", "void(i64)", "Viper.Random.Seed"),
-        RUNTIME_METHOD("Next", "f64()", "Viper.Random.Next")))
+        RUNTIME_METHOD("Next", "f64()", "Viper.Random.Next"),
+        RUNTIME_METHOD("NextInt", "i64(i64)", "Viper.Random.NextInt")))
 
 // Environment and command-line arguments
 RUNTIME_CLASS(

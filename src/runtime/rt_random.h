@@ -52,6 +52,12 @@ extern "C"
     /// resulting bits to a double in the range [0,1) with 53 bits of precision.
     double rt_rnd(void);
 
+    /// @brief Generate a random integer in the range [0, max).
+    /// @param max Upper bound (exclusive). Must be positive.
+    /// @return A random integer in [0, max).
+    /// @details Uses the same LCG as rt_rnd() to ensure deterministic sequences.
+    long long rt_rand_int(long long max);
+
 #ifdef __cplusplus
 }
 #endif

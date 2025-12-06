@@ -24,8 +24,10 @@
 ///          object-oriented grammar shares the same recovery behaviour and type
 ///          inference shims as procedural code.
 
+#include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/IdentifierUtil.hpp"
 #include "frontends/basic/Parser.hpp"
+#include "frontends/basic/constfold/Dispatch.hpp"
 #include <cctype>
 #include <string>
 #include <utility>
@@ -231,15 +233,54 @@ StmtPtr Parser::parseClassDecl()
 
             while (!at(TokenKind::RParen) && !at(TokenKind::EndOfFile))
             {
-                // Parse dimension size (constant expression)
-                Token sizeTok = expect(TokenKind::Number);
-                if (sizeTok.kind == TokenKind::Number)
+                // BUG-BASIC-001 fix: Parse dimension size as expression, then constant-fold.
+                // This allows CONST values and expressions like MAX_SIZE or 10+5.
+                auto dimExpr = parseExpression();
+                long long size = 0;
+                bool gotSize = false;
+
+                // Try to get the integer value from the expression
+                if (dimExpr)
+                {
+                    // Check if it's already an integer literal
+                    if (auto *ie = as<IntExpr>(*dimExpr))
+                    {
+                        size = ie->value;
+                        gotSize = true;
+                    }
+                    // Try constant folding for expressions
+                    else if (auto folded = constfold::fold_expr(*dimExpr))
+                    {
+                        if (auto *ie2 = as<IntExpr>(**folded))
+                        {
+                            size = ie2->value;
+                            gotSize = true;
+                        }
+                    }
+                    // Check if it's a known CONST identifier
+                    else if (auto *ve = as<VarExpr>(*dimExpr))
+                    {
+                        std::string canon = CanonicalizeIdent(ve->name);
+                        auto it = knownConstInts_.find(canon);
+                        if (it != knownConstInts_.end())
+                        {
+                            size = it->second;
+                            gotSize = true;
+                        }
+                    }
+                }
+
+                if (gotSize)
                 {
                     // BUG-094 fix: Store the declared extent as-is (e.g., 7 for DIM a(7)).
                     // The +1 conversion to length happens in the lowerer when computing
                     // allocation sizes and flat indices, not during parsing.
-                    long long size = std::stoll(sizeTok.lexeme);
                     extents.push_back(size);
+                }
+                else
+                {
+                    emitError(
+                        "B0001", fieldNameTok, "array dimension must be a constant expression");
                 }
 
                 if (at(TokenKind::Comma))

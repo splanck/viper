@@ -32,7 +32,12 @@ namespace
 {
 
 /// @brief Helper to build a binary instruction manually.
-void emitBinOp(BasicBlock &bb, Opcode op, Value lhs, Value rhs, unsigned resultId, Type ty = Type(Type::Kind::I64))
+void emitBinOp(BasicBlock &bb,
+               Opcode op,
+               Value lhs,
+               Value rhs,
+               unsigned resultId,
+               Type ty = Type(Type::Kind::I64))
 {
     Instr instr;
     instr.op = op;
@@ -158,7 +163,8 @@ void testCBrConstantFold()
     builder.setInsertPoint(entry);
     // %0 = icmp.eq 5, 5  -> always true
     unsigned cmpId = builder.reserveTempId();
-    emitBinOp(entry, Opcode::ICmpEq, Value::constInt(5), Value::constInt(5), cmpId, Type(Type::Kind::I1));
+    emitBinOp(
+        entry, Opcode::ICmpEq, Value::constInt(5), Value::constInt(5), cmpId, Type(Type::Kind::I1));
     // cbr %0, ^then, ^else
     builder.cbr(Value::temp(cmpId), thenBlock, {}, elseBlock, {});
 
@@ -197,7 +203,12 @@ void testCBrSameTargetFold()
     builder.setInsertPoint(entry);
     // Create a temp condition
     unsigned condId = builder.reserveTempId();
-    emitBinOp(entry, Opcode::ICmpEq, Value::constInt(1), Value::constInt(2), condId, Type(Type::Kind::I1));
+    emitBinOp(entry,
+              Opcode::ICmpEq,
+              Value::constInt(1),
+              Value::constInt(2),
+              condId,
+              Type(Type::Kind::I1));
     // cbr %cond, ^target, ^target  -> should become br ^target
     builder.cbr(Value::temp(condId), target, {}, target, {});
 

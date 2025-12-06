@@ -432,6 +432,26 @@ SemanticAnalyzer::Type analyzeBinaryExpr(SemanticAnalyzer &analyzer, const Binar
         }
     }
 
+    // BUG-BASIC-002 fix: Implicit INT() conversion for MOD and IDiv operators.
+    // These operators require integer operands, so we truncate floats to integers.
+    if (expr.op == BinaryExpr::Op::Mod || expr.op == BinaryExpr::Op::IDiv)
+    {
+        if (semantic_analyzer_detail::isNumericType(lhs) &&
+            semantic_analyzer_detail::isNumericType(rhs))
+        {
+            // Convert Float operands to Int via implicit truncation
+            if (expr.lhs && lhs == Type::Float)
+                context.markImplicitConversion(*expr.lhs, Type::Int);
+            if (expr.rhs && rhs == Type::Float)
+                context.markImplicitConversion(*expr.rhs, Type::Int);
+            // Update the types so the validator sees integers
+            if (lhs == Type::Float)
+                lhs = Type::Int;
+            if (rhs == Type::Float)
+                rhs = Type::Int;
+        }
+    }
+
     // Implicit STR$ coercion for '+' when one operand is string.
     if (expr.op == BinaryExpr::Op::Add)
     {

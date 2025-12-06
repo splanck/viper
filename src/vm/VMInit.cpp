@@ -84,21 +84,22 @@ struct InvariantTrapHandlerRegistrar
 {
     InvariantTrapHandlerRegistrar()
     {
-        il::runtime::setInvariantTrapHandler([](const char *message) -> bool
-        {
-            // Check if there's an active VM that can handle the trap.
-            if (!RuntimeBridge::hasActiveVm())
+        il::runtime::setInvariantTrapHandler(
+            [](const char *message) -> bool
+            {
+                // Check if there's an active VM that can handle the trap.
+                if (!RuntimeBridge::hasActiveVm())
+                    return false;
+
+                // Route through the RuntimeBridge trap mechanism.
+                // This will invoke vm_raise() if a VM is active, which may throw
+                // TrapDispatchSignal for exception handler dispatch.
+                RuntimeBridge::trap(TrapKind::RuntimeError, message, {}, {}, {});
+
+                // If we reach here, the trap was not caught (shouldn't happen with RuntimeError).
+                // Return false to fall back to abort.
                 return false;
-
-            // Route through the RuntimeBridge trap mechanism.
-            // This will invoke vm_raise() if a VM is active, which may throw
-            // TrapDispatchSignal for exception handler dispatch.
-            RuntimeBridge::trap(TrapKind::RuntimeError, message, {}, {}, {});
-
-            // If we reach here, the trap was not caught (shouldn't happen with RuntimeError).
-            // Return false to fall back to abort.
-            return false;
-        });
+            });
     }
 };
 

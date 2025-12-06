@@ -51,7 +51,8 @@ extern "C"
     /// @param x2 Ending X coordinate.
     /// @param y2 Ending Y coordinate.
     /// @param color Line color (0x00RRGGBB).
-    void rt_gfx_draw_line(void *window, int64_t x1, int64_t y1, int64_t x2, int64_t y2, int64_t color);
+    void rt_gfx_draw_line(
+        void *window, int64_t x1, int64_t y1, int64_t x2, int64_t y2, int64_t color);
 
     /// @brief Draw a filled rectangle.
     /// @param window Window handle.

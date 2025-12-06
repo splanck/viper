@@ -458,17 +458,19 @@ void DebugCtrl::onMemWrite(const void *addr, std::size_t size)
     // Sort by start address if needed
     if (!memWatchesSorted_)
     {
-        std::sort(memWatches_.begin(), memWatches_.end(),
-                  [](const MemWatchRange &a, const MemWatchRange &b)
-                  { return a.start < b.start; });
+        std::sort(memWatches_.begin(),
+                  memWatches_.end(),
+                  [](const MemWatchRange &a, const MemWatchRange &b) { return a.start < b.start; });
         memWatchesSorted_ = true;
     }
 
     // Binary search for first range that could intersect: range.end > writeStart
     // A range intersects if: writeEnd > range.start AND range.end > writeStart
-    auto it = std::lower_bound(memWatches_.begin(), memWatches_.end(), writeStart,
-                               [](const MemWatchRange &r, std::uintptr_t val)
-                               { return r.end <= val; });
+    auto it =
+        std::lower_bound(memWatches_.begin(),
+                         memWatches_.end(),
+                         writeStart,
+                         [](const MemWatchRange &r, std::uintptr_t val) { return r.end <= val; });
 
     // Scan forward while ranges could still intersect
     for (; it != memWatches_.end() && it->start < writeEnd; ++it)

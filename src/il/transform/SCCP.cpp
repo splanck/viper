@@ -1024,14 +1024,13 @@ class SCCPSolver
             return std::nullopt;
 
         // Create fold context with operand resolver
-        FoldContext ctx{
-            instr,
-            [this, &instr](size_t index, Value &out) -> bool
-            {
-                if (index >= instr.operands.size())
-                    return false;
-                return resolveValue(instr.operands[index], out);
-            }};
+        FoldContext ctx{instr,
+                        [this, &instr](size_t index, Value &out) -> bool
+                        {
+                            if (index >= instr.operands.size())
+                                return false;
+                            return resolveValue(instr.operands[index], out);
+                        }};
 
         switch (instr.op)
         {

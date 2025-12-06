@@ -11,7 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_array_i64.h"
-#include "rt_array.h"  // for rt_arr_oob_panic
+#include "rt_array.h" // for rt_arr_oob_panic
 
 #include <assert.h>
 #include <limits.h>
@@ -72,7 +72,7 @@ void rt_arr_i64_retain(int64_t *arr)
     if (!arr)
         return;
     rt_heap_hdr_t *hdr = rt_arr_i64_hdr(arr);
-    rt_arr_64bit_assert_header(hdr);  // Accept both I64 and F64 for retain
+    rt_arr_64bit_assert_header(hdr); // Accept both I64 and F64 for retain
     rt_heap_retain(arr);
 }
 
@@ -81,7 +81,7 @@ void rt_arr_i64_release(int64_t *arr)
     if (!arr)
         return;
     rt_heap_hdr_t *hdr = rt_arr_i64_hdr(arr);
-    rt_arr_64bit_assert_header(hdr);  // Accept both I64 and F64 for release
+    rt_arr_64bit_assert_header(hdr); // Accept both I64 and F64 for release
     rt_heap_release(arr);
 }
 
@@ -90,7 +90,7 @@ size_t rt_arr_i64_len(int64_t *arr)
     if (!arr)
         return 0;
     rt_heap_hdr_t *hdr = rt_arr_i64_hdr(arr);
-    rt_arr_64bit_assert_header(hdr);  // Accept both I64 and F64 for len
+    rt_arr_64bit_assert_header(hdr); // Accept both I64 and F64 for len
     return hdr->len;
 }
 

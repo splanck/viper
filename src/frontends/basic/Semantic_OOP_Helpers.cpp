@@ -15,10 +15,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "frontends/basic/detail/Semantic_OOP_Internal.hpp"
 #include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/AstWalker.hpp"
 #include "frontends/basic/StringUtils.hpp"
+#include "frontends/basic/detail/Semantic_OOP_Internal.hpp"
 
 namespace il::frontends::basic::detail
 {

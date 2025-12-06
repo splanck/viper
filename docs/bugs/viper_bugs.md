@@ -50,15 +50,29 @@ Use literal numbers for array sizes:
 Dim arr(100) As Integer  ' Works
 ```
 
+### Root Cause Analysis
+The bug affects **class field array declarations only**. Module-level `DIM` statements already support expressions (they call `parseExpression()`).
+
+In `src/frontends/basic/Parser_Stmt_OOP.cpp:235`, the class field parser explicitly requires literal numbers:
+```cpp
+Token sizeTok = expect(TokenKind::Number);  // Line 235
+```
+
+This is different from the module-level DIM parser in `Parser_Stmt_Runtime.cpp:190` which correctly uses:
+```cpp
+node->dimensions.push_back(parseExpression());
+```
+
 ### Affected Files
-- `src/frontends/basic/Parser.cpp` - array dimension parsing
+- `src/frontends/basic/Parser_Stmt_OOP.cpp:235` - class field array dimension parsing (THE BUG)
+- `src/frontends/basic/Parser_Stmt_Runtime.cpp:190` - module-level DIM (works correctly)
 
 ### Fix Required
-Modify the parser to accept:
-1. Constant expressions (evaluate at parse time)
-2. Variable references (for dynamic arrays, would require runtime allocation)
-
-At minimum, `Const` values should be substituted at parse time since they are compile-time constants.
+Change `Parser_Stmt_OOP.cpp:235` from:
+```cpp
+Token sizeTok = expect(TokenKind::Number);
+```
+To use `parseExpression()` like the module-level DIM parser, then constant-fold the result at parse time for class field arrays (which require compile-time known sizes).
 
 ---
 
@@ -84,10 +98,26 @@ error[B2001]: operand type mismatch
                             ^
 ```
 
-### Root Cause
-- `Viper.Random.Next()` is defined in `RuntimeClasses.inc` with signature `f64()` (returns 0.0 to 1.0)
-- The MOD operator requires integer operands
-- There's no implicit conversion from f64 to integer for MOD
+### Root Cause Analysis
+The MOD operator in the semantic analyzer explicitly requires integer operands.
+
+In `src/frontends/basic/sem/Check_Expr_Binary.cpp:318`, the MOD operator uses `validateIntegerOperands`:
+```cpp
+{BinaryExpr::Op::Mod, &validateIntegerOperands, &integerResult, "B2001"},
+```
+
+The `validateIntegerOperands` function (lines 209-219) rejects floating-point:
+```cpp
+void validateIntegerOperands(...) {
+    if (!isIntegerType(lhs) || !isIntegerType(rhs))
+        sem::emitOperandTypeMismatch(context.diagnostics(), expr, diagId);
+    ...
+}
+```
+
+Since `Viper.Random.Next()` returns `f64` (Type::Float), it fails the `isIntegerType(lhs)` check.
+
+Note: The binary expression analyzer (lines 414-433) has logic to implicitly convert operands for Add/Sub/Mul operations, but this was not extended to MOD/IDiv.
 
 ### Expected Behavior
 Either:
@@ -101,12 +131,20 @@ Dim x As Integer
 x = Int(Rnd() * 100)  ' Works - returns 0-99
 ```
 
+Or use `RandInt()` which is already available:
+```basic
+Dim x As Integer
+x = RandInt(100)  ' Returns 0-99
+```
+
 ### Affected Files
+- `src/frontends/basic/sem/Check_Expr_Binary.cpp:318` - MOD validation rule
+- `src/frontends/basic/sem/Check_Expr_Binary.cpp:209-219` - `validateIntegerOperands` function
 - `src/il/runtime/classes/RuntimeClasses.inc:167-168` - Viper.Random class definition
 
 ### Fix Options
-1. Add `Viper.Random.NextInt(max As Integer)` that returns Integer in [0, max)
-2. Add implicit `Int()` conversion when using f64 with MOD
-3. Document the `Int(Viper.Random.Next() * max)` pattern
+1. **Preferred**: Add `Viper.Random.NextInt(max As Integer)` that returns Integer in [0, max)
+2. Add implicit `Int()` conversion in `analyzeBinaryExpr` when Float operands are used with MOD/IDiv (add similar promotion logic to lines 414-433 for integer operators)
+3. Document that `RandInt(max)` already exists as an alternative
 
 ---

@@ -107,9 +107,9 @@ int main()
     }
 
     {
+        // BUG-BASIC-002 fix: IDiv now implicitly converts float operands to int
         auto result = analyzeSnippet(makeSnippet("4 \\ 2.5"));
-        assert(result.errors == 1);
-        assert(result.output.find("error[B2001]") != std::string::npos);
+        assert(result.errors == 0);
     }
 
     {
@@ -119,9 +119,9 @@ int main()
     }
 
     {
+        // BUG-BASIC-002 fix: MOD now implicitly converts float operands to int
         auto result = analyzeSnippet(makeSnippet("4 MOD 2.5"));
-        assert(result.errors == 1);
-        assert(result.output.find("error[B2001]") != std::string::npos);
+        assert(result.errors == 0);
     }
 
     {

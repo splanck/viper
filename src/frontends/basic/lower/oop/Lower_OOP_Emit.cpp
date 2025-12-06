@@ -281,8 +281,8 @@ void Lowerer::emitClassConstructor(const ClassDecl &klass, const ConstructorDecl
         {
             const long long typeId = (long long)itLayout->second.classId;
             // Retrieve the registered vtable for this class
-            Value vtblPtr =
-                emitCallRet(Type(Type::Kind::Ptr), "rt_get_class_vtable", {Value::constInt(typeId)});
+            Value vtblPtr = emitCallRet(
+                Type(Type::Kind::Ptr), "rt_get_class_vtable", {Value::constInt(typeId)});
             // Store vptr into the object's header (offset 0)
             Value selfPtr = loadSelfPointer(selfSlotId);
             emitStore(Type(Type::Kind::Ptr), selfPtr, vtblPtr);
@@ -943,19 +943,19 @@ void Lowerer::emitOopDeclsAndBodies(const Program &prog)
     std::vector<std::string> classOrder;
     {
         std::unordered_set<std::string> registered;
-        std::function<void(const std::string &)> registerInOrder =
-            [&](const std::string &qname) {
-                if (registered.count(qname))
-                    return;
-                const ClassInfo *ci = oopIndex_.findClass(qname);
-                if (!ci)
-                    return;
-                // Register base class first if it exists
-                if (!ci->baseQualified.empty())
-                    registerInOrder(ci->baseQualified);
-                classOrder.push_back(qname);
-                registered.insert(qname);
-            };
+        std::function<void(const std::string &)> registerInOrder = [&](const std::string &qname)
+        {
+            if (registered.count(qname))
+                return;
+            const ClassInfo *ci = oopIndex_.findClass(qname);
+            if (!ci)
+                return;
+            // Register base class first if it exists
+            if (!ci->baseQualified.empty())
+                registerInOrder(ci->baseQualified);
+            classOrder.push_back(qname);
+            registered.insert(qname);
+        };
         for (const auto &entry : oopIndex_.classes())
             registerInOrder(entry.second.qualifiedName);
     }
@@ -1007,8 +1007,8 @@ void Lowerer::emitOopDeclsAndBodies(const Program &prog)
             for (std::size_t s = 0; s < slotCount; ++s)
             {
                 const long long offset = static_cast<long long>(s * 8ULL);
-                Value slotPtr =
-                    emitBinary(Opcode::GEP, Type(Type::Kind::Ptr), vtablePtr, Value::constInt(offset));
+                Value slotPtr = emitBinary(
+                    Opcode::GEP, Type(Type::Kind::Ptr), vtablePtr, Value::constInt(offset));
                 const std::string &mname = (s < slotToName.size()) ? slotToName[s] : "";
                 if (mname.empty())
                 {
@@ -1038,12 +1038,15 @@ void Lowerer::emitOopDeclsAndBodies(const Program &prog)
             }
         }
 
-        // Register the class with rt_register_class_with_base_rs(typeId, vtable, qname, slotCount, baseTypeId)
-        // Note: Use _rs variant which accepts rt_string, not const char*
+        // Register the class with rt_register_class_with_base_rs(typeId, vtable, qname, slotCount,
+        // baseTypeId) Note: Use _rs variant which accepts rt_string, not const char*
         std::string qnameLabel = getStringLabel(ci.qualifiedName);
         emitCall("rt_register_class_with_base_rs",
-                 {Value::constInt(typeId), vtablePtr, emitConstStr(qnameLabel),
-                  Value::constInt(static_cast<long long>(slotCount)), Value::constInt(baseTypeId)});
+                 {Value::constInt(typeId),
+                  vtablePtr,
+                  emitConstStr(qnameLabel),
+                  Value::constInt(static_cast<long long>(slotCount)),
+                  Value::constInt(baseTypeId)});
     }
 
     for (const auto &fn : regThunks)
