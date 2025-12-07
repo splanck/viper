@@ -246,6 +246,8 @@ Lowerer::Type Lowerer::mapType(const PasType &pasType)
     switch (pasType.kind)
     {
     case PasTypeKind::Integer:
+    case PasTypeKind::Enum:
+        // Enums are represented as integers (ordinal values)
         return Type(Type::Kind::I64);
     case PasTypeKind::Real:
         return Type(Type::Kind::F64);
@@ -259,8 +261,13 @@ Lowerer::Type Lowerer::mapType(const PasType &pasType)
     case PasTypeKind::Array:
         return Type(Type::Kind::Ptr);
     case PasTypeKind::Optional:
-        // For optional value types, we'd need a pair (I1, T)
-        // For now, treat as Ptr
+        // For reference-type optionals (String?, Class?, etc.), use Ptr (null = nil)
+        // For value-type optionals (Integer?, Real?, Boolean?), we use a struct
+        // representation but map to Ptr for alloca purposes (the struct is in memory)
+        if (pasType.innerType && pasType.innerType->isReference())
+            return Type(Type::Kind::Ptr);
+        // Value-type optionals use (hasValue: i64, value: T) in memory
+        // Return Ptr since we access them via alloca
         return Type(Type::Kind::Ptr);
     case PasTypeKind::Nil:
         return Type(Type::Kind::Ptr);
@@ -274,7 +281,8 @@ int64_t Lowerer::sizeOf(const PasType &pasType)
     switch (pasType.kind)
     {
     case PasTypeKind::Integer:
-        return 8;
+    case PasTypeKind::Enum:
+        return 8; // Enums stored as 64-bit integers
     case PasTypeKind::Real:
         return 8;
     case PasTypeKind::Boolean:
@@ -587,11 +595,21 @@ LowerResult Lowerer::lowerName(const NameExpr &expr)
 {
     std::string key = toLower(expr.name);
 
-    // Check constants first
+    // Check constants first (including enum constants from semantic analyzer)
     auto constIt = constants_.find(key);
     if (constIt != constants_.end())
     {
         return {constIt->second, Type(Type::Kind::I64)}; // Type approximation
+    }
+
+    // Check semantic analyzer for enum constants
+    if (auto constType = sema_->lookupConstant(key))
+    {
+        if (constType->kind == PasTypeKind::Enum && constType->enumOrdinal >= 0)
+        {
+            // Enum constant: emit its ordinal value as an integer
+            return {Value::constInt(constType->enumOrdinal), Type(Type::Kind::I64)};
+        }
     }
 
     // Check locals
@@ -754,83 +772,113 @@ LowerResult Lowerer::lowerBinary(const BinaryExpr &expr)
 
 LowerResult Lowerer::lowerLogicalAnd(const BinaryExpr &expr)
 {
-    // Short-circuit: if left is false, don't evaluate right
-    size_t thenBlock = createBlock("and_rhs");
+    // Short-circuit: if left is false, result is false; else result is right
+    size_t evalRhsBlock = createBlock("and_rhs");
+    size_t shortCircuitBlock = createBlock("and_short");
     size_t joinBlock = createBlock("and_join");
+
+    // Allocate result slot before any branches
+    Value resultSlot = emitAlloca(1);
 
     // Evaluate left
     LowerResult left = lowerExpr(*expr.left);
     Value leftBool = left.value;
 
-    // If left is false, jump to join with false; else evaluate right
-    emitCBr(leftBool, thenBlock, joinBlock);
+    // If left is true, evaluate right; else short-circuit with false
+    emitCBr(leftBool, evalRhsBlock, shortCircuitBlock);
 
-    // Evaluate right in thenBlock
-    setBlock(thenBlock);
-    LowerResult right = lowerExpr(*expr.right);
+    // Short-circuit: left was false, result is false
+    setBlock(shortCircuitBlock);
+    emitStore(Type(Type::Kind::I1), resultSlot, Value::constInt(0));
     emitBr(joinBlock);
 
-    // In join block, result is left AND right
-    // For simplicity, we use a phi-like pattern via alloca
+    // Evaluate right in evalRhsBlock
+    setBlock(evalRhsBlock);
+    LowerResult right = lowerExpr(*expr.right);
+    emitStore(Type(Type::Kind::I1), resultSlot, right.value);
+    emitBr(joinBlock);
+
+    // Join block - load result
     setBlock(joinBlock);
+    Value result = emitLoad(Type(Type::Kind::I1), resultSlot);
 
-    // Result: if we came from entry, it's false (left was false)
-    //         if we came from thenBlock, it's right.value
-    // Using alloca for simplicity
-    Value resultSlot = emitAlloca(1);
-    // This is a simplified version - for proper SSA we'd use block params
-
-    return {right.value, Type(Type::Kind::I1)};
+    return {result, Type(Type::Kind::I1)};
 }
 
 LowerResult Lowerer::lowerLogicalOr(const BinaryExpr &expr)
 {
-    // Short-circuit: if left is true, don't evaluate right
-    size_t elseBlock = createBlock("or_rhs");
+    // Short-circuit: if left is true, result is true; else result is right
+    size_t shortCircuitBlock = createBlock("or_short");
+    size_t evalRhsBlock = createBlock("or_rhs");
     size_t joinBlock = createBlock("or_join");
+
+    // Allocate result slot before any branches
+    Value resultSlot = emitAlloca(1);
 
     // Evaluate left
     LowerResult left = lowerExpr(*expr.left);
     Value leftBool = left.value;
 
-    // If left is true, jump to join with true; else evaluate right
-    emitCBr(leftBool, joinBlock, elseBlock);
+    // If left is true, short-circuit with true; else evaluate right
+    emitCBr(leftBool, shortCircuitBlock, evalRhsBlock);
 
-    // Evaluate right in elseBlock
-    setBlock(elseBlock);
-    LowerResult right = lowerExpr(*expr.right);
+    // Short-circuit: left was true, result is true
+    setBlock(shortCircuitBlock);
+    emitStore(Type(Type::Kind::I1), resultSlot, Value::constInt(1));
     emitBr(joinBlock);
 
-    setBlock(joinBlock);
+    // Evaluate right in evalRhsBlock
+    setBlock(evalRhsBlock);
+    LowerResult right = lowerExpr(*expr.right);
+    emitStore(Type(Type::Kind::I1), resultSlot, right.value);
+    emitBr(joinBlock);
 
-    return {right.value, Type(Type::Kind::I1)};
+    // Join block - load result
+    setBlock(joinBlock);
+    Value result = emitLoad(Type(Type::Kind::I1), resultSlot);
+
+    return {result, Type(Type::Kind::I1)};
 }
 
 LowerResult Lowerer::lowerCoalesce(const BinaryExpr &expr)
 {
-    // a ?? b: if a is nil, use b; else use a
-    size_t elseBlock = createBlock("coalesce_rhs");
+    // a ?? b: if a is not nil, use a; else evaluate and use b
+    // Short-circuits: b is only evaluated if a is nil
+
+    size_t useLeftBlock = createBlock("coalesce_use_lhs");
+    size_t evalRhsBlock = createBlock("coalesce_rhs");
     size_t joinBlock = createBlock("coalesce_join");
 
-    // Evaluate left
+    // Allocate result slot before any branches
+    Value resultSlot = emitAlloca(8);
+
+    // Evaluate left operand
     LowerResult left = lowerExpr(*expr.left);
 
-    // Check if left is nil (for pointers, compare to null)
+    // For reference-type optionals, null pointer means nil
+    // For value-type optionals, we'd check the hasValue flag at offset 0
+    // Currently, both are represented as Ptr (null = nil)
     Value isNotNil = emitBinary(Opcode::ICmpNe, Type(Type::Kind::I1),
                                 left.value, Value::null());
 
-    emitCBr(isNotNil, joinBlock, elseBlock);
+    emitCBr(isNotNil, useLeftBlock, evalRhsBlock);
 
-    // Evaluate right if left was nil
-    setBlock(elseBlock);
-    LowerResult right = lowerExpr(*expr.right);
+    // Use left value (not nil) - store to result slot
+    setBlock(useLeftBlock);
+    emitStore(left.type, resultSlot, left.value);
     emitBr(joinBlock);
 
-    setBlock(joinBlock);
+    // Evaluate right operand (left was nil) - store to result slot
+    setBlock(evalRhsBlock);
+    LowerResult right = lowerExpr(*expr.right);
+    emitStore(right.type, resultSlot, right.value);
+    emitBr(joinBlock);
 
-    // Return left if not nil, else right
-    // Simplified: return right (proper impl needs phi)
-    return {right.value, right.type};
+    // Join block - load from result slot
+    setBlock(joinBlock);
+    Value result = emitLoad(right.type, resultSlot);
+
+    return {result, right.type};
 }
 
 LowerResult Lowerer::lowerCall(const CallExpr &expr)
@@ -1176,13 +1224,23 @@ void Lowerer::lowerCase(const CaseStmt &stmt)
             nextBlock = endBlock;
         }
 
-        // Check each label
-        for (const auto &label : arm.labels)
+        // Check each label - create test blocks for each label
+        // Pattern: test_0 -> (match? arm : test_1) -> (match? arm : test_2) -> ... -> nextBlock
+        for (size_t j = 0; j < arm.labels.size(); ++j)
         {
-            LowerResult labelVal = lowerExpr(*label);
+            LowerResult labelVal = lowerExpr(*arm.labels[j]);
             Value match = emitBinary(Opcode::ICmpEq, Type(Type::Kind::I1),
                                      scrutinee.value, labelVal.value);
-            emitCBr(match, armBlock, nextBlock);
+
+            // If this is not the last label, create another test block
+            size_t falseBlock = (j + 1 < arm.labels.size()) ? createBlock("case_test") : nextBlock;
+            emitCBr(match, armBlock, falseBlock);
+
+            // Move to the next test block for the next label check
+            if (j + 1 < arm.labels.size())
+            {
+                setBlock(falseBlock);
+            }
         }
 
         // Arm body
@@ -1279,20 +1337,45 @@ void Lowerer::lowerFor(const ForStmt &stmt)
 
 void Lowerer::lowerForIn(const ForInStmt &stmt)
 {
-    // Desugar to index loop
+    // Desugar to index-based loop:
+    // for item in arr do body  =>  for i := 0 to Length(arr)-1 do begin item := arr[i]; body end
+    // for ch in s do body      =>  for i := 0 to Length(s)-1 do begin ch := s[i]; body end
+
     size_t headerBlock = createBlock("forin_header");
     size_t bodyBlock = createBlock("forin_body");
     size_t afterBlock = createBlock("forin_after");
     size_t exitBlock = createBlock("forin_exit");
 
+    // Get collection type from semantic analyzer
+    PasType collType = sema_->typeOf(*stmt.collection);
+    bool isString = (collType.kind == PasTypeKind::String);
+    bool isArray = (collType.kind == PasTypeKind::Array);
+
     // Allocate index variable
     Value indexSlot = emitAlloca(8);
     emitStore(Type(Type::Kind::I64), indexSlot, Value::constInt(0));
 
-    // Get collection and length
+    // Get collection value
     LowerResult collection = lowerExpr(*stmt.collection);
-    // Would call rt_arr_len here
-    Value length = Value::constInt(10); // Placeholder
+
+    // Get length based on collection type
+    Value length;
+    if (isString)
+    {
+        // Call rt_len for strings
+        length = emitCallRet(Type(Type::Kind::I64), "rt_len", {collection.value});
+    }
+    else if (isArray)
+    {
+        // Call appropriate rt_arr_*_len based on element type
+        // For now, use generic i64 array length as placeholder
+        length = emitCallRet(Type(Type::Kind::I64), "rt_arr_i64_len", {collection.value});
+    }
+    else
+    {
+        // Fallback for unsupported types
+        length = Value::constInt(0);
+    }
 
     emitBr(headerBlock);
 
@@ -1306,14 +1389,35 @@ void Lowerer::lowerForIn(const ForInStmt &stmt)
     loopStack_.push(exitBlock, afterBlock);
     setBlock(bodyBlock);
 
-    // Bind loop variable to collection[index]
+    // Allocate loop variable slot if not already present
     std::string key = toLower(stmt.loopVar);
+    Value varSlot;
     if (locals_.find(key) == locals_.end())
     {
-        Value varSlot = emitAlloca(8);
+        varSlot = emitAlloca(8);
         locals_[key] = varSlot;
     }
-    // Would call rt_arr_get here
+    else
+    {
+        varSlot = locals_[key];
+    }
+
+    // Get element at current index and store in loop variable
+    Value currentIdx = emitLoad(Type(Type::Kind::I64), indexSlot);
+    if (isString)
+    {
+        // Get single character as a string: rt_substr(s, i, 1)
+        Value elem = emitCallRet(Type(Type::Kind::Str), "rt_substr",
+                                 {collection.value, currentIdx, Value::constInt(1)});
+        emitStore(Type(Type::Kind::Str), varSlot, elem);
+    }
+    else if (isArray)
+    {
+        // Get array element: rt_arr_i64_get(arr, i)
+        Value elem = emitCallRet(Type(Type::Kind::I64), "rt_arr_i64_get",
+                                 {collection.value, currentIdx});
+        emitStore(Type(Type::Kind::I64), varSlot, elem);
+    }
 
     if (stmt.body)
         lowerStmt(*stmt.body);
@@ -1322,8 +1426,8 @@ void Lowerer::lowerForIn(const ForInStmt &stmt)
 
     // After: increment index
     setBlock(afterBlock);
-    Value currentIdx = emitLoad(Type(Type::Kind::I64), indexSlot);
-    Value newIdx = emitBinary(Opcode::Add, Type(Type::Kind::I64), currentIdx, Value::constInt(1));
+    Value idxAfter = emitLoad(Type(Type::Kind::I64), indexSlot);
+    Value newIdx = emitBinary(Opcode::Add, Type(Type::Kind::I64), idxAfter, Value::constInt(1));
     emitStore(Type(Type::Kind::I64), indexSlot, newIdx);
     emitBr(headerBlock);
 

@@ -21,6 +21,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -79,6 +80,9 @@ struct PasType
 
     /// For Enum: list of enumerator names
     std::vector<std::string> enumValues;
+
+    /// For Enum constants: ordinal value (-1 if not an enum constant)
+    int enumOrdinal{-1};
 
     /// For Record/Class: field name -> type
     std::map<std::string, std::shared_ptr<PasType>> fields;
@@ -182,6 +186,20 @@ struct PasType
         return t;
     }
 
+    /// @brief Create an enum constant with a specific ordinal.
+    /// @param typeName Name of the enum type.
+    /// @param values All enum member names (for type identity).
+    /// @param ordinal The ordinal value of this constant.
+    static PasType enumConstant(std::string typeName, std::vector<std::string> values, int ordinal)
+    {
+        PasType t;
+        t.kind = PasTypeKind::Enum;
+        t.name = std::move(typeName);
+        t.enumValues = std::move(values);
+        t.enumOrdinal = ordinal;
+        return t;
+    }
+
     /// @brief Create a class type with a given name.
     static PasType classType(std::string className)
     {
@@ -240,11 +258,30 @@ struct PasType
                kind == PasTypeKind::Enum || kind == PasTypeKind::Range;
     }
 
-    /// @brief Check if this is a reference type (Class, Interface, dynamic Array).
+    /// @brief Check if this is a reference type (Class, Interface, dynamic Array, String).
     bool isReference() const
     {
         return kind == PasTypeKind::Class || kind == PasTypeKind::Interface ||
+               kind == PasTypeKind::String ||
                (kind == PasTypeKind::Array && dimensions == 0);
+    }
+
+    /// @brief Check if this is a value type (Integer, Real, Boolean, Enum, Record, fixed Array).
+    /// @details Value types need (hasValue, value) pair representation when optional.
+    bool isValueType() const
+    {
+        return kind == PasTypeKind::Integer || kind == PasTypeKind::Real ||
+               kind == PasTypeKind::Boolean || kind == PasTypeKind::Enum ||
+               kind == PasTypeKind::Record ||
+               (kind == PasTypeKind::Array && dimensions > 0);
+    }
+
+    /// @brief For optional types, check if inner type is a value type.
+    bool isValueTypeOptional() const
+    {
+        if (kind != PasTypeKind::Optional || !innerType)
+            return false;
+        return innerType->isValueType();
     }
 
     /// @brief Check if nil can be assigned to this type.
@@ -514,6 +551,27 @@ class SemanticAnalyzer
     /// @brief Check if a method signature matches another.
     bool signaturesMatch(const MethodInfo &m1, const MethodInfo &m2) const;
 
+    /// @brief Check if a class implements an interface (directly or via base class).
+    /// @param className Name of the class.
+    /// @param interfaceName Name of the interface.
+    /// @return True if the class implements the interface.
+    bool classImplementsInterface(const std::string &className,
+                                   const std::string &interfaceName) const;
+
+    /// @brief Check if a class inherits from another class.
+    /// @param derivedName Name of the derived class.
+    /// @param baseName Name of the potential base class.
+    /// @return True if derived inherits from base (or they are the same).
+    bool classInheritsFrom(const std::string &derivedName,
+                           const std::string &baseName) const;
+
+    /// @brief Check if an interface extends another interface.
+    /// @param derivedName Name of the derived interface.
+    /// @param baseName Name of the potential base interface.
+    /// @return True if derived extends base (or they are the same).
+    bool interfaceExtendsInterface(const std::string &derivedName,
+                                    const std::string &baseName) const;
+
     /// @brief Collect all methods from interface and its bases.
     void collectInterfaceMethods(const std::string &ifaceName,
                                  std::map<std::string, MethodInfo> &methods) const;
@@ -533,6 +591,12 @@ class SemanticAnalyzer
 
     /// @brief Analyze a function body.
     void analyzeFunctionBody(FunctionDecl &decl);
+
+    /// @brief Analyze a constructor body.
+    void analyzeConstructorBody(ConstructorDecl &decl);
+
+    /// @brief Analyze a destructor body.
+    void analyzeDestructorBody(DestructorDecl &decl);
 
     //=========================================================================
     // Statement Analysis
@@ -579,6 +643,9 @@ class SemanticAnalyzer
 
     /// @brief Analyze a with statement.
     void analyzeWith(WithStmt &stmt);
+
+    /// @brief Analyze an inherited statement.
+    void analyzeInherited(InheritedStmt &stmt);
 
     //=========================================================================
     // Expression Type Checking
@@ -747,9 +814,20 @@ class SemanticAnalyzer
     /// @brief Current function being analyzed (for return type checking)
     const FuncSignature *currentFunction_{nullptr};
 
+    /// @brief Current class being analyzed (for Self resolution)
+    std::string currentClassName_;
+
     /// @brief Stack of narrowing scopes (for flow-sensitive type narrowing)
     /// Each scope maps variable names to their narrowed types.
     std::vector<std::map<std::string, PasType>> narrowingScopes_;
+
+    /// @brief Set of read-only loop variables (lowercase names).
+    /// @details Variables added here cannot be assigned during loop body analysis.
+    std::set<std::string> readOnlyLoopVars_;
+
+    /// @brief Set of undefined variables (lowercase names).
+    /// @details Variables added here cannot be read; they become undefined after for loop exits.
+    std::set<std::string> undefinedVars_;
 };
 
 } // namespace il::frontends::pascal

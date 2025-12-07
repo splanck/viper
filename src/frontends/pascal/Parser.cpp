@@ -589,6 +589,12 @@ std::unique_ptr<Stmt> Parser::parseStatement()
         return parseFor();
     }
 
+    // Case statement
+    if (check(TokenKind::KwCase))
+    {
+        return parseCase();
+    }
+
     // Begin-end block
     if (check(TokenKind::KwBegin))
     {
@@ -607,6 +613,40 @@ std::unique_ptr<Stmt> Parser::parseStatement()
     {
         advance();
         return std::make_unique<ContinueStmt>(loc);
+    }
+
+    // Inherited statement: inherited; or inherited MethodName(args);
+    if (check(TokenKind::KwInherited))
+    {
+        advance();
+        std::string methodName;
+        std::vector<std::unique_ptr<Expr>> args;
+
+        // Check if there's a method name
+        if (check(TokenKind::Identifier))
+        {
+            methodName = current_.text;
+            advance();
+
+            // Parse arguments if present
+            if (match(TokenKind::LParen))
+            {
+                if (!check(TokenKind::RParen))
+                {
+                    do
+                    {
+                        auto arg = parseExpression();
+                        if (!arg)
+                            return nullptr;
+                        args.push_back(std::move(arg));
+                    } while (match(TokenKind::Comma));
+                }
+                if (!expect(TokenKind::RParen, "')'"))
+                    return nullptr;
+            }
+        }
+
+        return std::make_unique<InheritedStmt>(std::move(methodName), std::move(args), loc);
     }
 
     // Raise statement
@@ -809,6 +849,80 @@ std::unique_ptr<Stmt> Parser::parseFor()
         error("expected ':=' or 'in' after loop variable");
         return nullptr;
     }
+}
+
+std::unique_ptr<Stmt> Parser::parseCase()
+{
+    auto loc = current_.loc;
+
+    if (!expect(TokenKind::KwCase, "'case'"))
+        return nullptr;
+
+    auto expr = parseExpression();
+    if (!expr)
+        return nullptr;
+
+    if (!expect(TokenKind::KwOf, "'of'"))
+        return nullptr;
+
+    std::vector<CaseArm> arms;
+
+    // Parse case arms: label-list : statement
+    // Continue while we don't see 'end' or 'else'
+    while (!check(TokenKind::KwEnd) && !check(TokenKind::KwElse) && !check(TokenKind::Eof))
+    {
+        CaseArm arm;
+        arm.loc = current_.loc;
+
+        // Parse label list (comma-separated expressions)
+        // Note: we do NOT allow ranges here (1..5) - just individual values
+        auto label = parseExpression();
+        if (!label)
+            return nullptr;
+        arm.labels.push_back(std::move(label));
+
+        while (match(TokenKind::Comma))
+        {
+            label = parseExpression();
+            if (!label)
+                return nullptr;
+            arm.labels.push_back(std::move(label));
+        }
+
+        if (!expect(TokenKind::Colon, "':'"))
+            return nullptr;
+
+        arm.body = parseStatement();
+        if (!arm.body)
+            return nullptr;
+
+        arms.push_back(std::move(arm));
+
+        // Consume optional semicolon after case arm
+        match(TokenKind::Semicolon);
+    }
+
+    // Parse optional else clause
+    std::unique_ptr<Stmt> elseBody;
+    if (match(TokenKind::KwElse))
+    {
+        std::vector<std::unique_ptr<Stmt>> elseStmts;
+        while (!check(TokenKind::KwEnd) && !check(TokenKind::Eof))
+        {
+            auto stmt = parseStatement();
+            if (stmt)
+                elseStmts.push_back(std::move(stmt));
+            while (match(TokenKind::Semicolon))
+            {
+            }
+        }
+        elseBody = std::make_unique<BlockStmt>(std::move(elseStmts), loc);
+    }
+
+    if (!expect(TokenKind::KwEnd, "'end'"))
+        return nullptr;
+
+    return std::make_unique<CaseStmt>(std::move(expr), std::move(arms), std::move(elseBody), loc);
 }
 
 std::unique_ptr<BlockStmt> Parser::parseBlock()
@@ -1403,6 +1517,18 @@ std::vector<std::unique_ptr<Decl>> Parser::parseDeclarations()
             if (func)
                 decls.push_back(std::move(func));
         }
+        else if (check(TokenKind::KwConstructor))
+        {
+            auto ctor = parseConstructor();
+            if (ctor)
+                decls.push_back(std::move(ctor));
+        }
+        else if (check(TokenKind::KwDestructor))
+        {
+            auto dtor = parseDestructor();
+            if (dtor)
+                decls.push_back(std::move(dtor));
+        }
         else
         {
             break;
@@ -1588,14 +1714,29 @@ std::unique_ptr<Decl> Parser::parseProcedure()
     if (!expect(TokenKind::KwProcedure, "'procedure'"))
         return nullptr;
 
-    // Parse name
+    // Parse name - may be ClassName.MethodName for method implementations
     if (!check(TokenKind::Identifier))
     {
         error("expected procedure name");
         return nullptr;
     }
     auto name = current_.text;
+    std::string className;
     advance();
+
+    // Check for ClassName.MethodName format
+    if (match(TokenKind::Dot))
+    {
+        // name is actually the class name
+        className = name;
+        if (!check(TokenKind::Identifier))
+        {
+            error("expected method name after '.'");
+            return nullptr;
+        }
+        name = current_.text;
+        advance();
+    }
 
     // Parse parameters
     std::vector<ParamDecl> params;
@@ -1614,6 +1755,7 @@ std::unique_ptr<Decl> Parser::parseProcedure()
         return nullptr;
 
     auto decl = std::make_unique<ProcedureDecl>(std::move(name), std::move(params), loc);
+    decl->className = std::move(className);
 
     // Check for forward declaration
     if (check(TokenKind::KwForward))
@@ -1644,14 +1786,29 @@ std::unique_ptr<Decl> Parser::parseFunction()
     if (!expect(TokenKind::KwFunction, "'function'"))
         return nullptr;
 
-    // Parse name
+    // Parse name - may be ClassName.MethodName for method implementations
     if (!check(TokenKind::Identifier))
     {
         error("expected function name");
         return nullptr;
     }
     auto name = current_.text;
+    std::string className;
     advance();
+
+    // Check for ClassName.MethodName format
+    if (match(TokenKind::Dot))
+    {
+        // name is actually the class name
+        className = name;
+        if (!check(TokenKind::Identifier))
+        {
+            error("expected method name after '.'");
+            return nullptr;
+        }
+        name = current_.text;
+        advance();
+    }
 
     // Parse parameters
     std::vector<ParamDecl> params;
@@ -1679,6 +1836,7 @@ std::unique_ptr<Decl> Parser::parseFunction()
 
     auto decl = std::make_unique<FunctionDecl>(
         std::move(name), std::move(params), std::move(returnType), loc);
+    decl->className = std::move(className);
 
     // Check for forward declaration
     if (check(TokenKind::KwForward))
@@ -2172,14 +2330,29 @@ std::unique_ptr<Decl> Parser::parseConstructor()
     if (!expect(TokenKind::KwConstructor, "'constructor'"))
         return nullptr;
 
-    // Parse name
+    // Parse name - may be ClassName.MethodName for method implementations
     if (!check(TokenKind::Identifier))
     {
         error("expected constructor name");
         return nullptr;
     }
     auto name = current_.text;
+    std::string className;
     advance();
+
+    // Check for ClassName.MethodName format
+    if (match(TokenKind::Dot))
+    {
+        // name is actually the class name
+        className = name;
+        if (!check(TokenKind::Identifier))
+        {
+            error("expected constructor name after '.'");
+            return nullptr;
+        }
+        name = current_.text;
+        advance();
+    }
 
     // Parse parameters
     std::vector<ParamDecl> params;
@@ -2198,6 +2371,7 @@ std::unique_ptr<Decl> Parser::parseConstructor()
         return nullptr;
 
     auto decl = std::make_unique<ConstructorDecl>(std::move(name), std::move(params), loc);
+    decl->className = std::move(className);
 
     // Parse local declarations
     decl->localDecls = parseDeclarations();
@@ -2219,20 +2393,36 @@ std::unique_ptr<Decl> Parser::parseDestructor()
     if (!expect(TokenKind::KwDestructor, "'destructor'"))
         return nullptr;
 
-    // Parse name
+    // Parse name - may be ClassName.MethodName for method implementations
     if (!check(TokenKind::Identifier))
     {
         error("expected destructor name");
         return nullptr;
     }
     auto name = current_.text;
+    std::string className;
     advance();
+
+    // Check for ClassName.MethodName format
+    if (match(TokenKind::Dot))
+    {
+        // name is actually the class name
+        className = name;
+        if (!check(TokenKind::Identifier))
+        {
+            error("expected destructor name after '.'");
+            return nullptr;
+        }
+        name = current_.text;
+        advance();
+    }
 
     // Expect ";"
     if (!expect(TokenKind::Semicolon, "';'"))
         return nullptr;
 
     auto decl = std::make_unique<DestructorDecl>(std::move(name), loc);
+    decl->className = std::move(className);
 
     // Parse local declarations
     decl->localDecls = parseDeclarations();

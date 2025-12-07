@@ -63,6 +63,7 @@ enum class TokenKind
     KwIf,
     KwImplementation,
     KwIn,
+    KwInherited,
     KwInterface,
     KwMod,
     KwNil,

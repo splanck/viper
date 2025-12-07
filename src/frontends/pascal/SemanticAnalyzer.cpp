@@ -17,6 +17,7 @@
 #include "frontends/pascal/BuiltinRegistry.hpp"
 #include <algorithm>
 #include <cctype>
+#include <set>
 
 namespace il::frontends::pascal
 {
@@ -253,6 +254,23 @@ void SemanticAnalyzer::registerType(const std::string &name, TypeNode &typeNode)
     PasType resolved = resolveType(typeNode);
     resolved.name = name;
     types_[key] = resolved;
+
+    // For enum types, register each member as a constant
+    if (resolved.kind == PasTypeKind::Enum)
+    {
+        for (size_t i = 0; i < resolved.enumValues.size(); ++i)
+        {
+            std::string constKey = toLower(resolved.enumValues[i]);
+            // Check for duplicate constant name
+            if (constants_.find(constKey) != constants_.end())
+            {
+                error(typeNode.loc, "enum constant '" + resolved.enumValues[i] + "' is already defined");
+                continue;
+            }
+            constants_[constKey] =
+                PasType::enumConstant(name, resolved.enumValues, static_cast<int>(i));
+        }
+    }
 }
 
 void SemanticAnalyzer::registerVariable(const std::string &name, TypeNode &typeNode)
@@ -321,6 +339,13 @@ void SemanticAnalyzer::registerFunction(FunctionDecl &decl)
 void SemanticAnalyzer::registerClass(ClassDecl &decl)
 {
     std::string key = toLower(decl.name);
+
+    // Prevent redefinition of built-in Exception class
+    if (key == "exception")
+    {
+        error(decl.loc, "cannot redefine built-in class 'Exception'");
+        return;
+    }
 
     // Register as a type
     PasType classType = PasType::classType(decl.name);
@@ -726,6 +751,109 @@ void SemanticAnalyzer::checkWeakFields(const ClassInfo &classInfo)
     }
 }
 
+bool SemanticAnalyzer::classImplementsInterface(const std::string &className,
+                                                 const std::string &interfaceName) const
+{
+    if (className.empty() || interfaceName.empty())
+        return false;
+
+    std::string classKey = toLower(className);
+    std::string ifaceKey = toLower(interfaceName);
+
+    auto classIt = classes_.find(classKey);
+    if (classIt == classes_.end())
+        return false;
+
+    const ClassInfo &classInfo = classIt->second;
+
+    // Check directly implemented interfaces
+    for (const auto &implIface : classInfo.interfaces)
+    {
+        if (toLower(implIface) == ifaceKey)
+            return true;
+
+        // Check if implemented interface extends target interface
+        if (interfaceExtendsInterface(implIface, interfaceName))
+            return true;
+    }
+
+    // Also check if "baseClass" is actually an interface (parser puts first parent there)
+    if (!classInfo.baseClass.empty())
+    {
+        std::string baseKey = toLower(classInfo.baseClass);
+        if (interfaces_.find(baseKey) != interfaces_.end())
+        {
+            if (baseKey == ifaceKey || interfaceExtendsInterface(classInfo.baseClass, interfaceName))
+                return true;
+        }
+    }
+
+    // Recurse to base class
+    if (!classInfo.baseClass.empty())
+    {
+        std::string baseKey = toLower(classInfo.baseClass);
+        if (classes_.find(baseKey) != classes_.end())
+        {
+            return classImplementsInterface(classInfo.baseClass, interfaceName);
+        }
+    }
+
+    return false;
+}
+
+bool SemanticAnalyzer::classInheritsFrom(const std::string &derivedName,
+                                          const std::string &baseName) const
+{
+    if (derivedName.empty() || baseName.empty())
+        return false;
+
+    // Same class (case-insensitive)
+    if (toLower(derivedName) == toLower(baseName))
+        return true;
+
+    std::string derivedKey = toLower(derivedName);
+    auto it = classes_.find(derivedKey);
+    if (it == classes_.end())
+        return false;
+
+    const ClassInfo &classInfo = it->second;
+
+    // Recurse to base class
+    if (!classInfo.baseClass.empty())
+    {
+        return classInheritsFrom(classInfo.baseClass, baseName);
+    }
+
+    return false;
+}
+
+bool SemanticAnalyzer::interfaceExtendsInterface(const std::string &derivedName,
+                                                  const std::string &baseName) const
+{
+    if (derivedName.empty() || baseName.empty())
+        return false;
+
+    // Same interface (case-insensitive)
+    if (toLower(derivedName) == toLower(baseName))
+        return true;
+
+    std::string derivedKey = toLower(derivedName);
+    auto it = interfaces_.find(derivedKey);
+    if (it == interfaces_.end())
+        return false;
+
+    const InterfaceInfo &ifaceInfo = it->second;
+
+    // Check base interfaces
+    for (const auto &baseIface : ifaceInfo.baseInterfaces)
+    {
+        if (interfaceExtendsInterface(baseIface, baseName))
+            return true;
+    }
+
+    return false;
+}
+
 const ClassInfo *SemanticAnalyzer::lookupClass(const std::string &name) const
 {
     std::string key = toLower(name);
@@ -750,7 +878,7 @@ const InterfaceInfo *SemanticAnalyzer::lookupInterface(const std::string &name) 
 
 void SemanticAnalyzer::analyzeBodies(Program &prog)
 {
-    // Analyze procedure/function bodies
+    // Analyze procedure/function/constructor/destructor bodies
     for (auto &decl : prog.decls)
     {
         if (!decl)
@@ -762,6 +890,14 @@ void SemanticAnalyzer::analyzeBodies(Program &prog)
         else if (decl->kind == DeclKind::Function)
         {
             analyzeFunctionBody(static_cast<FunctionDecl &>(*decl));
+        }
+        else if (decl->kind == DeclKind::Constructor)
+        {
+            analyzeConstructorBody(static_cast<ConstructorDecl &>(*decl));
+        }
+        else if (decl->kind == DeclKind::Destructor)
+        {
+            analyzeDestructorBody(static_cast<DestructorDecl &>(*decl));
         }
     }
 
@@ -787,6 +923,14 @@ void SemanticAnalyzer::analyzeBodies(Unit &unit)
         {
             analyzeFunctionBody(static_cast<FunctionDecl &>(*decl));
         }
+        else if (decl->kind == DeclKind::Constructor)
+        {
+            analyzeConstructorBody(static_cast<ConstructorDecl &>(*decl));
+        }
+        else if (decl->kind == DeclKind::Destructor)
+        {
+            analyzeDestructorBody(static_cast<DestructorDecl &>(*decl));
+        }
     }
 
     // Analyze init section
@@ -807,8 +951,21 @@ void SemanticAnalyzer::analyzeProcedureBody(ProcedureDecl &decl)
     if (!decl.body)
         return;
 
+    // Set current class if this is a method
+    std::string savedClassName = currentClassName_;
+    if (decl.isMethod())
+    {
+        currentClassName_ = decl.className;
+    }
+
     // Push scope for procedure
     pushScope();
+
+    // Register Self for methods
+    if (decl.isMethod())
+    {
+        addVariable("self", PasType::classType(decl.className));
+    }
 
     // Register parameters
     for (const auto &param : decl.params)
@@ -828,6 +985,7 @@ void SemanticAnalyzer::analyzeProcedureBody(ProcedureDecl &decl)
     analyzeBlock(*decl.body);
 
     popScope();
+    currentClassName_ = savedClassName;
 }
 
 void SemanticAnalyzer::analyzeFunctionBody(FunctionDecl &decl)
@@ -843,8 +1001,21 @@ void SemanticAnalyzer::analyzeFunctionBody(FunctionDecl &decl)
         currentFunction_ = &it->second;
     }
 
+    // Set current class if this is a method
+    std::string savedClassName = currentClassName_;
+    if (decl.isMethod())
+    {
+        currentClassName_ = decl.className;
+    }
+
     // Push scope for function
     pushScope();
+
+    // Register Self for methods
+    if (decl.isMethod())
+    {
+        addVariable("self", PasType::classType(decl.className));
+    }
 
     // Register parameters
     for (const auto &param : decl.params)
@@ -854,11 +1025,9 @@ void SemanticAnalyzer::analyzeFunctionBody(FunctionDecl &decl)
     }
 
     // Register Result variable with function's return type
+    // Note: Per spec, assigning to function name is NOT supported - only Result
     PasType retType = decl.returnType ? resolveType(*decl.returnType) : PasType::unknown();
     addVariable("result", retType);
-
-    // Also register function name as assignable (Pascal style)
-    addVariable(toLower(decl.name), retType);
 
     // Register local declarations
     for (auto &localDecl : decl.localDecls)
@@ -872,6 +1041,72 @@ void SemanticAnalyzer::analyzeFunctionBody(FunctionDecl &decl)
 
     popScope();
     currentFunction_ = nullptr;
+    currentClassName_ = savedClassName;
+}
+
+void SemanticAnalyzer::analyzeConstructorBody(ConstructorDecl &decl)
+{
+    if (!decl.body)
+        return;
+
+    // Set current class
+    std::string savedClassName = currentClassName_;
+    currentClassName_ = decl.className;
+
+    // Push scope for constructor
+    pushScope();
+
+    // Register Self with the class type
+    addVariable("self", PasType::classType(decl.className));
+
+    // Register parameters
+    for (const auto &param : decl.params)
+    {
+        PasType paramType = param.type ? resolveType(*param.type) : PasType::unknown();
+        addVariable(toLower(param.name), paramType);
+    }
+
+    // Register local declarations
+    for (auto &localDecl : decl.localDecls)
+    {
+        if (localDecl)
+            collectDecl(*localDecl);
+    }
+
+    // Analyze body
+    analyzeBlock(*decl.body);
+
+    popScope();
+    currentClassName_ = savedClassName;
+}
+
+void SemanticAnalyzer::analyzeDestructorBody(DestructorDecl &decl)
+{
+    if (!decl.body)
+        return;
+
+    // Set current class
+    std::string savedClassName = currentClassName_;
+    currentClassName_ = decl.className;
+
+    // Push scope for destructor
+    pushScope();
+
+    // Register Self with the class type
+    addVariable("self", PasType::classType(decl.className));
+
+    // Register local declarations (destructors have no parameters)
+    for (auto &localDecl : decl.localDecls)
+    {
+        if (localDecl)
+            collectDecl(*localDecl);
+    }
+
+    // Analyze body
+    analyzeBlock(*decl.body);
+
+    popScope();
+    currentClassName_ = savedClassName;
 }
 
 //===----------------------------------------------------------------------===//
@@ -933,6 +1168,9 @@ void SemanticAnalyzer::analyzeStmt(Stmt &stmt)
     case StmtKind::With:
         analyzeWith(static_cast<WithStmt &>(stmt));
         break;
+    case StmtKind::Inherited:
+        analyzeInherited(static_cast<InheritedStmt &>(stmt));
+        break;
     case StmtKind::Empty:
         // Nothing to analyze
         break;
@@ -952,6 +1190,26 @@ void SemanticAnalyzer::analyzeAssign(AssignStmt &stmt)
 {
     if (!stmt.target || !stmt.value)
         return;
+
+    // Check for assignment to read-only loop variable
+    if (stmt.target->kind == ExprKind::Name)
+    {
+        const auto &nameExpr = static_cast<const NameExpr &>(*stmt.target);
+        std::string key = toLower(nameExpr.name);
+        if (readOnlyLoopVars_.count(key))
+        {
+            error(stmt, "cannot assign to loop variable '" + nameExpr.name + "' inside loop body");
+            return;
+        }
+
+        // Check for assignment to function name (not allowed - use Result instead)
+        if (functions_.count(key))
+        {
+            error(stmt, "cannot assign to function name '" + nameExpr.name +
+                            "'; use 'Result' to return a value");
+            return;
+        }
+    }
 
     // For assignment targets, use the declared type (not narrowed type)
     // Narrowing only affects reads, not assignment targets
@@ -1165,10 +1423,10 @@ void SemanticAnalyzer::analyzeFor(ForStmt &stmt)
         varType = PasType::integer();
     }
 
-    // Loop variable must be ordinal
+    // Loop variable must be ordinal (Integer or enum), not Real
     if (!varType->isOrdinal())
     {
-        error(stmt, "for loop variable must be an ordinal type");
+        error(stmt, "for loop variable must be Integer or enum type (not Real)");
     }
 
     // Check start and bound expressions
@@ -1190,10 +1448,19 @@ void SemanticAnalyzer::analyzeFor(ForStmt &stmt)
         }
     }
 
+    // Mark the loop variable as read-only during body analysis
+    readOnlyLoopVars_.insert(varKey);
+    // Remove from undefined set (it's valid inside the loop)
+    undefinedVars_.erase(varKey);
+
     ++loopDepth_;
     if (stmt.body)
         analyzeStmt(*stmt.body);
     --loopDepth_;
+
+    // After the loop, the loop variable becomes undefined
+    readOnlyLoopVars_.erase(varKey);
+    undefinedVars_.insert(varKey);
 }
 
 void SemanticAnalyzer::analyzeForIn(ForInStmt &stmt)
@@ -1201,31 +1468,136 @@ void SemanticAnalyzer::analyzeForIn(ForInStmt &stmt)
     // Type-check collection
     PasType collType = stmt.collection ? typeOf(*stmt.collection) : PasType::unknown();
 
-    // For now, just analyze the body
+    // Infer element type based on collection type
+    PasType elementType = PasType::unknown();
+    bool validIterable = false;
+
+    if (!collType.isError())
+    {
+        if (collType.kind == PasTypeKind::Array && collType.elementType)
+        {
+            // Array iteration yields element type
+            elementType = *collType.elementType;
+            validIterable = true;
+        }
+        else if (collType.kind == PasTypeKind::String)
+        {
+            // String iteration yields 1-character strings
+            elementType = PasType::string();
+            validIterable = true;
+        }
+        else
+        {
+            error(stmt, "for-in requires an array or string, got " + collType.toString());
+        }
+    }
+
+    // Create a new scope for the loop variable
+    pushScope();
+
+    // Declare the loop variable with inferred element type
+    std::string varKey = toLower(stmt.loopVar);
+    if (validIterable)
+    {
+        addVariable(varKey, elementType);
+    }
+    else
+    {
+        addVariable(varKey, PasType::unknown());
+    }
+
+    // Mark the loop variable as read-only during body analysis
+    readOnlyLoopVars_.insert(varKey);
+
     ++loopDepth_;
     if (stmt.body)
         analyzeStmt(*stmt.body);
     --loopDepth_;
+
+    // After the loop, the loop variable becomes undefined
+    readOnlyLoopVars_.erase(varKey);
+
+    // Pop the scope (the variable is no longer accessible)
+    popScope();
 }
 
 void SemanticAnalyzer::analyzeCase(CaseStmt &stmt)
 {
+    PasType exprType = PasType::unknown();
     if (stmt.expr)
     {
-        PasType exprType = typeOf(*stmt.expr);
-        // Case expression should be ordinal or string
-        if (!exprType.isOrdinal() && exprType.kind != PasTypeKind::String && !exprType.isError())
+        exprType = typeOf(*stmt.expr);
+        // Case expression must be Integer or Enum (not String in v0.1)
+        if (!exprType.isError() && exprType.kind != PasTypeKind::Integer &&
+            exprType.kind != PasTypeKind::Enum)
         {
-            error(*stmt.expr, "case expression must be ordinal or string type");
+            error(*stmt.expr, "case expression must be Integer or enum type");
         }
     }
+
+    // Track seen labels for duplicate detection
+    std::set<int64_t> seenLabels;
 
     for (auto &arm : stmt.arms)
     {
         for (auto &label : arm.labels)
         {
-            if (label)
-                typeOf(*label);
+            if (!label)
+                continue;
+
+            // Type-check the label
+            PasType labelType = typeOf(*label);
+
+            // Check label type matches case expression type
+            if (!labelType.isError() && !exprType.isError())
+            {
+                if (exprType.kind == PasTypeKind::Integer && labelType.kind != PasTypeKind::Integer)
+                {
+                    error(*label, "case label must be Integer");
+                }
+                else if (exprType.kind == PasTypeKind::Enum)
+                {
+                    if (labelType.kind != PasTypeKind::Enum || labelType.name != exprType.name)
+                    {
+                        error(*label, "case label must be of type " + exprType.name);
+                    }
+                }
+            }
+
+            // Extract compile-time constant value for duplicate detection
+            int64_t labelValue = 0;
+            bool isConstant = false;
+            if (label->kind == ExprKind::IntLiteral)
+            {
+                labelValue = static_cast<IntLiteralExpr &>(*label).value;
+                isConstant = true;
+            }
+            else if (label->kind == ExprKind::Name)
+            {
+                // Check if it's an enum constant
+                auto &nameExpr = static_cast<NameExpr &>(*label);
+                if (auto constType = lookupConstant(toLower(nameExpr.name)))
+                {
+                    if (constType->kind == PasTypeKind::Enum && constType->enumOrdinal >= 0)
+                    {
+                        labelValue = constType->enumOrdinal;
+                        isConstant = true;
+                    }
+                }
+            }
+
+            // Check for duplicates
+            if (isConstant)
+            {
+                if (seenLabels.count(labelValue) > 0)
+                {
+                    error(*label, "duplicate case label");
+                }
+                else
+                {
+                    seenLabels.insert(labelValue);
+                }
+            }
         }
         if (arm.body)
             analyzeStmt(*arm.body);
@@ -1243,11 +1615,36 @@ void SemanticAnalyzer::analyzeRaise(RaiseStmt &stmt)
         PasType excType = typeOf(*stmt.exception);
 
         // Check that the expression is an exception type (class derived from Exception)
-        if (!excType.isError() && excType.kind != PasTypeKind::Class)
+        if (!excType.isError())
         {
-            error(stmt, "raise expression must be an exception object");
+            if (excType.kind != PasTypeKind::Class)
+            {
+                error(stmt, "raise expression must be an exception object (class type)");
+            }
+            else
+            {
+                // Verify the class derives from Exception
+                bool derivesFromException = false;
+                std::string checkClass = toLower(excType.name);
+                while (!checkClass.empty())
+                {
+                    if (checkClass == "exception")
+                    {
+                        derivesFromException = true;
+                        break;
+                    }
+                    auto classIt = classes_.find(checkClass);
+                    if (classIt == classes_.end())
+                        break;
+                    checkClass = toLower(classIt->second.baseClass);
+                }
+                if (!derivesFromException)
+                {
+                    error(stmt, "raise expression must be of type Exception or a subclass, not '" +
+                                    excType.name + "'");
+                }
+            }
         }
-        // Note: Full inheritance checking would verify excType derives from Exception
     }
     else
     {
@@ -1261,6 +1658,13 @@ void SemanticAnalyzer::analyzeRaise(RaiseStmt &stmt)
 
 void SemanticAnalyzer::analyzeTryExcept(TryExceptStmt &stmt)
 {
+    // Reject except...else syntax in v0.1
+    if (stmt.elseBody)
+    {
+        error(stmt, "'except...else' is not supported; use 'on E: Exception do' as a catch-all");
+        // Continue analysis for better error recovery
+    }
+
     if (stmt.tryBody)
         analyzeBlock(*stmt.tryBody);
 
@@ -1349,6 +1753,42 @@ void SemanticAnalyzer::analyzeWith(WithStmt &stmt)
         analyzeStmt(*stmt.body);
 }
 
+void SemanticAnalyzer::analyzeInherited(InheritedStmt &stmt)
+{
+    // inherited must be used inside a method
+    if (currentClassName_.empty())
+    {
+        error(stmt, "'inherited' can only be used inside a method");
+        return;
+    }
+
+    // Look up the current class to find its base class
+    std::string classKey = toLower(currentClassName_);
+    auto classIt = classes_.find(classKey);
+    if (classIt == classes_.end())
+    {
+        error(stmt, "internal error: current class '" + currentClassName_ + "' not found");
+        return;
+    }
+
+    const ClassInfo &classInfo = classIt->second;
+    if (classInfo.baseClass.empty())
+    {
+        error(stmt, "cannot use 'inherited' - class '" + currentClassName_ + "' has no base class");
+        return;
+    }
+
+    // Type-check arguments
+    for (auto &arg : stmt.args)
+    {
+        if (arg)
+            typeOf(*arg);
+    }
+
+    // TODO: If methodName is specified, verify it exists in base class hierarchy
+    // For now, we just type-check the arguments
+}
+
 //===----------------------------------------------------------------------===//
 // Expression Type Checking
 //===----------------------------------------------------------------------===//
@@ -1419,6 +1859,13 @@ PasType SemanticAnalyzer::typeOfNil(NilLiteralExpr & /*expr*/)
 PasType SemanticAnalyzer::typeOfName(NameExpr &expr)
 {
     std::string key = toLower(expr.name);
+
+    // Check if the variable is undefined (e.g., for loop variable after loop ends)
+    if (undefinedVars_.count(key))
+    {
+        error(expr, "loop variable '" + expr.name + "' is undefined after loop terminates");
+        return PasType::unknown();
+    }
 
     // Check variables first, using effective type (respects narrowing)
     if (auto type = lookupEffectiveType(key))
@@ -1844,13 +2291,23 @@ bool SemanticAnalyzer::isAssignableFrom(const PasType &target, const PasType &so
     if (source.kind == PasTypeKind::Nil && target.isNilAssignable())
         return true;
 
-    // Same kind is always assignable
+    // Same kind - check compatibility
     if (target.kind == source.kind)
     {
         // For optional types, also check inner type compatibility
         if (target.kind == PasTypeKind::Optional && target.innerType && source.innerType)
         {
             return isAssignableFrom(*target.innerType, *source.innerType);
+        }
+        // For classes, check inheritance
+        if (target.kind == PasTypeKind::Class)
+        {
+            return classInheritsFrom(source.name, target.name);
+        }
+        // For interfaces, check inheritance
+        if (target.kind == PasTypeKind::Interface)
+        {
+            return interfaceExtendsInterface(source.name, target.name);
         }
         return true;
     }
@@ -1877,6 +2334,12 @@ bool SemanticAnalyzer::isAssignableFrom(const PasType &target, const PasType &so
     if (target.kind == PasTypeKind::Integer &&
         (source.kind == PasTypeKind::Enum || source.kind == PasTypeKind::Range))
         return true;
+
+    // Class can be assigned to interface if the class implements the interface
+    if (target.kind == PasTypeKind::Interface && source.kind == PasTypeKind::Class)
+    {
+        return classImplementsInterface(source.name, target.name);
+    }
 
     return false;
 }
@@ -1936,11 +2399,29 @@ PasType SemanticAnalyzer::binaryResultType(BinaryExpr::Op op, const PasType &lef
             hasError_ = true;
             return PasType::unknown();
         }
+        // For enum types, both operands must be the same enum type
+        if (left.kind == PasTypeKind::Enum || right.kind == PasTypeKind::Enum)
+        {
+            if (left.kind != right.kind || left.name != right.name)
+            {
+                hasError_ = true;
+                return PasType::unknown();
+            }
+        }
         return PasType::boolean();
     case BinaryExpr::Op::Lt:
     case BinaryExpr::Op::Le:
     case BinaryExpr::Op::Gt:
     case BinaryExpr::Op::Ge:
+        // For enum types, both operands must be the same enum type
+        if (left.kind == PasTypeKind::Enum || right.kind == PasTypeKind::Enum)
+        {
+            if (left.kind != right.kind || left.name != right.name)
+            {
+                hasError_ = true;
+                return PasType::unknown();
+            }
+        }
         // Comparisons return Boolean
         return PasType::boolean();
 

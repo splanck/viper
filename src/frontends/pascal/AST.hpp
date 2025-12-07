@@ -428,6 +428,7 @@ enum class StmtKind
     TryExcept,
     TryFinally,
     With,
+    Inherited,
     Empty,
 };
 
@@ -574,6 +575,21 @@ struct ContinueStmt : Stmt
     explicit ContinueStmt(il::support::SourceLoc l = {}) : Stmt(StmtKind::Continue, l) {}
 };
 
+/// @brief Inherited statement (call to base class method).
+/// @details `inherited;` calls the base version of the current method.
+///          `inherited MethodName(args);` calls a specific base method.
+struct InheritedStmt : Stmt
+{
+    std::string methodName;                    ///< Empty for implicit (same method name)
+    std::vector<std::unique_ptr<Expr>> args;   ///< Arguments for the call
+
+    explicit InheritedStmt(il::support::SourceLoc l = {}) : Stmt(StmtKind::Inherited, l) {}
+
+    InheritedStmt(std::string name, std::vector<std::unique_ptr<Expr>> arguments,
+                  il::support::SourceLoc l = {})
+        : Stmt(StmtKind::Inherited, l), methodName(std::move(name)), args(std::move(arguments)) {}
+};
+
 /// @brief Raise statement (exception throwing).
 struct RaiseStmt : Stmt
 {
@@ -717,6 +733,7 @@ struct ParamDecl
 struct ProcedureDecl : Decl
 {
     std::string name;
+    std::string className;  ///< Empty for free procedures; class name for methods
     std::vector<ParamDecl> params;
     std::vector<std::unique_ptr<Decl>> localDecls;
     std::unique_ptr<BlockStmt> body; ///< May be nullptr (forward declaration)
@@ -727,12 +744,16 @@ struct ProcedureDecl : Decl
 
     ProcedureDecl(std::string name, std::vector<ParamDecl> params, il::support::SourceLoc l = {})
         : Decl(DeclKind::Procedure, l), name(std::move(name)), params(std::move(params)) {}
+
+    /// @brief Check if this is a method (belongs to a class).
+    bool isMethod() const { return !className.empty(); }
 };
 
 /// @brief Function declaration.
 struct FunctionDecl : Decl
 {
     std::string name;
+    std::string className;  ///< Empty for free functions; class name for methods
     std::vector<ParamDecl> params;
     std::unique_ptr<TypeNode> returnType;
     std::vector<std::unique_ptr<Decl>> localDecls;
@@ -746,6 +767,9 @@ struct FunctionDecl : Decl
                  std::unique_ptr<TypeNode> returnType, il::support::SourceLoc l = {})
         : Decl(DeclKind::Function, l), name(std::move(name)), params(std::move(params)),
           returnType(std::move(returnType)) {}
+
+    /// @brief Check if this is a method (belongs to a class).
+    bool isMethod() const { return !className.empty(); }
 };
 
 /// @brief Visibility section in a class.
@@ -813,7 +837,8 @@ struct ClassMember
 /// @brief Constructor declaration.
 struct ConstructorDecl : Decl
 {
-    std::string name; ///< Usually "Create"
+    std::string name;      ///< Usually "Create"
+    std::string className; ///< Owning class name (for method implementations)
     std::vector<ParamDecl> params;
     std::vector<std::unique_ptr<Decl>> localDecls;
     std::unique_ptr<BlockStmt> body; ///< May be nullptr (forward declaration)
@@ -827,7 +852,8 @@ struct ConstructorDecl : Decl
 /// @brief Destructor declaration.
 struct DestructorDecl : Decl
 {
-    std::string name; ///< Usually "Destroy"
+    std::string name;      ///< Usually "Destroy"
+    std::string className; ///< Owning class name (for method implementations)
     std::vector<std::unique_ptr<Decl>> localDecls;
     std::unique_ptr<BlockStmt> body; ///< May be nullptr (forward declaration)
     bool isForward{false};

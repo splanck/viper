@@ -832,6 +832,93 @@ TEST(PascalParserError, MissingEnd)
     EXPECT_TRUE(parser.hasError());
 }
 
+//===----------------------------------------------------------------------===//
+// Case Statement Tests
+//===----------------------------------------------------------------------===//
+
+TEST(PascalParserCase, SimpleCaseWithIntegerLabels)
+{
+    auto stmt = parseStmt("case x of 1: y := 1; 2: y := 2 end");
+    EXPECT_TRUE(stmt != nullptr);
+
+    auto *cs = asStmt<CaseStmt>(stmt.get());
+    EXPECT_TRUE(cs != nullptr);
+    EXPECT_TRUE(cs->expr != nullptr);
+    EXPECT_EQ(cs->arms.size(), 2u);
+    EXPECT_TRUE(cs->elseBody == nullptr);
+
+    // First arm: label is 1
+    EXPECT_EQ(cs->arms[0].labels.size(), 1u);
+    auto *label1 = asExpr<IntLiteralExpr>(cs->arms[0].labels[0].get());
+    EXPECT_TRUE(label1 != nullptr);
+    EXPECT_EQ(label1->value, 1);
+
+    // Second arm: label is 2
+    EXPECT_EQ(cs->arms[1].labels.size(), 1u);
+    auto *label2 = asExpr<IntLiteralExpr>(cs->arms[1].labels[0].get());
+    EXPECT_TRUE(label2 != nullptr);
+    EXPECT_EQ(label2->value, 2);
+}
+
+TEST(PascalParserCase, CaseWithMultipleLabels)
+{
+    auto stmt = parseStmt("case x of 1, 2, 3: y := 10 end");
+    EXPECT_TRUE(stmt != nullptr);
+
+    auto *cs = asStmt<CaseStmt>(stmt.get());
+    EXPECT_TRUE(cs != nullptr);
+    EXPECT_EQ(cs->arms.size(), 1u);
+    EXPECT_EQ(cs->arms[0].labels.size(), 3u);
+
+    auto *l1 = asExpr<IntLiteralExpr>(cs->arms[0].labels[0].get());
+    auto *l2 = asExpr<IntLiteralExpr>(cs->arms[0].labels[1].get());
+    auto *l3 = asExpr<IntLiteralExpr>(cs->arms[0].labels[2].get());
+    EXPECT_TRUE(l1 != nullptr && l1->value == 1);
+    EXPECT_TRUE(l2 != nullptr && l2->value == 2);
+    EXPECT_TRUE(l3 != nullptr && l3->value == 3);
+}
+
+TEST(PascalParserCase, CaseWithElse)
+{
+    auto stmt = parseStmt("case x of 1: y := 1 else y := 0 end");
+    EXPECT_TRUE(stmt != nullptr);
+
+    auto *cs = asStmt<CaseStmt>(stmt.get());
+    EXPECT_TRUE(cs != nullptr);
+    EXPECT_TRUE(cs->elseBody != nullptr);
+    EXPECT_EQ(cs->arms.size(), 1u);
+}
+
+TEST(PascalParserCase, CaseWithEnumConstants)
+{
+    // Parser doesn't do semantic analysis - just verifies it parses identifiers as labels
+    auto stmt = parseStmt("case c of Red: x := 1; Green: x := 2; Blue: x := 3 end");
+    EXPECT_TRUE(stmt != nullptr);
+
+    auto *cs = asStmt<CaseStmt>(stmt.get());
+    EXPECT_TRUE(cs != nullptr);
+    EXPECT_EQ(cs->arms.size(), 3u);
+
+    // Check first label is a name expression
+    auto *nameLabel = asExpr<NameExpr>(cs->arms[0].labels[0].get());
+    EXPECT_TRUE(nameLabel != nullptr);
+    EXPECT_EQ(nameLabel->name, "Red");
+}
+
+TEST(PascalParserCase, CaseWithBlockBody)
+{
+    auto stmt = parseStmt("case x of 1: begin y := 1; z := 2 end end");
+    EXPECT_TRUE(stmt != nullptr);
+
+    auto *cs = asStmt<CaseStmt>(stmt.get());
+    EXPECT_TRUE(cs != nullptr);
+    EXPECT_EQ(cs->arms.size(), 1u);
+
+    // Body should be a BlockStmt
+    auto *block = asStmt<BlockStmt>(cs->arms[0].body.get());
+    EXPECT_TRUE(block != nullptr);
+}
+
 } // namespace
 
 #ifndef VIPER_HAS_GTEST

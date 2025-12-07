@@ -1040,6 +1040,416 @@ TEST(PascalSemanticEHTest, ReraiseInNestedHandler)
     EXPECT_EQ(diag.errorCount(), 0u);
 }
 
+//===----------------------------------------------------------------------===//
+// Enum Type Tests
+//===----------------------------------------------------------------------===//
+
+TEST(PascalSemanticEnumTest, EnumTypeDeclaration)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram(
+        "program Test;\n"
+        "type Color = (Red, Green, Blue);\n"
+        "var c: Color;\n"
+        "begin\n"
+        "  c := Red\n"
+        "end.",
+        diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
+TEST(PascalSemanticEnumTest, EnumComparison)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram(
+        "program Test;\n"
+        "type Color = (Red, Green, Blue);\n"
+        "var c: Color; b: Boolean;\n"
+        "begin\n"
+        "  c := Red;\n"
+        "  b := c = Green;\n"
+        "  b := c < Blue\n"
+        "end.",
+        diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
+TEST(PascalSemanticEnumTest, EnumArithmeticNotAllowed)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram(
+        "program Test;\n"
+        "type Color = (Red, Green, Blue);\n"
+        "var c: Color;\n"
+        "begin\n"
+        "  c := Red + 1\n"  // Arithmetic on enum not allowed
+        "end.",
+        diag);
+    EXPECT_FALSE(result);
+    EXPECT_TRUE(diag.errorCount() > 0);
+}
+
+TEST(PascalSemanticEnumTest, EnumTypeMismatch)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram(
+        "program Test;\n"
+        "type Color = (Red, Green, Blue);\n"
+        "type Size = (Small, Medium, Large);\n"
+        "var c: Color; s: Size; b: Boolean;\n"
+        "begin\n"
+        "  b := c = s\n"  // Cannot compare different enum types
+        "end.",
+        diag);
+    EXPECT_FALSE(result);
+    EXPECT_TRUE(diag.errorCount() > 0);
+}
+
+//===----------------------------------------------------------------------===//
+// Case Statement Tests
+//===----------------------------------------------------------------------===//
+
+TEST(PascalSemanticCaseTest, IntegerCase)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram(
+        "program Test;\n"
+        "var x, y: Integer;\n"
+        "begin\n"
+        "  x := 2;\n"
+        "  case x of\n"
+        "    1: y := 10;\n"
+        "    2: y := 20;\n"
+        "    3: y := 30\n"
+        "  end\n"
+        "end.",
+        diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
+TEST(PascalSemanticCaseTest, EnumCase)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram(
+        "program Test;\n"
+        "type Color = (Red, Green, Blue);\n"
+        "var c: Color; x: Integer;\n"
+        "begin\n"
+        "  c := Green;\n"
+        "  case c of\n"
+        "    Red: x := 1;\n"
+        "    Green: x := 2;\n"
+        "    Blue: x := 3\n"
+        "  end\n"
+        "end.",
+        diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
+TEST(PascalSemanticCaseTest, CaseWithElse)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram(
+        "program Test;\n"
+        "var x, y: Integer;\n"
+        "begin\n"
+        "  x := 99;\n"
+        "  case x of\n"
+        "    1: y := 1;\n"
+        "    2: y := 2\n"
+        "  else\n"
+        "    y := 0\n"
+        "  end\n"
+        "end.",
+        diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
+TEST(PascalSemanticCaseTest, CaseMultipleLabels)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram(
+        "program Test;\n"
+        "var x, y: Integer;\n"
+        "begin\n"
+        "  x := 2;\n"
+        "  case x of\n"
+        "    1, 2, 3: y := 10\n"
+        "  end\n"
+        "end.",
+        diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
+TEST(PascalSemanticCaseTest, CaseStringNotAllowed)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram(
+        "program Test;\n"
+        "var s: String; x: Integer;\n"
+        "begin\n"
+        "  s := 'hello';\n"
+        "  case s of\n"
+        "    'a': x := 1;\n"
+        "    'b': x := 2\n"
+        "  end\n"
+        "end.",
+        diag);
+    EXPECT_FALSE(result);  // String case not allowed in v0.1
+    EXPECT_TRUE(diag.errorCount() > 0);
+}
+
+TEST(PascalSemanticCaseTest, DuplicateCaseLabel)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram(
+        "program Test;\n"
+        "var x, y: Integer;\n"
+        "begin\n"
+        "  x := 2;\n"
+        "  case x of\n"
+        "    1: y := 10;\n"
+        "    1: y := 20\n"  // Duplicate label
+        "  end\n"
+        "end.",
+        diag);
+    EXPECT_FALSE(result);
+    EXPECT_TRUE(diag.errorCount() > 0);
+}
+
+TEST(PascalSemanticCaseTest, CaseLabelTypeMismatch)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram(
+        "program Test;\n"
+        "type Color = (Red, Green, Blue);\n"
+        "var x: Integer; c: Color; y: Integer;\n"
+        "begin\n"
+        "  x := 1;\n"
+        "  case x of\n"
+        "    Red: y := 1\n"  // Enum label for integer case
+        "  end\n"
+        "end.",
+        diag);
+    EXPECT_FALSE(result);
+    EXPECT_TRUE(diag.errorCount() > 0);
+}
+
+//===----------------------------------------------------------------------===//
+// For Loop Variable Semantics Tests
+//===----------------------------------------------------------------------===//
+
+TEST(PascalSemanticTest, ForLoopVariableReadOnly)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram(
+        "program Test;\n"
+        "var i: Integer;\n"
+        "begin\n"
+        "  for i := 1 to 10 do\n"
+        "    i := 5\n"  // Error: cannot assign to loop variable
+        "end.",
+        diag);
+    EXPECT_FALSE(result);
+    EXPECT_NE(diag.errorCount(), 0u);
+}
+
+TEST(PascalSemanticTest, ForLoopVariableUndefinedAfter)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram(
+        "program Test;\n"
+        "var i, x: Integer;\n"
+        "begin\n"
+        "  for i := 1 to 10 do\n"
+        "    x := i;\n"
+        "  x := i\n"  // Error: i is undefined after loop
+        "end.",
+        diag);
+    EXPECT_FALSE(result);
+    EXPECT_NE(diag.errorCount(), 0u);
+}
+
+TEST(PascalSemanticTest, ForLoopVariableOrdinalOnly)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram(
+        "program Test;\n"
+        "var r: Real;\n"
+        "begin\n"
+        "  for r := 1.0 to 10.0 do\n"  // Error: loop variable must be ordinal
+        "    WriteLn(r)\n"
+        "end.",
+        diag);
+    EXPECT_FALSE(result);
+    EXPECT_NE(diag.errorCount(), 0u);
+}
+
+TEST(PascalSemanticTest, ForLoopWithEnumVariable)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram(
+        "program Test;\n"
+        "type Color = (Red, Green, Blue);\n"
+        "var c: Color;\n"
+        "begin\n"
+        "  for c := Red to Blue do\n"
+        "    WriteLn('color')\n"
+        "end.",
+        diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
+TEST(PascalSemanticTest, BreakInNestedLoop)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram(
+        "program Test;\n"
+        "var i, j: Integer;\n"
+        "begin\n"
+        "  for i := 1 to 10 do begin\n"
+        "    for j := 1 to 10 do begin\n"
+        "      if i + j = 15 then break\n"
+        "    end\n"
+        "  end\n"
+        "end.",
+        diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
+TEST(PascalSemanticTest, ContinueInRepeatLoop)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram(
+        "program Test;\n"
+        "var x: Integer;\n"
+        "begin\n"
+        "  x := 0;\n"
+        "  repeat\n"
+        "    x := x + 1;\n"
+        "    if x = 5 then continue;\n"
+        "    WriteLn(x)\n"
+        "  until x = 10\n"
+        "end.",
+        diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
+//===----------------------------------------------------------------------===//
+// For-In Loop Tests
+//===----------------------------------------------------------------------===//
+
+TEST(PascalSemanticTest, ForInOverDynamicArray)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram(
+        "program Test;\n"
+        "var arr: array of Integer;\n"
+        "var item: Integer;\n"
+        "begin\n"
+        "  for item in arr do\n"
+        "    WriteLn(item)\n"
+        "end.",
+        diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
+TEST(PascalSemanticTest, ForInOverString)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram(
+        "program Test;\n"
+        "var s: String;\n"
+        "var ch: String;\n"
+        "begin\n"
+        "  s := 'Hello';\n"
+        "  for ch in s do\n"
+        "    WriteLn(ch)\n"
+        "end.",
+        diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
+TEST(PascalSemanticTest, ForInVariableReadOnly)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram(
+        "program Test;\n"
+        "var arr: array of Integer;\n"
+        "var item: Integer;\n"
+        "begin\n"
+        "  for item in arr do\n"
+        "    item := 5\n"  // Error: cannot assign to for-in loop variable
+        "end.",
+        diag);
+    EXPECT_FALSE(result);
+    EXPECT_NE(diag.errorCount(), 0u);
+}
+
+TEST(PascalSemanticTest, ForInInvalidCollection)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram(
+        "program Test;\n"
+        "var x, item: Integer;\n"
+        "begin\n"
+        "  x := 10;\n"
+        "  for item in x do\n"  // Error: Integer is not iterable
+        "    WriteLn(item)\n"
+        "end.",
+        diag);
+    EXPECT_FALSE(result);
+    EXPECT_NE(diag.errorCount(), 0u);
+}
+
+TEST(PascalSemanticTest, ForInWithBreak)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram(
+        "program Test;\n"
+        "var arr: array of Integer;\n"
+        "var item: Integer;\n"
+        "begin\n"
+        "  for item in arr do begin\n"
+        "    if item > 5 then break;\n"
+        "    WriteLn(item)\n"
+        "  end\n"
+        "end.",
+        diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
+TEST(PascalSemanticTest, ForInWithContinue)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram(
+        "program Test;\n"
+        "var s: String;\n"
+        "var ch: String;\n"
+        "begin\n"
+        "  s := 'abc';\n"
+        "  for ch in s do begin\n"
+        "    if ch = 'b' then continue;\n"
+        "    WriteLn(ch)\n"
+        "  end\n"
+        "end.",
+        diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
 } // namespace
 
 #ifndef VIPER_HAS_GTEST

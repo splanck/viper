@@ -82,7 +82,7 @@ interface
 implementation
   function Square(x: Integer): Integer;
   begin
-    Square := x * x
+    Result := x * x
   end;
 end.
 )";
@@ -150,7 +150,7 @@ interface
 implementation
   function Square(x: Integer): Integer;
   begin
-    Square := x * x
+    Result := x * x
   end;
 end.
 )";
@@ -239,7 +239,7 @@ interface
 implementation
   function Square(x: Integer): Integer;
   begin
-    Square := x * x
+    Result := x * x
   end;
 end.
 )";
@@ -289,7 +289,7 @@ interface
 implementation
   function Square(x: Integer): Integer;
   begin
-    Square := x * x
+    Result := x * x
   end;
 end.
 )";

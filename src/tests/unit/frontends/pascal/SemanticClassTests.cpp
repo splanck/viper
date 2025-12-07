@@ -492,6 +492,595 @@ TEST(PascalClassTest, InterfaceImplementedByBase)
     EXPECT_EQ(diag.errorCount(), 0u);
 }
 
+//===----------------------------------------------------------------------===//
+// Self Identifier Tests
+//===----------------------------------------------------------------------===//
+
+TEST(PascalClassTest, SelfInMethod)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram(
+        "program Test;\n"
+        "type\n"
+        "  TCounter = class\n"
+        "    public\n"
+        "      Value: Integer;\n"
+        "      procedure Increment;\n"
+        "  end;\n"
+        "procedure TCounter.Increment;\n"
+        "begin\n"
+        "  Self.Value := Self.Value + 1\n"
+        "end;\n"
+        "begin\n"
+        "end.",
+        diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
+TEST(PascalClassTest, SelfOutsideMethodError)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram(
+        "program Test;\n"
+        "var x: Integer;\n"
+        "begin\n"
+        "  x := Self.Value\n"  // Error: Self outside method
+        "end.",
+        diag);
+    EXPECT_FALSE(result);
+    EXPECT_NE(diag.errorCount(), 0u);
+}
+
+TEST(PascalClassTest, SelfInConstructor)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram(
+        "program Test;\n"
+        "type\n"
+        "  TPoint = class\n"
+        "    public\n"
+        "      X: Integer;\n"
+        "      Y: Integer;\n"
+        "      constructor Create(aX: Integer; aY: Integer);\n"
+        "  end;\n"
+        "constructor TPoint.Create(aX: Integer; aY: Integer);\n"
+        "begin\n"
+        "  Self.X := aX;\n"
+        "  Self.Y := aY\n"
+        "end;\n"
+        "begin\n"
+        "end.",
+        diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
+//===----------------------------------------------------------------------===//
+// Method Implementation Syntax Tests
+//===----------------------------------------------------------------------===//
+
+TEST(PascalClassTest, MethodImplementationSyntax)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram(
+        "program Test;\n"
+        "type\n"
+        "  TFoo = class\n"
+        "    public\n"
+        "      procedure DoSomething;\n"
+        "      function GetValue: Integer;\n"
+        "  end;\n"
+        "procedure TFoo.DoSomething;\n"
+        "begin\n"
+        "end;\n"
+        "function TFoo.GetValue: Integer;\n"
+        "begin\n"
+        "  Result := 42\n"
+        "end;\n"
+        "begin\n"
+        "end.",
+        diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
+//===----------------------------------------------------------------------===//
+// Inherited Statement Tests
+//===----------------------------------------------------------------------===//
+
+TEST(PascalClassTest, InheritedInOverride)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram(
+        "program Test;\n"
+        "type\n"
+        "  TBase = class\n"
+        "    public\n"
+        "      procedure DoWork; virtual;\n"
+        "  end;\n"
+        "  TChild = class(TBase)\n"
+        "    public\n"
+        "      procedure DoWork; override;\n"
+        "  end;\n"
+        "procedure TBase.DoWork;\n"
+        "begin\n"
+        "end;\n"
+        "procedure TChild.DoWork;\n"
+        "begin\n"
+        "  inherited\n"  // Call base DoWork
+        "end;\n"
+        "begin\n"
+        "end.",
+        diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
+TEST(PascalClassTest, InheritedOutsideMethodError)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram(
+        "program Test;\n"
+        "begin\n"
+        "  inherited\n"  // Error: inherited outside method
+        "end.",
+        diag);
+    EXPECT_FALSE(result);
+    EXPECT_NE(diag.errorCount(), 0u);
+}
+
+TEST(PascalClassTest, InheritedNoBaseClassError)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram(
+        "program Test;\n"
+        "type\n"
+        "  TRoot = class\n"
+        "    public\n"
+        "      procedure DoWork;\n"
+        "  end;\n"
+        "procedure TRoot.DoWork;\n"
+        "begin\n"
+        "  inherited\n"  // Error: TRoot has no base class
+        "end;\n"
+        "begin\n"
+        "end.",
+        diag);
+    EXPECT_FALSE(result);
+    EXPECT_NE(diag.errorCount(), 0u);
+}
+
+//===----------------------------------------------------------------------===//
+// Result Variable Tests
+//===----------------------------------------------------------------------===//
+
+TEST(PascalClassTest, ResultInFunction)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram(
+        "program Test;\n"
+        "function Double(x: Integer): Integer;\n"
+        "begin\n"
+        "  Result := x * 2\n"
+        "end;\n"
+        "begin\n"
+        "end.",
+        diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
+TEST(PascalClassTest, FunctionNameAssignmentError)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram(
+        "program Test;\n"
+        "function Double(x: Integer): Integer;\n"
+        "begin\n"
+        "  Double := x * 2\n"  // Error: cannot assign to function name
+        "end;\n"
+        "begin\n"
+        "end.",
+        diag);
+    EXPECT_FALSE(result);
+    EXPECT_NE(diag.errorCount(), 0u);
+}
+
+TEST(PascalClassTest, ResultInMethodFunction)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram(
+        "program Test;\n"
+        "type\n"
+        "  TCalc = class\n"
+        "    public\n"
+        "      function Add(a: Integer; b: Integer): Integer;\n"
+        "  end;\n"
+        "function TCalc.Add(a: Integer; b: Integer): Integer;\n"
+        "begin\n"
+        "  Result := a + b\n"
+        "end;\n"
+        "begin\n"
+        "end.",
+        diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
+//===----------------------------------------------------------------------===//
+// Multiple Interface Implementation Tests
+//===----------------------------------------------------------------------===//
+
+TEST(PascalClassTest, MultipleInterfacesValid)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram(
+        "program Test;\n"
+        "type\n"
+        "  IDrawable = interface\n"
+        "    procedure Draw;\n"
+        "  end;\n"
+        "  ISerializable = interface\n"
+        "    function ToJson: String;\n"
+        "  end;\n"
+        "  TButton = class(IDrawable, ISerializable)\n"
+        "    public\n"
+        "      Label: String;\n"
+        "      procedure Draw;\n"
+        "      function ToJson: String;\n"
+        "  end;\n"
+        "begin\n"
+        "end.",
+        diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
+TEST(PascalClassTest, BaseClassAndMultipleInterfaces)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram(
+        "program Test;\n"
+        "type\n"
+        "  IClickable = interface\n"
+        "    procedure OnClick;\n"
+        "  end;\n"
+        "  IAnimatable = interface\n"
+        "    procedure Animate;\n"
+        "  end;\n"
+        "  TButton = class\n"
+        "    public\n"
+        "      procedure OnClick;\n"
+        "      procedure Animate;\n"
+        "  end;\n"
+        "  TFancyButton = class(TButton, IClickable, IAnimatable)\n"
+        "    public\n"
+        "      FancyEffect: String;\n"
+        "  end;\n"
+        "begin\n"
+        "end.",
+        diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
+TEST(PascalClassTest, InterfaceInheritance)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram(
+        "program Test;\n"
+        "type\n"
+        "  IBase = interface\n"
+        "    procedure BaseMethod;\n"
+        "  end;\n"
+        "  IDerived = interface(IBase)\n"
+        "    procedure DerivedMethod;\n"
+        "  end;\n"
+        "  TImpl = class(IDerived)\n"
+        "    public\n"
+        "      procedure BaseMethod;\n"
+        "      procedure DerivedMethod;\n"
+        "  end;\n"
+        "begin\n"
+        "end.",
+        diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
+TEST(PascalClassTest, InterfaceNotFullyImplemented)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram(
+        "program Test;\n"
+        "type\n"
+        "  IDrawable = interface\n"
+        "    procedure Draw;\n"
+        "  end;\n"
+        "  ISerializable = interface\n"
+        "    function ToJson: String;\n"
+        "  end;\n"
+        "  TBad = class(IDrawable, ISerializable)\n"
+        "    public\n"
+        "      procedure Draw;\n"  // Missing ToJson
+        "  end;\n"
+        "begin\n"
+        "end.",
+        diag);
+    EXPECT_FALSE(result);
+    EXPECT_NE(diag.errorCount(), 0u);
+}
+
+//===----------------------------------------------------------------------===//
+// Weak Reference Extended Tests
+//===----------------------------------------------------------------------===//
+
+TEST(PascalClassTest, WeakFieldArrayError)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram(
+        "program Test;\n"
+        "type\n"
+        "  TBad = class\n"
+        "    public\n"
+        "      weak Items: array of Integer;\n"  // Error: weak on array
+        "  end;\n"
+        "begin\n"
+        "end.",
+        diag);
+    EXPECT_FALSE(result);
+    EXPECT_NE(diag.errorCount(), 0u);
+}
+
+TEST(PascalClassTest, DoublyLinkedListWithWeak)
+{
+    // Test that a doubly-linked list structure with weak references compiles
+    DiagnosticEngine diag;
+    bool result = analyzeProgram(
+        "program Test;\n"
+        "type\n"
+        "  TNode = class\n"
+        "    public\n"
+        "      Value: Integer;\n"
+        "      Next: TNode;\n"        // strong reference
+        "      weak Prev: TNode;\n"   // weak reference (prevents cycle)
+        "  end;\n"
+        "begin\n"
+        "end.",
+        diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
+TEST(PascalClassTest, WeakInterfaceReference)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram(
+        "program Test;\n"
+        "type\n"
+        "  IEventHandler = interface\n"
+        "    procedure HandleEvent;\n"
+        "  end;\n"
+        "  TPublisher = class\n"
+        "    public\n"
+        "      weak Handler: IEventHandler;\n"  // weak on interface is OK
+        "  end;\n"
+        "begin\n"
+        "end.",
+        diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
+TEST(PascalClassTest, WeakOptionalInterfaceReference)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram(
+        "program Test;\n"
+        "type\n"
+        "  IObserver = interface\n"
+        "    procedure Update;\n"
+        "  end;\n"
+        "  TSubject = class\n"
+        "    public\n"
+        "      weak OptionalObserver: IObserver?;\n"  // weak on optional interface
+        "  end;\n"
+        "begin\n"
+        "end.",
+        diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
+//===----------------------------------------------------------------------===//
+// Interface Function Return Type Tests
+//===----------------------------------------------------------------------===//
+
+TEST(PascalClassTest, InterfaceWithFunctionReturningClass)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram(
+        "program Test;\n"
+        "type\n"
+        "  TData = class\n"
+        "    public\n"
+        "      Value: Integer;\n"
+        "  end;\n"
+        "  IFactory = interface\n"
+        "    function Create: TData;\n"
+        "  end;\n"
+        "  TDataFactory = class(IFactory)\n"
+        "    public\n"
+        "      function Create: TData;\n"
+        "  end;\n"
+        "begin\n"
+        "end.",
+        diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
+//===----------------------------------------------------------------------===//
+// Interface Assignment and Polymorphism Tests
+//===----------------------------------------------------------------------===//
+
+TEST(PascalClassTest, ClassToInterfaceAssignment)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram(
+        "program Test;\n"
+        "type\n"
+        "  IDrawable = interface\n"
+        "    procedure Draw;\n"
+        "  end;\n"
+        "  TButton = class(IDrawable)\n"
+        "    public\n"
+        "      procedure Draw;\n"
+        "  end;\n"
+        "var\n"
+        "  drawable: IDrawable;\n"
+        "  button: TButton;\n"
+        "begin\n"
+        "  drawable := button\n"  // Class to interface assignment
+        "end.",
+        diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
+TEST(PascalClassTest, ClassToNonImplementedInterfaceError)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram(
+        "program Test;\n"
+        "type\n"
+        "  IDrawable = interface\n"
+        "    procedure Draw;\n"
+        "  end;\n"
+        "  ISerializable = interface\n"
+        "    function ToJson: String;\n"
+        "  end;\n"
+        "  TButton = class(IDrawable)\n"
+        "    public\n"
+        "      procedure Draw;\n"
+        "  end;\n"
+        "var\n"
+        "  serial: ISerializable;\n"
+        "  button: TButton;\n"
+        "begin\n"
+        "  serial := button\n"  // Error: TButton doesn't implement ISerializable
+        "end.",
+        diag);
+    EXPECT_FALSE(result);
+    EXPECT_NE(diag.errorCount(), 0u);
+}
+
+TEST(PascalClassTest, ClassToBaseClassAssignment)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram(
+        "program Test;\n"
+        "type\n"
+        "  TBase = class\n"
+        "    public\n"
+        "      x: Integer;\n"
+        "  end;\n"
+        "  TDerived = class(TBase)\n"
+        "    public\n"
+        "      y: Integer;\n"
+        "  end;\n"
+        "var\n"
+        "  base: TBase;\n"
+        "  derived: TDerived;\n"
+        "begin\n"
+        "  base := derived\n"  // Derived to base assignment
+        "end.",
+        diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
+TEST(PascalClassTest, InheritedInterfaceAssignment)
+{
+    // Test that a class implementing a derived interface can be assigned to base interface var
+    DiagnosticEngine diag;
+    bool result = analyzeProgram(
+        "program Test;\n"
+        "type\n"
+        "  IBase = interface\n"
+        "    procedure BaseMethod;\n"
+        "  end;\n"
+        "  IDerived = interface(IBase)\n"
+        "    procedure DerivedMethod;\n"
+        "  end;\n"
+        "  TImpl = class(IDerived)\n"
+        "    public\n"
+        "      procedure BaseMethod;\n"
+        "      procedure DerivedMethod;\n"
+        "  end;\n"
+        "var\n"
+        "  baseRef: IBase;\n"
+        "  impl: TImpl;\n"
+        "begin\n"
+        "  baseRef := impl\n"  // TImpl implements IDerived which extends IBase
+        "end.",
+        diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
+TEST(PascalClassTest, InterfaceToInterfaceAssignment)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram(
+        "program Test;\n"
+        "type\n"
+        "  IBase = interface\n"
+        "    procedure BaseMethod;\n"
+        "  end;\n"
+        "  IDerived = interface(IBase)\n"
+        "    procedure DerivedMethod;\n"
+        "  end;\n"
+        "  TImpl = class(IDerived)\n"
+        "    public\n"
+        "      procedure BaseMethod;\n"
+        "      procedure DerivedMethod;\n"
+        "  end;\n"
+        "var\n"
+        "  baseRef: IBase;\n"
+        "  derivedRef: IDerived;\n"
+        "begin\n"
+        "  baseRef := derivedRef\n"  // Derived interface to base interface
+        "end.",
+        diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
+TEST(PascalClassTest, InterfaceToUnrelatedInterfaceError)
+{
+    DiagnosticEngine diag;
+    bool result = analyzeProgram(
+        "program Test;\n"
+        "type\n"
+        "  IFoo = interface\n"
+        "    procedure Foo;\n"
+        "  end;\n"
+        "  IBar = interface\n"
+        "    procedure Bar;\n"
+        "  end;\n"
+        "var\n"
+        "  foo: IFoo;\n"
+        "  bar: IBar;\n"
+        "begin\n"
+        "  foo := bar\n"  // Error: unrelated interfaces
+        "end.",
+        diag);
+    EXPECT_FALSE(result);
+    EXPECT_NE(diag.errorCount(), 0u);
+}
+
 } // namespace
 
 #ifndef VIPER_HAS_GTEST
