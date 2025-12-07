@@ -18,9 +18,9 @@ Status notes:
 
 - IL Core/IO/Verify/Analysis/Transform — Intermediate Language data structures, parsers/serializers, verifier, analysis passes, and transforms
 - VM — Stack-based interpreter for IL with tracing, debugging, and runtime bridge
-- Frontends — BASIC front end lowering to IL
+- Frontends — BASIC and Pascal front ends lowering to IL
 - Codegen — Native code generation backends (AArch64 validated; x86_64 experimental)
-- Tools — CLI entry points (ilc, vbasic, ilrun, il-verify, il-dis, BASIC helpers)
+- Tools — CLI entry points (ilc, vbasic, vpascal, ilrun, il-verify, il-dis, BASIC/Pascal helpers)
 - Runtime — C runtime library and ABI bridge used by IL and VM
 
 ---
@@ -61,6 +61,7 @@ Public headers are under `include/viper/...`:
   - `codegen x64 -S <in.il> [-o exe] [--run-native]` — x86-64 native path
   - `codegen arm64 <in.il> -S <out.s>` — AArch64 assembly generation
 - `vbasic` — Convenience wrapper for BASIC (`vbasic script.bas --emit-il|-o`)
+- `vpascal` — Convenience wrapper for Pascal (`vpascal program.pas --emit-il|-o`)
 - `ilrun` — Convenience wrapper for IL execution (`ilrun program.il`)
 - `il-verify` — IL structural/type verifier
 - `il-dis` — IL disassembler / pretty-printer

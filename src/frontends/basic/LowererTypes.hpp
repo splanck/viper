@@ -17,6 +17,7 @@
 
 #include "frontends/basic/BasicTypes.hpp"
 #include "frontends/basic/ast/NodeFwd.hpp"
+#include "frontends/common/StringHash.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
 #include "viper/il/Module.hpp"
 #include <cctype>
@@ -30,18 +31,8 @@
 namespace il::frontends::basic
 {
 
-/// @brief Hash functor for heterogeneous string lookup (C++20).
-/// @details Enables lookup with std::string_view keys in unordered_map
-///          without allocating temporary std::string objects.
-struct StringHash
-{
-    using is_transparent = void;
-
-    template <typename T> [[nodiscard]] std::size_t operator()(const T &key) const noexcept
-    {
-        return std::hash<std::string_view>{}(std::string_view(key));
-    }
-};
+// Import StringHash from common library for backward compatibility
+using ::il::frontends::common::StringHash;
 
 /// @brief Result of lowering an expression to a value and type pair.
 struct RVal

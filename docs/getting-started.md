@@ -60,6 +60,7 @@ After building, confirm the primary tools work correctly:
 
 ```sh
 ./build/src/tools/vbasic/vbasic --help
+./build/src/tools/vpascal/vpascal --help
 ./build/src/tools/ilrun/ilrun --help
 ./build/src/tools/il-verify/il-verify --help
 ```
@@ -70,14 +71,10 @@ Each tool should display its help message without errors.
 
 ## Quick Start: Run Your First Program
 
-The simplest way to run a BASIC program:
+### BASIC
 
 ```sh
-# Run a BASIC program (new simplified syntax!)
 ./build/src/tools/vbasic/vbasic examples/basic/ex1_hello_cond.bas
-
-# That's it! Compare with the old way:
-# ./build/src/tools/ilc/ilc front basic -run examples/basic/ex1_hello_cond.bas
 ```
 
 **Expected output:**
@@ -86,15 +83,29 @@ Hello, World!
 Condition is true
 ```
 
+### Pascal
+
+```sh
+./build/src/tools/vpascal/vpascal examples/pascal/hello.pas
+```
+
+**Expected output:**
+```
+Hello, World!
+```
+
 ---
 
 ## Working with IL Programs
 
-You can also inspect the generated IL or run IL programs directly:
+You can inspect the generated IL or run IL programs directly:
 
 ```sh
-# Show generated IL
+# Show generated IL from BASIC
 ./build/src/tools/vbasic/vbasic examples/basic/ex1_hello_cond.bas --emit-il
+
+# Show generated IL from Pascal
+./build/src/tools/vpascal/vpascal examples/pascal/hello.pas --emit-il
 
 # Save IL to a file
 ./build/src/tools/vbasic/vbasic examples/basic/ex1_hello_cond.bas -o hello.il
@@ -103,7 +114,7 @@ You can also inspect the generated IL or run IL programs directly:
 ./build/src/tools/ilrun/ilrun hello.il
 ```
 
-For more examples, see the **[BASIC Tutorial](basic-language.md)** and the `examples/` directory.
+For more examples, see the **[BASIC Tutorial](basic-language.md)**, **[Pascal Tutorial](pascal-language.md)**, and the `examples/` directory.
 
 ---
 
@@ -114,6 +125,7 @@ For more examples, see the **[BASIC Tutorial](basic-language.md)** and the `exam
 | Tool | Purpose | Example |
 |------|---------|---------|
 | `vbasic` | Run/compile BASIC programs | `vbasic script.bas` |
+| `vpascal` | Run/compile Pascal programs | `vpascal program.pas` |
 | `ilrun` | Execute IL programs | `ilrun program.il` |
 | `il-verify` | Verify IL correctness | `il-verify program.il` |
 | `il-dis` | Disassemble IL | `il-dis program.il` |
@@ -126,7 +138,7 @@ For more examples, see the **[BASIC Tutorial](basic-language.md)** and the `exam
 | `basic-ast-dump` | Dump BASIC AST | `basic-ast-dump script.bas` |
 | `basic-lex-dump` | Dump BASIC tokens | `basic-lex-dump script.bas` |
 
-> **Note:** The old `ilc` commands still work for backwards compatibility, but the new simplified tools (`vbasic`, `ilrun`) are recommended for everyday use.
+> **Note:** The old `ilc` commands still work for backwards compatibility, but the new simplified tools (`vbasic`, `vpascal`, `ilrun`) are recommended for everyday use.
 
 ---
 
@@ -157,7 +169,9 @@ Viper guarantees consistent numeric behavior across all platforms and execution 
 
 **Language Documentation:**
 - **[BASIC Tutorial](basic-language.md)** — Learn Viper BASIC by example
-- **[BASIC Reference](basic-reference.md)** — Complete language reference
+- **[BASIC Reference](basic-reference.md)** — Complete BASIC language reference
+- **[Pascal Tutorial](pascal-language.md)** — Learn Viper Pascal by example
+- **[Pascal Reference](pascal-reference.md)** — Complete Pascal language reference
 - **[IL Guide](il-guide.md)** — Comprehensive IL documentation
 
 **Implementation Guides:**

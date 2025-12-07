@@ -409,6 +409,7 @@ set(VIPER_PUBLIC_LIB_TARGETS
   il_transform
   il_utils
   il_vm
+  fe_common
   fe_basic
   il_api
   vipergfx

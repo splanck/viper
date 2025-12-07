@@ -370,6 +370,7 @@ target_link_libraries(il-dis
         il_build)
 install(TARGETS il-dis RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
+add_subdirectory(frontends/common)
 add_subdirectory(frontends/basic)
 add_subdirectory(frontends/pascal)
 
@@ -451,6 +452,11 @@ install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/vm/
 
 install(DIRECTORY ${PROJECT_SOURCE_DIR}/include/viper/vm/
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/viper/vm
+        FILES_MATCHING PATTERN "*.hpp"
+)
+
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/frontends/common/
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/viper/frontends/common
         FILES_MATCHING PATTERN "*.hpp"
 )
 

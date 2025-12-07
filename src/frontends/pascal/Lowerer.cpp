@@ -59,10 +59,13 @@ Lowerer::Module Lowerer::lower(Program &prog, SemanticAnalyzer &sema)
     locals_.clear();
     constants_.clear();
     stringTable_.clear();
+    // Set up the StringTable emitter to register globals with the builder
+    stringTable_.setEmitter([this](const std::string &label, const std::string &content) {
+        builder_->addGlobalStr(label, content);
+    });
     loopStack_.clear();
     usedExterns_.clear();
     blockCounter_ = 0;
-    stringCounter_ = 0;
 
     // First, lower all function/procedure declarations in the program
     for (const auto &decl : prog.decls)
@@ -126,10 +129,13 @@ Lowerer::Module Lowerer::lower(Unit &unit, SemanticAnalyzer &sema)
     locals_.clear();
     constants_.clear();
     stringTable_.clear();
+    // Set up the StringTable emitter to register globals with the builder
+    stringTable_.setEmitter([this](const std::string &label, const std::string &content) {
+        builder_->addGlobalStr(label, content);
+    });
     loopStack_.clear();
     usedExterns_.clear();
     blockCounter_ = 0;
-    stringCounter_ = 0;
 
     // Lower all function/procedure declarations from implementation
     for (const auto &decl : unit.implDecls)
@@ -227,17 +233,8 @@ void Lowerer::setBlock(size_t blockIdx)
 
 std::string Lowerer::getStringGlobal(const std::string &value)
 {
-    auto it = stringTable_.find(value);
-    if (it != stringTable_.end())
-        return it->second;
-
-    std::ostringstream oss;
-    oss << ".str" << stringCounter_++;
-    std::string name = oss.str();
-
-    builder_->addGlobalStr(name, value);
-    stringTable_[value] = name;
-    return name;
+    // Delegate to the common StringTable which handles interning and deduplication
+    return stringTable_.intern(value);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1254,12 +1251,12 @@ void Lowerer::lowerFor(const ForStmt &stmt)
     emitCBr(cond, bodyBlock, exitBlock);
 
     // Body
-    loopStack_.push_back({exitBlock, afterBlock});
+    loopStack_.push(exitBlock, afterBlock);
     setBlock(bodyBlock);
     if (stmt.body)
         lowerStmt(*stmt.body);
     emitBr(afterBlock);
-    loopStack_.pop_back();
+    loopStack_.pop();
 
     // After: increment/decrement
     setBlock(afterBlock);
@@ -1306,7 +1303,7 @@ void Lowerer::lowerForIn(const ForInStmt &stmt)
     emitCBr(cond, bodyBlock, exitBlock);
 
     // Body
-    loopStack_.push_back({exitBlock, afterBlock});
+    loopStack_.push(exitBlock, afterBlock);
     setBlock(bodyBlock);
 
     // Bind loop variable to collection[index]
@@ -1321,7 +1318,7 @@ void Lowerer::lowerForIn(const ForInStmt &stmt)
     if (stmt.body)
         lowerStmt(*stmt.body);
     emitBr(afterBlock);
-    loopStack_.pop_back();
+    loopStack_.pop();
 
     // After: increment index
     setBlock(afterBlock);
@@ -1347,12 +1344,12 @@ void Lowerer::lowerWhile(const WhileStmt &stmt)
     emitCBr(cond.value, bodyBlock, exitBlock);
 
     // Body
-    loopStack_.push_back({exitBlock, headerBlock});
+    loopStack_.push(exitBlock, headerBlock);
     setBlock(bodyBlock);
     if (stmt.body)
         lowerStmt(*stmt.body);
     emitBr(headerBlock);
-    loopStack_.pop_back();
+    loopStack_.pop();
 
     setBlock(exitBlock);
 }
@@ -1366,12 +1363,12 @@ void Lowerer::lowerRepeat(const RepeatStmt &stmt)
     emitBr(bodyBlock);
 
     // Body (executes first)
-    loopStack_.push_back({exitBlock, headerBlock});
+    loopStack_.push(exitBlock, headerBlock);
     setBlock(bodyBlock);
     if (stmt.body)
         lowerStmt(*stmt.body);
     emitBr(headerBlock);
-    loopStack_.pop_back();
+    loopStack_.pop();
 
     // Header: evaluate condition (until condition is true)
     setBlock(headerBlock);
@@ -1386,7 +1383,7 @@ void Lowerer::lowerBreak(const BreakStmt &)
 {
     if (!loopStack_.empty())
     {
-        emitBr(loopStack_.back().breakBlockIdx);
+        emitBr(loopStack_.breakTarget());
         // Create a dead block for any following code
         size_t deadBlock = createBlock("after_break");
         setBlock(deadBlock);
@@ -1397,7 +1394,7 @@ void Lowerer::lowerContinue(const ContinueStmt &)
 {
     if (!loopStack_.empty())
     {
-        emitBr(loopStack_.back().continueBlockIdx);
+        emitBr(loopStack_.continueTarget());
         // Create a dead block for any following code
         size_t deadBlock = createBlock("after_continue");
         setBlock(deadBlock);

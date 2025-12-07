@@ -14,7 +14,7 @@ Get started with Viper's Intermediate Language (IL) in minutes. This guide shows
 
 Viper IL is a **typed, readable intermediate language** that serves as the core of the Viper toolchain:
 
-- **Frontends** (BASIC, etc.) compile to IL
+- **Frontends** (BASIC, Pascal, etc.) compile to IL
 - **VM** executes IL directly via bytecode interpretation
 - **Verifier** checks IL for safety and correctness
 - **Transforms** (SimplifyCFG, Liveness, etc.) optimize IL

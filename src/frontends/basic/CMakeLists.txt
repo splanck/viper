@@ -131,7 +131,6 @@ target_sources(fe_basic PRIVATE
         ScopeTracker.cpp
         SymbolTable.cpp
         TypeCoercionEngine.cpp
-        StringTable.cpp
         types/TypeMapping.cpp
         passes/CollectProcs.cpp
         constfold/Dispatch.cpp
@@ -162,7 +161,7 @@ target_sources(fe_basic PRIVATE
         SemanticDiagnostics.cpp
 )
 
-target_link_libraries(fe_basic PUBLIC viper_il_full il_build il_runtime)
+target_link_libraries(fe_basic PUBLIC viper_il_full il_build il_runtime fe_common)
 target_include_directories(fe_basic PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../..>
         $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>

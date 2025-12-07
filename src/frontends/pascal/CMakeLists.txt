@@ -13,7 +13,7 @@ target_sources(fe_pascal PRIVATE
     Compiler.cpp
 )
 
-target_link_libraries(fe_pascal PUBLIC viper_il_full il_build il_runtime)
+target_link_libraries(fe_pascal PUBLIC viper_il_full il_build il_runtime fe_common)
 
 target_include_directories(fe_pascal PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../..>

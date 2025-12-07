@@ -60,6 +60,8 @@ Viper is a compiler infrastructure with multiple components:
 Source Language → Frontend → IL → VM/Codegen → Execution
 ```
 
+Viper currently includes two frontends: **BASIC** and **Pascal**. Both compile to the same IL and share the runtime library.
+
 ### Prerequisites
 
 **Required Knowledge:**

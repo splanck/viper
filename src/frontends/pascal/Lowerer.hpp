@@ -15,6 +15,9 @@
 
 #pragma once
 
+#include "frontends/common/ExprResult.hpp"
+#include "frontends/common/LoopContext.hpp"
+#include "frontends/common/StringTable.hpp"
 #include "frontends/pascal/AST.hpp"
 #include "frontends/pascal/SemanticAnalyzer.hpp"
 #include "il/build/IRBuilder.hpp"
@@ -33,19 +36,11 @@
 namespace il::frontends::pascal
 {
 
-/// @brief Result of lowering an expression: value and its IL type.
-struct LowerResult
-{
-    il::core::Value value;
-    il::core::Type type;
-};
+// Use common ExprResult but alias as LowerResult for backward compatibility
+using LowerResult = ::il::frontends::common::ExprResult;
 
-/// @brief Loop context for break/continue support (uses indices to avoid pointer invalidation).
-struct LoopContext
-{
-    size_t breakBlockIdx;    ///< Index of target for break
-    size_t continueBlockIdx; ///< Index of target for continue
-};
+// Use common LoopContext
+using LoopContext = ::il::frontends::common::LoopContext;
 
 /// @brief Transforms validated Pascal AST into Viper IL.
 /// @invariant Generates deterministic block names via BlockNamer.
@@ -85,20 +80,19 @@ class Lowerer
     // State
     //=========================================================================
 
-    std::unique_ptr<Module> module_;                 ///< Module being built
-    std::unique_ptr<il::build::IRBuilder> builder_;  ///< IR builder
-    SemanticAnalyzer *sema_{nullptr};                ///< Semantic analyzer
-    Function *currentFunc_{nullptr};                 ///< Current function
-    size_t currentBlockIdx_{0};                      ///< Current block index
-    std::map<std::string, Value> locals_;            ///< Variable -> alloca slot
-    std::map<std::string, Value> constants_;         ///< Constant -> value
-    std::map<std::string, std::string> stringTable_; ///< String -> global name
-    std::vector<LoopContext> loopStack_;             ///< Loop context stack
-    std::set<std::string> usedExterns_;              ///< Tracked runtime externs
-    unsigned blockCounter_{0};                       ///< Block name counter
-    unsigned stringCounter_{0};                      ///< String global counter
-    Value currentResumeTok_;                         ///< Resume token in current handler
-    bool inExceptHandler_{false};                    ///< True when inside except handler
+    std::unique_ptr<Module> module_;                                ///< Module being built
+    std::unique_ptr<il::build::IRBuilder> builder_;                 ///< IR builder
+    SemanticAnalyzer *sema_{nullptr};                               ///< Semantic analyzer
+    Function *currentFunc_{nullptr};                                ///< Current function
+    size_t currentBlockIdx_{0};                                     ///< Current block index
+    std::map<std::string, Value> locals_;                           ///< Variable -> alloca slot
+    std::map<std::string, Value> constants_;                        ///< Constant -> value
+    ::il::frontends::common::StringTable stringTable_;              ///< String interning table
+    ::il::frontends::common::LoopContextStack loopStack_;           ///< Loop context stack
+    std::set<std::string> usedExterns_;                             ///< Tracked runtime externs
+    unsigned blockCounter_{0};                                      ///< Block name counter
+    Value currentResumeTok_;                                        ///< Resume token in current handler
+    bool inExceptHandler_{false};                                   ///< True when inside except handler
 
     /// @brief Get the current block by index.
     BasicBlock *currentBlock() { return &currentFunc_->blocks[currentBlockIdx_]; }

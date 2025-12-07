@@ -36,7 +36,7 @@ Welcome! This guide is for developers from languages like C#, Java, TypeScript, 
 
 Viper IL is the **"thin waist"** of the Viper toolchain — a versioned, textual intermediate representation that decouples frontends from backends:
 
-- **Frontends** (BASIC, etc.) compile to IL
+- **Frontends** (BASIC, Pascal, etc.) compile to IL
 - **VM** executes IL deterministically
 - **Verifier** ensures type safety and correctness
 - **Transforms** optimize IL (SimplifyCFG, LICM, SCCP)
