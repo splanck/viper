@@ -315,6 +315,24 @@ target_link_libraries(vbasic
         il_tools_common)
 install(TARGETS vbasic RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
+add_executable(vpascal
+        tools/vpascal/main.cpp
+        tools/vpascal/usage.cpp
+        tools/vpascal/ilc_compat.cpp
+        tools/ilc/cmd_front_pascal.cpp
+        tools/ilc/cli.cpp)
+set_target_properties(vpascal PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/vpascal)
+target_link_libraries(vpascal
+        PRIVATE
+        viper_common_opts
+        viper::il_full
+        il_vm
+        il_transform
+        fe_pascal
+        il_api
+        il_tools_common)
+install(TARGETS vpascal RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+
 add_executable(ilrun
         tools/ilrun/main.cpp
         tools/ilrun/ilc_compat.cpp
