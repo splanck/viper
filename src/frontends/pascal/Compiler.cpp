@@ -5,14 +5,16 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Implements the Pascal compiler driver. Currently a skeleton that emits
-// a hard-coded "Hello" IL module to prove the plumbing works.
-//
-// TODO: Integrate actual Lexer, Parser, SemanticAnalyzer, and Lowerer.
+// Implements the Pascal compiler driver that integrates the lexer, parser,
+// semantic analyzer, and IL lowerer for complete compilation pipeline.
 //
 //===----------------------------------------------------------------------===//
 
 #include "frontends/pascal/Compiler.hpp"
+#include "frontends/pascal/Lexer.hpp"
+#include "frontends/pascal/Lowerer.hpp"
+#include "frontends/pascal/Parser.hpp"
+#include "frontends/pascal/SemanticAnalyzer.hpp"
 #include "il/build/IRBuilder.hpp"
 #include "viper/il/Module.hpp"
 
@@ -40,48 +42,111 @@ PascalCompilerResult compilePascal(const PascalCompilerInput &input,
         result.fileId = sm.addFile(std::string(input.path));
     }
 
-    // TODO: Implement actual compilation pipeline:
-    //   1. Lexer: tokenize input.source
-    //   2. Parser: build AST from tokens
-    //   3. SemanticAnalyzer: type check and validate AST
-    //   4. Lowerer: convert AST to IL
+    // Phase 1: Lexing
+    Lexer lexer(std::string(input.source), result.fileId, result.diagnostics);
 
-    // For now, emit a hard-coded skeleton IL module to prove wiring works.
-    // This module prints a hello message and returns 0 from main.
+    // Phase 2: Parsing
+    Parser parser(lexer, result.diagnostics);
+    auto program = parser.parseProgram();
 
-    il::build::IRBuilder builder(result.module);
+    if (!program || parser.hasError())
+    {
+        // Parse failed, return with diagnostics
+        return result;
+    }
 
-    // Declare external runtime function: rt_print_str(str) -> void
-    builder.addExtern("rt_print_str",
-                      il::core::Type(il::core::Type::Kind::Void),
-                      {il::core::Type(il::core::Type::Kind::Str)});
+    // Phase 3: Semantic Analysis
+    SemanticAnalyzer analyzer(result.diagnostics);
+    bool semanticOk = analyzer.analyze(*program);
 
-    // Create @main function: i64 @main()
-    il::core::Function &mainFn = builder.startFunction(
-        "main",
-        il::core::Type(il::core::Type::Kind::I64),
-        {});
+    if (!semanticOk)
+    {
+        // Semantic analysis failed, return with diagnostics
+        return result;
+    }
 
-    // Create entry basic block
-    il::core::BasicBlock &entry = builder.addBlock(mainFn, "entry");
-    builder.setInsertPoint(entry);
+    // Phase 4: IL Lowering
+    Lowerer lowerer;
+    result.module = lowerer.lower(*program, analyzer);
 
-    // Create global string constant
-    const std::string helloMessage = "Hello from Viper Pascal frontend skeleton!";
-    const std::string strLabel = "str.hello";
-    builder.addGlobalStr(strLabel, helloMessage);
+    return result;
+}
 
-    // Emit const_str instruction to load the global string into a temporary
-    il::core::Value strVal = builder.emitConstStr(strLabel, il::support::SourceLoc{});
+PascalCompilerResult compilePascalMultiFile(const PascalMultiFileInput &input,
+                                            const PascalCompilerOptions & /*options*/,
+                                            il::support::SourceManager &sm)
+{
+    PascalCompilerResult result{};
 
-    // Call rt_print_str with the string value
-    builder.emitCall("rt_print_str",
-                     {strVal},
-                     std::nullopt,
-                     il::support::SourceLoc{});
+    // Create shared semantic analyzer to accumulate unit exports
+    SemanticAnalyzer analyzer(result.diagnostics);
 
-    // Return 0 from main
-    builder.emitRet(il::core::Value::constInt(0), il::support::SourceLoc{});
+    // Collect parsed units
+    std::vector<std::unique_ptr<Unit>> parsedUnits;
+
+    // Phase 1: Parse and analyze all units (in dependency order)
+    for (const auto &unitInput : input.units)
+    {
+        uint32_t fileId;
+        if (unitInput.fileId.has_value())
+        {
+            fileId = *unitInput.fileId;
+        }
+        else
+        {
+            fileId = sm.addFile(std::string(unitInput.path));
+        }
+
+        Lexer lexer(std::string(unitInput.source), fileId, result.diagnostics);
+        Parser parser(lexer, result.diagnostics);
+        auto [prog, unit] = parser.parse();
+
+        if (parser.hasError())
+            return result;
+
+        if (unit)
+        {
+            // Analyze unit (this registers its exports)
+            if (!analyzer.analyze(*unit))
+                return result;
+
+            parsedUnits.push_back(std::move(unit));
+        }
+    }
+
+    // Phase 2: Parse and analyze the main program
+    if (input.program.fileId.has_value())
+    {
+        result.fileId = *input.program.fileId;
+    }
+    else
+    {
+        result.fileId = sm.addFile(std::string(input.program.path));
+    }
+
+    Lexer programLexer(std::string(input.program.source), result.fileId, result.diagnostics);
+    Parser programParser(programLexer, result.diagnostics);
+    auto program = programParser.parseProgram();
+
+    if (!program || programParser.hasError())
+        return result;
+
+    if (!analyzer.analyze(*program))
+        return result;
+
+    // Phase 3: Lower all units and program into combined module
+    Lowerer lowerer;
+
+    // Lower program first (creates @main)
+    result.module = lowerer.lower(*program, analyzer);
+
+    // Merge in each unit's functions
+    for (auto &unit : parsedUnits)
+    {
+        Lowerer unitLowerer;
+        auto unitModule = unitLowerer.lower(*unit, analyzer);
+        Lowerer::mergeModule(result.module, unitModule);
+    }
 
     return result;
 }

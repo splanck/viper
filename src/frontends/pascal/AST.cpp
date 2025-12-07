@@ -99,6 +99,7 @@ const char *typeKindToString(TypeKind kind)
         case TypeKind::Function:  return "Function";
         case TypeKind::Set:       return "Set";
         case TypeKind::Range:     return "Range";
+        case TypeKind::Enum:      return "Enum";
     }
     return "?";
 }

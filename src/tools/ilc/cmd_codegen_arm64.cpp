@@ -193,6 +193,11 @@ static int linkToExe(const std::string &asmPath,
         // Fallback for tests whose CWD is build/src/tests
         rr = try_link("../runtime/libviper_runtime.a");
     }
+    if (rr.exit_code != 0)
+    {
+        // Fallback for running from project root with build directory
+        rr = try_link("build/src/runtime/libviper_runtime.a");
+    }
     if (rr.exit_code == -1)
     {
         err << "error: failed to launch system linker command\n";

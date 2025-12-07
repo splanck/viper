@@ -512,11 +512,12 @@ TEST(PascalLexerTest, InvalidHexLiteral)
 
 TEST(PascalLexerTest, SingleQuestionMark)
 {
+    // Single ? is now valid (optional type suffix)
     DiagnosticEngine diag;
     Lexer lexer("?", 1, diag);
     Token tok = lexer.next();
-    EXPECT_EQ(tok.kind, TokenKind::Error);
-    EXPECT_EQ(diag.errorCount(), 1u);
+    EXPECT_EQ(tok.kind, TokenKind::Question);
+    EXPECT_EQ(diag.errorCount(), 0u);
 }
 
 //===----------------------------------------------------------------------===//

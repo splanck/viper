@@ -5,6 +5,7 @@ add_library(fe_pascal STATIC)
 
 target_sources(fe_pascal PRIVATE
     AST.cpp
+    BuiltinRegistry.cpp
     Lexer.cpp
     Parser.cpp
     SemanticAnalyzer.cpp

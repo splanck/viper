@@ -495,6 +495,42 @@ target_link_libraries(test_pascal_ast PRIVATE viper_testing fe_pascal)
 add_test(NAME test_pascal_ast COMMAND test_pascal_ast)
 set_tests_properties(test_pascal_ast PROPERTIES LABELS pascal)
 
+# Pascal parser unit tests (expressions and statements)
+add_executable(test_pascal_parser ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/ParserExprStmtTests.cpp)
+target_link_libraries(test_pascal_parser PRIVATE viper_testing fe_pascal)
+add_test(NAME test_pascal_parser COMMAND test_pascal_parser)
+set_tests_properties(test_pascal_parser PROPERTIES LABELS pascal)
+
+# Pascal parser unit tests (declarations and types)
+add_executable(test_pascal_parser_decl ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/ParserDeclTypeTests.cpp)
+target_link_libraries(test_pascal_parser_decl PRIVATE viper_testing fe_pascal)
+add_test(NAME test_pascal_parser_decl COMMAND test_pascal_parser_decl)
+set_tests_properties(test_pascal_parser_decl PROPERTIES LABELS pascal)
+
+# Pascal semantic analyzer unit tests
+add_executable(test_pascal_semantic ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/SemanticBasicTests.cpp)
+target_link_libraries(test_pascal_semantic PRIVATE viper_testing fe_pascal)
+add_test(NAME test_pascal_semantic COMMAND test_pascal_semantic)
+set_tests_properties(test_pascal_semantic PROPERTIES LABELS pascal)
+
+# Pascal semantic analyzer optional type tests
+add_executable(test_pascal_semantic_optional ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/SemanticOptionalTests.cpp)
+target_link_libraries(test_pascal_semantic_optional PRIVATE viper_testing fe_pascal)
+add_test(NAME test_pascal_semantic_optional COMMAND test_pascal_semantic_optional)
+set_tests_properties(test_pascal_semantic_optional PROPERTIES LABELS pascal)
+
+# Pascal semantic analyzer class/interface tests
+add_executable(test_pascal_semantic_class ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/SemanticClassTests.cpp)
+target_link_libraries(test_pascal_semantic_class PRIVATE viper_testing fe_pascal)
+add_test(NAME test_pascal_semantic_class COMMAND test_pascal_semantic_class)
+set_tests_properties(test_pascal_semantic_class PROPERTIES LABELS pascal)
+
+# Pascal semantic analyzer unit tests
+add_executable(test_pascal_semantic_unit ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/SemanticUnitTests.cpp)
+target_link_libraries(test_pascal_semantic_unit PRIVATE viper_testing fe_pascal)
+add_test(NAME test_pascal_semantic_unit COMMAND test_pascal_semantic_unit)
+set_tests_properties(test_pascal_semantic_unit PROPERTIES LABELS pascal)
+
 # Pascal frontend smoke test (emit IL)
 add_test(NAME pascal_skeleton_emit_il
         COMMAND $<TARGET_FILE:ilc> front pascal -emit-il ${CMAKE_CURRENT_SOURCE_DIR}/data/pascal/hello.pas)
@@ -504,6 +540,11 @@ set_tests_properties(pascal_skeleton_emit_il PROPERTIES LABELS pascal)
 add_test(NAME pascal_skeleton_run
         COMMAND $<TARGET_FILE:ilc> front pascal -run ${CMAKE_CURRENT_SOURCE_DIR}/data/pascal/hello.pas)
 set_tests_properties(pascal_skeleton_run PROPERTIES LABELS pascal)
+
+# Pascal exception handling emit IL test
+add_test(NAME pascal_eh_emit_il
+        COMMAND $<TARGET_FILE:ilc> front pascal -emit-il ${CMAKE_CURRENT_SOURCE_DIR}/data/pascal/exception_handling.pas)
+set_tests_properties(pascal_eh_emit_il PROPERTIES LABELS pascal)
 
 # =============================================================================
 # Test Labels Configuration

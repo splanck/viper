@@ -10,6 +10,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/pascal/Compiler.hpp"
+#include "il/core/Opcode.hpp"
 #include "support/source_manager.hpp"
 
 #ifdef VIPER_HAS_GTEST
@@ -52,8 +53,8 @@ TEST(PascalCompilerTest, SkeletonProducesModule)
     EXPECT_TRUE(hasMain);
 }
 
-/// @brief Test that the skeleton module contains the expected hello message.
-TEST(PascalCompilerTest, SkeletonContainsHelloMessage)
+/// @brief Test that the lowerer produces a main function with an entry block.
+TEST(PascalCompilerTest, LowererProducesEntryBlock)
 {
     SourceManager sm;
     const std::string source = "program Hello; begin end.";
@@ -64,17 +65,19 @@ TEST(PascalCompilerTest, SkeletonContainsHelloMessage)
 
     EXPECT_TRUE(result.succeeded());
 
-    // Check that the module has a global string containing the hello message
-    bool foundHello = false;
-    for (const auto &global : result.module.globals)
+    // Check that the main function has at least one basic block
+    bool foundMainWithBlocks = false;
+    for (const auto &fn : result.module.functions)
     {
-        if (global.init.find("Hello from Viper Pascal") != std::string::npos)
+        if (fn.name == "main" && !fn.blocks.empty())
         {
-            foundHello = true;
+            foundMainWithBlocks = true;
+            // Check that the first block is the entry block
+            EXPECT_EQ(fn.blocks.front().label, "entry_0");
             break;
         }
     }
-    EXPECT_TRUE(foundHello);
+    EXPECT_TRUE(foundMainWithBlocks);
 }
 
 /// @brief Test that diagnostics engine reports no errors for valid (ignored) input.
@@ -88,6 +91,99 @@ TEST(PascalCompilerTest, NoDiagnosticsForValidInput)
     auto result = compilePascal(input, opts, sm);
 
     EXPECT_EQ(result.diagnostics.errorCount(), 0u);
+}
+
+/// @brief Test that WriteLn emits runtime calls.
+TEST(PascalCompilerTest, WriteLnEmitsRuntimeCalls)
+{
+    SourceManager sm;
+    const std::string source = R"(
+program Test;
+begin
+  WriteLn('Hello')
+end.
+)";
+    PascalCompilerInput input{.source = source, .path = "test.pas"};
+    PascalCompilerOptions opts{};
+
+    auto result = compilePascal(input, opts, sm);
+
+    EXPECT_TRUE(result.succeeded());
+
+    // Check that the module has rt_print_str extern declaration
+    bool hasExtern = false;
+    for (const auto &ext : result.module.externs)
+    {
+        if (ext.name == "rt_print_str")
+        {
+            hasExtern = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(hasExtern);
+}
+
+/// @brief Test that math builtins compile successfully.
+TEST(PascalCompilerTest, MathBuiltinsCompile)
+{
+    SourceManager sm;
+    const std::string source = R"(
+program Test;
+var x: Real;
+begin
+  x := Sqrt(16.0);
+  x := Sin(0.5);
+  x := Cos(0.5)
+end.
+)";
+    PascalCompilerInput input{.source = source, .path = "test.pas"};
+    PascalCompilerOptions opts{};
+
+    auto result = compilePascal(input, opts, sm);
+
+    EXPECT_TRUE(result.succeeded());
+    EXPECT_EQ(result.diagnostics.errorCount(), 0u);
+}
+
+/// @brief Test that ordinal builtins (Pred, Succ) emit inline arithmetic.
+TEST(PascalCompilerTest, OrdinalBuiltinsEmitArithmetic)
+{
+    SourceManager sm;
+    const std::string source = R"(
+program Test;
+var n: Integer;
+begin
+  n := Pred(10);
+  n := Succ(n)
+end.
+)";
+    PascalCompilerInput input{.source = source, .path = "test.pas"};
+    PascalCompilerOptions opts{};
+
+    auto result = compilePascal(input, opts, sm);
+
+    EXPECT_TRUE(result.succeeded());
+
+    // Check that the main function has arithmetic instructions
+    bool hasSubOrAdd = false;
+    for (const auto &fn : result.module.functions)
+    {
+        if (fn.name == "main")
+        {
+            for (const auto &blk : fn.blocks)
+            {
+                for (const auto &instr : blk.instructions)
+                {
+                    if (instr.op == il::core::Opcode::Sub || instr.op == il::core::Opcode::Add)
+                    {
+                        hasSubOrAdd = true;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    EXPECT_TRUE(hasSubOrAdd);
 }
 
 } // namespace

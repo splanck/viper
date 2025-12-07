@@ -85,6 +85,10 @@ const char *tokenKindToString(TokenKind kind)
         case TokenKind::KwVirtual:      return "virtual";
         case TokenKind::KwWeak:         return "weak";
         case TokenKind::KwWhile:        return "while";
+        case TokenKind::KwSet:          return "set";
+        case TokenKind::KwForward:      return "forward";
+        case TokenKind::KwInitialization: return "initialization";
+        case TokenKind::KwFinalization: return "finalization";
         case TokenKind::Plus:           return "+";
         case TokenKind::Minus:          return "-";
         case TokenKind::Star:           return "*";
@@ -97,6 +101,7 @@ const char *tokenKindToString(TokenKind kind)
         case TokenKind::GreaterEqual:   return ">=";
         case TokenKind::Assign:         return ":=";
         case TokenKind::NilCoalesce:    return "??";
+        case TokenKind::Question:       return "?";
         case TokenKind::Dot:            return ".";
         case TokenKind::Comma:          return ",";
         case TokenKind::Semicolon:      return ";";
@@ -171,6 +176,10 @@ const std::unordered_map<std::string, TokenKind> &keywordTable()
         {"virtual",        TokenKind::KwVirtual},
         {"weak",           TokenKind::KwWeak},
         {"while",          TokenKind::KwWhile},
+        {"set",            TokenKind::KwSet},
+        {"forward",        TokenKind::KwForward},
+        {"initialization", TokenKind::KwInitialization},
+        {"finalization",   TokenKind::KwFinalization},
     };
     return table;
 }
@@ -761,8 +770,7 @@ Token Lexer::next()
             }
             else
             {
-                reportError(tok.loc, "unexpected character '?'");
-                tok.kind = TokenKind::Error;
+                tok.kind = TokenKind::Question;
                 tok.text = "?";
             }
             break;

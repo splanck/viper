@@ -270,6 +270,7 @@ enum class TypeKind
     Function,
     Set,
     Range,
+    Enum,
 };
 
 /// @brief Base class for all Pascal type nodes.
@@ -394,6 +395,15 @@ struct RangeTypeNode : TypeNode
     RangeTypeNode(std::unique_ptr<Expr> low, std::unique_ptr<Expr> high,
                   il::support::SourceLoc l = {})
         : TypeNode(TypeKind::Range, l), low(std::move(low)), high(std::move(high)) {}
+};
+
+/// @brief Enumeration type (Red, Green, Blue).
+struct EnumTypeNode : TypeNode
+{
+    std::vector<std::string> values;
+
+    explicit EnumTypeNode(std::vector<std::string> values, il::support::SourceLoc l = {})
+        : TypeNode(TypeKind::Enum, l), values(std::move(values)) {}
 };
 
 //===----------------------------------------------------------------------===//
@@ -711,6 +721,9 @@ struct ProcedureDecl : Decl
     std::vector<std::unique_ptr<Decl>> localDecls;
     std::unique_ptr<BlockStmt> body; ///< May be nullptr (forward declaration)
     bool isForward{false};
+    bool isVirtual{false};   ///< Marked virtual (overridable)
+    bool isOverride{false};  ///< Marked override (must match base virtual)
+    bool isAbstract{false};  ///< Marked abstract (no implementation)
 
     ProcedureDecl(std::string name, std::vector<ParamDecl> params, il::support::SourceLoc l = {})
         : Decl(DeclKind::Procedure, l), name(std::move(name)), params(std::move(params)) {}
@@ -725,6 +738,9 @@ struct FunctionDecl : Decl
     std::vector<std::unique_ptr<Decl>> localDecls;
     std::unique_ptr<BlockStmt> body; ///< May be nullptr (forward declaration)
     bool isForward{false};
+    bool isVirtual{false};   ///< Marked virtual (overridable)
+    bool isOverride{false};  ///< Marked override (must match base virtual)
+    bool isAbstract{false};  ///< Marked abstract (no implementation)
 
     FunctionDecl(std::string name, std::vector<ParamDecl> params,
                  std::unique_ptr<TypeNode> returnType, il::support::SourceLoc l = {})
@@ -800,7 +816,8 @@ struct ConstructorDecl : Decl
     std::string name; ///< Usually "Create"
     std::vector<ParamDecl> params;
     std::vector<std::unique_ptr<Decl>> localDecls;
-    std::unique_ptr<BlockStmt> body;
+    std::unique_ptr<BlockStmt> body; ///< May be nullptr (forward declaration)
+    bool isForward{false};
 
     ConstructorDecl(std::string name, std::vector<ParamDecl> params,
                     il::support::SourceLoc l = {})
@@ -812,7 +829,8 @@ struct DestructorDecl : Decl
 {
     std::string name; ///< Usually "Destroy"
     std::vector<std::unique_ptr<Decl>> localDecls;
-    std::unique_ptr<BlockStmt> body;
+    std::unique_ptr<BlockStmt> body; ///< May be nullptr (forward declaration)
+    bool isForward{false};
 
     explicit DestructorDecl(std::string name = "Destroy", il::support::SourceLoc l = {})
         : Decl(DeclKind::Destructor, l), name(std::move(name)) {}

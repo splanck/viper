@@ -89,6 +89,10 @@ enum class TokenKind
     KwVirtual,
     KwWeak,
     KwWhile,
+    KwSet,
+    KwForward,
+    KwInitialization,
+    KwFinalization,
 
     // Operators
     Plus,          ///< +
@@ -103,6 +107,7 @@ enum class TokenKind
     GreaterEqual,  ///< >=
     Assign,        ///< :=
     NilCoalesce,   ///< ??
+    Question,      ///< ? (optional type suffix)
 
     // Punctuation
     Dot,           ///< .

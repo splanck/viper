@@ -72,4 +72,24 @@ PascalCompilerResult compilePascal(const PascalCompilerInput &input,
                                    const PascalCompilerOptions &options,
                                    il::support::SourceManager &sm);
 
+/// @brief Multi-file compilation input.
+struct PascalMultiFileInput
+{
+    /// @brief List of unit sources (in dependency order).
+    std::vector<PascalCompilerInput> units;
+    /// @brief Main program source.
+    PascalCompilerInput program;
+};
+
+/// @brief Compile multiple Pascal files into a single IL module.
+/// @details Units are analyzed first (in order), then the main program.
+///          All functions are lowered into a single Module.
+/// @param input Multi-file input specification.
+/// @param options Front-end options.
+/// @param sm Source manager.
+/// @return Combined module and diagnostics.
+PascalCompilerResult compilePascalMultiFile(const PascalMultiFileInput &input,
+                                            const PascalCompilerOptions &options,
+                                            il::support::SourceManager &sm);
+
 } // namespace il::frontends::pascal
