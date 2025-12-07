@@ -2,7 +2,7 @@
 
 **Viper** is an IL-first compiler toolchain and virtual machine for exploring intermediate language design, multi-frontend architectures, and interpreter implementation techniques.
 
-High-level frontends—like the included BASIC compiler—lower programs into a strongly typed, SSA-inspired intermediate language (**Viper IL**). The IL can be executed by the VM or compiled to native code.
+High-level frontends—like the included BASIC and Pascal compilers—lower programs into a strongly typed, SSA-inspired intermediate language (**Viper IL**). The IL can be executed by the VM or compiled to native code.
 
 > **Status:** Early development. APIs, IL, and tooling change frequently. Not production-ready.
 
@@ -78,6 +78,7 @@ Viper is in **early development**. All components are functional but incomplete:
 | Component | Notes |
 |-----------|-------|
 | BASIC Frontend | Core language implemented; OOP features work but are evolving |
+| Pascal Frontend | Core language implemented; units, exceptions, native codegen |
 | Viper IL | Stable core; instruction set still expanding |
 | Virtual Machine | Functional with multiple dispatch strategies |
 | AArch64 Backend | Validated on Apple Silicon; actively developed |
@@ -113,7 +114,7 @@ Run a demo:
 ```
 ┌─────────────────────────────────────────┐
 │           Source Language               │
-│        (BASIC, others planned)          │
+│           (BASIC, Pascal)               │
 └─────────────────┬───────────────────────┘
                   │
                   ▼
@@ -181,6 +182,7 @@ entry:
 | Tool | Purpose |
 |------|---------|
 | `vbasic` | Run or compile BASIC programs |
+| `vpascal` | Run or compile Pascal programs |
 | `ilrun` | Execute IL programs |
 | `il-verify` | Validate IL with detailed diagnostics |
 | `il-dis` | Disassemble IL for inspection |
@@ -191,8 +193,14 @@ entry:
 # Run BASIC
 ./build/src/tools/vbasic/vbasic program.bas
 
+# Run Pascal
+./build/src/tools/vpascal/vpascal program.pas
+
 # Emit IL from BASIC
 ./build/src/tools/vbasic/vbasic program.bas --emit-il
+
+# Emit IL from Pascal
+./build/src/tools/vpascal/vpascal program.pas --emit-il
 
 # Run IL
 ./build/src/tools/ilrun/ilrun program.il
@@ -207,7 +215,12 @@ entry:
 
 ```bash
 # Compile BASIC to native executable (experimental)
-./build/src/tools/ilc/ilc front basic program.bas -o program
+./build/src/tools/ilc/ilc front basic -emit-il program.bas > program.il
+./build/src/tools/ilc/ilc codegen arm64 program.il -o program
+
+# Compile Pascal to native executable
+./build/src/tools/ilc/ilc front pascal -emit-il program.pas > program.il
+./build/src/tools/ilc/ilc codegen arm64 program.il -o program
 ```
 
 ---
@@ -257,7 +270,7 @@ ctest --test-dir build --output-on-failure
 sudo cmake --install build --prefix /usr/local
 ```
 
-Installs: `vbasic`, `ilrun`, `ilc`, `il-verify`, `il-dis`
+Installs: `vbasic`, `vpascal`, `ilrun`, `ilc`, `il-verify`, `il-dis`
 
 ### Platform Notes
 
@@ -273,7 +286,9 @@ Installs: `vbasic`, `ilrun`, `ilc`, `il-verify`, `il-dis`
 |----------|-------------|
 | [Getting Started](docs/getting-started.md) | Build and run your first program |
 | [BASIC Tutorial](docs/basic-language.md) | Learn Viper BASIC by example |
-| [BASIC Reference](docs/basic-reference.md) | Complete language specification |
+| [BASIC Reference](docs/basic-reference.md) | Complete BASIC language specification |
+| [Pascal Tutorial](docs/pascal-language.md) | Learn Viper Pascal by example |
+| [Pascal Reference](docs/pascal-reference.md) | Complete Pascal language specification |
 | [Runtime Library](docs/viperlib.md) | Viper.* classes, methods, and properties |
 | [IL Guide](docs/il-guide.md) | IL specification and examples |
 | [IL Quickstart](docs/il-quickstart.md) | Fast introduction to Viper IL |
