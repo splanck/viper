@@ -743,7 +743,8 @@ StmtPtr Parser::parseFunctionStatement()
                 func->ret = Type::I64;
                 break;
             case BasicType::Object:
-                func->ret = Type::Ptr;
+                // Objects are represented as I64 (pointer-sized) at AST level
+                func->ret = Type::I64;
                 break;
             case BasicType::Unknown:
                 break;
