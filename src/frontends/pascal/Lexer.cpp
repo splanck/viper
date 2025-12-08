@@ -52,6 +52,7 @@ const char *tokenKindToString(TokenKind kind)
         case TokenKind::KwDownto:       return "downto";
         case TokenKind::KwElse:         return "else";
         case TokenKind::KwEnd:          return "end";
+        case TokenKind::KwExit:         return "exit";
         case TokenKind::KwExcept:       return "except";
         case TokenKind::KwFinally:      return "finally";
         case TokenKind::KwFor:          return "for";
@@ -144,6 +145,7 @@ const std::unordered_map<std::string, TokenKind> &keywordTable()
         {"downto",         TokenKind::KwDownto},
         {"else",           TokenKind::KwElse},
         {"end",            TokenKind::KwEnd},
+        {"exit",           TokenKind::KwExit},
         {"except",         TokenKind::KwExcept},
         {"finally",        TokenKind::KwFinally},
         {"for",            TokenKind::KwFor},

@@ -200,17 +200,16 @@ TEST(PascalParserType, DynamicArray)
     EXPECT_EQ(elem->name, "String");
 }
 
-TEST(PascalParserType, StaticArrayWithRange)
+TEST(PascalParserType, StaticArrayWithSize)
 {
-    // array[1..10] of Real
-    auto type = parseTypeHelper("array[1..10] of Real");
+    // array[10] of Real - 0-based array with 10 elements
+    auto type = parseTypeHelper("array[10] of Real");
     EXPECT_TRUE(type != nullptr);
 
     auto *arr = asType<ArrayTypeNode>(type.get());
     EXPECT_TRUE(arr != nullptr);
     EXPECT_EQ(arr->dimensions.size(), 1u);
-    EXPECT_TRUE(arr->dimensions[0].low != nullptr);
-    EXPECT_TRUE(arr->dimensions[0].high != nullptr);
+    EXPECT_TRUE(arr->dimensions[0].size != nullptr);
 }
 
 TEST(PascalParserType, MatrixArray)
@@ -224,17 +223,26 @@ TEST(PascalParserType, MatrixArray)
     EXPECT_EQ(arr->dimensions.size(), 2u);
 }
 
-TEST(PascalParserType, MatrixArrayWithRanges)
+TEST(PascalParserType, RangeSyntaxRejected)
 {
-    // array[0..2, 0..3] of Real
-    auto type = parseTypeHelper("array[0..2, 0..3] of Real");
-    EXPECT_TRUE(type != nullptr);
+    // array[0..2] of Real - range syntax is not supported in v0.1
+    il::support::DiagnosticEngine diag;
+    Lexer lexer("array[0..2] of Real", 0, diag);
+    Parser parser(lexer, diag);
+    auto type = parser.parseType();
+    // Parser should reject range syntax
+    EXPECT_TRUE(type == nullptr || parser.hasError());
+}
 
-    auto *arr = asType<ArrayTypeNode>(type.get());
-    EXPECT_TRUE(arr != nullptr);
-    EXPECT_EQ(arr->dimensions.size(), 2u);
-    EXPECT_TRUE(arr->dimensions[0].low != nullptr);
-    EXPECT_TRUE(arr->dimensions[1].low != nullptr);
+TEST(PascalParserType, RangeSyntaxMultiDimRejected)
+{
+    // array[0..2, 0..3] of Real - range syntax is not supported in v0.1
+    il::support::DiagnosticEngine diag;
+    Lexer lexer("array[1..10, 1..20] of Integer", 0, diag);
+    Parser parser(lexer, diag);
+    auto type = parser.parseType();
+    // Parser should reject range syntax
+    EXPECT_TRUE(type == nullptr || parser.hasError());
 }
 
 //===----------------------------------------------------------------------===//

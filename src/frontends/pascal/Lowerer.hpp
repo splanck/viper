@@ -84,8 +84,11 @@ class Lowerer
     std::unique_ptr<il::build::IRBuilder> builder_;                 ///< IR builder
     SemanticAnalyzer *sema_{nullptr};                               ///< Semantic analyzer
     Function *currentFunc_{nullptr};                                ///< Current function
+    std::string currentFuncName_;                                   ///< Current function name (lowercase, for Result mapping)
+    std::string currentClassName_;                                  ///< Current class name (for Self/field access in methods)
     size_t currentBlockIdx_{0};                                     ///< Current block index
     std::map<std::string, Value> locals_;                           ///< Variable -> alloca slot
+    std::map<std::string, PasType> localTypes_;                     ///< Variable -> type (for procedure locals)
     std::map<std::string, Value> constants_;                        ///< Constant -> value
     ::il::frontends::common::StringTable stringTable_;              ///< String interning table
     ::il::frontends::common::LoopContextStack loopStack_;           ///< Loop context stack
@@ -143,6 +146,12 @@ class Lowerer
     /// @brief Lower a procedure declaration (create IL function).
     void lowerProcedureDecl(ProcedureDecl &decl);
 
+    /// @brief Lower a constructor declaration (create IL function).
+    void lowerConstructorDecl(ConstructorDecl &decl);
+
+    /// @brief Lower a destructor declaration (create IL function).
+    void lowerDestructorDecl(DestructorDecl &decl);
+
     //=========================================================================
     // Expression Lowering
     //=========================================================================
@@ -179,6 +188,17 @@ class Lowerer
 
     /// @brief Lower an index expression.
     LowerResult lowerIndex(const IndexExpr &expr);
+
+    /// @brief Lower a field access expression.
+    LowerResult lowerField(const FieldExpr &expr);
+
+    /// @brief Get the address of a field in a record/class.
+    /// @param baseAddr The base address of the record.
+    /// @param baseType The PasType of the record/class.
+    /// @param fieldName The name of the field.
+    /// @return Pair of (field address, field IL type).
+    std::pair<Value, Type> getFieldAddress(Value baseAddr, const PasType &baseType,
+                                            const std::string &fieldName);
 
     /// @brief Lower short-circuit logical and.
     LowerResult lowerLogicalAnd(const BinaryExpr &expr);
@@ -231,6 +251,9 @@ class Lowerer
 
     /// @brief Lower a raise statement.
     void lowerRaise(const RaiseStmt &stmt);
+
+    /// @brief Lower an exit statement.
+    void lowerExit(const ExitStmt &stmt);
 
     /// @brief Lower a try-except statement.
     void lowerTryExcept(const TryExceptStmt &stmt);
@@ -290,6 +313,12 @@ class Lowerer
 
     /// @brief Emit truncate i64 to i1.
     Value emitTrunc1(Value intVal);
+
+    /// @brief Emit GEP (get element pointer) for pointer arithmetic.
+    /// @param base Base pointer.
+    /// @param offset Byte offset.
+    /// @return Resulting pointer.
+    Value emitGep(Value base, Value offset);
 
     /// @brief Emit EhPush instruction to register handler.
     void emitEhPush(size_t handlerBlockIdx);

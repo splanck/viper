@@ -127,6 +127,20 @@ extern "C"
     /// @brief Return a pending key as a 1-character string or empty string if none available.
     rt_string rt_inkey_str(void);
 
+    /// @brief Check if a key is available in the input buffer without reading it.
+    /// @return Non-zero if a key is pending, zero otherwise.
+    int32_t rt_keypressed(void);
+    int64_t rt_keypressed_i64(void);
+
+    // Pascal-compatible wrappers (i64 arguments)
+    void rt_term_locate(int64_t row, int64_t col);
+    void rt_term_color(int64_t fg, int64_t bg);
+    void rt_term_textcolor(int64_t fg);
+    void rt_term_textbg(int64_t bg);
+    void rt_term_hide_cursor(void);
+    void rt_term_show_cursor(void);
+    void rt_sleep_ms_i64(int64_t ms);
+
     // Output buffering control for improved terminal rendering performance
 
     /// @brief Begin batch mode for output operations.

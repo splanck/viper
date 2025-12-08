@@ -179,7 +179,7 @@ void SemanticAnalyzer::collectDeclarations(Program &prog)
 
 void SemanticAnalyzer::collectDeclarations(Unit &unit)
 {
-    // Interface declarations - check for illegal var declarations
+    // Interface declarations - check for illegal declarations
     for (auto &decl : unit.interfaceDecls)
     {
         if (decl)
@@ -188,6 +188,48 @@ void SemanticAnalyzer::collectDeclarations(Unit &unit)
             if (decl->kind == DeclKind::Var)
             {
                 error(decl->loc, "variables cannot be exported from unit interface");
+            }
+            // Procedure/function implementations cannot appear in interface
+            else if (decl->kind == DeclKind::Procedure)
+            {
+                auto &pd = static_cast<ProcedureDecl &>(*decl);
+                if (pd.body)
+                {
+                    error(decl->loc,
+                          "procedure implementation cannot appear in unit interface section; "
+                          "move the body to the implementation section");
+                }
+            }
+            else if (decl->kind == DeclKind::Function)
+            {
+                auto &fd = static_cast<FunctionDecl &>(*decl);
+                if (fd.body)
+                {
+                    error(decl->loc,
+                          "function implementation cannot appear in unit interface section; "
+                          "move the body to the implementation section");
+                }
+            }
+            // Constructor/destructor implementations cannot appear in interface
+            else if (decl->kind == DeclKind::Constructor)
+            {
+                auto &cd = static_cast<ConstructorDecl &>(*decl);
+                if (cd.body)
+                {
+                    error(decl->loc,
+                          "constructor implementation cannot appear in unit interface section; "
+                          "move the body to the implementation section");
+                }
+            }
+            else if (decl->kind == DeclKind::Destructor)
+            {
+                auto &dd = static_cast<DestructorDecl &>(*decl);
+                if (dd.body)
+                {
+                    error(decl->loc,
+                          "destructor implementation cannot appear in unit interface section; "
+                          "move the body to the implementation section");
+                }
             }
             collectDecl(*decl);
         }
@@ -277,7 +319,16 @@ void SemanticAnalyzer::registerVariable(const std::string &name, TypeNode &typeN
 {
     std::string key = toLower(name);
     PasType resolved = resolveType(typeNode);
-    addVariable(key, resolved);
+
+    // Local variables (inside routines) need definite assignment tracking
+    if (routineDepth_ > 0)
+    {
+        addLocalVariable(key, resolved);
+    }
+    else
+    {
+        addVariable(key, resolved);
+    }
 }
 
 void SemanticAnalyzer::registerConstant(const std::string &name, Expr &value, TypeNode *typeNode)
@@ -296,22 +347,49 @@ void SemanticAnalyzer::registerConstant(const std::string &name, Expr &value, Ty
     }
 
     constants_[key] = type;
+
+    // Store integer constant values for compile-time evaluation
+    if (type.kind == PasTypeKind::Integer && value.kind == ExprKind::IntLiteral)
+    {
+        constantValues_[key] = static_cast<IntLiteralExpr &>(value).value;
+    }
 }
 
 void SemanticAnalyzer::registerProcedure(ProcedureDecl &decl)
 {
-    std::string key = toLower(decl.name);
+    // Method implementations (e.g., TClass.Method) use qualified names
+    // and don't participate in free function overloading
+    std::string key = decl.isMethod()
+                          ? toLower(decl.className + "." + decl.name)
+                          : toLower(decl.name);
+
+    // v0.1: Check for user-defined overloading (not allowed for free procedures)
+    if (!decl.isMethod())
+    {
+        auto existingIt = functions_.find(key);
+        if (existingIt != functions_.end() && !existingIt->second.isForward && !decl.isForward)
+        {
+            error(decl.loc, "procedure '" + decl.name + "' is already defined; "
+                            "function/procedure overloading is not supported in Viper Pascal v0.1");
+            return;
+        }
+    }
+
+    // Validate default parameters
+    size_t requiredParams = validateDefaultParams(decl.params, decl.loc);
 
     FuncSignature sig;
     sig.name = decl.name;
     sig.returnType = PasType::voidType();
     sig.isForward = decl.isForward;
+    sig.requiredParams = requiredParams;
 
     for (const auto &param : decl.params)
     {
         PasType paramType = param.type ? resolveType(*param.type) : PasType::unknown();
         sig.params.emplace_back(param.name, paramType);
         sig.isVarParam.push_back(param.isVar);
+        sig.hasDefault.push_back(param.defaultValue != nullptr);
     }
 
     functions_[key] = sig;
@@ -319,18 +397,39 @@ void SemanticAnalyzer::registerProcedure(ProcedureDecl &decl)
 
 void SemanticAnalyzer::registerFunction(FunctionDecl &decl)
 {
-    std::string key = toLower(decl.name);
+    // Method implementations (e.g., TClass.Method) use qualified names
+    // and don't participate in free function overloading
+    std::string key = decl.isMethod()
+                          ? toLower(decl.className + "." + decl.name)
+                          : toLower(decl.name);
+
+    // v0.1: Check for user-defined overloading (not allowed for free functions)
+    if (!decl.isMethod())
+    {
+        auto existingIt = functions_.find(key);
+        if (existingIt != functions_.end() && !existingIt->second.isForward && !decl.isForward)
+        {
+            error(decl.loc, "function '" + decl.name + "' is already defined; "
+                            "function/procedure overloading is not supported in Viper Pascal v0.1");
+            return;
+        }
+    }
+
+    // Validate default parameters
+    size_t requiredParams = validateDefaultParams(decl.params, decl.loc);
 
     FuncSignature sig;
     sig.name = decl.name;
     sig.returnType = decl.returnType ? resolveType(*decl.returnType) : PasType::unknown();
     sig.isForward = decl.isForward;
+    sig.requiredParams = requiredParams;
 
     for (const auto &param : decl.params)
     {
         PasType paramType = param.type ? resolveType(*param.type) : PasType::unknown();
         sig.params.emplace_back(param.name, paramType);
         sig.isVarParam.push_back(param.isVar);
+        sig.hasDefault.push_back(param.defaultValue != nullptr);
     }
 
     functions_[key] = sig;
@@ -419,10 +518,39 @@ void SemanticAnalyzer::registerClass(ClassDecl &decl)
         }
         case ClassMember::Kind::Constructor: {
             info.hasConstructor = true;
+            // Also add constructor to methods for lookup
+            if (member.methodDecl && member.methodDecl->kind == DeclKind::Constructor)
+            {
+                auto &cd = static_cast<ConstructorDecl &>(*member.methodDecl);
+                MethodInfo method;
+                method.name = cd.name;
+                method.returnType = PasType::voidType();  // Constructors don't return a value
+                method.visibility = member.visibility;
+                method.loc = cd.loc;
+                for (const auto &param : cd.params)
+                {
+                    PasType paramType = param.type ? resolveType(*param.type) : PasType::unknown();
+                    method.params.emplace_back(param.name, paramType);
+                    method.isVarParam.push_back(param.isVar);
+                    method.hasDefault.push_back(param.defaultValue != nullptr);
+                }
+                info.methods[toLower(cd.name)] = method;
+            }
             break;
         }
         case ClassMember::Kind::Destructor: {
             info.hasDestructor = true;
+            // Also add destructor to methods for lookup
+            if (member.methodDecl && member.methodDecl->kind == DeclKind::Destructor)
+            {
+                auto &dd = static_cast<DestructorDecl &>(*member.methodDecl);
+                MethodInfo method;
+                method.name = dd.name;
+                method.returnType = PasType::voidType();
+                method.visibility = member.visibility;
+                method.loc = dd.loc;
+                info.methods[toLower(dd.name)] = method;
+            }
             break;
         }
         default:
@@ -960,6 +1088,7 @@ void SemanticAnalyzer::analyzeProcedureBody(ProcedureDecl &decl)
 
     // Push scope for procedure
     pushScope();
+    ++routineDepth_;
 
     // Register Self for methods
     if (decl.isMethod())
@@ -974,16 +1103,27 @@ void SemanticAnalyzer::analyzeProcedureBody(ProcedureDecl &decl)
         addVariable(toLower(param.name), paramType);
     }
 
-    // Register local declarations
+    // v0.1: Reject nested procedures/functions
     for (auto &localDecl : decl.localDecls)
     {
         if (localDecl)
-            collectDecl(*localDecl);
+        {
+            if (localDecl->kind == DeclKind::Procedure || localDecl->kind == DeclKind::Function)
+            {
+                error(localDecl->loc, "nested procedures/functions are not supported in Viper Pascal v0.1; "
+                                      "move declarations to the enclosing scope");
+            }
+            else
+            {
+                collectDecl(*localDecl);
+            }
+        }
     }
 
     // Analyze body
     analyzeBlock(*decl.body);
 
+    --routineDepth_;
     popScope();
     currentClassName_ = savedClassName;
 }
@@ -1010,6 +1150,7 @@ void SemanticAnalyzer::analyzeFunctionBody(FunctionDecl &decl)
 
     // Push scope for function
     pushScope();
+    ++routineDepth_;
 
     // Register Self for methods
     if (decl.isMethod())
@@ -1029,16 +1170,27 @@ void SemanticAnalyzer::analyzeFunctionBody(FunctionDecl &decl)
     PasType retType = decl.returnType ? resolveType(*decl.returnType) : PasType::unknown();
     addVariable("result", retType);
 
-    // Register local declarations
+    // v0.1: Reject nested procedures/functions
     for (auto &localDecl : decl.localDecls)
     {
         if (localDecl)
-            collectDecl(*localDecl);
+        {
+            if (localDecl->kind == DeclKind::Procedure || localDecl->kind == DeclKind::Function)
+            {
+                error(localDecl->loc, "nested procedures/functions are not supported in Viper Pascal v0.1; "
+                                      "move declarations to the enclosing scope");
+            }
+            else
+            {
+                collectDecl(*localDecl);
+            }
+        }
     }
 
     // Analyze body
     analyzeBlock(*decl.body);
 
+    --routineDepth_;
     popScope();
     currentFunction_ = nullptr;
     currentClassName_ = savedClassName;
@@ -1156,6 +1308,9 @@ void SemanticAnalyzer::analyzeStmt(Stmt &stmt)
             error(stmt, "continue statement outside of loop");
         }
         break;
+    case StmtKind::Exit:
+        analyzeExit(static_cast<ExitStmt &>(stmt));
+        break;
     case StmtKind::Raise:
         analyzeRaise(static_cast<RaiseStmt &>(stmt));
         break;
@@ -1250,11 +1405,14 @@ void SemanticAnalyzer::analyzeAssign(AssignStmt &stmt)
         error(stmt, "cannot assign " + valueType.toString() + " to " + targetType.toString());
     }
 
-    // Invalidate narrowing if assigning to a variable
+    // Invalidate narrowing and mark as definitely assigned if assigning to a variable
     if (stmt.target->kind == ExprKind::Name)
     {
         const auto &nameExpr = static_cast<const NameExpr &>(*stmt.target);
         invalidateNarrowing(nameExpr.name);
+
+        // Mark as definitely assigned (removes from uninitializedNonNullableVars_)
+        markDefinitelyAssigned(nameExpr.name);
     }
 }
 
@@ -1305,6 +1463,9 @@ void SemanticAnalyzer::analyzeIf(IfStmt &stmt)
         }
     }
 
+    // Save state before branches for definite assignment tracking
+    std::set<std::string> uninitBeforeIf = uninitializedNonNullableVars_;
+
     // Analyze then-branch with narrowing if applicable
     if (stmt.thenBranch)
     {
@@ -1323,6 +1484,12 @@ void SemanticAnalyzer::analyzeIf(IfStmt &stmt)
         }
     }
 
+    // Save what was initialized in the then branch
+    std::set<std::string> uninitAfterThen = uninitializedNonNullableVars_;
+
+    // Restore state before analyzing else branch
+    uninitializedNonNullableVars_ = uninitBeforeIf;
+
     // Analyze else-branch with narrowing if applicable
     if (stmt.elseBranch)
     {
@@ -1339,6 +1506,33 @@ void SemanticAnalyzer::analyzeIf(IfStmt &stmt)
         {
             analyzeStmt(*stmt.elseBranch);
         }
+    }
+
+    std::set<std::string> uninitAfterElse = uninitializedNonNullableVars_;
+
+    // Compute union: a variable is NOT definitely assigned after the if
+    // if it was NOT assigned in at least one branch.
+    // In other words: a variable is definitely assigned only if assigned in BOTH branches.
+    if (stmt.thenBranch && stmt.elseBranch)
+    {
+        // A variable remains uninitialized if it's uninitialized after EITHER branch
+        // (union of uninitAfterThen and uninitAfterElse)
+        uninitializedNonNullableVars_ = uninitAfterThen;
+        for (const auto &var : uninitAfterElse)
+        {
+            uninitializedNonNullableVars_.insert(var);
+        }
+    }
+    else if (stmt.thenBranch)
+    {
+        // No else branch: can't assume then-branch executed
+        // Conservatively keep the original uninitialized set
+        uninitializedNonNullableVars_ = uninitBeforeIf;
+    }
+    else
+    {
+        // No branches at all (shouldn't happen but handle it)
+        uninitializedNonNullableVars_ = uninitBeforeIf;
     }
 }
 
@@ -1656,6 +1850,42 @@ void SemanticAnalyzer::analyzeRaise(RaiseStmt &stmt)
     }
 }
 
+void SemanticAnalyzer::analyzeExit(ExitStmt &stmt)
+{
+    // Exit must be inside a procedure/function
+    if (routineDepth_ == 0)
+    {
+        error(stmt, "'Exit' statement is only valid inside a procedure or function");
+        return;
+    }
+
+    if (stmt.value)
+    {
+        // Exit(value) - must be inside a function, and value type must match return type
+        if (!currentFunction_)
+        {
+            error(stmt, "'Exit' with a value is only valid inside a function");
+            return;
+        }
+
+        if (currentFunction_->returnType.kind == PasTypeKind::Void)
+        {
+            error(stmt, "'Exit' with a value is not valid in a procedure (use 'Exit;' instead)");
+            return;
+        }
+
+        PasType valType = typeOf(*stmt.value);
+        if (!valType.isError() && !isAssignableFrom(currentFunction_->returnType, valType))
+        {
+            error(stmt, "Exit value type '" + valType.toString() +
+                            "' is not compatible with function return type '" +
+                            currentFunction_->returnType.toString() + "'");
+        }
+    }
+    // Exit; without value is valid in both procedures and functions
+    // In functions, it returns the current value of 'Result' (or undefined if not set)
+}
+
 void SemanticAnalyzer::analyzeTryExcept(TryExceptStmt &stmt)
 {
     // Reject except...else syntax in v0.1
@@ -1741,16 +1971,8 @@ void SemanticAnalyzer::analyzeTryFinally(TryFinallyStmt &stmt)
 
 void SemanticAnalyzer::analyzeWith(WithStmt &stmt)
 {
-    // Type-check with objects
-    for (auto &obj : stmt.objects)
-    {
-        if (obj)
-            typeOf(*obj);
-    }
-
-    // Analyze body (TODO: add fields to scope)
-    if (stmt.body)
-        analyzeStmt(*stmt.body);
+    // v0.1: with statement is not supported
+    error(stmt, "'with' statement is not supported in Viper Pascal v0.1");
 }
 
 void SemanticAnalyzer::analyzeInherited(InheritedStmt &stmt)
@@ -1867,6 +2089,13 @@ PasType SemanticAnalyzer::typeOfName(NameExpr &expr)
         return PasType::unknown();
     }
 
+    // Check definite assignment for non-nullable reference locals
+    if (uninitializedNonNullableVars_.count(key))
+    {
+        error(expr, "variable '" + expr.name + "' may not have been initialized");
+        return PasType::unknown();
+    }
+
     // Check variables first, using effective type (respects narrowing)
     if (auto type = lookupEffectiveType(key))
     {
@@ -1883,6 +2112,41 @@ PasType SemanticAnalyzer::typeOfName(NameExpr &expr)
     if (auto type = lookupType(key))
     {
         return *type;
+    }
+
+    // Check for zero-argument builtin functions (Pascal allows calling without parens)
+    if (auto builtinOpt = lookupBuiltin(key))
+    {
+        const auto &desc = getBuiltinDescriptor(*builtinOpt);
+        // Only allow if it can be called with 0 args and has non-void return type
+        if (desc.minArgs == 0 && desc.result != ResultKind::Void)
+        {
+            return getBuiltinResultType(*builtinOpt);
+        }
+    }
+
+    // Check for zero-argument user-defined functions (Pascal allows calling without parens)
+    if (auto sig = lookupFunction(key))
+    {
+        // Only allow if it can be called with 0 args and has non-void return type
+        if (sig->requiredParams == 0 && sig->returnType.kind != PasTypeKind::Void)
+        {
+            return sig->returnType;
+        }
+    }
+
+    // Check if we're inside a class method and the name is a field of the current class
+    if (!currentClassName_.empty())
+    {
+        auto *classInfo = lookupClass(toLower(currentClassName_));
+        if (classInfo)
+        {
+            auto fieldIt = classInfo->fields.find(key);
+            if (fieldIt != classInfo->fields.end())
+            {
+                return fieldIt->second.type;
+            }
+        }
     }
 
     error(expr, "undefined identifier '" + expr.name + "'");
@@ -1965,18 +2229,107 @@ PasType SemanticAnalyzer::typeOfCall(CallExpr &expr)
     if (!expr.callee)
         return PasType::unknown();
 
-    // Get callee name
+    // Get callee name and signature
     std::string calleeName;
+    const FuncSignature *sig = nullptr;
+    bool isMethodCall = false;
+    std::string className;
+
     if (expr.callee->kind == ExprKind::Name)
     {
         calleeName = static_cast<NameExpr &>(*expr.callee).name;
     }
     else if (expr.callee->kind == ExprKind::Field)
     {
-        // Method call - get the method name
-        calleeName = static_cast<FieldExpr &>(*expr.callee).field;
-        // Also type-check the receiver
-        typeOf(*static_cast<FieldExpr &>(*expr.callee).base);
+        // Method call or constructor call - get the method name and receiver type
+        auto &fieldExpr = static_cast<FieldExpr &>(*expr.callee);
+        calleeName = fieldExpr.field;
+        isMethodCall = true;
+
+        // Check if the base is a type reference (for constructor calls like TClassName.Create)
+        bool isConstructorCall = false;
+        if (fieldExpr.base && fieldExpr.base->kind == ExprKind::Name)
+        {
+            const auto &baseName = static_cast<const NameExpr &>(*fieldExpr.base);
+            std::string baseKey = toLower(baseName.name);
+
+            // Check if this is a type name (not a variable)
+            if (!lookupVariable(baseKey) && !lookupConstant(baseKey))
+            {
+                if (auto typeOpt = lookupType(baseKey))
+                {
+                    if (typeOpt->kind == PasTypeKind::Class)
+                    {
+                        // This is a constructor call: ClassName.Create()
+                        isConstructorCall = true;
+                        className = typeOpt->name;
+
+                        // Mark the expression for the lowerer
+                        expr.isConstructorCall = true;
+                        expr.constructorClassName = className;
+
+                        // Look up the constructor in the class
+                        auto *classInfo = lookupClass(baseKey);
+                        if (classInfo)
+                        {
+                            std::string methodKey = toLower(calleeName);
+                            auto methodIt = classInfo->methods.find(methodKey);
+                            if (methodIt != classInfo->methods.end())
+                            {
+                                // Constructor found - return the class type (new instance)
+                                // Type-check arguments
+                                for (auto &arg : expr.args)
+                                {
+                                    if (arg)
+                                        typeOf(*arg);
+                                }
+                                return PasType::classType(className);
+                            }
+                            else
+                            {
+                                error(expr, "class '" + className + "' has no constructor named '" + calleeName + "'");
+                                return PasType::unknown();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Regular method call on an instance
+        if (!isConstructorCall)
+        {
+            // Type-check the receiver
+            PasType receiverType = typeOf(*fieldExpr.base);
+
+            // Look up the method in the class
+            if (receiverType.kind == PasTypeKind::Class)
+            {
+                className = receiverType.name;
+                // Methods are stored with qualified keys
+                std::string qualifiedKey = toLower(className + "." + calleeName);
+                sig = lookupFunction(qualifiedKey);
+
+                // If not found directly, check the class info for inherited methods
+                if (!sig)
+                {
+                    auto *classInfo = lookupClass(toLower(className));
+                    if (classInfo)
+                    {
+                        std::string methodKey = toLower(calleeName);
+                        auto methodIt = classInfo->methods.find(methodKey);
+                        if (methodIt != classInfo->methods.end())
+                        {
+                            // Create a temporary signature from method info
+                            // Note: This is a simplification - methods are properly stored
+                            // in functions_ with qualified names
+                            // For now, just allow the call if the method exists
+                            // Type checking for args happens below with the signature
+                        }
+                    }
+                }
+            }
+        }
     }
     else
     {
@@ -1985,24 +2338,106 @@ PasType SemanticAnalyzer::typeOfCall(CallExpr &expr)
         return PasType::unknown();
     }
 
-    std::string key = toLower(calleeName);
-    auto *sig = lookupFunction(key);
-
-    if (!sig)
+    // For non-method calls, look up in global functions
+    if (!isMethodCall)
     {
-        error(expr, "undefined procedure or function '" + calleeName + "'");
-        return PasType::unknown();
+        std::string key = toLower(calleeName);
+        sig = lookupFunction(key);
+
+        if (!sig)
+        {
+            // Check if it's a variable/constant - give a better error message
+            if (lookupVariable(key) || lookupConstant(key))
+            {
+                error(expr, "'" + calleeName + "' is not a procedure or function; "
+                            "only calls are allowed as statements");
+            }
+            else
+            {
+                error(expr, "undefined procedure or function '" + calleeName + "'");
+            }
+            return PasType::unknown();
+        }
+    }
+    else if (!sig)
+    {
+        // Method call - look up with qualified name
+        std::string qualifiedKey = toLower(className + "." + calleeName);
+        sig = lookupFunction(qualifiedKey);
+
+        if (!sig)
+        {
+            // Check in class methods directly
+            auto *classInfo = lookupClass(toLower(className));
+            if (classInfo)
+            {
+                std::string methodKey = toLower(calleeName);
+                auto methodIt = classInfo->methods.find(methodKey);
+                if (methodIt != classInfo->methods.end())
+                {
+                    // For methods declared in class, use the method info
+                    // Type-check args against the method's parameters
+                    const MethodInfo &methodInfo = methodIt->second;
+
+                    // Check argument count
+                    size_t totalParams = methodInfo.params.size();
+                    size_t requiredParams = methodInfo.requiredParams;
+                    size_t actual = expr.args.size();
+
+                    if (actual < requiredParams)
+                    {
+                        error(expr, "too few arguments: expected at least " +
+                                        std::to_string(requiredParams) + ", got " + std::to_string(actual));
+                    }
+                    else if (actual > totalParams)
+                    {
+                        error(expr, "too many arguments: expected at most " +
+                                        std::to_string(totalParams) + ", got " + std::to_string(actual));
+                    }
+
+                    // Type-check arguments
+                    for (size_t i = 0; i < expr.args.size() && i < methodInfo.params.size(); ++i)
+                    {
+                        if (expr.args[i])
+                        {
+                            PasType argType = typeOf(*expr.args[i]);
+                            const PasType &paramType = methodInfo.params[i].second;
+                            if (!paramType.isError() && !isAssignableFrom(paramType, argType) && !argType.isError())
+                            {
+                                error(*expr.args[i], "argument " + std::to_string(i + 1) +
+                                                         " type mismatch: expected " + paramType.toString() +
+                                                         ", got " + argType.toString());
+                            }
+                        }
+                    }
+
+                    return methodInfo.returnType;
+                }
+            }
+
+            error(expr, "undefined method '" + calleeName + "' in class '" + className + "'");
+            return PasType::unknown();
+        }
     }
 
     // Check argument count (skip for variadic builtins with 0 declared params)
-    size_t expected = sig->params.size();
+    size_t totalParams = sig->params.size();
+    size_t requiredParams = sig->requiredParams;
     size_t actual = expr.args.size();
-    bool isVariadic = (expected == 0); // Treat 0-param functions as variadic (WriteLn, ReadLn, etc.)
+    bool isVariadic = (totalParams == 0); // Treat 0-param functions as variadic (WriteLn, ReadLn, etc.)
 
-    if (!isVariadic && actual != expected)
+    if (!isVariadic)
     {
-        error(expr, "expected " + std::to_string(expected) + " arguments, got " +
-                        std::to_string(actual));
+        if (actual < requiredParams)
+        {
+            error(expr, "too few arguments: expected at least " + std::to_string(requiredParams) +
+                            ", got " + std::to_string(actual));
+        }
+        else if (actual > totalParams)
+        {
+            error(expr, "too many arguments: expected at most " + std::to_string(totalParams) +
+                            ", got " + std::to_string(actual));
+        }
     }
 
     // Type-check arguments (for variadic functions, just type-check all args)
@@ -2022,12 +2457,24 @@ PasType SemanticAnalyzer::typeOfCall(CallExpr &expr)
             {
                 PasType argType = typeOf(*expr.args[i]);
                 const PasType &paramType = sig->params[i].second;
-                if (!isAssignableFrom(paramType, argType) && !argType.isError())
+                // Skip type check if param is Unknown (used for multi-type builtins like Length)
+                if (!paramType.isError() && !isAssignableFrom(paramType, argType) && !argType.isError())
                 {
                     error(*expr.args[i], "argument " + std::to_string(i + 1) + " type mismatch: expected " +
                                              paramType.toString() + ", got " + argType.toString());
                 }
             }
+        }
+    }
+
+    // Special validation for SetLength: first argument must be a dynamic array or string
+    std::string calleeKey = toLower(calleeName);
+    if (calleeKey == "setlength" && !expr.args.empty() && expr.args[0])
+    {
+        PasType firstArgType = typeOf(*expr.args[0]);
+        if (firstArgType.kind == PasTypeKind::Array && firstArgType.dimensions > 0)
+        {
+            error(*expr.args[0], "SetLength cannot be used on fixed-size arrays");
         }
     }
 
@@ -2141,29 +2588,15 @@ PasType SemanticAnalyzer::typeOfSetConstructor(SetConstructorExpr &expr)
 
 PasType SemanticAnalyzer::typeOfAddressOf(AddressOfExpr &expr)
 {
-    if (!expr.operand)
-        return PasType::unknown();
-
-    PasType operandType = typeOf(*expr.operand);
-    return PasType::pointer(operandType);
+    // v0.1: Address-of operator is not supported
+    error(expr, "address-of operator (@) is not supported in Viper Pascal v0.1; use classes instead");
+    return PasType::unknown();
 }
 
 PasType SemanticAnalyzer::typeOfDereference(DereferenceExpr &expr)
 {
-    if (!expr.operand)
-        return PasType::unknown();
-
-    PasType operandType = typeOf(*expr.operand);
-
-    if (operandType.kind == PasTypeKind::Pointer && operandType.pointeeType)
-    {
-        return *operandType.pointeeType;
-    }
-
-    if (!operandType.isError())
-    {
-        error(expr, "cannot dereference non-pointer type " + operandType.toString());
-    }
+    // v0.1: Pointer dereference is not supported
+    error(expr, "pointer dereference (^) is not supported in Viper Pascal v0.1; use classes instead");
     return PasType::unknown();
 }
 
@@ -2218,6 +2651,36 @@ PasType SemanticAnalyzer::resolveType(TypeNode &typeNode)
         auto &arr = static_cast<ArrayTypeNode &>(typeNode);
         if (!arr.elementType)
             return PasType::unknown();
+
+        // Validate dimension sizes for fixed arrays
+        for (auto &dim : arr.dimensions)
+        {
+            if (dim.size)
+            {
+                // Dimension size must be a compile-time constant integer
+                if (!isConstantExpr(*dim.size))
+                {
+                    error(*dim.size, "array dimension must be a compile-time constant");
+                    continue;
+                }
+
+                // Type-check the dimension expression
+                PasType dimType = const_cast<SemanticAnalyzer *>(this)->typeOf(*dim.size);
+                if (dimType.kind != PasTypeKind::Integer && dimType.kind != PasTypeKind::Unknown)
+                {
+                    error(*dim.size, "array dimension must be an integer");
+                    continue;
+                }
+
+                // Evaluate and check the value is positive
+                int64_t dimValue = evaluateConstantInt(*dim.size);
+                if (dimValue <= 0)
+                {
+                    error(*dim.size, "array dimension must be positive");
+                }
+            }
+        }
+
         PasType elem = resolveType(*arr.elementType);
         return PasType::array(elem, arr.dimensions.size());
     }
@@ -2236,25 +2699,18 @@ PasType SemanticAnalyzer::resolveType(TypeNode &typeNode)
         return result;
     }
     case TypeKind::Pointer: {
-        auto &ptr = static_cast<PointerTypeNode &>(typeNode);
-        if (!ptr.pointeeType)
-            return PasType::unknown();
-        PasType pointee = resolveType(*ptr.pointeeType);
-        return PasType::pointer(pointee);
+        // v0.1: Pointer types are not supported
+        error(typeNode.loc, "pointer types (^T) are not supported in Viper Pascal v0.1; use classes instead");
+        return PasType::unknown();
     }
     case TypeKind::Enum: {
         auto &en = static_cast<EnumTypeNode &>(typeNode);
         return PasType::enumType(en.values);
     }
     case TypeKind::Set: {
-        auto &setType = static_cast<SetTypeNode &>(typeNode);
-        PasType result;
-        result.kind = PasTypeKind::Set;
-        if (setType.elementType)
-        {
-            result.elementType = std::make_shared<PasType>(resolveType(*setType.elementType));
-        }
-        return result;
+        // v0.1: Set types are not supported
+        error(typeNode.loc, "set types are not supported in Viper Pascal v0.1");
+        return PasType::unknown();
     }
     case TypeKind::Procedure: {
         PasType result;
@@ -2308,6 +2764,15 @@ bool SemanticAnalyzer::isAssignableFrom(const PasType &target, const PasType &so
         if (target.kind == PasTypeKind::Interface)
         {
             return interfaceExtendsInterface(source.name, target.name);
+        }
+        // For arrays, check element type compatibility
+        if (target.kind == PasTypeKind::Array && target.elementType && source.elementType)
+        {
+            // Element types must be exactly compatible (not just assignable)
+            // Fixed arrays also must have same dimensions
+            if (target.dimensions != source.dimensions)
+                return false;
+            return isAssignableFrom(*target.elementType, *source.elementType);
         }
         return true;
     }
@@ -2487,6 +2952,166 @@ PasType SemanticAnalyzer::unaryResultType(UnaryExpr::Op op, const PasType &opera
     return PasType::unknown();
 }
 
+bool SemanticAnalyzer::isConstantExpr(const Expr &expr) const
+{
+    switch (expr.kind)
+    {
+    case ExprKind::IntLiteral:
+    case ExprKind::RealLiteral:
+    case ExprKind::StringLiteral:
+    case ExprKind::BoolLiteral:
+    case ExprKind::NilLiteral:
+        return true;
+
+    case ExprKind::Name: {
+        // Check if it's a constant identifier
+        const auto &nameExpr = static_cast<const NameExpr &>(expr);
+        std::string key = toLower(nameExpr.name);
+        return constants_.count(key) > 0;
+    }
+
+    case ExprKind::Unary: {
+        // Unary on a constant is still constant
+        const auto &unaryExpr = static_cast<const UnaryExpr &>(expr);
+        return unaryExpr.operand && isConstantExpr(*unaryExpr.operand);
+    }
+
+    case ExprKind::Binary: {
+        // Binary on constants is still constant (for compile-time evaluable ops)
+        const auto &binExpr = static_cast<const BinaryExpr &>(expr);
+        return binExpr.left && binExpr.right &&
+               isConstantExpr(*binExpr.left) && isConstantExpr(*binExpr.right);
+    }
+
+    default:
+        return false;
+    }
+}
+
+int64_t SemanticAnalyzer::evaluateConstantInt(const Expr &expr) const
+{
+    switch (expr.kind)
+    {
+    case ExprKind::IntLiteral:
+        return static_cast<const IntLiteralExpr &>(expr).value;
+
+    case ExprKind::Name: {
+        // Look up constant value
+        const auto &nameExpr = static_cast<const NameExpr &>(expr);
+        std::string key = toLower(nameExpr.name);
+
+        // Check for stored integer constant value
+        auto valIt = constantValues_.find(key);
+        if (valIt != constantValues_.end())
+        {
+            return valIt->second;
+        }
+
+        // Check for enum constant with ordinal
+        auto it = constants_.find(key);
+        if (it != constants_.end())
+        {
+            if (it->second.kind == PasTypeKind::Enum && it->second.enumOrdinal >= 0)
+            {
+                return it->second.enumOrdinal;
+            }
+        }
+        return 0;
+    }
+
+    case ExprKind::Unary: {
+        const auto &unaryExpr = static_cast<const UnaryExpr &>(expr);
+        if (!unaryExpr.operand)
+            return 0;
+        int64_t operand = evaluateConstantInt(*unaryExpr.operand);
+        switch (unaryExpr.op)
+        {
+        case UnaryExpr::Op::Neg:
+            return -operand;
+        case UnaryExpr::Op::Plus:
+            return operand;
+        case UnaryExpr::Op::Not:
+            return operand ? 0 : 1;
+        }
+        return 0;
+    }
+
+    case ExprKind::Binary: {
+        const auto &binExpr = static_cast<const BinaryExpr &>(expr);
+        if (!binExpr.left || !binExpr.right)
+            return 0;
+        int64_t left = evaluateConstantInt(*binExpr.left);
+        int64_t right = evaluateConstantInt(*binExpr.right);
+        switch (binExpr.op)
+        {
+        case BinaryExpr::Op::Add:
+            return left + right;
+        case BinaryExpr::Op::Sub:
+            return left - right;
+        case BinaryExpr::Op::Mul:
+            return left * right;
+        case BinaryExpr::Op::IntDiv:
+            return right != 0 ? left / right : 0;
+        case BinaryExpr::Op::Mod:
+            return right != 0 ? left % right : 0;
+        default:
+            return 0;
+        }
+    }
+
+    default:
+        return 0;
+    }
+}
+
+size_t SemanticAnalyzer::validateDefaultParams(const std::vector<ParamDecl> &params,
+                                                il::support::SourceLoc loc)
+{
+    bool seenDefault = false;
+    size_t requiredCount = 0;
+
+    for (size_t i = 0; i < params.size(); ++i)
+    {
+        const auto &param = params[i];
+
+        if (param.defaultValue)
+        {
+            seenDefault = true;
+
+            // Check that default value is a compile-time constant
+            if (!isConstantExpr(*param.defaultValue))
+            {
+                error(param.loc, "default parameter value must be a compile-time constant");
+            }
+
+            // Type-check the default value
+            // (Cast away const for typeOf - it doesn't modify the expr semantically)
+            PasType defaultType = const_cast<SemanticAnalyzer *>(this)->typeOf(
+                *const_cast<Expr *>(param.defaultValue.get()));
+            PasType paramType = param.type ? resolveType(*const_cast<TypeNode *>(param.type.get()))
+                                           : PasType::unknown();
+
+            if (!isAssignableFrom(paramType, defaultType) && !defaultType.isError())
+            {
+                error(param.loc, "default value type " + defaultType.toString() +
+                                     " is not compatible with parameter type " + paramType.toString());
+            }
+        }
+        else if (seenDefault)
+        {
+            // Error: non-default parameter after default parameter
+            error(param.loc, "parameter '" + param.name +
+                                 "' must have a default value because it follows a parameter with a default");
+        }
+        else
+        {
+            requiredCount++;
+        }
+    }
+
+    return requiredCount;
+}
+
 //===----------------------------------------------------------------------===//
 // Scope Management
 //===----------------------------------------------------------------------===//
@@ -2499,7 +3124,15 @@ void SemanticAnalyzer::pushScope()
 void SemanticAnalyzer::popScope()
 {
     if (!varScopes_.empty())
+    {
+        // Clear any tracking for variables in this scope
+        for (const auto &pair : varScopes_.back())
+        {
+            uninitializedNonNullableVars_.erase(pair.first);
+            definitelyAssignedVars_.erase(pair.first);
+        }
         varScopes_.pop_back();
+    }
 }
 
 void SemanticAnalyzer::addVariable(const std::string &name, const PasType &type)
@@ -2508,6 +3141,33 @@ void SemanticAnalyzer::addVariable(const std::string &name, const PasType &type)
     {
         varScopes_.back()[name] = type;
     }
+}
+
+void SemanticAnalyzer::addLocalVariable(const std::string &name, const PasType &type)
+{
+    addVariable(name, type);
+
+    // Track non-nullable reference types that require definite assignment
+    if (type.requiresDefiniteAssignment())
+    {
+        uninitializedNonNullableVars_.insert(name);
+    }
+}
+
+void SemanticAnalyzer::markDefinitelyAssigned(const std::string &name)
+{
+    std::string key = toLower(name);
+    uninitializedNonNullableVars_.erase(key);
+    definitelyAssignedVars_.insert(key);
+}
+
+bool SemanticAnalyzer::isDefinitelyAssigned(const std::string &name) const
+{
+    std::string key = toLower(name);
+    // If not in the uninitialized set, it's either:
+    // 1. Not a non-nullable reference type
+    // 2. Definitely assigned
+    return uninitializedNonNullableVars_.count(key) == 0;
 }
 
 //===----------------------------------------------------------------------===//
@@ -2707,6 +3367,7 @@ void SemanticAnalyzer::registerBuiltins()
 
     // Helper to map ArgTypeMask to PasType (for signature purposes)
     // For Numeric, prefer Real since integers auto-promote to real
+    // For multi-type args (String|Array), return an Any type marker
     auto maskToType = [](ArgTypeMask mask) -> PasType {
         // For Numeric (both Int + Real allowed), use Real to allow promotion
         if ((mask & ArgTypeMask::Integer) && (mask & ArgTypeMask::Real))
@@ -2714,7 +3375,10 @@ void SemanticAnalyzer::registerBuiltins()
         // Ordinal includes Integer and Boolean - use Integer for compatibility
         if ((mask & ArgTypeMask::Integer) && (mask & ArgTypeMask::Boolean))
             return PasType::integer(); // Ordinal - accept integers (booleans are ordinal too)
-        // Otherwise, order of preference: Integer, Real, String, Boolean
+        // String|Array - mark as Any so type checking is deferred
+        if ((mask & ArgTypeMask::String) && (mask & ArgTypeMask::Array))
+            return PasType::unknown(); // Use unknown as "Any" marker
+        // Otherwise, order of preference: Integer, Real, String, Boolean, Array
         if (mask & ArgTypeMask::Integer)
             return PasType::integer();
         if (mask & ArgTypeMask::Real)
@@ -2723,6 +3387,8 @@ void SemanticAnalyzer::registerBuiltins()
             return PasType::string();
         if (mask & ArgTypeMask::Boolean)
             return PasType::boolean();
+        if (mask & ArgTypeMask::Array)
+            return PasType::array(PasType::unknown(), 0); // Generic array type
         return PasType::unknown();
     };
 
@@ -2759,6 +3425,158 @@ void SemanticAnalyzer::registerBuiltins()
 
         functions_[toLower(desc.name)] = sig;
     }
+
+    // Register built-in units (Viper.Strings, Viper.Math)
+    registerBuiltinUnits();
+}
+
+void SemanticAnalyzer::registerBuiltinUnits()
+{
+    // Helper to map ResultKind to PasType
+    auto resultTypeToPassType = [](ResultKind kind) -> PasType {
+        switch (kind)
+        {
+        case ResultKind::Void:
+            return PasType::voidType();
+        case ResultKind::Integer:
+            return PasType::integer();
+        case ResultKind::Real:
+            return PasType::real();
+        case ResultKind::String:
+            return PasType::string();
+        case ResultKind::Boolean:
+            return PasType::boolean();
+        case ResultKind::FromArg:
+            return PasType::integer();
+        }
+        return PasType::unknown();
+    };
+
+    // Helper to map ArgTypeMask to PasType
+    auto maskToType = [](ArgTypeMask mask) -> PasType {
+        if ((mask & ArgTypeMask::Integer) && (mask & ArgTypeMask::Real))
+            return PasType::real();
+        if ((mask & ArgTypeMask::Integer) && (mask & ArgTypeMask::Boolean))
+            return PasType::integer();
+        if ((mask & ArgTypeMask::String) && (mask & ArgTypeMask::Array))
+            return PasType::unknown();
+        if (mask & ArgTypeMask::Integer)
+            return PasType::integer();
+        if (mask & ArgTypeMask::Real)
+            return PasType::real();
+        if (mask & ArgTypeMask::String)
+            return PasType::string();
+        if (mask & ArgTypeMask::Boolean)
+            return PasType::boolean();
+        if (mask & ArgTypeMask::Array)
+            return PasType::array(PasType::unknown(), 0);
+        return PasType::unknown();
+    };
+
+    //=========================================================================
+    // Viper.Strings Unit
+    //=========================================================================
+    {
+        UnitInfo unit;
+        unit.name = "Viper.Strings";
+
+        // Register all Viper.Strings builtins
+        for (size_t i = 0; i < static_cast<size_t>(PascalBuiltin::Count); ++i)
+        {
+            auto id = static_cast<PascalBuiltin>(i);
+            const auto &desc = getBuiltinDescriptor(id);
+
+            if (!desc.name || desc.category != BuiltinCategory::ViperStrings)
+                continue;
+
+            FuncSignature sig;
+            sig.name = desc.name;
+            sig.returnType = resultTypeToPassType(desc.result);
+
+            if (!desc.variadic)
+            {
+                for (const auto &arg : desc.args)
+                {
+                    if (!arg.optional)
+                    {
+                        sig.params.emplace_back("arg", maskToType(arg.allowed));
+                        sig.isVarParam.push_back(arg.isVar);
+                    }
+                }
+            }
+
+            unit.functions[toLower(desc.name)] = sig;
+        }
+
+        registerUnit(unit);
+    }
+
+    //=========================================================================
+    // Viper.Math Unit
+    //=========================================================================
+    {
+        UnitInfo unit;
+        unit.name = "Viper.Math";
+
+        // Register constants Pi and E
+        PasType piConst = PasType::real();
+        PasType eConst = PasType::real();
+        unit.constants["pi"] = piConst;
+        unit.constants["e"] = eConst;
+
+        // Register all Viper.Math builtins
+        for (size_t i = 0; i < static_cast<size_t>(PascalBuiltin::Count); ++i)
+        {
+            auto id = static_cast<PascalBuiltin>(i);
+            const auto &desc = getBuiltinDescriptor(id);
+
+            if (!desc.name || desc.category != BuiltinCategory::ViperMath)
+                continue;
+
+            FuncSignature sig;
+            sig.name = desc.name;
+            sig.returnType = resultTypeToPassType(desc.result);
+
+            if (!desc.variadic)
+            {
+                for (const auto &arg : desc.args)
+                {
+                    if (!arg.optional)
+                    {
+                        sig.params.emplace_back("arg", maskToType(arg.allowed));
+                        sig.isVarParam.push_back(arg.isVar);
+                    }
+                }
+            }
+
+            unit.functions[toLower(desc.name)] = sig;
+        }
+
+        // Also register core math functions that should be in the unit per spec:
+        // Sqrt, Abs, Floor, Ceil, Sin, Cos, Tan, Exp, Ln (already in core)
+        // These are available in core, but the unit re-exports them for consistency
+        auto addCoreFunc = [&](const char *name, ResultKind res, ArgTypeMask argMask) {
+            FuncSignature sig;
+            sig.name = name;
+            sig.returnType = resultTypeToPassType(res);
+            sig.params.emplace_back("arg", maskToType(argMask));
+            sig.isVarParam.push_back(false);
+            unit.functions[toLower(name)] = sig;
+        };
+
+        // Re-export core math functions in the unit
+        addCoreFunc("Sqrt", ResultKind::Real, ArgTypeMask::Numeric);
+        addCoreFunc("Abs", ResultKind::Real, ArgTypeMask::Numeric);
+        addCoreFunc("Floor", ResultKind::Integer, ArgTypeMask::Numeric);
+        addCoreFunc("Ceil", ResultKind::Integer, ArgTypeMask::Numeric);
+        addCoreFunc("Sin", ResultKind::Real, ArgTypeMask::Numeric);
+        addCoreFunc("Cos", ResultKind::Real, ArgTypeMask::Numeric);
+        addCoreFunc("Tan", ResultKind::Real, ArgTypeMask::Numeric);
+        addCoreFunc("Exp", ResultKind::Real, ArgTypeMask::Numeric);
+        addCoreFunc("Ln", ResultKind::Real, ArgTypeMask::Numeric);
+
+        registerUnit(unit);
+    }
 }
 
 //===----------------------------------------------------------------------===//
@@ -2785,6 +3603,52 @@ bool SemanticAnalyzer::importUnits(const std::vector<std::string> &unitNames)
 
     for (const auto &unitName : unitNames)
     {
+        // Check if this is a Viper standard unit (Viper.Strings, Viper.Math, Crt, etc.)
+        if (isViperUnit(unitName))
+        {
+            // Import builtins from this Viper unit
+            auto builtins = getUnitBuiltins(unitName);
+            for (auto builtin : builtins)
+            {
+                const auto &desc = getBuiltinDescriptor(builtin);
+                if (!desc.name)
+                    continue;
+
+                // Register the builtin as a function
+                FuncSignature sig;
+                sig.name = desc.name;
+
+                // Set up parameters
+                for (size_t i = 0; i < desc.args.size() && i < desc.maxArgs; ++i)
+                {
+                    const auto &argSpec = desc.args[i];
+                    PasType paramType; // default to unknown
+
+                    // Determine parameter type from allowed mask
+                    if (argSpec.allowed & ArgTypeMask::Integer)
+                        paramType = PasType::integer();
+                    else if (argSpec.allowed & ArgTypeMask::Real)
+                        paramType = PasType::real();
+                    else if (argSpec.allowed & ArgTypeMask::String)
+                        paramType = PasType::string();
+                    else if (argSpec.allowed & ArgTypeMask::Boolean)
+                        paramType = PasType::boolean();
+
+                    sig.params.push_back({"arg" + std::to_string(i), paramType});
+                    sig.isVarParam.push_back(argSpec.isVar);
+                    sig.hasDefault.push_back(argSpec.optional);
+                }
+
+                // Set return type
+                sig.returnType = getBuiltinResultType(builtin);
+                sig.requiredParams = desc.minArgs;
+
+                std::string key = toLower(desc.name);
+                functions_[key] = sig;
+            }
+            continue;
+        }
+
         const UnitInfo *unit = getUnit(unitName);
         if (!unit)
         {

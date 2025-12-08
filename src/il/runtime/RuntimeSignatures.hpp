@@ -124,6 +124,7 @@ enum class RuntimeFeature : std::size_t
     InKey,
     GetKey,
     GetKeyTimeout,
+    KeyPressed,
     ArgsCount,
     ArgsGet,
     Cmdline,

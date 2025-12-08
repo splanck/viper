@@ -637,6 +637,96 @@ TEST(PascalLexerTest, MixedKeywordsAndIdentifiers)
     EXPECT_TRUE(tokens[9].isPredefined);  // String
 }
 
+//===----------------------------------------------------------------------===//
+// v0.1 Spec Compliance Tests - No Char type, no binary literals, no #nnn
+//===----------------------------------------------------------------------===//
+
+TEST(PascalLexerTest, V01_BinaryLiteralNotSupported)
+{
+    // v0.1 spec: No binary literals with % prefix
+    // %1010 should produce error (unexpected character '%')
+    DiagnosticEngine diag;
+    Lexer lexer("%1010", 1, diag);
+    Token tok = lexer.next();
+    EXPECT_EQ(tok.kind, TokenKind::Error);
+    EXPECT_EQ(diag.errorCount(), 1u);
+}
+
+TEST(PascalLexerTest, V01_NumericCharLiteralNotSupported)
+{
+    // v0.1 spec: No #nnn numeric char literals
+    // #65 should produce error (unexpected character '#')
+    DiagnosticEngine diag;
+    Lexer lexer("#65", 1, diag);
+    Token tok = lexer.next();
+    EXPECT_EQ(tok.kind, TokenKind::Error);
+    EXPECT_EQ(diag.errorCount(), 1u);
+}
+
+TEST(PascalLexerTest, V01_BackslashInStringIsLiteral)
+{
+    // v0.1 spec: No C-style escape sequences
+    // Backslash is treated as a regular character
+    auto tok = singleToken("'Hello\\nWorld'");
+    EXPECT_EQ(tok.kind, TokenKind::StringLiteral);
+    // The backslash and 'n' are literal characters, not a newline
+    EXPECT_EQ(tok.canonical, "Hello\\nWorld");
+}
+
+TEST(PascalLexerTest, V01_BackslashTabEscapeIsLiteral)
+{
+    // \t in string is literal backslash + t, not a tab
+    auto tok = singleToken("'Tab\\there'");
+    EXPECT_EQ(tok.kind, TokenKind::StringLiteral);
+    EXPECT_EQ(tok.canonical, "Tab\\there");
+}
+
+TEST(PascalLexerTest, V01_BackslashHexEscapeIsLiteral)
+{
+    // \x41 is literal characters, not hex escape
+    auto tok = singleToken("'Hex\\x41'");
+    EXPECT_EQ(tok.kind, TokenKind::StringLiteral);
+    EXPECT_EQ(tok.canonical, "Hex\\x41");
+}
+
+TEST(PascalLexerTest, V01_CharIsNotPredefined)
+{
+    // v0.1 spec: Char is not a primitive type
+    // 'Char' should be a regular identifier, not predefined
+    auto tok = singleToken("Char");
+    EXPECT_EQ(tok.kind, TokenKind::Identifier);
+    EXPECT_FALSE(tok.isPredefined);  // NOT a predefined identifier
+    EXPECT_EQ(tok.canonical, "char");
+}
+
+TEST(PascalLexerTest, V01_OnlyDoubledApostropheEscapes)
+{
+    // v0.1 spec: Only '' escapes an apostrophe in strings
+    auto tok = singleToken("'Can''t stop'");
+    EXPECT_EQ(tok.kind, TokenKind::StringLiteral);
+    EXPECT_EQ(tok.canonical, "Can't stop");
+}
+
+TEST(PascalLexerTest, V01_HexLiteralsSupported)
+{
+    // v0.1 spec: Hex literals with $ prefix are supported
+    auto tok = singleToken("$FF");
+    EXPECT_EQ(tok.kind, TokenKind::IntegerLiteral);
+    EXPECT_EQ(tok.intValue, 255);
+
+    tok = singleToken("$DEADBEEF");
+    EXPECT_EQ(tok.kind, TokenKind::IntegerLiteral);
+    EXPECT_EQ(tok.intValue, 0xDEADBEEF);
+}
+
+TEST(PascalLexerTest, V01_DecimalLiteralsSupported)
+{
+    // v0.1 spec: Decimal integers are supported
+    auto tok = singleToken("42");
+    EXPECT_EQ(tok.kind, TokenKind::IntegerLiteral);
+    EXPECT_EQ(tok.intValue, 42);
+}
+
 } // namespace
 
 #ifndef VIPER_HAS_GTEST

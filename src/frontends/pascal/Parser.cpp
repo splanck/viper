@@ -615,6 +615,21 @@ std::unique_ptr<Stmt> Parser::parseStatement()
         return std::make_unique<ContinueStmt>(loc);
     }
 
+    // Exit statement: Exit; or Exit(value);
+    if (check(TokenKind::KwExit))
+    {
+        advance();
+        std::unique_ptr<Expr> value;
+        // Check for optional value: Exit(value)
+        if (match(TokenKind::LParen))
+        {
+            value = parseExpression();
+            if (!expect(TokenKind::RParen, "')'"))
+                return nullptr;
+        }
+        return std::make_unique<ExitStmt>(std::move(value), loc);
+    }
+
     // Inherited statement: inherited; or inherited MethodName(args);
     if (check(TokenKind::KwInherited))
     {
@@ -1219,7 +1234,7 @@ std::unique_ptr<TypeNode> Parser::parseArrayType()
     if (!expect(TokenKind::KwArray, "'array'"))
         return nullptr;
 
-    std::vector<ArrayTypeNode::DimRange> dimensions;
+    std::vector<ArrayTypeNode::DimSize> dimensions;
 
     // Check for dimension specification [...]
     if (match(TokenKind::LBracket))
@@ -1227,27 +1242,23 @@ std::unique_ptr<TypeNode> Parser::parseArrayType()
         // Parse dimensions (comma-separated)
         do
         {
-            ArrayTypeNode::DimRange dim;
+            ArrayTypeNode::DimSize dim;
 
-            // Parse dimension - could be a single size or a range
+            // Parse dimension size expression
             auto expr = parseExpression();
             if (!expr)
                 return nullptr;
 
-            // Check for range (..)
-            if (match(TokenKind::DotDot))
+            // Check for range (..) - not supported in v0.1 (0-based arrays only)
+            if (check(TokenKind::DotDot))
             {
-                dim.low = std::move(expr);
-                dim.high = parseExpression();
-                if (!dim.high)
-                    return nullptr;
+                error("range syntax 'low..high' is not supported; use single size "
+                      "(e.g., array[10] of T for 0-based array)");
+                return nullptr;
             }
-            else
-            {
-                // Single size means 0..(size-1), store just high for now
-                // Semantic analysis will handle the interpretation
-                dim.high = std::move(expr);
-            }
+
+            // Size expression - array bounds are 0..size-1
+            dim.size = std::move(expr);
 
             dimensions.push_back(std::move(dim));
         } while (match(TokenKind::Comma));
@@ -2715,25 +2726,42 @@ std::vector<std::string> Parser::parseUses()
     if (!expect(TokenKind::KwUses, "'uses'"))
         return units;
 
+    // Helper to parse a potentially dotted unit name (e.g., "Viper.Strings")
+    auto parseUnitName = [&]() -> std::string {
+        if (!check(TokenKind::Identifier))
+        {
+            error("expected unit name");
+            return "";
+        }
+        std::string name = current_.text;
+        advance();
+
+        // Check for dotted name (e.g., Viper.Strings)
+        while (match(TokenKind::Dot))
+        {
+            if (!check(TokenKind::Identifier))
+            {
+                error("expected identifier after '.'");
+                return name;
+            }
+            name += ".";
+            name += current_.text;
+            advance();
+        }
+        return name;
+    };
+
     // First unit name
-    if (!check(TokenKind::Identifier))
-    {
-        error("expected unit name");
-        return units;
-    }
-    units.push_back(current_.text);
-    advance();
+    std::string firstName = parseUnitName();
+    if (!firstName.empty())
+        units.push_back(firstName);
 
     // Additional unit names
     while (match(TokenKind::Comma))
     {
-        if (!check(TokenKind::Identifier))
-        {
-            error("expected unit name after ','");
-            break;
-        }
-        units.push_back(current_.text);
-        advance();
+        std::string unitName = parseUnitName();
+        if (!unitName.empty())
+            units.push_back(unitName);
     }
 
     // Expect semicolon

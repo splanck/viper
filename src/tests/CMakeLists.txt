@@ -537,6 +537,34 @@ target_link_libraries(test_pascal_semantic_exception PRIVATE viper_testing fe_pa
 add_test(NAME test_pascal_semantic_exception COMMAND test_pascal_semantic_exception)
 set_tests_properties(test_pascal_semantic_exception PROPERTIES LABELS pascal)
 
+add_executable(test_pascal_semantic_array ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/SemanticArrayTests.cpp)
+target_link_libraries(test_pascal_semantic_array PRIVATE viper_testing fe_pascal)
+add_test(NAME test_pascal_semantic_array COMMAND test_pascal_semantic_array)
+set_tests_properties(test_pascal_semantic_array PROPERTIES LABELS pascal)
+
+add_executable(test_pascal_semantic_builtin ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/SemanticBuiltinTests.cpp)
+target_link_libraries(test_pascal_semantic_builtin PRIVATE viper_testing fe_pascal)
+add_test(NAME test_pascal_semantic_builtin COMMAND test_pascal_semantic_builtin)
+set_tests_properties(test_pascal_semantic_builtin PROPERTIES LABELS pascal)
+
+# Pascal v0.1 feature rejection tests
+add_executable(test_pascal_semantic_v01_rejection ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/SemanticV01RejectionTests.cpp)
+target_link_libraries(test_pascal_semantic_v01_rejection PRIVATE viper_testing fe_pascal)
+add_test(NAME test_pascal_semantic_v01_rejection COMMAND test_pascal_semantic_v01_rejection)
+set_tests_properties(test_pascal_semantic_v01_rejection PROPERTIES LABELS pascal)
+
+# Pascal non-nullable reference tests
+add_executable(test_pascal_semantic_nonnullable ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/SemanticNonNullableTests.cpp)
+target_link_libraries(test_pascal_semantic_nonnullable PRIVATE viper_testing fe_pascal)
+add_test(NAME test_pascal_semantic_nonnullable COMMAND test_pascal_semantic_nonnullable)
+set_tests_properties(test_pascal_semantic_nonnullable PROPERTIES LABELS pascal)
+
+# Pascal default parameters and call-only statement tests
+add_executable(test_pascal_semantic_default_param ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/SemanticDefaultParamTests.cpp)
+target_link_libraries(test_pascal_semantic_default_param PRIVATE viper_testing fe_pascal)
+add_test(NAME test_pascal_semantic_default_param COMMAND test_pascal_semantic_default_param)
+set_tests_properties(test_pascal_semantic_default_param PROPERTIES LABELS pascal)
+
 # Pascal frontend smoke test (emit IL)
 add_test(NAME pascal_skeleton_emit_il
         COMMAND $<TARGET_FILE:ilc> front pascal -emit-il ${CMAKE_CURRENT_SOURCE_DIR}/data/pascal/hello.pas)

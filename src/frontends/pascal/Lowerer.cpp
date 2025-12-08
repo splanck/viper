@@ -57,6 +57,7 @@ Lowerer::Module Lowerer::lower(Program &prog, SemanticAnalyzer &sema)
     builder_ = std::make_unique<il::build::IRBuilder>(*module_);
     sema_ = &sema;
     locals_.clear();
+    localTypes_.clear();
     constants_.clear();
     stringTable_.clear();
     // Set up the StringTable emitter to register globals with the builder
@@ -83,11 +84,26 @@ Lowerer::Module Lowerer::lower(Program &prog, SemanticAnalyzer &sema)
             auto &procDecl = static_cast<ProcedureDecl &>(*decl);
             lowerProcedureDecl(procDecl);
         }
+        else if (decl->kind == DeclKind::Constructor)
+        {
+            auto &ctorDecl = static_cast<ConstructorDecl &>(*decl);
+            lowerConstructorDecl(ctorDecl);
+        }
+        else if (decl->kind == DeclKind::Destructor)
+        {
+            auto &dtorDecl = static_cast<DestructorDecl &>(*decl);
+            lowerDestructorDecl(dtorDecl);
+        }
     }
 
     // Create @main function
     currentFunc_ = &builder_->startFunction(
         "main", Type(Type::Kind::I64), {});
+
+    // Clear locals from any previously lowered functions
+    locals_.clear();
+    localTypes_.clear();
+    currentFuncName_.clear();  // main doesn't have Result
 
     // Create entry block
     size_t entryIdx = createBlock("entry");
@@ -127,6 +143,7 @@ Lowerer::Module Lowerer::lower(Unit &unit, SemanticAnalyzer &sema)
     builder_ = std::make_unique<il::build::IRBuilder>(*module_);
     sema_ = &sema;
     locals_.clear();
+    localTypes_.clear();
     constants_.clear();
     stringTable_.clear();
     // Set up the StringTable emitter to register globals with the builder
@@ -152,6 +169,16 @@ Lowerer::Module Lowerer::lower(Unit &unit, SemanticAnalyzer &sema)
         {
             auto &procDecl = static_cast<ProcedureDecl &>(*decl);
             lowerProcedureDecl(procDecl);
+        }
+        else if (decl->kind == DeclKind::Constructor)
+        {
+            auto &ctorDecl = static_cast<ConstructorDecl &>(*decl);
+            lowerConstructorDecl(ctorDecl);
+        }
+        else if (decl->kind == DeclKind::Destructor)
+        {
+            auto &dtorDecl = static_cast<DestructorDecl &>(*decl);
+            lowerDestructorDecl(dtorDecl);
         }
     }
 
@@ -245,6 +272,8 @@ Lowerer::Type Lowerer::mapType(const PasType &pasType)
 {
     switch (pasType.kind)
     {
+    case PasTypeKind::Void:
+        return Type(Type::Kind::Void);
     case PasTypeKind::Integer:
     case PasTypeKind::Enum:
         // Enums are represented as integers (ordinal values)
@@ -325,12 +354,15 @@ void Lowerer::allocateLocals(const std::vector<std::unique_ptr<Decl>> &decls)
             if (!varDecl.type)
                 continue;
 
-            // Use semantic analyzer to get the variable type
+            // Resolve type directly from the declaration to handle procedure locals
+            // (sema_->lookupVariable won't work since scope has been popped after analysis)
+            PasType type = sema_->resolveType(*varDecl.type);
+
             for (const auto &name : varDecl.names)
             {
                 std::string key = toLower(name);
-                auto varType = sema_->lookupVariable(key);
-                PasType type = varType ? *varType : PasType{PasTypeKind::Integer};
+                // Store type for lowerName to retrieve
+                localTypes_[key] = type;
                 int64_t size = sizeOf(type);
                 Value slot = emitAlloca(size);
                 locals_[key] = slot;
@@ -399,6 +431,16 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl)
 
     // Build parameter list
     std::vector<il::core::Param> params;
+
+    // For methods, add implicit Self parameter as first parameter
+    if (decl.isMethod())
+    {
+        il::core::Param selfParam;
+        selfParam.name = "Self";
+        selfParam.type = Type(Type::Kind::Ptr);  // Classes are always pointers
+        params.push_back(std::move(selfParam));
+    }
+
     for (const auto &param : decl.params)
     {
         il::core::Param ilParam;
@@ -426,8 +468,9 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl)
             returnType = mapType(sig->returnType);
     }
 
-    // Create function
-    currentFunc_ = &builder_->startFunction(decl.name, returnType, params);
+    // Create function - for methods, use ClassName.MethodName
+    std::string funcName = decl.isMethod() ? (decl.className + "." + decl.name) : decl.name;
+    currentFunc_ = &builder_->startFunction(funcName, returnType, params);
 
     // Create entry block
     size_t entryIdx = createBlock("entry");
@@ -438,20 +481,35 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl)
 
     // Clear locals for this function
     locals_.clear();
+    localTypes_.clear();
+    currentFuncName_ = toLower(decl.name);
+    currentClassName_ = decl.isMethod() ? decl.className : "";
+
+    // For methods, map Self parameter to locals
+    size_t paramOffset = 0;
+    if (decl.isMethod() && !currentFunc_->params.empty())
+    {
+        unsigned selfId = currentFunc_->params[0].id;
+        Value selfVal = Value::temp(selfId);
+        Value selfSlot = emitAlloca(8);
+        locals_["self"] = selfSlot;
+        emitStore(Type(Type::Kind::Ptr), selfSlot, selfVal);
+        paramOffset = 1;
+    }
 
     // Map parameters to locals (startFunction copies params to function.params)
-    for (size_t i = 0; i < decl.params.size() && i < currentFunc_->params.size(); ++i)
+    for (size_t i = 0; i < decl.params.size() && (i + paramOffset) < currentFunc_->params.size(); ++i)
     {
         const auto &param = decl.params[i];
         std::string key = toLower(param.name);
 
-        unsigned paramId = currentFunc_->params[i].id;
+        unsigned paramId = currentFunc_->params[i + paramOffset].id;
         Value paramVal = Value::temp(paramId);
 
         // Allocate slot and store parameter
         Value slot = emitAlloca(8);
         locals_[key] = slot;
-        emitStore(currentFunc_->params[i].type, slot, paramVal);
+        emitStore(currentFunc_->params[i + paramOffset].type, slot, paramVal);
     }
 
     // Allocate result variable for the function
@@ -468,6 +526,9 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl)
     // Return the result value
     Value result = emitLoad(returnType, resultSlot);
     emitRet(result);
+
+    // Clear class name
+    currentClassName_.clear();
 }
 
 void Lowerer::lowerProcedureDecl(ProcedureDecl &decl)
@@ -477,14 +538,25 @@ void Lowerer::lowerProcedureDecl(ProcedureDecl &decl)
 
     // Build parameter list
     std::vector<il::core::Param> params;
+
+    // For methods, add implicit Self parameter as first parameter
+    if (decl.isMethod())
+    {
+        il::core::Param selfParam;
+        selfParam.name = "Self";
+        selfParam.type = Type(Type::Kind::Ptr);  // Classes are always pointers
+        params.push_back(std::move(selfParam));
+    }
+
     for (const auto &param : decl.params)
     {
         il::core::Param ilParam;
         ilParam.name = param.name;
         if (param.type)
         {
-            auto varType = sema_->lookupVariable(toLower(param.name));
-            ilParam.type = varType ? mapType(*varType) : Type(Type::Kind::I64);
+            // Resolve type from the TypeNode directly
+            PasType paramType = sema_->resolveType(*param.type);
+            ilParam.type = mapType(paramType);
         }
         else
         {
@@ -493,8 +565,9 @@ void Lowerer::lowerProcedureDecl(ProcedureDecl &decl)
         params.push_back(std::move(ilParam));
     }
 
-    // Create procedure (void return)
-    currentFunc_ = &builder_->startFunction(decl.name, Type(Type::Kind::Void), params);
+    // Create procedure (void return) - for methods, use ClassName.MethodName
+    std::string funcName = decl.isMethod() ? (decl.className + "." + decl.name) : decl.name;
+    currentFunc_ = &builder_->startFunction(funcName, Type(Type::Kind::Void), params);
 
     // Create entry block
     size_t entryIdx = createBlock("entry");
@@ -505,19 +578,41 @@ void Lowerer::lowerProcedureDecl(ProcedureDecl &decl)
 
     // Clear locals for this procedure
     locals_.clear();
+    localTypes_.clear();
+    currentFuncName_.clear();  // Procedures don't have Result
+    currentClassName_ = decl.isMethod() ? decl.className : "";
+
+    // For methods, map Self parameter to locals
+    size_t paramOffset = 0;
+    if (decl.isMethod() && !currentFunc_->params.empty())
+    {
+        unsigned selfId = currentFunc_->params[0].id;
+        Value selfVal = Value::temp(selfId);
+        Value selfSlot = emitAlloca(8);
+        locals_["self"] = selfSlot;
+        emitStore(Type(Type::Kind::Ptr), selfSlot, selfVal);
+        paramOffset = 1;
+    }
 
     // Map parameters to locals
-    for (size_t i = 0; i < decl.params.size() && i < currentFunc_->params.size(); ++i)
+    for (size_t i = 0; i < decl.params.size() && (i + paramOffset) < currentFunc_->params.size(); ++i)
     {
         const auto &param = decl.params[i];
         std::string key = toLower(param.name);
 
-        unsigned paramId = currentFunc_->params[i].id;
+        unsigned paramId = currentFunc_->params[i + paramOffset].id;
         Value paramVal = Value::temp(paramId);
 
         Value slot = emitAlloca(8);
         locals_[key] = slot;
-        emitStore(currentFunc_->params[i].type, slot, paramVal);
+        emitStore(currentFunc_->params[i + paramOffset].type, slot, paramVal);
+
+        // Store parameter type for later use
+        if (param.type)
+        {
+            PasType paramType = sema_->resolveType(*param.type);
+            localTypes_[key] = paramType;
+        }
     }
 
     // Allocate local variables
@@ -528,6 +623,155 @@ void Lowerer::lowerProcedureDecl(ProcedureDecl &decl)
 
     // Return void
     emitRetVoid();
+
+    // Clear class name
+    currentClassName_.clear();
+}
+
+void Lowerer::lowerConstructorDecl(ConstructorDecl &decl)
+{
+    if (!decl.body)
+        return; // Forward declaration only
+
+    // Build parameter list - always has Self as first parameter
+    std::vector<il::core::Param> params;
+
+    // Add implicit Self parameter as first parameter
+    il::core::Param selfParam;
+    selfParam.name = "Self";
+    selfParam.type = Type(Type::Kind::Ptr);  // Classes are always pointers
+    params.push_back(std::move(selfParam));
+
+    for (const auto &param : decl.params)
+    {
+        il::core::Param ilParam;
+        ilParam.name = param.name;
+        if (param.type)
+        {
+            // Resolve type from the TypeNode directly
+            PasType paramType = sema_->resolveType(*param.type);
+            ilParam.type = mapType(paramType);
+        }
+        else
+        {
+            ilParam.type = Type(Type::Kind::I64);
+        }
+        params.push_back(std::move(ilParam));
+    }
+
+    // Create constructor function: ClassName.ConstructorName (void return)
+    std::string funcName = decl.className + "." + decl.name;
+    currentFunc_ = &builder_->startFunction(funcName, Type(Type::Kind::Void), params);
+
+    // Create entry block
+    size_t entryIdx = createBlock("entry");
+    setBlock(entryIdx);
+
+    // Copy function parameters to entry block (required for codegen to spill registers)
+    currentFunc_->blocks[entryIdx].params = currentFunc_->params;
+
+    // Clear locals for this constructor
+    locals_.clear();
+    localTypes_.clear();
+    currentFuncName_.clear();  // Constructors don't have Result
+    currentClassName_ = decl.className;
+
+    // Map Self parameter to locals
+    if (!currentFunc_->params.empty())
+    {
+        unsigned selfId = currentFunc_->params[0].id;
+        Value selfVal = Value::temp(selfId);
+        Value selfSlot = emitAlloca(8);
+        locals_["self"] = selfSlot;
+        emitStore(Type(Type::Kind::Ptr), selfSlot, selfVal);
+    }
+
+    // Map parameters to locals (starting after Self)
+    for (size_t i = 0; i < decl.params.size() && (i + 1) < currentFunc_->params.size(); ++i)
+    {
+        const auto &param = decl.params[i];
+        std::string key = toLower(param.name);
+
+        unsigned paramId = currentFunc_->params[i + 1].id;
+        Value paramVal = Value::temp(paramId);
+
+        Value slot = emitAlloca(8);
+        locals_[key] = slot;
+        emitStore(currentFunc_->params[i + 1].type, slot, paramVal);
+
+        // Store parameter type for later use
+        if (param.type)
+        {
+            PasType paramType = sema_->resolveType(*param.type);
+            localTypes_[key] = paramType;
+        }
+    }
+
+    // Allocate local variables
+    allocateLocals(decl.localDecls);
+
+    // Lower body
+    lowerBlock(*decl.body);
+
+    // Return void (constructor doesn't return anything)
+    emitRetVoid();
+
+    // Clear class name
+    currentClassName_.clear();
+}
+
+void Lowerer::lowerDestructorDecl(DestructorDecl &decl)
+{
+    if (!decl.body)
+        return; // Forward declaration only
+
+    // Build parameter list - only Self parameter
+    std::vector<il::core::Param> params;
+
+    // Add implicit Self parameter
+    il::core::Param selfParam;
+    selfParam.name = "Self";
+    selfParam.type = Type(Type::Kind::Ptr);
+    params.push_back(std::move(selfParam));
+
+    // Create destructor function: ClassName.DestructorName (void return)
+    std::string funcName = decl.className + "." + decl.name;
+    currentFunc_ = &builder_->startFunction(funcName, Type(Type::Kind::Void), params);
+
+    // Create entry block
+    size_t entryIdx = createBlock("entry");
+    setBlock(entryIdx);
+
+    // Copy function parameters to entry block
+    currentFunc_->blocks[entryIdx].params = currentFunc_->params;
+
+    // Clear locals for this destructor
+    locals_.clear();
+    localTypes_.clear();
+    currentFuncName_.clear();
+    currentClassName_ = decl.className;
+
+    // Map Self parameter to locals
+    if (!currentFunc_->params.empty())
+    {
+        unsigned selfId = currentFunc_->params[0].id;
+        Value selfVal = Value::temp(selfId);
+        Value selfSlot = emitAlloca(8);
+        locals_["self"] = selfSlot;
+        emitStore(Type(Type::Kind::Ptr), selfSlot, selfVal);
+    }
+
+    // Allocate local variables
+    allocateLocals(decl.localDecls);
+
+    // Lower body
+    lowerBlock(*decl.body);
+
+    // Return void
+    emitRetVoid();
+
+    // Clear class name
+    currentClassName_.clear();
 }
 
 //===----------------------------------------------------------------------===//
@@ -558,6 +802,8 @@ LowerResult Lowerer::lowerExpr(const Expr &expr)
         return lowerCall(static_cast<const CallExpr &>(expr));
     case ExprKind::Index:
         return lowerIndex(static_cast<const IndexExpr &>(expr));
+    case ExprKind::Field:
+        return lowerField(static_cast<const FieldExpr &>(expr));
     default:
         // Unsupported expression type - return zero
         return {Value::constInt(0), Type(Type::Kind::I64)};
@@ -595,6 +841,16 @@ LowerResult Lowerer::lowerName(const NameExpr &expr)
 {
     std::string key = toLower(expr.name);
 
+    // Check for built-in math constants (Pi and E from Viper.Math)
+    if (key == "pi")
+    {
+        return {Value::constFloat(3.14159265358979323846), Type(Type::Kind::F64)};
+    }
+    if (key == "e")
+    {
+        return {Value::constFloat(2.71828182845904523536), Type(Type::Kind::F64)};
+    }
+
     // Check constants first (including enum constants from semantic analyzer)
     auto constIt = constants_.find(key);
     if (constIt != constants_.end())
@@ -610,17 +866,123 @@ LowerResult Lowerer::lowerName(const NameExpr &expr)
             // Enum constant: emit its ordinal value as an integer
             return {Value::constInt(constType->enumOrdinal), Type(Type::Kind::I64)};
         }
+        // Handle Real constants (like Pi, E if they come through lookupConstant)
+        if (constType->kind == PasTypeKind::Real)
+        {
+            // For now, return 0.0 - the actual values are handled above
+            return {Value::constFloat(0.0), Type(Type::Kind::F64)};
+        }
     }
 
     // Check locals
     auto localIt = locals_.find(key);
     if (localIt != locals_.end())
     {
-        // Get type from semantic analyzer
-        auto varType = sema_->lookupVariable(key);
-        Type ilType = varType ? mapType(*varType) : Type(Type::Kind::I64);
+        // First check our own localTypes_ map (for procedure locals)
+        // then fall back to semantic analyzer (for global variables)
+        Type ilType = Type(Type::Kind::I64);
+        auto localTypeIt = localTypes_.find(key);
+        if (localTypeIt != localTypes_.end())
+        {
+            ilType = mapType(localTypeIt->second);
+        }
+        else
+        {
+            auto varType = sema_->lookupVariable(key);
+            if (varType)
+                ilType = mapType(*varType);
+        }
         Value loaded = emitLoad(ilType, localIt->second);
         return {loaded, ilType};
+    }
+
+    // Check for zero-argument builtin functions (Pascal allows calling without parens)
+    if (auto builtinOpt = lookupBuiltin(key))
+    {
+        const auto &desc = getBuiltinDescriptor(*builtinOpt);
+        // Only handle if it can be called with 0 args and has non-void return type
+        if (desc.minArgs == 0 && desc.result != ResultKind::Void)
+        {
+            const char *rtSym = getBuiltinRuntimeSymbol(*builtinOpt);
+
+            // Look up the actual runtime signature to get the correct return type
+            const auto *rtDesc = il::runtime::findRuntimeDescriptor(rtSym);
+            Type rtRetType = Type(Type::Kind::Void);
+            if (rtDesc)
+            {
+                rtRetType = rtDesc->signature.retType;
+            }
+            else
+            {
+                // Fallback to Pascal type mapping
+                PasType resultPasType = getBuiltinResultType(*builtinOpt);
+                rtRetType = mapType(resultPasType);
+            }
+
+            // Also get the Pascal-expected return type for conversion
+            PasType pascalResultType = getBuiltinResultType(*builtinOpt);
+            Type pascalRetType = mapType(pascalResultType);
+
+            // Emit call with no arguments
+            Value result = emitCallRet(rtRetType, rtSym, {});
+
+            // Convert integer to i1 if Pascal expects Boolean but runtime returns integer
+            if (pascalRetType.kind == Type::Kind::I1 &&
+                (rtRetType.kind == Type::Kind::I32 || rtRetType.kind == Type::Kind::I64))
+            {
+                // Convert to i1: compare != 0
+                Value zero = Value::constInt(0);
+                result = emitBinary(Opcode::ICmpNe, Type(Type::Kind::I1), result, zero);
+                return {result, Type(Type::Kind::I1)};
+            }
+
+            return {result, rtRetType};
+        }
+    }
+
+    // Check for zero-argument user-defined functions (Pascal allows calling without parens)
+    if (auto sig = sema_->lookupFunction(key))
+    {
+        // Only handle if it can be called with 0 args and has non-void return type
+        if (sig->requiredParams == 0 && sig->returnType.kind != PasTypeKind::Void)
+        {
+            Type retType = mapType(sig->returnType);
+            // Use the original function name from the signature (preserves case)
+            Value result = emitCallRet(retType, sig->name, {});
+            return {result, retType};
+        }
+    }
+
+    // Check if we're inside a class method and the name is a field of the current class
+    if (!currentClassName_.empty())
+    {
+        auto *classInfo = sema_->lookupClass(toLower(currentClassName_));
+        if (classInfo)
+        {
+            auto fieldIt = classInfo->fields.find(key);
+            if (fieldIt != classInfo->fields.end())
+            {
+                // Access Self.fieldName
+                // First, load Self pointer from locals
+                auto selfIt = locals_.find("self");
+                if (selfIt != locals_.end())
+                {
+                    Value selfPtr = emitLoad(Type(Type::Kind::Ptr), selfIt->second);
+
+                    // Build a PasType with the class fields for getFieldAddress
+                    PasType selfType = PasType::classType(currentClassName_);
+                    for (const auto &[fname, finfo] : classInfo->fields)
+                    {
+                        selfType.fields[fname] = std::make_shared<PasType>(finfo.type);
+                    }
+                    auto [fieldAddr, fieldType] = getFieldAddress(selfPtr, selfType, expr.name);
+
+                    // Load the field value
+                    Value fieldVal = emitLoad(fieldType, fieldAddr);
+                    return {fieldVal, fieldType};
+                }
+            }
+        }
     }
 
     // Unknown - return zero
@@ -643,17 +1005,26 @@ LowerResult Lowerer::lowerUnary(const UnaryExpr &expr)
         }
         else
         {
-            // Negate integer: 0 - x
+            // Negate integer: 0 - x (use overflow-checking subtraction)
             Value zero = Value::constInt(0);
-            Value result = emitBinary(Opcode::Sub, Type(Type::Kind::I64), zero, operand.value);
+            Value result = emitBinary(Opcode::ISubOvf, Type(Type::Kind::I64), zero, operand.value);
             return {result, Type(Type::Kind::I64)};
         }
 
     case UnaryExpr::Op::Not:
-        // Boolean not: xor with 1
+        // Boolean not
         {
+            // If operand is i1, first zext to i64
+            Value opVal = operand.value;
+            if (operand.type.kind == Type::Kind::I1)
+            {
+                opVal = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), opVal);
+            }
+            // xor with 1
             Value one = Value::constInt(1);
-            Value result = emitBinary(Opcode::Xor, Type(Type::Kind::I64), operand.value, one);
+            Value result = emitBinary(Opcode::Xor, Type(Type::Kind::I64), opVal, one);
+            // Truncate back to i1
+            result = emitUnary(Opcode::Trunc1, Type(Type::Kind::I1), result);
             return {result, Type(Type::Kind::I1)};
         }
 
@@ -684,6 +1055,22 @@ LowerResult Lowerer::lowerBinary(const BinaryExpr &expr)
     LowerResult lhs = lowerExpr(*expr.left);
     LowerResult rhs = lowerExpr(*expr.right);
 
+    // Handle string comparisons via runtime call
+    bool isString = (lhs.type.kind == Type::Kind::Str || rhs.type.kind == Type::Kind::Str);
+    if (isString && (expr.op == BinaryExpr::Op::Eq || expr.op == BinaryExpr::Op::Ne))
+    {
+        // Call rt_str_eq(str, str) -> i1
+        usedExterns_.insert("rt_str_eq");
+        Value result = emitCallRet(Type(Type::Kind::I1), "rt_str_eq", {lhs.value, rhs.value});
+        if (expr.op == BinaryExpr::Op::Ne)
+        {
+            // Negate the result for !=
+            Value zero = Value::constBool(false);
+            result = emitBinary(Opcode::ICmpEq, Type(Type::Kind::I1), result, zero);
+        }
+        return {result, Type(Type::Kind::I1)};
+    }
+
     // Determine result type
     bool isFloat = (lhs.type.kind == Type::Kind::F64 || rhs.type.kind == Type::Kind::F64);
 
@@ -703,16 +1090,18 @@ LowerResult Lowerer::lowerBinary(const BinaryExpr &expr)
     switch (expr.op)
     {
     // Arithmetic
+    // For signed integers (Pascal Integer type is always signed), use the .ovf
+    // variants which trap on overflow as required by the IL spec
     case BinaryExpr::Op::Add:
-        return {emitBinary(isFloat ? Opcode::FAdd : Opcode::Add, resultType, lhsVal, rhsVal),
+        return {emitBinary(isFloat ? Opcode::FAdd : Opcode::IAddOvf, resultType, lhsVal, rhsVal),
                 resultType};
 
     case BinaryExpr::Op::Sub:
-        return {emitBinary(isFloat ? Opcode::FSub : Opcode::Sub, resultType, lhsVal, rhsVal),
+        return {emitBinary(isFloat ? Opcode::FSub : Opcode::ISubOvf, resultType, lhsVal, rhsVal),
                 resultType};
 
     case BinaryExpr::Op::Mul:
-        return {emitBinary(isFloat ? Opcode::FMul : Opcode::Mul, resultType, lhsVal, rhsVal),
+        return {emitBinary(isFloat ? Opcode::FMul : Opcode::IMulOvf, resultType, lhsVal, rhsVal),
                 resultType};
 
     case BinaryExpr::Op::Div:
@@ -726,12 +1115,13 @@ LowerResult Lowerer::lowerBinary(const BinaryExpr &expr)
                 Type(Type::Kind::F64)};
 
     case BinaryExpr::Op::IntDiv:
-        // Integer division
-        return {emitBinary(Opcode::SDiv, Type(Type::Kind::I64), lhs.value, rhs.value),
+        // Integer division (with trap on divide-by-zero)
+        return {emitBinary(Opcode::SDivChk0, Type(Type::Kind::I64), lhs.value, rhs.value),
                 Type(Type::Kind::I64)};
 
     case BinaryExpr::Op::Mod:
-        return {emitBinary(Opcode::SRem, Type(Type::Kind::I64), lhs.value, rhs.value),
+        // Integer remainder (with trap on divide-by-zero)
+        return {emitBinary(Opcode::SRemChk0, Type(Type::Kind::I64), lhs.value, rhs.value),
                 Type(Type::Kind::I64)};
 
     // Comparisons
@@ -883,10 +1273,67 @@ LowerResult Lowerer::lowerCoalesce(const BinaryExpr &expr)
 
 LowerResult Lowerer::lowerCall(const CallExpr &expr)
 {
-    // Get callee name
+    // Check for constructor call (marked by semantic analyzer)
+    if (expr.isConstructorCall && !expr.constructorClassName.empty())
+    {
+        // Constructor call: ClassName.Create(args)
+        // 1. Allocate memory for the object
+        // 2. Call the constructor with Self as first argument
+        // 3. Return the object pointer
+
+        std::string className = expr.constructorClassName;
+
+        // Get class info to determine object size
+        auto *classInfo = sema_->lookupClass(toLower(className));
+        if (!classInfo)
+        {
+            return {Value::constInt(0), Type(Type::Kind::Ptr)};
+        }
+
+        // Calculate object size (sum of field sizes)
+        int64_t objectSize = 0;
+        for (const auto &[fname, finfo] : classInfo->fields)
+        {
+            objectSize += sizeOf(finfo.type);
+        }
+        if (objectSize == 0)
+            objectSize = 8; // Minimum object size
+
+        // Allocate object using rt_alloc
+        Value sizeVal = Value::constInt(objectSize);
+        Value objPtr = emitCallRet(Type(Type::Kind::Ptr), "rt_alloc", {sizeVal});
+
+        // Get constructor name from the field expression
+        std::string constructorName = "Create";
+        if (expr.callee && expr.callee->kind == ExprKind::Field)
+        {
+            const auto &fieldExpr = static_cast<const FieldExpr &>(*expr.callee);
+            constructorName = fieldExpr.field;
+        }
+
+        // Build constructor call arguments (Self first, then user args)
+        std::vector<Value> ctorArgs;
+        ctorArgs.push_back(objPtr);  // Self
+
+        for (const auto &arg : expr.args)
+        {
+            LowerResult argResult = lowerExpr(*arg);
+            ctorArgs.push_back(argResult.value);
+        }
+
+        // Call the constructor
+        std::string ctorFunc = className + "." + constructorName;
+        emitCall(ctorFunc, ctorArgs);
+
+        // Return the object pointer
+        return {objPtr, Type(Type::Kind::Ptr)};
+    }
+
+    // Get callee name for regular calls
     if (expr.callee->kind != ExprKind::Name)
     {
-        // Indirect call not yet supported
+        // Method call (FieldExpr) - not yet fully supported
+        // For now, just return a default value
         return {Value::constInt(0), Type(Type::Kind::I64)};
     }
 
@@ -985,7 +1432,7 @@ LowerResult Lowerer::lowerCall(const CallExpr &expr)
             if (!args.empty())
             {
                 Value one = Value::constInt(1);
-                Value result = emitBinary(Opcode::Sub, Type(Type::Kind::I64), args[0], one);
+                Value result = emitBinary(Opcode::ISubOvf, Type(Type::Kind::I64), args[0], one);
                 return {result, Type(Type::Kind::I64)};
             }
             return {Value::constInt(0), Type(Type::Kind::I64)};
@@ -997,7 +1444,7 @@ LowerResult Lowerer::lowerCall(const CallExpr &expr)
             if (!args.empty())
             {
                 Value one = Value::constInt(1);
-                Value result = emitBinary(Opcode::Add, Type(Type::Kind::I64), args[0], one);
+                Value result = emitBinary(Opcode::IAddOvf, Type(Type::Kind::I64), args[0], one);
                 return {result, Type(Type::Kind::I64)};
             }
             return {Value::constInt(0), Type(Type::Kind::I64)};
@@ -1005,10 +1452,10 @@ LowerResult Lowerer::lowerCall(const CallExpr &expr)
 
         if (builtin == PascalBuiltin::Sqr)
         {
-            // Sqr(x) = x * x
+            // Sqr(x) = x * x (use overflow-checking multiplication for integers)
             if (!args.empty())
             {
-                Opcode mulOp = (firstArgType == PasTypeKind::Real) ? Opcode::FMul : Opcode::Mul;
+                Opcode mulOp = (firstArgType == PasTypeKind::Real) ? Opcode::FMul : Opcode::IMulOvf;
                 Type ty = (firstArgType == PasTypeKind::Real) ? Type(Type::Kind::F64)
                                                               : Type(Type::Kind::I64);
                 Value result = emitBinary(mulOp, ty, args[0], args[0]);
@@ -1017,22 +1464,57 @@ LowerResult Lowerer::lowerCall(const CallExpr &expr)
             return {Value::constInt(0), Type(Type::Kind::I64)};
         }
 
+        if (builtin == PascalBuiltin::Randomize)
+        {
+            // Randomize([seed]) - if no seed provided, use 0 as default
+            usedExterns_.insert("rt_randomize_i64");
+            Value seed = args.empty() ? Value::constInt(0) : args[0];
+            emitCall("rt_randomize_i64", {seed});
+            return {Value::constInt(0), Type(Type::Kind::Void)};
+        }
+
         // Handle builtins with runtime symbols
         const char *rtSym = getBuiltinRuntimeSymbol(builtin, firstArgType);
         if (rtSym)
         {
-            PasType resultPasType = getBuiltinResultType(builtin, firstArgType);
-            Type retType = mapType(resultPasType);
+            // Look up the actual runtime signature to get the correct return type
+            const auto *rtDesc = il::runtime::findRuntimeDescriptor(rtSym);
+            Type rtRetType = Type(Type::Kind::Void);
+            if (rtDesc)
+            {
+                rtRetType = rtDesc->signature.retType;
+            }
+            else
+            {
+                // Fallback to Pascal type mapping
+                PasType resultPasType = getBuiltinResultType(builtin, firstArgType);
+                rtRetType = mapType(resultPasType);
+            }
 
-            if (desc.result == ResultKind::Void)
+            // Also get the Pascal-expected return type for conversion
+            PasType pascalResultType = getBuiltinResultType(builtin, firstArgType);
+            Type pascalRetType = mapType(pascalResultType);
+
+            if (rtRetType.kind == Type::Kind::Void)
             {
                 emitCall(rtSym, args);
                 return {Value::constInt(0), Type(Type::Kind::Void)};
             }
             else
             {
-                Value result = emitCallRet(retType, rtSym, args);
-                return {result, retType};
+                Value result = emitCallRet(rtRetType, rtSym, args);
+
+                // Convert integer to i1 if Pascal expects Boolean but runtime returns integer
+                if (pascalRetType.kind == Type::Kind::I1 &&
+                    (rtRetType.kind == Type::Kind::I32 || rtRetType.kind == Type::Kind::I64))
+                {
+                    // Convert to i1: compare != 0
+                    Value zero = Value::constInt(0);
+                    result = emitBinary(Opcode::ICmpNe, Type(Type::Kind::I1), result, zero);
+                    return {result, Type(Type::Kind::I1)};
+                }
+
+                return {result, rtRetType};
             }
         }
     }
@@ -1055,16 +1537,155 @@ LowerResult Lowerer::lowerCall(const CallExpr &expr)
 
 LowerResult Lowerer::lowerIndex(const IndexExpr &expr)
 {
-    // Array indexing - for now return placeholder
-    // Full implementation would use runtime array access
-    LowerResult base = lowerExpr(*expr.base);
-    if (!expr.indices.empty())
+    // Get base type
+    PasType baseType = sema_->typeOf(*expr.base);
+
+    if (baseType.kind == PasTypeKind::Array && !expr.indices.empty())
     {
-        LowerResult index = lowerExpr(*expr.indices[0]);
-        // Would emit: gep + load
-        (void)base;
-        (void)index;
+        // Get base address (the array variable's alloca slot)
+        if (expr.base->kind == ExprKind::Name)
+        {
+            const auto &nameExpr = static_cast<const NameExpr &>(*expr.base);
+            std::string key = toLower(nameExpr.name);
+            auto it = locals_.find(key);
+            if (it != locals_.end())
+            {
+                Value baseAddr = it->second;
+
+                // Get element type and size
+                Type elemType = Type(Type::Kind::I64); // Default
+                int64_t elemSize = 8;
+                if (baseType.elementType)
+                {
+                    elemType = mapType(*baseType.elementType);
+                    elemSize = sizeOf(*baseType.elementType);
+                }
+
+                // Calculate offset: index * elemSize
+                LowerResult index = lowerExpr(*expr.indices[0]);
+                Value offset = emitBinary(Opcode::IMulOvf, Type(Type::Kind::I64),
+                                          index.value, Value::constInt(elemSize));
+
+                // GEP to get element address
+                Value elemAddr = emitGep(baseAddr, offset);
+
+                // Load the element
+                Value result = emitLoad(elemType, elemAddr);
+                return {result, elemType};
+            }
+        }
     }
+
+    // Fallback for other cases
+    LowerResult base = lowerExpr(*expr.base);
+    (void)base;
+    return {Value::constInt(0), Type(Type::Kind::I64)};
+}
+
+std::pair<Lowerer::Value, Lowerer::Type> Lowerer::getFieldAddress(
+    Value baseAddr, const PasType &baseType, const std::string &fieldName)
+{
+    std::string fieldKey = toLower(fieldName);
+
+    // Calculate field offset by iterating through fields in order
+    // Fields are stored in a map, but we need consistent ordering
+    // For simplicity, use alphabetical order (same as iteration order in std::map)
+    int64_t offset = 0;
+    Type fieldType = Type(Type::Kind::I64);
+
+    for (const auto &[name, typePtr] : baseType.fields)
+    {
+        if (name == fieldKey)
+        {
+            if (typePtr)
+            {
+                fieldType = mapType(*typePtr);
+            }
+            break;
+        }
+        // Add size of this field to offset
+        if (typePtr)
+        {
+            offset += sizeOf(*typePtr);
+        }
+        else
+        {
+            offset += 8; // Default size
+        }
+    }
+
+    // GEP to get field address
+    Value fieldAddr = emitGep(baseAddr, Value::constInt(offset));
+    return {fieldAddr, fieldType};
+}
+
+LowerResult Lowerer::lowerField(const FieldExpr &expr)
+{
+    if (!expr.base)
+        return {Value::constInt(0), Type(Type::Kind::I64)};
+
+    // Get base type
+    PasType baseType = sema_->typeOf(*expr.base);
+
+    if (baseType.kind == PasTypeKind::Record)
+    {
+        // Records are stored inline in the variable's slot
+        if (expr.base->kind == ExprKind::Name)
+        {
+            const auto &nameExpr = static_cast<const NameExpr &>(*expr.base);
+            std::string key = toLower(nameExpr.name);
+            auto it = locals_.find(key);
+            if (it != locals_.end())
+            {
+                Value baseAddr = it->second;
+                auto [fieldAddr, fieldType] = getFieldAddress(baseAddr, baseType, expr.field);
+
+                // Load the field value
+                Value result = emitLoad(fieldType, fieldAddr);
+                return {result, fieldType};
+            }
+        }
+        // Handle nested field access (e.g., a.b.c)
+        else if (expr.base->kind == ExprKind::Field)
+        {
+            // Recursively get the base field's address
+            // For now, fall through to default handling
+        }
+    }
+    else if (baseType.kind == PasTypeKind::Class)
+    {
+        // Classes are reference types - the variable's slot contains a pointer to the object
+        if (expr.base->kind == ExprKind::Name)
+        {
+            const auto &nameExpr = static_cast<const NameExpr &>(*expr.base);
+            std::string key = toLower(nameExpr.name);
+            auto it = locals_.find(key);
+            if (it != locals_.end())
+            {
+                // Load the object pointer from the variable's slot
+                Value objPtr = emitLoad(Type(Type::Kind::Ptr), it->second);
+
+                // Get class info to build a proper type with fields
+                PasType classTypeWithFields = baseType;
+                auto *classInfo = sema_->lookupClass(toLower(baseType.name));
+                if (classInfo)
+                {
+                    for (const auto &[fname, finfo] : classInfo->fields)
+                    {
+                        classTypeWithFields.fields[fname] = std::make_shared<PasType>(finfo.type);
+                    }
+                }
+
+                auto [fieldAddr, fieldType] = getFieldAddress(objPtr, classTypeWithFields, expr.field);
+
+                // Load the field value
+                Value result = emitLoad(fieldType, fieldAddr);
+                return {result, fieldType};
+            }
+        }
+    }
+
+    // Fallback
     return {Value::constInt(0), Type(Type::Kind::I64)};
 }
 
@@ -1115,6 +1736,9 @@ void Lowerer::lowerStmt(const Stmt &stmt)
     case StmtKind::Raise:
         lowerRaise(static_cast<const RaiseStmt &>(stmt));
         break;
+    case StmtKind::Exit:
+        lowerExit(static_cast<const ExitStmt &>(stmt));
+        break;
     case StmtKind::TryExcept:
         lowerTryExcept(static_cast<const TryExceptStmt &>(stmt));
         break;
@@ -1138,22 +1762,136 @@ void Lowerer::lowerAssign(const AssignStmt &stmt)
         auto &nameExpr = static_cast<const NameExpr &>(*stmt.target);
         std::string key = toLower(nameExpr.name);
 
+        // Map "Result" to the current function's return slot
+        if (key == "result" && !currentFuncName_.empty())
+        {
+            key = currentFuncName_;
+        }
+
         auto it = locals_.find(key);
-        if (it == locals_.end())
+        if (it != locals_.end())
+        {
+            Value slot = it->second;
+
+            // Lower value
+            LowerResult value = lowerExpr(*stmt.value);
+
+            // Get target type
+            auto varType = sema_->lookupVariable(key);
+            Type ilType = varType ? mapType(*varType) : value.type;
+
+            emitStore(ilType, slot, value.value);
+            return;
+        }
+
+        // Check if this is a class field assignment (inside a method)
+        if (!currentClassName_.empty())
+        {
+            auto *classInfo = sema_->lookupClass(toLower(currentClassName_));
+            if (classInfo)
+            {
+                auto fieldIt = classInfo->fields.find(key);
+                if (fieldIt != classInfo->fields.end())
+                {
+                    // Assign to Self.fieldName
+                    auto selfIt = locals_.find("self");
+                    if (selfIt != locals_.end())
+                    {
+                        Value selfPtr = emitLoad(Type(Type::Kind::Ptr), selfIt->second);
+
+                        // Build a PasType with the class fields for getFieldAddress
+                        PasType selfType = PasType::classType(currentClassName_);
+                        for (const auto &[fname, finfo] : classInfo->fields)
+                        {
+                            selfType.fields[fname] = std::make_shared<PasType>(finfo.type);
+                        }
+                        auto [fieldAddr, fieldType] = getFieldAddress(selfPtr, selfType, nameExpr.name);
+
+                        // Lower value
+                        LowerResult value = lowerExpr(*stmt.value);
+
+                        // Store to field
+                        emitStore(fieldType, fieldAddr, value.value);
+                        return;
+                    }
+                }
+            }
+        }
+        // Unknown target - just return
+        return;
+    }
+    else if (stmt.target->kind == ExprKind::Field)
+    {
+        // Field assignment: rec.field := value
+        auto &fieldExpr = static_cast<const FieldExpr &>(*stmt.target);
+        if (!fieldExpr.base)
             return;
 
-        Value slot = it->second;
+        // Get base type
+        PasType baseType = sema_->typeOf(*fieldExpr.base);
 
-        // Lower value
-        LowerResult value = lowerExpr(*stmt.value);
+        if ((baseType.kind == PasTypeKind::Record || baseType.kind == PasTypeKind::Class) &&
+            fieldExpr.base->kind == ExprKind::Name)
+        {
+            const auto &nameExpr = static_cast<const NameExpr &>(*fieldExpr.base);
+            std::string key = toLower(nameExpr.name);
+            auto it = locals_.find(key);
+            if (it != locals_.end())
+            {
+                Value baseAddr = it->second;
+                auto [fieldAddr, fieldType] = getFieldAddress(baseAddr, baseType, fieldExpr.field);
 
-        // Get target type
-        auto varType = sema_->lookupVariable(key);
-        Type ilType = varType ? mapType(*varType) : value.type;
+                // Lower value
+                LowerResult value = lowerExpr(*stmt.value);
 
-        emitStore(ilType, slot, value.value);
+                // Store to field
+                emitStore(fieldType, fieldAddr, value.value);
+            }
+        }
     }
-    // Index and field assignments would go here
+    else if (stmt.target->kind == ExprKind::Index)
+    {
+        // Array index assignment: arr[i] := value
+        auto &indexExpr = static_cast<const IndexExpr &>(*stmt.target);
+        if (!indexExpr.base || indexExpr.indices.empty())
+            return;
+
+        PasType baseType = sema_->typeOf(*indexExpr.base);
+
+        if (baseType.kind == PasTypeKind::Array && indexExpr.base->kind == ExprKind::Name)
+        {
+            const auto &nameExpr = static_cast<const NameExpr &>(*indexExpr.base);
+            std::string key = toLower(nameExpr.name);
+            auto it = locals_.find(key);
+            if (it != locals_.end())
+            {
+                Value baseAddr = it->second;
+
+                // Get element type and size
+                Type elemType = Type(Type::Kind::I64);
+                int64_t elemSize = 8;
+                if (baseType.elementType)
+                {
+                    elemType = mapType(*baseType.elementType);
+                    elemSize = sizeOf(*baseType.elementType);
+                }
+
+                // Calculate offset: index * elemSize
+                LowerResult index = lowerExpr(*indexExpr.indices[0]);
+                Value offset = emitBinary(Opcode::IMulOvf, Type(Type::Kind::I64),
+                                          index.value, Value::constInt(elemSize));
+
+                // GEP to get element address
+                Value elemAddr = emitGep(baseAddr, offset);
+
+                // Lower value
+                LowerResult value = lowerExpr(*stmt.value);
+
+                // Store to element
+                emitStore(elemType, elemAddr, value.value);
+            }
+        }
+    }
 }
 
 void Lowerer::lowerCallStmt(const CallStmt &stmt)
@@ -1176,12 +1914,12 @@ void Lowerer::lowerBlock(const BlockStmt &stmt)
 void Lowerer::lowerIf(const IfStmt &stmt)
 {
     size_t thenBlock = createBlock("if_then");
-    size_t elseBlock = createBlock("if_else");
     size_t endBlock = createBlock("if_end");
+    size_t elseBlock = stmt.elseBranch ? createBlock("if_else") : endBlock;
 
     // Evaluate condition
     LowerResult cond = lowerExpr(*stmt.condition);
-    emitCBr(cond.value, thenBlock, stmt.elseBranch ? elseBlock : endBlock);
+    emitCBr(cond.value, thenBlock, elseBlock);
 
     // Then branch
     setBlock(thenBlock);
@@ -1316,18 +2054,18 @@ void Lowerer::lowerFor(const ForStmt &stmt)
     emitBr(afterBlock);
     loopStack_.pop();
 
-    // After: increment/decrement
+    // After: increment/decrement (use overflow-checking variants for signed integers)
     setBlock(afterBlock);
     Value currentVal = emitLoad(Type(Type::Kind::I64), loopSlot);
     Value one = Value::constInt(1);
     Value newVal;
     if (stmt.direction == ForDirection::To)
     {
-        newVal = emitBinary(Opcode::Add, Type(Type::Kind::I64), currentVal, one);
+        newVal = emitBinary(Opcode::IAddOvf, Type(Type::Kind::I64), currentVal, one);
     }
     else
     {
-        newVal = emitBinary(Opcode::Sub, Type(Type::Kind::I64), currentVal, one);
+        newVal = emitBinary(Opcode::ISubOvf, Type(Type::Kind::I64), currentVal, one);
     }
     emitStore(Type(Type::Kind::I64), loopSlot, newVal);
     emitBr(headerBlock);
@@ -1424,10 +2162,10 @@ void Lowerer::lowerForIn(const ForInStmt &stmt)
     emitBr(afterBlock);
     loopStack_.pop();
 
-    // After: increment index
+    // After: increment index (use overflow-checking addition)
     setBlock(afterBlock);
     Value idxAfter = emitLoad(Type(Type::Kind::I64), indexSlot);
-    Value newIdx = emitBinary(Opcode::Add, Type(Type::Kind::I64), idxAfter, Value::constInt(1));
+    Value newIdx = emitBinary(Opcode::IAddOvf, Type(Type::Kind::I64), idxAfter, Value::constInt(1));
     emitStore(Type(Type::Kind::I64), indexSlot, newIdx);
     emitBr(headerBlock);
 
@@ -1692,6 +2430,18 @@ Lowerer::Value Lowerer::emitTrunc1(Value intVal)
     return emitUnary(Opcode::Trunc1, Type(Type::Kind::I1), intVal);
 }
 
+Lowerer::Value Lowerer::emitGep(Value base, Value offset)
+{
+    unsigned id = nextTempId();
+    il::core::Instr instr;
+    instr.result = id;
+    instr.op = Opcode::GEP;
+    instr.type = Type(Type::Kind::Ptr);
+    instr.operands = {base, offset};
+    currentBlock()->instructions.push_back(instr);
+    return Value::temp(id);
+}
+
 unsigned Lowerer::nextTempId()
 {
     return builder_->reserveTempId();
@@ -1790,6 +2540,56 @@ void Lowerer::lowerRaise(const RaiseStmt &stmt)
         }
         // If not in handler, semantic analysis should have caught this error
     }
+}
+
+void Lowerer::lowerExit(const ExitStmt &stmt)
+{
+    if (stmt.value)
+    {
+        // Exit(value) - store value in Result slot and return
+        LowerResult value = lowerExpr(*stmt.value);
+
+        // Store to the function's result variable (named after function)
+        if (!currentFuncName_.empty())
+        {
+            auto it = locals_.find(currentFuncName_);
+            if (it != locals_.end())
+            {
+                // Get return type
+                auto retType = sema_->lookupVariable(currentFuncName_);
+                Type ilType = retType ? mapType(*retType) : value.type;
+                emitStore(ilType, it->second, value.value);
+            }
+        }
+    }
+
+    // Emit return
+    if (!currentFuncName_.empty())
+    {
+        // Function - load and return Result value
+        auto it = locals_.find(currentFuncName_);
+        if (it != locals_.end())
+        {
+            auto retType = sema_->lookupVariable(currentFuncName_);
+            Type ilType = retType ? mapType(*retType) : Type(Type::Kind::I64);
+            Value retVal = emitLoad(ilType, it->second);
+            emitRet(retVal);
+        }
+        else
+        {
+            // Fallback for void return
+            emitRetVoid();
+        }
+    }
+    else
+    {
+        // Procedure or fallback - void return
+        emitRetVoid();
+    }
+
+    // Create a dead block for any following code (like Break/Continue)
+    size_t deadBlock = createBlock("after_exit");
+    setBlock(deadBlock);
 }
 
 void Lowerer::lowerTryExcept(const TryExceptStmt &stmt)

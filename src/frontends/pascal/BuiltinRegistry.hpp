@@ -30,9 +30,10 @@ namespace il::frontends::pascal
 /// @brief Categories of Pascal builtins for organization and lowering.
 enum class BuiltinCategory
 {
-    Builtin,      ///< Core Pascal builtins (Write, ReadLn, Length, etc.)
-    ViperStrings, ///< Viper.Strings unit functions
-    ViperMath,    ///< Viper.Math unit functions
+    Builtin,        ///< Core Pascal builtins (Write, ReadLn, Length, etc.)
+    ViperStrings,   ///< Viper.Strings unit functions
+    ViperMath,      ///< Viper.Math unit functions
+    ViperTerminal,  ///< Viper.Terminal unit functions (console control)
 };
 
 //===----------------------------------------------------------------------===//
@@ -47,14 +48,18 @@ enum class PascalBuiltin
     WriteLn,
     Read,
     ReadLn,
+    ReadInteger, ///< Read line and parse as Integer
+    ReadReal,    ///< Read line and parse as Real
 
     // String functions
     Length,
     SetLength,
     IntToStr,
-    FloatToStr,
+    RealToStr,   ///< Spec name (alias for FloatToStr)
+    FloatToStr,  ///< Extension (same as RealToStr)
     StrToInt,
-    StrToFloat,
+    StrToReal,   ///< Spec name (alias for StrToFloat)
+    StrToFloat,  ///< Extension (same as StrToReal)
     Copy,
     Pos,
     Concat,
@@ -94,20 +99,35 @@ enum class PascalBuiltin
     // Array
     SetLengthArr,
 
-    // Viper.Strings
+    // Viper.Strings unit
     Upper,
     Lower,
     Left,
     Right,
     Mid,
-    ChrStr,
-    AscStr,
+    ChrStr, ///< Chr in Viper.Strings (integer to 1-byte string)
+    AscStr, ///< Asc in Viper.Strings (first byte to integer)
 
-    // Viper.Math (additional)
-    Power,
+    // Viper.Math unit
+    Pow,   ///< Spec name for power function
+    Power, ///< Extension (alias for Pow)
+    Atan,  ///< Spec name for arc tangent
     Sign,
     Min,
     Max,
+
+    // Viper.Terminal unit (console/terminal control)
+    ClrScr,       ///< Clear screen
+    GotoXY,       ///< Position cursor (col, row)
+    TextColor,    ///< Set foreground color
+    TextBackground, ///< Set background color
+    KeyPressed,   ///< Check if key available (non-blocking)
+    ReadKey,      ///< Read single key (blocking)
+    InKey,        ///< Read single key (non-blocking, returns empty if none)
+    Delay,        ///< Pause execution (milliseconds)
+    Sleep,        ///< Alias for Delay
+    HideCursor,   ///< Hide terminal cursor
+    ShowCursor,   ///< Show terminal cursor
 
     // Count (must be last)
     Count

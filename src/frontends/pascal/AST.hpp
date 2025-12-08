@@ -183,6 +183,11 @@ struct CallExpr : Expr
     std::unique_ptr<Expr> callee;
     std::vector<std::unique_ptr<Expr>> args;
 
+    /// @brief True if this is a constructor call (ClassName.Create pattern)
+    mutable bool isConstructorCall{false};
+    /// @brief For constructor calls, the class name being constructed
+    mutable std::string constructorClassName;
+
     CallExpr(std::unique_ptr<Expr> callee, std::vector<std::unique_ptr<Expr>> args,
              il::support::SourceLoc l = {})
         : Expr(ExprKind::Call, l), callee(std::move(callee)), args(std::move(args)) {}
@@ -304,17 +309,16 @@ struct OptionalTypeNode : TypeNode
 /// @brief Array type.
 struct ArrayTypeNode : TypeNode
 {
-    /// @brief Dimension range (e.g., 1..10). Empty for dynamic arrays.
-    struct DimRange
+    /// @brief Dimension size expression. Arrays are always 0-based in v0.1.
+    struct DimSize
     {
-        std::unique_ptr<Expr> low;
-        std::unique_ptr<Expr> high;
+        std::unique_ptr<Expr> size; ///< Size expression (bounds are 0..size-1)
     };
 
-    std::vector<DimRange> dimensions; ///< Empty for dynamic arrays
+    std::vector<DimSize> dimensions; ///< Empty for dynamic arrays
     std::unique_ptr<TypeNode> elementType;
 
-    ArrayTypeNode(std::vector<DimRange> dims, std::unique_ptr<TypeNode> elemType,
+    ArrayTypeNode(std::vector<DimSize> dims, std::unique_ptr<TypeNode> elemType,
                   il::support::SourceLoc l = {})
         : TypeNode(TypeKind::Array, l), dimensions(std::move(dims)),
           elementType(std::move(elemType)) {}
@@ -424,6 +428,7 @@ enum class StmtKind
     Repeat,
     Break,
     Continue,
+    Exit,
     Raise,
     TryExcept,
     TryFinally,
@@ -573,6 +578,17 @@ struct BreakStmt : Stmt
 struct ContinueStmt : Stmt
 {
     explicit ContinueStmt(il::support::SourceLoc l = {}) : Stmt(StmtKind::Continue, l) {}
+};
+
+/// @brief Exit statement (early return from function/procedure).
+/// @details `Exit;` returns from procedure. `Exit(value);` returns value from function.
+struct ExitStmt : Stmt
+{
+    std::unique_ptr<Expr> value; ///< Optional return value (for functions)
+
+    explicit ExitStmt(il::support::SourceLoc l = {}) : Stmt(StmtKind::Exit, l) {}
+    ExitStmt(std::unique_ptr<Expr> val, il::support::SourceLoc l = {})
+        : Stmt(StmtKind::Exit, l), value(std::move(val)) {}
 };
 
 /// @brief Inherited statement (call to base class method).

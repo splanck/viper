@@ -248,6 +248,13 @@ struct PasType
                !isOptional();
     }
 
+    /// @brief Check if this type requires definite assignment before use.
+    /// @details Non-optional class/interface locals must be definitely assigned before reading.
+    bool requiresDefiniteAssignment() const
+    {
+        return isNonOptionalReference();
+    }
+
     /// @brief Check if this is a numeric type (Integer or Real).
     bool isNumeric() const { return kind == PasTypeKind::Integer || kind == PasTypeKind::Real; }
 
@@ -323,8 +330,10 @@ struct FuncSignature
     std::string name;                               ///< Procedure/function name
     std::vector<std::pair<std::string, PasType>> params; ///< Parameter name-type pairs
     std::vector<bool> isVarParam;                   ///< Whether each param is var/out
+    std::vector<bool> hasDefault;                   ///< Whether each param has a default value
     PasType returnType;                             ///< Return type (Void for procedures)
     bool isForward{false};                          ///< Forward declaration?
+    size_t requiredParams{0};                       ///< Number of required (non-default) params
 };
 
 //===----------------------------------------------------------------------===//
@@ -337,12 +346,14 @@ struct MethodInfo
     std::string name;                                    ///< Method name
     std::vector<std::pair<std::string, PasType>> params; ///< Parameter name-type pairs
     std::vector<bool> isVarParam;                        ///< Whether each param is var/out
+    std::vector<bool> hasDefault;                        ///< Whether each param has a default value
     PasType returnType;                                  ///< Return type (Void for procedures)
     bool isVirtual{false};                               ///< Marked virtual
     bool isOverride{false};                              ///< Marked override
     bool isAbstract{false};                              ///< Marked abstract
     Visibility visibility{Visibility::Public};           ///< Visibility
     il::support::SourceLoc loc;                          ///< Source location
+    size_t requiredParams{0};                            ///< Number of required (non-default) params
 };
 
 /// @brief Information about a class field.
@@ -475,6 +486,11 @@ class SemanticAnalyzer
     /// @param unit The unit to extract exports from.
     /// @return UnitInfo containing the exported symbols.
     UnitInfo extractUnitExports(const Unit &unit);
+
+    /// @brief Resolve a TypeNode to a PasType (public for Lowerer access).
+    /// @param typeNode The AST type node to resolve.
+    /// @return The resolved type, or Unknown on error.
+    PasType resolveType(TypeNode &typeNode);
 
   private:
     //=========================================================================
@@ -635,6 +651,9 @@ class SemanticAnalyzer
     /// @brief Analyze a raise statement.
     void analyzeRaise(RaiseStmt &stmt);
 
+    /// @brief Analyze an exit statement.
+    void analyzeExit(ExitStmt &stmt);
+
     /// @brief Analyze a try-except statement.
     void analyzeTryExcept(TryExceptStmt &stmt);
 
@@ -700,11 +719,6 @@ class SemanticAnalyzer
     // Type Resolution
     //=========================================================================
 
-    /// @brief Resolve a TypeNode to a PasType.
-    /// @param typeNode The AST type node to resolve.
-    /// @return The resolved type, or Unknown on error.
-    PasType resolveType(TypeNode &typeNode);
-
     /// @brief Check if @p source can be assigned to @p target.
     bool isAssignableFrom(const PasType &target, const PasType &source);
 
@@ -713,6 +727,23 @@ class SemanticAnalyzer
 
     /// @brief Get the result type of a unary operation.
     PasType unaryResultType(UnaryExpr::Op op, const PasType &operand);
+
+    /// @brief Check if an expression is a compile-time constant.
+    /// @param expr The expression to check.
+    /// @return True if the expression is a compile-time constant.
+    bool isConstantExpr(const Expr &expr) const;
+
+    /// @brief Evaluate a constant integer expression.
+    /// @param expr The expression to evaluate (must be a constant integer expression).
+    /// @return The integer value, or 0 if evaluation fails.
+    int64_t evaluateConstantInt(const Expr &expr) const;
+
+    /// @brief Validate default parameters in a parameter list.
+    /// @param params The parameters to validate.
+    /// @param loc Location for error reporting.
+    /// @return Number of required parameters (before first default).
+    size_t validateDefaultParams(const std::vector<ParamDecl> &params,
+                                  il::support::SourceLoc loc);
 
     //=========================================================================
     // Scope Management
@@ -726,6 +757,16 @@ class SemanticAnalyzer
 
     /// @brief Add a variable to the current scope.
     void addVariable(const std::string &name, const PasType &type);
+
+    /// @brief Add a local variable and track if it requires definite assignment.
+    /// @details Non-nullable class/interface locals are tracked for definite assignment.
+    void addLocalVariable(const std::string &name, const PasType &type);
+
+    /// @brief Mark a non-nullable variable as definitely assigned.
+    void markDefinitelyAssigned(const std::string &name);
+
+    /// @brief Check if a non-nullable variable has been definitely assigned.
+    bool isDefinitelyAssigned(const std::string &name) const;
 
     //=========================================================================
     // Error Reporting
@@ -749,6 +790,9 @@ class SemanticAnalyzer
 
     /// @brief Register built-in functions (WriteLn, ReadLn, etc.).
     void registerBuiltins();
+
+    /// @brief Register built-in units (Viper.Strings, Viper.Math).
+    void registerBuiltinUnits();
 
     //=========================================================================
     // Flow-Sensitive Narrowing
@@ -790,6 +834,9 @@ class SemanticAnalyzer
     /// @brief Registered constant names -> types
     std::map<std::string, PasType> constants_;
 
+    /// @brief Registered integer constant values (for compile-time evaluation)
+    std::map<std::string, int64_t> constantValues_;
+
     /// @brief Stack of variable scopes (each is name -> type)
     std::vector<std::map<std::string, PasType>> varScopes_;
 
@@ -828,6 +875,18 @@ class SemanticAnalyzer
     /// @brief Set of undefined variables (lowercase names).
     /// @details Variables added here cannot be read; they become undefined after for loop exits.
     std::set<std::string> undefinedVars_;
+
+    /// @brief Depth of nested procedure/function (0 = top-level)
+    /// @details Used to reject nested procedures/functions in v0.1.
+    int routineDepth_{0};
+
+    /// @brief Set of non-nullable reference variables that require definite assignment (lowercase).
+    /// @details Non-optional class/interface locals must be assigned before they are read.
+    std::set<std::string> uninitializedNonNullableVars_;
+
+    /// @brief Set of definitely-assigned non-nullable variables in current scope (lowercase).
+    /// @details Variables are added here when assigned; removed from uninitializedNonNullableVars_.
+    std::set<std::string> definitelyAssignedVars_;
 };
 
 } // namespace il::frontends::pascal

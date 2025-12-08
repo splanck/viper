@@ -56,6 +56,7 @@ enum class TokenKind
     KwDownto,
     KwElse,
     KwEnd,
+    KwExit,
     KwExcept,
     KwFinally,
     KwFor,

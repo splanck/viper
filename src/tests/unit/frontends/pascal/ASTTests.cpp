@@ -172,10 +172,10 @@ TEST(PascalASTTest, OptionalTypeNode)
 
 TEST(PascalASTTest, ArrayTypeNode)
 {
-    std::vector<ArrayTypeNode::DimRange> dims;
-    ArrayTypeNode::DimRange dim;
-    dim.low = std::make_unique<IntLiteralExpr>(1);
-    dim.high = std::make_unique<IntLiteralExpr>(10);
+    // Arrays are 0-based in v0.1, so we only store the size
+    std::vector<ArrayTypeNode::DimSize> dims;
+    ArrayTypeNode::DimSize dim;
+    dim.size = std::make_unique<IntLiteralExpr>(10);
     dims.push_back(std::move(dim));
 
     auto elemType = std::make_unique<NamedTypeNode>("Integer");
@@ -188,7 +188,7 @@ TEST(PascalASTTest, ArrayTypeNode)
 
 TEST(PascalASTTest, DynamicArrayTypeNode)
 {
-    std::vector<ArrayTypeNode::DimRange> dims; // Empty for dynamic
+    std::vector<ArrayTypeNode::DimSize> dims; // Empty for dynamic
     auto elemType = std::make_unique<NamedTypeNode>("String");
     ArrayTypeNode type(std::move(dims), std::move(elemType));
 

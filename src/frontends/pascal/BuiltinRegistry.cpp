@@ -85,8 +85,16 @@ std::array<BuiltinDescriptor, kBuiltinCount> makeDescriptors()
         {{.symbol = "rt_input_line", .argType = T::String}},
         {{.allowed = A::Any, .isVar = true}});
 
-    set(B::ReadLn, "ReadLn", C::Builtin, 0, 255, true, R::Void,
+    set(B::ReadLn, "ReadLn", C::Builtin, 0, 255, true, R::String,
         {{.symbol = "rt_input_line", .argType = T::String}});
+
+    // ReadInteger: reads a line and parses as Integer (raises on error)
+    set(B::ReadInteger, "ReadInteger", C::Builtin, 0, 0, false, R::Integer,
+        {{.symbol = "rt_read_integer"}});
+
+    // ReadReal: reads a line and parses as Real (raises on error)
+    set(B::ReadReal, "ReadReal", C::Builtin, 0, 0, false, R::Real,
+        {{.symbol = "rt_read_real"}});
 
     //=========================================================================
     // String Functions
@@ -105,14 +113,25 @@ std::array<BuiltinDescriptor, kBuiltinCount> makeDescriptors()
     set(B::IntToStr, "IntToStr", C::Builtin, 1, 1, false, R::String,
         {{.symbol = "rt_int_to_str"}}, {{.allowed = A::Integer}});
 
+    // RealToStr: spec name for Real to String conversion
+    set(B::RealToStr, "RealToStr", C::Builtin, 1, 1, false, R::String,
+        {{.symbol = "rt_f64_to_str"}}, {{.allowed = A::Real}});
+
+    // FloatToStr: extension alias (same as RealToStr)
     set(B::FloatToStr, "FloatToStr", C::Builtin, 1, 1, false, R::String,
         {{.symbol = "rt_f64_to_str"}}, {{.allowed = A::Real}});
 
+    // StrToInt: raises exception on parse error
     set(B::StrToInt, "StrToInt", C::Builtin, 1, 1, false, R::Integer,
-        {{.symbol = "rt_to_int"}}, {{.allowed = A::String}});
+        {{.symbol = "rt_str_to_int"}}, {{.allowed = A::String}});
 
+    // StrToReal: spec name for String to Real conversion (raises on error)
+    set(B::StrToReal, "StrToReal", C::Builtin, 1, 1, false, R::Real,
+        {{.symbol = "rt_str_to_real"}}, {{.allowed = A::String}});
+
+    // StrToFloat: extension alias (same as StrToReal)
     set(B::StrToFloat, "StrToFloat", C::Builtin, 1, 1, false, R::Real,
-        {{.symbol = "rt_to_double"}}, {{.allowed = A::String}});
+        {{.symbol = "rt_str_to_real"}}, {{.allowed = A::String}});
 
     set(B::Copy, "Copy", C::Builtin, 2, 3, false, R::String,
         {{.symbol = "rt_substr"}},
@@ -198,10 +217,10 @@ std::array<BuiltinDescriptor, kBuiltinCount> makeDescriptors()
     set(B::Ln, "Ln", C::Builtin, 1, 1, false, R::Real, {{.symbol = "rt_log"}},
         {{.allowed = A::Numeric}});
 
-    set(B::Trunc, "Trunc", C::Builtin, 1, 1, false, R::Integer, {{.symbol = "rt_fix"}},
+    set(B::Trunc, "Trunc", C::Builtin, 1, 1, false, R::Integer, {{.symbol = "rt_fix_trunc"}},
         {{.allowed = A::Numeric}});
 
-    set(B::Round, "Round", C::Builtin, 1, 1, false, R::Integer, {{.symbol = "rt_round"}},
+    set(B::Round, "Round", C::Builtin, 1, 1, false, R::Integer, {{.symbol = "rt_round_even"}},
         {{.allowed = A::Numeric}});
 
     set(B::Floor, "Floor", C::Builtin, 1, 1, false, R::Integer, {{.symbol = "rt_floor"}},
@@ -215,8 +234,9 @@ std::array<BuiltinDescriptor, kBuiltinCount> makeDescriptors()
          {.symbol = "rt_random_int", .argType = T::Integer}},
         {{.allowed = A::Integer, .optional = true}});
 
-    set(B::Randomize, "Randomize", C::Builtin, 0, 0, false, R::Void,
-        {{.symbol = "rt_randomize"}});
+    set(B::Randomize, "Randomize", C::Builtin, 0, 1, false, R::Void,
+        {{.symbol = "rt_randomize_i64", .argType = T::Integer}},
+        {{.allowed = A::Integer, .optional = true}});
 
     //=========================================================================
     // Type Conversion (handled specially in lowering)
@@ -264,8 +284,17 @@ std::array<BuiltinDescriptor, kBuiltinCount> makeDescriptors()
     // Viper.Math Unit
     //=========================================================================
 
+    // Pow: spec name for power function
+    set(B::Pow, "Pow", C::ViperMath, 2, 2, false, R::Real, {{.symbol = "rt_pow"}},
+        {{.allowed = A::Numeric}, {.allowed = A::Numeric}});
+
+    // Power: extension alias (same as Pow)
     set(B::Power, "Power", C::ViperMath, 2, 2, false, R::Real, {{.symbol = "rt_pow"}},
         {{.allowed = A::Numeric}, {.allowed = A::Numeric}});
+
+    // Atan: spec name for arc tangent (in unit, not core ArcTan)
+    set(B::Atan, "Atan", C::ViperMath, 1, 1, false, R::Real, {{.symbol = "rt_atan"}},
+        {{.allowed = A::Numeric}});
 
     set(B::Sign, "Sign", C::ViperMath, 1, 1, false, R::Integer,
         {{.symbol = "rt_sgn_i64", .argType = T::Integer},
@@ -283,6 +312,55 @@ std::array<BuiltinDescriptor, kBuiltinCount> makeDescriptors()
          {.symbol = "rt_max_f64", .argType = T::Real}},
         {{.allowed = A::Numeric}, {.allowed = A::Numeric}});
     desc[static_cast<size_t>(B::Max)].resultArgIndex = 0;
+
+    //=========================================================================
+    // Viper.Terminal Unit - Console/Terminal Control
+    // Note: Using i64 wrapper functions since Pascal Integer is i64
+    //=========================================================================
+
+    set(B::ClrScr, "ClrScr", C::ViperTerminal, 0, 0, false, R::Void,
+        {{.symbol = "rt_term_cls"}});
+
+    // GotoXY takes (col, row) in Pascal/Turbo Pascal style but our runtime
+    // uses (row, col) - the lowerer will swap the arguments
+    set(B::GotoXY, "GotoXY", C::ViperTerminal, 2, 2, false, R::Void,
+        {{.symbol = "rt_term_locate"}},
+        {{.allowed = A::Integer}, {.allowed = A::Integer}});
+
+    // TextColor sets only foreground
+    set(B::TextColor, "TextColor", C::ViperTerminal, 1, 1, false, R::Void,
+        {{.symbol = "rt_term_textcolor"}},
+        {{.allowed = A::Integer}});
+
+    // TextBackground sets only background
+    set(B::TextBackground, "TextBackground", C::ViperTerminal, 1, 1, false, R::Void,
+        {{.symbol = "rt_term_textbg"}},
+        {{.allowed = A::Integer}});
+
+    // KeyPressed: returns boolean (1 if key available, 0 if not)
+    // Uses i64 version for IL compatibility
+    set(B::KeyPressed, "KeyPressed", C::ViperTerminal, 0, 0, false, R::Boolean,
+        {{.symbol = "rt_keypressed_i64"}});
+
+    set(B::ReadKey, "ReadKey", C::ViperTerminal, 0, 0, false, R::String,
+        {{.symbol = "rt_getkey_str"}});
+
+    set(B::InKey, "InKey", C::ViperTerminal, 0, 0, false, R::String,
+        {{.symbol = "rt_inkey_str"}});
+
+    set(B::Delay, "Delay", C::ViperTerminal, 1, 1, false, R::Void,
+        {{.symbol = "rt_sleep_ms_i64"}},
+        {{.allowed = A::Integer}});
+
+    set(B::Sleep, "Sleep", C::ViperTerminal, 1, 1, false, R::Void,
+        {{.symbol = "rt_sleep_ms_i64"}},
+        {{.allowed = A::Integer}});
+
+    set(B::HideCursor, "HideCursor", C::ViperTerminal, 0, 0, false, R::Void,
+        {{.symbol = "rt_term_hide_cursor"}});
+
+    set(B::ShowCursor, "ShowCursor", C::ViperTerminal, 0, 0, false, R::Void,
+        {{.symbol = "rt_term_show_cursor"}});
 
     return desc;
 }
@@ -424,7 +502,8 @@ bool isViperUnit(std::string_view unitName)
 {
     std::string key = toLower(unitName);
     return key == "viper.strings" || key == "viperstrings" || key == "viper.math" ||
-           key == "vipermath";
+           key == "vipermath" || key == "viper.terminal" || key == "viperterminal" ||
+           key == "crt";  // CRT is common Pascal terminal unit name
 }
 
 std::vector<PascalBuiltin> getUnitBuiltins(std::string_view unitName)
@@ -442,6 +521,15 @@ std::vector<PascalBuiltin> getUnitBuiltins(std::string_view unitName)
     {
         result = {PascalBuiltin::Power, PascalBuiltin::Sign, PascalBuiltin::Min,
                   PascalBuiltin::Max};
+    }
+    else if (key == "viper.terminal" || key == "viperterminal" || key == "crt")
+    {
+        result = {PascalBuiltin::ClrScr,    PascalBuiltin::GotoXY,
+                  PascalBuiltin::TextColor, PascalBuiltin::TextBackground,
+                  PascalBuiltin::KeyPressed, PascalBuiltin::ReadKey,
+                  PascalBuiltin::InKey,     PascalBuiltin::Delay,
+                  PascalBuiltin::Sleep,     PascalBuiltin::HideCursor,
+                  PascalBuiltin::ShowCursor};
     }
 
     return result;

@@ -432,6 +432,45 @@ rt_string rt_inkey_str(void)
     return rt_const_cstr(""); // use your runtime's empty-string helper
 }
 
+#if defined(_WIN32)
+/// @brief Check if a key is available in the input buffer without reading it.
+/// @details Returns non-zero if a key is pending, zero otherwise.
+int32_t rt_keypressed(void)
+{
+    return _kbhit() ? 1 : 0;
+}
+#else
+/// @brief Check if a key is available in the input buffer without reading it.
+/// @details Uses select() with zero timeout to poll the terminal. Returns non-zero
+///          if a key is pending, zero otherwise.
+int32_t rt_keypressed(void)
+{
+    struct termios orig, raw;
+    int fd = fileno(stdin);
+    if (tcgetattr(fd, &orig) != 0)
+        return 0;
+    raw = orig;
+    raw.c_lflag &= ~(ICANON | ECHO);
+    raw.c_cc[VMIN] = 0;
+    raw.c_cc[VTIME] = 0;
+    if (tcsetattr(fd, TCSANOW, &raw) != 0)
+        return 0;
+
+    fd_set readfds;
+    FD_ZERO(&readfds);
+    FD_SET(fd, &readfds);
+
+    struct timeval timeout;
+    timeout.tv_sec = 0;
+    timeout.tv_usec = 0;
+
+    int ret = select(fd + 1, &readfds, NULL, NULL, &timeout);
+    tcsetattr(fd, TCSANOW, &orig);
+
+    return (ret > 0 && FD_ISSET(fd, &readfds)) ? 1 : 0;
+}
+#endif
+
 // =============================================================================
 // Output Batch Mode Control Functions
 // =============================================================================
@@ -467,4 +506,56 @@ void rt_term_end_batch(void)
 void rt_term_flush(void)
 {
     rt_output_flush();
+}
+
+// =============================================================================
+// Pascal-Compatible Wrappers (i64 arguments)
+// =============================================================================
+
+/// @brief Move cursor to position (for Pascal which uses i64 integers).
+void rt_term_locate(int64_t row, int64_t col)
+{
+    rt_term_locate_i32((int32_t)row, (int32_t)col);
+}
+
+/// @brief Set terminal colors (for Pascal which uses i64 integers).
+void rt_term_color(int64_t fg, int64_t bg)
+{
+    rt_term_color_i32((int32_t)fg, (int32_t)bg);
+}
+
+/// @brief Set foreground text color only.
+void rt_term_textcolor(int64_t fg)
+{
+    rt_term_color_i32((int32_t)fg, -1);
+}
+
+/// @brief Set background color only.
+void rt_term_textbg(int64_t bg)
+{
+    rt_term_color_i32(-1, (int32_t)bg);
+}
+
+/// @brief Hide cursor.
+void rt_term_hide_cursor(void)
+{
+    rt_term_cursor_visible_i32(0);
+}
+
+/// @brief Show cursor.
+void rt_term_show_cursor(void)
+{
+    rt_term_cursor_visible_i32(1);
+}
+
+/// @brief Sleep for specified milliseconds (i64 wrapper).
+void rt_sleep_ms_i64(int64_t ms)
+{
+    rt_sleep_ms((int32_t)ms);
+}
+
+/// @brief Check if a key is available (i64 wrapper for Pascal).
+int64_t rt_keypressed_i64(void)
+{
+    return (int64_t)rt_keypressed();
 }

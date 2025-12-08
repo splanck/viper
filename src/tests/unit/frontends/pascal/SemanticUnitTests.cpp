@@ -133,6 +133,209 @@ end.
 }
 
 //===----------------------------------------------------------------------===//
+// Interface Implementation Restriction Tests
+//===----------------------------------------------------------------------===//
+
+TEST(PascalUnitTest, ProcedureBodyInInterfaceError)
+{
+    DiagnosticEngine diag;
+    SemanticAnalyzer analyzer(diag);
+
+    const std::string unitSource = R"(
+unit BadUnit;
+interface
+  procedure DoWork;
+  begin
+  end;
+implementation
+end.
+)";
+
+    bool result = analyzeUnit(unitSource, analyzer, diag);
+    EXPECT_FALSE(result);
+    EXPECT_NE(diag.errorCount(), 0u);
+}
+
+TEST(PascalUnitTest, FunctionBodyInInterfaceError)
+{
+    DiagnosticEngine diag;
+    SemanticAnalyzer analyzer(diag);
+
+    const std::string unitSource = R"(
+unit BadUnit;
+interface
+  function GetValue: Integer;
+  begin
+    Result := 42
+  end;
+implementation
+end.
+)";
+
+    bool result = analyzeUnit(unitSource, analyzer, diag);
+    EXPECT_FALSE(result);
+    EXPECT_NE(diag.errorCount(), 0u);
+}
+
+TEST(PascalUnitTest, InterfaceSignatureWithImplBodyOk)
+{
+    DiagnosticEngine diag;
+    SemanticAnalyzer analyzer(diag);
+
+    const std::string unitSource = R"(
+unit GoodUnit;
+interface
+  procedure DoWork;
+  function GetValue: Integer;
+implementation
+  procedure DoWork;
+  begin
+  end;
+  function GetValue: Integer;
+  begin
+    Result := 42
+  end;
+end.
+)";
+
+    bool result = analyzeUnit(unitSource, analyzer, diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
+//===----------------------------------------------------------------------===//
+// Class in Unit Tests
+//===----------------------------------------------------------------------===//
+
+TEST(PascalUnitTest, ClassTypeExportedFromUnit)
+{
+    DiagnosticEngine diag;
+    SemanticAnalyzer analyzer(diag);
+
+    // First analyze the unit with a simple class
+    const std::string shapesUnit = R"(
+unit Shapes;
+interface
+  type
+    TShape = class
+    public
+      Name: String;
+    end;
+implementation
+end.
+)";
+
+    bool unitOk = analyzeUnit(shapesUnit, analyzer, diag);
+    ASSERT_TRUE(unitOk);
+
+    // Then analyze the program that uses the type
+    const std::string program = R"(
+program Demo;
+uses Shapes;
+var s: TShape;
+begin
+end.
+)";
+
+    bool progOk = analyzeProgram(program, analyzer, diag);
+    EXPECT_TRUE(progOk);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
+TEST(PascalUnitTest, ImplementationOnlyDecl)
+{
+    DiagnosticEngine diag;
+    SemanticAnalyzer analyzer(diag);
+
+    const std::string unitSource = R"(
+unit Helper;
+interface
+  procedure PublicProc;
+implementation
+  procedure PrivateHelper;
+  begin
+  end;
+  procedure PublicProc;
+  begin
+    PrivateHelper
+  end;
+end.
+)";
+
+    bool result = analyzeUnit(unitSource, analyzer, diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
+TEST(PascalUnitTest, ImplementationVarOk)
+{
+    DiagnosticEngine diag;
+    SemanticAnalyzer analyzer(diag);
+
+    const std::string unitSource = R"(
+unit Counter;
+interface
+  function GetCount: Integer;
+  procedure Increment;
+implementation
+  var count: Integer;
+  function GetCount: Integer;
+  begin
+    Result := count
+  end;
+  procedure Increment;
+  begin
+    count := count + 1
+  end;
+end.
+)";
+
+    bool result = analyzeUnit(unitSource, analyzer, diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
+TEST(PascalUnitTest, ImplementationUsesClause)
+{
+    DiagnosticEngine diag;
+    SemanticAnalyzer analyzer(diag);
+
+    // First analyze the helper unit
+    const std::string helperUnit = R"(
+unit Helper;
+interface
+  function Double(x: Integer): Integer;
+implementation
+  function Double(x: Integer): Integer;
+  begin
+    Result := x * 2
+  end;
+end.
+)";
+
+    bool helperOk = analyzeUnit(helperUnit, analyzer, diag);
+    ASSERT_TRUE(helperOk);
+
+    // Then analyze the unit that uses it in implementation
+    const std::string mainUnit = R"(
+unit Main;
+interface
+  function Quadruple(x: Integer): Integer;
+implementation
+  uses Helper;
+  function Quadruple(x: Integer): Integer;
+  begin
+    Result := Double(Double(x))
+  end;
+end.
+)";
+
+    bool result = analyzeUnit(mainUnit, analyzer, diag);
+    EXPECT_TRUE(result);
+    EXPECT_EQ(diag.errorCount(), 0u);
+}
+
+//===----------------------------------------------------------------------===//
 // Uses Clause Tests
 //===----------------------------------------------------------------------===//
 
