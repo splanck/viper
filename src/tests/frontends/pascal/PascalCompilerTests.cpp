@@ -165,6 +165,7 @@ end.
     EXPECT_TRUE(result.succeeded());
 
     // Check that the main function has arithmetic instructions
+    // Pred/Succ emit ISubOvf/IAddOvf for integer overflow checking
     bool hasSubOrAdd = false;
     for (const auto &fn : result.module.functions)
     {
@@ -174,7 +175,10 @@ end.
             {
                 for (const auto &instr : blk.instructions)
                 {
-                    if (instr.op == il::core::Opcode::Sub || instr.op == il::core::Opcode::Add)
+                    if (instr.op == il::core::Opcode::Sub ||
+                        instr.op == il::core::Opcode::Add ||
+                        instr.op == il::core::Opcode::ISubOvf ||
+                        instr.op == il::core::Opcode::IAddOvf)
                     {
                         hasSubOrAdd = true;
                         break;

@@ -56,10 +56,12 @@ const char *stmtKindToString(StmtKind kind)
         case StmtKind::Repeat:     return "Repeat";
         case StmtKind::Break:      return "Break";
         case StmtKind::Continue:   return "Continue";
+        case StmtKind::Exit:       return "Exit";
         case StmtKind::Raise:      return "Raise";
         case StmtKind::TryExcept:  return "TryExcept";
         case StmtKind::TryFinally: return "TryFinally";
         case StmtKind::With:       return "With";
+        case StmtKind::Inherited:  return "Inherited";
         case StmtKind::Empty:      return "Empty";
     }
     return "?";

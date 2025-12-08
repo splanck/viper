@@ -14,6 +14,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/pascal/BuiltinRegistry.hpp"
+#include "frontends/common/CharUtils.hpp"
 #include <algorithm>
 #include <array>
 #include <cctype>
@@ -22,18 +23,17 @@
 namespace il::frontends::pascal
 {
 
+// Use common toLowercase for case-insensitive comparison
+using common::char_utils::toLowercase;
+
+// Alias for compatibility with existing code (accepts string_view)
+inline std::string toLower(std::string_view s)
+{
+    return toLowercase(std::string(s));
+}
+
 namespace
 {
-
-/// @brief Convert string to lowercase for case-insensitive comparison.
-std::string toLower(std::string_view s)
-{
-    std::string result;
-    result.reserve(s.size());
-    for (char c : s)
-        result.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
-    return result;
-}
 
 /// @brief Number of builtins.
 constexpr size_t kBuiltinCount = static_cast<size_t>(PascalBuiltin::Count);

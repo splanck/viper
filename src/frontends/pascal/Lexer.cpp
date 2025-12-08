@@ -14,6 +14,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/pascal/Lexer.hpp"
+#include "frontends/common/CharUtils.hpp"
+#include "frontends/common/NumberParsing.hpp"
 #include <algorithm>
 #include <cctype>
 #include <charconv>
@@ -205,47 +207,16 @@ const std::unordered_map<std::string, bool> &predefinedTable()
     return table;
 }
 
-/// @brief Convert character to lowercase.
-inline char toLower(char c)
-{
-    if (c >= 'A' && c <= 'Z')
-    {
-        return static_cast<char>(c + ('a' - 'A'));
-    }
-    return c;
-}
-
-/// @brief Convert string to lowercase.
-std::string toLowercase(const std::string &s)
-{
-    std::string result;
-    result.reserve(s.size());
-    for (char c : s)
-    {
-        result.push_back(toLower(c));
-    }
-    return result;
-}
-
-/// @brief Check if character is a letter (A-Z, a-z).
-inline bool isLetter(char c)
-{
-    return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z');
-}
-
-/// @brief Check if character is a digit (0-9).
-inline bool isDigit(char c)
-{
-    return c >= '0' && c <= '9';
-}
-
-/// @brief Check if character is a hex digit (0-9, A-F, a-f).
-inline bool isHexDigit(char c)
-{
-    return isDigit(c) || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f');
-}
+// Use common character utilities
+using ::il::frontends::common::char_utils::isLetter;
+using ::il::frontends::common::char_utils::isDigit;
+using ::il::frontends::common::char_utils::toLower;
+using ::il::frontends::common::char_utils::toLowercase;
+using ::il::frontends::common::char_utils::isHexDigit;
+using ::il::frontends::common::char_utils::isWhitespace;
 
 /// @brief Check if character can start an identifier.
+/// @note Pascal identifiers start with a letter only (no underscore).
 inline bool isIdentifierStart(char c)
 {
     return isLetter(c);
@@ -255,12 +226,6 @@ inline bool isIdentifierStart(char c)
 inline bool isIdentifierContinue(char c)
 {
     return isLetter(c) || isDigit(c) || c == '_';
-}
-
-/// @brief Check if character is whitespace.
-inline bool isWhitespace(char c)
-{
-    return c == ' ' || c == '\t' || c == '\r' || c == '\n';
 }
 
 } // anonymous namespace
@@ -525,22 +490,27 @@ Token Lexer::lexNumber()
         }
     }
 
-    // Parse the value
+    // Parse the value using common number parsing utilities
     tok.canonical = tok.text;
-    if (tok.kind == TokenKind::IntegerLiteral)
+    auto parsed = common::number_parsing::parseDecimalLiteral(tok.text);
+
+    if (!parsed.valid)
     {
-        auto result = std::from_chars(tok.text.data(), tok.text.data() + tok.text.size(), tok.intValue);
-        if (result.ec != std::errc{})
-        {
-            reportError(tok.loc, "integer literal out of range");
-            tok.kind = TokenKind::Error;
-        }
+        if (parsed.overflow)
+            reportError(tok.loc, "numeric literal out of range");
+        else
+            reportError(tok.loc, "invalid numeric literal");
+        tok.kind = TokenKind::Error;
+    }
+    else if (parsed.isFloat)
+    {
+        tok.kind = TokenKind::RealLiteral;
+        tok.realValue = parsed.floatValue;
     }
     else
     {
-        // Parse real value
-        char *endPtr = nullptr;
-        tok.realValue = std::strtod(tok.text.c_str(), &endPtr);
+        tok.kind = TokenKind::IntegerLiteral;
+        tok.intValue = parsed.intValue;
     }
 
     return tok;
@@ -568,13 +538,22 @@ Token Lexer::lexHexNumber()
         tok.text.push_back(getChar());
     }
 
-    // Parse the hex value (skip the '$' prefix)
+    // Parse the hex value using common utilities (skip the '$' prefix)
     tok.canonical = tok.text;
-    auto result = std::from_chars(tok.text.data() + 1, tok.text.data() + tok.text.size(), tok.intValue, 16);
-    if (result.ec != std::errc{})
+    std::string_view hexDigits(tok.text.data() + 1, tok.text.size() - 1);
+    auto parsed = common::number_parsing::parseHexLiteral(hexDigits);
+
+    if (!parsed.valid)
     {
-        reportError(tok.loc, "hex literal out of range");
+        if (parsed.overflow)
+            reportError(tok.loc, "hex literal out of range");
+        else
+            reportError(tok.loc, "invalid hex literal");
         tok.kind = TokenKind::Error;
+    }
+    else
+    {
+        tok.intValue = parsed.intValue;
     }
 
     return tok;

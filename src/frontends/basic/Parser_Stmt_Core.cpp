@@ -742,6 +742,9 @@ StmtPtr Parser::parseFunctionStatement()
             case BasicType::Void:
                 func->ret = Type::I64;
                 break;
+            case BasicType::Object:
+                func->ret = Type::Ptr;
+                break;
             case BasicType::Unknown:
                 break;
         }

@@ -15,6 +15,7 @@
 
 #include "frontends/pascal/Lowerer.hpp"
 #include "frontends/pascal/BuiltinRegistry.hpp"
+#include "frontends/common/CharUtils.hpp"
 #include "il/core/Instr.hpp"
 #include "il/core/Param.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
@@ -26,19 +27,14 @@
 namespace il::frontends::pascal
 {
 
-namespace
-{
+// Use common toLowercase for case-insensitive lookup
+using common::char_utils::toLowercase;
 
-/// @brief Convert string to lowercase for case-insensitive lookup.
-std::string toLower(const std::string &s)
+// Alias for compatibility with existing code
+inline std::string toLower(const std::string &s)
 {
-    std::string result = s;
-    for (char &c : result)
-        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-    return result;
+    return toLowercase(s);
 }
-
-} // namespace
 
 //===----------------------------------------------------------------------===//
 // Construction

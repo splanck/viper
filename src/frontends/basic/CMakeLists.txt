@@ -30,7 +30,6 @@ target_sources(fe_basic PRIVATE
         Parser_Expr.cpp
         Parser_Token.cpp
         StatementSequencer.cpp
-        NameMangler.cpp
         NameMangler_OOP.cpp
         TypeSuffix.cpp
         TypeRules.cpp
@@ -128,7 +127,6 @@ target_sources(fe_basic PRIVATE
         Semantic_OOP_Builder.cpp
         SemanticAnalyzer_Exprs.cpp
         SemanticAnalyzer_Builtins.cpp
-        ScopeTracker.cpp
         SymbolTable.cpp
         TypeCoercionEngine.cpp
         types/TypeMapping.cpp

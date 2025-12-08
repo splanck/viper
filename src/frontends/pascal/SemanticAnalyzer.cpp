@@ -15,6 +15,7 @@
 
 #include "frontends/pascal/SemanticAnalyzer.hpp"
 #include "frontends/pascal/BuiltinRegistry.hpp"
+#include "frontends/common/CharUtils.hpp"
 #include <algorithm>
 #include <cctype>
 #include <set>
@@ -22,23 +23,14 @@
 namespace il::frontends::pascal
 {
 
-//===----------------------------------------------------------------------===//
-// Helper Functions
-//===----------------------------------------------------------------------===//
+// Use common toLowercase for case-insensitive comparison
+using common::char_utils::toLowercase;
 
-namespace
+// Alias for compatibility with existing code
+inline std::string toLower(const std::string &s)
 {
-
-/// @brief Convert string to lowercase for case-insensitive comparison.
-std::string toLower(const std::string &s)
-{
-    std::string result = s;
-    std::transform(result.begin(), result.end(), result.begin(),
-                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-    return result;
+    return toLowercase(s);
 }
-
-} // namespace
 
 //===----------------------------------------------------------------------===//
 // PasType Implementation
@@ -2640,7 +2632,7 @@ PasType SemanticAnalyzer::resolveType(TypeNode &typeNode)
         // Check for double optional (T??) - this is a compile error
         if (inner.isOptional())
         {
-            error(typeNode.loc, "double optional type (T??) is not allowed");
+            error(typeNode.loc, "double optional type (T?" "?) is not allowed");
             // Return single optional for error recovery
             return inner;
         }
@@ -3625,7 +3617,11 @@ bool SemanticAnalyzer::importUnits(const std::vector<std::string> &unitNames)
                     PasType paramType; // default to unknown
 
                     // Determine parameter type from allowed mask
-                    if (argSpec.allowed & ArgTypeMask::Integer)
+                    // Check Numeric (Integer|Real) first - use Real to accept both
+                    if ((argSpec.allowed & ArgTypeMask::Integer) &&
+                        (argSpec.allowed & ArgTypeMask::Real))
+                        paramType = PasType::real();
+                    else if (argSpec.allowed & ArgTypeMask::Integer)
                         paramType = PasType::integer();
                     else if (argSpec.allowed & ArgTypeMask::Real)
                         paramType = PasType::real();
@@ -3645,6 +3641,24 @@ bool SemanticAnalyzer::importUnits(const std::vector<std::string> &unitNames)
 
                 std::string key = toLower(desc.name);
                 functions_[key] = sig;
+            }
+
+            // Also import constants and functions from the registered unit
+            const UnitInfo *unit = getUnit(unitName);
+            if (unit)
+            {
+                for (const auto &[key, constType] : unit->constants)
+                {
+                    constants_[key] = constType;
+                }
+                for (const auto &[key, sig] : unit->functions)
+                {
+                    // Don't overwrite builtins we already registered
+                    if (functions_.find(key) == functions_.end())
+                    {
+                        functions_[key] = sig;
+                    }
+                }
             }
             continue;
         }

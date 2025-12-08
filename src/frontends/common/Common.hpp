@@ -28,6 +28,27 @@
 #include "frontends/common/StringHash.hpp"
 #include "frontends/common/StringTable.hpp"
 
+// Type utilities
+#include "frontends/common/TypeUtils.hpp"
+
+// Scope management
+#include "frontends/common/ScopeTracker.hpp"
+
+// Character utilities for lexers
+#include "frontends/common/CharUtils.hpp"
+
+// Number parsing utilities for lexers
+#include "frontends/common/NumberParsing.hpp"
+
+// Diagnostic formatting helpers
+#include "frontends/common/DiagnosticHelpers.hpp"
+
+// Constant folding utilities
+#include "frontends/common/ConstantFolding.hpp"
+
+// Name mangling utilities
+#include "frontends/common/NameMangler.hpp"
+
 namespace il::frontends::common
 {
 
