@@ -2023,9 +2023,12 @@ std::unique_ptr<Decl> Parser::parseClass(const std::string &name, il::support::S
             continue;
         }
 
-        // Parse member
-        auto member = parseClassMember(currentVisibility);
-        decl->members.push_back(std::move(member));
+        // Parse member(s) - fields can have comma-separated names
+        auto members = parseClassMembers(currentVisibility);
+        for (auto &member : members)
+        {
+            decl->members.push_back(std::move(member));
+        }
     }
 
     if (!expect(TokenKind::KwEnd, "'end'"))
@@ -2161,8 +2164,9 @@ std::unique_ptr<Decl> Parser::parseInterface(const std::string &name, il::suppor
     return decl;
 }
 
-ClassMember Parser::parseClassMember(Visibility currentVisibility)
+std::vector<ClassMember> Parser::parseClassMembers(Visibility currentVisibility)
 {
+    std::vector<ClassMember> result;
     ClassMember member;
     member.visibility = currentVisibility;
     member.loc = current_.loc;
@@ -2172,7 +2176,8 @@ ClassMember Parser::parseClassMember(Visibility currentVisibility)
     {
         member.memberKind = ClassMember::Kind::Constructor;
         member.methodDecl = parseConstructorSignature();
-        return member;
+        result.push_back(std::move(member));
+        return result;
     }
 
     // Destructor (signature only in class declaration)
@@ -2180,7 +2185,8 @@ ClassMember Parser::parseClassMember(Visibility currentVisibility)
     {
         member.memberKind = ClassMember::Kind::Destructor;
         member.methodDecl = parseDestructorSignature();
-        return member;
+        result.push_back(std::move(member));
+        return result;
     }
 
     // Procedure method (signature only in class)
@@ -2188,7 +2194,8 @@ ClassMember Parser::parseClassMember(Visibility currentVisibility)
     {
         member.memberKind = ClassMember::Kind::Method;
         member.methodDecl = parseMethodSignature(/*isFunction=*/false);
-        return member;
+        result.push_back(std::move(member));
+        return result;
     }
 
     // Function method (signature only in class)
@@ -2196,38 +2203,42 @@ ClassMember Parser::parseClassMember(Visibility currentVisibility)
     {
         member.memberKind = ClassMember::Kind::Method;
         member.methodDecl = parseMethodSignature(/*isFunction=*/true);
-        return member;
+        result.push_back(std::move(member));
+        return result;
     }
 
     // Field: [weak] ident_list : type ;
     member.memberKind = ClassMember::Kind::Field;
 
     // Check for weak modifier
+    bool isWeak = false;
     if (check(TokenKind::KwWeak))
     {
-        member.isWeak = true;
+        isWeak = true;
         advance();
     }
+    member.isWeak = isWeak;
 
     // Parse first field name
     if (!check(TokenKind::Identifier))
     {
         error("expected field name");
         resyncAfterError();
-        return member;
+        result.push_back(std::move(member));
+        return result;
     }
-    member.fieldName = current_.text;
+
+    // Collect all field names
+    std::vector<std::string> fieldNames;
+    fieldNames.push_back(current_.text);
     advance();
 
     // Handle comma-separated field names: x, y, z: Type;
-    // For now, we only support single field declarations in class members
-    // If we see a comma, skip to colon (the fields share a type)
     while (match(TokenKind::Comma))
     {
-        // Skip additional field names - they share the same type
-        // A more complete implementation would create separate members
         if (check(TokenKind::Identifier))
         {
+            fieldNames.push_back(current_.text);
             advance();
         }
     }
@@ -2236,16 +2247,34 @@ ClassMember Parser::parseClassMember(Visibility currentVisibility)
     if (!expect(TokenKind::Colon, "':'"))
     {
         resyncAfterError();
-        return member;
+        result.push_back(std::move(member));
+        return result;
     }
 
-    // Parse type
-    member.fieldType = parseType();
+    // Parse type (shared by all fields in this declaration)
+    auto fieldType = parseType();
 
     // Expect ";"
     expect(TokenKind::Semicolon, "';'");
 
-    return member;
+    // Create a ClassMember for each field name
+    for (const auto &name : fieldNames)
+    {
+        ClassMember fieldMember;
+        fieldMember.memberKind = ClassMember::Kind::Field;
+        fieldMember.visibility = currentVisibility;
+        fieldMember.loc = member.loc;
+        fieldMember.isWeak = isWeak;
+        fieldMember.fieldName = name;
+        // Clone the type node for each field
+        if (fieldType)
+        {
+            fieldMember.fieldType = fieldType->clone();
+        }
+        result.push_back(std::move(fieldMember));
+    }
+
+    return result;
 }
 
 std::unique_ptr<Decl> Parser::parseMethodSignature(bool isFunction)

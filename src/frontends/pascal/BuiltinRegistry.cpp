@@ -362,6 +362,94 @@ std::array<BuiltinDescriptor, kBuiltinCount> makeDescriptors()
     set(B::ShowCursor, "ShowCursor", C::ViperTerminal, 0, 0, false, R::Void,
         {{.symbol = "rt_term_show_cursor"}});
 
+    //=========================================================================
+    // Viper.IO Unit - File I/O
+    //=========================================================================
+
+    set(B::FileExists, "FileExists", C::ViperIO, 1, 1, false, R::Boolean,
+        {{.symbol = "Viper.IO.File.Exists"}}, {{.allowed = A::String}});
+
+    set(B::ReadAllText, "ReadAllText", C::ViperIO, 1, 1, false, R::String,
+        {{.symbol = "Viper.IO.File.ReadAllText"}}, {{.allowed = A::String}});
+
+    set(B::WriteAllText, "WriteAllText", C::ViperIO, 2, 2, false, R::Void,
+        {{.symbol = "Viper.IO.File.WriteAllText"}},
+        {{.allowed = A::String}, {.allowed = A::String}});
+
+    set(B::DeleteFile, "DeleteFile", C::ViperIO, 1, 1, false, R::Void,
+        {{.symbol = "Viper.IO.File.Delete"}}, {{.allowed = A::String}});
+
+    //=========================================================================
+    // Viper.Strings Unit - Additional String Functions
+    //=========================================================================
+
+    set(B::TrimStart, "TrimStart", C::ViperStrings, 1, 1, false, R::String,
+        {{.symbol = "Viper.String.TrimStart"}}, {{.allowed = A::String}});
+
+    set(B::TrimEnd, "TrimEnd", C::ViperStrings, 1, 1, false, R::String,
+        {{.symbol = "Viper.String.TrimEnd"}}, {{.allowed = A::String}});
+
+    set(B::IndexOf, "IndexOf", C::ViperStrings, 2, 2, false, R::Integer,
+        {{.symbol = "Viper.String.IndexOf"}},
+        {{.allowed = A::String}, {.allowed = A::String}});
+
+    set(B::Substring, "Substring", C::ViperStrings, 2, 3, false, R::String,
+        {{.symbol = "Viper.String.Substring"}},
+        {{.allowed = A::String}, {.allowed = A::Integer}, {.allowed = A::Integer, .optional = true}});
+
+    //=========================================================================
+    // Viper.DateTime Unit
+    //=========================================================================
+
+    set(B::Now, "Now", C::ViperDateTime, 0, 0, false, R::Integer,
+        {{.symbol = "Viper.DateTime.Now"}});
+
+    set(B::NowMs, "NowMs", C::ViperDateTime, 0, 0, false, R::Integer,
+        {{.symbol = "Viper.DateTime.NowMs"}});
+
+    set(B::Year, "Year", C::ViperDateTime, 1, 1, false, R::Integer,
+        {{.symbol = "Viper.DateTime.Year"}}, {{.allowed = A::Integer}});
+
+    set(B::Month, "Month", C::ViperDateTime, 1, 1, false, R::Integer,
+        {{.symbol = "Viper.DateTime.Month"}}, {{.allowed = A::Integer}});
+
+    set(B::Day, "Day", C::ViperDateTime, 1, 1, false, R::Integer,
+        {{.symbol = "Viper.DateTime.Day"}}, {{.allowed = A::Integer}});
+
+    set(B::Hour, "Hour", C::ViperDateTime, 1, 1, false, R::Integer,
+        {{.symbol = "Viper.DateTime.Hour"}}, {{.allowed = A::Integer}});
+
+    set(B::Minute, "Minute", C::ViperDateTime, 1, 1, false, R::Integer,
+        {{.symbol = "Viper.DateTime.Minute"}}, {{.allowed = A::Integer}});
+
+    set(B::Second, "Second", C::ViperDateTime, 1, 1, false, R::Integer,
+        {{.symbol = "Viper.DateTime.Second"}}, {{.allowed = A::Integer}});
+
+    set(B::DayOfWeek, "DayOfWeek", C::ViperDateTime, 1, 1, false, R::Integer,
+        {{.symbol = "Viper.DateTime.DayOfWeek"}}, {{.allowed = A::Integer}});
+
+    set(B::FormatDateTime, "FormatDateTime", C::ViperDateTime, 2, 2, false, R::String,
+        {{.symbol = "Viper.DateTime.Format"}},
+        {{.allowed = A::Integer}, {.allowed = A::String}});
+
+    set(B::CreateDateTime, "CreateDateTime", C::ViperDateTime, 6, 6, false, R::Integer,
+        {{.symbol = "Viper.DateTime.Create"}},
+        {{.allowed = A::Integer}, {.allowed = A::Integer}, {.allowed = A::Integer},
+         {.allowed = A::Integer}, {.allowed = A::Integer}, {.allowed = A::Integer}});
+
+    //=========================================================================
+    // Viper.Environment Unit
+    //=========================================================================
+
+    set(B::ParamCount, "ParamCount", C::ViperEnvironment, 0, 0, false, R::Integer,
+        {{.symbol = "Viper.Environment.GetArgumentCount"}});
+
+    set(B::ParamStr, "ParamStr", C::ViperEnvironment, 1, 1, false, R::String,
+        {{.symbol = "Viper.Environment.GetArgument"}}, {{.allowed = A::Integer}});
+
+    set(B::GetCommandLine, "GetCommandLine", C::ViperEnvironment, 0, 0, false, R::String,
+        {{.symbol = "Viper.Environment.GetCommandLine"}});
+
     return desc;
 }
 
@@ -501,8 +589,13 @@ std::vector<std::string> getRequiredExterns(const std::vector<PascalBuiltin> &us
 bool isViperUnit(std::string_view unitName)
 {
     std::string key = toLower(unitName);
-    return key == "viper.strings" || key == "viperstrings" || key == "viper.math" ||
-           key == "vipermath" || key == "viper.terminal" || key == "viperterminal" ||
+    return key == "viper.strings" || key == "viperstrings" ||
+           key == "viper.math" || key == "vipermath" ||
+           key == "viper.terminal" || key == "viperterminal" ||
+           key == "viper.io" || key == "viperio" ||
+           key == "viper.datetime" || key == "viperdatetime" ||
+           key == "viper.environment" || key == "viperenvironment" ||
+           key == "sysutils" ||  // Common Delphi unit name
            key == "crt";  // CRT is common Pascal terminal unit name
 }
 
@@ -515,7 +608,8 @@ std::vector<PascalBuiltin> getUnitBuiltins(std::string_view unitName)
     {
         result = {PascalBuiltin::Upper, PascalBuiltin::Lower, PascalBuiltin::Left,
                   PascalBuiltin::Right, PascalBuiltin::Mid,   PascalBuiltin::ChrStr,
-                  PascalBuiltin::AscStr};
+                  PascalBuiltin::AscStr, PascalBuiltin::TrimStart, PascalBuiltin::TrimEnd,
+                  PascalBuiltin::IndexOf, PascalBuiltin::Substring};
     }
     else if (key == "viper.math" || key == "vipermath")
     {
@@ -530,6 +624,31 @@ std::vector<PascalBuiltin> getUnitBuiltins(std::string_view unitName)
                   PascalBuiltin::InKey,     PascalBuiltin::Delay,
                   PascalBuiltin::Sleep,     PascalBuiltin::HideCursor,
                   PascalBuiltin::ShowCursor};
+    }
+    else if (key == "viper.io" || key == "viperio")
+    {
+        result = {PascalBuiltin::FileExists, PascalBuiltin::ReadAllText,
+                  PascalBuiltin::WriteAllText, PascalBuiltin::DeleteFile};
+    }
+    else if (key == "viper.datetime" || key == "viperdatetime")
+    {
+        result = {PascalBuiltin::Now, PascalBuiltin::NowMs,
+                  PascalBuiltin::Year, PascalBuiltin::Month, PascalBuiltin::Day,
+                  PascalBuiltin::Hour, PascalBuiltin::Minute, PascalBuiltin::Second,
+                  PascalBuiltin::DayOfWeek, PascalBuiltin::FormatDateTime,
+                  PascalBuiltin::CreateDateTime};
+    }
+    else if (key == "viper.environment" || key == "viperenvironment")
+    {
+        result = {PascalBuiltin::ParamCount, PascalBuiltin::ParamStr,
+                  PascalBuiltin::GetCommandLine};
+    }
+    else if (key == "sysutils")
+    {
+        // SysUtils provides a common subset of utilities (Delphi compatibility)
+        result = {PascalBuiltin::FileExists, PascalBuiltin::DeleteFile,
+                  PascalBuiltin::TrimStart, PascalBuiltin::TrimEnd,
+                  PascalBuiltin::Now};
     }
 
     return result;

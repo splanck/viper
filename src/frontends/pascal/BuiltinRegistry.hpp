@@ -34,6 +34,9 @@ enum class BuiltinCategory
     ViperStrings,   ///< Viper.Strings unit functions
     ViperMath,      ///< Viper.Math unit functions
     ViperTerminal,  ///< Viper.Terminal unit functions (console control)
+    ViperIO,        ///< Viper.IO unit functions (file I/O)
+    ViperDateTime,  ///< Viper.DateTime unit functions
+    ViperEnvironment, ///< Viper.Environment unit functions
 };
 
 //===----------------------------------------------------------------------===//
@@ -128,6 +131,36 @@ enum class PascalBuiltin
     Sleep,        ///< Alias for Delay
     HideCursor,   ///< Hide terminal cursor
     ShowCursor,   ///< Show terminal cursor
+
+    // Viper.IO unit (file I/O)
+    FileExists,    ///< Check if file exists
+    ReadAllText,   ///< Read entire file as string
+    WriteAllText,  ///< Write string to file
+    DeleteFile,    ///< Delete a file
+
+    // Viper.Strings unit (additional string functions)
+    TrimStart,     ///< Remove leading whitespace
+    TrimEnd,       ///< Remove trailing whitespace
+    IndexOf,       ///< Find substring position
+    Substring,     ///< Extract substring
+
+    // Viper.DateTime unit
+    Now,           ///< Current timestamp (seconds since epoch)
+    NowMs,         ///< Current timestamp (milliseconds since epoch)
+    Year,          ///< Extract year from timestamp
+    Month,         ///< Extract month from timestamp
+    Day,           ///< Extract day from timestamp
+    Hour,          ///< Extract hour from timestamp
+    Minute,        ///< Extract minute from timestamp
+    Second,        ///< Extract second from timestamp
+    DayOfWeek,     ///< Extract day of week from timestamp
+    FormatDateTime, ///< Format timestamp as string
+    CreateDateTime, ///< Create timestamp from components
+
+    // Viper.Environment unit
+    ParamCount,    ///< Number of command-line arguments
+    ParamStr,      ///< Get command-line argument by index
+    GetCommandLine, ///< Get full command line
 
     // Count (must be last)
     Count

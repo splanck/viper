@@ -359,6 +359,27 @@ class InstructionEmitter
     }
 
     // =========================================================================
+    // Pointer Operations
+    // =========================================================================
+
+    /// @brief Emit a GEP (get element pointer) instruction.
+    /// @param base Base pointer.
+    /// @param offset Byte offset.
+    /// @return Pointer value at base + offset.
+    [[nodiscard]] Value emitGep(Value base, Value offset)
+    {
+        unsigned id = nextTempId();
+        il::core::Instr instr;
+        instr.result = id;
+        instr.op = Opcode::GEP;
+        instr.type = Type(Type::Kind::Ptr);
+        instr.operands = {base, offset};
+        instr.loc = currentLoc_;
+        block()->instructions.push_back(std::move(instr));
+        return Value::temp(id);
+    }
+
+    // =========================================================================
     // String Operations
     // =========================================================================
 

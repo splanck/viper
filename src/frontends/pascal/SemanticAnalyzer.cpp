@@ -338,12 +338,50 @@ void SemanticAnalyzer::registerConstant(const std::string &name, Expr &value, Ty
         type = typeOf(value);
     }
 
+    // Check that the value is a compile-time constant
+    if (!isConstantExpr(value))
+    {
+        error(value.loc, "constant expression required");
+        constants_[key] = type;
+        return;
+    }
+
+    // Check for division by zero in the constant expression
+    if (checkConstantDivZero(value))
+    {
+        constants_[key] = type;
+        return;
+    }
+
     constants_[key] = type;
 
-    // Store integer constant values for compile-time evaluation
-    if (type.kind == PasTypeKind::Integer && value.kind == ExprKind::IntLiteral)
+    // Fold constant expression and store value
+    switch (type.kind)
     {
-        constantValues_[key] = static_cast<IntLiteralExpr &>(value).value;
+    case PasTypeKind::Integer: {
+        int64_t val = evaluateConstantInt(value);
+        constantValues_[key] = val;
+        break;
+    }
+    case PasTypeKind::Real: {
+        double val = evaluateConstantReal(value);
+        constantRealValues_[key] = val;
+        break;
+    }
+    case PasTypeKind::String: {
+        std::string val = evaluateConstantString(value);
+        constantStrValues_[key] = val;
+        break;
+    }
+    case PasTypeKind::Boolean: {
+        bool val = evaluateConstantBool(value);
+        // Store as integer (0/1) for consistency with other constant lookups
+        constantValues_[key] = val ? 1 : 0;
+        break;
+    }
+    default:
+        // For other types (enum, etc.), don't store a computed value
+        break;
     }
 }
 
@@ -1350,7 +1388,19 @@ void SemanticAnalyzer::analyzeAssign(AssignStmt &stmt)
         }
 
         // Check for assignment to function name (not allowed - use Result instead)
-        if (functions_.count(key))
+        // But first, check if we're in a class method and this is a field name
+        bool isClassField = false;
+        if (!currentClassName_.empty())
+        {
+            auto *classInfo = lookupClass(toLower(currentClassName_));
+            if (classInfo && classInfo->fields.find(key) != classInfo->fields.end())
+            {
+                isClassField = true;
+            }
+        }
+
+        // Only error if it's a function name AND not a class field
+        if (!isClassField && functions_.count(key))
         {
             error(stmt, "cannot assign to function name '" + nameExpr.name +
                             "'; use 'Result' to return a value");
@@ -2106,6 +2156,21 @@ PasType SemanticAnalyzer::typeOfName(NameExpr &expr)
         return *type;
     }
 
+    // Check class fields BEFORE functions - field names should shadow builtins like Pos
+    // This allows field names to match builtin function names (e.g., Pos: TPosition)
+    if (!currentClassName_.empty())
+    {
+        auto *classInfo = lookupClass(toLower(currentClassName_));
+        if (classInfo)
+        {
+            auto fieldIt = classInfo->fields.find(key);
+            if (fieldIt != classInfo->fields.end())
+            {
+                return fieldIt->second.type;
+            }
+        }
+    }
+
     // Check for zero-argument builtin functions (Pascal allows calling without parens)
     if (auto builtinOpt = lookupBuiltin(key))
     {
@@ -2124,20 +2189,6 @@ PasType SemanticAnalyzer::typeOfName(NameExpr &expr)
         if (sig->requiredParams == 0 && sig->returnType.kind != PasTypeKind::Void)
         {
             return sig->returnType;
-        }
-    }
-
-    // Check if we're inside a class method and the name is a field of the current class
-    if (!currentClassName_.empty())
-    {
-        auto *classInfo = lookupClass(toLower(currentClassName_));
-        if (classInfo)
-        {
-            auto fieldIt = classInfo->fields.find(key);
-            if (fieldIt != classInfo->fields.end())
-            {
-                return fieldIt->second.type;
-            }
         }
     }
 
@@ -2523,6 +2574,24 @@ PasType SemanticAnalyzer::typeOfField(FieldExpr &expr)
     if (baseType.kind == PasTypeKind::Record || baseType.kind == PasTypeKind::Class)
     {
         std::string fieldKey = toLower(expr.field);
+
+        // For class types, look up fields from class info (baseType.fields may be empty)
+        if (baseType.kind == PasTypeKind::Class)
+        {
+            auto *classInfo = lookupClass(toLower(baseType.name));
+            if (classInfo)
+            {
+                auto fieldIt = classInfo->fields.find(fieldKey);
+                if (fieldIt != classInfo->fields.end())
+                {
+                    return fieldIt->second.type;
+                }
+            }
+            // Field not found - might be a method, allow for now
+            return PasType::unknown();
+        }
+
+        // For record types, use baseType.fields
         auto it = baseType.fields.find(fieldKey);
         if (it != baseType.fields.end() && it->second)
         {
@@ -2980,6 +3049,61 @@ bool SemanticAnalyzer::isConstantExpr(const Expr &expr) const
     }
 }
 
+bool SemanticAnalyzer::checkConstantDivZero(const Expr &expr)
+{
+    switch (expr.kind)
+    {
+    case ExprKind::Unary: {
+        const auto &unaryExpr = static_cast<const UnaryExpr &>(expr);
+        if (unaryExpr.operand)
+            return checkConstantDivZero(*unaryExpr.operand);
+        return false;
+    }
+
+    case ExprKind::Binary: {
+        const auto &binExpr = static_cast<const BinaryExpr &>(expr);
+        if (!binExpr.left || !binExpr.right)
+            return false;
+
+        // Check left operand first
+        if (checkConstantDivZero(*binExpr.left))
+            return true;
+
+        // Check for division by zero
+        if (binExpr.op == BinaryExpr::Op::IntDiv ||
+            binExpr.op == BinaryExpr::Op::Mod ||
+            binExpr.op == BinaryExpr::Op::Div)
+        {
+            PasType rightType = typeOf(*binExpr.right);
+            if (rightType.kind == PasTypeKind::Integer)
+            {
+                int64_t divisor = evaluateConstantInt(*binExpr.right);
+                if (divisor == 0)
+                {
+                    error(*binExpr.right, "division by zero in constant expression");
+                    return true;
+                }
+            }
+            else if (rightType.kind == PasTypeKind::Real)
+            {
+                double divisor = evaluateConstantReal(*binExpr.right);
+                if (divisor == 0.0)
+                {
+                    error(*binExpr.right, "division by zero in constant expression");
+                    return true;
+                }
+            }
+        }
+
+        // Check right operand
+        return checkConstantDivZero(*binExpr.right);
+    }
+
+    default:
+        return false;
+    }
+}
+
 int64_t SemanticAnalyzer::evaluateConstantInt(const Expr &expr) const
 {
     switch (expr.kind)
@@ -3053,6 +3177,281 @@ int64_t SemanticAnalyzer::evaluateConstantInt(const Expr &expr) const
 
     default:
         return 0;
+    }
+}
+
+double SemanticAnalyzer::evaluateConstantReal(const Expr &expr) const
+{
+    switch (expr.kind)
+    {
+    case ExprKind::RealLiteral:
+        return static_cast<const RealLiteralExpr &>(expr).value;
+
+    case ExprKind::IntLiteral:
+        // Integer can be promoted to real
+        return static_cast<double>(static_cast<const IntLiteralExpr &>(expr).value);
+
+    case ExprKind::Name: {
+        const auto &nameExpr = static_cast<const NameExpr &>(expr);
+        std::string key = toLower(nameExpr.name);
+
+        // Check for stored real constant value
+        auto realIt = constantRealValues_.find(key);
+        if (realIt != constantRealValues_.end())
+        {
+            return realIt->second;
+        }
+
+        // Check for stored integer constant value (promote to real)
+        auto intIt = constantValues_.find(key);
+        if (intIt != constantValues_.end())
+        {
+            return static_cast<double>(intIt->second);
+        }
+        return 0.0;
+    }
+
+    case ExprKind::Unary: {
+        const auto &unaryExpr = static_cast<const UnaryExpr &>(expr);
+        if (!unaryExpr.operand)
+            return 0.0;
+        double operand = evaluateConstantReal(*unaryExpr.operand);
+        switch (unaryExpr.op)
+        {
+        case UnaryExpr::Op::Neg:
+            return -operand;
+        case UnaryExpr::Op::Plus:
+            return operand;
+        default:
+            return 0.0;
+        }
+    }
+
+    case ExprKind::Binary: {
+        const auto &binExpr = static_cast<const BinaryExpr &>(expr);
+        if (!binExpr.left || !binExpr.right)
+            return 0.0;
+        double left = evaluateConstantReal(*binExpr.left);
+        double right = evaluateConstantReal(*binExpr.right);
+        switch (binExpr.op)
+        {
+        case BinaryExpr::Op::Add:
+            return left + right;
+        case BinaryExpr::Op::Sub:
+            return left - right;
+        case BinaryExpr::Op::Mul:
+            return left * right;
+        case BinaryExpr::Op::Div:
+            return right != 0.0 ? left / right : 0.0;
+        default:
+            return 0.0;
+        }
+    }
+
+    default:
+        return 0.0;
+    }
+}
+
+std::string SemanticAnalyzer::evaluateConstantString(const Expr &expr) const
+{
+    switch (expr.kind)
+    {
+    case ExprKind::StringLiteral:
+        return static_cast<const StringLiteralExpr &>(expr).value;
+
+    case ExprKind::Name: {
+        const auto &nameExpr = static_cast<const NameExpr &>(expr);
+        std::string key = toLower(nameExpr.name);
+
+        auto strIt = constantStrValues_.find(key);
+        if (strIt != constantStrValues_.end())
+        {
+            return strIt->second;
+        }
+        return "";
+    }
+
+    case ExprKind::Binary: {
+        const auto &binExpr = static_cast<const BinaryExpr &>(expr);
+        if (!binExpr.left || !binExpr.right)
+            return "";
+        // Only string concatenation is supported
+        if (binExpr.op == BinaryExpr::Op::Add)
+        {
+            std::string left = evaluateConstantString(*binExpr.left);
+            std::string right = evaluateConstantString(*binExpr.right);
+            return left + right;
+        }
+        return "";
+    }
+
+    default:
+        return "";
+    }
+}
+
+bool SemanticAnalyzer::evaluateConstantBool(const Expr &expr) const
+{
+    switch (expr.kind)
+    {
+    case ExprKind::BoolLiteral:
+        return static_cast<const BoolLiteralExpr &>(expr).value;
+
+    case ExprKind::Name: {
+        const auto &nameExpr = static_cast<const NameExpr &>(expr);
+        std::string key = toLower(nameExpr.name);
+
+        // Check for boolean constant - need to look up type and get value
+        auto constIt = constants_.find(key);
+        if (constIt != constants_.end() && constIt->second.kind == PasTypeKind::Boolean)
+        {
+            // Boolean constants stored as int (0/1)
+            auto intIt = constantValues_.find(key);
+            if (intIt != constantValues_.end())
+            {
+                return intIt->second != 0;
+            }
+        }
+        return false;
+    }
+
+    case ExprKind::Unary: {
+        const auto &unaryExpr = static_cast<const UnaryExpr &>(expr);
+        if (!unaryExpr.operand)
+            return false;
+        if (unaryExpr.op == UnaryExpr::Op::Not)
+        {
+            return !evaluateConstantBool(*unaryExpr.operand);
+        }
+        return false;
+    }
+
+    case ExprKind::Binary: {
+        const auto &binExpr = static_cast<const BinaryExpr &>(expr);
+        if (!binExpr.left || !binExpr.right)
+            return false;
+
+        // Logical operators on booleans
+        if (binExpr.op == BinaryExpr::Op::And)
+        {
+            return evaluateConstantBool(*binExpr.left) && evaluateConstantBool(*binExpr.right);
+        }
+        if (binExpr.op == BinaryExpr::Op::Or)
+        {
+            return evaluateConstantBool(*binExpr.left) || evaluateConstantBool(*binExpr.right);
+        }
+
+        // Comparison operators - need to determine operand types
+        // For now, try integer comparison first
+        PasType leftType = const_cast<SemanticAnalyzer *>(this)->typeOf(*binExpr.left);
+        PasType rightType = const_cast<SemanticAnalyzer *>(this)->typeOf(*binExpr.right);
+
+        if (leftType.kind == PasTypeKind::Integer || rightType.kind == PasTypeKind::Integer ||
+            leftType.kind == PasTypeKind::Real || rightType.kind == PasTypeKind::Real)
+        {
+            // Numeric comparison - use real for mixed types
+            double left = evaluateConstantReal(*binExpr.left);
+            double right = evaluateConstantReal(*binExpr.right);
+            switch (binExpr.op)
+            {
+            case BinaryExpr::Op::Eq:
+                return left == right;
+            case BinaryExpr::Op::Ne:
+                return left != right;
+            case BinaryExpr::Op::Lt:
+                return left < right;
+            case BinaryExpr::Op::Le:
+                return left <= right;
+            case BinaryExpr::Op::Gt:
+                return left > right;
+            case BinaryExpr::Op::Ge:
+                return left >= right;
+            default:
+                return false;
+            }
+        }
+
+        if (leftType.kind == PasTypeKind::String && rightType.kind == PasTypeKind::String)
+        {
+            std::string left = evaluateConstantString(*binExpr.left);
+            std::string right = evaluateConstantString(*binExpr.right);
+            switch (binExpr.op)
+            {
+            case BinaryExpr::Op::Eq:
+                return left == right;
+            case BinaryExpr::Op::Ne:
+                return left != right;
+            case BinaryExpr::Op::Lt:
+                return left < right;
+            case BinaryExpr::Op::Le:
+                return left <= right;
+            case BinaryExpr::Op::Gt:
+                return left > right;
+            case BinaryExpr::Op::Ge:
+                return left >= right;
+            default:
+                return false;
+            }
+        }
+
+        if (leftType.kind == PasTypeKind::Boolean && rightType.kind == PasTypeKind::Boolean)
+        {
+            bool left = evaluateConstantBool(*binExpr.left);
+            bool right = evaluateConstantBool(*binExpr.right);
+            switch (binExpr.op)
+            {
+            case BinaryExpr::Op::Eq:
+                return left == right;
+            case BinaryExpr::Op::Ne:
+                return left != right;
+            default:
+                return false;
+            }
+        }
+
+        return false;
+    }
+
+    default:
+        return false;
+    }
+}
+
+ConstantValue SemanticAnalyzer::foldConstant(const Expr &expr)
+{
+    if (!isConstantExpr(expr))
+    {
+        return ConstantValue{}; // hasValue = false
+    }
+
+    // Determine result type
+    PasType exprType = typeOf(const_cast<Expr &>(expr));
+
+    switch (exprType.kind)
+    {
+    case PasTypeKind::Integer: {
+        int64_t val = evaluateConstantInt(expr);
+        return ConstantValue::makeInt(val);
+    }
+
+    case PasTypeKind::Real: {
+        double val = evaluateConstantReal(expr);
+        return ConstantValue::makeReal(val);
+    }
+
+    case PasTypeKind::String: {
+        std::string val = evaluateConstantString(expr);
+        return ConstantValue::makeString(val);
+    }
+
+    case PasTypeKind::Boolean: {
+        bool val = evaluateConstantBool(expr);
+        return ConstantValue::makeBool(val);
+    }
+
+    default:
+        return ConstantValue{}; // hasValue = false
     }
 }
 
@@ -3193,6 +3592,33 @@ std::optional<PasType> SemanticAnalyzer::lookupConstant(const std::string &name)
     std::string key = toLower(name);
     auto it = constants_.find(key);
     if (it != constants_.end())
+        return it->second;
+    return std::nullopt;
+}
+
+std::optional<int64_t> SemanticAnalyzer::lookupConstantInt(const std::string &name) const
+{
+    std::string key = toLower(name);
+    auto it = constantValues_.find(key);
+    if (it != constantValues_.end())
+        return it->second;
+    return std::nullopt;
+}
+
+std::optional<double> SemanticAnalyzer::lookupConstantReal(const std::string &name) const
+{
+    std::string key = toLower(name);
+    auto it = constantRealValues_.find(key);
+    if (it != constantRealValues_.end())
+        return it->second;
+    return std::nullopt;
+}
+
+std::optional<std::string> SemanticAnalyzer::lookupConstantStr(const std::string &name) const
+{
+    std::string key = toLower(name);
+    auto it = constantStrValues_.find(key);
+    if (it != constantStrValues_.end())
         return it->second;
     return std::nullopt;
 }
@@ -3510,9 +3936,17 @@ void SemanticAnalyzer::registerBuiltinUnits()
         UnitInfo unit;
         unit.name = "Viper.Math";
 
-        // Register constants Pi and E
-        PasType piConst = PasType::real();
-        PasType eConst = PasType::real();
+        // Register constants Pi and E with their actual values
+        ConstantValue piConst;
+        piConst.type = PasType::real();
+        piConst.realVal = 3.14159265358979323846;
+        piConst.hasValue = true;
+
+        ConstantValue eConst;
+        eConst.type = PasType::real();
+        eConst.realVal = 2.71828182845904523536;
+        eConst.hasValue = true;
+
         unit.constants["pi"] = piConst;
         unit.constants["e"] = eConst;
 
@@ -3647,9 +4081,19 @@ bool SemanticAnalyzer::importUnits(const std::vector<std::string> &unitNames)
             const UnitInfo *unit = getUnit(unitName);
             if (unit)
             {
-                for (const auto &[key, constType] : unit->constants)
+                for (const auto &[key, constVal] : unit->constants)
                 {
-                    constants_[key] = constType;
+                    constants_[key] = constVal.type;
+                    // Import actual values too
+                    if (constVal.hasValue)
+                    {
+                        if (constVal.type.kind == PasTypeKind::Integer)
+                            constantValues_[key] = constVal.intVal;
+                        else if (constVal.type.kind == PasTypeKind::Real)
+                            constantRealValues_[key] = constVal.realVal;
+                        else if (constVal.type.kind == PasTypeKind::String)
+                            constantStrValues_[key] = constVal.strVal;
+                    }
                 }
                 for (const auto &[key, sig] : unit->functions)
                 {
@@ -3677,9 +4121,19 @@ bool SemanticAnalyzer::importUnits(const std::vector<std::string> &unitNames)
             types_[key] = type;
         }
 
-        for (const auto &[key, constType] : unit->constants)
+        for (const auto &[key, constVal] : unit->constants)
         {
-            constants_[key] = constType;
+            constants_[key] = constVal.type;
+            // Import actual values too
+            if (constVal.hasValue)
+            {
+                if (constVal.type.kind == PasTypeKind::Integer)
+                    constantValues_[key] = constVal.intVal;
+                else if (constVal.type.kind == PasTypeKind::Real)
+                    constantRealValues_[key] = constVal.realVal;
+                else if (constVal.type.kind == PasTypeKind::String)
+                    constantStrValues_[key] = constVal.strVal;
+            }
         }
 
         for (const auto &[key, sig] : unit->functions)
@@ -3728,7 +4182,31 @@ UnitInfo SemanticAnalyzer::extractUnitExports(const Unit &unit)
             std::string key = toLower(cd.name);
             auto it = constants_.find(key);
             if (it != constants_.end())
-                info.constants[key] = it->second;
+            {
+                ConstantValue cv;
+                cv.type = it->second;
+                cv.hasValue = true;
+                // Get actual value based on type
+                if (it->second.kind == PasTypeKind::Integer)
+                {
+                    auto valIt = constantValues_.find(key);
+                    if (valIt != constantValues_.end())
+                        cv.intVal = valIt->second;
+                }
+                else if (it->second.kind == PasTypeKind::Real)
+                {
+                    auto valIt = constantRealValues_.find(key);
+                    if (valIt != constantRealValues_.end())
+                        cv.realVal = valIt->second;
+                }
+                else if (it->second.kind == PasTypeKind::String)
+                {
+                    auto valIt = constantStrValues_.find(key);
+                    if (valIt != constantStrValues_.end())
+                        cv.strVal = valIt->second;
+                }
+                info.constants[key] = cv;
+            }
             break;
         }
         case DeclKind::Procedure:

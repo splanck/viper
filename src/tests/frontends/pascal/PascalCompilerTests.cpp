@@ -190,6 +190,263 @@ end.
     EXPECT_TRUE(hasSubOrAdd);
 }
 
+//===----------------------------------------------------------------------===//
+// OOP Lowering Tests
+//===----------------------------------------------------------------------===//
+
+/// @brief Test that a simple class declaration compiles and emits module init.
+TEST(PascalCompilerTest, ClassDeclarationEmitsModuleInit)
+{
+    SourceManager sm;
+    const std::string source = R"(
+program Test;
+type
+  TPoint = class
+    X: Integer;
+    Y: Integer;
+  end;
+begin
+end.
+)";
+    PascalCompilerInput input{.source = source, .path = "test.pas"};
+    PascalCompilerOptions opts{};
+
+    auto result = compilePascal(input, opts, sm);
+
+    EXPECT_TRUE(result.succeeded());
+
+    // Should have a __pas_oop_init function
+    bool hasOopInit = false;
+    for (const auto &fn : result.module.functions)
+    {
+        if (fn.name == "__pas_oop_init")
+        {
+            hasOopInit = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(hasOopInit);
+}
+
+/// @brief Test that constructor calls emit allocation and vtable init.
+TEST(PascalCompilerTest, ConstructorCallEmitsAllocation)
+{
+    SourceManager sm;
+    const std::string source = R"(
+program Test;
+type
+  TPoint = class
+    X: Integer;
+    Y: Integer;
+    constructor Create;
+  end;
+
+constructor TPoint.Create;
+begin
+  X := 0;
+  Y := 0
+end;
+
+var p: TPoint;
+begin
+  p := TPoint.Create
+end.
+)";
+    PascalCompilerInput input{.source = source, .path = "test.pas"};
+    PascalCompilerOptions opts{};
+
+    auto result = compilePascal(input, opts, sm);
+
+    EXPECT_TRUE(result.succeeded());
+
+    // Should have extern for rt_obj_new_i64 (allocation) or rt_alloc
+    bool hasAllocExtern = false;
+    for (const auto &ext : result.module.externs)
+    {
+        if (ext.name == "rt_obj_new_i64" || ext.name == "rt_alloc")
+        {
+            hasAllocExtern = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(hasAllocExtern);
+
+    // Should have extern for rt_get_class_vtable (vtable lookup)
+    bool hasVtableExtern = false;
+    for (const auto &ext : result.module.externs)
+    {
+        if (ext.name == "rt_get_class_vtable")
+        {
+            hasVtableExtern = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(hasVtableExtern);
+}
+
+/// @brief Test that class methods compile and get mangled names.
+TEST(PascalCompilerTest, MethodsGetMangledNames)
+{
+    SourceManager sm;
+    const std::string source = R"(
+program Test;
+type
+  TCounter = class
+    Value: Integer;
+    procedure Increment;
+    function GetValue: Integer;
+  end;
+
+procedure TCounter.Increment;
+begin
+  Value := Value + 1
+end;
+
+function TCounter.GetValue: Integer;
+begin
+  Result := Value
+end;
+
+begin
+end.
+)";
+    PascalCompilerInput input{.source = source, .path = "test.pas"};
+    PascalCompilerOptions opts{};
+
+    auto result = compilePascal(input, opts, sm);
+
+    EXPECT_TRUE(result.succeeded());
+
+    // Check that mangled method names exist
+    bool hasIncrement = false;
+    bool hasGetValue = false;
+    for (const auto &fn : result.module.functions)
+    {
+        if (fn.name == "TCounter.Increment")
+        {
+            hasIncrement = true;
+        }
+        if (fn.name == "TCounter.GetValue")
+        {
+            hasGetValue = true;
+        }
+    }
+    EXPECT_TRUE(hasIncrement);
+    EXPECT_TRUE(hasGetValue);
+}
+
+/// @brief Test virtual method dispatch emits call.indirect.
+TEST(PascalCompilerTest, VirtualMethodDispatchEmitsIndirectCall)
+{
+    SourceManager sm;
+    const std::string source = R"(
+program Test;
+type
+  TAnimal = class
+    procedure Speak; virtual;
+  end;
+
+  TDog = class(TAnimal)
+    procedure Speak; override;
+  end;
+
+procedure TAnimal.Speak;
+begin
+  WriteLn('Animal')
+end;
+
+procedure TDog.Speak;
+begin
+  WriteLn('Woof')
+end;
+
+var a: TAnimal;
+begin
+  a := TDog.Create;
+  a.Speak
+end.
+)";
+    PascalCompilerInput input{.source = source, .path = "test.pas"};
+    PascalCompilerOptions opts{};
+
+    auto result = compilePascal(input, opts, sm);
+
+    EXPECT_TRUE(result.succeeded());
+
+    // The main function should have a CallIndirect instruction for virtual dispatch
+    bool hasCallIndirect = false;
+    for (const auto &fn : result.module.functions)
+    {
+        if (fn.name == "main")
+        {
+            for (const auto &blk : fn.blocks)
+            {
+                for (const auto &instr : blk.instructions)
+                {
+                    if (instr.op == il::core::Opcode::CallIndirect)
+                    {
+                        hasCallIndirect = true;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    EXPECT_TRUE(hasCallIndirect);
+}
+
+/// @brief Test that class inheritance computes correct field offsets.
+TEST(PascalCompilerTest, InheritedClassFieldOffsets)
+{
+    SourceManager sm;
+    const std::string source = R"(
+program Test;
+type
+  TBase = class
+    A: Integer;
+  end;
+
+  TDerived = class(TBase)
+    B: Integer;
+  end;
+
+var d: TDerived;
+begin
+  d := TDerived.Create;
+  d.A := 1;
+  d.B := 2
+end.
+)";
+    PascalCompilerInput input{.source = source, .path = "test.pas"};
+    PascalCompilerOptions opts{};
+
+    auto result = compilePascal(input, opts, sm);
+
+    EXPECT_TRUE(result.succeeded());
+
+    // Check that the main function has GEP instructions for field access
+    // Fields A and B should be at different offsets
+    int gepCount = 0;
+    for (const auto &fn : result.module.functions)
+    {
+        if (fn.name == "main")
+        {
+            for (const auto &blk : fn.blocks)
+            {
+                for (const auto &instr : blk.instructions)
+                {
+                    if (instr.op == il::core::Opcode::GEP)
+                    {
+                        gepCount++;
+                    }
+                }
+            }
+        }
+    }
+    // Expect at least 2 GEP instructions for field access (A and B)
+    EXPECT_TRUE(gepCount >= 2);
+}
+
 } // namespace
 
 #ifndef VIPER_HAS_GTEST

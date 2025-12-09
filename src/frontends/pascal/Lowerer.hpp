@@ -27,10 +27,12 @@
 #include "il/core/Opcode.hpp"
 #include "il/core/Type.hpp"
 #include "il/core/Value.hpp"
+#include <cstdint>
 #include <map>
 #include <memory>
 #include <set>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace il::frontends::pascal
@@ -41,6 +43,47 @@ using LowerResult = ::il::frontends::common::ExprResult;
 
 // Use common LoopContext
 using LoopContext = ::il::frontends::common::LoopContext;
+
+//===----------------------------------------------------------------------===//
+// OOP Support Structures
+//===----------------------------------------------------------------------===//
+
+/// @brief Layout information for a single field in a class.
+struct ClassFieldLayout
+{
+    std::string name;       ///< Field name
+    PasType type;           ///< Field type
+    std::size_t offset;     ///< Byte offset from object base
+    std::size_t size;       ///< Size in bytes
+};
+
+/// @brief Complete layout for a class including inherited fields.
+struct ClassLayout
+{
+    std::string name;                       ///< Class name
+    std::vector<ClassFieldLayout> fields;   ///< All fields in layout order
+    std::size_t size;                       ///< Total object size (8-byte aligned)
+    std::int64_t classId;                   ///< Unique runtime type ID
+
+    /// @brief Find a field by name.
+    const ClassFieldLayout *findField(const std::string &name) const;
+};
+
+/// @brief Vtable slot information.
+struct VtableSlot
+{
+    std::string methodName;     ///< Method name
+    std::string implClass;      ///< Class that provides implementation
+    int slot;                   ///< Slot index in vtable
+};
+
+/// @brief Vtable layout for a class.
+struct VtableLayout
+{
+    std::string className;              ///< Class this vtable belongs to
+    std::vector<VtableSlot> slots;      ///< Slots in order
+    std::size_t slotCount;              ///< Number of slots
+};
 
 /// @brief Transforms validated Pascal AST into Viper IL.
 /// @invariant Generates deterministic block names via BlockNamer.
@@ -96,6 +139,12 @@ class Lowerer
     unsigned blockCounter_{0};                                      ///< Block name counter
     Value currentResumeTok_;                                        ///< Resume token in current handler
     bool inExceptHandler_{false};                                   ///< True when inside except handler
+
+    // OOP State
+    std::unordered_map<std::string, ClassLayout> classLayouts_;     ///< Class name -> layout
+    std::unordered_map<std::string, VtableLayout> vtableLayouts_;   ///< Class name -> vtable layout
+    std::int64_t nextClassId_{1};                                   ///< Next class ID to assign
+    std::vector<std::string> classRegistrationOrder_;               ///< Order to register classes (base before derived)
 
     /// @brief Get the current block by index.
     BasicBlock *currentBlock() { return &currentFunc_->blocks[currentBlockIdx_]; }
@@ -337,6 +386,55 @@ class Lowerer
 
     /// @brief Reserve next temp ID.
     unsigned nextTempId();
+
+    /// @brief Emit an indirect call with return value.
+    Value emitCallIndirectRet(Type retTy, Value callee, const std::vector<Value> &args);
+
+    /// @brief Emit an indirect call without return value.
+    void emitCallIndirect(Value callee, const std::vector<Value> &args);
+
+    //=========================================================================
+    // OOP Lowering
+    //=========================================================================
+
+    /// @brief Scan all class declarations and compute layouts/vtables.
+    void scanClasses(const std::vector<std::unique_ptr<Decl>> &decls);
+
+    /// @brief Compute the layout for a single class.
+    void computeClassLayout(const std::string &className);
+
+    /// @brief Compute the vtable layout for a class.
+    void computeVtableLayout(const std::string &className);
+
+    /// @brief Get virtual method slot for a method (-1 if not virtual).
+    int getVirtualSlot(const std::string &className, const std::string &methodName) const;
+
+    /// @brief Emit the OOP module initialization function.
+    void emitOopModuleInit();
+
+    /// @brief Emit vtable registration for a class.
+    void emitVtableRegistration(const std::string &className);
+
+    /// @brief Lower a constructor call (NEW expression equivalent).
+    LowerResult lowerConstructorCall(const CallExpr &expr);
+
+    /// @brief Lower a method call expression.
+    LowerResult lowerMethodCall(const FieldExpr &fieldExpr, const CallExpr &callExpr);
+
+    /// @brief Lower field access on an object.
+    LowerResult lowerObjectFieldAccess(const FieldExpr &expr);
+
+    /// @brief Get field offset in a class layout.
+    std::size_t getFieldOffset(const std::string &className, const std::string &fieldName) const;
+
+    /// @brief Mangle a method name: ClassName.MethodName
+    static std::string mangleMethod(const std::string &className, const std::string &methodName);
+
+    /// @brief Mangle a constructor name: ClassName.Create
+    static std::string mangleConstructor(const std::string &className, const std::string &ctorName);
+
+    /// @brief Mangle a destructor name: ClassName.Destroy
+    static std::string mangleDestructor(const std::string &className, const std::string &dtorName);
 };
 
 } // namespace il::frontends::pascal

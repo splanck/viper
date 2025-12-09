@@ -10,6 +10,11 @@ target_sources(fe_pascal PRIVATE
     Parser.cpp
     SemanticAnalyzer.cpp
     Lowerer.cpp
+    Lowerer_Decl.cpp
+    Lowerer_Emit.cpp
+    Lowerer_Expr.cpp
+    Lowerer_OOP.cpp
+    Lowerer_Stmt.cpp
     Compiler.cpp
 )
 

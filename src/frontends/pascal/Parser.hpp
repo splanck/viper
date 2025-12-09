@@ -288,8 +288,8 @@ class Parser
 
     /// @brief Parse class member declarations.
     /// @param currentVisibility Current visibility scope.
-    /// @return Parsed ClassMember.
-    ClassMember parseClassMember(Visibility currentVisibility);
+    /// @return Vector of parsed ClassMembers (multiple for comma-separated fields).
+    std::vector<ClassMember> parseClassMembers(Visibility currentVisibility);
 
     /// @brief Parse a method signature (procedure/function without body).
     /// Used for class member methods which are declared without bodies.

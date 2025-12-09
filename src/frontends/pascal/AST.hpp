@@ -286,6 +286,9 @@ struct TypeNode
 
     explicit TypeNode(TypeKind k, il::support::SourceLoc l = {}) : kind(k), loc(l) {}
     virtual ~TypeNode() = default;
+
+    /// @brief Create a deep copy of this type node.
+    virtual std::unique_ptr<TypeNode> clone() const = 0;
 };
 
 /// @brief Named type reference (Integer, String, TMyClass).
@@ -295,6 +298,11 @@ struct NamedTypeNode : TypeNode
 
     explicit NamedTypeNode(std::string n, il::support::SourceLoc l = {})
         : TypeNode(TypeKind::Named, l), name(std::move(n)) {}
+
+    std::unique_ptr<TypeNode> clone() const override
+    {
+        return std::make_unique<NamedTypeNode>(name, loc);
+    }
 };
 
 /// @brief Optional type (type?).
@@ -304,6 +312,11 @@ struct OptionalTypeNode : TypeNode
 
     explicit OptionalTypeNode(std::unique_ptr<TypeNode> inner, il::support::SourceLoc l = {})
         : TypeNode(TypeKind::Optional, l), inner(std::move(inner)) {}
+
+    std::unique_ptr<TypeNode> clone() const override
+    {
+        return std::make_unique<OptionalTypeNode>(inner ? inner->clone() : nullptr, loc);
+    }
 };
 
 /// @brief Array type.
@@ -322,6 +335,17 @@ struct ArrayTypeNode : TypeNode
                   il::support::SourceLoc l = {})
         : TypeNode(TypeKind::Array, l), dimensions(std::move(dims)),
           elementType(std::move(elemType)) {}
+
+    std::unique_ptr<TypeNode> clone() const override
+    {
+        // For array types in field declarations, we only support dynamic arrays
+        // (no dimensions) for cloning. Static array cloning would require Expr cloning.
+        std::vector<DimSize> dims;
+        return std::make_unique<ArrayTypeNode>(
+            std::move(dims),
+            elementType ? elementType->clone() : nullptr,
+            loc);
+    }
 };
 
 /// @brief Record field declaration.
@@ -339,6 +363,13 @@ struct RecordTypeNode : TypeNode
 
     explicit RecordTypeNode(std::vector<RecordField> fields, il::support::SourceLoc l = {})
         : TypeNode(TypeKind::Record, l), fields(std::move(fields)) {}
+
+    std::unique_ptr<TypeNode> clone() const override
+    {
+        // Record cloning would require cloning fields which need TypeNode clones
+        // For now, return an empty record (semantic analyzer will handle errors)
+        return std::make_unique<RecordTypeNode>(std::vector<RecordField>{}, loc);
+    }
 };
 
 /// @brief Pointer type (^T).
@@ -348,6 +379,12 @@ struct PointerTypeNode : TypeNode
 
     explicit PointerTypeNode(std::unique_ptr<TypeNode> pointee, il::support::SourceLoc l = {})
         : TypeNode(TypeKind::Pointer, l), pointeeType(std::move(pointee)) {}
+
+    std::unique_ptr<TypeNode> clone() const override
+    {
+        return std::make_unique<PointerTypeNode>(
+            pointeeType ? pointeeType->clone() : nullptr, loc);
+    }
 };
 
 /// @brief Parameter declaration for procedure/function types.
@@ -367,6 +404,12 @@ struct ProcedureTypeNode : TypeNode
 
     explicit ProcedureTypeNode(std::vector<ParamSpec> params, il::support::SourceLoc l = {})
         : TypeNode(TypeKind::Procedure, l), params(std::move(params)) {}
+
+    std::unique_ptr<TypeNode> clone() const override
+    {
+        // Procedure types are rarely used as field types; return empty params
+        return std::make_unique<ProcedureTypeNode>(std::vector<ParamSpec>{}, loc);
+    }
 };
 
 /// @brief Function type (function(params): returnType).
@@ -379,6 +422,15 @@ struct FunctionTypeNode : TypeNode
                      il::support::SourceLoc l = {})
         : TypeNode(TypeKind::Function, l), params(std::move(params)),
           returnType(std::move(retType)) {}
+
+    std::unique_ptr<TypeNode> clone() const override
+    {
+        // Function types are rarely used as field types; return empty params
+        return std::make_unique<FunctionTypeNode>(
+            std::vector<ParamSpec>{},
+            returnType ? returnType->clone() : nullptr,
+            loc);
+    }
 };
 
 /// @brief Set type (set of T).
@@ -388,6 +440,12 @@ struct SetTypeNode : TypeNode
 
     explicit SetTypeNode(std::unique_ptr<TypeNode> elemType, il::support::SourceLoc l = {})
         : TypeNode(TypeKind::Set, l), elementType(std::move(elemType)) {}
+
+    std::unique_ptr<TypeNode> clone() const override
+    {
+        return std::make_unique<SetTypeNode>(
+            elementType ? elementType->clone() : nullptr, loc);
+    }
 };
 
 /// @brief Subrange type (low..high).
@@ -399,6 +457,12 @@ struct RangeTypeNode : TypeNode
     RangeTypeNode(std::unique_ptr<Expr> low, std::unique_ptr<Expr> high,
                   il::support::SourceLoc l = {})
         : TypeNode(TypeKind::Range, l), low(std::move(low)), high(std::move(high)) {}
+
+    std::unique_ptr<TypeNode> clone() const override
+    {
+        // Range cloning would require Expr cloning; return null bounds
+        return std::make_unique<RangeTypeNode>(nullptr, nullptr, loc);
+    }
 };
 
 /// @brief Enumeration type (Red, Green, Blue).
@@ -408,6 +472,11 @@ struct EnumTypeNode : TypeNode
 
     explicit EnumTypeNode(std::vector<std::string> values, il::support::SourceLoc l = {})
         : TypeNode(TypeKind::Enum, l), values(std::move(values)) {}
+
+    std::unique_ptr<TypeNode> clone() const override
+    {
+        return std::make_unique<EnumTypeNode>(values, loc);
+    }
 };
 
 //===----------------------------------------------------------------------===//

@@ -392,12 +392,64 @@ struct InterfaceInfo
 // Unit Information
 //===----------------------------------------------------------------------===//
 
+/// @brief Constant value type for compile-time constant folding and unit exports.
+/// Supports integer, real, string, and boolean constants.
+struct ConstantValue
+{
+    PasType type;
+    int64_t intVal{0};
+    double realVal{0.0};
+    std::string strVal;
+    bool boolVal{false};
+    bool hasValue{false};  ///< True if we have the actual value
+
+    /// @brief Create an integer constant.
+    static ConstantValue makeInt(int64_t val)
+    {
+        ConstantValue cv;
+        cv.type = PasType::integer();
+        cv.intVal = val;
+        cv.hasValue = true;
+        return cv;
+    }
+
+    /// @brief Create a real constant.
+    static ConstantValue makeReal(double val)
+    {
+        ConstantValue cv;
+        cv.type = PasType::real();
+        cv.realVal = val;
+        cv.hasValue = true;
+        return cv;
+    }
+
+    /// @brief Create a string constant.
+    static ConstantValue makeString(const std::string &val)
+    {
+        ConstantValue cv;
+        cv.type = PasType::string();
+        cv.strVal = val;
+        cv.hasValue = true;
+        return cv;
+    }
+
+    /// @brief Create a boolean constant.
+    static ConstantValue makeBool(bool val)
+    {
+        ConstantValue cv;
+        cv.type = PasType::boolean();
+        cv.boolVal = val;
+        cv.hasValue = true;
+        return cv;
+    }
+};
+
 /// @brief Information about a compiled unit's exports.
 struct UnitInfo
 {
     std::string name;                              ///< Unit name
     std::map<std::string, PasType> types;          ///< Exported types (lowercase key)
-    std::map<std::string, PasType> constants;      ///< Exported constants (lowercase key)
+    std::map<std::string, ConstantValue> constants; ///< Exported constants with values
     std::map<std::string, FuncSignature> functions; ///< Exported functions/procedures
     std::map<std::string, ClassInfo> classes;      ///< Exported classes
     std::map<std::string, InterfaceInfo> interfaces; ///< Exported interfaces
@@ -452,6 +504,21 @@ class SemanticAnalyzer
     /// @param name Constant name to look up.
     /// @return The constant's type if found, or nullopt.
     std::optional<PasType> lookupConstant(const std::string &name) const;
+
+    /// @brief Lookup an integer constant value by name.
+    /// @param name Constant name to look up.
+    /// @return The integer value if found, or nullopt.
+    std::optional<int64_t> lookupConstantInt(const std::string &name) const;
+
+    /// @brief Lookup a real constant value by name.
+    /// @param name Constant name to look up.
+    /// @return The real value if found, or nullopt.
+    std::optional<double> lookupConstantReal(const std::string &name) const;
+
+    /// @brief Lookup a string constant value by name.
+    /// @param name Constant name to look up.
+    /// @return The string value if found, or nullopt.
+    std::optional<std::string> lookupConstantStr(const std::string &name) const;
 
     /// @brief Lookup a function/procedure by name.
     /// @param name Function name to look up.
@@ -738,6 +805,31 @@ class SemanticAnalyzer
     /// @return The integer value, or 0 if evaluation fails.
     int64_t evaluateConstantInt(const Expr &expr) const;
 
+    /// @brief Evaluate a constant real expression.
+    /// @param expr The expression to evaluate (must be a constant real expression).
+    /// @return The real value, or 0.0 if evaluation fails.
+    double evaluateConstantReal(const Expr &expr) const;
+
+    /// @brief Evaluate a constant string expression.
+    /// @param expr The expression to evaluate (must be a constant string expression).
+    /// @return The string value, or empty string if evaluation fails.
+    std::string evaluateConstantString(const Expr &expr) const;
+
+    /// @brief Evaluate a constant boolean expression.
+    /// @param expr The expression to evaluate (must be a constant boolean expression).
+    /// @return The boolean value, or false if evaluation fails.
+    bool evaluateConstantBool(const Expr &expr) const;
+
+    /// @brief Fold a constant expression to a ConstantValue.
+    /// @param expr The expression to evaluate (must be a constant expression).
+    /// @return ConstantValue with hasValue=true if successful, hasValue=false otherwise.
+    ConstantValue foldConstant(const Expr &expr);
+
+    /// @brief Check for division by zero in a constant expression.
+    /// @param expr The expression to check.
+    /// @return True if the expression contains a division by zero.
+    bool checkConstantDivZero(const Expr &expr);
+
     /// @brief Validate default parameters in a parameter list.
     /// @param params The parameters to validate.
     /// @param loc Location for error reporting.
@@ -836,6 +928,12 @@ class SemanticAnalyzer
 
     /// @brief Registered integer constant values (for compile-time evaluation)
     std::map<std::string, int64_t> constantValues_;
+
+    /// @brief Registered real constant values (for compile-time evaluation)
+    std::map<std::string, double> constantRealValues_;
+
+    /// @brief Registered string constant values (for compile-time evaluation)
+    std::map<std::string, std::string> constantStrValues_;
 
     /// @brief Stack of variable scopes (each is name -> type)
     std::vector<std::map<std::string, PasType>> varScopes_;

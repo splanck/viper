@@ -40,6 +40,12 @@
 // Number parsing utilities for lexers
 #include "frontends/common/NumberParsing.hpp"
 
+// Lexer cursor management utilities
+#include "frontends/common/LexerBase.hpp"
+
+// Keyword table utilities for lexers
+#include "frontends/common/KeywordTable.hpp"
+
 // Diagnostic formatting helpers
 #include "frontends/common/DiagnosticHelpers.hpp"
 

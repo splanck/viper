@@ -36,9 +36,8 @@ struct FrontPascalConfig
 {
     bool emitIl{false};
     bool run{false};
-    std::string sourcePath;
+    std::vector<std::string> sourcePaths;  // Multiple source files
     ilc::SharedCliOptions shared;
-    std::optional<uint32_t> sourceFileId{};
     std::vector<std::string> programArgs;
 };
 
@@ -49,37 +48,37 @@ struct LoadedSource
 };
 
 /// @brief Parse CLI arguments for the Pascal frontend subcommand.
+/// Supports multiple source files: ilc front pascal -run main.pas unit1.pas unit2.pas
 il::support::Expected<FrontPascalConfig> parseFrontPascalArgs(int argc, char **argv)
 {
     FrontPascalConfig config{};
+    bool parsingPaths = false;
+
     for (int i = 0; i < argc; ++i)
     {
         std::string arg = argv[i];
+
         if (arg == "-emit-il")
         {
-            if (i + 1 >= argc)
-            {
-                return il::support::Expected<FrontPascalConfig>(il::support::Diagnostic{
-                    il::support::Severity::Error, "missing Pascal source path", {}, {}});
-            }
             config.emitIl = true;
-            config.sourcePath = argv[++i];
+            parsingPaths = true;
         }
         else if (arg == "-run")
         {
-            if (i + 1 >= argc)
-            {
-                return il::support::Expected<FrontPascalConfig>(il::support::Diagnostic{
-                    il::support::Severity::Error, "missing Pascal source path", {}, {}});
-            }
             config.run = true;
-            config.sourcePath = argv[++i];
+            parsingPaths = true;
         }
         else if (arg == "--")
         {
+            // Everything after -- is program arguments
             for (int j = i + 1; j < argc; ++j)
                 config.programArgs.emplace_back(argv[j]);
             break;
+        }
+        else if (parsingPaths && arg[0] != '-')
+        {
+            // Collect source file paths
+            config.sourcePaths.push_back(arg);
         }
         else
         {
@@ -91,16 +90,26 @@ il::support::Expected<FrontPascalConfig> parseFrontPascalArgs(int argc, char **a
                     return il::support::Expected<FrontPascalConfig>(il::support::Diagnostic{
                         il::support::Severity::Error, "failed to parse shared option", {}, {}});
                 case ilc::SharedOptionParseResult::NotMatched:
-                    return il::support::Expected<FrontPascalConfig>(il::support::Diagnostic{
-                        il::support::Severity::Error, "unknown flag", {}, {}});
+                    // Might be a source path without -emit-il/-run before it
+                    if (!arg.empty() && arg[0] != '-')
+                    {
+                        config.sourcePaths.push_back(arg);
+                    }
+                    else
+                    {
+                        return il::support::Expected<FrontPascalConfig>(il::support::Diagnostic{
+                            il::support::Severity::Error, "unknown flag: " + arg, {}, {}});
+                    }
+                    break;
             }
         }
     }
 
-    if ((config.emitIl == config.run) || config.sourcePath.empty())
+    if ((config.emitIl == config.run) || config.sourcePaths.empty())
     {
         return il::support::Expected<FrontPascalConfig>(il::support::Diagnostic{
-            il::support::Severity::Error, "specify exactly one of -emit-il or -run", {}, {}});
+            il::support::Severity::Error,
+            "specify exactly one of -emit-il or -run, followed by source file(s)", {}, {}});
     }
 
     return il::support::Expected<FrontPascalConfig>(std::move(config));
@@ -135,18 +144,128 @@ il::support::Expected<LoadedSource> loadSourceBuffer(const std::string &path,
     return il::support::Expected<LoadedSource>(std::move(source));
 }
 
+/// @brief Detect if source begins with 'unit' keyword (vs 'program').
+/// Uses simple keyword detection - not full lexing.
+bool isUnitSource(const std::string &source)
+{
+    // Skip whitespace and comments to find first keyword
+    size_t i = 0;
+    while (i < source.size())
+    {
+        // Skip whitespace
+        if (std::isspace(static_cast<unsigned char>(source[i])))
+        {
+            ++i;
+            continue;
+        }
+
+        // Skip single-line comments: //
+        if (i + 1 < source.size() && source[i] == '/' && source[i + 1] == '/')
+        {
+            while (i < source.size() && source[i] != '\n')
+                ++i;
+            continue;
+        }
+
+        // Skip block comments: { } or (* *)
+        if (source[i] == '{')
+        {
+            ++i;
+            while (i < source.size() && source[i] != '}')
+                ++i;
+            if (i < source.size())
+                ++i;
+            continue;
+        }
+        if (i + 1 < source.size() && source[i] == '(' && source[i + 1] == '*')
+        {
+            i += 2;
+            while (i + 1 < source.size() && !(source[i] == '*' && source[i + 1] == ')'))
+                ++i;
+            if (i + 1 < source.size())
+                i += 2;
+            continue;
+        }
+
+        // Found first non-comment, non-whitespace - check for 'unit' keyword
+        if (i + 4 <= source.size())
+        {
+            char c0 = static_cast<char>(std::tolower(static_cast<unsigned char>(source[i])));
+            char c1 = static_cast<char>(std::tolower(static_cast<unsigned char>(source[i + 1])));
+            char c2 = static_cast<char>(std::tolower(static_cast<unsigned char>(source[i + 2])));
+            char c3 = static_cast<char>(std::tolower(static_cast<unsigned char>(source[i + 3])));
+
+            if (c0 == 'u' && c1 == 'n' && c2 == 'i' && c3 == 't')
+            {
+                // Check it's followed by whitespace or end (not part of identifier)
+                if (i + 4 >= source.size() ||
+                    !std::isalnum(static_cast<unsigned char>(source[i + 4])))
+                {
+                    return true;
+                }
+            }
+        }
+        return false;  // First keyword is not 'unit'
+    }
+    return false;  // Empty/comment-only source
+}
+
 /// @brief Compile (and optionally execute) Pascal source according to config.
+/// Handles both single-file and multi-file compilation.
 int runFrontPascal(const FrontPascalConfig &config,
-                   const std::string &source,
+                   const std::vector<LoadedSource> &sources,
                    il::support::SourceManager &sm)
 {
     PascalCompilerOptions compilerOpts{};
     compilerOpts.boundsChecks = config.shared.boundsChecks;
 
-    PascalCompilerInput compilerInput{source, config.sourcePath};
-    compilerInput.fileId = config.sourceFileId;
+    PascalCompilerResult result;
 
-    auto result = compilePascal(compilerInput, compilerOpts, sm);
+    if (sources.size() == 1)
+    {
+        // Single file - use simple compiler
+        PascalCompilerInput compilerInput{sources[0].buffer, config.sourcePaths[0]};
+        compilerInput.fileId = sources[0].fileId;
+        result = compilePascal(compilerInput, compilerOpts, sm);
+    }
+    else
+    {
+        // Multiple files - separate units from program
+        PascalMultiFileInput multiInput;
+        bool foundProgram = false;
+
+        for (size_t i = 0; i < sources.size(); ++i)
+        {
+            PascalCompilerInput input{sources[i].buffer, config.sourcePaths[i]};
+            input.fileId = sources[i].fileId;
+
+            if (isUnitSource(sources[i].buffer))
+            {
+                // This is a unit - add to units list
+                multiInput.units.push_back(input);
+            }
+            else
+            {
+                // This is a program
+                if (foundProgram)
+                {
+                    std::cerr << "error: multiple program files specified\n";
+                    return 1;
+                }
+                multiInput.program = input;
+                foundProgram = true;
+            }
+        }
+
+        if (!foundProgram)
+        {
+            std::cerr << "error: no program file found (only units specified)\n";
+            return 1;
+        }
+
+        result = compilePascalMultiFile(multiInput, compilerOpts, sm);
+    }
+
     if (!result.succeeded())
     {
         result.diagnostics.printAll(std::cerr, &sm);
@@ -224,16 +343,21 @@ int cmdFrontPascalWithSourceManager(int argc, char **argv, il::support::SourceMa
 
     FrontPascalConfig config = std::move(parsed.value());
 
-    auto source = loadSourceBuffer(config.sourcePath, sm);
-    if (!source)
+    // Load all source files
+    std::vector<LoadedSource> sources;
+    for (const auto &path : config.sourcePaths)
     {
-        const auto &diag = source.error();
-        il::support::printDiag(diag, std::cerr, &sm);
-        return 1;
+        auto source = loadSourceBuffer(path, sm);
+        if (!source)
+        {
+            const auto &diag = source.error();
+            il::support::printDiag(diag, std::cerr, &sm);
+            return 1;
+        }
+        sources.push_back(std::move(source.value()));
     }
 
-    config.sourceFileId = source.value().fileId;
-    return runFrontPascal(config, source.value().buffer, sm);
+    return runFrontPascal(config, sources, sm);
 }
 
 /// @brief Top-level Pascal frontend command invoked by main().

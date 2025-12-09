@@ -19,14 +19,19 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/basic/Lexer.hpp"
+#include "frontends/common/CharUtils.hpp"
 #include <array>
-#include <cctype>
 #include <cstddef>
 #include <string>
 #include <string_view>
 
 namespace il::frontends::basic
 {
+
+using common::char_utils::isAlphanumeric;
+using common::char_utils::isDigit;
+using common::char_utils::isLetter;
+using common::char_utils::toUpper;
 
 namespace
 {
@@ -174,9 +179,7 @@ TokenKind lookupKeyword(std::string_view lexeme)
 {
     if (lexeme.size() == 2)
     {
-        unsigned char first = static_cast<unsigned char>(lexeme[0]);
-        unsigned char second = static_cast<unsigned char>(lexeme[1]);
-        if (std::toupper(first) == 'M' && std::toupper(second) == 'E')
+        if (toUpper(lexeme[0]) == 'M' && toUpper(lexeme[1]) == 'E')
             lexeme = "ME";
     }
     auto first = kKeywordTable.begin();
@@ -303,12 +306,12 @@ void Lexer::skipWhitespaceAndComments()
             continue;
         }
 
-        if (std::toupper(static_cast<unsigned char>(peek())) == 'R' && pos_ + 2 < src_.size() &&
-            std::toupper(static_cast<unsigned char>(src_[pos_ + 1])) == 'E' &&
-            std::toupper(static_cast<unsigned char>(src_[pos_ + 2])) == 'M')
+        if (toUpper(peek()) == 'R' && pos_ + 2 < src_.size() &&
+            toUpper(src_[pos_ + 1]) == 'E' &&
+            toUpper(src_[pos_ + 2]) == 'M')
         {
             char after = (pos_ + 3 < src_.size()) ? src_[pos_ + 3] : '\0';
-            if (!std::isalnum(static_cast<unsigned char>(after)) && after != '$' && after != '#' &&
+            if (!isAlphanumeric(after) && after != '$' && after != '#' &&
                 after != '!' && after != '%' && after != '&')
             {
                 /// @brief Retrieves  value.
@@ -349,13 +352,13 @@ Token Lexer::lexNumber()
         seenDot = true;
         s.push_back(get());
     }
-    while (std::isdigit(static_cast<unsigned char>(peek())))
+    while (isDigit(peek()))
         s.push_back(get());
     if (!seenDot && peek() == '.')
     {
         seenDot = true;
         s.push_back(get());
-        while (std::isdigit(static_cast<unsigned char>(peek())))
+        while (isDigit(peek()))
             s.push_back(get());
     }
     if ((peek() == 'e' || peek() == 'E'))
@@ -364,7 +367,7 @@ Token Lexer::lexNumber()
         s.push_back(get());
         if (peek() == '+' || peek() == '-')
             s.push_back(get());
-        while (std::isdigit(static_cast<unsigned char>(peek())))
+        while (isDigit(peek()))
             s.push_back(get());
     }
     if (peek() == '#' || peek() == '!' || peek() == '%' || peek() == '&')
@@ -388,10 +391,10 @@ Token Lexer::lexIdentifierOrKeyword()
 {
     il::support::SourceLoc loc{file_id_, line_, column_};
     std::string s;
-    while (std::isalnum(static_cast<unsigned char>(peek())) || peek() == '_')
-        s.push_back(std::toupper(static_cast<unsigned char>(get())));
+    while (isAlphanumeric(peek()) || peek() == '_')
+        s.push_back(toUpper(get()));
     if (peek() == '$' || peek() == '#' || peek() == '!' || peek() == '%' || peek() == '&')
-        s.push_back(std::toupper(static_cast<unsigned char>(get())));
+        s.push_back(toUpper(get()));
     TokenKind kind = lookupKeyword(s);
     return {kind, s, loc};
 }
@@ -452,11 +455,10 @@ Token Lexer::next()
         return {TokenKind::EndOfLine, "\n", loc};
     }
 
-    if (std::isdigit(static_cast<unsigned char>(c)) ||
-        (c == '.' && pos_ + 1 < src_.size() &&
-         std::isdigit(static_cast<unsigned char>(src_[pos_ + 1]))))
+    if (isDigit(c) ||
+        (c == '.' && pos_ + 1 < src_.size() && isDigit(src_[pos_ + 1])))
         return lexNumber();
-    if (std::isalpha(static_cast<unsigned char>(c)))
+    if (isLetter(c))
         return lexIdentifierOrKeyword();
     if (c == '"')
         return lexString();
@@ -523,14 +525,12 @@ Token Lexer::next()
             bool prevIsDigit = false;
             if (pos_ >= 2)
             {
-                unsigned char prev = static_cast<unsigned char>(src_[pos_ - 2]);
-                prevIsDigit = std::isdigit(prev) != 0;
+                prevIsDigit = isDigit(src_[pos_ - 2]);
             }
             bool nextIsDigit = false;
             if (pos_ < src_.size())
             {
-                unsigned char next = static_cast<unsigned char>(src_[pos_]);
-                nextIsDigit = std::isdigit(next) != 0;
+                nextIsDigit = isDigit(src_[pos_]);
             }
             if (prevIsDigit && nextIsDigit)
             {
