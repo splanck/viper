@@ -310,6 +310,9 @@ class Lowerer
     /// @brief Lower a try-finally statement.
     void lowerTryFinally(const TryFinallyStmt &stmt);
 
+    /// @brief Lower an inherited method call statement.
+    void lowerInherited(const InheritedStmt &stmt);
+
     //=========================================================================
     // Instruction Emission Helpers
     //=========================================================================

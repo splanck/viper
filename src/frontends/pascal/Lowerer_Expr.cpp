@@ -57,6 +57,34 @@ LowerResult Lowerer::lowerExpr(const Expr &expr)
         return lowerIndex(static_cast<const IndexExpr &>(expr));
     case ExprKind::Field:
         return lowerField(static_cast<const FieldExpr &>(expr));
+    case ExprKind::Is: {
+        const auto &isExpr = static_cast<const IsExpr &>(expr);
+        // Lower operand
+        LowerResult obj = lowerExpr(*isExpr.operand);
+        // Resolve target type via semantic analyzer
+        il::frontends::pascal::PasType target = sema_->resolveType(*isExpr.targetType);
+        // Default: false
+        Value result = Value::constBool(false);
+        if (target.kind == PasTypeKind::Class)
+        {
+            // Lookup class id
+            int64_t classId = 0;
+            auto it = classLayouts_.find(toLower(target.name));
+            if (it != classLayouts_.end())
+                classId = it->second.classId;
+            usedExterns_.insert("rt_cast_as");
+            Value casted = emitCallRet(Type(Type::Kind::Ptr), "rt_cast_as", {obj.value, Value::constInt(classId)});
+            // Compare ptr != null -> i1
+            result = emitBinary(Opcode::ICmpNe, Type(Type::Kind::I1), casted, Value::null());
+        }
+        else if (target.kind == PasTypeKind::Interface)
+        {
+            // If/when interfaces have ids, use rt_cast_as_iface; for now fall back to false
+            usedExterns_.insert("rt_cast_as_iface");
+            // Without interface ids wired here, result remains false
+        }
+        return {result, Type(Type::Kind::I1)};
+    }
     default:
         // Unsupported expression type - return zero
         return {Value::constInt(0), Type(Type::Kind::I64)};
@@ -579,6 +607,92 @@ LowerResult Lowerer::lowerCall(const CallExpr &expr)
 
     auto &nameExpr = static_cast<const NameExpr &>(*expr.callee);
     std::string callee = nameExpr.name;
+
+    // Implicit method call on Self inside a method: MethodName(args)
+    if (!currentClassName_.empty())
+    {
+        std::string classKey = toLower(currentClassName_);
+        auto *ci = sema_->lookupClass(classKey);
+        if (ci)
+        {
+            std::string mkey = toLower(callee);
+            auto mit = ci->methods.find(mkey);
+            if (mit != ci->methods.end())
+            {
+                // Resolve Self from locals
+                auto itSelf = locals_.find("self");
+                if (itSelf != locals_.end())
+                {
+                    // Build arg list: Self + user args
+                    std::vector<Value> args;
+                    Value selfPtr = emitLoad(Type(Type::Kind::Ptr), itSelf->second);
+                    args.push_back(selfPtr);
+                    std::vector<PasType> argTypes;
+                    for (const auto &arg : expr.args)
+                    {
+                        LowerResult lr = lowerExpr(*arg);
+                        args.push_back(lr.value);
+                        argTypes.push_back(PasType::unknown());
+                    }
+
+                    // Direct call to Class.Method
+                    std::string funcName = currentClassName_ + "." + callee;
+                    Type retType = mapType(mit->second.returnType);
+                    if (retType.kind == Type::Kind::Void)
+                    {
+                        emitCall(funcName, args);
+                        return {Value::constInt(0), Type(Type::Kind::Void)};
+                    }
+                    else
+                    {
+                        Value res = emitCallRet(retType, funcName, args);
+                        return {res, retType};
+                    }
+                }
+            }
+        }
+    }
+
+    // Type-cast form: TClass(expr)
+    // If callee is a type name and that type is a class, lower as rt_cast_as
+    {
+        std::string key = toLower(callee);
+        auto typeOpt = sema_->lookupType(key);
+        if (typeOpt && (typeOpt->kind == PasTypeKind::Class || typeOpt->kind == PasTypeKind::Interface))
+        {
+            // Expect exactly one argument; if missing, return null pointer
+            if (expr.args.empty())
+            {
+                return {Value::null(), Type(Type::Kind::Ptr)};
+            }
+
+            // Lower the operand
+            LowerResult obj = lowerExpr(*expr.args[0]);
+
+            // Determine class id for the target type
+            int64_t classId = 0;
+            if (typeOpt->kind == PasTypeKind::Class)
+            {
+                std::string classKey = toLower(typeOpt->name);
+                auto layoutIt = classLayouts_.find(classKey);
+                if (layoutIt != classLayouts_.end())
+                {
+                    classId = layoutIt->second.classId;
+                }
+            }
+            else
+            {
+                // For interfaces, we could support rt_cast_as_iface; for now use class path if available
+                // Fallback: return original pointer
+                return obj;
+            }
+
+            usedExterns_.insert("rt_cast_as");
+            Value casted = emitCallRet(Type(Type::Kind::Ptr), "rt_cast_as",
+                                       {obj.value, Value::constInt(classId)});
+            return {casted, Type(Type::Kind::Ptr)};
+        }
+    }
 
     // Lower arguments and track their types
     std::vector<Value> args;

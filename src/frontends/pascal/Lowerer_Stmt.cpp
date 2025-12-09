@@ -81,10 +81,59 @@ void Lowerer::lowerStmt(const Stmt &stmt)
     case StmtKind::TryFinally:
         lowerTryFinally(static_cast<const TryFinallyStmt &>(stmt));
         break;
+    case StmtKind::Inherited:
+        lowerInherited(static_cast<const InheritedStmt &>(stmt));
+        break;
     default:
         // Other statements not yet implemented
         break;
     }
+}
+
+void Lowerer::lowerInherited(const InheritedStmt &stmt)
+{
+    // Ensure we are inside a method with a current class
+    if (currentClassName_.empty())
+        return;
+
+    // Lookup base class
+    auto *ci = sema_->lookupClass(toLower(currentClassName_));
+    if (!ci || ci->baseClass.empty())
+        return;
+    std::string baseClass = ci->baseClass;
+
+    // Determine method name
+    std::string methodName = stmt.methodName;
+    if (methodName.empty())
+    {
+        // Derive from current function name: Class.Method
+        std::string fname = currentFunc_ ? currentFunc_->name : std::string();
+        auto pos = fname.find('.');
+        if (pos != std::string::npos && pos + 1 < fname.size())
+            methodName = fname.substr(pos + 1);
+        if (methodName.empty())
+            return;
+    }
+
+    // Build callee name: BaseClass.Method
+    std::string funcName = baseClass + "." + methodName;
+
+    // Prepare arguments: Self first, then user-provided args (if any)
+    std::vector<Value> args;
+    auto itSelf = locals_.find("self");
+    if (itSelf == locals_.end())
+        return;
+    Value selfPtr = emitLoad(Type(Type::Kind::Ptr), itSelf->second);
+    args.push_back(selfPtr);
+
+    for (const auto &arg : stmt.args)
+    {
+        LowerResult lr = lowerExpr(*arg);
+        args.push_back(lr.value);
+    }
+
+    // Direct call to base implementation (void return expected in statement context)
+    emitCall(funcName, args);
 }
 
 void Lowerer::lowerAssign(const AssignStmt &stmt)

@@ -376,6 +376,7 @@ struct ClassInfo
     std::map<std::string, FieldInfo> fields;       ///< Field name -> info (lowercase key)
     bool hasConstructor{false};                    ///< Has at least one constructor
     bool hasDestructor{false};                     ///< Has a destructor
+    bool isAbstract{false};                        ///< True if class declares or inherits abstract methods not implemented
     il::support::SourceLoc loc;                    ///< Source location
 };
 
@@ -648,6 +649,11 @@ class SemanticAnalyzer
     bool classInheritsFrom(const std::string &derivedName,
                            const std::string &baseName) const;
 
+    /// @brief Determine if a class is abstract (declares or inherits abstract methods not implemented).
+    /// @param className Name of the class.
+    /// @return True if abstract, false otherwise.
+    bool isAbstractClass(const std::string &className) const;
+
     /// @brief Check if an interface extends another interface.
     /// @param derivedName Name of the derived interface.
     /// @param baseName Name of the potential base interface.
@@ -772,6 +778,9 @@ class SemanticAnalyzer
 
     /// @brief Get type of a type cast expression.
     PasType typeOfTypeCast(TypeCastExpr &expr);
+
+    /// @brief Get type of an 'is' type-check expression.
+    PasType typeOfIs(IsExpr &expr);
 
     /// @brief Get type of a set constructor.
     PasType typeOfSetConstructor(SetConstructorExpr &expr);
@@ -961,6 +970,9 @@ class SemanticAnalyzer
 
     /// @brief Current class being analyzed (for Self resolution)
     std::string currentClassName_;
+
+    /// @brief Current method name when analyzing a method body (for inherited)
+    std::string currentMethodName_;
 
     /// @brief Stack of narrowing scopes (for flow-sensitive type narrowing)
     /// Each scope maps variable names to their narrowed types.

@@ -447,6 +447,112 @@ end.
     EXPECT_TRUE(gepCount >= 2);
 }
 
+/// @brief Field and method access inside methods resolves class fields and locals.
+TEST(PascalCompilerTest, FieldAccessInMethodsCompiles)
+{
+    SourceManager sm;
+    const std::string source = R"(
+program Test;
+type
+  TInner = class
+  public
+    Val: Integer;
+    procedure IncVal;
+  end;
+
+  TOuter = class
+  private
+    Inner: TInner;
+  public
+    constructor Create;
+    procedure Bump;
+  end;
+
+constructor TOuter.Create;
+begin
+  Inner := TInner.Create;
+  Inner.Val := 1
+end;
+
+procedure TInner.IncVal;
+begin
+  Inc(Val)
+end;
+
+procedure TOuter.Bump;
+var tmp: TInner;
+begin
+  Inner.IncVal;
+  tmp := Inner;
+  tmp.IncVal;
+  self.Inner.IncVal
+end;
+
+begin
+end.
+)";
+    PascalCompilerInput input{.source = source, .path = "test.pas"};
+    PascalCompilerOptions opts{};
+
+    auto result = compilePascal(input, opts, sm);
+
+    // Expect successful compilation with no undefined identifier errors
+    EXPECT_TRUE(result.succeeded());
+    EXPECT_EQ(result.diagnostics.errorCount(), 0u);
+}
+
+/// @brief Nested field access through class-typed locals and Self works in methods.
+TEST(PascalCompilerTest, NestedFieldAccessThroughLocalsAndSelf)
+{
+    SourceManager sm;
+    const std::string source = R"(
+program Test;
+type
+  TLeaf = class
+  public
+    N: Integer;
+  end;
+
+  TMid = class
+  public
+    Leaf: TLeaf;
+  end;
+
+  TRoot = class
+  private
+    M: TMid;
+  public
+    constructor Create;
+    procedure Touch;
+  end;
+
+constructor TRoot.Create;
+begin
+  M := TMid.Create;
+  M.Leaf := TLeaf.Create;
+  M.Leaf.N := 0
+end;
+
+procedure TRoot.Touch;
+var t: TMid;
+begin
+  t := M;
+  t.Leaf.N := 1;
+  self.M.Leaf.N := 2
+end;
+
+begin
+end.
+)";
+    PascalCompilerInput input{.source = source, .path = "test2.pas"};
+    PascalCompilerOptions opts{};
+
+    auto result = compilePascal(input, opts, sm);
+
+    EXPECT_TRUE(result.succeeded());
+    EXPECT_EQ(result.diagnostics.errorCount(), 0u);
+}
+
 } // namespace
 
 #ifndef VIPER_HAS_GTEST

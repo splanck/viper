@@ -483,6 +483,36 @@ target_link_libraries(test_pascal_compiler PRIVATE viper_testing fe_pascal)
 add_test(NAME test_pascal_compiler COMMAND test_pascal_compiler)
 set_tests_properties(test_pascal_compiler PROPERTIES LABELS pascal)
 
+# Pascal casts tests
+add_executable(test_pascal_casts ${CMAKE_CURRENT_SOURCE_DIR}/frontends/pascal/PascalCastsTests.cpp)
+target_link_libraries(test_pascal_casts PRIVATE viper_testing fe_pascal)
+add_test(NAME test_pascal_casts COMMAND test_pascal_casts)
+set_tests_properties(test_pascal_casts PROPERTIES LABELS pascal)
+
+# Pascal 'is' operator tests
+add_executable(test_pascal_is ${CMAKE_CURRENT_SOURCE_DIR}/frontends/pascal/PascalIsTests.cpp)
+target_link_libraries(test_pascal_is PRIVATE viper_testing fe_pascal)
+add_test(NAME test_pascal_is COMMAND test_pascal_is)
+set_tests_properties(test_pascal_is PROPERTIES LABELS pascal)
+
+# Pascal inherited calls tests
+add_executable(test_pascal_inherited ${CMAKE_CURRENT_SOURCE_DIR}/frontends/pascal/PascalInheritedTests.cpp)
+target_link_libraries(test_pascal_inherited PRIVATE viper_testing fe_pascal)
+add_test(NAME test_pascal_inherited COMMAND test_pascal_inherited)
+set_tests_properties(test_pascal_inherited PROPERTIES LABELS pascal)
+
+# Pascal abstract enforcement tests
+add_executable(test_pascal_abstract ${CMAKE_CURRENT_SOURCE_DIR}/frontends/pascal/PascalAbstractTests.cpp)
+target_link_libraries(test_pascal_abstract PRIVATE viper_testing fe_pascal)
+add_test(NAME test_pascal_abstract COMMAND test_pascal_abstract)
+set_tests_properties(test_pascal_abstract PROPERTIES LABELS pascal)
+
+# Pascal constructor chaining tests
+add_executable(test_pascal_ctor_chain ${CMAKE_CURRENT_SOURCE_DIR}/frontends/pascal/PascalCtorChainTests.cpp)
+target_link_libraries(test_pascal_ctor_chain PRIVATE viper_testing fe_pascal)
+add_test(NAME test_pascal_ctor_chain COMMAND test_pascal_ctor_chain)
+set_tests_properties(test_pascal_ctor_chain PROPERTIES LABELS pascal)
+
 # Pascal lexer unit tests
 add_executable(test_pascal_lexer ${CMAKE_CURRENT_SOURCE_DIR}/unit/frontends/pascal/LexerTests.cpp)
 target_link_libraries(test_pascal_lexer PRIVATE viper_testing fe_pascal)

@@ -57,6 +57,7 @@ enum class ExprKind
     SetConstructor,
     AddressOf,
     Dereference,
+    Is,          ///< Runtime type-check (expr is T)
 };
 
 /// @brief Base class for all Pascal expressions.
@@ -223,6 +224,16 @@ struct TypeCastExpr : Expr
     TypeCastExpr(std::unique_ptr<TypeNode> type, std::unique_ptr<Expr> operand,
                  il::support::SourceLoc l = {})
         : Expr(ExprKind::TypeCast, l), targetType(std::move(type)), operand(std::move(operand)) {}
+};
+
+/// @brief Runtime type-check expression: (expr is T)
+struct IsExpr : Expr
+{
+    std::unique_ptr<Expr> operand;
+    std::unique_ptr<TypeNode> targetType;
+
+    IsExpr(std::unique_ptr<Expr> op, std::unique_ptr<TypeNode> type, il::support::SourceLoc l = {})
+        : Expr(ExprKind::Is, l), operand(std::move(op)), targetType(std::move(type)) {}
 };
 
 /// @brief Set constructor expression [1, 2, 3] or [1..10].

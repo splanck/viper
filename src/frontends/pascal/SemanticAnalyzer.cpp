@@ -665,9 +665,11 @@ void SemanticAnalyzer::checkConstructorDestructor(ClassDecl &decl)
 
 void SemanticAnalyzer::checkClassSemantics()
 {
-    for (const auto &[key, classInfo] : classes_)
+    for (auto &pair : classes_)
     {
-        checkClassInfo(classInfo);
+        checkClassInfo(pair.second);
+        // Compute abstractness: set ClassInfo.isAbstract flag
+        pair.second.isAbstract = isAbstractClass(pair.second.name);
     }
 }
 
@@ -985,6 +987,59 @@ bool SemanticAnalyzer::classInheritsFrom(const std::string &derivedName,
     return false;
 }
 
+bool SemanticAnalyzer::isAbstractClass(const std::string &className) const
+{
+    if (className.empty())
+        return false;
+    std::string key = toLower(className);
+    auto it = classes_.find(key);
+    if (it == classes_.end())
+        return false;
+
+    const ClassInfo &cls = it->second;
+
+    // If this class declares any abstract method, it's abstract
+    for (const auto &kv : cls.methods)
+    {
+        if (kv.second.isAbstract)
+            return true;
+    }
+
+    // Collect inherited abstract methods
+    std::map<std::string, MethodInfo> inheritedAbstract;
+    std::string base = cls.baseClass;
+    while (!base.empty())
+    {
+        std::string bkey = toLower(base);
+        auto bit = classes_.find(bkey);
+        if (bit == classes_.end())
+            break;
+        const ClassInfo &baseInfo = bit->second;
+        for (const auto &mk : baseInfo.methods)
+        {
+            const MethodInfo &m = mk.second;
+            if (m.isAbstract)
+            {
+                inheritedAbstract[mk.first] = m;
+            }
+        }
+        base = baseInfo.baseClass;
+    }
+
+    // Remove any methods overridden concretely by this class
+    for (const auto &mk : cls.methods)
+    {
+        const MethodInfo &m = mk.second;
+        if (!m.isAbstract)
+        {
+            inheritedAbstract.erase(mk.first);
+        }
+    }
+
+    // If any inherited abstract remains, class is abstract
+    return !inheritedAbstract.empty();
+}
+
 bool SemanticAnalyzer::interfaceExtendsInterface(const std::string &derivedName,
                                                   const std::string &baseName) const
 {
@@ -1150,11 +1205,44 @@ void SemanticAnalyzer::analyzeProcedureBody(ProcedureDecl &decl)
         }
     }
 
+    // For methods, bind visible fields of current class (and base classes) into scope
+    if (decl.isMethod())
+    {
+        auto bindFields = [&](const std::string &className) {
+            std::string cur = toLower(className);
+            while (!cur.empty())
+            {
+                auto *classInfo = lookupClass(cur);
+                if (!classInfo)
+                    break;
+                for (const auto &pair : classInfo->fields)
+                {
+                    const std::string &fname = pair.first; // already lowercase
+                    // Do not shadow existing locals/params
+                    if (!varScopes_.empty() && !varScopes_.back().contains(fname))
+                    {
+                        addVariable(fname, pair.second.type);
+                    }
+                }
+                if (classInfo->baseClass.empty())
+                    break;
+                cur = toLower(classInfo->baseClass);
+            }
+        };
+        bindFields(decl.className);
+    }
+
+    // Save/assign current method name for inherited resolution
+    std::string savedMethodName = currentMethodName_;
+    if (decl.isMethod())
+        currentMethodName_ = decl.name;
+
     // Analyze body
     analyzeBlock(*decl.body);
 
     --routineDepth_;
     popScope();
+    currentMethodName_ = savedMethodName;
     currentClassName_ = savedClassName;
 }
 
@@ -1217,12 +1305,44 @@ void SemanticAnalyzer::analyzeFunctionBody(FunctionDecl &decl)
         }
     }
 
+    // For methods, bind visible fields of current class (and base classes) into scope
+    if (decl.isMethod())
+    {
+        auto bindFields = [&](const std::string &className) {
+            std::string cur = toLower(className);
+            while (!cur.empty())
+            {
+                auto *classInfo = lookupClass(cur);
+                if (!classInfo)
+                    break;
+                for (const auto &pair : classInfo->fields)
+                {
+                    const std::string &fname = pair.first; // already lowercase
+                    if (!varScopes_.empty() && !varScopes_.back().contains(fname))
+                    {
+                        addVariable(fname, pair.second.type);
+                    }
+                }
+                if (classInfo->baseClass.empty())
+                    break;
+                cur = toLower(classInfo->baseClass);
+            }
+        };
+        bindFields(decl.className);
+    }
+
+    // Save/assign current method name for inherited resolution
+    std::string savedMethodName = currentMethodName_;
+    if (decl.isMethod())
+        currentMethodName_ = decl.name;
+
     // Analyze body
     analyzeBlock(*decl.body);
 
     --routineDepth_;
     popScope();
     currentFunction_ = nullptr;
+    currentMethodName_ = savedMethodName;
     currentClassName_ = savedClassName;
 }
 
@@ -1255,6 +1375,31 @@ void SemanticAnalyzer::analyzeConstructorBody(ConstructorDecl &decl)
             collectDecl(*localDecl);
     }
 
+    // Bind fields of the current class (and bases) into scope
+    {
+        auto bindFields = [&](const std::string &className) {
+            std::string cur = toLower(className);
+            while (!cur.empty())
+            {
+                auto *classInfo = lookupClass(cur);
+                if (!classInfo)
+                    break;
+                for (const auto &pair : classInfo->fields)
+                {
+                    const std::string &fname = pair.first; // already lowercase
+                    if (!varScopes_.empty() && !varScopes_.back().contains(fname))
+                    {
+                        addVariable(fname, pair.second.type);
+                    }
+                }
+                if (classInfo->baseClass.empty())
+                    break;
+                cur = toLower(classInfo->baseClass);
+            }
+        };
+        bindFields(decl.className);
+    }
+
     // Analyze body
     analyzeBlock(*decl.body);
 
@@ -1282,6 +1427,31 @@ void SemanticAnalyzer::analyzeDestructorBody(DestructorDecl &decl)
     {
         if (localDecl)
             collectDecl(*localDecl);
+    }
+
+    // Bind fields into scope for destructor as well
+    {
+        auto bindFields = [&](const std::string &className) {
+            std::string cur = toLower(className);
+            while (!cur.empty())
+            {
+                auto *classInfo = lookupClass(cur);
+                if (!classInfo)
+                    break;
+                for (const auto &pair : classInfo->fields)
+                {
+                    const std::string &fname = pair.first; // already lowercase
+                    if (!varScopes_.empty() && !varScopes_.back().contains(fname))
+                    {
+                        addVariable(fname, pair.second.type);
+                    }
+                }
+                if (classInfo->baseClass.empty())
+                    break;
+                cur = toLower(classInfo->baseClass);
+            }
+        };
+        bindFields(decl.className);
     }
 
     // Analyze body
@@ -2049,8 +2219,52 @@ void SemanticAnalyzer::analyzeInherited(InheritedStmt &stmt)
             typeOf(*arg);
     }
 
-    // TODO: If methodName is specified, verify it exists in base class hierarchy
-    // For now, we just type-check the arguments
+    // Resolve method in base class hierarchy
+    std::string baseName = classInfo.baseClass;
+    if (baseName.empty())
+        return;
+
+    auto hasMethodInHierarchy = [&](const std::string &method) -> bool {
+        std::string cur = toLower(baseName);
+        while (!cur.empty())
+        {
+            auto *ci = lookupClass(cur);
+            if (!ci)
+                break;
+            std::string mkey = toLower(method);
+            auto mit = ci->methods.find(mkey);
+            if (mit != ci->methods.end())
+            {
+                if (mit->second.isAbstract)
+                {
+                    error(stmt, "cannot call abstract base method '" + method + "'");
+                }
+                return true;
+            }
+            if (ci->baseClass.empty())
+                break;
+            cur = toLower(ci->baseClass);
+        }
+        return false;
+    };
+
+    // Determine method name
+    std::string targetMethod = stmt.methodName;
+    if (targetMethod.empty())
+    {
+        // Use current method name; ensure we are actually in a method
+        if (currentMethodName_.empty())
+        {
+            error(stmt, "'inherited' can only be used inside a method");
+            return;
+        }
+        targetMethod = currentMethodName_;
+    }
+
+    if (!hasMethodInHierarchy(targetMethod))
+    {
+        error(stmt, "base class does not define method '" + targetMethod + "'");
+    }
 }
 
 //===----------------------------------------------------------------------===//
@@ -2085,6 +2299,8 @@ PasType SemanticAnalyzer::typeOf(Expr &expr)
         return typeOfField(static_cast<FieldExpr &>(expr));
     case ExprKind::TypeCast:
         return typeOfTypeCast(static_cast<TypeCastExpr &>(expr));
+    case ExprKind::Is:
+        return typeOfIs(static_cast<IsExpr &>(expr));
     case ExprKind::SetConstructor:
         return typeOfSetConstructor(static_cast<SetConstructorExpr &>(expr));
     case ExprKind::AddressOf:
@@ -2144,6 +2360,67 @@ PasType SemanticAnalyzer::typeOfName(NameExpr &expr)
         return *type;
     }
 
+    // Special-case 'self' in method bodies: treat as current class type
+    if (key == "self")
+    {
+        if (!currentClassName_.empty())
+            return PasType::classType(currentClassName_);
+        // Fallback: if Self was registered explicitly, use its type
+        if (auto selfTy = lookupVariable("self"))
+            return *selfTy;
+    }
+
+    // Inside a method, check fields of the current class (and base classes) next
+    // Name lookup order inside methods:
+    // 1) Locals/params (handled above)
+    // 2) Fields of current class and its base classes
+    // 3) Outer scopes/globals/builtins
+    if (!currentClassName_.empty())
+    {
+        // Walk up the inheritance chain to find a matching field
+        std::string cur = toLower(currentClassName_);
+        while (!cur.empty())
+        {
+            auto *classInfo = lookupClass(cur);
+            if (!classInfo)
+                break;
+            auto fieldIt = classInfo->fields.find(key);
+            if (fieldIt != classInfo->fields.end())
+            {
+                return fieldIt->second.type;
+            }
+            // Move to base class (if any)
+            if (classInfo->baseClass.empty())
+                break;
+            cur = toLower(classInfo->baseClass);
+        }
+    }
+    else
+    {
+        // Fallback: if a 'self' variable exists, use its class type to resolve fields
+        if (auto selfTy = lookupVariable("self"))
+        {
+            if (selfTy->kind == PasTypeKind::Class && !selfTy->name.empty())
+            {
+                std::string cur = toLower(selfTy->name);
+                while (!cur.empty())
+                {
+                    auto *classInfo = lookupClass(cur);
+                    if (!classInfo)
+                        break;
+                    auto fieldIt = classInfo->fields.find(key);
+                    if (fieldIt != classInfo->fields.end())
+                    {
+                        return fieldIt->second.type;
+                    }
+                    if (classInfo->baseClass.empty())
+                        break;
+                    cur = toLower(classInfo->baseClass);
+                }
+            }
+        }
+    }
+
     // Check constants
     if (auto type = lookupConstant(key))
     {
@@ -2154,21 +2431,6 @@ PasType SemanticAnalyzer::typeOfName(NameExpr &expr)
     if (auto type = lookupType(key))
     {
         return *type;
-    }
-
-    // Check class fields BEFORE functions - field names should shadow builtins like Pos
-    // This allows field names to match builtin function names (e.g., Pos: TPosition)
-    if (!currentClassName_.empty())
-    {
-        auto *classInfo = lookupClass(toLower(currentClassName_));
-        if (classInfo)
-        {
-            auto fieldIt = classInfo->fields.find(key);
-            if (fieldIt != classInfo->fields.end())
-            {
-                return fieldIt->second.type;
-            }
-        }
     }
 
     // Check for zero-argument builtin functions (Pascal allows calling without parens)
@@ -2281,6 +2543,88 @@ PasType SemanticAnalyzer::typeOfCall(CallExpr &expr)
     if (expr.callee->kind == ExprKind::Name)
     {
         calleeName = static_cast<NameExpr &>(*expr.callee).name;
+
+        // Type-cast form: TClass(expr)
+        // If the callee name is a type and that type is a class/interface, treat this as a cast
+        std::string calleeKey = toLower(calleeName);
+        if (auto typeOpt = lookupType(calleeKey))
+        {
+            if (typeOpt->kind == PasTypeKind::Class || typeOpt->kind == PasTypeKind::Interface)
+            {
+                // Expect exactly 1 argument
+                if (expr.args.size() != 1)
+                {
+                    error(expr, "type cast requires exactly one argument");
+                    // Still return the target type for error recovery
+                    return *typeOpt;
+                }
+
+                // Type-check the operand (allow nil)
+                PasType argType = typeOf(*expr.args[0]);
+                // For class/interface casts, operand should be a class or interface or nil
+                if (!(argType.kind == PasTypeKind::Class || argType.kind == PasTypeKind::Interface ||
+                      argType.kind == PasTypeKind::Nil || argType.kind == PasTypeKind::Unknown))
+                {
+                    error(*expr.args[0], "invalid cast: expected class or interface instance");
+                }
+
+                // Result type is the target type
+                return *typeOpt;
+            }
+        }
+
+        // Implicit method call on Self inside a method: MethodName(args)
+        if (!currentClassName_.empty())
+        {
+            auto *classInfo = lookupClass(toLower(currentClassName_));
+            if (classInfo)
+            {
+                std::string mkey = toLower(calleeName);
+                auto mit = classInfo->methods.find(mkey);
+                if (mit != classInfo->methods.end())
+                {
+                    const MethodInfo &minfo = mit->second;
+                    // Reject abstract methods
+                    if (minfo.isAbstract)
+                    {
+                        error(expr, "cannot call abstract method '" + calleeName + "'");
+                        return PasType::unknown();
+                    }
+
+                    // Check argument counts
+                    size_t totalParams = minfo.params.size();
+                    size_t requiredParams = minfo.requiredParams;
+                    size_t actual = expr.args.size();
+                    if (actual < requiredParams)
+                    {
+                        error(expr, "too few arguments: expected at least " +
+                                        std::to_string(requiredParams) + ", got " + std::to_string(actual));
+                    }
+                    else if (actual > totalParams)
+                    {
+                        error(expr, "too many arguments: expected at most " +
+                                        std::to_string(totalParams) + ", got " + std::to_string(actual));
+                    }
+
+                    // Type-check arguments
+                    for (size_t i = 0; i < expr.args.size() && i < minfo.params.size(); ++i)
+                    {
+                        if (expr.args[i])
+                        {
+                            PasType argType = typeOf(*expr.args[i]);
+                            const PasType &paramType = minfo.params[i].second;
+                            if (!paramType.isError() && !isAssignableFrom(paramType, argType) && !argType.isError())
+                            {
+                                error(*expr.args[i], "argument " + std::to_string(i + 1) +
+                                                         " type mismatch: expected " + paramType.toString() +
+                                                         ", got " + argType.toString());
+                            }
+                        }
+                    }
+                    return minfo.returnType;
+                }
+            }
+        }
     }
     else if (expr.callee->kind == ExprKind::Field)
     {
@@ -2311,6 +2655,13 @@ PasType SemanticAnalyzer::typeOfCall(CallExpr &expr)
                         expr.isConstructorCall = true;
                         expr.constructorClassName = className;
 
+                        // Reject instantiation of abstract classes
+                        if (isAbstractClass(className))
+                        {
+                            error(expr, "cannot instantiate abstract class '" + className + "'");
+                            return PasType::unknown();
+                        }
+
                         // Look up the constructor in the class
                         auto *classInfo = lookupClass(baseKey);
                         if (classInfo)
@@ -2319,6 +2670,11 @@ PasType SemanticAnalyzer::typeOfCall(CallExpr &expr)
                             auto methodIt = classInfo->methods.find(methodKey);
                             if (methodIt != classInfo->methods.end())
                             {
+                                if (methodIt->second.isAbstract)
+                                {
+                                    error(expr, "cannot call abstract method '" + calleeName + "'");
+                                    return PasType::unknown();
+                                }
                                 // Constructor found - return the class type (new instance)
                                 // Type-check arguments
                                 for (auto &arg : expr.args)
@@ -2363,6 +2719,11 @@ PasType SemanticAnalyzer::typeOfCall(CallExpr &expr)
                         auto methodIt = classInfo->methods.find(methodKey);
                         if (methodIt != classInfo->methods.end())
                         {
+                            if (methodIt->second.isAbstract)
+                            {
+                                error(expr, "cannot call abstract method '" + calleeName + "'");
+                                return PasType::unknown();
+                            }
                             // Create a temporary signature from method info
                             // Note: This is a simplification - methods are properly stored
                             // in functions_ with qualified names
@@ -2418,6 +2779,12 @@ PasType SemanticAnalyzer::typeOfCall(CallExpr &expr)
                 auto methodIt = classInfo->methods.find(methodKey);
                 if (methodIt != classInfo->methods.end())
                 {
+                    // Reject direct calls to abstract methods
+                    if (methodIt->second.isAbstract)
+                    {
+                        error(expr, "cannot call abstract method '" + calleeName + "'");
+                        return PasType::unknown();
+                    }
                     // For methods declared in class, use the method info
                     // Type-check args against the method's parameters
                     const MethodInfo &methodInfo = methodIt->second;
@@ -2578,16 +2945,50 @@ PasType SemanticAnalyzer::typeOfField(FieldExpr &expr)
         // For class types, look up fields from class info (baseType.fields may be empty)
         if (baseType.kind == PasTypeKind::Class)
         {
-            auto *classInfo = lookupClass(toLower(baseType.name));
-            if (classInfo)
+            // Walk up the inheritance chain to find a matching field
+            std::string cur = toLower(baseType.name);
+            while (!cur.empty())
             {
+                auto *classInfo = lookupClass(cur);
+                if (!classInfo)
+                    break;
                 auto fieldIt = classInfo->fields.find(fieldKey);
                 if (fieldIt != classInfo->fields.end())
                 {
                     return fieldIt->second.type;
                 }
+                if (classInfo->baseClass.empty())
+                    break;
+                cur = toLower(classInfo->baseClass);
             }
-            // Field not found - might be a method, allow for now
+            // Not a field; could be a constructor call without parentheses (e.g., TClass.Create)
+            auto *ci = lookupClass(toLower(baseType.name));
+            if (ci)
+            {
+                // If the member is 'Create', treat as constructor call; enforce abstract rules
+                if (fieldKey == toLower(std::string("Create")))
+                {
+                    if (isAbstractClass(baseType.name))
+                    {
+                        error(expr, "cannot instantiate abstract class '" + baseType.name + "'");
+                        return PasType::unknown();
+                    }
+                    return PasType::classType(baseType.name);
+                }
+                auto mit = ci->methods.find(fieldKey);
+                if (mit != ci->methods.end())
+                {
+                    // Disallow abstract class instantiation
+                    if (isAbstractClass(baseType.name))
+                    {
+                        error(expr, "cannot instantiate abstract class '" + baseType.name + "'");
+                        return PasType::unknown();
+                    }
+                    // Treat as zero-arg constructor call; return class type
+                    return PasType::classType(baseType.name);
+                }
+            }
+            // Unknown member
             return PasType::unknown();
         }
 
@@ -2618,6 +3019,38 @@ PasType SemanticAnalyzer::typeOfTypeCast(TypeCastExpr &expr)
         typeOf(*expr.operand);
 
     return resolveType(*expr.targetType);
+}
+
+PasType SemanticAnalyzer::typeOfIs(IsExpr &expr)
+{
+    // Left side: expression type (allow class/interface/optional/nil)
+    PasType leftType = PasType::unknown();
+    if (expr.operand)
+        leftType = typeOf(*expr.operand);
+
+    // Right side: resolve target type
+    if (!expr.targetType)
+        return PasType::boolean();
+    PasType target = resolveType(*expr.targetType);
+
+    // Validate right-hand is a class/interface type
+    if (!(target.kind == PasTypeKind::Class || target.kind == PasTypeKind::Interface))
+    {
+        error(expr, "right-hand side of 'is' must be a class or interface type");
+        return PasType::boolean();
+    }
+
+    // Validate left-hand side is reference-compatible (class/interface/optional/nil)
+    bool lhsOk = (leftType.kind == PasTypeKind::Class || leftType.kind == PasTypeKind::Interface ||
+                  leftType.kind == PasTypeKind::Optional || leftType.kind == PasTypeKind::Nil ||
+                  leftType.kind == PasTypeKind::Unknown);
+    if (!lhsOk)
+    {
+        error(expr, "left-hand side of 'is' must be a class or interface expression");
+    }
+
+    // Result type is Boolean
+    return PasType::boolean();
 }
 
 PasType SemanticAnalyzer::typeOfSetConstructor(SetConstructorExpr &expr)

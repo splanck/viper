@@ -62,7 +62,9 @@ const char *tokenKindToString(TokenKind kind)
         case TokenKind::KwIf:           return "if";
         case TokenKind::KwImplementation: return "implementation";
         case TokenKind::KwIn:           return "in";
+        case TokenKind::KwIs:           return "is";
         case TokenKind::KwInherited:    return "inherited";
+        case TokenKind::KwAbstract:     return "abstract";
         case TokenKind::KwInterface:    return "interface";
         case TokenKind::KwMod:          return "mod";
         case TokenKind::KwNil:          return "nil";
@@ -155,7 +157,9 @@ const std::unordered_map<std::string, TokenKind> &keywordTable()
         {"if",             TokenKind::KwIf},
         {"implementation", TokenKind::KwImplementation},
         {"in",             TokenKind::KwIn},
+        {"is",             TokenKind::KwIs},
         {"inherited",      TokenKind::KwInherited},
+        {"abstract",       TokenKind::KwAbstract},
         {"interface",      TokenKind::KwInterface},
         {"mod",            TokenKind::KwMod},
         {"nil",            TokenKind::KwNil},

@@ -142,12 +142,24 @@ std::unique_ptr<Expr> Parser::parseCoalesce()
     return left;
 }
 
-// Relation: simple [relop simple]
+// Relation: simple [relop simple] | simple 'is' type
 std::unique_ptr<Expr> Parser::parseRelation()
 {
     auto left = parseSimple();
     if (!left)
         return nullptr;
+
+    // Type-check operator: expr is T
+    if (check(TokenKind::KwIs))
+    {
+        auto loc = current_.loc;
+        advance(); // consume 'is'
+        // Parse a type name after 'is'
+        auto type = parseType();
+        if (!type)
+            return nullptr;
+        return std::make_unique<IsExpr>(std::move(left), std::move(type), loc);
+    }
 
     // Check for relational operators
     BinaryExpr::Op op;
@@ -2332,12 +2344,15 @@ std::unique_ptr<Decl> Parser::parseMethodSignature(bool isFunction)
     // Handle optional method modifiers (virtual, override)
     bool isVirtual = false;
     bool isOverride = false;
-    while (check(TokenKind::KwVirtual) || check(TokenKind::KwOverride))
+    bool isAbstract = false;
+    while (check(TokenKind::KwVirtual) || check(TokenKind::KwOverride) || check(TokenKind::KwAbstract))
     {
         if (match(TokenKind::KwVirtual))
             isVirtual = true;
         if (match(TokenKind::KwOverride))
             isOverride = true;
+        if (match(TokenKind::KwAbstract))
+            isAbstract = true;
         // Expect ";" after modifier
         if (!expect(TokenKind::Semicolon, "';'"))
             return nullptr;
@@ -2351,6 +2366,7 @@ std::unique_ptr<Decl> Parser::parseMethodSignature(bool isFunction)
         decl->isForward = true; // Treat as forward declaration (no body)
         decl->isVirtual = isVirtual;
         decl->isOverride = isOverride;
+        decl->isAbstract = isAbstract;
         return decl;
     }
     else
@@ -2359,6 +2375,7 @@ std::unique_ptr<Decl> Parser::parseMethodSignature(bool isFunction)
         decl->isForward = true; // Treat as forward declaration (no body)
         decl->isVirtual = isVirtual;
         decl->isOverride = isOverride;
+        decl->isAbstract = isAbstract;
         return decl;
     }
 }

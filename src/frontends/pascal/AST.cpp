@@ -37,6 +37,7 @@ const char *exprKindToString(ExprKind kind)
         case ExprKind::SetConstructor: return "SetConstructor";
         case ExprKind::AddressOf:      return "AddressOf";
         case ExprKind::Dereference:    return "Dereference";
+        case ExprKind::Is:             return "Is";
     }
     return "?";
 }
