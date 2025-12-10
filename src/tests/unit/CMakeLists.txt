@@ -295,6 +295,13 @@ if (NOT TARGET test_vm_poll_callback)
     viper_add_ctest(test_vm_poll_callback test_vm_poll_callback)
 endif ()
 
+# Dispatch strategy equivalence test
+if (NOT TARGET test_vm_dispatch_equivalence)
+    viper_add_test(test_vm_dispatch_equivalence ${VIPER_TESTS_DIR}/unit/test_vm_dispatch_equivalence.cpp)
+    target_link_libraries(test_vm_dispatch_equivalence PRIVATE il_build il_vm viper_support)
+    viper_add_ctest(test_vm_dispatch_equivalence test_vm_dispatch_equivalence)
+endif ()
+
 # Extern registry tests
 if (NOT TARGET test_vm_extern_registry)
     viper_add_test(test_vm_extern_registry ${VIPER_TESTS_DIR}/unit/VM_ExternRegistryTests.cpp)

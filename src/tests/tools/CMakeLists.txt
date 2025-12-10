@@ -165,4 +165,13 @@ function(viper_add_tools_tests)
     target_include_directories(test_il_dce_pure_call PRIVATE ${CMAKE_SOURCE_DIR}/src)
     target_link_libraries(test_il_dce_pure_call PRIVATE il_transform viper_il_core)
     viper_add_ctest(test_il_dce_pure_call test_il_dce_pure_call)
+
+    # Benchmark output format test
+    viper_add_test(test_tools_bench_output_format
+            ${_VIPER_TOOLS_DIR}/BenchOutputFormatTests.cpp
+            ${CMAKE_SOURCE_DIR}/src/tools/ilc/cli.cpp
+            ${CMAKE_SOURCE_DIR}/src/tools/ilc/cmd_bench.cpp)
+    target_include_directories(test_tools_bench_output_format PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    target_link_libraries(test_tools_bench_output_format PRIVATE ${VIPER_TOOLS_LIBS})
+    viper_add_ctest(test_tools_bench_output_format test_tools_bench_output_format)
 endfunction()

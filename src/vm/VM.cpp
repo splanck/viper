@@ -53,6 +53,7 @@
 #include "il/core/Opcode.hpp"
 #include "il/core/Value.hpp"
 #include "vm/DispatchStrategy.hpp"
+#include "vm/OpHandlerAccess.hpp"
 #include "vm/OpHandlers.hpp"
 #include "vm/RuntimeBridge.hpp"
 #include "vm/VMContext.hpp"
@@ -230,7 +231,7 @@ class ThreadedDispatchDriver final : public VM::DispatchDriver
                 il::core::Opcode opcode = fetchNext();
                 if (state.exitRequested)
                     return true;
-                VIPER_VM_DISPATCH_BEFORE(context, opcode);
+                VIPER_VM_DISPATCH_BEFORE(state, opcode);
                 DISPATCH_TO(opcode);
 
                 // =============================================================
@@ -503,9 +504,30 @@ std::unique_ptr<VM::DispatchDriver, VM::DispatchDriverDeleter> VM::makeDispatchD
         new detail::SwitchDispatchDriver());
 }
 
+/// @brief Check if a trap dispatch signal targets the given state and clear context if so.
+/// @details This is an inline version of the trap dispatch logic that avoids constructing
+///          VMContext on the hot path. Used by runFunctionLoop for efficiency.
+/// @param signal Trap dispatch signal to check.
+/// @param state Execution state to compare against.
+/// @return True if the signal targeted this state and was handled.
+static inline bool handleTrapDispatchInternal(VM &vm,
+                                              const VM::TrapDispatchSignal &signal,
+                                              VM::ExecState &state)
+{
+    if (signal.target != &state)
+        return false;
+    vm.clearCurrentContext();
+    return true;
+}
+
 /// @brief Execute the interpreter loop until the current function returns.
 /// @param st Execution state for the active function call.
 /// @return Slot containing the function's return value (or zero when absent).
+///
+/// @note VMContext is still created for compatibility with the dispatch driver interface,
+/// but the hot-path macros (VIPER_VM_DISPATCH_BEFORE/AFTER) now use ExecState directly,
+/// avoiding the need to access VMContext on every instruction. This eliminates the
+/// overhead described in CRITICAL-1 of vm_issues.txt.
 Slot VM::runFunctionLoop(ExecState &st)
 {
     VMContext context(*this);
@@ -530,7 +552,8 @@ Slot VM::runFunctionLoop(ExecState &st)
         }
         catch (const TrapDispatchSignal &signal)
         {
-            if (!context.handleTrapDispatch(signal, st))
+            // Use inline handler instead of VMContext for efficiency
+            if (!handleTrapDispatchInternal(*this, signal, st))
                 throw;
         }
     }
@@ -606,25 +629,8 @@ Slot VM::execFunction(const Function &fn, const std::vector<Slot> &args)
     st.callSiteIp = currentContext.hasInstruction ? currentContext.instructionIndex : 0;
     st.callSiteLoc = currentContext.loc;
 
-    /// @brief RAII helper that pushes/pops the execution stack around calls.
-    struct ExecStackGuard
-    {
-        VM &vm;
-        VM::ExecState *state;
-
-        /// @brief Push the execution state onto the VM stack.
-        ExecStackGuard(VM &vmRef, VM::ExecState &stRef) : vm(vmRef), state(&stRef)
-        {
-            vm.execStack.push_back(state);
-        }
-
-        /// @brief Pop the execution state if it is still the active frame.
-        ~ExecStackGuard()
-        {
-            if (!vm.execStack.empty() && vm.execStack.back() == state)
-                vm.execStack.pop_back();
-        }
-    } guardStack(*this, st);
+    // Use the shared ExecStackGuard from VM.hpp (pre-allocated stack avoids heap allocs)
+    ExecStackGuard guardStack(*this, st);
 
     return runFunctionLoop(st);
 }
@@ -786,29 +792,8 @@ bool VM::prepareTrap(VmError &error)
                     fr.func = ownerFn;
                     fr.regs.clear();
 
-                    // Reuse/compute the maximum SSA value id from the cache to
-                    // avoid rescanning the function on trap rebinding.
-                    size_t maxSsaId = 0;
-                    if (auto rc = regCountCache_.find(ownerFn); rc != regCountCache_.end())
-                    {
-                        maxSsaId = rc->second;
-                    }
-                    else
-                    {
-                        for (const auto &p : ownerFn->params)
-                            maxSsaId = std::max(maxSsaId, static_cast<size_t>(p.id));
-                        for (const auto &block : ownerFn->blocks)
-                        {
-                            for (const auto &p : block.params)
-                                maxSsaId = std::max(maxSsaId, static_cast<size_t>(p.id));
-                            for (const auto &instr : block.instructions)
-                                if (instr.result)
-                                    maxSsaId =
-                                        std::max(maxSsaId, static_cast<size_t>(*instr.result));
-                        }
-                        regCountCache_.emplace(ownerFn, maxSsaId);
-                    }
-
+                    // Use shared helper to compute/cache register file size
+                    const size_t maxSsaId = detail::VMAccess::computeMaxSsaId(*this, *ownerFn);
                     fr.regs.resize(maxSsaId + 1);
                     fr.params.assign(fr.regs.size(), std::nullopt);
                     st->blocks.clear();

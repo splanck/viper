@@ -19,8 +19,10 @@
 #include "il/runtime/RuntimeSignatures.hpp"
 #include "vm/DiagFormat.hpp"
 #include "vm/Marshal.hpp"
+#include "vm/OpHandlerAccess.hpp"
 #include "vm/RuntimeBridge.hpp"
 #include "vm/VM.hpp"
+#include "vm/VMConstants.hpp"
 #include "vm/control_flow.hpp"
 
 #include "rt_context.h"
@@ -378,6 +380,11 @@ VM::VM(const Module &m,
     // These flags enable cheap boolean tests in hot paths to avoid
     // function calls and complex checks when debugging is disabled.
     refreshDebugFlags();
+
+    // Pre-allocate the execution stack to avoid reallocation during typical execution.
+    // Most programs have call depths < 64, so this eliminates heap allocation for
+    // ExecStackGuard push/pop operations in common cases (HIGH-5 optimization).
+    execStack.reserve(kExecStackInitialCapacity);
 }
 
 /// @brief Refresh all debug fast-path flags from current state.
@@ -421,29 +428,8 @@ Frame VM::setupFrame(const Function &fn,
                      fn.params.size(),
                      fn.blocks.size());
     }
-    // Compute or reuse the maximum SSA id (register file size - 1) for this function.
-    size_t maxSsaId;
-    auto rcIt = regCountCache_.find(&fn);
-    if (rcIt != regCountCache_.end())
-    {
-        maxSsaId = rcIt->second;
-    }
-    else
-    {
-        // Calculate the maximum SSA value ID used by scanning instruction results and params.
-        maxSsaId = fn.valueNames.empty() ? 0 : fn.valueNames.size() - 1;
-        for (const auto &p : fn.params)
-            maxSsaId = std::max(maxSsaId, static_cast<size_t>(p.id));
-        for (const auto &block : fn.blocks)
-        {
-            for (const auto &p : block.params)
-                maxSsaId = std::max(maxSsaId, static_cast<size_t>(p.id));
-            for (const auto &instr : block.instructions)
-                if (instr.result)
-                    maxSsaId = std::max(maxSsaId, static_cast<size_t>(*instr.result));
-        }
-        regCountCache_.emplace(&fn, maxSsaId);
-    }
+    // Use shared helper to compute/cache register file size
+    const size_t maxSsaId = detail::VMAccess::computeMaxSsaId(*this, fn);
 
     // Pre-size register vector to maximum SSA ID + 1 (IDs are 0-based)
     // This eliminates incremental vector growth in storeResult hot path
@@ -533,6 +519,11 @@ VM::ExecState VM::prepareExecution(const Function &fn, const std::vector<Slot> &
     // Inherit polling configuration from VM.
     st.config.interruptEveryN = pollEveryN_;
     st.config.pollCallback = pollCallback_;
+#if VIPER_VM_OPCOUNTS
+    st.config.enableOpcodeCounts = enableOpcodeCounts;
+#else
+    st.config.enableOpcodeCounts = false;
+#endif
     tracer.onFramePrepared(st.fr);
     debug.resetLastHit();
     st.ip = 0;

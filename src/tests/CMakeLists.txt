@@ -48,6 +48,7 @@ target_link_libraries(viper_testing INTERFACE viper_common_opts viper::il_full $
 
 add_library(viper_test_common STATIC
         ${CMAKE_CURRENT_LIST_DIR}/common/CodegenFixture.cpp
+        ${CMAKE_CURRENT_LIST_DIR}/common/ILGenerator.cpp
         ${CMAKE_CURRENT_LIST_DIR}/common/TestIRBuilder.cpp
         ${CMAKE_CURRENT_LIST_DIR}/common/VmFixture.cpp)
 # Limit include paths to avoid clashing with the C++ <version> header on
@@ -195,6 +196,11 @@ viper_add_ctest(test_codegen_arm64_trap_eh $<TARGET_FILE:test_codegen_arm64_trap
 add_executable(test_codegen_arm64_run_native ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_run_native.cpp)
 target_link_libraries(test_codegen_arm64_run_native PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)
 viper_add_ctest(test_codegen_arm64_run_native $<TARGET_FILE:test_codegen_arm64_run_native>)
+
+# Property-based differential testing: VM vs ARM64 native
+add_executable(test_diff_vm_native_property ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_diff_vm_native_property.cpp)
+target_link_libraries(test_diff_vm_native_property PRIVATE viper_test_common il_codegen_aarch64 ilc_cmd_arm64)
+viper_add_ctest(test_diff_vm_native_property $<TARGET_FILE:test_diff_vm_native_property>)
 
 # cbr lowering tests for arm64 CLI
 add_executable(test_codegen_arm64_cbr ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_cbr.cpp)

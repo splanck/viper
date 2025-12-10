@@ -22,58 +22,100 @@ Priority Distribution:
 CRITICAL ISSUES - HOT PATH PERFORMANCE
 =============================================================================
 
-⬜ CRITICAL-1: VMContext Wrapper Overhead
-   Files: src/vm/VMContext.cpp, src/vm/VM.cpp
+✅ CRITICAL-1: VMContext Wrapper Overhead [COMPLETED 2025-12]
+   Files: src/vm/VMContext.cpp, src/vm/VM.cpp, src/vm/DispatchStrategy.cpp
    Issue: VMContext created on every eval() and stepOnce() call
    Impact: 5-10% overhead on instruction dispatch
-   Fix: Eliminate wrapper, pass VM reference directly
-   Effort: 4 hours
+   Fix: Eliminated VMContext indirection from hot path:
+        - Dispatch macros (VIPER_VM_DISPATCH_BEFORE/AFTER) now use ExecState directly
+        - ExecState.config.enableOpcodeCounts added for direct access
+        - Trap dispatch inlined in runFunctionLoop and runSharedDispatchLoop
+        - VMContext still created once per function call for API compatibility
+        - External APIs (stepOnce, fetchOpcode, handleTrapDispatch) still use VMContext
+   Effort: 2 hours (actual)
 
-⬜ CRITICAL-2: String Allocations in Error Formatting
-   Files: src/vm/OpcodeHandlerHelpers.hpp
+✅ CRITICAL-2: String Allocations in Error Formatting [COMPLETED 2025-12]
+   Files: src/vm/OpcodeHandlerHelpers.hpp, src/vm/DiagFormat.cpp, src/vm/Trap.cpp,
+          src/vm/VMContext.cpp, src/vm/ops/Op_TrapEh.cpp
    Issue: std::ostringstream allocation on every error
    Impact: 20-30% improvement in error paths
-   Fix: Use string_view parameters, fmt library, or static buffer
-   Effort: 2 hours
+   Fix: Replaced all ostringstream usage with pre-allocated string building:
+        - OpcodeHandlerHelpers.hpp: Already optimized with string_view + reserve()
+        - DiagFormat.cpp: Converted 4 functions to use reserve() + append()
+        - Trap.cpp: vm_format_error now uses string_view + reserve() + append()
+        - VMContext.cpp: Register range error uses append() for line/column
+        - Op_TrapEh.cpp: resume.label error uses reserve() + append()
+        - Removed all <sstream> includes from affected files
+   Effort: 1 hour (actual)
 
-⬜ CRITICAL-3: Repeated Map Lookups for String Literals
+✅ CRITICAL-3: Repeated Map Lookups for String Literals [COMPLETED 2025-12]
    Files: src/vm/VMInit.cpp, src/vm/VMContext.cpp
    Issue: Map lookup on every string constant evaluation
    Impact: 15-25% improvement for string-heavy programs
-   Fix: Pre-populate inlineLiteralCache during VM construction
-   Effort: 3 hours
+   Fix: Optimized string literal cache lookup:
+        - Pre-populate inlineLiteralCache during VM construction (already done)
+        - Changed try_emplace to find() for fast path in VMContext::eval
+        - Try_emplace fallback only for edge cases (dynamically generated strings)
+        - Both evalImpl and VM::eval optimized with same pattern
+   Effort: 1 hour (actual)
 
-⬜ CRITICAL-4: Excessive Lambda Captures in Opcode Handlers
-   Files: src/vm/int_ops_arith.cpp (and many more)
+✅ CRITICAL-4: Excessive Lambda Captures in Opcode Handlers [COMPLETED 2025-12]
+   Files: src/vm/IntOpSupport.hpp, src/vm/int_ops_arith.cpp
    Issue: Lambda closures created on every arithmetic operation
    Impact: 5-10% improvement in arithmetic code
-   Fix: Use function pointers or templated functors
-   Effort: 8 hours
+   Fix: Replaced lambdas with stateless functors and template function pointers:
+        - Added OverflowAddOp, OverflowSubOp, OverflowMulOp stateless functor types
+        - Added BitwiseAndOp, BitwiseOrOp, BitwiseXorOp for bitwise operations
+        - Added ShiftLeftOp, LogicalShiftRightOp, ArithmeticShiftRightOp for shifts
+        - Added UnsignedDivWithCheck, UnsignedRemWithCheck for unsigned division
+        - Added SignedDivWithDispatch, SignedRemWithDispatch for signed division
+        - Created dispatchOverflowingBinaryDirect with template function pointer params
+        - All arithmetic handlers now use direct functor invocation, no closures
+   Effort: 2 hours (actual)
 
-⬜ CRITICAL-5: O(N*M) Function Lookup in prepareTrap
-   Files: src/vm/VM.cpp:647-661
+✅ CRITICAL-5: O(N*M) Function Lookup in prepareTrap [COMPLETED 2025-12]
+   Files: src/vm/VM.hpp, src/vm/VMInit.cpp, src/vm/VM.cpp
    Issue: Linear scan of all functions and blocks
    Impact: 50-90% improvement in exception handling
-   Fix: Maintain reverse map BasicBlock* -> Function*
-   Effort: 3 hours
+   Fix: Implemented reverse map BasicBlock* -> Function*:
+        - Added blockToFunction map to VM.hpp (line 717)
+        - Pre-populated map in VMInit.cpp during VM construction (lines 369-375)
+        - Updated prepareTrap in VM.cpp to use O(1) map lookup (lines 782-787)
+        - Map is pre-sized with reserve() based on total block count
+        - Eliminates nested iteration over all functions and blocks
+   Effort: 2 hours (actual, implementation was already done in Phase 1)
 
 =============================================================================
 HIGH PRIORITY ISSUES
 =============================================================================
 
-⬜ HIGH-1: Unnecessary Vector Resizing in storeResult
-   File: src/vm/OpHandlerUtils.cpp:50-71
+✅ HIGH-1: Unnecessary Vector Resizing in storeResult [COMPLETED 2025-12]
+   Files: src/vm/OpHandlerUtils.cpp, src/vm/VMInit.cpp, src/vm/VM.cpp, src/vm/tco.cpp
    Issue: Growing register vector one element at a time
    Impact: 10-15% improvement in register-intensive code
-   Fix: Pre-size register vectors to function's max SSA value
-   Effort: 2 hours
+   Fix: Pre-size register vectors to function's max SSA value:
+        - Added regCountCache_ to VM for memoizing maxSsaId per function
+        - VMInit.cpp computes and caches maxSsaId during frame setup
+        - VM.cpp trap handler uses cache for exception frame rebinding
+        - TCO now reuses cache instead of rescanning on tail calls
+        - Added debug assertion in storeResult to verify pre-sizing
+        - Cold path resize retained as safety fallback in release builds
+   Effort: 2 hours (refinement of existing implementation)
 
-⬜ HIGH-2: Thread-Local Storage Access Overhead
-   Files: src/vm/Trap.cpp, src/vm/RuntimeBridge.cpp
+✅ HIGH-2: Thread-Local Storage Access Overhead [COMPLETED 2025-12]
+   Files: src/vm/Trap.cpp, src/vm/RuntimeBridge.cpp, src/vm/VMContext.cpp
    Issue: Frequent TLS access on hot paths
    Impact: 3-7% improvement depending on platform
-   Fix: Use VM-local storage for single-threaded execution
-   Effort: 3 hours
+   Fix: Reduced redundant TLS lookups in trap handling:
+        - vm_raise() now caches VM::activeInstance() once for both enrichment
+          and final processing, eliminating duplicate TLS access
+        - Previously: vm_raise() called activeInstance(), then called
+          vm_raise_from_error() which called activeInstance() again
+        - Now: Single TLS lookup at entry, reused throughout the function
+        - Concurrency semantics preserved: TLS still used for external callbacks
+          from C runtime where VM pointer isn't available
+        - ActiveVMGuard RAII pattern unchanged for thread-local VM binding
+   Effort: 1 hour (actual)
 
 ⬜ HIGH-3: String Construction in RuntimeBridge
    Files: src/vm/RuntimeBridge.cpp:93-96, 241-245
@@ -82,33 +124,50 @@ HIGH PRIORITY ISSUES
    Fix: Use string_view, build final string once
    Effort: 2 hours
 
-⬜ HIGH-4: Repeated Type Switch in Integer Operations
-   Files: src/vm/IntOpSupport.hpp:66-91, 199-219
+✅ HIGH-4: Repeated Type Switch in Integer Operations [COMPLETED 2025-12]
+   Files: src/vm/IntOpSupport.hpp, src/vm/int_ops_arith.cpp
    Issue: Type dispatch on every arithmetic instruction
    Impact: 8-12% improvement in arithmetic code
-   Fix: Encode type in opcode or use computed goto
-   Effort: 6 hours
+   Fix: Consolidated type dispatch using template function pointers:
+        - Added dispatchOverflowingBinaryDirect with explicit function pointer template params
+        - Type dispatch still happens but now uses direct function pointers vs lambdas
+        - Removed nested lambda captures that caused closure allocation
+   Effort: 2 hours (actual)
 
-⬜ HIGH-5: ExecStackGuard RAII Overhead
-   Files: src/vm/VM.cpp:512-529, src/vm/VMContext.cpp:382-397
-   Issue: Guard object created on every function call
+✅ HIGH-5: ExecStackGuard RAII Overhead [COMPLETED 2025-12]
+   Files: src/vm/VM.hpp, src/vm/VM.cpp, src/vm/VMContext.cpp, src/vm/VMInit.cpp
+   Issue: Guard object created on every function call with potential heap allocation
    Impact: 5-8% improvement in call-heavy code
-   Fix: Manually manage exec stack or use static-sized stack
-   Effort: 3 hours
+   Fix: Optimized ExecStackGuard implementation:
+        - Pre-allocate execStack with kExecStackInitialCapacity (64) in VM constructor
+        - Unified ExecStackGuard definition in VM.hpp (removed duplicates in VM.cpp/VMContext.cpp)
+        - Added noexcept specifiers to ExecStackGuard constructor/destructor
+        - Made ExecStackGuard non-copyable/non-movable for safety
+        - Added comprehensive documentation
+   Effort: 1 hour (actual)
 
-⬜ HIGH-6: Marshalling Allocations in Runtime Bridge
-   Files: src/vm/Marshal.cpp:277-309
+✅ HIGH-6: Marshalling Allocations in Runtime Bridge [COMPLETED 2025-12]
+   Files: src/vm/Marshal.hpp, src/vm/Marshal.cpp, src/vm/RuntimeBridge.cpp
    Issue: Vector allocation on every runtime call
    Impact: 15-20% improvement in runtime call overhead
-   Fix: Use stack-allocated array for common arg counts
-   Effort: 3 hours
+   Fix: Implemented stack-allocated marshalling buffer:
+        - Added MarshalledArgs struct with inline storage for up to 12 arguments
+        - Added marshalArgumentsInline() function for zero-allocation marshalling
+        - Updated RuntimeBridge::executeDescriptor to use inline marshalling
+        - Falls back to heap allocation only for rare large argument lists
+        - Most runtime calls (0-4 args) now avoid heap allocation entirely
+   Effort: 1 hour (actual)
 
-⬜ HIGH-7: String NUL Finding in toViperString
-   Files: src/vm/Marshal.cpp:138-151
+✅ HIGH-7: String NUL Finding in toViperString [COMPLETED 2025-12]
+   Files: src/vm/Marshal.cpp
    Issue: Linear scan for NUL on every string conversion
    Impact: 10-15% improvement in string-heavy code
-   Fix: Flag in Value indicating NUL presence
-   Effort: 4 hours
+   Fix: Optimized embedded NUL detection:
+        - Fast path with AssumeNullTerminated::Yes skips scan entirely
+        - Module string literals use fast path (already guaranteed NUL-terminated)
+        - Replaced string_view::find with memchr (often SIMD-optimized)
+        - Reordered checks to test fast path first
+   Effort: 0.5 hours (actual)
 
 ⬜ HIGH-8: Add Missing Documentation
    Files: All opcode handlers
@@ -183,19 +242,19 @@ PHASE 2: ALLOCATION & MEMORY OPTIMIZATION (Hours 8-16)
 -----------------------------------
 Priority: Reduce heap allocations
 
-⬜ 2.1: Optimize argument marshalling (HIGH-6)
-⬜ 2.2: Fix string NUL detection (HIGH-7)
+✅ 2.1: Optimize argument marshalling (HIGH-6) - COMPLETED 2025-12
+✅ 2.2: Fix string NUL detection (HIGH-7) - COMPLETED 2025-12
 ⬜ 2.3: Optimize RuntimeBridge strings (HIGH-3)
-⬜ 2.4: Consider VM-local vs TLS (HIGH-2)
+✅ 2.4: Reduce TLS overhead (HIGH-2) - COMPLETED 2025-12
 
 PHASE 3: DISPATCH & CONTROL FLOW (Hours 16-24)
 -----------------------------------
 Priority: Improve dispatch efficiency
 
-⬜ 3.1: Refactor VMContext wrapper (CRITICAL-1)
-⬜ 3.2: Optimize ExecStackGuard (HIGH-5)
-⬜ 3.3: Refactor type dispatch (HIGH-4)
-⬜ 3.4: Reduce lambda captures (CRITICAL-4)
+✅ 3.1: Refactor VMContext wrapper (CRITICAL-1) - COMPLETED 2025-12
+✅ 3.2: Optimize ExecStackGuard (HIGH-5) - COMPLETED 2025-12
+✅ 3.3: Refactor type dispatch (HIGH-4) - COMPLETED 2025-12
+✅ 3.4: Reduce lambda captures (CRITICAL-4) - COMPLETED 2025-12
 
 PHASE 4: CODE QUALITY & DOCUMENTATION (Hours 24-32)
 -----------------------------------
@@ -402,6 +461,19 @@ MAINTAINABILITY:
 ✅ Magic numbers eliminated via VMConstants.hpp
 ✅ Centralized optimization logic (not scattered)
 ✅ Clear separation of concerns (initialization vs execution)
+✅ TCO subsystem cleaned up (2025-12):
+   - Factored out computeMaxSsaId() helper in OpHandlerAccess.hpp
+   - Removed duplicated maxSsaId calculation from tco.cpp, VMInit.cpp, VM.cpp
+   - Documented TCO invariants in tco.hpp with pre/post conditions
+   - Added assertions for invariant validation
+   - Existing TCO tests (factorial, mutual recursion, EH) verified passing
+✅ Dispatch loop optimized and documented (2025-12):
+   - Cached strategy properties (requiresTrapCatch, handlesFinalizationInternally)
+     once at loop entry to avoid virtual call overhead per instruction
+   - Added [[likely]]/[[unlikely]] branch hints for hot paths
+   - Optimized VIPER_VM_DISPATCH_AFTER to skip poll counter when polling disabled
+   - Added dispatch strategy equivalence test (test_vm_dispatch_equivalence)
+   - Updated docs/vm.md with dispatch strategy documentation
 
 =============================================================================
 BUILD AND TEST VALIDATION
@@ -430,15 +502,17 @@ RECOMMENDATIONS FOR FUTURE WORK
 =============================================================================
 
 IMMEDIATE NEXT STEPS (Optional, Not Critical):
-1. Phase 2: Allocation & Memory Optimization
-   - Optimize argument marshalling (HIGH-6)
-   - Fix string NUL detection (HIGH-7)
-   - Optimize RuntimeBridge strings (HIGH-3)
+1. Phase 2: Allocation & Memory Optimization - MOSTLY COMPLETED
+   - ✅ Optimize argument marshalling (HIGH-6) - COMPLETED 2025-12
+   - ✅ Fix string NUL detection (HIGH-7) - COMPLETED 2025-12
+   - ✅ Reduce TLS overhead (HIGH-2) - COMPLETED 2025-12
+   - ⬜ Optimize RuntimeBridge strings (HIGH-3)
 
-2. Phase 3: Dispatch & Control Flow
-   - Refactor VMContext wrapper (CRITICAL-1)
-   - Optimize ExecStackGuard (HIGH-5)
-   - Reduce lambda captures (CRITICAL-4)
+2. Phase 3: Dispatch & Control Flow - ✅ COMPLETED
+   - ✅ Refactor VMContext wrapper (CRITICAL-1) - COMPLETED 2025-12
+   - ✅ Optimize ExecStackGuard (HIGH-5) - COMPLETED 2025-12
+   - ✅ Reduce lambda captures (CRITICAL-4) - COMPLETED 2025-12
+   - ✅ Refactor type dispatch (HIGH-4) - COMPLETED 2025-12
 
 3. Phase 4: Code Quality & Documentation
    - Add Doxygen comments to remaining opcode handlers

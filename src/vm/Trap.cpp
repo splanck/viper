@@ -25,7 +25,6 @@
 #include "vm/TrapInvariants.hpp"
 #include "vm/VM.hpp"
 
-#include <sstream>
 #include <string_view>
 
 #ifdef EOF
@@ -168,20 +167,37 @@ std::string vm_current_trap_message()
 /// @return Human-readable description of the trap.
 std::string vm_format_error(const VmError &error, const FrameInfo &frame)
 {
-    const std::string &function =
-        frame.function.empty() ? std::string("<unknown>") : frame.function;
+    const std::string_view function =
+        frame.function.empty() ? std::string_view("<unknown>") : std::string_view(frame.function);
     const uint64_t ip = error.ip ? error.ip : frame.ip;
     const int32_t line = error.line >= 0 ? error.line : (frame.line >= 0 ? frame.line : -1);
+    const auto kindStr = toString(error.kind);
 
-    std::ostringstream os;
-    os << "Trap @" << function;
+    // Pre-allocate buffer: "Trap @<func>:<block>#<ip> line <line>: <kind> (code=<code>)"
+    // Typical overhead ~50 bytes + function + block + numbers
+    std::string result;
+    result.reserve(64 + function.size() + frame.block.size());
+
+    result.append("Trap @");
+    result.append(function);
     if (!frame.block.empty())
-        os << ':' << frame.block;
-    os << '#' << ip;
+    {
+        result.push_back(':');
+        result.append(frame.block);
+    }
+    result.push_back('#');
+    result.append(std::to_string(ip));
     if (line >= 0)
-        os << " line " << line;
-    os << ": " << toString(error.kind) << " (code=" << error.code << ')';
-    return os.str();
+    {
+        result.append(" line ");
+        result.append(std::to_string(line));
+    }
+    result.append(": ");
+    result.append(kindStr);
+    result.append(" (code=");
+    result.append(std::to_string(error.code));
+    result.push_back(')');
+    return result;
 }
 
 /// @brief Raise a trap using the supplied error description.
@@ -232,25 +248,51 @@ void vm_raise_from_error(const VmError &input)
 ///          active VM when available.  Control is then delegated to
 ///          @ref vm_raise_from_error for final processing.
 ///
+///          HIGH-2 optimization: caches the TLS lookup once instead of twice
+///          by inlining the vm_raise_from_error logic here.
+///
 /// @param kind Trap classification to raise.
 /// @param code Optional runtime-specific error code.
 void vm_raise(TrapKind kind, int32_t code)
 {
+    // HIGH-2: Cache TLS lookup once for both enrichment and final processing
+    // This avoids the double TLS access that would occur if we called
+    // vm_raise_from_error() which does its own activeInstance() lookup.
+    VM *vm = VM::activeInstance();
+
     VmError error{};
     error.kind = kind;
     error.code = code;
     error.ip = 0;
     error.line = -1;
 
-    if (auto *vm = VM::activeInstance())
+    FrameInfo frame{};
+    std::string message;
+
+    if (vm)
     {
         if (vm->currentContext.hasInstruction)
             error.ip = static_cast<uint64_t>(vm->currentContext.instructionIndex);
         if (vm->currentContext.loc.hasLine())
             error.line = static_cast<int32_t>(vm->currentContext.loc.line);
+
+        if (vm->prepareTrap(error))
+            return;
+
+        frame = vm->buildFrameInfo(error);
+        message = vm->recordTrap(error, frame);
+    }
+    else
+    {
+        frame.function = "<unknown>";
+        frame.ip = error.ip;
+        frame.line = error.line;
+        frame.handlerInstalled = false;
+        message = vm_format_error(error, frame);
     }
 
-    vm_raise_from_error(error);
+    if (!frame.handlerInstalled)
+        rt_abort(message.c_str());
 }
 
 } // namespace il::vm

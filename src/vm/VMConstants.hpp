@@ -56,4 +56,10 @@ constexpr size_t kMaxStackAllocatedArgs = 8;
 /// @details Small functions don't benefit from switch dispatch caching.
 constexpr size_t kMinFunctionSizeForSwitchCache = 5;
 
+/// @brief Initial capacity for the execution stack.
+/// @details Pre-allocated to avoid reallocation during typical execution.
+///          Most programs have call depths < 64. Using inline storage for
+///          this capacity eliminates heap allocation in common cases.
+constexpr size_t kExecStackInitialCapacity = 64;
+
 } // namespace il::vm

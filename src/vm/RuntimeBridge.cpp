@@ -115,12 +115,14 @@ static VmResult executeDescriptor(const RuntimeDescriptor &desc,
     if (argBegin && argCount)
         argSpan = {argBegin, argCount};
 
+    // Use stack-allocated marshalling buffer for small argument counts (HIGH-6)
     il::vm::PowStatus powStatus{};
-    auto rawArgs = il::vm::marshalArguments(desc.signature, argSpan, powStatus);
+    il::vm::MarshalledArgs marshalledArgs{};
+    il::vm::marshalArgumentsInline(desc.signature, argSpan, powStatus, marshalledArgs);
 
     ResultBuffers buffers{};
     void *resultPtr = il::vm::resultBufferFor(desc.signature.retType.kind, buffers);
-    desc.handler(rawArgs.empty() ? nullptr : rawArgs.data(), resultPtr);
+    desc.handler(marshalledArgs.empty() ? nullptr : marshalledArgs.data(), resultPtr);
 
     std::span<const Slot> readonlyArgs{};
     if (argBegin && argCount)

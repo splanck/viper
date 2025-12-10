@@ -53,7 +53,7 @@ VM::ExecResult handleISub(VM &vm,
 
 /// @brief Execute the @c iadd.ovf opcode and trap on overflow.
 /// @details Evaluates both operands via @ref ops::applyBinary, then invokes
-///          @ref dispatchOverflowingBinary with @ref ops::checked_add to compute
+///          @ref dispatchOverflowingBinaryDirect with function pointers to compute
 ///          the result.  When the addition exceeds the representable range of
 ///          the destination type the helper signals an overflow trap using the
 ///          instruction's source location.
@@ -64,6 +64,7 @@ VM::ExecResult handleISub(VM &vm,
 /// @param bb Reference to the current block pointer for diagnostics.
 /// @param ip Instruction index within the block (unused).
 /// @return Execution result indicating whether interpretation should continue.
+/// @note Uses OverflowAddOp functor instead of lambda captures (CRITICAL-4 optimization).
 VM::ExecResult handleIAddOvf(VM &vm,
                              Frame &fr,
                              const il::core::Instr &in,
@@ -73,29 +74,14 @@ VM::ExecResult handleIAddOvf(VM &vm,
 {
     (void)blocks;
     (void)ip;
-    return ops::applyBinary(vm,
-                            fr,
-                            in,
-                            [&, bb](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
-                            {
-                                dispatchOverflowingBinary(
-                                    in,
-                                    fr,
-                                    bb,
-                                    out,
-                                    lhsVal,
-                                    rhsVal,
-                                    "integer overflow in iadd.ovf",
-                                    [](auto lhs, auto rhs, auto *res)
-                                    { return ops::checked_add(lhs, rhs, res); });
-                            });
+    return ops::applyBinary(
+        vm, fr, in, OverflowAddOp{in, fr, bb, "integer overflow in iadd.ovf"});
 }
 
 /// @brief Execute the @c isub.ovf opcode and trap on overflow.
 /// @details Mirrors @ref handleIAddOvf but performs subtraction via
-///          @ref ops::checked_sub.  Overflow detection translates into an
-///          @ref TrapKind::Overflow trap emitted through
-///          @ref dispatchOverflowingBinary.
+///          @ref dispatchOverflowingBinaryDirect.  Overflow detection translates into an
+///          @ref TrapKind::Overflow trap.
 /// @param vm Virtual machine context executing the opcode.
 /// @param fr Active frame that stores operands and results.
 /// @param in IL instruction describing the subtraction.
@@ -103,6 +89,7 @@ VM::ExecResult handleIAddOvf(VM &vm,
 /// @param bb Reference to the current block pointer for diagnostics.
 /// @param ip Instruction index within the block (unused).
 /// @return Execution result indicating whether interpretation should continue.
+/// @note Uses OverflowSubOp functor instead of lambda captures (CRITICAL-4 optimization).
 VM::ExecResult handleISubOvf(VM &vm,
                              Frame &fr,
                              const il::core::Instr &in,
@@ -112,29 +99,15 @@ VM::ExecResult handleISubOvf(VM &vm,
 {
     (void)blocks;
     (void)ip;
-    return ops::applyBinary(vm,
-                            fr,
-                            in,
-                            [&, bb](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
-                            {
-                                dispatchOverflowingBinary(
-                                    in,
-                                    fr,
-                                    bb,
-                                    out,
-                                    lhsVal,
-                                    rhsVal,
-                                    "integer overflow in isub.ovf",
-                                    [](auto lhs, auto rhs, auto *res)
-                                    { return ops::checked_sub(lhs, rhs, res); });
-                            });
+    return ops::applyBinary(
+        vm, fr, in, OverflowSubOp{in, fr, bb, "integer overflow in isub.ovf"});
 }
 
 /// @brief Execute the @c imul.ovf opcode and trap on overflow.
-/// @details Delegates to @ref ops::checked_mul to multiply integer operands with
-///          full overflow detection.  The helper emits traps when the product
-///          exceeds the destination width, aligning behaviour with the IL
-///          specification's overflow semantics.
+/// @details Delegates to @ref dispatchOverflowingBinaryDirect to multiply integer
+///          operands with full overflow detection.  The helper emits traps when
+///          the product exceeds the destination width, aligning behaviour with
+///          the IL specification's overflow semantics.
 /// @param vm Virtual machine context executing the opcode.
 /// @param fr Active frame that stores operands and results.
 /// @param in IL instruction describing the multiplication.
@@ -142,6 +115,7 @@ VM::ExecResult handleISubOvf(VM &vm,
 /// @param bb Reference to the current block pointer for diagnostics.
 /// @param ip Instruction index within the block (unused).
 /// @return Execution result indicating whether interpretation should continue.
+/// @note Uses OverflowMulOp functor instead of lambda captures (CRITICAL-4 optimization).
 VM::ExecResult handleIMulOvf(VM &vm,
                              Frame &fr,
                              const il::core::Instr &in,
@@ -151,22 +125,8 @@ VM::ExecResult handleIMulOvf(VM &vm,
 {
     (void)blocks;
     (void)ip;
-    return ops::applyBinary(vm,
-                            fr,
-                            in,
-                            [&, bb](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
-                            {
-                                dispatchOverflowingBinary(
-                                    in,
-                                    fr,
-                                    bb,
-                                    out,
-                                    lhsVal,
-                                    rhsVal,
-                                    "integer overflow in imul.ovf",
-                                    [](auto lhs, auto rhs, auto *res)
-                                    { return ops::checked_mul(lhs, rhs, res); });
-                            });
+    return ops::applyBinary(
+        vm, fr, in, OverflowMulOp{in, fr, bb, "integer overflow in imul.ovf"});
 }
 
 /// @brief Execute the @c sdiv opcode with signed semantics.
@@ -181,6 +141,7 @@ VM::ExecResult handleIMulOvf(VM &vm,
 /// @param bb Reference to the current block pointer for diagnostics.
 /// @param ip Instruction index within the block (unused).
 /// @return Execution result indicating whether interpretation should continue.
+/// @note Uses SignedDivWithDispatch functor (CRITICAL-4 optimization).
 VM::ExecResult handleSDiv(VM &vm,
                           Frame &fr,
                           const il::core::Instr &in,
@@ -190,22 +151,13 @@ VM::ExecResult handleSDiv(VM &vm,
 {
     (void)blocks;
     (void)ip;
-    return ops::applyBinary(vm,
-                            fr,
-                            in,
-                            [&, bb](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
-                            {
-                                dispatchCheckedSignedBinary<&applySignedDiv<int16_t>,
-                                                            &applySignedDiv<int32_t>,
-                                                            &applySignedDiv<int64_t>>(
-                                    in, fr, bb, out, lhsVal, rhsVal);
-                            });
+    return ops::applyBinary(vm, fr, in, SignedDivWithDispatch{in, fr, bb});
 }
 
 /// @brief Execute the @c udiv opcode using unsigned semantics.
-/// @details Applies @ref applyUnsignedDivOrRem with a division functor so that
-///          divide-by-zero conditions trap consistently.  The helper manages the
-///          destination slot and range checking for all unsigned integer widths.
+/// @details Applies @ref applyUnsignedDivOrRemDirect with a division functor so
+///          that divide-by-zero conditions trap consistently.  The helper manages
+///          the destination slot and range checking for all unsigned integer widths.
 /// @param vm Virtual machine context executing the opcode.
 /// @param fr Active frame that stores operands and results.
 /// @param in IL instruction describing the division.
@@ -213,6 +165,7 @@ VM::ExecResult handleSDiv(VM &vm,
 /// @param bb Reference to the current block pointer for diagnostics.
 /// @param ip Instruction index within the block (unused).
 /// @return Execution result indicating whether interpretation should continue.
+/// @note Uses UnsignedDivWithCheck functor (CRITICAL-4 optimization).
 VM::ExecResult handleUDiv(VM &vm,
                           Frame &fr,
                           const il::core::Instr &in,
@@ -222,21 +175,8 @@ VM::ExecResult handleUDiv(VM &vm,
 {
     (void)blocks;
     (void)ip;
-    return ops::applyBinary(vm,
-                            fr,
-                            in,
-                            [&, bb](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
-                            {
-                                applyUnsignedDivOrRem(in,
-                                                      fr,
-                                                      bb,
-                                                      out,
-                                                      lhsVal,
-                                                      rhsVal,
-                                                      "divide by zero in udiv",
-                                                      [](uint64_t dividend, uint64_t divisor)
-                                                      { return dividend / divisor; });
-                            });
+    return ops::applyBinary(
+        vm, fr, in, UnsignedDivWithCheck{in, fr, bb, "divide by zero in udiv"});
 }
 
 /// @brief Execute the @c srem opcode that computes signed remainders.
@@ -250,6 +190,7 @@ VM::ExecResult handleUDiv(VM &vm,
 /// @param bb Reference to the current block pointer for diagnostics.
 /// @param ip Instruction index within the block (unused).
 /// @return Execution result indicating whether interpretation should continue.
+/// @note Uses SignedRemWithDispatch functor (CRITICAL-4 optimization).
 VM::ExecResult handleSRem(VM &vm,
                           Frame &fr,
                           const il::core::Instr &in,
@@ -259,21 +200,12 @@ VM::ExecResult handleSRem(VM &vm,
 {
     (void)blocks;
     (void)ip;
-    return ops::applyBinary(vm,
-                            fr,
-                            in,
-                            [&, bb](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
-                            {
-                                dispatchCheckedSignedBinary<&applySignedRem<int16_t>,
-                                                            &applySignedRem<int32_t>,
-                                                            &applySignedRem<int64_t>>(
-                                    in, fr, bb, out, lhsVal, rhsVal);
-                            });
+    return ops::applyBinary(vm, fr, in, SignedRemWithDispatch{in, fr, bb});
 }
 
 /// @brief Execute the @c urem opcode with unsigned semantics.
-/// @details Delegates to @ref applyUnsignedDivOrRem providing a modulus functor
-///          so divide-by-zero traps and unsigned range handling remain
+/// @details Delegates to @ref applyUnsignedDivOrRemDirect providing a modulus
+///          functor so divide-by-zero traps and unsigned range handling remain
 ///          consistent across opcode variants.
 /// @param vm Virtual machine context executing the opcode.
 /// @param fr Active frame that stores operands and results.
@@ -282,6 +214,7 @@ VM::ExecResult handleSRem(VM &vm,
 /// @param bb Reference to the current block pointer for diagnostics.
 /// @param ip Instruction index within the block (unused).
 /// @return Execution result indicating whether interpretation should continue.
+/// @note Uses UnsignedRemWithCheck functor (CRITICAL-4 optimization).
 VM::ExecResult handleURem(VM &vm,
                           Frame &fr,
                           const il::core::Instr &in,
@@ -291,28 +224,14 @@ VM::ExecResult handleURem(VM &vm,
 {
     (void)blocks;
     (void)ip;
-    return ops::applyBinary(vm,
-                            fr,
-                            in,
-                            [&, bb](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
-                            {
-                                applyUnsignedDivOrRem(in,
-                                                      fr,
-                                                      bb,
-                                                      out,
-                                                      lhsVal,
-                                                      rhsVal,
-                                                      "divide by zero in urem",
-                                                      [](uint64_t dividend, uint64_t divisor)
-                                                      { return dividend % divisor; });
-                            });
+    return ops::applyBinary(
+        vm, fr, in, UnsignedRemWithCheck{in, fr, bb, "divide by zero in urem"});
 }
 
 /// @brief Execute the @c sdiv.chk0 opcode, trapping on divide-by-zero.
 /// @details Reuses the signed division helper but ensures any zero divisor
-///          triggers a @ref TrapKind::DomainError via
-///          @ref applyCheckedDiv.  Control-flow metadata is unused because the
-///          instruction does not branch.
+///          triggers a @ref TrapKind::DomainError via @ref applyCheckedDiv.
+///          Control-flow metadata is unused because the instruction does not branch.
 /// @param vm Virtual machine context executing the opcode.
 /// @param fr Active frame that stores operands and results.
 /// @param in IL instruction describing the division.
@@ -320,6 +239,7 @@ VM::ExecResult handleURem(VM &vm,
 /// @param bb Reference to the current block pointer for diagnostics.
 /// @param ip Instruction index within the block (unused).
 /// @return Execution result indicating whether interpretation should continue.
+/// @note Uses CheckedSignedDivWithDispatch functor (CRITICAL-4 optimization).
 VM::ExecResult handleSDivChk0(VM &vm,
                               Frame &fr,
                               const il::core::Instr &in,
@@ -329,16 +249,7 @@ VM::ExecResult handleSDivChk0(VM &vm,
 {
     (void)blocks;
     (void)ip;
-    return ops::applyBinary(vm,
-                            fr,
-                            in,
-                            [&, bb](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
-                            {
-                                dispatchCheckedSignedBinary<&applyCheckedDiv<int16_t>,
-                                                            &applyCheckedDiv<int32_t>,
-                                                            &applyCheckedDiv<int64_t>>(
-                                    in, fr, bb, out, lhsVal, rhsVal);
-                            });
+    return ops::applyBinary(vm, fr, in, CheckedSignedDivWithDispatch{in, fr, bb});
 }
 
 /// @brief Execute the @c udiv.chk0 opcode, trapping on divide-by-zero.
@@ -352,6 +263,7 @@ VM::ExecResult handleSDivChk0(VM &vm,
 /// @param bb Reference to the current block pointer for diagnostics.
 /// @param ip Instruction index within the block (unused).
 /// @return Execution result indicating whether interpretation should continue.
+/// @note Uses UnsignedDivWithCheck functor (CRITICAL-4 optimization).
 VM::ExecResult handleUDivChk0(VM &vm,
                               Frame &fr,
                               const il::core::Instr &in,
@@ -361,21 +273,8 @@ VM::ExecResult handleUDivChk0(VM &vm,
 {
     (void)blocks;
     (void)ip;
-    return ops::applyBinary(vm,
-                            fr,
-                            in,
-                            [&, bb](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
-                            {
-                                applyUnsignedDivOrRem(in,
-                                                      fr,
-                                                      bb,
-                                                      out,
-                                                      lhsVal,
-                                                      rhsVal,
-                                                      "divide by zero in udiv.chk0",
-                                                      [](uint64_t dividend, uint64_t divisor)
-                                                      { return dividend / divisor; });
-                            });
+    return ops::applyBinary(
+        vm, fr, in, UnsignedDivWithCheck{in, fr, bb, "divide by zero in udiv.chk0"});
 }
 
 /// @brief Execute the @c srem.chk0 opcode, trapping on divide-by-zero.
@@ -388,6 +287,7 @@ VM::ExecResult handleUDivChk0(VM &vm,
 /// @param bb Reference to the current block pointer for diagnostics.
 /// @param ip Instruction index within the block (unused).
 /// @return Execution result indicating whether interpretation should continue.
+/// @note Uses CheckedSignedRemWithDispatch functor (CRITICAL-4 optimization).
 VM::ExecResult handleSRemChk0(VM &vm,
                               Frame &fr,
                               const il::core::Instr &in,
@@ -397,20 +297,11 @@ VM::ExecResult handleSRemChk0(VM &vm,
 {
     (void)blocks;
     (void)ip;
-    return ops::applyBinary(vm,
-                            fr,
-                            in,
-                            [&, bb](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
-                            {
-                                dispatchCheckedSignedBinary<&applyCheckedRem<int16_t>,
-                                                            &applyCheckedRem<int32_t>,
-                                                            &applyCheckedRem<int64_t>>(
-                                    in, fr, bb, out, lhsVal, rhsVal);
-                            });
+    return ops::applyBinary(vm, fr, in, CheckedSignedRemWithDispatch{in, fr, bb});
 }
 
 /// @brief Execute the @c urem.chk0 opcode, trapping on divide-by-zero.
-/// @details Calls @ref applyUnsignedDivOrRem with a modulus functor and a
+/// @details Calls @ref applyUnsignedDivOrRemDirect with a modulus functor and a
 ///          diagnostic message tailored to the @c .chk0 variant.  Successfully
 ///          computed results are written back to the destination slot.
 /// @param vm Virtual machine context executing the opcode.
@@ -420,6 +311,7 @@ VM::ExecResult handleSRemChk0(VM &vm,
 /// @param bb Reference to the current block pointer for diagnostics.
 /// @param ip Instruction index within the block (unused).
 /// @return Execution result indicating whether interpretation should continue.
+/// @note Uses UnsignedRemWithCheck functor (CRITICAL-4 optimization).
 VM::ExecResult handleURemChk0(VM &vm,
                               Frame &fr,
                               const il::core::Instr &in,
@@ -429,21 +321,8 @@ VM::ExecResult handleURemChk0(VM &vm,
 {
     (void)blocks;
     (void)ip;
-    return ops::applyBinary(vm,
-                            fr,
-                            in,
-                            [&, bb](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
-                            {
-                                applyUnsignedDivOrRem(in,
-                                                      fr,
-                                                      bb,
-                                                      out,
-                                                      lhsVal,
-                                                      rhsVal,
-                                                      "divide by zero in urem.chk0",
-                                                      [](uint64_t dividend, uint64_t divisor)
-                                                      { return dividend % divisor; });
-                            });
+    return ops::applyBinary(
+        vm, fr, in, UnsignedRemWithCheck{in, fr, bb, "divide by zero in urem.chk0"});
 }
 
 /// @brief Execute the @c idx.chk opcode that validates array indices.
@@ -521,8 +400,8 @@ VM::ExecResult handleIdxChk(VM &vm,
 }
 
 /// @brief Execute the @c and opcode implementing bitwise conjunction.
-/// @details Applies @ref ops::applyBinary with a lambda that combines operands
-///          using the bitwise AND operator.  Control-flow metadata is unused.
+/// @details Applies @ref ops::applyBinary with a stateless functor that combines
+///          operands using the bitwise AND operator.  Control-flow metadata is unused.
 /// @param vm Virtual machine instance executing the opcode.
 /// @param fr Active frame providing operand storage.
 /// @param in Instruction describing the operation.
@@ -530,6 +409,7 @@ VM::ExecResult handleIdxChk(VM &vm,
 /// @param bb Reference to the current block pointer (unused).
 /// @param ip Instruction index within the block (unused).
 /// @return Execution result describing whether interpretation should continue.
+/// @note Uses BitwiseAndOp functor (CRITICAL-4 optimization).
 VM::ExecResult handleAnd(VM &vm,
                          Frame &fr,
                          const il::core::Instr &in,
@@ -540,16 +420,12 @@ VM::ExecResult handleAnd(VM &vm,
     (void)blocks;
     (void)bb;
     (void)ip;
-    return ops::applyBinary(vm,
-                            fr,
-                            in,
-                            [](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
-                            { out.i64 = lhsVal.i64 & rhsVal.i64; });
+    return ops::applyBinary(vm, fr, in, BitwiseAndOp{});
 }
 
 /// @brief Execute the @c or opcode implementing bitwise disjunction.
-/// @details Uses @ref ops::applyBinary with a lambda that performs a bitwise OR
-///          on the operands before storing the result slot.
+/// @details Uses @ref ops::applyBinary with a stateless functor that performs a
+///          bitwise OR on the operands before storing the result slot.
 /// @param vm Virtual machine instance executing the opcode.
 /// @param fr Active frame providing operand storage.
 /// @param in Instruction describing the operation.
@@ -557,6 +433,7 @@ VM::ExecResult handleAnd(VM &vm,
 /// @param bb Reference to the current block pointer (unused).
 /// @param ip Instruction index within the block (unused).
 /// @return Execution result describing whether interpretation should continue.
+/// @note Uses BitwiseOrOp functor (CRITICAL-4 optimization).
 VM::ExecResult handleOr(VM &vm,
                         Frame &fr,
                         const il::core::Instr &in,
@@ -567,16 +444,12 @@ VM::ExecResult handleOr(VM &vm,
     (void)blocks;
     (void)bb;
     (void)ip;
-    return ops::applyBinary(vm,
-                            fr,
-                            in,
-                            [](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
-                            { out.i64 = lhsVal.i64 | rhsVal.i64; });
+    return ops::applyBinary(vm, fr, in, BitwiseOrOp{});
 }
 
 /// @brief Execute the @c xor opcode implementing bitwise exclusive-or.
-/// @details Applies @ref ops::applyBinary with a lambda that computes the XOR of
-///          the operands, storing the result in the destination slot.
+/// @details Applies @ref ops::applyBinary with a stateless functor that computes
+///          the XOR of the operands, storing the result in the destination slot.
 /// @param vm Virtual machine instance executing the opcode.
 /// @param fr Active frame providing operand storage.
 /// @param in Instruction describing the operation.
@@ -584,6 +457,7 @@ VM::ExecResult handleOr(VM &vm,
 /// @param bb Reference to the current block pointer (unused).
 /// @param ip Instruction index within the block (unused).
 /// @return Execution result describing whether interpretation should continue.
+/// @note Uses BitwiseXorOp functor (CRITICAL-4 optimization).
 VM::ExecResult handleXor(VM &vm,
                          Frame &fr,
                          const il::core::Instr &in,
@@ -594,11 +468,7 @@ VM::ExecResult handleXor(VM &vm,
     (void)blocks;
     (void)bb;
     (void)ip;
-    return ops::applyBinary(vm,
-                            fr,
-                            in,
-                            [](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
-                            { out.i64 = lhsVal.i64 ^ rhsVal.i64; });
+    return ops::applyBinary(vm, fr, in, BitwiseXorOp{});
 }
 
 /// @brief Execute the @c shl opcode implementing left shifts.
@@ -613,6 +483,7 @@ VM::ExecResult handleXor(VM &vm,
 /// @param bb Reference to the current block pointer (unused).
 /// @param ip Instruction index within the block (unused).
 /// @return Execution result describing whether interpretation should continue.
+/// @note Uses ShiftLeftOp functor (CRITICAL-4 optimization).
 VM::ExecResult handleShl(VM &vm,
                          Frame &fr,
                          const il::core::Instr &in,
@@ -623,15 +494,7 @@ VM::ExecResult handleShl(VM &vm,
     (void)blocks;
     (void)bb;
     (void)ip;
-    return ops::applyBinary(vm,
-                            fr,
-                            in,
-                            [](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
-                            {
-                                const uint64_t shift = static_cast<uint64_t>(rhsVal.i64) & 63U;
-                                const uint64_t value = static_cast<uint64_t>(lhsVal.i64);
-                                out.i64 = static_cast<int64_t>(value << shift);
-                            });
+    return ops::applyBinary(vm, fr, in, ShiftLeftOp{});
 }
 
 /// @brief Execute the @c lshr opcode implementing logical right shifts.
@@ -644,6 +507,7 @@ VM::ExecResult handleShl(VM &vm,
 /// @param bb Reference to the current block pointer (unused).
 /// @param ip Instruction index within the block (unused).
 /// @return Execution result describing whether interpretation should continue.
+/// @note Uses LogicalShiftRightOp functor (CRITICAL-4 optimization).
 VM::ExecResult handleLShr(VM &vm,
                           Frame &fr,
                           const il::core::Instr &in,
@@ -654,15 +518,7 @@ VM::ExecResult handleLShr(VM &vm,
     (void)blocks;
     (void)bb;
     (void)ip;
-    return ops::applyBinary(vm,
-                            fr,
-                            in,
-                            [](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
-                            {
-                                const uint64_t shift = static_cast<uint64_t>(rhsVal.i64) & 63U;
-                                const uint64_t value = static_cast<uint64_t>(lhsVal.i64);
-                                out.i64 = static_cast<int64_t>(value >> shift);
-                            });
+    return ops::applyBinary(vm, fr, in, LogicalShiftRightOp{});
 }
 
 /// @brief Execute the @c ashr opcode implementing arithmetic right shifts.
@@ -676,6 +532,7 @@ VM::ExecResult handleLShr(VM &vm,
 /// @param bb Reference to the current block pointer (unused).
 /// @param ip Instruction index within the block (unused).
 /// @return Execution result describing whether interpretation should continue.
+/// @note Uses ArithmeticShiftRightOp functor (CRITICAL-4 optimization).
 VM::ExecResult handleAShr(VM &vm,
                           Frame &fr,
                           const il::core::Instr &in,
@@ -686,32 +543,6 @@ VM::ExecResult handleAShr(VM &vm,
     (void)blocks;
     (void)bb;
     (void)ip;
-    return ops::applyBinary(vm,
-                            fr,
-                            in,
-                            [](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
-                            {
-                                const uint64_t shift = static_cast<uint64_t>(rhsVal.i64) & 63U;
-                                if (shift == 0)
-                                {
-                                    out.i64 = lhsVal.i64;
-                                    return;
-                                }
-
-                                const uint64_t value = static_cast<uint64_t>(lhsVal.i64);
-                                const bool isNegative = (value & (uint64_t{1} << 63U)) != 0;
-                                uint64_t shifted = value >> shift;
-                                if (isNegative)
-                                {
-                                    // Defensive check: shift must be in range [1, 63] to avoid UB
-                                    // in the expression (64U - shift). The mask at line 692 ensures
-                                    // this, but we assert it explicitly for safety.
-                                    assert(shift > 0 && shift < 64 &&
-                                           "shift must be in range [1, 63]");
-                                    const uint64_t mask = (~uint64_t{0}) << (64U - shift);
-                                    shifted |= mask;
-                                }
-                                out.i64 = static_cast<int64_t>(shifted);
-                            });
+    return ops::applyBinary(vm, fr, in, ArithmeticShiftRightOp{});
 }
 } // namespace il::vm::detail::integer

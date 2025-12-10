@@ -61,6 +61,12 @@ void storeResult(Frame &fr, const il::core::Instr &in, const Slot &val)
 
     const size_t destIndex = *in.result;
 
+    // HIGH-1 optimization: register file should be pre-sized during frame setup.
+    // In debug builds, assert that pre-sizing worked correctly.
+    // In release builds, the cold path resize is kept as a safety fallback.
+    assert(destIndex < fr.regs.size() &&
+           "storeResult: register index exceeds pre-sized capacity - frame setup bug");
+
     // Hot path: register file already sized, non-string type
     // This is the common case for arithmetic/comparison operations
     if (destIndex < fr.regs.size()) [[likely]]
@@ -78,7 +84,7 @@ void storeResult(Frame &fr, const il::core::Instr &in, const Slot &val)
         return;
     }
 
-    // Cold path: need to resize register file
+    // Cold path: safety fallback for release builds (should not be reached)
     fr.regs.resize(destIndex + 1);
 
     if (in.type.kind == il::core::Type::Kind::Str) [[unlikely]]

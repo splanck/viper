@@ -268,6 +268,7 @@ void usage()
         << "       ilc codegen arm64 <in.il> [-S <out.s>] [-o <exe|obj>] [-run-native]\n"
         << "       ilc il-opt <in.il> -o <out.il> [--passes p1,p2] [-print-before] [-print-after]"
            " [-verify-each]\n"
+        << "       ilc bench <file.il> [file2.il ...] [-n N] [--table|--switch|--threaded] [--json]\n"
         << "\nIL notes:\n"
         << "  IL modules executed with -run must define func @main().\n"
         << "\nBASIC notes:\n"
@@ -340,6 +341,10 @@ int main(int argc, char **argv)
     if (cmd == "il-opt")
     {
         return cmdILOpt(argc - 2, argv + 2);
+    }
+    if (cmd == "bench")
+    {
+        return cmdBench(argc - 2, argv + 2);
     }
     if (cmd == "codegen")
     {

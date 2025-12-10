@@ -280,4 +280,362 @@ template <typename NarrowT> [[nodiscard]] constexpr bool fitsUnsignedRange(uint6
     return value <= static_cast<uint64_t>(std::numeric_limits<NarrowT>::max());
 }
 
+// ============================================================================
+// Optimized Integer Operation Helpers (CRITICAL-4 / HIGH-4 Optimization)
+// ============================================================================
+// These helpers eliminate lambda captures and reduce type dispatch overhead
+// by using function pointers and explicit type parameters.
+
+/// @brief Function pointer type for overflow-checking binary operations.
+/// @tparam T Integer type to operate on.
+/// @details Returns true on overflow, result is written to *out.
+template <typename T>
+using OverflowCheckFn = bool (*)(T lhs, T rhs, T *out);
+
+/// @brief Stateless overflow-checking add function for use as function pointer.
+template <typename T>
+inline bool overflowAdd(T lhs, T rhs, T *out)
+{
+    return __builtin_add_overflow(lhs, rhs, out);
+}
+
+/// @brief Stateless overflow-checking sub function for use as function pointer.
+template <typename T>
+inline bool overflowSub(T lhs, T rhs, T *out)
+{
+    return __builtin_sub_overflow(lhs, rhs, out);
+}
+
+/// @brief Stateless overflow-checking mul function for use as function pointer.
+template <typename T>
+inline bool overflowMul(T lhs, T rhs, T *out)
+{
+    return __builtin_mul_overflow(lhs, rhs, out);
+}
+
+/// @brief Apply an overflow-checking binary operation for a specific type.
+/// @tparam T Integer type (int16_t, int32_t, int64_t).
+/// @tparam OverflowFn Function pointer for the overflow-checking operation.
+/// @param in Instruction being executed.
+/// @param fr Active frame.
+/// @param bb Current basic block.
+/// @param out Output slot.
+/// @param lhsVal Left operand slot.
+/// @param rhsVal Right operand slot.
+/// @param trapMessage Message for overflow trap.
+/// @details Uses function pointer instead of lambda to avoid closure allocation.
+template <typename T, OverflowCheckFn<T> OverflowFn>
+inline void applyOverflowingBinaryDirect(const il::core::Instr &in,
+                                         Frame &fr,
+                                         const il::core::BasicBlock *bb,
+                                         Slot &out,
+                                         const Slot &lhsVal,
+                                         const Slot &rhsVal,
+                                         const char *trapMessage)
+{
+    T lhs = static_cast<T>(lhsVal.i64);
+    T rhs = static_cast<T>(rhsVal.i64);
+    T result{};
+    if (OverflowFn(lhs, rhs, &result))
+    {
+        emitTrap(TrapKind::Overflow, trapMessage, in, fr, bb);
+        return;
+    }
+    out.i64 = static_cast<int64_t>(result);
+}
+
+/// @brief Dispatch an overflow-checking binary operation based on type kind.
+/// @tparam OverflowFn16 Function pointer for int16_t overflow check.
+/// @tparam OverflowFn32 Function pointer for int32_t overflow check.
+/// @tparam OverflowFn64 Function pointer for int64_t overflow check.
+/// @details Uses template function pointers instead of lambdas for efficiency.
+template <OverflowCheckFn<int16_t> OverflowFn16,
+          OverflowCheckFn<int32_t> OverflowFn32,
+          OverflowCheckFn<int64_t> OverflowFn64>
+inline void dispatchOverflowingBinaryDirect(const il::core::Instr &in,
+                                            Frame &fr,
+                                            const il::core::BasicBlock *bb,
+                                            Slot &out,
+                                            const Slot &lhsVal,
+                                            const Slot &rhsVal,
+                                            const char *trapMessage)
+{
+    switch (in.type.kind)
+    {
+        case il::core::Type::Kind::I16:
+            applyOverflowingBinaryDirect<int16_t, OverflowFn16>(
+                in, fr, bb, out, lhsVal, rhsVal, trapMessage);
+            break;
+        case il::core::Type::Kind::I32:
+            applyOverflowingBinaryDirect<int32_t, OverflowFn32>(
+                in, fr, bb, out, lhsVal, rhsVal, trapMessage);
+            break;
+        case il::core::Type::Kind::I64:
+        default:
+            applyOverflowingBinaryDirect<int64_t, OverflowFn64>(
+                in, fr, bb, out, lhsVal, rhsVal, trapMessage);
+            break;
+    }
+}
+
+/// @brief Compute functor for overflow-checking addition (CRITICAL-4 optimization).
+/// @details Stateless functor that can be passed without creating a closure.
+struct OverflowAddOp
+{
+    const il::core::Instr &in;
+    Frame &fr;
+    const il::core::BasicBlock *bb;
+    const char *trapMessage;
+
+    void operator()(Slot &out, const Slot &lhsVal, const Slot &rhsVal) const
+    {
+        dispatchOverflowingBinaryDirect<&overflowAdd<int16_t>,
+                                        &overflowAdd<int32_t>,
+                                        &overflowAdd<int64_t>>(
+            in, fr, bb, out, lhsVal, rhsVal, trapMessage);
+    }
+};
+
+/// @brief Compute functor for overflow-checking subtraction (CRITICAL-4 optimization).
+struct OverflowSubOp
+{
+    const il::core::Instr &in;
+    Frame &fr;
+    const il::core::BasicBlock *bb;
+    const char *trapMessage;
+
+    void operator()(Slot &out, const Slot &lhsVal, const Slot &rhsVal) const
+    {
+        dispatchOverflowingBinaryDirect<&overflowSub<int16_t>,
+                                        &overflowSub<int32_t>,
+                                        &overflowSub<int64_t>>(
+            in, fr, bb, out, lhsVal, rhsVal, trapMessage);
+    }
+};
+
+/// @brief Compute functor for overflow-checking multiplication (CRITICAL-4 optimization).
+struct OverflowMulOp
+{
+    const il::core::Instr &in;
+    Frame &fr;
+    const il::core::BasicBlock *bb;
+    const char *trapMessage;
+
+    void operator()(Slot &out, const Slot &lhsVal, const Slot &rhsVal) const
+    {
+        dispatchOverflowingBinaryDirect<&overflowMul<int16_t>,
+                                        &overflowMul<int32_t>,
+                                        &overflowMul<int64_t>>(
+            in, fr, bb, out, lhsVal, rhsVal, trapMessage);
+    }
+};
+
+/// @brief Stateless bitwise AND functor for use with applyBinary.
+struct BitwiseAndOp
+{
+    void operator()(Slot &out, const Slot &lhs, const Slot &rhs) const
+    {
+        out.i64 = lhs.i64 & rhs.i64;
+    }
+};
+
+/// @brief Stateless bitwise OR functor for use with applyBinary.
+struct BitwiseOrOp
+{
+    void operator()(Slot &out, const Slot &lhs, const Slot &rhs) const
+    {
+        out.i64 = lhs.i64 | rhs.i64;
+    }
+};
+
+/// @brief Stateless bitwise XOR functor for use with applyBinary.
+struct BitwiseXorOp
+{
+    void operator()(Slot &out, const Slot &lhs, const Slot &rhs) const
+    {
+        out.i64 = lhs.i64 ^ rhs.i64;
+    }
+};
+
+/// @brief Stateless left-shift functor for use with applyBinary.
+struct ShiftLeftOp
+{
+    void operator()(Slot &out, const Slot &lhs, const Slot &rhs) const
+    {
+        const uint64_t shift = static_cast<uint64_t>(rhs.i64) & 63U;
+        const uint64_t value = static_cast<uint64_t>(lhs.i64);
+        out.i64 = static_cast<int64_t>(value << shift);
+    }
+};
+
+/// @brief Stateless logical right-shift functor for use with applyBinary.
+struct LogicalShiftRightOp
+{
+    void operator()(Slot &out, const Slot &lhs, const Slot &rhs) const
+    {
+        const uint64_t shift = static_cast<uint64_t>(rhs.i64) & 63U;
+        const uint64_t value = static_cast<uint64_t>(lhs.i64);
+        out.i64 = static_cast<int64_t>(value >> shift);
+    }
+};
+
+/// @brief Stateless arithmetic right-shift functor for use with applyBinary.
+struct ArithmeticShiftRightOp
+{
+    void operator()(Slot &out, const Slot &lhs, const Slot &rhs) const
+    {
+        const uint64_t shift = static_cast<uint64_t>(rhs.i64) & 63U;
+        if (shift == 0)
+        {
+            out.i64 = lhs.i64;
+            return;
+        }
+        const uint64_t value = static_cast<uint64_t>(lhs.i64);
+        const bool isNegative = (value & (uint64_t{1} << 63U)) != 0;
+        uint64_t shifted = value >> shift;
+        if (isNegative)
+        {
+            const uint64_t mask = (~uint64_t{0}) << (64U - shift);
+            shifted |= mask;
+        }
+        out.i64 = static_cast<int64_t>(shifted);
+    }
+};
+
+/// @brief Stateless unsigned division compute functor.
+struct UnsignedDivOp
+{
+    void operator()(uint64_t dividend, uint64_t divisor, uint64_t &result) const
+    {
+        result = dividend / divisor;
+    }
+};
+
+/// @brief Stateless unsigned remainder compute functor.
+struct UnsignedRemOp
+{
+    void operator()(uint64_t dividend, uint64_t divisor, uint64_t &result) const
+    {
+        result = dividend % divisor;
+    }
+};
+
+/// @brief Apply unsigned division or remainder with zero-check.
+/// @tparam ComputeOp Stateless functor type for the operation.
+/// @param in Instruction being executed.
+/// @param fr Active frame.
+/// @param bb Current basic block.
+/// @param out Output slot.
+/// @param lhsVal Left operand slot.
+/// @param rhsVal Right operand slot.
+/// @param trapMessage Message for divide-by-zero trap.
+template <typename ComputeOp>
+inline void applyUnsignedDivOrRemDirect(const il::core::Instr &in,
+                                        Frame &fr,
+                                        const il::core::BasicBlock *bb,
+                                        Slot &out,
+                                        const Slot &lhsVal,
+                                        const Slot &rhsVal,
+                                        const char *trapMessage)
+{
+    const auto divisor = static_cast<uint64_t>(rhsVal.i64);
+    if (divisor == 0)
+    {
+        emitTrap(TrapKind::DivideByZero, trapMessage, in, fr, bb);
+        return;
+    }
+    const auto dividend = static_cast<uint64_t>(lhsVal.i64);
+    uint64_t result{};
+    ComputeOp{}(dividend, divisor, result);
+    out.i64 = static_cast<int64_t>(result);
+}
+
+/// @brief Compute functor for unsigned division with zero-check (CRITICAL-4 optimization).
+struct UnsignedDivWithCheck
+{
+    const il::core::Instr &in;
+    Frame &fr;
+    const il::core::BasicBlock *bb;
+    const char *trapMessage;
+
+    void operator()(Slot &out, const Slot &lhsVal, const Slot &rhsVal) const
+    {
+        applyUnsignedDivOrRemDirect<UnsignedDivOp>(in, fr, bb, out, lhsVal, rhsVal, trapMessage);
+    }
+};
+
+/// @brief Compute functor for unsigned remainder with zero-check (CRITICAL-4 optimization).
+struct UnsignedRemWithCheck
+{
+    const il::core::Instr &in;
+    Frame &fr;
+    const il::core::BasicBlock *bb;
+    const char *trapMessage;
+
+    void operator()(Slot &out, const Slot &lhsVal, const Slot &rhsVal) const
+    {
+        applyUnsignedDivOrRemDirect<UnsignedRemOp>(in, fr, bb, out, lhsVal, rhsVal, trapMessage);
+    }
+};
+
+/// @brief Compute functor for signed division with type dispatch (CRITICAL-4 optimization).
+struct SignedDivWithDispatch
+{
+    const il::core::Instr &in;
+    Frame &fr;
+    const il::core::BasicBlock *bb;
+
+    void operator()(Slot &out, const Slot &lhsVal, const Slot &rhsVal) const
+    {
+        dispatchCheckedSignedBinary<&applySignedDiv<int16_t>,
+                                    &applySignedDiv<int32_t>,
+                                    &applySignedDiv<int64_t>>(in, fr, bb, out, lhsVal, rhsVal);
+    }
+};
+
+/// @brief Compute functor for signed remainder with type dispatch (CRITICAL-4 optimization).
+struct SignedRemWithDispatch
+{
+    const il::core::Instr &in;
+    Frame &fr;
+    const il::core::BasicBlock *bb;
+
+    void operator()(Slot &out, const Slot &lhsVal, const Slot &rhsVal) const
+    {
+        dispatchCheckedSignedBinary<&applySignedRem<int16_t>,
+                                    &applySignedRem<int32_t>,
+                                    &applySignedRem<int64_t>>(in, fr, bb, out, lhsVal, rhsVal);
+    }
+};
+
+/// @brief Compute functor for checked signed division (CRITICAL-4 optimization).
+struct CheckedSignedDivWithDispatch
+{
+    const il::core::Instr &in;
+    Frame &fr;
+    const il::core::BasicBlock *bb;
+
+    void operator()(Slot &out, const Slot &lhsVal, const Slot &rhsVal) const
+    {
+        dispatchCheckedSignedBinary<&applyCheckedDiv<int16_t>,
+                                    &applyCheckedDiv<int32_t>,
+                                    &applyCheckedDiv<int64_t>>(in, fr, bb, out, lhsVal, rhsVal);
+    }
+};
+
+/// @brief Compute functor for checked signed remainder (CRITICAL-4 optimization).
+struct CheckedSignedRemWithDispatch
+{
+    const il::core::Instr &in;
+    Frame &fr;
+    const il::core::BasicBlock *bb;
+
+    void operator()(Slot &out, const Slot &lhsVal, const Slot &rhsVal) const
+    {
+        dispatchCheckedSignedBinary<&applyCheckedRem<int16_t>,
+                                    &applyCheckedRem<int32_t>,
+                                    &applyCheckedRem<int64_t>>(in, fr, bb, out, lhsVal, rhsVal);
+    }
+};
+
 } // namespace il::vm::detail::integer

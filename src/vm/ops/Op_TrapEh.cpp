@@ -27,7 +27,6 @@
 #include "vm/err_bridge.hpp"
 
 #include <cassert>
-#include <sstream>
 #include <string>
 
 namespace il::vm::detail::control
@@ -281,9 +280,12 @@ VM::ExecResult handleResumeLabel(VM &vm,
     const auto &label = in.labels[0];
     if (blocks.find(label) == blocks.end())
     {
-        std::ostringstream os;
-        os << "resume.label: unknown destination label '" << label << "'";
-        trapInvalidResume(fr, in, bb, os.str());
+        std::string msg;
+        msg.reserve(48 + label.size());
+        msg.append("resume.label: unknown destination label '");
+        msg.append(label);
+        msg.push_back('\'');
+        trapInvalidResume(fr, in, bb, msg);
         return {};
     }
     fr.resumeState.valid = false;

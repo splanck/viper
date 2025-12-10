@@ -15,6 +15,7 @@
 
 #pragma once
 
+#include "il/core/Function.hpp"
 #include "vm/VM.hpp"
 
 #include <unordered_map>
@@ -106,6 +107,54 @@ struct VMAccess
     static inline void refreshDebugFlags(VM &vm)
     {
         vm.refreshDebugFlags();
+    }
+
+    /// @brief Access the precomputed register count cache.
+    /// @details Used by TCO to reuse cached maxSsaId values instead of rescanning.
+    static inline std::unordered_map<const il::core::Function *, size_t> &regCountCache(VM &vm)
+    {
+        return vm.regCountCache_;
+    }
+
+    /// @brief Compute or retrieve the cached maximum SSA ID for a function.
+    ///
+    /// @details The maximum SSA ID determines the required register file size.
+    ///          This helper checks the VM's cache first, and if not found,
+    ///          scans the function's parameters and instruction results to
+    ///          find the highest SSA value ID used, then caches the result.
+    ///
+    /// @invariant The returned value is the largest SSA value ID used by the
+    ///            function. Register files sized to (maxSsaId + 1) will
+    ///            accommodate all values without resizing.
+    ///
+    /// @param vm VM owning the register count cache.
+    /// @param fn Function to compute the maximum SSA ID for.
+    /// @return The maximum SSA value ID used by the function.
+    static inline size_t computeMaxSsaId(VM &vm, const il::core::Function &fn)
+    {
+        auto &cache = vm.regCountCache_;
+        if (auto it = cache.find(&fn); it != cache.end())
+            return it->second;
+
+        // Use valueNames size as initial estimate if available (common case)
+        size_t maxSsaId = fn.valueNames.empty() ? 0 : fn.valueNames.size() - 1;
+
+        // Scan function parameters
+        for (const auto &p : fn.params)
+            maxSsaId = std::max(maxSsaId, static_cast<size_t>(p.id));
+
+        // Scan block parameters and instruction results
+        for (const auto &block : fn.blocks)
+        {
+            for (const auto &p : block.params)
+                maxSsaId = std::max(maxSsaId, static_cast<size_t>(p.id));
+            for (const auto &instr : block.instructions)
+                if (instr.result)
+                    maxSsaId = std::max(maxSsaId, static_cast<size_t>(*instr.result));
+        }
+
+        cache.emplace(&fn, maxSsaId);
+        return maxSsaId;
     }
 };
 } // namespace il::vm::detail

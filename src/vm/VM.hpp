@@ -372,6 +372,7 @@ class VM
         {
             uint32_t interruptEveryN = 0;
             std::function<bool(VM &)> pollCallback;
+            bool enableOpcodeCounts = true; ///< Runtime toggle for opcode counting
         } config; ///< Per-run polling configuration
 
         uint64_t pollTick = 0; ///< Instruction counter for polling cadence
@@ -402,6 +403,39 @@ class VM
         ///          BasicBlock* targets in the same order as @c in.labels.
         std::unordered_map<const il::core::Instr *, std::vector<const il::core::BasicBlock *>>
             branchTargetCache;
+    };
+
+    /// @brief RAII helper that pushes/pops the execution stack around function calls.
+    /// @details Manages the execStack to track active execution states for trap
+    ///          unwinding, debugging, and re-entrancy detection. The stack is
+    ///          pre-allocated in the VM constructor to avoid heap allocation in
+    ///          common cases (HIGH-5 optimization).
+    /// @invariant Constructor pushes state; destructor pops if state is still top.
+    struct ExecStackGuard
+    {
+        VM &vm;
+        ExecState *state;
+
+        /// @brief Push the execution state onto the VM stack.
+        ExecStackGuard(VM &vmRef, ExecState &stRef) noexcept : vm(vmRef), state(&stRef)
+        {
+            vm.execStack.push_back(state);
+        }
+
+        /// @brief Pop the execution state if it is still the active frame.
+        /// @note Uses conditional pop to handle cases where the stack may have
+        ///       been modified by exception handling during unwinding.
+        ~ExecStackGuard() noexcept
+        {
+            if (!vm.execStack.empty() && vm.execStack.back() == state)
+                vm.execStack.pop_back();
+        }
+
+        // Non-copyable, non-movable
+        ExecStackGuard(const ExecStackGuard &) = delete;
+        ExecStackGuard &operator=(const ExecStackGuard &) = delete;
+        ExecStackGuard(ExecStackGuard &&) = delete;
+        ExecStackGuard &operator=(ExecStackGuard &&) = delete;
     };
 
     // Public map aliases for handler-facing utilities

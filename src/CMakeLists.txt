@@ -277,6 +277,7 @@ add_executable(ilc
         tools/ilc/cmd_front_pascal.cpp
         tools/ilc/cmd_il_opt.cpp
         tools/ilc/cmd_codegen_x64.cpp
+        tools/ilc/cmd_bench.cpp
         tools/ilc/cli.cpp
         tools/ilc/break_spec.cpp)
 set_target_properties(ilc PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/src/tools/ilc)

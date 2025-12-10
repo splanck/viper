@@ -135,6 +135,16 @@ int cmdRunIL(int argc, char **argv);
 /// `stdout`.
 int cmdILOpt(int argc, char **argv);
 
+/// @brief Handle `ilc bench` subcommand.
+///
+/// Invoked when the command line begins with `ilc bench`. Benchmarks IL programs
+/// using different VM dispatch strategies and reports performance metrics.
+///
+/// @param argc Number of arguments following `bench`.
+/// @param argv Array of argument strings.
+/// @return `0` on success, non-zero on failure.
+int cmdBench(int argc, char **argv);
+
 /// @brief Print usage information for ilc.
 ///
 /// Called when no or invalid arguments are supplied to `ilc` or when a handler

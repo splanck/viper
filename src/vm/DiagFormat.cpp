@@ -15,34 +15,50 @@
 
 #include "vm/DiagFormat.hpp"
 
-#include <sstream>
-
 namespace il::vm::diag
 {
 
 std::string formatUnsupportedKind(std::string_view operation, il::core::Type::Kind kind)
 {
-    std::ostringstream os;
-    os << "runtime bridge does not support " << operation << " kind '"
-       << il::core::kindToString(kind) << "'";
-    return os.str();
+    // Pre-allocate buffer to avoid reallocation
+    // Format: "runtime bridge does not support <op> kind '<kind>'"
+    const auto kindStr = il::core::kindToString(kind);
+    std::string result;
+    result.reserve(48 + operation.size() + kindStr.size());
+    result.append("runtime bridge does not support ");
+    result.append(operation);
+    result.append(" kind '");
+    result.append(kindStr);
+    result.push_back('\'');
+    return result;
 }
 
 std::string formatUnknownRuntimeHelper(std::string_view name)
 {
-    std::ostringstream os;
-    os << "attempted to call unknown runtime helper '" << name << '\'';
-    return os.str();
+    // Format: "attempted to call unknown runtime helper '<name>'"
+    std::string result;
+    result.reserve(48 + name.size());
+    result.append("attempted to call unknown runtime helper '");
+    result.append(name);
+    result.push_back('\'');
+    return result;
 }
 
 std::string formatArgumentCountMismatch(std::string_view functionName,
                                         std::size_t expected,
                                         std::size_t received)
 {
-    std::ostringstream os;
-    os << "argument count mismatch for function " << functionName << ": expected " << expected
-       << " argument" << (expected == 1 ? "" : "s") << ", received " << received;
-    return os.str();
+    // Format: "argument count mismatch for function <name>: expected N argument(s), received M"
+    std::string result;
+    result.reserve(72 + functionName.size());
+    result.append("argument count mismatch for function ");
+    result.append(functionName);
+    result.append(": expected ");
+    result.append(std::to_string(expected));
+    result.append(expected == 1 ? " argument" : " arguments");
+    result.append(", received ");
+    result.append(std::to_string(received));
+    return result;
 }
 
 std::string formatBranchArgMismatch(std::string_view targetLabel,
@@ -50,12 +66,23 @@ std::string formatBranchArgMismatch(std::string_view targetLabel,
                                     std::size_t expected,
                                     std::size_t provided)
 {
-    std::ostringstream os;
-    os << "branch argument count mismatch targeting '" << targetLabel << '\'';
+    // Format: "branch argument count mismatch targeting '<target>' [from '<source>']: expected N, got M"
+    std::string result;
+    result.reserve(80 + targetLabel.size() + sourceLabel.size());
+    result.append("branch argument count mismatch targeting '");
+    result.append(targetLabel);
+    result.push_back('\'');
     if (!sourceLabel.empty())
-        os << " from '" << sourceLabel << '\'';
-    os << ": expected " << expected << ", got " << provided;
-    return os.str();
+    {
+        result.append(" from '");
+        result.append(sourceLabel);
+        result.push_back('\'');
+    }
+    result.append(": expected ");
+    result.append(std::to_string(expected));
+    result.append(", got ");
+    result.append(std::to_string(provided));
+    return result;
 }
 
 } // namespace il::vm::diag

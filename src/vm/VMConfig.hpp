@@ -36,16 +36,22 @@
     } while (0)
 #endif
 
+// NOTE: VIPER_VM_DISPATCH_AFTER is optimized for the common case where polling
+// is disabled (interruptEveryN == 0). The pollTick increment only occurs when
+// polling is active, avoiding wasted cycles on every instruction dispatch.
 #ifndef VIPER_VM_DISPATCH_AFTER
 #define VIPER_VM_DISPATCH_AFTER(ST, OPCODE)                                                        \
     do                                                                                             \
     {                                                                                              \
-        auto &cfg = (ST).config;                                                                   \
-        if (cfg.interruptEveryN && ((++(ST).pollTick % cfg.interruptEveryN) == 0))                 \
+        const auto &cfg = (ST).config;                                                             \
+        if (cfg.interruptEveryN) [[unlikely]]                                                      \
         {                                                                                          \
-            if (cfg.pollCallback && !(cfg.pollCallback(*((ST).vm()))))                             \
+            if ((++(ST).pollTick % cfg.interruptEveryN) == 0)                                      \
             {                                                                                      \
-                (ST).requestPause();                                                               \
+                if (cfg.pollCallback && !(cfg.pollCallback(*((ST).vm()))))                         \
+                {                                                                                  \
+                    (ST).requestPause();                                                           \
+                }                                                                                  \
             }                                                                                      \
         }                                                                                          \
     } while (0)

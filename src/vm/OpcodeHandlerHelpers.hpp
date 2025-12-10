@@ -22,8 +22,8 @@
 ///          such as marking unused parameters and common trap message formatting.
 
 #include <cstddef>
-#include <sstream>
 #include <string>
+#include <string_view>
 
 namespace il::vm::detail
 {

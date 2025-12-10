@@ -59,7 +59,6 @@
 
 #include <cassert>
 #include <exception>
-#include <sstream>
 #include <string>
 
 namespace il::vm
@@ -232,16 +231,27 @@ Slot VMContext::eval(Frame &fr, const il::core::Value &value) const
         case il::core::Value::Kind::ConstStr:
         {
             Slot s{};
-            auto [it, inserted] = vmInstance->inlineLiteralCache.try_emplace(value.str);
+            // Fast path: lookup in pre-populated cache (CRITICAL-3 optimization).
+            // The cache is populated during VM construction, so this find() should
+            // succeed for all string literals in the module. The try_emplace fallback
+            // handles edge cases like dynamically generated strings.
+            auto it = vmInstance->inlineLiteralCache.find(value.str);
+            if (it != vmInstance->inlineLiteralCache.end())
+            {
+                s.str = it->second.get();
+                return s;
+            }
+            // Cold path: string not in cache, insert it
+            auto [insertIt, inserted] = vmInstance->inlineLiteralCache.try_emplace(value.str);
             if (inserted)
             {
                 if (value.str.find('\0') == std::string::npos)
-                    it->second = ViperStringHandle(rt_const_cstr(value.str.c_str()));
+                    insertIt->second = ViperStringHandle(rt_const_cstr(value.str.c_str()));
                 else
-                    it->second =
+                    insertIt->second =
                         ViperStringHandle(rt_string_from_bytes(value.str.data(), value.str.size()));
             }
-            s.str = it->second.get();
+            s.str = insertIt->second.get();
             return s;
         }
         case il::core::Value::Kind::GlobalAddr:
@@ -492,15 +502,17 @@ Slot VM::eval(Frame &fr, const il::core::Value &value)
             detail::formatRegisterRangeError(value.id, fr.regs.size(), fnName, blockLabel);
         if (loc.hasLine())
         {
-            std::ostringstream os;
-            os << message << ", at line " << loc.line;
+            message.append(", at line ");
+            message.append(std::to_string(loc.line));
             if (loc.hasColumn())
-                os << ':' << loc.column;
-            message = os.str();
+            {
+                message.push_back(':');
+                message.append(std::to_string(loc.column));
+            }
         }
         else
         {
-            message += ", at unknown location";
+            message.append(", at unknown location");
         }
         RuntimeBridge::trap(TrapKind::InvalidOperation, message, loc, fnName, blockLabel);
         Slot s{};
@@ -530,16 +542,27 @@ Slot VM::eval(Frame &fr, const il::core::Value &value)
         case il::core::Value::Kind::ConstStr:
         {
             Slot s{};
-            auto [it, inserted] = inlineLiteralCache.try_emplace(value.str);
+            // Fast path: lookup in pre-populated cache (CRITICAL-3 optimization).
+            // The cache is populated during VM construction, so this find() should
+            // succeed for all string literals in the module. The try_emplace fallback
+            // handles edge cases like dynamically generated strings.
+            auto it = inlineLiteralCache.find(value.str);
+            if (it != inlineLiteralCache.end())
+            {
+                s.str = it->second.get();
+                return s;
+            }
+            // Cold path: string not in cache, insert it
+            auto [insertIt, inserted] = inlineLiteralCache.try_emplace(value.str);
             if (inserted)
             {
                 if (value.str.find('\0') == std::string::npos)
-                    it->second = ViperStringHandle(rt_const_cstr(value.str.c_str()));
+                    insertIt->second = ViperStringHandle(rt_const_cstr(value.str.c_str()));
                 else
-                    it->second =
+                    insertIt->second =
                         ViperStringHandle(rt_string_from_bytes(value.str.data(), value.str.size()));
             }
-            s.str = it->second.get();
+            s.str = insertIt->second.get();
             return s;
         }
         case il::core::Value::Kind::GlobalAddr:
@@ -598,22 +621,8 @@ std::optional<Slot> VM::stepOnce(ExecState &state)
     ActiveVMGuard active(this);
     VMContext ctx(*this);
 
-    struct ExecStackGuard
-    {
-        VM &vm;
-        VM::ExecState *st;
-
-        ExecStackGuard(VM &vmRef, VM::ExecState &stateRef) : vm(vmRef), st(&stateRef)
-        {
-            vm.execStack.push_back(st);
-        }
-
-        ~ExecStackGuard()
-        {
-            if (!vm.execStack.empty() && vm.execStack.back() == st)
-                vm.execStack.pop_back();
-        }
-    } guard(*this, state);
+    // Use the shared ExecStackGuard from VM.hpp (pre-allocated stack avoids heap allocs)
+    ExecStackGuard guard(*this, state);
 
     try
     {

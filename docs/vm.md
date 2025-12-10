@@ -1,7 +1,7 @@
 ---
 status: active
 audience: developers
-last-updated: 2025-11-13
+last-updated: 2025-12-09
 ---
 
 # Viper VM — Architecture & Implementation Guide
@@ -305,6 +305,138 @@ for (;;) {
 
 **Pros:** Fastest dispatch, direct jump to handlers
 **Cons:** Compiler-specific, large code size
+
+### Selecting a Dispatch Strategy
+
+The dispatch strategy is selected at VM construction via environment variable:
+
+```bash
+# Use function table dispatch (portable, moderate performance)
+VIPER_DISPATCH=table ./ilc -run program.il
+
+# Use switch statement dispatch (good cache locality)
+VIPER_DISPATCH=switch ./ilc -run program.il
+
+# Use threaded dispatch (fastest, requires GCC/Clang)
+VIPER_DISPATCH=threaded ./ilc -run program.il
+```
+
+**Default:** Threaded if supported (`VIPER_THREADING_SUPPORTED=1`), otherwise Switch.
+
+### Shared Dispatch Loop
+
+All strategies share a common dispatch loop (`runSharedDispatchLoop`) that handles:
+- State reset per iteration (`beginDispatch`)
+- Instruction selection (`selectInstruction`)
+- Debug hooks (`VIPER_VM_DISPATCH_BEFORE/AFTER`)
+- Trap handling for threaded dispatch
+- Finalization and exit conditions (`finalizeDispatch`)
+
+The strategy only implements `executeInstruction()` to map opcodes to handlers.
+
+### Dispatch Loop Performance Optimizations
+
+The shared dispatch loop includes several optimizations:
+
+1. **Cached strategy properties**: `requiresTrapCatch()` and `handlesFinalizationInternally()`
+   are cached once at loop entry to avoid virtual call overhead per instruction.
+
+2. **Branch hints**: `[[likely]]` and `[[unlikely]]` attributes guide code layout for hot paths.
+
+3. **Zero-cost hooks**: `VIPER_VM_DISPATCH_BEFORE` and `VIPER_VM_DISPATCH_AFTER` macros
+   compile to nothing when disabled. When opcode counting is enabled (`VIPER_VM_OPCOUNTS=1`),
+   the counter increment is gated by a runtime flag (`config.enableOpcodeCounts`).
+
+4. **Efficient polling**: `VIPER_VM_DISPATCH_AFTER` only increments the poll counter when
+   polling is active (`interruptEveryN > 0`), avoiding wasted cycles in the common case.
+
+### Instrumentation Hooks
+
+The VM provides compile-time configurable hooks for profiling and embedding:
+
+```cpp
+// In VMConfig.hpp - define before including VM headers
+#define VIPER_VM_DISPATCH_BEFORE(ST, OPCODE) \
+    do { myProfiler.onInstruction(ST, OPCODE); } while(0)
+
+#define VIPER_VM_DISPATCH_AFTER(ST, OPCODE) \
+    do { myProfiler.afterInstruction(ST, OPCODE); } while(0)
+```
+
+**Predefined behavior:**
+- `VIPER_VM_DISPATCH_BEFORE`: Increments per-opcode counters when `VIPER_VM_OPCOUNTS=1`
+- `VIPER_VM_DISPATCH_AFTER`: Calls poll callback every N instructions if configured
+
+### Per-Opcode Counters
+
+Enable compile-time opcode counting:
+
+```cpp
+#define VIPER_VM_OPCOUNTS 1  // Default: enabled
+```
+
+Access counters at runtime:
+```cpp
+vm.resetOpcodeCounts();
+vm.run();
+auto counts = vm.getOpcodeCounts();  // Returns array<uint64_t, kNumOpcodes>
+for (auto [opcode, count] : vm.getNonZeroOpcodeCounts()) {
+    std::cout << opcodeMnemonic(opcode) << ": " << count << "\n";
+}
+```
+
+Disable via environment: `VIPER_ENABLE_OPCOUNTS=0`
+
+### Benchmark Harness
+
+The `ilc bench` command provides a built-in benchmark harness for comparing dispatch strategies:
+
+```sh
+# Run all three strategies with 3 iterations each
+ilc bench program.il
+
+# Run a specific strategy with 5 iterations
+ilc bench program.il -n 5 --table
+
+# Run multiple files with JSON output
+ilc bench file1.il file2.il --json
+
+# Limit execution with max-steps
+ilc bench program.il --max-steps 1000000
+```
+
+**Output format (text):**
+```
+BENCH <file> <strategy> instr=<N> time_ms=<T> insns_per_sec=<R>
+```
+
+**Output format (JSON):**
+```json
+[
+  {
+    "file": "program.il",
+    "strategy": "table",
+    "success": true,
+    "instructions": 7000004,
+    "time_ms": 3618.33,
+    "insns_per_sec": 1934596,
+    "return_value": 0
+  }
+]
+```
+
+**Strategy selection flags:**
+- `--table`: Run only FnTable dispatch
+- `--switch`: Run only Switch dispatch
+- `--threaded`: Run only Threaded dispatch
+- (default): Run all three strategies
+
+**Example benchmark IL programs** are available in `examples/il/benchmarks/`:
+- `arith_stress.il`: Heavy arithmetic workload
+- `branch_stress.il`: Branch-heavy control flow
+- `call_stress.il`: Function call overhead testing
+- `mixed_stress.il`: Combined workload
+- `string_stress.il`: String operations
 
 ---
 
@@ -668,15 +800,61 @@ auto top = vm.topOpcodes(10);  // Top 10 opcodes
 vm.resetOpcodeCounts();
 ```
 
+### Execution Context Optimization
+
+The VM execution context has been optimized to minimize overhead on the hot path:
+
+**ExecState-based dispatch:** The dispatch macros (`VIPER_VM_DISPATCH_BEFORE`, `VIPER_VM_DISPATCH_AFTER`) use `ExecState` directly instead of `VMContext`, avoiding an extra indirection per instruction:
+
+```cpp
+// Hot path uses ExecState directly
+VIPER_VM_DISPATCH_BEFORE(state, opcode);  // state is ExecState&
+
+// ExecState.config includes all per-instruction configuration
+struct PollConfig {
+    uint32_t interruptEveryN;
+    std::function<bool(VM&)> pollCallback;
+    bool enableOpcodeCounts;  // Direct access for opcode counting
+};
+```
+
+**VMContext for external APIs:** The `VMContext` wrapper is still used for external APIs (`stepOnce`, `fetchOpcode`, `handleTrapDispatch`) to provide a stable interface, but it's not required on the per-instruction hot path.
+
+### Execution Stack Pre-allocation
+
+The execution stack (`execStack`) tracks active `ExecState` pointers for trap unwinding and debugging:
+
+```cpp
+// Pre-allocated to kExecStackInitialCapacity (64) in VM constructor
+std::vector<ExecState*> execStack;
+
+// Unified RAII guard for stack management
+struct ExecStackGuard {
+    VM& vm;
+    ExecState* state;
+    ExecStackGuard(VM& vmRef, ExecState& stRef) noexcept;
+    ~ExecStackGuard() noexcept;
+};
+```
+
+**Optimizations:**
+- Pre-allocated capacity eliminates heap allocation for typical call depths
+- Unified `ExecStackGuard` in VM.hpp removes code duplication
+- `noexcept` specifiers enable compiler optimizations
+
 ### Inline String Literal Cache
 
 Caches runtime handles for string literals:
 
 ```cpp
-std::unordered_map<std::string, rt_string> inlineLiteralCache;
+std::unordered_map<std::string_view, ViperStringHandle, ...> inlineLiteralCache;
 ```
 
-Avoids repeated allocation for frequently used literals.
+**Optimizations:**
+- Pre-populated during VM construction by scanning all ConstStr operands in the module
+- Fast path uses `find()` for pre-populated strings (common case)
+- Fallback `try_emplace` only for edge cases (dynamically generated strings)
+- Eliminates repeated allocation and map insertion for frequently used literals
 
 ### Switch Cache
 

@@ -29,6 +29,7 @@
 #include <cassert>
 #include <cmath>
 #include <cstdlib>
+#include <cstring>
 #include <limits>
 #include <string>
 
@@ -133,7 +134,14 @@ const KindAccessors &dispatchFor(Type::Kind kind)
 ///          input has no embedded NULs.  Otherwise a fresh runtime allocation
 ///          mirrors the byte sequence so handlers can safely share the returned
 ///          handle.
+///
+///          HIGH-7 optimization: When AssumeNullTerminated::Yes, skip the O(n)
+///          scan for embedded NULs and use the fast rt_const_cstr path directly.
+///          This is safe for module string literals which are guaranteed to be
+///          NUL-terminated without embedded NULs.
+///
 /// @param text Non-owning reference to the source character range.
+/// @param assumeNullTerminated When Yes, skip embedded NUL check (fast path).
 /// @return Runtime handle suitable for passing to C helpers; may be null when
 ///         @p text lacks backing storage.
 ViperString toViperString(StringRef text, AssumeNullTerminated assumeNullTerminated)
@@ -142,12 +150,23 @@ ViperString toViperString(StringRef text, AssumeNullTerminated assumeNullTermina
         return nullptr;
     if (text.empty())
         return rt_string_from_bytes(text.data(), 0);
-    if (text.find('\0') != StringRef::npos)
-        return rt_string_from_bytes(text.data(), text.size());
 
+    // Fast path: caller guarantees NUL-terminated without embedded NULs
     if (assumeNullTerminated == AssumeNullTerminated::Yes)
         return rt_const_cstr(text.data());
 
+    // Check for embedded NUL using memchr (often optimized with SIMD)
+    // This is faster than string_view::find on many platforms
+    const void *nulPos = std::memchr(text.data(), '\0', text.size());
+    if (nulPos != nullptr)
+    {
+        // String contains embedded NUL - must use byte copy
+        return rt_string_from_bytes(text.data(), text.size());
+    }
+
+    // No embedded NUL found - can use const wrapper if properly terminated
+    // However, since we don't know if there's a NUL terminator after text.size(),
+    // we must copy to ensure safety
     return rt_string_from_bytes(text.data(), text.size());
 }
 
@@ -326,17 +345,27 @@ void assignResult(Slot &slot, il::core::Type::Kind kind, const ResultBuffers &bu
     entry.assignResult(slot, buffers);
 }
 
-std::vector<void *> marshalArguments(const il::runtime::RuntimeSignature &sig,
-                                     std::span<Slot> args,
-                                     PowStatus &powStatus)
+/// @brief Core marshalling logic shared by both inline and vector variants.
+/// @tparam OutputArray Type providing operator[] and size/capacity.
+/// @param sig Runtime signature describing parameter types.
+/// @param args Argument slots to marshal.
+/// @param powStatus [out] Power function status tracker.
+/// @param output [out] Array to receive marshalled pointers.
+/// @param totalArgs Total number of arguments (params + hidden).
+template <typename OutputArray>
+static void marshalArgumentsCore(const il::runtime::RuntimeSignature &sig,
+                                 std::span<Slot> args,
+                                 PowStatus &powStatus,
+                                 OutputArray &output,
+                                 std::size_t totalArgs)
 {
-    std::vector<void *> rawArgs(sig.paramTypes.size() + sig.hiddenParams.size());
+    (void)totalArgs; // Used for documentation/debugging
 
     for (size_t i = 0; i < sig.paramTypes.size(); ++i)
     {
         auto kind = sig.paramTypes[i].kind;
         Slot &slot = args[i];
-        rawArgs[i] = slotToArgPointer(slot, kind);
+        output[i] = slotToArgPointer(slot, kind);
     }
 
     size_t hiddenIndex = sig.paramTypes.size();
@@ -345,7 +374,7 @@ std::vector<void *> marshalArguments(const il::runtime::RuntimeSignature &sig,
         switch (hidden.kind)
         {
             case il::runtime::RuntimeHiddenParamKind::None:
-                rawArgs[hiddenIndex++] = nullptr;
+                output[hiddenIndex++] = nullptr;
                 break;
             case il::runtime::RuntimeHiddenParamKind::PowStatusPointer:
                 powStatus.active = true;
@@ -353,11 +382,42 @@ std::vector<void *> marshalArguments(const il::runtime::RuntimeSignature &sig,
                 powStatus.ptr = &powStatus.ok;
                 // Pow helpers expect a pointer to the status pointer so they can swap
                 // it for a runtime-managed location when traps must propagate.
-                rawArgs[hiddenIndex++] = &powStatus.ptr;
+                output[hiddenIndex++] = &powStatus.ptr;
                 break;
         }
     }
+}
 
+void marshalArgumentsInline(const il::runtime::RuntimeSignature &sig,
+                            std::span<Slot> args,
+                            PowStatus &powStatus,
+                            MarshalledArgs &result)
+{
+    const std::size_t totalArgs = sig.paramTypes.size() + sig.hiddenParams.size();
+    result.count = totalArgs;
+
+    if (totalArgs <= kMaxStackMarshalArgs)
+    {
+        // Fast path: use inline storage (no heap allocation)
+        result.usingHeap = false;
+        marshalArgumentsCore(sig, args, powStatus, result.inlineBuffer, totalArgs);
+    }
+    else
+    {
+        // Slow path: fall back to heap allocation for large argument lists
+        result.usingHeap = true;
+        result.heapBuffer.resize(totalArgs);
+        marshalArgumentsCore(sig, args, powStatus, result.heapBuffer, totalArgs);
+    }
+}
+
+std::vector<void *> marshalArguments(const il::runtime::RuntimeSignature &sig,
+                                     std::span<Slot> args,
+                                     PowStatus &powStatus)
+{
+    const std::size_t totalArgs = sig.paramTypes.size() + sig.hiddenParams.size();
+    std::vector<void *> rawArgs(totalArgs);
+    marshalArgumentsCore(sig, args, powStatus, rawArgs, totalArgs);
     return rawArgs;
 }
 

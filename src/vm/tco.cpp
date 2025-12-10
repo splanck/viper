@@ -6,10 +6,20 @@
 //===----------------------------------------------------------------------===//
 //
 // File: vm/tco.cpp
-// Purpose: Implements functionality for this subsystem.
-// Key invariants: To be documented.
-// Ownership/Lifetime: To be documented.
-// Links: docs/architecture.md
+// Purpose: Tail-call optimisation (TCO) for reusing the current execution frame.
+//
+// Key invariants:
+//   - VIPER_VM_TAILCALL compile flag controls TCO availability.
+//   - Callee must have a valid entry block; null callee or empty blocks fail.
+//   - Argument arity must match entry block parameter count.
+//   - String ownership follows retain/release semantics.
+//   - EH stack and resume state are preserved across tail calls.
+//
+// Ownership/Lifetime:
+//   - Frame is reused in place; no new allocations except vector resizing.
+//   - Register count cache avoids repeated function scans.
+//
+// Links: docs/architecture.md, docs/vm.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -22,7 +32,7 @@
 #include "vm/OpHandlerAccess.hpp"
 #include "vm/VM.hpp"
 
-#include <cstdio>
+#include <cassert>
 #include <optional>
 #include <string>
 
@@ -63,35 +73,9 @@ bool tryTailCall(VM &vm, const il::core::Function *callee, std::span<const Slot>
     fr.func = callee;
     fr.regs.clear();
 
-    // Calculate maximum SSA value ID to properly pre-size register vector
-    size_t maxSsaId = 0;
-    for (const auto &p : callee->params)
-        maxSsaId = std::max(maxSsaId, static_cast<size_t>(p.id));
-    for (const auto &block : callee->blocks)
-    {
-        for (const auto &p : block.params)
-            maxSsaId = std::max(maxSsaId, static_cast<size_t>(p.id));
-        for (const auto &instr : block.instructions)
-        {
-            if (instr.result)
-                maxSsaId = std::max(maxSsaId, static_cast<size_t>(*instr.result));
-        }
-    }
-
+    // Use shared helper to compute/cache register file size
+    const size_t maxSsaId = detail::VMAccess::computeMaxSsaId(vm, *callee);
     const size_t regCount = maxSsaId + 1;
-    if (callee->name == "fact" || callee->name == "f" || callee->name == "g")
-    {
-        std::fprintf(
-            stderr,
-            "[TCO] callee=%s maxSsaId=%zu regCount=%zu valueNames=%zu params=%zu blocks=%zu\n",
-            callee->name.c_str(),
-            maxSsaId,
-            regCount,
-            callee->valueNames.size(),
-            callee->params.size(),
-            callee->blocks.size());
-        std::fflush(stderr);
-    }
     fr.regs.resize(regCount);
     fr.sp = 0;
     // Reset params to new size
@@ -113,6 +97,8 @@ bool tryTailCall(VM &vm, const il::core::Function *callee, std::span<const Slot>
     for (size_t i = 0; i < params.size(); ++i)
     {
         const auto id = params[i].id;
+        // Parameter ID must fit in the pre-sized register file
+        assert(id < fr.params.size() && "TCO: parameter ID exceeds params vector size");
         if (id >= fr.params.size())
             return false;
         const bool isStr = params[i].type.kind == il::core::Type::Kind::Str;

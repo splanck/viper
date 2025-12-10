@@ -55,11 +55,25 @@ namespace il::vm
 /// @details Contains the common execution logic: state setup, instruction
 ///          selection, debug hooks, trap handling, and exit conditions.
 ///          The strategy is only responsible for executing individual instructions.
+///
+/// Performance optimizations:
+///   - Strategy properties (requiresTrapCatch, handlesFinalizationInternally)
+///     are cached at loop entry to avoid virtual call overhead per iteration.
+///   - VIPER_VM_DISPATCH_BEFORE/AFTER hooks are designed for zero-cost when unused.
+///   - Branch hints ([[likely]]/[[unlikely]]) guide code layout for hot paths.
+///
+/// Note: The VMContext parameter is kept for handleTrapDispatch but could be
+/// removed if trap handling were refactored to use VM directly.
 bool runSharedDispatchLoop(VM &vm,
                            VMContext &context,
                            VM::ExecState &state,
                            DispatchStrategy &strategy)
 {
+    // Cache strategy properties once to avoid virtual call overhead per iteration.
+    // These properties are immutable for the lifetime of the strategy object.
+    const bool needsTrapCatch = strategy.requiresTrapCatch();
+    const bool internalFinalize = strategy.handlesFinalizationInternally();
+
     while (true)
     {
         // Step 1: Reset per-iteration state
@@ -67,19 +81,19 @@ bool runSharedDispatchLoop(VM &vm,
 
         // Step 2: Select next instruction
         const il::core::Instr *instr = nullptr;
-        if (!vm.selectInstruction(state, instr))
+        if (!vm.selectInstruction(state, instr)) [[unlikely]]
         {
             // Exit or pause requested
             return state.exitRequested;
         }
 
-        // Step 3: Debug hook before execution
-        VIPER_VM_DISPATCH_BEFORE(context, instr->op);
+        // Step 3: Debug hook before execution (uses ExecState directly for efficiency)
+        VIPER_VM_DISPATCH_BEFORE(state, instr->op);
 
         // Step 4: Execute instruction via strategy (with optional trap handling)
         VM::ExecResult exec{};
 
-        if (strategy.requiresTrapCatch())
+        if (needsTrapCatch) [[unlikely]]
         {
             // Threaded strategy needs special trap handling
             try
@@ -89,13 +103,15 @@ bool runSharedDispatchLoop(VM &vm,
             }
             catch (const VM::TrapDispatchSignal &signal)
             {
-                if (!context.handleTrapDispatch(signal, state))
+                // Inline trap dispatch handling for efficiency (avoids VMContext indirection)
+                if (signal.target != &state)
                     throw;
+                vm.clearCurrentContext();
                 // Trap handled, continue to next iteration
                 continue;
             }
         }
-        else if (strategy.handlesFinalizationInternally())
+        else if (internalFinalize) [[likely]]
         {
             // Switch strategy: inline handlers trace and finalize internally
             exec = strategy.executeInstruction(vm, state, *instr);
@@ -108,14 +124,14 @@ bool runSharedDispatchLoop(VM &vm,
         }
 
         // Step 5: Finalize dispatch and check for exit (skip if already done internally)
-        if (!strategy.handlesFinalizationInternally())
+        if (!internalFinalize)
         {
-            if (vm.finalizeDispatch(state, exec))
+            if (vm.finalizeDispatch(state, exec)) [[unlikely]]
             {
                 return true;
             }
         }
-        else if (state.exitRequested)
+        else if (state.exitRequested) [[unlikely]]
         {
             // Strategy handled finalization, just check if exit was requested
             return true;

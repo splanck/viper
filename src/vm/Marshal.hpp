@@ -20,6 +20,7 @@
 #include "viper/runtime/rt.h"
 #include "vm/Trap.hpp"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -149,9 +150,78 @@ double toF64(const il::core::Value &value);
 void *slotToArgPointer(Slot &slot, il::core::Type::Kind kind);
 void *resultBufferFor(il::core::Type::Kind kind, ResultBuffers &buffers);
 void assignResult(Slot &slot, il::core::Type::Kind kind, const ResultBuffers &buffers);
+
+//===----------------------------------------------------------------------===//
+// Stack-Optimized Argument Marshalling (HIGH-6)
+//===----------------------------------------------------------------------===//
+
+/// @brief Maximum arguments for stack-allocated marshalling buffer.
+/// @details Runtime calls with <= this many total arguments (params + hidden)
+///          use inline storage to avoid heap allocation. Most runtime calls
+///          have 0-4 arguments, so this covers the common case.
+inline constexpr std::size_t kMaxStackMarshalArgs = 12;
+
+/// @brief Stack-allocated buffer for marshalled argument pointers.
+/// @details Uses inline storage for small argument counts to avoid heap
+///          allocation on every runtime call. Falls back to heap for large
+///          argument lists (rare in practice).
+struct MarshalledArgs
+{
+    /// @brief Inline storage for common argument counts.
+    std::array<void *, kMaxStackMarshalArgs> inlineBuffer{};
+
+    /// @brief Overflow storage for large argument lists.
+    std::vector<void *> heapBuffer;
+
+    /// @brief Number of arguments marshalled.
+    std::size_t count{0};
+
+    /// @brief Whether using heap storage.
+    bool usingHeap{false};
+
+    /// @brief Get pointer to the argument array.
+    [[nodiscard]] void **data() noexcept
+    {
+        return usingHeap ? heapBuffer.data() : inlineBuffer.data();
+    }
+
+    /// @brief Get const pointer to the argument array.
+    [[nodiscard]] void *const *data() const noexcept
+    {
+        return usingHeap ? heapBuffer.data() : inlineBuffer.data();
+    }
+
+    /// @brief Check if empty.
+    [[nodiscard]] bool empty() const noexcept
+    {
+        return count == 0;
+    }
+
+    /// @brief Get number of arguments.
+    [[nodiscard]] std::size_t size() const noexcept
+    {
+        return count;
+    }
+};
+
+/// @brief Marshal arguments using stack-allocated buffer when possible.
+/// @details Avoids heap allocation for runtime calls with <= kMaxStackMarshalArgs
+///          arguments. This covers the vast majority of runtime calls.
+/// @param sig Runtime signature describing parameter types.
+/// @param args Argument slots to marshal.
+/// @param powStatus [out] Power function status tracker.
+/// @param result [out] Marshalled arguments (uses inline or heap storage).
+void marshalArgumentsInline(const il::runtime::RuntimeSignature &sig,
+                            std::span<Slot> args,
+                            PowStatus &powStatus,
+                            MarshalledArgs &result);
+
+/// @brief Legacy interface returning vector (for compatibility).
+/// @deprecated Prefer marshalArgumentsInline for new code.
 std::vector<void *> marshalArguments(const il::runtime::RuntimeSignature &sig,
                                      std::span<Slot> args,
                                      PowStatus &powStatus);
+
 PowTrapOutcome classifyPowTrap(const il::runtime::RuntimeDescriptor &desc,
                                const PowStatus &powStatus,
                                std::span<const Slot> args,

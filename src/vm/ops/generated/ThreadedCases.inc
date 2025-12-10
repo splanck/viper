@@ -31,7 +31,7 @@ LBL_Add:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -44,7 +44,7 @@ LBL_Sub:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -57,7 +57,7 @@ LBL_Mul:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -70,7 +70,7 @@ LBL_IAddOvf:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -83,7 +83,7 @@ LBL_ISubOvf:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -96,7 +96,7 @@ LBL_IMulOvf:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -109,7 +109,7 @@ LBL_SDiv:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -122,7 +122,7 @@ LBL_UDiv:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -135,7 +135,7 @@ LBL_SRem:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -148,7 +148,7 @@ LBL_URem:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -161,7 +161,7 @@ LBL_SDivChk0:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -174,7 +174,7 @@ LBL_UDivChk0:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -187,7 +187,7 @@ LBL_SRemChk0:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -200,7 +200,7 @@ LBL_URemChk0:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -213,7 +213,7 @@ LBL_IdxChk:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -226,7 +226,7 @@ LBL_And:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -239,7 +239,7 @@ LBL_Or:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -252,7 +252,7 @@ LBL_Xor:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -265,7 +265,7 @@ LBL_Shl:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -278,7 +278,7 @@ LBL_LShr:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -291,7 +291,7 @@ LBL_AShr:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -304,7 +304,7 @@ LBL_FAdd:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -317,7 +317,7 @@ LBL_FSub:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -330,7 +330,7 @@ LBL_FMul:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -343,7 +343,7 @@ LBL_FDiv:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -356,7 +356,7 @@ LBL_ICmpEq:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -369,7 +369,7 @@ LBL_ICmpNe:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -382,7 +382,7 @@ LBL_SCmpLT:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -395,7 +395,7 @@ LBL_SCmpLE:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -408,7 +408,7 @@ LBL_SCmpGT:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -421,7 +421,7 @@ LBL_SCmpGE:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -434,7 +434,7 @@ LBL_UCmpLT:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -447,7 +447,7 @@ LBL_UCmpLE:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -460,7 +460,7 @@ LBL_UCmpGT:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -473,7 +473,7 @@ LBL_UCmpGE:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -486,7 +486,7 @@ LBL_FCmpEQ:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -499,7 +499,7 @@ LBL_FCmpNE:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -512,7 +512,7 @@ LBL_FCmpLT:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -525,7 +525,7 @@ LBL_FCmpLE:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -538,7 +538,7 @@ LBL_FCmpGT:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -551,7 +551,7 @@ LBL_FCmpGE:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -564,7 +564,7 @@ LBL_Sitofp:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -577,7 +577,7 @@ LBL_Fptosi:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -590,7 +590,7 @@ LBL_CastFpToSiRteChk:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -603,7 +603,7 @@ LBL_CastFpToUiRteChk:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -616,7 +616,7 @@ LBL_CastSiNarrowChk:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -629,7 +629,7 @@ LBL_CastUiNarrowChk:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -642,7 +642,7 @@ LBL_CastSiToFp:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -655,7 +655,7 @@ LBL_CastUiToFp:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -668,7 +668,7 @@ LBL_Zext1:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -681,7 +681,7 @@ LBL_Trunc1:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -694,7 +694,7 @@ LBL_Alloca:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -707,7 +707,7 @@ LBL_GEP:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -720,7 +720,7 @@ LBL_Load:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -733,7 +733,7 @@ LBL_Store:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -746,7 +746,7 @@ LBL_AddrOf:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -759,7 +759,7 @@ LBL_ConstStr:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -774,7 +774,7 @@ LBL_GAddr:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -787,7 +787,7 @@ LBL_ConstNull:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -800,7 +800,7 @@ LBL_Call:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -813,7 +813,7 @@ LBL_CallIndirect:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -826,7 +826,7 @@ LBL_SwitchI32:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -839,7 +839,7 @@ LBL_Br:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -852,7 +852,7 @@ LBL_CBr:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -865,7 +865,7 @@ LBL_Ret:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -878,7 +878,7 @@ LBL_TrapKind:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -891,7 +891,7 @@ LBL_TrapFromErr:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -904,7 +904,7 @@ LBL_TrapErr:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -917,7 +917,7 @@ LBL_ErrGetKind:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -930,7 +930,7 @@ LBL_ErrGetCode:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -943,7 +943,7 @@ LBL_ErrGetIp:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -956,7 +956,7 @@ LBL_ErrGetLine:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -969,7 +969,7 @@ LBL_EhPush:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -982,7 +982,7 @@ LBL_EhPop:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -995,7 +995,7 @@ LBL_ResumeSame:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -1008,7 +1008,7 @@ LBL_ResumeNext:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -1021,7 +1021,7 @@ LBL_ResumeLabel:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -1034,7 +1034,7 @@ LBL_EhEntry:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
 
@@ -1047,6 +1047,6 @@ LBL_Trap:
     opcode = fetchNext();
     if (state.exitRequested)
         return true;
-    VIPER_VM_DISPATCH_BEFORE(context, opcode);
+    VIPER_VM_DISPATCH_BEFORE(state, opcode);
     DISPATCH_TO(opcode);
 }
