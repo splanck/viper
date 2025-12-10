@@ -18,6 +18,7 @@
 #include "il/transform/GVN.hpp"
 
 #include "il/transform/AnalysisManager.hpp"
+#include "il/transform/ValueKey.hpp"
 
 #include "il/analysis/BasicAA.hpp"
 #include "il/analysis/CFG.hpp"
@@ -47,175 +48,10 @@ namespace il::transform
 
 namespace
 {
-// Lightweight value hashing/equality to support expression keys and load keys.
-struct ValueHash
-{
-    size_t operator()(const Value &v) const noexcept
-    {
-        size_t h = static_cast<size_t>(v.kind) * 1469598103934665603ULL;
-        switch (v.kind)
-        {
-            case Value::Kind::Temp:
-                h ^= static_cast<size_t>(v.id) + 0x9e3779b97f4a7c15ULL;
-                break;
-            case Value::Kind::ConstInt:
-                h ^= static_cast<size_t>(v.i64) ^ (v.isBool ? 0xBEEF : 0);
-                break;
-            case Value::Kind::ConstFloat:
-            {
-                union
-                {
-                    double d;
-                    unsigned long long u;
-                } u{};
-
-                u.d = v.f64;
-                h ^= static_cast<size_t>(u.u);
-                break;
-            }
-            case Value::Kind::ConstStr:
-            case Value::Kind::GlobalAddr:
-                h ^= std::hash<std::string>{}(v.str);
-                break;
-            case Value::Kind::NullPtr:
-                h ^= 0xabcdefULL;
-                break;
-        }
-        return h;
-    }
-};
-
-struct ValueEq
-{
-    bool operator()(const Value &a, const Value &b) const noexcept
-    {
-        if (a.kind != b.kind)
-            return false;
-        switch (a.kind)
-        {
-            case Value::Kind::Temp:
-                return a.id == b.id;
-            case Value::Kind::ConstInt:
-                return a.i64 == b.i64 && a.isBool == b.isBool;
-            case Value::Kind::ConstFloat:
-                return a.f64 == b.f64;
-            case Value::Kind::ConstStr:
-            case Value::Kind::GlobalAddr:
-                return a.str == b.str;
-            case Value::Kind::NullPtr:
-                return true;
-        }
-        return false;
-    }
-};
-
-inline bool isCommutative(Opcode op)
-{
-    switch (op)
-    {
-        case Opcode::Add:
-        case Opcode::Mul:
-        case Opcode::And:
-        case Opcode::Or:
-        case Opcode::Xor:
-        case Opcode::ICmpEq:
-        case Opcode::ICmpNe:
-        case Opcode::FAdd:
-        case Opcode::FMul:
-        case Opcode::FCmpEQ:
-        case Opcode::FCmpNE:
-            return true;
-        default:
-            return false;
-    }
-}
-
-inline bool isPureCandidate(const Instr &I)
-{
-    const auto &meta = getOpcodeInfo(I.op);
-    if (meta.isTerminator || meta.hasSideEffects)
-        return false;
-    // Avoid memory operations; loads handled separately.
-    if (hasMemoryRead(I.op) || hasMemoryWrite(I.op))
-        return false;
-    if (!I.labels.empty() || !I.brArgs.empty())
-        return false;
-    if (!I.result)
-        return false;
-    return true;
-}
-
-struct ExprKey
-{
-    Opcode op;
-    Type::Kind type;
-    std::vector<Value> ops; // normalized
-
-    bool operator==(const ExprKey &o) const noexcept
-    {
-        if (op != o.op || type != o.type || ops.size() != o.ops.size())
-            return false;
-        ValueEq eq;
-        for (std::size_t i = 0; i < ops.size(); ++i)
-        {
-            if (!eq(ops[i], o.ops[i]))
-                return false;
-        }
-        return true;
-    }
-};
-
-struct ExprKeyHash
-{
-    size_t operator()(const ExprKey &k) const noexcept
-    {
-        size_t h = static_cast<size_t>(k.op) * 1099511628211ULL ^ static_cast<size_t>(k.type);
-        ValueHash hv;
-        for (const auto &v : k.ops)
-        {
-            h ^= hv(v) + 0x9e3779b97f4a7c15ULL + (h << 6) + (h >> 2);
-        }
-        return h;
-    }
-};
-
-inline std::vector<Value> normalizeOperands(const Instr &I)
-{
-    std::vector<Value> ops = I.operands;
-    if (isCommutative(I.op) && ops.size() >= 2)
-    {
-        auto rank = [](const Value &v) -> std::tuple<int, unsigned, std::string>
-        {
-            // Prefer temporaries first by ID, then constants by a stable key
-            switch (v.kind)
-            {
-                case Value::Kind::Temp:
-                    return {2, v.id, {}};
-                case Value::Kind::ConstInt:
-                    return {1, static_cast<unsigned>(v.i64 ^ (v.isBool ? 1u : 0u)), {}};
-                case Value::Kind::ConstFloat:
-                {
-                    union
-                    {
-                        double d;
-                        unsigned long long u;
-                    } u{};
-                    u.d = v.f64;
-                    return {1, static_cast<unsigned>(u.u), {}};
-                }
-                case Value::Kind::GlobalAddr:
-                case Value::Kind::ConstStr:
-                    return {0, 0u, v.str};
-                case Value::Kind::NullPtr:
-                    return {0, 0u, std::string("null")};
-            }
-            return {0, 0u, std::string{}};
-        };
-        if (!(rank(ops[0]) >= rank(ops[1])))
-            std::swap(ops[0], ops[1]);
-    }
-    return ops;
-}
+using il::transform::ValueEq;
+using il::transform::ValueHash;
+using il::transform::ValueKey;
+using il::transform::ValueKeyHash;
 
 struct LoadKey
 {
@@ -240,7 +76,7 @@ struct LoadKeyHash
 
 struct State
 {
-    std::unordered_map<ExprKey, Value, ExprKeyHash> exprs;
+    std::unordered_map<ValueKey, Value, ValueKeyHash> exprs;
     std::unordered_map<LoadKey, Value, LoadKeyHash> loads;
 };
 
@@ -336,10 +172,9 @@ void visitBlock(Function &F,
         }
 
         // Pure expression GVN
-        if (isPureCandidate(I))
+        if (auto key = makeValueKey(I))
         {
-            ExprKey k{I.op, I.type.kind, normalizeOperands(I)};
-            auto found = state.exprs.find(k);
+            auto found = state.exprs.find(*key);
             if (found != state.exprs.end())
             {
                 viper::il::replaceAllUses(F, *I.result, found->second);
@@ -347,7 +182,7 @@ void visitBlock(Function &F,
                 changed = true;
                 continue;
             }
-            state.exprs.emplace(std::move(k), Value::temp(*I.result));
+            state.exprs.emplace(std::move(*key), Value::temp(*I.result));
             ++idx;
             continue;
         }

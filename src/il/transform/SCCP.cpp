@@ -18,7 +18,7 @@
 // This file is organized into the following sections:
 //
 // 1. Lattice and Value Utilities
-//    - LatticeValue struct and value comparison helpers
+//    - ValueLattice struct and value comparison helpers
 //    - Constant extraction helpers (getConstInt, getConstFloat, etc.)
 //    - Overflow-checked arithmetic helpers
 //
@@ -64,10 +64,15 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
+#include <cstdlib>
 #include <cstdint>
+#include <functional>
+#include <iostream>
 #include <limits>
 #include <optional>
 #include <queue>
+#include <sstream>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -84,19 +89,82 @@ namespace
 // Section 1: Lattice and Value Utilities
 //===----------------------------------------------------------------------===//
 
+bool valuesEqual(const Value &lhs, const Value &rhs);
+
 /// @brief Three-point lattice for SCCP analysis.
-/// @details Unknown < Constant < Overdefined
-struct LatticeValue
+/// @details Unknown < Constant < Overdefined.  Trap-like instructions are
+///          modelled separately during folding so we never turn a known trap
+///          into an executable edge.
+struct ValueLattice
 {
     enum class Kind
     {
-        Unknown,    ///< Value not yet determined
-        Constant,   ///< Value is a known constant
-        Overdefined ///< Value varies or cannot be determined
+        Unknown,
+        Constant,
+        Overdefined
     };
 
+    static ValueLattice unknown() { return ValueLattice{Kind::Unknown, {}}; }
+    static ValueLattice fromConstant(Value v) { return ValueLattice{Kind::Constant, v}; }
+    static ValueLattice overdefined() { return ValueLattice{Kind::Overdefined, {}}; }
+
+    bool isUnknown() const { return kind == Kind::Unknown; }
+    bool isConstant() const { return kind == Kind::Constant; }
+    bool isOverdefined() const { return kind == Kind::Overdefined; }
+
+    /// @brief Merge a constant into the lattice state.
+    /// @return True if the state changed.
+    bool mergeConstant(const Value &v)
+    {
+        if (kind == Kind::Unknown)
+        {
+            kind = Kind::Constant;
+            value = v;
+            return true;
+        }
+        if (kind == Kind::Constant && !valuesEqual(value, v))
+        {
+            kind = Kind::Overdefined;
+            value = {};
+            return true;
+        }
+        return false;
+    }
+
+    /// @brief Raise the lattice element to Overdefined.
+    /// @return True if the state changed.
+    bool markOverdefined()
+    {
+        if (kind == Kind::Overdefined)
+            return false;
+        kind = Kind::Overdefined;
+        value = {};
+        return true;
+    }
+
     Kind kind = Kind::Unknown;
-    Value constant{};
+    Value value{};
+};
+
+/// @brief Folding outcome classification used during evaluation.
+struct FoldResult
+{
+    enum class Kind
+    {
+        Unknown,
+        Constant,
+        Trap
+    };
+
+    static FoldResult unknown() { return FoldResult{Kind::Unknown, {}}; }
+    static FoldResult trap() { return FoldResult{Kind::Trap, {}}; }
+    static FoldResult constant(Value v) { return FoldResult{Kind::Constant, v}; }
+
+    bool isTrap() const { return kind == Kind::Trap; }
+    bool isConstant() const { return kind == Kind::Constant; }
+
+    Kind kind;
+    Value value;
 };
 
 /// @brief Compare two IL values for equality.
@@ -119,6 +187,35 @@ bool valuesEqual(const Value &lhs, const Value &rhs)
             return true;
     }
     return false;
+}
+
+std::string describeValue(const Value &value)
+{
+    std::ostringstream oss;
+    switch (value.kind)
+    {
+        case Value::Kind::ConstInt:
+            oss << value.i64;
+            if (value.isBool)
+                oss << " (bool)";
+            break;
+        case Value::Kind::ConstFloat:
+            oss << value.f64;
+            break;
+        case Value::Kind::ConstStr:
+            oss << "str(" << value.str << ")";
+            break;
+        case Value::Kind::GlobalAddr:
+            oss << "addr(" << value.str << ")";
+            break;
+        case Value::Kind::NullPtr:
+            oss << "null";
+            break;
+        case Value::Kind::Temp:
+            oss << "%" << value.id;
+            break;
+    }
+    return oss.str();
 }
 
 //===----------------------------------------------------------------------===//
@@ -266,34 +363,35 @@ struct FoldContext
 
 /// @brief Fold basic integer arithmetic operations.
 /// @details Handles non-overflow-checked integer operations.
-static std::optional<Value> foldIntegerArithmetic(Opcode op, const FoldContext &ctx)
+static FoldResult foldIntegerArithmetic(Opcode op, const FoldContext &ctx)
 {
     long long lhs{}, rhs{};
     if (!ctx.getConstIntOperand(0, lhs) || !ctx.getConstIntOperand(1, rhs))
-        return std::nullopt;
+        return FoldResult::unknown();
 
     switch (op)
     {
         case Opcode::Add:
-            return Value::constInt(lhs + rhs);
+            return FoldResult::constant(Value::constInt(lhs + rhs));
         case Opcode::Sub:
-            return Value::constInt(lhs - rhs);
+            return FoldResult::constant(Value::constInt(lhs - rhs));
         case Opcode::Mul:
-            return Value::constInt(lhs * rhs);
+            return FoldResult::constant(Value::constInt(lhs * rhs));
         case Opcode::And:
-            return Value::constInt(lhs & rhs);
+            return FoldResult::constant(Value::constInt(lhs & rhs));
         case Opcode::Or:
-            return Value::constInt(lhs | rhs);
+            return FoldResult::constant(Value::constInt(lhs | rhs));
         case Opcode::Xor:
-            return Value::constInt(lhs ^ rhs);
+            return FoldResult::constant(Value::constInt(lhs ^ rhs));
         case Opcode::Shl:
-            return Value::constInt(lhs << (rhs & 63));
+            return FoldResult::constant(Value::constInt(lhs << (rhs & 63)));
         case Opcode::LShr:
-            return Value::constInt(static_cast<unsigned long long>(lhs) >> (rhs & 63));
+            return FoldResult::constant(
+                Value::constInt(static_cast<unsigned long long>(lhs) >> (rhs & 63)));
         case Opcode::AShr:
-            return Value::constInt(lhs >> (rhs & 63));
+            return FoldResult::constant(Value::constInt(lhs >> (rhs & 63)));
         default:
-            return std::nullopt;
+            return FoldResult::unknown();
     }
 }
 
@@ -303,30 +401,30 @@ static std::optional<Value> foldIntegerArithmetic(Opcode op, const FoldContext &
 
 /// @brief Fold overflow-checked arithmetic operations.
 /// @details Returns nullopt if the operation would overflow at runtime.
-static std::optional<Value> foldOverflowArithmetic(Opcode op, const FoldContext &ctx)
+static FoldResult foldOverflowArithmetic(Opcode op, const FoldContext &ctx)
 {
     long long lhs{}, rhs{};
     if (!ctx.getConstIntOperand(0, lhs) || !ctx.getConstIntOperand(1, rhs))
-        return std::nullopt;
+        return FoldResult::unknown();
 
     switch (op)
     {
         case Opcode::IAddOvf:
             if (auto sum = checkedAdd(lhs, rhs))
-                return Value::constInt(*sum);
-            break;
+                return FoldResult::constant(Value::constInt(*sum));
+            return FoldResult::trap();
         case Opcode::ISubOvf:
             if (auto diff = checkedSub(lhs, rhs))
-                return Value::constInt(*diff);
-            break;
+                return FoldResult::constant(Value::constInt(*diff));
+            return FoldResult::trap();
         case Opcode::IMulOvf:
             if (auto prod = checkedMul(lhs, rhs))
-                return Value::constInt(*prod);
-            break;
+                return FoldResult::constant(Value::constInt(*prod));
+            return FoldResult::trap();
         default:
             break;
     }
-    return std::nullopt;
+    return FoldResult::unknown();
 }
 
 //===----------------------------------------------------------------------===//
@@ -335,34 +433,34 @@ static std::optional<Value> foldOverflowArithmetic(Opcode op, const FoldContext 
 
 /// @brief Fold signed division/remainder with zero-check.
 /// @details Returns nullopt for divide-by-zero or MIN/-1 overflow.
-static std::optional<Value> foldSignedDivRem(Opcode op, const FoldContext &ctx)
+static FoldResult foldSignedDivRem(Opcode op, const FoldContext &ctx)
 {
     long long lhs{}, rhs{};
     if (!ctx.getConstIntOperand(0, lhs) || !ctx.getConstIntOperand(1, rhs))
-        return std::nullopt;
+        return FoldResult::unknown();
 
     // Check for divide-by-zero and signed overflow (MIN / -1)
     if (rhs == 0 || (lhs == std::numeric_limits<long long>::min() && rhs == -1))
-        return std::nullopt;
+        return FoldResult::trap();
 
     if (op == Opcode::SDivChk0)
-        return Value::constInt(lhs / rhs);
-    return Value::constInt(lhs % rhs);
+        return FoldResult::constant(Value::constInt(lhs / rhs));
+    return FoldResult::constant(Value::constInt(lhs % rhs));
 }
 
 /// @brief Fold unsigned division/remainder with zero-check.
-static std::optional<Value> foldUnsignedDivRem(Opcode op, const FoldContext &ctx)
+static FoldResult foldUnsignedDivRem(Opcode op, const FoldContext &ctx)
 {
     unsigned long long lhs{}, rhs{};
     if (!ctx.getConstUIntOperand(0, lhs) || !ctx.getConstUIntOperand(1, rhs))
-        return std::nullopt;
+        return FoldResult::unknown();
 
     if (rhs == 0)
-        return std::nullopt;
+        return FoldResult::trap();
 
     if (op == Opcode::UDivChk0)
-        return Value::constInt(static_cast<long long>(lhs / rhs));
-    return Value::constInt(static_cast<long long>(lhs % rhs));
+        return FoldResult::constant(Value::constInt(static_cast<long long>(lhs / rhs)));
+    return FoldResult::constant(Value::constInt(static_cast<long long>(lhs % rhs)));
 }
 
 //===----------------------------------------------------------------------===//
@@ -370,24 +468,25 @@ static std::optional<Value> foldUnsignedDivRem(Opcode op, const FoldContext &ctx
 //===----------------------------------------------------------------------===//
 
 /// @brief Fold floating-point arithmetic operations.
-static std::optional<Value> foldFloatArithmetic(Opcode op, const FoldContext &ctx)
+static FoldResult foldFloatArithmetic(Opcode op, const FoldContext &ctx)
 {
     double lhs{}, rhs{};
     if (!ctx.getConstFloatOperand(0, lhs) || !ctx.getConstFloatOperand(1, rhs))
-        return std::nullopt;
+        return FoldResult::unknown();
 
     switch (op)
     {
         case Opcode::FAdd:
-            return Value::constFloat(lhs + rhs);
+            return FoldResult::constant(Value::constFloat(lhs + rhs));
         case Opcode::FSub:
-            return Value::constFloat(lhs - rhs);
+            return FoldResult::constant(Value::constFloat(lhs - rhs));
         case Opcode::FMul:
-            return Value::constFloat(lhs * rhs);
+            return FoldResult::constant(Value::constFloat(lhs * rhs));
         case Opcode::FDiv:
-            return rhs == 0.0 ? std::nullopt : std::optional<Value>(Value::constFloat(lhs / rhs));
+            return rhs == 0.0 ? FoldResult::unknown()
+                               : FoldResult::constant(Value::constFloat(lhs / rhs));
         default:
-            return std::nullopt;
+            return FoldResult::unknown();
     }
 }
 
@@ -396,11 +495,11 @@ static std::optional<Value> foldFloatArithmetic(Opcode op, const FoldContext &ct
 //===----------------------------------------------------------------------===//
 
 /// @brief Fold signed integer comparison operations.
-static std::optional<Value> foldIntegerComparisons(Opcode op, const FoldContext &ctx)
+static FoldResult foldIntegerComparisons(Opcode op, const FoldContext &ctx)
 {
     long long lhs{}, rhs{};
     if (!ctx.getConstIntOperand(0, lhs) || !ctx.getConstIntOperand(1, rhs))
-        return std::nullopt;
+        return FoldResult::unknown();
 
     bool result = false;
     switch (op)
@@ -424,9 +523,9 @@ static std::optional<Value> foldIntegerComparisons(Opcode op, const FoldContext 
             result = lhs >= rhs;
             break;
         default:
-            return std::nullopt;
+            return FoldResult::unknown();
     }
-    return Value::constBool(result);
+    return FoldResult::constant(Value::constBool(result));
 }
 
 //===----------------------------------------------------------------------===//
@@ -434,11 +533,11 @@ static std::optional<Value> foldIntegerComparisons(Opcode op, const FoldContext 
 //===----------------------------------------------------------------------===//
 
 /// @brief Fold unsigned integer comparison operations.
-static std::optional<Value> foldUnsignedComparisons(Opcode op, const FoldContext &ctx)
+static FoldResult foldUnsignedComparisons(Opcode op, const FoldContext &ctx)
 {
     unsigned long long lhs{}, rhs{};
     if (!ctx.getConstUIntOperand(0, lhs) || !ctx.getConstUIntOperand(1, rhs))
-        return std::nullopt;
+        return FoldResult::unknown();
 
     bool result = false;
     switch (op)
@@ -456,9 +555,9 @@ static std::optional<Value> foldUnsignedComparisons(Opcode op, const FoldContext
             result = lhs >= rhs;
             break;
         default:
-            return std::nullopt;
+            return FoldResult::unknown();
     }
-    return Value::constBool(result);
+    return FoldResult::constant(Value::constBool(result));
 }
 
 //===----------------------------------------------------------------------===//
@@ -466,11 +565,11 @@ static std::optional<Value> foldUnsignedComparisons(Opcode op, const FoldContext
 //===----------------------------------------------------------------------===//
 
 /// @brief Fold floating-point comparison operations.
-static std::optional<Value> foldFloatComparisons(Opcode op, const FoldContext &ctx)
+static FoldResult foldFloatComparisons(Opcode op, const FoldContext &ctx)
 {
     double lhs{}, rhs{};
     if (!ctx.getConstFloatOperand(0, lhs) || !ctx.getConstFloatOperand(1, rhs))
-        return std::nullopt;
+        return FoldResult::unknown();
 
     bool result = false;
     switch (op)
@@ -494,9 +593,9 @@ static std::optional<Value> foldFloatComparisons(Opcode op, const FoldContext &c
             result = lhs >= rhs;
             break;
         default:
-            return std::nullopt;
+            return FoldResult::unknown();
     }
-    return Value::constBool(result);
+    return FoldResult::constant(Value::constBool(result));
 }
 
 //===----------------------------------------------------------------------===//
@@ -504,59 +603,60 @@ static std::optional<Value> foldFloatComparisons(Opcode op, const FoldContext &c
 //===----------------------------------------------------------------------===//
 
 /// @brief Fold signed integer to floating-point conversion.
-static std::optional<Value> foldCastSiToFp(const FoldContext &ctx)
+static FoldResult foldCastSiToFp(const FoldContext &ctx)
 {
     long long operand{};
     if (!ctx.getConstIntOperand(0, operand))
-        return std::nullopt;
-    return Value::constFloat(static_cast<double>(operand));
+        return FoldResult::unknown();
+    return FoldResult::constant(Value::constFloat(static_cast<double>(operand)));
 }
 
 /// @brief Fold unsigned integer to floating-point conversion.
-static std::optional<Value> foldCastUiToFp(const FoldContext &ctx)
+static FoldResult foldCastUiToFp(const FoldContext &ctx)
 {
     unsigned long long operand{};
     if (!ctx.getConstUIntOperand(0, operand))
-        return std::nullopt;
-    return Value::constFloat(static_cast<double>(operand));
+        return FoldResult::unknown();
+    return FoldResult::constant(Value::constFloat(static_cast<double>(operand)));
 }
 
 /// @brief Fold floating-point to signed integer conversion with range check.
-static std::optional<Value> foldCastFpToSi(const FoldContext &ctx)
+static FoldResult foldCastFpToSi(const FoldContext &ctx)
 {
     double operand{};
     if (!ctx.getConstFloatOperand(0, operand) || !std::isfinite(operand))
-        return std::nullopt;
+        return FoldResult::unknown();
 
     double rounded = std::nearbyint(operand);
     if (!std::isfinite(rounded))
-        return std::nullopt;
+        return FoldResult::trap();
 
     constexpr double kMin = static_cast<double>(std::numeric_limits<long long>::min());
     constexpr double kMax = static_cast<double>(std::numeric_limits<long long>::max());
     if (rounded < kMin || rounded > kMax)
-        return std::nullopt;
+        return FoldResult::trap();
 
-    return Value::constInt(static_cast<long long>(rounded));
+    return FoldResult::constant(Value::constInt(static_cast<long long>(rounded)));
 }
 
 /// @brief Fold floating-point to unsigned integer conversion with range check.
-static std::optional<Value> foldCastFpToUi(const FoldContext &ctx)
+static FoldResult foldCastFpToUi(const FoldContext &ctx)
 {
     double operand{};
     if (!ctx.getConstFloatOperand(0, operand) || !std::isfinite(operand))
-        return std::nullopt;
+        return FoldResult::unknown();
 
     double rounded = std::nearbyint(operand);
     if (!std::isfinite(rounded))
-        return std::nullopt;
+        return FoldResult::trap();
 
     constexpr double kMin = 0.0;
     constexpr double kMax = static_cast<double>(std::numeric_limits<unsigned long long>::max());
     if (rounded < kMin || rounded > kMax)
-        return std::nullopt;
+        return FoldResult::trap();
 
-    return Value::constInt(static_cast<long long>(static_cast<unsigned long long>(rounded)));
+    return FoldResult::constant(
+        Value::constInt(static_cast<long long>(static_cast<unsigned long long>(rounded))));
 }
 
 //===----------------------------------------------------------------------===//
@@ -564,21 +664,21 @@ static std::optional<Value> foldCastFpToUi(const FoldContext &ctx)
 //===----------------------------------------------------------------------===//
 
 /// @brief Fold zero-extend from 1 bit (boolean to integer).
-static std::optional<Value> foldZext1(const FoldContext &ctx)
+static FoldResult foldZext1(const FoldContext &ctx)
 {
     long long operand{};
     if (!ctx.getConstIntOperand(0, operand))
-        return std::nullopt;
-    return Value::constInt((operand & 1) != 0 ? 1 : 0);
+        return FoldResult::unknown();
+    return FoldResult::constant(Value::constInt((operand & 1) != 0 ? 1 : 0));
 }
 
 /// @brief Fold truncate to 1 bit (integer to boolean).
-static std::optional<Value> foldTrunc1(const FoldContext &ctx)
+static FoldResult foldTrunc1(const FoldContext &ctx)
 {
     long long operand{};
     if (!ctx.getConstIntOperand(0, operand))
-        return std::nullopt;
-    return Value::constBool((operand & 1) != 0);
+        return FoldResult::unknown();
+    return FoldResult::constant(Value::constBool((operand & 1) != 0));
 }
 
 //===----------------------------------------------------------------------===//
@@ -586,22 +686,22 @@ static std::optional<Value> foldTrunc1(const FoldContext &ctx)
 //===----------------------------------------------------------------------===//
 
 /// @brief Fold constant materialization instructions.
-static std::optional<Value> foldConstantMaterialization(const Instr &instr)
+static FoldResult foldConstantMaterialization(const Instr &instr)
 {
     switch (instr.op)
     {
         case Opcode::ConstNull:
-            return Value::null();
+            return FoldResult::constant(Value::null());
         case Opcode::ConstStr:
             if (!instr.operands.empty())
-                return instr.operands[0];
-            return std::nullopt;
+                return FoldResult::constant(instr.operands[0]);
+            return FoldResult::unknown();
         case Opcode::AddrOf:
             if (!instr.operands.empty())
-                return instr.operands[0];
-            return std::nullopt;
+                return FoldResult::constant(instr.operands[0]);
+            return FoldResult::unknown();
         default:
-            return std::nullopt;
+            return FoldResult::unknown();
     }
 }
 
@@ -612,7 +712,9 @@ static std::optional<Value> foldConstantMaterialization(const Instr &instr)
 class SCCPSolver
 {
   public:
-    explicit SCCPSolver(Function &function) : function_(function)
+    explicit SCCPSolver(Function &function)
+        : function_(function)
+        , debug_(std::getenv("VIPER_SCCP_DEBUG") != nullptr)
     {
         initialiseStates();
     }
@@ -630,11 +732,13 @@ class SCCPSolver
 
   private:
     Function &function_;
-    std::unordered_map<unsigned, LatticeValue> values_;
+    std::unordered_map<unsigned, ValueLattice> values_;
     std::unordered_map<unsigned, std::vector<Instr *>> uses_;
     std::unordered_map<Instr *, size_t> instrBlock_;
     std::unordered_map<std::string, size_t> blockIndex_;
     std::vector<bool> blockExecutable_;
+    std::vector<bool> blockTraps_;
+    bool debug_ = false;
     std::queue<size_t> blockWorklist_;
     std::queue<Instr *> instrWorklist_;
     std::unordered_set<Instr *> inInstrWorklist_;
@@ -646,6 +750,7 @@ class SCCPSolver
     void initialiseStates()
     {
         blockExecutable_.assign(function_.blocks.size(), false);
+        blockTraps_.assign(function_.blocks.size(), false);
         for (size_t bi = 0; bi < function_.blocks.size(); ++bi)
         {
             blockIndex_[function_.blocks[bi].label] = bi;
@@ -654,8 +759,8 @@ class SCCPSolver
         auto registerValue = [&](unsigned id, bool overdefined)
         {
             auto &entry = values_[id];
-            if (overdefined)
-                entry.kind = LatticeValue::Kind::Overdefined;
+            if (overdefined && !entry.isOverdefined())
+                entry = ValueLattice::overdefined();
         };
 
         for (auto &param : function_.params)
@@ -692,12 +797,12 @@ class SCCPSolver
     // Lattice State Management
     //===------------------------------------------------------------------===//
 
-    LatticeValue &valueState(unsigned id)
+    ValueLattice &valueState(unsigned id)
     {
         return values_[id];
     }
 
-    const LatticeValue &valueState(unsigned id) const
+    const ValueLattice &valueState(unsigned id) const
     {
         auto it = values_.find(id);
         assert(it != values_.end());
@@ -709,7 +814,28 @@ class SCCPSolver
         if (blockExecutable_[index])
             return;
         blockExecutable_[index] = true;
+        if (debug_)
+            std::cerr << "[sccp] executable block " << function_.blocks[index].label << "\n";
         blockWorklist_.push(index);
+    }
+
+    void markBlockTrap(size_t index)
+    {
+        if (blockTraps_[index])
+            return;
+        blockTraps_[index] = true;
+        if (debug_)
+            std::cerr << "[sccp] block " << function_.blocks[index].label << " known to trap\n";
+    }
+
+    void traceValueChange(unsigned id, std::string_view action, const Value *v = nullptr)
+    {
+        if (!debug_)
+            return;
+        std::cerr << "[sccp] " << action << " %" << id;
+        if (v)
+            std::cerr << " -> " << describeValue(*v);
+        std::cerr << "\n";
     }
 
     void enqueueInstr(Instr &instr)
@@ -735,35 +861,26 @@ class SCCPSolver
 
     bool mergeConstant(unsigned id, const Value &v)
     {
-        LatticeValue &state = valueState(id);
-        if (state.kind == LatticeValue::Kind::Unknown)
+        ValueLattice &state = valueState(id);
+        if (state.mergeConstant(v))
         {
-            state.kind = LatticeValue::Kind::Constant;
-            state.constant = v;
+            traceValueChange(id, "const", &v);
             enqueueUsers(id);
             return true;
-        }
-        if (state.kind == LatticeValue::Kind::Constant)
-        {
-            if (!valuesEqual(state.constant, v))
-            {
-                state.kind = LatticeValue::Kind::Overdefined;
-                enqueueUsers(id);
-                return true;
-            }
-            return false;
         }
         return false;
     }
 
     bool markOverdefined(unsigned id)
     {
-        LatticeValue &state = valueState(id);
-        if (state.kind == LatticeValue::Kind::Overdefined)
-            return false;
-        state.kind = LatticeValue::Kind::Overdefined;
-        enqueueUsers(id);
-        return true;
+        ValueLattice &state = valueState(id);
+        if (state.markOverdefined())
+        {
+            traceValueChange(id, "overdefined");
+            enqueueUsers(id);
+            return true;
+        }
+        return false;
     }
 
     //===------------------------------------------------------------------===//
@@ -786,10 +903,10 @@ class SCCPSolver
                 auto it = values_.find(operand.id);
                 if (it == values_.end())
                     return false;
-                const LatticeValue &state = it->second;
-                if (state.kind == LatticeValue::Kind::Constant)
+                const ValueLattice &state = it->second;
+                if (state.isConstant())
                 {
-                    out = state.constant;
+                    out = state.value;
                     return true;
                 }
                 return false;
@@ -805,7 +922,7 @@ class SCCPSolver
         auto it = values_.find(operand.id);
         if (it == values_.end())
             return false;
-        return it->second.kind == LatticeValue::Kind::Overdefined;
+        return it->second.isOverdefined();
     }
 
     //===------------------------------------------------------------------===//
@@ -834,7 +951,7 @@ class SCCPSolver
                 continue;
             if (!blockExecutable_[bit->second])
                 continue;
-            visitInstruction(function_.blocks[bit->second], *instr, bit->second);
+            visitInstruction(*instr, bit->second);
         }
     }
 
@@ -844,6 +961,8 @@ class SCCPSolver
 
     void propagateEdge(size_t fromBlockIndex, Instr &terminator, size_t succSlot)
     {
+        if (blockTraps_[fromBlockIndex])
+            return;
         if (succSlot >= terminator.labels.size())
             return;
         const std::string &targetLabel = terminator.labels[succSlot];
@@ -875,8 +994,11 @@ class SCCPSolver
     // Instruction Visitors
     //===------------------------------------------------------------------===//
 
-    void visitInstruction(BasicBlock &, Instr &instr, size_t blockIndex)
+    void visitInstruction(Instr &instr, size_t blockIndex)
     {
+        if (blockTraps_[blockIndex])
+            return;
+
         switch (instr.op)
         {
             case Opcode::Br:
@@ -888,8 +1010,16 @@ class SCCPSolver
             case Opcode::SwitchI32:
                 visitSwitch(blockIndex, instr);
                 break;
+            case Opcode::Trap:
+            case Opcode::TrapFromErr:
+            case Opcode::TrapErr:
+            case Opcode::ResumeSame:
+            case Opcode::ResumeNext:
+            case Opcode::ResumeLabel:
+                markBlockTrap(blockIndex);
+                break;
             default:
-                visitComputational(instr);
+                visitComputational(instr, blockIndex);
                 break;
         }
     }
@@ -944,8 +1074,15 @@ class SCCPSolver
         }
     }
 
-    void visitComputational(Instr &instr)
+    void visitComputational(Instr &instr, size_t blockIndex)
     {
+        FoldResult folded = foldInstruction(instr);
+        if (folded.isTrap())
+        {
+            markBlockTrap(blockIndex);
+            return;
+        }
+
         if (!instr.result)
             return;
 
@@ -962,10 +1099,9 @@ class SCCPSolver
             }
         }
 
-        std::optional<Value> folded = foldInstruction(instr);
-        if (folded)
+        if (folded.isConstant())
         {
-            mergeConstant(*instr.result, *folded);
+            mergeConstant(*instr.result, folded.value);
             return;
         }
 
@@ -1018,11 +1154,8 @@ class SCCPSolver
 
     /// @brief Attempt to fold an instruction to a constant value.
     /// @details Dispatches to family-specific fold functions based on opcode.
-    std::optional<Value> foldInstruction(const Instr &instr) const
+    FoldResult foldInstruction(const Instr &instr) const
     {
-        if (!instr.result)
-            return std::nullopt;
-
         // Create fold context with operand resolver
         FoldContext ctx{instr,
                         [this, &instr](size_t index, Value &out) -> bool
@@ -1136,7 +1269,7 @@ class SCCPSolver
                 return foldConstantMaterialization(instr);
 
             default:
-                return std::nullopt;
+                return FoldResult::unknown();
         }
     }
 
@@ -1148,9 +1281,9 @@ class SCCPSolver
     {
         for (auto &[id, state] : values_)
         {
-            if (state.kind != LatticeValue::Kind::Constant)
+            if (!state.isConstant())
                 continue;
-            replaceAllUses(id, state.constant);
+            replaceAllUses(id, state.value);
         }
     }
 
@@ -1179,7 +1312,7 @@ class SCCPSolver
     {
         for (size_t bi = 0; bi < function_.blocks.size(); ++bi)
         {
-            if (!blockExecutable_[bi])
+            if (!blockExecutable_[bi] || blockTraps_[bi])
                 continue;
             BasicBlock &block = function_.blocks[bi];
             if (block.instructions.empty())

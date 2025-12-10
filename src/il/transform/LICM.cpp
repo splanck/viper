@@ -19,6 +19,7 @@
 #include "il/transform/AnalysisManager.hpp"
 #include "il/transform/analysis/LoopInfo.hpp"
 
+#include "il/analysis/BasicAA.hpp"
 #include "il/analysis/Dominators.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
@@ -38,7 +39,7 @@ namespace il::transform
 {
 namespace
 {
-bool isSafeToHoist(const Instr &instr)
+bool isSafeToHoist(const Instr &instr, bool allowLoadHoist)
 {
     const auto &info = getOpcodeInfo(instr.op);
     if (info.isTerminator || info.hasSideEffects)
@@ -46,18 +47,26 @@ bool isSafeToHoist(const Instr &instr)
     if (!instr.labels.empty() || !instr.brArgs.empty())
         return false;
 
-    auto spec = verify::lookupSpec(instr.op);
-    if (!spec || spec->hasSideEffects)
-        return false;
+    if (auto spec = verify::lookupSpec(instr.op))
+    {
+        if (spec->hasSideEffects)
+            return false;
+    }
 
-    auto props = verify::lookup(instr.op);
-    if (!props || props->canTrap)
-        return false;
+    if (auto props = verify::lookup(instr.op))
+    {
+        if (props->canTrap)
+            return false;
+    }
 
-    if (memoryEffects(instr.op) != MemoryEffects::None)
-        return false;
+    const auto effects = memoryEffects(instr.op);
+    if (effects == MemoryEffects::None)
+        return true;
 
-    return true;
+    if (allowLoadHoist && effects == MemoryEffects::Read && instr.op == Opcode::Load)
+        return true;
+
+    return false;
 }
 
 BasicBlock *findBlock(Function &function, const std::string &label)
@@ -167,6 +176,7 @@ PreservedAnalyses LICM::run(Function &function, AnalysisManager &analysis)
 {
     auto &domTree = analysis.getFunctionResult<viper::analysis::DomTree>("dominators", function);
     auto &loopInfo = analysis.getFunctionResult<LoopInfo>("loop-info", function);
+    auto &aa = analysis.getFunctionResult<viper::analysis::BasicAA>("basic-aa", function);
 
     bool changed = false;
 
@@ -184,6 +194,36 @@ PreservedAnalyses LICM::run(Function &function, AnalysisManager &analysis)
         invariants.reserve(function.params.size() + header->params.size() + 32);
         seedInvariants(loop, function, invariants);
 
+        bool loopHasMod = false;
+        for (const auto &label : loop.blockLabels)
+        {
+            BasicBlock *blk = findBlock(function, label);
+            if (!blk)
+                continue;
+            for (const auto &ins : blk->instructions)
+            {
+                if (ins.op == Opcode::Call || ins.op == Opcode::CallIndirect)
+                {
+                    auto mr = aa.modRef(ins);
+                    if (mr == viper::analysis::ModRefResult::Mod ||
+                        mr == viper::analysis::ModRefResult::ModRef)
+                    {
+                        loopHasMod = true;
+                        break;
+                    }
+                }
+                auto me = memoryEffects(ins.op);
+                if (me == MemoryEffects::Write || me == MemoryEffects::ReadWrite ||
+                    me == MemoryEffects::Unknown)
+                {
+                    loopHasMod = true;
+                    break;
+                }
+            }
+            if (loopHasMod)
+                break;
+        }
+
         std::vector<BasicBlock *> blockOrder;
         blockOrder.reserve(loop.blockLabels.size());
         collectDominanceOrder(header, loop, domTree, blockOrder);
@@ -193,7 +233,8 @@ PreservedAnalyses LICM::run(Function &function, AnalysisManager &analysis)
             for (std::size_t idx = 0; idx < block->instructions.size();)
             {
                 Instr &instr = block->instructions[idx];
-                if (!isSafeToHoist(instr) || !operandsInvariant(instr, invariants))
+                const bool allowLoads = !loopHasMod;
+                if (!isSafeToHoist(instr, allowLoads) || !operandsInvariant(instr, invariants))
                 {
                     ++idx;
                     continue;

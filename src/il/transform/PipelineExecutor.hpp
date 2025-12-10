@@ -42,6 +42,7 @@
 #include "il/transform/PassRegistry.hpp"
 #include "viper/pass/PassManager.hpp"
 
+#include <chrono>
 #include <functional>
 #include <string>
 #include <string_view>
@@ -53,12 +54,27 @@ namespace il::transform
 class PipelineExecutor
 {
   public:
+    struct PassMetrics
+    {
+        struct IRSize
+        {
+            std::size_t blocks = 0;
+            std::size_t instructions = 0;
+        };
+
+        IRSize before;
+        IRSize after;
+        AnalysisCounts analysesComputed{};
+        std::chrono::nanoseconds duration{};
+    };
+
     /// @brief Configuration for instrumentation hooks around pass execution.
     struct Instrumentation
     {
         viper::pass::PassManager::PrintHook printBefore;
         viper::pass::PassManager::PrintHook printAfter;
         viper::pass::PassManager::VerifyHook verifyEach;
+        std::function<void(std::string_view id, const PassMetrics &metrics)> passMetrics;
     };
 
     PipelineExecutor(const PassRegistry &registry,

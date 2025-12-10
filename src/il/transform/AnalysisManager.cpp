@@ -17,6 +17,7 @@
 
 #include "il/transform/PassRegistry.hpp"
 
+#include <cassert>
 #include <utility>
 
 namespace il::transform
@@ -42,6 +43,59 @@ class AnalysisCacheInvalidator
     ///          the summary, balancing correctness with minimal churn.
     void afterModulePass()
     {
+        assertWellFormed();
+        invalidateModuleCache();
+        invalidateFunctionCacheForModulePass();
+    }
+
+    /// @brief Invalidate function-scoped analyses for a specific function.
+    /// @details Mirrors @ref AnalysisCacheInvalidator::afterModulePass() but operates on the
+    ///          per-function caches.  When only a subset of analyses are preserved, the routine
+    ///          walks each cache entry and removes the stale data for @p fn.  Empty analysis maps
+    ///          are pruned to keep the cache compact.
+    /// @param fn Function whose cached analyses should be reviewed.
+    void afterFunctionPass(core::Function &fn)
+    {
+        assertWellFormed();
+        if (!manager_.functionAnalyses_)
+            return;
+        if (preserved_.preservesAllFunctionAnalyses())
+            return;
+        if (!preserved_.hasFunctionPreservations())
+        {
+            for (auto it = manager_.functionCache_.begin(); it != manager_.functionCache_.end();)
+            {
+                it->second.erase(&fn);
+                if (it->second.empty())
+                    it = manager_.functionCache_.erase(it);
+                else
+                    ++it;
+            }
+#ifndef NDEBUG
+            for (const auto &entry : manager_.functionCache_)
+                assert(entry.second.count(&fn) == 0 && "stale function analysis entry");
+#endif
+            return;
+        }
+
+        for (auto it = manager_.functionCache_.begin(); it != manager_.functionCache_.end();)
+        {
+            if (preserved_.isFunctionPreserved(it->first))
+            {
+                ++it;
+                continue;
+            }
+            it->second.erase(&fn);
+            if (it->second.empty())
+                it = manager_.functionCache_.erase(it);
+            else
+                ++it;
+        }
+    }
+
+  private:
+    void invalidateModuleCache()
+    {
         if (!manager_.moduleAnalyses_)
             return;
         if (preserved_.preservesAllModuleAnalyses())
@@ -63,13 +117,7 @@ class AnalysisCacheInvalidator
         }
     }
 
-    /// @brief Invalidate function-scoped analyses for a specific function.
-    /// @details Mirrors @ref AnalysisCacheInvalidator::afterModulePass() but operates on the
-    ///          per-function caches.  When only a subset of analyses are preserved, the routine
-    ///          walks each cache entry and removes the stale data for @p fn.  Empty analysis maps
-    ///          are pruned to keep the cache compact.
-    /// @param fn Function whose cached analyses should be reviewed.
-    void afterFunctionPass(core::Function &fn)
+    void invalidateFunctionCacheForModulePass()
     {
         if (!manager_.functionAnalyses_)
             return;
@@ -77,8 +125,7 @@ class AnalysisCacheInvalidator
             return;
         if (!preserved_.hasFunctionPreservations())
         {
-            for (auto &entry : manager_.functionCache_)
-                entry.second.erase(&fn);
+            manager_.functionCache_.clear();
             return;
         }
 
@@ -89,15 +136,32 @@ class AnalysisCacheInvalidator
                 ++it;
                 continue;
             }
-            it->second.erase(&fn);
-            if (it->second.empty())
-                it = manager_.functionCache_.erase(it);
-            else
-                ++it;
+            it = manager_.functionCache_.erase(it);
         }
     }
 
-  private:
+    void assertWellFormed() const
+    {
+#ifndef NDEBUG
+        if (manager_.moduleAnalyses_)
+        {
+            for (const auto &entry : manager_.moduleCache_)
+            {
+                assert(manager_.moduleAnalyses_->count(entry.first) &&
+                       "module cache entry without registration");
+            }
+        }
+        if (manager_.functionAnalyses_)
+        {
+            for (const auto &entry : manager_.functionCache_)
+            {
+                assert(manager_.functionAnalyses_->count(entry.first) &&
+                       "function cache entry without registration");
+            }
+        }
+#endif
+    }
+
     AnalysisManager &manager_;
     const PreservedAnalyses &preserved_;
 };

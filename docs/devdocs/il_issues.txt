@@ -1,0 +1,361 @@
+=============================================================================
+IL OPTIMIZER - IMPROVEMENT ROADMAP
+=============================================================================
+Generated: 2025-12-10
+Status: PLANNING DOCUMENT
+
+=============================================================================
+STATUS LEGEND
+=============================================================================
+[ ] Not started
+[~] In progress
+[x] Completed
+[!] Blocked / Needs discussion
+
+Priority Levels:
+  CRITICAL - Correctness risk or blocks other work
+  HIGH     - Significant performance or functionality improvement
+  MEDIUM   - Moderate improvement, good ROI
+  LOW      - Nice to have, cleanup, or minor optimization
+
+=============================================================================
+IL OPTIMIZER OVERVIEW
+=============================================================================
+The IL optimizer (mid-end) transforms IL modules to improve runtime performance
+while preserving program semantics. Key components:
+
+- PassManager: Orchestrates pass execution, manages analysis caching
+- AnalysisRegistry/AnalysisManager: Lazy computation and caching of analyses
+- PassRegistry: Factory-based pass instantiation and pipeline composition
+- PipelineExecutor: Runs registered pipelines with verification/printing hooks
+
+Core Passes:
+- ConstFold: Compile-time constant folding for arithmetic/comparisons
+- SCCP: Sparse conditional constant propagation with dead block elimination
+- GVN: Global value numbering with redundant load elimination
+- EarlyCSE: Within-block common subexpression elimination
+- DCE: Dead code elimination (unused temps, loads, stores, block params)
+- DSE: Dead store elimination (stores killed by later stores)
+- Peephole: Local algebraic simplifications (identity, strength reduction)
+- Mem2Reg: Promote alloca/load/store to SSA temporaries
+- SimplifyCFG: Control flow simplification (branch folding, block merging)
+
+Loop Passes:
+- LoopSimplify: Canonicalize loop structure (preheaders, latch merging)
+- LICM: Loop-invariant code motion
+- IndVarSimplify: Induction variable simplification
+- CheckOpt: Bounds/division check hoisting and redundancy elimination
+
+Other:
+- Inline: Conservative single-block function inlining
+- LateCleanup: Post-optimization cleanup pass
+
+=============================================================================
+CRITICAL ISSUES - CORRECTNESS RISKS
+=============================================================================
+
+[ ] CRITICAL-1: EH-Region Awareness in GVN Load Elimination
+    Files: src/il/transform/GVN.cpp:258-296
+    Issue: GVN's redundant load elimination doesn't account for exception
+           handlers. A load in an EH handler may observe different memory
+           state than a dominating load in the try block if an exception
+           occurred between them.
+    Failure Mode: Incorrect code if load in catch block is eliminated
+                  based on dominating load in try block.
+    Impact: correctness
+    Fix: Check if source/target blocks are in same EH region before
+         eliminating loads across block boundaries.
+    Effort: 3 hours
+
+[ ] CRITICAL-2: LICM May Hoist Trapping Instructions
+    Files: src/il/transform/LICM.hpp:27-31
+    Issue: The design notes mention "only hoist when provably safe" but
+           implementation should verify no trapping operations (division,
+           checked arithmetic) are hoisted unless guaranteed to execute.
+    Failure Mode: Division by zero trap moved before conditional guard.
+    Impact: correctness
+    Fix: Add isSafeToHoist() check that rejects operations with trap/UB
+         potential unless they dominate all loop exits.
+    Effort: 4 hours
+
+[ ] CRITICAL-3: DSE Doesn't Handle Cross-Block Elimination Safely
+    Files: src/il/transform/DSE.cpp:104-168
+    Issue: DSE operates per basic block only. This is conservative but
+           means it misses many dead stores. However, extending to cross-
+           block requires proper EH-region handling (stores in try blocks
+           may be observed by catch handlers).
+    Failure Mode: Currently none (limitation, not bug), but extending
+                  incorrectly would cause correctness issues.
+    Impact: correctness (if extended), perf (current limitation)
+    Fix: If extended, must respect EH boundaries.
+    Effort: 6 hours
+
+=============================================================================
+HIGH PRIORITY ISSUES
+=============================================================================
+
+[ ] HIGH-1: GVN O(n) Alias Scan in Load Memoization
+    Files: src/il/transform/GVN.cpp:276-288
+    Issue: When checking for aliasing loads, GVN iterates over all entries
+           in state.loads. For functions with many loads, this is O(n^2)
+           in the worst case.
+    Impact: compile-time for large functions
+    Fix: Use a more efficient data structure or limit scan depth.
+         Consider grouping by base pointer or type.
+    Effort: 3 hours
+
+[ ] HIGH-2: Inliner Limited to Single-Block Functions
+    Files: src/il/transform/Inline.cpp:70-78
+    Issue: Inliner only handles functions with exactly one block ending in
+           ret. Many small helper functions have control flow (early return,
+           conditionals) and cannot be inlined.
+    Impact: perf (missed inlining opportunities)
+    Fix: Extend to handle multi-block functions by cloning CFG structure
+         and remapping labels. Must handle block parameters correctly.
+    Effort: 8 hours
+
+[ ] HIGH-3: No Inlining of Functions with Exception Handlers
+    Files: src/il/transform/Inline.cpp (missing)
+    Issue: Functions containing eh.push/eh.pop/eh.entry cannot be inlined.
+           This excludes many BASIC/Pascal functions that have implicit
+           error handling.
+    Impact: perf (missed inlining opportunities)
+    Fix: Clone exception handler structure with remapped labels and
+         properly nest EH regions in caller's context.
+    Effort: 12 hours
+
+[ ] HIGH-4: SCCP Doesn't Model Block Parameters as Phi Nodes Correctly
+    Files: src/il/transform/SCCP.cpp (header comment mentions phi modeling)
+    Issue: While the design mentions modeling block parameters as phis,
+           verification is needed that all predecessors' edge executability
+           is correctly checked before merging parameter lattice values.
+    Impact: correctness (potential) or perf (conservative fallback)
+    Fix: Audit block parameter handling in SCCP solver.
+    Effort: 4 hours
+
+[ ] HIGH-5: Missing Dedicated Tests for Major Passes
+    Files: src/tests/il/transform/ (only SimplifyCFG, DCE, Peephole tests)
+    Issue: No dedicated test files for:
+           - SCCP (constant propagation, dead block elimination)
+           - GVN (value numbering, load elimination)
+           - DSE (dead store elimination)
+           - LICM (loop-invariant code motion)
+           - Inline (function inlining)
+           - Mem2Reg (SSA promotion)
+           - CheckOpt (check optimization)
+           - LoopSimplify (loop canonicalization)
+           - IndVarSimplify (induction variable simplification)
+    Impact: correctness (regressions may go unnoticed)
+    Fix: Add dedicated test files with targeted IL inputs for each pass.
+    Effort: 16 hours (2 hours per pass)
+
+[ ] HIGH-6: Analysis Caching Uses std::any Runtime Type Checking
+    Files: src/il/transform/AnalysisManager.hpp:121-134, 141-154
+    Issue: std::any_cast has runtime overhead for type checking. For
+           frequently-accessed analyses (CFG, Dominators), this adds cost.
+    Impact: compile-time
+    Fix: Consider type-erased wrapper with compile-time type tag, or
+         specialized accessors for common analyses.
+    Effort: 4 hours
+
+=============================================================================
+MEDIUM PRIORITY ISSUES
+=============================================================================
+
+[ ] MEDIUM-1: EarlyCSE Limited to Binary Ops Only
+    Files: src/il/transform/EarlyCSE.cpp:31-60
+    Issue: isPure() only recognizes Add/Sub/Mul/And/Or/Xor and comparisons.
+           Other pure operations like Shl, LShr, AShr, Neg, Not, type casts
+           are not handled.
+    Impact: perf (missed CSE opportunities)
+    Fix: Extend isPure() to include shift, unary, and pure cast operations.
+    Effort: 2 hours
+
+[ ] MEDIUM-2: DCE Rebuilds Predecessor Map Per Function
+    Files: src/il/transform/DCE.cpp:126-148
+    Issue: DCE builds predEdges map from scratch for every function.
+           For modules with many functions, this is redundant work.
+    Impact: compile-time
+    Fix: Consider caching predecessor info in AnalysisManager or computing
+         once per module.
+    Effort: 2 hours
+
+[ ] MEDIUM-3: CheckOpt Only Hoists From Loop Header
+    Files: src/il/transform/CheckOpt.cpp:246-250
+    Issue: isGuaranteedToExecute() only returns true for header blocks.
+           Checks in loop body blocks that dominate all exits could also
+           be hoisted safely.
+    Impact: perf (missed check hoisting)
+    Fix: Implement proper guaranteed-to-execute analysis using dominators
+         and exit blocks.
+    Effort: 4 hours
+
+[ ] MEDIUM-4: LoopSimplify Only Merges Identical-Argument Latches
+    Files: src/il/transform/LoopSimplify.cpp:256-263
+    Issue: mergeTrivialLatches() requires all latch branches to have
+           identical arguments. Different but equivalent values (same SSA
+           temp) would prevent merging.
+    Impact: perf (missed canonicalization)
+    Fix: Use value equality check or phi insertion for differing args.
+    Effort: 3 hours
+
+[ ] MEDIUM-5: Linear Function Lookup in Inliner
+    Files: src/il/transform/Inline.cpp:37-43
+    Issue: findFunctionByName() is O(n) linear scan over all functions.
+           For modules with many functions, this adds up.
+    Impact: compile-time
+    Fix: Build a name->function* map once at the start of the pass.
+    Effort: 1 hour
+
+[ ] MEDIUM-6: GVN Copies Operand Vectors for Normalization
+    Files: src/il/transform/GVN.cpp:182-218
+    Issue: normalizeOperands() always copies the operand vector, even
+           for non-commutative operations that don't need normalization.
+    Impact: compile-time (allocation overhead)
+    Fix: Return reference to original operands when no normalization needed,
+         or use std::variant<reference, owned>.
+    Effort: 2 hours
+
+[ ] MEDIUM-7: No Pass Ordering Validation
+    Files: src/il/transform/PassManager.hpp, PipelineExecutor.cpp
+    Issue: PassManager doesn't validate that passes are run in a sensible
+           order. Running DCE before SCCP wastes work; running SimplifyCFG
+           without prior LoopSimplify may miss opportunities.
+    Impact: ergonomics (user foot-gun)
+    Fix: Add optional pipeline validation with warnings for suboptimal
+         ordering.
+    Effort: 3 hours
+
+[ ] MEDIUM-8: DSE Basic-Block-Only Scope
+    Files: src/il/transform/DSE.cpp:104
+    Issue: DSE only eliminates stores within a single basic block. Many
+           dead stores span block boundaries (store in predecessor,
+           overwritten in successor with no intervening read).
+    Impact: perf (missed dead store elimination)
+    Fix: Extend to cross-block analysis using dataflow or SSA-based DSE.
+         Must respect EH boundaries (see CRITICAL-3).
+    Effort: 8 hours
+
+=============================================================================
+LOW PRIORITY ISSUES
+=============================================================================
+
+[ ] LOW-1: Missing noexcept on Value Comparison Functions
+    Files: src/il/transform/GVN.cpp:90-110, SCCP.cpp:103-122
+    Issue: valuesEqual() and similar functions could be marked noexcept
+           since they only do field comparisons.
+    Impact: compile-time (minor)
+    Fix: Add noexcept specifiers.
+    Effort: 0.5 hours
+
+[ ] LOW-2: Duplicate isCommutative() Implementations
+    Files: src/il/transform/GVN.cpp:112-131, EarlyCSE.cpp:62-81
+    Issue: Both GVN and EarlyCSE have their own isCommutative() functions.
+           Risk of divergence if one is updated but not the other.
+    Impact: ergonomics (code duplication)
+    Fix: Move to shared utility header (e.g., il/utils/OpcodeUtils.hpp).
+    Effort: 1 hour
+
+[ ] LOW-3: IndVarSimplify Minimal Implementation
+    Files: src/il/transform/IndVarSimplify.hpp (header only visible)
+    Issue: IndVarSimplify appears to have limited functionality compared
+           to full induction variable analysis (SCEV-style).
+    Impact: perf (missed IV optimizations)
+    Fix: Implement proper SCEV-like analysis for IV bounds, step, etc.
+    Effort: 16 hours
+
+[ ] LOW-4: Mem2Reg Limited Diagnostics
+    Files: src/il/transform/Mem2Reg.cpp (needs inspection)
+    Issue: When Mem2Reg fails to promote an alloca, no diagnostic
+           explains why (escaping pointer, volatile, etc.).
+    Impact: ergonomics (debugging difficulty)
+    Fix: Add optional diagnostic mode that explains promotion failures.
+    Effort: 2 hours
+
+[ ] LOW-5: No Property-Based Testing for Optimizer
+    Files: src/tests/ (missing)
+    Issue: No property-based/fuzz testing that generates random IL and
+           verifies: (1) optimized code passes verifier, (2) produces
+           same results as unoptimized code.
+    Impact: correctness (missed edge cases)
+    Fix: Add property-based test harness similar to test_diff_vm_native_property.
+    Effort: 8 hours
+
+[ ] LOW-6: SimplifyCFG Subpasses Not Independently Testable
+    Files: src/il/transform/SimplifyCFG/*.cpp
+    Issue: Individual subpasses (BranchFolding, BlockMerging, etc.) are
+           tested only through the combined SimplifyCFG pass. Hard to
+           test edge cases for specific subpasses.
+    Impact: ergonomics (testing granularity)
+    Fix: Expose subpass entry points for targeted unit testing.
+    Effort: 4 hours
+
+=============================================================================
+TESTING GAPS SUMMARY
+=============================================================================
+
+Passes with dedicated tests:
+  [x] SimplifyCFG (8 test files)
+  [x] DCE (dce_param_compaction.cpp)
+  [x] Peephole (peephole_use_count.cpp)
+  [x] PassManager (test_il_pass_manager.cpp)
+
+Passes WITHOUT dedicated tests:
+  [ ] SCCP
+  [ ] GVN
+  [ ] DSE
+  [ ] LICM
+  [ ] Inline
+  [ ] Mem2Reg
+  [ ] CheckOpt
+  [ ] LoopSimplify
+  [ ] IndVarSimplify
+  [ ] EarlyCSE
+  [ ] ConstFold
+  [ ] LateCleanup
+
+Note: Some passes may be exercised indirectly through golden tests or
+end-to-end tests, but lack focused unit tests that verify specific
+transformations and edge cases.
+
+=============================================================================
+RECOMMENDED IMPLEMENTATION ORDER
+=============================================================================
+
+Phase 1: Critical Correctness (Week 1)
+  1. CRITICAL-1: EH-region awareness in GVN
+  2. CRITICAL-2: LICM trap-safety check
+  3. HIGH-4: Audit SCCP block parameter handling
+
+Phase 2: Testing Infrastructure (Week 2)
+  4. HIGH-5: Add dedicated pass tests (prioritize SCCP, GVN, LICM)
+  5. LOW-5: Property-based optimizer testing
+
+Phase 3: Performance Improvements (Week 3-4)
+  6. HIGH-1: GVN alias scan efficiency
+  7. MEDIUM-2: DCE predecessor caching
+  8. MEDIUM-5: Inliner function map
+  9. HIGH-6: Analysis caching optimization
+
+Phase 4: Feature Enhancements (Week 5+)
+  10. HIGH-2: Multi-block inlining
+  11. MEDIUM-8: Cross-block DSE
+  12. MEDIUM-3: Improved check hoisting
+
+=============================================================================
+REFERENCES
+=============================================================================
+
+Related Documentation:
+- docs/il-guide.md - IL specification
+- docs/il-reference.md - Opcode reference
+- docs/devdocs/codemap/il-transform.md - Transform layer overview
+- docs/devdocs/codemap/il-analysis.md - Analysis layer overview
+
+Key Source Files:
+- src/il/transform/PassManager.hpp - Pass orchestration
+- src/il/transform/AnalysisManager.hpp - Analysis caching
+- src/il/transform/PassRegistry.hpp - Pass factories
+- src/il/transform/PipelineExecutor.cpp - Pipeline execution
+
+=============================================================================

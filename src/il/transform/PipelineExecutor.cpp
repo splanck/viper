@@ -24,10 +24,25 @@
 #include "viper/pass/PassManager.hpp"
 
 #include <cassert>
+#include <chrono>
 #include <utility>
 
 namespace il::transform
 {
+namespace
+{
+PipelineExecutor::PassMetrics::IRSize computeIRSize(const core::Module &module)
+{
+    PipelineExecutor::PassMetrics::IRSize size{};
+    for (const auto &fn : module.functions)
+    {
+        size.blocks += fn.blocks.size();
+        for (const auto &block : fn.blocks)
+            size.instructions += block.instructions.size();
+    }
+    return size;
+}
+} // namespace
 
 /// @brief Construct an executor bound to specific pass and analysis registries.
 /// @details Stores references to the pass and analysis registries plus a flag
@@ -57,6 +72,7 @@ PipelineExecutor::PipelineExecutor(const PassRegistry &registry,
 void PipelineExecutor::run(core::Module &module, const std::vector<std::string> &pipeline) const
 {
     AnalysisManager analysis(module, analysisRegistry_);
+    const bool collectMetrics = static_cast<bool>(instrumentation_.passMetrics);
 
     viper::pass::PassManager driver;
     if (instrumentation_.printBefore)
@@ -69,12 +85,23 @@ void PipelineExecutor::run(core::Module &module, const std::vector<std::string> 
     for (const auto &passId : pipeline)
     {
         driver.registerPass(passId,
-                            [this, &module, &analysis, passId]() -> bool
+                            [this, &module, &analysis, passId, collectMetrics]() -> bool
                             {
+                                PassMetrics metrics{};
+                                AnalysisCounts countsBefore{};
+                                std::chrono::steady_clock::time_point startTime{};
+                                if (collectMetrics)
+                                {
+                                    metrics.before = computeIRSize(module);
+                                    countsBefore = analysis.counts();
+                                    startTime = std::chrono::steady_clock::now();
+                                }
+
                                 const detail::PassFactory *factory = registry_.lookup(passId);
                                 if (!factory)
                                     return false;
 
+                                bool executed = false;
                                 switch (factory->kind)
                                 {
                                     case detail::PassKind::Module:
@@ -86,7 +113,8 @@ void PipelineExecutor::run(core::Module &module, const std::vector<std::string> 
                                             return false;
                                         PreservedAnalyses preserved = pass->run(module, analysis);
                                         analysis.invalidateAfterModulePass(preserved);
-                                        return true;
+                                        executed = true;
+                                        break;
                                     }
                                     case detail::PassKind::Function:
                                     {
@@ -100,11 +128,27 @@ void PipelineExecutor::run(core::Module &module, const std::vector<std::string> 
                                             PreservedAnalyses preserved = pass->run(fn, analysis);
                                             analysis.invalidateAfterFunctionPass(preserved, fn);
                                         }
-                                        return true;
+                                        executed = true;
+                                        break;
                                     }
                                 }
 
-                                return false;
+                                if (!executed)
+                                    return false;
+
+                                if (collectMetrics && instrumentation_.passMetrics)
+                                {
+                                    metrics.after = computeIRSize(module);
+                                    AnalysisCounts countsAfter = analysis.counts();
+                                    metrics.analysesComputed.moduleComputations =
+                                        countsAfter.moduleComputations - countsBefore.moduleComputations;
+                                    metrics.analysesComputed.functionComputations =
+                                        countsAfter.functionComputations - countsBefore.functionComputations;
+                                    metrics.duration = std::chrono::steady_clock::now() - startTime;
+                                    instrumentation_.passMetrics(passId, metrics);
+                                }
+
+                                return true;
                             });
     }
 

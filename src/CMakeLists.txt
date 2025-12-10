@@ -152,6 +152,7 @@ add_library(il_transform STATIC
         il/transform/LICM.cpp
         il/transform/IndVarSimplify.cpp
         il/transform/GVN.cpp
+        il/transform/ValueKey.cpp
         il/transform/SCCP.cpp
         il/transform/SimplifyCFG.cpp
         il/transform/SimplifyCFG/BlockMerging.cpp

@@ -66,6 +66,12 @@ struct FunctionAnalysisRecord
 using ModuleAnalysisMap = std::unordered_map<std::string, detail::ModuleAnalysisRecord>;
 using FunctionAnalysisMap = std::unordered_map<std::string, detail::FunctionAnalysisRecord>;
 
+struct AnalysisCounts
+{
+    std::size_t moduleComputations = 0;
+    std::size_t functionComputations = 0;
+};
+
 class AnalysisRegistry
 {
   public:
@@ -125,7 +131,10 @@ class AnalysisManager
         assert(it != moduleAnalyses_->end() && "unknown module analysis");
         std::any &cache = moduleCache_[id];
         if (!cache.has_value())
+        {
             cache = it->second.compute(module_);
+            ++counts_.moduleComputations;
+        }
         assert(it->second.type == std::type_index(typeid(Result)) &&
                "analysis result type mismatch");
         auto *value = std::any_cast<Result>(&cache);
@@ -145,7 +154,10 @@ class AnalysisManager
         assert(it != functionAnalyses_->end() && "unknown function analysis");
         std::any &cache = functionCache_[id][&fn];
         if (!cache.has_value())
+        {
             cache = it->second.compute(module_, fn);
+            ++counts_.functionComputations;
+        }
         assert(it->second.type == std::type_index(typeid(Result)) &&
                "analysis result type mismatch");
         auto *value = std::any_cast<Result>(&cache);
@@ -176,6 +188,13 @@ class AnalysisManager
         return module_;
     }
 
+    /// @brief Snapshot analysis computation counts for diagnostics.
+    /// @return Number of module and function analyses computed so far.
+    AnalysisCounts counts() const
+    {
+        return counts_;
+    }
+
   private:
     core::Module &module_;
     const ModuleAnalysisMap *moduleAnalyses_ = nullptr;
@@ -183,6 +202,7 @@ class AnalysisManager
     std::unordered_map<std::string, std::any> moduleCache_;
     std::unordered_map<std::string, std::unordered_map<const core::Function *, std::any>>
         functionCache_;
+    AnalysisCounts counts_{};
 
     friend class AnalysisCacheInvalidator;
 };

@@ -17,8 +17,11 @@
 #include "il/analysis/Dominators.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Module.hpp"
+#include "il/utils/Utils.hpp"
 
+#include <algorithm>
 #include <deque>
+#include <optional>
 #include <unordered_map>
 
 using namespace il::core;
@@ -56,6 +59,13 @@ void LoopInfo::addLoop(Loop loop)
     loops_.push_back(std::move(loop));
 }
 
+const Loop *LoopInfo::parent(const Loop &loop) const
+{
+    if (loop.parentHeader.empty())
+        return nullptr;
+    return findLoop(loop.parentHeader);
+}
+
 namespace
 {
 std::vector<BasicBlock *> getPredecessors(const viper::analysis::CFGContext &ctx, BasicBlock &block)
@@ -87,6 +97,7 @@ LoopInfo computeLoopInfo(Module &module, Function &function)
     viper::analysis::CFGContext cfgCtx(module);
     viper::analysis::DomTree domTree = viper::analysis::computeDominatorTree(cfgCtx, function);
 
+    // Discover loops (header, body, latches).
     for (auto &block : function.blocks)
     {
         std::vector<BasicBlock *> latchBlocks;
@@ -136,6 +147,59 @@ LoopInfo computeLoopInfo(Module &module, Function &function)
         }
 
         info.addLoop(std::move(loop));
+    }
+
+    // Parent/child nesting (pick smallest containing loop as parent).
+    auto contains = [](const Loop &loop, std::string_view label) { return loop.contains(label); };
+    for (auto &loop : info.loops_)
+    {
+        std::optional<std::string> parent;
+        for (const auto &candidate : info.loops_)
+        {
+            if (candidate.headerLabel == loop.headerLabel)
+                continue;
+            if (!contains(candidate, loop.headerLabel))
+                continue;
+            if (!parent ||
+                info.findLoop(*parent)->blockLabels.size() > candidate.blockLabels.size())
+            {
+                parent = candidate.headerLabel;
+            }
+        }
+        if (parent)
+        {
+            loop.parentHeader = *parent;
+        }
+    }
+    // Populate children lists
+    for (auto &loop : info.loops_)
+    {
+        if (loop.parentHeader.empty())
+            continue;
+        if (auto *parentLoop = info.findLoop(loop.parentHeader))
+        {
+            auto *mutableParent = const_cast<Loop *>(parentLoop);
+            mutableParent->childHeaders.push_back(loop.headerLabel);
+        }
+    }
+
+    // Exits: edges from loop body to outside.
+    for (auto &loop : info.loops_)
+    {
+        std::vector<LoopExit> exits;
+        for (const auto &label : loop.blockLabels)
+        {
+            BasicBlock *block = ::viper::il::findBlock(function, label);
+            if (!block || block->instructions.empty())
+                continue;
+            const Instr &term = block->instructions.back();
+            for (const auto &succ : term.labels)
+            {
+                if (!loop.contains(succ))
+                    exits.push_back(LoopExit{label, succ});
+            }
+        }
+        loop.exits = std::move(exits);
     }
 
     return info;

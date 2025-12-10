@@ -190,6 +190,10 @@ class PassManager
     /// @param os Stream for printing IR and diagnostics.
     void setInstrumentationStream(std::ostream &os);
 
+    /// @brief Enable or disable per-pass statistics (IR size, analysis counts).
+    /// @param enable When true, emit pass metrics to the instrumentation stream.
+    void setReportPassStatistics(bool enable);
+
     /// @brief Execute a pipeline of passes on a module.
     /// @param module Module to transform.
     /// @param pipeline Ordered list of pass identifiers to run.
@@ -209,6 +213,7 @@ class PassManager
     bool printBeforeEach_ = false;
     bool printAfterEach_ = false;
     std::ostream *instrumentationStream_ = nullptr;
+    bool reportPassStatistics_ = false;
 };
 
 } // namespace il::transform

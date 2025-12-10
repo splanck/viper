@@ -38,6 +38,7 @@
 #include "viper/pass/PassManager.hpp"
 
 #include <cassert>
+#include <chrono>
 #include <iostream>
 #include <utility>
 
@@ -204,6 +205,11 @@ void PassManager::setInstrumentationStream(std::ostream &os)
     instrumentationStream_ = &os;
 }
 
+void PassManager::setReportPassStatistics(bool enable)
+{
+    reportPassStatistics_ = enable;
+}
+
 /// @brief Execute a specific pipeline against a module.
 /// @details Constructs a @ref PipelineExecutor using the current pass and
 ///          analysis registries, then invokes it with the provided pipeline.
@@ -256,6 +262,25 @@ void PassManager::run(core::Module &module, const Pipeline &pipeline) const
             }
             return true;
         };
+    }
+
+    if (reportPassStatistics_ && instrumentationStream_)
+    {
+        instrumentation.passMetrics =
+            [this](std::string_view passId, const PipelineExecutor::PassMetrics &metrics)
+            {
+                if (!instrumentationStream_)
+                    return;
+                const auto micros =
+                    std::chrono::duration_cast<std::chrono::microseconds>(metrics.duration).count();
+                *instrumentationStream_
+                    << "[pass " << passId << "] bb " << metrics.before.blocks << " -> "
+                    << metrics.after.blocks << ", inst " << metrics.before.instructions << " -> "
+                    << metrics.after.instructions << ", analyses M:"
+                    << metrics.analysesComputed.moduleComputations
+                    << " F:" << metrics.analysesComputed.functionComputations << ", time " << micros
+                    << "us\n";
+            };
     }
 
     PipelineExecutor executor(passRegistry_, analysisRegistry_, std::move(instrumentation));

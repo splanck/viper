@@ -571,6 +571,33 @@ function(viper_add_il_utils_test)
     viper_add_ctest(test_il_gvn_basic test_il_gvn_basic)
 
     viper_add_test(
+            test_il_gvn_cse_basic
+            ${VIPER_TESTS_DIR}/unit/il/transform/test_gvn_cse_basic.cpp)
+    target_link_libraries(
+            test_il_gvn_cse_basic PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
+    viper_add_ctest(test_il_gvn_cse_basic test_il_gvn_cse_basic)
+
+    viper_add_test(
+            test_il_loopsimplify_invariants
+            ${VIPER_TESTS_DIR}/unit/il/transform/loopsimplify_invariants.cpp)
+    target_link_libraries(
+            test_il_loopsimplify_invariants PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
+    viper_add_ctest(
+            test_il_loopsimplify_invariants test_il_loopsimplify_invariants)
+
+    viper_add_test(
+            test_il_licm_hoist ${VIPER_TESTS_DIR}/unit/il/transform/licm_basic.cpp)
+    target_link_libraries(
+            test_il_licm_hoist PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
+    viper_add_ctest(test_il_licm_hoist test_il_licm_hoist)
+
+    viper_add_test(
+            test_il_indvars_strength ${VIPER_TESTS_DIR}/unit/il/transform/indvars_basic.cpp)
+    target_link_libraries(
+            test_il_indvars_strength PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
+    viper_add_ctest(test_il_indvars_strength test_il_indvars_strength)
+
+    viper_add_test(
             test_il_inline_basic
             ${VIPER_TESTS_DIR}/unit/il/transform/test_Inline.cpp)
     target_link_libraries(

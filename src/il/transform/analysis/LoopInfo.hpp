@@ -40,6 +40,12 @@
 namespace il::transform
 {
 
+struct LoopExit
+{
+    std::string from;
+    std::string to;
+};
+
 /// @brief Hash functor for heterogeneous string lookup (C++20).
 struct LoopStringHash
 {
@@ -60,6 +66,12 @@ struct Loop
     std::vector<std::string> blockLabels;
     /// Labels of latch blocks (predecessors that branch back to the header).
     std::vector<std::string> latchLabels;
+    /// Labels of exit edges (from -> to) leaving the loop body.
+    std::vector<LoopExit> exits;
+    /// Child loop headers nested immediately inside this loop.
+    std::vector<std::string> childHeaders;
+    /// Parent loop header if nested, empty otherwise.
+    std::string parentHeader;
 
     /// \brief Determine whether @p label belongs to the loop body.
     [[nodiscard]] bool contains(std::string_view label) const;
@@ -87,7 +99,11 @@ class LoopInfo
     /// \brief Add a loop description owned by the summary.
     void addLoop(Loop loop);
 
+    /// \brief Find the parent loop for @p loop header.
+    [[nodiscard]] const Loop *parent(const Loop &loop) const;
+
   private:
+    friend LoopInfo computeLoopInfo(il::core::Module &module, il::core::Function &function);
     std::vector<Loop> loops_;
 };
 

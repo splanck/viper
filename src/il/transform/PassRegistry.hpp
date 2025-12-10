@@ -50,7 +50,10 @@ class AnalysisManager;
 /// @brief Tracks which analyses are preserved by a pass execution.
 /// @details Used by passes to signal which analysis results remain valid
 ///          after transformation, enabling the pass manager to avoid
-///          unnecessary recomputation.
+///          unnecessary recomputation. Module and function analyses are tracked
+///          separately so module passes can opt-in to preserving per-function
+///          results (e.g. CFG, dominators) when they leave those structures
+///          untouched.
 class PreservedAnalyses
 {
   public:
@@ -105,6 +108,21 @@ class PreservedAnalyses
     /// @brief Check if any function analyses are explicitly preserved.
     /// @return True if specific function analyses or all function analyses are preserved.
     bool hasFunctionPreservations() const;
+
+    /// @brief Convenience helper to preserve the CFG analysis.
+    PreservedAnalyses &preserveCFG();
+
+    /// @brief Convenience helper to preserve the dominator tree analysis.
+    PreservedAnalyses &preserveDominators();
+
+    /// @brief Convenience helper to preserve loop information analysis.
+    PreservedAnalyses &preserveLoopInfo();
+
+    /// @brief Convenience helper to preserve liveness analysis.
+    PreservedAnalyses &preserveLiveness();
+
+    /// @brief Convenience helper to preserve the basic alias analysis.
+    PreservedAnalyses &preserveBasicAA();
 
   private:
     bool preserveAllModules_ = false;

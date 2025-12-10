@@ -202,6 +202,11 @@ add_executable(test_diff_vm_native_property ${CMAKE_CURRENT_SOURCE_DIR}/unit/cod
 target_link_libraries(test_diff_vm_native_property PRIVATE viper_test_common il_codegen_aarch64 ilc_cmd_arm64)
 viper_add_ctest(test_diff_vm_native_property $<TARGET_FILE:test_diff_vm_native_property>)
 
+# Optimizer pipeline differential testing (VM baseline vs O0/O1/O2)
+add_executable(test_il_opt_equivalence ${CMAKE_CURRENT_SOURCE_DIR}/unit/test_il_opt_equivalence.cpp)
+target_link_libraries(test_il_opt_equivalence PRIVATE viper_test_common il_transform viper::il_verify)
+viper_add_ctest(test_il_opt_equivalence $<TARGET_FILE:test_il_opt_equivalence>)
+
 # cbr lowering tests for arm64 CLI
 add_executable(test_codegen_arm64_cbr ${CMAKE_CURRENT_SOURCE_DIR}/unit/codegen/test_codegen_arm64_cbr.cpp)
 target_link_libraries(test_codegen_arm64_cbr PRIVATE viper_testing il_codegen_aarch64 ilc_cmd_arm64)

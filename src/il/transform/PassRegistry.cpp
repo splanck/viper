@@ -161,6 +161,31 @@ bool PreservedAnalyses::hasFunctionPreservations() const
     return !functionAnalyses_.empty();
 }
 
+PreservedAnalyses &PreservedAnalyses::preserveCFG()
+{
+    return preserveFunction("cfg");
+}
+
+PreservedAnalyses &PreservedAnalyses::preserveDominators()
+{
+    return preserveFunction("dominators");
+}
+
+PreservedAnalyses &PreservedAnalyses::preserveLoopInfo()
+{
+    return preserveFunction("loop-info");
+}
+
+PreservedAnalyses &PreservedAnalyses::preserveLiveness()
+{
+    return preserveFunction("liveness");
+}
+
+PreservedAnalyses &PreservedAnalyses::preserveBasicAA()
+{
+    return preserveFunction("basic-aa");
+}
+
 namespace
 {
 class LambdaModulePass : public ModulePass
