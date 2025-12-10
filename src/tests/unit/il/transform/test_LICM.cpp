@@ -26,6 +26,7 @@
 #include "il/core/Type.hpp"
 #include "il/core/Value.hpp"
 
+#include "il/analysis/BasicAA.hpp"
 #include "il/analysis/CFG.hpp"
 #include "il/analysis/Dominators.hpp"
 
@@ -164,6 +165,8 @@ int main()
     registry.registerFunctionAnalysis<il::transform::LivenessInfo>(
         "liveness",
         [](Module &mod, Function &fnRef) { return il::transform::computeLiveness(mod, fnRef); });
+    registry.registerFunctionAnalysis<viper::analysis::BasicAA>(
+        "basic-aa", [](Module &mod, Function &fnRef) { return viper::analysis::BasicAA(mod, fnRef); });
 
     il::transform::AnalysisManager analysisManager(module, registry);
 

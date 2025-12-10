@@ -115,16 +115,16 @@ TEST(LICM, HoistsInvariantAdd)
     il::transform::AnalysisManager manager(M, registry);
 
     il::transform::LoopSimplify simplify;
-    simplify.run(Fn, manager);
+    auto preserved = simplify.run(Fn, manager);
+    manager.invalidateAfterFunctionPass(preserved, Fn);
 
-    il::transform::AnalysisManager manager2(M, registry);
-    auto &loopInfo = manager2.getFunctionResult<il::transform::LoopInfo>("loop-info", Fn);
+    auto &loopInfo = manager.getFunctionResult<il::transform::LoopInfo>("loop-info", Fn);
     ASSERT_FALSE(loopInfo.loops().empty());
     const auto &loopHeader = loopInfo.loops().front().headerLabel;
     ASSERT_EQ(loopHeader, "header");
 
     il::transform::LICM licm;
-    licm.run(Fn, manager2);
+    licm.run(Fn, manager);
 
     BasicBlock &preheader = Fn.blocks[0];
     BasicBlock &hdr = Fn.blocks[1];

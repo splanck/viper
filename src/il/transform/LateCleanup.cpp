@@ -6,8 +6,9 @@
 //===----------------------------------------------------------------------===//
 //
 // Implements the LateCleanup pass for late-pipeline optimization cleanup.
-// The pass combines SimplifyCFG and DCE in a tight loop to efficiently remove
-// dead code and simplify control flow created by earlier optimization passes.
+// The pass combines SimplifyCFG and DCE in a bounded fixpoint to efficiently
+// remove dead code and simplify control flow created by earlier optimization
+// passes.
 //
 //===----------------------------------------------------------------------===//
 
@@ -18,10 +19,32 @@
 
 #include "il/core/Module.hpp"
 
+#include <cstddef>
+
 using namespace il::core;
 
 namespace il::transform
 {
+
+namespace
+{
+std::size_t countInstructions(const Module &module)
+{
+    std::size_t total = 0;
+    for (const auto &fn : module.functions)
+        for (const auto &block : fn.blocks)
+            total += block.instructions.size();
+    return total;
+}
+
+std::size_t countBlocks(const Module &module)
+{
+    std::size_t total = 0;
+    for (const auto &fn : module.functions)
+        total += fn.blocks.size();
+    return total;
+}
+} // namespace
 
 std::string_view LateCleanup::id() const
 {
@@ -30,15 +53,26 @@ std::string_view LateCleanup::id() const
 
 PreservedAnalyses LateCleanup::run(Module &module, AnalysisManager &analysis)
 {
-    bool changed = false;
+    bool changedAny = false;
 
-    // Maximum iterations to prevent infinite loops while still achieving
-    // a reasonable fixpoint
-    constexpr int maxIterations = 2;
+    constexpr unsigned kMaxIterations = 4;
 
-    for (int iter = 0; iter < maxIterations; ++iter)
+    const std::size_t initialInstr = countInstructions(module);
+    const std::size_t initialBlocks = countBlocks(module);
+    std::size_t currentInstr = initialInstr;
+    std::size_t currentBlocks = initialBlocks;
+
+    if (stats_)
     {
-        bool iterChanged = false;
+        stats_->instrBefore = initialInstr;
+        stats_->blocksBefore = initialBlocks;
+    }
+
+    for (unsigned iter = 0; iter < kMaxIterations; ++iter)
+    {
+        const std::size_t iterStartInstr = currentInstr;
+        const std::size_t iterStartBlocks = currentBlocks;
+        bool simplifyChanged = false;
 
         // Run SimplifyCFG on each function
         for (auto &function : module.functions)
@@ -48,30 +82,38 @@ PreservedAnalyses LateCleanup::run(Module &module, AnalysisManager &analysis)
             cfgPass.setAnalysisManager(&analysis);
 
             SimplifyCFG::Stats stats;
-            if (cfgPass.run(function, &stats))
-            {
-                iterChanged = true;
-            }
+            simplifyChanged |= cfgPass.run(function, &stats);
         }
 
         // Run DCE on the entire module
-        // DCE always runs; we track changes conservatively
         dce(module);
-        // DCE doesn't report changes, so we can't know for sure if it did
-        // anything. For the iteration check, we rely on SimplifyCFG.
 
-        if (iterChanged)
+        currentInstr = countInstructions(module);
+        currentBlocks = countBlocks(module);
+
+        const bool sizeChanged =
+            currentInstr != iterStartInstr || currentBlocks != iterStartBlocks;
+        const bool iterChanged = simplifyChanged || sizeChanged;
+
+        if (stats_)
         {
-            changed = true;
+            stats_->instrPerIter.push_back(currentInstr);
+            stats_->blocksPerIter.push_back(currentBlocks);
         }
-        else
-        {
-            // No SimplifyCFG changes means we're at a fixpoint
+
+        changedAny |= iterChanged;
+        if (!iterChanged)
             break;
-        }
     }
 
-    if (!changed)
+    if (stats_)
+    {
+        stats_->iterations = static_cast<unsigned>(stats_->instrPerIter.size());
+        stats_->instrAfter = currentInstr;
+        stats_->blocksAfter = currentBlocks;
+    }
+
+    if (!changedAny)
         return PreservedAnalyses::all();
 
     // Conservative: invalidate everything since we modified code

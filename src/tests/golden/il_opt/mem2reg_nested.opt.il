@@ -12,6 +12,6 @@ T2:
   br Join(3)
 F2:
   br Join(4)
-Join(%t4:i64):
-  ret %t4
+Join(%t5:i64):
+  ret %t5
 }

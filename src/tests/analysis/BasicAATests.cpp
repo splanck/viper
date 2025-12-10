@@ -85,7 +85,7 @@ int main()
     assert(aa.alias(allocaValA, allocaValA) == AliasResult::MustAlias);
     assert(aa.alias(allocaValA, allocaValB) == AliasResult::NoAlias);
     assert(aa.alias(firstParam, secondParam) == AliasResult::NoAlias);
-    assert(aa.alias(allocaValA, Value::global("g")) == AliasResult::MayAlias);
+    assert(aa.alias(allocaValA, Value::global("g")) == AliasResult::NoAlias);
 
     fn.attrs().readonly = true;
 

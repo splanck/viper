@@ -15,9 +15,11 @@
 
 #include "il/api/expected_api.hpp"
 #include "il/core/Module.hpp"
+#include "il/io/Serializer.hpp"
 #include "il/transform/PassManager.hpp"
 #include "il/transform/analysis/Liveness.hpp"
 #include <cassert>
+#include <atomic>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -32,12 +34,40 @@ entry:
   ret 0
 }
 )";
+
+const char *kParallelProgram = R"(il 0.1
+func @foo() -> i64 {
+entry:
+  ret 1
+}
+
+func @bar() -> i64 {
+entry:
+  ret 2
+}
+
+func @main() -> i64 {
+entry:
+  %a = call @foo()
+  %b = call @bar()
+  ret %a
+}
+)";
 }
 
 core::Module parseModule()
 {
     core::Module module;
     std::istringstream input(kProgram);
+    auto parsed = il::api::v2::parse_text_expected(input, module);
+    assert(parsed);
+    return module;
+}
+
+core::Module parseParallelModule()
+{
+    core::Module module;
+    std::istringstream input(kParallelProgram);
     auto parsed = il::api::v2::parse_text_expected(input, module);
     assert(parsed);
     return module;
@@ -168,6 +198,44 @@ int main()
     assert(statsAfter.find("simplify-cfg") != std::string::npos);
     assert(statsAfter.find("dce") != std::string::npos);
     assert(statsAfter.find("licm") != std::string::npos || statsAfter.find("inline") != std::string::npos);
+
+    std::atomic<int> parallelRuns{0};
+    pm.registerFunctionPass(
+        "count-fns",
+        [&parallelRuns](core::Function &, transform::AnalysisManager &)
+        {
+            ++parallelRuns;
+            return transform::PreservedAnalyses::all();
+        });
+    pm.registerPipeline("parallel-count", {"count-fns"});
+
+    std::string seqIL;
+    {
+        core::Module seq = parseParallelModule();
+        parallelRuns = 0;
+        pm.enableParallelFunctionPasses(false);
+        bool ranSeq = pm.runPipeline(seq, "parallel-count");
+        assert(ranSeq);
+        assert(parallelRuns.load() == static_cast<int>(seq.functions.size()));
+        std::ostringstream out;
+        il::io::Serializer::write(seq, out);
+        seqIL = out.str();
+    }
+
+    {
+        core::Module par = parseParallelModule();
+        parallelRuns = 0;
+        pm.enableParallelFunctionPasses(true);
+        bool ranPar = pm.runPipeline(par, "parallel-count");
+        assert(ranPar);
+        assert(parallelRuns.load() == static_cast<int>(par.functions.size()));
+        std::ostringstream out;
+        il::io::Serializer::write(par, out);
+        std::string parIL = out.str();
+        assert(parIL == seqIL);
+    }
+    pm.enableParallelFunctionPasses(false);
+
     assert(!pm.runPipeline(module, "missing"));
 
     return 0;

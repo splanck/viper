@@ -515,9 +515,16 @@ function(viper_add_il_utils_test)
     viper_add_test(
             test_il_peephole_use_count
             ${_VIPER_IL_DIR}/transform/peephole_use_count.cpp)
-    target_link_libraries(
+        target_link_libraries(
             test_il_peephole_use_count PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
     viper_add_ctest(test_il_peephole_use_count test_il_peephole_use_count)
+
+    add_executable(
+            test_il_alias_precision
+            ${_VIPER_IL_DIR}/transform/alias_precision.cpp)
+        target_link_libraries(
+            test_il_alias_precision PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
+    viper_add_ctest(test_il_alias_precision test_il_alias_precision)
 
     viper_add_test(
             test_il_dce_param_compaction
@@ -598,11 +605,31 @@ function(viper_add_il_utils_test)
     viper_add_ctest(test_il_indvars_strength test_il_indvars_strength)
 
     viper_add_test(
+            test_il_checkopt_redundancy
+            ${VIPER_TESTS_DIR}/unit/il/transform/checkopt_redundancy.cpp)
+    target_link_libraries(
+            test_il_checkopt_redundancy PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
+    viper_add_ctest(
+            test_il_checkopt_redundancy test_il_checkopt_redundancy)
+
+    viper_add_test(
             test_il_inline_basic
             ${VIPER_TESTS_DIR}/unit/il/transform/test_Inline.cpp)
     target_link_libraries(
             test_il_inline_basic PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
     viper_add_ctest(test_il_inline_basic test_il_inline_basic)
+    viper_add_test(
+            test_il_inline_multiblock
+            ${_VIPER_IL_DIR}/transform/inline_multiblock.cpp)
+    target_link_libraries(
+            test_il_inline_multiblock PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
+    viper_add_ctest(test_il_inline_multiblock test_il_inline_multiblock)
+    viper_add_test(
+            test_il_mem2reg_sroa
+            ${_VIPER_IL_DIR}/transform/mem2reg_sroa.cpp)
+    target_link_libraries(
+            test_il_mem2reg_sroa PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
+    viper_add_ctest(test_il_mem2reg_sroa test_il_mem2reg_sroa)
 
     viper_add_test(
             test_il_check_opt
@@ -617,6 +644,13 @@ function(viper_add_il_utils_test)
     target_link_libraries(
             test_il_late_cleanup PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
     viper_add_ctest(test_il_late_cleanup test_il_late_cleanup)
+
+    viper_add_test(
+            test_il_latecleanup_fixpoint
+            ${_VIPER_IL_DIR}/transform/latecleanup_fixpoint.cpp)
+    target_link_libraries(
+            test_il_latecleanup_fixpoint PRIVATE ${VIPER_IL_CORE_IO_LIBS} il_build il_transform)
+    viper_add_ctest(test_il_latecleanup_fixpoint test_il_latecleanup_fixpoint)
 
     viper_add_test(test_il_opcode_info ${_VIPER_IL_DIR}/OpcodeInfoTests.cpp)
     target_link_libraries(test_il_opcode_info PRIVATE ${VIPER_IL_CORE_IO_LIBS})

@@ -22,6 +22,7 @@
 #include <queue>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 using namespace il::core;
 
@@ -29,6 +30,76 @@ namespace viper::passes
 {
 namespace
 {
+constexpr unsigned kMaxSROAFields = 4;
+constexpr unsigned kMaxSROAAllocaSize = 64;
+
+struct SROAField
+{
+    Type type{};
+    unsigned size = 0;
+    unsigned allocaId = 0;
+};
+
+struct SROACandidate
+{
+    BasicBlock *block = nullptr;
+    std::size_t allocaIndex = 0;
+    unsigned baseId = 0;
+    unsigned allocSize = 0;
+    bool ok = false;
+    std::unordered_map<unsigned, unsigned> offsets; // temp id -> byte offset (includes base)
+    std::unordered_map<unsigned, SROAField> fields; // offset -> field info
+};
+
+static bool isPromotableScalarType(const Type &type)
+{
+    switch (type.kind)
+    {
+    case Type::Kind::I1:
+    case Type::Kind::I16:
+    case Type::Kind::I32:
+    case Type::Kind::I64:
+    case Type::Kind::F64:
+        return true;
+    default:
+        return false;
+    }
+}
+
+static std::optional<unsigned> scalarSize(const Type &type)
+{
+    switch (type.kind)
+    {
+    case Type::Kind::I1:
+        return 1;
+    case Type::Kind::I16:
+        return 2;
+    case Type::Kind::I32:
+        return 4;
+    case Type::Kind::I64:
+    case Type::Kind::F64:
+        return 8;
+    default:
+        return std::nullopt;
+    }
+}
+
+static std::optional<unsigned> constOffset(const Value &v)
+{
+    if (v.kind != Value::Kind::ConstInt || v.i64 < 0)
+        return std::nullopt;
+    return static_cast<unsigned>(v.i64);
+}
+
+static void ensureValueName(Function &F, unsigned id, const std::string &name)
+{
+    if (name.empty())
+        return;
+    if (F.valueNames.size() <= id)
+        F.valueNames.resize(id + 1);
+    F.valueNames[id] = name;
+}
+
 struct AllocaInfo
 {
     BasicBlock *block{nullptr};
@@ -343,9 +414,7 @@ static void promoteVariables(Function &F,
     {
         if (AI.addressTaken || !AI.hasStore)
             continue;
-        if (AI.type.kind != Type::Kind::I64 && AI.type.kind != Type::Kind::I32 &&
-            AI.type.kind != Type::Kind::I16 && AI.type.kind != Type::Kind::F64 &&
-            AI.type.kind != Type::Kind::I1)
+        if (!isPromotableScalarType(AI.type))
             continue;
         vars[id] = VarState{AI.type, {}};
     }
@@ -435,6 +504,273 @@ static void promoteVariables(Function &F,
 
 } // namespace
 
+static bool runSROA(Function &F)
+{
+    std::unordered_map<unsigned, SROACandidate> candidates;
+    std::unordered_map<unsigned, unsigned> owner; // temp -> base alloca id
+
+    for (auto &B : F.blocks)
+    {
+        for (std::size_t idx = 0; idx < B.instructions.size(); ++idx)
+        {
+            Instr &I = B.instructions[idx];
+            if (I.op != Opcode::Alloca || !I.result || I.operands.empty())
+                continue;
+
+            auto sizeOpt = constOffset(I.operands[0]);
+            if (!sizeOpt || *sizeOpt == 0 || *sizeOpt > kMaxSROAAllocaSize)
+                continue;
+
+            SROACandidate cand;
+            cand.block = &B;
+            cand.allocaIndex = idx;
+            cand.baseId = *I.result;
+            cand.allocSize = *sizeOpt;
+            cand.ok = true;
+            cand.offsets.emplace(*I.result, 0);
+
+            candidates.emplace(*I.result, std::move(cand));
+            owner.emplace(*I.result, *I.result);
+        }
+    }
+
+    if (candidates.empty())
+        return false;
+
+    for (auto &B : F.blocks)
+    {
+        for (auto &I : B.instructions)
+        {
+            if (I.op == Opcode::GEP && I.operands.size() >= 2 &&
+                I.operands[0].kind == Value::Kind::Temp)
+            {
+                auto ownIt = owner.find(I.operands[0].id);
+                if (ownIt != owner.end())
+                {
+                    auto candIt = candidates.find(ownIt->second);
+                    if (candIt != candidates.end() && candIt->second.ok)
+                    {
+                        auto offOpt = constOffset(I.operands[1]);
+                        if (!offOpt || !I.result)
+                        {
+                            candIt->second.ok = false;
+                        }
+                        else
+                        {
+                            unsigned off = *offOpt;
+                            if (off > candIt->second.allocSize)
+                            {
+                                candIt->second.ok = false;
+                            }
+                            else
+                            {
+                                owner[*I.result] = candIt->second.baseId;
+                                candIt->second.offsets[*I.result] = off;
+                            }
+                        }
+                    }
+                }
+            }
+
+            auto classifyUse = [&](const Value &v, Instr &Inst, std::size_t operandIdx)
+            {
+                if (v.kind != Value::Kind::Temp)
+                    return;
+                auto ownIt = owner.find(v.id);
+                if (ownIt == owner.end())
+                    return;
+                auto candIt = candidates.find(ownIt->second);
+                if (candIt == candidates.end())
+                    return;
+                SROACandidate &cand = candIt->second;
+                if (!cand.ok)
+                    return;
+
+                if (Inst.op == Opcode::Load || Inst.op == Opcode::Store)
+                {
+                    if (Inst.operands.empty() || operandIdx != 0)
+                    {
+                        cand.ok = false;
+                        return;
+                    }
+                    auto offIt = cand.offsets.find(v.id);
+                    if (offIt == cand.offsets.end())
+                    {
+                        cand.ok = false;
+                        return;
+                    }
+                    Type accessType = Inst.type;
+                    if (!isPromotableScalarType(accessType))
+                    {
+                        cand.ok = false;
+                        return;
+                    }
+                    auto szOpt = scalarSize(accessType);
+                    if (!szOpt || offIt->second + *szOpt > cand.allocSize)
+                    {
+                        cand.ok = false;
+                        return;
+                    }
+
+                    SROAField &field = cand.fields[offIt->second];
+                    if (field.size == 0)
+                    {
+                        field.type = accessType;
+                        field.size = *szOpt;
+                    }
+                    else if (field.type.kind != accessType.kind)
+                    {
+                        cand.ok = false;
+                    }
+                    return;
+                }
+
+                if (Inst.op == Opcode::GEP && operandIdx == 0)
+                    return;
+
+                cand.ok = false;
+            };
+
+            for (std::size_t oi = 0; oi < I.operands.size(); ++oi)
+                classifyUse(I.operands[oi], I, oi);
+
+            for (auto &argList : I.brArgs)
+                for (const auto &arg : argList)
+                    classifyUse(arg, I, 0);
+        }
+    }
+
+    for (auto &[id, cand] : candidates)
+    {
+        if (!cand.ok || cand.fields.empty() || cand.fields.size() > kMaxSROAFields)
+        {
+            cand.ok = false;
+            continue;
+        }
+
+        std::vector<std::pair<unsigned, SROAField *>> ordered;
+        ordered.reserve(cand.fields.size());
+        for (auto &[off, field] : cand.fields)
+            ordered.emplace_back(off, &field);
+        std::sort(ordered.begin(), ordered.end(),
+                  [](const auto &a, const auto &b) { return a.first < b.first; });
+
+        unsigned end = 0;
+        for (const auto &[off, field] : ordered)
+        {
+            if (field->size == 0 || off < end || off + field->size > cand.allocSize)
+            {
+                cand.ok = false;
+                break;
+            }
+            end = off + field->size;
+        }
+    }
+
+    bool changed = false;
+    unsigned nextId = viper::il::nextTempId(F);
+
+    for (auto &[id, cand] : candidates)
+    {
+        if (!cand.ok)
+            continue;
+
+        BasicBlock &B = *cand.block;
+        auto findAllocaIndex = [&]() -> std::size_t
+        {
+            for (std::size_t i = 0; i < B.instructions.size(); ++i)
+            {
+                Instr &I = B.instructions[i];
+                if (I.op == Opcode::Alloca && I.result && *I.result == cand.baseId)
+                    return i;
+            }
+            return B.instructions.size();
+        };
+
+        std::size_t insertPos = findAllocaIndex();
+        if (insertPos == B.instructions.size())
+            continue;
+
+        std::unordered_map<unsigned, unsigned> offsetToAlloca;
+        offsetToAlloca.reserve(cand.fields.size());
+
+        std::size_t fieldIdx = 0;
+        for (auto &entry : cand.fields)
+        {
+            Instr alloc;
+            alloc.op = Opcode::Alloca;
+            alloc.type = Type(Type::Kind::Ptr);
+            alloc.result = nextId;
+            alloc.operands.push_back(Value::constInt(entry.second.size));
+            offsetToAlloca[entry.first] = nextId;
+            entry.second.allocaId = nextId;
+
+            std::string baseName;
+            if (cand.baseId < F.valueNames.size())
+                baseName = F.valueNames[cand.baseId];
+            if (baseName.empty())
+                baseName = "sroa";
+            ensureValueName(F, nextId, baseName + ".f" + std::to_string(fieldIdx++));
+
+            B.instructions.insert(B.instructions.begin() + static_cast<long>(insertPos),
+                                  std::move(alloc));
+            ++insertPos;
+            ++nextId;
+        }
+
+        for (auto &Blk : F.blocks)
+        {
+            for (auto &I : Blk.instructions)
+            {
+                if ((I.op != Opcode::Load && I.op != Opcode::Store) || I.operands.empty())
+                    continue;
+
+                if (I.operands[0].kind != Value::Kind::Temp)
+                    continue;
+
+                auto offIt = cand.offsets.find(I.operands[0].id);
+                if (offIt == cand.offsets.end())
+                    continue;
+
+                auto fieldIt = offsetToAlloca.find(offIt->second);
+                if (fieldIt == offsetToAlloca.end())
+                    continue;
+
+                I.operands[0] = Value::temp(fieldIt->second);
+            }
+        }
+
+        for (auto &Blk : F.blocks)
+        {
+            for (std::size_t i = 0; i < Blk.instructions.size();)
+            {
+                Instr &I = Blk.instructions[i];
+                bool erase = false;
+
+                if (I.op == Opcode::GEP && I.result && cand.offsets.contains(*I.result) &&
+                    *I.result != cand.baseId)
+                {
+                    erase = true;
+                }
+                else if (I.op == Opcode::Alloca && I.result && *I.result == cand.baseId)
+                {
+                    erase = true;
+                }
+
+                if (erase)
+                {
+                    Blk.instructions.erase(Blk.instructions.begin() + static_cast<long>(i));
+                    changed = true;
+                    continue;
+                }
+                ++i;
+            }
+        }
+    }
+
+    return changed;
+}
+
 /// @brief Run memory-to-register promotion across all functions in a module.
 ///
 /// @details Scans each function for promotable allocas, filters out variables
@@ -452,15 +788,15 @@ void mem2reg(Module &M, Mem2RegStats *stats)
     analysis::CFGContext cfg(M);
     for (auto &F : M.functions)
     {
+        runSROA(F);
+
         AllocaMap infos = collectAllocas(F);
         AllocaMap promotable;
         for (auto &[id, info] : infos)
         {
             if (info.addressTaken || !info.hasStore)
                 continue;
-            if (info.type.kind != Type::Kind::I64 && info.type.kind != Type::Kind::I32 &&
-                info.type.kind != Type::Kind::I16 && info.type.kind != Type::Kind::F64 &&
-                info.type.kind != Type::Kind::I1)
+            if (!isPromotableScalarType(info.type))
                 continue;
             promotable.emplace(id, info);
         }

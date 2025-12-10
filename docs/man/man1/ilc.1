@@ -18,7 +18,7 @@ ilc \- Viper IL compiler, runner, optimizer, and codegen driver
 \fIin.il\fR [\fB-S\fR \fIout.s\fR] [\fB-o\fR \fIexe|obj\fR] [\fB-run-native\fR]
 .br
 .B ilc il-opt
-\fIin.il\fR \fB-o\fR \fIout.il\fR [\fB--passes\fR p1,p2] [\fB-print-before\fR] [\fB-print-after\fR] [\fB-verify-each\fR]
+\fIin.il\fR \fB-o\fR \fIout.il\fR [\fB--pipeline\fR O0|O1|O2] [\fB--passes\fR p1,p2] [\fB-print-before\fR] [\fB-print-after\fR] [\fB-verify-each\fR]
 .br
 .B ilc
 \fB--version\fR
@@ -26,6 +26,8 @@ ilc \- Viper IL compiler, runner, optimizer, and codegen driver
 The \fBilc\fR tool is the Swiss army knife for Viper IL: it can run IL modules, drive the BASIC frontend, perform IL optimizations, and emit native code for supported targets.
 .PP
 When used with \fB-run\fR, \fBilc\fR executes a textual IL module that defines a \fCfunc @main()\fR entry point.
+.PP
+The \fBil-opt\fR subcommand now drives the canonical IL pipelines registered by the optimizer (\fBO0\fR/\fBO1\fR/\fBO2\fR). With no explicit \fB--passes\fR the tool defaults to \fBO1\fR; use \fB--pipeline\fR to pick a different pipeline or \fB--passes\fR to run a custom, comma-separated list. Flags such as \fB-print-before\fR, \fB-print-after\fR, and \fB-verify-each\fR still apply to either mode.
 .PP
 The \fBfront basic\fR subcommand compiles BASIC source to IL or runs it directly via the interpreter, optionally enabling bounds checks and controlling runtime namespace emission.
 .PP
@@ -83,4 +85,3 @@ ilc front basic -emit-il prog.bas -o prog.il
 Returns 0 on success; non-zero on argument, I/O, parse, verification, or runtime errors.
 .SH SEE ALSO
 \fBilrun\fR(1), \fBil-verify\fR(1), \fBvbasic\fR(1)
-

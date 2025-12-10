@@ -194,6 +194,12 @@ class PassManager
     /// @param enable When true, emit pass metrics to the instrumentation stream.
     void setReportPassStatistics(bool enable);
 
+    /// @brief Enable experimental parallel execution of function passes.
+    /// @details When enabled the executor may run function-local passes across multiple
+    ///          functions concurrently. This mode is off by default to preserve determinism.
+    /// @param enable True to allow parallel function pass execution.
+    void enableParallelFunctionPasses(bool enable);
+
     /// @brief Execute a pipeline of passes on a module.
     /// @param module Module to transform.
     /// @param pipeline Ordered list of pass identifiers to run.
@@ -214,6 +220,7 @@ class PassManager
     bool printAfterEach_ = false;
     std::ostream *instrumentationStream_ = nullptr;
     bool reportPassStatistics_ = false;
+    bool parallelFunctionPasses_ = false;
 };
 
 } // namespace il::transform

@@ -29,6 +29,7 @@
 #include "il/utils/Utils.hpp"
 #include "il/verify/VerifierTable.hpp"
 
+#include <optional>
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -39,6 +40,12 @@ namespace il::transform
 {
 namespace
 {
+struct StoreSite
+{
+    Value ptr;
+    std::optional<unsigned> size;
+};
+
 bool isSafeToHoist(const Instr &instr, bool allowLoadHoist)
 {
     const auto &info = getOpcodeInfo(instr.op);
@@ -195,6 +202,7 @@ PreservedAnalyses LICM::run(Function &function, AnalysisManager &analysis)
         seedInvariants(loop, function, invariants);
 
         bool loopHasMod = false;
+        std::vector<StoreSite> loopStores;
         for (const auto &label : loop.blockLabels)
         {
             BasicBlock *blk = findBlock(function, label);
@@ -202,6 +210,13 @@ PreservedAnalyses LICM::run(Function &function, AnalysisManager &analysis)
                 continue;
             for (const auto &ins : blk->instructions)
             {
+                if (ins.op == Opcode::Store && !ins.operands.empty())
+                {
+                    loopStores.push_back(
+                        {ins.operands[0], viper::analysis::BasicAA::typeSizeBytes(ins.type)});
+                    continue;
+                }
+
                 if (ins.op == Opcode::Call || ins.op == Opcode::CallIndirect)
                 {
                     auto mr = aa.modRef(ins);
@@ -233,7 +248,25 @@ PreservedAnalyses LICM::run(Function &function, AnalysisManager &analysis)
             for (std::size_t idx = 0; idx < block->instructions.size();)
             {
                 Instr &instr = block->instructions[idx];
-                const bool allowLoads = !loopHasMod;
+                bool allowLoads = true;
+                if (instr.op == Opcode::Load)
+                {
+                    allowLoads = !loopHasMod;
+                    if (allowLoads && !instr.operands.empty())
+                    {
+                        auto loadSize = viper::analysis::BasicAA::typeSizeBytes(instr.type);
+                        for (const auto &store : loopStores)
+                        {
+                            if (aa.alias(instr.operands[0], store.ptr, loadSize, store.size) !=
+                                viper::analysis::AliasResult::NoAlias)
+                            {
+                                allowLoads = false;
+                                break;
+                            }
+                        }
+                    }
+                }
+
                 if (!isSafeToHoist(instr, allowLoads) || !operandsInvariant(instr, invariants))
                 {
                     ++idx;

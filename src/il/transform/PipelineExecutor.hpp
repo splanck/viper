@@ -79,7 +79,8 @@ class PipelineExecutor
 
     PipelineExecutor(const PassRegistry &registry,
                      const AnalysisRegistry &analysisRegistry,
-                     Instrumentation instrumentation);
+                     Instrumentation instrumentation,
+                     bool parallelFunctionPasses = false);
 
     void run(core::Module &module, const std::vector<std::string> &pipeline) const;
 
@@ -87,6 +88,7 @@ class PipelineExecutor
     const PassRegistry &registry_;
     const AnalysisRegistry &analysisRegistry_;
     Instrumentation instrumentation_;
+    bool parallelFunctionPasses_ = false;
 };
 
 } // namespace il::transform

@@ -205,7 +205,12 @@ MemoryEffects memoryEffects(Opcode op) noexcept
         case Opcode::GEP:
         case Opcode::AddrOf:
         case Opcode::ConstStr:
+        case Opcode::GAddr:
         case Opcode::ConstNull:
+        case Opcode::Br:
+        case Opcode::CBr:
+        case Opcode::SwitchI32:
+        case Opcode::Ret:
             return MemoryEffects::None;
 
         case Opcode::Alloca:

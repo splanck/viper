@@ -20,6 +20,7 @@
 #include "il/core/Opcode.hpp"
 
 #include <unordered_set>
+#include <optional>
 
 using namespace il::core;
 
@@ -30,8 +31,9 @@ namespace
 {
 struct Addr
 {
-    // We track by Value; for temps use id; for others we retain the Value itself.
+    // We track by Value plus optional byte width for more precise AA queries.
     Value v;
+    std::optional<unsigned> size;
 };
 
 struct AddrHash
@@ -93,6 +95,11 @@ inline bool isLoadFromTempPtr(const Instr &I)
     return I.op == Opcode::Load && !I.operands.empty() && I.operands[0].kind == Value::Kind::Temp;
 }
 
+inline std::optional<unsigned> accessSize(const Instr &I)
+{
+    return viper::analysis::BasicAA::typeSizeBytes(I.type);
+}
+
 } // namespace
 
 bool runDSE(Function &F, AnalysisManager &AM)
@@ -113,8 +120,14 @@ bool runDSE(Function &F, AnalysisManager &AM)
             // Loads block further elimination for the specific address
             if (isLoadFromTempPtr(I))
             {
-                Addr a{I.operands[0]};
-                killed.erase(a);
+                Addr a{I.operands[0], accessSize(I)};
+                for (auto it = killed.begin(); it != killed.end();)
+                {
+                    if (AA.alias(a.v, it->v, a.size, it->size) != viper::analysis::AliasResult::NoAlias)
+                        it = killed.erase(it);
+                    else
+                        ++it;
+                }
                 continue;
             }
 
@@ -131,7 +144,7 @@ bool runDSE(Function &F, AnalysisManager &AM)
             // then this store is dead.
             if (isStoreToTempPtr(I))
             {
-                Addr a{I.operands[0]};
+                Addr a{I.operands[0], accessSize(I)};
                 bool dead = false;
 
                 // Quick-path exact match
@@ -144,7 +157,7 @@ bool runDSE(Function &F, AnalysisManager &AM)
                     // Check aliasing against the killed set using BasicAA
                     for (const auto &k : killed)
                     {
-                        if (AA.alias(a.v, k.v) != viper::analysis::AliasResult::NoAlias)
+                        if (AA.alias(a.v, k.v, a.size, k.size) != viper::analysis::AliasResult::NoAlias)
                         {
                             // An aliasing later store exists; current is dead
                             dead = true;

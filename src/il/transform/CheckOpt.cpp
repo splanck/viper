@@ -24,6 +24,8 @@
 #include "il/core/Value.hpp"
 #include "il/utils/Utils.hpp"
 
+#include <functional>
+#include <optional>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -159,21 +161,6 @@ BasicBlock *findBlock(Function &function, const std::string &label)
     return viper::il::findBlock(function, label);
 }
 
-/// @brief Collect blocks in dominator tree preorder starting from entry.
-void collectDomPreorder(BasicBlock *block,
-                        const viper::analysis::DomTree &domTree,
-                        std::vector<BasicBlock *> &order)
-{
-    if (!block)
-        return;
-    order.push_back(block);
-    auto it = domTree.children.find(block);
-    if (it == domTree.children.end())
-        return;
-    for (auto *child : it->second)
-        collectDomPreorder(child, domTree, order);
-}
-
 /// @brief Find the preheader block for a loop (block outside loop targeting header).
 BasicBlock *findPreheader(Function &function, const Loop &loop, BasicBlock &header)
 {
@@ -249,6 +236,33 @@ bool isGuaranteedToExecute(const BasicBlock &block, const Loop &loop)
     return block.label == loop.headerLabel;
 }
 
+bool loopHasEHSensitiveOps(const Loop &loop, Function &function)
+{
+    for (const auto &label : loop.blockLabels)
+    {
+        BasicBlock *block = findBlock(function, label);
+        if (!block)
+            continue;
+        for (const auto &instr : block->instructions)
+        {
+            switch (instr.op)
+            {
+                case Opcode::ResumeSame:
+                case Opcode::ResumeNext:
+                case Opcode::ResumeLabel:
+                case Opcode::EhPush:
+                case Opcode::EhPop:
+                case Opcode::TrapFromErr:
+                case Opcode::TrapErr:
+                    return true;
+                default:
+                    break;
+            }
+        }
+    }
+    return false;
+}
+
 } // namespace
 
 std::string_view CheckOpt::id() const
@@ -269,36 +283,27 @@ PreservedAnalyses CheckOpt::run(Function &function, AnalysisManager &analysis)
     // =========================================================================
     // Phase 1: Dominance-based redundancy elimination
     // =========================================================================
-    // Walk blocks in dominator tree preorder. For each check, if an equivalent
-    // check already dominates this one, replace uses and mark for deletion.
-
-    std::vector<BasicBlock *> domOrder;
-    if (!function.blocks.empty())
-        collectDomPreorder(&function.blocks.front(), domTree, domOrder);
-
-    // Map from check key to the dominating check info
-    std::unordered_map<CheckKey, DominatingCheck, CheckKeyHash> dominatingChecks;
-
-    // Track instructions to erase (block pointer, instruction index)
+    // Walk dominator tree with scoped map so siblings do not incorrectly share
+    // availability. Only checks that dominate the current block may be reused.
+    std::unordered_map<CheckKey, DominatingCheck, CheckKeyHash> available;
+    std::unordered_map<CheckKey, unsigned, CheckKeyHash> depthCount;
     std::vector<std::pair<BasicBlock *, size_t>> toErase;
 
-    for (BasicBlock *block : domOrder)
-    {
+    std::function<void(BasicBlock *)> visit = [&](BasicBlock *block) {
+        if (!block)
+            return;
+        std::vector<CheckKey> added;
         for (size_t idx = 0; idx < block->instructions.size(); ++idx)
         {
             Instr &instr = block->instructions[idx];
             if (!isCheckOpcode(instr.op))
                 continue;
-
             CheckKey key = makeCheckKey(instr);
-            auto it = dominatingChecks.find(key);
-
-            if (it != dominatingChecks.end())
+            auto it = available.find(key);
+            if (it != available.end() && domTree.dominates(it->second.block, block))
             {
-                // A dominating check exists - this check is redundant
                 if (instr.result && it->second.resultId)
                 {
-                    // Replace uses of this check's result with the dominating check's result
                     viper::il::replaceAllUses(
                         function, *instr.result, Value::temp(*it->second.resultId));
                 }
@@ -307,13 +312,35 @@ PreservedAnalyses CheckOpt::run(Function &function, AnalysisManager &analysis)
             }
             else
             {
-                // Record this check as the dominating one for this key
-                dominatingChecks[key] = DominatingCheck{block, instr.result};
+                available[key] = DominatingCheck{block, instr.result};
+                ++depthCount[key];
+                added.push_back(key);
             }
         }
-    }
 
-    // Erase redundant checks in reverse order to keep indices valid
+        auto childIt = domTree.children.find(block);
+        if (childIt != domTree.children.end())
+        {
+            for (auto *child : childIt->second)
+                visit(child);
+        }
+
+        for (const auto &k : added)
+        {
+            auto cntIt = depthCount.find(k);
+            if (cntIt != depthCount.end())
+            {
+                if (--cntIt->second == 0)
+                {
+                    depthCount.erase(cntIt);
+                    available.erase(k);
+                }
+            }
+        }
+    };
+
+    visit(&function.blocks.front());
+
     for (auto it = toErase.rbegin(); it != toErase.rend(); ++it)
     {
         BasicBlock *block = it->first;
@@ -335,6 +362,8 @@ PreservedAnalyses CheckOpt::run(Function &function, AnalysisManager &analysis)
 
         BasicBlock *preheader = findPreheader(function, loop, *header);
         if (!preheader)
+            continue;
+        if (loopHasEHSensitiveOps(loop, function))
             continue;
 
         // Seed invariants with out-of-loop definitions

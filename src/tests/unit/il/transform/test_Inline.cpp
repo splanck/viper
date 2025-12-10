@@ -95,21 +95,32 @@ static void test_inline_and_fold()
     // After inlining, caller should not contain a call
     Function &caller = M.functions[1];
     bool hasCall = false;
-    for (const auto &I : caller.blocks.front().instructions)
-        if (I.op == Opcode::Call)
-            hasCall = true;
+    for (const auto &B : caller.blocks)
+        for (const auto &I : B.instructions)
+            if (I.op == Opcode::Call)
+                hasCall = true;
     assert(!hasCall);
 
     // Run SCCP + DCE to fold constants
     il::transform::sccp(M);
     il::transform::dce(M);
 
-    // Caller ret should be a constant 42
-    const Instr &ret = caller.blocks.front().instructions.back();
-    assert(ret.op == Opcode::Ret);
-    assert(!ret.operands.empty());
-    assert(ret.operands.front().kind == Value::Kind::ConstInt);
-    assert(ret.operands.front().i64 == 42);
+    // Caller ret should be a single constant 42 (now potentially in a continuation block)
+    bool foundConstRet = false;
+    for (const auto &B : caller.blocks)
+    {
+        for (const auto &I : B.instructions)
+        {
+            if (I.op != Opcode::Ret)
+                continue;
+            assert(!foundConstRet);
+            assert(!I.operands.empty());
+            assert(I.operands.front().kind == Value::Kind::ConstInt);
+            assert(I.operands.front().i64 == 42);
+            foundConstRet = true;
+        }
+    }
+    assert(foundConstRet);
 }
 
 static void test_no_inline_recursive()

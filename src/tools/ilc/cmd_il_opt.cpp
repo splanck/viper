@@ -42,10 +42,9 @@ using namespace il;
 ///             `--no-mem2reg` and `--mem2reg-stats` tweak the default pipeline.
 ///          2. Load the input module from disk using
 ///             @ref il::tools::common::loadModuleFromFile.
-///          3. Register transformation passes (`constfold`, `peephole`, `dce`,
-///             `mem2reg`) with a @ref transform::PassManager, wiring lambdas
-///             that call the public pass helpers.
-///          4. Execute either the requested pipeline or the default sequence and
+///          3. Instantiate the IL pass manager (pipelines O0/O1/O2 pre-registered)
+///             and configure instrumentation hooks for printing/verifying.
+///          4. Execute either a named pipeline or an explicit pass list and
 ///             write the canonicalized IL to @p outFile.
 ///          The function returns zero on success or one when argument parsing,
 ///          file I/O, or pass execution fails.
@@ -160,27 +159,52 @@ int cmdILOpt(int argc, char **argv)
     if (verifyEach)
         pm.setVerifyBetweenPasses(true);
 
+    // Ensure the canonical simplify-cfg registration (aggressive by default).
     pm.addSimplifyCFG();
-    // Pipelines are pre-registered in PassManager; choose pipeline if requested
+
+    transform::PassManager::Pipeline selectedPipeline;
+    auto resolvePipeline = [&](std::string name) -> bool
+    {
+        const auto *pipeline = pm.getPipeline(name);
+        if (!pipeline)
+        {
+            std::cerr << "unknown pipeline '" << name << "' (use O0/O1/O2)\n";
+            return false;
+        }
+        selectedPipeline = *pipeline;
+        return true;
+    };
+
     if (!pipelineName.empty())
     {
-        const auto *pl = pm.getPipeline(pipelineName);
-        if (!pl)
-        {
-            std::cerr << "unknown pipeline '" << pipelineName << "' (use O0/O1/O2)\n";
+        std::string upper = pipelineName;
+        std::transform(upper.begin(), upper.end(), upper.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
+        if (!resolvePipeline(upper))
             return 1;
-        }
-        passList = *pl;
-        passesExplicit = true;
     }
-    if (!passesExplicit)
+
+    if (passesExplicit)
     {
-        if (const auto *pipeline = pm.getPipeline("O1"))
-            passList = *pipeline;
+        selectedPipeline = passList;
     }
+    else if (selectedPipeline.empty())
+    {
+        if (!resolvePipeline("O1"))
+            return 1;
+    }
+
+    if (selectedPipeline.empty())
+    {
+        std::cerr << "no passes selected\n";
+        return 1;
+    }
+
     if (noMem2Reg)
     {
-        passList.erase(std::remove(passList.begin(), passList.end(), "mem2reg"), passList.end());
+        selectedPipeline.erase(
+            std::remove(selectedPipeline.begin(), selectedPipeline.end(), "mem2reg"),
+            selectedPipeline.end());
     }
     // If mem2reg stats are requested, run mem2reg explicitly with stats and
     // remove it from the pass list to avoid double-running it. This preserves
@@ -188,14 +212,25 @@ int cmdILOpt(int argc, char **argv)
     // (and only) mem2reg run.
     if (mem2regStats)
     {
-        // Ensure mem2reg does not run again in the pipeline
-        passList.erase(std::remove(passList.begin(), passList.end(), "mem2reg"), passList.end());
+        selectedPipeline.erase(
+            std::remove(selectedPipeline.begin(), selectedPipeline.end(), "mem2reg"),
+            selectedPipeline.end());
         viper::passes::Mem2RegStats stats{};
         viper::passes::mem2reg(m, &stats);
         std::cout << "mem2reg: promoted " << stats.promotedVars << ", removed loads "
                   << stats.removedLoads << ", removed stores " << stats.removedStores << "\n";
     }
-    pm.run(m, passList);
+
+    for (const auto &passId : selectedPipeline)
+    {
+        if (!pm.passes().lookup(passId))
+        {
+            std::cerr << "unknown pass '" << passId << "'\n";
+            return 1;
+        }
+    }
+
+    pm.run(m, selectedPipeline);
     std::ofstream ofs(outFile);
     if (!ofs)
     {

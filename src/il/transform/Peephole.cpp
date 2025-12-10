@@ -37,10 +37,13 @@
 //
 // Rule Table (in Peephole.hpp):
 // ----------------------------
-// The kRules table defines algebraic identity patterns:
+// The kRules table defines algebraic identity and annihilation patterns:
 // - Arithmetic identities: x + 0 = x, x * 1 = x, x - 0 = x
+// - Arithmetic annihilations: x * 0 = 0, x - x = 0
 // - Bitwise identities: x & -1 = x, x | 0 = x, x ^ 0 = x
-// - Shift identities: x << 0 = x, x >> 0 = x
+// - Bitwise annihilations/reflexivity: x & 0 = 0, x ^ x = 0, x | x = x
+// - Shift identities/annihilations: x << 0 = x, 0 << y = 0
+// - Reflexive integer comparisons: icmp.eq x, x = true, scmp.lt x, x = false
 //
 //===----------------------------------------------------------------------===//
 
@@ -56,6 +59,8 @@
 #include "il/core/Module.hpp"
 #include "il/core/Value.hpp"
 
+#include <cstdlib>
+#include <iostream>
 #include <unordered_map>
 
 using namespace il::core;
@@ -104,6 +109,32 @@ static bool isConstEq(const Value &v, long long target)
 {
     long long c;
     return isConstInt(v, c) && c == target;
+}
+
+/// @brief Determine whether two operands are identical.
+///
+/// Peephole rules occasionally rely on reflexivity (e.g. @c xor x, x -> 0).
+/// This helper checks equality across the supported operand kinds to keep the
+/// rule application loop concise.
+static bool sameValue(const Value &a, const Value &b)
+{
+    if (a.kind != b.kind)
+        return false;
+    switch (a.kind)
+    {
+        case Value::Kind::Temp:
+            return a.id == b.id;
+        case Value::Kind::ConstInt:
+            return a.i64 == b.i64 && a.isBool == b.isBool;
+        case Value::Kind::ConstFloat:
+            return a.f64 == b.f64;
+        case Value::Kind::ConstStr:
+        case Value::Kind::GlobalAddr:
+            return a.str == b.str;
+        case Value::Kind::NullPtr:
+            return true;
+    }
+    return false;
 }
 
 //===----------------------------------------------------------------------===//
@@ -205,6 +236,48 @@ static bool evaluateComparison(Opcode op, long long l, long long r, long long &o
     }
 }
 
+static bool traceEnabled()
+{
+    static const bool enabled = std::getenv("VIPER_PEEPHOLE_TRACE") != nullptr;
+    return enabled;
+}
+
+/// @brief Determine whether @p in matches @p rule and compute the replacement.
+///
+/// @param rule Peephole rule to evaluate.
+/// @param in Instruction to inspect (must be binary with a result).
+/// @param out Receives the replacement value on match.
+/// @returns True when the rule matched and @p out is valid.
+static bool applyRule(const Rule &rule, const Instr &in, Value &out)
+{
+    if (in.op != rule.match.op || in.operands.size() != 2)
+        return false;
+
+    switch (rule.match.kind)
+    {
+        case Match::Kind::ConstOperand:
+            if (!isConstEq(in.operands[rule.match.constIdx], rule.match.value))
+                return false;
+            break;
+        case Match::Kind::SameOperands:
+            if (!sameValue(in.operands[0], in.operands[1]))
+                return false;
+            break;
+    }
+
+    switch (rule.repl.kind)
+    {
+        case Replace::Kind::Operand:
+            out = in.operands[rule.repl.operandIdx];
+            return true;
+        case Replace::Kind::Const:
+            out = rule.repl.isBool ? Value::constBool(rule.repl.constValue != 0)
+                                   : Value::constInt(rule.repl.constValue);
+            return true;
+    }
+    return false;
+}
+
 } // namespace
 
 //===----------------------------------------------------------------------===//
@@ -229,6 +302,7 @@ static bool evaluateComparison(Opcode op, long long l, long long r, long long &o
 /// non-literal arithmetic.
 void peephole(Module &m)
 {
+    const bool trace = traceEnabled();
     for (auto &f : m.functions)
     {
         // Precompute use counts once per function to avoid repeated O(n) scans.
@@ -339,21 +413,23 @@ void peephole(Module &m)
                 // Algebraic Identity Rules
                 //===----------------------------------------------------------===//
                 // Apply rules from kRules table:
-                // - Match: opcode + constant operand at specific index
-                // - Action: Forward the other operand as the result
+                // - Match: opcode with either a specific constant operand or
+                //   equal operands (reflexive simplifications).
+                // - Action: Forward an operand or replace with a literal.
                 //===----------------------------------------------------------===//
-                if (!in.result || in.operands.size() != 2)
+                if (!in.result)
                     continue;
 
                 Value repl{};
                 bool match = false;
                 for (const auto &r : kRules)
                 {
-                    if (in.op == r.match.op &&
-                        isConstEq(in.operands[r.match.constIdx], r.match.value))
+                    if (applyRule(r, in, repl))
                     {
-                        repl = in.operands[r.repl.operandIdx];
                         match = true;
+                        if (trace && in.result)
+                            std::cerr << "[peephole] rule " << r.name << " in %" << *in.result
+                                      << " (func " << f.name << ")\n";
                         break;
                     }
                 }

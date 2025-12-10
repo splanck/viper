@@ -37,6 +37,8 @@
 #include <any>
 #include <cassert>
 #include <functional>
+#include <iostream>
+#include <mutex>
 #include <string>
 #include <typeindex>
 #include <unordered_map>
@@ -126,6 +128,7 @@ class AnalysisManager
     /// @return Reference to the cached or freshly computed result.
     template <typename Result> Result &getModuleResult(const std::string &id)
     {
+        std::lock_guard<std::mutex> lock(mutex_);
         assert(moduleAnalyses_ && "no module analyses registered");
         auto it = moduleAnalyses_->find(id);
         assert(it != moduleAnalyses_->end() && "unknown module analysis");
@@ -149,8 +152,18 @@ class AnalysisManager
     /// @return Reference to the cached or freshly computed result.
     template <typename Result> Result &getFunctionResult(const std::string &id, core::Function &fn)
     {
+        std::lock_guard<std::mutex> lock(mutex_);
         assert(functionAnalyses_ && "no function analyses registered");
         auto it = functionAnalyses_->find(id);
+#ifndef NDEBUG
+        if (it == functionAnalyses_->end())
+        {
+            std::cerr << "Unknown function analysis '" << id << "'; registered:";
+            for (const auto &entry : *functionAnalyses_)
+                std::cerr << " " << entry.first;
+            std::cerr << std::endl;
+        }
+#endif
         assert(it != functionAnalyses_->end() && "unknown function analysis");
         std::any &cache = functionCache_[id][&fn];
         if (!cache.has_value())
@@ -192,6 +205,7 @@ class AnalysisManager
     /// @return Number of module and function analyses computed so far.
     AnalysisCounts counts() const
     {
+        std::lock_guard<std::mutex> lock(mutex_);
         return counts_;
     }
 
@@ -203,6 +217,7 @@ class AnalysisManager
     std::unordered_map<std::string, std::unordered_map<const core::Function *, std::any>>
         functionCache_;
     AnalysisCounts counts_{};
+    mutable std::mutex mutex_;
 
     friend class AnalysisCacheInvalidator;
 };

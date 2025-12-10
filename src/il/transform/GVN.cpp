@@ -40,6 +40,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include <optional>
 
 using namespace il::core;
 
@@ -57,11 +58,12 @@ struct LoadKey
 {
     Value ptr;
     Type::Kind type;
+    std::optional<unsigned> size;
 
     bool operator==(const LoadKey &o) const noexcept
     {
         ValueEq eq;
-        return type == o.type && eq(ptr, o.ptr);
+        return type == o.type && eq(ptr, o.ptr) && size == o.size;
     }
 };
 
@@ -70,7 +72,10 @@ struct LoadKeyHash
     size_t operator()(const LoadKey &k) const noexcept
     {
         ValueHash hv;
-        return hv(k.ptr) ^ (static_cast<size_t>(k.type) * 0x9e3779b97f4a7c15ULL);
+        size_t h = hv(k.ptr) ^ (static_cast<size_t>(k.type) * 0x9e3779b97f4a7c15ULL);
+        if (k.size)
+            h ^= static_cast<size_t>(*k.size + 0x517cc1b727220a95ULL);
+        return h;
     }
 };
 
@@ -95,7 +100,8 @@ void visitBlock(Function &F,
         if (I.op == Opcode::Load && I.result && !I.operands.empty())
         {
             const Value &ptr = I.operands[0];
-            LoadKey key{ptr, I.type.kind};
+            auto loadSize = viper::analysis::BasicAA::typeSizeBytes(I.type);
+            LoadKey key{ptr, I.type.kind, loadSize};
 
             // Try exact match first
             auto it = state.loads.find(key);
@@ -113,7 +119,8 @@ void visitBlock(Function &F,
             {
                 if (kv.first.type != key.type)
                     continue;
-                if (AA.alias(kv.first.ptr, key.ptr) == viper::analysis::AliasResult::MustAlias)
+                if (AA.alias(kv.first.ptr, key.ptr, kv.first.size, key.size) ==
+                    viper::analysis::AliasResult::MustAlias)
                 {
                     viper::il::replaceAllUses(F, *I.result, kv.second);
                     B->instructions.erase(B->instructions.begin() + static_cast<long>(idx));
@@ -135,9 +142,11 @@ void visitBlock(Function &F,
         if (I.op == Opcode::Store && I.operands.size() >= 2)
         {
             const Value &stPtr = I.operands[0];
+            auto storeSize = viper::analysis::BasicAA::typeSizeBytes(I.type);
             for (auto it = state.loads.begin(); it != state.loads.end();)
             {
-                if (AA.alias(it->first.ptr, stPtr) != viper::analysis::AliasResult::NoAlias)
+                if (AA.alias(it->first.ptr, stPtr, it->first.size, storeSize) !=
+                    viper::analysis::AliasResult::NoAlias)
                     it = state.loads.erase(it);
                 else
                     ++it;

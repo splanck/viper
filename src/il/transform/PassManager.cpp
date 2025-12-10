@@ -210,6 +210,11 @@ void PassManager::setReportPassStatistics(bool enable)
     reportPassStatistics_ = enable;
 }
 
+void PassManager::enableParallelFunctionPasses(bool enable)
+{
+    parallelFunctionPasses_ = enable;
+}
+
 /// @brief Execute a specific pipeline against a module.
 /// @details Constructs a @ref PipelineExecutor using the current pass and
 ///          analysis registries, then invokes it with the provided pipeline.
@@ -283,7 +288,8 @@ void PassManager::run(core::Module &module, const Pipeline &pipeline) const
             };
     }
 
-    PipelineExecutor executor(passRegistry_, analysisRegistry_, std::move(instrumentation));
+    PipelineExecutor executor(passRegistry_, analysisRegistry_, std::move(instrumentation),
+                              parallelFunctionPasses_);
     executor.run(module, pipeline);
 }
 

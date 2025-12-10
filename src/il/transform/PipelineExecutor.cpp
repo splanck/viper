@@ -25,6 +25,7 @@
 
 #include <cassert>
 #include <chrono>
+#include <future>
 #include <utility>
 
 namespace il::transform
@@ -55,9 +56,11 @@ PipelineExecutor::PassMetrics::IRSize computeIRSize(const core::Module &module)
 ///                            after each pass.
 PipelineExecutor::PipelineExecutor(const PassRegistry &registry,
                                    const AnalysisRegistry &analysisRegistry,
-                                   Instrumentation instrumentation)
+                                   Instrumentation instrumentation,
+                                   bool parallelFunctionPasses)
     : registry_(registry), analysisRegistry_(analysisRegistry),
-      instrumentation_(std::move(instrumentation))
+      instrumentation_(std::move(instrumentation)),
+      parallelFunctionPasses_(parallelFunctionPasses)
 {
 }
 
@@ -120,15 +123,38 @@ void PipelineExecutor::run(core::Module &module, const std::vector<std::string> 
                                     {
                                         if (!factory->makeFunction)
                                             return false;
-                                        for (auto &fn : module.functions)
+
+                                        auto runFunctionPass = [&](core::Function &fn) -> bool
                                         {
                                             auto pass = factory->makeFunction();
                                             if (!pass)
-                                                continue;
+                                                return false;
                                             PreservedAnalyses preserved = pass->run(fn, analysis);
                                             analysis.invalidateAfterFunctionPass(preserved, fn);
+                                            return true;
+                                        };
+
+                                        bool allOk = true;
+                                        if (parallelFunctionPasses_ && module.functions.size() > 1)
+                                        {
+                                            std::vector<std::future<bool>> tasks;
+                                            tasks.reserve(module.functions.size());
+                                            for (auto &fn : module.functions)
+                                            {
+                                                tasks.push_back(std::async(
+                                                    std::launch::async,
+                                                    [&runFunctionPass, &fn]() { return runFunctionPass(fn); }));
+                                            }
+                                            for (auto &task : tasks)
+                                                allOk &= task.get();
                                         }
-                                        executed = true;
+                                        else
+                                        {
+                                            for (auto &fn : module.functions)
+                                                allOk &= runFunctionPass(fn);
+                                        }
+
+                                        executed = allOk;
                                         break;
                                     }
                                 }

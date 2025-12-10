@@ -21,15 +21,27 @@
 #include "il/core/Module.hpp"
 #include "il/transform/Peephole.hpp"
 #include "il/verify/Verifier.hpp"
+#include "support/diag_expected.hpp"
 
 #include <cassert>
 #include <chrono>
 #include <optional>
+#include <iostream>
 
 using namespace il::core;
 
 namespace
 {
+
+static void verifyOrDie(const Module &module)
+{
+    auto verifyResult = il::verify::Verifier::verify(module);
+    if (!verifyResult)
+    {
+        il::support::printDiag(verifyResult.error(), std::cerr);
+        assert(false && "Module verification failed");
+    }
+}
 
 /// @brief Helper to build a binary instruction manually.
 void emitBinOp(BasicBlock &bb,
@@ -68,8 +80,7 @@ void testAddZeroIdentity()
     emitBinOp(entry, Opcode::IAddOvf, Value::temp(temp0), Value::constInt(0), resultId);
     builder.emitRet(Value::temp(resultId), {});
 
-    auto verifyResult = il::verify::Verifier::verify(module);
-    assert(verifyResult && "Module should verify before peephole");
+    verifyOrDie(module);
 
     il::transform::peephole(module);
 
@@ -102,8 +113,7 @@ void testMulOneIdentity()
     emitBinOp(entry, Opcode::IMulOvf, Value::constInt(1), Value::temp(tempId), resultId);
     builder.emitRet(Value::temp(resultId), {});
 
-    auto verifyResult = il::verify::Verifier::verify(module);
-    assert(verifyResult && "Module should verify before peephole");
+    verifyOrDie(module);
 
     il::transform::peephole(module);
 
@@ -133,14 +143,234 @@ void testShiftZeroIdentity()
     emitBinOp(entry, Opcode::Shl, Value::temp(tempId), Value::constInt(0), resultId);
     builder.emitRet(Value::temp(resultId), {});
 
-    auto verifyResult = il::verify::Verifier::verify(module);
-    assert(verifyResult && "Module should verify before peephole");
+    verifyOrDie(module);
 
     il::transform::peephole(module);
 
     const Instr &ret = entry.instructions.back();
     assert(ret.op == Opcode::Ret);
     assert(ret.operands[0].kind == Value::Kind::Temp && ret.operands[0].id == tempId);
+}
+
+/// @brief Test that plain iadd.ovf x + 0 is simplified.
+void testPlainAddZeroIdentity()
+{
+    Module module;
+    il::build::IRBuilder builder(module);
+
+    Function &fn = builder.startFunction("test_plain_add_zero", Type(Type::Kind::I64), {});
+    builder.createBlock(fn, "entry");
+    BasicBlock &entry = fn.blocks[0];
+    builder.setInsertPoint(entry);
+
+    unsigned base = builder.reserveTempId();
+    emitBinOp(entry, Opcode::IMulOvf, Value::constInt(3), Value::constInt(4), base);
+
+    unsigned addId = builder.reserveTempId();
+    emitBinOp(entry, Opcode::IAddOvf, Value::temp(base), Value::constInt(0), addId);
+    builder.emitRet(Value::temp(addId), {});
+
+    verifyOrDie(module);
+
+    il::transform::peephole(module);
+
+    const Instr &ret = entry.instructions.back();
+    assert(ret.op == Opcode::Ret);
+    assert(ret.operands[0].kind == Value::Kind::Temp && ret.operands[0].id == base);
+}
+
+/// @brief Test that plain imul.ovf x * 1 is simplified.
+void testPlainMulOneIdentity()
+{
+    Module module;
+    il::build::IRBuilder builder(module);
+
+    Function &fn = builder.startFunction("test_plain_mul_one", Type(Type::Kind::I64), {});
+    builder.createBlock(fn, "entry");
+    BasicBlock &entry = fn.blocks[0];
+    builder.setInsertPoint(entry);
+
+    unsigned base = builder.reserveTempId();
+    emitBinOp(entry, Opcode::IAddOvf, Value::constInt(8), Value::constInt(2), base);
+
+    unsigned mulId = builder.reserveTempId();
+    emitBinOp(entry, Opcode::IMulOvf, Value::constInt(1), Value::temp(base), mulId);
+    builder.emitRet(Value::temp(mulId), {});
+
+    verifyOrDie(module);
+
+    il::transform::peephole(module);
+
+    const Instr &ret = entry.instructions.back();
+    assert(ret.op == Opcode::Ret);
+    assert(ret.operands[0].kind == Value::Kind::Temp && ret.operands[0].id == base);
+}
+
+/// @brief Ensure we do not fold isub.ovf when zero is the lhs (0 - x).
+void testNoFoldIsubZeroLHS()
+{
+    Module module;
+    il::build::IRBuilder builder(module);
+
+    Function &fn = builder.startFunction("test_isub_no_fold", Type(Type::Kind::I64), {});
+    builder.createBlock(fn, "entry");
+    BasicBlock &entry = fn.blocks[0];
+    builder.setInsertPoint(entry);
+
+    unsigned x = builder.reserveTempId();
+    emitBinOp(entry, Opcode::IAddOvf, Value::constInt(1), Value::constInt(2), x);
+
+    unsigned subId = builder.reserveTempId();
+    emitBinOp(entry, Opcode::ISubOvf, Value::constInt(0), Value::temp(x), subId);
+    builder.emitRet(Value::temp(subId), {});
+
+    verifyOrDie(module);
+
+    il::transform::peephole(module);
+
+    // The subtraction should remain because the zero is on the lhs (not an identity).
+    assert(entry.instructions.size() == 3);
+    const Instr &ret = entry.instructions.back();
+    assert(ret.operands[0].kind == Value::Kind::Temp && ret.operands[0].id == subId);
+}
+
+/// @brief Test that imul.ovf with zero folds to a constant zero.
+void testMulZeroAnnihilation()
+{
+    Module module;
+    il::build::IRBuilder builder(module);
+
+    Function &fn = builder.startFunction("test_mul_zero", Type(Type::Kind::I64), {});
+    builder.createBlock(fn, "entry");
+    BasicBlock &entry = fn.blocks[0];
+    builder.setInsertPoint(entry);
+
+    unsigned base = builder.reserveTempId();
+    emitBinOp(entry, Opcode::IAddOvf, Value::constInt(2), Value::constInt(3), base);
+
+    unsigned mulId = builder.reserveTempId();
+    emitBinOp(entry, Opcode::IMulOvf, Value::temp(base), Value::constInt(0), mulId);
+    builder.emitRet(Value::temp(mulId), {});
+
+    verifyOrDie(module);
+    il::transform::peephole(module);
+    verifyOrDie(module);
+
+    assert(entry.instructions.size() == 2 && "mul should be removed");
+    const Instr &ret = entry.instructions.back();
+    assert(ret.operands[0].kind == Value::Kind::ConstInt);
+    assert(ret.operands[0].i64 == 0);
+}
+
+/// @brief Test that and x, 0 collapses to constant zero.
+void testAndZeroAnnihilation()
+{
+    Module module;
+    il::build::IRBuilder builder(module);
+
+    Function &fn = builder.startFunction("test_and_zero", Type(Type::Kind::I64), {});
+    builder.createBlock(fn, "entry");
+    BasicBlock &entry = fn.blocks[0];
+    builder.setInsertPoint(entry);
+
+    unsigned base = builder.reserveTempId();
+    emitBinOp(entry, Opcode::IAddOvf, Value::constInt(4), Value::constInt(6), base);
+
+    unsigned andId = builder.reserveTempId();
+    emitBinOp(entry, Opcode::And, Value::temp(base), Value::constInt(0), andId);
+    builder.emitRet(Value::temp(andId), {});
+
+    verifyOrDie(module);
+    il::transform::peephole(module);
+    verifyOrDie(module);
+
+    assert(entry.instructions.size() == 2 && "and should be removed");
+    const Instr &ret = entry.instructions.back();
+    assert(ret.operands[0].kind == Value::Kind::ConstInt && ret.operands[0].i64 == 0);
+}
+
+/// @brief Test that xor x, x collapses to constant zero.
+void testXorSameOperand()
+{
+    Module module;
+    il::build::IRBuilder builder(module);
+
+    Function &fn = builder.startFunction("test_xor_same", Type(Type::Kind::I64), {});
+    builder.createBlock(fn, "entry");
+    BasicBlock &entry = fn.blocks[0];
+    builder.setInsertPoint(entry);
+
+    unsigned x = builder.reserveTempId();
+    emitBinOp(entry, Opcode::IMulOvf, Value::constInt(7), Value::constInt(3), x);
+
+    unsigned xorId = builder.reserveTempId();
+    emitBinOp(entry, Opcode::Xor, Value::temp(x), Value::temp(x), xorId);
+    builder.emitRet(Value::temp(xorId), {});
+
+    verifyOrDie(module);
+    il::transform::peephole(module);
+    verifyOrDie(module);
+
+    assert(entry.instructions.size() == 2);
+    const Instr &ret = entry.instructions.back();
+    assert(ret.operands[0].kind == Value::Kind::ConstInt && ret.operands[0].i64 == 0);
+}
+
+/// @brief Test that reflexive integer comparisons fold to booleans.
+void testCmpReflexive()
+{
+    Module module;
+    il::build::IRBuilder builder(module);
+
+    Function &fn = builder.startFunction("test_cmp_reflexive", Type(Type::Kind::I1), {});
+    builder.createBlock(fn, "entry");
+    BasicBlock &entry = fn.blocks[0];
+    builder.setInsertPoint(entry);
+
+    unsigned x = builder.reserveTempId();
+    emitBinOp(entry, Opcode::IMulOvf, Value::constInt(5), Value::constInt(5), x);
+
+    unsigned cmpId = builder.reserveTempId();
+    emitBinOp(
+        entry, Opcode::ICmpEq, Value::temp(x), Value::temp(x), cmpId, Type(Type::Kind::I1));
+    builder.emitRet(Value::temp(cmpId), {});
+
+    verifyOrDie(module);
+    il::transform::peephole(module);
+    verifyOrDie(module);
+
+    assert(entry.instructions.size() == 2);
+    const Instr &ret = entry.instructions.back();
+    assert(ret.operands[0].kind == Value::Kind::ConstInt && ret.operands[0].isBool);
+    assert(ret.operands[0].i64 == 1);
+}
+
+/// @brief Ensure imul.ovf x, -1 is left untouched (potential overflow patterns).
+void testNoFoldIMulMinusOne()
+{
+    Module module;
+    il::build::IRBuilder builder(module);
+
+    Function &fn = builder.startFunction("test_mul_minus_one", Type(Type::Kind::I64), {});
+    builder.createBlock(fn, "entry");
+    BasicBlock &entry = fn.blocks[0];
+    builder.setInsertPoint(entry);
+
+    unsigned x = builder.reserveTempId();
+    emitBinOp(entry, Opcode::IAddOvf, Value::constInt(10), Value::constInt(2), x);
+
+    unsigned mulId = builder.reserveTempId();
+    emitBinOp(entry, Opcode::IMulOvf, Value::temp(x), Value::constInt(-1), mulId);
+    builder.emitRet(Value::temp(mulId), {});
+
+    verifyOrDie(module);
+    il::transform::peephole(module);
+    verifyOrDie(module);
+
+    // No folding should have occurred.
+    assert(entry.instructions.size() == 3);
+    const Instr &ret = entry.instructions.back();
+    assert(ret.operands[0].kind == Value::Kind::Temp && ret.operands[0].id == mulId);
 }
 
 /// @brief Test that CBr with constant condition folds to Br and removes
@@ -174,8 +404,7 @@ void testCBrConstantFold()
     builder.setInsertPoint(elseBlock);
     builder.emitRet(Value::constInt(0), {});
 
-    auto verifyResult = il::verify::Verifier::verify(module);
-    assert(verifyResult && "Module should verify before peephole");
+    verifyOrDie(module);
 
     il::transform::peephole(module);
 
@@ -215,8 +444,7 @@ void testCBrSameTargetFold()
     builder.setInsertPoint(target);
     builder.emitRet(std::nullopt, {});
 
-    auto verifyResult = il::verify::Verifier::verify(module);
-    assert(verifyResult && "Module should verify before peephole");
+    verifyOrDie(module);
 
     il::transform::peephole(module);
 
@@ -265,8 +493,7 @@ void testLargeFunctionPerformance()
 
     builder.emitRet(Value::temp(prevId), {});
 
-    auto verifyResult = il::verify::Verifier::verify(module);
-    assert(verifyResult && "Module should verify before peephole");
+    verifyOrDie(module);
 
     size_t instrsBefore = entry.instructions.size();
 
@@ -285,8 +512,7 @@ void testLargeFunctionPerformance()
     assert(instrsAfter < instrsBefore && "Peephole should have removed some instructions");
 
     // Verify the module still verifies after transformation
-    verifyResult = il::verify::Verifier::verify(module);
-    assert(verifyResult && "Module should verify after peephole");
+    verifyOrDie(module);
 }
 
 } // namespace
@@ -296,6 +522,14 @@ int main()
     testAddZeroIdentity();
     testMulOneIdentity();
     testShiftZeroIdentity();
+    testPlainAddZeroIdentity();
+    testPlainMulOneIdentity();
+    testNoFoldIsubZeroLHS();
+    testMulZeroAnnihilation();
+    testAndZeroAnnihilation();
+    testXorSameOperand();
+    testCmpReflexive();
+    testNoFoldIMulMinusOne();
     testCBrConstantFold();
     testCBrSameTargetFold();
     testLargeFunctionPerformance();

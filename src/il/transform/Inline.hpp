@@ -5,15 +5,19 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// A simple direct-call function inliner. This "teaching inliner" only inlines
-// small, non-recursive, direct-call functions with a single basic block and a
-// conventional `ret` terminator. It avoids externs, indirect calls, and large
-// callees. Heuristics: callee instruction count <= threshold (default 32) and
-// optionally low call-site count from a tiny call graph helper.
+// A lightweight direct-call inliner with a documented, conservative cost model.
+// The pass targets tiny callees (instruction budget + block budget), avoids
+// recursion, and skips exception-handling sensitive callees. Supported control
+// flow: direct calls without EH, `br`/`cbr`/`switch`/`ret`, and block params.
+// Heuristics:
+// - Instruction budget: <= instrThreshold_ (default 32)
+// - Block budget: <= blockBudget_ (default 4)
+// - Call frequency: <= 4 direct call sites
+// - Inline depth: stops at maxInlineDepth_ (default 2)
 //
-// Inlining is performed at the IL level by cloning the callee's instructions
-// into the caller at the call site, remapping callee parameters to call
-// arguments and assigning fresh SSA temporaries for callee results.
+// Inlining clones the callee CFG into the caller, remaps callee params to call
+// operands (including block parameters), rewires returns to a continuation
+// block, and assigns fresh SSA temporaries for all cloned results.
 //
 //===----------------------------------------------------------------------===//
 
@@ -37,6 +41,8 @@ class Inliner : public ModulePass
 
   private:
     unsigned instrThreshold_ = 32; // default heuristic
+    unsigned blockBudget_ = 4;
+    unsigned maxInlineDepth_ = 2;
 };
 
 void registerInlinePass(PassRegistry &registry);
