@@ -52,6 +52,12 @@ struct ILGeneratorConfig
     /// @brief Whether to include comparison operations.
     bool includeComparisons = true;
 
+    /// @brief Whether to include bitwise operations (and, or, xor).
+    bool includeBitwise = true;
+
+    /// @brief Whether to include shift operations (shl, lshr, ashr).
+    bool includeShifts = true;
+
     /// @brief Range for generated integer constants.
     std::int64_t minConstant = -1000;
     std::int64_t maxConstant = 1000;
@@ -124,6 +130,20 @@ class ILGenerator
         il::core::Opcode::SCmpLE,
         il::core::Opcode::SCmpGT,
         il::core::Opcode::SCmpGE,
+    };
+
+    /// @brief Available bitwise opcodes for generation.
+    static constexpr il::core::Opcode kBitwiseOps[] = {
+        il::core::Opcode::And,
+        il::core::Opcode::Or,
+        il::core::Opcode::Xor,
+    };
+
+    /// @brief Available shift opcodes for generation.
+    static constexpr il::core::Opcode kShiftOps[] = {
+        il::core::Opcode::Shl,
+        il::core::Opcode::LShr,
+        il::core::Opcode::AShr,
     };
 
     /// @brief Generate a random integer constant.

@@ -11,6 +11,19 @@
 // Ownership/Lifetime: Test generates ephemeral IL modules for each iteration.
 // Links: docs/testing.md
 //
+// Backend Selection:
+//   - On ARM64 hosts (Apple Silicon): Uses AArch64 backend automatically
+//   - On x86-64 hosts: Uses x86-64 backend (if available)
+//   - Force AArch64: Define VIPER_FORCE_ARM64_DIFF_TEST at compile time
+//   - Environment var: Set VIPER_DIFF_BACKEND=arm64 to force ARM64 at runtime
+//
+// Example usage:
+//   # Run tests normally (auto-detect backend):
+//   ./build/src/tests/unit/codegen/test_diff_vm_native_property
+//
+//   # Force ARM64 backend via environment:
+//   VIPER_DIFF_BACKEND=arm64 ./build/src/tests/unit/codegen/test_diff_vm_native_property
+//
 //===----------------------------------------------------------------------===//
 
 #include "common/ILGenerator.hpp"
@@ -38,6 +51,87 @@ namespace
 /// @brief Number of property test iterations.
 /// @details Keep low for CI stability; can be increased for local fuzzing.
 constexpr std::size_t kDefaultIterations = 15;
+
+/// @brief Backend type for differential testing.
+enum class Backend
+{
+    None,
+    AArch64,
+    // X86_64, // Future: add x86-64 backend support
+};
+
+/// @brief Get string name for backend.
+const char *backendName(Backend b)
+{
+    switch (b)
+    {
+        case Backend::AArch64:
+            return "AArch64";
+        case Backend::None:
+        default:
+            return "None";
+    }
+}
+
+/// @brief Check if ARM64 native execution is available on this host.
+bool isArm64HostAvailable()
+{
+#if defined(__APPLE__) && (defined(__aarch64__) || defined(__arm64__))
+    return true;
+#else
+    return false;
+#endif
+}
+
+/// @brief Check if ARM64 should be forced via compile-time or runtime config.
+bool isArm64Forced()
+{
+#ifdef VIPER_FORCE_ARM64_DIFF_TEST
+    return true;
+#else
+    const char *env = std::getenv("VIPER_DIFF_BACKEND");
+    return env && std::string(env) == "arm64";
+#endif
+}
+
+/// @brief Select the native backend to use for differential testing.
+/// @details Selection priority:
+///   1. Compile-time VIPER_FORCE_ARM64_DIFF_TEST -> AArch64
+///   2. Runtime VIPER_DIFF_BACKEND=arm64 -> AArch64
+///   3. Host is ARM64 -> AArch64
+///   4. Otherwise -> None (tests will be skipped)
+Backend selectBackend()
+{
+    if (isArm64Forced())
+    {
+        return Backend::AArch64;
+    }
+    if (isArm64HostAvailable())
+    {
+        return Backend::AArch64;
+    }
+    return Backend::None;
+}
+
+/// @brief Global backend selection (computed once at startup).
+Backend g_selectedBackend = Backend::None;
+bool g_backendLogged = false;
+
+/// @brief Log backend selection (once per test run).
+void logBackendSelection()
+{
+    if (!g_backendLogged)
+    {
+        g_selectedBackend = selectBackend();
+        std::cerr << "\n"
+                  << "=== VM vs Native Differential Test ===" << "\n"
+                  << "  Selected backend: " << backendName(g_selectedBackend) << "\n"
+                  << "  Host ARM64: " << (isArm64HostAvailable() ? "yes" : "no") << "\n"
+                  << "  Force ARM64: " << (isArm64Forced() ? "yes" : "no") << "\n"
+                  << "=======================================" << "\n\n";
+        g_backendLogged = true;
+    }
+}
 
 /// @brief Create output directory for test artifacts.
 std::filesystem::path ensureOutputDir()
@@ -81,14 +175,11 @@ int runOnArm64Native(const std::filesystem::path &ilPath)
 #endif
 }
 
-/// @brief Check if ARM64 native execution is available.
-bool isArm64Available()
+/// @brief Check if native backend execution is available.
+bool isNativeAvailable()
 {
-#if defined(__APPLE__) && (defined(__aarch64__) || defined(__arm64__))
-    return true;
-#else
-    return false;
-#endif
+    logBackendSelection();
+    return g_selectedBackend != Backend::None;
 }
 
 /// @brief Result of a differential test run.
@@ -139,7 +230,7 @@ DiffTestResult runDifferentialTest(ILGenerator &generator,
     }
 
     // Run on native backend (if available)
-    if (isArm64Available())
+    if (g_selectedBackend == Backend::AArch64)
     {
         // Write IL to temp file
         const std::filesystem::path ilPath =
@@ -202,14 +293,17 @@ class DiffVmNativePropertyTest : public ::testing::Test
 
 TEST_F(DiffVmNativePropertyTest, ArithmeticOnly)
 {
-    if (!isArm64Available())
+    if (!isNativeAvailable())
     {
-        GTEST_SKIP() << "ARM64 native execution not available on this platform";
+        GTEST_SKIP() << "Native execution not available (backend: " << backendName(g_selectedBackend)
+                     << ")";
     }
 
     ILGeneratorConfig config;
     config.includeControlFlow = false;
     config.includeComparisons = false;
+    config.includeBitwise = false;
+    config.includeShifts = false;
     config.minInstructions = 3;
     config.maxInstructions = 10;
     config.minBlocks = 1;
@@ -229,14 +323,17 @@ TEST_F(DiffVmNativePropertyTest, ArithmeticOnly)
 
 TEST_F(DiffVmNativePropertyTest, ArithmeticWithComparisons)
 {
-    if (!isArm64Available())
+    if (!isNativeAvailable())
     {
-        GTEST_SKIP() << "ARM64 native execution not available on this platform";
+        GTEST_SKIP() << "Native execution not available (backend: " << backendName(g_selectedBackend)
+                     << ")";
     }
 
     ILGeneratorConfig config;
     config.includeControlFlow = false;
     config.includeComparisons = true;
+    config.includeBitwise = false;
+    config.includeShifts = false;
     config.minInstructions = 5;
     config.maxInstructions = 15;
     config.minBlocks = 1;
@@ -254,16 +351,80 @@ TEST_F(DiffVmNativePropertyTest, ArithmeticWithComparisons)
     }
 }
 
+TEST_F(DiffVmNativePropertyTest, BitwiseAndShifts)
+{
+    if (!isNativeAvailable())
+    {
+        GTEST_SKIP() << "Native execution not available (backend: " << backendName(g_selectedBackend)
+                     << ")";
+    }
+
+    ILGeneratorConfig config;
+    config.includeControlFlow = false;
+    config.includeComparisons = false;
+    config.includeBitwise = true;
+    config.includeShifts = true;
+    config.minInstructions = 5;
+    config.maxInstructions = 12;
+    config.minBlocks = 1;
+    config.maxBlocks = 1;
+
+    const std::uint64_t baseSeed =
+        static_cast<std::uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count());
+
+    for (std::size_t i = 0; i < kDefaultIterations; ++i)
+    {
+        ILGenerator generator(baseSeed + i);
+        DiffTestResult result = runDifferentialTest(generator, config, outputDir_, i);
+
+        ASSERT_TRUE(result.passed) << "Iteration " << i << " failed:\n" << result.errorMessage;
+    }
+}
+
+TEST_F(DiffVmNativePropertyTest, MixedOperations)
+{
+    if (!isNativeAvailable())
+    {
+        GTEST_SKIP() << "Native execution not available (backend: " << backendName(g_selectedBackend)
+                     << ")";
+    }
+
+    // Enable all operation types for comprehensive coverage
+    ILGeneratorConfig config;
+    config.includeControlFlow = false;
+    config.includeComparisons = true;
+    config.includeBitwise = true;
+    config.includeShifts = true;
+    config.minInstructions = 8;
+    config.maxInstructions = 20;
+    config.minBlocks = 1;
+    config.maxBlocks = 1;
+
+    const std::uint64_t baseSeed =
+        static_cast<std::uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count());
+
+    for (std::size_t i = 0; i < kDefaultIterations; ++i)
+    {
+        ILGenerator generator(baseSeed + i);
+        DiffTestResult result = runDifferentialTest(generator, config, outputDir_, i);
+
+        ASSERT_TRUE(result.passed) << "Iteration " << i << " failed:\n" << result.errorMessage;
+    }
+}
+
 TEST_F(DiffVmNativePropertyTest, ControlFlow)
 {
-    if (!isArm64Available())
+    if (!isNativeAvailable())
     {
-        GTEST_SKIP() << "ARM64 native execution not available on this platform";
+        GTEST_SKIP() << "Native execution not available (backend: " << backendName(g_selectedBackend)
+                     << ")";
     }
 
     ILGeneratorConfig config;
     config.includeControlFlow = true;
     config.includeComparisons = true;
+    config.includeBitwise = true;
+    config.includeShifts = true;
     config.minInstructions = 5;
     config.maxInstructions = 12;
     config.minBlocks = 2;
@@ -310,17 +471,21 @@ int main(int argc, char **argv)
 
 int main()
 {
-    if (!isArm64Available())
+    if (!isNativeAvailable())
     {
-        std::cout << "ARM64 native execution not available, skipping property tests\n";
+        std::cout << "Native execution not available (backend: " << backendName(g_selectedBackend)
+                  << "), skipping property tests\n";
         return 0;
     }
 
     const std::filesystem::path outputDir = ensureOutputDir();
 
+    // Enable all operation types for comprehensive coverage
     ILGeneratorConfig config;
     config.includeControlFlow = true;
     config.includeComparisons = true;
+    config.includeBitwise = true;
+    config.includeShifts = true;
     config.minInstructions = 5;
     config.maxInstructions = 15;
     config.minBlocks = 1;
@@ -330,6 +495,7 @@ int main()
         static_cast<std::uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count());
 
     std::cout << "Running " << kDefaultIterations << " property test iterations...\n";
+    std::cout << "Backend: " << backendName(g_selectedBackend) << "\n";
     std::cout << "Base seed: " << baseSeed << "\n";
 
     for (std::size_t i = 0; i < kDefaultIterations; ++i)

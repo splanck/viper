@@ -266,8 +266,9 @@ std::optional<MFunction> tryCallFastPaths(FastPathContext &ctx)
     {
         LoweredCall seq{};
         std::unordered_map<unsigned, uint16_t> tempVReg;
+        std::unordered_map<unsigned, RegClass> tempRegClass;
         uint16_t nextVRegId = 1;
-        if (lowerCallWithArgs(binI, bb, ctx.ti, ctx.fb, bbMir, seq, tempVReg, nextVRegId))
+        if (lowerCallWithArgs(binI, bb, ctx.ti, ctx.fb, bbMir, seq, tempVReg, tempRegClass, nextVRegId))
         {
             for (auto &mi : seq.prefix)
                 bbMir.instrs.push_back(std::move(mi));

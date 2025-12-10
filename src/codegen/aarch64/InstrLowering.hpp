@@ -23,16 +23,6 @@ namespace viper::codegen::aarch64
 {
 
 //===----------------------------------------------------------------------===//
-// Global temp registry for FPR tracking (thread-local)
-//===----------------------------------------------------------------------===//
-
-/// @brief Maps IL temp id to its register class (GPR or FPR).
-/// @details This thread-local state is used during lowering to track which
-///          temporaries hold floating-point values vs integer values.
-///          It is cleared at the start of each lowerFunction() call.
-extern thread_local std::unordered_map<unsigned, RegClass> g_tempRegClass;
-
-//===----------------------------------------------------------------------===//
 // Value Materialization
 //===----------------------------------------------------------------------===//
 
@@ -43,6 +33,7 @@ extern thread_local std::unordered_map<unsigned, RegClass> g_tempRegClass;
 /// @param fb Frame builder for stack allocation
 /// @param out The output MIR basic block
 /// @param tempVReg Map from temp ID to vreg ID
+/// @param tempRegClass Map from temp ID to register class (GPR/FPR)
 /// @param nextVRegId Counter for vreg ID allocation
 /// @param outVReg [out] The vreg ID assigned to this value
 /// @param outCls [out] The register class of the vreg
@@ -53,6 +44,7 @@ bool materializeValueToVReg(const il::core::Value &v,
                             FrameBuilder &fb,
                             MBasicBlock &out,
                             std::unordered_map<unsigned, uint16_t> &tempVReg,
+                            std::unordered_map<unsigned, RegClass> &tempRegClass,
                             uint16_t &nextVRegId,
                             uint16_t &outVReg,
                             RegClass &outCls);
@@ -65,8 +57,16 @@ inline bool materializeValueToVReg(const il::core::Value &v,
                                    uint16_t &outVReg,
                                    RegClass &outCls)
 {
-    return materializeValueToVReg(
-        v, bb, ctx.ti, ctx.fb, out, ctx.tempVReg, ctx.nextVRegId, outVReg, outCls);
+    return materializeValueToVReg(v,
+                                  bb,
+                                  ctx.ti,
+                                  ctx.fb,
+                                  out,
+                                  ctx.tempVReg,
+                                  ctx.tempRegClass,
+                                  ctx.nextVRegId,
+                                  outVReg,
+                                  outCls);
 }
 
 //===----------------------------------------------------------------------===//
@@ -81,6 +81,7 @@ inline bool materializeValueToVReg(const il::core::Value &v,
 /// @param out The output MIR basic block
 /// @param seq [out] The lowered call sequence (prefix, call, postfix)
 /// @param tempVReg Map from temp ID to vreg ID
+/// @param tempRegClass Map from temp ID to register class (GPR/FPR)
 /// @param nextVRegId Counter for vreg ID allocation
 /// @returns true if successful
 bool lowerCallWithArgs(const il::core::Instr &callI,
@@ -90,6 +91,7 @@ bool lowerCallWithArgs(const il::core::Instr &callI,
                        MBasicBlock &out,
                        LoweredCall &seq,
                        std::unordered_map<unsigned, uint16_t> &tempVReg,
+                       std::unordered_map<unsigned, RegClass> &tempRegClass,
                        uint16_t &nextVRegId);
 
 //===----------------------------------------------------------------------===//

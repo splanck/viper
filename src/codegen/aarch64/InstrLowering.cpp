@@ -23,15 +23,6 @@ namespace viper::codegen::aarch64
 {
 
 //===----------------------------------------------------------------------===//
-// Thread-local temp registry for FPR tracking
-//===----------------------------------------------------------------------===//
-
-// Maps IL temp id to its register class (GPR or FPR).
-// This must be shared with LowerILToMIR.cpp, so we declare it extern there
-// and define it here.
-thread_local std::unordered_map<unsigned, RegClass> g_tempRegClass;
-
-//===----------------------------------------------------------------------===//
 // Helper: Get condition code for comparison opcodes
 //===----------------------------------------------------------------------===//
 
@@ -71,6 +62,7 @@ bool materializeValueToVReg(const il::core::Value &v,
                             FrameBuilder &fb,
                             MBasicBlock &out,
                             std::unordered_map<unsigned, uint16_t> &tempVReg,
+                            std::unordered_map<unsigned, RegClass> &tempRegClass,
                             uint16_t &nextVRegId,
                             uint16_t &outVReg,
                             RegClass &outCls)
@@ -121,8 +113,8 @@ bool materializeValueToVReg(const il::core::Value &v,
         {
             outVReg = it->second;
             // Look up register class for this temp
-            auto clsIt = g_tempRegClass.find(v.id);
-            outCls = (clsIt != g_tempRegClass.end()) ? clsIt->second : RegClass::GPR;
+            auto clsIt = tempRegClass.find(v.id);
+            outCls = (clsIt != tempRegClass.end()) ? clsIt->second : RegClass::GPR;
             return true;
         }
         // Check if this is an alloca temp - if so, compute its stack address
@@ -181,9 +173,9 @@ bool materializeValueToVReg(const il::core::Value &v,
         {
             uint16_t va = 0, vb = 0;
             RegClass ca = RegClass::GPR, cb = RegClass::GPR;
-            if (!materializeValueToVReg(a, bb, ti, fb, out, tempVReg, nextVRegId, va, ca))
+            if (!materializeValueToVReg(a, bb, ti, fb, out, tempVReg, tempRegClass, nextVRegId, va, ca))
                 return false;
-            if (!materializeValueToVReg(b, bb, ti, fb, out, tempVReg, nextVRegId, vb, cb))
+            if (!materializeValueToVReg(b, bb, ti, fb, out, tempVReg, tempRegClass, nextVRegId, vb, cb))
                 return false;
             outVReg = nextVRegId++;
             outCls = (opc == MOpcode::FAddRRR || opc == MOpcode::FSubRRR ||
@@ -200,7 +192,7 @@ bool materializeValueToVReg(const il::core::Value &v,
         {
             uint16_t va = 0;
             RegClass ca = RegClass::GPR;
-            if (!materializeValueToVReg(a, bb, ti, fb, out, tempVReg, nextVRegId, va, ca))
+            if (!materializeValueToVReg(a, bb, ti, fb, out, tempVReg, tempRegClass, nextVRegId, va, ca))
                 return false;
             outVReg = nextVRegId++;
             outCls = (opc == MOpcode::FAddRRR || opc == MOpcode::FSubRRR ||
@@ -309,7 +301,7 @@ bool materializeValueToVReg(const il::core::Value &v,
                     uint16_t vbase = 0, voff = 0;
                     RegClass cbase = RegClass::GPR, coff = RegClass::GPR;
                     if (!materializeValueToVReg(
-                            prod.operands[0], bb, ti, fb, out, tempVReg, nextVRegId, vbase, cbase))
+                            prod.operands[0], bb, ti, fb, out, tempVReg, tempRegClass, nextVRegId, vbase, cbase))
                         return false;
                     outVReg = nextVRegId++;
                     outCls = RegClass::GPR;
@@ -334,7 +326,7 @@ bool materializeValueToVReg(const il::core::Value &v,
                     else
                     {
                         if (!materializeValueToVReg(
-                                offVal, bb, ti, fb, out, tempVReg, nextVRegId, voff, coff))
+                                offVal, bb, ti, fb, out, tempVReg, tempRegClass, nextVRegId, voff, coff))
                             return false;
                         out.instrs.push_back(MInstr{MOpcode::AddRRR,
                                                     {MOperand::vregOp(RegClass::GPR, outVReg),
@@ -354,10 +346,10 @@ bool materializeValueToVReg(const il::core::Value &v,
                         uint16_t va = 0, vb = 0;
                         RegClass ca = RegClass::GPR, cb = RegClass::GPR;
                         if (!materializeValueToVReg(
-                                prod.operands[0], bb, ti, fb, out, tempVReg, nextVRegId, va, ca))
+                                prod.operands[0], bb, ti, fb, out, tempVReg, tempRegClass, nextVRegId, va, ca))
                             return false;
                         if (!materializeValueToVReg(
-                                prod.operands[1], bb, ti, fb, out, tempVReg, nextVRegId, vb, cb))
+                                prod.operands[1], bb, ti, fb, out, tempVReg, tempRegClass, nextVRegId, vb, cb))
                             return false;
                         out.instrs.push_back(MInstr{MOpcode::CmpRR,
                                                     {MOperand::vregOp(RegClass::GPR, va),
@@ -405,6 +397,7 @@ bool lowerCallWithArgs(const il::core::Instr &callI,
                        MBasicBlock &out,
                        LoweredCall &seq,
                        std::unordered_map<unsigned, uint16_t> &tempVReg,
+                       std::unordered_map<unsigned, RegClass> &tempRegClass,
                        uint16_t &nextVRegId)
 {
     // Callee can be in either callI.callee field or operands[0] as GlobalAddr
@@ -444,7 +437,7 @@ bool lowerCallWithArgs(const il::core::Instr &callI,
         const auto &arg = callI.operands[i];
         uint16_t vr = 0;
         RegClass cls = RegClass::GPR;
-        if (!materializeValueToVReg(arg, bb, ti, fb, out, tempVReg, nextVRegId, vr, cls))
+        if (!materializeValueToVReg(arg, bb, ti, fb, out, tempVReg, tempRegClass, nextVRegId, vr, cls))
             return false;
         args.push_back({vr, cls});
     }
@@ -552,10 +545,10 @@ bool lowerSRemChk0(const il::core::Instr &ins,
     RegClass lhsCls = RegClass::GPR, rhsCls = RegClass::GPR;
 
     if (!materializeValueToVReg(
-            ins.operands[0], bb, ctx.ti, ctx.fb, out, ctx.tempVReg, ctx.nextVRegId, lhs, lhsCls))
+            ins.operands[0], bb, ctx.ti, ctx.fb, out, ctx.tempVReg, ctx.tempRegClass, ctx.nextVRegId, lhs, lhsCls))
         return false;
     if (!materializeValueToVReg(
-            ins.operands[1], bb, ctx.ti, ctx.fb, out, ctx.tempVReg, ctx.nextVRegId, rhs, rhsCls))
+            ins.operands[1], bb, ctx.ti, ctx.fb, out, ctx.tempVReg, ctx.tempRegClass, ctx.nextVRegId, rhs, rhsCls))
         return false;
 
     // Generate divide-by-zero check: cmp rhs, #0; b.eq trap_label
@@ -606,10 +599,10 @@ bool lowerSDivChk0(const il::core::Instr &ins,
     RegClass lhsCls = RegClass::GPR, rhsCls = RegClass::GPR;
 
     if (!materializeValueToVReg(
-            ins.operands[0], bb, ctx.ti, ctx.fb, out, ctx.tempVReg, ctx.nextVRegId, lhs, lhsCls))
+            ins.operands[0], bb, ctx.ti, ctx.fb, out, ctx.tempVReg, ctx.tempRegClass, ctx.nextVRegId, lhs, lhsCls))
         return false;
     if (!materializeValueToVReg(
-            ins.operands[1], bb, ctx.ti, ctx.fb, out, ctx.tempVReg, ctx.nextVRegId, rhs, rhsCls))
+            ins.operands[1], bb, ctx.ti, ctx.fb, out, ctx.tempVReg, ctx.tempRegClass, ctx.nextVRegId, rhs, rhsCls))
         return false;
 
     // Generate divide-by-zero check: cmp rhs, #0; b.eq trap_label
@@ -651,10 +644,10 @@ bool lowerUDivChk0(const il::core::Instr &ins,
     RegClass lhsCls = RegClass::GPR, rhsCls = RegClass::GPR;
 
     if (!materializeValueToVReg(
-            ins.operands[0], bb, ctx.ti, ctx.fb, out, ctx.tempVReg, ctx.nextVRegId, lhs, lhsCls))
+            ins.operands[0], bb, ctx.ti, ctx.fb, out, ctx.tempVReg, ctx.tempRegClass, ctx.nextVRegId, lhs, lhsCls))
         return false;
     if (!materializeValueToVReg(
-            ins.operands[1], bb, ctx.ti, ctx.fb, out, ctx.tempVReg, ctx.nextVRegId, rhs, rhsCls))
+            ins.operands[1], bb, ctx.ti, ctx.fb, out, ctx.tempVReg, ctx.tempRegClass, ctx.nextVRegId, rhs, rhsCls))
         return false;
 
     // Generate divide-by-zero check: cmp rhs, #0; b.eq trap_label
@@ -696,10 +689,10 @@ bool lowerURemChk0(const il::core::Instr &ins,
     RegClass lhsCls = RegClass::GPR, rhsCls = RegClass::GPR;
 
     if (!materializeValueToVReg(
-            ins.operands[0], bb, ctx.ti, ctx.fb, out, ctx.tempVReg, ctx.nextVRegId, lhs, lhsCls))
+            ins.operands[0], bb, ctx.ti, ctx.fb, out, ctx.tempVReg, ctx.tempRegClass, ctx.nextVRegId, lhs, lhsCls))
         return false;
     if (!materializeValueToVReg(
-            ins.operands[1], bb, ctx.ti, ctx.fb, out, ctx.tempVReg, ctx.nextVRegId, rhs, rhsCls))
+            ins.operands[1], bb, ctx.ti, ctx.fb, out, ctx.tempVReg, ctx.tempRegClass, ctx.nextVRegId, rhs, rhsCls))
         return false;
 
     // Generate divide-by-zero check: cmp rhs, #0; b.eq trap_label
@@ -749,10 +742,10 @@ bool lowerFpArithmetic(const il::core::Instr &ins,
     RegClass lhsCls = RegClass::FPR, rhsCls = RegClass::FPR;
 
     if (!materializeValueToVReg(
-            ins.operands[0], bb, ctx.ti, ctx.fb, out, ctx.tempVReg, ctx.nextVRegId, lhs, lhsCls))
+            ins.operands[0], bb, ctx.ti, ctx.fb, out, ctx.tempVReg, ctx.tempRegClass, ctx.nextVRegId, lhs, lhsCls))
         return false;
     if (!materializeValueToVReg(
-            ins.operands[1], bb, ctx.ti, ctx.fb, out, ctx.tempVReg, ctx.nextVRegId, rhs, rhsCls))
+            ins.operands[1], bb, ctx.ti, ctx.fb, out, ctx.tempVReg, ctx.tempRegClass, ctx.nextVRegId, rhs, rhsCls))
         return false;
 
     // BUG-007 fix: If operands are GPR (integer constants), convert them to FPR.
@@ -778,7 +771,7 @@ bool lowerFpArithmetic(const il::core::Instr &ins,
 
     const uint16_t dst = ctx.nextVRegId++;
     ctx.tempVReg[*ins.result] = dst;
-    g_tempRegClass[*ins.result] = RegClass::FPR;
+    ctx.tempRegClass[*ins.result] = RegClass::FPR;
 
     MOpcode mop = MOpcode::FAddRRR;
     switch (ins.op)
@@ -822,10 +815,10 @@ bool lowerFpCompare(const il::core::Instr &ins,
     RegClass lhsCls = RegClass::FPR, rhsCls = RegClass::FPR;
 
     if (!materializeValueToVReg(
-            ins.operands[0], bb, ctx.ti, ctx.fb, out, ctx.tempVReg, ctx.nextVRegId, lhs, lhsCls))
+            ins.operands[0], bb, ctx.ti, ctx.fb, out, ctx.tempVReg, ctx.tempRegClass, ctx.nextVRegId, lhs, lhsCls))
         return false;
     if (!materializeValueToVReg(
-            ins.operands[1], bb, ctx.ti, ctx.fb, out, ctx.tempVReg, ctx.nextVRegId, rhs, rhsCls))
+            ins.operands[1], bb, ctx.ti, ctx.fb, out, ctx.tempVReg, ctx.tempRegClass, ctx.nextVRegId, rhs, rhsCls))
         return false;
 
     // BUG-007 fix: If operands are GPR (integer constants), convert them to FPR.
@@ -876,12 +869,12 @@ bool lowerSitofp(const il::core::Instr &ins,
     uint16_t sv = 0;
     RegClass scls = RegClass::GPR;
     if (!materializeValueToVReg(
-            ins.operands[0], bb, ctx.ti, ctx.fb, out, ctx.tempVReg, ctx.nextVRegId, sv, scls))
+            ins.operands[0], bb, ctx.ti, ctx.fb, out, ctx.tempVReg, ctx.tempRegClass, ctx.nextVRegId, sv, scls))
         return false;
 
     const uint16_t dst = ctx.nextVRegId++;
     ctx.tempVReg[*ins.result] = dst;
-    g_tempRegClass[*ins.result] = RegClass::FPR;
+    ctx.tempRegClass[*ins.result] = RegClass::FPR;
 
     out.instrs.push_back(
         MInstr{MOpcode::SCvtF,
@@ -904,7 +897,7 @@ bool lowerFptosi(const il::core::Instr &ins,
     uint16_t fv = 0;
     RegClass fcls = RegClass::FPR;
     if (!materializeValueToVReg(
-            ins.operands[0], bb, ctx.ti, ctx.fb, out, ctx.tempVReg, ctx.nextVRegId, fv, fcls))
+            ins.operands[0], bb, ctx.ti, ctx.fb, out, ctx.tempVReg, ctx.tempRegClass, ctx.nextVRegId, fv, fcls))
         return false;
 
     const uint16_t dst = ctx.nextVRegId++;
@@ -931,7 +924,7 @@ bool lowerZext1Trunc1(const il::core::Instr &ins,
     uint16_t sv = 0;
     RegClass scls = RegClass::GPR;
     if (!materializeValueToVReg(
-            ins.operands[0], bb, ctx.ti, ctx.fb, out, ctx.tempVReg, ctx.nextVRegId, sv, scls))
+            ins.operands[0], bb, ctx.ti, ctx.fb, out, ctx.tempVReg, ctx.tempRegClass, ctx.nextVRegId, sv, scls))
         return false;
 
     const uint16_t dst = ctx.nextVRegId++;
@@ -970,7 +963,7 @@ bool lowerNarrowingCast(const il::core::Instr &ins,
     uint16_t sv = 0;
     RegClass scls = RegClass::GPR;
     if (!materializeValueToVReg(
-            ins.operands[0], bb, ctx.ti, ctx.fb, out, ctx.tempVReg, ctx.nextVRegId, sv, scls))
+            ins.operands[0], bb, ctx.ti, ctx.fb, out, ctx.tempVReg, ctx.tempRegClass, ctx.nextVRegId, sv, scls))
         return false;
 
     const uint16_t vt = ctx.nextVRegId++;

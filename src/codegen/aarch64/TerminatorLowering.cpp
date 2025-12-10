@@ -41,6 +41,7 @@ void lowerTerminators(const il::core::Function &fn,
                       const std::unordered_map<std::string, std::vector<RegClass>> &phiRegClass,
                       const std::unordered_map<std::string, std::vector<int>> &phiSpillOffset,
                       std::vector<std::unordered_map<unsigned, uint16_t>> &blockTempVRegSnapshot,
+                      std::unordered_map<unsigned, RegClass> &tempRegClass,
                       uint16_t &nextVRegId)
 {
     const auto &argOrder = ti.intArgOrder;
@@ -73,6 +74,7 @@ void lowerTerminators(const il::core::Function &fn,
                             const auto &classes = phiRegClass.at(dst);
                             const auto &spillOffsets = itSpill->second;
                             std::unordered_map<unsigned, uint16_t> tmp2v;
+                            std::unordered_map<unsigned, RegClass> tmpRC;
                             uint16_t nvr = 1;
                             for (std::size_t ai = 0; ai < term.brArgs[0].size() && ai < ids.size();
                                  ++ai)
@@ -85,6 +87,7 @@ void lowerTerminators(const il::core::Function &fn,
                                                             fb,
                                                             outBB,
                                                             tmp2v,
+                                                            tmpRC,
                                                             nvr,
                                                             sv,
                                                             scls))
@@ -221,6 +224,7 @@ void lowerTerminators(const il::core::Function &fn,
                                                         fb,
                                                         outBB,
                                                         blockTempVReg,
+                                                        tempRegClass,
                                                         nextVRegId,
                                                         sv,
                                                         scls))
@@ -344,7 +348,7 @@ void lowerTerminators(const il::core::Function &fn,
                         uint16_t cv = 0;
                         RegClass cc = RegClass::GPR;
                         materializeValueToVReg(
-                            cond, inBB, ti, fb, outBB, blockTempVReg, nextVRegId, cv, cc);
+                            cond, inBB, ti, fb, outBB, blockTempVReg, tempRegClass, nextVRegId, cv, cc);
                         outBB.instrs.push_back(
                             MInstr{MOpcode::CmpRI,
                                    {MOperand::vregOp(RegClass::GPR, cv), MOperand::immOp(0)}});

@@ -105,24 +105,48 @@ ILGeneratorResult ILGenerator::generate(const ILGeneratorConfig &config)
     BasicBlock entry;
     entry.label = "entry";
 
-    // Generate arithmetic instructions
+    // Build list of enabled operation categories
+    std::vector<int> categories; // 0=arith, 1=cmp, 2=bitwise, 3=shift
+    categories.push_back(0);     // arithmetic always enabled
+    if (config.includeComparisons)
+        categories.push_back(1);
+    if (config.includeBitwise)
+        categories.push_back(2);
+    if (config.includeShifts)
+        categories.push_back(3);
+
+    // Generate instructions
     for (std::size_t i = 0; i < numInstructions; ++i)
     {
         Instr instr;
         instr.result = nextTemp++;
         instr.loc = {1, 1, 1};
 
-        // Choose operation type
-        bool useCmp = config.includeComparisons && (rng_() % 4 == 0);
-        if (useCmp)
+        // Choose operation category
+        std::uniform_int_distribution<std::size_t> catDist(0, categories.size() - 1);
+        int category = categories[catDist(rng_)];
+
+        bool producesI1 = false;
+
+        switch (category)
         {
-            instr.op = randomChoice(kCmpOps);
-            instr.type = Type(Type::Kind::I1);
-        }
-        else
-        {
-            instr.op = randomChoice(kArithOps);
-            instr.type = Type(Type::Kind::I64);
+            case 0: // arithmetic
+                instr.op = randomChoice(kArithOps);
+                instr.type = Type(Type::Kind::I64);
+                break;
+            case 1: // comparison
+                instr.op = randomChoice(kCmpOps);
+                instr.type = Type(Type::Kind::I1);
+                producesI1 = true;
+                break;
+            case 2: // bitwise
+                instr.op = randomChoice(kBitwiseOps);
+                instr.type = Type(Type::Kind::I64);
+                break;
+            case 3: // shift
+                instr.op = randomChoice(kShiftOps);
+                instr.type = Type(Type::Kind::I64);
+                break;
         }
 
         // Generate operands
@@ -141,11 +165,25 @@ ILGeneratorResult ILGenerator::generate(const ILGeneratorConfig &config)
             rhs = Value::constInt(divisor);
         }
 
+        // For shifts, ensure shift amount is in valid range (0-63)
+        // and use non-negative values for the shifted operand to avoid edge cases
+        if (instr.op == Opcode::Shl || instr.op == Opcode::LShr || instr.op == Opcode::AShr)
+        {
+            std::int64_t shiftAmt = randomConstant(0, 63);
+            rhs = Value::constInt(shiftAmt);
+            // For LShr/AShr, use non-negative LHS to avoid edge cases with negative constants
+            if ((instr.op == Opcode::LShr || instr.op == Opcode::AShr) &&
+                lhs.kind == Value::Kind::ConstInt && lhs.i64 < 0)
+            {
+                lhs = Value::constInt(std::abs(lhs.i64) % 10000);
+            }
+        }
+
         instr.operands = {lhs, rhs};
         entry.instructions.push_back(instr);
 
         // Only add i64 results to available temps (not comparisons)
-        if (!useCmp)
+        if (!producesI1)
         {
             availableTemps.push_back(*instr.result);
         }

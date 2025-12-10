@@ -14,6 +14,7 @@
 
 #include "codegen/aarch64/AsmEmitter.hpp"
 #include "codegen/aarch64/LowerILToMIR.hpp"
+#include "codegen/aarch64/Peephole.hpp"
 #include "codegen/aarch64/RegAllocLinear.hpp"
 #include "codegen/aarch64/RodataPool.hpp"
 #include "codegen/common/ArgNormalize.hpp"
@@ -371,6 +372,8 @@ int emitAndMaybeLink(const Options &opts)
             std::cerr << "=== MIR after RA: " << fn.name << " ===\n";
             std::cerr << toString(mir) << "\n";
         }
+        // Run peephole optimizations after RA
+        [[maybe_unused]] auto peepholeStats = runPeephole(mir);
         emitter.emitFunction(asmStream, mir);
         asmStream << "\n";
     }

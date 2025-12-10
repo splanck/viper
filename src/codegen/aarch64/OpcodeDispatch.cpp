@@ -51,6 +51,7 @@ bool lowerInstruction(const il::core::Instr &ins,
                                         ctx.fb,
                                         bbOut(),
                                         ctx.tempVReg,
+                                        ctx.tempRegClass,
                                         ctx.nextVRegId,
                                         sv,
                                         scls))
@@ -85,6 +86,7 @@ bool lowerInstruction(const il::core::Instr &ins,
                                         ctx.fb,
                                         bbOut(),
                                         ctx.tempVReg,
+                                        ctx.tempRegClass,
                                         ctx.nextVRegId,
                                         sv,
                                         scls))
@@ -154,6 +156,7 @@ bool lowerInstruction(const il::core::Instr &ins,
                                         ctx.fb,
                                         bbOut(),
                                         ctx.tempVReg,
+                                        ctx.tempRegClass,
                                         ctx.nextVRegId,
                                         fv,
                                         fcls))
@@ -213,13 +216,14 @@ bool lowerInstruction(const il::core::Instr &ins,
                                         ctx.fb,
                                         bbOut(),
                                         ctx.tempVReg,
+                                        ctx.tempRegClass,
                                         ctx.nextVRegId,
                                         sv,
                                         scls))
                 return true;
             const uint16_t dst = ctx.nextVRegId++;
             ctx.tempVReg[*ins.result] = dst;
-            g_tempRegClass[*ins.result] = RegClass::FPR;
+            ctx.tempRegClass[*ins.result] = RegClass::FPR;
             if (ins.op == Opcode::CastSiToFp)
                 bbOut().instrs.push_back(MInstr{
                     MOpcode::SCvtF,
@@ -313,6 +317,7 @@ bool lowerInstruction(const il::core::Instr &ins,
                                            ctx.fb,
                                            bbOut(),
                                            ctx.tempVReg,
+                                           ctx.tempRegClass,
                                            ctx.nextVRegId,
                                            v,
                                            cls))
@@ -351,6 +356,7 @@ bool lowerInstruction(const il::core::Instr &ins,
                                            ctx.fb,
                                            bbOut(),
                                            ctx.tempVReg,
+                                           ctx.tempRegClass,
                                            ctx.nextVRegId,
                                            vbase,
                                            cbase) &&
@@ -360,6 +366,7 @@ bool lowerInstruction(const il::core::Instr &ins,
                                            ctx.fb,
                                            bbOut(),
                                            ctx.tempVReg,
+                                           ctx.tempRegClass,
                                            ctx.nextVRegId,
                                            vval,
                                            cval))
@@ -406,6 +413,7 @@ bool lowerInstruction(const il::core::Instr &ins,
                                         ctx.fb,
                                         bbOut(),
                                         ctx.tempVReg,
+                                        ctx.tempRegClass,
                                         ctx.nextVRegId,
                                         vbase,
                                         cbase))
@@ -440,6 +448,7 @@ bool lowerInstruction(const il::core::Instr &ins,
                                            ctx.fb,
                                            bbOut(),
                                            ctx.tempVReg,
+                                           ctx.tempRegClass,
                                            ctx.nextVRegId,
                                            voff,
                                            coff))
@@ -491,6 +500,7 @@ bool lowerInstruction(const il::core::Instr &ins,
                                            ctx.fb,
                                            bbOut(),
                                            ctx.tempVReg,
+                                           ctx.tempRegClass,
                                            ctx.nextVRegId,
                                            vbase,
                                            cbase))
@@ -521,7 +531,7 @@ bool lowerInstruction(const il::core::Instr &ins,
         {
             LoweredCall seq{};
             if (lowerCallWithArgs(
-                    ins, bbIn, ctx.ti, ctx.fb, bbOut(), seq, ctx.tempVReg, ctx.nextVRegId))
+                    ins, bbIn, ctx.ti, ctx.fb, bbOut(), seq, ctx.tempVReg, ctx.tempRegClass, ctx.nextVRegId))
             {
                 for (auto &mi : seq.prefix)
                     bbOut().instrs.push_back(std::move(mi));
@@ -580,6 +590,7 @@ bool lowerInstruction(const il::core::Instr &ins,
                                                  ctx.fb,
                                                  bbOut(),
                                                  ctx.tempVReg,
+                                                 ctx.tempRegClass,
                                                  ctx.nextVRegId,
                                                  v,
                                                  cls);
